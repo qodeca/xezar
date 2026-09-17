@@ -162,6 +162,18 @@ export function opencodeTurnStarted(state: OpencodeUiMapperState): OpencodeUiMap
   };
 }
 
+/**
+ * The runner denied a `permission.asked` ask (#578). The wire event carries no
+ * decision — only the runner knows its answer — so, like the two helpers
+ * above, this is called out of band. It is the v1 `note` in v2 form: a
+ * non-fatal `session.error`. Unlike a wire `session.error` it does NOT mark
+ * the turn errored — a denied ask is the model's to adapt to, not a failure.
+ */
+export function opencodePermissionDenied(note: string, state: OpencodeUiMapperState): OpencodeUiMapping {
+  if (note === '') return { events: [], state };
+  return { events: [{ type: 'session.error', message: note, fatal: false }], state };
+}
+
 /** Fold one parsed SSE bus event into v2 events. Never throws. */
 export function mapOpencodeEvent(evt: unknown, state: OpencodeUiMapperState): OpencodeUiMapping {
   if (!isRecord(evt) || typeof evt.type !== 'string') return { events: [], state };

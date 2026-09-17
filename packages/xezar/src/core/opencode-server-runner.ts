@@ -1,6 +1,7 @@
 import { spawn as nodeSpawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import http from 'node:http';
 import https from 'node:https';
+import os from 'node:os';
 import type {
   AgentEvent,
   AgentRunResult,
@@ -16,8 +17,14 @@ import { AUTO_END_DELAY_MS, DEFAULT_RUN_TIMEOUT_MS } from './claude-cli-runner.t
 import { parseModelIdentity } from './model-identity.ts';
 import { V1TextCoalescer } from './v1-text-coalescer.ts';
 import {
+  decideOpencodePermission,
+  PermissionDenialGuard,
+  resolveAllowedRoots,
+} from './opencode-permissions.ts';
+import {
   createOpencodeUiState,
   mapOpencodeEvent,
+  opencodePermissionDenied,
   opencodeSessionStarted,
   opencodeTurnStarted,
   type OpencodeUiMapperState,
@@ -44,9 +51,19 @@ export const KILL_GRACE_MS = 4_000;
  * session (history is kept server-side), `session/abort` cancels, and reusing
  * the session id resumes for "Continue".
  *
- * Auth = the host's opencode config/logins. The agent runs autonomously
- * (auto-approved permissions); OpenCode has no per-tool allowlist, so
- * `spec.allowedTools` is ignored. `spec.model` is `provider/model`.
+ * Auth = the host's opencode config/logins. OpenCode has no per-tool
+ * allowlist, so `spec.allowedTools` is ignored; `spec.model` is
+ * `provider/model`.
+ *
+ * **Permissions are answered, not auto-approved** (#578 — the prior claim to
+ * the contrary here was wrong and the reason a run hung forever). OpenCode
+ * defaults `external_directory` (a tool touching a path outside the session
+ * directory — `$XEZ_HANDOFF_FILE`, pasted attachments, the run's own NDJSON
+ * dir) and `doom_loop` (repeated identical calls) to `ask`, publishing
+ * `permission.asked` on the SSE bus and then blocking the tool call until
+ * `POST /permission/:requestID/reply` answers it. Nothing here used to
+ * read that event, so the ask sat forever and the turn died on the generic
+ * 30-minute step timeout with no named cause. See `handlePermissionAsked`.
  */
 export class OpencodeServerRunner implements AgentRunner {
   readonly backend = 'opencode' as const;
@@ -146,6 +163,17 @@ class OpencodeSession implements AgentSession {
   private timedOut = false;
   /** One teardown per session — see `terminate()`. */
   private signalled = false;
+  /** Directories an `external_directory` ask may be answered `once` for —
+   *  `cwd`, whatever `spec.additionalDirectories` already grants the other
+   *  runners (the run's NDJSON dir, `$TMPDIR`), and the OS temp dir, all with
+   *  symlinks resolved. See `opencode-permissions.ts` for the whole policy. */
+  private readonly allowedRoots: string[];
+  /** The loop bounds on denied asks — see `handlePermissionAsked`. */
+  private readonly permissionDenials = new PermissionDenialGuard();
+  /** Set once a permission ask can't be answered at all, or is denied in a
+   *  loop — read by `result`'s error path instead of the generic timeout
+   *  message. */
+  private permissionFailure: string | null = null;
   /** This run's wall clock in ms, `0` when the run is deliberately uncapped
    *  (the last, interactive workflow step). It is also the ONLY bound on a
    *  blocking prompt request — see `request()`. */
@@ -158,6 +186,7 @@ class OpencodeSession implements AgentSession {
     private readonly onEvent: ((event: AgentEvent) => void) | undefined,
     private readonly opts: SessionOptions,
   ) {
+    this.allowedRoots = resolveAllowedRoots([spec.cwd, ...(spec.additionalDirectories ?? []), os.tmpdir()]);
     // `--port 0` is written out rather than left to the default, because it is
     // a decision: opencode's own `serve` handles the collision, and does it in
     // the only place that can — the process holding the socket. It prefers its
@@ -249,6 +278,8 @@ class OpencodeSession implements AgentSession {
       if (this.timedOut) {
         const mins = Math.round((limitMs / 60_000) * 10) / 10;
         this.emit({ type: 'error', message: `opencode timed out after ${mins}m and was killed` });
+      } else if (this.permissionFailure) {
+        this.emit({ type: 'error', message: this.permissionFailure });
       }
       this.emit({ type: 'done' });
       return base;
@@ -614,7 +645,59 @@ class OpencodeSession implements AgentSession {
       // makes in `mapIdle`, including treating an absent id as this session's.
       const sid = stringField(props, 'sessionID');
       if (sid === undefined || sid === this.sessionId) this.turnIdle?.();
+    } else if (type === 'permission.asked') {
+      this.handlePermissionAsked(props);
     }
+  }
+
+  /**
+   * Answer a `permission.asked` ask (live `opencode serve` 1.18.31 OpenAPI,
+   * `EventPermissionAsked`: `{id, sessionID, permission, patterns, metadata,
+   * always, tool?}`) instead of leaving it to block the tool call forever,
+   * which is the whole defect this method exists to close (#578).
+   *
+   * The reply goes to `POST /permission/:requestID/reply` with
+   * `{reply: 'once'|'always'|'reject'}` (`permission.reply`). The older
+   * `POST /session/:id/permissions/:id` is deprecated and wants a different
+   * body, `{response}` — it answers `{reply}` with 400.
+   *
+   * Which reply is `decideOpencodePermission`'s call: `once` only for an
+   * `external_directory` ask inside this run's directories, `reject` for
+   * everything else. A denial is shown in the transcript twice over — a v1
+   * `note` and the v2 non-fatal `session.error` the cockpit renders as a note
+   * (the reserved `permission.requested`/`.resolved` pair stays unwired).
+   */
+  private handlePermissionAsked(props: Record<string, unknown>): void {
+    const id = stringField(props, 'id');
+    if (id === undefined) return;
+    const permission = stringField(props, 'permission') ?? 'unknown';
+    const patterns = Array.isArray(props.patterns) ? props.patterns.filter((p): p is string => typeof p === 'string') : [];
+
+    const decision = decideOpencodePermission(permission, patterns, this.allowedRoots);
+    if (decision.note !== undefined) {
+      const note = decision.note;
+      this.emit({ type: 'note', message: note });
+      this.emitUi((state) => opencodePermissionDenied(note, state));
+    }
+
+    void this.http('POST', `/permission/${encodeURIComponent(id)}/reply`, { reply: decision.reply }).catch(
+      (err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        this.failOnPermission(`opencode: failed to answer a permission ask ('${permission}', ${id}): ${message}`);
+      },
+    );
+
+    const loop = this.permissionDenials.record(permission, patterns, decision);
+    if (loop !== null) this.failOnPermission(loop);
+  }
+
+  /** Record the named cause once (first failure wins — a reply-failure and a
+   *  denial-loop can both fire for the same event) and stop the session, so
+   *  `result`'s error path reports it instead of the generic step timeout. */
+  private failOnPermission(message: string): void {
+    if (this.permissionFailure) return;
+    this.permissionFailure = message;
+    this.interrupt();
   }
 
   private handlePart(part: Record<string, unknown>): void {

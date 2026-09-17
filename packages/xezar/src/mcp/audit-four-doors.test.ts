@@ -41,6 +41,10 @@ import { tools } from './tools/index.ts';
  *   - `cli`: one applied and one refused command record (every § 5 subcommand is exercised against
  *     the packed tarball in `test/e2e/package-cli.test.ts`).
  *
+ * #573: a target the bound project does not have is an ordinary MCP refusal too. Each mutating
+ * action that looks its target up before any effect writes one `refused` / `not_found` record for an
+ * unknown id — see `mcp: a target this project does not have` below, one case per action.
+ *
  * Reads between the cases (task_read, leader_events read) are part of the proof: they would add a
  * record and break the "exactly one" assertion if a read were audited (`B-MCP-MIXED-READ`).
  * QA reuses this file: `npm test -- packages/xezar/src/mcp/audit-four-doors.test.ts`.
@@ -49,7 +53,12 @@ import { tools } from './tools/index.ts';
 const VERSION = '9.9.9-audit-doors';
 const tempDirs: string[] = [];
 const closers: Array<() => unknown> = [];
-const saved = { home: process.env.XEZ_HOME, dryRun: process.env.XEZ_DRY_RUN, automations: process.env.XEZ_AUTOMATIONS };
+const saved = {
+  home: process.env.XEZ_HOME,
+  dryRun: process.env.XEZ_DRY_RUN,
+  automations: process.env.XEZ_AUTOMATIONS,
+  followups: process.env.XEZ_FOLLOWUPS,
+};
 
 // Under /tmp, not the per-worker sandbox: the MCP socket path must stay under 104 bytes on macOS.
 const tmp = (prefix: string): string => {
@@ -71,6 +80,7 @@ afterEach(async () => {
     ['XEZ_HOME', saved.home],
     ['XEZ_DRY_RUN', saved.dryRun],
     ['XEZ_AUTOMATIONS', saved.automations],
+    ['XEZ_FOLLOWUPS', saved.followups],
   ] as const) {
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
@@ -220,6 +230,9 @@ describe('the saved four-door audit harness (#306 part 2)', () => {
       mcp('organise_work', { action: 'pin', runId, expectedVersion: stale, operationId: operationId() }));
     await once('mcp', { family: 'F1', action: 'run.cancel', outcome: 'refused', reason: 'stale_version' }, () =>
       mcp('execution_control', { action: 'cancel', runId, expectedVersion: stale, operationId: operationId() }));
+    // #573: a task this project does not have — refused before any effect, like the cockpit's 404.
+    await once('mcp', { family: 'F1', action: 'run.cancel', outcome: 'refused', reason: 'not_found' }, () =>
+      mcp('execution_control', { action: 'cancel', runId: 'no-such-run-0000', expectedVersion: stale, operationId: operationId() }));
     await once('ui', { family: 'F1', action: 'run.pin', outcome: 'applied' }, () => http('POST', `/runs/${runId}/pin`, {}));
     await once('ui', { family: 'F1', action: 'run.cancel', outcome: 'refused', reason: 'stale_version' }, () =>
       http('POST', `/runs/${runId}/cancel`, { expectedVersion: stale }));
@@ -356,6 +369,66 @@ describe('the saved four-door audit harness (#306 part 2)', () => {
       expect(new Set(matrix.filter((row) => row.action === shared).map((row) => row.door)), shared).toEqual(new Set(['ui', 'mcp']));
     }
   }, 120_000);
+
+  /**
+   * #573 — one case per mutating MCP action whose target lookup precedes every effect. Before the
+   * fix each wrote nothing (an MCP error the door could not tell from a post-effect failure) or, for
+   * `handoff_git`, `applied` (its refusal is not an MCP error). Named break `B-573-NOT-FOUND`:
+   * remove `notFoundRefusalOf` from the door and every case fails.
+   */
+  describe('mcp: a target this project does not have is refused as not_found (#573)', () => {
+    const ghost = 'no-such-run-0000';
+    const version = 'rev1:run:no-such-run-0000:1:0123456789ab';
+    const cases: Array<[tool: string, args: Record<string, unknown>, action: string]> = [
+      ['execution_control', { action: 'cancel', runId: ghost, expectedVersion: version }, 'run.cancel'],
+      ['execution_control', { action: 'finish', runId: ghost, finishAs: 'close_session', expectedVersion: version }, 'run.finish'],
+      ['execution_control', { action: 'continue', runId: ghost, text: 'go on', expectedVersion: version }, 'run.continue'],
+      ['execution_control', { action: 'send_message', runId: ghost, text: 'hello', expectedVersion: version }, 'run.message'],
+      ['execution_control', { action: 'answer_question', runId: ghost, questionId: 'q-1', text: 'yes', expectedVersion: version }, 'run.message'],
+      ['execution_control', { action: 'edit_queued_message', runId: ghost, messageId: 'm-1', text: 'x', expectedVersion: version }, 'run.queuedMessage.edit'],
+      ['execution_control', { action: 'remove_queued_message', runId: ghost, messageId: 'm-1', expectedVersion: version }, 'run.queuedMessage.remove'],
+      ['execution_control', { action: 'cancel_auto_resume', runId: ghost, expectedVersion: version }, 'run.autoResume.cancel'],
+      ['organise_work', { action: 'set_title', runId: ghost, title: 'x', expectedVersion: version }, 'run.update'],
+      ['organise_work', { action: 'edit_brief', runId: ghost, task: 'x', expectedVersion: version }, 'run.update'],
+      ['organise_work', { action: 'edit_queued_message', runId: ghost, messageId: 'm-1', text: 'x', expectedVersion: version }, 'run.queuedMessage.edit'],
+      ['organise_work', { action: 'remove_queued_message', runId: ghost, messageId: 'm-1', expectedVersion: version }, 'run.queuedMessage.remove'],
+      ['organise_work', { action: 'pin', runId: ghost, expectedVersion: version }, 'run.pin'],
+      ['organise_work', { action: 'unpin', runId: ghost, expectedVersion: version }, 'run.unpin'],
+      ['organise_work', { action: 'archive', runId: ghost, expectedVersion: version }, 'run.archive'],
+      ['organise_work', { action: 'restore', runId: ghost, expectedVersion: version }, 'run.restore'],
+      ['organise_work', { action: 'mark_read', runId: ghost }, 'run.markRead'],
+      ['organise_work', { action: 'mark_unread', runId: ghost }, 'run.markUnread'],
+      ['organise_work', { action: 'delete', runId: ghost, expectedVersion: version }, 'run.delete'],
+      ['organise_work', { action: 'pick_variant', groupId: 'no-such-group', runId: ghost, expectedVersion: version }, 'group.pickVariant'],
+      ['organise_work', { action: 'start_inbox_item', todoId: 'no-such-todo' }, 'run.startFromInbox'],
+      ['organise_work', { action: 'remove_inbox_item', todoId: 'no-such-todo' }, 'inbox.remove'],
+      ['task_create', { action: 'start_from_inbox', todoId: 'no-such-todo' }, 'run.startFromInbox'],
+      ['handoff_git', { action: 'commit', taskId: ghost, message: 'x', expectedVersion: version }, 'run.git.commit'],
+      ['handoff_git', { action: 'push', taskId: ghost, expectedVersion: version }, 'run.git.push'],
+      ['handoff_git', { action: 'create_pr', taskId: ghost, expectedVersion: version }, 'run.pr.create'],
+    ];
+
+    it.each(cases)('%s %o → %s', async (tool, args, action) => {
+      // The inbox is opt-in; with it off, its routes answer a conflict instead of looking the entry up.
+      process.env.XEZ_FOLLOWUPS = '1';
+      const c = await cockpit();
+      const handle = await startMcpService({ projectId: c.id, version: VERSION, service: c.app, store: c.store });
+      closers.push(() => handle.close());
+      const leader = agent(c.root);
+      const answer = await leader.call(tool, { ...args, operationId: operationId() });
+      const all = records(c.dataDir);
+      expect(all, JSON.stringify(answer).slice(0, 400)).toHaveLength(1);
+      expect(all[0]).toMatchObject({
+        origin: 'mcp',
+        actor: { type: 'mcp' },
+        projectId: c.id,
+        action,
+        outcome: { status: 'refused', reason: 'not_found' },
+      });
+      // Nothing about the unknown id leaks beyond the bounded resource the door already keeps.
+      expect(JSON.stringify(all[0])).not.toContain('no-such-todo');
+    });
+  });
 
   it('a caller-supplied origin or actor never changes a record', async () => {
     const c = await cockpit();

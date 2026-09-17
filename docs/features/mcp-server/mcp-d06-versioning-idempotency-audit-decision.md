@@ -54,7 +54,7 @@ Everything this record closes, in one table. Each row links to the section that 
 | 11 | Uncertain outcome status | **`unverified`** — the tool result status, the receipt phase, and the thing a retry returns | § 9 |
 | 12 | Reconciliation | Per-action reconciler declared beside the action; an unreachable external system leaves the receipt `unverified` and **never** repeats the effect | § 9.3 |
 | 13 | Audit record fields | The 11-field list in § 10.2; free text, payload bodies and diffs are excluded by construction | § 10 |
-| 14 | Audit retention | **Accepted in the 2026-09-17 follow-on:** rotate at 10 MB and retain five files; implementation remains pending | § 10.5 |
+| 14 | Audit retention | **Accepted in the 2026-09-17 follow-on:** rotate at 10 MB and retain five files; implemented in 0.16.0 (#306 part 3) | § 10.5 |
 | 15 | New persisted fields | **None.** The run id is predicted from the operation key instead, because `runRecordSchema` has no `.passthrough()` and a downgrade would erase a new key rather than merely ignore it | § 12.1, § 13.3 |
 | 16 | Which origins the trail records | **`mcp` only for 0.14.0.** `ui`, `automation` and `cli` stay in the enum as reserved members that no door writes; [#364](https://github.com/qodeca/xezar/issues/364) owns wiring them. Added 2026-09-12, after the rest of this record | § 10.6 |
 
@@ -72,7 +72,7 @@ tidy. No timeout, transport or tool name is invented anywhere.
 | **1 000 journal lines** — snapshot cadence | § 7.2 | Measured: a 1 000-line journal scans in 0.7 ms (§ 3.2), so compacting below that saves under a millisecond and is not worth a write | **Decision** |
 | **8–128 characters** — `operationId` length | § 5.2 | Shape bounds only: 8 refuses a trivially short id, 128 bounds a key the journal writes on every line. No behaviour depends on either | **Technical proposal** |
 | **12 hex characters** — version digest truncation | § 4.2, § 6 | Not fixed by evidence; phase 4 must evaluate it against the final projection | **Technical proposal** |
-| Audit retention | § 10.5 | Owner decision recorded 2026-09-17; implementation must measure the chosen bound | **Decision:** 10 MB, five files |
+| Audit retention | § 10.5 | Owner decision recorded 2026-09-17; implemented and measured in #306 part 3 (record 238–457 B, one rotation 1.1 ms) | **Decision:** 10 MB, five files |
 
 ## 2. What is agreed and is not reopened
 
@@ -824,7 +824,7 @@ F-16):
    particular, an `origin: "ui"` entry must never widen what MCP may do, and the record's presence
    must never substitute for a permission check.
 
-### 10.5 Accepted follow-on design — implementation pending
+### 10.5 Accepted follow-on design — implemented in 0.16.0
 
 **Originally open.** N-04 left audit retention and the identity model open in this record's first
 revision. The following dated decision closes the design question without claiming it is implemented.
@@ -834,17 +834,55 @@ The owner has now selected a 10 MB (10,000,000-byte) rotation threshold, five fi
 the dated [four-origin audit specification](audit-trail-origins-2026-09-17.md) supersedes the technical
 proposal below for the 0.16.0 implementation. This is a local operational trail, not a tamper-proof
 security log: a local agent or person with shell access to the project can alter or delete the live
-and rotated audit files. This paragraph records the accepted design; it does not claim the pending
-writers or rotation already ship.
+and rotated audit files. This paragraph records the accepted design as it stood that day; the
+writers (#306 part 2) and the rotation (#306 part 3) have since shipped, below. The tampering limit
+above is unchanged by them: rotation bounds size, it does not protect content.
 
-**Implemented in 0.16.0 so far (#306 part 1).** The live file is `.local/xezar/audit.ndjson`,
+**Implemented in 0.16.0 (#306 parts 1 and 3).** The live file is `.local/xezar/audit.ndjson`,
 created with mode `0600`, holding version 2 records (§ 10.2). `mcp-audit.ndjson` is a read-only
 legacy alias: it is read, with the version 1 schema, only while `audit.ndjson` does not exist, it is
 never written, renamed, chmodded, rotated or deleted, and reading it prints one deprecation line per
 process. When both exist, the new file wins and the histories are never merged. The alias is removed
-no earlier than 0.18.0 and only through [#563](https://github.com/qodeca/xezar/issues/563). Not yet
-implemented: the cross-process lock, rotation at 10 MB with five files, and mode repair of an
-existing file (#306 part 3). Until then the trail is not bounded.
+no earlier than 0.18.0 and only through [#563](https://github.com/qodeca/xezar/issues/563).
+
+**The retention algorithm, as implemented (#306 part 3, `packages/xezar/src/mcp/audit-trail.ts`).**
+Every door's record goes through one path, and everything below happens while that writer holds the
+project's `audit.ndjson.lock` — the bounded `open(path, 'wx', 0o600)` lock shared with the workspace
+registry (`packages/xezar/src/core/file-lock.ts`): 2 s wait, 20 ms polling, takeover of a dead owner
+or a lock older than 30 s. Each lock file carries a unique token, and BOTH removals — a takeover and
+a release — happen under a second `wx` guard file beside the lock and only after re-reading that
+token under it, so two waiters that judged the same dead lock cannot end up holding two locks, and a
+holder that paused past the 30 s bound cannot delete its successor's lock (#306 part 3 review, M1).
+
+1. The live file and every retained rotation are repaired to mode `0600`. A file that cannot be made
+   `0600` receives nothing.
+2. `seq` is the last valid persisted record's plus one, read from the live file — or, when it holds
+   no valid record, from the maximum of the rotations. Never from a cache, and never outside the lock.
+3. If the live file plus the pending line would pass **10,000,000 bytes**, the writer rotates BEFORE
+   appending: `.4` is deleted, `.3`→`.4`, `.2`→`.3`, `.1`→`.2`, live→`.1`, every retained file is
+   chmodded `0600`, and a new `0600` live file begins with one `kind: rotated` marker whose
+   `previousLastSeq` is the last sequence allocated before it; the action follows as the second line,
+   with the next sequence. **Five files are retained** — live plus `.1` (newest) to `.4` (oldest) —
+   so the retained set is bounded at 50 MB per project, plus the read-only legacy file.
+4. A rotation that died between its rename and its marker leaves no live file (or an empty one) beside
+   a `.1`. The next lock holder repairs it: it writes the marker from the maximum retained sequence
+   before its own action, and never invents the action the crash may have lost.
+5. Anything that fails — the lock's 2 s bound, an unwritable folder, a mode, rename or append error —
+   drops THAT record and warns once per project-scoped trail per process, with a bounded error code
+   and no path, record or payload. The user's operation is never changed, delayed past the bound, or
+   rolled back; an unlocked append is never attempted, because it could repeat a sequence or race a
+   rotation.
+
+**Known limit — a crash inside the rename cascade costs one generation (#306 part 3 review, m1).**
+A writer that dies after `.1`→`.2` but before live→`.1` leaves no `.1`, so the next rotation deletes
+`.4` and leaves the gap at `.2`: the count, the order and the sequence stay correct and no sixth file
+appears, but the oldest generation is dropped one rotation early. Accepted as it stands, because the
+trail is bounded operational history and step 4 already repairs the state that costs a record.
+
+Measured on the maintainer's macOS host, 2026-09-17: a record is 238–457 bytes (mean 336), so a full
+live file holds roughly 30 000 records; one rotation of a full five-file set took 1.1 ms and the
+ordinary append after it 1.3 ms. This supersedes the count-based mechanism D-09 B-23 decided; that
+row now points here.
 
 **Superseded historical proposal:** store the
 audit trail as its own append-only NDJSON beside the receipts, with the same line-level quarantine

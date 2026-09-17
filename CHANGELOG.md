@@ -23,6 +23,23 @@
 ## ✨ Features
 
 - ✨ **The sidebar is navigation-only.** (#546) The Active/Archived task switcher, task list, and `Search…` launcher have been removed from the sidebar. Manage and search tasks on the Tasks page, and open the command palette with `⌘K` on macOS or `Ctrl+K` elsewhere. Existing task badges, task data, APIs, and saved UI state are unchanged.
+- **The audit trail is bounded, and safe to share between processes.** (#306, part 3 of 4) A
+  project's `.local/xezar/audit.ndjson` now rotates before it passes 10 MB (10,000,000 bytes) and
+  keeps five files — the live one plus `audit.ndjson.1` to `.4`, so a project's trail stays under
+  50 MB whatever it does. A rotated file's history is not lost: sequence numbers run on across the
+  set, the new live file starts with one `rotated` marker saying where the previous one ended, and
+  xezar reads the oldest rotation first. Every writer — the cockpit, MCP, the automation runner and
+  a command — now takes one lock per project for the sequence, the append and the rotation, so two
+  xezar processes writing at the same moment cannot lose or repeat a record. All five files are kept
+  owner-only (`0600`), and one that is not is repaired before anything is written to it. If any of
+  that cannot be done — a folder xezar cannot write, a lock held by another process for more than
+  two seconds, a failed rename — the record is dropped and xezar warns once; **your action still
+  happens**, exactly as before. The old `mcp-audit.ndjson` is untouched by all of it.
+- **An MCP "not found" is now recorded as a refusal.** (#573, with #306 part 3) Asking MCP to cancel,
+  continue, pin or push a task this project does not have left no trace at all — and for `handoff_git`
+  it was recorded as if it had been applied. Such an answer comes from a lookup before anything
+  happens, so it is now one `refused` record with the reason `not_found`, the same way the cockpit
+  records its 404. An answer that may have followed a real effect is still never recorded as refused.
 - **The audit trail now records every door, not only MCP.** (#306, part 2 of 4) A change made in the
   cockpit (`ui`), by the automation runner (`automation`) or by a command (`cli`) is written to the
   project's `.local/xezar/audit.ndjson` beside the MCP records, with the same action id for the same
@@ -54,6 +71,7 @@
 - 🐛 The review gate and the variants compare view now show a run's diff the way the Git tabs do: line numbers, word-level changes, a `copied` badge and every line of a long file (no more 300-line cut or 20-file limit). On a phone, every Git-tab and diff control is a 44 px target at every density; the Git pages line their title, toolbar and content up on one gutter; diff line numbers are readable in both themes; closing the Commit dialog returns keyboard focus to the Commit button; a refused clipboard on the Changes tab shows the command instead of saying it was copied. (#453)
 - 🐛 On a phone, every task-thread, composer, dock, review, question and Tools-menu control is a 44 px target at every density; a message's edit and remove, the title pencil and an attachment's remove mark show without hover; thread spinners stop under reduced motion; a refused clipboard shows the command instead of saying it was copied; and the run's delete confirm uses the danger button. (#453)
 - 🐛 Keep pi `write` and `edit` calls in an isolated task worktree out of the primary checkout, whatever path spelling pi would accept (absolute, `..`, symlink, `~`, a leading `@`, a `file://` URL, Unicode spaces or different letter case); a spelling the guard cannot resolve with confidence is refused. Shell commands get a best-effort check only – it refuses commands that name the primary checkout – including a relative path read from the folder an earlier `cd` or `pushd` reached, or one through an existing symlink – or change into it through ordinary `cd`, `pushd`, `git -C`, `env -C`, `--git-dir`/`--work-tree` or `GIT_DIR` forms, and a directory change whose target is not one literal path (a variable, a substitution, a glob or brace pattern, `~user`, a `CDPATH` change, or `..` after a symlink) is refused rather than guessed, but a shell command cannot be parsed completely, so it is not containment. The primary checkout now comes from xezar itself, so bare-repository and submodule layouts keep working, and the run's handoff and temp folders stay writable. In-place and non-Git runs, plus temporary and home-directory paths outside the primary checkout, retain their existing behavior. (#537)
+- 🐛 **An OpenCode run no longer hangs on a permission ask.** (#578) OpenCode asks before a tool reaches a folder outside the task (the hand-off file, attachments, the run's own files), and nothing answered, so the run waited until its 30-minute step limit with no named cause. xezar now answers each ask at once and fails closed: a folder ask inside the run's own directories (symlinks resolved) is allowed for that one call; every other ask – a folder outside them, a web fetch, a shell command, a repeated-call warning – is denied and shown in the transcript. The same denial three times in a row, 20 denials in one session, or a reply OpenCode refuses stops the run with a named error. The claim that OpenCode approves every permission automatically is removed from the docs.
 - 🐛 **The OpenCode leader now gets the decision version on every pushed run event.** (#535, #532) `renderDispatch` in the OpenCode reaction adapter omitted `subject.version` from every rendered event, unlike the Claude Code, Codex and pi adapters, so an OpenCode leader could not pass it as `expectedVersion` without an extra `task_read`. The adapter now renders it the same way the other three do.
 
 ## Tests

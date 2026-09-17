@@ -369,12 +369,24 @@ interface Scan {
   readonly doors: Site[];
   readonly constructions: Site[];
   readonly typeUsers: string[];
+  readonly storageUsers: string[];
 }
+
+/**
+ * Net 3 (#306 part 3) — WHO TOUCHES THE FILES. Every name that reaches the audit files, their lock or
+ * their rotation, in code (comments stripped). One writer means one file names them: a door that
+ * appended, locked or rotated for itself would have to name one of these, and would appear here.
+ * It is a spelling net like net 1, with the same limit: a door that builds the path from a literal
+ * it never names this way is invisible to it (limit 3 above).
+ */
+const AUDIT_STORAGE = /\b(auditTrailPath|rotatedAuditTrailPath|auditLockPath|appendAuditRecord|AUDIT_TRAIL_FILE|AUDIT_ROTATE_BYTES)\b|audit\.ndjson/;
+const EXPECTED_STORAGE_USERS = ['packages/xezar/src/mcp/audit-trail.ts'];
 
 function scanAll(roots: readonly string[]): Scan {
   const doors: Site[] = [];
   const constructions: Site[] = [];
   const typeUsers: string[] = [];
+  const storageUsers: string[] = [];
   let files = 0;
 
   for (const root of roots) {
@@ -385,11 +397,12 @@ function scanAll(roots: readonly string[]): Scan {
       doors.push(...found.doors);
       constructions.push(...found.constructions);
       if (AUDIT_TYPES.test(code)) typeUsers.push(relative(REPO_ROOT, file).split('\\').join('/'));
+      if (AUDIT_STORAGE.test(code)) storageUsers.push(relative(REPO_ROOT, file).split('\\').join('/'));
     }
   }
 
   const by = (a: Site, b: Site): number => a.file.localeCompare(b.file) || a.origin.localeCompare(b.origin);
-  return { files, doors: [...doors].sort(by), constructions: [...constructions].sort(by), typeUsers: typeUsers.sort() };
+  return { files, doors: [...doors].sort(by), constructions: [...constructions].sort(by), typeUsers: typeUsers.sort(), storageUsers: storageUsers.sort() };
 }
 
 describe('audit origins that production actually writes (#266)', () => {
@@ -412,6 +425,10 @@ describe('audit origins that production actually writes (#266)', () => {
 
   it('net 2 — `new AuditChannel(…)` happens only inside `AuditTrail.channel`', () => {
     expect(scan.constructions, FIX_HINT).toEqual(EXPECTED_DIRECT_CONSTRUCTIONS);
+  });
+
+  it('net 3 — the four doors share one lock, sequence, append and rotation path (#306 part 3)', () => {
+    expect(scan.storageUsers, FIX_HINT).toEqual(EXPECTED_STORAGE_USERS);
   });
 
   it('keeps the reserved members in the enum — narrowing it would be a contract break', () => {

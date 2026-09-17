@@ -35,8 +35,9 @@ export class AutomationLaunchRefusal extends Error {
 }
 
 export interface AutomationAudit {
-  launched(definition: AutomationDefinition, event: string, receiptId: string, runId: string): void;
-  failed(definition: AutomationDefinition, event: string, receiptId: string, error: unknown): void;
+  /** Both resolve once the record is written or dropped with its one warning; neither ever rejects. */
+  launched(definition: AutomationDefinition, event: string, receiptId: string, runId: string): Promise<void>;
+  failed(definition: AutomationDefinition, event: string, receiptId: string, error: unknown): Promise<void>;
 }
 
 /** One trail per project per process, so the one warning is per project. */
@@ -62,14 +63,14 @@ export function automationAudit(scope: AuditScope | undefined, warn?: (message: 
     payload: { automationId: definition.id, revision: definition.revision, event },
   });
   return {
-    launched(definition, event, receiptId, runId) {
-      channel()?.record(op(definition, event, receiptId), { outcome: 'applied', resource: { kind: 'run', id: runId } });
+    async launched(definition, event, receiptId, runId) {
+      await channel()?.record(op(definition, event, receiptId), { outcome: 'applied', resource: { kind: 'run', id: runId } });
     },
-    failed(definition, event, receiptId, error) {
+    async failed(definition, event, receiptId, error) {
       const audit = channel();
       if (!audit) return;
       if (error instanceof AutomationLaunchRefusal) {
-        audit.record(op(definition, event, receiptId), {
+        await audit.record(op(definition, event, receiptId), {
           outcome: 'refused',
           reason: error.code,
           resource: { kind: 'automation', id: definition.id },
