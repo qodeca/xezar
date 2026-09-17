@@ -33,8 +33,12 @@ import {
  *
  * The cross-process cases run REAL child processes (`audit-rotation.worker.testkit.ts`): two
  * writers in one vitest worker are serialized by the in-process queue and prove nothing about two
- * xezar processes. A file barrier holds both children at the `beforeLock` point until both have
- * arrived, so the race is decided by the code under test and not by the scheduler.
+ * xezar processes. Two file barriers decide the race, not the scheduler: the first holds both
+ * children at the `beforeLock` point until both have arrived, and the second holds each of them the
+ * moment its size check decides to rotate, until the other reports the same decision or the bound
+ * elapses. The first barrier alone was not enough — the reviewer of #306 part 3 found
+ * `B-ROTATE-OUTSIDE-LOCK` red in only two runs out of seven once the break was placed differently
+ * (m1); with the second, all three of those placements are red in three runs each.
  *
  * `named break:` cases each fail against a deliberate defect; the red runs are kept in the
  * implementing task's evidence.
@@ -127,7 +131,12 @@ interface WorkerResult {
 }
 
 /** Start one writer process. The agent-session variables never reach it. */
-function startWriter(spec: { resourceId: string; barrier?: string; crashAfterRename?: boolean }): Promise<WorkerResult> {
+function startWriter(spec: {
+  resourceId: string;
+  barrier?: string;
+  holdForPeer?: string;
+  crashAfterRename?: boolean;
+}): Promise<WorkerResult> {
   const env: NodeJS.ProcessEnv = { ...process.env, VITEST: '' };
   delete env.XEZ_HANDOFF_FILE;
   delete env.XEZ_TODOS_FILE;
@@ -147,11 +156,19 @@ function startWriter(spec: { resourceId: string; barrier?: string; crashAfterRen
   }));
 }
 
-/** Release two writers together: both must be waiting at the barrier before either may take the lock. */
+/**
+ * Release two writers together: both must be waiting at the barrier before either may take the lock,
+ * and each then holds the moment its own size check decides to rotate, until the other reports the
+ * same decision or the worker's bound elapses. The second half is what makes the outcome the
+ * code's and not the scheduler's — see the testkit's header.
+ */
 async function raceTwoWriters(): Promise<[WorkerResult, WorkerResult]> {
   const barrier = join(root, 'barrier');
   mkdirSync(barrier);
-  const writers = [startWriter({ resourceId: 'race-a', barrier }), startWriter({ resourceId: 'race-b', barrier })] as const;
+  const writers = [
+    startWriter({ resourceId: 'race-a', barrier, holdForPeer: 'race-b' }),
+    startWriter({ resourceId: 'race-b', barrier, holdForPeer: 'race-a' }),
+  ] as const;
   const deadline = Date.now() + 60_000;
   while (!(existsSync(join(barrier, 'ready-race-a')) && existsSync(join(barrier, 'ready-race-b')))) {
     if (Date.now() > deadline) throw new Error('writers never reached the barrier');

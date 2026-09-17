@@ -167,6 +167,13 @@ export interface AuditTrailOptions {
 export interface AuditWriteHooks {
   /** After the in-process queue, immediately before the file lock is requested. */
   beforeLock?: () => void | Promise<void>;
+  /**
+   * The moment the size check has decided to rotate, before the first rename. A fixture pauses HERE
+   * to hold two writers inside one critical window: a break that moves the decision or the renames
+   * out of the lock is then red wherever it is placed, which pausing after the renames was not
+   * (#306 part 3 review, m1).
+   */
+  beforeRotateRename?: () => void;
   /** Under the lock, after live→`.1` and before the new live file and its marker exist. */
   afterRotateRename?: () => void;
 }
@@ -665,6 +672,7 @@ function appendAuditRecord(
   }
 
   // Rotate first, so the live file is never knowingly over the limit.
+  hooks.beforeRotateRename?.();
   rmSync(rotations[AUDIT_RETAINED_ROTATIONS - 1]!, { force: true });
   for (let generation = AUDIT_RETAINED_ROTATIONS - 1; generation >= 1; generation -= 1) {
     renameIfPresent(rotations[generation - 1]!, rotations[generation]!);

@@ -849,7 +849,10 @@ no earlier than 0.18.0 and only through [#563](https://github.com/qodeca/xezar/i
 Every door's record goes through one path, and everything below happens while that writer holds the
 project's `audit.ndjson.lock` — the bounded `open(path, 'wx', 0o600)` lock shared with the workspace
 registry (`packages/xezar/src/core/file-lock.ts`): 2 s wait, 20 ms polling, takeover of a dead owner
-or a lock older than 30 s.
+or a lock older than 30 s. Each lock file carries a unique token, and BOTH removals — a takeover and
+a release — happen under a second `wx` guard file beside the lock and only after re-reading that
+token under it, so two waiters that judged the same dead lock cannot end up holding two locks, and a
+holder that paused past the 30 s bound cannot delete its successor's lock (#306 part 3 review, M1).
 
 1. The live file and every retained rotation are repaired to mode `0600`. A file that cannot be made
    `0600` receives nothing.
@@ -869,6 +872,12 @@ or a lock older than 30 s.
    and no path, record or payload. The user's operation is never changed, delayed past the bound, or
    rolled back; an unlocked append is never attempted, because it could repeat a sequence or race a
    rotation.
+
+**Known limit — a crash inside the rename cascade costs one generation (#306 part 3 review, m1).**
+A writer that dies after `.1`→`.2` but before live→`.1` leaves no `.1`, so the next rotation deletes
+`.4` and leaves the gap at `.2`: the count, the order and the sequence stay correct and no sixth file
+appears, but the oldest generation is dropped one rotation early. Accepted as it stands, because the
+trail is bounded operational history and step 4 already repairs the state that costs a record.
 
 Measured on the maintainer's macOS host, 2026-09-17: a record is 238–457 bytes (mean 336), so a full
 live file holds roughly 30 000 records; one rotation of a full five-file set took 1.1 ms and the

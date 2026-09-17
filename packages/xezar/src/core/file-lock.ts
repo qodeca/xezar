@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { open, readFile, rm, stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
@@ -17,12 +18,19 @@ import { resolve } from 'node:path';
  *
  * The rules, shared by both:
  * - **Atomic create.** `open(path, 'wx')` succeeds for exactly one process; the file holds
- *   `<pid>\n<ms>\n` so a survivor can tell a live holder from a dead one.
+ *   `<pid>\n<ms>\n<token>\n` so a survivor can tell a live holder from a dead one, and so every
+ *   removal can name WHICH lock it means.
  * - **Bounded.** `FILE_LOCK_WAIT_MS`, polling every `FILE_LOCK_POLL_MS`.
  * - **Stale-tolerant.** A lock whose pid is gone, whose owner stayed unreadable for
  *   `FILE_LOCK_UNWRITTEN_GRACE_MS`, or whose stamp is older than `FILE_LOCK_STALE_MS`, is removed and
  *   the create retried. A crash never leaves a lock nobody can take, and a lock being written right
  *   now is never mistaken for an abandoned one.
+ * - **Never two holders.** Both removals — a takeover and a release — happen under a second `wx`
+ *   guard file and only after re-reading the token under it (#306 part 3 review, M1). Without that,
+ *   two waiters that read the SAME dead lock each removed what they found: A removed the dead lock
+ *   and created its own, B then removed A's and created a third, and both believed they held it (a
+ *   measured 27 double acquisitions in 300 four-way trials). The same token check is what stops a
+ *   holder that paused past the stale bound from deleting its successor's lock on release.
  * - **Released in `finally`** by the caller, through the returned `release`.
  */
 
@@ -39,6 +47,14 @@ export const FILE_LOCK_STALE_MS = 30_000;
  * unreadable this long was abandoned mid-write, and is taken over inside the wait bound.
  */
 export const FILE_LOCK_UNWRITTEN_GRACE_MS = 1_000;
+/** Appended to the lock path for the `wx` guard that serialises takeover and release. */
+export const FILE_LOCK_TAKEOVER_GUARD_SUFFIX = '.takeover';
+/**
+ * The guard's own stale bound. It is held for two or three syscalls, so anything older than this was
+ * left behind by a crash; without the bound, one crash inside the takeover would block every later
+ * waiter for good.
+ */
+export const FILE_LOCK_TAKEOVER_GUARD_STALE_MS = 1_000;
 
 export interface FileLockOptions {
   /** Overridable so a contention test does not have to wait two real seconds. */
@@ -87,17 +103,18 @@ export async function acquireFileLock(lockPath: string, options: FileLockOptions
   const now = options.now ?? Date.now;
   const deadline = now() + (options.waitMs ?? FILE_LOCK_WAIT_MS);
   for (;;) {
-    let created: boolean;
+    let token: string | null;
     try {
-      created = await tryCreate(lockPath, now);
+      token = await tryCreate(lockPath, now);
     } catch (error) {
       return { acquired: false, reason: 'error', error };
     }
-    if (created) {
+    if (token !== null) {
+      const mine = token;
       return {
         acquired: true,
         release: async () => {
-          await rm(lockPath, { force: true }).catch(() => undefined);
+          await releaseIfStillMine(lockPath, mine, now);
         },
       };
     }
@@ -107,36 +124,120 @@ export async function acquireFileLock(lockPath: string, options: FileLockOptions
   }
 }
 
-async function tryCreate(lockPath: string, now: () => number): Promise<boolean> {
+/** The created lock's token, or `null` when another holder already has the file. */
+async function tryCreate(lockPath: string, now: () => number): Promise<string | null> {
+  const token = `${process.pid}-${now()}-${randomBytes(8).toString('hex')}`;
   try {
     const handle = await open(lockPath, 'wx', 0o600);
     try {
-      await handle.writeFile(`${process.pid}\n${now()}\n`);
+      await handle.writeFile(`${process.pid}\n${now()}\n${token}\n`);
     } finally {
       await handle.close();
     }
-    return true;
+    return token;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'EEXIST') return false;
+    if ((error as NodeJS.ErrnoException).code === 'EEXIST') return null;
     // EROFS, EACCES, EPERM, ENOENT — a folder this process cannot write. The caller's policy.
     throw error;
   }
 }
 
-/** Remove a lock whose owner is gone or whose stamp is older than `FILE_LOCK_STALE_MS`. */
+/**
+ * Remove a lock whose owner is gone or whose stamp is older than `FILE_LOCK_STALE_MS`.
+ *
+ * The judgement and the removal are two separate reads, so the removal repeats the judgement UNDER
+ * the guard and only for the same token. A lock created in between carries a different token and is
+ * left alone; the waiter then simply keeps waiting for it.
+ */
 async function takeOverIfStale(lockPath: string, now: () => number): Promise<boolean> {
-  const metadata = await readLockMetadata(lockPath, now);
-  if (!metadata) return false;
-  const fresh = now() - metadata.timestamp <= FILE_LOCK_STALE_MS;
-  if (fresh && metadata.alive) return false;
-  await rm(lockPath, { force: true }).catch(() => undefined);
+  const judged = await readLockMetadata(lockPath, now);
+  if (!judged || isHeld(judged, now)) return false;
+  return await underTakeoverGuard(lockPath, async () => {
+    const current = await readLockMetadata(lockPath, now);
+    // Gone already: the next create decides who gets it.
+    if (!current) return true;
+    if (current.token !== judged.token) return false;
+    if (isHeld(current, now)) return false;
+    await rm(lockPath, { force: true }).catch(() => undefined);
+    return true;
+  });
+}
+
+/** Remove the lock file only while it still holds `token` — never a successor's lock. */
+async function releaseIfStillMine(lockPath: string, token: string, now: () => number): Promise<void> {
+  const remove = async () => {
+    const current = await readLockMetadata(lockPath, now);
+    if (current && current.token !== token) return;
+    await rm(lockPath, { force: true }).catch(() => undefined);
+  };
+  // Under the guard, so a takeover cannot slip between the read and the removal. If the guard is
+  // busy for the whole (very short) attempt, remove by token anyway: leaking a lock nobody releases
+  // would cost every later writer its whole wait bound.
+  const guarded = await underTakeoverGuard(lockPath, async () => {
+    await remove();
+    return true;
+  });
+  if (!guarded) await remove();
+}
+
+function isHeld(metadata: { timestamp: number; alive: boolean }, now: () => number): boolean {
+  return now() - metadata.timestamp <= FILE_LOCK_STALE_MS && metadata.alive;
+}
+
+/**
+ * Run `body` while holding the `wx` guard beside the lock, so at most one process at a time may
+ * remove the lock file. Resolves to `false` when the guard could not be taken within its own short
+ * bound, and never throws.
+ *
+ * The guard is judged by REAL time, not by the caller's `now`. A caller's clock is injectable so a
+ * test can age a LOCK without waiting; the guard is a live artifact of the few syscalls happening
+ * right now, and an injected clock must neither call a live guard abandoned nor make this loop
+ * unbounded.
+ */
+async function underTakeoverGuard(lockPath: string, body: () => Promise<boolean>): Promise<boolean> {
+  const guardPath = `${lockPath}${FILE_LOCK_TAKEOVER_GUARD_SUFFIX}`;
+  const deadline = Date.now() + FILE_LOCK_TAKEOVER_GUARD_STALE_MS;
+  for (;;) {
+    let taken = false;
+    try {
+      await (await open(guardPath, 'wx', 0o600)).close();
+      taken = true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') return false;
+    }
+    if (taken) {
+      try {
+        return await body();
+      } catch {
+        return false;
+      } finally {
+        await rm(guardPath, { force: true }).catch(() => undefined);
+      }
+    }
+    if (await removeAbandonedGuard(guardPath)) continue;
+    if (Date.now() >= deadline) return false;
+    await sleep(FILE_LOCK_POLL_MS);
+  }
+}
+
+/** A guard older than its own bound was left behind by a crash; one crash must not block everyone. */
+async function removeAbandonedGuard(guardPath: string): Promise<boolean> {
+  let age: number;
+  try {
+    age = Date.now() - (await stat(guardPath)).mtimeMs;
+  } catch {
+    // Gone between the failed create and this read — retry the create.
+    return true;
+  }
+  if (age < FILE_LOCK_TAKEOVER_GUARD_STALE_MS) return false;
+  await rm(guardPath, { force: true }).catch(() => undefined);
   return true;
 }
 
 async function readLockMetadata(
   lockPath: string,
   now: () => number,
-): Promise<{ timestamp: number; alive: boolean } | null> {
+): Promise<{ timestamp: number; alive: boolean; token: string | null } | null> {
   let fallback: number;
   try {
     fallback = (await stat(lockPath)).mtimeMs;
@@ -146,24 +247,30 @@ async function readLockMetadata(
   }
   let pid = NaN;
   let timestamp = fallback;
+  // A lock written by an older xezar, or caught between `open` and its write, has no token. `null`
+  // is then its identity: it compares equal only to another tokenless read of the same file, and the
+  // freshness re-judgement under the guard is what keeps a young successor safe.
+  let token: string | null = null;
   try {
-    const [pidText, stampText] = (await readFile(lockPath, 'utf8')).trim().split(/\s+/);
+    const [pidText, stampText, tokenText] = (await readFile(lockPath, 'utf8')).trim().split(/\s+/);
     pid = Number(pidText);
     const stamp = Number(stampText);
     if (Number.isFinite(stamp)) timestamp = stamp;
+    if (tokenText) token = tokenText;
   } catch {
     // Unreadable: judged by its age below, like an empty one.
   }
   // A stamp from the future (a clock that moved backwards) must not make a lock immortal.
   if (timestamp > now()) timestamp = now();
   // No readable owner: still being written if it is young, abandoned mid-write if it is not.
-  if (!Number.isSafeInteger(pid) || pid <= 0) return { timestamp, alive: now() - Math.min(fallback, now()) < FILE_LOCK_UNWRITTEN_GRACE_MS };
+  if (!Number.isSafeInteger(pid) || pid <= 0)
+    return { timestamp, token, alive: now() - Math.min(fallback, now()) < FILE_LOCK_UNWRITTEN_GRACE_MS };
   try {
     process.kill(pid, 0);
-    return { timestamp, alive: true };
+    return { timestamp, token, alive: true };
   } catch (error) {
     // EPERM = the process exists and belongs to someone else. Still alive.
-    return { timestamp, alive: (error as NodeJS.ErrnoException).code === 'EPERM' };
+    return { timestamp, token, alive: (error as NodeJS.ErrnoException).code === 'EPERM' };
   }
 }
 
