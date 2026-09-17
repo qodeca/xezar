@@ -62,6 +62,22 @@ describe('request-origin guard (#426)', () => {
       body: JSON.stringify(startBody),
     });
 
+  it('A-XFH-02 ignores forwarding headers with a local Host', async () => {
+    const res = await app.request('/api/v1/runs', {
+      headers: { host: LOOPBACK, 'x-forwarded-host': 'evil.invalid' },
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it.each(['GET', 'OPTIONS'])('A-CORS-01 local %s never reflects credentials', async (method) => {
+    const res = await app.request('/api/v1/health', { method,
+      headers: { host: LOOPBACK, origin: 'https://evil.invalid',
+        authorization: 'Basic fixture', cookie: 'fixture=1' } });
+    expect(res.status).toBe(method === 'GET' ? 200 : 204);
+    expect(res.headers.get('access-control-allow-origin')).toBe('*');
+    expect(res.headers.get('access-control-allow-credentials')).not.toBe('true');
+  });
+
   // ---- CSRF: cross-origin writes ------------------------------------------
 
   it('rejects a cross-origin mutating request (blind CSRF) with 403', async () => {
@@ -342,4 +358,24 @@ describe('request-origin guard — hosted mode (#426)', () => {
     expect(res.status).toBe(403);
     expect(store.listRuns()).toHaveLength(0);
   });
+  it('A-XFH-02 ignores forwarded authority in hosted Origin decisions', async () => {
+    const before = store.listRuns().length;
+    const res = await app.request('/api/v1/runs', {
+      method: 'POST', headers: { host: 'hosted.invalid', origin: 'https://evil.invalid',
+        'x-forwarded-host': 'evil.invalid', 'content-type': 'application/json' },
+      body: JSON.stringify({ task: 'forbidden', steps: [{ id: 'work', prompt: '{{task}}' }] }),
+    });
+    expect(res.status).toBe(403);
+    expect(store.listRuns()).toHaveLength(before);
+  });
+
+  it.each(['GET', 'OPTIONS'])('A-CORS-01 %s never reflects credentialed health CORS', async (method) => {
+    const res = await app.request('/api/v1/health', { method,
+      headers: { host: 'hosted.invalid', origin: 'https://evil.invalid',
+        authorization: 'Basic fixture', cookie: 'fixture=1' } });
+    expect(res.status).toBe(method === 'GET' ? 200 : 204);
+    expect(res.headers.get('access-control-allow-origin')).toBe('*');
+    expect(res.headers.get('access-control-allow-credentials')).not.toBe('true');
+  });
+
 });

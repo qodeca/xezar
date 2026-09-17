@@ -278,8 +278,8 @@ describe('createSocketHub', () => {
 describe('verifyWsUpgrade', () => {
   const req = (headers: Record<string, string | undefined>) => ({ headers }) as IncomingMessage;
 
-  // The guard reads deployment mode off the environment, and its whole Host half is SKIPPED in
-  // hosted mode (a reverse proxy forwards the real public Host there). An ambient XEZ_REMOTE on
+  // The guard reads deployment mode off the environment. Hosted mode refuses all upgrades.
+  // An ambient XEZ_REMOTE on
   // the dev box must not decide what this table sees — without this the suite passes only when
   // some earlier file in the same worker happened to delete the var.
   const savedRemote = process.env.XEZ_REMOTE;
@@ -366,4 +366,27 @@ describe('verifyWsUpgrade', () => {
       ),
     ).toEqual({ trusted: true });
   });
+});
+
+// #547: hosted clients use authenticated HTTP/SSE, never the subscription bus.
+describe('hosted WebSocket boundary', () => {
+  afterEach(() => vi.unstubAllEnvs());
+  for (const mode of ['environment', 'bind-host']) {
+    for (const origin of [undefined, 'https://evil.invalid', 'http://127.0.0.1:4321', 'https://hosted.invalid']) {
+      it(`${mode} refuses upgrade with Origin ${origin ?? '(absent)'} before handshake`, async () => {
+        vi.stubEnv('XEZ_REMOTE', mode === 'environment' ? '1' : '');
+        const { url } = await boot(makeTopic().publisher, (req) =>
+          verifyWsUpgrade(req, mode === 'bind-host' ? '0.0.0.0' : '127.0.0.1'));
+        const status = await new Promise<number>((resolve, reject) => {
+          const ws = new WebSocket(url, { headers: {
+            host: origin === 'http://127.0.0.1:4321' ? '127.0.0.1:4321' : 'hosted.invalid', ...(origin === undefined ? {} : { origin }),
+          }, handshakeTimeout: 2000 });
+          ws.on('unexpected-response', (_req, res) => { res.resume(); resolve(res.statusCode ?? 0); });
+          ws.on('open', () => { ws.close(); resolve(101); });
+          ws.on('error', reject);
+        });
+        expect(status).toBe(403);
+      });
+    }
+  }
 });
