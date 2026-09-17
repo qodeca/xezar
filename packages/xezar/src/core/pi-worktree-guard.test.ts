@@ -292,6 +292,37 @@ describe('pi linked-worktree tool guard (#537)', () => {
     });
   });
 
+  describe('N3, round 3: a relative mention is followed from the directory the command reached', () => {
+    it.each([
+      ['N3: cd to an ancestor, then a relative redirect', (f: Fixture) => `cd ${f.home}/Projects && echo n3 >> xezar/tracked.md`],
+      ['N3: cd ~/… to an ancestor, then sed -i', () => 'cd ~/Projects && sed -i "" s/a/b/ xezar/tracked.md'],
+      ['N3: pushd to an ancestor, then cp', (f: Fixture) => `pushd ${f.home}/Projects && cp notes.md xezar/notes.md`],
+      ['N3: a relative glob from an ancestor', () => 'cd ~/Projects && cat */tracked.md'],
+      ['N5: a relative redirect through an existing worktree symlink', (f: Fixture) => {
+        mkdirSync(join(f.primary, 'packages'), { recursive: true });
+        symlinkSync(join(f.primary, 'packages'), join(f.worktree, 'pk'));
+        return 'echo n5 >> pk/tracked.md';
+      }],
+      ['a relative mention after the guard lost the directory', () => 'pushd packages && pushd +1 && echo x >> tracked.md'],
+    ])('blocks %s', (_name, command) => {
+      const f = fixture('xezar');
+      expect(guard(f, bash(command(f)))).toMatchObject(BLOCK);
+    });
+
+    it.each([
+      ['the control cd /tmp && sed', () => 'cd /tmp && sed s/a/b/ x'],
+      ['ls -la && git status --short', () => 'ls -la && git status --short'],
+      ['git log && git diff --stat', () => 'git log --oneline -3 && git diff --stat HEAD~0'],
+      ['mkdir, cd in, write, cd back, cat', () => 'mkdir -p src && cd src && echo hi > a.txt && cd .. && cat src/a.txt'],
+      ['grep and rg with a glob', () => "grep -rn \"hi\" src | head -5; rg -g '*.txt' hi . || true"],
+      ['a here-doc then git add and commit', () => "cat > notes.md <<'EOF'\nsome notes\nEOF\ngit add notes.md && git commit -qm notes"],
+      ['cd /tmp and back with cd -', () => 'cd /tmp && ls >/dev/null && cd -'],
+    ])('still allows %s', (_name, command) => {
+      const f = fixture('xezar');
+      expect(guard(f, bash(command()))).toBeUndefined();
+    });
+  });
+
   describe('Major 3: the primary checkout comes from Xezar, not from the .git marker', () => {
     it.each([
       ['a worktree of a bare repository', 'proj.git'],

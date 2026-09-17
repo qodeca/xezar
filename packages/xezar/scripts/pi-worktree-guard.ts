@@ -25,10 +25,12 @@
  *   - A `CDPATH` or `OLDPWD` word anywhere refuses the command, an inherited `CDPATH` that names a
  *     different existing directory refuses that `cd`, and after a `HOME` word `~` and a bare `cd`
  *     are refused.
- *   - Any other word is a path MENTION (an argument, a redirect target): it blocks when it names a
- *     path in the primary checkout outside the worktree – absolute, `~`, `$HOME` or another known
- *     variable, `..` from the directory the command has reached, physically through a symlink, or
- *     an absolute or `~` glob whose literal directory lies above or inside the primary checkout.
+ *   - Any other word is a path MENTION (an argument, a redirect target): it is followed from the
+ *     directory the command has reached, relative or not, and blocks when it names a path in the
+ *     primary checkout outside the worktree – absolute, `~`, `$HOME` or another known variable,
+ *     relative after a `cd` above the primary checkout, physically through a symlink, or a glob
+ *     whose literal directory lies above or inside the primary checkout. A mention after a
+ *     directory change the guard lost track of (`popd` of an empty stack, `pushd +1`) blocks.
  *     `~user` blocks. An unknown variable in a mention passes: it is everywhere in ordinary commands.
  *   Quoted scripts (`sh -c "…"`) are read twice, once with the quotes honoured and once without.
  *
@@ -324,16 +326,17 @@ function mentionEscapes(spelling: string, state: ShellState, roots: Roots): bool
   const absolute = isAbsolute(expanded);
   const segments = expanded.split(SEGMENTS);
   const pattern = segments.findIndex((segment) => PATTERN.test(segment));
+  // Every word is followed from the directory the command has reached, relative ones included:
+  // after `cd ~/Projects`, `xezar/tracked.md` names the primary checkout without any `..`, and in
+  // the worktree an existing symlink can lead there too. An unknown directory refuses the command.
   if (pattern >= 0) {
     // Pathname or brace expansion can reach anything below the literal directory before the
-    // pattern. Relative patterns are left alone: quoted regexes look exactly like them.
+    // pattern. A quoted regex looks like a relative pattern; from the worktree its base stays there.
     const base = segments.slice(0, pattern);
-    if (!absolute && !base.includes('..')) return false;
     const place = walk(state.cwd, base.join('/') || (absolute ? sep : '.'));
     if (place === undefined) return true;
     return inside(place.path, roots.primary) || (inside(roots.primary, place.path) && !permitted(place.path, roots));
   }
-  if (!absolute && !segments.includes('..')) return false;
   const place = walk(state.cwd, expanded);
   if (place === undefined) return true;
   if (permitted(place.path, roots)) return false;

@@ -567,12 +567,16 @@ reach was an isolation defect, so the restriction is recorded here rather than s
   `~`, a leading `@`, `file://` URLs, Unicode spaces and letter case – and refuses a spelling it
   cannot resolve with confidence. That file-tool check is the enforced control. The shell check is
   **best-effort defence in depth, not containment**: it refuses a `bash` command that names a path
-  in the primary checkout (absolute, `~`, `$HOME` or another set variable, `..`, a symlink) or
-  changes into it through `cd`, `pushd`, `-C`, `--chdir`, `--git-dir`, `--work-tree`, `GIT_DIR`
+  in the primary checkout (absolute, `~`, `$HOME` or another set variable, `..`, a symlink, or a
+  relative path read from a folder above it after `cd`, such as `cd ~/Projects && echo x >> repo/f`)
+  or changes into it through `cd`, `pushd`, `-C`, `--chdir`, `--git-dir`, `--work-tree`, `GIT_DIR`
   or `GIT_WORK_TREE`, and it prefers a false block to a missed one. A directory-change target must
   be one literal path: a variable, a substitution, a glob or brace pattern, `~user`, a `CDPATH` or
   `OLDPWD` change, `~` after a `HOME` change, or a `..` that follows a symlink is refused rather
-  than guessed, so a command such as `cd "$SOME_DIR"` that used to run is now refused. A shell
+  than guessed, so a command such as `cd "$SOME_DIR"` that used to run is now refused. After a
+  directory change the guard cannot follow (`pushd +1`, `popd` of an empty stack) every later path
+  in the command is refused, and after `cd` to a folder that holds the primary checkout a relative
+  glob is refused too, because it could expand into the checkout. A shell
   command cannot be parsed completely, so scripts and programs that build a path themselves,
   aliases and functions, `eval` of computed text and variables set inside the command and then
   used as a plain argument can still reach the primary checkout. If the guard cannot
