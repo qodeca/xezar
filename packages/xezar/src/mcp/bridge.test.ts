@@ -55,7 +55,12 @@ async function service(tools: readonly McpTool[] = [], sessions?: { codexAnnounc
 }
 
 /** An in-process bridge with a tiny JSON-RPC client in front of it. */
-function bridge(opts: { tools?: readonly McpTool[]; target: () => Promise<ServiceTarget>; timeoutMs?: number }) {
+function bridge(opts: {
+  tools?: readonly McpTool[];
+  target: () => Promise<ServiceTarget>;
+  timeoutMs?: number;
+  onSessionOpen?: Parameters<typeof runBridge>[0]['onSessionOpen'];
+}) {
   const input = new PassThrough();
   const output = new PassThrough();
   const messages: Array<Record<string, unknown>> = [];
@@ -75,6 +80,7 @@ function bridge(opts: { tools?: readonly McpTool[]; target: () => Promise<Servic
     tools: opts.tools ?? [],
     resolveTarget: opts.target,
     ...(opts.timeoutMs ? { requestTimeoutMs: opts.timeoutMs } : {}),
+    ...(opts.onSessionOpen ? { onSessionOpen: opts.onSessionOpen } : {}),
   });
   const waitFor = (match: (m: Record<string, unknown>) => boolean) =>
     new Promise<Record<string, unknown>>((resolve) => {
@@ -372,6 +378,61 @@ describe('bridge — each unreachable or refusing service reads as its own failu
     expect(text(res)).toBe('xezar answered session/open with an unexpected shape.');
     // The call never ran under a session that does not own the project.
     expect(served).toBe(0);
+  });
+});
+
+describe('the session-open report the `xezar mcp` audit record reads (#306 part 2)', () => {
+  type Report = Parameters<NonNullable<Parameters<typeof runBridge>[0]['onSessionOpen']>>[0];
+
+  it('reports the owner grant, an occupied project and an unavailable target with its snake-cased status', async () => {
+    const reports: Report[] = [];
+    const onSessionOpen = (outcome: Report) => reports.push(outcome);
+
+    const svc = await service();
+    await bridge({ target: socketTarget(svc.path), onSessionOpen }).request('tools/call', { name: 'health' });
+
+    const occupied = await scriptedService(
+      'occupied',
+      () => '',
+      (req) => encodeFrame({ v: req.v, id: req.id, ok: false, error: { code: 'project-occupied', message: 'taken' } }),
+    );
+    await bridge({ target: socketTarget(occupied), onSessionOpen }).request('initialize', {
+      protocolVersion: '2025-06-18',
+      capabilities: {},
+      clientInfo: { name: 'audit', version: '1' },
+    });
+
+    await bridge({ target: async () => ({ kind: 'unavailable', status: 'not-registered', message: 'Not a project.' }), onSessionOpen }).request(
+      'tools/call',
+      { name: 'health' },
+    );
+    await bridge({ target: socketTarget(join(home, 'ipc', 'nobody.sock')), onSessionOpen }).request('tools/call', { name: 'health' });
+
+    expect(reports).toEqual([
+      { kind: 'owner' },
+      { kind: 'refused', reason: 'project_occupied' },
+      { kind: 'refused', reason: 'not_registered' },
+      { kind: 'refused', reason: 'not_running' },
+    ]);
+  });
+
+  it('an unrecognised status reads as unavailable, and a throwing observer never changes the session', async () => {
+    const reports: Report[] = [];
+    await bridge({ target: async () => ({ kind: 'unavailable', status: 'Not A Slug!', message: 'odd' }), onSessionOpen: (o) => reports.push(o) }).request(
+      'tools/call',
+      { name: 'health' },
+    );
+    expect(reports).toEqual([{ kind: 'refused', reason: 'unavailable' }]);
+
+    const svc = await service();
+    const b = bridge({
+      target: socketTarget(svc.path),
+      onSessionOpen: () => {
+        throw new Error('observer failed');
+      },
+    });
+    const res = await b.request('tools/call', { name: 'health' });
+    expect(res.result).toMatchObject({ structuredContent: { status: 'running' } });
   });
 });
 
