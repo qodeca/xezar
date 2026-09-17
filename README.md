@@ -290,3 +290,8 @@ described in [SECURITY.md](SECURITY.md).
 
 **MIT** © Qodeca – full text in [LICENSE](LICENSE).
 Xezar is based on work done in [open-mercato/cezar](https://github.com/open-mercato/cezar).
+
+
+### Hosted WebSocket migration (0.16.0)
+
+Hosted mode (`XEZ_REMOTE=1` or a non-loopback bind) now refuses all WebSocket upgrades, including native clients without an Origin. Use the authenticated HTTP API and SSE event endpoints through your reverse proxy; the cockpit already uses these transports remotely. Local-mode WebSocket clients and the Vite development proxy are unchanged.
