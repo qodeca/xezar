@@ -12,6 +12,14 @@ Installation validation is reported in installation.md. Real-task entries follow
 
 ## Real-task entries
 
+### 2026-09-17 — #537 review response round 3 (PR #555), `address-review-findings` step `address`, `xezar-review-response`, Claude Code — fixture-tested, real-shell probed
+
+- Input: the final scoped re-check at `c79af6a` found N3 – after `cd ~/Projects`, a relative word such as `xezar/tracked.md` names the primary checkout, and the guard walked a relative mention only when it held `..`. The owner approved one extra response round; the repair counters carried from round 2 were already 2/2 for self-review and gate-return.
+- Observed: the skip rule the brief proposed (skip only when the reached folder is inside the worktree) would not close N5, a relative word through an existing worktree symlink. Walking every relative word closes both, and costs no new false block from the worktree: without a symlink the lexical path stays in the worktree. `phase-record.sh check` accepts criterion IDs only with an `AC-` or `DP-` prefix, which the skill text does not say; the first CRITERIA write was refused.
+- Change: `mentionEscapes` walks every word, and the literal base of every pattern, from the directory the command reached; an unknown directory blocks.
+- Regression/control: 6 new blocking tests fail with the guard source stashed and pass with the change; 7 allow rows pass both ways. The `/tmp` stand-in probe shows the `c79af6a` guard letting N3 and N5 modify the stand-in primary, and the new guard blocking them, the seven round-2 rows and the `~`/`@`/`file://` write rows while the controls still run for real with the stand-in primary unchanged.
+- Remaining limit: a relative glob whose match is a symlink (`p*`), and everything the header's "cannot see" list names. After `cd` to a folder that holds the primary checkout, a relative glob or regex-like word is now refused. No live pi session with a model was run.
+
 ### 2026-09-17 — #537 review response round 2 (PR #555), `address-review-findings` step `address`, `xezar-review-response`, Claude Code — fixture-tested, real-shell probed
 
 - Input: scoped re-check REQUEST CHANGES at `eb00ae4`: seven literal shell spellings (glob and brace targets, `~user`, `CDPATH`, `cd -P`/`git -C` through a symlink and `..`) that the guard allowed and that committed into a fixture primary checkout. Last response round; the leader asked for a structural fail-closed change, not more patterns.
