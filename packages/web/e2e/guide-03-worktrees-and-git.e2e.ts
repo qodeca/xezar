@@ -116,10 +116,24 @@ describe('guide 03 — worktrees and Git, a Git project', () => {
     await browser.waitForText('Reclaim old worktrees?')
     expect(browser.hasRole('button', 'Keep it')).toBe(true)
     // The AlertDialog's own entrance animation still covers its content for a beat after the
-    // text lands in the DOM — a click during it lands on the fixed backdrop instead (#579-style
-    // finding, this package's own instance of it).
-    browser.pause(300)
-    browser.clickRole('button', 'Keep it')
+    // text lands in the DOM — a click during it can land on the fixed backdrop instead of "Keep
+    // it" (#579-style finding, this package's own instance of it). Retry the click itself,
+    // bounded, against a real condition — the same style this file's own guide-01 `landed` loop
+    // and guide-07 `enabled` loop already use — rather than sleeping a fixed amount first.
+    let dismissed = false
+    for (let attempt = 0; attempt < 20 && !dismissed; attempt += 1) {
+      // A dismissal from an earlier iteration's click can land after this loop already moved
+      // on to retry — re-check right before acting, or a click here would target a button
+      // that is no longer in the tree at all.
+      if (!browser.hasRole('button', 'Keep it')) {
+        dismissed = true
+        break
+      }
+      browser.clickRole('button', 'Keep it')
+      browser.pause(50)
+      dismissed = !browser.hasRole('button', 'Keep it')
+    }
+    expect(dismissed, 'xezar e2e: "Keep it" never actually dismissed the AlertDialog').toBe(true)
     await browser.waitForRoleGone('button', 'Keep it')
   })
 
