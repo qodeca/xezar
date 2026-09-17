@@ -252,7 +252,7 @@ test('A-04 — a B cursor, a B journal cursor and a forged B trail line give A n
     assert.deepEqual(seen.response.cursors, [invalid, invalid, invalid]);
     assert.deepEqual(seen.response.journal, { error: 'cursor_project_mismatch', message: 'this cursor belongs to another project' });
     // The forged B line is not A's: the scoped read drops it without saying how many it dropped.
-    assert.deepEqual(seen.response.trail, { entries: [], quarantined: 0 });
+    assert.deepEqual(seen.response.trail, { source: 'current', entries: [], quarantined: 0 });
     assert.deepEqual(seen.response.own, { ok: true, value: 'page-2' });
     // Neither cursor names its project or resource: they are sealed, not labelled.
     for (const cursor of sealed) assert.deepEqual(leaked(Buffer.from(cursor, 'base64url').toString('utf8'), world.b.names), []);
@@ -313,13 +313,13 @@ test('A-12 — the connection file stays out of Git, and its secrets out of the 
       // spreading the whole connection file into an operation.
       mcp.record(
         { action: 'mcp.task-read', resource: { kind: 'run', id: c.credential }, operationId: c.token, payload: { c } },
-        { outcome: 'rejected', errorCode: 'not_found' },
+        { outcome: 'refused', reason: 'not_found' },
       );
       mcp.record(
         { action: 'mcp.task-read', resource: { kind: 'run', id: c.token }, operationId: c.credential, expectedVersion: `rev1:run:${c.token}:1:0123456789ab` },
-        { outcome: 'ok' },
+        { outcome: 'applied' },
       );
-      mcp.record({ ...(JSON.parse(readFileSync(c.path, 'utf8')) as object), action: 'mcp.organise-work' } as never, { outcome: 'ok' });
+      mcp.record({ ...(JSON.parse(readFileSync(c.path, 'utf8')) as object), action: 'mcp.organise-work' } as never, { outcome: 'applied' });
       return { journal: readFileSync(world.a.journal.rowsPath, 'utf8'), trail: readFileSync(auditFile(world.a), 'utf8') };
     });
     assertIsolated(world, seen);

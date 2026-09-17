@@ -1,73 +1,103 @@
 import { createHash } from 'node:crypto';
-import { appendFileSync, readFileSync } from 'node:fs';
+import { appendFileSync, closeSync, fstatSync, openSync, readFileSync, readSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  auditActionRecordSchema,
   auditEntrySchema,
+  auditRecordSchema,
+  type AuditActionRecord,
+  type AuditActor,
   type AuditEntry,
   type AuditOrigin,
-  type AuditOutcome,
   type AuditResource,
 } from '@qodeca/xezar-contract';
 import { collectSecretValues, redactSecrets } from '../core/secret-redaction.ts';
 import { PROJECT_ID_RE } from '../workspace/config.ts';
 
 /**
- * The audit trail (#102) — D-06 § 10, requirement N-04. Built for MCP and cockpit operations;
- * writing MCP operations today, and only those (see THE SHARED PATH below).
+ * The audit trail (#102, #306) — D-06 § 10, spec `docs/features/mcp-server/audit-trail-origins-2026-09-17.md`.
+ * Built for every door; written today by the MCP door only (see THE SHARED PATH below).
  *
- * WHAT. One append-only NDJSON file per project, `<project>/.local/xezar/mcp-audit.ndjson`, one
- * `AuditEntry` (packages/contract/src/mcp-audit.ts) per settled operation: action, time, project,
- * resource, outcome and ORIGIN, plus D-06's join fields. It is written, never required: a missing
- * file reads as an empty trail, and deleting it discards history and nothing else. It lives under
- * `.local/`, which `ensureProjectDataIgnored` already blanket-ignores (D-06 § 13.2).
+ * WHAT. One append-only NDJSON file per project, `<project>/.local/xezar/audit.ndjson`, one v2
+ * `AuditRecord` (packages/contract/src/audit.ts) per settled operation: sequence, UTC time, project,
+ * origin with its actor, action, resource and an `applied`/`refused` outcome, plus D-06's join
+ * fields. It is written, never required: a missing file reads as an empty trail, and deleting it
+ * discards history and nothing else. It lives under `.local/`, which `ensureProjectDataIgnored`
+ * already blanket-ignores (D-06 § 13.2). New files are created with mode 0600.
+ *
+ * THE LEGACY NAME. xezar 0.13.0–0.15.0 wrote v1 entries to `mcp-audit.ndjson`. That file is now a
+ * READ-ONLY alias (spec § 8): nothing here writes, renames, chmods or trims it. `read()` uses it
+ * only while `audit.ndjson` does not exist, says so once per process, and the new file wins as soon
+ * as it exists, so an interrupted upgrade can never show one history twice. Both files may stay on
+ * disk indefinitely; 0.15.0, after a downgrade, still reads its own file untouched. The alias is
+ * removed no earlier than 0.18.0.
  *
  * THE SHARED PATH, AND THE ONE DOOR THAT USES IT. A door stamps its origin through an
  * `AuditChannel`: the entry point that owns the door asks `trail.channel(origin)` ONCE and hands
- * operations to it. The origin is therefore derived from which door the call came through — an
- * operation object has no origin and no project field, and a stray `origin` or `projectId` key on
- * one is ignored (D-06 § 10.4 rule 1). That is also the marker #106 reads to tell the leader's own
- * echoes from new events.
+ * operations to it. The origin — and the actor's `type` — is therefore derived from which door the
+ * call came through; an operation object has no origin and no project field, and a stray `origin`
+ * or `projectId` key on one is ignored (D-06 § 10.4 rule 1).
  *
- * **Exactly one door does this today, and it is the MCP one:** `mcp/index.ts:254` builds
- * `.channel('mcp')`, and it is the only non-test construction of this class in `packages/`
- * (grepped for the type and for `.channel(` at `87d9f0d`, 2026-09-12). The cockpit's HTTP routes,
- * the automation scheduler and headless `xezar run` are the doors the design expects and they
- * record NOTHING — so `ui` is written only by tests (`audit-trail.test.ts`, `echo-guard.test.ts`,
- * `test/helpers/ab-fixture.ts`), and `automation` and `cli` are written nowhere at all. That is decided for 0.14.0, not an oversight (#266, D-06 § 10.6);
- * wiring the other three is #364. `channel()` takes any `AuditOrigin` because those doors are the
- * point, but do not read this comment as a description of four live writers.
+ * **Exactly one door does this today, and it is the MCP one:** `mcp/index.ts` builds
+ * `.channel('mcp')`, and it is the only non-test construction of this class in `packages/`. The
+ * cockpit's HTTP routes, the automation scheduler and the command line record NOTHING yet; wiring
+ * them is the next delivery step of #306. `channel()` takes any `AuditOrigin` because those doors
+ * are the point, but do not read this comment as a description of four live writers.
  *
- * MUST vs SHOULD (D-06 § 10.2, N-04 "should"):
- *   - MUST: the project id comes from the trusted scope, the origin from the door, and no secret,
- *     free text, path or foreign identifier is written (§ 10.3, F-15, F-12, N-01).
+ * OUTCOMES (spec § 3.2). `applied`: the effect took place. `refused`: the door rejected the
+ * operation BEFORE any effect, with a machine reason. There is no third value, so an operation that
+ * may have started its effect and then failed is not recorded at all — calling it `refused` would
+ * be a lie. `skip(code)` says so explicitly, and it uses the one warning below.
+ *
+ * SEQUENCE. `seq` is the last valid persisted v2 record's `seq` plus one, read from the file at
+ * every write — never from a cache — so a failed append allocates nothing. Two PROCESSES appending
+ * at the same instant can still read the same last value; the shared lock that closes that is
+ * later #306 work (spec § 7), as are rotation and repairing the mode of an existing file.
+ *
+ * MUST vs SHOULD (D-06 § 10.2):
+ *   - MUST: the project id comes from the trusted scope, the origin and actor from the door, and no
+ *     secret, free text, path or foreign identifier is written (§ 10.3, F-15, F-12, N-01).
  *   - MUST: the record grants nothing (§ 10.4 rule 3). Nothing here answers "may X do Y", and no
- *     method consults the trail before an effect — a caller's own permission check runs first and
- *     a refusal is simply recorded as `rejected`. An `origin: 'ui'` entry never widens MCP.
- *   - SHOULD: the entry itself. Recording is best-effort by design: a write that fails is warned
+ *     method consults the trail before an effect.
+ *   - SHOULD: the record itself. Recording is best-effort by design: a write that fails is warned
  *     about once and never fails the operation, which is the opposite of the receipt journal's
  *     refuse-before-effect rule (D-06 § 7.5) and deliberately so — idempotency is mandatory, audit
  *     is not.
  *
  * NO SECRETS, TWICE. First by construction: the schema has no free-text field, and payloads enter
  * only as a SHA-256 digest (D-06 § 5.4). Second by value: every client-influenced identifier
- * (`resource.id`, the operation id, the version token) is checked against the host's secret env
- * values, the caller's known secrets (the MCP connection token, D-04) and the well-known token
- * shapes, and a field that matches is DROPPED rather than masked. The check deliberately ignores
- * `XEZ_REDACT_SECRETS=0`: that opt-out exists because masking can corrupt a transcript, and
- * dropping an audit field corrupts nothing.
- *
- * RETENTION IS OPEN. N-04 keeps it open, D-06 § 10.5 does not close it, and D-09 B-23 fixes only
- * the mechanism (count-based, never evicting an entry whose run is still kept) with the count
- * UNRESOLVED (U-2). So nothing here evicts, and no period or count is asserted.
+ * (`resource.id`, the operation id, the version token, the refusal reason) is checked against the
+ * host's secret env values, the caller's known secrets (the MCP connection token, D-04) and the
+ * well-known token shapes, and a field that matches is DROPPED rather than masked. The check
+ * deliberately ignores `XEZ_REDACT_SECRETS=0`: that opt-out exists because masking can corrupt a
+ * transcript, and dropping an audit field corrupts nothing.
  */
 
 /** File name under the project's data dir (`.local/xezar/`). D-06 § 10.5 puts it beside the receipts. */
-export const AUDIT_TRAIL_FILE = 'mcp-audit.ndjson';
+export const AUDIT_TRAIL_FILE = 'audit.ndjson';
+/** The name 0.13.0–0.15.0 wrote. Read-only: never written, renamed, chmodded or deleted here. */
+export const LEGACY_AUDIT_TRAIL_FILE = 'mcp-audit.ndjson';
 
 export const auditTrailPath = (dataDir: string): string => join(dataDir, AUDIT_TRAIL_FILE);
+export const legacyAuditTrailPath = (dataDir: string): string => join(dataDir, LEGACY_AUDIT_TRAIL_FILE);
+
+/** The one line a process prints the first time it reads the legacy file. */
+export const LEGACY_AUDIT_DEPRECATION =
+  'xezar: mcp-audit.ndjson is deprecated; reading it read-only (removal not before 0.18.0)';
+
+/** Per process, as spec § 8 asks — not per trail and not per project. */
+let legacyNoticeShown = false;
+
+/** @internal — for tests that need to observe the once-per-process deprecation line again. */
+export function resetLegacyAuditNoticeForTests(): void {
+  legacyNoticeShown = false;
+}
 
 /** The same floor `secret-redaction.ts` applies to env values: below it a value is a common word. */
 const MIN_KNOWN_SECRET_LEN = 12;
+
+/** How much of the file's tail one read looks at while searching back for the last valid record. */
+const TAIL_CHUNK_BYTES = 64 * 1024;
 
 /** The trusted scope a trail is bound to — a project context's own id and data dir. */
 export interface AuditScope {
@@ -77,20 +107,23 @@ export interface AuditScope {
 }
 
 export interface AuditTrailOptions {
-  /** Clock, injectable for tests. */
+  /** Clock, injectable for tests. Its ISO string is always UTC. */
   now?: () => Date;
   /** Secrets the caller knows about that are not in the env — the MCP connection token (D-04). */
   secretValues?: () => readonly string[];
-  /** Where the one-time write/read warning goes. */
+  /** Where the one-time warning and the legacy deprecation line go. */
   warn?: (message: string) => void;
 }
+
+/** The actor fields a door supplies beyond `type`, which the channel stamps itself. */
+export type AuditActorDetails<O extends AuditOrigin> = Omit<Extract<AuditActor, { type: O }>, 'type'>;
 
 /**
  * What an entry point may say about an operation. Deliberately no `origin` and no `projectId`:
  * both are properties of the door and the scope, never of the operation.
  */
-export interface AuditedOperation {
-  /** Dotted action id, e.g. `runs.create`. */
+export interface AuditedOperation<O extends AuditOrigin = AuditOrigin> {
+  /** Dotted action id, e.g. `taskCreate.start`. */
   action: string;
   /** The resource acted on, when known before the effect. */
   resource?: AuditResource;
@@ -106,15 +139,22 @@ export interface AuditedOperation {
    * owner's equality fence, so it is authority and never enters the trail.
    */
   ownerGeneration?: string;
+  /**
+   * The door-specific actor fields (an automation's `receiptId`, a command's id). Supplied by the
+   * door, never by a caller; `type` is always the channel's origin, whatever this object says.
+   */
+  actor?: AuditActorDetails<O>;
 }
 
-export interface AuditSettlement {
-  outcome: AuditOutcome;
-  /** Short machine code for a non-`ok` outcome, e.g. `stale_version`. Never an error message. */
-  errorCode?: string;
-  /** The resource the effect produced (a created run), when it was unknown before. */
-  resource?: AuditResource;
-}
+/** How an operation settled, in the two words v2 has. */
+export type AuditSettlement =
+  | { outcome: 'applied'; resource?: AuditResource }
+  | {
+      outcome: 'refused';
+      /** Short machine code, e.g. `stale_version`. Never an error message. */
+      reason: string;
+      resource?: AuditResource;
+    };
 
 /** Thrown by an effect to refuse BEFORE anything happened: validation, permission, stale version. */
 export class AuditRejection extends Error {
@@ -124,23 +164,34 @@ export class AuditRejection extends Error {
   }
 }
 
+/** The reason a refusal gets when its own code cannot be kept (malformed, or secret-shaped). */
+const UNSPECIFIED_REASON = 'unspecified';
+
 /**
- * The outcome an HTTP status stands for, for callers that settle through a route (the cockpit's
- * handlers, and the MCP adapter, which dispatches into the same routes). The routes validate as
- * middleware and answer 4xx before any effect, so a 4xx is a refusal; a 5xx may have come after
- * the effect started, so it is `unverified`, never `rejected`.
+ * The settlement an HTTP status stands for, for callers that settle through a route. The routes
+ * validate as middleware and answer 4xx before any effect, so a 4xx is a refusal. A 5xx may have
+ * come after the effect started, so it has NO settlement (`undefined`): v2 cannot say "unknown".
  */
-export function settlementForStatus(status: number): AuditSettlement {
-  if (status >= 200 && status < 300) return { outcome: 'ok' };
-  if (status >= 400 && status < 500) return { outcome: 'rejected', errorCode: `http_${status}` };
-  return { outcome: 'unverified', errorCode: `http_${status}` };
+export function settlementForStatus(status: number): AuditSettlement | undefined {
+  if (status >= 200 && status < 300) return { outcome: 'applied' };
+  if (status >= 400 && status < 500) return { outcome: 'refused', reason: `http_${status}` };
+  return undefined;
 }
 
-export interface AuditReadResult {
-  entries: AuditEntry[];
-  /** Lines that failed to parse or validate — skipped, never fatal (D-06 § 7.4's line-level rule). */
-  quarantined: number;
-}
+export type AuditReadResult =
+  | {
+      /** `audit.ndjson` exists (or neither file does): v2 action records. */
+      source: 'current';
+      entries: AuditActionRecord[];
+      /** Lines that failed to parse or validate — skipped, never fatal (D-06 § 7.4's line-level rule). */
+      quarantined: number;
+    }
+  | {
+      /** Only the legacy `mcp-audit.ndjson` exists: v1 entries, read-only. */
+      source: 'legacy';
+      entries: AuditEntry[];
+      quarantined: number;
+    };
 
 export class AuditTrail {
   readonly scope: AuditScope;
@@ -161,67 +212,89 @@ export class AuditTrail {
 
   /**
    * The recorder for one door. Call it where the door is, once; the origin is fixed from then on.
-   * One production caller: `mcp/index.ts:254`, with `'mcp'`. Every other origin is test-only (#364).
+   * One production caller: `mcp/index.ts`, with `'mcp'`. Every other origin is test-only for now.
    */
-  channel(origin: AuditOrigin): AuditChannel {
+  channel<O extends AuditOrigin>(origin: O): AuditChannel<O> {
     return new AuditChannel(this, origin);
   }
 
   /**
-   * Every entry of THIS project, oldest first. A scoped read (D-06 § 10.4 rule 2): it opens only
-   * this project's file and additionally drops any line naming another project, so a reader bound
-   * to B learns nothing about A — not its entries, and not how many there are (N-01).
+   * Every record of THIS project, oldest first, from exactly one file (spec § 8):
+   *   1. `audit.ndjson` exists → its v2 action records; the legacy file is ignored even if present;
+   *   2. only `mcp-audit.ndjson` exists → its v1 entries, read-only, with one deprecation line per
+   *      process;
+   *   3. neither → an empty `current` trail, silently.
+   * A scoped read (D-06 § 10.4 rule 2): any line naming another project is dropped too, so a reader
+   * bound to B learns nothing about A — not its entries, and not how many there are (N-01).
+   * Rotation markers are not actions and are skipped without counting as quarantined.
    */
   read(): AuditReadResult {
-    let raw: string;
-    try {
-      raw = readFileSync(auditTrailPath(this.scope.dataDir), 'utf8');
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') this.warnOnce('read', err);
-      return { entries: [], quarantined: 0 };
+    const current = this.readFile(auditTrailPath(this.scope.dataDir));
+    if (current !== 'absent') {
+      const entries: AuditActionRecord[] = [];
+      const quarantined = eachLine(current, (json) => {
+        const parsed = auditRecordSchema.safeParse(json);
+        if (!parsed.success) return false;
+        if (parsed.data.kind === 'action' && parsed.data.projectId === this.scope.projectId) entries.push(parsed.data);
+        return true;
+      });
+      return { source: 'current', entries, quarantined };
+    }
+    const legacy = this.readFile(legacyAuditTrailPath(this.scope.dataDir));
+    if (legacy === 'absent') return { source: 'current', entries: [], quarantined: 0 };
+    if (!legacyNoticeShown) {
+      legacyNoticeShown = true;
+      this.warn(LEGACY_AUDIT_DEPRECATION);
     }
     const entries: AuditEntry[] = [];
-    let quarantined = 0;
-    for (const line of raw.split('\n')) {
-      if (line.trim() === '') continue;
-      let json: unknown;
-      try {
-        json = JSON.parse(line);
-      } catch {
-        quarantined += 1;
-        continue;
-      }
+    const quarantined = eachLine(legacy, (json) => {
       const parsed = auditEntrySchema.safeParse(json);
-      if (!parsed.success) {
-        quarantined += 1;
-        continue;
-      }
-      if (parsed.data.projectId !== this.scope.projectId) continue;
-      entries.push(parsed.data);
-    }
-    return { entries, quarantined };
+      if (!parsed.success) return false;
+      if (parsed.data.projectId === this.scope.projectId) entries.push(parsed.data);
+      return true;
+    });
+    return { source: 'legacy', entries, quarantined };
   }
 
-  /** @internal — build, check and append one entry. Never throws. */
-  write(origin: AuditOrigin, op: AuditedOperation, settlement: AuditSettlement): AuditEntry | null {
+  /** @internal — build, check and append one record. Never throws. */
+  write<O extends AuditOrigin>(origin: O, op: AuditedOperation<O>, settlement: AuditSettlement): AuditActionRecord | null {
     try {
-      const entry = this.build(origin, op, settlement);
-      if (!entry) return null;
-      appendFileSync(auditTrailPath(this.scope.dataDir), `${JSON.stringify(entry)}\n`, { mode: 0o600 });
-      return entry;
+      const candidate = this.build(origin, op, settlement);
+      if (!candidate) return null;
+      const path = auditTrailPath(this.scope.dataDir);
+      const tail = lastPersisted(path);
+      const parsed = auditActionRecordSchema.safeParse({ v: 2, seq: tail.seq + 1, ...candidate });
+      if (!parsed.success) {
+        this.warnOnce('write', new Error(`not an auditable operation: ${parsed.error.issues[0]?.message ?? 'invalid'}`));
+        return null;
+      }
+      // A torn last line (a crash mid-append) must not swallow this record into itself.
+      appendFileSync(path, `${tail.endsWithNewline ? '' : '\n'}${JSON.stringify(parsed.data)}\n`, { mode: 0o600 });
+      return parsed.data;
     } catch (err) {
       this.warnOnce('write', err);
       return null;
     }
   }
 
-  private build(origin: AuditOrigin, op: AuditedOperation, settlement: AuditSettlement): AuditEntry | null {
+  /** @internal — an operation that settled without an honest v2 outcome. Warns once, writes nothing. */
+  skip(code: string): null {
+    this.warnOnce('write', Object.assign(new Error(code), { code: /^[a-z][a-z0-9_]{0,63}$/.test(code) ? code : 'unrecordable' }));
+    return null;
+  }
+
+  /** The record without `v` and `seq`, which only the append path may allocate. */
+  private build<O extends AuditOrigin>(
+    origin: O,
+    op: AuditedOperation<O>,
+    settlement: AuditSettlement,
+  ): Omit<AuditActionRecord, 'v' | 'seq'> | null {
     const secrets = this.knownSecrets();
     const clean = (value: string | undefined): string | undefined =>
       value !== undefined && redactSecrets(value, secrets) === value ? value : undefined;
-    const field = <K extends keyof AuditEntry>(key: K, value: unknown): AuditEntry[K] | undefined => {
-      const parsed = auditEntrySchema.shape[key].safeParse(value);
-      return parsed.success ? (parsed.data as AuditEntry[K]) : undefined;
+    const field = <K extends keyof AuditActionRecord>(key: K, value: unknown): AuditActionRecord[K] | undefined => {
+      const parsed = auditActionRecordSchema.shape[key].safeParse(value);
+      return parsed.success ? (parsed.data as AuditActionRecord[K]) : undefined;
     };
     const resourceOf = (resource: AuditResource | undefined): AuditResource | undefined => {
       if (!resource || clean(resource.id) === undefined || clean(resource.kind) === undefined) return undefined;
@@ -229,14 +302,24 @@ export class AuditTrail {
     };
 
     const candidate: Record<string, unknown> = {
-      v: 1,
+      kind: 'action',
       ts: this.now().toISOString(),
       projectId: this.scope.projectId,
-      action: op.action,
-      outcome: settlement.outcome,
       origin,
+      // The door's details first, then its type: no details object can change which door this was.
+      actor: { ...(op.actor ?? {}), type: origin },
+      action: op.action,
+      outcome:
+        settlement.outcome === 'applied'
+          ? { status: 'applied' }
+          : {
+              status: 'refused',
+              reason: field('outcome', { status: 'refused', reason: clean(settlement.reason) })
+                ? settlement.reason
+                : UNSPECIFIED_REASON,
+            },
     };
-    const optional: Partial<AuditEntry> = {
+    const optional: Partial<AuditActionRecord> = {
       resource: resourceOf(settlement.resource) ?? resourceOf(op.resource),
       ownerGeneration: origin === 'mcp' ? field('ownerGeneration', fencingTokenMs(op.ownerGeneration)) : undefined,
       operationKey:
@@ -245,18 +328,31 @@ export class AuditTrail {
           : undefined,
       versionToken: field('versionToken', clean(op.expectedVersion)),
       payloadDigest: op.payload === undefined ? undefined : field('payloadDigest', safeDigest(op.payload)),
-      errorCode: settlement.outcome === 'ok' ? undefined : field('errorCode', clean(settlement.errorCode)),
     };
     // Spread only what is present: an `undefined` key would be typed as present and dropped by
     // JSON.stringify anyway, and the read path must see exactly what was written.
     for (const [key, value] of Object.entries(optional)) if (value !== undefined) candidate[key] = value;
 
-    const parsed = auditEntrySchema.safeParse(candidate);
+    // Validated with a placeholder sequence, so a malformed operation is refused BEFORE the file is
+    // read for the real one. `write` validates again with the allocated value.
+    const parsed = auditActionRecordSchema.safeParse({ v: 2, seq: 1, ...candidate });
     if (!parsed.success || clean(parsed.data.action) === undefined) {
       this.warnOnce('write', new Error(`not an auditable operation: ${parsed.error?.issues[0]?.message ?? 'secret-shaped action'}`));
       return null;
     }
-    return parsed.data;
+    const { v: _v, seq: _seq, ...record } = parsed.data;
+    return record;
+  }
+
+  /** The file's text, `'absent'` when it does not exist, or `''` (after the one warning) when it cannot be read. */
+  private readFile(path: string): string | 'absent' {
+    try {
+      return readFileSync(path, 'utf8');
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return 'absent';
+      this.warnOnce('read', err);
+      return '';
+    }
   }
 
   private knownSecrets(): string[] {
@@ -265,40 +361,56 @@ export class AuditTrail {
     return [...values].sort((a, b) => b.length - a.length);
   }
 
+  /**
+   * ONE warning per trail per process, shared by every read, write and skip failure (spec § 7.2).
+   * The code only — an error message can carry a path, and a path is not for logs either.
+   */
   private warnOnce(what: 'read' | 'write', err: unknown): void {
     if (this.warned) return;
     this.warned = true;
-    // The code only — an error message can carry a path, and a path is not for logs either.
     const code = (err as NodeJS.ErrnoException | undefined)?.code ?? (err as Error | undefined)?.name ?? 'error';
-    this.warn(`xezar: audit trail ${what} failed (${code}); operations continue unaudited`);
+    this.warn(
+      what === 'read'
+        ? `xezar: audit trail read failed (${code}); the trail reads as empty.`
+        : `xezar: audit trail write failed (${code}); the action continued without an audit record.`,
+    );
   }
 }
 
 /** One door's recorder. The origin is fixed at construction and no operation can change it. */
-export class AuditChannel {
+export class AuditChannel<O extends AuditOrigin = AuditOrigin> {
   constructor(
     private readonly trail: AuditTrail,
-    readonly origin: AuditOrigin,
+    readonly origin: O,
   ) {}
 
   /** Record an operation that has already settled. */
-  record(op: AuditedOperation, settlement: AuditSettlement): AuditEntry | null {
+  record(op: AuditedOperation<O>, settlement: AuditSettlement): AuditActionRecord | null {
     return this.trail.write(this.origin, op, settlement);
   }
 
-  /** Record an operation that settled through an HTTP route, by its status. */
-  recordStatus(op: AuditedOperation, status: number): AuditEntry | null {
-    return this.record(op, settlementForStatus(status));
+  /**
+   * Say that an operation settled in a way v2 cannot record honestly — it may have started its
+   * effect and then failed (spec § 3.2). Nothing is written; the trail's one warning is used.
+   */
+  skip(code: string): null {
+    return this.trail.skip(code);
+  }
+
+  /** Record an operation that settled through an HTTP route, by its status. A 5xx is skipped. */
+  recordStatus(op: AuditedOperation<O>, status: number): AuditActionRecord | null {
+    const settlement = settlementForStatus(status);
+    return settlement ? this.record(op, settlement) : this.skip(`http_${status}`);
   }
 
   /**
    * Run `effect` and record how it settled. An `AuditRejection` means "refused before any effect"
-   * and records `rejected`; any other throw may have come after the effect began, so it records
-   * `unverified`. Either error is rethrown unchanged: auditing never changes the operation's own
-   * answer. `resourceOf` names a resource the effect created.
+   * and records `refused`; any other throw may have come after the effect began, so it records
+   * nothing and warns once. Either error is rethrown unchanged: auditing never changes the
+   * operation's own answer. `resourceOf` names a resource the effect created.
    */
   async run<T>(
-    op: AuditedOperation,
+    op: AuditedOperation<O>,
     effect: () => T | Promise<T>,
     resourceOf?: (value: T) => AuditResource | undefined,
   ): Promise<T> {
@@ -306,16 +418,88 @@ export class AuditChannel {
     try {
       value = await effect();
     } catch (err) {
-      this.record(
-        op,
-        err instanceof AuditRejection
-          ? { outcome: 'rejected', errorCode: err.code }
-          : { outcome: 'unverified', errorCode: 'effect_failed' },
-      );
+      if (err instanceof AuditRejection) this.record(op, { outcome: 'refused', reason: err.code });
+      else this.skip('effect_failed');
       throw err;
     }
-    this.record(op, { outcome: 'ok', resource: resourceOf?.(value) });
+    const resource = resourceOf?.(value);
+    this.record(op, { outcome: 'applied', ...(resource ? { resource } : {}) });
     return value;
+  }
+}
+
+/** Calls `accept` with every non-blank line's JSON; returns how many lines were quarantined. */
+function eachLine(raw: string, accept: (json: unknown) => boolean): number {
+  let quarantined = 0;
+  for (const line of raw.split('\n')) {
+    if (line.trim() === '') continue;
+    let json: unknown;
+    try {
+      json = JSON.parse(line);
+    } catch {
+      quarantined += 1;
+      continue;
+    }
+    if (!accept(json)) quarantined += 1;
+  }
+  return quarantined;
+}
+
+/**
+ * The last valid v2 record's `seq` (0 when there is none), read backwards from the end of the file
+ * so a long trail costs one tail read, and whether the file ends in a newline. A torn or corrupt
+ * tail is skipped over to the last valid record, which is how a failed append allocates nothing.
+ * A missing file is `{ seq: 0, endsWithNewline: true }`; any other read error throws to the caller.
+ */
+function lastPersisted(path: string): { seq: number; endsWithNewline: boolean } {
+  let fd: number;
+  try {
+    fd = openSync(path, 'r');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return { seq: 0, endsWithNewline: true };
+    throw err;
+  }
+  try {
+    const size = fstatSync(fd).size;
+    if (size === 0) return { seq: 0, endsWithNewline: true };
+    const last = Buffer.alloc(1);
+    readSync(fd, last, 0, 1, size - 1);
+    const endsWithNewline = last[0] === 0x0a;
+    let end = size;
+    let carry = Buffer.alloc(0);
+    while (end > 0) {
+      const start = Math.max(0, end - TAIL_CHUNK_BYTES);
+      const chunk = Buffer.alloc(end - start);
+      readSync(fd, chunk, 0, chunk.length, start);
+      const data = Buffer.concat([chunk, carry]);
+      let lineEnd = data.length;
+      for (let i = data.length - 1; i >= 0; i -= 1) {
+        if (data[i] !== 0x0a) continue;
+        const seq = seqOf(data.subarray(i + 1, lineEnd));
+        if (seq !== undefined) return { seq, endsWithNewline };
+        lineEnd = i;
+      }
+      if (start === 0) {
+        const seq = seqOf(data.subarray(0, lineEnd));
+        return { seq: seq ?? 0, endsWithNewline };
+      }
+      // The first piece of this chunk may continue in the one before it.
+      carry = data.subarray(0, lineEnd);
+      end = start;
+    }
+    return { seq: 0, endsWithNewline };
+  } finally {
+    closeSync(fd);
+  }
+}
+
+function seqOf(line: Buffer): number | undefined {
+  if (line.length === 0) return undefined;
+  try {
+    const parsed = auditRecordSchema.safeParse(JSON.parse(line.toString('utf8')));
+    return parsed.success ? parsed.data.seq : undefined;
+  } catch {
+    return undefined;
   }
 }
 

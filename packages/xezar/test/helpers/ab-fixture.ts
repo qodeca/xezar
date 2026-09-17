@@ -587,7 +587,7 @@ export async function createAbWorld(options: AbWorldOptions = {}): Promise<AbWor
                 ? { operationId: (args as { operationId: string }).operationId }
                 : {}),
             },
-            { outcome: result.isError ? 'rejected' : 'ok', ...(result.isError ? { errorCode: 'tool_error' } : {}) },
+            result.isError ? { outcome: 'refused', reason: 'tool_error' } : { outcome: 'applied' },
           );
         return result;
       },
@@ -621,7 +621,7 @@ export async function createAbWorld(options: AbWorldOptions = {}): Promise<AbWor
       });
     }
   }
-  auditB.channel('ui').record({ action: 'runs.pin', resource: { kind: 'run', id: seededB.ids.done }, payload: { pinned: true } }, { outcome: 'ok' });
+  auditB.channel('ui').record({ action: 'runs.pin', resource: { kind: 'run', id: seededB.ids.done }, payload: { pinned: true } }, { outcome: 'applied' });
 
   const finish = (seeded: typeof seededA, journal: EventJournal, audit: AuditTrail, name: string): ProjectSide => {
     const { extraNames, ...rest } = seeded;

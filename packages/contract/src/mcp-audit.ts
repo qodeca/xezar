@@ -1,76 +1,45 @@
 import { z } from 'zod';
+import {
+  AUDIT_ACTION_RE,
+  AUDIT_ERROR_CODE_RE,
+  AUDIT_ID_RE,
+  AUDIT_OPERATION_KEY_RE,
+  AUDIT_RESOURCE_KIND_RE,
+  AUDIT_VERSION_TOKEN_RE,
+  auditOriginSchema,
+} from './audit.ts';
 
 /**
- * The MCP / cockpit audit record (#102) — decision D-06 § 10, requirement N-04.
+ * The LEGACY audit record, version 1 (#102) — read-only since #306.
  *
- * One line of `<project>/.local/xezar/mcp-audit.ndjson` is one `AuditEntry`. The shape is the
- * § 10.2 field list and nothing else, and every field is an enum member, a digest or a
- * charset-bounded identifier: there is **no free-text field at all**, so no prompt, message, diff,
- * command output, path, email address, token or connection value has anywhere to land (§ 10.3,
- * F-15, F-12). That is the construction D-06 chose over relying on the best-effort run-event
- * scrubber; the service's writer adds a value check on top, it does not replace this.
+ * xezar 0.13.0 to 0.15.0 wrote one `AuditEntry` per line of `<project>/.local/xezar/mcp-audit.ndjson`.
+ * The current record is version 2 in `./audit.ts`, written to `audit.ndjson`. This shape survives
+ * for one job: reading a legacy file that an older xezar left behind, which the service does only
+ * when `audit.ndjson` does not exist yet, and never by writing, renaming or trimming it (spec
+ * `docs/features/mcp-server/audit-trail-origins-2026-09-17.md` § 8). The alias is removed no earlier
+ * than 0.18.0 and only through its tracking issue.
  *
- * MUST vs SHOULD, as D-06 § 10.2 splits them and as this schema preserves them — N-04 itself only
- * says history *should* identify these things, so nothing here upgrades a SHOULD:
- *   - MUST: `projectId` (from the trusted connection binding, never a parameter) and `origin`
- *     (server-derived from the door the request came through, never client-supplied — § 10.4).
- *   - MUST NOT: any secret, free text, absolute path or other project's identifier (§ 10.3).
- *   - SHOULD: every other field. They are required on the wire only where the writer can always
- *     supply them (`ts`, `action`, `outcome`); the rest are optional and absent when unknown.
- * Audit RETENTION and the audit IDENTITY MODEL stay OPEN (N-04, D-06 § 10.5, D-09 U-2); nothing
- * in this file implies either.
+ * Do not change this schema: a legacy file is exactly what 0.15.0 wrote, and a narrower or wider
+ * shape here would misread it. The released reader is frozen separately, under
+ * `packages/xezar/test/fixtures/audit-0.15.0/`, so the compatibility tests do not depend on this file.
  *
- * An entry is a record of a decision, never an input to one (§ 10.4 rule 3): no field here grants
- * anything, and no reader may consult an entry in place of a permission check.
+ * The field rules of v1 as D-06 § 10.2 split them: `projectId` and `origin` MUST be server-derived;
+ * no secret, free text, absolute path or other project's identifier may appear; every other field
+ * is SHOULD. Only `mcp` was ever written in production.
  */
 
-/**
- * Where an operation came from — written by the server, never read from the request (§ 10.4).
- *
- * **`mcp` is the only member emitted today; `ui`, `automation` and `cli` are RESERVED.** Production
- * opens exactly one channel, `new AuditTrail({ projectId, dataDir }, { warn }).channel('mcp')`
- * (`packages/xezar/src/mcp/index.ts:254`, the only non-test construction site at `87d9f0d` on
- * 2026-09-12). The cockpit's HTTP routes, the automation scheduler and headless `xezar run` record
- * nothing, so `<project>/.local/xezar/mcp-audit.ndjson` holds the leader's operations and no
- * human's. Reading this enum as "four kinds of entry are written" is the mistake it exists to stop
- * (#266).
- *
- * The enum is deliberately NOT narrowed to the one live member: the four are the intended eventual
- * set, removing one would be a contract break, and the reserved members carry the shape the other
- * doors will need (see `ownerGeneration` and `operationKey` below, which are already documented as
- * absent for non-MCP origins). Wiring those three doors is
- * [#364](https://github.com/qodeca/xezar/issues/364); D-06 § 10.6 records why it is not 0.14.0 work.
- */
-export const auditOriginSchema = z.enum(['ui', 'mcp', 'automation', 'cli']);
-export type AuditOrigin = z.infer<typeof auditOriginSchema>;
-
-/** D-06 § 9.2's outcome vocabulary. `in-progress` is derived at lookup time and never stored. */
+/** D-06 § 9.2's v1 outcome vocabulary. v2 replaced it with `applied` / `refused`. */
 export const auditOutcomeSchema = z.enum(['ok', 'rejected', 'not-applied', 'unverified']);
 export type AuditOutcome = z.infer<typeof auditOutcomeSchema>;
 
-/** A dotted action id such as `runs.create` or `runs.archive`. */
-export const AUDIT_ACTION_RE = /^[a-z][A-Za-z0-9-]*(\.[a-z][A-Za-z0-9-]*)+$/;
-/** A resource kind (`run`, `group`, `config`, `workflow`, `automation`, `worktree`, …). */
-export const AUDIT_RESOURCE_KIND_RE = /^[a-z][a-z0-9-]*$/;
-/**
- * A resource id inside the bound project. The charset of D-06's `operationId` (§ 5.2): no `/`, no
- * whitespace and no `@`, so a filesystem path, a sentence or an email address cannot be one.
- */
-export const AUDIT_ID_RE = /^[A-Za-z0-9_.:-]+$/;
-/** A short machine error code (`stale_version`, `operation_key_conflict`, …) — never a message. */
-export const AUDIT_ERROR_CODE_RE = /^[a-z][a-z0-9_]*$/;
-/** D-06 § 4.2's version token, `rev1:<kind>:<id>:<seq>:<digest12>`. Any other shape is not kept. */
-export const AUDIT_VERSION_TOKEN_RE = /^rev1:[a-z][a-z0-9-]*:[A-Za-z0-9_.-]{1,128}:(?:\d+|-):[0-9a-f]{12}$/;
-
-/** `{ kind, id }` of the resource acted on — never a path, never content (§ 10.2). */
-export const auditResourceSchema = z.object({
+/** v1's `{ kind, id }` — not strict, exactly as 0.15.0 parsed it (unknown keys are stripped, not refused). */
+export const legacyAuditResourceSchema = z.object({
   kind: z.string().min(1).max(32).regex(AUDIT_RESOURCE_KIND_RE),
   id: z.string().min(1).max(128).regex(AUDIT_ID_RE),
 });
-export type AuditResource = z.infer<typeof auditResourceSchema>;
 
 export const auditEntrySchema = z.object({
-  /** Record format tag. A future incompatible shape is `v: 2`. */
+  /** Record format tag. The incompatible successor is `v: 2` (`./audit.ts`). */
   v: z.literal(1),
   /** SHOULD — ISO 8601 time the operation settled. */
   ts: z.iso.datetime(),
@@ -79,10 +48,10 @@ export const auditEntrySchema = z.object({
   /** SHOULD — the action id. */
   action: z.string().min(3).max(64).regex(AUDIT_ACTION_RE),
   /** SHOULD — the resource acted on, when there is one. */
-  resource: auditResourceSchema.optional(),
+  resource: legacyAuditResourceSchema.optional(),
   /** SHOULD — the D-06 outcome. */
   outcome: auditOutcomeSchema,
-  /** MUST be server-derived. Only `mcp` is written today — see `auditOriginSchema` above. */
+  /** MUST be server-derived. Only `mcp` was ever written. */
   origin: auditOriginSchema,
   /**
    * SHOULD — the wall-clock ms prefix of the D-02.3 fencing token (`<ms>-<UUIDv4>`) the mutation
@@ -90,7 +59,7 @@ export const auditEntrySchema = z.object({
    */
   ownerGeneration: z.number().int().nonnegative().optional(),
   /** SHOULD — `<projectId>/<operationId>` (D-06 § 5.2); absent for non-MCP origins. */
-  operationKey: z.string().min(1).max(257).regex(/^[A-Za-z0-9_.:-]+\/[A-Za-z0-9_.:-]{8,128}$/).optional(),
+  operationKey: z.string().min(1).max(257).regex(AUDIT_OPERATION_KEY_RE).optional(),
   /** SHOULD — the `expectedVersion` the caller sent, kept only when it has the `rev1` shape. */
   versionToken: z.string().max(200).regex(AUDIT_VERSION_TOKEN_RE).optional(),
   /** SHOULD — SHA-256 (lowercase hex) of the canonical parsed payload (D-06 § 5.4). */

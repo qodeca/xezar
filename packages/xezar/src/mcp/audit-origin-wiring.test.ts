@@ -11,7 +11,7 @@ import { auditOriginSchema } from '@qodeca/xezar-contract';
  * `auditOriginSchema` offers four members and production opens one channel. That is a decided state
  * for 0.14.0 (D-06 § 10.6), not a defect — the defect was that four documents could quietly stop
  * describing it. Four surfaces say "only `mcp`": the schema's own comment
- * (`packages/contract/src/mcp-audit.ts`), the module comment of `audit-trail.ts`, and two sections
+ * (`packages/contract/src/audit.ts`), the module comment of `audit-trail.ts`, and two sections
  * of `docs/features/mcp-server/mcp-api.md` ("The two meanings of `origin`", Findings 3). This file
  * is what makes those four sentences a checked claim instead of a remembered one.
  *
@@ -54,7 +54,7 @@ import { auditOriginSchema } from '@qodeca/xezar-contract';
  *      channel and never calls `record`/`run` passes. Nothing here counts entries.
  *   2. It does not check that the four prose surfaces agree with each other, or with reality. The
  *      failure message names them; that is a pointer, not an assertion.
- *   3. A door that writes `mcp-audit.ndjson` itself, without using `AuditTrail` at all, is invisible
+ *   3. A door that writes `audit.ndjson` itself, without using `AuditTrail` at all, is invisible
  *      to both nets. Net 1 keys on the type names.
  *   4. It pins the FILE, not the line. The seven documents that cite `mcp/index.ts:254` stay
  *      correct only by hand; ten lines inserted above 254 break them with no test failing.
@@ -109,7 +109,7 @@ const EXPECTED_DIRECT_CONSTRUCTIONS = [
 
 const FIX_HINT =
   'The set of audit doors changed. Update every surface that says the trail is MCP-only: ' +
-  'auditOriginSchema (packages/contract/src/mcp-audit.ts), the module comment of ' +
+  'auditOriginSchema (packages/contract/src/audit.ts), the module comment of ' +
   'packages/xezar/src/mcp/audit-trail.ts, and mcp-api.md ("The two meanings of `origin`" and ' +
   'Findings 3) — then D-06 § 10.6 and #364. If this fired for an unrelated `.channel(` on some ' +
   'other object, say so here rather than widening the pattern.';

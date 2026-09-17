@@ -415,7 +415,7 @@ describe.skipIf(process.platform === 'win32')('#115 isolation acceptance — A/B
       const withoutTrail = (s: string) => {
         const parsed = JSON.parse(s) as { files: string[]; audit: unknown };
         const files = parsed.files
-          .filter((f) => !f.includes('mcp-audit.ndjson'))
+          .filter((f) => !f.includes('/audit.ndjson'))
           .map((f) => (f.startsWith('F /.git/index ') ? f.replace(/^(F \S+ \d+ \d+) \S+ /, '$1 <mtime> ') : f));
         return JSON.stringify({ ...parsed, files, audit: null });
       };
@@ -461,7 +461,7 @@ describe.skipIf(process.platform === 'win32')('#115 isolation acceptance — A/B
       // A's own state is untouched too. The audit trail is the one exclusion, and for the same
       // reason the sibling mutation case excludes it: it is the door's record of the calls
       // themselves, not an effect of them. `judge` above already holds its bytes to N-01.
-      const trailOnly = snapshotChanges(beforeA, w.snapshot('a')).filter((c) => !/mcp-audit\.ndjson|^~ audit$/.test(c));
+      const trailOnly = snapshotChanges(beforeA, w.snapshot('a')).filter((c) => !/\/audit\.ndjson|^~ audit$/.test(c));
       expect(trailOnly).toEqual([]);
       expect(seen.events.a).toEqual([]);
     });
