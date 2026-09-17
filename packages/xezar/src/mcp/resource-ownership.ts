@@ -111,7 +111,7 @@ export interface OwnershipRefusal {
 
 export type Owned<T> = { ok: true; value: T } | OwnershipRefusal;
 
-const MESSAGES: Record<OwnershipCode, string> = {
+export const OWNERSHIP_MESSAGES: Readonly<Record<OwnershipCode, string>> = {
   not_found: 'not found in this project',
   forbidden_path:
     'path not allowed — use a relative path inside the task worktree, without "..", symlinks or .git',
@@ -166,7 +166,7 @@ function refuse(scope: OwnershipScope, check: OwnershipCheck, code: OwnershipCod
   } catch {
     // The log is the sink's problem; a throwing sink must not turn a refusal into a pass.
   }
-  return { ok: false, code, message: MESSAGES[code] };
+  return { ok: false, code, message: OWNERSHIP_MESSAGES[code] };
 }
 
 const MAX_ID_LENGTH = 256;

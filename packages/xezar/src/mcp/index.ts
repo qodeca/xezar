@@ -17,6 +17,7 @@ import { loadWorkspaceConfig } from '../workspace/config.ts';
 import { ProjectOwnership } from '../workspace/project-owner.ts';
 import { codexControlHome } from './adapters/codex-link.ts';
 import { answerRefusal, classifyMcpCall } from './audit-inventory.ts';
+import { notFoundRefusalOf } from './audit-not-found.ts';
 import { AuditTrail, type AuditChannel } from './audit-trail.ts';
 import { runBridge, type BridgeOptions, type ServiceTarget } from './bridge.ts';
 import { writeMcpConnectionFile } from './connection-file.ts';
@@ -343,6 +344,8 @@ function composeDoor(input: DoorInput): {
       routeRefusalOf(result) ??
       cursorRefusalOf(result) ??
       notPerformedOf(result) ??
+      // A target this project does not have, looked up before any effect (#573).
+      notFoundRefusalOf(tool.name, args.action, result) ??
       (result.isError ? undefined : answerRefusal(recorded.action, result.structuredContent?.result));
     // Awaited, so the record is on disk when the leader sees the answer; `record` never rejects and
     // resolves within the lock's 2 s bound, so the answer itself never depends on it.

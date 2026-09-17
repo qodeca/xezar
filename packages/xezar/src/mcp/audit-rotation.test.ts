@@ -128,7 +128,7 @@ interface WorkerResult {
 
 /** Start one writer process. The agent-session variables never reach it. */
 function startWriter(spec: { resourceId: string; barrier?: string; crashAfterRename?: boolean }): Promise<WorkerResult> {
-  const env = { ...process.env, VITEST: '' };
+  const env: NodeJS.ProcessEnv = { ...process.env, VITEST: '' };
   delete env.XEZ_HANDOFF_FILE;
   delete env.XEZ_TODOS_FILE;
   delete env.XEZ_TASK_ID;
