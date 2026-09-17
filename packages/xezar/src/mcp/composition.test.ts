@@ -197,8 +197,8 @@ describe('the composed MCP service, through the real bridge and socket', () => {
     });
     expect(entries[1]).toMatchObject({ seq: 2, outcome: { status: 'applied' } });
     // #306: no opt-in flag, the new file name, owner-only, and nothing under the legacy name.
-    expect(statSync(join(c.dataDir, AUDIT_TRAIL_FILE)).mode & 0o777).toBe(0o600);
-    expect(existsSync(join(c.dataDir, LEGACY_AUDIT_TRAIL_FILE))).toBe(false);
+    expect(statSync(join(c.dataDir, 'audit.ndjson')).mode & 0o777).toBe(0o600);
+    expect(existsSync(join(c.dataDir, 'mcp-audit.ndjson'))).toBe(false);
 
     // #103: the project's journal is open while the service runs, and released by close().
     expect(existsSync(join(c.dataDir, 'mcp', 'event-journal.json'))).toBe(true);
