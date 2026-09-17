@@ -2,7 +2,8 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { projectKitDir } from '../project-kit-paths.ts';
 import { workspaceUiStateSchema } from '@qodeca/xezar-contract';
-import { xezarHomeDir, workspaceConfigPath } from '../paths.ts';
+import { workspaceConfigPath } from '../paths.ts';
+import { activeStateLayout } from '../state-layout.ts';
 import { readUiState } from '../ui-state.ts';
 import { loadWorkspaceConfig, mergeWriteWorkspaceConfig } from './config.ts';
 import { mergeWriteWorkspaceUiState } from './ui-state.ts';
@@ -159,7 +160,11 @@ export async function runMigrations(
   opts: { bootRepoRoot: string | null },
   migrations: readonly WorkspaceMigration[] = WORKSPACE_MIGRATIONS,
 ): Promise<void> {
-  const home = xezarHomeDir();
+  // The state root a migration is migrating — `~/.xezar` in the global layout,
+  // `<project>/.xezar` in single-project mode (#600). Read from the resolved
+  // layout rather than from the per-user home, so a migration can never reach
+  // past the state this process actually owns.
+  const home = activeStateLayout().root;
   const ordered = [...migrations].sort((a, b) => a.to - b.to);
   let current = (await loadWorkspaceConfig()).schemaVersion;
   for (const migration of ordered) {

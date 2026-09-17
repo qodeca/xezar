@@ -1,6 +1,7 @@
 import { homedir } from 'node:os';
 import { dirname, join, sep } from 'node:path';
 import type { AgentHomePaths } from './agent-config/catalog.ts';
+import { activeStateLayout, globalStateRoot } from './state-layout.ts';
 
 /**
  * Per-user xezar home. Literal `~/.xezar` on every platform (no XDG, no
@@ -12,11 +13,16 @@ import type { AgentHomePaths } from './agent-config/catalog.ts';
  * 2026-07-16 specs (multi-project-switcher, agent-config-files) extend it —
  * first writer owns the file, later specs import it. Do not duplicate this
  * homedir logic elsewhere.
+ *
+ * This answers the PER-USER home and only that, single-project mode (#600)
+ * included — it is what the machine is configured with, not where this
+ * process keeps its state. The three WORKSPACE state files below follow the
+ * resolved layout (`state-layout.ts`) instead, and the host-install records
+ * stay here on purpose (FR-8.2: they describe the machine, not the project).
+ * A caller that wants "where does my state live" wants `activeStateLayout()`.
  */
 export function xezarHomeDir(env: NodeJS.ProcessEnv = process.env): string {
-  // `|| undefined` so an EMPTY XEZ_HOME (e.g. `XEZ_HOME= xezar …`) falls back
-  // to the default instead of yielding relative paths in the cwd.
-  return (env.XEZ_HOME || undefined) ?? join(homedir(), '.xezar');
+  return globalStateRoot(env);
 }
 
 /**
@@ -91,18 +97,28 @@ export function serverStatePath(instance: string = DEFAULT_SERVER_INSTANCE): str
  * version, global defaults, and the project registry — every repo xezar has
  * been booted in. Lives directly under `xezarHomeDir()`, so the `XEZ_HOME`
  * override applies (tests/containers never touch a real home dir).
+ *
+ * In single-project mode (#600) this is `<project>/.xezar/workspace.json`
+ * instead, and `~/.xezar` is not opened at all. The redirection happens HERE,
+ * in the one path helper, so every reader and writer of the workspace config
+ * moves with it — `workspace/config.ts`, the settings routes, the port memory,
+ * the migrations and the MCP all resolve through this function.
  */
 export function workspaceConfigPath(env: NodeJS.ProcessEnv = process.env): string {
-  return join(xezarHomeDir(env), 'config.json');
+  return activeStateLayout(env).workspacePath;
 }
 
 /**
  * Global GUI state — the workspace twin of the per-repo
  * `.local/xezar/ui-state.json`. Cross-project UI prefs live here; per-project
  * state (pinned runs, templates) stays in each repo's file.
+ *
+ * In single-project mode this is `<project>/.xezar/workspace-ui.json` — a
+ * different name, because the per-repo `ui-state.json` above must stay
+ * gitignored and this file is committed (see `StateLayout.uiStatePath`).
  */
-export function workspaceUiStatePath(): string {
-  return join(xezarHomeDir(), 'ui-state.json');
+export function workspaceUiStatePath(env: NodeJS.ProcessEnv = process.env): string {
+  return activeStateLayout(env).uiStatePath;
 }
 
 /**
@@ -118,9 +134,12 @@ export function workspaceUiStatePath(): string {
  *
  * The per-project selections live here too, beside the accounts they name, so deleting an account
  * and scrubbing every reference to it stays ONE atomic write.
+ *
+ * In single-project mode it keeps this name and moves into
+ * `<project>/.xezar/` with the rest of the state (FR-3.1: accounts travel too).
  */
-export function agentAccountsPath(): string {
-  return join(xezarHomeDir(), 'agent-accounts.json');
+export function agentAccountsPath(env: NodeJS.ProcessEnv = process.env): string {
+  return activeStateLayout(env).accountsPath;
 }
 
 /**

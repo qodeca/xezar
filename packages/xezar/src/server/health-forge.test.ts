@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { basename, join, sep } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { RunStore } from '../runs/store.ts';
+import { resolveStateLayout, setActiveStateLayout } from '../state-layout.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { createApp, type ServerDeps } from './server.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
@@ -26,6 +27,7 @@ interface HealthBody {
     localHandoff: boolean;
     followups: boolean;
     singleProject: boolean;
+    singleProjectRoot?: boolean;
     automations: boolean;
     tokenMetrics: boolean;
     tokenUsageMetrics: boolean;
@@ -112,6 +114,22 @@ describe('GET /api/v1/health — forge + capabilities', () => {
       tokenUsageMetrics: true,
       costMetrics: true,
     });
+  });
+
+  // #600 SP-1.1: the mode has to be visible on the wire, and the case above is
+  // the other half of it — that `toEqual` fails if the key is ever sent in the
+  // global layout, which is what keeps the field additive.
+  it('reports capabilities.singleProjectRoot when the state lives in the project (SP-1.1)', async () => {
+    setActiveStateLayout(resolveStateLayout(repoRoot, ['--single-project'], {}));
+    try {
+      const body = await health();
+
+      expect(body.capabilities.singleProjectRoot).toBe(true);
+      // The env narrowing is a different question and must not have moved.
+      expect(body.capabilities.singleProject).toBe(false);
+    } finally {
+      setActiveStateLayout(null);
+    }
   });
 
   // getRepoInfo needs a resolvable HEAD — an empty commit is enough.

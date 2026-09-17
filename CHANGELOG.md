@@ -23,6 +23,26 @@
 
 ## ✨ Features
 
+- ✨ **A folder can own its whole xezar setup, so a clone runs the same way.** (#600, part 1 of 5)
+  Start `xez --single-project` once in a project folder and xezar keeps its settings, agent accounts
+  and project registry in `<project>/.xezar` — `config.json` (unchanged meaning), `workspace.json`,
+  `agent-accounts.json` and `workspace-ui.json` — with working files in `<project>/.local/xezar`,
+  and never opens `~/.xezar`. After that the folder decides: every `xez` started there is in the
+  mode, flag or no flag, so a teammate who clones the repository gets the same behaviour with no
+  host setup step. One terminal line names the mode and the folder, and `GET /api/v1/health`
+  reports `capabilities.singleProjectRoot`. A linked git worktree is never a project root, so xezar
+  tasks keep running against the project's own state. Nothing changes for anyone who does not pass
+  the flag: no migration, no conversion, and `~/.xezar` is untouched. `XEZ_SINGLE_PROJECT` keeps
+  its exact meaning — one project, no project management, global state — and is not deprecated; the
+  new mode is a separate superset with its own flag and its own capability key. A
+  `<project>/.xezar/workspace.json` that is corrupt or unwritable refuses the start with a named
+  error rather than quietly falling back to your global setup; the other three files degrade with
+  one warning as they always have. **Downgrade:** 0.15.0 in a single-project folder ignores the
+  project state and uses your global setup — an old binary cannot be taught a new rule, so it is
+  named rather than prevented, and nothing in the folder is damaged. This part ships the state
+  layout, the detection, the capability and the boot line; the cockpit badge, the refusals in all
+  three doors and the import from a global setup follow. Details:
+  `BACKWARD_COMPATIBILITY.md` § "Single-project ROOT mode".
 - ✨ **The sidebar is navigation-only.** (#546) The Active/Archived task switcher, task list, and `Search…` launcher have been removed from the sidebar. Manage and search tasks on the Tasks page, and open the command palette with `⌘K` on macOS or `Ctrl+K` elsewhere. Existing task badges, task data, APIs, and saved UI state are unchanged.
 - **The audit trail is bounded, and safe to share between processes.** (#306, part 3 of 4) A
   project's `.local/xezar/audit.ndjson` now rotates before it passes 10 MB (10,000,000 bytes) and

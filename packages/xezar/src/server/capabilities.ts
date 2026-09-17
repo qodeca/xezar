@@ -20,6 +20,18 @@
  * Like the other opt-in capabilities, activation is strict: no other spelling
  * enables it.
  *
+ * `singleProjectRoot` (#600): this cockpit is serving a folder that owns its
+ * own xezar state — `<project>/.xezar` for the settings, accounts and
+ * registry, `~/.xezar` not opened at all. It is a SEPARATE key from
+ * `singleProject`, and the separation is the requirement, not a style choice:
+ * `XEZ_SINGLE_PROJECT` keeps its exact meaning (one project, no project
+ * management, GLOBAL state) and is not deprecated, while this key answers
+ * where the state lives. The two are independent — either, both or neither —
+ * and `capabilities.test.ts` pins the whole cross-product, because the env
+ * variable quietly gaining a new effect is the regression that matters here.
+ * Sent only when it is true, so a 0.15.0 payload and a global-layout 0.16.0
+ * payload are the same bytes.
+ *
  * `automations` (spec 2026-07-25-github-automations, #801): GitHub automations
  * are **opt-in** via `XEZ_AUTOMATIONS=1` and off by default. Off, the
  * `Automations` nav item is gone everywhere it is rendered, the
@@ -36,6 +48,7 @@
  */
 
 import { followupsEnabled } from '../handoff.ts';
+import { activeStateLayout } from '../state-layout.ts';
 import type { Capabilities } from '@qodeca/xezar-contract';
 
 /** Every IPv4 address in 127.0.0.0/8, anchored. Anchoring is load-bearing: a
@@ -156,6 +169,13 @@ export function resolveCapabilities(
     // "stored wins, else env" rule and this reports its answer.
     followups: followupsOverride ?? followupsEnabled(env),
     singleProject: env.XEZ_SINGLE_PROJECT === '1',
+    // Read from the RESOLVED LAYOUT, never from the environment: the folder
+    // decides this mode (#600 BR-1, DC-2), and a variable that could turn it on
+    // would be exactly the bypassable mechanism the mode exists to replace.
+    // Spread conditionally rather than assigned as `boolean | undefined`, so
+    // the global layout omits the key on the wire instead of sending `false`
+    // (AGENTS.md § The HTTP API) — which is what makes it additive.
+    ...(activeStateLayout().mode === 'project' ? { singleProjectRoot: true } : {}),
     automations: env.XEZ_AUTOMATIONS === '1',
     tokenMetrics: tokenUsageMetrics && costMetrics,
     tokenUsageMetrics,
