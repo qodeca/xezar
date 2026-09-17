@@ -522,7 +522,7 @@ export function GithubRoute({
             {automationsAvailable ? (
               <Link
                 to="/automations/new"
-                className="ml-auto inline-flex min-h-tap shrink-0 items-center rounded-sm text-[10px] font-medium text-primary outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50 md:min-h-0"
+                className="ml-auto inline-flex min-h-tap shrink-0 items-center rounded-sm text-[10px] font-medium text-foreground underline underline-offset-2 outline-none hover:text-muted-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 md:min-h-0"
               >
                 Set up automations
               </Link>
@@ -1132,7 +1132,7 @@ function GithubMergeBox({ number }: { number: number }) {
                   <MergeRequirementIcon state={check.state} />
                   <span>{check.name} · {check.state}{check.required === true ? ' · required' : check.required === null ? ' · requiredness unknown' : ''}</span>
                 </span>
-                {check.url && isHttpUrl(check.url) ? <a href={check.url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-tap shrink-0 items-center text-muted-foreground underline md:min-h-0">details</a> : null}
+                {check.url && isHttpUrl(check.url) ? <a href={check.url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-tap min-w-tap shrink-0 items-center justify-center text-muted-foreground underline md:min-h-0 md:min-w-0">details</a> : null}
               </li>
             ))}
             {state.blockers.map((blocker) => <li key={blocker.code} className="text-soft-foreground">{blocker.message}</li>)}

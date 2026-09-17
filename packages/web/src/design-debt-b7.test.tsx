@@ -174,7 +174,7 @@ describe('C6 rendered targets and focus', () => {
   })
 
   it('the skill detail sits on the rhythm', () => {
-    const skill = { name: 'xez-fix', path: '.xezar/skills/xez-fix.md', source: 'project', description: 'Fix things.', body: '# Fix' } as Skill
+    const skill = { name: 'xez-fix', path: '.xezar/skills/xez-fix.md', source: 'xezar', description: 'Fix things.', body: '# Fix' } as Skill
     render(
       <MemoryRouter>
         <SkillDetailBody skill={skill} usedBy={[]} />

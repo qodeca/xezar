@@ -8,8 +8,8 @@ to-do list: an entry becomes a `design-debt` issue on the triggers [CONTRIBUTING
 names, and a fix arrives as its own change with the entry deleted.
 
 Ids are never reused: a deleted entry retires its number, so a new entry takes the next number after the
-highest ever used. G-01..G-23, G-26..G-28 and G-30..G-44 are live, G-24, G-25 and G-29 are retired, and
-the next free id is G-45.
+highest ever used. G-01..G-23, G-26..G-28 and G-30..G-46 are live, G-24, G-25 and G-29 are retired, and
+the next free id is G-47.
 
 Counts are non-test files or occurrences in `packages/web/src`. Corrected counts in G-02, G-06,
 G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the original inventory date.
@@ -89,7 +89,7 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Fix**: add a `danger` Button variant and use it in `AlertDialogAction`.
 - **Status (#453 batch B3, settings)**: `remove-project.tsx`, `worktrees-panel.tsx` and the agent-account remove confirm pass `buttonVariants({ variant: 'danger' })` to `AlertDialogAction`, cancel with "Keep it", and hand focus back to the opener (`useReturnFocus`); the per-row worktree Delete is `danger-ghost`. Still open: `task-thread/run-header.tsx` (B5), `workflows/workflows.tsx` (B7).
 - **Status (#453 batch B5, thread, composer and launch menus)**: the run confirm (`routes/task-thread/run-header.tsx`) wears `buttonVariants({ variant: 'danger' })` and cancels with "Keep it". Focus return was not changed: it does not use `useReturnFocus`, and when the dialog opened from the phone kebab closes, focus lands on `<body>`, not on "Run actions" (measured 375 px, dark Compact for real and light Comfortable; #571 design review NB-3). Fix it with `useReturnFocus` in B8, as B3 did. Still open: `workflows/workflows.tsx` (B7).
-- **Status (#453 batch B7, remaining routes)**: fixed – the Workflows overwrite and delete confirms both pass `buttonVariants({ variant: 'danger' })` to `AlertDialogAction` (the copied string is gone), both cancels read "Keep it", and the curly quotes are literal. The plan review's "Overwrite" of a saved chain (`routes/plan-review.tsx`) is a danger action too; its cancel keeps the more specific "Keep the existing chain". `e2e/design-debt-b7.e2e.ts` reads the computed background of the Workflows confirm against `--danger` and proves Escape keeps the file. Compare's "Pick variant" confirm is recorded as G-43.
+- **Status (#453 batch B7, remaining routes)**: fixed – the Workflows overwrite and delete confirms both pass `buttonVariants({ variant: 'danger' })` to `AlertDialogAction` (the copied string is gone), both cancels read "Keep it", and the curly quotes are literal. The plan review's "Overwrite" of a saved chain (`routes/plan-review.tsx`) is a danger action too; its cancel keeps the more specific "Keep the existing chain". `e2e/design-debt-b7.e2e.ts` reads the computed background of the Workflows confirm against `--danger` and proves Escape keeps the file and hands focus back to Save (neither Workflows confirm has a trigger, so each returns focus to the button that asked). Compare's "Pick variant" confirm is recorded as G-43.
 
 ### G-11 Raw `<select>` in settings while the Select primitive is unused
 
@@ -320,6 +320,18 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Differs**: `patterns.md` §3's "Variations that exist (G-01)" line still lists GitHub's `bg-background/95 backdrop-blur` + `text-lg`, Compare's `text-xl` and Automations' `text-2xl` frame; `components.md` §2 ProviderBanner still gives `gap-2 … bg-destructive/10 px-section` and CodeEditor "ring suppressed" (the frame now shows a `focus-within` ring); `writing.md` §13 quotes "Team skills refreshed." with a period. #453 B7 may change only its manifest plus `known-gaps.md`, `coverage.md`, `cockpit.css` and the drift test, so those three files were not edited.
 - **Rule**: the design-system docs describe the code as it is.
 - **Fix**: update the three lines to the B7 spellings (this file's G-01, G-04, G-16 statuses and `coverage.md` say what they are). Owner: B8 reconciliation of #453.
+
+### G-45 Rendered Markdown's image actions are under the phone target
+
+- **Differs**: an image in rendered Markdown (a GitHub issue or pull request body, a comment) carries the Markdown library's own buttons – "Download image" at 24–40 px across the densities, and a hover-revealed download mark – beside the code-block copy button G-36 already records. Measured at 375 px by `e2e/design-debt-b7.e2e.ts`, which reports them in `known-g36-g45-markdown-actions.json` instead of passing them. The Markdown component (`routes/task-thread/markdown.tsx`) is B5's file, so B7 did not change it.
+- **Rule**: every phone target is 44 × 44 px (#453 Q2); a touch-only reader sees every action.
+- **Fix**: give the Markdown library's image and code-block actions the phone floor from `markdown.tsx`, as G-36 proposes for code blocks. Owner: B8 reconciliation of #453.
+
+### G-46 A GitHub label chip can sit below 4.5:1
+
+- **Differs**: a label chip (`routes/github/github.tsx`, `LabelChip`) is painted from the repository's own label colour (`github-filter.ts` blends it toward `--foreground`), so its small text follows data the cockpit does not choose: the dry-run label "enhancement" composites at 4.03:1 on the light theme. The browser suite reports label colours separately rather than passing or failing them.
+- **Rule**: small text is at least 4.5:1 on its actual surface.
+- **Fix**: raise the blend toward `--foreground` until the composited ratio clears 4.5:1 for any label colour, and pin it with a unit test over the extreme colours. Owner: B8 reconciliation of #453.
 
 ## Comment vs code
 

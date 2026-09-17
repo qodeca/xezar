@@ -86,7 +86,7 @@ function density(value: string) {
 
 // ---- geometry (the B5 recipe, with B3's label-owned checkbox) --------------------------------------
 
-type Geometry = { targets: string[]; smallest: string; short: string[]; clipped: string[]; overlaps: string[]; invisible: string[]; overflow: boolean }
+type Geometry = { targets: string[]; markdownActions: string[]; smallest: string; short: string[]; clipped: string[]; overlaps: string[]; invisible: string[]; overflow: boolean }
 /** Every actionable target inside `scope`, measured from what a finger can hit. A checkbox inside a
  *  `<label>` is measured through that label; a link inside a sentence of rendered Markdown is WCAG
  *  2.5.8's inline exception. Overlap is checked only within one layer. */
@@ -100,6 +100,10 @@ function geometry(scope: string): Geometry {
       .filter(el => !(el.type === 'checkbox' && el.disabled))
       .filter(el => !(el.closest('[data-streamdown]') && el.parentElement && el.parentElement.textContent.trim() !== el.textContent.trim()))
       .map(owner))];
+    // Rendered Markdown's own buttons (code-block and image actions) come from the Markdown library,
+    // outside this batch's files: reported separately (known-gaps G-36, G-45), never passed silently.
+    const markdownActions = nodes.filter(el => el.tagName === 'BUTTON' && el.closest('[data-streamdown]'));
+    for (const el of markdownActions) nodes.splice(nodes.indexOf(el), 1);
     if (!nodes.length) throw new Error('No interactive targets in scope');
     const label = el => (nameOf(el) || el.alt || el.outerHTML.slice(0, 80)).slice(0, 80) + (el.disabled ? ' (disabled)' : '');
     const box = el => {
@@ -126,13 +130,14 @@ function geometry(scope: string): Geometry {
         if (Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x) > 0.5 && Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y) > 0.5) overlaps.push(label(el) + ' / ' + label(other));
       }
     }
-    return { targets: nodes.map(label), smallest: Math.round(minW * 10) / 10 + ' x ' + Math.round(minH * 10) / 10, short, clipped, overlaps, invisible, overflow: document.documentElement.scrollWidth > innerWidth };
+    return { targets: nodes.map(label), markdownActions: markdownActions.map(el => (el.dataset.streamdown || el.getAttribute('aria-label') || el.getAttribute('title') || 'button') + ': ' + Math.round(el.getBoundingClientRect().width) + ' x ' + Math.round(el.getBoundingClientRect().height)), smallest: Math.round(minW * 10) / 10 + ' x ' + Math.round(minH * 10) / 10, short, clipped, overlaps, invisible, overflow: document.documentElement.scrollWidth > innerWidth };
   })()`)
 }
 function collect(name: string, scope: string, into: string[], seen: Map<string, string>) {
   let g: Geometry
   try { g = geometry(scope) } catch (cause) { into.push(`${name}: ${String((cause as Error).message).match(/Evaluation error: ([^\\\n"]*)/)?.[1] ?? 'measure failed'}`); return }
   seen.set(name, `${g.targets.length} targets, smallest ${g.smallest}`)
+  for (const action of g.markdownActions) knownMarkdown.add(`${name}: ${action}`)
   for (const s of g.short) into.push(`${name}: below 44px: ${s}`)
   for (const s of g.clipped) into.push(`${name}: clipped: ${s}`)
   for (const s of new Set(g.overlaps)) into.push(`${name}: overlap: ${s}`)
@@ -256,6 +261,7 @@ afterAll(async () => { emulationSocket?.close(); browser?.close(); await stopFix
 const MAIN = `find('main')`
 const PLAN = `document.querySelector('[data-slot="plan-review"]')`
 const measured = new Map<string, Map<string, string>>()
+const knownMarkdown = new Set<string>()
 
 /** Open the plan review from /new: Plan first, a task, Plan task (the plan-mode.e2e.ts recipe). */
 function openPlanReview(width = 375) {
@@ -298,7 +304,7 @@ describe('B7 phone matrix', () => {
     visit(`/compare/${groupId}`, `findAll('button', 'Pick this one').length === 2`)
     collect('Compare', MAIN, failures, seen)
 
-    visit('/inbox', `document.querySelectorAll('[data-slot="todo-card"]').length === 2`)
+    visit('/inbox', `document.querySelector('[data-slot="todo-card"][data-id="b7-run"]')`)
     collect('Inbox', MAIN, failures, seen)
 
     visit('/new', `find('button', 'Start task') && find('radio', 'Plan first')`)
@@ -307,6 +313,9 @@ describe('B7 phone matrix', () => {
     collect('Plan review', PLAN, failures, seen)
     browser.press('Escape')
     until(`!${PLAN}`)
+    // The draft remembers Plan first; put it back so the next density's /new opens on Start.
+    read(`(() => { find('radio', 'Start').click(); return true })()`)
+    until(`find('button', 'Start task')`)
 
     visit('/skills', `find('link', /^${SKILL}/)`)
     collect('Skills', MAIN, failures, seen)
@@ -451,7 +460,7 @@ it.each(['light', 'dark'] as const)('small B7 text has composited contrast in %s
       ['github-issue', `/github/issues/${issueNumber}`, `find('button', /^Run agent on this/)`],
       ['automations', '/automations', `find('button', 'Test filter')`],
       ['compare', `/compare/${groupId}`, `findAll('button', 'Pick this one').length === 2`],
-      ['inbox', '/inbox', `document.querySelectorAll('[data-slot="todo-card"]').length === 2`],
+      ['inbox', '/inbox', `document.querySelector('[data-slot="todo-card"][data-id="b7-run"]')`],
       ['skills', `/skills?skill=${SKILL}`, `find('heading', ${q(SKILL)})`],
       ['workflows', `/workflows/${FLOW}`, `document.querySelector('[data-slot="wb-step"]')`],
     ] as const) {
@@ -476,6 +485,7 @@ it.each(['light', 'dark'] as const)('small B7 text has composited contrast in %s
 }, 240_000)
 
 it('records what the phone matrix measured', () => {
+  writeFileSync(join(artifacts, 'known-g36-g45-markdown-actions.json'), JSON.stringify([...knownMarkdown].sort(), null, 2))
   writeFileSync(join(artifacts, 'matrix.json'), JSON.stringify(Object.fromEntries([...measured].map(([d, m]) => [d, Object.fromEntries(m)])), null, 2))
   expect(measured.size).toBe(densities.length)
 })

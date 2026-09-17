@@ -137,6 +137,15 @@ function WorkflowsBuilder({ routeName }: { routeName: string | undefined }) {
   const [autoText, setAutoText] = useState('')
   const [confirmOverwrite, setConfirmOverwrite] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  // Neither confirm has a Radix trigger (overwrite opens on the server's 409), so closing one would
+  // drop keyboard focus on <body>; hand it back to the button that asked instead (#453 B7).
+  const saveButton = useRef<HTMLButtonElement>(null)
+  const deleteButton = useRef<HTMLButtonElement>(null)
+  const returnFocusTo = (button: { current: HTMLButtonElement | null }) => (event: Event) => {
+    if (!button.current?.isConnected) return
+    event.preventDefault()
+    button.current.focus()
+  }
   const [dragging, setDragging] = useState<DragItem | null>(null)
   // The step id (or CANVAS_ID) the pointer is over mid-drag — drives the "drop to insert"
   // indicator between cards, the affordance the legacy `.wb-gap` slots gave (#wb-drop-line).
@@ -356,7 +365,8 @@ function WorkflowsBuilder({ routeName }: { routeName: string | undefined }) {
           {/* ---- canvas ---------------------------------------------------------------- */}
           <section data-slot="wb-main" className="mx-auto w-full min-w-0 max-w-3xl flex-1">
             <div className="flex flex-wrap items-center gap-row">
-              <div className="flex min-w-0 flex-1 items-center gap-row">
+              {/* Below `md` the name takes its own row: five 44 px actions leave it no room beside them. */}
+              <div className="flex min-w-0 flex-1 basis-full items-center gap-row md:basis-auto">
                 <Input
                   ref={nameInput}
                   data-slot="wb-name"
@@ -370,12 +380,13 @@ function WorkflowsBuilder({ routeName }: { routeName: string | undefined }) {
                   {stepCountLabel(steps)}
                 </span>
               </div>
-              <div className="flex shrink-0 items-center gap-1.5">
+              <div className="flex shrink-0 flex-wrap items-center gap-1.5">
                 {savedFile ? (
                   <Button
                     type="button"
                     variant="danger-ghost"
                     size="sm"
+                    ref={deleteButton}
                     data-slot="wb-delete"
                     title="Delete the saved workflow file"
                     onClick={() => setConfirmDelete(true)}
@@ -428,6 +439,7 @@ function WorkflowsBuilder({ routeName }: { routeName: string | undefined }) {
                   type="button"
                   variant="contrast"
                   size="sm"
+                  ref={saveButton}
                   data-slot="wb-save"
                   disabled={save.isPending}
                   onClick={runSave}
@@ -646,7 +658,7 @@ function WorkflowsBuilder({ routeName }: { routeName: string | undefined }) {
 
       {/* Save-over confirm: the server answered 409 `exists` — legacy `confirm()`, as a dialog. */}
       <AlertDialog open={confirmOverwrite} onOpenChange={(open) => !open && setConfirmOverwrite(false)}>
-        <AlertDialogContent data-slot="wb-overwrite-dialog">
+        <AlertDialogContent data-slot="wb-overwrite-dialog" onCloseAutoFocus={returnFocusTo(saveButton)}>
           <AlertDialogHeader>
             <AlertDialogTitle>“{trimmedName}” already exists</AlertDialogTitle>
             <AlertDialogDescription>
@@ -668,7 +680,7 @@ function WorkflowsBuilder({ routeName }: { routeName: string | undefined }) {
       </AlertDialog>
 
       <AlertDialog open={confirmDelete} onOpenChange={(open) => !open && setConfirmDelete(false)}>
-        <AlertDialogContent data-slot="wb-delete-dialog">
+        <AlertDialogContent data-slot="wb-delete-dialog" onCloseAutoFocus={returnFocusTo(deleteButton)}>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete workflow “{trimmedName}”?</AlertDialogTitle>
             <AlertDialogDescription>
