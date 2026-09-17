@@ -200,6 +200,7 @@ HTTP API.
 | A `128 + signal` exit the runner did NOT cause names its signal | server unit | `claude-cli-runner.test.ts` and `pi-runner.test.ts` (#156) — the other half of `terminatedByXezar`, contract in AGENT_PROTOCOL.md | C |
 | pi records an output-cap stop and an empty turn | server unit | `core/pi-empty-turn.test.ts`, plus the `pi/empty-turn-output-cap` golden fixture replayed by `pi-ui-mapper.test.ts` (#164) | C |
 | pi extension dialogs (`approveTools`) are answered, never left blocking | server unit + integration | `core/pi-dialog.test.ts` (pure frame → ask card / response), `pi-runner.test.ts` "#369" block (ask card raised, answer routed by dialog id, autonomous `Deny`, unsupported dialog cancelled, cancel at close; the `notify` guard passes both ways), and the A-01 `approveTools` leg of `test/integration/mcp-real-clients.test.ts`, which drives a REAL pi + pi-mcp-adapter through `PiRunner` in both modes — not in any gate (#369) | C |
+| A task-spawned claude / pi / opencode client never receives the project's `xezar` MCP bridge entry, and a broken or absent MCP config never stops the run | server unit | `core/worktree-off-mcp-isolation.test.ts` (#342, MP-11) — three `the seam` cases, one per backend, assert the actual launch input each CLI is given (claude argv `--strict-mcp-config` + overlay, pi's `--mcp-config` overlay file, opencode's `OPENCODE_CONFIG_CONTENT`); the eleven control cases pin `run-mcp-isolation.ts` (other project servers survive, absent ≠ unreadable, the note never names a bridge nobody declared). Named break `worktree-off-inherits-xezar` (revert the three runner files) measured 5 red of 16. **Not covered: any live four-client reproduction** — the only executed reproduction of the ownership collision is pi, in #342 itself | P |
 
 ### 3.6 Directory sweep – nothing silently absent
 
@@ -864,14 +865,15 @@ quality:
 Nothing about the gate itself changed: same scope, same suites, same `thresholds.break` of 80,
 no file excluded. It was moved, not softened.
 
-**How the nightly run works, and why it is six jobs.** A GitHub job is hard-killed at **6 hours**,
+**How the nightly run works, and why it is nine jobs.** A GitHub job is hard-killed at **6 hours**,
 the run below is 3 h 40 min on an 18-core laptop at Stryker concurrency 4, and a `ubuntu-latest`
 runner has 4 cores – so `stryker.config.mjs`'s `min(4, availableParallelism() - 1)` resolves to 3
 there, on slower cores. A single scheduled job would not finish. So the workflow:
 
-- **plans** six disjoint slices of the scope (`npm run test:mutation:mcp:plan`,
-  `packages/xezar/mutation/shards.mjs`), reading the `mutate` globs out of `stryker.config.mjs`
-  so there is no second list of what the gate covers;
+- **plans** disjoint slices of the scope (`npm run test:mutation:mcp:plan`,
+  `packages/xezar/mutation/shards.mjs`), reading the `mutate` globs out of `stryker.config.mjs` so
+  there is no second list of what the gate covers, and balancing them on measured per-file cost
+  rather than byte size (see the 2026-09-17 incident below for why);
 - **runs** Stryker over each slice in its own job (`npm run test:mutation:mcp:shard`), with a
   config that differs from the gate's in one key: `thresholds.break: null`. A slice's score is
   not the gate's score (point 1 below), so no slice has a floor of its own;
@@ -981,6 +983,92 @@ prose: this section records the method and its cost, and each night's own HTML/J
 (`.local/mutation/mcp/`, uploaded as `mutation-report-<shard>`) is the current list. The three survivors that could have
 shipped a secret leak, a world-readable connection file or an unreadable-worktree ownership pass were
 #337, closed in #335.
+
+**Incident: byte-size balancing stopped predicting cost (#443, 2026-09-17).** Scheduled run
+[35175010173](https://github.com/qodeca/xezar/actions/runs/35175010173) on `main` at `fdd5b4e`
+(2026-09-17T02:35Z) was cancelled: five of six byte-balanced shards finished (3 h 04 min to 4 h 43
+min), and the sixth was still running when the job's 300-minute ceiling hit, at 07:36:06Z. The
+previous complete night, [35048569575](https://github.com/qodeca/xezar/actions/runs/35048569575)
+on `f330b2c` (2026-09-16), finished every shard in under 4 hours.
+
+Between the two nights, main gained PRs #533, #539, #541 and #542 — several hundred lines of new
+"fragile MCP–leader" tests (#532) that each exercise multiple MCP modules together (event journal,
+leader delivery, the event controller, the bridge) rather than one file each. Under
+`coverageAnalysis: 'perTest'`, a mutant's real cost is how many tests Stryker reruns to check it —
+`coveredBy.length` in its own JSON report — and those broad tests attached themselves to nearly
+every file in the scope, not only the ones with new test files of their own. Downloading both
+nights' shard reports and summing `coveredBy.length` per file shows the shape of it:
+`event-controller.ts` went from 32 003 to 178 734 (5.6×) with not one line of its own source or its
+own test file touched that night; `leader-delivery.ts` went from 17 834 to 124 301 (7.0×);
+`stall-monitor.ts` went from 0 (no covering tests at all) to 46 284. The scope-wide total measured
+this way was 384 511 the previous complete night and had already passed 1 155 719 across the five
+shards that DID report on the cancelled night (the sixth, cancelled, is not counted — its true total
+is higher still). Byte size, what the six shards were balanced on, never moved, so the balancer kept
+shipping the same split that was safe when it was drawn and had become badly wrong by the time it
+ran.
+
+**The fix has two parts, because either alone measured short against the incident's own numbers.**
+`packages/xezar/mutation/shards.mjs`'s `planShards` now balances on measured cost — the committed
+snapshot at [`docs/testing/mcp-mutation-shard-weights.json`](mcp-mutation-shard-weights.json), built
+from the `coveredBy` sums above — falling back to byte size, one file at a time, for anything the
+snapshot has not measured yet; both the `plan` job (building the matrix) and the `report` job
+(re-deriving the same plan to check nothing went missing) read the same committed file, so no new
+workflow permission or artifact was needed to keep them in lockstep. Re-running the incident's own
+numbers through the new balancer alone (still six shards) cuts the heaviest shard from 359 164 to
+206 620 — a 42% reduction, for no added job. `DEFAULT_SHARDS` also moves from 6 to 8: past eight, the
+single heaviest file (`event-controller.ts` at 178 734) floors whatever shard holds it regardless of
+shard count, so more shards stop helping. Combined, the heaviest shard in the new split is 178 734,
+versus 359 164 in the byte-balanced six-shard split that was actually running — roughly half the
+load, comfortably inside the 300-minute ceiling with real margin for the snapshot to go stale again.
+Nothing about the scope, the suites or the 80% floor changed; `thresholds.break` and the mutated
+globs are untouched.
+
+**The snapshot will go stale the same way byte size did**, just far more slowly, since it starts
+from a real measurement instead of an arbitrary proxy. Refresh it the same way the survivors
+starting list is refreshed (above): download a complete run's shard reports, sum `coveredBy.length`
+per file, and commit the result — sooner if a shard starts approaching the ceiling again, or after a
+PR that adds the kind of broad, multi-module test that caused this incident. Seven files in the
+committed snapshot are flagged `estimatedPaths`: they sat in the cancelled shard and their weights
+are carried over from the previous complete night rather than measured this one, so they are likely
+under-counted the same way every measured file here was found to be — refresh those first.
+
+**Incident: the eight-shard fix's own proof run was cancelled too (#443, 2026-09-17).** Dispatched
+proof run [35199363744](https://github.com/qodeca/xezar/actions/runs/35199363744) on branch
+`xez/148f449e` at `44cc047` (the eight-shard, measured-cost fix above) ended **CANCELLED**: job
+`Mutants 6` ran from 08:23:10Z to 13:23:48Z and hit the 300-minute ceiling; every other shard
+reported, from 1h32m (`Mutants 1`) to 4h54m (`Mutants 5`). The estimate's own caveat was right:
+`Mutants 6` held `tools/task-create.ts`, one of the seven `estimatedPaths` files whose weight was
+carried over from a previous night rather than measured on the incident night, and `Mutants 5` held
+`bridge.ts`, another of the seven. Both shards' non-estimated files summed to a nominal weight
+close to every OTHER shard's total (~127k–128k against a baseline of ~150k) — the wide spread in
+real time (1h49m–2h55m for shards with none of the seven files, against 4h54m and a cancellation
+for the two carrying `bridge.ts` and `tools/task-create.ts`) is attributable to those two files
+alone, not to anything else in their shards.
+
+**The fix raises those two files' weights, not the shard count first.** Back-calculating from the
+run's own wall-clock time against the baseline (no-estimated-file) shards' rate gives a lower bound
+of roughly 278 000 for `bridge.ts` and 287 000 for `tools/task-create.ts` — a lower bound only for
+the second, since its shard never finished and so never reported a real `coveredBy` sum. The
+committed snapshot now weights `bridge.ts` at 280 000 and `tools/task-create.ts` at 300 000, and the
+other five `estimatedPaths` files by the same method, more moderately: `operation-receipts.ts`
+190 000, `adapters/pi-link.ts` 100 000, `index.ts` 65 000, `project-catalogs.ts` 58 000,
+`adapters/claude-code.ts` 20 000. At those weights, `planShards`'s heaviest-first packing puts
+`bridge.ts` and `tools/task-create.ts` alone in their own shard, exactly the way it already isolates
+`event-controller.ts` (178 734) — no shard-pinning logic was added, only corrected data. `DEFAULT_SHARDS`
+also moves from 8 to 9, both for the extra shard the two new solo files need and to keep the
+remaining shards comfortably inside the ceiling: with the corrected weights the resulting split's
+heaviest shard is `tools/task-create.ts` alone at 300 000 (an estimated 3h37m at the slower,
+multi-file rate the baseline shards measured, or roughly 2h34m at the faster solo rate
+`event-controller.ts`'s own shard measured — either way, well clear of 300 minutes), and every other
+shard sits at roughly 227 000–228 000 (an estimated 2h44m–2h45m at the same baseline rate) — both
+comfortably under the "twice the fair share" ceiling `mutation-shards.test.ts` already enforces.
+
+**This is still an estimate, not a re-measurement**, because a shard that never reports never
+produces a real `coveredBy` sum to sum from. The next scheduled or dispatched run either confirms
+the correction — every shard reports, `tools/task-create.ts` finishes with real headroom — or shows
+these two files' true cost is still higher, in which case the next fix has real per-file numbers
+for both to work from for the first time. Refresh all seven `estimatedPaths` weights with real
+`coveredBy` sums the first time every shard reports in one run.
 
 ### 10.9 Re-measured on `main` after #311 – the floor is green (#352)
 

@@ -385,6 +385,8 @@ describe('PlanReview — Save as chain', () => {
     expect(confirm).toBeTruthy()
     expect(sent.filter((r) => r.method === 'POST')).toHaveLength(1)
 
+    // #453 B7 / T-7: replacing a saved chain is irreversible, so the confirm is a danger action.
+    expect(screen.getByRole('button', { name: 'Overwrite' }).classList.contains('bg-danger')).toBe(true)
     fireEvent.click(screen.getByRole('button', { name: 'Overwrite' }))
 
     await waitFor(() => {

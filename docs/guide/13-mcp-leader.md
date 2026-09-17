@@ -166,7 +166,7 @@ In a running pi, `/reload` rebuilds the extension runtime. Because reload also t
 
 **Restart and compaction recovery.** After xezar, pi, `/reload`, `/new`, `/resume`, `/fork` or `/clone` rebuilds the runtime, call a real tool, check `status`, attach with a new operation ID, and `read` with no cursor. Page, deduplicate, reconcile and acknowledge before relying on a new push.
 
-**Tips and tricks.** Any pi started in this project with the `keep-alive` entry can hold the project's one leader connection, so exit an unintended owner before switching clients. If `approveTools` covers a xezar tool, answer the approval in your pi window. The leader extension does not answer it, and a headless driver that does not answer can leave pi waiting indefinitely.
+**Tips and tricks.** Any pi **you** start in this project with the `keep-alive` entry can hold the project's one leader connection, so exit an unintended owner before switching clients. A pi that xezar starts for a task is not one of them — see "To keep your leader while tasks run in the same folder". If `approveTools` covers a xezar tool, answer the approval in your pi window. The leader extension does not answer it, and a headless driver that does not answer can leave pi waiting indefinitely.
 
 ### OpenCode
 
@@ -278,13 +278,45 @@ verdict. Replay is at-least-once within retained durable state, bounded by the r
 limits below; a gap is a recovery state, not delivery proof, until its current state has been
 reconciled.
 
+## To keep your leader while tasks run in the same folder
+
+A task xezar starts is not the leader, and since 0.16.0 no task can take the leader's place.
+
+Every task xezar starts — Claude Code, Codex, pi or OpenCode — is now started with your `xezar`
+MCP entry switched off for that one client. Nothing in your own files changes: xezar never edits
+`.mcp.json`, `.pi/mcp.json`, `opencode.json` or any config in your home folder. It passes the
+client a one-run instruction to leave that single server alone, and takes it away again when the
+task ends.
+
+This matters most when a task runs **in the project folder itself** rather than in its own working
+copy (the composer's **Worktree** switch turned off). Before 0.16.0 such a task connected your
+`xezar` entry like any other client, and because a `keep-alive` entry connects the moment the
+client starts — no prompt, no tool call — the task held the project's one leader slot for as long
+as it ran. Your own leader session was then refused with "project occupied" until the task
+finished. Tasks that run in their own working copy get the same treatment, so the behaviour no
+longer depends on which switch you used.
+
+What stays as it was: every other MCP server your project declares still loads in a task, and a
+task's own model still sees those tools. Two details differ per client:
+
+- **Claude Code.** A task now sees only the MCP servers your project's own `.mcp.json` declares.
+  Servers you added for yourself in `~/.claude.json` no longer load inside a task — the same rule
+  Codex tasks have followed since 0.13.0. Declare a server in the project file to use it in tasks.
+- **pi and OpenCode.** A server named `xezar` is always switched off in a task, even if the entry
+  lives in a file xezar does not read, so it may appear as "disabled" in that client's server list
+  during a task. Give an unrelated server a different name if you want it in tasks.
+
+If a config file cannot be read at all — a syntax error, a permission problem — the task still
+starts. It says so once in the task's transcript rather than failing, and for Claude Code it starts
+with no project MCP servers until the file is fixed.
+
 ## To understand the limits
 
 - The client and cockpit must be on the same machine, and MCP is unavailable in hosted mode. An HTTP URL for a remote cockpit is not an MCP endpoint.
 - One client owns the project at a time. There is no **Force takeover** or **Disconnect other client** control. End the owning client normally before connecting another.
 - Attachment targets an existing client session. It does not start a leader agent process or establish GitHub authorization.
 - A blocked or unconfirmed push is not proof that the model acted. Read the status and journal, then verify resulting task state.
-- A xezar-launched Codex task is not the leader: its per-thread isolation disables xezar's bridge, home MCP servers, plugins and apps. Configure the leader in your own client session.
+- A xezar-launched task is never the leader, on any backend: Codex's per-thread isolation disables xezar's bridge, home MCP servers, plugins and apps, and Claude Code, pi and OpenCode tasks have their own seam that switches the `xezar` entry off for that one client. Configure the leader in your own client session. See "To keep your leader while tasks run in the same folder".
 - Setup commands here match the shipped settings guidance. Vendor-client behavior has not been newly live-tested for this guide; the pi adapter version is a recorded compatibility point, and Codex's explicit `--remote unix://` path remains conditional because the recorded evidence is mixed.
 
 ## Related settings / env / config

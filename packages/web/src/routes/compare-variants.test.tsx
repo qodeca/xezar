@@ -255,6 +255,24 @@ describe('✔ Pick this one', () => {
     expect(post?.body).toEqual({ runId: 'va' })
   })
 
+  // Radix hands focus back only to its own trigger, and this dialog has none: before the
+  // `useReturnFocus` hook, "Keep comparing" left keyboard focus on <body> (B7 review NB-3).
+  it('backing out hands keyboard focus back to the button that opened the confirm', async () => {
+    stubFetch(group(variant('A', 'done'), variant('B', 'done')))
+    renderCompare()
+    await waitForColumns(2)
+
+    const opener = pickButtons()[0] as HTMLButtonElement
+    opener.focus()
+    fireEvent.click(opener)
+    await waitFor(() =>
+      expect(document.querySelector('[data-slot="alert-dialog-content"]')!.contains(document.activeElement)).toBe(true))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Keep comparing' }))
+    await waitFor(() => expect(document.querySelector('[data-slot="alert-dialog-content"]')).toBeNull())
+    await waitFor(() => expect(document.activeElement).toBe(opener))
+  })
+
   it('backing out of the confirm posts nothing', async () => {
     const sent = stubFetch(group(variant('A', 'done'), variant('B', 'done')))
     renderCompare()

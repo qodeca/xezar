@@ -1,5 +1,5 @@
 import { QueryClientProvider } from '@tanstack/react-query'
-import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -205,6 +205,17 @@ describe('the catalog list', () => {
     })
     expect(rowNames()).toEqual(['xez-review'])
     expect(document.querySelector('[data-slot="bookmarklets-row"]')).not.toBeNull()
+  })
+
+  it('#453 B7 / T-7: the catalog search keeps its accessible name, and a miss says "Nothing matches."', async () => {
+    serve()
+    renderAt('/skills')
+    await waitFor(() => expect(rowNames()).toHaveLength(3))
+
+    const search = screen.getByRole('textbox', { name: 'Filter skills' })
+    fireEvent.change(search, { target: { value: 'no-such-skill-anywhere' } })
+    expect(rowNames()).toEqual([])
+    expect(document.querySelector('[data-slot="skill-rows"]')?.textContent).toBe('Nothing matches.')
   })
 
   it('an empty catalog explains where skills come from, and the panel is the fallback surface', async () => {

@@ -13,6 +13,7 @@ import type {
 } from './agent-runner.js';
 import { foreignSignalExitMessage, isSignalTerminationExit, trackChildExit } from './agent-runner.js';
 import { buildChildEnv } from './agent-env.js';
+import { piMcpIsolation, runMcpIsolationNote, writeMcpOverlay } from './run-mcp-isolation.js';
 import { readNdjson } from './ndjson.js';
 import { answerPiDialog, cancelPiDialog, denyPiDialog, readPiDialog, type PiDialog } from './pi-dialog.js';
 import { createPiUiState, mapPiRpcMessage, piTurnStarted } from './pi-ui-mapper.js';
@@ -68,10 +69,32 @@ export class PiRunner implements AgentRunner {
     onEvent?: (event: AgentEvent) => void,
     opts: SessionOptions = {},
   ): AgentSession {
-    const child = nodeSpawn(this.bin, buildPiArgs(spec), {
+    // What this run may reach over MCP is decided once, before the child exists (#342): the
+    // project's servers keep working, xezar's own leader bridge is switched off for this client.
+    // `spec.env` carries `PI_CODING_AGENT_DIR` for a stored pi agent account (`profileEnv`), so the
+    // env the child actually spawns with is what must resolve the agent home — not the host default.
+    const isolation = piMcpIsolation(spec.cwd, { ...process.env, ...spec.env });
+    const isolationNote = runMcpIsolationNote('pi', isolation);
+    if (isolationNote) onEvent?.({ type: 'note', message: isolationNote });
+    const mcpOverlay = writeMcpOverlay('mcp.json', isolation.overlay);
+    if (!mcpOverlay) {
+      onEvent?.({
+        type: 'note',
+        message: 'pi: could not write this run\'s private MCP overlay, so the run starts without it '
+          + 'and may load xezar\'s leader bridge; check that $TMPDIR is writable (#342).',
+      });
+    }
+
+    const child = nodeSpawn(this.bin, buildPiArgs(spec, mcpOverlay?.path), {
       cwd: spec.cwd,
       env: buildChildEnv({ backend: this.backend, extraEnv: spec.env }),
     });
+    // The overlay only has to outlive the child. Both events are wired because a spawn that
+    // never starts emits `error`+`close` and no `exit`; `cleanup` is idempotent.
+    if (mcpOverlay) {
+      child.once('exit', mcpOverlay.cleanup);
+      child.once('close', mcpOverlay.cleanup);
+    }
     let open = true;
     let settled = true;
     let timedOut = false;
@@ -459,8 +482,15 @@ export class PiRunner implements AgentRunner {
   }
 }
 
-export function buildPiArgs(spec: AgentRunSpec): string[] {
+/**
+ * `mcpOverlayPath` is the #342 seam: the adapter's `--mcp-config` flag substitutes for the pi
+ * agent directory's own `mcp.json` in its six-file chain, and the file xezar writes there carries
+ * that file forward plus a `disabled: true` marker for xezar's own bridge. It is optional so the
+ * pure argv shape stays testable without a temp file; `startSession` always supplies it.
+ */
+export function buildPiArgs(spec: AgentRunSpec, mcpOverlayPath?: string): string[] {
   const args = ['--mode', 'rpc'];
+  if (mcpOverlayPath) args.push('--mcp-config', mcpOverlayPath);
   if (spec.sessionId) args.push(spec.resume ? '--session' : '--session-id', spec.sessionId);
   if (spec.systemPrompt) args.push('--append-system-prompt', spec.systemPrompt);
   if (spec.model) args.push('--model', spec.model);

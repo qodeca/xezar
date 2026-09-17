@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeftIcon, DownloadIcon, RefreshCwIcon, SparklesIcon, TriangleAlertIcon, ZapIcon } from 'lucide-react'
+import { ArrowLeftIcon, DownloadIcon, RefreshCwIcon, SearchIcon, SparklesIcon, TriangleAlertIcon, ZapIcon } from 'lucide-react'
 import { useState } from 'react'
 import { useSearchParams } from 'react-router'
 
@@ -70,7 +70,7 @@ function SkillsCatalog() {
     onSuccess: (catalog) => {
       // The POST answers the merged catalog — seed the shared query instead of refetching.
       queryClient.setQueryData(queryKeys.skills, catalog)
-      toast('Team skills refreshed.')
+      toast('Team skills refreshed')
     },
     onError: (error) => toast(error.message, { tone: 'danger' }),
   })
@@ -118,22 +118,29 @@ function SkillsCatalog() {
           param === null ? 'flex' : 'hidden md:flex',
         )}
       >
-        <div className="flex shrink-0 items-center gap-2 p-3 pb-2">
-          <Input
-            data-slot="skills-filter"
-            placeholder="Filter skills…"
-            aria-label="Filter skills"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            className="h-8 text-[13px]"
-          />
+        <div className="flex shrink-0 items-center gap-row p-stack pb-row">
+          {/* The one search field (G-12): `Input` with a leading icon; 44 px on a phone. */}
+          <div className="relative min-w-0 flex-1">
+            <SearchIcon
+              aria-hidden="true"
+              className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-soft-foreground"
+            />
+            <Input
+              data-slot="skills-filter"
+              placeholder="Filter skills…"
+              aria-label="Filter skills"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              className="h-8 pl-8 md:text-[13px]"
+            />
+          </div>
           <button
             type="button"
             data-slot="skills-refresh"
             title="git fetch the team skills repos"
             disabled={refresh.isPending}
             onClick={() => refresh.mutate()}
-            className="flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-border bg-card px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-55"
+            className="flex h-8 min-h-tap shrink-0 items-center gap-1.5 rounded-md border border-border bg-card px-2.5 text-xs font-medium text-muted-foreground transition-colors outline-none hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-55 md:min-h-0"
           >
             <RefreshCwIcon
               aria-hidden="true"
@@ -150,7 +157,7 @@ function SkillsCatalog() {
             shown.map((skill) => <SkillRow key={skill.path} skill={skill} active={selection === skill.name} />)
           ) : (
             <li className="px-2.5 py-2 text-xs leading-relaxed text-soft-foreground">
-              {skills.length > 0 ? '(no skills match)' : <SkillEmptyHint />}
+              {skills.length > 0 ? 'Nothing matches.' : <SkillEmptyHint />}
             </li>
           )}
         </ul>
@@ -163,18 +170,18 @@ function SkillsCatalog() {
               data-slot="import-skills-row"
               aria-current={selection === IMPORT ? 'page' : undefined}
               className={cn(
-                'mb-1 flex flex-col gap-0.5 rounded-md px-2.5 py-2 transition-colors hover:bg-muted',
+                ROW, 'mb-1',
                 selection === IMPORT && 'bg-muted',
               )}
             >
-              <span className="flex min-w-0 items-center gap-2">
+              <span className="flex min-w-0 items-center gap-row">
                 <DownloadIcon aria-hidden="true" className="size-3.5 shrink-0 text-primary" />
                 <span className="min-w-0 truncate text-[13px] font-medium">Manage skills</span>
                 <span className="ml-auto shrink-0 rounded-full border border-border px-2 py-px font-mono text-[10.5px] text-soft-foreground">
                   xezar-skills
                 </span>
               </span>
-              <span className="pl-[22px] text-xs text-soft-foreground">
+              <span className="pl-5.5 text-xs text-soft-foreground">
                 Choose which xezar-skills appear in your catalog.
               </span>
             </Link>
@@ -184,18 +191,18 @@ function SkillsCatalog() {
             data-slot="bookmarklets-row"
             aria-current={selection === BOOKMARKLETS ? 'page' : undefined}
             className={cn(
-              'flex flex-col gap-0.5 rounded-md px-2.5 py-2 transition-colors hover:bg-muted',
+              ROW,
               selection === BOOKMARKLETS && 'bg-muted',
             )}
           >
-            <span className="flex min-w-0 items-center gap-2">
+            <span className="flex min-w-0 items-center gap-row">
               <ZapIcon aria-hidden="true" className="size-3.5 shrink-0 text-primary" />
               <span className="min-w-0 truncate text-[13px] font-medium">Run from GitHub</span>
               <span className="ml-auto shrink-0 rounded-full border border-border px-2 py-px font-mono text-[10.5px] text-soft-foreground">
                 bookmarklets
               </span>
             </span>
-            <span className="pl-[22px] text-xs text-soft-foreground">
+            <span className="pl-5.5 text-xs text-soft-foreground">
               One-click skill launch from any GitHub PR or issue.
             </span>
           </Link>
@@ -207,11 +214,11 @@ function SkillsCatalog() {
         data-slot="skills-detail"
         className={cn('min-w-0 flex-1 flex-col', param === null ? 'hidden md:flex' : 'flex')}
       >
-        <div className="min-w-0 flex-1 px-4 py-4 md:px-7 md:py-5">
+        <div className="min-w-0 flex-1 p-4 md:p-section">
           <Link
             to="/skills"
             data-slot="skills-back"
-            className="mb-3 inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground md:hidden"
+            className="mb-row inline-flex min-h-tap items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground md:hidden"
           >
             <ArrowLeftIcon aria-hidden="true" className="size-3.5" />
             Back to the list
@@ -241,6 +248,11 @@ function SkillsCatalog() {
   )
 }
 
+/** A catalog row (skills, and the two pinned panels): a 44 px target on a phone, the cockpit's
+ *  `focus-visible` ring everywhere (#453 B7). */
+const ROW =
+  'flex min-h-tap flex-col justify-center gap-0.5 rounded-md px-2.5 py-2 transition-colors outline-none hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/50 md:min-h-0'
+
 function SkillRow({ skill, active }: { skill: Skill; active: boolean }) {
   const project = isProjectSkill(skill)
   return (
@@ -252,11 +264,11 @@ function SkillRow({ skill, active }: { skill: Skill; active: boolean }) {
         data-project={project ? 'true' : undefined}
         aria-current={active ? 'page' : undefined}
         className={cn(
-          'flex flex-col gap-0.5 rounded-md px-2.5 py-2 transition-colors hover:bg-muted',
+          ROW,
           active && 'bg-muted',
         )}
       >
-        <span className="flex min-w-0 items-center gap-2">
+        <span className="flex min-w-0 items-center gap-row">
           <SparklesIcon
             aria-hidden="true"
             className={cn('size-3.5 shrink-0', project ? 'text-violet' : 'text-soft-foreground')}
@@ -273,7 +285,7 @@ function SkillRow({ skill, active }: { skill: Skill; active: boolean }) {
           <SkillSourceTag source={skill.source} className="ml-auto" />
         </span>
         {skill.description ? (
-          <span className="line-clamp-2 pl-[22px] text-xs text-soft-foreground">{skill.description}</span>
+          <span className="line-clamp-2 pl-5.5 text-xs text-soft-foreground">{skill.description}</span>
         ) : null}
       </Link>
     </li>

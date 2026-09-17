@@ -6,7 +6,8 @@ import { availableParallelism } from 'node:os'
 // It was the `release` / `release-prep` workflows' first check step until 2026-09-12; that step
 // was removed because a release-only gate gets its first real exercise at the most expensive
 // moment (#375) and its repair lives in somebody else's PR. **It runs nightly against `main`** in
-// `.github/workflows/mutation.yml` (#377), split across six jobs by `mutation/shards.mjs`; each
+// `.github/workflows/mutation.yml` (#377), split across jobs by `mutation/shards.mjs`, balanced on
+// measured per-file cost (#443) rather than byte size; each
 // job runs `mutation/stryker.shard.config.mjs` (this file with no `break`), and
 // `mutation/aggregate.mjs` reads `mutate` and `thresholds.break` from HERE – this file is the only
 // place the scope and the floor are written. The scope and the floor below are unchanged.

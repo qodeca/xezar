@@ -247,14 +247,72 @@ describe('/automations with the capability on', () => {
     expect(screen.getByText(/Scheduler scheduled/)).toBeTruthy()
   })
 
+  // The phone top bar already says "Automations", so the list's own title repeated it and cost a
+  // line of the first screen; the Git page's spelling keeps it for screen readers (B7 review NB-2).
+  // The sub-page titles name something the top bar does not, so they stay visible.
+  it('the list title is screen-reader-only on a phone; the sub-page titles stay visible', async () => {
+    stubFetch()
+    renderAt('/automations')
+    await waitFor(() => expect(rows()).toHaveLength(2))
+
+    const listTitle = screen.getByRole('heading', { level: 1 })
+    expect(listTitle.textContent).toBe('Automations')
+    expect(listTitle.className).toContain('sr-only')
+    expect(listTitle.className).toContain('md:not-sr-only')
+
+    cleanup()
+    stubFetch()
+    renderAt('/automations/new')
+    const subTitle = await screen.findByRole('heading', { level: 1 })
+    expect(subTitle.textContent).toBe('New automation')
+    expect(subTitle.className).not.toContain('sr-only')
+  })
+
   it('an empty list explains the create-paused-then-enable sequence instead of showing nothing', async () => {
     stubFetch({ automations: [] })
     renderAt('/automations')
 
-    await screen.findByText(
-      'No automations yet. Create one paused, test its bounded filter, then enable it from a current-time baseline.',
-    )
+    await screen.findByText('No automations yet')
+    expect(
+      screen.getByText('Create one paused, test its bounded filter, then enable it from a current-time baseline.'),
+    ).toBeTruthy()
     expect(rows()).toHaveLength(0)
+  })
+})
+
+describe('#453 B7 honest states', () => {
+  it('a list that fails to load is an error, never an empty list', async () => {
+    stubFetch()
+    const inner = globalThis.fetch
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) =>
+      String(input) === '/api/v1/automations' ? jsonResponse({ error: 'scheduler state unreadable' }, 500) : inner(input, init)))
+    renderAt('/automations')
+
+    await screen.findByText('Could not load automations')
+    expect(screen.getByText(/scheduler state unreadable/)).toBeTruthy()
+    expect(screen.queryByText('No automations yet')).toBeNull()
+    expect(rows()).toHaveLength(0)
+  })
+
+  it('editing an id the answered list does not hold says “not found”, not “loading” forever', async () => {
+    stubFetch()
+    renderAt('/automations/a-gone')
+
+    await screen.findByText('Automation not found')
+    expect(screen.queryByText('Loading automation…')).toBeNull()
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Edit automation')
+  })
+
+  // The log endpoint answers 200 with no records for an unknown id, so without the list guard the
+  // page said "No checks have run yet." for an automation that does not exist (B7 review NB-1).
+  it('the log of an id the answered list does not hold says “not found”, never “no checks have run yet”', async () => {
+    stubFetch()
+    renderAt('/automations/a-gone/log')
+
+    await screen.findByText('Automation not found')
+    expect(screen.queryByText('No checks have run yet.')).toBeNull()
+    expect(screen.queryByText('Loading automation…')).toBeNull()
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Execution log')
   })
 })
 
@@ -314,9 +372,10 @@ describe('/automations/new', () => {
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Never saved' } })
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
 
-    await screen.findByText(
-      'No automations yet. Create one paused, test its bounded filter, then enable it from a current-time baseline.',
-    )
+    await screen.findByText('No automations yet')
+    expect(
+      screen.getByText('Create one paused, test its bounded filter, then enable it from a current-time baseline.'),
+    ).toBeTruthy()
     expect(posts(sent, '/api/v1/automations')).toHaveLength(0)
   })
 })

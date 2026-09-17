@@ -369,6 +369,35 @@ const postedBody = () => requests.find((r) => r.method === 'POST' && r.url === '
 
 // ---- the hero surface -------------------------------------------------------------------------
 
+describe('#453 B7 / T-7 one submission, one task', () => {
+  it('a double click on Start task while the POST is in flight starts ONE task', async () => {
+    serve()
+    const inner = globalThis.fetch
+    let release!: () => void
+    const held = new Promise<void>((resolve) => { release = resolve })
+    let posts = 0
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === '/api/v1/runs' && init?.method === 'POST') {
+        posts += 1
+        await held
+      }
+      return inner(input, init)
+    }))
+    renderNewTask()
+    await pillReady()
+    fireEvent.change(textarea(), { target: { value: 'Fix the flaky test' } })
+
+    const start = screen.getByRole('button', { name: 'Start task' })
+    fireEvent.click(start)
+    fireEvent.click(start)
+    fireEvent.keyDown(textarea(), { key: 'Enter', metaKey: true })
+    await waitFor(() => expect(posts).toBe(1))
+    release()
+    await waitFor(() => expect(screen.queryByTestId('elsewhere')).not.toBeNull())
+    expect(posts).toBe(1)
+  })
+})
+
 describe('the hero surface', () => {
   it('renders the mockup hero: title, subtitle, twinkles, and focus lands in the textarea', async () => {
     serve()

@@ -8,8 +8,14 @@ import {
   visibleProviderAuthIncidents,
 } from '@/lib/provider-auth-alert'
 import { parseProviderStatusResponse } from '@/lib/provider-status'
+import { cn } from '@/lib/utils'
 
 import { StatusDot } from './status-dot'
+
+/** The banner's one action: a text link that is a 44 px target on a phone (#453 B7) and the
+ *  cockpit's `focus-visible` ring (G-06). */
+const LINK =
+  'ml-auto inline-flex min-h-tap shrink-0 items-center rounded-sm font-medium underline underline-offset-4 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 md:min-h-0'
 
 interface ProviderBannerProps {
   status: ProviderStatusResponse | undefined
@@ -40,7 +46,7 @@ export function ProviderBanner({
       <div
         data-slot="provider-banner"
         role="alert"
-        className="flex min-h-10 items-center gap-2 border-b border-border bg-destructive/10 px-section text-sm text-foreground"
+        className="flex min-h-10 flex-wrap items-center gap-x-row gap-y-1 border-b border-border bg-danger/10 px-4 py-1 text-sm text-foreground md:px-section"
       >
         <StatusDot tone="danger" />
         <span>
@@ -49,7 +55,7 @@ export function ProviderBanner({
         </span>
         <Link
           to="/settings/agents#providers"
-          className="ml-auto shrink-0 font-medium underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className={LINK}
         >
           Open agent settings
         </Link>
@@ -57,7 +63,7 @@ export function ProviderBanner({
           type="button"
           aria-label="Dismiss provider authentication alert"
           onClick={() => onDismissAuthFailures(incidents)}
-          className="shrink-0 rounded-sm p-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="inline-flex min-h-tap min-w-tap shrink-0 items-center justify-center rounded-sm p-1 text-muted-foreground outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 md:min-h-0 md:min-w-0"
         >
           <XIcon className="size-4" aria-hidden="true" />
         </button>
@@ -84,13 +90,13 @@ export function ProviderBanner({
     <div
       data-slot="provider-banner"
       role="status"
-      className="flex min-h-10 items-center gap-2 border-b border-border bg-muted/50 px-section text-sm text-muted-foreground"
+      className="flex min-h-10 flex-wrap items-center gap-x-row gap-y-1 border-b border-border bg-muted/50 px-4 py-1 text-sm text-muted-foreground md:px-section"
     >
       <StatusDot tone={uncertain ? 'danger' : 'pending'} />
       <span>{message}</span>
       <Link
         to="/settings/agents#providers"
-        className="ml-auto shrink-0 font-medium text-foreground underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className={cn(LINK, 'text-foreground')}
       >
         Configure providers
       </Link>
