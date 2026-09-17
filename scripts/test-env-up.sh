@@ -58,6 +58,11 @@ BUILD_INPUT_PATHS="packages/contract/src packages/contract/package.json packages
 # `claude` login and reaches no network — the whole point for CI/e2e.
 export XEZ_DRY_RUN=1
 
+# A test server launched by a task inherits the caller's task wiring. It must never become a
+# child participant in that task: the dry-run mock writes handoff/follow-up markers when those
+# variables exist. These are launch-only inputs, so they do not affect reuse semantics.
+unset XEZ_HANDOFF_FILE XEZ_TODOS_FILE XEZ_TASK_ID
+
 # The real CLI writes workspace state at boot (~/.xezar migrations + project
 # registration) — pin XEZ_HOME under .local/qa so a test boot never touches the
 # developer's real ~/.xezar. Kept stable (not per-boot) so the reuse path

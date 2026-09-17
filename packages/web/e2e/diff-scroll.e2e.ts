@@ -86,6 +86,13 @@ function buildFixtureRepo(dir: string): void {
   git(['init', '-q', '-b', 'main'])
   git(['config', 'user.email', 'e2e@example.com'])
   git(['config', 'user.name', 'xezar e2e'])
+  // `fixtureServeEnv` pins `HOME` inside this same directory (`<dir>/home`), so that real,
+  // un-mocked tools it probes (opencode, gh) can self-provision without touching the developer's
+  // machine. Those tools keep writing into it for as long as the server runs — an opencode
+  // binary install landed there once mid-run, growing the changeset by 18 files between the
+  // count taken at boot and the one the browser later rendered. `home/` is never part of the
+  // changeset this spec builds, so it is excluded rather than measured.
+  writeFileSync(join(dir, '.gitignore'), 'home/\n', 'utf8')
   mkdirSync(join(dir, 'src'), { recursive: true })
   const write = (index: number, tag: string) =>
     writeFileSync(
