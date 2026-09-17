@@ -121,13 +121,16 @@ describe('guide 13 — MCP project leader', () => {
         { attempts: 80 },
       )
     } catch (cause) {
-      // Anchor the capture on the "Connection status" section itself, not the top of the page:
-      // round 2's bare `bodyText().slice(0, 2000)` never reached this far down — the nav plus the
-      // four full "One-time setup" client sections above it already exceed 2000 characters, so
-      // every round-2 capture only ever showed page furniture, never the panel actually being read.
+      // Anchor on the LAST "Connection status" occurrence, not the first: the per-client
+      // "One-time setup" notes for Claude Code and Codex both name "Connection status" in their
+      // own prose (mcp-connection-section.tsx lines 123, 179) well before the actual heading at
+      // line 471, and the first attempt at this capture (#579 round 3, run 35263083541) anchored
+      // on one of those earlier mentions and printed client-setup prose instead of the panel
+      // under test. The real heading is the only occurrence after it — nothing later on the page
+      // repeats the phrase.
       const body = browser.bodyText()
-      const anchor = body.indexOf('Connection status')
-      const near = anchor === -1 ? body.slice(0, 2000) : body.slice(anchor, anchor + 2000)
+      const anchor = body.lastIndexOf('Connection status')
+      const near = anchor === -1 ? body.slice(0, 2000) : body.slice(anchor, anchor + 3000)
       throw new Error(`xezar e2e: unattached-state text missing; page text near "Connection status" was: ${near}`, {
         cause,
       })
