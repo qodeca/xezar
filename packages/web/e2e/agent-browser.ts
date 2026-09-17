@@ -57,6 +57,8 @@ export function readTestEnv(): EnvDescriptor {
  *
  * The shared test env pins the same variable under `.local/qa/xez-home`
  * (`scripts/test-env-up.sh`); this is that rule for the specs that boot their own server.
+ * `HOME` is pinned too: the product deliberately includes user-scoped skills in the effective
+ * catalog, so `XEZ_HOME` alone would leave a spec reading skills from the developer's machine.
  */
 export function fixtureServeEnv(
   dataRoot: string,
@@ -68,6 +70,7 @@ export function fixtureServeEnv(
     // two together, and a XEZ_DRY_RUN without XEZ_HOME beside it is exactly the mistake it
     // exists to catch.
     XEZ_DRY_RUN: '1', XEZ_HOME: resolve(dataRoot, '.xez-home'),
+    HOME: resolve(dataRoot, 'home'),
     // A fixture repo must hold exactly the skills the fixture wrote. xezar-skills updates
     // are default-on (AGENTS.md § Zero config), so a boot inside the six-hour window installs the
     // whole `xez-*` collection INTO the fixture and every "these are the project skills"

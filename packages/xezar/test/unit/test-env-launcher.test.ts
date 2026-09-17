@@ -58,9 +58,14 @@ printf '{"name":"zod"}' > node_modules/zod/package.json
 cat > packages/xezar/dist/index.js <<'EOF'
 const http = require('node:http');
 const port = Number(process.argv[process.argv.indexOf('--port') + 1]);
+const taskEnv = JSON.stringify({
+  handoff: process.env.XEZ_HANDOFF_FILE ?? null,
+  todos: process.env.XEZ_TODOS_FILE ?? null,
+  taskId: process.env.XEZ_TASK_ID ?? null,
+});
 http.createServer((req, res) => {
-  res.writeHead(200, { 'content-type': req.url === '/api/health' ? 'application/json' : 'text/html' });
-  res.end(req.url === '/api/health' ? '{"ok":true}' : '<!doctype html>');
+  res.writeHead(200, { 'content-type': req.url === '/api/health' || req.url === '/api/task-env' ? 'application/json' : 'text/html' });
+  res.end(req.url === '/api/health' ? '{"ok":true}' : req.url === '/api/task-env' ? taskEnv : '<!doctype html>');
 }).listen(port, '127.0.0.1');
 EOF
 printf '<!doctype html>' > packages/xezar/web/dist/index.html
@@ -132,6 +137,32 @@ test('reuses an instance whose sources were last touched inside the boot second'
 
   spawnSync('/bin/sh', [down], { encoding: 'utf8', env, timeout: 20_000 });
   launchedPids.delete(first.app.pid);
+});
+
+test('launcher strips inherited task-control variables before starting the shared server', { timeout: 60_000 }, async () => {
+  const fixture = makeFixture(hasSetsid);
+  const env = {
+    ...process.env,
+    PATH: fixture.path,
+    TEST_ENV_CACHE_TTL_SECONDS: '600',
+    XEZ_HANDOFF_FILE: '/sentinel/handoff.md',
+    XEZ_TODOS_FILE: '/sentinel/todos.json',
+    XEZ_TASK_ID: 'sentinel-task',
+  };
+  const up = join(fixture.root, 'scripts/test-env-up.sh');
+  const down = join(fixture.root, 'scripts/test-env-down.sh');
+
+  const cold = spawnSync('/bin/sh', [up], { cwd: tmpdir(), encoding: 'utf8', env, timeout: 20_000 });
+  assert.equal(cold.status, 0, cold.stderr);
+  const started = descriptor(fixture.root);
+  launchedPids.add(started.app.pid);
+
+  const taskEnv = await fetch(`${started.baseUrl}/api/task-env`).then((response) => response.json());
+  assert.deepEqual(taskEnv, { handoff: null, todos: null, taskId: null });
+
+  const stopped = spawnSync('/bin/sh', [down], { encoding: 'utf8', env, timeout: 20_000 });
+  assert.equal(stopped.status, 0, stopped.stderr);
+  launchedPids.delete(started.app.pid);
 });
 
 for (const withSetsid of [true, false]) {
