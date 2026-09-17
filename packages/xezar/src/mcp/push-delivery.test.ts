@@ -344,7 +344,7 @@ const okResult = (result: McpToolResult): McpToolResult => {
 };
 
 const auditActions = (dataDir: string): string[] => {
-  const path = join(dataDir, 'mcp-audit.ndjson');
+  const path = join(dataDir, 'audit.ndjson');
   if (!existsSync(path)) return [];
   return readFileSync(path, 'utf8').split('\n').filter(Boolean).map((line) => (JSON.parse(line) as { action: string }).action);
 };

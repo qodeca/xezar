@@ -3,7 +3,7 @@ import { appendFileSync, chmodSync, mkdirSync, mkdtempSync, readdirSync, readFil
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { auditEntrySchema, type AuditEntry } from '@qodeca/xezar-contract';
+import { auditActionRecordSchema, type AuditActionRecord } from '@qodeca/xezar-contract';
 import {
   AuditRejection,
   AuditTrail,
@@ -17,6 +17,8 @@ import {
 /**
  * #102 — the audit trail. The four acceptance cases are the first four `describe` blocks; the rest
  * pin the guarantees they lean on (server-derived origin, no free text, degrade-never-fail).
+ * #306 moved every record to v2 in `audit.ndjson`; the legacy alias and the sequence have their own
+ * file, `audit-trail.legacy.test.ts`.
  */
 
 const FIXED = new Date('2026-09-11T00:00:00.000Z');
@@ -58,19 +60,22 @@ describe('A: a cockpit write and the equivalent MCP write differ only in origin'
     const { entries, quarantined } = trail.read();
     expect(quarantined).toBe(0);
     expect(entries).toHaveLength(2);
-    const [ui, mcp] = entries as [AuditEntry, AuditEntry];
-    expect(ui.origin).toBe('ui');
-    expect(mcp.origin).toBe('mcp');
-    const { origin: _u, ...uiRest } = ui;
-    const { origin: _m, ...mcpRest } = mcp;
+    const [ui, mcp] = entries as [AuditActionRecord, AuditActionRecord];
+    expect([ui.origin, ui.actor]).toEqual(['ui', { type: 'ui' }]);
+    expect([mcp.origin, mcp.actor]).toEqual(['mcp', { type: 'mcp' }]);
+    // The door, and the record's place in the file, are all that tell them apart.
+    const { origin: _u, actor: _ua, seq: _us, ...uiRest } = ui;
+    const { origin: _m, actor: _ma, seq: _ms, ...mcpRest } = mcp;
     expect(mcpRest).toEqual(uiRest);
+    expect([ui.seq, mcp.seq]).toEqual([1, 2]);
     expect(ui).toMatchObject({
-      v: 1,
+      v: 2,
+      kind: 'action',
       ts: FIXED.toISOString(),
       projectId: 'alpha',
       action: 'runs.pin',
       resource: { kind: 'run', id: 'run-1' },
-      outcome: 'ok',
+      outcome: { status: 'applied' },
       payloadDigest: payloadDigest({ pinned: true }),
     });
   });
@@ -80,32 +85,33 @@ describe('A: a cockpit write and the equivalent MCP write differ only in origin'
     // A D-02.3 fencing token, `<wall-clock ms>-<UUIDv4>`, as the receipt journal is handed it.
     const mcpJoin = { operationId: 'op-0001-abcd', ownerGeneration: '1789080413148-0b6f1c2e-9d4a-4c3b-8e7f-5a6b7c8d9e0f' };
     // The cockpit has no operation id or owner generation; D-06 § 10.2 says both are absent for it.
-    trail.channel('ui').record({ ...pinOp('run-1'), ...mcpJoin }, { outcome: 'ok' });
-    trail.channel('mcp').record({ ...pinOp('run-1'), ...mcpJoin }, { outcome: 'ok' });
+    trail.channel('ui').record({ ...pinOp('run-1'), ...mcpJoin }, { outcome: 'applied' });
+    trail.channel('mcp').record({ ...pinOp('run-1'), ...mcpJoin }, { outcome: 'applied' });
 
-    const [ui, mcp] = trail.read().entries as [AuditEntry, AuditEntry];
+    const [ui, mcp] = trail.read().entries as [AuditActionRecord, AuditActionRecord];
     expect(ui.operationKey).toBeUndefined();
     expect(ui.ownerGeneration).toBeUndefined();
     expect(mcp.operationKey).toBe('alpha/op-0001-abcd');
     // Only the wall-clock prefix: the full token passes the owner fence, so it is authority.
     expect(mcp.ownerGeneration).toBe(1789080413148);
     expect(readFileSync(auditTrailPath(dataDirOf('alpha')), 'utf8')).not.toContain('0b6f1c2e');
-    const shared = ({ origin: _o, operationKey: _k, ownerGeneration: _g, ...rest }: AuditEntry) => rest;
+    const shared = ({ origin: _o, actor: _a, seq: _s, operationKey: _k, ownerGeneration: _g, ...rest }: AuditActionRecord) => rest;
     expect(shared(mcp)).toEqual(shared(ui));
   });
 
   it('ignores an origin or project the operation itself claims (D-06 § 10.4 rule 1)', () => {
     const trail = new AuditTrail({ projectId: 'alpha', dataDir: dataDirOf('alpha') }, { now });
-    const forged = { ...pinOp('run-1'), origin: 'ui', projectId: 'beta' } as AuditedOperation;
-    trail.channel('mcp').record(forged, { outcome: 'ok' });
-    const [entry] = trail.read().entries;
+    const forged = { ...pinOp('run-1'), origin: 'ui', projectId: 'beta', actor: { type: 'ui' } } as AuditedOperation;
+    trail.channel('mcp').record(forged, { outcome: 'applied' });
+    const [entry] = trail.read().entries as AuditActionRecord[];
     expect(entry?.origin).toBe('mcp');
+    expect(entry?.actor).toEqual({ type: 'mcp' });
     expect(entry?.projectId).toBe('alpha');
   });
 });
 
-describe('B: a rejected operation records its rejection outcome', () => {
-  it('records a refusal before the effect as rejected, with its code, and rethrows', async () => {
+describe('B: a rejected operation records its refusal outcome', () => {
+  it('records a refusal before the effect as refused, with its reason, and rethrows', async () => {
     const trail = new AuditTrail({ projectId: 'alpha', dataDir: dataDirOf('alpha') }, { now });
     const effect = vi.fn(() => {
       throw new AuditRejection('stale_version');
@@ -116,43 +122,49 @@ describe('B: a rejected operation records its rejection outcome', () => {
 
     const [entry] = trail.read().entries;
     expect(entry).toMatchObject({
-      outcome: 'rejected',
-      errorCode: 'stale_version',
+      outcome: { status: 'refused', reason: 'stale_version' },
       origin: 'mcp',
       versionToken: 'rev1:run:run-1:12:0123456789ab',
     });
   });
 
-  it('maps a route status onto the D-06 outcomes: 4xx rejected, 5xx unverified', () => {
-    const trail = new AuditTrail({ projectId: 'alpha', dataDir: dataDirOf('alpha') }, { now });
+  it('maps a route status onto the v2 outcomes: 4xx refused, 2xx applied, 5xx not recorded', () => {
+    const warn = vi.fn();
+    const trail = new AuditTrail({ projectId: 'alpha', dataDir: dataDirOf('alpha') }, { now, warn });
     const ui = trail.channel('ui');
-    ui.recordStatus(pinOp('run-1'), 409);
-    ui.recordStatus(pinOp('run-1'), 500);
-    ui.recordStatus(pinOp('run-1'), 200);
-    expect(trail.read().entries.map((e) => [e.outcome, e.errorCode])).toEqual([
-      ['rejected', 'http_409'],
-      ['unverified', 'http_500'],
-      ['ok', undefined],
+    expect(ui.recordStatus(pinOp('run-1'), 409)).not.toBeNull();
+    // A 5xx may have come after the effect began; v2 has no honest word for that (spec § 3.2).
+    expect(ui.recordStatus(pinOp('run-1'), 500)).toBeNull();
+    expect(ui.recordStatus(pinOp('run-1'), 200)).not.toBeNull();
+    expect(trail.read().entries.map((e) => e.outcome)).toEqual([
+      { status: 'refused', reason: 'http_409' },
+      { status: 'applied' },
     ]);
-    expect(settlementForStatus(404)).toEqual({ outcome: 'rejected', errorCode: 'http_404' });
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0]?.[0])).toBe('xezar: audit trail write failed (http_500); the action continued without an audit record.');
+    expect(settlementForStatus(404)).toEqual({ outcome: 'refused', reason: 'http_404' });
+    expect(settlementForStatus(302)).toBeUndefined();
   });
 
-  it('records an effect that failed partway as unverified, never as rejected', async () => {
-    const trail = new AuditTrail({ projectId: 'alpha', dataDir: dataDirOf('alpha') }, { now });
+  it('records nothing for an effect that failed partway — never refused — and warns once', async () => {
+    const warn = vi.fn();
+    const trail = new AuditTrail({ projectId: 'alpha', dataDir: dataDirOf('alpha') }, { now, warn });
     await expect(
       trail.channel('ui').run(pinOp('run-1'), () => {
         throw new Error('disk full after the write began');
       }),
     ).rejects.toThrow('disk full');
-    const [entry] = trail.read().entries;
-    expect(entry).toMatchObject({ outcome: 'unverified', errorCode: 'effect_failed' });
+    expect(trail.read().entries).toEqual([]);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0]?.[0])).toContain('(effect_failed)');
+    expect(String(warn.mock.calls[0]?.[0])).not.toContain('disk full');
   });
 
   it('never lets a recorded attribution stand in for a permission check (N-04, D-06 § 10.4)', async () => {
     const trail = new AuditTrail({ projectId: 'alpha', dataDir: dataDirOf('alpha') }, { now });
     const op: AuditedOperation = { action: 'agentConfig.put', resource: { kind: 'config', id: 'claude.settings' } };
     // A human did it from the cockpit, successfully.
-    trail.channel('ui').record(op, { outcome: 'ok' });
+    trail.channel('ui').record(op, { outcome: 'applied' });
     // The same action from MCP, where the caller's own gate refuses it (localHandoff false → 409).
     const effect = vi.fn();
     const localHandoff = false;
@@ -164,8 +176,8 @@ describe('B: a rejected operation records its rejection outcome', () => {
     ).rejects.toBeInstanceOf(AuditRejection);
     expect(effect).not.toHaveBeenCalled();
     expect(trail.read().entries.map((e) => [e.origin, e.outcome])).toEqual([
-      ['ui', 'ok'],
-      ['mcp', 'rejected'],
+      ['ui', { status: 'applied' }],
+      ['mcp', { status: 'refused', reason: 'local_handoff_required' }],
     ]);
   });
 });
@@ -196,7 +208,7 @@ describe('C: a credential in the connection configuration never enters the trail
     const mcp = trail.channel('mcp');
 
     // An honest operation, with the whole connection object spread into it by a careless caller.
-    await mcp.run({ ...pinOp('run-1'), ...loaded, operationId: 'op-honest-0001' } as AuditedOperation, () => 'ok');
+    await mcp.run({ ...pinOp('run-1'), ...loaded, operationId: 'op-honest-0001' } as AuditedOperation, () => 'done');
     // A client that echoes the secrets back in every identifier it controls.
     for (const secret of [loaded.token, loaded.credential]) {
       mcp.record(
@@ -209,11 +221,11 @@ describe('C: a credential in the connection configuration never enters the trail
           // A fencing token whose random half is the planted capability token.
           ownerGeneration: `1789080413148-${capability}`,
         },
-        { outcome: 'rejected', errorCode: 'not_found' },
+        { outcome: 'refused', reason: 'not_found' },
       );
     }
     // The cockpit door, handed the same object.
-    trail.channel('ui').record({ ...pinOp('run-2'), ...loaded } as AuditedOperation, { outcome: 'ok' });
+    trail.channel('ui').record({ ...pinOp('run-2'), ...loaded } as AuditedOperation, { outcome: 'applied' });
 
     const raw = readFileSync(auditTrailPath(dataDir), 'utf8');
     // Populated-input guarantee: an empty trail would "contain no secret" too.
@@ -222,16 +234,16 @@ describe('C: a credential in the connection configuration never enters the trail
       expect(raw).not.toContain(needle);
     }
     // The trail and the connection file are the only files in the data dir.
-    expect(readdirSync(dataDir).sort()).toEqual(['mcp-audit.ndjson', 'mcp-connection.json']);
+    expect(readdirSync(dataDir).sort()).toEqual(['audit.ndjson', 'mcp-connection.json']);
 
     // The secret-bearing identifiers were dropped, not masked; the rest of the entry survives.
-    const echoed = trail.read().entries.filter((e) => e.action === 'runs.get');
+    const echoed = (trail.read().entries as AuditActionRecord[]).filter((e) => e.action === 'runs.get');
     expect(echoed).toHaveLength(2);
     for (const entry of echoed) {
       expect(entry.resource).toBeUndefined();
       expect(entry.operationKey).toBeUndefined();
       expect(entry.versionToken).toBeUndefined();
-      expect(entry).toMatchObject({ outcome: 'rejected', errorCode: 'not_found', origin: 'mcp' });
+      expect(entry).toMatchObject({ outcome: { status: 'refused', reason: 'not_found' }, origin: 'mcp' });
       expect(entry.payloadDigest).toMatch(/^[0-9a-f]{64}$/);
     }
   });
@@ -246,17 +258,17 @@ describe('C: a credential in the connection configuration never enters the trail
     for (const id of planted) {
       mcp.record(
         { action: 'runs.get', resource: { kind: 'run', id }, operationId: id, expectedVersion: `rev1:run:${id}:3:0123456789ab` },
-        { outcome: 'rejected', errorCode: 'not_found' },
+        { outcome: 'refused', reason: 'not_found' },
       );
     }
     // Control: an ordinary identifier survives, so the fix is not "drop everything".
-    mcp.record({ action: 'runs.get', resource: { kind: 'run', id: 'run-asia-0001' }, operationId: 'op-control-0001' }, { outcome: 'ok' });
+    mcp.record({ action: 'runs.get', resource: { kind: 'run', id: 'run-asia-0001' }, operationId: 'op-control-0001' }, { outcome: 'applied' });
 
     const raw = readFileSync(auditTrailPath(dataDir), 'utf8');
     // Populated-input guarantee: every operation was written, only its secret-shaped fields dropped.
     expect(raw.trim().split('\n')).toHaveLength(planted.length + 1);
     for (const id of planted) expect(raw.toLowerCase()).not.toContain(id.toLowerCase());
-    const entries = trail.read().entries;
+    const entries = trail.read().entries as AuditActionRecord[];
     for (const entry of entries.slice(0, planted.length)) {
       expect(entry.resource).toBeUndefined();
       expect(entry.operationKey).toBeUndefined();
@@ -270,7 +282,7 @@ describe('C: a credential in the connection configuration never enters the trail
     const warn = vi.fn();
     const trail = new AuditTrail({ projectId: 'alpha', dataDir: dataDirOf('alpha') }, { now, warn });
     const op = { action: 'runs.get', resource: { kind: 'run', id: 12345 } } as unknown as AuditedOperation;
-    expect(trail.channel('mcp').record(op, { outcome: 'ok' })).toBeNull();
+    expect(trail.channel('mcp').record(op, { outcome: 'applied' })).toBeNull();
     expect(trail.read().entries).toEqual([]);
     expect(warn).toHaveBeenCalledTimes(1);
   });
@@ -279,13 +291,14 @@ describe('C: a credential in the connection configuration never enters the trail
     const trail = new AuditTrail({ projectId: 'alpha', dataDir: dataDirOf('alpha') }, { now });
     trail.channel('ui').record(
       { action: 'runs.patch', resource: { kind: 'run', id: '/Users/someone/secret repo' } },
-      { outcome: 'rejected', errorCode: 'Invalid input: someone@example.com' },
+      { outcome: 'refused', reason: 'Invalid input: someone@example.com' },
     );
-    trail.channel('ui').record({ action: 'runs.patch', resource: { kind: 'run', id: 'someone@example.com' } }, { outcome: 'ok' });
+    trail.channel('ui').record({ action: 'runs.patch', resource: { kind: 'run', id: 'someone@example.com' } }, { outcome: 'applied' });
     const raw = readFileSync(auditTrailPath(dataDirOf('alpha')), 'utf8');
     expect(raw).not.toContain('someone');
     expect(raw).not.toContain('/Users');
-    expect(trail.read().entries).toHaveLength(2);
+    // A refusal whose reason cannot be kept is still a refusal; its reason is withheld, not invented.
+    expect(trail.read().entries.map((e) => e.outcome)).toEqual([{ status: 'refused', reason: 'unspecified' }, { status: 'applied' }]);
   });
 
   // Both found by the #333 mutation sample: swapping the `||` of the action check for `&&`, and the
@@ -295,12 +308,12 @@ describe('C: a credential in the connection configuration never enters the trail
     const warn = vi.fn();
     const trail = new AuditTrail({ projectId: 'alpha', dataDir: dataDirOf('alpha') }, { now, warn, secretValues: () => [knownToken] });
     // A dotted id the action pattern accepts, whose second half is the secret.
-    expect(trail.channel('mcp').record({ action: `runs.${knownToken}`, operationId: 'op-leak-0001' }, { outcome: 'ok' })).toBeNull();
+    expect(trail.channel('mcp').record({ action: `runs.${knownToken}`, operationId: 'op-leak-0001' }, { outcome: 'applied' })).toBeNull();
     // One warning, and it names no detail of the operation (the error class only).
     expect(warn).toHaveBeenCalledTimes(1);
     expect(String(warn.mock.calls[0]?.[0])).not.toContain(knownToken);
     // Control: the same caller's ordinary action is written, so the refusal is about the secret.
-    expect(trail.channel('mcp').record({ action: 'runs.get', operationId: 'op-fine-0001' }, { outcome: 'ok' })).not.toBeNull();
+    expect(trail.channel('mcp').record({ action: 'runs.get', operationId: 'op-fine-0001' }, { outcome: 'applied' })).not.toBeNull();
     const raw = readFileSync(auditTrailPath(dataDirOf('alpha')), 'utf8');
     expect(raw).not.toContain(knownToken);
     expect(trail.read().entries.map((e) => e.action)).toEqual(['runs.get']);
@@ -311,9 +324,9 @@ describe('C: a credential in the connection configuration never enters the trail
     const belowFloor = 'plainword-1';
     expect([atFloor.length, belowFloor.length]).toEqual([12, 11]);
     const trail = new AuditTrail({ projectId: 'alpha', dataDir: dataDirOf('alpha') }, { now, secretValues: () => [atFloor, belowFloor] });
-    trail.channel('mcp').record({ action: 'runs.get', resource: { kind: 'run', id: atFloor }, operationId: 'op-floor-0001' }, { outcome: 'ok' });
-    trail.channel('mcp').record({ action: 'runs.get', resource: { kind: 'run', id: belowFloor }, operationId: 'op-floor-0002' }, { outcome: 'ok' });
-    const [secret, word] = trail.read().entries;
+    trail.channel('mcp').record({ action: 'runs.get', resource: { kind: 'run', id: atFloor }, operationId: 'op-floor-0001' }, { outcome: 'applied' });
+    trail.channel('mcp').record({ action: 'runs.get', resource: { kind: 'run', id: belowFloor }, operationId: 'op-floor-0002' }, { outcome: 'applied' });
+    const [secret, word] = trail.read().entries as AuditActionRecord[];
     expect(secret?.resource).toBeUndefined();
     expect(word?.resource).toEqual({ kind: 'run', id: belowFloor });
     expect(readFileSync(auditTrailPath(dataDirOf('alpha')), 'utf8')).not.toContain(atFloor);
@@ -324,27 +337,30 @@ describe('D: an entry for project A is invisible to a reader scoped to project B
   it('keeps each project to its own trail', () => {
     const a = new AuditTrail({ projectId: 'alpha', dataDir: dataDirOf('alpha') }, { now });
     const b = new AuditTrail({ projectId: 'beta', dataDir: dataDirOf('beta') }, { now });
-    a.channel('mcp').record({ ...pinOp('run-a'), operationId: 'op-alpha-0001' }, { outcome: 'ok' });
+    a.channel('mcp').record({ ...pinOp('run-a'), operationId: 'op-alpha-0001' }, { outcome: 'applied' });
 
     expect(a.read().entries).toHaveLength(1);
-    expect(b.read()).toEqual({ entries: [], quarantined: 0 });
+    expect(b.read()).toEqual({ source: 'current', entries: [], quarantined: 0 });
     expect(readFileSync(auditTrailPath(dataDirOf('alpha')), 'utf8')).not.toContain('beta');
   });
 
   it('does not hand B an entry naming A even when one lands in B’s file, nor count it', () => {
     const betaDir = dataDirOf('beta');
     const b = new AuditTrail({ projectId: 'beta', dataDir: betaDir }, { now });
-    b.channel('ui').record(pinOp('run-b'), { outcome: 'ok' });
-    const foreign: AuditEntry = {
-      v: 1,
+    b.channel('ui').record(pinOp('run-b'), { outcome: 'applied' });
+    const foreign: AuditActionRecord = {
+      v: 2,
+      seq: 2,
+      kind: 'action',
       ts: FIXED.toISOString(),
       projectId: 'alpha',
+      origin: 'mcp',
+      actor: { type: 'mcp' },
       action: 'runs.pin',
       resource: { kind: 'run', id: 'run-a' },
-      outcome: 'ok',
-      origin: 'mcp',
+      outcome: { status: 'applied' },
     };
-    expect(auditEntrySchema.safeParse(foreign).success).toBe(true);
+    expect(auditActionRecordSchema.safeParse(foreign).success).toBe(true);
     appendFileSync(auditTrailPath(betaDir), `${JSON.stringify(foreign)}\n`);
 
     const read = b.read();
@@ -356,15 +372,15 @@ describe('D: an entry for project A is invisible to a reader scoped to project B
 describe('storage: written, never required', () => {
   it('reads a missing trail as empty', () => {
     const trail = new AuditTrail({ projectId: 'alpha', dataDir: join(root, 'nowhere') }, { now });
-    expect(trail.read()).toEqual({ entries: [], quarantined: 0 });
+    expect(trail.read()).toEqual({ source: 'current', entries: [], quarantined: 0 });
   });
 
   it('quarantines a torn or foreign-shaped line and keeps the rest', () => {
     const dataDir = dataDirOf('alpha');
     const trail = new AuditTrail({ projectId: 'alpha', dataDir }, { now });
-    trail.channel('ui').record(pinOp('run-1'), { outcome: 'ok' });
-    appendFileSync(auditTrailPath(dataDir), '{"v":1,"ts":"2026-09-1\n{"v":1,"note":"free text here"}\n');
-    trail.channel('mcp').record(pinOp('run-1'), { outcome: 'ok' });
+    trail.channel('ui').record(pinOp('run-1'), { outcome: 'applied' });
+    appendFileSync(auditTrailPath(dataDir), '{"v":2,"ts":"2026-09-1\n{"v":2,"note":"free text here"}\n');
+    trail.channel('mcp').record(pinOp('run-1'), { outcome: 'applied' });
     const read = trail.read();
     expect(read.quarantined).toBe(2);
     expect(read.entries.map((e) => e.origin)).toEqual(['ui', 'mcp']);
@@ -377,7 +393,7 @@ describe('storage: written, never required', () => {
       const warn = vi.fn();
       const trail = new AuditTrail({ projectId: 'alpha', dataDir }, { now, warn });
       await expect(trail.channel('mcp').run(pinOp('run-1'), () => 'done')).resolves.toBe('done');
-      trail.channel('ui').record(pinOp('run-1'), { outcome: 'ok' });
+      trail.channel('ui').record(pinOp('run-1'), { outcome: 'applied' });
       expect(warn).toHaveBeenCalledTimes(1);
       expect(warn.mock.calls[0]?.[0]).not.toContain(dataDir);
     } finally {
@@ -387,7 +403,7 @@ describe('storage: written, never required', () => {
 
   it('writes the trail owner-only', () => {
     const dataDir = dataDirOf('alpha');
-    new AuditTrail({ projectId: 'alpha', dataDir }, { now }).channel('ui').record(pinOp('run-1'), { outcome: 'ok' });
+    new AuditTrail({ projectId: 'alpha', dataDir }, { now }).channel('ui').record(pinOp('run-1'), { outcome: 'applied' });
     expect(statSync(auditTrailPath(dataDir)).mode & 0o777).toBe(0o600);
   });
 
@@ -399,7 +415,7 @@ describe('storage: written, never required', () => {
   it('skips an operation whose action is not an action id rather than writing it', () => {
     const warn = vi.fn();
     const trail = new AuditTrail({ projectId: 'alpha', dataDir: dataDirOf('alpha') }, { now, warn });
-    expect(trail.channel('ui').record({ action: 'please delete everything' }, { outcome: 'ok' })).toBeNull();
+    expect(trail.channel('ui').record({ action: 'please delete everything' }, { outcome: 'applied' })).toBeNull();
     expect(trail.read().entries).toEqual([]);
     expect(warn).toHaveBeenCalledTimes(1);
   });
@@ -421,9 +437,9 @@ describe('payload digest (D-06 § 5.4)', () => {
 
   it('omits the digest rather than failing on a payload it cannot canonicalise', () => {
     const trail = new AuditTrail({ projectId: 'alpha', dataDir: dataDirOf('alpha') }, { now });
-    trail.channel('ui').record({ action: 'runs.pin', payload: { n: Number.NaN } }, { outcome: 'ok' });
-    const [entry] = trail.read().entries;
+    trail.channel('ui').record({ action: 'runs.pin', payload: { n: Number.NaN } }, { outcome: 'applied' });
+    const [entry] = trail.read().entries as AuditActionRecord[];
     expect(entry?.payloadDigest).toBeUndefined();
-    expect(entry?.outcome).toBe('ok');
+    expect(entry?.outcome).toEqual({ status: 'applied' });
   });
 });

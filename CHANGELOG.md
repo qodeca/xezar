@@ -1,8 +1,30 @@
 # Unreleased
 
+## 💥 Breaking
+
+- 💥 **The audit trail moves to `audit.ndjson`, and its records change shape.** (#306, part 1 of 4)
+  A project's audit trail is now written to `.local/xezar/audit.ndjson` as version 2 records; xezar
+  0.13.0–0.15.0 wrote version 1 records to `mcp-audit.ndjson`. A record now says `applied` or
+  `refused` (with a machine reason) instead of `ok`, `rejected` or `unverified`, and carries a
+  sequence number, a UTC time and an `actor` that matches its origin. An MCP call that may have
+  started its effect and then failed is no longer written as `unverified`: it is not recorded, and
+  xezar prints one warning that the action continued without an audit record. The old file is
+  **read-only**: xezar reads it only while `audit.ndjson` does not exist, prints one deprecation line
+  when it does, and never writes, renames or deletes it. When both files exist, `audit.ndjson` wins.
+  **Upgrade:** nothing to do; keep `mcp-audit.ndjson` if you want the old history. **Downgrade:**
+  0.15.0 still reads its untouched `mcp-audit.ndjson`, and skips every `audit.ndjson` record as
+  unreadable (measured, not assumed), so records written by 0.16.0 are not visible to it. The alias
+  is removed no earlier than 0.18.0 (#563). Still MCP-only: the cockpit, automation and command-line
+  writers are later parts of #306. Details: `BACKWARD_COMPATIBILITY.md` § 3.
+- Hosted servers now refuse every WebSocket upgrade before the handshake; remote clients continue to use authenticated HTTP and event streams. Local native clients and the Vite development proxy keep their existing access. (#547, SM1)
+
 ## 🐛 Fixes
 
 - 🐛 Keep pi `write` and `edit` calls in an isolated task worktree out of the primary checkout, whatever path spelling pi would accept (absolute, `..`, symlink, `~`, a leading `@`, a `file://` URL, Unicode spaces or different letter case); a spelling the guard cannot resolve with confidence is refused. Shell commands get a best-effort check only – it refuses commands that name the primary checkout – including a relative path read from the folder an earlier `cd` or `pushd` reached, or one through an existing symlink – or change into it through ordinary `cd`, `pushd`, `git -C`, `env -C`, `--git-dir`/`--work-tree` or `GIT_DIR` forms, and a directory change whose target is not one literal path (a variable, a substitution, a glob or brace pattern, `~user`, a `CDPATH` change, or `..` after a symlink) is refused rather than guessed, but a shell command cannot be parsed completely, so it is not containment. The primary checkout now comes from xezar itself, so bare-repository and submodule layouts keep working, and the run's handoff and temp folders stay writable. In-place and non-Git runs, plus temporary and home-directory paths outside the primary checkout, retain their existing behavior. (#537)
+
+## Tests
+
+- Added a reusable POSIX authenticated reverse-proxy harness (`npm run test:server-mode`), a dedicated bounded CI job, and registration-derived coverage of local-only routes. The harness exercises the built CLI, isolated homes, spoofed headers, rejected writes, event-stream reconnects and exact-PID cleanup.
 
 # 0.15.0 (2026-09-17)
 

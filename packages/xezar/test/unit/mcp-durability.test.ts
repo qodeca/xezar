@@ -451,8 +451,8 @@ describe('A-16 — older state with the MCP state absent or corrupt (N-07, N-08)
       assert.equal(effects, 1);
 
       const audit = new AuditTrail({ projectId: PROJECT, dataDir: dir }, { warn });
-      assert.deepEqual(audit.read(), { entries: [], quarantined: 0 });
-      assert.ok(audit.channel('mcp').record({ action: 'mcp.task-read' }, { outcome: 'ok' }));
+      assert.deepEqual(audit.read(), { source: 'current', entries: [], quarantined: 0 });
+      assert.ok(audit.channel('mcp').record({ action: 'mcp.task-read' }, { outcome: 'applied' }));
 
       assert.deepEqual(warnings, [], 'deleted state is a fresh start, not a warning');
       assert.deepEqual(receiptWarnings, []);
@@ -517,8 +517,8 @@ describe('A-16 — older state with the MCP state absent or corrupt (N-07, N-08)
       // The audit trail: the bad line is skipped, never fatal, and appending still works.
       const auditWarnings: string[] = [];
       const audit = new AuditTrail({ projectId: PROJECT, dataDir: dir }, { warn: (m) => auditWarnings.push(m) });
-      assert.deepEqual(audit.read(), { entries: [], quarantined: 1 });
-      assert.ok(audit.channel('mcp').record({ action: 'mcp.task-read' }, { outcome: 'ok' }));
+      assert.deepEqual(audit.read(), { source: 'current', entries: [], quarantined: 1 });
+      assert.ok(audit.channel('mcp').record({ action: 'mcp.task-read' }, { outcome: 'applied' }));
       assert.equal(audit.read().entries.length, 1);
       assert.deepEqual(auditWarnings, []);
 

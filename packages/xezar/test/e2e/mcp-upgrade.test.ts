@@ -160,6 +160,7 @@ const MCP_STATE = [
   'mcp/event-controller.json',
   'mcp-operations.ndjson',
   'mcp-operations.json',
+  'audit.ndjson',
   'mcp-audit.ndjson',
   'mcp-connection.json',
 ];

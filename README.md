@@ -250,6 +250,16 @@ More → [Run each supported client as the project leader](docs/guide/13-mcp-lea
 xezar binds to `127.0.0.1` by default (this machine only). To reach it from a phone or another machine, `xezar server-install` puts an
 authenticated front before it – see the [Remote access overview](docs/server-install/README.md).
 
+## Upgrading to 0.16.0
+
+### Audit trail file
+
+The audit trail is now `.local/xezar/audit.ndjson`, with a new record shape (#306). The old
+`mcp-audit.ndjson` is read-only: xezar reads it only while the new file does not exist, prints one
+deprecation line when it does, and never changes it. Keep it if you want the old history. xezar 0.15.0,
+after a downgrade, reads its old file but cannot read records written by 0.16.0. The old name stops
+being read no earlier than 0.18.0. Details: [`BACKWARD_COMPATIBILITY.md`](BACKWARD_COMPATIBILITY.md).
+
 ## Upgrading to 0.15.0
 
 ### Codex runs and MCP servers
@@ -290,3 +300,8 @@ described in [SECURITY.md](SECURITY.md).
 
 **MIT** © Qodeca – full text in [LICENSE](LICENSE).
 Xezar is based on work done in [open-mercato/cezar](https://github.com/open-mercato/cezar).
+
+
+### Hosted WebSocket migration (0.16.0)
+
+Hosted mode (`XEZ_REMOTE=1` or a non-loopback bind) now refuses all WebSocket upgrades, including native clients without an Origin. Use the authenticated HTTP API and SSE event endpoints through your reverse proxy; the cockpit already uses these transports remotely. Local-mode WebSocket clients and the Vite development proxy are unchanged.
