@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { xezarLaunchdPlist, launchdPlist, macosxNgrok } from './macosx-ngrok.ts';
+import { xezarLaunchdPlist, launchdPlist, macosxNgrok, ngrokTrafficPolicy } from './macosx-ngrok.ts';
 import { availablePlatformIds, getStrategy } from '../strategies.ts';
 import { runInstall, runUninstall } from '../engine.ts';
 import { loadServerState } from '../state.ts';
@@ -47,6 +47,22 @@ describe('macosx-ngrok', () => {
     expect(p).toContain('<string>ops:hunter2</string>');
     expect(p).toContain('<string>xezar.ngrok.app</string>');
     expect(p).toContain('<key>KeepAlive</key>');
+  });
+
+  // #572 — BREAK-NGROK-HEADER-STRIP: drop the `--traffic-policy-file` pair from
+  // the args array in launchdPlist() and this fails — a remote client through
+  // the tunnel could then set X-Xezar-User and have it trusted (loopback peer).
+  it('launchdPlist wires ngrok to the traffic-policy file that strips X-Xezar-User (#572)', () => {
+    const p = launchdPlist(4321, 'ops:hunter2', undefined, '/opt/homebrew/bin/ngrok', '/fake/home/ngrok-traffic-policy.json');
+    expect(p).toContain('<string>--traffic-policy-file</string>');
+    expect(p).toContain('<string>/fake/home/ngrok-traffic-policy.json</string>');
+  });
+
+  it('ngrokTrafficPolicy removes X-Xezar-User on the request phase', () => {
+    const policy = JSON.parse(ngrokTrafficPolicy());
+    expect(policy).toEqual({
+      on_http_request: [{ actions: [{ type: 'remove-headers', config: { headers: ['X-Xezar-User'] } }] }],
+    });
   });
 
   it('xezarLaunchdPlist embeds the argv, port, workdir and env', () => {
@@ -458,7 +474,38 @@ describe('macosx-ngrok steps in a real (non-dry) run', () => {
       const bootout = captured.find(([program, args]) => program === 'launchctl' && args[0] === 'bootout');
       expect(bootout?.[1]?.[1]).toMatch(/^gui\/\d+\/ai\.xezar\.ngrok$/);
       expect(interactive.some(([program, args]) => program === 'launchctl' && args[0] === 'bootstrap')).toBe(true);
-      expect(result!.artifacts.map((a) => a.type).sort()).toEqual(['launchd', 'ngrok-config']);
+      expect(result!.artifacts.map((a) => a.type).sort()).toEqual(['config', 'launchd', 'ngrok-config']);
+    });
+
+    // #572 — BREAK-NGROK-HEADER-STRIP: remove the trafficPolicyFile write (or drop it from the
+    // plist's args) and this fails, because either the file never lands on disk or the plist
+    // never points ngrok at it — both mean a remote client's X-Xezar-User reaches xezar untouched.
+    it('writes a traffic-policy file that strips X-Xezar-User and wires the plist to it (#572)', async () => {
+      const { runner } = healthyHost();
+
+      const result = await stepOf('ngrok').run(baseCtx(runner));
+
+      const policyPath = join(home, 'Library', 'Application Support', 'xezar', 'ngrok-traffic-policy.json');
+      const policy = JSON.parse(readFileSync(policyPath, 'utf8'));
+      expect(policy.on_http_request[0].actions[0]).toEqual({ type: 'remove-headers', config: { headers: ['X-Xezar-User'] } });
+
+      const plist = readFileSync(join(home, 'Library', 'LaunchAgents', 'ai.xezar.ngrok.plist'), 'utf8');
+      expect(plist).toContain('<string>--traffic-policy-file</string>');
+      expect(plist).toContain(`<string>${policyPath}</string>`);
+
+      expect(result!.artifacts).toContainEqual(expect.objectContaining({ type: 'config', name: 'ngrok-traffic-policy', path: policyPath }));
+    });
+
+    it('undo removes the traffic-policy file alongside the plist', async () => {
+      const { runner } = healthyHost();
+      const policyPath = join(home, 'Library', 'Application Support', 'xezar', 'ngrok-traffic-policy.json');
+
+      const result = await stepOf('ngrok').run(baseCtx(runner));
+      expect(statSync(policyPath)).toBeDefined();
+
+      await stepOf('ngrok').undo(baseCtx(runner), result);
+
+      expect(() => statSync(policyPath)).toThrow();
     });
   });
 

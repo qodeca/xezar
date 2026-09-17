@@ -15,6 +15,32 @@ import { brewInstallTool, brewRemoveHint, depCheckStep, HOSTNAME_RE, owned, shar
 
 const PLIST_LABEL = 'ai.xezar.ngrok';
 const plistPath = (): string => join(homedir(), 'Library', 'LaunchAgents', `${PLIST_LABEL}.plist`);
+const trafficPolicyPath = (): string => join(homedir(), 'Library', 'Application Support', 'xezar', 'ngrok-traffic-policy.json');
+
+/**
+ * ngrok Traffic Policy (`on_http_request` / `remove-headers`) that strips a
+ * client-supplied `X-Xezar-User` before it reaches the loopback cockpit (#572).
+ * Without this, the ngrok agent is itself the loopback peer xezar's audit trail
+ * trusts (`audit-ui.ts` § 9 "Proxy user trust rule"), so a remote client could
+ * choose the stored proxy user by simply sending the header through the tunnel —
+ * unlike the bundled nginx vhost, which overwrites it from `$remote_user`.
+ * ngrok's legacy `--request-header-remove` CLI flag is deprecated in favor of
+ * Traffic Policy (verified against ngrok's own docs: https://ngrok.com/docs/traffic-policy/actions/remove-headers/
+ * and https://ngrok.com/docs/agent/cli/, 2026-09-17).
+ */
+export function ngrokTrafficPolicy(): string {
+  return JSON.stringify(
+    {
+      on_http_request: [
+        {
+          actions: [{ type: 'remove-headers', config: { headers: ['X-Xezar-User'] } }],
+        },
+      ],
+    },
+    null,
+    2,
+  );
+}
 
 /**
  * `launchctl bootstrap` + proof the agent actually loaded. A discarded
@@ -37,8 +63,15 @@ function escapeXml(s: string): string {
 }
 
 /** launchd agent that keeps an authenticated ngrok tunnel to the local cockpit up. */
-export function launchdPlist(port: number, basicAuth: string, domain?: string, ngrokBin = '/opt/homebrew/bin/ngrok'): string {
-  const args = ['http', String(port), '--basic-auth', basicAuth];
+export function launchdPlist(
+  port: number,
+  basicAuth: string,
+  domain?: string,
+  ngrokBin = '/opt/homebrew/bin/ngrok',
+  trafficPolicyFile = trafficPolicyPath(),
+): string {
+  // --traffic-policy-file strips X-Xezar-User before it reaches xezar (#572) — see ngrokTrafficPolicy().
+  const args = ['http', String(port), '--basic-auth', basicAuth, '--traffic-policy-file', trafficPolicyFile];
   if (domain) args.push('--domain', domain);
   // Escape every arg — a password/domain with `&`, `<`, `>` would otherwise
   // produce invalid plist XML and launchctl would silently fail to load it.
@@ -129,18 +162,25 @@ const ngrokStep: InstallStep = {
 
     // 5) launchd agent (the plist embeds the basic-auth creds, like htpasswd on Linux)
     const path = plistPath();
+    const trafficPolicyFile = trafficPolicyPath();
     if (ctx.dryRun) {
-      ctx.ui.info(`DRY RUN — would write ${path} and launchctl bootstrap it.`);
+      ctx.ui.info(`DRY RUN — would write ${trafficPolicyFile} (strips X-Xezar-User), ${path} and launchctl bootstrap it.`);
     } else {
       // Resolve the real ngrok binary path so the plist works on both Apple
       // Silicon (/opt/homebrew/bin) and Intel (/usr/local/bin) Macs.
       const ngrokBin = (await ctx.runner.capture('bash', ['-lc', 'command -v ngrok'])).stdout.trim() || '/opt/homebrew/bin/ngrok';
 
+      // Written before the plist references it: a Traffic Policy file that strips a
+      // client-supplied X-Xezar-User (#572) — the ngrok-equivalent of nginx's
+      // `proxy_set_header X-Xezar-User $remote_user` overwrite.
+      mkdirSync(dirname(trafficPolicyFile), { recursive: true });
+      writeFileSync(trafficPolicyFile, ngrokTrafficPolicy(), { encoding: 'utf8', mode: 0o600 });
+
       mkdirSync(join(homedir(), 'Library', 'LaunchAgents'), { recursive: true });
       // 0600: unlike the Linux htpasswd (a hash, 0640 root:www-data), this file
       // embeds the PLAINTEXT basic-auth credentials. `mode` only applies on
       // create, so chmod too for re-installs over an existing 0644 plist.
-      writeFileSync(path, launchdPlist(ctx.state.primaryPort, basicAuth, domain, ngrokBin), { encoding: 'utf8', mode: 0o600 });
+      writeFileSync(path, launchdPlist(ctx.state.primaryPort, basicAuth, domain, ngrokBin, trafficPolicyFile), { encoding: 'utf8', mode: 0o600 });
       chmodSync(path, 0o600);
 
       // Use the modern launchctl API — the legacy `launchctl load` returns
@@ -163,6 +203,7 @@ const ngrokStep: InstallStep = {
       artifacts: [
         shared('ngrok-config', { name: 'authtoken', removeHint: 'ngrok config add-authtoken "" (or edit ~/Library/Application Support/ngrok/ngrok.yml)' }),
         owned('launchd', { name: PLIST_LABEL, path }),
+        owned('config', { name: 'ngrok-traffic-policy', path: trafficPolicyFile }),
       ],
     };
   },
@@ -171,12 +212,14 @@ const ngrokStep: InstallStep = {
     // satisfied via check() records `created: null`, and the agent (whose plist
     // holds the basic-auth credentials) must still be removed.
     const path = (created?.artifacts ?? []).find((a) => a.type === 'launchd')?.path ?? plistPath();
+    const policyFile = (created?.artifacts ?? []).find((a) => a.type === 'config' && a.name === 'ngrok-traffic-policy')?.path ?? trafficPolicyPath();
     if (ctx.dryRun) {
-      ctx.ui.info('DRY RUN — would launchctl bootout and remove the ngrok agent.');
+      ctx.ui.info('DRY RUN — would launchctl bootout and remove the ngrok agent and its traffic-policy file.');
     } else {
       const uid = process.getuid ? process.getuid() : 0;
       await ctx.runner.capture('launchctl', ['bootout', `gui/${uid}/${PLIST_LABEL}`]);
       rmSync(path, { force: true });
+      rmSync(policyFile, { force: true });
     }
     const cfg = (created?.artifacts ?? []).find((a) => a.type === 'ngrok-config');
     if (cfg) {
@@ -292,7 +335,7 @@ const autostartStep: InstallStep = {
 
 const identityStep: InstallStep = {
   id: 'identity',
-  title: 'Identity check (ngrok basic-auth active)',
+  title: 'Identity check (ngrok tunnel up; basic-auth configured, not probed)',
   async check() {
     return false;
   },
