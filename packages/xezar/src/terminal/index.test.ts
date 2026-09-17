@@ -52,6 +52,10 @@ class FakeStream extends EventEmitter {
   }
 }
 
+function withoutAnsi(lines: readonly string[]): string[] {
+  return lines.map((line) => line.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, ''));
+}
+
 /** A store with the four members the activity source touches, and no files behind it. */
 class FakeStore extends EventEmitter {
   records: RunRecord[] = [];
@@ -80,7 +84,11 @@ function settings(over: Partial<ResolvedCliSettings> = {}): ResolvedCliSettings 
   } as ResolvedCliSettings;
 }
 
-function start(stream: FakeStream, over: Partial<ResolvedCliSettings> = {}) {
+function start(
+  stream: FakeStream,
+  over: Partial<ResolvedCliSettings> = {},
+  display = true,
+) {
   const terminal = startTerminalActivity({
     settings: settings(over),
     store: new FakeStore().asStore,
@@ -89,11 +97,96 @@ function start(stream: FakeStream, over: Partial<ResolvedCliSettings> = {}) {
     env: {},
     glyphs: UTF8_GLYPHS,
   });
-  terminal.startDisplay?.();
+  if (display) terminal.startDisplay();
   return terminal;
 }
 
 describe('the boot event', () => {
+  it('renders historical settlement exactly at 80 and 40 columns', () => {
+    const wideStream = new FakeStream({ columns: 80 });
+    const wide = start(wideStream, {}, false);
+    wide.reportRecovery(13, 13);
+    wide.startDisplay();
+    wide.stop({ stillRunning: 0 });
+    expect(withoutAnsi(wideStream.lines())).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/^  \d{2}:\d{2}:\d{2}  info   xezar     13 tasks from the previous session$/),
+      ]),
+    );
+    expect(wideStream.lines()).toContain('                             were settled at start-up');
+    expect(wideStream.text.indexOf('13 tasks from the previous session')).toBeLessThan(
+      wideStream.text.indexOf('No active tasks'),
+    );
+
+    const narrowStream = new FakeStream({ columns: 40 });
+    const narrow = start(narrowStream, {}, false);
+    narrow.reportRecovery(13, 13);
+    narrow.startDisplay();
+    narrow.stop({ stillRunning: 0 });
+    expect(withoutAnsi(narrowStream.lines())).toEqual(
+      expect.arrayContaining([expect.stringMatching(/^  \d{2}:\d{2}:\d{2} info  xezar$/)]),
+    );
+    expect(narrowStream.lines()).toContain('    13 tasks from the previous session');
+    expect(narrowStream.lines()).toContain('    were settled at start-up');
+    expect(narrowStream.lines().every((line) => line.length <= 40)).toBe(true);
+    expect(narrowStream.text.indexOf('13 tasks from the previous session')).toBeLessThan(
+      narrowStream.text.indexOf('No active tasks'),
+    );
+  });
+
+  it('writes one plain recovery row before ready with only the accepted fields', () => {
+    const stream = new FakeStream();
+    const terminal = start(stream);
+    terminal.reportRecovery(13, 13);
+    terminal.setUrl('http://localhost:4321', { port: 4321 });
+
+    const recovery = stream.lines().filter((line) => line.includes('event=task.recovered'));
+    expect(recovery).toHaveLength(1);
+    expect(recovery[0]).toMatch(
+      /^\S+ level=info project=beta event=task\.recovered count=13 settled=13$/,
+    );
+    expect(stream.text.indexOf('event=task.recovered')).toBeLessThan(
+      stream.text.indexOf('event=xezar.ready'),
+    );
+    expect(stream.text).not.toContain('\u001b');
+    terminal.stop({ stillRunning: 0 });
+  });
+
+  it('uses singular settlement copy and keeps historical outcomes out of the session totals', () => {
+    const stream = new FakeStream({ columns: 80 });
+    const terminal = start(stream);
+    terminal.reportRecovery(3, 1);
+    terminal.stop({ stillRunning: 0 });
+
+    expect(stream.text).toContain('1 task from the previous session');
+    expect(stream.text).toContain('was settled at start-up');
+    expect(stream.text).toContain('0 done · 0 needs review · 0 failed · 0 cancelled');
+  });
+
+  it('omits an empty recovery and hides recovery information under quiet', () => {
+    const ordinaryStream = new FakeStream();
+    const ordinary = start(ordinaryStream);
+    ordinary.reportRecovery(0, 0);
+    expect(ordinaryStream.text).not.toContain('task.recovered');
+    ordinary.stop({ stillRunning: 0 });
+
+    const quietStream = new FakeStream({ columns: 80 });
+    const quiet = start(quietStream, { quiet: true, effectiveLogLevel: 'warn' });
+    quiet.reportRecovery(2, 2);
+    expect(quietStream.text).not.toContain('previous session');
+    expect(quietStream.text).not.toContain('task.recovered');
+    quiet.stop({ stillRunning: 0 });
+  });
+
+  it('keeps the existing recovered copy when no task was settled at start-up', () => {
+    const stream = new FakeStream({ columns: 80 });
+    const terminal = start(stream);
+    terminal.reportRecovery(2, 0);
+    terminal.stop({ stillRunning: 0 });
+    expect(stream.text).toContain('recovered 2 tasks from the previous session');
+    expect(stream.text).not.toContain('settled at start-up');
+  });
+
   it('records the port in plain output, where the banner is not on this stream', () => {
     const stream = new FakeStream();
     const terminal = start(stream);
