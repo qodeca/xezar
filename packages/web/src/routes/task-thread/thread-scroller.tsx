@@ -523,7 +523,7 @@ export function JumpToLatestPill({ onJump }: { onJump: () => void }) {
       type="button"
       data-slot="jump-to-latest"
       onClick={onJump}
-      className="pointer-events-auto inline-flex min-h-8 items-center gap-1.5 rounded-full border border-border bg-background px-3.5 text-xs font-medium text-muted-foreground shadow-modal hover:text-foreground"
+      className="pointer-events-auto inline-flex min-h-tap items-center gap-1.5 rounded-full border border-border bg-background px-3.5 text-xs font-medium text-muted-foreground shadow-modal hover:text-foreground md:min-h-8"
     >
       <ArrowDownIcon aria-hidden className="size-3.5" />
       Jump to latest

@@ -66,6 +66,7 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Differs**: `motion-safe:animate-spin` ×12, `motion-reduce:animate-none` ×5, but bare `animate-pulse` in `components/status-dot.tsx:21` (every pulsing dot), `components/ui/skeleton.tsx:7`, `routes/new-task.tsx:540,1399`; bare `animate-spin` in `routes/task-thread/thread-items.tsx:156,344,571` and `routes/github/github.tsx:955,1050`. `status-dot.tsx:8-9` cites the "quiet motion" rule while shipping no guard. Three dots are hand-rolled instead of `StatusDot` (`components/project-groups.tsx:344`, `components/app-shell.tsx:602`, `components/composer/composer.tsx:725`); only the composer's carries the guard.
 - **Rule**: new animation is `motion-safe:` or has `motion-reduce:animate-none`.
 - **Fix**: add `motion-reduce:animate-none` to `statusDotVariants` and `Skeleton`; guard the five spinners; replace the three ad-hoc dots.
+- **Status (#453 batch B5, thread, composer and launch menus)**: the thread is done – the three `thread-items.tsx` spinners are `motion-safe:animate-spin`, and the composer's hand-rolled dictation dot is `StatusDot tone="danger" pulse`. `design-debt-b5.test.tsx` fails on a bare spin or pulse in any B5 file. Still open (B7): `routes/new-task.tsx`, `routes/github/github.tsx`.
 
 ### G-09 Two diff renderers
 
@@ -79,6 +80,7 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Rule**: tint every irreversible confirm; cancel reads "Keep it" unless a more specific kept outcome exists.
 - **Fix**: add a `danger` Button variant and use it in `AlertDialogAction`.
 - **Status (#453 batch B3, settings)**: `remove-project.tsx`, `worktrees-panel.tsx` and the agent-account remove confirm pass `buttonVariants({ variant: 'danger' })` to `AlertDialogAction`, cancel with "Keep it", and hand focus back to the opener (`useReturnFocus`); the per-row worktree Delete is `danger-ghost`. Still open: `task-thread/run-header.tsx` (B5), `workflows/workflows.tsx` (B7).
+- **Status (#453 batch B5, thread, composer and launch menus)**: the run confirm (`routes/task-thread/run-header.tsx`) wears `buttonVariants({ variant: 'danger' })` and cancels with "Keep it". Focus return was not changed: it does not use `useReturnFocus`, and where focus lands after the dialog opened from the phone kebab closes was not measured in B5 (left for B5 QA and B8). Still open: `workflows/workflows.tsx` (B7).
 
 ### G-11 Raw `<select>` in settings while the Select primitive is unused
 
@@ -129,6 +131,7 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Status (#453 batch B4, task lists)**: fixed rows – "Tool name" (`lib/task-columns.ts:62`), "Could not load tasks across projects" (`routes/global-tasks.tsx:367`) and "Search templates…" (`components/prompt-template-menu.tsx`). Still open (B5, B7): the placeholders in `routes/new-task.tsx` and `routes/github/hand-to-agent.tsx`, and the other rows.
 - **Status (#453 batch B3, settings)**: the settings rows are fixed – "Could not load …" in all ten settings sites, "Retry" in provider settings, "Filter skills…", "Nothing matches." for the bookmarklet filter, the em dash in `mcp-api-section.tsx`, curly apostrophes in `appearance.tsx`, `project-general.tsx` and the hints of `agents-section.tsx`, `resources-section.tsx`, `mcp-connection-section.tsx`, `projects-section.tsx`, `accounts-section.tsx` and `prompt-templates-section.tsx`, and no Oxford comma in `agents-section.tsx`, `notifications-section.tsx` and `prompt-templates-section.tsx`. Still open (B4, B5, B7): the other rows. The guardian rule is not added.
 - **Status (#546, navigation-only sidebar)**: the "Bucket label case" row is closed – the sidebar's `Needs you` bucket heading went with the sidebar task list, so the phrase now appears only as the lower-case attention label (`lib/attention.ts`).
+- **Status (#453 batch B5, thread, composer and launch menus)**: the negatives row's `routes/task-thread/task-thread.tsx` site reads "Could not load earlier items · Retry". Still open (B7): `routes/github/github.tsx`, the placeholders in `routes/new-task.tsx` and `routes/github/hand-to-agent.tsx`, and the workflows rows.
 
 ### G-16 Toast punctuation
 
@@ -136,6 +139,7 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Rule**: no period on a short fragment; a period on a full sentence with a clause.
 - **Fix**: normalise the ~14 toasts; share one `copyToClipboard` helper (three copies exist in `run-header.tsx`, `review-panel.tsx`, `task-changes.tsx`).
 - **Status (#453 batch B4, task lists)**: the helper exists – `copyText` in `lib/clipboard-result.ts` answers `{ ok: true }` or `{ ok: false, reason }` and never throws, so a refused or missing clipboard is never reported as copied. It has no consumer yet. Still open (B5, B6, B7): move the three copies onto it and normalise the toasts.
+- **Status (#453 batch B5, thread, composer and launch menus)**: `run-header.tsx` (the resume hint, the terminal fallback and the worktree path) and `review-panel.tsx` (the manual merge line) copy through `copyText`; a refusal toasts the payload ("Run manually: …", "Path: …"), never "copied". Their toasts are fragments: "Command copied", "No terminal found — command copied", "Worktree path copied" (writing.md §13). Still open (B6, B7): `routes/task-git/task-changes.tsx` and `routes/skills.tsx`.
 
 ### G-17 Two hand-written task tables
 
@@ -157,6 +161,7 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Rule**: the scale.
 - **Fix**: round the one-offs to the nearest step.
 - **Status (#453 batch B4, task lists)**: the task-list one-offs are gone – `size-4` for the compare icon and the variant letter, `size-5.5` for the new-task button icon, and no fixed size on the table pin (`routes/tasks-overview.tsx`; the sidebar row pin was removed with the task list in #546), `size-1.5` for the reference status dot. Still open (B5, B7): `composer/composer.tsx`, `task-thread/agents-dock.tsx`, `plan-dock.tsx`, `step-rail.tsx` and `github/github.tsx`.
+- **Status (#453 batch B5, thread, composer and launch menus)**: `size-4` for the composer paperclip and the dock glyphs (was `size-[15px]` ×9), `size-3.5` for the step-rail icons (was `size-[13px]`), `size-3` for the Tools chevron (was `size-[11px]`). Still open (B7): `github/github.tsx`.
 
 ### G-20 Dead primitives
 
@@ -170,6 +175,7 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Rule**: `no-hover:` on every hover-revealed control.
 - **Fix**: add the variant to the composer overlay and audit `group-hover` sites.
 - **Status (#453 batch B4, task lists)**: the task lists are done – the pin (`components/pin-toggle.tsx`) and the table's rename pencil and pin (`routes/tasks-overview.tsx:852,867`) show on a no-hover device and grow to 44 px there. Still open (B5): the composer overlay, and the run header's rename pencil (`routes/task-thread/run-header.tsx:544`), which is `opacity-0` and about 22 px on a phone.
+- **Status (#453 batch B5, thread, composer and launch menus)**: fixed – the composer's attachment remove mark shows on a no-hover device as a `size-5` corner badge (the thumbnail stays visible), and the run header's rename pencil and a user message's edit and remove actions show there and grow to 44 px. `e2e/design-debt-b5.e2e.ts` measures the pencil at 1024 px no-hover and keyboard reveal on a hover device. The audit of other `group-hover` sites in B5 files found no further hidden control. The entry stays until B8 retires it.
 
 ### G-22 Save behaviour split inside one pane
 
@@ -218,24 +224,33 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Differs**: on a phone the task thread opens scrolled to its end, and the run header scrolls with it (it is sticky only from `md`, `routes/task-thread/run-header.tsx:160`). With a thread slightly taller than the screen, the header's first row sits under the top bar. Measured at 375 px on the `subagents-run` fixture: the page scrolls 25 px on `main` and 37 px with the B4 44 px run tabs, so the "Run actions" button (`run-header.tsx:895`) shows 27 px of 44 before B4 and 15 px after. Its centre is then under the top bar (`components/app-shell.tsx:797`), which is why a click there is refused. Pre-existing; B4's taller tabs add 12 px. Found by the #529 CI run (`e2e/design-debt-b1.e2e.ts`, which now scrolls the button into view first).
 - **Rule**: a control in the page's first row is fully visible when the page opens.
 - **Fix**: open a short thread at its top, or keep the phone run header's first row visible. Owner: B5 (`run-header.tsx`) or B8 reconciliation of #453; the thread's scroll behaviour is outside B4.
+- **Status (#453 batch B5, thread, composer and launch menus)**: not fixed, moved to B8 reconciliation. The cause is where the phone thread opens (at its end, `thread-scroller.tsx` / `thread-scroll.ts`), a behaviour the thread-scroll specs pin; changing it is a behaviour decision, not a class change. B5's 44 px rows make the header taller, so the first row sits further under the top bar. `e2e/design-debt-b5.e2e.ts` scrolls each control into view before it measures it.
 
 ### G-33 The composer footer reflows after the model pill enables
 
 - **Differs**: on a phone, one or two frames after the composer's model pill (`components/engine-pills.tsx:204`) stops being disabled, the footer reflows. Measured at 375 px: before B4 the pill moves 28 px sideways; with the B4 44 px phone pills it wraps to the next line (from y 218 to y 266). A click aimed at the first position then misses. A person cannot tap that fast (the move is under 25 ms), but a test can. Pre-existing; B4's larger pills turn the shift into a wrap. `e2e/design-debt-b1.e2e.ts` now waits until the pill holds still.
 - **Rule**: a control is in its final place when it becomes enabled.
 - **Fix**: reserve the footer's space before the late content arrives, or enable the pill in the same render. Owner: B5 (composer) or B8 reconciliation of #453.
+- **Status (#453 batch B5, thread, composer and launch menus)**: not fixed, moved to B8 reconciliation. The late enable comes from `components/engine-pills.tsx`, which is in no B5 manifest file; `composer.tsx` only hosts the footer.
 
 ### G-34 The Tools trigger in the phone drawer is under the phone target
 
 - **Differs**: in the phone drawer footer the Tools trigger (`components/tools-menu.tsx:89`, `px-2 py-0.5 text-[11px]`) is a 76×23 px target, measured at 375 px in both themes, single and multi-project. Every other control in the drawer is 44 px. Pre-existing on `main`; after #546 made the drawer navigation-only it is the one undersized control left in it. Recorded 2026-09-17 from the #559 design review (NB-2).
 - **Rule**: a touch target on a phone is 44 px (`patterns.md` §6, `verification.md` § Phone targets and chip floors).
 - **Fix**: give the trigger a phone tap floor such as `min-h-tap` (released at `md:`), as New task has, and re-check the footer row width together with G-28.
+- **Status (#453 batch B5, thread, composer and launch menus)**: fixed – the trigger is `min-h-tap … md:min-h-0` with the focus ring; measured 77 × 44 px at comfortable in the drawer. G-28 is unchanged.
 
 ### G-35 The command palette has no visible hint and no touch path
 
 - **Differs**: since #546 removed the sidebar's `Search…` launcher, no rendered text in the cockpit shows `⌘K` or `Ctrl+K`. The palette (`components/command-palette.tsx`) opens from the keyboard only, so people cannot discover it, and a touch-only phone cannot open it at all. Nothing is lost: every palette destination stays reachable another way – views through the nav, projects through the project groups and Add project, tasks through the Tasks pages, Toggle theme through the footer, and skills through Skills. The owner accepted losing the click path. Recorded 2026-09-17 from the #559 design review (NB-1).
 - **Rule**: document ⌘K/Ctrl+K where keyboard help is shown. The cockpit has no keyboard-help surface yet, so there is no place for the hint.
 - **Fix**: when a keyboard-help surface exists, list ⌘K/Ctrl+K there. Bringing back a clickable launcher is not the fix.
+
+### G-36 Rendered Markdown's code-block actions are under the phone target
+
+- **Differs**: the copy and download buttons on a fenced code block in a thread message are 22–26 px at 375 px across the four densities (`data-streamdown="code-block-copy-button"`, `code-block-download-button`). They come from the Markdown library (`streamdown`), configured in `routes/task-thread/markdown.tsx`. Every other thread control is 44 px. Pre-existing; found by `e2e/design-debt-b5.e2e.ts`, which reports these buttons in `known-g36-markdown-actions.json` and fails on any other small target.
+- **Rule**: a touch target on a phone is 44 px.
+- **Fix**: pass the library's class hook for code-block actions, or render the actions through `Button size="icon-sm"`. Owner: B8 reconciliation of #453; `markdown.tsx` is in no batch manifest.
 
 ## Comment vs code
 
@@ -244,7 +259,7 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 | "Views never hand-roll a centered message" | the error boundary, `skills-loading.tsx` and `PageState` do | `components/centered-state.tsx:17-18` (G-05) |
 | pulse follows the "quiet motion" rule | no reduced-motion guard | `components/status-dot.tsx:8-9,21` (G-08) |
 | `run-diff.tsx` is an interim to be replaced by `DiffFileBody`'s successor | the successor shipped; two consumers were never migrated | `components/run-diff.tsx:17,145-150` (G-09) |
-| "Reach for this on any control that is hidden until hover" | the task lists use it; the composer overlay and the run header pencil do not | `styles/index.css:29-31` (G-21) |
+| "Reach for this on any control that is hidden until hover" | the task lists, the thread's pencil and message actions, and the composer's remove mark use it (#453 B5) | `styles/index.css:29-31` (G-21) |
 | `PopoverTitle` is typed `h2` | renders a `div` | `components/ui/popover.tsx:67-70` (G-07) |
 | the reference tones share `StatusDot`'s five roles | `ReferenceStatusTone` adds `info` and `conflict`, which `StatusDot` cannot paint | `lib/reference-status.ts:11-13`, `components/reference-chip.tsx:469` |
 
