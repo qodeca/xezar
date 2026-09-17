@@ -136,7 +136,9 @@ function CommitDiffView({ runId, sha }: { runId: string; sha: string }) {
               subtitle="This commit carries no diff of its own — a merge commit’s changes live on the commits it merged."
             />
           ) : (
-            <div className="p-4 [--diff-sticky-top:10rem] md:p-section">
+            <div className="p-4 [--diff-sticky-top:var(--page-header-h,10rem)] md:p-section">
+              {/* The sticky offset is the run header's MEASURED height, never a constant — see
+                  `task-changes.tsx` and `lib/page-header-offset.ts` (#453 B6, NB-1). */}
               <Diff files={commit.data.files} mode={effectiveMode} wrap={effectiveWrap} className="min-w-0" />
             </div>
           )}

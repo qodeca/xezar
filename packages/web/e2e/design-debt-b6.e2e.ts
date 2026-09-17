@@ -352,6 +352,56 @@ describe('OD-1 the Git pages share one gutter on a desktop', () => {
   }, 120_000)
 })
 
+// ---- NB-1 / OD-1: the sticky diff header clears the run header at every density ---------------------
+
+/**
+ * The design review's NB-1: the file header parked at a hand-typed `10rem` while the run header's
+ * own height moves with the density lever (236 / 197 / 179 / 163 px), so at Roomy and Comfortable
+ * the file name and its collapse toggle were covered. The offset is measured now
+ * (`--page-header-h`, `src/lib/page-header-offset.ts`), and this is the proof in real layout —
+ * jsdom lays nothing out, so no unit test can see a covered header.
+ *
+ * Red proof: reverting the two pages to `[--diff-sticky-top:10rem]` fails this at roomy and
+ * comfortable (the file header's top lands 45 / 37 px above the run header's bottom) and passes at
+ * compact and ultra — which is the density dependence OD-1 rules out.
+ */
+describe('NB-1 a diff’s sticky file header clears the run header', () => {
+  it.each(densities)('the file name stays fully visible while scrolling at %s', (value) => {
+    density(value)
+    visit(`/tasks/${runId}/changes`, DIFF_READY, 1280)
+    // Scroll the one scroller until a file card is genuinely scrolled past its own top — only then
+    // is its header STUCK, and only a stuck header can be covered.
+    const stuck = `(() => {
+      const header = document.querySelector('[data-slot="run-header"]').getBoundingClientRect();
+      return [...document.querySelectorAll('[data-slot="diff-file"]')].find(el => { const r = el.getBoundingClientRect(); return r.top < header.bottom && r.bottom > header.bottom + 120 }) ?? null
+    })()`
+    for (let n = 0; n < 20 && !read<boolean>(`Boolean(${stuck})`); n++) {
+      read(`(() => { const main = find('main'); main.scrollTop = main.scrollTop + main.clientHeight; return true })()`)
+      settle()
+    }
+    const geo = read<{ headerBottom: number; fileTop: number; paneTop: number; published: number; path: string }>(`(() => {
+      const header = document.querySelector('[data-slot="run-header"]').getBoundingClientRect();
+      const card = ${stuck};
+      if (!card) throw new Error('no diff card scrolled under the run header');
+      const file = card.querySelector('[data-slot="diff-file-header"]').getBoundingClientRect();
+      const pane = document.querySelector('[data-slot="changes-tree-pane"]').getBoundingClientRect();
+      return {
+        headerBottom: Math.round(header.bottom),
+        fileTop: Math.round(file.top),
+        paneTop: Math.round(pane.top),
+        published: Math.round(parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--page-header-h'))),
+        path: card.dataset.path,
+      }
+    })()`)
+    // The measured offset IS the run header, not a constant that happens to fit one density.
+    expect(Math.abs(geo.published - geo.headerBottom), `published ${geo.published} vs header ${geo.headerBottom}`).toBeLessThanOrEqual(1)
+    // …so nothing of the stuck file header (or of the tree pane pinned from the same var) is covered.
+    expect(geo.fileTop, `${value}: ${geo.path} header top ${geo.fileTop} vs run header bottom ${geo.headerBottom}`).toBeGreaterThanOrEqual(geo.headerBottom - 1)
+    expect(geo.paneTop, `${value}: tree pane top ${geo.paneTop} vs run header bottom ${geo.headerBottom}`).toBeGreaterThanOrEqual(geo.headerBottom - 1)
+    browser.screenshot(join(artifacts, `task-changes-sticky-${value}.png`), { viewport: true })
+  }, 120_000)
+})
+
 // ---- keyboard, cancel, motion ------------------------------------------------------------------------
 
 it('keyboard: the Files tree opens a folder and picks a file with Tab and Enter', async () => {

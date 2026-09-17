@@ -192,7 +192,12 @@ function ChangesView({ run }: { run: ApiRun }) {
           subtitle="The worktree matches its base branch. Changes appear here as the agent works."
         />
       ) : (
-        <div className="flex min-h-0 flex-1 items-start gap-section p-4 [--diff-sticky-top:10rem] md:p-section">
+        <div className="flex min-h-0 flex-1 items-start gap-section p-4 [--diff-sticky-top:var(--page-header-h,10rem)] md:p-section">
+          {/* The sticky offset is the run header's MEASURED height (`--page-header-h`, published by
+              the header itself), never a constant: that height moves with the density lever, so the
+              old fixed `10rem` covered the file name and its collapse toggle at Roomy and
+              Comfortable (#453 B6, NB-1). The fallback is the old constant, so a browser without
+              `ResizeObserver` lands exactly where it used to. */}
           {/* The tree column: sticky under the header so long diffs scroll beside it, and its OWN
               scroller. Sticky alone is not enough — a tree taller than the viewport grows the page
               instead, so the only way to reach its last file was to drag the shared `main` scroller
@@ -201,7 +206,7 @@ function ChangesView({ run }: { run: ApiRun }) {
               inside it from chaining into the diff once it bottoms out. */}
           <aside
             data-slot="changes-tree-pane"
-            className="sticky top-40 hidden max-h-[calc(100dvh_-_var(--diff-sticky-top)_-_1rem)] w-60 shrink-0 overflow-y-auto overscroll-contain md:block lg:w-72"
+            className="sticky top-[var(--diff-sticky-top)] hidden max-h-[calc(100dvh_-_var(--diff-sticky-top)_-_1rem)] w-60 shrink-0 overflow-y-auto overscroll-contain md:block lg:w-72"
           >
             <ChangesTree root={tree} selected={selected} onSelect={selectFile} />
           </aside>

@@ -40,6 +40,7 @@ const PHONE_ROW = ['min-h-tap', 'md:min-h-0']
 /** Every file this batch owns, for the source contracts below. */
 const B6_FILES = [
   'components/diff/diff-view.tsx',
+  'lib/page-header-offset.ts',
   'components/diff/image-preview.tsx',
   'components/run-diff.tsx',
   'routes/repo-git/repo-branches.tsx',

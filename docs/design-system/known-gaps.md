@@ -8,8 +8,8 @@ to-do list: an entry becomes a `design-debt` issue on the triggers [CONTRIBUTING
 names, and a fix arrives as its own change with the entry deleted.
 
 Ids are never reused: a deleted entry retires its number, so a new entry takes the next number after the
-highest ever used. G-01..G-23, G-26..G-28 and G-30..G-38 are live, G-24, G-25 and G-29 are retired, and
-the next free id is G-39.
+highest ever used. G-01..G-23, G-26..G-28 and G-30..G-41 are live, G-24, G-25 and G-29 are retired, and
+the next free id is G-42.
 
 Counts are non-test files or occurrences in `packages/web/src`. Corrected counts in G-02, G-06,
 G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the original inventory date.
@@ -55,6 +55,7 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Differs**: `focus-visible:ring-[3px] focus-visible:ring-ring/50` (eight primitives, 51 sites outside `components/ui`) vs `focus:ring-2 focus:ring-ring focus:ring-offset-2` on the dialog and sheet close buttons (`components/ui/dialog.tsx:73`, `sheet.tsx:78`). `focus-visible:border-ring` is on six primitives but not `button.tsx` or `scroll-area.tsx`. `tooltip.tsx:45` applies `animate-in` unconditionally where every other floating surface gates on `data-[state=open]`.
 - **Rule**: the `focus-visible` ring.
 - **Fix**: restyle the two close buttons; gate the tooltip animation.
+- **Also found (#453 batch B6, Git tabs)**: a third idiom – none. The rows of both Git trees (`routes/task-git/changes-tree.tsx`, `files-tree.tsx`) carry no focus-visible class at all, so they wear the browser's default ring while the diff file header and the expandable gap row beside them wear the cockpit ring. Focus stays visible, so nothing is lost; it is a consistency gap. Found by the #574 design review (NB-5). Owner: B8 reconciliation of #453.
 
 ### G-07 Primitive-level divergences
 
@@ -198,6 +199,7 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Rule**: keep the tokens; do not add more small text in `--soft-foreground` on light, and keep the badge count announced in words.
 - **Fix**: darken light `--soft-foreground` to about `#767676` (4.5:1) and revisit the danger pair; then re-check every specimen swatch.
 - **Also measured (#453 batch B4, 375 px, light theme)**: three ink tokens are below 4.5:1 as small text on the task lists – `--success` (`#10b981`) 2.5:1 and `--danger` (`#ef4444`) 3.8:1 in the `+`/`−` diff counts (`components/diff-stat.tsx`), and `--violet` (`#8f86e8`) 3.1:1 in a reference chip with no forge status (`components/reference-chip.tsx`). The dark theme passes. B4 may not change a token, so `e2e/design-debt-b4.e2e.ts` reports these three colours and fails on any other. Owner: a token change after B1, through B8 reconciliation.
+- **Also measured (#453 batch B6, 375–1280 px, light theme)**: two more sites paint the same token pairs as small text. The repository Branches tab spells a check's state in 10 px words – "passing" in `--success` at 2.54:1 and "failing" in `--danger` at 3.76:1 (`routes/repo-git/repo-branches.tsx`), the same pairs this entry already records for the diff counts. The review gate's manual-merge URL renders `text-primary` on white at **1.34:1**, which fails AA for text of any size, not only small text; that one was measured in the running cockpit and its source site is still to be located – `routes/task-thread/review-panel.tsx` paints its own manual path in `--soft-foreground`, so the lime ink comes from somewhere else on that surface. Both found by the #574 design review (NB-6, NB-7). B6 may not change a token. Owner: the same token change, through B8 reconciliation of #453.
 
 ### G-26 The thread header shows scrolled content through it
 
@@ -265,12 +267,31 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Differs**: at 1280 px, in both themes, the "Session / Changes / Commits / Files" run tab labels print over each other (`routes/task-thread/run-header.tsx` tab row). The base revision (`e2c00eed`) shows the same overlap, so batch B5 did not cause it. Found by the #571 design review (NB-5).
 - **Rule**: tab labels never overlap at any documented width.
 - **Fix**: give the tab row enough width, or wrap or truncate the labels, so the four never collide at 1280 px. Owner: B8 reconciliation of #453, or a standalone issue.
+- **Also at 1024 px (#453 batch B6)**: the same header's action row overflows `main` by about 2 px there, and the four tab labels print over each other at that width too. Pre-existing; `run-header.tsx` is not a B6 file. Found by the #574 design review (NB-7), so the fix has to hold at 1024 px as well as 1280 px. Owner: unchanged.
 
-### G-38 Syntax colours on a diff tint are below 4.5:1 in light
+### G-38 Syntax colours on a diff tint are below 4.5:1
 
-- **Differs**: in the light theme, two syntax-token colours miss AA as 12 px code on the diff's tints – the number colour (`--syn-num`, `#b91c1c`) on a strong deletion word mark (`bg-diff-del-strong`) is 4.05:1, and the punctuation colour (`--syn-punc`, `#6b7280`) on a line tint is 4.42:1. The dark theme passes. The fixture has no code comments, so `--syn-com` (`#9ca3af`) on a tint was not measured and is likely lower. Measured on the review gate and the task Changes tab at 1280 px by `e2e/design-debt-b6.e2e.ts` (#453 B6).
+- **Differs**: in the light theme, two syntax-token colours miss AA as 12 px code on the diff's tints – the number colour (`--syn-num`, `#b91c1c`) on a strong deletion word mark (`bg-diff-del-strong`) is 4.05:1, and the punctuation colour (`--syn-punc`, `#6b7280`) on a line tint is 4.42:1. The comment colour misses AA in **both** themes: `--syn-com` is 2.36:1 in light and 3.22:1 in dark (`#6b7280` on `bg-diff-add-bg`), so the dark theme does **not** pass. Measured on the review gate and the task Changes tab at 1280 px by `e2e/design-debt-b6.e2e.ts` (#453 B6) for the first two; the comment colour was measured composited by the #574 design review (NB-2), whose fixture carries a comment line where the browser suite's does not.
 - **Rule**: keep the tokens; a syntax colour must still reach 4.5:1 on every `--diff-*` surface it is painted on.
-- **Fix**: darken the two light `--syn-*` colours, or lighten the two `--diff-*` tints, and re-measure every diff surface. B6 may not change a token (#453: B1 owns them), so the browser suite reports these colours instead of passing them. Owner: B8 reconciliation of #453.
+- **Fix**: darken the two light `--syn-*` colours and the comment colour in both themes, or lighten the `--diff-*` tints, and re-measure every diff surface. B6 may not change a token (#453: B1 owns them), so the browser suite reports these colours instead of passing them. Owner: B8 reconciliation of #453.
+
+### G-39 The changed-files tree marks a file's status with colour alone
+
+- **Differs**: in the task Changes tree (`routes/task-git/changes-tree.tsx:115`) an added or copied file is marked only by a green file icon and a renamed file carries no mark at all, while the diff card beside it spells "copied" and "renamed" in words. [README.md](README.md) rule 10 puts the word first and colour second, and colour alone is not readable for a reader who cannot tell the two greens apart; the icon is `aria-hidden`, so the row carries no accessible status either. Pre-existing; found by the #574 design review (NB-3).
+- **Rule**: a status is a word, or an accessible name; colour only ever repeats it.
+- **Fix**: give each row an `aria-label` carrying the status, or a short status word beside the file name, matching the diff card's vocabulary. Owner: B8 reconciliation of #453.
+
+### G-40 The Files tab forgets the selected file when the reader leaves the tab
+
+- **Differs**: on a task's Files tab (`routes/task-git/task-files.tsx`), picking a file, switching to another top-level tab and coming back resets the preview to "Select a file" – the selection lives in component state that the route change unmounts. Every other Git tab keeps what the reader was looking at. Pre-existing: #574 changed only spacing classes in that file. Found by the #574 QA pass (non-blocking, accepted).
+- **Rule**: a reader's place on a tab survives a trip to another tab.
+- **Fix**: keep the selected path in the run's stored UI state, or in a query parameter, the way the diff view keeps its mode. Owner: B8 reconciliation of #453, or a standalone issue.
+
+### G-41 The same change is named two different things on two surfaces
+
+- **Differs**: the review gate calls `src/copy.ts` "copied" while the task Changes tab calls the same file "added", and calls `logo.png` "binary" where the Changes tab calls it "image". The renderer is one engine; the difference comes from the two endpoints' own rename and copy detection (server-side diff flags), so the reader sees one change named twice moving between tabs. Found by the #574 design review (NB-4).
+- **Rule**: one change has one name, whichever surface shows it.
+- **Fix**: make the two endpoints ask `git diff` for the same detection, then re-check both surfaces. This is server work, not a design-system change, so it wants its own issue. Owner: B8 reconciliation of #453, or a standalone issue.
 
 ## Comment vs code
 

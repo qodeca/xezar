@@ -56,7 +56,10 @@ function FilesView({ run }: { run: ApiRun }) {
           subtitle={root.error.message}
         />
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col items-stretch gap-list p-4 [--diff-sticky-top:7rem] md:flex-row md:items-start md:gap-section md:p-section">
+        <div className="flex min-h-0 flex-1 flex-col items-stretch gap-list p-4 [--diff-sticky-top:var(--page-header-h,7rem)] md:flex-row md:items-start md:gap-section md:p-section">
+          {/* The pin is the run header's MEASURED height for the same reason the Changes tab's is
+              (#453 B6, NB-1): the header grows with the density lever, so a constant parks the pane
+              under it at Roomy. The fallback is this tab's old constant. */}
           {/* Sticky beside a long preview on desktop, with its own scroller so a deep tree scrolls
               without dragging the preview along; first in the stack (and no scroller of its own) on
               phones, where the page IS the pane. The cap reads the same var the pin is set from, so
