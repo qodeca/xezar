@@ -299,7 +299,7 @@ test('A-04 — A’s event controller delivers A’s journal only, while B keeps
 test('A-12 — the connection file stays out of Git, and its secrets out of the journal and the trail', { skip }, async () => {
   await inWorld({ connection: true }, async (world) => {
     const c = world.connection!;
-    const seen = await world.observe(() => {
+    const seen = await world.observe(async () => {
       world.a.journal.append({
         category: 'E-02',
         kind: 'task.attention',
@@ -311,15 +311,15 @@ test('A-12 — the connection file stays out of Git, and its secrets out of the 
       const mcp = world.a.audit.channel('mcp');
       // A client echoing both secrets in every identifier it controls, and a careless caller
       // spreading the whole connection file into an operation.
-      mcp.record(
+      await mcp.record(
         { action: 'mcp.task-read', resource: { kind: 'run', id: c.credential }, operationId: c.token, payload: { c } },
         { outcome: 'refused', reason: 'not_found' },
       );
-      mcp.record(
+      await mcp.record(
         { action: 'mcp.task-read', resource: { kind: 'run', id: c.token }, operationId: c.credential, expectedVersion: `rev1:run:${c.token}:1:0123456789ab` },
         { outcome: 'applied' },
       );
-      mcp.record({ ...(JSON.parse(readFileSync(c.path, 'utf8')) as object), action: 'mcp.organise-work' } as never, { outcome: 'applied' });
+      await mcp.record({ ...(JSON.parse(readFileSync(c.path, 'utf8')) as object), action: 'mcp.organise-work' } as never, { outcome: 'applied' });
       return { journal: readFileSync(world.a.journal.rowsPath, 'utf8'), trail: readFileSync(auditFile(world.a), 'utf8') };
     });
     assertIsolated(world, seen);

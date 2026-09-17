@@ -17,6 +17,7 @@ import { loadWorkspaceConfig } from '../workspace/config.ts';
 import { ProjectOwnership } from '../workspace/project-owner.ts';
 import { codexControlHome } from './adapters/codex-link.ts';
 import { answerRefusal, classifyMcpCall } from './audit-inventory.ts';
+import { notFoundRefusalOf } from './audit-not-found.ts';
 import { AuditTrail, type AuditChannel } from './audit-trail.ts';
 import { runBridge, type BridgeOptions, type ServiceTarget } from './bridge.ts';
 import { writeMcpConnectionFile } from './connection-file.ts';
@@ -343,11 +344,15 @@ function composeDoor(input: DoorInput): {
       routeRefusalOf(result) ??
       cursorRefusalOf(result) ??
       notPerformedOf(result) ??
+      // A target this project does not have, looked up before any effect (#573).
+      notFoundRefusalOf(tool.name, args.action, result) ??
       (result.isError ? undefined : answerRefusal(recorded.action, result.structuredContent?.result));
-    if (stale) auditFor.record(recorded, { outcome: 'refused', reason: 'stale_version', resource: stale.resource });
-    else if (boundary) auditFor.record(recorded, { outcome: 'refused', reason: boundary });
+    // Awaited, so the record is on disk when the leader sees the answer; `record` never rejects and
+    // resolves within the lock's 2 s bound, so the answer itself never depends on it.
+    if (stale) await auditFor.record(recorded, { outcome: 'refused', reason: 'stale_version', resource: stale.resource });
+    else if (boundary) await auditFor.record(recorded, { outcome: 'refused', reason: boundary });
     else if (result.isError) auditFor.skip('tool_error');
-    else auditFor.record(recorded, { outcome: 'applied', ...(resource ? { resource } : {}) });
+    else await auditFor.record(recorded, { outcome: 'applied', ...(resource ? { resource } : {}) });
     return result;
   };
 

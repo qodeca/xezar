@@ -23,6 +23,23 @@
 ## ✨ Features
 
 - ✨ **The sidebar is navigation-only.** (#546) The Active/Archived task switcher, task list, and `Search…` launcher have been removed from the sidebar. Manage and search tasks on the Tasks page, and open the command palette with `⌘K` on macOS or `Ctrl+K` elsewhere. Existing task badges, task data, APIs, and saved UI state are unchanged.
+- **The audit trail is bounded, and safe to share between processes.** (#306, part 3 of 4) A
+  project's `.local/xezar/audit.ndjson` now rotates before it passes 10 MB (10,000,000 bytes) and
+  keeps five files — the live one plus `audit.ndjson.1` to `.4`, so a project's trail stays under
+  50 MB whatever it does. A rotated file's history is not lost: sequence numbers run on across the
+  set, the new live file starts with one `rotated` marker saying where the previous one ended, and
+  xezar reads the oldest rotation first. Every writer — the cockpit, MCP, the automation runner and
+  a command — now takes one lock per project for the sequence, the append and the rotation, so two
+  xezar processes writing at the same moment cannot lose or repeat a record. All five files are kept
+  owner-only (`0600`), and one that is not is repaired before anything is written to it. If any of
+  that cannot be done — a folder xezar cannot write, a lock held by another process for more than
+  two seconds, a failed rename — the record is dropped and xezar warns once; **your action still
+  happens**, exactly as before. The old `mcp-audit.ndjson` is untouched by all of it.
+- **An MCP "not found" is now recorded as a refusal.** (#573, with #306 part 3) Asking MCP to cancel,
+  continue, pin or push a task this project does not have left no trace at all — and for `handoff_git`
+  it was recorded as if it had been applied. Such an answer comes from a lookup before anything
+  happens, so it is now one `refused` record with the reason `not_found`, the same way the cockpit
+  records its 404. An answer that may have followed a real effect is still never recorded as refused.
 - **The audit trail now records every door, not only MCP.** (#306, part 2 of 4) A change made in the
   cockpit (`ui`), by the automation runner (`automation`) or by a command (`cli`) is written to the
   project's `.local/xezar/audit.ndjson` beside the MCP records, with the same action id for the same

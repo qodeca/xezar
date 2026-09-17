@@ -227,7 +227,8 @@ const serviceRefusal = (action: Input['action'], res: Answer, extra: Record<stri
   return answer({ action, status: 'failed', refusedBy: 'service', httpStatus: res.status, error: serviceError(res), ...extra });
 };
 
-const NO_TASK = 'No such task in this project.';
+/** The policy refusal for a task id this project does not have. The audit door matches it whole (#573). */
+export const NO_TASK = 'No such task in this project.';
 const NO_WORKTREE_REASON = 'no worktree — this task ran directly in the repo working tree';
 
 /** "Active" as the engine means it — `review` is parked, not active (git-actions.ts `isActive`). */

@@ -118,10 +118,10 @@ export class ProjectAutomationScheduler {
       const launched = await this.handle.launch!(definition, candidate, receipt.receiptId);
       this.handle.store.appendReceipt({ ...receipt, status: 'launched', runId: launched.runId, updatedAt: new Date().toISOString() });
       this.handle.store.appendLog({ automationId: definition.id, revision: definition.revision, event: candidate.event, result: 'launched', receiptId: receipt.receiptId, runId: launched.runId, githubNumber: candidate.number, githubTitle: candidate.title, githubUrl: candidate.url });
-      this.handle.audit?.launched(definition, candidate.event, receipt.receiptId, launched.runId);
+      await this.handle.audit?.launched(definition, candidate.event, receipt.receiptId, launched.runId);
     } catch (error) {
       this.handle.store.appendReceipt({ ...receipt, status: 'launch-error', error: error instanceof Error ? error.message : String(error), updatedAt: new Date().toISOString() });
-      this.handle.audit?.failed(definition, candidate.event, receipt.receiptId, error);
+      await this.handle.audit?.failed(definition, candidate.event, receipt.receiptId, error);
       throw error;
     }
   }
