@@ -83,7 +83,12 @@ async function finalTurn(text: string) {
   const context = fixture([{ text }]);
   let previous: string | undefined;
   let completions = 0;
+  // Observe completion directly; startup can outlast expect.poll's one-second default
+  // during the full gate. The enclosing test timeout still bounds a missing transition.
+  let resolveFinalStatus!: () => void;
+  const finalStatus = new Promise<void>(resolve => { resolveFinalStatus = resolve; });
   context.store.on('run', (record: RunRecord) => {
+    if (['waiting', 'done', 'failed'].includes(record.status)) resolveFinalStatus();
     if (record.status === 'done' && previous !== 'done') completions++;
     previous = record.status;
   });
@@ -91,7 +96,8 @@ async function finalTurn(text: string) {
     { name: 'one', source: 'built-in', steps: [{ id: 'author', prompt: '{{task}}' }] },
     { task: 'finish', worktree: false, autonomous: true },
   );
-  await expect.poll(() => context.store.getRun(run.id)?.status)
+  await finalStatus;
+  expect(context.store.getRun(run.id)?.status)
     .toSatisfy(status => status === 'waiting' || status === 'done');
   return { ...context, status: context.store.getRun(run.id)?.status, completions };
 }
