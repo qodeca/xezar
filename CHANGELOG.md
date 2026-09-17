@@ -1,3 +1,7 @@
+# Unreleased
+
+- 🐛 **The OpenCode leader now gets the decision version on every pushed run event.** (#535, #532) `renderDispatch` in the OpenCode reaction adapter omitted `subject.version` from every rendered event, unlike the Claude Code, Codex and pi adapters, so an OpenCode leader could not pass it as `expectedVersion` without an extra `task_read`. The adapter now renders it the same way the other three do.
+
 # 0.15.0 (2026-09-17)
 
 ## Highlights
