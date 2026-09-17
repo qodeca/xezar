@@ -68,6 +68,7 @@ import { toast } from '@/components/ui/toaster'
 import { DirectionalUsage } from '@/components/directional-usage'
 import { deriveAttention } from '@/lib/attention'
 import { copyText } from '@/lib/clipboard-result'
+import { usePageHeaderOffsetVar } from '@/lib/page-header-offset'
 import { queuePositions, runTitle } from '@/lib/task-groups'
 import { usableRunners } from '@/lib/provider-status'
 import {
@@ -149,6 +150,10 @@ export function RunHeader({
   // The queue position a parked run shows in its pill ("queued #2"). Reads the shared runs-list
   // query — already warm from the shell's Tasks badge — because position is a property of the
   // whole queue, not of this record.
+  // The Git tabs park their sticky diff file headers under this one, so it publishes its real
+  // height as `--page-header-h` rather than letting them guess a constant (#453 B6, NB-1).
+  const headerRef = usePageHeaderOffsetVar<HTMLElement>()
+
   const runs = useRuns()
   const health = useHealth()
   const metricVisibility = usageMetricVisibility(health.data)
@@ -157,6 +162,7 @@ export function RunHeader({
 
   return (
     <header
+      ref={headerRef}
       data-slot="run-header"
       className="relative z-20 border-b border-border bg-background/95 px-3 pt-2 backdrop-blur md:sticky md:top-0 md:px-section md:pt-group"
     >

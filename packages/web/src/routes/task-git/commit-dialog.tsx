@@ -16,6 +16,7 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/components/ui/toaster'
 import { runTitle } from '@/lib/task-groups'
+import { useReturnFocus } from '@/routes/settings/remove-project'
 import { isSubmitShortcut } from '@/lib/use-submit-shortcut'
 
 /**
@@ -35,6 +36,9 @@ export function CommitDialog({
 }) {
   const queryClient = useQueryClient()
   const [message, setMessage] = useState('')
+  // Opened from state, not a Radix trigger: without this, Cancel or Escape dropped keyboard focus
+  // on <body> instead of the toolbar's Commit button (#453 B6).
+  const returnFocus = useReturnFocus(open)
 
   // Re-prefill on every open: the run's display title (titleSummary ?? title) is the
   // auto-summary the spec names; an abandoned edit must not leak into the next commit.
@@ -68,11 +72,11 @@ export function CommitDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent data-slot="commit-dialog">
+      <DialogContent data-slot="commit-dialog" onCloseAutoFocus={returnFocus}>
         <DialogHeader>
           <DialogTitle>Commit changes</DialogTitle>
           <DialogDescription>
-            Stages everything in the task&apos;s worktree (git add -A) and commits to{' '}
+            Stages everything in the task’s worktree (git add -A) and commits to{' '}
             {run.branch ? <span className="font-mono">{run.branch}</span> : 'its branch'}.
           </DialogDescription>
         </DialogHeader>

@@ -70,7 +70,7 @@ function DirNode({
       >
         <ChevronRightIcon
           aria-hidden="true"
-          className={cn('size-3.5 shrink-0 transition-transform', open && 'rotate-90')}
+          className={cn('size-3.5 shrink-0 motion-safe:transition-transform', open && 'rotate-90')}
         />
         <FolderIcon aria-hidden="true" className="size-3.5 shrink-0" />
         <span className="min-w-0 truncate font-medium">{dir.name}</span>

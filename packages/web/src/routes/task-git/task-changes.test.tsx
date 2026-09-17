@@ -192,9 +192,11 @@ describe('the Changes tab route', () => {
     expect(pane.className).toContain('overflow-y-auto')
     // …and a wheel that bottoms out inside the tree must not chain into the diff.
     expect(pane.className).toContain('overscroll-contain')
-    // The cap is measured from the offset the pane is actually pinned at (`top-40` = 10rem).
-    expect(pane.className).toContain('sticky top-40')
-    expect(pane.parentElement?.className).toContain('[--diff-sticky-top:10rem]')
+    // The cap is measured from the offset the pane is actually pinned at — one var for both, and
+    // that var is the run header's MEASURED height, never a constant (#453 B6, NB-1): the header
+    // grows with the density lever, so a fixed offset is wrong at three of the four densities.
+    expect(pane.className).toContain('sticky top-[var(--diff-sticky-top)]')
+    expect(pane.parentElement?.className).toContain('[--diff-sticky-top:var(--page-header-h,10rem)]')
   })
 
   it('shows the empty state when the worktree is clean', async () => {
@@ -223,7 +225,7 @@ describe('the Changes tab route', () => {
 
     await waitFor(() => expect(document.querySelector('[data-slot="repointed-head-note"]')).not.toBeNull())
     expect(document.querySelector('[data-slot="repointed-head-note"]')?.textContent).toContain(
-      "HEAD is on review/pr-42, not this task's branch xez/abc12345 — showing only what this task changed there.",
+      "HEAD is on review/pr-42, not this task’s branch xez/abc12345 — showing only what this task changed there.",
     )
   })
 
@@ -439,7 +441,7 @@ describe('the Changes tab route', () => {
         expect(writeText).toHaveBeenCalledWith('cd /tmp/wt/r1 && claude --resume s-1'),
       )
       await waitFor(() =>
-        expect(document.body.textContent).toContain('command copied to clipboard'),
+        expect(document.body.textContent).toContain('No terminal found — command copied'),
       )
     })
 

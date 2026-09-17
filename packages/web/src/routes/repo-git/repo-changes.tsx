@@ -50,7 +50,7 @@ export function RepoChangesSection() {
     <section data-slot="repo-changes" className="flex min-h-0 flex-1 flex-col">
       <div
         data-slot="repo-changes-toolbar"
-        className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 border-b border-border px-4 py-2 md:px-6"
+        className="flex flex-wrap items-center gap-x-row gap-y-1.5 border-b border-border px-4 py-2 md:px-section"
       >
         <span className="text-xs text-muted-foreground">Uncommitted changes</span>
         {changes.data ? <AnimatedDiffStat stat={changes.data.stat} /> : null}
@@ -61,7 +61,7 @@ export function RepoChangesSection() {
       </div>
 
       {changes.isPending ? (
-        <p data-slot="changes-loading" className="px-4 py-6 text-center text-xs text-soft-foreground md:px-6">
+        <p data-slot="changes-loading" className="px-4 py-6 text-center text-xs text-soft-foreground md:px-section">
           Loading changes…
         </p>
       ) : changes.isError ? (
@@ -81,7 +81,7 @@ export function RepoChangesSection() {
           subtitle="No uncommitted changes in the main working tree. Edits show up here as they happen."
         />
       ) : (
-        <div className="flex min-h-0 flex-1 items-start gap-5 px-4 py-4 [--diff-sticky-top:7rem] md:px-6">
+        <div className="flex min-h-0 flex-1 items-start gap-section p-4 [--diff-sticky-top:7rem] md:p-section">
           {/* Same deal as the task Changes tab: sticky AND its own scroller, so a long file list
               never has to drag the diff to the bottom to show its last row. */}
           <aside

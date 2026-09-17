@@ -9,6 +9,7 @@ import type { ApiRun } from '@qodeca/xezar-api-client'
 import { CenteredState } from '@/components/centered-state'
 import { Diff, type DiffHandle, type DiffMode } from '@/components/diff'
 import { toast } from '@/components/ui/toaster'
+import { copyText } from '@/lib/clipboard-result'
 import { gitActionPolicy, type GitActionId } from '@/lib/git-actions'
 import { useIsDesktop } from '@/lib/use-desktop'
 
@@ -81,12 +82,13 @@ function ChangesView({ run }: { run: ApiRun }) {
     mutationFn: () => openRunInCli(run.id),
     onError: (error: Error) => {
       // Same 409 fallback as the header's Terminal: no emulator → the command goes to the
-      // clipboard so the user stays one paste away.
+      // clipboard so the user stays one paste away. The shared helper (G-16) answers a refusal
+      // instead of throwing, and then the toast carries the command itself.
       if (error instanceof ApiError && error.command) {
-        void navigator.clipboard
-          .writeText(error.command)
-          .then(() => toast('No terminal found — command copied to clipboard.'))
-          .catch(() => toast(`Run manually: ${error.command}`))
+        const command = error.command
+        void copyText(command).then((result) =>
+          toast(result.ok ? 'No terminal found — command copied' : `Run manually: ${command}`),
+        )
         return
       }
       onError(error)
@@ -163,14 +165,14 @@ function ChangesView({ run }: { run: ApiRun }) {
       />
 
       {changes.data?.repointedHead ? (
-        <p data-slot="repointed-head-note" className="border-b px-4 py-2 text-xs text-soft-foreground md:px-6">
-          HEAD is on <code>{changes.data.repointedHead.headBranch}</code>, not this task&apos;s branch{' '}
+        <p data-slot="repointed-head-note" className="border-b px-4 py-2 text-xs text-soft-foreground md:px-section">
+          HEAD is on <code>{changes.data.repointedHead.headBranch}</code>, not this task’s branch{' '}
           <code>{changes.data.repointedHead.taskBranch}</code> — showing only what this task changed there.
         </p>
       ) : null}
 
       {changes.isPending ? (
-        <p data-slot="changes-loading" className="px-4 py-6 text-center text-xs text-soft-foreground md:px-6">
+        <p data-slot="changes-loading" className="px-4 py-6 text-center text-xs text-soft-foreground md:px-section">
           Loading changes…
         </p>
       ) : changes.isError ? (
@@ -190,7 +192,12 @@ function ChangesView({ run }: { run: ApiRun }) {
           subtitle="The worktree matches its base branch. Changes appear here as the agent works."
         />
       ) : (
-        <div className="flex min-h-0 flex-1 items-start gap-5 px-4 py-4 [--diff-sticky-top:10rem] md:px-6">
+        <div className="flex min-h-0 flex-1 items-start gap-section p-4 [--diff-sticky-top:var(--page-header-h,10rem)] md:p-section">
+          {/* The sticky offset is the run header's MEASURED height (`--page-header-h`, published by
+              the header itself), never a constant: that height moves with the density lever, so the
+              old fixed `10rem` covered the file name and its collapse toggle at Roomy and
+              Comfortable (#453 B6, NB-1). The fallback is the old constant, so a browser without
+              `ResizeObserver` lands exactly where it used to. */}
           {/* The tree column: sticky under the header so long diffs scroll beside it, and its OWN
               scroller. Sticky alone is not enough — a tree taller than the viewport grows the page
               instead, so the only way to reach its last file was to drag the shared `main` scroller
@@ -199,7 +206,7 @@ function ChangesView({ run }: { run: ApiRun }) {
               inside it from chaining into the diff once it bottoms out. */}
           <aside
             data-slot="changes-tree-pane"
-            className="sticky top-40 hidden max-h-[calc(100dvh_-_var(--diff-sticky-top)_-_1rem)] w-60 shrink-0 overflow-y-auto overscroll-contain md:block lg:w-72"
+            className="sticky top-[var(--diff-sticky-top)] hidden max-h-[calc(100dvh_-_var(--diff-sticky-top)_-_1rem)] w-60 shrink-0 overflow-y-auto overscroll-contain md:block lg:w-72"
           >
             <ChangesTree root={tree} selected={selected} onSelect={selectFile} />
           </aside>

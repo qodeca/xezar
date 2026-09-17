@@ -167,7 +167,7 @@ export function DiffView({
       data-mode={mode}
       className={cn('flex min-w-0 flex-col', className)}
     >
-      <p data-slot="diff-totals" className="flex items-center gap-2 px-1 pb-3 text-xs text-muted-foreground">
+      <p data-slot="diff-totals" className="flex items-center gap-row px-1 pb-stack text-xs text-muted-foreground">
         <span>
           {stat.files} {stat.files === 1 ? 'file' : 'files'} changed
         </span>
@@ -186,7 +186,7 @@ export function DiffView({
               key={fileKey(file)}
               data-slot="diff-file-slot"
               style={{ containIntrinsicBlockSize: `auto ${estimateFileHeight(file)}px` }}
-              className="pb-3 [content-visibility:auto]"
+              className="pb-list [content-visibility:auto]"
             >
               {card(file)}
             </div>
@@ -221,8 +221,10 @@ function VirtualFiles({
 
   // virtua needs the distance between the scroller's content start and the virtualizer (the
   // run header, toolbar and totals line above it). Measured, not assumed — header height
-  // varies by breakpoint and content. A stale value only shifts the overscan window
-  // (buffered), so re-measuring on viewport resize is enough.
+  // varies by breakpoint and content. Re-measured on viewport resize AND whenever the scroller's
+  // content box changes size: under the task thread (the review gate's `RunDiff`) the rows above
+  // this diff keep measuring after it mounts, and a margin taken once would drift by exactly that
+  // much and leave part of a large diff blank (#453 B6).
   //
   // The scroller is resolved from THIS component's own element, not handed down from the
   // parent's ref callback: React attaches refs child-first, so a parent element's callback
@@ -245,7 +247,13 @@ function VirtualFiles({
     }
     measure()
     window.addEventListener('resize', measure)
-    return () => window.removeEventListener('resize', measure)
+    const content = scrollElRef.current?.firstElementChild
+    const observer = content && typeof ResizeObserver === 'function' ? new ResizeObserver(measure) : null
+    if (content) observer?.observe(content)
+    return () => {
+      window.removeEventListener('resize', measure)
+      observer?.disconnect()
+    }
   }, [scrollElRef])
 
   return (
@@ -259,7 +267,7 @@ function VirtualFiles({
     >
       <Virtualizer ref={handleRef} scrollRef={scrollElRef} startMargin={startMargin}>
         {files.map((file) => (
-          <div key={fileKey(file)} data-slot="diff-file-slot" className="pb-3">
+          <div key={fileKey(file)} data-slot="diff-file-slot" className="pb-list">
             {card(file)}
           </div>
         ))}
@@ -321,10 +329,12 @@ function DiffFileCard({
           data-slot="diff-file-header"
           aria-expanded={open}
           onClick={onToggle}
-          className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-muted/50"
+          // `min-h-tap … md:min-h-0`: the whole-width toggle is a 44 px phone target at every
+          // density (#453 Q07); the desktop row stays on the density lever.
+          className="flex min-h-tap w-full items-center gap-row px-3 py-2 text-left outline-none hover:bg-muted/50 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:ring-inset md:min-h-0"
         >
           <ChevronRightIcon
-            className={cn('size-3.5 shrink-0 text-soft-foreground transition-transform', open && 'rotate-90')}
+            className={cn('size-3.5 shrink-0 text-soft-foreground motion-safe:transition-transform', open && 'rotate-90')}
             aria-hidden="true"
           />
           <span data-slot="diff-file-path" className="min-w-0 truncate font-mono text-xs font-medium">
@@ -545,7 +555,7 @@ function GapRow({ gap, onExpand }: { gap: ContextGap; onExpand?: (gap: ContextGa
       type="button"
       data-slot="diff-gap"
       onClick={() => onExpand(gap)}
-      className="block w-full border-y border-border/40 bg-muted/20 px-4 py-0.5 text-left text-[11px] text-soft-foreground hover:bg-muted/50 hover:text-foreground"
+      className="block min-h-tap w-full border-y border-border/40 bg-muted/20 px-4 py-0.5 text-left text-[11px] text-soft-foreground outline-none hover:bg-muted/50 hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:ring-inset md:min-h-0"
     >
       {label} — expand
     </button>
@@ -573,9 +583,11 @@ function LineContent({ cell, tokens, wrap }: { cell: DiffCell; tokens: SynToken[
   )
 }
 
+/** Line numbers are required small text, so they wear the full `soft-foreground` ink: the old
+ *  `/70` wash measured 2.7:1 (light) and 3.1:1 (dark) on a composited row (#453 B6). */
 function Gutter({ value }: { value: number | undefined }) {
   return (
-    <span className="w-10 shrink-0 pr-2 text-right text-soft-foreground/70 tabular-nums select-none">
+    <span className="w-10 shrink-0 pr-2 text-right text-soft-foreground tabular-nums select-none">
       {value ?? ''}
     </span>
   )

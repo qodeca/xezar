@@ -45,14 +45,15 @@ export function ImagePreview({
     return <ImageNote>Binary file — no text diff.</ImageNote>
   }
   return (
-    <div data-slot="diff-image-preview" className="flex flex-col items-center gap-2 p-4">
+    <div data-slot="diff-image-preview" className="flex flex-col items-center gap-row p-inset">
       <ZoomableImage src={imageSrc(file.path)} alt={file.path} className="max-h-[60vh] max-w-full rounded-sm" />
       {onOpenInApp ? (
         <button
           type="button"
           data-slot="diff-image-open"
           onClick={() => onOpenInApp(file.path)}
-          className="text-[11px] font-medium text-soft-foreground hover:text-foreground hover:underline"
+          // A 44 px phone target at every density (#453 Q08), released at `md`.
+          className="inline-flex min-h-tap min-w-tap items-center justify-center rounded-sm text-[11px] font-medium text-soft-foreground outline-none hover:text-foreground hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50 md:min-h-0 md:min-w-0"
         >
           Open in default app
         </button>

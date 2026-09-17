@@ -1,4 +1,5 @@
 import type { WorktreeEntry } from '@qodeca/xezar-api-client'
+import { formatBytes } from '@/lib/tasks-table'
 
 /**
  * Pure decisions for the Files tab (R5 Step 1.6): what a worktree file entry previews as,
@@ -31,10 +32,9 @@ export function previewKind(entry: Extract<WorktreeEntry, { type: 'file' }>): Pr
   return 'text'
 }
 
-/** `312 B` / `4.6 kB` / `1.2 MB` — file sizes, where sub-kB honesty matters (formatMem in
- *  tasks-table.ts rounds to whole kB because RSS never needs bytes). */
+/** `312 B` / `4.6 kB` / `1.2 MB` — file sizes, where sub-kB honesty matters. The ONE byte
+ *  formatter's `file` contract (G-18): one decimal and a bytes step, unlike RSS (`memory`), which
+ *  rounds to whole kB and MB because it never needs bytes. */
 export function formatFileSize(bytes: number): string {
-  if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(1)} MB`
-  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} kB`
-  return `${bytes} B`
+  return formatBytes(bytes, 'file')
 }

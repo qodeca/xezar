@@ -11,7 +11,7 @@ Rules that follow from this page:
 - MUST use `--pending-strong` for amber text. `--pending` is a fill for dots and spinners only (guardian rule `no-amber-text`).
 - MUST NOT use `bg-white`, `bg-black`, `text-white` or `text-black` outside `src/components/ui/` and `zoomable-image.tsx` (guardian rule `no-raw-black-white`).
 - MUST NOT write a `dark:` variant. The tokens already flip (guardian rule `no-dark-variant`).
-- MUST NOT write `var(--token, fallback)` for a design token. A missing token is a bug to fix, not to hide. The one exception is a runtime-injected variable that may be absent: `var(--kb, 0px)` (`lib/keyboard-inset.ts`) and `var(--diff-sticky-top, 0px)` (`components/diff/diff-view.tsx`) carry a fallback on purpose.
+- MUST NOT write `var(--token, fallback)` for a design token. A missing token is a bug to fix, not to hide. The one exception is a runtime-injected variable that may be absent: `var(--kb, 0px)` (`lib/keyboard-inset.ts`), `var(--diff-sticky-top, 0px)` (`components/diff/diff-view.tsx`) and `var(--page-header-h, …)` (`lib/page-header-offset.ts`, the sticky page header's measured height; its fallback is the constant that page used before it was measured) carry a fallback on purpose.
 
 ## 1. Colour tokens
 

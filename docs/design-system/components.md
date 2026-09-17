@@ -433,17 +433,17 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Purpose**: the diff renderer used by every Changes, Commits and PR surface.
 - **Source**: `packages/web/src/components/diff/index.ts` (public: `Diff`, types `DiffFileChange`, `DiffHandle`, `DiffMode`, `DiffProps`), `diff.tsx` (facade + `DiffFallback`), `diff-view.tsx` (the lazy engine), `image-preview.tsx` (`ImagePreview`, `shouldPreviewImage`), `parse-patch.ts`, `word-diff.ts`, `diff-scroll.ts`, `types.ts`.
 - **Props that matter**: `files` (required), `mode` `unified | split` (default `unified`), `wrap` (default `false`), `loadFileText` (enables expandable context gaps), `imageSrc`, `onOpenInApp` (absent hides the action), `viewRef`, `className`.
-- **Look**: file card `sticky top-[var(--diff-sticky-top,0px)] z-10 rounded-t-md border-b border-border/50 bg-card` header; gutters `w-10 text-right text-soft-foreground/70 tabular-nums`; lines `bg-diff-add` / `bg-diff-del`; word marks `bg-diff-add-strong` / `bg-diff-del-strong rounded-[2px]`; hunk header `bg-muted/40 text-soft-foreground`; status badges `rounded-sm bg-muted px-1.5 py-px text-[10px]`.
+- **Look**: file card `sticky top-[var(--diff-sticky-top,0px)] z-10 rounded-t-md border-b border-border/50 bg-card` header; gutters `w-10 text-right text-soft-foreground tabular-nums` (full ink: the `/70` wash measured 2.7:1 light and 3.1:1 dark, #453 B6); lines `bg-diff-add` / `bg-diff-del`; word marks `bg-diff-add-strong` / `bg-diff-del-strong rounded-[2px]`; hunk header `bg-muted/40 text-soft-foreground`; status badges `rounded-sm bg-muted px-1.5 py-px text-[10px]` (`added`, `deleted`, `renamed`, `copied`, then `image` or `binary`); totals `pb-stack`, cards `pb-list` apart. The file header toggle and an expandable gap are `min-h-tap … md:min-h-0` and the image preview's “Open in default app” is `min-h-tap min-w-tap … md:min-h-0 md:min-w-0`, so each is a 44 px phone target at every density; the chevron turns only under `motion-safe:`.
 - **States**: `No changes.`, `Loading diff…`, `Binary file — no text diff.`, `No content changes (metadata only).`, `Patch truncated by the server.`, image preview, collapsed file, expandable gap (`⋯ 12 unchanged lines — expand`), virtualised above `DIFF_VIRTUALIZE_THRESHOLD = 1500` rows, plaintext above `HIGHLIGHT_MAX_LINES = 1500`, fallback renderer when the engine chunk fails.
-- **Rules**: consumers import from `@/components/diff` only. Consumers set `--diff-sticky-top` so file headers park below the page header. Below `md` the view is forced to unified + wrap. `run-diff.tsx` is the older renderer still used by the review panel and compare view (G-09).
-- **Where used**: 7 route files.
+- **Rules**: consumers import from `@/components/diff` only. Consumers set `--diff-sticky-top` so file headers park below the page header, and a page under the run header sets it from `--page-header-h` — the header's MEASURED height (`lib/page-header-offset.ts`) — never a constant, because that height moves with the density lever (#453 B6). Below `md` the view is forced to unified + wrap. The review panel and the compare view reach this same engine through `RunDiff` (below).
+- **Where used**: 7 route files, plus `RunDiff`.
 
 ### RunDiff
 
-- **Purpose**: the earlier collapsible per-file diff for the review gate and the compare view.
-- **Source**: `packages/web/src/components/run-diff.tsx`. Props `runId`. `FILE_CAP = 20`, `DIFF_CLAMP_LINES = 300`.
-- **States**: `Loading diff…`, error in `text-danger`, `(no changes)`, `Show N more files`, `Show all N lines` / `Show less`.
-- **Rules**: do not extend; new diff surfaces use `Diff` (G-09).
+- **Purpose**: a run's worktree diff (`GET /api/v1/runs/:id/diff`) for the review gate and the compare view – a thin facade over `Diff` (#453 B6).
+- **Source**: `packages/web/src/components/run-diff.tsx`. Props `runId`, nothing else. `splitRunDiff` cuts the endpoint's `git diff` text into `DiffFileChange[]` (path, rename or copy source, status, ±, binary, the section as `patch`); hunks, highlighting, gutters, word marks and every line are the engine's. No file cap and no line clamp.
+- **States**: `Loading diff…`; a load error as `role="alert"` in `text-danger`, never as empty; the server's own sentence (`(no worktree — …)`, `(diff failed …)`) or `(no changes)` in mono; "The server cut this diff short — the counts cover only the part shown." above the engine when the whole-diff cap was hit; then every `Diff` state.
+- **Rules**: keep the `runId`-only API; a new diff surface uses `Diff` directly. Never parse hunks or render lines here – `design-debt-b6.test.tsx` fails on a highlighter, parser or clamp in this file.
 - **Where used**: 2 files.
 
 ### RouteErrorBoundary
