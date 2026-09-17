@@ -6,6 +6,8 @@ Use one cockpit for several repositories or ordinary folders. The workspace regi
 
 Start xezar in a project, then use the sidebar's project groups to open another registered project. Project pages keep tasks and settings scoped to that project. The registry lives in `~/.xezar/config.json`; starting xezar in a normal project registers it automatically. Task worktrees and your home directory itself are not registered as projects.
 
+Switching projects updates the address bar and moves you straight to the destination project's own page — no reload, and no page from the project you left carries over. Any in-progress filter or search text on the page you left is not applied to the destination project; each project's page starts from its own clean state. Opening a task from **All tasks** (see below) always lands you in the task's own project, even if you were looking at a different one when you clicked it.
+
 ## To add a project in the cockpit
 
 Open the icon-only **Add project** button and choose one of its alternatives:
@@ -62,7 +64,7 @@ A non-Git folder runs one task at a time. See [Worktrees and Git](03-worktrees-a
 
 ## To handle a missing project
 
-A deleted or moved folder is labeled **folder not found**, and its project pages cannot start a working project context. Restore the folder at its recorded path, or remove the stale registry entry and add the new location, then restore its tags and cap and recreate its bookmarklets. A folder that exists without Git is shown as **no git repo**, which is different from **folder not found**. The CLI uses **not a git repo** and **missing** for these states.
+A deleted or moved folder is labeled **folder not found**, and its project pages cannot start a working project context. In the sidebar's project groups, that project's row stays listed alongside your other projects but does not expand into a nav — there is nothing behind it to open. Restore the folder at its recorded path, or remove the stale registry entry and add the new location, then restore its tags and cap and recreate its bookmarklets. A folder that exists without Git is shown as **no git repo**, which is different from **folder not found**. The CLI uses **not a git repo** and **missing** for these states.
 
 ## Related settings / env / config
 
