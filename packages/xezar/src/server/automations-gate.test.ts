@@ -2,11 +2,14 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { AutomationCoordinator } from '../automations/coordinator.ts';
 import { AutomationStore } from '../automations/store.ts';
 import { WorkspaceAutomationScheduler } from '../automations/scheduler.ts';
 import { RunStore } from '../runs/store.ts';
 import { SkillsUpdateCoordinator } from '../skills-update.ts';
+import { clearProjectProbeCache, listProjects, registerProject } from '../workspace/projects.ts';
 import type { RunManager } from '../workflows/run.ts';
+import { ProjectContexts } from './project-context.ts';
 import { createApp, startServer, type ServerDeps } from './server.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 
@@ -230,6 +233,62 @@ describe('automations gate (#801)', () => {
     it('starts once the flag is on, so the gate is the only thing holding it back', async () => {
       process.env.XEZ_AUTOMATIONS = '1';
       await boot();
+    });
+
+    /**
+     * #592 review round 2, Major 1: round 1 moved the skills-update/automation cleanup onto
+     * `ProjectContexts.onContextDisposed`, but `dispose()` only notifies that hook when the id
+     * had a built or in-flight context (`project-context.test.ts`, "dispose() of a never-built
+     * project is a no-op returning false"). A project registered this session but never routed
+     * to — its context never built — hit exactly that gap: `DELETE /projects/:id` still removed
+     * it from the registry, but nothing told the skills-update coordinator or the automation
+     * coordinator, so a poll already scheduled for it kept firing.
+     *
+     * The restored `project-removed` branch in `startServer`'s `workspaceEvents.on(...)` handler
+     * covers this: it reads the event the removal route emits UNCONDITIONALLY, independent of
+     * whether `dispose()` had anything to notify.
+     */
+    it('removing a project whose context was never built still reaches the skills-update and automation coordinators', async () => {
+      process.env.XEZ_AUTOMATIONS = '1';
+      clearProjectProbeCache();
+      const untouchedRoot = mkdtempSync(join(tmpdir(), 'xez-automations-gate-untouched-'));
+      const untouched = await registerProject(untouchedRoot);
+
+      const contexts = new ProjectContexts({ listProjects });
+      const removeSkillsSpy = vi.spyOn(SkillsUpdateCoordinator.prototype, 'remove');
+      const removeAutomationSpy = vi.spyOn(AutomationCoordinator.prototype, 'remove');
+      const reachedGate = vi.spyOn(SkillsUpdateCoordinator.prototype, 'start');
+      const started = vi.spyOn(WorkspaceAutomationScheduler.prototype, 'start');
+
+      let app: ReturnType<typeof createApp> | undefined;
+      const server = startServer(
+        {
+          repoRoot,
+          store,
+          manager: { isActive: () => false } as unknown as RunManager,
+          version: '0.0.0-test',
+          contexts,
+          onApp: (built) => { app = built; },
+        },
+        0,
+      );
+      try {
+        await vi.waitFor(() => expect(reachedGate).toHaveBeenCalledTimes(1), { timeout: 4_000 });
+        await vi.waitFor(() => expect(started).toHaveBeenCalledTimes(1), { timeout: 4_000 });
+
+        // The regression's precondition: no route ever touched this project, so its context was
+        // never built — `dispose()` below is a no-op as far as `onContextDisposed` is concerned.
+        expect(contexts.peek(untouched.id)).toBeUndefined();
+
+        const res = await apiRequest(app!, `/api/v1/projects/${untouched.id}`, { method: 'DELETE' });
+        expect(res.status).toBe(200);
+
+        expect(removeSkillsSpy).toHaveBeenCalledWith(untouched.id);
+        expect(removeAutomationSpy).toHaveBeenCalledWith(untouched.id);
+      } finally {
+        server.close();
+        rmSync(untouchedRoot, { recursive: true, force: true });
+      }
     });
   });
 });

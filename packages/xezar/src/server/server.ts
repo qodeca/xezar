@@ -6222,6 +6222,21 @@ export function startServer(deps: ServerDeps, port: number): ServerType {
           return rescheduleAutomations();
         });
       }
+    } else if (event === 'project-removed') {
+      // Kept ALONGSIDE `onContextDisposed` below rather than folded into it (#592 review round 2,
+      // Major 1): `ProjectContexts.dispose()` only notifies `onContextDisposed` when the id had a
+      // built or in-flight context, but the removal route emits `project-removed` unconditionally.
+      // A registered project this process never touched (no context ever built) hits exactly that
+      // gap — without this branch it stayed in `automationProjects` and the coordinator forever,
+      // so the scheduler kept polling/auditing a repo the registry no longer lists. Both cleanups
+      // are idempotent, so a removal that DID have a built context simply runs them twice.
+      const id = (data as { id?: unknown }).id;
+      if (typeof id === 'string') {
+        coordinator.remove(id);
+        automationCoordinator.remove(id);
+        automationProjects.delete(id);
+        rescheduleAutomations();
+      }
     }
   });
   // A project's context going away — removal AND an out-of-band registry drift (#591) both
@@ -6229,7 +6244,9 @@ export function startServer(deps: ServerDeps, port: number): ServerType {
   // coordinator and the automation scheduler's project map. Without this, a drift rebuild left both
   // pinned to the OLD root/owner/repo forever: `handle()` above resolves a launch through
   // `sharedContexts.context(projectId)` (the current root), but the poller kept running against the
-  // stale entry `automationProjects` held from before the drift.
+  // stale entry `automationProjects` held from before the drift. This does not cover every removal
+  // (see the `project-removed` branch above): `dispose()` only notifies here when the id had a
+  // built or in-flight context.
   const offAutomationsDisposed = sharedContexts.onContextDisposed((id) => {
     coordinator.remove(id);
     automationCoordinator.remove(id);
