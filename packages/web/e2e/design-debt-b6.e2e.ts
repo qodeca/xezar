@@ -267,6 +267,24 @@ describe('AC-6 the review gate diff is the one engine', () => {
   }, 120_000)
 })
 
+// A guard, not a red proof: this fixture's thread is short and settles before the diff mounts, so
+// it passes with or without the scroller-resize re-measure in `diff-view.tsx` (checked). It pins
+// that the forced virtual tier works at all inside the review gate.
+describe('AC-6 a virtualized review diff under the thread still reaches its last line', () => {
+  it('?diff=virtual: scrolling to the end of the page renders line 420 of big.txt', () => {
+    browser.setViewport(1280, 812)
+    browser.goto(`${url}/p/${project}/tasks/${runId}?diff=virtual`)
+    until(`${REVIEW}.querySelector('[data-slot="diff-files"][data-virtualized="true"]')`)
+    settle()
+    // Scroll the one scroller to the bottom in steps, letting virtua mount what comes into view.
+    for (let n = 0; n < 40 && !read<boolean>(`[...${REVIEW}.querySelectorAll('[data-slot="diff-line"]')].some(el => /line ${LONG_LINES}$/.test(el.textContent.trim()))`); n++) {
+      read(`(() => { const main = find('main'); main.scrollTop = main.scrollTop + main.clientHeight; return true })()`)
+      settle()
+    }
+    expect(read<boolean>(`[...${REVIEW}.querySelectorAll('[data-slot="diff-line"]')].some(el => /line ${LONG_LINES}$/.test(el.textContent.trim()))`)).toBe(true)
+  }, 120_000)
+})
+
 // ---- AC-0: the phone matrix -------------------------------------------------------------------------
 
 describe('B6 phone matrix', () => {

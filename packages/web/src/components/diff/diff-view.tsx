@@ -221,8 +221,10 @@ function VirtualFiles({
 
   // virtua needs the distance between the scroller's content start and the virtualizer (the
   // run header, toolbar and totals line above it). Measured, not assumed — header height
-  // varies by breakpoint and content. A stale value only shifts the overscan window
-  // (buffered), so re-measuring on viewport resize is enough.
+  // varies by breakpoint and content. Re-measured on viewport resize AND whenever the scroller's
+  // content box changes size: under the task thread (the review gate's `RunDiff`) the rows above
+  // this diff keep measuring after it mounts, and a margin taken once would drift by exactly that
+  // much and leave part of a large diff blank (#453 B6).
   //
   // The scroller is resolved from THIS component's own element, not handed down from the
   // parent's ref callback: React attaches refs child-first, so a parent element's callback
@@ -245,7 +247,13 @@ function VirtualFiles({
     }
     measure()
     window.addEventListener('resize', measure)
-    return () => window.removeEventListener('resize', measure)
+    const content = scrollElRef.current?.firstElementChild
+    const observer = content && typeof ResizeObserver === 'function' ? new ResizeObserver(measure) : null
+    if (content) observer?.observe(content)
+    return () => {
+      window.removeEventListener('resize', measure)
+      observer?.disconnect()
+    }
   }, [scrollElRef])
 
   return (
