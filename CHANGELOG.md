@@ -1,5 +1,8 @@
 # Unreleased
 
+- Fixed: a standalone `XEZ:DONE` line before a final-turn checkpoint stops autonomous nudges (#524), while fenced examples never count.
+- Fixed: Continue resumes the failed workflow step and remaining steps after repair, and reports success only after the workflow finishes (#520).
+
 - Fixed: known MCP `applied:false` refusals replay as rejected after retry or restart (#536).
 - Fixed: replacing a pending question invalidates and persists the MCP decision token (#534).
 

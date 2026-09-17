@@ -104,6 +104,28 @@ export const IDLE_TIMEOUT_MS = DEFAULT_IDLE_TIMEOUT_MINUTES * 60_000;
  * (codex, opencode) can't split the marker across text events.
  */
 const DONE_MARKER_RE = /XEZ:DONE\s*$/;
+// #524: a checkpoint may follow a standalone marker in the final turn.
+function hasFinalDoneMarker(text: string): boolean {
+  let fence: string | undefined;
+  const lines = text.trimEnd().split('\n');
+  for (const [index, line] of lines.entries()) {
+    const delimiter = /^[ \t]*(`{3,}|~{3,})(.*)\r?$/.exec(line);
+    const marker = delimiter?.[1];
+    if (fence) {
+      // Inner/shorter fences and info strings cannot close the outer fence.
+      if (marker && marker[0] === fence[0] &&
+          marker.length >= fence.length && delimiter?.[2]?.trim() === '') fence = undefined;
+      continue;
+    }
+    if (marker) {
+      fence = marker;
+      continue;
+    }
+    if (/^[ \t]*XEZ:DONE[ \t]*\r?$/.test(line) ||
+        (index === lines.length - 1 && DONE_MARKER_RE.test(line))) return true;
+  }
+  return false;
+}
 /**
  * Still-working marker from the agent contract (spec
  * 2026-07-18-subagent-monitoring-status, #490): a turn whose text ends with
@@ -678,6 +700,11 @@ export class RunManager {
    *  from the record rather than losing the wait. Runs here are `failed` and therefore NOT in
    *  `active`, which is why the timer cannot live on an `ActiveRun` like the monitoring one. */
   private readonly autoResumeTimers = new Map<string, NodeJS.Timeout>();
+  /** Only quota appointments use this seam; transport/lifecycle timers remain independent. */
+  private readonly autoResumeTimer: {
+    schedule: (callback: () => void, delay: number) => NodeJS.Timeout;
+    cancel: (timer: NodeJS.Timeout) => void;
+  };
   /** Wake-ups for the instant a live resume's proof window closes (#285). The hold lifts by
    *  derivation, and a derived release is not an event, so these are only the pump that notices;
    *  the hold itself stays on the records. */
@@ -805,8 +832,12 @@ export class RunManager {
   constructor(
     private readonly store: RunStore,
     private readonly repoRoot: string,
-    options: { semaphore?: WorkspaceSemaphore; resumeProofMs?: number } = {},
+    options: { semaphore?: WorkspaceSemaphore; resumeProofMs?: number; autoResumeTimer?: RunManager['autoResumeTimer'] } = {},
   ) {
+    this.autoResumeTimer = options.autoResumeTimer ?? {
+      schedule: (callback, delay) => setTimeout(callback, delay),
+      cancel: timer => clearTimeout(timer),
+    };
     this.dataDir = store.dataDir;
     this.semaphore = options.semaphore ?? new WorkspaceSemaphore();
     this.resumeProofMs = options.resumeProofMs ?? AUTO_RESUME_PROOF_MS;
@@ -883,7 +914,7 @@ export class RunManager {
       state.releaseRepoRoot?.();
       state.releaseRepoRoot = undefined;
     }
-    for (const timer of this.autoResumeTimers.values()) clearTimeout(timer);
+    for (const timer of this.autoResumeTimers.values()) this.autoResumeTimer.cancel(timer);
     this.autoResumeTimers.clear();
     for (const timer of this.resumeProofTimers) clearTimeout(timer);
     this.resumeProofTimers.clear();
@@ -1665,7 +1696,7 @@ export class RunManager {
   /** Publish the deadline on the record (the cockpit's only source) and arm the timer for it. */
   private armAutoResume(runId: string, deadline: number): void {
     this.store.updateRun(runId, { autoResumeAt: new Date(deadline).toISOString() });
-    const timer = setTimeout(() => this.fireAutoResume(runId), Math.max(0, deadline - Date.now()));
+    const timer = this.autoResumeTimer.schedule(() => this.fireAutoResume(runId), Math.max(0, deadline - Date.now()));
     timer.unref?.();
     this.autoResumeTimers.set(runId, timer);
   }
@@ -1997,7 +2028,7 @@ export class RunManager {
    *  caller is a fresh epoch: a human Continue, or a resume that re-stamps its own count. */
   private clearAutoResume(runId: string): void {
     const timer = this.autoResumeTimers.get(runId);
-    if (timer) clearTimeout(timer);
+    if (timer) this.autoResumeTimer.cancel(timer);
     this.autoResumeTimers.delete(runId);
     const run = this.store.getRun(runId);
     if (!run) return;
@@ -2925,6 +2956,12 @@ export class RunManager {
     // closes, its hold lifts (`resumeProven`) — and the queue behind it has to hear about that.
     if (this.store.getRun(runId)?.autoResumeAttempts !== undefined) this.armResumeProofPump();
 
+    const workflow = record ? await this.reviveWorkflow(record) : null;
+    const resumeIndex = workflow?.steps.findIndex(step =>
+      record?.steps.find(saved => saved.id === step.id)?.status !== 'done') ?? -1;
+    const hasUnfinishedSteps = record?.steps.some(step =>
+      step.id !== stepId && !step.id.startsWith('continue-') && step.status !== 'done');
+    let completedTurn = false;
     let stepCost = 0;
     let turnText = '';
     let sessionError: string | undefined;
@@ -2968,7 +3005,8 @@ export class RunManager {
         // for it; dispose() deliberately does not, so no existing caller's timing changes.
         this.trackRun(this.recordTurnEnd(runId, turnText)); // titleSummary + diffStat (#389)
         const sessionOpen = !state.cancelled && state.session?.open;
-        const done = sessionOpen && DONE_MARKER_RE.test(turnText.trimEnd());
+        const done = sessionOpen && hasFinalDoneMarker(turnText.trimEnd());
+        completedTurn = Boolean(done);
         // `XEZ:ASK` → the user is genuinely blocked; wins over `XEZ:MONITORING`
         // (a pending question is always attention), loses to `XEZ:DONE` (#473).
         const { ask, notes: askNotes } = resolveAskTurn(turnText, Boolean(sessionOpen) && !done);
@@ -3196,12 +3234,41 @@ export class RunManager {
         this.store.appendEvent(runId, { type: 'lifecycle', message: 'run cancelled' });
         appendHandoffHeartbeat(this.dataDir, runId, `step "${stepId}" complete — status=cancelled`);
       } else {
+        if (hasUnfinishedSteps && !workflow) {
+          throw new Error('workflow definition not recoverable; remaining steps cannot be completed');
+        }
+        if (resumeIndex >= 0 && !completedTurn) {
+          throw new Error('remaining workflow requires XEZ:DONE from the continued turn');
+        }
         this.store.updateStep(runId, stepId, { status: 'done', finishedAt: finishedAt() });
         // Same collection point the workflow path uses (#460) — a Continue is how a reviewer step
         // is re-run, and a report left by one must reach the record exactly as the first run's did.
         this.takeStepVerdict(runId, stepId);
         this.store.appendEvent(runId, { type: 'step-end', stepId, status: 'done' });
-        await this.settleSuccess(runId);
+        if (workflow && resumeIndex >= 0 && record) {
+          this.waiting.delete(runId);
+          this.monitoring.delete(runId);
+          this.clearMonitoringWakeTimer(state, runId);
+          state.session = undefined;
+          this.store.updateRun(runId, { status: 'running', activity: undefined });
+          // The continued turn completes an interrupted agent step. A failed command still
+          // needs to execute: agent prose cannot certify a check (#520).
+          let next = resumeIndex;
+          const resumedStep = workflow.steps[next];
+          if (resumedStep && stepKind(resumedStep) === 'agent') {
+            this.finishStep(runId, resumedStep.id, 'done', undefined,
+              event => this.store.appendEvent(runId, event));
+            next++;
+          }
+          this.armAutosave(state);
+          await this.runWorkflowSteps(runId, state, workflow, {
+            task: record.task, runner: record.runner, model: record.model,
+            agentProfile: record.agentProfile, autonomous: record.autonomous,
+            generateFollowups: record.generateFollowups, systemPrompt: record.systemPrompt,
+          }, record.runner ?? backend, record.systemPrompt, next);
+        } else {
+          await this.settleSuccess(runId);
+        }
         appendHandoffHeartbeat(this.dataDir, runId, `step "${stepId}" complete — status=done`);
       }
     } catch (err) {
@@ -3424,9 +3491,6 @@ export class RunManager {
     // Every ActiveRun construction site must carry the registry — `runContinuation` builds
     // its own, and the one that skipped this leaked raw `/skill` text to the backend (#811).
     state.skills = skills;
-    const retriesUsed = new Map<string, number>();
-    let checkFailure: string | null = null;
-    let runError: string | null = null;
     // `startRun` already persisted the task's attachments so a queued bubble can render them
     // (#612). Reuse those files for the agent-facing path note instead of minting
     // duplicate pasted files when execution finally begins.
@@ -3436,7 +3500,7 @@ export class RunManager {
     // note that covered the initial prompt alone would hand it a task about a file it was never
     // told the path of (#950).
     const startRecord = this.store.getRun(runId);
-    let startAttachments: PersistedAttachment[] = [
+    const startAttachments: PersistedAttachment[] = [
       ...(startRecord?.taskImages ?? []),
       ...(startRecord?.queuedMessages ?? []).flatMap((m) => m.images ?? []),
     ]
@@ -3456,11 +3520,37 @@ export class RunManager {
     // result stays `undefined` rather than `[]`, so a task carrying only files hands the runner
     // seam exactly the shape a task carrying nothing always did.
     const startBlocks = contentBlocksOf([...(input.images ?? []), ...(input.stackedImages ?? [])]);
-    let startImages: ContentBlock[] | undefined = startBlocks.length ? startBlocks : undefined;
+    const startImages: ContentBlock[] | undefined = startBlocks.length ? startBlocks : undefined;
 
+    await this.runWorkflowSteps(runId, state, workflow, input, taskBackend, extraSystemPrompt,
+      0, startImages, startAttachments);
+    this.dropActive(runId);
+  }
+
+  /** Execute the remaining definition under the caller's existing worktree and lease. */
+  private async runWorkflowSteps(
+    runId: string,
+    state: ActiveRun,
+    workflow: WorkflowDef,
+    input: StartRunInput,
+    taskBackend: RunnerId,
+    extraSystemPrompt: string | undefined,
+    startIndex = 0,
+    startImages?: ContentBlock[],
+    startAttachments: PersistedAttachment[] = [],
+  ): Promise<void> {
+    const skills = state.skills ?? [];
+    const emit = (event: { type: string; stepId?: string; [k: string]: unknown }) =>
+      this.store.appendEvent(runId, event);
+    // A Continue must not reset the workflow's bounded automatic repair allowance.
+    const retriesUsed = new Map(workflow.steps.map(step => [step.id,
+      Math.max(0, (this.store.getRun(runId)?.steps.find(s => s.id === step.id)?.iterations ?? 0) - 1),
+    ]));
+    let checkFailure: string | null = null;
+    let runError: string | null = null;
     const lastAgentIdx = findLastAgentStepIndex(workflow);
 
-    let i = 0;
+    let i = startIndex;
     while (i < workflow.steps.length) {
       if (state.cancelled) break;
       const step = workflow.steps[i] as WorkflowStepDef;
@@ -3564,7 +3654,6 @@ export class RunManager {
       await this.settleSuccess(runId);
     }
     this.clearIdleTimer(state);
-    this.dropActive(runId);
   }
 
   /** Returns an error message, or null on success. */
@@ -3700,7 +3789,7 @@ export class RunManager {
         // for it; dispose() deliberately does not, so no existing caller's timing changes.
         this.trackRun(this.recordTurnEnd(runId, turnText)); // titleSummary + diffStat (#389)
         const sessionOpen = !state.cancelled && state.session?.open;
-        const done = interactive && sessionOpen && DONE_MARKER_RE.test(turnText.trimEnd());
+        const done = interactive && sessionOpen && hasFinalDoneMarker(turnText.trimEnd());
         // `XEZ:ASK` → the user is blocked; wins over `XEZ:MONITORING`, loses to
         // `XEZ:DONE` (#473).
         const { ask, notes: askNotes } = resolveAskTurn(

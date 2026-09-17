@@ -213,6 +213,23 @@ turn text: `XEZ:DONE` (pre-rename issue 347), `XEZ:MONITORING` (pre-rename issue
 are an agent-facing contract: skills, prompts, and running agents rely on an emitted marker
 meaning what it meant when their session started.
 
+Final interactive turns and Continue also accept a standalone `XEZ:DONE` line anywhere in
+that turn (#524), including spaces/tabs and CRLF. A checkpoint after that line is accepted;
+the previous end-of-turn form remains accepted. Detection uses accumulated turn text before
+autonomous nudging, and DONE still wins over ASK/MONITORING. This broadens final-turn completion
+only: markerless turns, explicit monitoring and the non-final-step guard below retain their rules.
+Fenced examples never count as final-turn DONE markers, including unclosed fences.
+
+Continue on an interrupted workflow (#520) keeps the completed prefix. After the continued agent
+turn emits DONE, an interrupted agent step is completed, a failed check is rerun, and every later
+step executes in definition order. A failed retry stays failed; success/review is published only
+after the workflow tail finishes. This also repairs older `done` records with unfinished steps,
+and survives restart or quota failure during the repair. Fully completed workflows retain their
+agent-only follow-up behavior. Existing stored definitions and step states suffice: no migration
+or new required field. Missing definitions with unfinished recorded steps fail closed. Automatic
+check-repair limits remain bounded across Continue. Worktree isolation, leases, cancellation and
+final autosave remain in force throughout the resumed tail.
+
 `XEZ:DONE` in a NON-FINAL agent step (#317): that step is done only when its last turn ends with
 the marker. Before #317 an absent marker there was inert and the step was marked done whenever its
 session closed cleanly, so a step that ended on a question carried the workflow on without the
