@@ -12,6 +12,22 @@ Installation validation is reported in installation.md. Real-task entries follow
 
 ## Real-task entries
 
+### 2026-09-17 — #537 review response round 1 (PR #555), `address-review-findings` step `address`, `xezar-review-response`, Claude Code — fixture-tested, pi resolver parity observed
+
+- Input: REQUEST CHANGES at `beb157a` with three Majors (file-tool path spellings, shell `cd`/`git -C` variants, primary root read from the `.git` file) and three Minors; the author run was out of quota, so this run answered on the same PR branch.
+- Observed: the PR branch already contained `main`, so `git merge --ff-only <reviewed head>` put this run's branch on the PR head with no merge commit, and the kit's own commit path stayed usable. The reviewer's probe method – run the guard next to the installed pi's own `resolveToCwd` – found the real gap; a guard test that builds its own fixture paths could not. Two further gaps surfaced while fixing: Node's JS `realpathSync` keeps the spelled letter case on a case-insensitive disk (`realpathSync.native` does not), and the guard blocked the run's own handoff and temp folders because xezar places both under the primary checkout.
+- Change: the guard now mirrors pi 0.85.1's path normalisation, uses the native realpath, receives the primary checkout and the run's granted folders from xezar as flags, and treats the shell check as best-effort with that limit written in the code, CHANGELOG and compatibility record.
+- Regression/control: 33 new or changed focused tests failed against `beb157a` and pass with the change; the probe log shows six primary-checkout spellings that pi writes and the old guard allowed, all blocked now, with in-worktree and home-cache spellings still allowed.
+- Remaining limit: the shell check cannot see variables set inside a command, command substitution, `eval` or scripts; the file-tool mirror is pinned to pi 0.85.1's resolver and must be re-checked when pi changes it. No live pi tool call with a model was run.
+
+### 2026-09-17 — #537 (pi primary-checkout write), `bug-fix` step `investigate`, `xezar-bug-investigation`, Codex — fixture-tested
+
+- Input: issue #537 and the retained run/event records for `1b843033-4ce8-4227-b0ef-e47586a2f556` on v0.15.0. The shell reported the linked worktree as its PWD, but pi's `edit` tool received and accepted an absolute path in the primary checkout; the next run then failed while bootstrapping the modified tracked kit file.
+- Observed: process `cwd` was already correct and was therefore only a control, not containment. Pi was the gap: Claude Code receives its cwd and native directory boundary, Codex starts/resumes its thread with that cwd, and OpenCode binds its server/session to that cwd; pi had no tool-call boundary after startup.
+- Change: isolated pi sessions load a bundled extension with the canonical task root. It blocks direct, parent-directory, symlink, `git -C` and `cd` paths into the primary checkout and fails closed when it cannot resolve the linked-worktree roots. `quick-task` adds the same worktree-only instruction as the maintained workflows; in-place and non-Git paths do not add it.
+- Regression/control: before the repair, the focused run failed because the guard module and runner arguments did not exist while 30 existing pi controls passed. With the repair, the requested path matrix and runner wiring pass; temporary and home-directory paths remain explicit passing controls. The final source-swap proof and canonical fast gate are recorded in this task's durable evidence.
+- Remaining limit: the extension enforces the named pi file tools and shell path forms at the tool-call boundary; this is not an operating-system sandbox and no claim is made for an arbitrary program that constructs an unmentioned path internally.
+
 ### 2026-09-16 — #453 B4 review response round 1 (design finding B-1), `address-review-findings` step `address`, `xezar-review-response`, Claude Code — real-task observed
 
 - Input: design review of PR #529 at `b5e46db` (REQUEST CHANGES, B-1: the conflict action had no browser measurement); `main` at `248ea8a`.

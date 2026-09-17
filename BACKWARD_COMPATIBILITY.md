@@ -555,6 +555,42 @@ run can reach is breaking under section 1's rule, so it is recorded here rather 
   `codex-app-server-runner.test.ts` (under `MOCK_CODEX_AMBIENT` / `MOCK_CODEX_CONFIG_READ_ERROR`)
   pins the default; it fails against a runner that starts the thread without asking.
 
+## Pi isolated runs stay in their task worktree (#537) — deliberate, 0.16.0
+
+A pi run in a linked task worktree already started with that worktree as its process directory,
+but its file tools and unrestricted shell could still target the primary checkout explicitly.
+Changing what a default agent run can reach is breaking under section 1, even though the old
+reach was an isolation defect, so the restriction is recorded here rather than silently:
+
+- **Broken**: a pi run in a linked worktree can no longer use `write` or `edit` to target the
+  primary checkout. The guard resolves the path the way pi does before writing – `..`, symlinks,
+  `~`, a leading `@`, `file://` URLs, Unicode spaces and letter case – and refuses a spelling it
+  cannot resolve with confidence. That file-tool check is the enforced control. The shell check is
+  **best-effort defence in depth, not containment**: it refuses a `bash` command that names a path
+  in the primary checkout (absolute, `~`, `$HOME` or another set variable, `..`, a symlink) or
+  changes into it through `cd`, `pushd`, `-C`, `--git-dir`, `--work-tree`, `GIT_DIR` or
+  `GIT_WORK_TREE`, and it prefers a false block to a missed one. A shell command cannot be parsed
+  completely, so variables set inside the command, command substitution, `eval`, scripts and
+  programs that build a path themselves can still reach the primary checkout. If the guard cannot
+  resolve the worktree or primary-checkout root, it rejects every `write`, `edit` and `bash` call
+  instead of guessing.
+- **Not broken**: relative paths inside the task worktree, temporary paths and home-directory
+  paths outside the primary checkout remain available, and so do the run's own handoff and temp
+  folders even when they sit under the primary checkout. xezar passes the primary checkout to the
+  guard instead of letting it read the worktree's `.git` file, so bare-repository and submodule
+  layouts keep working. Runs explicitly created with `worktree: false`, runs in non-Git
+  directories, and Claude Code, Codex and OpenCode tool access keep their existing behavior.
+  Event and workflow schemas do not change.
+- **Prompt change for every backend**: an isolated `quick-task` run on any backend (Claude Code,
+  Codex, OpenCode or pi) now carries one extra system-prompt paragraph asking the agent to keep
+  project writes and Git commands inside its working copy. Runs with `worktree: false`, non-Git
+  runs and every other workflow get the exact prompt they had before.
+- **Migration**: a task that intentionally needs the repository's primary working copy must be
+  created with `worktree: false`; xezar then applies its existing repository-root lease.
+- **No opt-out knob**: linked-worktree containment is the safe zero-config default. The runner
+  supplies the task root to its bundled pi extension, while the `quick-task` prompt carries the
+  same instruction as the maintained workflow kit.
+
 ## When in doubt
 
 If a change might break any surface above, say so in the PR description, label the PR `risk-high`, and route it through the review + QA gates in `SDLC.md`. A silent break found in review is a blocker per `CODE_REVIEW.md`.
