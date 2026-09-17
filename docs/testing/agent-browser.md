@@ -294,6 +294,12 @@ them instead. `guide-browser.ts` wraps `agent-browser find <locator> <value> [ac
 own semantic-locator command — rather than the CSS-selector methods on `AgentBrowser`; it is the
 one new interaction helper this package adds, and existing specs are not retrofitted to it.
 
+A **nested-host class** applies to any fixture server that is itself booted by a task this repo's
+own xezar is running (every QA, gate and UI-lane task dogfooding this repo): its MCP socket
+reliably never opens, so `guide-13-mcp-leader-control.e2e.ts`'s unattached-state case sees the
+degraded "service not running" branch rather than the real first-boot reading a bare CI runner
+shows — the spec asserts an honest reading in either branch instead of hard-requiring one (#579).
+
 ### The docs capture harness
 
 `packages/web/e2e/capture/` drives the same provider to produce the README and user-guide
