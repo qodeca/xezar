@@ -13,14 +13,32 @@ name: MCP mutation gate
 # `packages/xezar/src/release/publishing-surface.test.ts` and
 # `packages/xezar/src/mutation-workflow.test.ts` fail if either appears.
 #
-# WHY SIX JOBS AND NOT ONE. A GitHub-hosted job is killed at 6 hours. The measured full run is
+# WHY NINE JOBS AND NOT ONE. A GitHub-hosted job is killed at 6 hours. The measured full run is
 # 3 h 40 min on an 18-core laptop at Stryker concurrency 4; `ubuntu-latest` in a public repository
 # has 4 cores, so `stryker.config.mjs` resolves concurrency to 3 there, on slower cores, over a
 # scope that has grown since. One job would not finish. `packages/xezar/mutation/shards.mjs` splits
-# the scope into six disjoint slices, each slice runs with `thresholds.break: null`, and
+# the scope into disjoint slices, each slice runs with `thresholds.break: null`, and
 # `packages/xezar/mutation/aggregate.mjs` puts the summed counts through Stryker's own formula and
 # applies the floor it reads from `packages/xezar/stryker.config.mjs` ONCE, to the whole scope. That
 # config is the only place the floor is written. Nothing about the gate is narrower than it was.
+#
+# WHY NINE, AND WHY BALANCED ON MEASURED COST (#443, 2026-09-17, two rounds). Six shards, balanced
+# on byte size, is what shipped first — and run 35175010173 (on `fdd5b4e`) showed byte size no
+# longer predicts cost: PRs #533/#539/#541/#542 added broad tests that each exercise several MCP
+# modules together, and under `coverageAnalysis: 'perTest'` that inflated the number of tests
+# Stryker reruns per mutant 2-6x across nearly the whole scope, unevenly. Two shards passed 4 hours
+# and a third (`bridge.ts`, `tools/task-create.ts` and others) was still running when the
+# 300-minute ceiling cancelled it. The first fix moved to eight shards balanced on the measured cost
+# in the committed `docs/testing/mcp-mutation-shard-weights.json`, falling back to byte size for a
+# file it has never seen — but that fix's own proof run (35199363744) showed two of the seven
+# carried-over `estimatedPaths` files (`bridge.ts`, `tools/task-create.ts`) were STILL badly
+# under-counted: one shard ran 4h54m, the other was still running at the 300-minute ceiling. The
+# second fix raises those two files' weights (back-calculated from that run's own per-shard wall
+# clock, since neither shard produced a report to sum a real cost from) high enough that the same
+# heaviest-first packing that already isolates `event-controller.ts` now isolates them too, and adds
+# a ninth shard for headroom. Both this job's `plan` step and the `report` job's re-derived plan
+# read the same committed file, so the two stay in lockstep with no new workflow permission or
+# artifact. See `docs/testing/coverage-gaps.md` § 10.8 for the measurement.
 #
 # HOW A RESULT REACHES SOMEBODY. The run goes red; the `report` job writes the score table into the
 # run summary; and on `main` it files, comments on or reopens ONE tracking issue (label
@@ -96,9 +114,10 @@ jobs:
     # on a scheduled run, so the schedule always measures.
     if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.force_red) }}
     runs-on: ubuntu-latest
-    # Five hours, under GitHub's 6-hour hard kill. A ceiling, not a target: a sixth of the scope is
-    # estimated at well under half of this, so a shard that reaches it is a regression worth
-    # failing on — and it fails loudly, because its missing report fails the aggregate below.
+    # Five hours, under GitHub's 6-hour hard kill. A ceiling, not a target: the heaviest shard in
+    # the measured-cost split (#443) is estimated at roughly 3 hours, so a shard that reaches this
+    # ceiling is a regression worth failing on — and it fails loudly, because its missing report
+    # fails the aggregate below.
     timeout-minutes: 300
     strategy:
       # Every shard runs. Stopping the others on one failure would leave the aggregate unable to
@@ -136,7 +155,7 @@ jobs:
           path: .local/mutation/mcp/
           # LOAD-BEARING. Stryker writes its reports under `.local/`, and this action skips every
           # path inside a dot-directory unless told not to. Without this line the artifact uploads
-          # empty and the aggregate reports six missing shards.
+          # empty and the aggregate reports every shard missing.
           include-hidden-files: true
           if-no-files-found: warn
           retention-days: 30
