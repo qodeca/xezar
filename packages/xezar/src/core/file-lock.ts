@@ -1,4 +1,5 @@
 import { open, readFile, rm, stat } from 'node:fs/promises';
+import { resolve } from 'node:path';
 
 /**
  * A bounded cross-process file lock: `open(path, 'wx', 0o600)`, the mechanism `skills-update.ts`
@@ -18,9 +19,10 @@ import { open, readFile, rm, stat } from 'node:fs/promises';
  * - **Atomic create.** `open(path, 'wx')` succeeds for exactly one process; the file holds
  *   `<pid>\n<ms>\n` so a survivor can tell a live holder from a dead one.
  * - **Bounded.** `FILE_LOCK_WAIT_MS`, polling every `FILE_LOCK_POLL_MS`.
- * - **Stale-tolerant.** A lock whose pid is gone or unreadable, or whose stamp is older than
- *   `FILE_LOCK_STALE_MS`, is removed and the create retried. A crash never leaves a lock nobody
- *   can take.
+ * - **Stale-tolerant.** A lock whose pid is gone, whose owner stayed unreadable for
+ *   `FILE_LOCK_UNWRITTEN_GRACE_MS`, or whose stamp is older than `FILE_LOCK_STALE_MS`, is removed and
+ *   the create retried. A crash never leaves a lock nobody can take, and a lock being written right
+ *   now is never mistaken for an abandoned one.
  * - **Released in `finally`** by the caller, through the returned `release`.
  */
 
@@ -30,6 +32,13 @@ export const FILE_LOCK_WAIT_MS = 2_000;
 export const FILE_LOCK_POLL_MS = 20;
 /** A lock older than this is assumed abandoned even if some process still owns the pid. */
 export const FILE_LOCK_STALE_MS = 30_000;
+/**
+ * How long a lock file without a readable owner still counts as held. `open(path, 'wx')` creates the
+ * file empty and the owner's pid is written a moment later, so an empty lock is usually one that is
+ * being taken right now — removing it would let two writers hold the lock at once. A lock that stays
+ * unreadable this long was abandoned mid-write, and is taken over inside the wait bound.
+ */
+export const FILE_LOCK_UNWRITTEN_GRACE_MS = 1_000;
 
 export interface FileLockOptions {
   /** Overridable so a contention test does not have to wait two real seconds. */
@@ -54,17 +63,19 @@ const queues = new Map<string, Promise<unknown>>();
 
 /** Run `body` after every earlier `body` queued on the same lock path in this process has settled. */
 export async function queueByLockPath<T>(lockPath: string, body: () => Promise<T>): Promise<T> {
-  const previous = queues.get(lockPath) ?? Promise.resolve();
+  // Keyed by the ABSOLUTE path, so two spellings of one folder in one process share one queue.
+  const key = resolve(lockPath);
+  const previous = queues.get(key) ?? Promise.resolve();
   // The queue holds the TAIL, not the result: a rejected body must not poison the next writer.
   const run = previous.then(body, body);
   const tail = run.catch(() => undefined);
-  queues.set(lockPath, tail);
+  queues.set(key, tail);
   try {
     return await run;
   } finally {
     // Drop the entry once this writer is the last one, so the map cannot grow per path across a
     // long-lived server's lifetime.
-    if (queues.get(lockPath) === tail) queues.delete(lockPath);
+    if (queues.get(key) === tail) queues.delete(key);
   }
 }
 
@@ -141,11 +152,12 @@ async function readLockMetadata(
     const stamp = Number(stampText);
     if (Number.isFinite(stamp)) timestamp = stamp;
   } catch {
-    // An unreadable or half-written lock is treated as dead — `fallback` still bounds it.
+    // Unreadable: judged by its age below, like an empty one.
   }
   // A stamp from the future (a clock that moved backwards) must not make a lock immortal.
   if (timestamp > now()) timestamp = now();
-  if (!Number.isSafeInteger(pid) || pid <= 0) return { timestamp, alive: false };
+  // No readable owner: still being written if it is young, abandoned mid-write if it is not.
+  if (!Number.isSafeInteger(pid) || pid <= 0) return { timestamp, alive: now() - Math.min(fallback, now()) < FILE_LOCK_UNWRITTEN_GRACE_MS };
   try {
     process.kill(pid, 0);
     return { timestamp, alive: true };
@@ -161,7 +173,7 @@ async function readLockMetadata(
  * by the caller's `waitMs`, so this holds a process open for at most that long.
  */
 function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
+  return new Promise((done) => {
+    setTimeout(done, ms);
   });
 }

@@ -448,9 +448,11 @@ describe('AC-P3-03: a failed audit write never changes the action, and warns onc
     }
   });
 
-  it('serializes writers inside one process without waiting on its own file lock', async () => {
+  it('serializes writers inside one process without waiting on its own file lock, however the folder is spelled', async () => {
     const trail = new AuditTrail({ projectId: PROJECT, dataDir });
-    const channels = [trail.channel('ui'), new AuditTrail({ projectId: PROJECT, dataDir }).channel('mcp')];
+    // The same folder reached through a `..` detour: one queue, because the queue keys the absolute path.
+    const detour = join(dataDir, '..', 'xezar');
+    const channels = [trail.channel('ui'), new AuditTrail({ projectId: PROJECT, dataDir: detour }).channel('mcp')];
     const started = Date.now();
     const records = await Promise.all(
       Array.from({ length: 20 }, (_, i) => channels[i % 2]!.record({ action: 'run.pin', resource: { kind: 'run', id: `r-${i}` } }, { outcome: 'applied' })),
