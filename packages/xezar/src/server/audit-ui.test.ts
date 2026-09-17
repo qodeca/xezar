@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Hono } from 'hono';
@@ -80,6 +80,35 @@ describe('the ui audit door (#306 part 2)', () => {
       expect(await res.json()).toEqual({ read: 3 });
     }
     expect(f.warnings).toHaveLength(1);
+  });
+
+  it('a failure in the door itself — no scope, no data folder — never changes the response, and warns once', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'xez-audit-ui-door-'));
+    dirs.push(root);
+    // A file where the project folder should be: the data folder can never be created.
+    writeFileSync(join(root, 'project'), 'not a folder');
+    const warnings: string[] = [];
+    let calls = 0;
+    const door = createUiAuditDoor({
+      hosted: () => false,
+      requestScope: async () => {
+        calls += 1;
+        if (calls === 1) throw new Error('project context gone');
+        return { projectId: 'audit-ui', dataDir: join(root, 'project', '.local', 'xezar') };
+      },
+      bootScope: async () => undefined,
+      projectScope: async () => undefined,
+      warn: (message) => warnings.push(message),
+    });
+    const app = new Hono().post('/x', door.route('run.markAllRead'), (c) => c.json({ read: 3 }, 200));
+    for (let i = 0; i < 3; i += 1) {
+      const res = await app.request('/x', { method: 'POST' }, peer('127.0.0.1'));
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ read: 3 });
+    }
+    expect(calls).toBe(3);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(/^xezar: audit trail write failed \(Error\); the action continued without an audit record\.$/);
   });
 
   it('a body selector picks the action, and a preview (undefined) records nothing', async () => {
