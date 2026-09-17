@@ -45,7 +45,9 @@
     "typecheck:client": "npm run typecheck -w @qodeca/xezar-api-client",
     "typecheck:server": "npm run typecheck -w @qodeca/xezar",
     "typecheck:web": "npm run typecheck -w @qodeca/xezar-web",
-    "typecheck:contract": "npm run typecheck -w @qodeca/xezar-contract"
+    "typecheck:contract": "npm run typecheck -w @qodeca/xezar-contract",
+    "pretest:server-mode": "npm run build:server",
+    "test:server-mode": "npm run test:server-mode -w @qodeca/xezar"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^4.1.10",

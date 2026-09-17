@@ -78,7 +78,7 @@ Status key: **C** covered, **P** partially covered, **N** no test found in the s
 | `server-install` (platforms, flags, unknown platform) | packaged e2e | `test/e2e/package-cli.test.ts` | C |
 | `server-uninstall` | packaged e2e | `test/e2e/package-cli.test.ts` | C |
 | `init` scaffolds `.xezar/` and never overwrites | server unit | `project-kit-cli.test.ts:20,29` — spawns the real CLI and asserts both halves | C |
-| `serve` boots: port auto-pick, orphan-worktree prune, `.local/.gitignore` upkeep | packaged CLI e2e | `test/e2e/package-cli.test.ts` boots the default command against the installed tarball (#43). No test found for `--repo`, `--bind-host` or `--no-open` | C |
+| `serve` boots: port auto-pick, orphan-worktree prune, `.local/.gitignore` upkeep | packaged CLI e2e | `test/e2e/package-cli.test.ts` boots the default command against the installed tarball (#43). `test:server-mode` additionally exercises the built CLI with `--repo`, `--bind-host`, `--no-open` and OS-assigned ports | C |
 | `server-deploy` | packaged e2e | `test/e2e/package-cli.test.ts` — help text, a real `--platform ubuntu --yes` invocation, and the unknown-platform exit 1 (#56) | C |
 | **unknown command → exit 1 + help** | none | the `default` arm of `src/index.ts` not exercised by any spawn found | **N** |
 | `mcp` bridge subcommand | server unit (child process) | `src/mcp/cli.test.ts` | C |
@@ -121,7 +121,7 @@ HTTP API.
 | agent-config (`agentConfigRoutes`) | server unit | `agent-config-api.test.ts:73,92` | C |
 | workspace runs-index (`runsIndexRoutes`) | server unit | `runs-index-api.test.ts:85,101` | C |
 | origin/host guard (middleware, before every `/api/*` route bar health) | server unit | `origin-guard.test.ts:67,74,88,95`, `host-guard.test.ts:61,79` | C |
-| WebSocket bus `/api/v1/ws` | server unit | `ws.test.ts:108-266` (hub), `:312,354` (upgrade guard) | C |
+| WebSocket bus `/api/v1/ws` | server unit | `ws.test.ts` (hub, local upgrade controls, hosted real-socket refusal); authenticated proxy composition in `test:server-mode` — see mode × transport matrix | C |
 | Route registration and alias parity | server unit | `route-parity.test.ts:158,206,215`; `versioned-surface.test.ts:93,108`; `bc-route-inventory.test.ts:119` | C |
 | Contract ↔ route shape agreement | typecheck | `contract-parity*.test.ts`, `typed-bodies.test.ts` – compile-time only | C (types), N (behaviour) |
 | MCP reference (`mcpReferenceRoutes`) | server unit | `server/mcp-reference-route.test.ts`, `server/mcp-reference-route.unavailable.test.ts` (see 10.5) | C |
@@ -532,12 +532,14 @@ quoting a number.
 `packages/xezar/src/server/stale-write-routes*`), v8 provider, coverage included over
 `packages/xezar/src/mcp/**` and `packages/xezar/scripts/pi-leader-extension.ts`, excluding `*.testkit.ts`, and a per-file threshold of 80 % lines and 80 %
 branches. It writes to `.local/coverage/mcp/` and exits non-zero naming each file under the floor.
-The 2026-09-15 run took 65.99 seconds (55 test files, 1,273 tests); it excludes unrelated server tests,
-which is the point – coverage a module picks up from an unrelated test was never aimed at it.
+The 2026-09-15 run took 65.99 seconds (55 test files, 1,273 tests); 10.12 has the freshest local
+measurement (85.00 seconds, 2026-09-17). It excludes unrelated server tests, which is the point –
+coverage a module picks up from an unrelated test was never aimed at it.
 
-What it cannot see is listed in 10.4. It is not in CI and not in `.xezar/pipeline/config.json`. It was
-red on `main` from the day it shipped until #352; 10.9 is the re-measurement that turned it green,
-and making it a CI step is the sequenced work that record leaves open.
+What it cannot see is listed in 10.4. CI runs it in the separate, unconditional `MCP per-file
+coverage` job on every pull request, with a 10-minute timeout; it remains outside
+`.xezar/pipeline/config.json` and the local canonical gate. It was red on `main` from the day it
+shipped until #352; 10.9 is the re-measurement that turned it green.
 
 ### 10.2 Measured – before and after this change
 
@@ -1004,10 +1006,10 @@ are `bridge.ts` (92.1 / **80.0**), `index.ts` (87.7 / 80.2) and `tools/results-e
 The two files #311 added are measured here for the first time: `leader-delivery.ts` (100.0 / 84.1)
 and `project-leaders.ts` (100.0 / 100.0).
 
-**Sequenced work this record leaves open.** `npm run test:coverage:mcp` may now become a CI step and
-an entry in `.xezar/pipeline/config.json` – 10.1 says it stays out "until it passes on `main`", and the
-condition is met. That is a separate PR: it needs the CI job written and its ~40 s measured on a
-2-core runner, and it should land before the next MCP PR meets a gate nobody runs for them.
+**Completed sequencing (#550).** `npm run test:coverage:mcp` runs in its own unconditional CI job
+on every pull request, rather than as a sixth local canonical-gate command. This keeps the main
+lane independent and ensures the job always reports a status that can be required; its hard
+10-minute timeout bounds installation and test execution on a GitHub-hosted 2-core runner.
 
 ### 10.10 Re-measured for the MCP leader door (#450)
 
@@ -1037,6 +1039,17 @@ newer number and supersedes the row below.
 
 `npm run test:coverage:mcp` **passed**, 55 test files / 1,273 tests, 65.99 seconds.
 Source and coverage configuration match `main` at `bb271fc`; the working diff was documentation only.
+
+### 10.12 Re-measured for CI enrollment (#550)
+
+**Measured 2026-09-17, branch `xez/f190f64a` off `7db8fd9` (0.15.0), `npm run test:coverage:mcp`,
+exit 0 – 61 test files, 2,070 tests passed (21 expected fail), no `ERROR:` line. Wall clock 85.00s**
+(`time -p`: `real 85.00`, `user 230.69`, `sys 110.75`) on this machine. Aggregate 94.12 % statements,
+87.14 % branches, 94.72 % functions, 97.45 % lines. Every MCP file is at or above the 80/80 floor;
+the floor is green on `main` today, so #550 enrolls it in CI without lowering any threshold. This is
+a local measurement, not the GitHub-hosted 2-core runner the new `MCP per-file coverage` CI job
+actually runs on; the job's own 10-minute timeout (`.github/workflows/ci.yml`) bounds `npm ci` plus
+test execution there, and its first real pull-request run is the authoritative runner-time reading.
 The command’s 40 included source files all meet **80 % lines and 80 % branches**; no exemption is active.
 Aggregate: **97.33 % lines, 86.28 % branches**. At this baseline the nearest branch floor is
 `mcp/index.ts` at exactly 80 %, so one uncovered branch can make it fail; 10.10 measures it at 80.3 %
@@ -1097,3 +1110,25 @@ results; [#443](https://github.com/qodeca/xezar/issues/443) tracks that failure.
 was still running. The 10.8 score/spread is the dated 2026-09-12 laptop run, not the current CI score.
 No mutation run was started by this docs sweep. Neither a configured schedule nor this passing
 coverage command proves a successful nightly mutation run.
+
+
+## Hosted mode: mode × transport verification (#547, SM1)
+
+| Mode | HTTP / request boundary | WebSocket | Live event streams | Browser / platform evidence |
+| --- | --- | --- | --- | --- |
+| Local loopback | `origin-guard`, `host-guard`, `capabilities`: Host rebinding, Origin, forwarded-header controls, health-only non-credentialed CORS | `ws.test`: native/same-authority trusted; Vite trusted with browser vouch, health-only without; foreign origins refused | `sse-headers`, `workspace-events`, `route-parity` | Existing local browser suite; does not establish hosted behavior |
+| Hosted (`XEZ_REMOTE=1` or non-loopback bind) | `local-handoff-routes`: non-empty registration-derived inventory, every guarded route and alias returns 409 before local effects; source parity rejects an untagged inline refusal. `origin-guard`, `health-forge`, `agent-config-api`, `agent-profiles-api`: Origin, CORS and conditional disclosure | `ws.test`: real-socket pre-handshake 403 for absent, foreign, forged loopback and same-authority Origins under both mode selectors; local controls unchanged | Existing in-process suites plus the built-CLI harness below | `client`, `global-events`, `run-events`, `queries` unit suites pin included HTTP/SSE credentials and zero remote browser WebSockets; no hosted real-browser claim |
+| Hosted through authenticated fixture proxy | `test:server-mode`: built CLI, Basic Auth on, missing/wrong credentials denied before forwarding; canonical Host and overwritten forwarding metadata; direct-backend controls; forbidden writes leave runs unchanged, authenticated same-/no-Origin controls create dry-run runs | Proxy forwards authenticated upgrades; backend refuses all tested Origins. Anonymous/wrong credentials receive 401 | Workspace, project and run streams authenticate, expose no-buffer/no-transform headers, yield a complete frame within 3s, reconnect and abort cleanly | POSIX-only for 0.16.0. Saved local reverse proxy; no real nginx/ngrok, TLS, public-network or browser proof |
+| Real Ubuntu/ngrok install | Unknown in this package; operator's authentication and private backend reachability require live installation verification | Unknown platform proxy behavior | Unknown public TLS/proxy buffering | SM2 owns user-facing claim reconciliation; SM1 does not certify an installation |
+
+Registration metadata identifies the existing handler guards; valid fixtures reach hosted 409 while validation and missing-run 404 precedence stay unchanged. Conditional provider-connect and home-config reads retain their existing route policy. The direct-backend control deliberately shows that hosted mode has no built-in authentication: the backend port must remain private. Runtime state and agent homes belong to a fresh ignored `.local/server-mode-*` fixture; teardown closes streams and the proxy and terminates only the saved child PID. Missing builds, early exits, incomplete streams, unavailable sockets/platform support or incomplete cleanup fail the command; no skip is a pass.
+
+### Reuse for #306 QA (no browser required)
+
+1. Use a POSIX checkout with Node 20+ and run `npm ci`.
+2. Run `npm run test:server-mode` (builds `packages/xezar/dist/index.js` first).
+3. Require all named `PASS` lines, including exact-PID teardown, and exit status zero.
+4. Run it again to check fresh homes, OS-assigned ports and cleanup.
+5. Record the revision and complete output; this proves the local authenticated HTTP/event-stream path only.
+
+The separate CI job **Hosted server boundary and proxy** has a five-minute hard timeout: the harness itself is bounded to 45 seconds, with room for cold dependency installation and server compilation. Unit/route policy remains in `npm test`; this harness tests composition, not a second exhaustive policy table. Named-break evidence belongs in the PR body, including an actual failed assertion for each behavior group.

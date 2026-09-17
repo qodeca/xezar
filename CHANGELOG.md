@@ -16,6 +16,11 @@
   unreadable (measured, not assumed), so records written by 0.16.0 are not visible to it. The alias
   is removed no earlier than 0.18.0 (#563). Still MCP-only: the cockpit, automation and command-line
   writers are later parts of #306. Details: `BACKWARD_COMPATIBILITY.md` § 3.
+- Hosted servers now refuse every WebSocket upgrade before the handshake; remote clients continue to use authenticated HTTP and event streams. Local native clients and the Vite development proxy keep their existing access. (#547, SM1)
+
+## Tests
+
+- Added a reusable POSIX authenticated reverse-proxy harness (`npm run test:server-mode`), a dedicated bounded CI job, and registration-derived coverage of local-only routes. The harness exercises the built CLI, isolated homes, spoofed headers, rejected writes, event-stream reconnects and exact-PID cleanup.
 
 # 0.15.0 (2026-09-17)
 
