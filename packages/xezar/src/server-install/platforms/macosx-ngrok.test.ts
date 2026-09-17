@@ -534,6 +534,30 @@ describe('macosx-ngrok steps in a real (non-dry) run', () => {
       await expect(stepOf('identity').undo(baseCtx(runner), null)).resolves.toBeUndefined();
     });
 
+    // BREAK-NGROK-PROOF-COPY: only the local tunnel API is ever asked (see the
+    // test above) — no request goes through the public URL, so the success
+    // copy must never claim basic-auth was enforced/verified, only configured.
+    it('never claims basic-auth was enforced or verified — only that it was configured', async () => {
+      const successes: string[] = [];
+      const { runner } = healthyHost();
+
+      await stepOf('identity').run(baseCtx(runner, { ui: { ...createAutoUi(), success: (m: string) => successes.push(m) } }));
+
+      expect(successes).toHaveLength(1);
+      expect(successes[0]).not.toMatch(/enforced|verified/i);
+      expect(successes[0]).toContain('not probed');
+    });
+
+    it('the dry-run preview makes the same disclosure', async () => {
+      const infos: string[] = [];
+      const { runner } = healthyHost();
+
+      await stepOf('identity').run(baseCtx(runner, { dryRun: true, ui: { ...createAutoUi(), info: (m: string) => infos.push(m) } }));
+
+      expect(infos.some((m) => m.includes('not probed'))).toBe(true);
+      expect(infos.some((m) => /enforced|verified/i.test(m))).toBe(false);
+    });
+
     it('gives ngrok five tries before warning — it needs a moment to bind :4040', async () => {
       vi.useFakeTimers();
       const { runner, captured } = recordingRunner((program) =>

@@ -298,7 +298,7 @@ const identityStep: InstallStep = {
   },
   async run(ctx): Promise<{ artifacts: StepArtifact[] }> {
     if (ctx.dryRun) {
-      ctx.ui.info('DRY RUN — would confirm the ngrok tunnel is up and basic-auth is enforced.');
+      ctx.ui.info('DRY RUN — would confirm the ngrok tunnel is up (basic-auth is configured but not probed through it).');
       return { artifacts: [] };
     }
     // ngrok needs a moment after launchctl bootstrap to bind to :4040.
@@ -308,7 +308,9 @@ const identityStep: InstallStep = {
       if (attempt > 0) await new Promise((r) => setTimeout(r, 1500));
       up = await verifyCommand(ctx, 'curl', ['-s', 'http://localhost:4040/api/tunnels'], (r) => r.stdout.includes('public_url'));
     }
-    if (up) ctx.ui.success('ngrok tunnel is up (basic-auth enforced at the ngrok edge).');
+    // Only the local tunnel API was asked; no request went through the public
+    // URL, so basic-auth enforcement itself is never observed here — say so.
+    if (up) ctx.ui.success('ngrok tunnel is up. Basic-auth was configured but not probed through the tunnel — verify the public URL yourself.');
     else ctx.ui.warn('Could not reach the ngrok local API (localhost:4040) — check the tunnel started.');
     return { artifacts: [] };
   },
