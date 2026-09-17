@@ -80,6 +80,21 @@ function writeEveryRecordKind(dir: string): string[] {
     trail.channel('ui').record({ action: 'run.update', actor: { proxyUser: { value: 'ada', trust: 'asserted-by-proxy' } } }, { outcome: 'refused', reason: 'http_409' }),
     trail.channel('automation').record({ action: 'automation.launch', actor: { receiptId: 'rcpt-0001' } }, { outcome: 'applied' }),
     trail.channel('cli').record({ action: 'cli.projects.remove', actor: { command: 'projects.remove' } }, { outcome: 'refused', reason: 'unknown_project' }),
+    // #306 part 2 shapes: inventory action ids, `fieldNames`, a proxy user on an applied change, an
+    // automation refusal with its automation resource, and a command-line record with its project.
+    trail.channel('mcp').record(
+      { action: 'run.pin', resource: { kind: 'run', id: 'run-1' }, payload: { pinned: true }, fieldNames: ['pinned'], operationId: 'op-upgrade-0003' },
+      { outcome: 'applied' },
+    ),
+    trail.channel('ui').record(
+      { action: 'workspace.config.set', actor: { proxyUser: { value: 'ada', trust: 'asserted-by-proxy' } }, payload: { theme: 'dark' }, fieldNames: ['theme'] },
+      { outcome: 'applied' },
+    ),
+    trail.channel('automation').record(
+      { action: 'automation.launch', actor: { receiptId: 'rcpt-0002' }, payload: { automationId: 'auto-1', revision: 3, event: 'issue:7' } },
+      { outcome: 'refused', reason: 'unknown_workflow', resource: { kind: 'automation', id: 'auto-1' } },
+    ),
+    trail.channel('cli').record({ action: 'cli.serve', actor: { command: 'serve' }, resource: { kind: 'project', id: PROJECT } }, { outcome: 'applied' }),
   ];
   expect(written.every((record) => record !== null)).toBe(true);
   const lines = readFileSync(auditTrailPath(dir), 'utf8').trim().split('\n');
@@ -109,7 +124,7 @@ describe('the frozen 0.15.0 reader is the released one', () => {
 describe('P1-A5: the 0.15.0 reader over every record this version writes', () => {
   it('never throws, keeps none of them, and quarantines each one — the measured break', () => {
     const lines = writeEveryRecordKind(join(root, 'fresh'));
-    expect(lines).toHaveLength(7);
+    expect(lines).toHaveLength(11);
     const perLine = lines.map((line) => {
       const result = readAudit0150(`${line}\n`, PROJECT);
       return { kind: (JSON.parse(line) as { kind: string; origin?: string }).origin ?? 'rotated', ...result };
@@ -118,6 +133,10 @@ describe('P1-A5: the 0.15.0 reader over every record this version writes', () =>
       ['mcp', 0, 1],
       ['mcp', 0, 1],
       ['ui', 0, 1],
+      ['ui', 0, 1],
+      ['automation', 0, 1],
+      ['cli', 0, 1],
+      ['mcp', 0, 1],
       ['ui', 0, 1],
       ['automation', 0, 1],
       ['cli', 0, 1],
@@ -160,7 +179,7 @@ describe('P1-A6: 0.15.0 → this version → 0.15.0', () => {
     expect(readdirSync(dir).sort()).toEqual(['audit.ndjson', 'mcp-audit.ndjson']);
     const currentRead = upgraded.read();
     expect(currentRead.source).toBe('current');
-    expect(currentRead.entries.map((e) => (e as { seq: number }).seq)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(currentRead.entries.map((e) => (e as { seq: number }).seq)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     expect(sha(readFileSync(legacyPath))).toBe(sha(legacyBytes));
 
     // DOWNGRADE. 0.15.0 reads its own file name: every entry it wrote is still there, unchanged.
@@ -180,7 +199,8 @@ describe('P1-A6: 0.15.0 → this version → 0.15.0', () => {
     const again = new AuditTrail({ projectId: PROJECT, dataDir: dir }, { now, warn });
     const reread = again.read();
     expect(reread.source).toBe('current');
-    expect(reread.entries).toHaveLength(6);
+    // Only the ten v2 records: none of the six 0.15.0 entries is merged in.
+    expect(reread.entries).toHaveLength(10);
     expect(existsSync(legacyPath)).toBe(true);
   });
 });

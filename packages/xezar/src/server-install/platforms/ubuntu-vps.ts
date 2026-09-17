@@ -161,6 +161,10 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        # The audit trail's asserted user (#306): nginx's authenticated Basic-auth name, always
+        # OVERWRITING whatever a client sent. xezar reads it only in hosted mode, only from this
+        # loopback peer, and stores it as "asserted by proxy", never as a verified identity.
+        proxy_set_header X-Xezar-User $remote_user;
 
         # xezar streams SSE (run events). Never buffer it, or the cockpit goes mute.
         proxy_buffering off;

@@ -1,3 +1,4 @@
+import { AutomationLaunchRefusal } from './audit.ts';
 import { loadWorkflows } from '../workflows/load.ts';
 import { stepsIssue, type WorkflowDef } from '../workflows/types.ts';
 import type { RunStore } from '../runs/store.ts';
@@ -47,12 +48,12 @@ export async function launchAutomationRun(options: {
   let workflow: WorkflowDef | undefined;
   if (definition.task.steps) {
     const issue = stepsIssue(definition.task.steps);
-    if (issue) throw new Error(issue);
+    if (issue) throw new AutomationLaunchRefusal('invalid_steps', issue);
     workflow = { name: '(planned)', source: 'built-in', steps: definition.task.steps };
   } else {
     const loaded = await loadWorkflows(options.root);
     workflow = loaded.workflows.find((item) => item.name === (definition.task.workflow ?? 'quick-task'));
-    if (!workflow) throw new Error(`unknown workflow: ${definition.task.workflow ?? 'quick-task'}`);
+    if (!workflow) throw new AutomationLaunchRefusal('unknown_workflow', `unknown workflow: ${definition.task.workflow ?? 'quick-task'}`);
   }
   const input: StartRunInput = {
     task: renderAutomationTask(definition, candidate),

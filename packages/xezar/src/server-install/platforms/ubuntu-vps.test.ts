@@ -156,6 +156,11 @@ describe('nginxVhost', () => {
     expect(nginxVhost(4321)).toContain('http2 on;');
   });
 
+  it('overwrites X-Xezar-User with the authenticated Basic-auth name (#306)', () => {
+    // Set from `$remote_user` unconditionally, so a client-sent header never reaches xezar.
+    expect(nginxVhost(4321)).toContain('proxy_set_header X-Xezar-User $remote_user;');
+  });
+
   it('defaults to the legacy htpasswd path but accepts an instance-scoped one', () => {
     expect(nginxVhost(4321)).toContain('auth_basic_user_file /etc/xezar/htpasswd;');
     expect(nginxVhost(4322, 'shop.example.com', '/etc/xezar/htpasswd-shop-example-com')).toContain(

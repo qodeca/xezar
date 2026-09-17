@@ -82,6 +82,12 @@ export interface BridgeOptions {
   /** Re-resolved whenever a session is opened, so registering or starting the project later just works. */
   resolveTarget(): Promise<ServiceTarget>;
   readonly requestTimeoutMs?: number;
+  /**
+   * Told how each `session/open` settled (#306 part 2): `owner`, or a refusal with a machine reason
+   * (`project_occupied`, `not_registered`, …). The `xezar mcp` command records its one audit record
+   * from the first call. Never allowed to affect the session: a throw here is swallowed.
+   */
+  readonly onSessionOpen?: (outcome: { readonly kind: 'owner' } | { readonly kind: 'refused'; readonly reason: string }) => void;
 }
 
 /** Built into the bridge rather than the registry: it is how a client learns the service is down. */
@@ -390,7 +396,7 @@ class ServiceSession {
   private noticeSent = false;
 
   constructor(
-    private readonly opts: Pick<BridgeOptions, 'resolveTarget' | 'version' | 'requestTimeoutMs'>,
+    private readonly opts: Pick<BridgeOptions, 'resolveTarget' | 'version' | 'requestTimeoutMs' | 'onSessionOpen'>,
     /** Writes a `leader/push`'s content out as the client's `notifications/claude/channel` (#374). */
     private readonly channelPush: (params: LeaderPushParams) => Promise<void>,
   ) {}
@@ -452,10 +458,32 @@ class ServiceSession {
   }
 
   private open(): Promise<OpenOutcome> {
-    this.opening ??= this.openOnce().finally(() => {
-      this.opening = undefined;
-    });
+    this.opening ??= this.openOnce()
+      .then((outcome) => {
+        this.reportOpen(outcome);
+        return outcome;
+      })
+      .finally(() => {
+        this.opening = undefined;
+      });
     return this.opening;
+  }
+
+  private reportOpen(outcome: OpenOutcome): void {
+    const report = this.opts.onSessionOpen;
+    if (!report) return;
+    const status = outcome.kind === 'unavailable' ? outcome.result.structuredContent?.status : undefined;
+    const reason =
+      outcome.kind === 'occupied'
+        ? 'project_occupied'
+        : typeof status === 'string' && /^[a-z][a-z-]{0,63}$/.test(status)
+          ? status.replace(/-/g, '_')
+          : 'unavailable';
+    try {
+      report(outcome.kind === 'owner' ? { kind: 'owner' } : { kind: 'refused', reason });
+    } catch {
+      // An observer never changes the session.
+    }
   }
 
   private async openOnce(): Promise<OpenOutcome> {

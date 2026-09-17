@@ -16,7 +16,7 @@ import { PROJECT_ID_RE } from '../workspace/config.ts';
 
 /**
  * The audit trail (#102, #306) — D-06 § 10, spec `docs/features/mcp-server/audit-trail-origins-2026-09-17.md`.
- * Built for every door; written today by the MCP door only (see THE SHARED PATH below).
+ * Built for every door, and written by all four (see THE SHARED PATH below).
  *
  * WHAT. One append-only NDJSON file per project, `<project>/.local/xezar/audit.ndjson`, one v2
  * `AuditRecord` (packages/contract/src/audit.ts) per settled operation: sequence, UTC time, project,
@@ -32,17 +32,22 @@ import { PROJECT_ID_RE } from '../workspace/config.ts';
  * disk indefinitely; 0.15.0, after a downgrade, still reads its own file untouched. The alias is
  * removed no earlier than 0.18.0.
  *
- * THE SHARED PATH, AND THE ONE DOOR THAT USES IT. A door stamps its origin through an
+ * THE SHARED PATH, AND THE FOUR DOORS THAT USE IT. A door stamps its origin through an
  * `AuditChannel`: the entry point that owns the door asks `trail.channel(origin)` ONCE and hands
  * operations to it. The origin — and the actor's `type` — is therefore derived from which door the
  * call came through; an operation object has no origin and no project field, and a stray `origin`
  * or `projectId` key on one is ignored (D-06 § 10.4 rule 1).
  *
- * **Exactly one door does this today, and it is the MCP one:** `mcp/index.ts` builds
- * `.channel('mcp')`, and it is the only non-test construction of this class in `packages/`. The
- * cockpit's HTTP routes, the automation scheduler and the command line record NOTHING yet; wiring
- * them is the next delivery step of #306. `channel()` takes any `AuditOrigin` because those doors
- * are the point, but do not read this comment as a description of four live writers.
+ * **Four doors do this, one channel each** (#306 part 2, spec § 4), and
+ * `audit-origin-wiring.test.ts` pins every production construction:
+ *   - `mcp` — `mcp/index.ts`, for each MCP tool call the shared inventory classifies as a mutation;
+ *   - `ui` — `server/audit-ui.ts`, for each inventoried HTTP route reached over a real connection;
+ *   - `automation` — `automations/audit.ts`, for each run the automation runner launches, linked
+ *     to its receipt;
+ *   - `cli` — `cli-audit.ts`, once per valid command-line subcommand.
+ * Which actions `ui` and `mcp` record is decided by ONE table, `audit-inventory.ts` (spec § 6).
+ * Every door writes through `AuditChannel.record`, so every door gets the same field checks, the
+ * same secret dropping and the same one warning.
  *
  * OUTCOMES (spec § 3.2). `applied`: the effect took place. `refused`: the door rejected the
  * operation BEFORE any effect, with a machine reason. There is no third value, so an operation that
@@ -127,8 +132,16 @@ export interface AuditedOperation<O extends AuditOrigin = AuditOrigin> {
   action: string;
   /** The resource acted on, when known before the effect. */
   resource?: AuditResource;
-  /** The zod-PARSED payload. Only its digest is kept; never the raw params (D-06 § 5.4 step 1). */
+  /**
+   * The zod-PARSED payload. Only its digest is kept; never the raw params (D-06 § 5.4 step 1). Known
+   * secret values inside it are replaced BEFORE hashing, so the digest does not fingerprint one.
+   */
   payload?: unknown;
+  /**
+   * The top-level key names of a configuration write or request body — names, never values. Kept
+   * sorted and distinct; a name that is not a plain bounded key, or that looks like a secret, is dropped.
+   */
+  fieldNames?: readonly string[];
   /** The `expectedVersion` the caller sent (D-06 § 4.2). Kept only when it has the `rev1` shape. */
   expectedVersion?: string;
   /** MCP only — the client's `operationId` (D-06 § 5.2). */
@@ -212,7 +225,7 @@ export class AuditTrail {
 
   /**
    * The recorder for one door. Call it where the door is, once; the origin is fixed from then on.
-   * One production caller: `mcp/index.ts`, with `'mcp'`. Every other origin is test-only for now.
+   * One production caller per origin: see THE SHARED PATH in the module comment.
    */
   channel<O extends AuditOrigin>(origin: O): AuditChannel<O> {
     return new AuditChannel(this, origin);
@@ -327,7 +340,9 @@ export class AuditTrail {
           ? field('operationKey', clean(`${this.scope.projectId}/${op.operationId}`))
           : undefined,
       versionToken: field('versionToken', clean(op.expectedVersion)),
-      payloadDigest: op.payload === undefined ? undefined : field('payloadDigest', safeDigest(op.payload)),
+      fieldNames: op.fieldNames === undefined ? undefined : field('fieldNames', fieldNamesOf(op.fieldNames, clean)),
+      payloadDigest:
+        op.payload === undefined ? undefined : field('payloadDigest', safeDigest(redactPayload(op.payload, secrets))),
     };
     // Spread only what is present: an `undefined` key would be typed as present and dropped by
     // JSON.stringify anyway, and the read path must see exactly what was written.
@@ -525,6 +540,24 @@ export function payloadDigest(payload: unknown): string {
 function fencingTokenMs(token: string | undefined): number | undefined {
   const match = token === undefined ? null : /^(\d{1,15})-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.exec(token);
   return match ? Number(match[1]) : undefined;
+}
+
+/** Plain key names only (`tags`, `maxParallel`), sorted and distinct, at most the schema's 64. */
+function fieldNamesOf(names: readonly string[], clean: (value: string) => string | undefined): string[] {
+  const kept = new Set<string>();
+  for (const name of names) if (/^[A-Za-z_$][\w$-]{0,63}$/.test(name) && clean(name) !== undefined) kept.add(name);
+  return [...kept].sort().slice(0, 64);
+}
+
+/** Every string leaf with the known secret values masked, so a digest never fingerprints a secret. */
+function redactPayload(value: unknown, secrets: readonly string[]): unknown {
+  if (typeof value === 'string') return redactSecrets(value, secrets);
+  if (value === null || typeof value !== 'object' || value instanceof Uint8Array) return value;
+  if (Array.isArray(value)) return value.map((item) => redactPayload(item, secrets));
+  if (typeof (value as { toJSON?: unknown }).toJSON === 'function') return value;
+  const out: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value)) out[key] = redactPayload(item, secrets);
+  return out;
 }
 
 function safeDigest(payload: unknown): string | undefined {

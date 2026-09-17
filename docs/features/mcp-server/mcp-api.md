@@ -492,7 +492,7 @@ decisions, and never share a value.
 | Decision | [D-05 § 6.3](mcp-d05-async-event-contract-decision.md#63-what-enters-the-journal--decided) | [D-06 § 10.2](mcp-d06-versioning-idempotency-audit-decision.md#102-decision--the-field-list) |
 | Where a leader sees it | every `leader_events` row | not at all: the audit trail (`.local/xezar/audit.ndjson`) is local evidence, not a tool answer |
 | Who sets it | the server. The MCP door marks its own mutations `leader`, with `causedBy` set to the operation id, or to a door-minted id when the call has none (`packages/xezar/src/mcp/index.ts:267`) | the server, fixed once per door (`AuditTrail.channel(origin)`), together with the record's `actor`, whose `type` must equal it. No operation and no client argument carries either |
-| Wired today | all three values | **only `mcp`** — the one non-test `AuditTrail` construction, `composeDoor` in `packages/xezar/src/mcp/index.ts`. `ui`, `automation` and `cli` have their actor shapes in the contract, and no door writes them yet ([D-06 § 10.6](mcp-d06-versioning-idempotency-audit-decision.md#106-recorded-2026-09-12--the-trail-is-mcp-only-for-0140)); wiring them is [#306](https://github.com/qodeca/xezar/issues/306) part 2 |
+| Wired today | all three values | all four since [#306](https://github.com/qodeca/xezar/issues/306) part 2: `mcp` in `composeDoor` (`packages/xezar/src/mcp/index.ts`), `ui` on the HTTP routes (`packages/xezar/src/server/audit-ui.ts`), `automation` in the automation runner (`packages/xezar/src/automations/audit.ts`) and `cli` for every command-line subcommand (`packages/xezar/src/cli-audit.ts`). Which operations are recorded, and under which action id, comes from one shared inventory, `packages/xezar/src/mcp/audit-inventory.ts` |
 
 A third, narrower use: some tool results (`execution_control`, `project_config`, `local_handoff`)
 carry `origin: 'mcp'`. This is a constant stamp saying "this answer came through MCP"
@@ -601,20 +601,25 @@ Retention is at least 84 hours and the newest 50 000 receipts per project
 ### The audit record
 
 This rule comes from [D-06 § 10](mcp-d06-versioning-idempotency-audit-decision.md#10-the-audit-record-n-04).
-Every call through the MCP door that settles as applied or refused is recorded in
-`.local/xezar/audit.ndjson`, one line per operation. Read-only tools (`readOnlyHint: true`) are not
+Every mutating call through the MCP door that settles as applied or refused is recorded in
+`.local/xezar/audit.ndjson`, one line per operation. Whether a call mutates is decided per action by
+the shared inventory (`packages/xezar/src/mcp/audit-inventory.ts`), not by the tool's `readOnlyHint`:
+a read action inside a mutating tool, such as `check_automation` with `mode: preview`, is not
 recorded. The file is created with mode `0600`.
 
-The trail records the MCP door and nothing else so far — decided for 0.14.0
-([D-06 § 10.6](mcp-d06-versioning-idempotency-audit-decision.md#106-recorded-2026-09-12--the-trail-is-mcp-only-for-0140)),
-and the other doors are [#306](https://github.com/qodeca/xezar/issues/306) part 2 — so the file holds a
-leader's operations and never a human's beside them.
+Since [#306](https://github.com/qodeca/xezar/issues/306) part 2 the same file also holds the
+cockpit's (`ui`), the automation runner's (`automation`) and the command line's (`cli`) records, so a
+leader's change and a human's sit side by side. The same change has the same `action` id through the
+cockpit and through MCP (for example `run.pin`). The trail was MCP-only for 0.14.0 and 0.15.0
+([D-06 § 10.6](mcp-d06-versioning-idempotency-audit-decision.md#106-recorded-2026-09-12--the-trail-is-mcp-only-for-0140)).
 
 Fields of a version 2 action record (`auditActionRecordSchema`, `packages/contract/src/audit.ts`):
 
 - `v` (`2`), `kind` (`action`), `seq` (grows by one per record), `ts` (UTC), `projectId`;
-- `origin`: always `mcp` here, for the reason above, and `actor`: `{ "type": "mcp" }`;
-- `action`, `resource`;
+- `origin`: the door that handled the operation, and `actor`, whose `type` equals it — for this door
+  `{ "type": "mcp" }`;
+- `action`: the inventory id, and `resource`;
+- `fieldNames`: the names of the fields a write changed, when the door knows them;
 - `outcome`: `{ "status": "applied" }`, or `{ "status": "refused", "reason": … }`;
 - `ownerGeneration`: its millisecond prefix only, and `operationKey` — both MCP-only;
 - `versionToken`: kept only when it has the `rev1` shape;
@@ -626,6 +631,9 @@ How the MCP door settles a call:
 - a stale-version rejection is `refused` with reason `stale_version`;
 - a `project_config` boundary refusal (`refused: true` with a `boundary`) is `refused` with the
   boundary as the reason, for example `workspace_settings`;
+- an error answer carrying the route's 4xx `status` is `refused` with `http_<status>`; a rejected
+  `leader_events` cursor is `refused` with `invalid_cursor` or `cursor_project_mismatch`; a
+  `local_handoff` answer with `performed: false` is `refused` with its HTTP status or outcome;
 - any other error answer, or a call that throws, may have started its effect, so it is **not
   recorded**; xezar prints one warning per process that the action continued without an audit record.
 
@@ -1029,7 +1037,8 @@ changes a tool. Each finding is reported for a separate decision.
    What was wrong was the silence: the enum read as a promise of four kinds of entry. Wiring the
    three doors was [#364](https://github.com/qodeca/xezar/issues/364) and is now
    [#306](https://github.com/qodeca/xezar/issues/306) for 0.16.0: part 1 moved the trail to
-   `audit.ndjson` with version 2 records and still writes `mcp` only; part 2 adds the other doors.
+   `audit.ndjson` with version 2 records, and part 2 wired the other three doors, so this gap is
+   closed.
 4. **The result vocabulary is not uniform** (see [Where the tools disagree](#where-the-tools-disagree)).
    A client has to learn eleven dialects to read success, refusal and failure.
 5. **Some outcomes have two doors.** Examples:

@@ -24,9 +24,10 @@ import { z } from 'zod';
  * caller's, `ownerGeneration` and `operationKey` exist only for `mcp`, and an entry grants nothing —
  * no reader may consult one in place of a permission check (D-06 § 10.4 rule 3).
  *
- * Wired today: the MCP door only (`packages/xezar/src/mcp/index.ts`). The `ui`, `automation` and
- * `cli` writers are the next delivery step of #306; the actor shapes for them are defined here so
- * the contract does not change again when they land.
+ * Wired since #306 part 2: all four doors — `mcp` (`packages/xezar/src/mcp/index.ts`), `ui`
+ * (`packages/xezar/src/server/audit-ui.ts`), `automation` (`packages/xezar/src/automations/audit.ts`)
+ * and `cli` (`packages/xezar/src/cli-audit.ts`). Which actions `ui` and `mcp` record comes from one
+ * shared inventory (`packages/xezar/src/mcp/audit-inventory.ts`).
  */
 
 /** Where an operation came from: the server door that handled it, never a field the caller sends. */
@@ -82,6 +83,7 @@ export const auditProxyUserSchema = z
     trust: z.literal('asserted-by-proxy'),
   })
   .strict();
+export type AuditProxyUser = z.infer<typeof auditProxyUserSchema>;
 
 /** The command-line subcommands, as their canonical ids (spec § 5). `rm` is recorded as `projects.remove`. */
 export const auditCliCommandSchema = z.enum([
