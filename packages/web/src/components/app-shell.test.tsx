@@ -230,24 +230,22 @@ describe('AppShell', () => {
 
   /* The footer used to be one wrapping row that overflowed the 264px column, so the theme toggle
    * silently fell onto a line of its own (#702). jsdom cannot measure that — but it can pin the
-   * structure that makes the wrap impossible: two rows, by construction, not by luck. */
-  describe('sidebar footer is two intentional rows (#702)', () => {
+   * structure that makes the wrap impossible. Its first row, the ⌘K `Search…` launcher, is gone
+   * since #546; the controls row is now the whole footer. */
+  describe('sidebar footer is one intentional controls row (#702, #546)', () => {
     const controls = () =>
       document.querySelector('[data-slot="sidebar-footer-controls"]') as HTMLElement
 
-    it('lays the footer out as a column, never a wrapping row', () => {
+    it('never lays the footer out as a wrapping row', () => {
       renderShell()
-      expect(footer().className).toContain('flex-col')
       expect(footer().className).not.toContain('flex-wrap')
+      expect(controls().className).not.toContain('flex-wrap')
     })
 
-    it('has exactly two children: the search bar, then the controls row', () => {
+    it('has exactly one child: the controls row', () => {
       renderShell('/', { version: '1.2.3' })
       const children = Array.from(footer().children) as HTMLElement[]
-      expect(children.map((child) => child.dataset.slot)).toEqual([
-        'command-palette-hint',
-        'sidebar-footer-controls',
-      ])
+      expect(children.map((child) => child.dataset.slot)).toEqual(['sidebar-footer-controls'])
     })
 
     it('keeps every control a sibling inside the one controls row', () => {
@@ -262,23 +260,6 @@ describe('AppShell', () => {
       // The gear pushes itself right; the toggle rides along at the end of the same row.
       const gear = row.querySelector('[data-slot="global-settings-link"]') as HTMLElement
       expect(gear.closest('a,button')?.parentElement).toBe(row)
-    })
-
-    it('renders search as a full-width launcher that still opens the palette', () => {
-      renderShell()
-      // Named by its own visible label, not by an aria-label that would diverge from it
-      // (WCAG 2.5.3) — jsdom reports no `navigator.platform`, so the chord reads Ctrl+K.
-      const search = within(footer()).getByRole('button', { name: 'Search…' })
-      expect(search.dataset.slot).toBe('command-palette-hint')
-      expect(search.className).toContain('w-full')
-      expect(search.textContent).toContain('Search…')
-      expect(search.querySelector('kbd')?.textContent).toBe('Ctrl+K')
-
-      const opened = vi.fn()
-      window.addEventListener('xezar:open-command-palette', opened)
-      fireEvent.click(search)
-      window.removeEventListener('xezar:open-command-palette', opened)
-      expect(opened).toHaveBeenCalledTimes(1)
     })
 
     it('still shows the version chip update affordance (#368) in the narrower row', () => {
@@ -424,9 +405,9 @@ describe('AppShell', () => {
       expect(document.querySelector('[data-slot="nav-update-marker"]')).toBeNull()
     })
 
-    it('reserves the quick-list, tools and composer slots for later Steps', () => {
+    it('reserves the tools and composer slots', () => {
       renderShell()
-      for (const slot of ['task-quick-list', 'tools-menu', 'composer']) {
+      for (const slot of ['tools-menu', 'composer']) {
         expect(document.querySelector(`[data-slot="${slot}"]`)).not.toBeNull()
       }
     })
@@ -649,20 +630,65 @@ describe('AppShell', () => {
 
     it('does not follow the drawer: the `<md` overlay keeps its fixed 264px and no handle', () => {
       localStorage.setItem('xez-sidebar-width', '400')
-      renderShell('/', { taskQuickList: <p>list</p> })
+      renderShell()
       fireEvent.click(screen.getByRole('button', { name: 'Open menu' }))
       const drawer = document.querySelector('[data-slot="mobile-nav-drawer"]') as HTMLElement
       expect(drawer.className).toContain('w-[264px]')
       expect(drawer.style.width).toBe('')
       expect(within(drawer).queryByRole('separator', { name: 'Resize the sidebar' })).toBeNull()
     })
+  })
 
-    it('declares the container the rows size their metadata against', () => {
-      // The width-priority rule in `task-quick-list.tsx` drops metadata with an
-      // `@min-[…]/sidebar:` query; without this container it has nothing to query.
+  /** #546: the sidebar is navigation only. The Active/Archived tabs, the task list and the
+   *  clickable `Search… ⌘K` launcher are gone at every width — tasks live on the Tasks pages and
+   *  the palette opens from the keyboard. Asserted by what a person can find (roles and visible
+   *  text), so a panel that came back under a new slot name would still fail here. */
+  describe('navigation-only sidebar (#546)', () => {
+    function expectNoTaskPanel(scope: HTMLElement) {
+      const inScope = within(scope)
+      expect(inScope.queryByRole('button', { name: /search/i })).toBeNull()
+      expect(inScope.queryByRole('tablist')).toBeNull()
+      expect(inScope.queryByRole('tab')).toBeNull()
+      expect(inScope.queryByText(/^(Active|Archived|Needs you|Working|Recent|Pinned)$/)).toBeNull()
+      expect(inScope.queryByText(/^(⌘K|Ctrl\+K)$/)).toBeNull()
+    }
+
+    it('renders navigation, New task and footer controls, and no task panel, on desktop', () => {
+      renderShell('/', { version: '1.2.3', unreadCount: 2 })
+      expectNoTaskPanel(sidebar())
+      expect(within(sidebar()).getByRole('navigation', { name: 'Main' })).toBeTruthy()
+      expect(within(sidebar()).getByRole('link', { name: /New task/ })).toBeTruthy()
+      expect(within(sidebar()).getByRole('link', { name: 'Global settings' })).toBeTruthy()
+      expect(within(sidebar()).getByRole('button', { name: /^Theme:/ })).toBeTruthy()
+    })
+
+    it('keeps the flat Tasks badge meaning unread finished tasks (#399 unchanged)', () => {
+      renderShell('/', { unreadCount: 2 })
+      const tasks = within(nav()).getByRole('link', { name: /Tasks/ })
+      expect(within(tasks).getByText('2').getAttribute('title')).toBe('2 unread finished tasks')
+    })
+
+    it('lets the nav fill the column so the footer stays anchored at the bottom', () => {
       renderShell()
-      const content = sidebar().querySelector('[data-slot="sidebar-content"]') as HTMLElement
-      expect(content.className).toContain('@container/sidebar')
+      expect(nav().className).toContain('flex-1')
+      expect(nav().className).toContain('overflow-y-auto')
+    })
+
+    it('renders the same navigation-only content in the phone drawer', () => {
+      renderShell('/', { version: '1.2.3' })
+      fireEvent.click(screen.getByRole('button', { name: 'Open menu' }))
+      const drawer = screen.getByRole('dialog', { name: 'Navigation' })
+      expectNoTaskPanel(drawer)
+      expect(within(drawer).getByRole('navigation', { name: 'Main' })).toBeTruthy()
+      // #430: New task keeps the phone tap-target floor inside the drawer.
+      expect(within(drawer).getByRole('link', { name: /New task/ }).className).toContain('min-h-tap')
+    })
+
+    it('keeps project groups as the only thing between New task and the footer', () => {
+      renderShell('/', { projectGroups: <nav aria-label="shop navigation">group</nav> })
+      expectNoTaskPanel(sidebar())
+      expect(within(sidebar()).getByRole('navigation', { name: 'shop navigation' })).toBeTruthy()
+      expect(within(sidebar()).queryByRole('navigation', { name: 'Main' })).toBeNull()
     })
   })
 

@@ -16,15 +16,16 @@ import record from './fixtures/subagents-run.record.json'
  * clipboard helper and the byte formatter in jsdom. This file is the browser half: every
  * actionable target on the task surfaces at 375 px, at all four densities, measured from its
  * RENDERED box — a reference chip's `::before` hit area included — with no overlap, no clipping,
- * no invisible touch target and no horizontal page overflow. Open states are measured too: the
- * phone drawer's quick list with a variant group expanded, a facet filter's list, the `+N`
+ * no invisible touch target and no horizontal page overflow. Open states are measured too: a
+ * facet filter's list, the `+N`
  * reference list, the prompt-template menu, the rename field, the run header's tabs and the
  * default-agent picker. Separately it holds the 24 px chip floor at every density on a desktop,
  * checks a no-hover tablet, drives a nested pin tap and a card tap, keyboard focus on the table's
  * hover-revealed controls, reduced motion and composited small-text contrast. The "Resolve
  * conflicts" action (`reference-conflict-action`) is measured the same way at every density in
- * light and dark, open and disabled, on the project cards, the drawer's quick list and the global
- * cards, from a conflicting pull request seeded where the cockpit remembers one.
+ * light and dark, open and disabled, on the project cards and the global cards, from a conflicting
+ * pull request seeded where the cockpit remembers one. (The phone drawer lists no tasks since
+ * #546; its navigation targets are measured by design-debt-b2.e2e.ts.)
  *
  * It owns its server over a throwaway data root: it pins a task and changes the density, neither
  * of which may land in the shared environment.
@@ -143,7 +144,7 @@ function geometry(scope: string, only = '*'): Geometry {
       }
     }
     // A row that is wider than its box pushes content out of the drawer or the card.
-    const rows = [...parent.querySelectorAll('[data-slot="task-row"],[data-slot="task-card"],[data-slot="global-task-card"]')]
+    const rows = [...parent.querySelectorAll('[data-slot="task-card"],[data-slot="global-task-card"]')]
       .filter(visible).filter(el => el.scrollWidth > el.clientWidth + 0.5).map(el => (el.dataset.runId ?? el.dataset.slot) + ': ' + el.scrollWidth + ' > ' + el.clientWidth);
     return { targets: nodes.map(name), smallest: Math.round(minW * 10) / 10 + ' x ' + Math.round(minH * 10) / 10, short, clipped, overlaps, invisible, rows, overflow: document.documentElement.scrollWidth > innerWidth };
   })()`)
@@ -158,15 +159,6 @@ function collect(label: string, scope: string, into: string[], seen: Map<string,
   for (const s of g.invisible) into.push(`${label}: invisible touch target: ${s}`)
   for (const s of g.rows) into.push(`${label}: row overflows: ${s}`)
   if (g.overflow) into.push(`${label}: horizontal page overflow`)
-}
-
-const DRAWER = '[data-slot="mobile-nav-drawer"]'
-const MENU_BUTTON = '[data-slot="mobile-top-bar"] button[aria-label="Open menu"]'
-
-function openDrawer() {
-  browser.click(MENU_BUTTON)
-  browser.waitForFunction(`(() => { const d = document.querySelector('${DRAWER}'); return !!d && d.getBoundingClientRect().left === 0 })()`)
-  wait(`${DRAWER} [data-slot="quick-list"]`)
 }
 
 beforeAll(async () => {
@@ -253,13 +245,6 @@ describe('B4 phone matrix', () => {
     collect('project tasks, archived', '[data-route="tasks"]', failures, seen)
     browser.click('[data-slot="tasks-phone-toolbar"] [data-view="active"]')
     wait('[data-slot="task-card"][data-run-id="b4-review"]')
-
-    // The drawer's quick list, with the variant group expanded.
-    openDrawer()
-    browser.click(`${DRAWER} [data-slot="group-tile"]`)
-    wait(`${DRAWER} [data-slot="task-row"][data-run-id="b4-var-a"]`)
-    collect('drawer quick list', `${DRAWER} [data-slot="quick-list"]`, failures, seen)
-    browser.press('Escape'); waitGone(DRAWER)
 
     // The global Tasks page: toolbar, filters, cards; grouped by project; the archived view.
     visit('/tasks', '[data-slot="global-task-card"]')
@@ -402,14 +387,6 @@ describe('B4 conflict action (B-1)', () => {
         browser.waitForFunction(`document.activeElement?.dataset.slot === 'reference-conflict-action'`)
         closeConflict()
         panel('project card', card('b4-review'), false)
-        closeConflict()
-
-        openDrawer()
-        const row = (id: string) => `${DRAWER} [data-slot="task-row"][data-run-id="${id}"] [data-slot="pr-chip"][data-conflicting="true"]`
-        panel('drawer quick list', row('b4-unread'), true)
-        closeConflict()
-        if (!read<boolean>(`document.querySelector('${DRAWER}') !== null`)) openDrawer()
-        panel('drawer quick list', row('b4-review'), false)
         closeConflict()
 
         visit('/tasks', '[data-slot="global-task-card"][data-run-id="b4-review"]')

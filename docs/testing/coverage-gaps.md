@@ -131,7 +131,7 @@ HTTP API.
 
 | Behaviour | Suite | Strongest evidence | Status |
 |---|---|---|---|
-| Tasks overview, sidebar order | cockpit unit + browser e2e | `routes/tasks-overview.test.tsx:126` | C |
+| Tasks overview row order; navigation-only sidebar (#546) | cockpit unit + browser e2e | `routes/tasks-overview.test.tsx:130`; `components/app-shell.test.tsx:646`, `components/project-groups.test.tsx:110`; `e2e/tasks-table.e2e.ts:218,285`; sidebar width in `e2e/sidebar-resize.e2e.ts:60` | C |
 | New task: compose, pick skill/workflow, submit | cockpit unit + browser e2e | `routes/new-task.test.tsx:402`; `e2e/new-task.e2e.ts:236` | C |
 | Task thread rendering, markdown, scroll | cockpit unit + browser e2e | `routes/task-thread/task-thread.test.tsx:138`; `e2e/task-thread.e2e.ts:128` | C |
 | Changes tab (tree, per-file ±) | cockpit unit + browser e2e | `routes/task-git/task-changes.test.tsx:154` | C |
@@ -460,7 +460,7 @@ These were uncovered by the audit and are deliberately **not** child issues.
    `.local/coverage/`". The rule it sets still stands: reporters write beneath `.local`, never a root
    report directory.
 3. **The task table's COLUMN ORDER is pinned only in the browser suite.**
-   `packages/web/e2e/quick-list.e2e.ts` reads the ± cell positionally (`td:nth-child(7)`, deliberately
+   `packages/web/e2e/tasks-table.e2e.ts` reads the ± cell positionally (`td:nth-child(7)`, deliberately
    positional so it pins order as well as content). Every other column assertion is by
    `data-column-id`. Since #128 that spec does run in CI (`ui-e2e`), so the order is gated — but by a
    single positional selector in one browser spec, not by any unit test. See Risk 1.

@@ -2,17 +2,17 @@ import { PinIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 /**
- * The pin control (#935) — one button, shared by every surface that lists a task: the sidebar
- * quick-list row, the Tasks table row, the mobile card. (The thread header spells the same
+ * The pin control (#935) — one button, shared by every surface that lists a task: the Tasks
+ * table row and the mobile card. (The thread header spells the same
  * action as a labelled button beside Archive, because a header has room for the word.)
  *
  * Shared rather than re-styled per surface for the reason the status dot is: a pin is one idea,
- * and three hand-rolled variants of it would drift into three different meanings of "filled".
+ * and hand-rolled variants of it would drift into different meanings of "filled".
  * The filled pin means pinned, the outline one means "pinnable"; the surface decides only when
- * the outline is *visible* (a row reveals it on hover so it is not permanently busy — see the
- * width-priority rule in `task-quick-list.tsx`) by passing its own classes.
+ * the outline is *visible* (a row reveals it on hover so it is not permanently busy) by passing its
+ * own classes.
  *
- * `stopPropagation` because two of the three surfaces are row-click navigation targets: the
+ * `stopPropagation` because both surfaces are row-click navigation targets: the
  * click belongs to the pin, not to "open the task".
  */
 export function PinToggle({

@@ -30,7 +30,10 @@ Focus rules:
 - `autoFocus` is used only when the user just asked to edit that field (title rename, the new-task
   composer on mount).
 - There is no skip link and no roving tabindex today.
-- `<kbd>` hints are `aria-hidden` and show `⌘K` on Apple platforms, `Ctrl+K` elsewhere (`commandShortcutHint`).
+- `<kbd>` hints are `aria-hidden`: the New task button's `C`, and the submit hints, which show `⌘↵` on Apple
+  platforms and `Ctrl+↵` elsewhere (`submitShortcutHint` in `lib/use-submit-shortcut.ts`). ⌘K / Ctrl+K has no
+  visible hint since #546; it opens the command palette from the keyboard on every route, and closing the
+  palette returns focus to the element that held it, else the phone top bar's menu button.
 
 ## 2. Announcements
 
@@ -61,8 +64,6 @@ is `role="alert"`. A toast is `role="status"`.
 | `2xl:` | 0 | – |
 
 - `useIsDesktop()` asks the same `(min-width: 768px)` as `md:`; jsdom counts as desktop.
-- One container query: the sidebar is `@container/sidebar` and the quick-list diff pair shows at
-  `@min-[23rem]/sidebar:inline`.
 - Nothing scrolls sideways at 375 px: tables become cards, the settings nav becomes a pill row, the global
   table hides columns, diffs wrap. The document itself is `overflow: hidden`.
 - Safe areas: shell left/right, sidebar top/bottom, composer row bottom, page bodies

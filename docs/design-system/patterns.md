@@ -20,14 +20,15 @@ when lazy. It never adds a provider above the shell.
 
 ## 2. Sidebar navigation and badges
 
-Source: `components/app-shell.tsx`, `components/nav-items.ts`, `components/project-groups.tsx`,
-`components/task-quick-list.tsx`.
+Source: `components/app-shell.tsx`, `components/nav-items.ts`, `components/project-groups.tsx`.
 
-- Order: brand row (`xezar` + repo chip; on a development build the tile carries the red "D" badge, decisions.md D-08) → `New task` (`contrast` button with a `kbd` C) and `Add project` → nav (`NAV_ITEMS`) → task quick list → footer (`Search…` ⌘K hint; Tools menu · version chip · Global settings · theme toggle).
+The sidebar is navigation only (#546), on the desktop and in the phone drawer. Tasks are listed,
+searched, sorted and pinned on the Tasks pages (§4), never in the sidebar.
+
+- Order: brand row (`xezar` + repo chip; on a development build the tile carries the red "D" badge, decisions.md D-08) → `New task` (`contrast` button with a `kbd` C) and `Add project` → nav (`NAV_ITEMS`, `<nav aria-label="Main">`, which fills the column and scrolls on a short window) → footer, one row (`sidebar-footer-controls`): Tools menu · version chip · Global settings · theme toggle. There is no search launcher; ⌘K / Ctrl+K opens the palette from the keyboard (§7).
 - Nav item: icon `size-4`, label `text-[13.5px] font-medium`, row `h-11 md:h-9 rounded-md px-2.5`; active `bg-muted font-semibold text-foreground` and `aria-current="page"`.
 - Badges: a violet count (`rounded-full bg-violet px-1.5 py-px text-[10.5px] font-semibold text-violet-foreground`) means "a person is wanted" (Inbox count, unread finished tasks). A `size-1.5` violet dot with `sr-only` text marks a Skills update. No badge while the count is unknown; none at zero.
-- Multi-project: from the second registered project the flat nav becomes collapsible project groups, each with its own nav and quick list; only the expanded group fetches.
-- Quick list buckets, in order: `Pinned`, `Needs you`, `Working`, `Recent` (`Archived` in the other view); rows show dot · title · reference chip · age · pin. In the phone drawer every row, tab and pin is a 44 px target and the pin is always shown.
+- Multi-project: from the second registered project the flat nav becomes a pinned `All tasks` link (to the global Tasks page) above collapsible project groups. Each group is a header (chevron · name · waiting/review count badge · branch) and a body with that project's own nav only. Collapsed groups are remembered in `localStorage` (`xez-sidebar-collapsed`); the sidebar width (264–420 px) in `xez-sidebar-width`.
 
 Rule: add a nav item by adding a row to `NAV_ITEMS` with a `match` list and, if gated, a capability flag.
 Never add a nav link in the shell or the palette by hand.
@@ -123,7 +124,7 @@ A list shows nothing at all until its data has answered; it never shows a false 
 - **Form dialog**: `Dialog` with title, description, the form, footer `outline` "Cancel" then the primary action, ⌘↵ / Ctrl+↵ submits. Model: `routes/task-git/commit-dialog.tsx` ("Commit changes" / "Committing…").
 - **Footer order**: cancel first in DOM, confirm last; the primitive renders cancel-left / confirm-right from `sm:` and confirm-on-top on a phone.
 - **Sheet**: left for navigation (mobile drawer), right for a drill-down (sub-agent sheet).
-- **Command palette**: ⌘K / Ctrl+K anywhere; `c` or ⌘N opens `/new`; groups in the order Recently finished · Views · Projects · Tasks · Actions · Skills.
+- **Command palette**: ⌘K / Ctrl+K anywhere, from the keyboard only (no visible launcher); on close, focus returns to the element that held it, else the phone top bar's menu button; `c` or ⌘N opens `/new`; groups in the order Recently finished · Views · Projects · Tasks · Actions · Skills.
 - **Toasts**: top-right, 5 s, `default` or `danger` tone, one sentence. Success toasts may or may not end with a period today (G-16); new toasts end without one unless they are a full sentence with a clause.
 - **Browser notifications**: off by default; fired only for a status change into `needs you`, `needs review` or `failed` while the tab is hidden; body `Task needs you`. Permission is requested on enable only.
 
@@ -146,6 +147,7 @@ Source: `components/app-shell.tsx`.
 
 - Below `md` the sidebar is a `Sheet side="left"` at `w-[264px] bg-sidebar p-0`, opened by a real `SheetTrigger` in the top bar (`aria-label="Open menu"`, `size-11`) and closed by `aria-label="Close menu"`.
 - It closes on route change and the moment `(min-width: 768px)` matches.
+- It renders the same sidebar content as the desktop column, so it is navigation only: brand row, New task (+ Add project), nav or project groups, footer.
 - The top bar titles itself from `activeNavItem(pathname)`.
 - Touch targets are 44px (`h-11`, `size-11`); desktop rows relax to `md:h-9`.
 

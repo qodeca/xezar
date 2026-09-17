@@ -3,8 +3,8 @@ import type { RunRecord } from '@qodeca/xezar-api-client'
 /**
  * The one canonical attention function (spec, "Design system" → status grammar).
  *
- * Every surface that says "this run wants you" derives it from here: the quick-list dot, the
- * table's dot, the thread header, and — from Phase R6 — the browser notification. One function
+ * Every surface that says "this run wants you" derives it from here: the table's dot, the card's
+ * dot, the thread header, and — from Phase R6 — the browser notification. One function
  * means those can never disagree, which is the whole point of naming it in the spec.
  *
  * Deliberately UI-free: no React, no class names, no tokens. It maps a `RunRecord` to a bucket,

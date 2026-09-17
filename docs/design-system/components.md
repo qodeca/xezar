@@ -177,10 +177,12 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 
 ### AppShell
 
-- **Purpose**: the presentational shell: fixed sidebar plus one scrolling main region.
+- **Purpose**: the presentational shell: fixed sidebar plus one scrolling main region. The sidebar is navigation only (#546): tasks live on the Tasks pages, never in the sidebar.
 - **Source**: `packages/web/src/components/app-shell.tsx`. Exports `AppShell`, `useSidebarNavigate`, `routeOwnsScrollArrival`, types `RepoChip`, `AppShellProps`.
-- **Props that matter**: `repo`, `inboxCount`, `unreadCount`, `skillsUpdateAvailable`, `version`, `latestVersion`, `channel` (development-build badge), `taskQuickList`, `toolsMenu`, `forgeAvailable`, `inboxAvailable`, `automationsAvailable`, `singleProject`, `banner`, `projectGroups` (replaces the flat nav).
-- **Layout**: root `flex h-dvh overflow-hidden … pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]`; main column `grid grid-rows-[auto_auto_1fr_auto]` (mobile top bar · banner · scroller · composer); `<main data-slot="main" class="row-start-3 min-h-0 overflow-y-auto overscroll-contain">` is the only scroller. Desktop sidebar `hidden md:flex … border-r border-border bg-sidebar`, width from state (264–420px) with an ARIA `separator` resize handle. Mobile drawer is a `Sheet side="left"` at `w-[264px] bg-sidebar`.
+- **Props that matter**: `repo`, `inboxCount`, `unreadCount`, `skillsUpdateAvailable`, `version`, `latestVersion`, `channel` (development-build badge), `toolsMenu`, `forgeAvailable`, `inboxAvailable`, `automationsAvailable`, `singleProject`, `banner`, `projectGroups` (replaces the flat nav).
+- **Layout**: root `flex h-dvh overflow-hidden … pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]`; main column `grid grid-rows-[auto_auto_1fr_auto]` (mobile top bar · banner · scroller · composer); `<main data-slot="main" class="row-start-3 min-h-0 overflow-y-auto overscroll-contain">` is the only scroller. Desktop sidebar `hidden md:flex … border-r border-border bg-sidebar`, width from state (264–420px) with an ARIA `separator` resize handle. Mobile drawer is a `Sheet side="left"` at `w-[264px] bg-sidebar` and renders the same sidebar content.
+- **Sidebar order**: brand row → New task (+ Add project) → `<nav aria-label="Main" class="min-h-0 flex-1 overflow-y-auto overscroll-contain …">`, which fills the column and scrolls on a short window → footer. With project groups the nav is replaced by the pinned All tasks link and the scrolling groups.
+- **Footer**: `data-slot="sidebar-footer"` `border-t border-border px-3.5 py-2.5` holding one row, `sidebar-footer-controls` `flex items-center gap-2`: Tools menu, version chip, global settings gear (`ml-auto`), theme toggle. No search launcher; the palette opens from the keyboard.
 - **Nav row**: `flex h-11 w-full items-center gap-2.5 rounded-md px-2.5 text-[13.5px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:h-9`; active adds `bg-muted font-semibold text-foreground` and `aria-current="page"`.
 - **Brand row and New task**: brand row `flex items-center gap-row px-3.5 pt-3.5 pb-2.5`; the New task button is `contrast` at `h-10`, one step taller than the `md:h-9` nav rows (`decisions.md` D-07); the Add project icon button beside it (multi-project only) is `size-11 md:size-10`, so on desktop the two share one height.
 - **Badges**: `ml-auto rounded-full bg-violet px-1.5 py-px text-[10.5px] font-semibold text-violet-foreground` (Inbox count, unread count); the Skills update marker is a `size-1.5` violet dot plus `sr-only` text.
@@ -192,7 +194,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 
 ### AppShellContainer
 
-- **Purpose**: wires health, todos, runs and the registry into `AppShell`; mounts `CommandPalette`, `ListViewProvider`, the provider banner and the quick list; sets the document title.
+- **Purpose**: wires health, todos, runs and the registry into `AppShell`; mounts `CommandPalette`, `ListViewProvider`, the provider banner and the project groups; sets the document title.
 - **Source**: `packages/web/src/components/app-shell-container.tsx`. Exports `AppShellContainer`, `repoChipOf`, `skillsUpdateMarkerOf`.
 - **Rules**: badge counts are `?? null` (no badge while unknown), never `?? 0`. The project switcher appears only from the second registered project.
 - **Where used**: 2 files (`app.tsx`, `settings/bookmarklets-section.tsx`).
@@ -228,7 +230,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Source**: `packages/web/src/components/status-dot.tsx`. Exports `StatusDot`, `statusDotVariants`, type `StatusDotTone`.
 - **Variants**: `tone` `success | pending | danger | violet | neutral` (default `neutral`) → `bg-success | bg-pending | bg-danger | bg-violet | bg-soft-foreground`; `pulse` adds `animate-pulse`. Base `inline-block size-[7px] shrink-0 rounded-full`.
 - **Rules**: DO derive tone and pulse from `deriveAttention(run)`. DO give it `role="img"` and `aria-label={attention.label}` when it stands alone. The pulse carries `motion-reduce:animate-none`; the colour is what names the state. DO NOT hand-roll a dot (three ad-hoc dots exist, G-08).
-- **Where used**: 14 files.
+- **Where used**: 13 files.
 
 ### Pill
 
@@ -275,18 +277,9 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 
 ### ListView
 
-- **Purpose**: the in-memory Active/Archived filter shared by the sidebar and the tables.
+- **Purpose**: the in-memory Active/Archived filter shared by the two Tasks pages: the per-project Tasks table and the global Tasks page.
 - **Source**: `packages/web/src/components/list-view.tsx`. Exports `ListViewProvider`, `useListView`. Throws outside a provider on purpose.
-- **Where used**: 5 files.
-
-### TaskQuickList
-
-- **Purpose**: the sidebar task list: Active/Archived tabs, then Pinned / Needs you / Working / Recent buckets.
-- **Source**: `packages/web/src/components/task-quick-list.tsx`. Exports `TaskQuickList`, `QuickListBuckets`, `TaskQuickListContainer`.
-- **Look**: bucket heading `px-3 pt-stack pb-1 text-[11px] font-semibold tracking-[0.04em] uppercase`, so sidebar groups sit `stack` apart.
-- **States**: nothing until runs load (no skeleton, no false empty); empty `No tasks yet — describe one.` / `Nothing archived yet.`; active row `bg-muted` + `aria-current="page"`; unread row `font-semibold` with a trailing violet dot `aria-label="unread"`; read-done `font-medium text-muted-foreground`; group tile `aria-expanded`.
-- **Rules**: the width-priority rule: the title is the only element allowed to grow; everything else must be droppable. The pin is hover-revealed with `group-hover`, `group-focus-within`, `no-hover:` and `data-[pinned=true]` reveals, zero-width when hidden; below `md` (the phone drawer) and on a no-hover device it is always shown. Dot, chip and pin are siblings of the link, never children. Below `md` the tabs, the group tile, the compare link and every row link are 44 px tall (`min-h-tap … md:min-h-0`).
-- **Where used**: 2 files.
+- **Where used**: 3 files (`app-shell-container.tsx`, `routes/global-tasks.tsx`, `routes/tasks-overview.tsx`).
 
 ### PinToggle
 
@@ -295,22 +288,22 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Look**: `size-5 min-h-tap min-w-tap rounded-sm text-soft-foreground hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 md:min-h-0 md:min-w-0 no-hover:min-h-tap no-hover:min-w-tap`; pinned `text-violet` with a filled icon. 44 px on a phone and on a no-hover tablet, 20 px beside a desktop row.
 - **Rules**: never disabled during the mutation; the caller decides visibility (hover reveal).
 - **Accessibility**: `aria-pressed`, `aria-label="Pin task" / "Unpin task"`, `title="Pin to the top of the list"`.
-- **Where used**: 2 files.
+- **Where used**: 1 file (`routes/tasks-overview.tsx`).
 
 ### DiffStatLabel
 
-- **Purpose**: `+128 −14`, one rendering for the table, the quick list and the cards.
+- **Purpose**: `+128 −14`, one rendering for the table and the cards.
 - **Source**: `packages/web/src/components/diff-stat.tsx`. Props `stat`, `className`.
 - **Look**: `font-mono text-xs font-semibold tabular-nums`; `text-success` / `text-danger`; repointed stats add `cursor-help underline decoration-dotted`.
 - **Rules**: the caller owns the absent state (`—`). The minus is U+2212.
-- **Where used**: 8 files.
+- **Where used**: 7 files.
 
 ### DirectionalUsage
 
 - **Purpose**: token usage as `IN 3.6k · OUT 812` (compact) or `3.6k / 812` (table); total-only fallback.
 - **Source**: `packages/web/src/components/directional-usage.tsx`. Exports `DirectionalUsage`, `directionalUsageText`, `directionalUsageLabel`, `totalUsageText`, `totalUsageLabel`.
 - **Accessibility**: `aria-label` spells the exact counts.
-- **Where used**: 4 files.
+- **Where used**: 3 files.
 
 ### TaskAgent cells
 
@@ -332,7 +325,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 
 - **Purpose**: a task's PR or issue link with its state in colour, glyph and a hover card.
 - **Source**: `packages/web/src/components/reference-chip.tsx`. Exports `ReferenceChip`, `useCloseReferenceCard`.
-- **Look**: `inline-flex h-6 min-h-[24px] items-center gap-1 rounded-full border px-2 font-mono text-[11px] font-semibold` – never under 24 px (WCAG 2.2 SC 2.5.8): `h-6` rides the lever (24 at Comfortable, 30 at Roomy) and `min-h-[24px]` holds it at 24 at Compact and Compact for real, and under a caller's shorter `h-5` (phone task card) or `h-auto` (quick list); tones `success` `border-success/40 text-success`, `danger`, `violet` (resting), `info`, `neutral` (`border-border text-muted-foreground`), `pending` (`border-pending-strong/45 text-pending-strong`), `conflict` (`border-conflict/45 text-conflict`); link chips add `hover:bg-{tone}/10`. Below `md` a link chip keeps its 24 px look and gets a centred 44 px `::before` hit area (`PHONE_HIT_AREA`); callers set it on a 44 px line (`CHIP_SLOT` in `routes/tasks-overview.tsx`) so two chips' hit areas never overlap. An inert chip is not a target and gets none.
+- **Look**: `inline-flex h-6 min-h-[24px] items-center gap-1 rounded-full border px-2 font-mono text-[11px] font-semibold` – never under 24 px (WCAG 2.2 SC 2.5.8): `h-6` rides the lever (24 at Comfortable, 30 at Roomy) and `min-h-[24px]` holds it at 24 at Compact and Compact for real, and under a caller's shorter `h-5` (phone task card); tones `success` `border-success/40 text-success`, `danger`, `violet` (resting), `info`, `neutral` (`border-border text-muted-foreground`), `pending` (`border-pending-strong/45 text-pending-strong`), `conflict` (`border-conflict/45 text-conflict`); link chips add `hover:bg-{tone}/10`. Below `md` a link chip keeps its 24 px look and gets a centred 44 px `::before` hit area (`PHONE_HIT_AREA`); callers set it on a 44 px line (`CHIP_SLOT` in `routes/tasks-overview.tsx`) so two chips' hit areas never overlap. An inert chip is not a target and gets none.
 - **States**: inert (non-http URL), unknown status, loading (`Checking GitHub…`), unavailable, not found, conflicting (warning triangle + `Resolve conflicts` action), open card (150ms open, 120ms close; never on touch).
 - **Accessibility**: `aria-label="Open the pull request for {task} — {label}"`; `role="dialog"` only when the card has an action, else `role="tooltip"`; Escape closes; Tab moves into the panel.
 - **Where used**: 3 files.
@@ -343,17 +336,17 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Source**: `packages/web/src/components/reference-conflict-action.tsx`.
 - **Look**: default (`primary`) `Button size="sm" className="h-7 w-full text-xs"`, not `outline` (invisible on a card-coloured popover).
 - **Copy**: `Resolve conflicts` / `Sending…`; toasts `Sent to the task — resolving conflicts in PR #n`.
-- **Where used**: 4 files.
+- **Where used**: 3 files.
 
 ### ReferenceStatus registry
 
-- **Purpose**: batches PR/issue status requests across the sidebar, tables and header.
+- **Purpose**: batches PR/issue status requests across the tables and the run header.
 - **Source**: `packages/web/src/components/reference-status.tsx`. Exports `ReferenceStatusRegistry`, `ReferenceStatusProvider`, `useReferenceStatus`. Renders nothing.
-- **Where used**: 6 files.
+- **Where used**: 5 files.
 
 ### ProjectGroups
 
-- **Purpose**: the multi-project sidebar: one collapsible group per project with its own nav and quick list.
+- **Purpose**: the multi-project sidebar: one collapsible group per project with its own nav only, no task list (#546).
 - **Source**: `packages/web/src/components/project-groups.tsx`. Props `projects`, `bootProjectId`, `inboxAvailable`, `automationsAvailable`, `inboxCount`, `skillsUpdateAvailable`.
 - **Look**: header `flex h-11 w-full items-center gap-[7px] rounded-lg px-2 text-[13px] font-semibold … hover:bg-muted md:h-9`, active `bg-muted`; body `ml-3.5 border-l border-border pl-2`; nav rows `md:h-[30px]`; missing project `opacity-55` with a `bg-danger/15 text-danger` chip `folder not found`.
 - **Accessibility**: `aria-expanded`, `aria-controls`, `<nav aria-label="{project} navigation">`.
@@ -370,9 +363,9 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 ### CommandPalette
 
 - **Purpose**: ⌘K: projects, tasks, views, actions, skills.
-- **Source**: `packages/web/src/components/command-palette.tsx`. Exports `CommandPalette`, `openCommandPalette`, `OPEN_COMMAND_PALETTE_EVENT`, `paletteScore`, `mergeTasks`, `partitionTasks`, `orderRuns`, `orderProjects`.
+- **Source**: `packages/web/src/components/command-palette.tsx`. Exports `CommandPalette`, `paletteScore`, `mergeTasks`, `partitionTasks`, `orderRuns`, `orderProjects`.
 - **Look**: dialog `top-[10vh] translate-y-0 sm:max-w-2xl lg:max-w-3xl xl:max-w-4xl`, list `max-h-[55vh] min-h-[14rem] sm:max-h-[60vh] lg:max-h-[68vh]`.
-- **Shortcuts**: ⌘/Ctrl+K toggle, ⌘/Ctrl+N and `c` open `/new`.
+- **Shortcuts**: ⌘/Ctrl+K toggle, ⌘/Ctrl+N and `c` open `/new`. The palette has no visible launcher (#546); it opens from the keyboard only. On close, focus returns to the element that held it, falling back to the phone top bar's menu button.
 - **Copy**: placeholder `Search projects, tasks, views, actions, skills…`; groups `Recently finished`, `Views`, `Projects`, `Tasks`, `Actions`, `Skills`; `Nothing matches.`; `Toggle theme`.
 - **Where used**: 2 files.
 

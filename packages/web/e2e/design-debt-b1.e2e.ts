@@ -146,9 +146,9 @@ const HELPERS = `
     'a[href],button,input,select,textarea,[tabindex]:not([tabindex="-1"]),[role="switch"],[role="menuitem"],[role="menuitemradio"],[role="menuitemcheckbox"],[role="tab"],[role="option"]'
   )].filter((other) => other !== el && !el.contains(other) && __reachable(other));
   // The first PAINTED match, never merely the first match. Below \`md:\` the cockpit still renders
-  // the desktop sidebar's quick list into the DOM at \`display: none\`, so \`querySelector\` finds a
-  // reference chip whose box is 0 x 0 — and a floor check against a box nobody can see is the
-  // same lie as no check at all.
+  // desktop-only surfaces into the DOM at \`display: none\`, so \`querySelector\` can find a box
+  // that is 0 x 0 — and a floor check against a box nobody can see is the same lie as no check
+  // at all.
   const __measure = (name, selector) => {
     const el = [...document.querySelectorAll(selector)].find((node) => {
       const b = node.getBoundingClientRect();
@@ -237,8 +237,8 @@ function chooseDensity(value: Density): void {
  * Radix enters with `zoom-in-95`, and `getBoundingClientRect()` reports the TRANSFORMED box — so
  * a 44 px menu row measures 41.8 px for the ~150 ms the scale is still running. That is not a
  * shrunken target, it is a measurement taken before the surface arrived; a finger taps the rest
- * position. Scoped to the surface's own subtree, and to animations that END: a looping one — the
- * status-dot pulse the drawer's own quick list carries — never stops, so waiting on it waits
+ * position. Scoped to the surface's own subtree, and to animations that END: a looping one — a
+ * status-dot pulse — never stops, so waiting on it waits
  * forever. An enter animation runs exactly once, which is the only kind that moves a box.
  */
 function waitStill(selector: string): void {

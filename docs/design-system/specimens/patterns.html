@@ -34,12 +34,12 @@
   <p class="lead">How the cockpit composes its components into screens. The rules and the source paths are in <a class="link" href="../patterns.md">patterns.md</a>. Narrow the window below 860 px (or open <a class="link" href="mobile.html">mobile.html</a>) to see the phone layout.</p>
 
   <h2>1. App shell and 2. Sidebar</h2>
-  <div class="src">app-shell.tsx · nav-items.ts · project-groups.tsx · task-quick-list.tsx · 264 px sidebar on <code>--sidebar</code>, one page column on <code>--background</code></div>
+  <div class="src">app-shell.tsx · nav-items.ts · project-groups.tsx · 264 px sidebar on <code>--sidebar</code>, navigation only (no task list, no search launcher; ⌘K opens the palette from the keyboard), one page column on <code>--background</code></div>
   <div class="frame">
     <div class="shell short" style="min-height:560px">
       <aside class="sidebar">
         <div class="sidebar-head"><span class="logo">x</span><span class="name">xezar</span><span class="where">main</span></div>
-        <div class="new-task-row"><button class="btn-new-task" type="button"><svg class="icon sm" aria-hidden="true"><use href="#i-plus"/></svg> New task <kbd>N</kbd></button><button class="btn-icon" type="button" aria-label="Search"><svg class="icon sm" aria-hidden="true"><use href="#i-search"/></svg></button></div>
+        <div class="new-task-row"><button class="btn-new-task" type="button"><svg class="icon sm" aria-hidden="true"><use href="#i-plus"/></svg> New task <kbd>C</kbd></button></div>
         <nav class="nav" aria-label="Primary">
           <a href="#" aria-current="page"><svg class="icon sm" aria-hidden="true"><use href="#i-tasks"/></svg> Tasks <span class="nav-badge">2</span></a>
           <a href="#"><svg class="icon sm" aria-hidden="true"><use href="#i-inbox"/></svg> Inbox <span class="nav-badge">5</span></a>
@@ -49,14 +49,7 @@
           <a href="#"><svg class="icon sm" aria-hidden="true"><use href="#i-github"/></svg> GitHub</a>
           <a href="#"><svg class="icon sm" aria-hidden="true"><use href="#i-settings"/></svg> Settings</a>
         </nav>
-        <div class="list-tabs" role="tablist"><button type="button" class="on" role="tab" aria-selected="true">Active</button><button type="button" role="tab" aria-selected="false">Recent</button></div>
-        <div class="quick-head">RUNNING</div>
-        <ul class="quick">
-          <li class="on"><span class="dot pending pulse"></span><span class="t">Fix the flaky test in store.test.ts</span><span class="meta">4:12</span></li>
-          <li class="unread"><span class="dot violet"></span><span class="t">Add the runner label helper</span><span class="meta">review</span></li>
-          <li class="read"><span class="dot success"></span><span class="t">Document the WebSocket bus</span><span class="meta">done</span></li>
-        </ul>
-        <div class="sidebar-foot"><span class="dot success"></span> Local · <span class="version-chip">v0.14.0</span></div>
+        <div class="sidebar-foot"><button class="chip" type="button" style="height:auto;min-height:0;padding:1px 8px;font-size:11px"><span class="dot success"></span> Tools <svg class="icon sm" aria-hidden="true"><use href="#i-chevron-down"/></svg></button><span class="version-chip">v0.15.0</span><button class="btn icon ghost" type="button" aria-label="Global settings" style="margin-left:auto"><svg class="icon sm" aria-hidden="true"><use href="#i-settings"/></svg></button><button class="btn icon ghost" type="button" aria-label="Toggle theme"><svg class="icon sm" aria-hidden="true"><use href="#i-moon"/></svg></button></div>
       </aside>
       <div class="main">
         <div class="mobile-bar"><button class="btn icon ghost" type="button" aria-label="Menu"><svg class="icon" aria-hidden="true"><use href="#i-menu"/></svg></button><span class="title">Tasks</span><span class="nav-badge">2</span></div>

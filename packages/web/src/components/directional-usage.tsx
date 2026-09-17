@@ -50,7 +50,7 @@ export function directionalUsageText(
   return variant === 'table' ? `${input} / ${output}` : `IN ${input} · OUT ${output}`
 }
 
-/** One honest input/output rendering shared by header, table, cards, quick lists, and variants. */
+/** One honest input/output rendering shared by header, table, cards, and variants. */
 export function DirectionalUsage({
   inputTokens,
   outputTokens,
