@@ -344,10 +344,12 @@ function composeDoor(input: DoorInput): {
       cursorRefusalOf(result) ??
       notPerformedOf(result) ??
       (result.isError ? undefined : answerRefusal(recorded.action, result.structuredContent?.result));
-    if (stale) auditFor.record(recorded, { outcome: 'refused', reason: 'stale_version', resource: stale.resource });
-    else if (boundary) auditFor.record(recorded, { outcome: 'refused', reason: boundary });
+    // Awaited, so the record is on disk when the leader sees the answer; `record` never rejects and
+    // resolves within the lock's 2 s bound, so the answer itself never depends on it.
+    if (stale) await auditFor.record(recorded, { outcome: 'refused', reason: 'stale_version', resource: stale.resource });
+    else if (boundary) await auditFor.record(recorded, { outcome: 'refused', reason: boundary });
     else if (result.isError) auditFor.skip('tool_error');
-    else auditFor.record(recorded, { outcome: 'applied', ...(resource ? { resource } : {}) });
+    else await auditFor.record(recorded, { outcome: 'applied', ...(resource ? { resource } : {}) });
     return result;
   };
 

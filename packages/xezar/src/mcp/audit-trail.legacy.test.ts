@@ -90,11 +90,11 @@ describe('P1-A2: only the legacy file exists', () => {
 });
 
 describe('P1-A3: both names exist', () => {
-  it('returns only audit.ndjson rows, never merges the histories, and changes neither file by reading', () => {
+  it('returns only audit.ndjson rows, never merges the histories, and changes neither file by reading', async () => {
     const dir = dataDirWithLegacy();
     const warn = vi.fn();
     const trail = new AuditTrail({ projectId: FIXTURE_PROJECT, dataDir: dir }, { now, warn });
-    trail.channel('mcp').record({ action: 'organiseWork.pin', resource: { kind: 'run', id: 'run-new' } }, { outcome: 'applied' });
+    await trail.channel('mcp').record({ action: 'organiseWork.pin', resource: { kind: 'run', id: 'run-new' } }, { outcome: 'applied' });
     const legacyBefore = fileState(legacyAuditTrailPath(dir));
     const currentBefore = fileState(auditTrailPath(dir));
 
@@ -126,13 +126,13 @@ describe('neither name exists', () => {
 });
 
 describe('P1-A4: writing never touches the legacy file', () => {
-  it('creates audit.ndjson owner-only beside it, and the legacy bytes, mode and time stay as 0.15.0 left them', () => {
+  it('creates audit.ndjson owner-only beside it, and the legacy bytes, mode and time stay as 0.15.0 left them', async () => {
     const dir = dataDirWithLegacy();
     const before = fileState(legacyAuditTrailPath(dir));
     const trail = new AuditTrail({ projectId: FIXTURE_PROJECT, dataDir: dir }, { now, warn: () => undefined });
     trail.read();
     const mcp = trail.channel('mcp');
-    for (let i = 0; i < 3; i += 1) mcp.record({ action: 'organiseWork.pin', operationId: `op-legacy-000${i}` }, { outcome: 'applied' });
+    for (let i = 0; i < 3; i += 1) await mcp.record({ action: 'organiseWork.pin', operationId: `op-legacy-000${i}` }, { outcome: 'applied' });
 
     expect(fileState(legacyAuditTrailPath(dir))).toEqual(before);
     expect(statSync(auditTrailPath(dir)).mode & 0o777).toBe(0o600);
@@ -147,59 +147,59 @@ describe('the sequence (spec § 3.2)', () => {
   const seqs = (dir: string) =>
     new AuditTrail({ projectId: 'alpha', dataDir: dir }, { now }).read().entries.map((e) => (e as AuditActionRecord).seq);
 
-  it('grows by one per record, across separate trails over the same file, with no cache', () => {
+  it('grows by one per record, across separate trails over the same file, with no cache', async () => {
     const dir = join(root, 'alpha');
     mkdirSync(dir);
-    channelIn(dir).record({ action: 'runs.pin' }, { outcome: 'applied' });
-    channelIn(dir).record({ action: 'runs.pin' }, { outcome: 'refused', reason: 'stale_version' });
+    await channelIn(dir).record({ action: 'runs.pin' }, { outcome: 'applied' });
+    await channelIn(dir).record({ action: 'runs.pin' }, { outcome: 'refused', reason: 'stale_version' });
     const one = channelIn(dir);
-    one.record({ action: 'runs.pin' }, { outcome: 'applied' });
+    await one.record({ action: 'runs.pin' }, { outcome: 'applied' });
     // Another writer appends between two writes of `one`: `one` must not reuse a value it remembered.
-    channelIn(dir).record({ action: 'runs.pin' }, { outcome: 'applied' });
-    one.record({ action: 'runs.pin' }, { outcome: 'applied' });
+    await channelIn(dir).record({ action: 'runs.pin' }, { outcome: 'applied' });
+    await one.record({ action: 'runs.pin' }, { outcome: 'applied' });
     expect(seqs(dir)).toEqual([1, 2, 3, 4, 5]);
   });
 
-  it('continues from the last valid record past a torn tail, and never glues a record onto it', () => {
+  it('continues from the last valid record past a torn tail, and never glues a record onto it', async () => {
     const dir = join(root, 'alpha');
     mkdirSync(dir);
-    channelIn(dir).record({ action: 'runs.pin' }, { outcome: 'applied' });
-    channelIn(dir).record({ action: 'runs.pin' }, { outcome: 'applied' });
+    await channelIn(dir).record({ action: 'runs.pin' }, { outcome: 'applied' });
+    await channelIn(dir).record({ action: 'runs.pin' }, { outcome: 'applied' });
     // A crash mid-append: half a line and no newline.
     appendFileSync(auditTrailPath(dir), '{"v":2,"seq":3,"kind":"act');
-    const written = channelIn(dir).record({ action: 'runs.pin' }, { outcome: 'applied' });
+    const written = await channelIn(dir).record({ action: 'runs.pin' }, { outcome: 'applied' });
     expect(written?.seq).toBe(3);
     const read = new AuditTrail({ projectId: 'alpha', dataDir: dir }, { now }).read();
     expect(read.quarantined).toBe(1);
     expect(read.entries.map((e) => (e as AuditActionRecord).seq)).toEqual([1, 2, 3]);
   });
 
-  it('allocates nothing for a failed write: the next record takes the next value after the last persisted one', () => {
+  it('allocates nothing for a failed write: the next record takes the next value after the last persisted one', async () => {
     const dir = join(root, 'alpha');
     mkdirSync(dir);
     const warn = vi.fn();
     const mcp = channelIn(dir, warn);
-    mcp.record({ action: 'runs.pin' }, { outcome: 'applied' });
-    expect(mcp.record({ action: 'not an action id' }, { outcome: 'applied' })).toBeNull();
+    await mcp.record({ action: 'runs.pin' }, { outcome: 'applied' });
+    expect(await mcp.record({ action: 'not an action id' }, { outcome: 'applied' })).toBeNull();
     expect(mcp.skip('tool_error')).toBeNull();
-    expect(mcp.record({ action: 'runs.pin' }, { outcome: 'applied' })?.seq).toBe(2);
+    expect((await mcp.record({ action: 'runs.pin' }, { outcome: 'applied' }))?.seq).toBe(2);
     expect(warn).toHaveBeenCalledTimes(1);
   });
 
-  it('ignores lines that are not v2 records when it looks for the last value', () => {
+  it('ignores lines that are not v2 records when it looks for the last value', async () => {
     const dir = join(root, 'alpha');
     mkdirSync(dir);
     writeFileSync(auditTrailPath(dir), `${readFileSync(LEGACY_FIXTURE, 'utf8')}{"v":2,"seq":99}\n`);
-    expect(channelIn(dir).record({ action: 'runs.pin' }, { outcome: 'applied' })?.seq).toBe(1);
+    expect((await channelIn(dir).record({ action: 'runs.pin' }, { outcome: 'applied' }))?.seq).toBe(1);
   });
 
-  it('finds the last value in a trail longer than one tail read, including a line split across two reads', () => {
+  it('finds the last value in a trail longer than one tail read, including a line split across two reads', async () => {
     const dir = join(root, 'alpha');
     mkdirSync(dir);
     const mcp = channelIn(dir);
     // Large payload-free records: 400 of them is well past the 64 KiB tail window.
     for (let i = 0; i < 400; i += 1) {
-      mcp.record(
+      await mcp.record(
         { action: 'runs.pin', resource: { kind: 'run', id: `run-${'x'.repeat(100)}-${i}` }, operationId: `op-long-${String(i).padStart(4, '0')}` },
         { outcome: 'applied' },
       );
@@ -207,6 +207,6 @@ describe('the sequence (spec § 3.2)', () => {
     expect(statSync(auditTrailPath(dir)).size).toBeGreaterThan(64 * 1024);
     // Bury the last valid record under more than a tail window of garbage lines.
     appendFileSync(auditTrailPath(dir), `${'{"torn":'.padEnd(200, 'z')}\n`.repeat(400));
-    expect(mcp.record({ action: 'runs.pin' }, { outcome: 'applied' })?.seq).toBe(401);
+    expect((await mcp.record({ action: 'runs.pin' }, { outcome: 'applied' }))?.seq).toBe(401);
   });
 });
