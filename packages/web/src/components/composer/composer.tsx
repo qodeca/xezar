@@ -18,6 +18,7 @@ import {
 import { putUiState } from '@/api/client'
 import { queryKeys, useSkills, useUiState } from '@/api/queries'
 import type { AttachmentInput } from '@qodeca/xezar-api-client'
+import { StatusDot } from '@/components/status-dot'
 import { Button } from '@/components/ui/button'
 import { Command, CommandItem, CommandList } from '@/components/ui/command'
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
@@ -484,7 +485,7 @@ export function Composer({
                   aria-label={`Remove ${attachment.name}`}
                   title="Click to remove"
                   className={cn(
-                    'group relative overflow-hidden rounded-md border border-border',
+                    'group relative min-h-tap min-w-tap overflow-hidden rounded-md border border-border md:min-h-0 md:min-w-0',
                     attachment.isImage
                       ? 'size-12'
                       : 'flex h-12 max-w-[200px] items-center gap-1.5 bg-muted/40 px-2.5 text-xs text-muted-foreground',
@@ -501,8 +502,8 @@ export function Composer({
                       <span className="truncate">{attachment.name}</span>
                     </>
                   )}
-                  <span className="absolute inset-0 hidden items-center justify-center bg-background/70 group-hover:flex group-focus-visible:flex">
-                    <XIcon aria-hidden="true" className="size-4" />
+                  <span className="absolute inset-0 hidden items-center justify-center bg-background/70 group-hover:flex group-focus-visible:flex no-hover:inset-auto no-hover:top-0.5 no-hover:right-0.5 no-hover:flex no-hover:size-5 no-hover:rounded-full no-hover:bg-background/90">
+                    <XIcon aria-hidden="true" className="size-4 no-hover:size-3.5" />
                   </span>
                 </button>
               ))}
@@ -515,14 +516,14 @@ export function Composer({
             // responsive, so the height comes from the `min-h`/`md:min-h` pair below (44px
             // phone, 54px desktop) and from the `useLayoutEffect` autosize pass. On desktop
             // that means one intrinsic row for the single paint before autosize runs, which
-            // `md:min-h-[54px]` already bounds. This textarea is shared with `/new`.
+            // `md:min-h-13.5` already bounds. This textarea is shared with `/new`.
             rows={1}
             value={text}
             disabled={disabled}
             aria-label={ariaLabel}
             placeholder={disabled ? disabledReason : placeholder}
             // 16px on touch widths — iOS zooms any focused input below 16px (spec mobile rule).
-            className="block max-h-[220px] min-h-11 w-full resize-none bg-transparent px-3 pt-2.5 pb-1 text-base leading-normal outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed md:min-h-[54px] md:px-4 md:pt-3 md:text-sm"
+            className="block max-h-[220px] min-h-tap w-full resize-none bg-transparent px-3 pt-2.5 pb-1 text-base leading-normal outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed md:min-h-13.5 md:px-4 md:pt-3 md:text-sm"
             onChange={(event) => {
               // The native `input` listener above may already have written this value (#14).
               if (event.target.value !== textRef.current) setText(event.target.value)
@@ -674,7 +675,7 @@ function AttachButton({
         className="size-8 text-muted-foreground"
         onClick={() => inputRef.current?.click()}
       >
-        <PaperclipIcon aria-hidden="true" className="size-[15px]" />
+        <PaperclipIcon aria-hidden="true" className="size-4" />
       </Button>
       {/* Both spellings of every type: an OS dialog filters on the extension as often as on the
           MIME type, and `accept="image/*,text/plain"` alone greys out a `.md` on Windows (#950). */}
@@ -720,10 +721,9 @@ function DictationBar({
       aria-label="Dictation in progress"
       className="flex items-center gap-2.5 rounded-b-xl border-t border-border bg-muted/60 px-3 py-2"
     >
-      <span
-        aria-hidden="true"
-        className="size-2 flex-none animate-pulse rounded-full bg-danger motion-reduce:animate-none"
-      />
+      {/* The shared dot (G-08): its `pulse` carries the reduced-motion guard. `size-2` keeps the
+          recording light a step larger than a list dot. */}
+      <StatusDot aria-hidden="true" tone="danger" pulse className="size-2" />
       <span data-slot="dictation-timer" className="text-xs font-medium text-muted-foreground tabular-nums">
         {formatElapsed(startedAt, now)}
       </span>

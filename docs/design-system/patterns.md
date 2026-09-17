@@ -126,6 +126,7 @@ A list shows nothing at all until its data has answered; it never shows a false 
 - **Sheet**: left for navigation (mobile drawer), right for a drill-down (sub-agent sheet).
 - **Command palette**: ⌘K / Ctrl+K anywhere, from the keyboard only (no visible launcher); on close, focus returns to the element that held it, else the phone top bar's menu button; `c` or ⌘N opens `/new`; groups in the order Recently finished · Views · Projects · Tasks · Actions · Skills.
 - **Toasts**: top-right, 5 s, `default` or `danger` tone, one sentence. Success toasts may or may not end with a period today (G-16); new toasts end without one unless they are a full sentence with a clause.
+- **Copy to clipboard**: through `copyText` (`lib/clipboard-result.ts`), which answers a refusal instead of throwing. Success is a fragment ("Command copied", "Worktree path copied"); a refused or missing clipboard never says copied – the toast carries the payload instead ("Run manually: {command}", "Path: {path}"). The task thread and the review panel use it.
 - **Browser notifications**: off by default; fired only for a status change into `needs you`, `needs review` or `failed` while the tab is hidden; body `Task needs you`. Permission is requested on enable only.
 
 ## 8. Settings and forms
@@ -149,7 +150,7 @@ Source: `components/app-shell.tsx`.
 - It closes on route change and the moment `(min-width: 768px)` matches.
 - It renders the same sidebar content as the desktop column, so it is navigation only: brand row, New task (+ Add project), nav or project groups, footer.
 - The top bar titles itself from `activeNavItem(pathname)`.
-- Touch targets are 44px (`h-11`, `size-11`); desktop rows relax to `md:h-9`.
+- Touch targets are 44px (`h-11`, `size-11`); desktop rows relax to `md:h-9`. The footer's Tools trigger is `min-h-tap … md:min-h-0`.
 
 ## 10. Live updates
 
@@ -164,3 +165,16 @@ Source: `api/global-events.tsx`, `api/ws.ts`, `api/queries.ts` (`useHealthSubscr
 Rule: a new live signal is a WebSocket topic subscribed at the scope that matches its demand
 (view-level in the view, session-global once at the root), never a `refetchInterval`. Patch the query
 cache in place; the reconciling refetch is the source of truth.
+
+## 11. The task thread
+
+Source: `routes/task-thread/` (`run-header.tsx`, `thread-items.tsx`, `agents-dock.tsx`, `plan-dock.tsx`,
+`step-rail.tsx`, `review-panel.tsx`, `ask-card.tsx`, `thread-scroller.tsx`, `task-thread.tsx`),
+`components/composer/composer.tsx`, `components/tools-menu.tsx`.
+
+- Phone targets: below `md` every thread control is at least 44 × 44 px at every density – the run header's details toggle, agent badge, resume hint and title pencil, the Agents and Plan dock headers and agent rows, the workflow summary, tool cards, context groups, tool streaks and the output toggle, message edit/remove and Cancel/Save, ask options, the review panel's links, the footer's PR and issue links, the history loader and the jump pill. Rows spell it `min-h-tap … md:min-h-<desktop>`; icon buttons add `min-w-tap … md:min-w-0`. `e2e/design-debt-b5.e2e.ts` measures every surface at all four densities.
+- Hover-revealed actions (the title pencil, a message's edit and remove, the attachment remove mark) also carry `no-hover:` so a touch device sees them, and grow to 44 px there (`no-hover:min-h-tap no-hover:min-w-tap`). Keyboard focus reveals them with the focus ring.
+- The jump pill is anchored by its bottom edge above the dock (`bottom-full pb-4`), so a taller phone pill never covers a dock header.
+- Motion: every spinner is `motion-safe:animate-spin`; pulsing glyphs carry `motion-reduce:animate-none`; the dictation light is `StatusDot pulse`.
+- The destructive run confirm follows §7: `buttonVariants({ variant: 'danger' })` and "Keep it".
+- Rendered Markdown's code-block copy and download buttons come from the Markdown library and are below 44 px (G-36).

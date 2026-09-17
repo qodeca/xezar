@@ -362,7 +362,7 @@ export function ThreadView({
                 href={taskPrUrl(run)}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="font-medium text-foreground underline-offset-2 hover:underline"
+                className="inline-flex min-h-tap min-w-tap items-center justify-center font-medium text-foreground underline-offset-2 hover:underline md:min-h-0 md:min-w-0"
               >
                 PR ↗
               </a>
@@ -375,7 +375,7 @@ export function ThreadView({
                 href={issueUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="font-medium text-foreground underline-offset-2 hover:underline"
+                className="inline-flex min-h-tap min-w-tap items-center justify-center font-medium text-foreground underline-offset-2 hover:underline md:min-h-0 md:min-w-0"
               >
                 Issue ↗
               </a>
@@ -408,9 +408,10 @@ export function ThreadView({
         data-slot="thread-dock"
         className="sticky bottom-[var(--kb,0px)] z-10 bg-background px-3 pt-1 pb-2 max-md:border-t max-md:border-border md:px-section md:pt-stack md:pb-list"
       >
-        {/* The jump pill floats over the thread, just above the dock, centered. */}
+        {/* The jump pill floats over the thread, just above the dock, centered. Anchored by its
+            bottom edge (`bottom-full`), so the 44 px phone pill never reaches down over a dock. */}
         {scroll.pillVisible ? (
-          <div className="pointer-events-none absolute inset-x-0 -top-12 flex justify-center">
+          <div className="pointer-events-none absolute inset-x-0 bottom-full flex justify-center pb-4">
             <JumpToLatestPill onJump={scroll.jumpToLatest} />
           </div>
         ) : null}
@@ -465,7 +466,7 @@ export function ThreadView({
               providerBlocked && !continueAction.providerPending ? (
                 <Link
                   to="/settings/agents#providers"
-                  className="text-xs font-medium text-foreground underline underline-offset-4"
+                  className="inline-flex min-h-tap items-center text-xs font-medium text-foreground underline underline-offset-4 md:min-h-0"
                 >
                   Configure providers
                 </Link>
@@ -532,12 +533,12 @@ function HistoryBoundary({
         type="button"
         onClick={onLoad}
         disabled={loading}
-        className="rounded-md px-3 py-1.5 font-medium hover:bg-muted disabled:cursor-wait"
+        className="min-h-tap rounded-md px-3 py-1.5 font-medium hover:bg-muted disabled:cursor-wait md:min-h-0"
       >
         {loading ?
           'Loading 100 earlier items…'
         : error ?
-          'Couldn’t load earlier items · Retry'
+          'Could not load earlier items · Retry'
         : 'Load 100 earlier items'}
       </button>
       <span className="sr-only" aria-live="polite">

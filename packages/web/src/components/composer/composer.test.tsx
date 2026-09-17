@@ -107,8 +107,8 @@ describe('submit shortcuts', () => {
     const classes = textarea.className.split(/\s+/)
 
     expect(textarea.rows).toBe(1)
-    expect(classes).toContain('min-h-11')
-    expect(classes).toContain('md:min-h-[54px]')
+    expect(classes).toContain('min-h-tap')
+    expect(classes).toContain('md:min-h-13.5')
     expect(classes).toContain('text-base')
     expect(classes).toContain('md:text-sm')
   })

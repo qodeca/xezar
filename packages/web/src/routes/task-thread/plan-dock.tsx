@@ -62,12 +62,12 @@ export function PlanDock({ runId, entries }: { runId: string; entries: PlanEntry
       className="min-w-0 overflow-hidden rounded-lg border border-border bg-card shadow-xs"
     >
       {/* The mockup's `.grad-edge` — the brand gradient as a hairline top edge. */}
-      <div aria-hidden data-slot="grad-edge" className="h-0.5 md:h-[3px]" style={{ background: 'var(--grad)' }} />
+      <div aria-hidden data-slot="grad-edge" className="h-0.5 md:h-0.75" style={{ background: 'var(--grad)' }} />
       <button
         type="button"
         onClick={toggle}
         aria-expanded={open}
-        className={cn('flex w-full items-center gap-2 px-3.5 text-left text-[13px]', open ? 'pt-2 pb-1.5' : 'py-2')}
+        className={cn('flex min-h-tap w-full items-center gap-2 px-3.5 text-left text-[13px] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 md:min-h-0', open ? 'pt-2 pb-1.5' : 'py-2')}
       >
         <span className="shrink-0 font-semibold">Plan</span>
         <span data-slot="plan-count" className="shrink-0 text-muted-foreground tabular-nums">
@@ -84,7 +84,7 @@ export function PlanDock({ runId, entries }: { runId: string; entries: PlanEntry
         />
       </button>
       {open ? (
-        <ul data-slot="plan-list" className="flex flex-col gap-[7px] px-3.5 pb-3">
+        <ul data-slot="plan-list" className="flex flex-col gap-1.75 px-3.5 pb-3">
           {entries.map((entry, index) => (
             <PlanRow key={`${index}:${entry.content}`} entry={entry} />
           ))}
@@ -130,7 +130,7 @@ function PlanIcon({ status }: { status: PlanStatus }) {
     return (
       <svg
         aria-hidden
-        className="size-[15px] shrink-0 text-soft-foreground/70"
+        className="size-4 shrink-0 text-soft-foreground/70"
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
@@ -146,7 +146,7 @@ function PlanIcon({ status }: { status: PlanStatus }) {
     return (
       <svg
         aria-hidden
-        className="size-[15px] shrink-0 text-success"
+        className="size-4 shrink-0 text-success"
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
@@ -163,7 +163,7 @@ function PlanIcon({ status }: { status: PlanStatus }) {
     return (
       <svg
         aria-hidden
-        className="size-[15px] shrink-0 animate-pulse motion-reduce:animate-none"
+        className="size-4 shrink-0 animate-pulse motion-reduce:animate-none"
         viewBox="0 0 24 24"
         fill="none"
       >
@@ -176,7 +176,7 @@ function PlanIcon({ status }: { status: PlanStatus }) {
   return (
     <svg
       aria-hidden
-      className="size-[15px] shrink-0 text-soft-foreground"
+      className="size-4 shrink-0 text-soft-foreground"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"

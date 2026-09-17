@@ -125,7 +125,7 @@ function PendingAsk({ ask, run }: { ask: ThreadAsk; run: ApiRun }) {
       {delivery.blockedBy === 'provider' ? (
         <div data-slot="ask-provider-gate" className="mt-3 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
           <span>{delivery.reason}</span>
-          <Link to="/settings/agents#providers" className="font-medium text-foreground underline underline-offset-4">
+          <Link to="/settings/agents#providers" className="inline-flex min-h-tap items-center font-medium text-foreground underline underline-offset-4 md:min-h-0">
             Configure providers
           </Link>
         </div>
@@ -190,7 +190,7 @@ function AskQuestionBlock({
               aria-pressed={isSelected}
               onClick={() => pick(option.label)}
               className={cn(
-                'flex w-full flex-col gap-0.5 rounded-md border px-3.5 py-2.5 text-left transition-colors',
+                'flex min-h-tap w-full flex-col justify-center gap-0.5 rounded-md border px-3.5 py-2.5 text-left transition-colors md:min-h-0',
                 'hover:border-primary/50 hover:bg-primary/[0.06] disabled:pointer-events-none disabled:opacity-50',
                 isSelected ? 'border-primary/60 bg-primary/[0.06]' : 'border-border bg-card',
               )}
