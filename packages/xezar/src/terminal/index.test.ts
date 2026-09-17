@@ -134,6 +134,21 @@ describe('the boot event', () => {
     );
   });
 
+  it('holds the notice until startDisplay, so it cannot land above the stdout banner (#556, B-1)', () => {
+    // `serve` prints the stdout banner between `reportRecovery()` (right after recovery) and
+    // `startDisplay()` (once the banner is done) — see index.ts. This stream only carries the
+    // terminal's own (stderr) writes, so the banner itself is not modeled here; what is pinned
+    // is that reportRecovery writes NOTHING until startDisplay runs, which is what stops the
+    // notice from racing the banner onto the screen and landing above it.
+    const stream = new FakeStream({ columns: 80 });
+    const terminal = start(stream, {}, false);
+    terminal.reportRecovery(13, 13);
+    expect(stream.text).toBe('');
+    terminal.startDisplay();
+    expect(stream.text).toContain('13 tasks from the previous session');
+    terminal.stop({ stillRunning: 0 });
+  });
+
   it('writes one plain recovery row before ready with only the accepted fields', () => {
     const stream = new FakeStream();
     const terminal = start(stream);
