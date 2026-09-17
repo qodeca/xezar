@@ -6,7 +6,7 @@ This record turns the local audit trail into one ordered history for changes ent
 
 ## 1. Authority, evidence notation, and boundaries
 
-The owner settled the seven design questions on 2026-09-17: origin is derived from the door; every command-line subcommand is audited; an automation creates a record linked to its receipt; UI covers the MCP-equivalent run-state and configuration changes but never reads; actors are door-specific; the file becomes `audit.ndjson`, rotates at 10 MB (10,000,000 bytes), and keeps five files; and every door uses one redaction seam. The same decision adds proxy attribution, refusal outcomes, sequence numbers, UTC timestamps, file modes, compatibility checks, and an ordered four-PR delivery.
+The owner settled the seven design questions on 2026-09-17: origin is derived from the door; every command-line subcommand is audited; an automation creates a record linked to its receipt; `ui` records the same action set as MCP (run-state changes and configuration writes; reads never), which § 6 derives from the complete current MCP action inventory; actors are door-specific; the file becomes `audit.ndjson`, rotates at 10 MB (10,000,000 bytes), and keeps five files; and every door uses one redaction seam. The same decision adds proxy attribution, refusal outcomes, sequence numbers, UTC timestamps, file modes, compatibility checks, and an ordered four-PR delivery.
 
 Evidence labels in this record mean:
 
@@ -23,13 +23,14 @@ This feature does not add a cockpit page, an audit HTTP read route, remote expor
 ## 2. Acceptance criteria
 
 - **A1 — Contract:** every new record validates against the Zod-level v2 shapes in § 3, has a per-file-set monotonically increasing sequence, and has a UTC `Z` timestamp. An action record carries a door-derived origin and matching actor, and says either `applied` or `refused` with a bounded machine reason.
-- **A2 — Four doors:** one real production action and one real refusal from each of `ui`, `mcp`, `automation`, and `cli` appear in the saved four-door harness with the expected actor and no caller-controlled origin.
+- **A2 — Four doors:** one real production action and one real refusal from each of `ui`, `mcp`, `automation`, and `cli` appear in the saved four-door harness with the expected actor and no caller-controlled origin. For `ui` and `mcp` the harness also holds one applied and one refused record for every mutation family F1–F10 in § 6.5, except where § 6 names a door that cannot apply that family.
 - **A3 — Command line:** every valid top-level subcommand and every valid `projects` subcommand in the verified inventory in § 5 creates exactly one command-level action record; help/version flags and unknown commands follow the explicit exclusions there.
 - **A4 — Safe shared file:** all four writers use the same project-scoped lock, sequence allocator, redaction seam, append path, rotation path, mode enforcement, and one-warning failure policy. Two processes crossing the limit neither lose nor duplicate an action record.
 - **A5 — Compatibility:** the new name wins; the old name is a read-only fallback, is never rewritten, produces one deprecation warning when used, and cannot be removed before 0.18.0 and its tracking issue. The 0.15.0 reader result for every v2 record is measured and the breaking classification is documented.
 - **A6 — Redaction:** the field inventory in § 9 is exhaustive. Configuration bodies persist key names and a digest of the redacted canonical summary, never values. A writer cannot append without calling the shared seam.
 - **A7 — Recovery:** an unavailable lock, unwritable directory, failed mode repair, rotation failure, or append failure never changes the user's action result; it produces at most one audit warning for that project in that process.
 - **A8 — Evidence:** unit, route, packaged-command, four-door, concurrency, redaction, old-reader, and 0.15.0 upgrade/downgrade tests pass, and each failing-first proof fails at its named break from § 11.
+- **A9 — Shared action inventory:** `ui` and `mcp` read one semantic action inventory (§ 6). Every current MCP tool action and every current non-GET HTTP route is classified as a mutation or a read. A mutation reached through both doors gets the same action id from both. A read gets no record from either door. Removing one inventory row or one route descriptor fails the parity test.
 
 ## 3. Record contract
 
@@ -129,8 +130,8 @@ This is not an additive evolution of the current `outcome` field: v1 already use
 
 | Door | Required construction and hook | What settles the record |
 | --- | --- | --- |
-| `mcp` | Keep construction in `composeDoor`, where the project id, data directory, warning sink, and MCP connection secrets already meet. **Verified current site** (`packages/xezar/src/mcp/index.ts:190-213`, `:268-285`). Move the read-only decision from tool-level annotation to the normalized action inventory so read actions inside a mixed tool are not audited. | The existing MCP result classifier maps a pre-effect refusal to `refused`; successful mutation to `applied`. A post-effect/ambiguous tool error follows § 3.2. The server mints origin and actor; tool arguments cannot override them. |
-| `ui` | Construct `channel('ui')` in each lazily built project context and expose an audit decorator to the chained project route families. The decorator wraps the allowlisted route handler after Zod middleware, not the global Hono app and not a client header. Project contexts are currently the per-registered-project construction boundary. **Verified** (`packages/xezar/src/server/project-context.ts:1-120`). Run and config route families are chained and project-scoped. **Verified** (`packages/xezar/src/server/server.ts:3625-3701`, `:5522-5529`, `:5684-5713`). | 2xx after the effect is `applied`; a known 4xx refusal before effect is `refused` with a route-owned code. 5xx or thrown ambiguity follows § 3.2. No GET/HEAD/OPTIONS route is audited. |
+| `mcp` | Keep construction in `composeDoor`, where the project id, data directory, warning sink, and MCP connection secrets already meet. **Verified current site** (`packages/xezar/src/mcp/index.ts:190-213`, `:268-285`). Move the read-only decision from tool-level annotation to the shared action inventory in § 6 so read actions inside a mixed tool are not audited. | The existing MCP result classifier maps a pre-effect refusal to `refused`; successful mutation to `applied`. A post-effect/ambiguous tool error follows § 3.2. The server mints origin and actor; tool arguments cannot override them. |
+| `ui` | Construct `channel('ui')` in each lazily built project context and expose an audit decorator to the chained route families that § 6 maps. The decorator wraps the inventoried route handler after Zod middleware, not the global Hono app and not a client header. Project contexts are currently the per-registered-project construction boundary. **Verified** (`packages/xezar/src/server/project-context.ts:1-120`). Project-scoped families are mounted under both prefixes and workspace families once. **Verified** (`packages/xezar/src/server/server.ts:6061-6064`). A project-scoped route writes to its resolved project's audit. A workspace-level route writes to the project it names (`:projectId`, or the root it registers or clones once resolved); a route that names no project, or whose target cannot be resolved, writes to the server's boot project. **Specified**, by the same rule § 5 uses for the invocation project. | 2xx after the effect is `applied`; a known 4xx refusal before effect is `refused` with a route-owned code. 5xx or thrown ambiguity follows § 3.2. No GET/HEAD/OPTIONS route is audited. |
 | `automation` | Construct `channel('automation')` in the workspace automation handle and pass it into `ProjectAutomationScheduler`. Write beside the existing receipt transition: reservation already mints `receiptId` before launch, launch receives it, and success/error writes the receipt. **Verified** (`packages/xezar/src/automations/scheduler.ts:108-121`; server composition at `packages/xezar/src/server/server.ts:6121-6148`). | A launched run is `applied`, linked through `actor.receiptId` and `resource: {kind:'run', id}`. A duplicate receipt, held lease, disabled capability, filter miss, and preview are reads/no-ops and are not action records. A launch refusal known to precede `RunManager.startRun` is `refused`; an ambiguous throw follows § 3.2. |
 | `cli` | Create one CLI channel after the command's project scope and data directory are resolved, before dispatch in `main`; pass it explicitly to command handlers. The current dispatch is one switch over all top-level commands. **Verified** (`packages/xezar/src/index.ts:120-147`, `:187-252`). `projects` continues to work without a server. **Verified** (`packages/xezar/src/workspace/projects-cli.ts:14-23`). | Record once per valid subcommand invocation at its effect boundary, using the canonical command id in § 5. Pre-effect validation/policy failures are `refused`; a command that started its effect is `applied` even if a spawned task or hosted service later reports failure. An ambiguous effect follows § 3.2. |
 
@@ -157,17 +158,118 @@ The current top-level dispatch contains `serve`, `run`, `init`, `projects`, `mcp
 
 `--help` and `--version` are flags that return before command/project resolution. **Verified** (`packages/xezar/src/index.ts:153-163`). They create no audit record. An unknown top-level command or unknown `projects` word is not a valid subcommand and creates no record; this keeps arbitrary caller text out of the action field. Global invocation validation currently happens before project resolution and writes nothing. **Verified** (`packages/xezar/src/index.ts:165-190`). That remains true for malformed global flags.
 
-## 6. UI action inventory
+## 6. Shared action inventory for `ui` and `mcp`
 
-UI audits state changes, not transport activity. The allowlist is shared semantically with MCP and includes:
+The owner's rule is that `ui` records the same action set as MCP. So there is one semantic inventory, not a UI allowlist that is written by hand. Each row has a dotted action id, a class (`mutation` or `read`), the MCP `tool.action` values that reach it, and the HTTP method plus route template that reach it. A route whose body selects the effect (for example `archived: false`, `mode`, or `action`) maps each body value to its own row. Both doors take the action id from this table, so the same effect gets the same id whichever door it came through. **Specified.**
 
-- run creation and lifecycle/organization changes: start, patch title/brief, cancel, message/continue/finish, queued-message edit/remove, archive/restore, pin/unpin, read/unread/read-all, archive-finished, cancel auto-resume, and delete;
-- project, workspace, and agent configuration writes reached through `PUT /config`, `PUT /workspace/config`, and `PUT /agent-config/:id`;
-- the MCP equivalents of those actions, normalized to the same dotted action names even where MCP tool/action spelling differs.
+The inventory is derived from the current MCP action set. Only the `readOnlyHint: true` tools skip the door today, so every action of every other tool is audited now, reads included. **Verified** (`packages/xezar/src/mcp/index.ts:286-297`; annotations at `packages/xezar/src/mcp/tools/task-reads.ts:437`, `discovery.ts:385`, `results-evidence.ts:275`, `handoff-git.ts:632`). V2 keeps every MCP action that changes state, or that is refused at a boundary whose cockpit counterpart changes state. It drops the reads (§ 6.3). The current server registers 63 non-GET routes. **Verified** (count of `.post(`, `.put(`, `.patch(`, `.delete(` in `packages/xezar/src/server/server.ts`). Sixty of them map to mutation rows below, and three are read-like. No GET, HEAD or OPTIONS route, SSE replay or WebSocket subscription is ever audited.
 
-The current run family exposes the corresponding mutators between `POST /runs/archive-finished` and `DELETE /runs/:id`; it also contains local handoff, Git, PR, and worktree operations. **Verified** (`packages/xezar/src/server/server.ts:3625-3701`, `:3872-4062`, `:4101-4153`, `:4423-4535`). The last group is outside the owner-defined run-state/config set and is not added silently; widening it requires a follow-up decision and inventory row. The three configuration writers are current project/workspace/agent-config routes. **Verified** (`packages/xezar/src/server/server.ts:2933-2937`, `:5522-5529`, `:5684-5713`).
+MCP action lists are verified at `packages/xezar/src/mcp/tools/execution-control.ts:58-65`, `work-organisation.ts:91-107`, `task-create.ts:40`, `handoff-git.ts:114`, `project-config.ts:111-148` and `:185-271`, `local-handoff.ts:40`, and `leader-events.ts:97`. Route lines below are in `packages/xezar/src/server/server.ts`.
 
-No read route, planning/preview request, file/diff/commit fetch, health call, SSE replay, WebSocket subscription, local-open request, Git/PR action, workflow-file edit, skills refresh, onboarding acknowledgement, project registry operation, provider connection, or automation-definition management is in this UI allowlist. Some have MCP mutating-tool wrappers today, so the implementation must make the shared action inventory—not tool annotation—the authority. **Inferred** from the current tool-level read-only shortcut (`packages/xezar/src/mcp/index.ts:286-300`) and the mixed `project_config` action switch (`packages/xezar/src/mcp/tools/project-config.ts:856-1298`).
+### 6.1 Mutations reachable through both doors
+
+| Family | Action id | MCP `tool.action` | HTTP route (line) |
+| --- | --- | --- | --- |
+| F1 run | `run.start` | `task_create.start` | `POST /runs` (3701) |
+| F1 run | `run.startFromInbox` | `task_create.start_from_inbox`, `organise_work.start_inbox_item` | `POST /todos/:id/start` (4872) |
+| F1 run | `run.update` | `organise_work.set_title`, `organise_work.edit_brief` | `PATCH /runs/:id` (3872); `fieldNames` says which one |
+| F1 run | `run.cancel` | `execution_control.cancel` | `POST /runs/:id/cancel` (3910) |
+| F1 run | `run.message` | `execution_control.send_message`, `execution_control.answer_question` when they reach this route | `POST /runs/:id/messages` (3924) |
+| F1 run | `run.continue` | `execution_control.continue`; `send_message` and `answer_question` when they reach this route | `POST /runs/:id/continue` (4062) |
+| F1 run | `run.finish` | `execution_control.finish` | `POST /runs/:id/finish` (4049) |
+| F1 run | `run.queuedMessage.edit` | `execution_control.edit_queued_message`, `organise_work.edit_queued_message` | `PATCH /runs/:id/queued-messages/:msgId` (3988) |
+| F1 run | `run.queuedMessage.remove` | `execution_control.remove_queued_message`, `organise_work.remove_queued_message` | `DELETE /runs/:id/queued-messages/:msgId` (4032) |
+| F1 run | `run.autoResume.cancel` | `execution_control.cancel_auto_resume` | `DELETE /runs/:id/auto-resume` (3675) |
+| F1 run | `run.archive` / `run.restore` | `organise_work.archive` / `.restore` | `POST /runs/:id/archive` (3637), by `archived` |
+| F1 run | `run.pin` / `run.unpin` | `organise_work.pin` / `.unpin` | `POST /runs/:id/pin` (3659), by `pinned` |
+| F1 run | `run.markRead` / `run.markUnread` | `organise_work.mark_read` / `.mark_unread` | `POST /runs/:id/read` (3686) / `POST /runs/:id/unread` (3693) |
+| F1 run | `run.markAllRead` | `organise_work.mark_all_read` | `POST /runs/read-all` (3635) |
+| F1 run | `run.archiveFinished` | `organise_work.archive_finished` | `POST /runs/archive-finished` (3631) |
+| F1 run | `run.delete` | `organise_work.delete` | `DELETE /runs/:id` (4525) |
+| F1 run | `group.pickVariant` | `organise_work.pick_variant` | `POST /groups/:groupId/pick` (4584) |
+| F1 run | `inbox.remove` | `organise_work.remove_inbox_item` | `DELETE /todos/:id` (4852) |
+| F2 Git/PR/worktree | `run.git.commit` | `handoff_git.commit` | `POST /runs/:id/git/commit` (4423) |
+| F2 Git/PR/worktree | `run.git.push` | `handoff_git.push` | `POST /runs/:id/git/push` (4438) |
+| F2 Git/PR/worktree | `run.pr.create` | `handoff_git.create_pr` | `POST /runs/:id/pr` (4467) |
+| F2 Git/PR/worktree | `pr.ready` | `handoff_git.ready` | `POST /github/prs/:number/ready` (5334) |
+| F2 Git/PR/worktree | `pr.merge` | `handoff_git.merge` | `POST /github/prs/:number/merge` (5302) |
+| F2 Git/PR/worktree | `repo.branch` | `handoff_git.branch` | `POST /repo/branch` (5477) |
+| F2 Git/PR/worktree | `run.worktree.remove` | `project_config.remove_worktree` | `POST /runs/:id/remove-worktree` (4511) |
+| F2 Git/PR/worktree | `worktree.reclaim` | `project_config.reclaim_worktrees` | `POST /worktrees/reclaim` (4746) |
+| F3 local handoff | `run.openInTerminal` | `local_handoff.open_task_in_terminal` | `POST /runs/:id/open-in-cli` (4101) |
+| F3 local handoff | `run.openInApp` | `local_handoff.open_task_in_app` | `POST /runs/:id/open-in` (4143) |
+| F3 local handoff | `project.openInApp` | `local_handoff.open_project_in_app`; `project_config.open_in_app` (always refused) | `POST /open-in` (4648) |
+| F4 project config | `project.config.set` | `project_config.set_config` | `PUT /config` (5529) |
+| F4 project config | `project.registry.update` | `project_config.set_project` | `PATCH /projects/:projectId` (2527), workspace-level |
+| F4 project config | `project.uiState.set` | `project_config.set_prompt_templates` | `PUT /ui-state` (3191); `fieldNames` separates templates from other preferences |
+| F4 project config | `agentConfig.write` | `project_config.write_agent_config` | `PUT /agent-config/:id` (5713) |
+| F5 workflow files | `workflow.save` | `project_config.save_workflow`, `task_create.save_plan` | `POST /workflows` (3217) |
+| F5 workflow files | `workflow.delete` | `project_config.delete_workflow` | `DELETE /workflows/:name` (3255) |
+| F6 automations | `automation.create` | `project_config.create_automation` | `POST /automations` (3404) |
+| F6 automations | `automation.update` | `project_config.update_automation` | `PUT /automations/:id` (3442) |
+| F6 automations | `automation.delete` | `project_config.delete_automation` | `DELETE /automations/:id` (3460) |
+| F6 automations | `automation.enable` | `project_config.enable_automation` | `POST /automations/:id/enable` (3470) |
+| F6 automations | `automation.pause` | `project_config.pause_automation` | `POST /automations/:id/pause` (3489) |
+| F6 automations | `automation.checkExecute` | `project_config.check_automation` with `mode: execute` | `POST /automations/:id/check` (3502) with `mode: execute` |
+| F6 automations | `automation.receipt.retry` | `project_config.retry_automation_receipt` | `POST /automation-log/:receiptId/retry` (3544) |
+| F7 skills/onboarding | `skills.refresh` | `project_config.refresh_skills` | `POST /skills/refresh` (3178) |
+| F7 skills/onboarding | `onboarding.dismissOffer` | `project_config.dismiss_onboarding_offer` | `POST /onboarding/offered` (4808) |
+| F8 leader session | `leader.attach` / `leader.stop` | `leader_events.attach` / `.stop` | `POST /mcp/leader` (5775), by `action` |
+
+`automation.checkExecute` is the manual trigger through `ui` or `mcp`. A run that the automation runner launches is still the separate `automation.launch` record of the `automation` door (§ 4).
+
+### 6.2 Mutations that MCP always refuses
+
+These MCP actions dispatch nothing. They answer with a boundary refusal. **Verified** (`packages/xezar/src/mcp/tools/project-config.ts:185-271`). They pass the door today, so they are part of the audited MCP action set. In v2 `mcp` records each one as `refused`, and its reason is the boundary in snake case (for example `workspace_settings`). `ui` records the same action id as `applied` or `refused`. MCP can never apply these, so the MCP applied case does not exist.
+
+| Family | Action id | MCP `tool.action` | HTTP route (line) |
+| --- | --- | --- | --- |
+| F9 project registry | `project.registry.add` | `project_config.add_project` | `POST /projects` (2410) |
+| F9 project registry | `project.registry.clone` | `project_config.clone_project` | `POST /projects/checkout` (2595) |
+| F9 project registry | `project.registry.remove` | `project_config.remove_project` | `DELETE /projects/:projectId` (2417) |
+| F10 workspace | `workspace.config.set` | `project_config.set_workspace_config` | `PUT /workspace/config` (2936) |
+| F10 workspace | `workspace.uiState.set` | `project_config.set_workspace_ui_state`, `project_config.import_skills` | `PUT /workspace/ui-state` (3055); `importedSkills` is a field of that shape. **Verified** (`packages/contract/src/workspace.ts:242`, `:278`) |
+| F10 workspace | `skills.applyUpdates` | `project_config.apply_skill_updates` | `POST /workspace/skills-update/apply` (2844) |
+| F10 workspace | `provider.setEnabled` | `project_config.set_provider_enabled` | `PUT /providers/:provider/enabled` (1775) |
+| F10 workspace | `provider.retry` | `project_config.retry_provider` | `POST /providers/:provider/retry` (1803) |
+| F10 workspace | `provider.connect` | `project_config.connect_provider` | `POST /providers/connect` (1820) |
+| F10 workspace | `account.create` | `project_config.create_account` | `POST /workspace/agent-profiles` (2045) |
+| F10 workspace | `account.update` | `project_config.update_account` | `PATCH /workspace/agent-profiles/:id` (2097) |
+| F10 workspace | `account.openFile` | `project_config.open_account_file` | `POST /workspace/agent-profiles/:id/open` (2219) |
+| F10 workspace | `account.select` | `project_config.select_account` | `PUT /workspace/agent-profiles/selection` (2271) |
+| F10 workspace | `account.remove` | `project_config.remove_account` | `DELETE /workspace/agent-profiles/:id` (2324) |
+
+§ 15.1 asks the owner to confirm this group. The recommendation is to keep it, and it applies until the owner answers.
+
+### 6.3 Reads: no record from either door
+
+- Every action of `task_read`, `discover_project`, `read_results_evidence` and the bridge `health` tool.
+- The read actions inside mutating tools: `organise_work.list_queue`; `handoff_git.repo` and `.merge_state`; `local_handoff.list_apps`; `leader_events.read` and `.status`; `project_config` `get_config`, `get_project`, `get_prompt_templates`, `get_limits`, `get_capabilities`, `get_account`, `list_agent_config`, `read_agent_config`, `list_workflows`, `parse_workflow`, `list_skills`, `get_skill`, `list_importable_skills`, `check_skill_updates`, `list_automations`, `get_automation`, `get_automation_check`, `get_automation_log`, and `list_worktrees`.
+- Refused reads: `project_config` `check_account_status`, `get_account_details`, `browse_folders` and `get_launch_key`. Their cockpit counterparts are reads.
+- Preview requests: `task_create.plan` / `POST /plan` (3302), `parse_workflow` / `POST /workflows/parse` (3281), `check_skill_updates` / `POST /workspace/skills-update/check` (2837), and `check_automation` with `mode: preview` on `POST /automations/:id/check` (3502).
+
+Some of these fill a cache or keep delivery bookkeeping. For example, `leader_events.read` saves its delivered cursor. **Verified** (`packages/xezar/src/mcp/reconnect.ts:206-211`). The `refresh` forms of `get_capabilities` and the GitHub reads re-probe their caches. They change no project state that a person set, so they stay reads. That is a deliberate change: `mcp` stops writing a record for `task_create.plan`, `leader_events.read` and the read actions of mixed tools.
+
+### 6.4 MCP mutations with no HTTP route
+
+- `leader.ack` (`leader_events.ack`). It calls `LeaderCursors.ack` directly. **Verified** (`packages/xezar/src/mcp/reconnect.ts:226-228`; action at `packages/xezar/src/mcp/tools/leader-events.ts:97`). No HTTP route acknowledges leader events, so only `mcp` can write this action. The inventory row says `ui: none` explicitly.
+
+No other current MCP mutation lacks an HTTP route.
+
+### 6.5 HTTP mutations with no MCP action, families, and the parity rule
+
+Every one of the 60 current mutating routes has an MCP action in § 6.1 or § 6.2. So there is no HTTP-only mutation to put under open questions. The one borderline group, where the MCP action exists but can only refuse, is § 6.2, and § 15.1 lists it.
+
+The families for tests and acceptance are F1–F10 as named in the tables. F8 also holds the MCP-only `leader.ack`. F9 and F10 have no MCP applied case.
+
+The parity test (PR 2) makes the inventory the authority and not the tool annotation:
+
+1. Every entry in `TOOL_ACTION_COVERAGE` has exactly one inventory class. **Verified source** (`packages/xezar/src/mcp/tools/api-coverage.testkit.ts:28`).
+2. Every non-GET route in the built app route table (the same source `packages/xezar/src/server/bc-route-inventory.test.ts` reads) has a mutation descriptor or a read reason.
+3. Every mutation row has an MCP mapping and either an HTTP route or an explicit `ui: none`.
+4. An empty inventory, an empty route table or an empty MCP coverage map fails the test. It is never read as "no auditable mutations".
+
+A new MCP action or a new non-GET route without a row fails the suite. The implementer cannot leave it out quietly.
 
 ## 7. Shared lock, sequence, append, and rotation
 
@@ -223,7 +325,7 @@ Common persisted fields are limited to `v`, `kind`, `seq`, UTC `ts`, trusted-sco
 
 | Door | Inputs the seam may inspect | Fields it may persist | Must be dropped before hashing/persistence |
 | --- | --- | --- | --- |
-| `ui` | Validated route body, route template/params, trusted project scope, response status, proxy assertion context | Normalized action; run/config resource id; outcome; config `fieldNames`; digest of the canonical redacted summary; optional asserted proxy user | All config values; prompts/messages/attachments; raw body; arbitrary route params; all headers except the separately sanitized trusted proxy assertion; response/error text |
+| `ui` | Validated route body, route template/params, trusted project scope, response status, proxy assertion context | § 6 action; bounded resource id (run, group, inbox entry, automation, receipt, workflow name, agent-config id, project id, PR number, provider or account id); outcome; accepted `fieldNames`; digest of the canonical redacted summary; optional asserted proxy user | All config values; prompts/messages/attachments; commit messages, PR titles and bodies, branch names; workflow YAML and automation prompts; account labels, folders and file paths; registered roots and clone URLs; raw body; arbitrary route params; all headers except the separately sanitized trusted proxy assertion; response/error text |
 | `mcp` | Zod-parsed action args, server project binding, fencing generation, operation id, settled tool result | Normalized action/resource/outcome; `ownerGeneration`; `operationKey`; valid version token; config key names; digest of the canonical redacted summary | Caller origin/actor/project; prompt/message content; arbitrary tool result; secrets and connection token; config values before digest |
 | `automation` | Definition id/revision, reserved receipt, allowlisted event enum, launch result/refusal | `actor.receiptId`; action `automation.launch`; automation or run resource; outcome; digest of `{automationId, revision, event}` after redaction | Candidate title/body, author, labels, assignees, URL, repository string, rendered task, poller/log error text |
 | `cli` | Canonical parsed command id, trusted resolved project, normalized option-key inventory, effect result | `actor.command`; canonical action/resource/outcome; option/config key names; digest of canonical redacted summary | `argv`; task text; paths; tags; port/domain/model/workflow values; environment; stdout/stderr; error text |
@@ -264,13 +366,14 @@ A test is not a failing-first proof until it fails against its named deliberate 
 | Writer unit | Normal append, monotonic sequences, corrupt-tail recovery, `0600`, marker first, five-file retention, one warning | `B-WRITER-SEQ`: allocate `seq` before acquiring the lock; two-writer assertion must fail |
 | Rotation concurrency unit/process | Two independent processes cross 10 MiB; exactly two action ids, unique consecutive sequences, one marker, no sixth file | `B-ROTATE-OUTSIDE-LOCK`: move size check/rename before lock; barrier fixture must lose or duplicate deterministically |
 | Failure unit | Unwritable folder and failed chmod/rename/append leave the supplied effect result unchanged and warn once | `B-FAIL-CLOSED`: rethrow the filesystem error; user-action assertion must fail |
-| Route tests | Each allowlisted UI route writes once; GET writes none; direct and trusted-proxy user cases; one 4xx refusal | `B-UI-HEADER`: accept `X-Xezar-User` without immediate-peer check; direct-forgery assertion must fail |
-| MCP unit/integration | Real mutating tool writes; read action in a mixed tool writes none; one stale/refused action; caller origin ignored | `B-MCP-MIXED-READ`: restore the tool-level annotation shortcut; mixed read count must fail |
+| Inventory parity | The four checks in § 6.5: every MCP action and every non-GET route is classified, every mutation maps to both doors or says `ui: none`, and empty inputs fail | `B-INVENTORY-OMIT`: delete one row (for example `automation.create`); the route-table and MCP-coverage assertions must fail |
+| Route tests | For every family F1–F10, each mapped route writes exactly one record with its § 6 action id when applied, and one `refused` record for a route-owned 4xx before effect; workspace-level routes write to the project § 4 names; every § 6.3 read-like POST and one GET per family write none; direct and trusted-proxy user cases | `B-UI-FAMILY`: remove the descriptors of one family at a time; that family's applied and refused assertions must fail. `B-UI-HEADER`: accept `X-Xezar-User` without the immediate-peer check; the direct-forgery assertion must fail |
+| MCP unit/integration | For every family F1–F8, one applied and one refused action; for F9 and F10, the boundary refusal writes `refused` with its boundary reason; every § 6.3 read action in a mixed tool writes none; one stale-version refusal; caller origin ignored; each paired case gets the same action id as its route test | `B-MCP-MIXED-READ`: restore the tool-level annotation shortcut; the mixed-read count must fail. `B-DOOR-NAME-SPLIT`: give one paired action a different id in one door; the same-id assertion must fail |
 | Automation integration | Reserved receipt links to one applied launch; pre-launch refusal records refused; duplicate/no-match/preview write none | `B-AUTO-RECEIPT`: create the audit actor before receipt reservation; receipt equality must fail |
 | Packaged command line | Install the packed tarball and invoke every row in § 5 in isolated data folders; `rm` normalizes; help/version/unknown exclusions hold; one refused case | `B-CLI-PROJECTS-TAG`: omit `tag` from the canonical command map; coverage assertion must fail |
 | Redaction per field class, per door | Plant identifier secret, free text, path/URL, control text, config value, and door-specific secret in each door; no planted value appears as plaintext and secret replacement happens before the digest | `B-REDACT-<DOOR>-<CLASS>`: bypass that door/class transform one at a time; byte/digest assertions must fail for every mutation |
 | Seam guard | Every production channel calls `redactAuditInput`; direct filesystem append is absent | `B-SEAM-BYPASS`: replace one channel call with `appendFile`; source/construction guard must fail |
-| Saved four-door harness | One applied and one refused action per door, hosted UI variant, rotation with two writers, legacy-only and both-name states; save transcript and file hashes | `B-HARNESS-DOOR`: disable each door adapter in turn; expected 8-action matrix must fail |
+| Saved four-door harness | One applied and one refused action per door; for `ui` and `mcp`, one applied and one refused action per family F1–F10 (F9 and F10: `mcp` refused only); hosted UI variant; rotation with two writers; legacy-only and both-name states. Effects that leave the machine (push, PR, merge, app launch, provider login) use the existing dry-run or injected fakes, never a real merge or launch. Save transcript and file hashes | `B-HARNESS-DOOR`: disable each door adapter in turn; the expected door matrix must fail. `B-HARNESS-FAMILY`: drop one family from the `ui` descriptors; the family matrix must fail |
 | Old-reader contract | Run the exact 0.15.0 `auditEntrySchema`/reader over every v2 fixture and record parse vs quarantine without crash; attach regenerated `mcp-api.json` diff | `B-OLD-READER-THROW`: replace line-level skip with parse; mixed v1/v2 fixture must crash |
 | Upgrade and downgrade package test (never trimmed) | Create a real data folder with 0.15.0, preserve a v1 record, upgrade to candidate, create all four origins and both filenames, run a 0.15.0 MCP bridge beside the 0.16.0 server, downgrade to 0.15.0, and verify startup plus byte preservation | `B-ALIAS-REWRITE`: rename/delete the legacy file during upgrade; legacy hash and downgrade assertions must fail |
 
@@ -280,9 +383,9 @@ The route tests exercise the real Hono middleware/handler boundary, not a helper
 
 - **Default path:** with no new setting or environment variable, all valid changes continue even when auditing is unavailable. The file is created lazily. No config is required. This preserves the zero-config and best-effort guarantees.
 - **State exits:** lock wait exits by acquire, stale takeover, or bounded skip; write exits by persisted record or warned skip; rotation exits by complete marker+action or warned partial recovery; legacy mode exits when a new live file exists; deprecation exits only after the version/tracking conditions; each door action exits as applied, refused, or no record plus warning for ambiguity/failure.
-- **Construction sites:** contract schemas; audit storage/channel; MCP composition; project-context/server route decorator; automation scheduler handle; CLI dispatch and projects dispatcher; bundled nginx; API reference generator; compatibility/changelog documentation; test/harness/package fixtures.
+- **Construction sites:** contract schemas; audit storage/channel; MCP composition; the § 6 shared action inventory; project-context/server route decorator for project-scoped and workspace-level families; automation scheduler handle; CLI dispatch and projects dispatcher; bundled nginx; API reference generator; compatibility/changelog documentation; test/harness/package fixtures.
 - **Default-path guard:** removing the sole MCP audit-writer behavior is not hidden behind the three new channels. PR 1 must keep MCP writes on by default under the new filename; PR 2 must demonstrate all four with no flag.
-- **Fail-open input guarantee:** an empty action inventory is a test failure, not “there were no auditable mutations.” Inventory tests pin the expected current action and command sets.
+- **Fail-open input guarantee:** an empty action inventory is a test failure, not “there were no auditable mutations.” Inventory tests pin the expected current action and command sets, and the § 6.5 parity test fails on an empty route table or MCP coverage map.
 
 ## 13. Ordered delivery
 
@@ -303,10 +406,12 @@ Documentation in this PR: `BACKWARD_COMPATIBILITY.md` records the v2 outcome/fil
 
 ### PR 2 — writers for UI, MCP inventory, automation, and CLI
 
-Scope: shared descriptor/redaction entry point (without the exhaustive adversarial proofs reserved for PR 4); explicit action inventory; project-context UI decorator; MCP per-action read/mutation decision; automation receipt hook; full CLI map; `X-Xezar-User` trust/sanitization and bundled nginx overwrite; saved four-door harness.
+Scope: shared descriptor/redaction entry point (without the exhaustive adversarial proofs reserved for PR 4); the § 6 shared action inventory with its MCP and HTTP mappings and the § 6.5 parity test; UI decorator for every mapped project-scoped and workspace-level route family (F1–F10); MCP per-action read/mutation decision from the same inventory; automation receipt hook; full CLI map; `X-Xezar-User` trust/sanitization and bundled nginx overwrite; saved four-door harness with the family matrix.
 
 Falsifiable acceptance:
 
+- The parity test classifies every current MCP action and every current non-GET route; deleting one row or one family's descriptors fails it.
+- For `ui` and `mcp`, each family F1–F10 has one applied and one refused record with the same action id in both doors (F9 and F10: `mcp` refused only; `leader.ack`: `mcp` only).
 - The harness contains exactly one applied and one refused expected record per door and no record for an enumerated read/no-op.
 - A caller-supplied origin never changes a record.
 - A forged proxy user around the proxy is absent; the bundled proxy assertion is present and labeled asserted.
@@ -351,7 +456,14 @@ Dependencies: PR 1 precedes every writer; PR 2 supplies the four construction si
 
 ## 15. Open questions
 
-No owner decision is missing and none of the seven settled questions is reopened.
+None of the seven settled questions is reopened. One confirmation is open for the owner (§ 15.1). The recommendation there applies until the owner answers, so it does not block PR 1.
+
+### 15.1 Owner confirmation: mutations that MCP can only refuse
+
+- **Question.** The 14 workspace routes in § 6.2 (project registry add/clone/remove, workspace config and preferences, skill updates, providers, and agent accounts) have an MCP action, but that action always refuses. Should `ui` record them?
+- **Option A – keep them (recommended).** MCP already audits these actions as refusals, so "the same action set as MCP" includes them. They are also the widest changes a person can make, because each one reaches every project. Cost: PR 2 needs the F9 and F10 route tests and the workspace-level project attribution in § 4.
+- **Option B – leave them out.** The `ui` door then records none of them, and `mcp` still records its refusals. Cost: a cockpit change to the registry, providers or accounts leaves no audit record. Also the two doors no longer cover the same set.
+- **HTTP-only mutations.** There are none today (§ 6.5). A new mutating route without an MCP action must come back here as a question with a recommendation. The implementer must not decide it.
 
 Implementation must still measure and report, without changing this contract:
 
