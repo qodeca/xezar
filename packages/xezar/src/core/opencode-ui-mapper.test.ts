@@ -14,9 +14,11 @@ import { describe, expect, it } from 'vitest';
 
 import type { AgentEvent } from './agent-runner.ts';
 import type { UiEvent } from './ui-events.ts';
+import { decideOpencodePermission, resolveAllowedRoots } from './opencode-permissions.ts';
 import {
   createOpencodeUiState,
   mapOpencodeEvent,
+  opencodePermissionDenied,
   opencodeSessionStarted,
   opencodeTurnStarted,
   type OpencodeUiMapperState,
@@ -31,9 +33,14 @@ const FIXTURES = join(HERE, '__fixtures__', 'opencode');
  *  session-start — the runner gets the id from its POST /session). */
 const SESSION_ID = 'ses_01J8ZE00MAIN';
 
+/** The run directory every fixture's messages name (`path.cwd`). */
+const FIXTURE_ROOTS = resolveAllowedRoots(['/repo']);
+
 /** Replay a fixture exactly as the runner drives the mapper: the POST
  *  /session result and the prompt POST fire the out-of-band helpers BEFORE
- *  the SSE frames stream in; unparseable frames are skipped. */
+ *  the SSE frames stream in; unparseable frames are skipped; a
+ *  `permission.asked` is decided with the runner's own policy and a denial
+ *  folded in out of band, as `handlePermissionAsked` does. */
 function replay(fixture: string): UiEvent[] {
   const raw = readFileSync(join(FIXTURES, `${fixture}.ndjson`), 'utf8');
   let state = createOpencodeUiState();
@@ -53,8 +60,21 @@ function replay(fixture: string): UiEvent[] {
       continue; // mirrors the runner: malformed SSE frames are skipped
     }
     fold(mapOpencodeEvent(evt, state));
+    const ask = permissionAsk(evt);
+    if (ask !== undefined) {
+      const { note } = decideOpencodePermission(ask.permission, ask.patterns, FIXTURE_ROOTS);
+      if (note !== undefined) fold(opencodePermissionDenied(note, state));
+    }
   }
   return events;
+}
+
+function permissionAsk(evt: unknown): { permission: string; patterns: string[] } | undefined {
+  if (typeof evt !== 'object' || evt === null) return undefined;
+  const { type, properties } = evt as { type?: unknown; properties?: { permission?: unknown; patterns?: unknown } };
+  if (type !== 'permission.asked' || properties === undefined) return undefined;
+  const patterns = Array.isArray(properties.patterns) ? properties.patterns.filter((p) => typeof p === 'string') : [];
+  return { permission: typeof properties.permission === 'string' ? properties.permission : 'unknown', patterns };
 }
 
 function expectedEvents(fixture: string): unknown {
@@ -69,6 +89,7 @@ const GOLDEN_FIXTURES = [
   'subtask-nested',
   'subtask-overlapping',
   'session-error',
+  'permission-denied',
 ] as const;
 
 describe('opencode → v2 golden fixtures', () => {

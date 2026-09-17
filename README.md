@@ -117,7 +117,7 @@ More → [Getting started](docs/guide/01-getting-started.md)
 |---|---|---|
 | **Claude Code** (default) | Headless `stream-json` mode | `allowedTools` (`bashAllowlist` scopes `Bash`); unapproved tools denied without prompting; the default list includes unrestricted `Bash` |
 | **Codex** | `codex app-server`, JSON-RPC over stdio | Ignores `allowedTools`; `danger-full-access` with no approvals (`XEZ_CODEX_NETWORK=0` for the network-blocked sandbox) |
-| **OpenCode** _(experimental)_ | `opencode serve`, HTTP + SSE | Ignores `allowedTools`; every permission auto-approved |
+| **OpenCode** _(experimental)_ | `opencode serve`, HTTP + SSE | Ignores `allowedTools`; permission asks are answered fail-closed: a directory ask inside the run's own directories is allowed once, every other ask is denied |
 | **pi** _(experimental)_ | `--mode rpc` over JSONL | `allowedTools` mapped onto pi's `--tools`; a `bashAllowlist` disables `Bash` |
 
 Backends are detected locally, with Claude offered when none is found. Model choices come from
