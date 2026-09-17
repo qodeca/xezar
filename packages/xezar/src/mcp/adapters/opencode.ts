@@ -575,7 +575,8 @@ export function renderDispatch(dispatch: EventDispatch, rows: readonly McpJourna
   if (rows.length > 0) {
     lines.push(`Significant events (${rows.length}, oldest first):`);
     for (const row of rows) {
-      lines.push(`- ${row.eventId} ${row.category} ${row.kind} ${row.subject.type} ${row.subject.id} (origin ${row.origin}): ${row.summary}`);
+      const subject = `${row.subject.type} ${row.subject.id}${row.subject.version === null ? '' : ` @${row.subject.version}`}`;
+      lines.push(`- ${row.eventId} ${row.category} ${row.kind} ${subject} (origin ${row.origin}): ${row.summary}`);
     }
   }
   if (dispatch.recovery) {
