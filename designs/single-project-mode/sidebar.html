@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Single-project mode – the sidebar and the badge</title>
+<link rel="stylesheet" href="../../docs/design-system/cockpit.css">
+<link rel="stylesheet" href="styles.css">
+<script src="theme.js"></script>
+</head>
+<body>
+<!-- Icon sprite (lucide outlines, the cockpit's icon set). -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-tasks" viewBox="0 0 24 24"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></symbol>
+  <symbol id="i-inbox" viewBox="0 0 24 24"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol>
+  <symbol id="i-git" viewBox="0 0 24 24"><line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></symbol>
+  <symbol id="i-github" viewBox="0 0 24 24"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.4 5.4 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></symbol>
+  <symbol id="i-sparkles" viewBox="0 0 24 24"><path d="M12 3l1.9 5.6L19.5 10l-5.6 1.9L12 17.5l-1.9-5.6L4.5 10l5.6-1.4z"/></symbol>
+  <symbol id="i-workflow" viewBox="0 0 24 24"><rect width="8" height="8" x="3" y="3" rx="2"/><path d="M7 11v4a2 2 0 0 0 2 2h4"/><rect width="8" height="8" x="13" y="13" rx="2"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+</svg>
+
+<nav class="doc-bar" aria-label="Design pages">
+  <span class="brand">Single-project mode</span>
+  <a href="index.html">Overview</a>
+  <a href="sidebar.html" aria-current="page">Sidebar and badge</a>
+  <a href="settings.html">Settings and accounts</a>
+  <a href="surfaces.html">Composer and palette</a>
+  <a href="states.html">States</a>
+  <span class="spacer"></span>
+  <button class="theme-toggle" type="button" data-theme-toggle>Light / dark</button>
+</nav>
+
+<div class="doc">
+  <h1>The sidebar in the mode, and the badge</h1>
+  <p class="lead">There is no cockpit header in xezar, so the mode is shown where the cockpit already says what it is: the sidebar brand block, beside the version chip's own neighbourhood of facts. Two sidebars below, side by side, at their real 264 px width — the left one is today's cockpit with one registered project, the right one is the same cockpit in single-project mode.</p>
+
+  <h2>1. Global mode against the mode</h2>
+  <p class="frame-label">Both at 264 px · one registered project · release build</p>
+</div>
+
+<div class="doc" style="max-width:1180px;padding-top:0">
+<div class="compare">
+
+  <!-- LEFT: today. Unchanged; it is here to be diffed, not to be redesigned. -->
+  <div>
+    <p class="frame-label">Global mode — today, unchanged</p>
+    <div class="sidebar-only">
+      <div class="sidebar-head">
+        <span class="logo" aria-hidden="true">X</span>
+        <span class="name">xezar</span>
+        <span class="where">acme-api / main</span>
+      </div>
+      <div class="new-task-row">
+        <button class="btn-new-task" type="button"><svg class="icon sm"><use href="#i-plus"/></svg>New task <kbd>C</kbd></button>
+        <button class="btn-icon" type="button" aria-label="Add project"><svg class="icon sm"><use href="#i-folder"/></svg></button>
+      </div>
+      <!-- Two demos on one document, so each nav needs its own label; the build renders one nav
+           labelled "Main". -->
+      <nav class="nav" aria-label="Main, global mode">
+        <a href="#" aria-current="page"><svg class="icon"><use href="#i-tasks"/></svg>Tasks</a>
+        <a href="#"><svg class="icon"><use href="#i-inbox"/></svg>Inbox</a>
+        <a href="#"><svg class="icon"><use href="#i-git"/></svg>Git</a>
+        <a href="#"><svg class="icon"><use href="#i-github"/></svg>GitHub</a>
+        <a href="#"><svg class="icon"><use href="#i-sparkles"/></svg>Skills</a>
+        <a href="#"><svg class="icon"><use href="#i-workflow"/></svg>Workflows</a>
+        <a href="settings.html"><svg class="icon"><use href="#i-settings"/></svg>Settings</a>
+      </nav>
+      <div class="sidebar-foot">
+        <span class="version-chip">v0.15.0</span>
+      </div>
+    </div>
+    <p style="font-size:12px;color:var(--soft-foreground);line-height:1.6">Brand row, <code>New task</code> beside <code>Add project</code>, the flat nav, the footer. Nothing here changes for anybody who is not in the mode.</p>
+  </div>
+
+  <!-- RIGHT: the mode. Three differences, all of them subtractions except the badge. -->
+  <div>
+    <p class="frame-label">Single-project mode</p>
+    <div class="sidebar-only">
+      <div class="sidebar-head">
+        <span class="logo" aria-hidden="true">X</span>
+        <span class="name">xezar</span>
+        <span class="where">acme-api / main</span>
+      </div>
+      <!-- NEW: line two of the brand block. `data-slot="mode-badge"`, beside the existing
+           `data-slot="dev-badge"` precedent. -->
+      <div class="mode-line">
+        <span class="badge outline mode-badge" data-slot="mode-badge" title="xezar settings and state live in this folder">
+          <svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg>
+          Single project
+          <span class="sr-only">— xezar settings and state live in this folder, not in your home directory</span>
+        </span>
+      </div>
+      <div class="new-task-row">
+        <!-- Add project is GONE, not disabled: there is no honest enabled state for it here. -->
+        <button class="btn-new-task" type="button"><svg class="icon sm"><use href="#i-plus"/></svg>New task <kbd>C</kbd></button>
+      </div>
+      <nav class="nav" aria-label="Main, single-project mode">
+        <a href="#" aria-current="page"><svg class="icon"><use href="#i-tasks"/></svg>Tasks</a>
+        <a href="#"><svg class="icon"><use href="#i-inbox"/></svg>Inbox</a>
+        <a href="#"><svg class="icon"><use href="#i-git"/></svg>Git</a>
+        <a href="#"><svg class="icon"><use href="#i-github"/></svg>GitHub</a>
+        <a href="#"><svg class="icon"><use href="#i-sparkles"/></svg>Skills</a>
+        <a href="#"><svg class="icon"><use href="#i-workflow"/></svg>Workflows</a>
+        <a href="settings.html"><svg class="icon"><use href="#i-settings"/></svg>Settings</a>
+      </nav>
+      <div class="sidebar-foot">
+        <span class="version-chip">v0.16.0</span>
+      </div>
+    </div>
+    <p style="font-size:12px;color:var(--soft-foreground);line-height:1.6">Three differences, and two of them are subtractions: the <b>mode badge</b> on line two of the brand block, <b>no <code>Add project</code></b> button, and <b>no project groups</b> — in the mode the flat nav is the only shape, whatever the registry says.</p>
+  </div>
+
+</div>
+</div>
+
+<div class="doc">
+  <div class="note">
+    <strong>Why the badge is not on line one.</strong> The brand row is 264 px wide and already holds
+    the tile, the wordmark and the repo/branch chip. Adding a fourth item truncates something, and
+    the two candidates are the repo name — the answer to "which project am I in" — and the badge
+    itself. Neither is a good thing to cut, so the badge takes its own line and nothing truncates.
+    The mode adds about 20 px to the brand block; in global mode the block is byte-identical to
+    today.
+  </div>
+
+  <h2>2. The badge, and the badge with the dev badge</h2>
+  <p>The dev badge (<code>data-slot="dev-badge"</code>, decisions.md D-08) sits on the brand tile's corner and means "this cockpit was built from source". The mode badge sits inline in the brand block and means "xezar's settings live in this folder". They answer different questions, so they keep different places and both are readable at once — which is the combination a reviewer will otherwise not see.</p>
+
+  <div class="anatomy">
+    <figure>
+      <div class="brand-demo">
+        <div class="sidebar-head">
+          <span class="logo" aria-hidden="true">X</span>
+          <span class="name">xezar</span>
+          <span class="where">acme-api / main</span>
+        </div>
+      </div>
+      <figcaption><b>Release build, global mode.</b> Today's row. No badge of either kind.</figcaption>
+    </figure>
+
+    <figure>
+      <div class="brand-demo">
+        <div class="sidebar-head">
+          <span class="logo-wrap">
+            <span class="logo" aria-hidden="true">X</span>
+            <span class="dev-badge" title="Development build"><span aria-hidden="true">D</span><span class="sr-only">Development build</span></span>
+          </span>
+          <span class="name">xezar</span>
+          <span class="where">acme-api / main</span>
+        </div>
+      </div>
+      <figcaption><b>Development build, global mode.</b> Today's row, unchanged.</figcaption>
+    </figure>
+
+    <figure>
+      <div class="brand-demo">
+        <div class="sidebar-head">
+          <span class="logo" aria-hidden="true">X</span>
+          <span class="name">xezar</span>
+          <span class="where">acme-api / main</span>
+        </div>
+        <div class="mode-line">
+          <span class="badge outline mode-badge" data-slot="mode-badge" title="xezar settings and state live in this folder">
+            <svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg>
+            Single project
+            <span class="sr-only">— xezar settings and state live in this folder, not in your home directory</span>
+          </span>
+        </div>
+      </div>
+      <figcaption><b>Release build, single-project mode.</b> One neutral outline badge on line two.</figcaption>
+    </figure>
+
+    <figure>
+      <div class="brand-demo">
+        <div class="sidebar-head">
+          <span class="logo-wrap">
+            <span class="logo" aria-hidden="true">X</span>
+            <span class="dev-badge" title="Development build"><span aria-hidden="true">D</span><span class="sr-only">Development build</span></span>
+          </span>
+          <span class="name">xezar</span>
+          <span class="where">acme-api / main</span>
+        </div>
+        <div class="mode-line">
+          <span class="badge outline mode-badge" data-slot="mode-badge" title="xezar settings and state live in this folder">
+            <svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg>
+            Single project
+            <span class="sr-only">— xezar settings and state live in this folder, not in your home directory</span>
+          </span>
+        </div>
+      </div>
+      <figcaption><b>Both.</b> A development build in the mode. The red "D" keeps the tile corner; the mode badge keeps line two. Neither moves, neither overlaps, and the row's height is the same as the release build in the mode.</figcaption>
+    </figure>
+
+    <figure>
+      <div class="brand-demo">
+        <div class="sidebar-head">
+          <span class="logo" aria-hidden="true">X</span>
+          <span class="name">xezar</span>
+          <span class="where">platform-internal-tooling / feature/single-project-mode</span>
+        </div>
+        <div class="mode-line">
+          <span class="badge outline mode-badge" data-slot="mode-badge" title="xezar settings and state live in this folder">
+            <svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg>
+            Single project
+            <span class="sr-only">— xezar settings and state live in this folder, not in your home directory</span>
+          </span>
+        </div>
+      </div>
+      <figcaption><b>Worst case, measured.</b> A 27-character repo name on a 32-character branch: the repo chip truncates exactly as it does today, and the badge is untouched. Nothing scrolls sideways.</figcaption>
+    </figure>
+
+    <figure>
+      <div class="brand-demo">
+        <div class="sidebar-head">
+          <span class="logo" aria-hidden="true">X</span>
+          <span class="name">xezar</span>
+          <span class="where">acme-api / main</span>
+        </div>
+      </div>
+      <figcaption><b>Mode not known yet.</b> Before <code>/api/v1/health</code> answers, there is no badge and no gap where one will be. A cockpit that guessed "global" for 200 ms and then corrected itself would be claiming a fact it did not have.</figcaption>
+    </figure>
+  </div>
+
+  <h2>3. What the badge is, in components</h2>
+  <div class="table-scroll">
+    <table class="decision-table">
+      <thead><tr><th>Question</th><th>Answer</th></tr></thead>
+      <tbody>
+        <tr><td>Component</td><td><code>Badge variant="outline"</code> (<code>components/ui/badge.tsx</code>), with a lucide <code>FolderIcon</code> at 11 px and one <code>sr-only</code> sentence. No new primitive.</td></tr>
+        <tr><td>Words</td><td>"Single project" — the same name as the <code>--single-project</code> flag, the boot line and the guides, so the badge, the CLI and the docs never use three names for one thing.</td></tr>
+        <tr><td>Colour</td><td>None of its own: <code>border-border</code>, <code>text-muted-foreground</code>, transparent fill. Violet means "a person is wanted" (patterns.md §2) and danger is the dev badge's; a third colour in this row would teach two meanings for one place.</td></tr>
+        <tr><td>Placement</td><td>Line two of <code>data-slot="sidebar-brand"</code> on the desktop and in the phone drawer; the <code>data-slot="mobile-status"</code> slot in the phone top bar.</td></tr>
+        <tr><td>Accessible name</td><td>"Single project — xezar settings and state live in this folder, not in your home directory". The visible words are the short form; the <code>sr-only</code> tail carries the consequence.</td></tr>
+        <tr><td>Never</td><td>Never a link, never a button, never a menu. It is a fact about where state lives, and there is nothing to change about it from the cockpit — the folder decides (FR-1.2).</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>4. Phone</h2>
+  <p>Below <code>md</code> the sidebar is a drawer and the mobile top bar names the page. The badge takes the bar's free <code>data-slot="mobile-status"</code> slot, so the mode is visible without opening the drawer — and it is visible on the one layout where the brand block is not on screen at all. The drawer itself carries the same brand block as the desktop sidebar, badge included.</p>
+  <p class="frame-label">375 px · Tasks · single-project mode</p>
+  <div class="phone" style="width:375px">
+    <iframe src="phone.html" title="Single-project mode at 375 px"></iframe>
+  </div>
+  <p style="font-size:12px;color:var(--soft-foreground)">An empty frame means the browser blocks local iframes from <code>file://</code> — open <a class="link" href="phone.html">phone.html</a> directly and narrow the window to 375 px instead.</p>
+</div>
+
+</body>
+</html>

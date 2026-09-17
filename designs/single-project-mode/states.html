@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Single-project mode – every state</title>
+<link rel="stylesheet" href="../../docs/design-system/cockpit.css">
+<link rel="stylesheet" href="styles.css">
+<script src="theme.js"></script>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></symbol>
+  <symbol id="i-folders" viewBox="0 0 24 24"><path d="M20 17a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3.9a2 2 0 0 1-1.69-.9l-.81-1.2a2 2 0 0 0-1.67-.9H8a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2Z"/><path d="M2 8v11a2 2 0 0 0 2 2h14"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v5h6"/></symbol>
+  <symbol id="i-id" viewBox="0 0 24 24"><rect width="18" height="14" x="3" y="5" rx="2"/><circle cx="9" cy="12" r="2"/><path d="M15 11h3"/><path d="M15 14h3"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+  <symbol id="i-loader" viewBox="0 0 24 24"><path d="M12 2v4"/><path d="m16.2 7.8 2.9-2.9"/><path d="M18 12h4"/><path d="m16.2 16.2 2.9 2.9"/><path d="M12 18v4"/><path d="m4.9 19.1 2.9-2.9"/><path d="M2 12h4"/><path d="m4.9 4.9 2.9 2.9"/></symbol>
+  <symbol id="i-rotate" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="18" y2="18"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></symbol>
+</svg>
+
+<nav class="doc-bar" aria-label="Design pages">
+  <span class="brand">Single-project mode</span>
+  <a href="index.html">Overview</a>
+  <a href="sidebar.html">Sidebar and badge</a>
+  <a href="settings.html">Settings and accounts</a>
+  <a href="surfaces.html">Composer and palette</a>
+  <a href="states.html" aria-current="page">States</a>
+  <span class="spacer"></span>
+  <button class="theme-toggle" type="button" data-theme-toggle>Light / dark</button>
+</nav>
+
+<div class="doc">
+  <h1>Every state</h1>
+  <p class="lead">Default, empty on first use, filtered to nothing, loading, error, refusal, stale or partial, already done, and the phone layout at 375 px. Every one has its own sentence; none of them is a spinner with no words. Switch the theme in the bar above — each state was read in both.</p>
+
+  <h2>1. Default</h2>
+  <p>The mode, running, with everything present: the badge on line two of the brand block, Settings naming its file, one connected account. Shown on the other pages in full — <a class="link" href="sidebar.html">Sidebar and badge</a> and <a class="link" href="settings.html">Settings and accounts</a>.</p>
+
+  <h2>2. Empty — first use</h2>
+  <p>A fresh single-project root that has just been created by <code>--single-project</code>: the state files exist, nothing has been configured, no task has run. Two panes carry an empty state.</p>
+
+  <div class="state-stack">
+    <div>
+      <p class="frame-label">Agent accounts · no committed account yet</p>
+      <div class="frame">
+        <div class="pane">
+          <div class="pane-head">
+            <h2>Agent accounts</h2>
+            <p>One agent per tab: whether it is installed, and which logins you have. In this mode the accounts are committed with the project, so a clone knows which logins the work expects.</p>
+            <p class="file-note">
+              <svg class="icon" aria-hidden="true"><use href="#i-file"/></svg>
+              <span>Saved in this project — <code>.xezar/agent-accounts.json</code>. The logins themselves stay on this machine; only which accounts to use travels.</span>
+            </p>
+          </div>
+          <ul class="acct-list">
+            <li class="settings-row acct">
+              <div class="top">
+                <span class="label">Claude Code</span>
+                <span class="badge ghost" style="font-size:10px">discovered</span>
+              </div>
+              <p class="path">~/.claude</p>
+              <p class="status">
+                <span class="dot success" aria-hidden="true"></span>
+                <span>Connected</span>
+              </p>
+            </li>
+          </ul>
+          <p style="font-size:13px;color:var(--muted-foreground);margin:0">
+            This project carries no accounts of its own yet. The account found on this machine is used, and it is not committed — it describes this machine. Add an account to commit a login choice with the project.
+          </p>
+          <div><button class="btn md" type="button">Add account</button></div>
+        </div>
+      </div>
+      <p style="font-size:12px;color:var(--soft-foreground)">The discovered account is never "nothing": showing a bare "No accounts" here, with a working login on the machine, would be false.</p>
+    </div>
+
+    <div>
+      <p class="frame-label">Tasks · nothing has run in this project yet</p>
+      <div class="frame">
+        <div class="centered-state primary">
+          <div class="tile"><svg class="icon"><use href="#i-folder"/></svg></div>
+          <h1>No tasks yet</h1>
+          <p>Describe a task to get started. This xezar keeps its settings and its working files in this folder, so everything a task needs travels with the repository.</p>
+        </div>
+      </div>
+      <p style="font-size:12px;color:var(--soft-foreground)">The shipped hero, with one added sentence naming what is different here. The primary action is still the composer below it.</p>
+    </div>
+  </div>
+
+  <h2>3. Filtered to nothing</h2>
+  <p>The command palette with a query that matches nothing — including the name of another project, which gets no special message. On <a class="link" href="surfaces.html">Composer and palette §3</a>.</p>
+
+  <h2>4. Loading</h2>
+  <p>Two different loadings, and the difference matters. The <b>mode itself</b> is unknown until <code>/api/v1/health</code> answers: the badge is absent, with no placeholder and no reserved gap, because a badge that guessed and corrected itself would be claiming a fact it did not have. A <b>pane</b> loading shows the cockpit's one muted line.</p>
+
+  <div class="state-stack">
+    <div>
+      <p class="frame-label">Agent accounts · loading</p>
+      <div class="frame">
+        <p class="loading-line" role="status">Loading agent accounts…</p>
+      </div>
+    </div>
+    <div>
+      <p class="frame-label">Settings shell · the section list has not answered</p>
+      <div class="frame">
+        <div class="skeleton-rows" role="status" aria-label="Loading settings">
+          <span class="skeleton narrow"></span>
+          <span class="skeleton wide"></span>
+          <span class="skeleton narrow"></span>
+        </div>
+      </div>
+      <p style="font-size:12px;color:var(--soft-foreground)">Skeletons only where a shape is already known. A list shows nothing at all until its data has answered — never a false "none yet".</p>
+    </div>
+  </div>
+
+  <h2>5. Error</h2>
+  <p>The cockpit writes the title; the server's message is shown verbatim. The mode adds one error the global layout does not have: the project's own state file cannot be read. It is the same shape, with the path named.</p>
+
+  <div class="state-stack">
+    <div>
+      <p class="frame-label">Agent accounts · could not load</p>
+      <div class="frame">
+        <div class="centered-state danger">
+          <div class="tile"><svg class="icon"><use href="#i-id"/></svg></div>
+          <h2>Could not load agent accounts</h2>
+          <p>Unexpected end of JSON input</p>
+        </div>
+      </div>
+    </div>
+    <div>
+      <p class="frame-label">Resources · the project's own file could not be read</p>
+      <div class="frame">
+        <div class="pane">
+          <div class="pane-head">
+            <h2>Resources</h2>
+            <p>How much of this machine xezar may use.</p>
+          </div>
+          <p class="refusal-line" role="alert">
+            <svg class="icon sm"><use href="#i-alert"/></svg>
+            <span>Could not read this project's settings — <span class="mono">.xezar/workspace.json</span> is not valid JSON. Nothing is saved until it can be read; fix or restore the file and reload.</span>
+          </p>
+        </div>
+      </div>
+      <p style="font-size:12px;color:var(--soft-foreground)">Never a silent fall back to defaults and never a silent write to your home directory: this pane says the file is broken and that nothing is being saved. Whether the <em>boot</em> refuses or degrades is engineering's open question Q1, and the answer does not change this pane's words.</p>
+    </div>
+  </div>
+
+  <h2 id="refused-projects">6. Refusal</h2>
+  <p>Two refusals, and they are different kinds. The first is the mode refusing a surface that does not apply; the second is hosted mode refusing a write that must stay on the machine that owns the checkout.</p>
+
+  <div class="state-stack">
+    <div>
+      <p class="frame-label">/settings/global/projects · single-project mode</p>
+      <div class="frame">
+        <div class="centered-state">
+          <div class="tile"><svg class="icon"><use href="#i-folders"/></svg></div>
+          <h2>Projects are not managed here</h2>
+          <p>This xezar runs in single-project mode: it serves this folder only, and adding, removing or switching projects is refused. To work on another repository, start xezar in that folder.</p>
+          <div class="actions">
+            <a class="btn md" href="settings.html">Back to settings</a>
+          </div>
+        </div>
+      </div>
+      <p style="font-size:12px;color:var(--soft-foreground);line-height:1.6">
+        <b>Recommended over the plain 404 this URL answers today.</b> The page exists in this build — it is the mode that took it away — so "page not found" is a false sentence, and it teaches a person to doubt their own bookmark or their link from the guides. A refusal names the consequence and who can act (writing.md §7). Cost: it changes today's <code>[data-route="not-found"]</code> answer for the <code>XEZ_SINGLE_PROJECT=1</code> narrowing as well, and therefore one assertion in <code>packages/web/e2e/project-groups.e2e.ts</code>. See the README, open decision OD-1.
+      </p>
+    </div>
+
+    <div>
+      <p class="frame-label">Agent accounts · hosted connection (<code>--bind-host</code>), single-project mode</p>
+      <div class="frame">
+        <div class="pane">
+          <div class="pane-head">
+            <h2>Agent accounts</h2>
+            <p>One agent per tab: whether it is installed, and which logins you have.</p>
+            <p class="file-note">
+              <svg class="icon" aria-hidden="true"><use href="#i-file"/></svg>
+              <span>Saved in this project — <code>.xezar/agent-accounts.json</code>.</span>
+            </p>
+          </div>
+          <p class="hosted-note" role="status">
+            <svg class="icon sm"><use href="#i-info"/></svg>
+            Agent accounts are read-only here — they are changed from the machine that owns the checkout, and this cockpit runs in hosted mode.
+          </p>
+          <ul class="acct-list">
+            <li class="settings-row acct">
+              <div class="top"><span class="label">Claude Code</span><span class="badge ghost" style="font-size:10px">discovered</span></div>
+              <p class="path">~/.claude</p>
+              <p class="status"><span class="dot success" aria-hidden="true"></span><span>Connected</span></p>
+            </li>
+            <li class="settings-row acct unavailable">
+              <div class="top"><span class="label">Work account</span></div>
+              <p class="path">~/.claude-work</p>
+              <p class="status">
+                <span class="dot danger" aria-hidden="true"></span>
+                <span>Unavailable</span>
+                <span class="why">— this account's folder does not exist on this machine: <span class="mono">~/.claude-work</span>. Sign in on the machine that owns the checkout, or pick another account for the task.</span>
+              </p>
+            </li>
+          </ul>
+        </div>
+      </div>
+      <p style="font-size:12px;color:var(--soft-foreground);line-height:1.6">
+        The change from today: the accounts are <b>listed</b>. They are committed project state, so a person reading over a hosted connection can see which logins the work expects and that one of them is missing — the fact a hosted reader most needs. Every write stays refused (Add, Connect, Rename, Remove, Show details), so the 409 that closed a hooks-based path is untouched. Actions are hidden rather than disabled, and the one sentence above says who can act. The unavailable row's remedy sentence changes with the reader: "Connect signs in and creates it" locally, "Sign in on the machine that owns the checkout" here.
+      </p>
+    </div>
+  </div>
+
+  <h2>7. Stale or partial</h2>
+  <div class="state-stack">
+    <div>
+      <p class="frame-label">Agent accounts · the status probe has not answered</p>
+      <div class="frame">
+        <div class="pane">
+          <ul class="acct-list">
+            <li class="settings-row acct">
+              <div class="top"><span class="label">Work account</span></div>
+              <p class="path">~/.claude-work</p>
+              <p class="status">
+                <span class="dot pulse" aria-hidden="true"></span>
+                <span>Checking…</span>
+              </p>
+            </li>
+          </ul>
+        </div>
+      </div>
+      <p style="font-size:12px;color:var(--soft-foreground)">"Checking…" is its own state, not a result. A row that showed "Unavailable" before the probe answered would refuse tasks on a guess.</p>
+    </div>
+
+    <div>
+      <p class="frame-label">A clone whose <code>agent-accounts.json</code> is not committed</p>
+      <div class="frame">
+        <div class="pane">
+          <div class="pane-head">
+            <h2>Agent accounts</h2>
+            <p>One agent per tab: whether it is installed, and which logins you have.</p>
+            <p class="file-note">
+              <svg class="icon" aria-hidden="true"><use href="#i-file"/></svg>
+              <span>This project has no <code>.xezar/agent-accounts.json</code>. The account found on this machine is used, and any account you add here is saved to that file.</span>
+            </p>
+          </div>
+          <ul class="acct-list">
+            <li class="settings-row acct">
+              <div class="top"><span class="label">Claude Code</span><span class="badge ghost" style="font-size:10px">discovered</span></div>
+              <p class="path">~/.claude</p>
+              <p class="status"><span class="dot success" aria-hidden="true"></span><span>Connected</span></p>
+            </li>
+          </ul>
+        </div>
+      </div>
+      <p style="font-size:12px;color:var(--soft-foreground)">Partial state is said, not guessed at. "Written, never required" is already the rule for these files; what the mode adds is that a missing one is visible instead of invisible.</p>
+    </div>
+  </div>
+
+  <h2>8. Already done</h2>
+  <p>A person who starts xezar again in a folder that is already a single-project root sees exactly the default: the badge, their settings, their accounts. There is no "you are now in single-project mode" announcement, no dialog, no toast — the second run is not an event. The import ask happens once and only in the terminal (see the README: the ask is terminal-only, so this design draws no dialog for it).</p>
+
+  <h2>9. Phone, 375 px</h2>
+  <p>The mobile top bar carries the badge in its free <code>data-slot="mobile-status"</code> slot; the settings pane's file note wraps rather than truncating; the unavailable row stacks its actions to full width at 44 px. Nothing scrolls sideways at 375 px.</p>
+  <div class="phone" style="width:375px">
+    <iframe src="phone.html" title="Single-project mode surfaces at 375 px"></iframe>
+  </div>
+  <p style="font-size:12px;color:var(--soft-foreground)">An empty frame means the browser blocks local iframes from <code>file://</code> — open <a class="link" href="phone.html">phone.html</a> directly and narrow the window to 375 px instead.</p>
+</div>
+
+</body>
+</html>

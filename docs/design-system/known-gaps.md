@@ -363,6 +363,7 @@ for new work.
 | `.qc-alert` | card with a danger-tinted border and icon | `banner-row` with the `alert` tone | `components/provider-banner.tsx` |
 | `.btn.contrast:hover` (new) | the mockup had no hover, so a contrast button turned `--muted` on hover | `filter: brightness(0.96)` | `components/ui/button.tsx` |
 | `.tasks-table tbody tr:hover` (new) | the mockup had no row hover | `hover:bg-muted` | `routes/tasks-overview.tsx` |
+| `.sidebar-head .where` (new) | the mockup had no truncation, so a long repo or branch name wrapped the brand row onto three lines | `truncate` on `data-slot="repo-chip"` | `components/app-shell.tsx:485-489` (added 2026-09-17 with `designs/single-project-mode`) |
 
 Proposed fix: when the quality-checks design gets its review, restyle those classes to the cockpit
 values and drop the `qc-` prefixed ones in favour of the shared `.centered-state`, `.skeleton` and

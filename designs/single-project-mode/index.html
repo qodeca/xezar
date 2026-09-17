@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Single-project mode – UI design overview</title>
+<link rel="stylesheet" href="../../docs/design-system/cockpit.css">
+<link rel="stylesheet" href="styles.css">
+<script src="theme.js"></script>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></symbol>
+</svg>
+
+<nav class="doc-bar" aria-label="Design pages">
+  <span class="brand">Single-project mode</span>
+  <a href="index.html" aria-current="page">Overview</a>
+  <a href="sidebar.html">Sidebar and badge</a>
+  <a href="settings.html">Settings and accounts</a>
+  <a href="surfaces.html">Composer and palette</a>
+  <a href="states.html">States</a>
+  <span class="spacer"></span>
+  <button class="theme-toggle" type="button" data-theme-toggle>Light / dark</button>
+</nav>
+
+<div class="doc">
+  <h1>Single-project mode – UI design</h1>
+  <p class="lead">xezar can keep every setting, account and working file inside one repository folder, so a clone runs the same way with no host setup. The cockpit has to answer one question the moment it opens — "is this xezar the one that lives in this repository?" — and then stop offering the four affordances that only make sense when it serves several projects. This design is that answer: one neutral badge, one line per Settings section naming the file it writes, one new content state for an account whose folder is not on this machine, and three removals.</p>
+
+  <p style="font-size:12px;color:var(--soft-foreground)">Status: draft for design review (<code>xezar-ux-design</code>, authoring mode). Static mockup, not shipped code. Tokens and type come from <code>docs/design-system/cockpit.css</code>, which mirrors <code>packages/web/src/styles/index.css</code>. Covers the cockpit slice (PR4) of <a class="link" href="https://github.com/qodeca/xezar/issues/600">qodeca/xezar#600</a>. Developer handoff, copy deck, acceptance criteria and open decisions: <a class="link" href="README.md">README.md</a>.</p>
+
+  <h2>Pages</h2>
+  <div class="table-scroll">
+    <table class="decision-table">
+      <thead><tr><th>Page</th><th>What it shows</th></tr></thead>
+      <tbody>
+        <tr><td><a class="link" href="sidebar.html">Sidebar and badge</a></td><td>The global-mode sidebar and the mode's sidebar side by side at 264 px; the badge's anatomy, including a development build in the mode where both badges are present; the long-name worst case; the phone preview.</td></tr>
+        <tr><td><a class="link" href="settings.html">Settings and accounts</a></td><td>A project section and a global section each naming the file they write; the scope chip's new wording; the section-to-file map; the unavailable-account row beside the refusal a task gets.</td></tr>
+        <tr><td><a class="link" href="surfaces.html">Composer and palette</a></td><td>The composer footer without the project pill and the command palette without the Projects group, each beside today's version.</td></tr>
+        <tr><td><a class="link" href="states.html">States</a></td><td>Default, empty on first use, filtered to nothing, loading, error, both refusals (the mode's own and the hosted-mode one), stale or partial, already done, and the phone layout at 375 px.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>What changes, in one table</h2>
+  <div class="table-scroll">
+    <table class="decision-table">
+      <thead><tr><th>Surface</th><th>Global mode (unchanged)</th><th>Single-project mode</th></tr></thead>
+      <tbody>
+        <tr><td>Sidebar brand block</td><td>Tile · "xezar" · repo/branch chip</td><td>Same row, plus a second line with one neutral <code>outline</code> badge reading "Single project"</td></tr>
+        <tr><td>Brand tile</td><td>Red "D" on a development build</td><td>Unchanged — the two badges have different places and are readable together</td></tr>
+        <tr><td>Phone top bar</td><td>Menu · page title · empty status slot</td><td>The same badge in the status slot</td></tr>
+        <tr><td>Add project</td><td>Icon button beside <code>New task</code></td><td>Gone (already gated on the existing capability)</td></tr>
+        <tr><td>Project groups</td><td>From the second registered project</td><td>Never — the flat nav is the only shape</td></tr>
+        <tr><td>Composer project pill</td><td>From the second registered project</td><td>Gone</td></tr>
+        <tr><td>Palette Projects group</td><td>From the second registered project</td><td>Gone, and "projects" leaves the search placeholder</td></tr>
+        <tr><td>Settings sections</td><td>Title, description, fields</td><td>One extra line under the description naming the file the section writes</td></tr>
+        <tr><td>Settings scope chip</td><td>"Global settings" on global sections</td><td>"Workspace settings" — nothing here is global any more</td></tr>
+        <tr><td>Agent accounts</td><td>Machine accounts; hosted mode replaces the whole pane with one sentence</td><td>Committed accounts, an "Unavailable" row that names the missing path, and in hosted mode a read-only list instead of a hidden one</td></tr>
+        <tr><td><code>/settings/global/projects</code></td><td>The registry page</td><td>A refusal that explains the mode, rather than today's plain 404 (open decision OD-1)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Design decisions</h2>
+  <div class="table-scroll">
+    <table class="decision-table">
+      <thead><tr><th>Decision</th><th>Choice</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr><td>Where the badge lives</td><td>The sidebar brand block, on its own second line; the <code>mobile-status</code> slot on a phone</td><td>There is no cockpit header in xezar. The brand block is where the cockpit already says what it is, and a second line means the badge never competes with the repo/branch chip for 264 px — so neither has to truncate.</td></tr>
+        <tr><td>Badge colour</td><td>None of its own: <code>Badge variant="outline"</code>, <code>text-muted-foreground</code></td><td>Violet means "a person is wanted" and danger is the development build's. A third colour in one row would teach two meanings for one place. The words carry the meaning; the folder icon reinforces.</td></tr>
+        <tr><td>Badge words</td><td>"Single project"</td><td>The same name as the <code>--single-project</code> flag, the boot line and the guides. Three names for one thing is how a mode becomes folklore.</td></tr>
+        <tr><td>Both badges at once</td><td>Dev badge on the tile corner, mode badge inline — neither moves</td><td>They answer different questions ("built from source" against "state lives here"). Stacking them in one place would make each harder to read and would push one of them off the row.</td></tr>
+        <tr><td>Nothing before health answers</td><td>No badge, no placeholder, no reserved gap</td><td>A badge that guessed "global" and corrected itself 200 ms later would claim a fact it did not have — the same rule the setup surface follows for "observed is not checked".</td></tr>
+        <tr><td>File naming grain</td><td>One line per section, under the description; not per field</td><td>A pane's fields all land in one file. Five repeats of one path stop being read. A field that genuinely writes elsewhere says so in its own hint.</td></tr>
+        <tr><td>File-note wording</td><td>"Saved in this project — <code>&lt;file&gt;</code>." plus, where true, "It is committed, so a clone starts with these …"</td><td>The file name alone answers "where"; the second clause answers the question a person actually has, which is whether their colleague gets this too.</td></tr>
+        <tr><td>Global mode keeps no file note</td><td>The line renders in the mode only</td><td>It answers a question only the mode raises. Adding it everywhere would change the default path for every existing user to no benefit.</td></tr>
+        <tr><td>Scope chip</td><td>"Workspace settings" replaces "Global settings" in the mode</td><td>In the mode those settings are committed to one repository. Calling them global would be the one word on the screen that is false.</td></tr>
+        <tr><td>The unavailable account</td><td>A danger dot, the word "Unavailable", and one sentence naming the path and the remedy</td><td>Colour never carries it; the sentence does. The same string is the refusal a task gets, so the two are recognisably one fact rather than two bug reports.</td></tr>
+        <tr><td>Hosted mode lists accounts</td><td>Read-only list, every write hidden, one sentence saying who can act</td><td>The accounts are committed project state now, so a hosted reader can legitimately see which logins the work expects — and that one is missing. Every write stays refused; the 409 that closed a hooks-based path is untouched.</td></tr>
+        <tr><td>Removals are absences</td><td>Add project, the project pill and the Projects group are not rendered, not disabled</td><td>A disabled control invites a click that can never work, and a picker whose only option is the current one offers nothing. There is no honest enabled state for any of the three.</td></tr>
+        <tr><td>The refused registry page</td><td>An explanation, with "Back to settings"</td><td>The page exists in this build; the mode took it away. "Page not found" would be false and would teach a person to doubt their own bookmark. Named as OD-1 because it also changes the answer for the <code>XEZ_SINGLE_PROJECT=1</code> narrowing.</td></tr>
+        <tr><td>No import dialog</td><td>The import ask stays in the terminal</td><td>The ask happens on the first run with the flag, which is a command-line event. A cockpit dialog would be a second surface with its own six states for a question asked once, ever.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Phone preview</h2>
+  <p>The states at 375 px: the mode badge in the top bar's status slot, the file note wrapping, the unavailable row stacking its actions to full width at 44 px. Nothing scrolls sideways.</p>
+  <div class="phone" style="width:375px"><iframe src="phone.html" title="Single-project mode at 375 px"></iframe></div>
+  <p style="font-size:12px;color:var(--soft-foreground)">A frame above is empty when the browser blocks local iframes from <code>file://</code> — open <a class="link" href="phone.html">phone.html</a> directly and narrow the window to 375 px instead.</p>
+
+  <h2>Accessibility checklist for the build</h2>
+  <ul>
+    <li>The badge is text, not colour: "Single project" plus an <code>sr-only</code> tail naming the consequence. Its folder icon is <code>aria-hidden</code>.</li>
+    <li>The badge is not interactive and is not in the tab order — there is nothing to change about it from the cockpit, because the folder decides.</li>
+    <li>Every removal is an absence, so no disabled control has to be explained and nothing focusable is dead.</li>
+    <li>The unavailable account carries a danger dot <em>and</em> the word "Unavailable" <em>and</em> a sentence; any one of the three alone would be enough to act on.</li>
+    <li>The refusal a task gets is <code>role="alert"</code>; the hosted-mode notice is <code>role="status"</code>, because nothing is broken.</li>
+    <li>Loading lines and skeleton blocks are <code>role="status"</code>; the mode badge is never a skeleton, because its absence is meaningful.</li>
+    <li>The file note is ordinary text in the section's own heading block, read after the description by a screen reader in the order it is read visually.</li>
+    <li>Touch targets are 44 px on phone at every density, including the <code>Connect</code> and <code>Show details</code> buttons on a stacked account row.</li>
+    <li>Both themes work through tokens only, with no <code>dark:</code> variant and no raw colour.</li>
+  </ul>
+</div>
+
+</body>
+</html>
