@@ -619,8 +619,15 @@ svg.icon.xxs {
   font-size: 15px;
 }
 
+/* The repo chip. `truncate` in the cockpit (`data-slot="repo-chip"`,
+   components/app-shell.tsx:485-489), so a long repo or branch name is cut with an ellipsis rather
+   than wrapping the brand row onto three lines. */
 .sidebar-head .where {
   margin-left: auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   font-family: var(--mono);
   font-size: 11px;
   color: var(--soft-foreground);

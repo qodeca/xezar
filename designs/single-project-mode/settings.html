@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Single-project mode – Settings names its files, and the unavailable account</title>
+<link rel="stylesheet" href="../../docs/design-system/cockpit.css">
+<link rel="stylesheet" href="styles.css">
+<script src="theme.js"></script>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v5h6"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></symbol>
+  <symbol id="i-rotate" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="18" y2="18"/></symbol>
+</svg>
+
+<nav class="doc-bar" aria-label="Design pages">
+  <span class="brand">Single-project mode</span>
+  <a href="index.html">Overview</a>
+  <a href="sidebar.html">Sidebar and badge</a>
+  <a href="settings.html" aria-current="page">Settings and accounts</a>
+  <a href="surfaces.html">Composer and palette</a>
+  <a href="states.html">States</a>
+  <span class="spacer"></span>
+  <button class="theme-toggle" type="button" data-theme-toggle>Light / dark</button>
+</nav>
+
+<div class="doc">
+  <h1>Settings names the file it writes</h1>
+  <p class="lead">In the mode every setting is written into the repository, so "will this travel to my colleague's clone?" becomes a real question on every pane — and the honest answer is the file name. One line per section, under the section description, in the section's own words. The line appears only in the mode: in global mode the panes are unchanged.</p>
+
+  <h2>1. A project-scope section</h2>
+  <p>Project sections already describe this repository, so the file name is the only new fact. This one is Agents — which backend and model this project's tasks use when they choose none.</p>
+  <p class="frame-label">/p/acme-api/settings/agents · single-project mode</p>
+</div>
+
+<div class="doc" style="max-width:1000px;padding-top:0">
+  <div class="frame">
+    <div class="scope-head">
+      <h1>Agents</h1>
+      <p>The backend and model a task uses when it picks none.</p>
+      <!-- Project scope carries no scope chip today, and gains none: the URL and the nav already
+           say which project, and a chip repeating it would be the third place saying it. -->
+    </div>
+    <div class="pane">
+      <div class="pane-head">
+        <h2>Agents</h2>
+        <p>Which agent this project's tasks use, and the model each one starts with.</p>
+        <!-- NEW (FR-9.3): the file this section writes. -->
+        <p class="file-note">
+          <svg class="icon" aria-hidden="true"><use href="#i-file"/></svg>
+          <span>Saved in this project — <code>.xezar/config.json</code>. It is committed, so a clone starts with these settings.</span>
+        </p>
+      </div>
+
+      <div class="settings-field" style="border-top:0;padding-top:0">
+        <h2>Default agent</h2>
+        <p>The agent a new task starts with. A task can still pick another one in the composer.</p>
+        <div class="radio-segment" role="radiogroup" aria-label="Default agent">
+          <button type="button" role="radio" aria-checked="true">Claude Code</button>
+          <button type="button" role="radio" aria-checked="false">Codex</button>
+          <button type="button" role="radio" aria-checked="false">OpenCode</button>
+          <button type="button" role="radio" aria-checked="false">pi</button>
+        </div>
+      </div>
+
+      <div class="settings-field">
+        <h2>Base branch</h2>
+        <p>The branch a task's worktree is cut from. Leave empty to use the repository's own default branch.</p>
+        <input class="input" type="text" value="main" aria-label="Base branch" style="max-width:18rem">
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="doc">
+  <div class="note">
+    <strong>Why one line per section, not per field.</strong> A pane has three to six fields and they
+    all land in the same file. A line on every field would print the same path five times and stop
+    being read. Where a single field genuinely writes elsewhere, its own hint names that file — the
+    hint is already the place a field explains itself (patterns.md §8).
+  </div>
+
+  <h2>2. A global-scope section, and the scope chip</h2>
+  <p>This is the pane the mode changes most. Global sections describe the person and the machine, and today a chip in the header says "Global settings" so the two areas are told apart at a glance. In the mode that word is false: nothing here is global any more — it is committed to this repository and it travels with it. The chip says <b>"Workspace settings"</b> instead, and the file note says where.</p>
+  <p class="frame-label">/settings/global/resources · single-project mode</p>
+</div>
+
+<div class="doc" style="max-width:1000px;padding-top:0">
+  <div class="frame">
+    <div class="scope-head">
+      <h1>Resources</h1>
+      <p>Parallel tasks and per-task memory limit, across every project.</p>
+      <!-- CHANGED: `data-slot="settings-scope-chip"`, "Global settings" in global mode. -->
+      <span class="scope-chip" data-slot="settings-scope-chip">Workspace settings</span>
+    </div>
+    <div class="pane">
+      <div class="pane-head">
+        <h2>Resources</h2>
+        <p>How much of this machine xezar may use. In this mode the values are committed, so every clone runs the same limits — including a limit larger than the machine it runs on.</p>
+        <p class="file-note">
+          <svg class="icon" aria-hidden="true"><use href="#i-file"/></svg>
+          <span>Saved in this project — <code>.xezar/workspace.json</code>. It is committed, so a clone starts with these limits.</span>
+        </p>
+      </div>
+
+      <div class="settings-field" style="border-top:0;padding-top:0">
+        <h2>Max parallel tasks</h2>
+        <p>How many tasks run at once. The rest wait in the queue.</p>
+        <input class="input" type="number" value="6" aria-label="Max parallel tasks" style="max-width:8rem">
+      </div>
+
+      <div class="settings-field">
+        <h2>Memory limit per task</h2>
+        <p>A task is stopped when it passes this. Leave empty for no limit.</p>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <input class="input" type="number" value="12288" aria-label="Memory limit per task in MiB" style="max-width:9rem">
+          <span style="font-size:13px;color:var(--muted-foreground)">MiB</span>
+        </div>
+        <p class="field-hint" style="margin-top:8px">This machine has 16 GiB. A committed limit larger than the host is applied as written — xezar does not lower it.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="doc">
+  <h2>3. The section-to-file map</h2>
+  <p>Every registered Settings section, and the file its line names in the mode. The wording is one pattern, so a reader who has read one line can predict the rest.</p>
+  <div class="table-scroll">
+    <table class="decision-table">
+      <thead><tr><th>Section</th><th>Scope</th><th>The line it shows in the mode</th></tr></thead>
+      <tbody>
+        <tr><td>Agents · Worktrees · Bookmarklets · Prompt templates · Project setup · MCP connection</td><td>project</td><td>Saved in this project — <code>.xezar/config.json</code>.</td></tr>
+        <tr><td>Resources</td><td>global</td><td>Saved in this project — <code>.xezar/workspace.json</code>.</td></tr>
+        <tr><td>Agent accounts</td><td>global</td><td>Saved in this project — <code>.xezar/agent-accounts.json</code>.</td></tr>
+        <tr><td>Notifications</td><td>global</td><td>Saved in this project — <code>.xezar/workspace-ui.json</code>.</td></tr>
+        <tr><td>Appearance</td><td>global</td><td>Theme, accent and density are remembered in this browser; the project's default is saved in <code>.xezar/config.json</code>.</td></tr>
+        <tr><td>Skills</td><td>global</td><td>Saved in this project — <code>.xezar/config.json</code>. The downloaded skills themselves live in <code>.local/xezar</code> and are not committed.</td></tr>
+        <tr><td>MCP API</td><td>project</td><td>No line: nothing here is written. It is a read-only reference.</td></tr>
+        <tr><td>Projects</td><td>global</td><td>Not reachable in the mode — see <a class="link" href="states.html#refused-projects">States §5</a>.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p style="font-size:12px;color:var(--soft-foreground)">Which key lands in <code>config.json</code> and which in <code>workspace.json</code> is engineering's call (open question Q3 in the slicing spec, recommendation <code>workspace.json</code> for the machine-shaped keys). What this design fixes is the <em>sentence</em>: "Saved in this project — <code>&lt;file&gt;</code>." plus, where it is true, "It is committed, so a clone starts with these …".</p>
+
+  <h2 id="unavailable">4. The unavailable account</h2>
+  <p>The only genuinely new content state in the feature. Accounts travel with the repository, so a clone can carry an account whose folder exists on nobody else's machine. xezar boots anyway (FR-6.1), the row says so and names the path (FR-6.2), and any task that asks for that account is refused with the same sentence (FR-6.3). There is no silent fallback to another login — that is the failure this state exists to prevent.</p>
+  <p class="frame-label">/settings/global/accounts · Claude Code tab · single-project mode</p>
+</div>
+
+<div class="doc" style="max-width:1000px;padding-top:0">
+  <div class="frame">
+    <div class="scope-head">
+      <h1>Agent accounts</h1>
+      <p>Second logins, and the agent and models a project uses when it has chosen none.</p>
+      <span class="scope-chip" data-slot="settings-scope-chip">Workspace settings</span>
+    </div>
+    <div class="pane">
+      <div class="pane-head">
+        <h2>Agent accounts</h2>
+        <p>One agent per tab: whether it is installed, and which logins you have. In this mode the accounts are committed with the project, so a clone knows which logins the work expects.</p>
+        <p class="file-note">
+          <svg class="icon" aria-hidden="true"><use href="#i-file"/></svg>
+          <span>Saved in this project — <code>.xezar/agent-accounts.json</code>. The logins themselves stay on this machine; only which accounts to use travels.</span>
+        </p>
+      </div>
+
+      <ul class="acct-list">
+        <li class="settings-row acct">
+          <div class="top">
+            <span class="label">Claude Code</span>
+            <span class="badge ghost" style="font-size:10px">discovered</span>
+            <span class="acct-actions">
+              <button class="btn ghost" type="button">Show details</button>
+            </span>
+          </div>
+          <p class="path">~/.claude</p>
+          <p class="status">
+            <span class="dot success" aria-hidden="true"></span>
+            <span>Connected</span>
+          </p>
+        </li>
+
+        <!-- THE NEW STATE: a committed account whose folder is not on this machine. -->
+        <li class="settings-row acct unavailable">
+          <div class="top">
+            <span class="label">Work account</span>
+            <span class="acct-actions">
+              <button class="btn" type="button"><svg class="icon sm"><use href="#i-rotate"/></svg>Connect</button>
+              <button class="btn ghost" type="button">Show details</button>
+            </span>
+          </div>
+          <p class="path">~/.claude-work</p>
+          <p class="status">
+            <span class="dot danger" aria-hidden="true"></span>
+            <span>Unavailable</span>
+            <span class="why">— this account's folder does not exist on this machine: <span class="mono">~/.claude-work</span>. Connect signs in and creates it, or pick another account for the task.</span>
+          </p>
+        </li>
+      </ul>
+
+      <div>
+        <p style="font-size:13px;color:var(--muted-foreground);margin:0 0 8px">A task that asks for that account is refused with the same sentence — in the task thread, not as a toast, because it is why the task did not run:</p>
+        <p class="refusal-line" role="alert">
+          <svg class="icon sm"><use href="#i-alert"/></svg>
+          <span>Agent account “Work account” is unavailable — this account's folder does not exist on this machine: <span class="mono">~/.claude-work</span>. Connect signs in and creates it, or pick another account for the task.</span>
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="doc">
+  <div class="note">
+    <strong>One string, two places.</strong> The row's sentence and the task's refusal are the same
+    string with the account name prefixed, so a person who reads one recognises the other. It names
+    the path inline even though the row already shows it above, because the refusal a task gets has
+    no row above it to read the path from.
+  </div>
+
+  <h2>5. What this page does not change</h2>
+  <ul>
+    <li>The <b>Remove</b> confirm, the <b>Add account</b> dialog and <b>Show details</b> behave exactly as they do today, including the identity exception being on-demand and refused in hosted mode.</li>
+    <li>The <b>discovered</b> account is still listed and still not editable: it is what <code>agentHomePaths()</code> finds, which is a fact, not a setting. It is also not committed — it describes this machine.</li>
+    <li>"Folder not created yet; Connect will make it" stays the wording for an account <em>you</em> just added on this machine. "Unavailable" is for an account the <em>repository</em> carries, and the difference matters: one is a step you have not taken, the other is a machine that cannot honour the project's expectation.</li>
+  </ul>
+</div>
+
+</body>
+</html>
