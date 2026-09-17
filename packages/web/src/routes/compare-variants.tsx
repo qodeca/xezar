@@ -8,7 +8,7 @@ import { Link, useNavigate } from '@/lib/project-router'
 import { ApiError, pickVariant } from '@/api/client'
 import { queryKeys, useGroup, useHealth, useRuns } from '@/api/queries'
 import type { GroupVariant } from '@qodeca/xezar-api-client'
-import { CenteredState } from '@/components/centered-state'
+import { CenteredState, PageHeader } from '@/components/centered-state'
 import { DirectionalUsage } from '@/components/directional-usage'
 import { Pill } from '@/components/pill'
 import { RunDiff } from '@/components/run-diff'
@@ -29,6 +29,7 @@ import { deriveAttention } from '@/lib/attention'
 import { groupTitle } from '@/lib/task-groups'
 import { TERMINAL_STATUSES, formatCost } from '@/lib/tasks-table'
 import { usageMetricVisibility } from '@/lib/token-metrics'
+import { useReturnFocus } from '@/routes/settings/remove-project'
 import { cn } from '@/lib/utils'
 
 import { Markdown } from './task-thread/markdown'
@@ -118,6 +119,7 @@ function CompareView({
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [confirming, setConfirming] = useState<GroupVariant | null>(null)
+  const returnFocus = useReturnFocus(confirming !== null)
 
   const allTerminal = variants.every((variant) => TERMINAL_STATUSES.has(variant.status))
   const title = variants[0] ? groupTitle(variants[0]) : ''
@@ -137,48 +139,52 @@ function CompareView({
   })
 
   return (
-    <div data-route="compare" className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-5 md:px-6">
-      <header className="flex flex-col gap-1">
-        <h1 className="flex items-center gap-2 text-xl font-semibold">
-          <ScaleIcon className="size-5 shrink-0 text-violet" aria-hidden="true" />
-          <span className="min-w-0 truncate" title={title}>
-            {title}
-          </span>
-        </h1>
-        <p className="text-[13px] text-muted-foreground">
+    <div data-route="compare" className="flex min-h-full flex-col">
+      {/* The #424 rhythm (#447 OD-1, #453 B7): the shared `PageHeader` – canonical `text-base`
+          title on the `section` gutter – over the canonical page body. Shown on a phone too: the
+          top bar there says “Tasks”, and the task’s own title is what this page is about. */}
+      <PageHeader title={title} className="flex">
+        <p data-slot="page-subtitle" className="order-last basis-full text-[13px] text-muted-foreground">
           {variants.length} variants of the same task, each in its own worktree — pick the diff you
           want to keep. The others are cancelled and archived, their worktrees and branches removed.
         </p>
-      </header>
+      </PageHeader>
 
       <div
-        data-slot="compare-columns"
-        className={cn(
-          'grid grid-cols-1 gap-3',
-          variants.length >= 3 ? 'md:grid-cols-3' : 'md:grid-cols-2',
-        )}
+        data-slot="compare-body"
+        className="flex w-full max-w-6xl flex-1 flex-col gap-list p-4 pb-[calc(90px+env(safe-area-inset-bottom))] md:p-section md:pb-section"
       >
-        {variants.map((variant) => (
-          <VariantColumn
-            key={variant.id}
-            variant={variant}
-            allTerminal={allTerminal}
-            pickPending={pick.isPending}
-            onPick={() => setConfirming(variant)}
-            showTokens={showTokens}
-            showCost={showCost}
-          />
-        ))}
+        <div
+          data-slot="compare-columns"
+          className={cn(
+            'grid grid-cols-1 gap-list',
+            variants.length >= 3 ? 'md:grid-cols-3' : 'md:grid-cols-2',
+          )}
+        >
+          {variants.map((variant) => (
+            <VariantColumn
+              key={variant.id}
+              variant={variant}
+              allTerminal={allTerminal}
+              pickPending={pick.isPending}
+              onPick={() => setConfirming(variant)}
+              showTokens={showTokens}
+              showCost={showCost}
+            />
+          ))}
+        </div>
+
+        <section aria-label="Full diffs" className="flex flex-col gap-row">
+          {variants.map((variant) => (
+            <VariantDiff key={variant.id} variant={variant} />
+          ))}
+        </section>
       </div>
 
-      <section aria-label="Full diffs" className="flex flex-col gap-2">
-        {variants.map((variant) => (
-          <VariantDiff key={variant.id} variant={variant} />
-        ))}
-      </section>
-
       <AlertDialog open={confirming !== null} onOpenChange={(open) => !open && setConfirming(null)}>
-        <AlertDialogContent>
+        {/* Radix hands focus back only to its own trigger, and this dialog has none: without the
+            hook, Escape or "Keep comparing" left focus on <body> (#453 B7 review NB-3). */}
+        <AlertDialogContent onCloseAutoFocus={returnFocus}>
           <AlertDialogHeader>
             <AlertDialogTitle>Pick variant {confirming?.variant}?</AlertDialogTitle>
             <AlertDialogDescription>
@@ -231,9 +237,9 @@ function VariantColumn({
     <article
       data-slot="variant-column"
       data-variant={variant.variant}
-      className="flex min-w-0 flex-col gap-3 rounded-lg border border-border bg-card p-3.5 shadow-xs"
+      className="flex min-w-0 flex-col gap-stack rounded-lg border border-border bg-card p-inset shadow-xs"
     >
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-row">
         <span
           data-slot="variant-letter"
           aria-label={`Variant ${variant.variant}`}
@@ -299,7 +305,7 @@ function VariantColumn({
         data-slot="variant-pick"
         title={
           allTerminal
-            ? `Keep variant ${variant.variant}'s changes and archive the others`
+            ? `Keep variant ${variant.variant}’s changes and archive the others`
             : 'Every variant must finish before you can pick'
         }
         disabled={!allTerminal || pickPending}
@@ -324,15 +330,15 @@ function VariantDiff({ variant }: { variant: GroupVariant }) {
       data-variant={variant.variant}
       className="min-w-0 overflow-hidden rounded-lg border border-border bg-card"
     >
-      <CollapsibleTrigger className="flex w-full items-center gap-2 px-3.5 py-2.5 text-left text-[13px] font-medium hover:bg-muted/50">
+      <CollapsibleTrigger className="flex min-h-tap w-full items-center gap-row px-inset py-2.5 text-left text-[13px] font-medium outline-none hover:bg-muted/50 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:ring-inset md:min-h-0">
         <ChevronRightIcon
-          className={cn('size-3.5 shrink-0 text-soft-foreground transition-transform', open && 'rotate-90')}
+          className={cn('size-3.5 shrink-0 text-soft-foreground motion-safe:transition-transform', open && 'rotate-90')}
           aria-hidden="true"
         />
         Variant {variant.variant} — full diff
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <div className="border-t border-border/50 px-3 py-3">
+        <div className="border-t border-border/50 p-stack">
           <RunDiff runId={variant.id} />
         </div>
       </CollapsibleContent>

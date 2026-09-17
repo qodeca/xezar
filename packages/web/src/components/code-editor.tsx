@@ -74,7 +74,12 @@ export function CodeEditor({ value, onChange, language, readOnly, className, ...
   return (
     <div
       data-slot="code-editor"
-      className={cn('relative overflow-hidden rounded-md border border-input bg-card', className)}
+      // The textarea drops its own ring (its text is transparent over the underlay), so the frame
+      // carries the cockpit's `focus-visible` ring for it: keyboard focus stays visible (#453 B7).
+      className={cn(
+        'relative overflow-hidden rounded-md border border-input bg-card transition-[border-color,box-shadow] focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50',
+        className,
+      )}
     >
       <pre
         ref={preRef}

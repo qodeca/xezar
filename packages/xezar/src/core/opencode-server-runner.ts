@@ -14,6 +14,7 @@ import type { AgentSession, SessionOptions } from './agent-runner.ts';
 import { prependSystemPrompt, trackChildExit } from './agent-runner.ts';
 import { buildChildEnv } from './agent-env.ts';
 import { AUTO_END_DELAY_MS, DEFAULT_RUN_TIMEOUT_MS } from './claude-cli-runner.ts';
+import { opencodeMcpIsolation, runMcpIsolationNote, type OpencodeMcpIsolation } from './run-mcp-isolation.ts';
 import { parseModelIdentity } from './model-identity.ts';
 import { V1TextCoalescer } from './v1-text-coalescer.ts';
 import {
@@ -100,6 +101,24 @@ export class OpencodeServerRunner implements AgentRunner {
     this.lastSession = session;
     return session;
   }
+}
+
+/**
+ * The environment one `opencode serve` child is started with, including the #342 MCP seam.
+ *
+ * `OPENCODE_CONFIG_CONTENT` is the ONLY layer that outranks the project's own `opencode.json`:
+ * `OPENCODE_CONFIG` is merged below it, so a bridge the project declares would win over an
+ * overlay passed that way. OpenCode merges an `mcp` entry field by field, so `{ enabled: false }`
+ * switches one server off without redefining it or disturbing any other.
+ */
+export function opencodeChildEnv(
+  spec: AgentRunSpec,
+  isolation: OpencodeMcpIsolation = opencodeMcpIsolation(spec.cwd),
+): NodeJS.ProcessEnv {
+  return buildChildEnv({
+    backend: 'opencode',
+    extraEnv: { ...spec.env, OPENCODE_CONFIG_CONTENT: JSON.stringify(isolation.overlay) },
+  });
 }
 
 /** One live `opencode serve` process driving a single session. */
@@ -197,10 +216,14 @@ class OpencodeSession implements AgentSession {
     // session reported the far-away handshake failure instead (#184). xezar
     // therefore never knows the port until the child says so — see
     // `waitForServerUrl`, the single place it is learned.
+    // What this run may reach over MCP is decided here, once, before the child exists (#342).
+    const isolation = opencodeMcpIsolation(spec.cwd);
+    const isolationNote = runMcpIsolationNote('opencode', isolation);
+    if (isolationNote) onEvent?.({ type: 'note', message: isolationNote });
     try {
       this.child = nodeSpawn(bin, ['serve', '--hostname', '127.0.0.1', '--port', '0'], {
         cwd: spec.cwd,
-        env: buildChildEnv({ backend: 'opencode', extraEnv: spec.env }),
+        env: opencodeChildEnv(spec, isolation),
       });
     } catch (err) {
       throw wrapSpawnError(err, bin);

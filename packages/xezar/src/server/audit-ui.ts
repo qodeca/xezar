@@ -2,7 +2,8 @@ import { existsSync, mkdirSync } from 'node:fs';
 import type { Context, MiddlewareHandler, Next } from 'hono';
 import type { AuditProxyUser } from '@qodeca/xezar-contract';
 import { answerRefusal, auditAction } from '../mcp/audit-inventory.ts';
-import { AuditTrail, settlementForStatus, type AuditChannel, type AuditScope } from '../mcp/audit-trail.ts';
+import { proxyUserOf } from '../mcp/audit-redaction.ts';
+import { AuditTrail, doorAuditWarning, settlementForStatus, type AuditChannel, type AuditScope } from '../mcp/audit-trail.ts';
 import { staleRejectionIn } from '../mcp/stale-write.ts';
 import { ensureProjectDataIgnored, projectDataDir } from '../project-data-paths.ts';
 
@@ -43,8 +44,6 @@ import { ensureProjectDataIgnored, projectDataDir } from '../project-data-paths.
 
 /** The one header a hosted cockpit may take a user name from. Read case-insensitively. */
 export const PROXY_USER_HEADER = 'x-xezar-user';
-/** The bound the contract puts on `proxyUser.value`. */
-const PROXY_USER_MAX = 128;
 
 /** Symbol a decorated handler carries, so the route table says which routes are audited. */
 export const AUDIT_ROUTE: unique symbol = Symbol.for('xezar.audit.route');
@@ -100,28 +99,41 @@ export function isLoopbackPeer(address: unknown): boolean {
   return /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(v4) || address === '::1';
 }
 
-/** § 9: trim, strip C0/C1 controls and DEL, cap at 128 code units, omit an empty result. */
+/**
+ * § 9: trim, strip C0/C1 controls and DEL, cap at 128 code units, omit an empty result. The door
+ * itself does not call it: it hands the trusted raw header to the audit seam, which applies this
+ * same rule (`proxyUserOf` in `mcp/audit-redaction.ts`) for every record.
+ */
 export function sanitizeProxyUser(raw: string | undefined): AuditProxyUser | undefined {
-  if (raw === undefined) return undefined;
-  let value = raw.trim().replace(/[\u0000-\u001f\u007f-\u009f]/gu, '').trim();
-  if (value.length > PROXY_USER_MAX) {
-    value = value.slice(0, PROXY_USER_MAX);
-    // Never end on half a surrogate pair.
-    if (/[\ud800-\udbff]$/.test(value)) value = value.slice(0, -1);
+  return proxyUserOf(raw);
+}
+
+/**
+ * The credentials a request carries in `Authorization` — the ui door's own secrets. They are never
+ * recorded; the seam masks them wherever the body repeats them, before hashing.
+ */
+export function requestCredentials(header: string | undefined): string[] {
+  const match = header === undefined ? null : /^\s*(\S+)\s+(\S+)\s*$/.exec(header);
+  if (!match) return header?.trim() ? [header.trim()] : [];
+  const [, scheme, token] = match as unknown as [string, string, string];
+  const out = [token];
+  if (scheme.toLowerCase() === 'basic') {
+    const decoded = Buffer.from(token, 'base64').toString('utf8');
+    const colon = decoded.indexOf(':');
+    if (colon >= 0) out.push(decoded.slice(colon + 1));
   }
-  return value === '' ? undefined : { value, trust: 'asserted-by-proxy' };
+  return out.filter((value) => value !== '');
 }
 
 export function createUiAuditDoor(deps: UiAuditDeps): UiAuditDoor {
   const warn = deps.warn ?? ((message: string) => console.warn(message));
   const channels = new Map<string, AuditChannel<'ui'> | null>();
-  let warned = false;
-  const warnOnce = (err: unknown): void => {
-    if (warned) return;
-    warned = true;
-    const code = (err as NodeJS.ErrnoException | undefined)?.code ?? (err as Error | undefined)?.name ?? 'error';
-    warn(`xezar: audit trail write failed (${code}); the action continued without an audit record.`);
-  };
+  /**
+   * The door's own setup failures share the project's one audit warning (spec A7, #573 m3): the same
+   * latch every trail of that project uses, and the same bounded code, never an error message.
+   */
+  const doorWarning = doorAuditWarning(warn);
+  const warnOnce = (scope: AuditScope | undefined, err: unknown): void => doorWarning(scope?.dataDir, err);
 
   /** One trail per project per process, so its one warning is per project as § 7.2 asks. */
   const channelFor = (scope: AuditScope): AuditChannel<'ui'> | undefined => {
@@ -131,15 +143,17 @@ export function createUiAuditDoor(deps: UiAuditDeps): UiAuditDoor {
         channels.set(key, new AuditTrail(scope, { warn }).channel('ui'));
       } catch (err) {
         channels.set(key, null);
-        warnOnce(err);
+        warnOnce(scope, err);
       }
     }
     return channels.get(key) ?? undefined;
   };
 
-  const proxyUserOf = (c: Context, connection: { socket?: { remoteAddress?: unknown } }): AuditProxyUser | undefined => {
+  /** The TRUST decision only: whether this request may assert a user at all. The seam sanitizes the value. */
+  const assertedUserOf = (c: Context, connection: { socket?: { remoteAddress?: unknown } }): AuditProxyUser | undefined => {
     if (!deps.hosted() || !isLoopbackPeer(connection.socket?.remoteAddress)) return undefined;
-    return sanitizeProxyUser(c.req.header(PROXY_USER_HEADER));
+    const raw = c.req.header(PROXY_USER_HEADER);
+    return raw === undefined ? undefined : { value: raw, trust: 'asserted-by-proxy' };
   };
 
   function route(ids: string | readonly string[], options: UiAuditRouteOptions = {}): MiddlewareHandler {
@@ -162,13 +176,14 @@ export function createUiAuditDoor(deps: UiAuditDeps): UiAuditDoor {
         named = undefined;
       }
       await next();
+      let scope: AuditScope | undefined;
       try {
         const status = c.res.status;
         const body = bodyOf(c);
         const action = options.select ? options.select(body) : list[0];
         if (action === undefined || !list.includes(action)) return;
         const settlement = settlementForStatus(status);
-        const scope =
+        scope =
           (options.project === 'registered' && status >= 200 && status < 300 ? await registeredScope(c) : undefined) ??
           (named ? await named : undefined) ??
           (await deps.requestScope(c)) ??
@@ -184,13 +199,15 @@ export function createUiAuditDoor(deps: UiAuditDeps): UiAuditDoor {
         const channel = channelFor(scope);
         if (!channel) return;
         const param = options.resource ? c.req.param(options.resource.param) : undefined;
-        const proxyUser = proxyUserOf(c, connection);
+        const proxyUser = assertedUserOf(c, connection);
+        const secrets = requestCredentials(c.req.header('authorization'));
         const op = {
           action,
           ...(options.resource && param ? { resource: { kind: options.resource.kind, id: param } } : {}),
           ...(body !== undefined ? { payload: body } : {}),
           ...(options.fieldNames && body !== undefined ? { fieldNames: Object.keys(body) } : {}),
           actor: proxyUser ? { proxyUser } : {},
+          ...(secrets.length > 0 ? { secrets } : {}),
         };
         if (!settlement) {
           channel.skip(`http_${status}`);
@@ -207,7 +224,7 @@ export function createUiAuditDoor(deps: UiAuditDeps): UiAuditDoor {
         }
         await channel.record(op, settlement);
       } catch (err) {
-        warnOnce(err);
+        warnOnce(scope, err);
       }
     };
     Object.defineProperty(handler, AUDIT_ROUTE, { value: { ids: list } satisfies AuditRouteDescriptor });

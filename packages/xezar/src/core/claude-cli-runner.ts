@@ -16,6 +16,7 @@ import type {
 export type { AgentSession, SessionOptions } from './agent-runner.ts';
 import { foreignSignalExitMessage, isSignalTerminationExit, trackChildExit } from './agent-runner.ts';
 import { buildChildEnv } from './agent-env.ts';
+import { claudeMcpIsolation, runMcpIsolationNote, type ClaudeMcpIsolation } from './run-mcp-isolation.ts';
 import { costWeightedTokens, type RawUsage } from './usage.ts';
 import { readNdjson } from './ndjson.ts';
 import {
@@ -105,7 +106,12 @@ export class ClaudeCliRunner implements AgentRunner {
     onEvent?: (event: AgentEvent) => void,
     opts: SessionOptions = {},
   ): AgentSession {
-    const args = buildClaudeArgs(spec);
+    // What this run may reach over MCP is decided here, once, before the child exists (#342):
+    // the project's own servers minus xezar's leader bridge. `onEvent` carries the one note.
+    const isolation = claudeMcpIsolation(spec.cwd);
+    const isolationNote = runMcpIsolationNote('claude', isolation);
+    if (isolationNote) onEvent?.({ type: 'note', message: isolationNote });
+    const args = buildClaudeArgs(spec, process.env, isolation);
 
     let child: ChildProcessWithoutNullStreams;
     try {
@@ -365,10 +371,14 @@ export class ClaudeCliRunner implements AgentRunner {
  * `--permission-mode dontAsk` keeps headless runs non-interactive: tools in
  * `--allowedTools` proceed and everything else is denied instead of prompting.
  * `XEZ_APPROVAL_GATE=1` opts back into Claude's approval UI (#435).
+ *
+ * The last pair is the #342 MCP seam and is deliberately LAST: `--mcp-config` is variadic
+ * ("JSON files or strings, space-separated"), so nothing may follow the JSON it carries.
  */
 export function buildClaudeArgs(
   spec: AgentRunSpec,
   env: NodeJS.ProcessEnv = process.env,
+  isolation: ClaudeMcpIsolation = claudeMcpIsolation(spec.cwd),
 ): string[] {
   const args: string[] = [
     '--input-format',
@@ -402,6 +412,11 @@ export function buildClaudeArgs(
   for (const dir of spec.additionalDirectories ?? []) {
     args.push('--add-dir', dir);
   }
+  // `--strict-mcp-config` is what makes the overlay authoritative: without it claude merges the
+  // project's `.mcp.json` and the person's `~/.claude.json` on top and the bridge comes back.
+  // It also means a task run gets exactly the project's declared servers and none of the
+  // person's own — the same rule Codex runs have followed since #324.
+  args.push('--strict-mcp-config', '--mcp-config', JSON.stringify(isolation.overlay));
   return args;
 }
 

@@ -249,6 +249,18 @@ the clone has finished – which depends on network timing, not on the spec. Two
   `skill-search-ranking.e2e.ts` does. The picker's subsequence matcher lets a long team-skill
   description satisfy almost any query, so "no team skills" is the only deterministic state.
 
+**Multi-project registry specs.** The shared env's registry is pinned to the single-project
+shape for the whole run (`workspace-registry.ts`'s `globalSetup`), so a spec that wants the
+grouped multi-project sidebar seeds its own throwaway registry and restores it in `afterAll`
+through that module's `snapshotSharedHome` / `writeSharedProjects` helpers. Two specs do this
+today: `project-groups.e2e.ts` (the sidebar's own grouping, ordering and collapse behaviour) and
+`project-switching.e2e.ts` (clicking from one registered project into another, a cross-project
+task opening at its own project from All tasks, and a registered-but-missing project's inert
+row). Because `fileParallelism: false` runs every spec in this suite one at a time, neither needs
+to know the other seeds the same file — but a THIRD spec doing the same must still restore the
+registry it found, not the single-project default, or it silently undoes whichever of the two
+ran first.
+
 ### Iterating on one spec
 
 The `npm run test:e2e` wrapper takes no file filter, so iterating on ONE spec means booting
