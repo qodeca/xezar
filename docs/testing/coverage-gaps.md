@@ -153,6 +153,7 @@ HTTP API.
 | Workflows builder | cockpit unit + browser e2e | `routes/workflows/workflows.test.tsx:118`; `e2e/workflows.e2e.ts:89` | C |
 | Settings, project and global scopes | cockpit unit + browser e2e | `routes/settings/settings.test.tsx:164,271` | C |
 | Project scope, `/p/default` alias, legacy redirects, 404 | cockpit unit | `routes.test.tsx:271,636-731` | C |
+| Clicking from one registered project into another (outlet remount resets mount-time page state, e.g. the Tasks search filter, and fetches the destination's own `/api/v1/p/<id>` routes, with no reload); a cross-project task opened from the workspace-wide All tasks page lands at its OWNER project even when a different one is active; a registered project whose folder is gone stays listed, inert, and never expands | cockpit unit + browser e2e | `routes.test.tsx:292` ("remounts the same page and loads its new scope when the project param changes"); `e2e/project-groups.e2e.ts:216-368` (grouping, per-group nav scoping, collapse); `e2e/project-switching.e2e.ts` (the actual A→B click, the cross-project All-tasks jump, and the missing-folder row, in one real browser session) | C |
 | Bookmarklet grammar, launch key never in the DOM | cockpit unit | `routes.test.tsx:763-767` | C |
 | SSE cache patching, multi-project scoping, reconnect | cockpit unit | `api/global-events.test.tsx:252,373,652,724,746` | C |
 | WebSocket topic bus, ref-counting, watchdog | cockpit unit | `api/ws.test.ts:92,106,188,236` | C |
