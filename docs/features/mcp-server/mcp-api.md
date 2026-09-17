@@ -42,6 +42,9 @@ Two kinds of content live here, and they are checked differently.
   `87d9f0d` (2026-09-12) while [#266](https://github.com/qodeca/xezar/issues/266) was resolved.
   Nothing else on this page was re-checked then, so an anchor outside that list is still an
   `ef4b768` anchor.
+  **A second re-check, 2026-09-17 ([#306](https://github.com/qodeca/xezar/issues/306) part 1):** the
+  audit anchors in those two sections, and Findings 3, were re-read when the trail moved to
+  `audit.ndjson` and record version 2. They cite symbols, not line numbers.
 
 Evidence level: this is an **observed** description of the code. It is not a live-client
 certification; that is the [client acceptance record](mcp-client-acceptance-record.md).
@@ -485,11 +488,11 @@ decisions, and never share a value.
 | --- | --- | --- |
 | Question it answers | **Who caused this change?** | **Which door did this operation come through?** |
 | Values | `human` · `leader` · `system` | `ui` · `mcp` · `automation` · `cli` |
-| Defined by | `mcpJournalOriginSchema`, `packages/contract/src/mcp-journal.ts:54` | `auditOriginSchema`, `packages/contract/src/mcp-audit.ts:44` |
+| Defined by | `mcpJournalOriginSchema`, `packages/contract/src/mcp-journal.ts:54` | `auditOriginSchema`, `packages/contract/src/audit.ts` |
 | Decision | [D-05 § 6.3](mcp-d05-async-event-contract-decision.md#63-what-enters-the-journal--decided) | [D-06 § 10.2](mcp-d06-versioning-idempotency-audit-decision.md#102-decision--the-field-list) |
-| Where a leader sees it | every `leader_events` row | not at all: the audit trail (`.local/xezar/mcp-audit.ndjson`) is local evidence, not a tool answer |
-| Who sets it | the server. The MCP door marks its own mutations `leader`, with `causedBy` set to the operation id, or to a door-minted id when the call has none (`packages/xezar/src/mcp/index.ts:267`) | the server, fixed once per door (`AuditTrail.channel(origin)`). No operation and no client argument carries it |
-| Wired today | all three values | **only `mcp`** — the one non-test `AuditTrail` construction, `index.ts:254`. `ui`, `automation` and `cli` are reserved members no door writes; that is decided for 0.14.0, not pending ([D-06 § 10.6](mcp-d06-versioning-idempotency-audit-decision.md#106-recorded-2026-09-12--the-trail-is-mcp-only-for-0140)), and wiring them is [#364](https://github.com/qodeca/xezar/issues/364) |
+| Where a leader sees it | every `leader_events` row | not at all: the audit trail (`.local/xezar/audit.ndjson`) is local evidence, not a tool answer |
+| Who sets it | the server. The MCP door marks its own mutations `leader`, with `causedBy` set to the operation id, or to a door-minted id when the call has none (`packages/xezar/src/mcp/index.ts:267`) | the server, fixed once per door (`AuditTrail.channel(origin)`), together with the record's `actor`, whose `type` must equal it. No operation and no client argument carries either |
+| Wired today | all three values | **only `mcp`** — the one non-test `AuditTrail` construction, `composeDoor` in `packages/xezar/src/mcp/index.ts`. `ui`, `automation` and `cli` have their actor shapes in the contract, and no door writes them yet ([D-06 § 10.6](mcp-d06-versioning-idempotency-audit-decision.md#106-recorded-2026-09-12--the-trail-is-mcp-only-for-0140)); wiring them is [#306](https://github.com/qodeca/xezar/issues/306) part 2 |
 
 A third, narrower use: some tool results (`execution_control`, `project_config`, `local_handoff`)
 carry `origin: 'mcp'`. This is a constant stamp saying "this answer came through MCP"
@@ -598,22 +601,39 @@ Retention is at least 84 hours and the newest 50 000 receipts per project
 ### The audit record
 
 This rule comes from [D-06 § 10](mcp-d06-versioning-idempotency-audit-decision.md#10-the-audit-record-n-04).
-Every call through the MCP door is recorded in `.local/xezar/mcp-audit.ndjson`, one line per
-operation. Read-only tools (`readOnlyHint: true`) are not recorded.
+Every call through the MCP door that settles as applied or refused is recorded in
+`.local/xezar/audit.ndjson`, one line per operation. Read-only tools (`readOnlyHint: true`) are not
+recorded. The file is created with mode `0600`.
 
-The trail records the MCP door and nothing else in 0.14.0 — that is decided, not pending
+The trail records the MCP door and nothing else so far — decided for 0.14.0
 ([D-06 § 10.6](mcp-d06-versioning-idempotency-audit-decision.md#106-recorded-2026-09-12--the-trail-is-mcp-only-for-0140)),
-and it is why the file holds a leader's operations and never a human's beside them.
+and the other doors are [#306](https://github.com/qodeca/xezar/issues/306) part 2 — so the file holds a
+leader's operations and never a human's beside them.
 
-Fields (`packages/contract/src/mcp-audit.ts:72`):
+Fields of a version 2 action record (`auditActionRecordSchema`, `packages/contract/src/audit.ts`):
 
-- `v`, `ts`, `projectId`, `action`, `resource`;
-- `outcome`: `ok`, `rejected`, `not-applied` or `unverified`;
-- `origin`: always `mcp` here, for the reason above;
-- `ownerGeneration`: its millisecond prefix only;
-- `operationKey`;
+- `v` (`2`), `kind` (`action`), `seq` (grows by one per record), `ts` (UTC), `projectId`;
+- `origin`: always `mcp` here, for the reason above, and `actor`: `{ "type": "mcp" }`;
+- `action`, `resource`;
+- `outcome`: `{ "status": "applied" }`, or `{ "status": "refused", "reason": … }`;
+- `ownerGeneration`: its millisecond prefix only, and `operationKey` — both MCP-only;
 - `versionToken`: kept only when it has the `rev1` shape;
-- `payloadDigest`, `errorCode`.
+- `payloadDigest`.
+
+How the MCP door settles a call:
+
+- a normal answer is `applied`;
+- a stale-version rejection is `refused` with reason `stale_version`;
+- a `project_config` boundary refusal (`refused: true` with a `boundary`) is `refused` with the
+  boundary as the reason, for example `workspace_settings`;
+- any other error answer, or a call that throws, may have started its effect, so it is **not
+  recorded**; xezar prints one warning per process that the action continued without an audit record.
+
+**Older files.** xezar 0.13.0–0.15.0 wrote version 1 records (`outcome` `ok`, `rejected`,
+`not-applied` or `unverified`, plus `errorCode`) to `mcp-audit.ndjson`. That file is read only while
+`audit.ndjson` does not exist, with one deprecation line, and is never changed. When both exist, only
+`audit.ndjson` is read. The old name stops being read no earlier than 0.18.0
+([#563](https://github.com/qodeca/xezar/issues/563)).
 
 **Deliberately left out:**
 
@@ -622,7 +642,7 @@ Fields (`packages/contract/src/mcp-audit.ts:72`):
 - the random half of the fencing token.
 
 A field that looks like a secret is dropped, not masked, even when `XEZ_REDACT_SECRETS=0`
-(`packages/xezar/src/mcp/audit-trail.ts:41`).
+(`packages/xezar/src/mcp/audit-trail.ts`, "NO SECRETS, TWICE").
 
 ### Events and replay
 
@@ -1007,7 +1027,9 @@ changes a tool. Each finding is reported for a separate decision.
    said history *should* carry an origin and the decision record declined to harden that
    ([D-06 § 10.6](mcp-d06-versioning-idempotency-audit-decision.md#106-recorded-2026-09-12--the-trail-is-mcp-only-for-0140)).
    What was wrong was the silence: the enum read as a promise of four kinds of entry. Wiring the
-   three doors is [#364](https://github.com/qodeca/xezar/issues/364), for a later release.
+   three doors was [#364](https://github.com/qodeca/xezar/issues/364) and is now
+   [#306](https://github.com/qodeca/xezar/issues/306) for 0.16.0: part 1 moved the trail to
+   `audit.ndjson` with version 2 records and still writes `mcp` only; part 2 adds the other doors.
 4. **The result vocabulary is not uniform** (see [Where the tools disagree](#where-the-tools-disagree)).
    A client has to learn eleven dialects to read success, refusal and failure.
 5. **Some outcomes have two doors.** Examples:

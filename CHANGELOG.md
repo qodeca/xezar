@@ -1,3 +1,22 @@
+# Unreleased
+
+## 💥 Breaking
+
+- 💥 **The audit trail moves to `audit.ndjson`, and its records change shape.** (#306, part 1 of 4)
+  A project's audit trail is now written to `.local/xezar/audit.ndjson` as version 2 records; xezar
+  0.13.0–0.15.0 wrote version 1 records to `mcp-audit.ndjson`. A record now says `applied` or
+  `refused` (with a machine reason) instead of `ok`, `rejected` or `unverified`, and carries a
+  sequence number, a UTC time and an `actor` that matches its origin. An MCP call that may have
+  started its effect and then failed is no longer written as `unverified`: it is not recorded, and
+  xezar prints one warning that the action continued without an audit record. The old file is
+  **read-only**: xezar reads it only while `audit.ndjson` does not exist, prints one deprecation line
+  when it does, and never writes, renames or deletes it. When both files exist, `audit.ndjson` wins.
+  **Upgrade:** nothing to do; keep `mcp-audit.ndjson` if you want the old history. **Downgrade:**
+  0.15.0 still reads its untouched `mcp-audit.ndjson`, and skips every `audit.ndjson` record as
+  unreadable (measured, not assumed), so records written by 0.16.0 are not visible to it. The alias
+  is removed no earlier than 0.18.0 (#563). Still MCP-only: the cockpit, automation and command-line
+  writers are later parts of #306. Details: `BACKWARD_COMPATIBILITY.md` § 3.
+
 # 0.15.0 (2026-09-17)
 
 ## Highlights
