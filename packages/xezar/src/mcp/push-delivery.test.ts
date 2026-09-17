@@ -909,9 +909,10 @@ describe('#309 — push delivery in the running service (A-19 delivery, A-20 no-
     const status = okResult(await leader.call('leader_events', { action: 'status' }));
     expect(status.structuredContent).toMatchObject({ delivery: { ackedSeq: Number(frame.meta?.last_seq) }, self: { attached: true } });
     const actions = auditActions(c.dataDir);
-    expect(actions).toContain('leaderEvents.attach');
-    expect(actions).toContain('leaderEvents.ack');
-    expect(actions).not.toContain('leaderEvents.read');
+    // #306 part 2: audit ids come from the shared action inventory, and a read is never recorded.
+    expect(actions).toContain('leader.attach');
+    expect(actions).toContain('leader.ack');
+    expect(actions.some((action) => action.includes('read'))).toBe(false);
   }, 60_000);
 
   it('#450 T-22: in hosted mode the MCP door refuses attach and stop, and status says xezar cannot push', async () => {
