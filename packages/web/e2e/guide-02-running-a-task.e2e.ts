@@ -33,6 +33,13 @@ import { GuideBrowser } from './guide-browser'
  * `packages/xezar/src/server/forge/draft-pr-autosave.test.ts` and
  * `packages/xezar/src/server/cockpit-ownership.test.ts:320-354`. This file completes the task
  * through Accept instead — a real, local, honest transition.
+ *
+ * The final behavior group (review response round 1, #590) covers the guide's own
+ * "actions/notes" section (docs/guide/02-tasks-and-runs.md:87-99) against the finished run:
+ * Archive/Unarchive, "Open in…" (trigger plus its static "Terminal (resume session)" item —
+ * never an actual CLI/editor/Finder target, the same real-boundary reason Draft PR above is
+ * never clicked), Notes (the handoff Markdown a finished run always has), and Continue last,
+ * since it is the one action that moves the run out of `done`.
  */
 
 function freePort(): Promise<number> {
@@ -234,5 +241,44 @@ describe('guide 02 — tasks and runs', () => {
     // covered by draft-pr-autosave.test.ts and cockpit-ownership.test.ts:320-354 instead).
     browser.clickRole('button', 'Accept')
     await waitForStatus(baseUrl, runId, ['done'])
+  }, 30_000)
+
+  it('actions/notes: the finished run’s header offers Archive, Open in…, Notes and Continue', async () => {
+    // Archive/Unarchive: a plain state toggle with no confirmation dialog, unlike Cancel/Delete.
+    await browser.waitForRole('button', 'Archive')
+    browser.clickRole('button', 'Archive')
+    await browser.waitForRole('button', 'Unarchive')
+    browser.clickRole('button', 'Unarchive')
+    await browser.waitForRole('button', 'Archive')
+
+    // Open in…: the desktop launch menu. Radix renders it as a modal layer that marks
+    // everything outside itself `aria-hidden` while open, so the only role-reachable way to
+    // close it again is to pick one of its own items — "Terminal (resume session)" or an actual
+    // CLI/editor/Finder target would launch a real local process on the machine running this
+    // suite, the same real-boundary reason the Draft PR button above is asserted present and
+    // never clicked, so "Copy worktree path" is the one item here that is both real and safe:
+    // it only writes to the clipboard.
+    browser.clickRole('button', 'Open in…')
+    await browser.waitForRole('menuitem', 'Terminal (resume session)')
+    expect(browser.hasRole('menuitem', 'Copy worktree path')).toBe(true)
+    browser.clickRole('menuitem', 'Copy worktree path')
+
+    // Notes: the engine seeds a real handoff Markdown skeleton before the agent step ever runs,
+    // and the mock backend appends its own progress line to it — a finished run's Notes panel
+    // therefore always renders real content here, never the "No notes yet" empty state that
+    // only an unstarted task can show. Wait for the closed menu's exit animation to actually
+    // finish first — Radix keeps the rest of the page `aria-hidden` while it plays.
+    await browser.waitForRole('button', 'Notes')
+    browser.clickRole('button', 'Notes')
+    await browser.waitForText('Progress log')
+    browser.clickRole('button', 'Notes')
+
+    // Continue: reopens the recorded session for a fresh turn. Last, because it is the one
+    // action here that moves the run out of its terminal `done` status — Archive, Open in… and
+    // Continue itself are all gated on a non-active run, so anything scripted after this point
+    // would no longer find them.
+    browser.clickRole('button', 'Continue')
+    const reopened = await waitForStatus(baseUrl, runId, ['running', 'waiting'], 40)
+    expect(reopened).not.toBe('done')
   }, 30_000)
 })
