@@ -1219,3 +1219,23 @@ Registration metadata identifies the existing handler guards; valid fixtures rea
 5. Record the revision and complete output; this proves the local authenticated HTTP/event-stream path only.
 
 The separate CI job **Hosted server boundary and proxy** has a five-minute hard timeout: the harness itself is bounded to 45 seconds, with room for cold dependency installation and server compilation. Unit/route policy remains in `npm test`; this harness tests composition, not a second exhaustive policy table. Named-break evidence belongs in the PR body, including an actual failed assertion for each behavior group.
+
+## The #532 fragile MCP–leader case audit
+
+Issue #532 keeps a checklist of twelve gap groups (G1–G12) over fragile MCP-leader communication
+cases, each with a proposed covering test, fixture and named breaks. The checklist itself lives only
+in the issue — no file mirrors its full text — but every group's current status is executable:
+`packages/xezar/src/mcp/gap-group-inventory.test.ts` (#532 G12) scans the mcp test corpus for a
+`G<n>` token in a title or comment and fails when a declared group has none, with a negative control
+proving the check itself goes red when a covering test's mention disappears. Read that file's
+`GAP_GROUPS` map for the current one-line description of each group; do not duplicate it here, since
+a duplicate is exactly the kind of copy that goes stale.
+
+| Slice | Groups | Landed |
+| --- | --- | --- |
+| 1 (#533) | G1, G2, G3, G10 | `leader-event-delivery-matrix.test.ts`, `leader-delivery-regressions.test.ts`, `stale-write.test.ts` / `tools/stale-write-tools.test.ts`, `echo-guard.test.ts` / `operation-receipts.test.ts` |
+| 2 (#542) | G7, G8, G9 | `engine-leader-incidents.test.ts`, `event-catalog.test.ts` |
+| 3 (this slice) | G4, G5, G6, G11, G12 | `leader-delivery.test.ts` (G4, owner-switch fencing and Claude Code's live-transport follow), `tools/leader-events.test.ts` (G5 ack epoch boundary, G6 restart/epoch-reuse recovery), `test/integration/mcp-real-model.test.ts` (G11, the shared acceptance judge hardened against a decoy tool call — a live OpenCode leg remains future work, conditional in the issue on an authorized target), `gap-group-inventory.test.ts` (G12) |
+
+Every group's status is therefore re-derivable by running `gap-group-inventory.test.ts` rather than
+trusting this table after the next slice lands.

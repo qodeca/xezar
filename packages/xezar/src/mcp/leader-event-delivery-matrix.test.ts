@@ -3,6 +3,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { DELIVERY_CLIENTS, deliveryHarness } from './leader-delivery.testkit.ts';
 import { withEventOrigin } from './event-catalog.ts';
 
+// #532 G12: the executable-completeness inventory assertion over this matrix (every variant here ×
+// client is a real fixture) lives beside it, in `gap-group-inventory.test.ts`.
+
 type Harness = Awaited<ReturnType<typeof deliveryHarness>>;
 const variants = [
   ...Object.keys(MCP_EVENT_KIND_CATEGORY), 'question.after-wait', 'gate.stage', 'gate.legacy', 'gate.routine-failure',
@@ -144,9 +147,9 @@ for (const client of DELIVERY_CLIENTS) describe(`#532 significance and ordering 
   });
 });
 
-// G1 requires exact subject versions at the receiving peer. OpenCode's renderer currently drops
-// the version although the other three adapters include it; keep this defect visible, tests only.
-it.fails.each(variants.filter(variant => !['config.changed', 'workflow.saved', 'workflow.deleted', 'agent-config.changed', 'executor.available', 'executor.unavailable'].includes(variant)))('#532 OpenCode defect — %s receiving peer must get the decision version', async variant => {
+// G1 requires exact subject versions at the receiving peer. #535 fixed OpenCode's renderer to
+// include it, matching the other three adapters.
+it.each(variants.filter(variant => !['config.changed', 'workflow.saved', 'workflow.deleted', 'agent-config.changed', 'executor.available', 'executor.unavailable'].includes(variant)))('#532/#535 OpenCode — %s receiving peer gets the decision version', async variant => {
   const h = await deliveryHarness('opencode');
   try {
     const row = produce(h, variant); await h.settle();
