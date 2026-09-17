@@ -12,6 +12,15 @@ Installation validation is reported in installation.md. Real-task entries follow
 
 ## Real-task entries
 
+### 2026-09-17 — #546 (navigation-only sidebar), `feature-implementation` step `implement`, `xezar-implementation`, Claude Code — real-task observed
+
+- Input: the analysed impact spec for #546 (run `e69480bb`, revision `7db8fd9`) with leader-accepted criteria SR-01 … SR-13; base `7db8fd9`.
+- Observed: **the CRITERIA record refuses criterion IDs the accepted spec actually uses.** `phase-record.sh check` matches only `AC-` or `DP-` prefixes, while phase-record.md documents the line as `<ID>: <criterion>`. The accepted `SR-01` lines read as "no criterion"; they were recorded as `AC-SR-01` so the IDs still trace to the spec. Candidate change: document the accepted prefixes, or accept any `[A-Z]+-` ID.
+- Observed (tooling, repeat of the #467 entry): a zsh `$F` path list again passed as one argument, so the first red-proof run swapped nothing and exited green; `bash -c` was refused again. The proof was redone with explicit paths (`git show HEAD:<file> > <file>` per file, restored from a tar of the new files). The earlier lesson holds; it is not yet in any skill text.
+- Observed (tooling): the chrome-devtools MCP `take_screenshot` refuses a `filePath` outside its workspace roots, so design captures cannot be written straight into the primary evidence directory; they were written under the worktree's ignored `.local/qa/` and copied.
+- Regression/control: the new navigation-only unit tests failed against the `7db8fd9` source (task titles and the Search launcher found) and passed on the change.
+- Remaining limit: one `design-debt-b2.e2e.ts` phone case (compact density, drawer close) failed once and passed on the next run; cause unknown, not investigated here.
+
 ### 2026-09-16 — #453 B4 review response round 1 (design finding B-1), `address-review-findings` step `address`, `xezar-review-response`, Claude Code — real-task observed
 
 - Input: design review of PR #529 at `b5e46db` (REQUEST CHANGES, B-1: the conflict action had no browser measurement); `main` at `248ea8a`.
