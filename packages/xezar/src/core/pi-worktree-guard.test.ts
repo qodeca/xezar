@@ -186,17 +186,109 @@ describe('pi linked-worktree tool guard (#537)', () => {
         symlinkSync(f.outside, join(f.worktree, 'linked-cache'));
         return 'cd linked-cache && ls';
       }],
-      ['a known variable outside the primary', (f: Fixture) => {
+    ])('allows %s', (_name, command) => {
+      const f = fixture();
+      expect(guard(f, bash(command(f)))).toBeUndefined();
+    });
+  });
+
+  describe('Major 2, round 2: a directory change the guard cannot resolve to one literal path is refused', () => {
+    const withEnv = (name: string, value: string, run: () => void) => {
+      const saved = process.env[name];
+      process.env[name] = value;
+      try {
+        run();
+      } finally {
+        if (saved === undefined) delete process.env[name];
+        else process.env[name] = saved;
+      }
+    };
+    /** `pk` is an in-worktree symlink to the primary checkout's `packages` folder. */
+    const linkPackages = (f: Fixture) => {
+      mkdirSync(join(f.primary, 'packages'), { recursive: true });
+      symlinkSync(join(f.primary, 'packages'), join(f.worktree, 'pk'));
+    };
+
+    it.each([
+      ['row 1: a ? glob in the cd target', (f: Fixture) => `cd ${f.home}/Projects/xeza? && git commit -qam glob1`],
+      ['row 2: a * glob in the git -C target', (f: Fixture) => `git -C ${f.home}/Projects/xez* commit -q --allow-empty -m glob2`],
+      ['row 3: a [..] glob after ~/', () => 'cd ~/Projects/xeza[r] && git commit -qam glob3'],
+      ['row 4: a brace expansion in the cd target', (f: Fixture) => `cd ${f.home}/Projects/{xezar,} && git commit -qam brace`],
+      ['row 5: cd ~user', () => 'cd ~someuser/Projects/xezar && git commit -am x'],
+      ['row 5: git -C ~user', () => 'git -C ~someuser/Projects/xezar commit -am x'],
+      ['row 6: a CDPATH assignment before cd', (f: Fixture) => `CDPATH=${f.home}/Projects cd xezar && git commit -qam cdpath`],
+      ['row 6: an exported CDPATH', (f: Fixture) => `export CDPATH=${f.home}/Projects; cd xezar && git commit -qam cdpath`],
+      ['row 7: cd -P through an in-worktree symlink and ..', (f: Fixture) => {
+        linkPackages(f);
+        return 'cd -P pk/.. && git commit -qam symP';
+      }],
+      ['row 7: git -C through an in-worktree symlink and ..', (f: Fixture) => {
+        linkPackages(f);
+        return 'git -C pk/.. commit -q --allow-empty -m symC';
+      }],
+      ['minor: a backtick substitution as the cd target', () => 'cd `echo x` && git status'],
+    ])('blocks %s', (_name, command) => {
+      const f = fixture('xezar');
+      expect(guard(f, bash(command(f)))).toMatchObject(BLOCK);
+    });
+
+    it.each([
+      ['a variable, even one that is known and outside the primary', (f: Fixture) => {
         process.env.XEZ_GUARD_OUTSIDE = f.outside;
         return 'cd "$XEZ_GUARD_OUTSIDE" && ls';
       }],
-    ])('allows %s', (_name, command) => {
-      const f = fixture();
+      ['env -C with a glob', (f: Fixture) => `env -C ${f.home}/Projects/xez* git commit -am x`],
+      ['env --chdir= with a glob', (f: Fixture) => `env --chdir=${f.home}/Projects/xez* git commit -am x`],
+      ['pushd with a glob', (f: Fixture) => `pushd ${f.home}/Projects/xeza? && git commit -am x`],
+      ['--work-tree= with a glob', (f: Fixture) => `git --git-dir=${f.home}/Projects/xez*/.git --work-tree=${f.home}/Projects/xez* commit -am x`],
+      ['~+ as the cd target', () => 'cd ~+ && git status'],
+      ['cd ~/… after HOME is reassigned in the command', (f: Fixture) => `HOME=${f.home}/Projects; cd ~/xezar && git commit -am x`],
+      ['a relative .. after an allowed symlink cd', (f: Fixture) => {
+        symlinkSync(f.outside, join(f.worktree, 'linked-cache'));
+        return 'cd linked-cache && cd ../x && ls';
+      }],
+      ['a glob redirect whose literal directory holds the primary', () => 'echo x >> ~/Projects/xeza?/tracked.md'],
+      ['a relative redirect through a symlink and ..', (f: Fixture) => {
+        linkPackages(f);
+        return 'echo x >> pk/../tracked.md';
+      }],
+      ['cd - before any directory change', () => 'cd - && git commit -am x'],
+    ])('blocks %s', (_name, command) => {
+      const f = fixture('xezar');
       try {
-        expect(guard(f, bash(command(f)))).toBeUndefined();
+        expect(guard(f, bash(command(f)))).toMatchObject(BLOCK);
       } finally {
         delete process.env.XEZ_GUARD_OUTSIDE;
       }
+    });
+
+    it('blocks a cd that an inherited CDPATH sends into the primary checkout', () => {
+      const f = fixture('xezar');
+      withEnv('CDPATH', join(f.home, 'Projects'), () => {
+        expect(guard(f, bash('cd xezar && git commit -am x'))).toMatchObject(BLOCK);
+      });
+    });
+
+    it.each([
+      ['the reviewer control ls && npm test', () => 'ls && npm test'],
+      ['the reviewer control cd packages/web and back', () => 'cd packages/web && npm test && cd .. && cd ..'],
+      ['the reviewer control git ranges and grep -C', () => 'git log a..b && grep -C 3 foo README.md'],
+      ['the reviewer control cd /tmp', () => 'cd /tmp'],
+      ['quoted patterns that only look like globs', () => "awk '{print $1}' x.txt && grep -E 'a.*b' x.txt && find . -name '*.ts'"],
+      ['a glob under a folder outside the primary', (f: Fixture) => `ls ${f.outside}/*.txt && cd ${f.outside} && ls *`],
+      ['a relative glob in the worktree', () => 'ls packages/*/src && git add -- *.md'],
+      ['cd back with cd -', () => 'cd packages && cd - && git status'],
+    ])('still allows %s', (_name, command) => {
+      const f = fixture('xezar');
+      expect(guard(f, bash(command(f)))).toBeUndefined();
+    });
+
+    it('still allows a relative cd when an inherited CDPATH names no other matching folder', () => {
+      const f = fixture('xezar');
+      mkdirSync(join(f.worktree, 'packages'));
+      withEnv('CDPATH', f.outside, () => {
+        expect(guard(f, bash('cd packages && npm test'))).toBeUndefined();
+      });
     });
   });
 

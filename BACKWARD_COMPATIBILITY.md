@@ -568,10 +568,14 @@ reach was an isolation defect, so the restriction is recorded here rather than s
   cannot resolve with confidence. That file-tool check is the enforced control. The shell check is
   **best-effort defence in depth, not containment**: it refuses a `bash` command that names a path
   in the primary checkout (absolute, `~`, `$HOME` or another set variable, `..`, a symlink) or
-  changes into it through `cd`, `pushd`, `-C`, `--git-dir`, `--work-tree`, `GIT_DIR` or
-  `GIT_WORK_TREE`, and it prefers a false block to a missed one. A shell command cannot be parsed
-  completely, so variables set inside the command, command substitution, `eval`, scripts and
-  programs that build a path themselves can still reach the primary checkout. If the guard cannot
+  changes into it through `cd`, `pushd`, `-C`, `--chdir`, `--git-dir`, `--work-tree`, `GIT_DIR`
+  or `GIT_WORK_TREE`, and it prefers a false block to a missed one. A directory-change target must
+  be one literal path: a variable, a substitution, a glob or brace pattern, `~user`, a `CDPATH` or
+  `OLDPWD` change, `~` after a `HOME` change, or a `..` that follows a symlink is refused rather
+  than guessed, so a command such as `cd "$SOME_DIR"` that used to run is now refused. A shell
+  command cannot be parsed completely, so scripts and programs that build a path themselves,
+  aliases and functions, `eval` of computed text and variables set inside the command and then
+  used as a plain argument can still reach the primary checkout. If the guard cannot
   resolve the worktree or primary-checkout root, it rejects every `write`, `edit` and `bash` call
   instead of guessing.
 - **Not broken**: relative paths inside the task worktree, temporary paths and home-directory

@@ -12,6 +12,14 @@ Installation validation is reported in installation.md. Real-task entries follow
 
 ## Real-task entries
 
+### 2026-09-17 — #537 review response round 2 (PR #555), `address-review-findings` step `address`, `xezar-review-response`, Claude Code — fixture-tested, real-shell probed
+
+- Input: scoped re-check REQUEST CHANGES at `eb00ae4`: seven literal shell spellings (glob and brace targets, `~user`, `CDPATH`, `cd -P`/`git -C` through a symlink and `..`) that the guard allowed and that committed into a fixture primary checkout. Last response round; the leader asked for a structural fail-closed change, not more patterns.
+- Observed: `main` had moved past the PR branch, so the fast-forward path from round 1 did not apply and a plain merge commit was needed before any kit commit. The repair counters carried from round 1 were already 2/2 for self-review and gate-return, so this round had no fix-round allowance left – the work had to be probed before commit, not repaired after. The erfana bash-safety hook refuses `rm -rf` on `/tmp` scratch folders, so probe fixtures stay behind.
+- Change: a directory-change operand must be one literal path followed segment by segment like `chdir`; anything it cannot resolve is refused. Mentions got the same physical walk and a glob-prefix check for absolute and `~` patterns.
+- Regression/control: 23 new blocking tests fail against `eb00ae4` and pass with the change; 9 control tests pass both ways. The same probe run through real `bash` in a `/tmp` fixture with a fake `HOME` shows the old guard letting rows 1–4, 6 and 7 commit into the fixture primary, and the new guard blocking every row while the reviewer's controls still run.
+- Remaining limit: scripts, aliases and functions, `eval` of computed text, variables assigned inside the command and used as plain arguments, and relative globs in plain arguments are still invisible to a textual check. No live pi session with a model was run.
+
 ### 2026-09-17 — #537 review response round 1 (PR #555), `address-review-findings` step `address`, `xezar-review-response`, Claude Code — fixture-tested, pi resolver parity observed
 
 - Input: REQUEST CHANGES at `beb157a` with three Majors (file-tool path spellings, shell `cd`/`git -C` variants, primary root read from the `.git` file) and three Minors; the author run was out of quota, so this run answered on the same PR branch.
