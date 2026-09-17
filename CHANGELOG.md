@@ -1,3 +1,9 @@
+# Unreleased
+
+## 🐛 Fixes
+
+- 🐛 Keep pi `quick-task` writes inside their isolated task worktree, including direct file writes, parent-directory and symlink escapes, and shell attempts to enter or target the primary checkout. In-place and non-Git runs, plus temporary and home-directory paths outside the primary checkout, retain their existing behavior. (#537)
+
 # 0.15.0 (2026-09-17)
 
 ## Highlights

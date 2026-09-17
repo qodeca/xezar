@@ -12,6 +12,14 @@ Installation validation is reported in installation.md. Real-task entries follow
 
 ## Real-task entries
 
+### 2026-09-17 — #537 (pi primary-checkout write), `bug-fix` step `investigate`, `xezar-bug-investigation`, Codex — fixture-tested
+
+- Input: issue #537 and the retained run/event records for `1b843033-4ce8-4227-b0ef-e47586a2f556` on v0.15.0. The shell reported the linked worktree as its PWD, but pi's `edit` tool received and accepted an absolute path in the primary checkout; the next run then failed while bootstrapping the modified tracked kit file.
+- Observed: process `cwd` was already correct and was therefore only a control, not containment. Pi was the gap: Claude Code receives its cwd and native directory boundary, Codex starts/resumes its thread with that cwd, and OpenCode binds its server/session to that cwd; pi had no tool-call boundary after startup.
+- Change: isolated pi sessions load a bundled extension with the canonical task root. It blocks direct, parent-directory, symlink, `git -C` and `cd` paths into the primary checkout and fails closed when it cannot resolve the linked-worktree roots. `quick-task` adds the same worktree-only instruction as the maintained workflows; in-place and non-Git paths do not add it.
+- Regression/control: before the repair, the focused run failed because the guard module and runner arguments did not exist while 30 existing pi controls passed. With the repair, the requested path matrix and runner wiring pass; temporary and home-directory paths remain explicit passing controls. The final source-swap proof and canonical fast gate are recorded in this task's durable evidence.
+- Remaining limit: the extension enforces the named pi file tools and shell path forms at the tool-call boundary; this is not an operating-system sandbox and no claim is made for an arbitrary program that constructs an unmentioned path internally.
+
 ### 2026-09-16 — #453 B4 review response round 1 (design finding B-1), `address-review-findings` step `address`, `xezar-review-response`, Claude Code — real-task observed
 
 - Input: design review of PR #529 at `b5e46db` (REQUEST CHANGES, B-1: the conflict action had no browser measurement); `main` at `248ea8a`.

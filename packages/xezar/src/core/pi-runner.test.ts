@@ -187,7 +187,7 @@ describe('pi signal terminations', () => {
 });
 
 describe('pi RPC argv', () => {
-  it('uses pi RPC mode, exact session selection, provider/model, and pi tool names', () => {
+  it('uses pi RPC mode, exact session selection, provider/model, pi tool names, and pins an isolated tool root', () => {
     expect(
       buildPiArgs({
         cwd: '/repo',
@@ -196,6 +196,7 @@ describe('pi RPC argv', () => {
         resume: true,
         model: 'openai/gpt-5.1',
         systemPrompt: 'Keep changes focused.',
+        worktreeRoot: '/repo',
         allowedTools: ['Read', 'Bash', 'Edit', 'Write', 'Grep', 'Glob'],
       }),
     ).toEqual([
@@ -209,7 +210,15 @@ describe('pi RPC argv', () => {
       'openai/gpt-5.1',
       '--tools',
       'read,bash,edit,write,grep,find',
+      '--extension',
+      expect.stringMatching(/scripts\/pi-worktree-guard\.ts$/),
+      '--xezar-worktree-root',
+      '/repo',
     ]);
+  });
+
+  it('does not add the worktree guard for an in-place or non-git run', () => {
+    expect(buildPiArgs({ cwd: '/repo', userPrompt: 'task' })).not.toContain('--xezar-worktree-root');
   });
 
   it('creates a new exact session id instead of invoking the interactive resume picker', () => {

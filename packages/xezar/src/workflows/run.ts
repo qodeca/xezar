@@ -517,6 +517,23 @@ export function composeSystemPrompt(...parts: Array<string | undefined>): string
     .join('\n\n---\n\n');
 }
 
+/** The built-in quick task has no kit preflight step, so an isolated run receives the same
+ *  worktree-only operating rule directly from the engine (#537). In-place and non-Git runs have
+ *  `cwd === repoRoot` and retain their exact previous prompt. */
+export function quickTaskWorktreeInstructions(
+  workflowName: string | undefined,
+  cwd: string,
+  repoRoot: string,
+): string | undefined {
+  if (workflowName !== 'quick-task' || cwd === repoRoot) return undefined;
+  return [
+    `This task runs in an isolated working copy at ${cwd}. Treat that directory as the project tool root.`,
+    'Keep project writes and Git commands inside it: do not escape through an absolute path, `..`,',
+    'a symlink, `cd`, or `git -C` into the primary checkout or another working copy.',
+    'Temporary files and home-scoped tool configuration remain available when the task needs them.',
+  ].join(' ');
+}
+
 /**
  * The directories a spawned agent may reach outside its worktree: the run-state
  * folder that holds its handoff file, plus its own temp directory when this run
@@ -3175,6 +3192,7 @@ export class RunManager {
         // echoed on the record) rides along with the handoff contract.
         systemPrompt: composeSystemPrompt(
           record?.systemPrompt,
+          quickTaskWorktreeInstructions(record?.workflow, state.cwd, this.repoRoot),
           generateFollowups ? HANDOFF_INSTRUCTIONS : HANDOFF_ONLY_INSTRUCTIONS,
         ),
         userPrompt: attachments.length
@@ -3182,6 +3200,7 @@ export class RunManager {
           : openingPrompt,
         ...(openingImages.length ? { images: openingImages } : {}),
         cwd: state.cwd,
+        worktreeRoot: state.cwd !== this.repoRoot ? state.cwd : undefined,
         allowedTools: toolsStep?.allowedTools ?? DEFAULT_ALLOWED_TOOLS,
         bashAllowlist: toolsStep?.bashAllowlist,
         additionalDirectories: agentDirectories(join(this.dataDir, 'runs'), continueProfile.env),
@@ -3936,6 +3955,7 @@ export class RunManager {
           systemPrompt: composeSystemPrompt(
             systemPrompt,
             extraSystemPrompt,
+            quickTaskWorktreeInstructions(this.store.getRun(runId)?.workflow, state.cwd, this.repoRoot),
             this.semaphore.followupsEnabled() && input.generateFollowups !== false
               ? HANDOFF_INSTRUCTIONS
               : HANDOFF_ONLY_INSTRUCTIONS,
@@ -3943,6 +3963,7 @@ export class RunManager {
           userPrompt,
           images,
           cwd: state.cwd,
+          worktreeRoot: state.cwd !== this.repoRoot ? state.cwd : undefined,
           allowedTools: step.allowedTools ?? DEFAULT_ALLOWED_TOOLS,
           bashAllowlist: step.bashAllowlist,
           // The handoff file lives outside the worktree — grant access.

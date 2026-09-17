@@ -11,6 +11,7 @@ import type { WorkflowDef } from './types.ts';
 import {
   RunManager,
   composeSystemPrompt,
+  quickTaskWorktreeInstructions,
   makeRunTitle,
   resolveExtraSystemPrompt,
   skillSystemPrompt,
@@ -45,6 +46,16 @@ describe('composeSystemPrompt', () => {
     ['blank parts drop out', ['', '   ', H], H],
   ] as const)('%s', (_name, parts, expected) => {
     expect(composeSystemPrompt(...parts)).toBe(expected);
+  });
+});
+
+describe('quick-task worktree instructions (#537)', () => {
+  it('adds the stay-inside guard only to an isolated built-in quick task', () => {
+    expect(quickTaskWorktreeInstructions('quick-task', '/repo/.local/xezar/worktrees/task', '/repo'))
+      .toContain('Treat that directory as the project tool root');
+    expect(quickTaskWorktreeInstructions('quick-task', '/repo', '/repo')).toBeUndefined();
+    expect(quickTaskWorktreeInstructions('quick-task', '/plain-folder', '/plain-folder')).toBeUndefined();
+    expect(quickTaskWorktreeInstructions('bug-fix', '/repo/.local/xezar/worktrees/task', '/repo')).toBeUndefined();
   });
 });
 

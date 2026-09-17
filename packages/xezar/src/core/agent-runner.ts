@@ -43,6 +43,9 @@ export interface AgentRunSpec {
   images?: ContentBlock[];
   /** The directory the agent runs in — also the only writable root. */
   cwd: string;
+  /** Present only for an isolated linked-worktree run. Pi uses it to load its
+   *  worktree tool guard; in-place and non-Git runs deliberately leave it absent. */
+  worktreeRoot?: string;
   /** Tool allowlist; the CLI is default-deny for anything not listed — but
    *  the zero-config default (`DEFAULT_ALLOWED_TOOLS`) includes `Bash`
    *  unrestricted unless `bashAllowlist` is set, so treat the default as
