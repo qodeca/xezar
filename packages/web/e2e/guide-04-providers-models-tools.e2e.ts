@@ -89,6 +89,7 @@ describe('guide 04 — agent backends', () => {
     browser.clickRole('button', 'Model')
     await browser.waitForRole('menuitemradio', 'auto')
     expect(browser.textOfRole('menuitemradio', 'auto')).toContain('Use your Codex default model')
+    await browser.waitForRole('menuitemradio', 'GPT-6-Astra')
     expect(browser.hasRole('menuitemradio', 'GPT-6-Astra')).toBe(true)
     expect(browser.hasRole('menuitemradio', 'opus')).toBe(false)
 

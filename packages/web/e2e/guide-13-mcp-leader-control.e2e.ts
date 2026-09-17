@@ -94,7 +94,8 @@ describe('guide 13 — MCP project leader', () => {
     expect(browser.hasText('pi install npm:pi-mcp-adapter@2.32.1')).toBe(true)
   })
 
-  it('reports the unattached state honestly — a real "no leader connected" reading, not a faked one', () => {
+  it('reports the unattached state honestly — a real "no leader connected" reading, not a faked one', async () => {
+    await browser.waitForRole('heading', 'Connection status')
     expect(browser.hasRole('heading', 'Connection status')).toBe(true)
     expect(browser.hasText('The MCP service is not running for this project, so there is no event delivery to report.')).toBe(true)
     expect(browser.hasRole('button', 'Refresh')).toBe(true)
@@ -107,6 +108,7 @@ describe('guide 13 — MCP project leader', () => {
     expect(health.capabilities.automations).toBe(false)
     expect(health.capabilities.followups).toBe(false)
 
+    await browser.waitForRole('heading', 'What the leader can do')
     expect(browser.hasRole('heading', 'What the leader can do')).toBe(true)
     expect(browser.hasText('GitHub automations')).toBe(true)
     expect(browser.hasText('Why: GitHub automations are off on this xezar.')).toBe(true)
@@ -114,7 +116,8 @@ describe('guide 13 — MCP project leader', () => {
     expect(browser.hasText('Why: The follow-up inbox is off for this workspace.')).toBe(true)
   })
 
-  it('"Shared limits" repeats the same workspace resource defaults guide 11 verifies', () => {
+  it('"Shared limits" repeats the same workspace resource defaults guide 11 verifies', async () => {
+    await browser.waitForRole('heading', 'Shared limits')
     expect(browser.hasRole('heading', 'Shared limits')).toBe(true)
     expect(browser.hasText('2 across all projects')).toBe(true)
     expect(browser.hasText('8192 MiB')).toBe(true)
