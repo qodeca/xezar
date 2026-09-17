@@ -126,6 +126,7 @@ HTTP API.
 | Contract ↔ route shape agreement | typecheck | `contract-parity*.test.ts`, `typed-bodies.test.ts` – compile-time only | C (types), N (behaviour) |
 | MCP reference (`mcpReferenceRoutes`) | server unit | `server/mcp-reference-route.test.ts`, `server/mcp-reference-route.unavailable.test.ts` (see 10.5) | C |
 | MCP leader (`mcpLeaderRoutes`) | server unit | `server/mcp-leader-topic.test.ts`, `mcp/push-delivery.test.ts` | C |
+| Two-project product composition (registry, lazy contexts, route aliases, workspace cap, runs index, SSE stamping, disposal/re-add) wired together in one built cockpit | saved deterministic harness, not a unit suite | `scripts/multi-project-harness.mjs` (`npm run test:multi-project`), unit-level PID-ownership coverage at `test/unit/multi-project-harness.test.ts`; see `docs/testing/multi-project-harness.md` | C (composition), **P** for cross-project MCP — a project registered after boot never gets its own MCP socket today (issue #557); the harness proves MCP independence for the boot project only and reports B's session honestly rather than asserting a false pass |
 
 ### 3.3 Cockpit journeys (`packages/web/src/routes.tsx`)
 
