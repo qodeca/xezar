@@ -116,8 +116,8 @@ Form dialogs use a plain phrase, no question mark: "Commit changes", "Add agent 
 
 - Run status (`lib/attention.ts`) is lower case because the dot carries the emphasis: "needs you",
   "needs review", "running", "monitoring", "queued", "done", "failed", "scheduled", "cancelled".
-- Every other status label is sentence case: bucket headings "Pinned", "Needs you", "Working", "Recent",
-  "Archived"; reference labels "Draft", "Waiting for review", "Changes requested", "Checks running",
+- Every other status label is sentence case: the Tasks pages' "Active" and "Archived" tabs (the sidebar's
+  "Pinned", "Needs you", "Working" and "Recent" bucket headings went with its task list in #546); reference labels "Draft", "Waiting for review", "Changes requested", "Checks running",
   "Checks failing", "Ready to merge", "Merged", "Closed", "Merge conflicts" with lower-case hints
   ("CI is red on the latest commit"); connection states "Ready to connect", "Connected",
   "Disconnected — reconnecting".

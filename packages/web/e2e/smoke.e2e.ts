@@ -135,9 +135,10 @@ describe('cockpit app shell', () => {
     // The theme toggle lives in the footer.
     expect(browser.isVisible('[data-slot="sidebar-footer"] [data-slot="theme-toggle"]')).toBe(true)
 
-    // …on the footer's SECOND row, beside the gear — never stranded on a third line of its own
-    // (#702). Only a real layout engine can answer this: jsdom measures nothing, so the unit
-    // suite can pin the structure but not the geometry the 264px column actually produces.
+    // …on ONE row, beside the gear — never stranded on a line of its own (#702). The Search…
+    // launcher that owned a row above it is gone (#546): the palette opens from the keyboard.
+    // Only a real layout engine can answer this: jsdom measures nothing, so the unit suite can
+    // pin the structure but not the geometry the 264px column actually produces.
     const footerRows = browser.evaluate(`(() => {
       const footer = document.querySelector('[data-slot="sidebar-footer"]')
       // Centers, not tops: the gear (28px) and the toggle (30px) are different heights, and
@@ -148,27 +149,25 @@ describe('cockpit app shell', () => {
       }
       const center = (sel) => centerOf(footer.querySelector(sel))
       const controls = [
-        '[data-slot="command-palette-hint"]',
         '[data-slot="tools-menu-trigger"]',
         '[data-slot="version-chip"]',
         '[data-slot="global-settings-link"]',
         '[data-slot="theme-toggle"]',
       ]
       return {
-        search: center('[data-slot="command-palette-hint"]'),
         gear: center('[data-slot="global-settings-link"]'),
         theme: center('[data-slot="theme-toggle"]'),
         rowCount: new Set(
           [...footer.querySelectorAll(controls.join(','))].map((el) => Math.round(centerOf(el)))
         ).size,
+        search: [...footer.querySelectorAll('button')].filter((b) => /search/i.test(b.textContent)).length,
       }
-    })()`) as { search: number; gear: number; theme: number; rowCount: number }
+    })()`) as { gear: number; theme: number; rowCount: number; search: number }
 
-    // Row 1 is the search bar; row 2 carries the gear and the toggle on one shared centerline.
-    expect(footerRows.search).toBeLessThan(footerRows.gear)
     expect(Math.abs(footerRows.theme - footerRows.gear)).toBeLessThanOrEqual(1)
-    // Exactly two rows — every other footer control shares the controls row's centerline.
-    expect(footerRows.rowCount).toBe(2)
+    // Exactly one row — every footer control shares the gear's centerline — and no launcher.
+    expect(footerRows.rowCount).toBe(1)
+    expect(footerRows.search).toBe(0)
   })
 
   it('keeps the footer controls inside the 264px column even on a nightly-length version', () => {

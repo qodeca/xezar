@@ -24,7 +24,7 @@ import record from './fixtures/thread-run.record.json'
 
 const sessionId = `e2e-rhythm-${process.pid}`
 const RUN_ID: string = record.id
-/** A second run carrying a pull request, so the task table and the quick list paint a reference chip. */
+/** A second run carrying a pull request, so the task table paints a reference chip. */
 const REFERENCE_RUN_ID = '3b0c5e2a-4d1f-4c8e-9a7b-2f6d8e1c0a93'
 
 /** Roomy and Compact for real can give fractional pixels; allow for rounding. */
@@ -138,11 +138,9 @@ type Controls = Record<
   | 'newTask'
   | 'brandGap'
   | 'tableHeader'
-  | 'quickListPad'
   | 'toolRow'
   | 'pickerPill'
-  | 'tableReferenceChip'
-  | 'quickListReferenceChip',
+  | 'tableReferenceChip',
   number
 >
 
@@ -152,22 +150,13 @@ const CONTROLS: Controls = {
   newTask: 40,
   brandGap: 8,
   tableHeader: 40,
-  quickListPad: 8,
   toolRow: 32,
   pickerPill: 28,
   tableReferenceChip: 24,
-  quickListReferenceChip: 24,
 }
 const CHIP_FLOOR_PX = 24
 const FLOORED: ReadonlySet<keyof Controls> = new Set(['pickerPill', 'tableReferenceChip'])
-/**
- * Held at one height at every density. The quick-list chip's caller passes `h-auto`, so its
- * `h-6` never reaches the box and only the 24 px floor sizes it: 24 at Roomy as well, not 30.
- */
-const FIXED: ReadonlySet<keyof Controls> = new Set(['quickListReferenceChip'])
-
 function expectedControl(name: keyof Controls, value: number, scale: number): number {
-  if (FIXED.has(name)) return value
   return FLOORED.has(name) ? Math.max(value * scale, CHIP_FLOOR_PX) : value * scale
 }
 
@@ -183,12 +172,10 @@ function measureControls(): Controls {
       navRow: height(sidebar.querySelector('nav a')),
       newTask: height(sidebar.querySelector('a[href$="/new"]')),
       brandGap: parseFloat(style(sidebar.querySelector('[data-slot="sidebar-brand"]'))?.columnGap ?? '-1'),
-      quickListPad: parseFloat(style(sidebar.querySelector('[data-slot="task-row"] > a:not([data-slot])'))?.paddingTop ?? '-1'),
-      quickListReferenceChip: height(sidebar.querySelector('[data-slot="task-row"] [data-slot="pr-chip"]')),
       // The trigger's min-height, not its box: the box also holds the text line, which does not scale.
       toolRow: parseFloat(style(document.querySelector('[data-slot="tool-card"] > [data-slot="collapsible-trigger"]'))?.minHeight ?? '-1'),
     }
-  })()`) as Pick<Controls, 'navRow' | 'newTask' | 'brandGap' | 'quickListPad' | 'quickListReferenceChip' | 'toolRow'>
+  })()`) as Pick<Controls, 'navRow' | 'newTask' | 'brandGap' | 'toolRow'>
 
   browser.goto(`${baseUrl}/p/${bootProject}`)
   browser.waitForFunction(`document.querySelector('[data-route="tasks"] [data-slot="task-table-row"] [data-slot="pr-chip"]') !== null`)
@@ -290,7 +277,7 @@ describe('the pixels step 3b put back on the scale', () => {
     expectControls(measureControls(), 1)
   })
 
-  it('grows them to 125 % at Roomy, except the quick-list chip, which stays 24 px', () => {
+  it('grows them to 125 % at Roomy', () => {
     chooseDensity('roomy')
     try {
       expectControls(measureControls(), 1.25)

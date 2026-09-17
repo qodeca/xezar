@@ -16,7 +16,6 @@ import { PinToggle } from '@/components/pin-toggle'
 import { PromptTemplateMenu } from '@/components/prompt-template-menu'
 import { ReferenceChip } from '@/components/reference-chip'
 import { TabLink } from '@/components/tab-link'
-import { TaskQuickList } from '@/components/task-quick-list'
 import { resetToasts } from '@/components/ui/toaster'
 import { copyText } from '@/lib/clipboard-result'
 import { TASK_COLUMNS, TASK_TD_CLASS, TASK_TH_CLASS } from '@/lib/task-columns'
@@ -185,26 +184,6 @@ describe('Q06 / Q09 / Q24 phone targets on the remaining list controls', () => {
     )
     expect(classes(screen.getByRole('link', { name: 'Changes' }))).toEqual(expect.arrayContaining(PHONE_TARGET))
     expect(classes(screen.getByRole('textbox', { name: 'Task title' }))).toEqual(expect.arrayContaining(['min-h-tap', 'md:min-h-0']))
-  })
-
-  it('the quick list tabs, rows, group tile and compare link are 44 px in the phone drawer', () => {
-    render(
-      <MemoryRouter>
-        <TaskQuickList
-          runs={[run({ id: 'v1', groupId: 'g', variant: 'A' }), run({ id: 'v2', groupId: 'g', variant: 'B' }), run({ id: 'solo' })]}
-          view="active"
-          onViewChange={() => {}}
-          onTogglePin={() => {}}
-        />
-      </MemoryRouter>,
-    )
-    for (const tab of document.querySelectorAll('[data-slot="view-tab"]')) expect(classes(tab)).toEqual(expect.arrayContaining(['min-h-tap', 'md:min-h-0']))
-    expect(classes(document.querySelector('[data-slot="group-tile"]'))).toEqual(expect.arrayContaining(['min-h-tap', 'md:min-h-0']))
-    expect(classes(document.querySelector('[data-slot="group-compare"]'))).toEqual(expect.arrayContaining(PHONE_TARGET))
-    const row = document.querySelector('[data-slot="task-row"][data-run-id="solo"]')!
-    expect(classes(row.querySelector('a'))).toEqual(expect.arrayContaining(['min-h-tap', 'md:min-h-0']))
-    // Always shown in the drawer, whatever the pointer; the box is the pin's own 44 px.
-    expect(classes(row.querySelector('[data-slot="pin-toggle"]'))).toEqual(expect.arrayContaining(['max-md:opacity-100', 'min-w-tap']))
   })
 })
 

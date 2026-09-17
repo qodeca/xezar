@@ -16,7 +16,7 @@ import record from './fixtures/thread-run.record.json'
  * this spec sees is the full pipe: store → SSE replay → reducer → grouping → tool cards →
  * Streamdown → the lazy Shiki singleton.
  *
- * Same boot-own-server doctrine as quick-list.e2e.ts: the run store reads `runs.json` once at
+ * Same boot-own-server doctrine as tasks-table.e2e.ts: the run store reads `runs.json` once at
  * startup, so the fixture must exist before boot; a terminal (`done`) status keeps `recover()`
  * from touching the run.
  */

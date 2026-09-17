@@ -513,8 +513,7 @@ describe('global tasks page', () => {
     })
 
     it('publishes the view to the shared filter context, so other surfaces agree', async () => {
-      // The context is what keeps this page, the per-project table and the sidebar quick-list
-      // answering one question. Here the URL is the authority and the context follows it.
+      // The context is what keeps this page and the per-project table answering one question. Here the URL is the authority and the context follows it.
       stubFetch()
       render(
         <QueryClientProvider client={createQueryClient()}>

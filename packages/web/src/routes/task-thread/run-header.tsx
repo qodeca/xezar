@@ -146,7 +146,7 @@ export function RunHeader({
   }
 
   // The queue position a parked run shows in its pill ("queued #2"). Reads the shared runs-list
-  // query — already warm from the sidebar quick-list — because position is a property of the
+  // query — already warm from the shell's Tasks badge — because position is a property of the
   // whole queue, not of this record.
   const runs = useRuns()
   const health = useHealth()
