@@ -109,9 +109,21 @@ describe('guide 13 — MCP project leader', () => {
     // question). #579 rounds 1-2 only ever saw the undifferentiated failure.
     await browser.waitForRole('heading', 'Connection status')
     await browser.waitForRoleGone('status', 'Loading the leader connection…', { attempts: 80 })
-    await browser.waitForText(
-      'The MCP service is not running for this project, so there is no event delivery to report.',
-    )
+    try {
+      await browser.waitForText(
+        'The MCP service is not running for this project, so there is no event delivery to report.',
+      )
+    } catch (cause) {
+      // #579 round 2 evidence: the loading indicator DOES clear (the wait above passes), so the
+      // panel settles into some OTHER state within budget — not a hang. Surface what that state
+      // actually is (the panel's own text) rather than leaving a bare "never appeared", since a
+      // fresh dedicated fixture server registering a leader for this project would itself be a
+      // real, reportable bug and not yet explained by reading the code alone.
+      throw new Error(
+        `xezar e2e: unattached-state text missing; page text was: ${browser.bodyText().slice(0, 2000)}`,
+        { cause },
+      )
+    }
     expect(browser.hasRole('button', 'Refresh')).toBe(true)
   })
 
