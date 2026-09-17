@@ -147,6 +147,7 @@ HTTP API.
 | Inbox | cockpit unit + browser e2e | `routes/inbox.test.tsx:224`; `e2e/inbox.e2e.ts:96` | C |
 | Workflows builder | cockpit unit + browser e2e | `routes/workflows/workflows.test.tsx:118`; `e2e/workflows.e2e.ts:89` | C |
 | Settings, project and global scopes | cockpit unit + browser e2e | `routes/settings/settings.test.tsx:164,271` | C |
+| Guide 02 flow contract (compose, mode toggles, queueing, thread output, Finish/review, Changes/Files/Commits, Draft PR/Accept hand-off) | browser e2e, one file, semantic role/label/text locators only | `e2e/guide-browser.ts` (the shared helper); `e2e/guide-02-running-a-task.e2e.ts` — its own header names the one guide-02 flow (opening a real draft PR) this file does not honestly dry-run test and the lower tests that cover it instead | C |
 | Project scope, `/p/default` alias, legacy redirects, 404 | cockpit unit | `routes.test.tsx:271,636-731` | C |
 | Bookmarklet grammar, launch key never in the DOM | cockpit unit | `routes.test.tsx:763-767` | C |
 | SSE cache patching, multi-project scoping, reconnect | cockpit unit | `api/global-events.test.tsx:252,373,652,724,746` | C |
