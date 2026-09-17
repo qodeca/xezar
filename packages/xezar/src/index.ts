@@ -53,6 +53,7 @@ import {
   rememberLastListen,
 } from './workspace/port-memory.ts';
 import { entry as activityEntry, startTerminalActivity, type TerminalActivity } from './terminal/index.ts';
+import { recoverAndReport } from './terminal/recovery.ts';
 import { formatDuration, formatTokens, glyphsFor } from './terminal/format.ts';
 import { runMigrations } from './workspace/migrations.ts';
 import { registerProject, shouldRegisterProject } from './workspace/projects.ts';
@@ -372,15 +373,15 @@ async function serveCommand(
     }
   }
 
-  const recovered = store
-    .listRuns()
-    .filter((r) => ['queued', 'waiting', 'running'].includes(r.status)).length;
-  await recoverWithProviderRuntimeAuthObservation(
-    store,
-    () => manager.recover(),
-    providerRuntimeAuth,
+  await recoverAndReport(
+    () => store.listRuns(),
+    () => recoverWithProviderRuntimeAuthObservation(
+      store,
+      () => manager.recover(),
+      providerRuntimeAuth,
+    ),
+    (count, settled) => terminal.reportRecovery(count, settled),
   );
-  if (recovered > 0 && !settings.quiet) console.log(`  recovered ${recovered} run(s) from the previous session`);
   // Recovery is over: from here a status change is news, and a `failed` really is an outcome.
   terminal.endRecovery();
 

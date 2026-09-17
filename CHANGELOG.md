@@ -1,3 +1,9 @@
+# Unreleased
+
+## 💥 Breaking
+
+- 💥 **Start-up recovery now says when it deliberately settled previous-session tasks.** (#467) One aggregate stderr activity entry reports `task.recovered count=<all candidates> settled=<waiting tasks settled>` before the cockpit-ready event, while seeded per-task outcomes and transient restart failures stay suppressed and session totals stay unchanged. Wide and 40-column terminals say “N tasks from the previous session were settled at start-up”; plain output carries only `event=task.recovered count=… settled=…`; `--quiet` omits it. The old stdout line `recovered N run(s) from the previous session` is removed, so scripts that consumed it must read stderr's plain output and select `event=task.recovered`. No state, exit code, API, MCP event or recovery behavior changed.
+
 # 0.15.0 (2026-09-17)
 
 ## Highlights

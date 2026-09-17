@@ -349,11 +349,17 @@ a flag beats both.
 its banner and then went almost silent. It now reports what the projects in it are doing, and all of
 that is **new output on stderr**. The rules a script may rely on:
 
-- **stdout is unchanged, byte for byte.** The banner, the agent and tool checks and the
+- **The boot banner on stdout is unchanged, byte for byte.** The banner, the agent and tool checks and the
   `cockpit → <url>` line are exactly what they were, in the same order, on the same stream, so
   `xezar serve | tee`, a wrapper that greps the URL, and a log file that captures only stdout all
   keep working. `run`'s transcript, `init`, `projects`, `--help` and `--version` are untouched, and
   `xezar mcp` still writes JSON-RPC to stdout and nothing else under every one of the new flags.
+  One pre-0.16 informational line is deliberately removed from stdout: `recovered N run(s) from
+  the previous session`. Recovery is now one stderr activity entry, `task.recovered`, with
+  `count` and `settled`; human output says `task`, never `run(s)`, and distinguishes tasks
+  deliberately settled at start-up from tasks merely resumed. A script that consumed the old
+  line must read stderr's plain output and select `event=task.recovered`. This is part of the
+  owner-approved 0.16.0 minor break for #467; no state, exit code or recovery behavior changed.
 - **Off a terminal there is not one escape byte.** A file, a pipe, a non-empty `CI` or `TERM=dumb`
   gets append-only plain lines — `<ISO time> level=<level> …` — or uncoloured human lines when
   `--output lines` is explicit, and no cursor movement, even with `--color always`, *even when

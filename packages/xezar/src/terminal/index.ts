@@ -5,9 +5,9 @@
  * that produce events — the boot store, the project-context map and the HTTP boundary — and
  * calls `stop()` on the way out. Nothing else in the CLI knows the renderer exists.
  *
- * Everything this builds is on **stderr**. The `serve` stdout contract is untouched: the boot
- * banner, the version, the backend checks and the `cockpit → <url>` line are exactly the bytes
- * they were, so `xez | tee` and every script that reads the URL keep working
+ * Everything this builds is on **stderr**. The boot banner, version, backend checks and the
+ * `cockpit → <url>` stdout line remain exactly the bytes they were, so `xez | tee` and every
+ * script that reads the URL keep working
  * (`open-questions.md` Q-11). That also means a person piping stdout still sees the activity on
  * their screen, which is the whole reason the split is that way round.
  */
@@ -60,6 +60,8 @@ export interface TerminalActivity {
   startDisplay(): void;
   /** Boot recovery is over; everything from here prints normally. */
   endRecovery(): void;
+  /** Report the previous session once, without turning historical settlements into outcomes. */
+  reportRecovery(count: number, settled: number): void;
   /** One activity line, from a caller that is not a store (MCP, registry, ports). */
   log(entry: ActivityEntry): void;
   /**
@@ -229,6 +231,28 @@ export function startTerminalActivity(options: TerminalActivityOptions): Termina
     },
     endRecovery: () => {
       bootSource.endRecovery();
+    },
+    reportRecovery: (count, settled) => {
+      if (count <= 0) return;
+      const singular = settled === 1;
+      emit(
+        entry({
+          level: 'info',
+          subject: 'xezar',
+          message:
+            settled > 0
+              ? `${settled} ${singular ? 'task' : 'tasks'} from the previous session`
+              : `recovered ${count} ${count === 1 ? 'task' : 'tasks'} from the previous session`,
+          ...(settled > 0
+            ? { continuation: [`${singular ? 'was' : 'were'} settled at start-up`] }
+            : {}),
+          event: 'task.recovered',
+          fields: [
+            ['count', count],
+            ['settled', settled],
+          ],
+        }),
+      );
     },
     startDisplay: () => {
       if (!options.settings.quiet && isCapableTty(facts) && !facts.ci) renderer.startDisplay();
