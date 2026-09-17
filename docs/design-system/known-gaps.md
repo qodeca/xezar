@@ -8,8 +8,8 @@ to-do list: an entry becomes a `design-debt` issue on the triggers [CONTRIBUTING
 names, and a fix arrives as its own change with the entry deleted.
 
 Ids are never reused: a deleted entry retires its number, so a new entry takes the next number after the
-highest ever used. G-01..G-23, G-26..G-28 and G-30..G-33 are live, G-24, G-25 and G-29 are retired, and
-the next free id is G-34.
+highest ever used. G-01..G-23, G-26..G-28 and G-30..G-35 are live, G-24, G-25 and G-29 are retired, and
+the next free id is G-36.
 
 Counts are non-test files or occurrences in `packages/web/src`. Corrected counts in G-02, G-06,
 G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the original inventory date.
@@ -197,9 +197,9 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Rule**: new columns take a fixed width; the title is the column that grows.
 - **Fix**: let the Task column absorb the free width (fixed table layout, or no `max-w-0` on the title cell) and re-check the fold defaults at 1280. Seen in the 0.15.0 docs captures (#448, design review NB-7).
 
-### G-28 The version chip truncates at Roomy density
+### G-28 The version chip truncates at Roomy density and in the phone drawer
 
-- **Differs**: at Roomy the sidebar footer leaves the version chip too little room, and its `truncate` span (`components/app-shell.tsx:750`) reads `v0.1…`. Comfortable and Compact show the whole version.
+- **Differs**: the sidebar footer leaves the version chip too little room, and its `truncate` span (`components/app-shell.tsx:750`) reads `v0.1…`. In the desktop sidebar that happens at Roomy, while Comfortable and Compact show the whole version. In the phone drawer it also happens at Comfortable (375 px, both themes; #559 design review NB-3). Compact in the phone drawer was not measured.
 - **Rule**: a version number is never truncated.
 - **Fix**: give the chip `shrink-0` and let the footer's other controls give way first. Seen in the 0.15.0 docs captures (#448, design review NB-9).
 
@@ -224,6 +224,18 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Differs**: on a phone, one or two frames after the composer's model pill (`components/engine-pills.tsx:204`) stops being disabled, the footer reflows. Measured at 375 px: before B4 the pill moves 28 px sideways; with the B4 44 px phone pills it wraps to the next line (from y 218 to y 266). A click aimed at the first position then misses. A person cannot tap that fast (the move is under 25 ms), but a test can. Pre-existing; B4's larger pills turn the shift into a wrap. `e2e/design-debt-b1.e2e.ts` now waits until the pill holds still.
 - **Rule**: a control is in its final place when it becomes enabled.
 - **Fix**: reserve the footer's space before the late content arrives, or enable the pill in the same render. Owner: B5 (composer) or B8 reconciliation of #453.
+
+### G-34 The Tools trigger in the phone drawer is under the phone target
+
+- **Differs**: in the phone drawer footer the Tools trigger (`components/tools-menu.tsx:89`, `px-2 py-0.5 text-[11px]`) is a 76×23 px target, measured at 375 px in both themes, single and multi-project. Every other control in the drawer is 44 px. Pre-existing on `main`; after #546 made the drawer navigation-only it is the one undersized control left in it. Recorded 2026-09-17 from the #559 design review (NB-2).
+- **Rule**: a touch target on a phone is 44 px (`patterns.md` §6, `verification.md` § Phone targets and chip floors).
+- **Fix**: give the trigger a phone tap floor such as `min-h-tap` (released at `md:`), as New task has, and re-check the footer row width together with G-28.
+
+### G-35 The command palette has no visible hint and no touch path
+
+- **Differs**: since #546 removed the sidebar's `Search…` launcher, no rendered text in the cockpit shows `⌘K` or `Ctrl+K`. The palette (`components/command-palette.tsx`) opens from the keyboard only, so people cannot discover it, and a touch-only phone cannot open it at all. Nothing is lost: every palette destination stays reachable another way – views through the nav, projects through the project groups and Add project, tasks through the Tasks pages, Toggle theme through the footer, and skills through Skills. The owner accepted losing the click path. Recorded 2026-09-17 from the #559 design review (NB-1).
+- **Rule**: document ⌘K/Ctrl+K where keyboard help is shown. The cockpit has no keyboard-help surface yet, so there is no place for the hint.
+- **Fix**: when a keyboard-help surface exists, list ⌘K/Ctrl+K there. Bringing back a clickable launcher is not the fix.
 
 ## Comment vs code
 

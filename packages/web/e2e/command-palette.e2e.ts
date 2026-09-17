@@ -59,24 +59,34 @@ describe('command palette', () => {
 
   // #546: the sidebar's clickable `Search…` launcher is gone, so the keyboard is the only way in —
   // and closing must hand focus back to a control that still exists, never to the removed hint.
+  //
+  // Two things this case must not depend on (#559 review): a bare `/` restores the page the
+  // previous case left (Workflows, whose `<aside>` lists "Add xezar-research to the flow"), so the
+  // page is named explicitly; and the launcher check reads the SIDEBAR's controls by accessible
+  // name, not every `<aside>` button whose text merely contains "search".
   it('has no sidebar launcher, closes on Escape and returns focus to where it was', () => {
-    browser.goto(baseUrl + '/')
-    browser.waitForFunction(`document.querySelector('aside nav[aria-label="Main"]') !== null`)
+    const sidebar = `document.querySelector('nav[aria-label="Main"]')?.closest('aside')`
+    const gitLink = `${sidebar}?.querySelector('nav[aria-label="Main"] a[href$="/git"]')`
+    // Open means a dialog whose accessible name is "Command palette" is in the document.
+    const paletteOpen = `[...document.querySelectorAll('[role="dialog"]')].some((d) => document.getElementById(d.getAttribute('aria-labelledby') ?? '')?.textContent === 'Command palette')`
+
+    browser.goto(`${baseUrl}/p/${bootProject}/`)
+    browser.waitForFunction(`${gitLink} != null`)
     expect(
       browser.evaluate(
-        `[...document.querySelectorAll('aside button')].filter((b) => /search/i.test(b.textContent + (b.getAttribute('aria-label') ?? ''))).length`,
+        `[...${sidebar}.querySelectorAll('button, a, [role="button"]')].map((c) => (c.getAttribute('aria-label') ?? c.textContent ?? '').trim()).filter((name) => /^search\\b/i.test(name))`,
       ),
-    ).toBe(0)
+    ).toEqual([])
 
-    browser.evaluate(`document.querySelector('aside nav[aria-label="Main"] a[href$="/git"]').focus()`)
+    browser.evaluate(`${gitLink}.focus()`)
     browser.press('Control+k')
-    browser.waitForFunction(`document.querySelector('${ROOT}') !== null`)
-    expect(browser.isVisible(INPUT)).toBe(true)
+    browser.waitForFunction(paletteOpen)
+    browser.waitForFunction(`document.activeElement?.getAttribute('role') === 'combobox'`)
 
     browser.press('Escape')
-    browser.waitForFunction(`document.querySelector('${ROOT}') === null`)
-    expect(browser.count(ROOT)).toBe(0)
-    browser.waitForFunction(`document.activeElement?.matches('aside nav[aria-label="Main"] a[href$="/git"]') === true`)
+    browser.waitForFunction(`!(${paletteOpen})`)
+    expect(browser.evaluate(paletteOpen)).toBe(false)
+    browser.waitForFunction(`document.activeElement === ${gitLink}`)
   })
 
   it('does not open while typing in a page input', () => {
