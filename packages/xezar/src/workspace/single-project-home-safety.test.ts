@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process';
+import { spawnSync, type SpawnSyncReturns } from 'node:child_process';
 import {
   chmodSync,
   mkdirSync,
@@ -97,7 +97,7 @@ describe('single-project mode never opens the real xezar home (AC-11)', () => {
       config.resources.maxParallel = 7;
     });
     await mergeWriteWorkspaceUiState((state) => {
-      state.appearance = { theme: 'dark' };
+      state.appearance = { density: 'compact' };
     });
     await mergeWriteAgentAccounts((store) => {
       store.defaults = { claude: 'second-login' };
@@ -110,7 +110,7 @@ describe('single-project mode never opens the real xezar home (AC-11)', () => {
       projects: [{ root: realpathSync(project) }],
     });
     expect(JSON.parse(readFileSync(join(stateDir, 'workspace-ui.json'), 'utf8'))).toMatchObject({
-      appearance: { theme: 'dark' },
+      appearance: { density: 'compact' },
     });
     expect(JSON.parse(readFileSync(join(stateDir, 'agent-accounts.json'), 'utf8'))).toMatchObject({
       defaults: { claude: 'second-login' },
@@ -154,7 +154,6 @@ describe('single-project mode never opens the real xezar home (AC-11)', () => {
   it('boots the real CLI against a read-only home without touching it (subprocess, no VITEST guard)', () => {
     const before = sentinelState();
     const cliEntry = fileURLToPath(new URL('../index.ts', import.meta.url));
-    const repoRoot = fileURLToPath(new URL('../../../..', import.meta.url));
     const env: NodeJS.ProcessEnv = { ...process.env, HOME: fakeHome };
     delete env.XEZ_HOME;
     // Without this the in-process write guard would refuse a leaked write
@@ -167,7 +166,7 @@ describe('single-project mode never opens the real xezar home (AC-11)', () => {
     // directory a xezar task run inherits exceeds the ~104-byte socket-path
     // limit (EINVAL). The loader form runs the CLI in THIS process's child and
     // needs no socket.
-    const runCli = (...args: string[]): ReturnType<typeof spawnSync> =>
+    const runCli = (...args: string[]): SpawnSyncReturns<string> =>
       spawnSync(process.execPath, ['--import', 'tsx', cliEntry, ...args], { cwd: project, env, encoding: 'utf8' });
 
     // `projects` opens no port, so it is the cheapest command that boots the
