@@ -45,6 +45,15 @@ export function readTestEnv(): EnvDescriptor {
 }
 
 /**
+ * A running xezar task's own control-plane env vars. A spec-owned server or MCP bridge that
+ * inherits them (rather than its own per-run values) writes mock notes into the CALLING task's
+ * real handoff/follow-up files instead of a fixture's — the #554 leak. `fixtureServeEnv` strips
+ * them from every fixture-owned process; `capture/cockpit.ts` reuses this same list rather than
+ * hand-rolling a second copy.
+ */
+export const TASK_CONTROL_ENV_VARS = ['XEZ_HANDOFF_FILE', 'XEZ_TODOS_FILE', 'XEZ_TASK_ID'] as const
+
+/**
  * The environment for a spec-owned `xezar serve` over a throwaway `dataRoot`.
  *
  * `XEZ_DRY_RUN` is why these boots need no network and no agent login. `XEZ_HOME` is why they
@@ -62,7 +71,7 @@ export function fixtureServeEnv(
   dataRoot: string,
   extra: Record<string, string> = {},
 ): NodeJS.ProcessEnv {
-  return {
+  const env: NodeJS.ProcessEnv = {
     ...process.env,
     // One line on purpose: the `fixture-serve-must-pin-xez-home` design guardian reads these
     // two together, and a XEZ_DRY_RUN without XEZ_HOME beside it is exactly the mistake it
@@ -77,6 +86,8 @@ export function fixtureServeEnv(
     XEZ_SKILLS_AUTO_UPDATE: '0',
     ...extra,
   }
+  for (const name of TASK_CONTROL_ENV_VARS) delete env[name]
+  return env
 }
 
 /**
