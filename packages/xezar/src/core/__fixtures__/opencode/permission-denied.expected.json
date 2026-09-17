@@ -1,0 +1,50 @@
+[
+  {
+    "type": "session.started",
+    "sessionId": "ses_01J8ZE00MAIN",
+    "backend": "opencode"
+  },
+  {
+    "type": "turn.started",
+    "turnId": "turn_1"
+  },
+  {
+    "type": "session.error",
+    "message": "opencode: denied permission 'external_directory' for /etc/xezar-outside/* — outside this run's allowed directories",
+    "fatal": false
+  },
+  {
+    "type": "session.error",
+    "message": "opencode: denied permission 'webfetch' for https://evil.example/x — xezar answers only 'external_directory' asks inside this run's directories and rejects every other permission",
+    "fatal": false
+  },
+  {
+    "type": "item.started",
+    "item": {
+      "kind": "message",
+      "id": "prt_01J8ZE84TXT1",
+      "role": "assistant",
+      "text": ""
+    }
+  },
+  {
+    "type": "item.delta",
+    "itemId": "prt_01J8ZE84TXT1",
+    "field": "text",
+    "delta": "Skipping the denied paths."
+  },
+  {
+    "type": "item.completed",
+    "item": {
+      "kind": "message",
+      "id": "prt_01J8ZE84TXT1",
+      "role": "assistant",
+      "text": "Skipping the denied paths."
+    }
+  },
+  {
+    "type": "turn.completed",
+    "turnId": "turn_1",
+    "stopReason": "end_turn"
+  }
+]

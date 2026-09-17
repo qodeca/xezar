@@ -45,7 +45,7 @@ Workflow agent steps accept `allowedTools` and `bashAllowlist`. Without override
 | --- | --- |
 | Claude Code | Passes `allowedTools` to the CLI. A non-empty `bashAllowlist` replaces unrestricted Bash with allowed command prefixes. Tools requiring approval are denied by default; `XEZ_APPROVAL_GATE=1` selects Claude's `acceptEdits` approval mode. |
 | Codex | Ignores the per-tool allowlist. Uses full access with approvals disabled by default. `XEZ_CODEX_NETWORK=0` selects a network-blocked, workspace-write sandbox. |
-| OpenCode | Ignores the per-tool allowlist. A permission request for a path outside the run's own directories (its worktree, its run/temp files) is answered automatically: allowed if it resolves inside those directories, denied otherwise, with the denial recorded in the transcript. |
+| OpenCode | Ignores the per-tool allowlist. Permission requests are answered automatically and fail closed. A request to reach a directory is allowed once when the directory is inside the run's own directories (its worktree, its run and temporary files). Every other request is denied – a directory outside them, a web fetch, a shell command, a repeated-call warning – and the denial is shown in the transcript. If the agent keeps asking for the same denied thing three times in a row, or collects 20 denials in one session, the run stops with a named error. |
 | pi | Maps supported tool names to its `--tools` list. A non-empty `bashAllowlist` disables Bash entirely because pi cannot enforce command-prefix restrictions. |
 
 ## To make a project MCP server available to Codex

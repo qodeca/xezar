@@ -56,11 +56,21 @@
 //                                    answering the prompt POST — the real
 //                                    server blocks the tool call (and the
 //                                    response) until `POST
-//                                    /session/:id/permissions/:id` replies.
+//                                    /permission/:requestID/reply` replies.
 //                                    Before #578 nothing ever posted that
 //                                    reply, so this is the same indefinite
 //                                    hang as MOCK_OPENCODE_NEVER_ANSWER_PROMPT
-//                                    unless the client answers the ask.
+//                                    unless the client answers the ask. Both
+//                                    reply routes validate their body the way
+//                                    live 1.18.31 does: `permission.reply`
+//                                    wants `{reply}`, the deprecated
+//                                    `permission.respond` wants `{response}`;
+//                                    a wrong shape is a 400 `BadRequest`, an
+//                                    unknown id a 404 `PermissionNotFoundError`.
+//   MOCK_OPENCODE_PERMISSION_KIND=<name>  the ask's `permission`
+//                                    (default `external_directory`).
+//   MOCK_OPENCODE_PERMISSION_PATTERNS=<json array>  the ask's `patterns`
+//                                    (default `["/etc/xezar-test-outside/secret"]`).
 //   MOCK_OPENCODE_PERMISSION_REPLY_LOG=<path>  append `<requestId> <body>`
 //                                    for every permission reply received.
 //   MOCK_OPENCODE_SIGNAL_LOG=<path>  append every stop signal actually
@@ -107,11 +117,36 @@ const asyncPrompt = process.env.MOCK_OPENCODE_ASYNC_PROMPT === '1';
 const neverAnswerPrompt = process.env.MOCK_OPENCODE_NEVER_ANSWER_PROMPT === '1';
 const permissionAsk = process.env.MOCK_OPENCODE_PERMISSION_ASK === '1';
 const permissionReplyLog = process.env.MOCK_OPENCODE_PERMISSION_REPLY_LOG;
+const permissionKind = process.env.MOCK_OPENCODE_PERMISSION_KIND || 'external_directory';
+const permissionPatterns = process.env.MOCK_OPENCODE_PERMISSION_PATTERNS
+  ? JSON.parse(process.env.MOCK_OPENCODE_PERMISSION_PATTERNS)
+  : ['/etc/xezar-test-outside/secret'];
 const signalLog = process.env.MOCK_OPENCODE_SIGNAL_LOG;
 
 const SESSION_ID = 'ses_mock_1';
 const MESSAGE_ID = 'msg_mock_1';
 const PERMISSION_ID = 'per_mock_1';
+const PERMISSION_REPLIES = ['once', 'always', 'reject'];
+
+/** Validate a permission reply body the way live `opencode serve` 1.18.31
+ *  does (probed 2026-09-17): the named key must be present and one of the
+ *  three replies. Returns the 400 body, or `null` when the body is accepted. */
+const permissionBodyError = (body, key) => {
+  let parsed;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    parsed = undefined;
+  }
+  const payload = (message) => ({ name: 'BadRequest', data: { message, kind: 'Payload' } });
+  if (parsed === null || typeof parsed !== 'object' || !(key in parsed)) {
+    return payload(`Missing key\n  at ["${key}"]`);
+  }
+  if (!PERMISSION_REPLIES.includes(parsed[key])) {
+    return payload(`Expected "once" | "always" | "reject", got ${JSON.stringify(parsed[key])}\n  at ["${key}"]`);
+  }
+  return null;
+};
 /** The blocking `/message` response, held open until the permission ask it
  *  published is answered — same shape the real server's tool-call block
  *  takes on that same socket. */
@@ -415,8 +450,8 @@ const server = createServer((req, res) => {
         properties: {
           id: PERMISSION_ID,
           sessionID: SESSION_ID,
-          permission: 'external_directory',
-          patterns: ['/etc/xezar-test-outside/secret'],
+          permission: permissionKind,
+          patterns: permissionPatterns,
           metadata: {},
           always: [],
           tool: { messageID: MESSAGE_ID, callID: 'call_mock_perm' },
@@ -424,30 +459,53 @@ const server = createServer((req, res) => {
       });
       return;
     }
-    if (req.method === 'POST' && url === `/session/${SESSION_ID}/permissions/${PERMISSION_ID}`) {
-      if (permissionReplyLog) appendFileSync(permissionReplyLog, `${PERMISSION_ID} ${body}\n`);
+    const permissionRoute =
+      req.method === 'POST'
+        ? /^\/permission\/([^/]+)\/reply$/.exec(url) ??
+          new RegExp(`^/session/${SESSION_ID}/permissions/([^/]+)$`).exec(url)
+        : null;
+    if (permissionRoute) {
+      const requestId = decodeURIComponent(permissionRoute[1]);
+      const key = url.startsWith('/permission/') ? 'reply' : 'response';
+      if (permissionReplyLog) appendFileSync(permissionReplyLog, `${requestId} ${body}\n`);
+      const invalid = permissionBodyError(body, key);
+      if (invalid) {
+        res.writeHead(400, { 'content-type': 'application/json' });
+        res.end(JSON.stringify(invalid));
+        return;
+      }
+      if (requestId !== PERMISSION_ID || !pendingPermissionRes) {
+        res.writeHead(404, { 'content-type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            _tag: 'PermissionNotFoundError',
+            requestID: requestId,
+            message: `Permission request not found: ${requestId}`,
+          }),
+        );
+        return;
+      }
+      const reply = JSON.parse(body)[key];
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end('true');
-      if (pendingPermissionRes) {
-        const held = pendingPermissionRes;
-        pendingPermissionRes = null;
-        send({
-          type: 'message.part.updated',
-          properties: {
-            part: {
-              id: 'prt_mock_perm',
-              messageID: MESSAGE_ID,
-              sessionID: SESSION_ID,
-              type: 'text',
-              text: 'Denied — skipping that path.',
-              time: { start: 1760000000500, end: 1760000000600 },
-            },
+      const held = pendingPermissionRes;
+      pendingPermissionRes = null;
+      send({
+        type: 'message.part.updated',
+        properties: {
+          part: {
+            id: 'prt_mock_perm',
+            messageID: MESSAGE_ID,
+            sessionID: SESSION_ID,
+            type: 'text',
+            text: `Permission answered: ${reply}.`,
+            time: { start: 1760000000500, end: 1760000000600 },
           },
-        });
-        held.writeHead(200, { 'content-type': 'application/json' });
-        held.end(JSON.stringify({ info: info({}), parts: [] }));
-        setTimeout(() => send({ type: 'session.idle', properties: { sessionID: SESSION_ID } }), 20);
-      }
+        },
+      });
+      held.writeHead(200, { 'content-type': 'application/json' });
+      held.end(JSON.stringify({ info: info({}), parts: [] }));
+      setTimeout(() => send({ type: 'session.idle', properties: { sessionID: SESSION_ID } }), 20);
       return;
     }
     if (req.method === 'POST' && url === `/session/${SESSION_ID}/message`) {

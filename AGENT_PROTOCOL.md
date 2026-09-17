@@ -168,16 +168,26 @@ Notable fields (full doc-comments in the source):
   outside the session directory — `$XEZ_HANDOFF_FILE`, pasted attachments,
   the run's own NDJSON dir) and `doom_loop` (repeated identical calls) to
   `ask`, publishing `permission.asked` on the SSE bus and blocking the tool
-  call until `POST /session/:id/permissions/:requestId` answers it. Before
-  #578 nothing read that event, so the ask sat forever and the run died on
-  the generic 30-minute step timeout with no named cause. The runner now
-  answers every ask as soon as it arrives — `once` when every path in the
-  ask resolves inside `spec.cwd`, `spec.additionalDirectories` or the OS temp
-  dir, `reject` otherwise, logged as a `note` — and fails the session with a
-  named error (not the generic timeout) when it cannot answer at all, or when
-  the same ask is denied `MAX_REPEATED_PERMISSION_DENIAL` times running or
-  `MAX_PERMISSION_DENIALS` times in total (`opencode-server-runner.ts`,
-  `handlePermissionAsked`). Configurable restrictive modes are
+  call until the ask is answered. Before #578 nothing read that event, so the
+  ask sat forever and the run died on the generic 30-minute step timeout with
+  no named cause. The runner now answers every ask as soon as it arrives, on
+  `POST /permission/:requestID/reply` with `{"reply": "once"|"reject"}`
+  (`permission.reply` in the live 1.18.31 OpenAPI; the deprecated
+  `POST /session/:id/permissions/:id` wants `{"response"}` instead and
+  answers `{"reply"}` with 400). The policy is fail-closed
+  (`opencode-permissions.ts`): `once` only for an `external_directory` ask
+  whose every pattern is an absolute path — at most one trailing `/*` or
+  `/**` segment, no other wildcard, no `..` — that resolves, symlinks
+  included, inside `spec.cwd`, `spec.additionalDirectories` or the OS temp
+  dir; `reject` for every other ask and every other permission (`webfetch`,
+  `bash`, `doom_loop`, `read`, `edit`, …), never `always`. A denial is a v1
+  `note` plus a v2 non-fatal `session.error`, which does not mark the turn
+  errored. The session fails with a named error (not the generic timeout)
+  when a reply cannot be sent, when the same ask is denied
+  `MAX_REPEATED_PERMISSION_DENIAL` (3) times consecutively — an allowed ask
+  or a different denial resets that count — or after
+  `MAX_PERMISSION_DENIALS` (20) denials in total.
+  Configurable restrictive modes are
   specified by `2026-07-17-permission-modes` (pre-rename issue 475).
 - **Codex MCP isolation (#324):** before `thread/start` / `thread/resume` the
   Codex runner calls `config/read` for the run's cwd and passes a `config`

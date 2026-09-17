@@ -309,8 +309,8 @@ export interface UiPlanUpdatedEvent {
  * claude: `control_request can_use_tool`; codex: the per-item
  * `requestApproval` JSON-RPC requests; opencode: `permission.asked` /
  * `permission.replied` (the runner already answers these — see
- * `opencode-server-runner.ts`'s `handlePermissionAsked` — but reports the
- * outcome as a v1 `note`, not yet through this reserved v2 pair).
+ * `opencode-server-runner.ts`'s `handlePermissionAsked` — and reports a
+ * denial as a non-fatal `session.error`, not yet through this reserved pair).
  */
 export interface UiPermissionRequestedEvent {
   type: 'permission.requested';

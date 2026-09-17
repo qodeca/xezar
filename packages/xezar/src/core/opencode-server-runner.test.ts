@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import http from 'node:http';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -645,17 +645,16 @@ describe('the blocking fallback outlives the fetch transport wall (#153 AC 2)', 
  * real server never unblocked the tool call and the run only ended on the
  * generic 30-minute step timeout with no named cause. `MOCK_OPENCODE_PERMISSION_ASK`
  * reproduces the real server's blocking shape — the prompt POST is held open
- * until `POST /session/:id/permissions/:id` answers — so the SAME fixture is
- * the red/green proof: against the runner as it was, this is byte-identical
- * to `MOCK_OPENCODE_NEVER_ANSWER_PROMPT` above (nothing ever posts the reply);
- * against the fix, the runner answers immediately and the turn completes well
- * inside the bounded timeout.
+ * until `POST /permission/:requestID/reply` answers — and both reply routes
+ * refuse a wrong body with 400 exactly as live `opencode serve` 1.18.31 does,
+ * so a runner that sends the wrong route or body fails here with a named
+ * error instead of passing against a mock that accepts anything.
  */
-describe('a permission ask for a path outside the session directory (#578)', () => {
-  it('denies it, tells the cockpit why, and lets the turn complete', async () => {
+describe('a permission ask (#578)', () => {
+  async function answer(env: Record<string, string>): Promise<{ replies: string[]; v1: AgentEvent[]; v2: UiEvent[]; text: string }> {
     const replyLog = join(tmpDir, 'permission-replies.log');
-    const { session, pid, v1 } = start({
-      env: { MOCK_OPENCODE_PERMISSION_ASK: '1', MOCK_OPENCODE_PERMISSION_REPLY_LOG: replyLog },
+    const { session, pid, v1, v2 } = start({
+      env: { MOCK_OPENCODE_PERMISSION_ASK: '1', MOCK_OPENCODE_PERMISSION_REPLY_LOG: replyLog, ...env },
       // Bounded and short — before #578 this test would have to wait out the
       // real 30-minute default to observe the hang at all.
       timeoutMs: 5_000,
@@ -663,22 +662,53 @@ describe('a permission ask for a path outside the session directory (#578)', () 
     });
     try {
       const result = await session.result;
-
-      // Answered — not the generic timeout this fixture used to hit.
-      expect(v1.some((e) => e.type === 'error')).toBe(false);
-      expect(readFileSync(replyLog, 'utf8').trim().split('\n')).toEqual([
-        'per_mock_1 {"reply":"reject"}',
-      ]);
-      expect(v1).toContainEqual({
-        type: 'note',
-        message:
-          "opencode: denied permission 'external_directory' for /etc/xezar-test-outside/secret — outside this run's allowed directories",
-      });
-      expect(result.text).toContain('Denied — skipping that path.');
       expect(isAlive(pid)).toBe(false);
+      return { replies: readFileSync(replyLog, 'utf8').trim().split('\n'), v1, v2, text: result.text };
     } finally {
       session.interrupt();
     }
+  }
+
+  it('denies a path outside the run, tells the cockpit why in v1 and v2, and lets the turn complete', async () => {
+    const { replies, v1, v2, text } = await answer({});
+    const note =
+      "opencode: denied permission 'external_directory' for /etc/xezar-test-outside/secret — outside this run's allowed directories";
+
+    // Answered on the live route with the live body — not the generic timeout.
+    expect(v1.filter((e) => e.type === 'error')).toEqual([]);
+    expect(replies).toEqual(['per_mock_1 {"reply":"reject"}']);
+    expect(v1).toContainEqual({ type: 'note', message: note });
+    expect(v2).toContainEqual({ type: 'session.error', message: note, fatal: false });
+    // A denial is the model's to adapt to — the turn is not marked errored.
+    expect(v2).toContainEqual(expect.objectContaining({ type: 'turn.completed', stopReason: 'end_turn' }));
+    expect(text).toContain('Permission answered: reject.');
+  }, 30_000);
+
+  it('allows a directory ask inside the run, even when the ask names the symlink-resolved path', async () => {
+    // The test's temp dir sits under `os.tmpdir()`; on macOS that is
+    // `/var/folders/…` and the ask arrives as `/private/var/folders/…`.
+    const { replies, v1, v2, text } = await answer({
+      MOCK_OPENCODE_PERMISSION_PATTERNS: JSON.stringify([`${realpathSync.native(tmpDir)}/*`]),
+    });
+    expect(v1.filter((e) => e.type === 'error' || e.type === 'note')).toEqual([]);
+    expect(v2.filter((e) => e.type === 'session.error')).toEqual([]);
+    expect(replies).toEqual(['per_mock_1 {"reply":"once"}']);
+    expect(text).toContain('Permission answered: once.');
+  }, 30_000);
+
+  it('rejects a non-directory ask such as webfetch, whatever its pattern looks like', async () => {
+    const { replies, v1, text } = await answer({
+      MOCK_OPENCODE_PERMISSION_KIND: 'webfetch',
+      MOCK_OPENCODE_PERMISSION_PATTERNS: JSON.stringify(['https://evil.example/x']),
+    });
+    expect(v1.filter((e) => e.type === 'error')).toEqual([]);
+    expect(replies).toEqual(['per_mock_1 {"reply":"reject"}']);
+    expect(v1).toContainEqual({
+      type: 'note',
+      message:
+        "opencode: denied permission 'webfetch' for https://evil.example/x — xezar answers only 'external_directory' asks inside this run's directories and rejects every other permission",
+    });
+    expect(text).toContain('Permission answered: reject.');
   }, 30_000);
 });
 
