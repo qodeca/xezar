@@ -452,6 +452,25 @@ test('serve judge rejects request-only, wrong nonce, wrong cursor, pre-delivery,
   assert.equal(serveJudge([read(110), { ...ack(120), isError: true }], runId, 7, 100).verdict, 'waiting');
 });
 
+/**
+ * #532 G11 — the acceptance sequence's judge is the one piece every opt-in client leg (pi, Claude
+ * Code, Codex today; OpenCode when a live target is authorized — see the module comment) shares, so
+ * hardening it here hardens every leg without needing a fourth live process. This closes a gap the
+ * existing table above does not: every case there is a `leader_events` call with a wrong field, never
+ * a call the model made through a DIFFERENT tool that happens to carry the right-shaped arguments — an
+ * "unrelated model response" dressed up as the real one, which is exactly what the module comment
+ * says the acceptance sequence must reject.
+ * Named break: loosening `call.name === 'leader_events'` in `serveJudge`'s `events` filter to match by
+ * argument shape instead of by tool name (`toolCalls` already tags the real tool name per call, so
+ * this is a plausible "simplify the filter" mistake, not a hypothetical one).
+ */
+test('G11 serve judge never counts an ack-shaped call from a different tool as the leader’s acknowledgement', () => {
+  const runId = '0f3c9a1e-5b7d-4c2a-9e8f-1a2b3c4d5e6f';
+  const read = (at: number, cursor = 'c1'): ToolCall => ({ at, name: 'leader_events', args: { action: 'read' }, answeredAt: at + 1, structured: { nextCursor: cursor, events: [{ subject: { id: runId }, journalSeq: 7 }] } });
+  const decoy: ToolCall = { at: 120, name: 'not_leader_events', args: { action: 'ack', cursor: 'c1', operationId: `react-${runId}` }, answeredAt: 121, structured: { status: 'acked', ackedSeq: 7 } };
+  assert.equal(serveJudge([read(110), decoy], runId, 7, 100).verdict, 'waiting');
+});
+
 test('the tee reconstructs tool calls with their answers from a frame log', () => {
   const frames: TeeFrame[] = [
     { at: 1, dir: 'client', line: JSON.stringify({ jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'leader_events', arguments: { action: 'read' } } }) },

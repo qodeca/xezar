@@ -3,6 +3,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { DELIVERY_CLIENTS, deliveryHarness } from './leader-delivery.testkit.ts';
 import { withEventOrigin } from './event-catalog.ts';
 
+// #532 G12: the executable-completeness inventory assertion over this matrix (every variant here ×
+// client is a real fixture) lives beside it, in `gap-group-inventory.test.ts`.
+
 type Harness = Awaited<ReturnType<typeof deliveryHarness>>;
 const variants = [
   ...Object.keys(MCP_EVENT_KIND_CATEGORY), 'question.after-wait', 'gate.stage', 'gate.legacy', 'gate.routine-failure',
