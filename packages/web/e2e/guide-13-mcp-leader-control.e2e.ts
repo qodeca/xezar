@@ -109,20 +109,28 @@ describe('guide 13 — MCP project leader', () => {
     // question). #579 rounds 1-2 only ever saw the undifferentiated failure.
     await browser.waitForRole('heading', 'Connection status')
     await browser.waitForRoleGone('status', 'Loading the leader connection…', { attempts: 80 })
+    // #579 round 3: the loading indicator clearing means `useMcpLeader`'s query left `isPending`,
+    // not that it settled with data — a slow/loaded CI runner can flip it straight into
+    // `isError && !leader.data` (McpLeaderControl's "Could not load the leader connection." branch)
+    // on a first fetch, then resolve on react-query's background retry a few seconds later. Every
+    // other data-dependent read below in this same file already carries the `{ attempts: 80 }`
+    // (20s) CI-runner budget for exactly this reason (round 2 evidence); this read never got it.
     try {
       await browser.waitForText(
         'The MCP service is not running for this project, so there is no event delivery to report.',
+        { attempts: 80 },
       )
     } catch (cause) {
-      // #579 round 2 evidence: the loading indicator DOES clear (the wait above passes), so the
-      // panel settles into some OTHER state within budget — not a hang. Surface what that state
-      // actually is (the panel's own text) rather than leaving a bare "never appeared", since a
-      // fresh dedicated fixture server registering a leader for this project would itself be a
-      // real, reportable bug and not yet explained by reading the code alone.
-      throw new Error(
-        `xezar e2e: unattached-state text missing; page text was: ${browser.bodyText().slice(0, 2000)}`,
-        { cause },
-      )
+      // Anchor the capture on the "Connection status" section itself, not the top of the page:
+      // round 2's bare `bodyText().slice(0, 2000)` never reached this far down — the nav plus the
+      // four full "One-time setup" client sections above it already exceed 2000 characters, so
+      // every round-2 capture only ever showed page furniture, never the panel actually being read.
+      const body = browser.bodyText()
+      const anchor = body.indexOf('Connection status')
+      const near = anchor === -1 ? body.slice(0, 2000) : body.slice(anchor, anchor + 2000)
+      throw new Error(`xezar e2e: unattached-state text missing; page text near "Connection status" was: ${near}`, {
+        cause,
+      })
     }
     expect(browser.hasRole('button', 'Refresh')).toBe(true)
   })
