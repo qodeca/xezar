@@ -41,6 +41,21 @@ export const capabilitiesSchema = z.object({
   followups: z.boolean(),
   singleProject: z.boolean(),
   /**
+   * `true` means this cockpit is serving a **single-project root** (#600): xezar's settings,
+   * accounts and registry live in `<project>/.xezar` and the per-user `~/.xezar` is not opened.
+   *
+   * Its OWN key rather than a wider reading of `singleProject` above, because the two answer
+   * different questions and one of them is not deprecated: `singleProject` is
+   * `XEZ_SINGLE_PROJECT=1` — one project and no project management, with GLOBAL state — and it
+   * keeps that exact meaning (FR-1.4). The new mode is a separate superset, so a client that
+   * cares WHERE the state lives reads this key and nothing else.
+   *
+   * OPTIONAL, unlike its neighbours, and deliberately: a 0.15.0 server never sends it, and a
+   * 0.16.0 cockpit pointed at one must still parse the health payload. Absent reads as `false`
+   * — the global layout, which is what every xezar before 0.16.0 had.
+   */
+  singleProjectRoot: z.boolean().optional(),
+  /**
    * `true` means `XEZ_AUTOMATIONS=1` opted this server into GitHub automations (#801). Off — the
    * default — the whole feature is absent: no `Automations` nav item anywhere it is rendered, the
    * `/api/v1/…/automations*` family answers `409`, and the workspace scheduler never polls GitHub.
