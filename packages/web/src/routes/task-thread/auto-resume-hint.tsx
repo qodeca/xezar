@@ -68,7 +68,7 @@ export function AutoResumeHint({ run }: { run: ApiRun }) {
         data-action="auto-resume-cancel"
         disabled={cancel.isPending}
         onClick={() => cancel.mutate()}
-        className="font-medium text-foreground underline decoration-border underline-offset-2 hover:decoration-foreground disabled:opacity-50"
+        className="min-h-tap font-medium text-foreground underline decoration-border underline-offset-2 hover:decoration-foreground disabled:opacity-50 md:min-h-0"
       >
         Don’t resume
       </button>
@@ -78,7 +78,7 @@ export function AutoResumeHint({ run }: { run: ApiRun }) {
       <GlobalLink
         to="/settings/global/resources"
         data-slot="auto-resume-settings-link"
-        className="font-medium text-foreground underline decoration-border underline-offset-2 hover:decoration-foreground"
+        className="inline-flex min-h-tap items-center font-medium text-foreground underline decoration-border underline-offset-2 hover:decoration-foreground md:min-h-0"
       >
         Auto-resume settings
       </GlobalLink>

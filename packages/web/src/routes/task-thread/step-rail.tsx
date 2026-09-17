@@ -58,7 +58,7 @@ export function StepRail({ steps }: { steps: StepState[] }) {
           key={step.id}
           data-slot="step-row"
           data-visual={railVisual(step.status)}
-          className="flex min-h-[22px] min-w-0 items-center gap-2 text-[13px] text-muted-foreground"
+          className="flex min-h-5.5 min-w-0 items-center gap-2 text-[13px] text-muted-foreground"
         >
           <RailIcon visual={railVisual(step.status)} />
           <span className="min-w-0 truncate font-medium text-foreground">{step.name}</span>
@@ -80,7 +80,7 @@ export function StepRail({ steps }: { steps: StepState[] }) {
 }
 
 function RailIcon({ visual }: { visual: RailVisual }) {
-  const base = 'size-[13px] shrink-0'
+  const base = 'size-3.5 shrink-0'
   switch (visual) {
     case 'done':
       return <CircleCheckIcon aria-hidden className={cn(base, 'text-success')} />
@@ -161,7 +161,7 @@ export function WorkflowSteps({ runId, steps }: { runId: string; steps: StepStat
     <Collapsible data-slot="workflow-steps" open={open} onOpenChange={toggle} className="min-w-0">
       <CollapsibleTrigger
         aria-label={`Workflow: ${current.name}, step ${index + 1} of ${steps.length}`}
-        className="group flex min-h-7 w-full items-center gap-2 text-left text-xs text-muted-foreground hover:text-foreground md:min-h-[30px] md:gap-2.5"
+        className="group flex min-h-tap w-full items-center gap-2 rounded-sm text-left text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 md:min-h-7.5 md:gap-2.5"
       >
         <span data-slot="step-dots" className="flex shrink-0 items-center gap-1">
           {steps.map((step) => (

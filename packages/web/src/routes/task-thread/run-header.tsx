@@ -54,7 +54,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -67,6 +67,7 @@ import { OpenInMenu, type OpenInChoice } from '@/components/open-in-menu'
 import { toast } from '@/components/ui/toaster'
 import { DirectionalUsage } from '@/components/directional-usage'
 import { deriveAttention } from '@/lib/attention'
+import { copyText } from '@/lib/clipboard-result'
 import { queuePositions, runTitle } from '@/lib/task-groups'
 import { usableRunners } from '@/lib/provider-status'
 import {
@@ -384,10 +385,7 @@ function OpenInMenuForRun({
   const copyPath = () => {
     const path = run.worktreePath
     if (!path) return
-    void navigator.clipboard
-      .writeText(path)
-      .then(() => toast('Worktree path copied'))
-      .catch(() => toast(`Path: ${path}`))
+    void copyText(path).then((result) => toast(result.ok ? 'Worktree path copied' : `Path: ${path}`))
   }
 
   return (
@@ -485,7 +483,7 @@ function useRunActions(run: ApiRun, onMarkedUnread?: () => void) {
       // The legacy 409 fallback: no terminal emulator → the server sends the manual command;
       // put it on the clipboard so "no terminal" still ends with the user one paste away.
       if (error instanceof ApiError && error.command) {
-        void copyToClipboard(error.command, 'No terminal found — command copied to clipboard.')
+        void copyToClipboard(error.command, 'No terminal found — command copied')
         return
       }
       onError(error)
@@ -509,14 +507,11 @@ function useRunActions(run: ApiRun, onMarkedUnread?: () => void) {
 
 type RunActions = ReturnType<typeof useRunActions>
 
+/** Copies through the shared helper (G-16), which answers a refusal instead of throwing: with no
+ *  clipboard access (permissions, http) the toast shows the command itself — it is the payload. */
 async function copyToClipboard(text: string, doneMessage: string): Promise<void> {
-  try {
-    await navigator.clipboard.writeText(text)
-    toast(doneMessage)
-  } catch {
-    // No clipboard access (permissions, http) — show the command itself; it is the payload.
-    toast(`Run manually: ${text}`)
-  }
+  const result = await copyText(text)
+  toast(result.ok ? doneMessage : `Run manually: ${text}`)
 }
 
 /**
@@ -545,7 +540,7 @@ function EditableTitle({ run }: { run: ApiRun }) {
         type="button"
         aria-label="Rename task"
         onClick={editor.begin}
-        className="shrink-0 rounded-sm p-1 text-soft-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+        className="inline-flex min-h-tap min-w-tap shrink-0 items-center justify-center rounded-sm p-1 text-soft-foreground opacity-0 transition-opacity group-hover:opacity-100 no-hover:opacity-100 md:min-h-0 md:min-w-0 no-hover:min-h-tap no-hover:min-w-tap hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
       >
         <PencilIcon className="size-3.5" aria-hidden="true" />
       </button>
@@ -669,7 +664,7 @@ function MetaRow({
         <Link
           key="automation"
           to={`/automations/${encodeURIComponent(run.automation.automationId)}/log`}
-          className="rounded-sm border border-border bg-card px-1.5 py-px text-[11px] font-medium hover:text-foreground"
+          className="relative rounded-sm border border-border bg-card px-1.5 py-px text-[11px] font-medium before:absolute before:top-1/2 before:left-1/2 before:h-tap before:w-full before:min-w-tap before:-translate-x-1/2 before:-translate-y-1/2 before:content-[''] hover:text-foreground md:before:hidden"
         >
           Automation
         </Link>
@@ -834,7 +829,7 @@ function AgentBadge({ run }: { run: ApiRun }) {
           data-slot="agent-badge"
           title={summary}
           aria-label={`Agent: ${runner}, ${account ? `account ${account}, ` : ''}model ${model}`}
-          className="flex min-w-0 shrink items-center gap-1.5 rounded-sm px-1 py-1 text-soft-foreground hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+          className="flex min-h-tap min-w-0 shrink items-center gap-1.5 rounded-sm px-1 py-1 text-soft-foreground md:min-h-0 hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
         >
           <BotIcon className="size-3.5 shrink-0" aria-hidden="true" />
           {/* READ, not just reachable. This was an icon alone, and "which agent, account and model
@@ -987,7 +982,7 @@ function ConfirmDialog({ run, actions }: { run: ApiRun; actions: RunActions }) {
         <AlertDialogFooter>
           <AlertDialogCancel>Keep it</AlertDialogCancel>
           <AlertDialogAction
-            className="bg-danger text-danger-foreground hover:brightness-[0.96]"
+            className={buttonVariants({ variant: 'danger' })}
             onClick={() => {
               if (confirming === 'delete') actions.delete.mutate()
               else actions.cancel.mutate()
@@ -1011,8 +1006,8 @@ function ResumeHintLine({ hint }: { hint: string }) {
       type="button"
       data-slot="resume-hint"
       title="Copy the command"
-      onClick={() => void copyToClipboard(hint, 'Command copied to clipboard.')}
-      className="mb-2 flex w-full min-w-0 items-center gap-1.5 rounded-sm px-1 py-0.5 text-left font-mono text-[11px] text-soft-foreground hover:bg-muted hover:text-foreground"
+      onClick={() => void copyToClipboard(hint, 'Command copied')}
+      className="mb-2 flex min-h-tap w-full min-w-0 items-center md:min-h-0 gap-1.5 rounded-sm px-1 py-0.5 text-left font-mono text-[11px] text-soft-foreground hover:bg-muted hover:text-foreground"
     >
       <CopyIcon className="size-3 shrink-0" aria-hidden="true" />
       <span className="truncate">take over interactively: {hint}</span>
