@@ -802,7 +802,31 @@ describe('the comment thread', () => {
     await waitFor(() => expect(document.querySelector('[data-slot="gh-thread-error"]')).not.toBeNull())
     const error = document.querySelector('[data-slot="gh-thread-error"]')!
     expect(error.textContent).toContain('gh not installed')
+    // #453 B7: the house negative ("Could not"), announced as a failure rather than an empty thread.
+    expect(error.getAttribute('role')).toBe('alert')
+    expect(error.textContent).toContain('Could not load comments')
     expect(error.querySelector('a')?.getAttribute('href')).toBe(ISSUE_142.url)
+  })
+
+  it('#453 B7 / T-7: a list request that fails is an error screen, never an empty list', async () => {
+    // A 4xx, not a 5xx: the client retries a 500 once, past this assertion's window.
+    stubFetch({ 'GET /api/v1/github?limit=1000': () => jsonResponse({ error: 'gh exploded' }, 400) })
+    renderAt('/github/prs')
+
+    await waitFor(() => expect(screen.getByText('Could not load GitHub')).not.toBeNull())
+    expect(screen.getByText(/gh exploded/)).not.toBeNull()
+    expect(document.querySelector('[data-slot="centered-state"]')?.getAttribute('data-tone')).toBe('danger')
+    expect(document.querySelector('[data-slot="gh-empty"]')).toBeNull()
+    expect(screen.queryByText(/No open (issues|pull requests)/)).toBeNull()
+  })
+
+  it('#453 B7 / T-7: changed files that fail to load are an error, never an empty file list', async () => {
+    stubFetch({ 'GET /api/v1/github/prs/137/changes': () => jsonResponse({ error: 'boom' }, 400) })
+    renderAt('/github/prs/137/changes')
+
+    const alert = await screen.findByText('Could not load the changed files.')
+    expect(alert.getAttribute('role')).toBe('alert')
+    expect(screen.queryByText('No changed files match this filter.')).toBeNull()
   })
 
   it('renders a review entry with a state chip (green/red tone tables)', async () => {

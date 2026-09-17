@@ -259,6 +259,30 @@ describe('/automations with the capability on', () => {
   })
 })
 
+describe('#453 B7 honest states', () => {
+  it('a list that fails to load is an error, never an empty list', async () => {
+    stubFetch()
+    const inner = globalThis.fetch
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) =>
+      String(input) === '/api/v1/automations' ? jsonResponse({ error: 'scheduler state unreadable' }, 500) : inner(input, init)))
+    renderAt('/automations')
+
+    await screen.findByText('Could not load automations')
+    expect(screen.getByText(/scheduler state unreadable/)).toBeTruthy()
+    expect(screen.queryByText('No automations yet')).toBeNull()
+    expect(rows()).toHaveLength(0)
+  })
+
+  it('editing an id the answered list does not hold says “not found”, not “loading” forever', async () => {
+    stubFetch()
+    renderAt('/automations/a-gone')
+
+    await screen.findByText('Automation not found')
+    expect(screen.queryByText('Loading automation…')).toBeNull()
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Edit automation')
+  })
+})
+
 // ---- create ------------------------------------------------------------------------------------
 
 describe('/automations/new', () => {
