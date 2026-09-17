@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { spawn, execFileSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { once } from 'node:events';
-import { access, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import http from 'node:http';
 import { dirname, join, resolve } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -22,6 +22,7 @@ let bootOutput = '';
 const sockets = new Set();
 const upstreams = new Set();
 const auth = `Basic ${Buffer.from(`fixture:${randomBytes(24).toString('hex')}`).toString('base64')}`;
+const proxyUser = 'fixture';
 const abort = new AbortController();
 const deadline = setTimeout(() => abort.abort(new Error('harness exceeded 45 seconds')), 45_000);
 for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => abort.abort(new Error(signal)));
@@ -80,6 +81,9 @@ function forward(req, res) {
   headers.host = authority;
   headers['x-forwarded-host'] = authority;
   headers['x-forwarded-proto'] = 'http';
+  // Like the bundled nginx (`proxy_set_header X-Xezar-User $remote_user`): the proxy OVERWRITES the
+  // user header with the user it authenticated, so a client-sent value never reaches xezar (#306).
+  headers['x-xezar-user'] = proxyUser;
   const upstream = http.request({ hostname: '127.0.0.1', port: backend, path: req.url,
     method: req.method, headers, agent: false });
   forwarded++;
@@ -192,7 +196,7 @@ try {
   assert.equal((await request('/api/v1/runs', { method: 'POST', authorization: null, headers: { origin: 'https://evil.invalid' }, body })).status, 401, 'A-CSRF-01');
   assert.equal((await request('/api/v1/runs', { method: 'POST', headers: { origin: 'https://evil.invalid', 'x-forwarded-host': 'evil.invalid' }, body })).status, 403, 'A-CSRF-02');
   assert.equal((await request('/api/v1/runs')).body, beforeRuns, 'forbidden mutation changed runs');
-  const created = await request('/api/v1/runs', { method: 'POST', headers: { origin: `http://${authority}` }, body });
+  const created = await request('/api/v1/runs', { method: 'POST', headers: { origin: `http://${authority}`, 'x-xezar-user': 'mallory' }, body });
   assert.equal(created.status, 201, 'A-CSRF-03 valid authenticated mutation');
   const run = JSON.parse(created.body);
   for (const authorization of [null, 'Basic incorrect']) {
@@ -231,6 +235,15 @@ try {
   assert.equal((await request('/api/v1/agent-config/claude.user.settings')).status, 409);
   assert.equal((await request('/api/v1/agent-config/claude.project.settings')).status, 200);
   console.log('PASS A-CORS/A-LOCAL/A-DISCLOSE hosted surface');
+  // #306 part 2: every cockpit-door record written through the proxy carries the proxy's user,
+  // labelled asserted-by-proxy; the value the client forged is never stored.
+  const auditRaw = await readFile(join(repo, '.local/xezar/audit.ndjson'), 'utf8');
+  const audit = auditRaw.trim().split('\n').map((line) => JSON.parse(line)).filter((record) => record.origin === 'ui');
+  assert.equal(audit.filter((record) => record.action === 'run.start' && record.outcome.status === 'applied').length, 2, 'A-AUDIT-01 both created runs recorded');
+  assert.ok(audit.some((record) => record.outcome.status === 'refused'), 'A-AUDIT-01 a refused local-machine write is recorded');
+  for (const record of audit) assert.deepEqual(record.actor, { type: 'ui', proxyUser: { value: proxyUser, trust: 'asserted-by-proxy' } }, 'A-AUDIT-02');
+  assert.equal(auditRaw.includes('mallory'), false, 'A-AUDIT-03 a forged user header never reaches the trail');
+  console.log('PASS A-AUDIT-01..03 proxy user asserted by the proxy, forgery overwritten');
 } catch (error) {
   // Credentials and arbitrary child output are never diagnostics.
   console.error(`FAIL server-mode: ${error.message}`);

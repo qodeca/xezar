@@ -14,24 +14,74 @@
   **Upgrade:** nothing to do; keep `mcp-audit.ndjson` if you want the old history. **Downgrade:**
   0.15.0 still reads its untouched `mcp-audit.ndjson`, and skips every `audit.ndjson` record as
   unreadable (measured, not assumed), so records written by 0.16.0 are not visible to it. The alias
-  is removed no earlier than 0.18.0 (#563). Still MCP-only: the cockpit, automation and command-line
-  writers are later parts of #306. Details: `BACKWARD_COMPATIBILITY.md` § 3.
+  is removed no earlier than 0.18.0 (#563). An MCP record's `action` is now the shared action id the
+  cockpit records too (`run.start`, `run.pin`), not the tool action (`taskCreate.start`), and a read
+  action inside a mutating tool is no longer recorded. Details: `BACKWARD_COMPATIBILITY.md` § 3.
 - Hosted servers now refuse every WebSocket upgrade before the handshake; remote clients continue to use authenticated HTTP and event streams. Local native clients and the Vite development proxy keep their existing access. (#547, SM1)
+- 💥 **Start-up recovery now says when it deliberately settled previous-session tasks.** (#467) One aggregate stderr activity entry reports `task.recovered count=<all candidates> settled=<waiting tasks settled>` before the cockpit-ready event, while seeded per-task outcomes and transient restart failures stay suppressed and session totals stay unchanged. Wide and 40-column terminals say “N tasks from the previous session were settled at start-up”; plain output carries only `event=task.recovered count=… settled=…`; `--quiet` omits it. The old stdout line `recovered N run(s) from the previous session` is removed, so scripts that consumed it must read stderr's plain output and select `event=task.recovered`. No state, exit code, API, MCP event or recovery behavior changed.
 
 ## ✨ Features
 
 - ✨ **The sidebar is navigation-only.** (#546) The Active/Archived task switcher, task list, and `Search…` launcher have been removed from the sidebar. Manage and search tasks on the Tasks page, and open the command palette with `⌘K` on macOS or `Ctrl+K` elsewhere. Existing task badges, task data, APIs, and saved UI state are unchanged.
+- **The audit trail is bounded, and safe to share between processes.** (#306, part 3 of 4) A
+  project's `.local/xezar/audit.ndjson` now rotates before it passes 10 MB (10,000,000 bytes) and
+  keeps five files — the live one plus `audit.ndjson.1` to `.4`, so a project's trail stays under
+  50 MB whatever it does. A rotated file's history is not lost: sequence numbers run on across the
+  set, the new live file starts with one `rotated` marker saying where the previous one ended, and
+  xezar reads the oldest rotation first. Every writer — the cockpit, MCP, the automation runner and
+  a command — now takes one lock per project for the sequence, the append and the rotation, so two
+  xezar processes writing at the same moment cannot lose or repeat a record. All five files are kept
+  owner-only (`0600`), and one that is not is repaired before anything is written to it. If any of
+  that cannot be done — a folder xezar cannot write, a lock held by another process for more than
+  two seconds, a failed rename — the record is dropped and xezar warns once; **your action still
+  happens**, exactly as before. The old `mcp-audit.ndjson` is untouched by all of it.
+- **An MCP "not found" is now recorded as a refusal.** (#573, with #306 part 3) Asking MCP to cancel,
+  continue, pin or push a task this project does not have left no trace at all — and for `handoff_git`
+  it was recorded as if it had been applied. Such an answer comes from a lookup before anything
+  happens, so it is now one `refused` record with the reason `not_found`, the same way the cockpit
+  records its 404. An answer that may have followed a real effect is still never recorded as refused.
+- **The audit trail now records every door, not only MCP.** (#306, part 2 of 4) A change made in the
+  cockpit (`ui`), by the automation runner (`automation`) or by a command (`cli`) is written to the
+  project's `.local/xezar/audit.ndjson` beside the MCP records, with the same action id for the same
+  change in the cockpit and over MCP. Every command-line subcommand — `serve`, `run`, `init`,
+  `projects` (list, add, remove, tag, port), `mcp`, `server-install`, `server-deploy` and
+  `server-uninstall` — writes one record, `applied` or `refused` with a reason; `--help`, `--version`
+  and unknown commands write none, and a folder that is not a xezar project (the home directory or a
+  task worktree) gets no new state, printing the same one-warning line a write failure uses instead of
+  staying silent. Each run an automation launches gets its own record linked to its receipt id. Reads are never recorded,
+  and a failed audit write never fails the action (one warning). On a hosted server, the cockpit
+  record also keeps the user the reverse proxy authenticated, from the `X-Xezar-User` header, marked
+  `asserted-by-proxy`; the header is read only in hosted mode and only from a loopback proxy, and the
+  bundled nginx site now sets it to the authenticated user, overwriting any value a client sends.
+  Details: `BACKWARD_COMPATIBILITY.md` § 3.
 
 ## 🐛 Fixes
 
+- 🐛 **The macOS ngrok tunnel no longer lets a remote client choose the audited proxy user.** (#572)
+  In hosted mode, xezar's audit trail trusts an `X-Xezar-User` header sent by a loopback peer — the
+  bundled nginx site sets it from the authenticated user and overwrites any client value, but the
+  ngrok tunnel (`server-install --platform macosx-ngrok`) is itself that loopback peer and passed a
+  remote client's own header straight through, so a signed-in client could pick the identity stored
+  as `asserted-by-proxy`. The installer now writes an ngrok Traffic Policy file that strips
+  `X-Xezar-User` from every request before it reaches xezar (`--request-header-remove` is
+  deprecated by ngrok; `--traffic-policy-file` with a `remove-headers` action is the current
+  mechanism). Existing installs pick this up on the next `server-install --reconfigure ngrok` or
+  `--reinstall`. Also corrects the installer's "Identity check" step title, which claimed basic-auth
+  was "active" though the step only confirms the tunnel process is up and never probes the gate.
+- 🐛 The review gate and the variants compare view now show a run's diff the way the Git tabs do: line numbers, word-level changes, a `copied` badge and every line of a long file (no more 300-line cut or 20-file limit). On a phone, every Git-tab and diff control is a 44 px target at every density; the Git pages line their title, toolbar and content up on one gutter; diff line numbers are readable in both themes; closing the Commit dialog returns keyboard focus to the Commit button; a refused clipboard on the Changes tab shows the command instead of saying it was copied. (#453)
+- 🐛 On a phone, every task-thread, composer, dock, review, question and Tools-menu control is a 44 px target at every density; a message's edit and remove, the title pencil and an attachment's remove mark show without hover; thread spinners stop under reduced motion; a refused clipboard shows the command instead of saying it was copied; and the run's delete confirm uses the danger button. (#453)
 - 🐛 Keep pi `write` and `edit` calls in an isolated task worktree out of the primary checkout, whatever path spelling pi would accept (absolute, `..`, symlink, `~`, a leading `@`, a `file://` URL, Unicode spaces or different letter case); a spelling the guard cannot resolve with confidence is refused. Shell commands get a best-effort check only – it refuses commands that name the primary checkout – including a relative path read from the folder an earlier `cd` or `pushd` reached, or one through an existing symlink – or change into it through ordinary `cd`, `pushd`, `git -C`, `env -C`, `--git-dir`/`--work-tree` or `GIT_DIR` forms, and a directory change whose target is not one literal path (a variable, a substitution, a glob or brace pattern, `~user`, a `CDPATH` change, or `..` after a symlink) is refused rather than guessed, but a shell command cannot be parsed completely, so it is not containment. The primary checkout now comes from xezar itself, so bare-repository and submodule layouts keep working, and the run's handoff and temp folders stay writable. In-place and non-Git runs, plus temporary and home-directory paths outside the primary checkout, retain their existing behavior. (#537)
 - 🐛 Balance the nightly MCP mutation gate's shards on measured per-file cost instead of byte size, raise the shard count from 6 to 9, and isolate the two files whose carried-over weight was still under-counted (`bridge.ts`, `tools/task-create.ts`) into their own shard, after two consecutive nightly runs were cancelled at the 5-hour job ceiling. (#443)
+- 🐛 **An OpenCode run no longer hangs on a permission ask.** (#578) OpenCode asks before a tool reaches a folder outside the task (the hand-off file, attachments, the run's own files), and nothing answered, so the run waited until its 30-minute step limit with no named cause. xezar now answers each ask at once and fails closed: a folder ask inside the run's own directories (symlinks resolved) is allowed for that one call; every other ask – a folder outside them, a web fetch, a shell command, a repeated-call warning – is denied and shown in the transcript. The same denial three times in a row, 20 denials in one session, or a reply OpenCode refuses stops the run with a named error. The claim that OpenCode approves every permission automatically is removed from the docs.
 - 🐛 **The OpenCode leader now gets the decision version on every pushed run event.** (#535, #532) `renderDispatch` in the OpenCode reaction adapter omitted `subject.version` from every rendered event, unlike the Claude Code, Codex and pi adapters, so an OpenCode leader could not pass it as `expectedVersion` without an extra `task_read`. The adapter now renders it the same way the other three do.
 
 ## Tests
 
 - Added a reusable POSIX authenticated reverse-proxy harness (`npm run test:server-mode`), a dedicated bounded CI job, and registration-derived coverage of local-only routes. The harness exercises the built CLI, isolated homes, spoofed headers, rejected writes, event-stream reconnects and exact-PID cleanup.
 - test(mcp): cover fragile leader delivery across owner switches, ack/journal epoch boundaries and the opt-in acceptance judge, plus an executable inventory assertion (#532 slice 3, G4/G5/G6/G11/G12).
+- Added a saved, re-runnable deterministic two-project product harness (`npm run test:multi-project`, `packages/xezar/scripts/multi-project-harness.mjs`) proving registry/context composition, route aliases, the shared workspace cap, the cross-project runs index, workspace SSE stamping, and per-project MCP ownership for the boot project, all against one built cockpit with two registered scratch repositories in one isolated `XEZ_HOME`. See `docs/testing/multi-project-harness.md`.
+- Added a focused in-process test covering a route-level A/B lifecycle the deterministic harness only smoke-tests: a late-built project B's runs join the cross-project runs index and the one open workspace SSE stream (each stamped with B's own project id), and removing then re-adding B on the same slug leaves project A untouched while B's rebuilt store resumes flowing on the already-open stream instead of being silently dropped by a stale attach entry (`packages/xezar/src/server/multi-project-composition.test.ts`).
+- Reconciled the remote-access docs with verified behavior and pinned both claims with a new test: a normal launch no longer claims an unconditional starting port of 4321 (it actually prefers a saved port, then `XEZ_PORT`, then the port it last listened on), and the macOS/ngrok installer's success message no longer says basic-auth was "enforced" when it was only configured, never probed through the tunnel. (#547, SM2)
 
 # 0.15.0 (2026-09-17)
 

@@ -137,7 +137,8 @@ describe('the Files tab route', () => {
     await waitFor(() => expect(document.querySelector('[data-slot="files-tree-pane"]')).not.toBeNull())
     const pane = document.querySelector('[data-slot="files-tree-pane"]') as HTMLElement
     // Pin and cap both read the one var the parent declares, so they cannot drift apart.
-    expect(pane.parentElement?.className).toContain('[--diff-sticky-top:7rem]')
+    // …and that var is the run header's MEASURED height, never a constant (#453 B6, NB-1).
+    expect(pane.parentElement?.className).toContain('[--diff-sticky-top:var(--page-header-h,7rem)]')
     expect(pane.className).toContain('md:top-[var(--diff-sticky-top)]')
     expect(pane.className).toContain('md:max-h-[calc(100dvh_-_var(--diff-sticky-top)_-_1rem)]')
     expect(pane.className).toContain('md:overflow-y-auto')

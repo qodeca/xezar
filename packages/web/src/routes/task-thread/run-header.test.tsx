@@ -549,7 +549,7 @@ describe('Terminal — the copy-command 409 fallback', () => {
 
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(command))
     expect((await screen.findByRole('status')).textContent).toBe(
-      'No terminal found — command copied to clipboard.',
+      'No terminal found — command copied',
     )
   })
 

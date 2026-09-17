@@ -32,6 +32,8 @@ $ xez --quiet
 # Quiet never hides: a port that was busy (the banner line under cockpit),
 # a non-loopback bind warning, a refused start, or any error. When the port
 # moved, the second cockpit line is printed even in quiet:
+# The info-level previous-session recovery notice is absent, including when
+# start-up settled tasks; historical settlement is not a new failure.
 #
 #   cockpit   http://localhost:4323
 #             4322 is used by another program — beta uses 4323 from now on

@@ -118,7 +118,7 @@ export function UserBubble({
       <div
         data-slot="user-bubble"
         data-editing="true"
-        className="max-w-[78%] self-end rounded-2xl rounded-br-md bg-muted px-[15px] py-2.5 text-[13.5px] leading-[1.55] md:max-w-[70%]"
+        className="max-w-[78%] self-end rounded-2xl rounded-br-md bg-muted px-4 py-2.5 text-[13.5px] leading-[1.55] md:max-w-[70%]"
       >
         <textarea
           autoFocus
@@ -136,14 +136,14 @@ export function UserBubble({
               void save()
             }
           }}
-          className="block max-h-[220px] min-h-[60px] w-full resize-none rounded-md bg-background px-2 py-1.5 text-[13.5px] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          className="block max-h-[220px] min-h-15 w-full resize-none rounded-md bg-background px-2 py-1.5 text-[13.5px] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
         />
         <span className="mt-1.5 flex justify-end gap-1.5">
           <button
             type="button"
             onClick={() => setEditing(false)}
             disabled={busy}
-            className="rounded-sm px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-background hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+            className="min-h-tap min-w-tap rounded-sm px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-background md:min-h-0 md:min-w-0 hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
           >
             Cancel
           </button>
@@ -151,9 +151,9 @@ export function UserBubble({
             type="button"
             onClick={() => void save()}
             disabled={busy}
-            className="rounded-sm bg-primary px-2 py-1 text-xs font-semibold text-primary-foreground hover:brightness-[0.96] focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+            className="inline-flex min-h-tap min-w-tap items-center justify-center rounded-sm bg-primary px-2 py-1 text-xs font-semibold md:min-h-0 md:min-w-0 text-primary-foreground hover:brightness-[0.96] focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
           >
-            {busy ? <LoaderCircleIcon className="size-3.5 animate-spin" /> : 'Save'}
+            {busy ? <LoaderCircleIcon role="status" aria-label="Saving" className="size-3.5 motion-safe:animate-spin" /> : 'Save'}
           </button>
         </span>
         {actionError ? <p role="alert" className="mt-1.5 text-xs text-danger">{actionError}</p> : null}
@@ -164,12 +164,12 @@ export function UserBubble({
   return (
     <div
       data-slot="user-bubble"
-      className="group max-w-[78%] min-w-0 self-end rounded-2xl rounded-br-md bg-muted px-[15px] py-2.5 text-[13.5px] leading-[1.55] md:max-w-[70%]"
+      className="group max-w-[78%] min-w-0 self-end rounded-2xl rounded-br-md bg-muted px-4 py-2.5 text-[13.5px] leading-[1.55] md:max-w-[70%]"
     >
       {onEdit || onRemove ? (
         <span
           data-slot="bubble-actions"
-          className="mb-1 flex justify-end gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100"
+          className="mb-1 flex justify-end gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 no-hover:opacity-100"
         >
           {onEdit ? (
             <button
@@ -177,7 +177,7 @@ export function UserBubble({
               aria-label={editLabel}
               onClick={startEditing}
               disabled={busy}
-              className="rounded-sm p-1 text-soft-foreground hover:bg-background hover:text-foreground focus-visible:opacity-100 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+              className="inline-flex min-h-tap min-w-tap items-center justify-center rounded-sm p-1 text-soft-foreground hover:bg-background hover:text-foreground md:min-h-0 md:min-w-0 no-hover:min-h-tap no-hover:min-w-tap focus-visible:opacity-100 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
             >
               <SquarePenIcon className="size-3.5" />
             </button>
@@ -188,7 +188,7 @@ export function UserBubble({
               aria-label={removeLabel}
               onClick={() => void remove()}
               disabled={busy}
-              className="rounded-sm p-1 text-soft-foreground hover:bg-background hover:text-danger focus-visible:opacity-100 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+              className="inline-flex min-h-tap min-w-tap items-center justify-center rounded-sm p-1 text-soft-foreground hover:bg-background hover:text-danger md:min-h-0 md:min-w-0 no-hover:min-h-tap no-hover:min-w-tap focus-visible:opacity-100 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
             >
               <Trash2Icon className="size-3.5" />
             </button>
@@ -216,7 +216,7 @@ export function UserBubble({
                 href={url}
                 download
                 data-slot="user-file"
-                className="inline-flex max-w-[220px] items-center gap-1.5 rounded-md border border-border bg-background/60 px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
+                className="inline-flex min-h-tap max-w-[220px] items-center gap-1.5 rounded-md border md:min-h-0 border-border bg-background/60 px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
               >
                 <PaperclipIcon aria-hidden="true" className="size-3.5 shrink-0" />
                 <span className="truncate">{url.split('/').pop()}</span>
@@ -278,7 +278,7 @@ export function ProviderAuthRequiredCard({
       </p>
       <Link
         to="/settings/agents#providers"
-        className="mt-2 inline-flex text-xs font-medium text-foreground underline-offset-2 hover:underline"
+        className="mt-2 inline-flex min-h-tap items-center text-xs font-medium text-foreground underline-offset-2 hover:underline md:min-h-0"
       >
         Open provider settings
       </Link>
@@ -301,7 +301,7 @@ export function ReasoningItem({ text }: { text: string }) {
     <Collapsible data-slot="reasoning" className="group/reasoning min-w-0">
       <div
         id={previewId}
-        className="relative flex w-full items-center gap-1.5 rounded-md p-0.5 text-left text-[13px] text-soft-foreground hover:text-muted-foreground"
+        className="relative flex min-h-tap w-full items-center gap-1.5 rounded-md p-0.5 text-left md:min-h-0 text-[13px] text-soft-foreground hover:text-muted-foreground"
       >
         <ChevronRightIcon
           aria-hidden
@@ -341,7 +341,7 @@ export function WorkingIndicator() {
       data-slot="working-indicator"
       className="flex items-center gap-2 py-1 text-[13px] text-soft-foreground"
     >
-      <LoaderCircleIcon role="status" aria-label="Working" className="size-3.5 shrink-0 animate-spin" />
+      <LoaderCircleIcon role="status" aria-label="Working" className="size-3.5 shrink-0 motion-safe:animate-spin" />
       <span className="shimmer font-medium">Working…</span>
     </div>
   )
@@ -416,7 +416,7 @@ function ToolOutput({ text, streaming }: { text: string; streaming: boolean }) {
           type="button"
           data-slot="tool-output-toggle"
           onClick={() => setExpanded((value) => !value)}
-          className="block w-full border-t border-border/50 px-4 py-1.5 text-left text-[11px] font-medium text-soft-foreground hover:text-foreground"
+          className="block min-h-tap w-full border-t border-border/50 px-4 py-1.5 text-left text-[11px] font-medium text-soft-foreground hover:text-foreground md:min-h-0"
         >
           {expanded ? 'Show less' : `Show all ${lines} lines`}
         </button>
@@ -545,7 +545,7 @@ export function ToolCard({
     >
       <CollapsibleTrigger
         disabled={!hasDetail}
-        className="group flex min-h-8 w-full items-center gap-1.5 px-2.5 py-1 text-left text-[13px] enabled:hover:bg-muted"
+        className="group flex min-h-tap w-full items-center gap-1.5 px-2.5 py-1 text-left text-[13px] outline-none enabled:hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/50 md:min-h-8"
       >
         <ChevronRightIcon
           aria-hidden
@@ -569,7 +569,7 @@ export function ToolCard({
         ) : null}
         <span className="ml-auto flex shrink-0 items-center gap-2 pl-2">
           {busy ? (
-            <LoaderCircleIcon role="status" aria-label="Running" className="size-3.5 animate-spin text-soft-foreground" />
+            <LoaderCircleIcon role="status" aria-label="Running" className="size-3.5 text-soft-foreground motion-safe:animate-spin" />
           ) : null}
           {item.status === 'failed' ? <span className="text-xs text-muted-foreground">failed</span> : null}
           {item.status === 'declined' ? <span className="text-xs text-soft-foreground">declined</span> : null}
@@ -613,7 +613,7 @@ export function ToolCard({
 export function ContextGroup({ group, scope }: { group: ContextGroupBlock; scope?: string }) {
   return (
     <Collapsible data-slot="ctx-group" className="min-w-0">
-      <CollapsibleTrigger className="group flex h-[34px] w-full items-center gap-2 rounded-md px-2 -mx-2 text-left text-[13px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground">
+      <CollapsibleTrigger className="group flex h-9 min-h-tap w-full items-center gap-2 rounded-md px-2 -mx-2 text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 md:min-h-0 text-[13px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground">
         <ChevronRightIcon
           aria-hidden
           className="size-3.5 shrink-0 text-soft-foreground transition-transform group-data-[state=open]:rotate-90"
@@ -636,7 +636,7 @@ export function ContextGroup({ group, scope }: { group: ContextGroupBlock; scope
 export function ToolStreak({ count, children }: { count: number; children: ReactNode }) {
   return (
     <Collapsible data-slot="tool-streak" className="min-w-0">
-      <CollapsibleTrigger className="group flex items-center gap-1.5 rounded-md p-0.5 text-left text-xs text-soft-foreground hover:text-muted-foreground">
+      <CollapsibleTrigger className="group flex min-h-tap items-center gap-1.5 rounded-md p-0.5 text-left text-xs text-soft-foreground outline-none hover:text-muted-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 md:min-h-0">
         <ChevronRightIcon
           aria-hidden
           className="size-3.5 shrink-0 transition-transform group-data-[state=open]:rotate-90"

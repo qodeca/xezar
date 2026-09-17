@@ -36,7 +36,7 @@ Measured on this repository’s own `.local/xezar/` on 2026-09-15 (read-only): 4
 
 **Job on arrival.** They just started `xez`, or they glance back at its terminal while doing something else. They want to know: is it up and where; is anything waiting for me; did something fail. Next they open the cockpit URL, answer a question, or go back to work.
 
-**First read, before anything scrolls.** Which project this terminal is (project name first on the banner, and in the stop line), the cockpit URL, and – at the bottom of the screen at all times – how many tasks are active and whether one needs them.
+**First read, before anything scrolls.** Which project this terminal is (project name first on the banner, and in the stop line), the cockpit URL, whether start-up deliberately settled tasks left by the previous session, and – at the bottom of the screen at all times – how many tasks are active and whether one needs them.
 
 **Scanning many.** Activity is time-ordered, one entry per event, with a fixed-width subject column (task id or source: `http`, `mcp`, `skills`, `provider`, `update`, `registry`, `xezar`) so the eye runs down one column. The live table orders tasks by who is waiting: needs permission, needs you, needs review, running (monitoring included), scheduled, queued; oldest first within each. There is no search or filter in the terminal: the table holds at most 10 rows and the cockpit is one click away.
 
@@ -128,6 +128,8 @@ Summary: `<n> active — <n> needs permission · <n> needs you · <n> needs revi
 Narrow (< 60 columns), the same grammar as one line, with `since start` left out: `<n> active — <parts> — <n> failed`. Parts that do not fit are left out from the right and replaced by `…`; `<n> active` and the needs-permission and needs-you counts are never left out.
 
 **What “failed” counts.** Every failed count – the summary line, the session summary and `failed=` in plain output – counts **task outcomes only**: a task whose record ended `failed`. A failed check step is not counted; it is an `error` activity line, and the task it belongs to either goes on (a repair step) or ends with its own `failed` line. A task a usage limit stopped (`scheduled`, § 9.2) is not counted as failed either, because it resumes on its own.
+
+Previous-session settlement is historical too. `task.recovered settled=<n>` explains why seeded rows disappeared during start-up, but never increments this session's `done`, `review`, `failed` or `cancelled` totals and never emits a per-task outcome.
 
 ### 6.4 Session summary – stderr, on stop
 
@@ -244,6 +246,8 @@ Rules from `docs/design-system/writing.md`, applied to the terminal: sentence ca
 | Skills | `<source> updated — <n> skills changed` / `update failed — <reason> · next try <HH:MM>` |
 | Provider | `<agent> needs sign-in — open Settings → Agents` / `<agent> signed in` |
 | Update | `xezar <v> is available — restart with` + `npx @qodeca/xezar@latest` |
+| Previous-session settlement | `<n> tasks from the previous session were settled at start-up` / singular `<n> task from the previous session was settled at start-up` |
+| Previous-session recovery, none settled | `recovered <n> tasks from the previous session` / singular `recovered 1 task from the previous session` |
 | Empty table | `No active tasks — start one at <url>/p/<project>/new` |
 | Live summary, wide | `4 active — 1 needs review · 2 running · 1 queued — 1 failed since start` |
 | Live summary, narrow | `2 active — 2 running — 1 failed` |
@@ -278,7 +282,7 @@ Only the terminal’s 16 standard colours, so the person’s own light or dark t
 
 ### 10.1 Event sources
 
-As the analysis § 6(d) proposes: subscribe to the boot `RunStore` before recovery (`runs/store.ts` `run` and `event`); for status transitions compare with the previous status so token updates never print; seed restored records as “recovered”, not as starts. Workspace changes (providers, registry, skills, automations) come from `WorkspaceEventBus`. HTTP 4xx/5xx need a new diagnostic middleware at the Hono boundary, logging returned and thrown errors once each, never the body, query or headers. MCP ready/unavailable come from `startMcpSocket`’s result, not from the banner. In project mode (`multi-instance.md`) there is exactly one store per instance, which removes the lazy-context subscription problem the analysis describes; in workspace mode, attach per store through `ProjectContexts.onStoreCreated`.
+As the analysis § 6(d) proposes: subscribe to the boot `RunStore` before recovery (`runs/store.ts` `run` and `event`); for status transitions compare with the previous status so token updates never print; seed restored records as “recovered”, not as starts. Immediately before recovery, snapshot every `queued`, `waiting` and `running` record with its original status. After the awaited sweep, `count` is that snapshot's size and `settled` is the number originally `waiting` that are now `done` or `review`; emit the aggregate while seeded transitions are still suppressed. Workspace changes (providers, registry, skills, automations) come from `WorkspaceEventBus`. HTTP 4xx/5xx need a new diagnostic middleware at the Hono boundary, logging returned and thrown errors once each, never the body, query or headers. MCP ready/unavailable come from `startMcpSocket`’s result, not from the banner. In project mode (`multi-instance.md`) there is exactly one store per instance, which removes the lazy-context subscription problem the analysis describes; in workspace mode, attach per store through `ProjectContexts.onStoreCreated`.
 
 ### 10.2 Event → line mapping
 
@@ -286,7 +290,7 @@ As the analysis § 6(d) proposes: subscribe to the boot `RunStore` before recove
 |---|---|---|---|---|
 | Boot ready | info | banner (stdout) | `xezar.ready` | – |
 | Worktrees cleaned / reclaimed | info | `xezar · cleaned <n> orphaned worktree: <ids>` | `worktree.cleaned` / `worktree.reclaimed` | – |
-| Runs recovered | info | `xezar · recovered <n> tasks from the previous session` | `task.recovered` | rows appear |
+| Runs recovered | info | when `settled>0`, `xezar · <settled> tasks from the previous session` + `were settled at start-up` (singular `task` / `was`); otherwise `xezar · recovered <count> tasks from the previous session` | `task.recovered count=<count> settled=<settled>` (terminal-only; no other keys) | seeded rows reflect recovery; no session outcome count |
 | Task queued | info | `<id8> · queued — “<title>”` | `task.queued` (new) | row |
 | Task started / step started | info | `started — …` / `step i/n …` | `task.started` (new) / `step.started` (new) | row updates |
 | Check step settled | info / error (a `routine` pass is debug) | `check <step> passed — …` / `failed — exit <n> …` | `gate.passed` / `gate.failed`, with `result_scope` | – (never counted as failed, § 6.3) |
@@ -320,7 +324,7 @@ As the analysis § 6(d) proposes: subscribe to the boot `RunStore` before recove
 | Port remembered / not remembered | debug / warn | `registry · …` | `registry.port` (new) | – |
 | Stop | info | `xezar · stopping — …` + summary | `xezar.stopping`, `session.summary`, `xezar.stopped` (new) | region erased |
 
-Names marked “new” are not catalog kinds. Where the catalog has a name, the meaning and name are reused. PR 4 reconciled this table with #450 and #460: `packages/xezar/src/terminal/event-names.ts` types every `event=` as the contract's `McpEventKind` or one of a closed list of terminal-only names, and says for each catalog kind whether the run-store bridge or the MCP journal row prints it, so no fact prints twice. A routine successful check uses the same rule as leader delivery (`isLeaderSignificant`). Journal-sourced lines need the project's MCP service; without it they are absent. Rows whose names are not in that list are not printed yet: `worktree.*`, `task.recovered`, `task.monitoring`, `task.paused`, `permission.asked`, `leader.attached` / `leader.detached`, `mcp.session`, `skills.*` and `update.available`. Provider sign-in changes print as `executor.*` from the journal.
+Names marked “new” are not catalog kinds. Where the catalog has a name, the meaning and name are reused. PR 4 reconciled this table with #450 and #460: `packages/xezar/src/terminal/event-names.ts` types every `event=` as the contract's `McpEventKind` or one of a closed list of terminal-only names, and says for each catalog kind whether the run-store bridge or the MCP journal row prints it, so no fact prints twice. A routine successful check uses the same rule as leader delivery (`isLeaderSignificant`). Journal-sourced lines need the project's MCP service; without it they are absent. Rows whose names are not in that list are not printed yet: `worktree.*`, `task.monitoring`, `task.paused`, `permission.asked`, `leader.attached` / `leader.detached`, `mcp.session`, `skills.*` and `update.available`. Provider sign-in changes print as `executor.*` from the journal.
 
 **Stalled is advisory; blocked is a fact.** `task.stalled` says a step may be stuck while the task goes on: it is a warning, the table state stays `running`, and nothing is counted. `task.blocked` says the task cannot go on without input: the state becomes `needs you`. The journal summary says “nothing was stopped” only at its end, which a wide row or a three-line narrow block cuts off, so the human stall line always adds `still running — nothing was stopped` (`still running - nothing was stopped` with ASCII glyphs) on its own line, before the URL. The exact rows in all three modes are `tty.txt` scene 3b (80 columns), `tty-narrow.txt` scene 2b (40 columns) and the 08:26–08:28 lines of `non-tty.txt` (plain). Journal summaries are printed as the journal wrote them, so the terminal and the MCP leader read the same words: `task may be stalled: step <step> has shown no agent activity for 5 minutes (advisory — the task is still running and nothing was stopped)`, or `… has used 80% of its time limit (…)`; `task resumed: agent activity returned at step <step>`; `<role> verdict <VERDICT> on <commit> (report <id>, <label evidence>)`. They keep the journal's colon and parentheses rather than the terminal copy deck's ` — ` form; changing them changes what the leader reads, so it is not done here. The added line is terminal copy and follows § 9.
 
@@ -440,6 +444,13 @@ The analysis’s AC-01 … AC-14 stand, with these changes and additions for dec
 | D-AC-3 | The G2 title in `error-cases.txt` prints as one line with no escape byte, and a title with U+202E prints without it. |
 | D-AC-4 | The switcher in `switcher.html` states (running link, running address unknown, not running, folder missing, checking, check failed, hosted) each render with their own words, in light and dark, with no sideways scroll at 375 px. |
 | D-AC-5 | `--instance workspace` restores in-place opening for every project not running elsewhere; `XEZ_SINGLE_PROJECT=1` hides other projects in both modes. |
+| AC-467-R01 | Thirteen previous-session waiting tasks settled during boot produce the exact two-line 80-column notice before the empty live state. |
+| AC-467-R02 | The same recovery produces the exact three-line 40-column notice, with no line wider than 40 columns. |
+| AC-467-R03 | Plain output contains exactly one `event=task.recovered count=13 settled=13` row before `event=xezar.ready`, with no escape byte. |
+| AC-467-R04 | A queued, running and waiting snapshot that settles only the waiting task emits `count=3 settled=1` and singular human copy. |
+| AC-467-R05–R06 | Seeded settlement and transient restart failure emit no per-task outcome or failure detail and change no session outcome count. |
+| AC-467-R07–R09 | Zero/already-terminal recovery emits nothing, quiet hides the info notice and a recovery that throws emits no success notice. |
+| AC-467-R10 | No request, auth, state-file or MCP schema changes; the old stdout `recovered N run(s)` line is absent. |
 
 ## 14. Open decisions
 
@@ -501,7 +512,7 @@ The PR #505 response preserves the accepted AC-01–AC-14 frame. These non-block
 review findings remain proposed follow-ups under issue #467, not independent acceptance:
 
 - NB-1: success green and project bold remain with the compact-banner/colour follow-up; state words remain readable and unchanged.
-- NB-2: recovery-settled outcomes and `task.recovered` need a separate distinction between historical recovery and new outcomes; suppressing transient recovery failures remains mandatory (AC-06).
+- NB-2: resolved for 0.16.0 by the aggregate `task.recovered count=<count> settled=<settled>` notice specified in §§ 6.3, 9.1 and 10.1–10.2 and fixture-tested in wide, 40-column and plain output. It is historical, never a new per-task outcome, and transient recovery failures remain suppressed (AC-06). Owner decision: issue #467 comment 5710786773, 2026-09-17.
 - NB-5: retaining the closing quote on a width-truncated activity message remains a copy/layout follow-up; sanitization and bounded widths remain mandatory.
 - NB-6: accepting explicit `--output plain` belongs to the settings-contract follow-up; this response preserves the existing flag vocabulary and records the unshipped design option.
 - NB-10: sharing terminal/cockpit status words through the contract remains scope owed by issue #467; current labels agree, but this response does not claim the shared vocabulary shipped.

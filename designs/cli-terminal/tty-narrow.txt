@@ -32,6 +32,12 @@ $ xez
 # last folder: `~/Projects/clients/…/beta`. A URL is never cut. If it is
 # longer than the width it wraps, and most terminals still link it.
 
+[stderr]
+  10:06:12 info  xezar
+    13 tasks from the previous session
+    were settled at start-up
+  No active tasks
+
 # ───────────────────────────────────────
 # Scene 2 – activity. Line 1: time, level,
 # subject. Then the message, indented 4,

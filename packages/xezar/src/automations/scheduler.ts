@@ -1,3 +1,4 @@
+import type { AutomationAudit } from './audit.ts';
 import type { AutomationCoordinator } from './coordinator.ts';
 import type { GithubCandidate, GithubPoller, GithubPollResult } from './github-poller.ts';
 import type { AutomationStore } from './store.ts';
@@ -18,6 +19,8 @@ export interface ProjectAutomationHandle {
   poller: GithubPoller;
   launch?: AutomationLauncher;
   onChange?: (automationId: string, revision: number) => void;
+  /** The automation door of the audit trail (#306 part 2): one record per launch, linked to its receipt. */
+  audit?: AutomationAudit;
 }
 
 /** One request chain process-wide. The promise tail also prevents a failed request from
@@ -115,8 +118,10 @@ export class ProjectAutomationScheduler {
       const launched = await this.handle.launch!(definition, candidate, receipt.receiptId);
       this.handle.store.appendReceipt({ ...receipt, status: 'launched', runId: launched.runId, updatedAt: new Date().toISOString() });
       this.handle.store.appendLog({ automationId: definition.id, revision: definition.revision, event: candidate.event, result: 'launched', receiptId: receipt.receiptId, runId: launched.runId, githubNumber: candidate.number, githubTitle: candidate.title, githubUrl: candidate.url });
+      await this.handle.audit?.launched(definition, candidate.event, receipt.receiptId, launched.runId);
     } catch (error) {
       this.handle.store.appendReceipt({ ...receipt, status: 'launch-error', error: error instanceof Error ? error.message : String(error), updatedAt: new Date().toISOString() });
+      await this.handle.audit?.failed(definition, candidate.event, receipt.receiptId, error);
       throw error;
     }
   }

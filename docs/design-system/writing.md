@@ -61,7 +61,7 @@ when the thing will appear.
 | "Nothing archived yet" | "Finished tasks you archive land here." | `tasks-overview.tsx` |
 | "No matching tasks" | "No tasks match “fix”." | `tasks-overview.tsx` |
 | "Inbox empty" | "Agents drop follow-up suggestions here when they finish a task." | `inbox.tsx` |
-| "No commits yet" | "This task hasn't committed anything on its branch. Autosave commits and any the agent makes appear here." | `task-commits.tsx` |
+| "No commits yet" | "This task hasn’t committed anything on its branch. Autosave commits and any the agent makes appear here." | `task-commits.tsx` |
 | "Working tree clean" | "No uncommitted changes in the main working tree. Edits show up here as they happen." | `repo-changes.tsx` |
 | "Page not found" | "Nothing lives at this address. The link may be mistyped, or it points at something that is gone." | `not-found.tsx` |
 | "The follow-up inbox is off" | "Agents are not asked to leave follow-ups. Set XEZ_FOLLOWUPS=1 and restart xezar to turn the inbox on." | `inbox.tsx` |
@@ -164,4 +164,6 @@ Form dialogs use a plain phrase, no question mark: "Commit changes", "Add agent 
   Connect to sign in", "{project} removed from the workspace — its files are untouched".
 - Errors: the server message, `tone: 'danger'`. Hand-written only when there is no server:
   "Could not copy the command".
+- Copying: "Command copied", "Worktree path copied", "No terminal found — command copied". When the
+  clipboard refuses, the toast is the payload itself: "Run manually: {command}", "Path: {path}".
 - Browser notification body: "Task needs you", "Task needs review", "Task failed"; title is the run title.

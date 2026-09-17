@@ -92,7 +92,7 @@ describe('PlanDock', () => {
     expect(document.querySelector('[data-slot="plan-current"]')).toBeNull()
     // The decorative edge is slimmer on phones, with its current desktop height restored at md.
     expect(document.querySelector('[data-slot="grad-edge"]')?.className).toContain('h-0.5')
-    expect(document.querySelector('[data-slot="grad-edge"]')?.className).toContain('md:h-[3px]')
+    expect(document.querySelector('[data-slot="grad-edge"]')?.className).toContain('md:h-0.75')
   })
 
   // Regression: an opencode `cancelled` todo used to be dropped by the mapper and

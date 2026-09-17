@@ -60,12 +60,16 @@ export function RepoGitRoute({ tab }: { tab: RepoTab }) {
 function RepoView({ repo, info, tab }: { repo: RepoResponse; info: RepoInfo; tab: RepoTab }) {
   return (
     <div data-route="repo-git" className="flex min-h-full flex-col">
+      {/* The run header's spacing (`md:px-section md:pt-group`, tabs `mt-stack`) and the canonical
+          page title (`text-base font-semibold`, G-01): the phone top bar already names the page, so
+          the heading is visible from `md` and stays a heading for assistive tech below it. It is
+          not hidden like the list pages' header because the tabs live in it. */}
       <header
         data-slot="repo-header"
-        className="sticky top-0 z-20 border-b border-border bg-background/95 px-4 pt-3 backdrop-blur md:px-6"
+        className="sticky top-0 z-20 border-b border-border bg-background px-4 pt-stack md:px-section md:pt-group"
       >
-        <div className="flex min-w-0 items-center gap-2.5">
-          <h1 className="text-lg font-semibold">Git</h1>
+        <div className="flex min-w-0 items-center gap-row">
+          <h1 className="sr-only text-base font-semibold md:not-sr-only">Git</h1>
           <BranchChip branch={info.branch} />
           {info.remote ? (
             <span data-slot="repo-remote" className="hidden min-w-0 truncate text-[11px] text-soft-foreground md:inline">
@@ -74,7 +78,7 @@ function RepoView({ repo, info, tab }: { repo: RepoResponse; info: RepoInfo; tab
           ) : null}
         </div>
 
-        <div data-slot="repo-tabs" className="mt-2.5 flex items-end gap-1">
+        <div data-slot="repo-tabs" className="mt-stack flex items-end gap-1">
           <TabLink to="/git" active={tab === 'changes'}>
             Changes
           </TabLink>

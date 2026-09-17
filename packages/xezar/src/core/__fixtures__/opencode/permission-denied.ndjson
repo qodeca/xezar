@@ -1,0 +1,7 @@
+{"type":"server.connected","properties":{}}
+{"type":"message.updated","properties":{"info":{"id":"msg_01J8ZE80PERM","sessionID":"ses_01J8ZE00MAIN","role":"assistant","time":{"created":1760000020000},"modelID":"claude-sonnet-4-5","providerID":"anthropic","mode":"build","path":{"cwd":"/repo","root":"/repo"},"cost":0,"tokens":{"input":0,"output":0,"reasoning":0,"cache":{"read":0,"write":0}}}}}
+{"type":"permission.asked","properties":{"id":"per_01J8ZE81EXT1","sessionID":"ses_01J8ZE00MAIN","permission":"external_directory","patterns":["/repo/src/*"],"metadata":{},"always":["/repo/src/*"],"tool":{"messageID":"msg_01J8ZE80PERM","callID":"call_01J8ZE81"}}}
+{"type":"permission.asked","properties":{"id":"per_01J8ZE82EXT2","sessionID":"ses_01J8ZE00MAIN","permission":"external_directory","patterns":["/etc/xezar-outside/*"],"metadata":{},"always":["/etc/xezar-outside/*"],"tool":{"messageID":"msg_01J8ZE80PERM","callID":"call_01J8ZE82"}}}
+{"type":"permission.asked","properties":{"id":"per_01J8ZE83WEB1","sessionID":"ses_01J8ZE00MAIN","permission":"webfetch","patterns":["https://evil.example/x"],"metadata":{},"always":["*"],"tool":{"messageID":"msg_01J8ZE80PERM","callID":"call_01J8ZE83"}}}
+{"type":"message.part.updated","properties":{"part":{"id":"prt_01J8ZE84TXT1","messageID":"msg_01J8ZE80PERM","sessionID":"ses_01J8ZE00MAIN","type":"text","text":"Skipping the denied paths.","time":{"start":1760000020500,"end":1760000020600}}}}
+{"type":"session.idle","properties":{"sessionID":"ses_01J8ZE00MAIN"}}

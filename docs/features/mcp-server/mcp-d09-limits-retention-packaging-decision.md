@@ -81,7 +81,7 @@ Absence claims are scoped: "not found in the files examined".
 | B-20 | Journal replay page | **100** rows | rows | Same value as B-02 (D-05 N2) | No | Adopted |
 | B-21 | Operation receipts | Evicted only when **older than 84 h AND outside the newest 50 000** for the project | hours, receipts | D-06 § 8: 84 h from the auto-resume constants in `run.ts`; 50 000 from a measured 40.6 ms cold scan against a 300 ms budget; ≈ **20.85 MB** at the cap (50 000 × 417 B) (**peer record**) | No | Adopted |
 | B-22 | Receipt journal snapshot cadence | Every **1 000** lines | lines | D-06 § 7.2: a 1 000-line journal scans in 0.7 ms (**peer record**) | No | Adopted |
-| B-23 | Audit trail | Mechanism **decided here**: count-based, not time-based, and an entry that names a run is never evicted while that run is still kept by B-24. The count is **UNRESOLVED** (U-2) | entries | **Reasoning**: the run store retains by count (`packages/xezar/src/runs/store.ts:328`–`:329`, **source**), and D-06 § 10.5 proposes the same shape. An audit trail that forgets a run the cockpit still shows would break N-04's purpose | No | Decided here (mechanism); UNRESOLVED (number) |
+| B-23 | Audit trail | **Superseded 2026-09-17, implemented in 0.16.0** ([#306](https://github.com/qodeca/xezar/issues/306) part 3): **size**-based, not count-based — the live `audit.ndjson` rotates before the append that would pass **10 000 000** bytes, and **five** files are retained (live plus `.1`–`.4`), so a project's trail is bounded at 50 MB. The original count-based mechanism below was never implemented | bytes, files | **Owner decision** (2026-09-17) plus **executed** measurement: a record is 238–457 B (mean 336), so a full live file holds ≈ 30 000 records and the retained set ≈ 150 000; one rotation of a full set took 1.1 ms. The algorithm, the lock it runs under and the crash repair are in D-06 § 10.5. *Originally decided here:* count-based, not time-based, and an entry that names a run is never evicted while that run is still kept by B-24, by **reasoning** from the run store's own count-based retention (`packages/xezar/src/runs/store.ts:328`–`:329`, **source**) | No | Superseded by the 2026-09-17 owner decision; implemented (#306 part 3) |
 | B-24 | Run store | Unchanged: `MAX_RUNS_KEPT` **300**, `MAX_ARCHIVED_KEPT` **500**; the events file, handoff and images go with the run | runs | `packages/xezar/src/runs/store.ts:328`–`:329`, `:1370`–`:1386` (**source**). An MCP-created run is an ordinary run | No | Adopted |
 | B-25 | Automation receipts, log and tombstones | Unchanged: **90** | days | `RETENTION_MS` (`packages/xezar/src/automations/store.ts:34`, **source**) | No | Adopted |
 | **Existing workspace resources – MCP reads only the safe effective value (D-03)** | | | | | | |
@@ -125,6 +125,18 @@ The grep in B-10 found three existing paths that can take the full 60 s. In the 
 
 - **Decided here**: the mechanism. Count-based, following the run store. An entry naming a run stays while B-24 keeps the run.
 - **UNRESOLVED**: the count. [#102](https://github.com/qodeca/xezar/issues/102) measures the real entry size and rate, and adds the number to this table in the same change.
+
+**Amendment, 2026-09-17 ([#306](https://github.com/qodeca/xezar/issues/306) part 3): size, not count —
+and it is implemented.** The owner chose a size bound instead: the live file rotates before the append
+that would pass **10 000 000 bytes**, and **five** files are retained (live plus `.1` to `.4`). The
+entry size this record could not fix is now measured — 238–457 B, mean 336 — so a full live file holds
+≈ 30 000 records and the retained set ≈ 150 000, bounded at 50 MB per project whatever the activity
+rate turns out to be. That also answers what the count-based mechanism was load-bearing FOR: an audit
+trail that forgets a run the cockpit still shows. At B-24's 300 + 500 retained runs, the retained
+audit set holds roughly 190 records per kept run before anything is evicted. The rotation algorithm,
+the shared lock it runs under, the `0600` modes and the crash repair are in D-06 § 10.5; the
+implementation is `packages/xezar/src/mcp/audit-trail.ts` and the rotated files are never merged into
+the live one.
 
 ### 4.4 Existing resources are shared, not copied (B-26 to B-31)
 
@@ -210,7 +222,7 @@ No conflict was found between them. D-05's 30 s `ping` and D-02's 30 s lease are
 | ID | What | Why it is not fixed | Who closes it |
 | --- | --- | --- | --- |
 | U-1 | How many tokens 40 000 bytes of a real MCP result are in each client; Codex's default output truncation; any OpenCode output limit | No tokenizer is installed here, and measuring through a live model would spend a real account's turns, which the phase forbids. Codex and OpenCode document no default | [#85](https://github.com/qodeca/xezar/issues/85) with a real transcript; [#91](https://github.com/qodeca/xezar/issues/91) lowers B-01 in this table if a client warns or truncates |
-| U-2 | Audit retention count | No retention count is implemented (`audit-trail.ts`); E5 is the dated measurement | Unowned since #102 closed |
+| U-2 | Audit retention count | **Closed 2026-09-17** by [#306](https://github.com/qodeca/xezar/issues/306) part 3, and not with a count: retention is size-based (10 000 000 bytes, five files, § 4.3 amendment), and the entry size is measured at 238–457 B (mean 336) | Closed |
 | U-3 | Real `xez mcp` startup time | The bridge is built; this record has no later startup measurement | Unowned since #86 closed; measure against B-12 |
 | U-4 | Windows named-pipe path and permissions; Linux `sun_path` | Linux limit is 107 bytes in `ipc.ts`; Windows is unsupported and the bridge reports unavailable | #86 closed; Windows support remains unbuilt |
 | U-5 | Claude Code `MCP_TIMEOUT` default | Not stated in the documentation | [#85](https://github.com/qodeca/xezar/issues/85) |

@@ -53,10 +53,12 @@ import {
   rememberLastListen,
 } from './workspace/port-memory.ts';
 import { entry as activityEntry, startTerminalActivity, type TerminalActivity } from './terminal/index.ts';
+import { recoverAndReport } from './terminal/recovery.ts';
 import { formatDuration, formatTokens, glyphsFor } from './terminal/format.ts';
 import { runMigrations } from './workspace/migrations.ts';
 import { registerProject, shouldRegisterProject } from './workspace/projects.ts';
 import { runProjectsCommand } from './workspace/projects-cli.ts';
+import { cliAudit, PROJECTS_SUBCOMMANDS, projectResource, type CliAudit } from './cli-audit.ts';
 import { WorkspaceSemaphore } from './workspace/semaphore.ts';
 import { discoverProjectCheck, fixAndVerifyWorkflow, PROJECT_CONVENTIONS_SKILL } from './init-kit.ts';
 import { resolveCapabilities } from './server/capabilities.ts';
@@ -191,14 +193,24 @@ async function main(): Promise<void> {
 
   switch (command) {
     case 'serve':
-      await serveCommand(repoRoot, invocation, !values['no-open'], values['bind-host']);
+      await serveCommand(repoRoot, invocation, !values['no-open'], values['bind-host'], cliAudit('serve', repoRoot));
       return;
     case 'run':
-      await runCommand(repoRoot, positionals.slice(1).join(' ').trim(), values.workflow, values.model, invocation.quiet);
+      await runCommand(
+        repoRoot,
+        positionals.slice(1).join(' ').trim(),
+        values.workflow,
+        values.model,
+        invocation.quiet,
+        cliAudit('run', repoRoot),
+      );
       return;
-    case 'init':
+    case 'init': {
       initCommand(repoRoot);
+      const audit = cliAudit('init', repoRoot);
+      await audit.applied({ resource: projectResource(await audit.scope()) });
       return;
+    }
     case 'projects':
       // Registry-only (no server, no HTTP) — see workspace/projects-cli.ts.
       // In single-project mode a listing is a launch-context read: register
@@ -209,18 +221,40 @@ async function main(): Promise<void> {
       const bootProjectId = process.env.XEZ_SINGLE_PROJECT === '1' && isList
         ? await initWorkspace(repoRoot)
         : undefined;
-      process.exitCode = await runProjectsCommand(projectArgs, { defaultRoot: repoRoot, bootProjectId });
+      // One audit record per VALID subcommand (#306 part 2); an unknown word gets none.
+      const projectsCommand = PROJECTS_SUBCOMMANDS[projectArgs[0] ?? 'list'];
+      process.exitCode = await runProjectsCommand(projectArgs, {
+        defaultRoot: repoRoot,
+        bootProjectId,
+        ...(projectsCommand ? { audit: cliAudit(projectsCommand, repoRoot) } : {}),
+      });
       return;
     case 'mcp': {
       // The MCP bridge (#86, D-01): stdio for the client, the project's socket for
       // the running service. Starts no server, opens no port, registers nothing —
       // so no `initWorkspace` here. Lazy, like server-install below.
       const { runMcpCommand } = await import('./mcp/index.ts');
-      await runMcpCommand({ repoRoot, version: readOwnVersion() });
+      const audit = cliAudit('mcp', repoRoot);
+      let recorded: Promise<void> | undefined;
+      await runMcpCommand({
+        repoRoot,
+        version: readOwnVersion(),
+        // The first `session/open` is the command's effect boundary; later reconnects are not new invocations.
+        onSessionOpen: (outcome) => {
+          recorded ??= audit
+            .scope()
+            .then((scope) =>
+              outcome.kind === 'owner'
+                ? audit.applied({ resource: projectResource(scope) })
+                : audit.refused(outcome.reason, { resource: projectResource(scope) }),
+            );
+        },
+      });
+      await recorded;
       return;
     }
     case 'server-install':
-      await serverCommand('install', repoRoot, values.platform, {
+      await serverCommand('install', repoRoot, values.platform, cliAudit('server-install', repoRoot), {
         yes: Boolean(values.yes),
         reconfigure: values.reconfigure,
         reinstall: Boolean(values.reinstall),
@@ -234,13 +268,13 @@ async function main(): Promise<void> {
       });
       return;
     case 'server-deploy':
-      await serverCommand('deploy', repoRoot, values.platform, {
+      await serverCommand('deploy', repoRoot, values.platform, cliAudit('server-deploy', repoRoot), {
         yes: Boolean(values.yes),
         domain: values.domain,
       });
       return;
     case 'server-uninstall':
-      await serverCommand('uninstall', repoRoot, values.platform, {
+      await serverCommand('uninstall', repoRoot, values.platform, cliAudit('server-uninstall', repoRoot), {
         yes: Boolean(values.yes),
         domain: values.domain,
       });
@@ -287,6 +321,7 @@ async function serveCommand(
   invocation: CliInvocation,
   openBrowser: boolean,
   bindHost?: string,
+  audit?: CliAudit,
 ): Promise<void> {
   const bootProjectId = await initWorkspace(repoRoot);
   // The registry is read AFTER registration, so a first start in a repo already sees its own
@@ -372,15 +407,15 @@ async function serveCommand(
     }
   }
 
-  const recovered = store
-    .listRuns()
-    .filter((r) => ['queued', 'waiting', 'running'].includes(r.status)).length;
-  await recoverWithProviderRuntimeAuthObservation(
-    store,
-    () => manager.recover(),
-    providerRuntimeAuth,
+  await recoverAndReport(
+    () => store.listRuns(),
+    () => recoverWithProviderRuntimeAuthObservation(
+      store,
+      () => manager.recover(),
+      providerRuntimeAuth,
+    ),
+    (count, settled) => terminal.reportRecovery(count, settled),
   );
-  if (recovered > 0 && !settings.quiet) console.log(`  recovered ${recovered} run(s) from the previous session`);
   // Recovery is over: from here a status change is news, and a `failed` really is an outcome.
   terminal.endRecovery();
 
@@ -427,8 +462,12 @@ async function serveCommand(
     // on screen, and the error below is the only thing a person should see.
     terminal.stop({ stillRunning: 0 });
     store.flush();
+    // No listener, no cockpit: refused before the command's effect (#306 part 2).
+    await audit?.refused('listen_failed', { resource: projectResource(await audit.scope()) });
     throw err;
   }
+  // The server owns its listening socket: `cli.serve` took effect.
+  await audit?.applied({ resource: projectResource(await audit.scope()) });
   terminal.setUrl(`http://localhost:${port}`, {
     port,
     requestedPort,
@@ -710,10 +749,12 @@ async function runCommand(
   workflowName: string | undefined,
   model: string | undefined,
   quiet = false,
+  audit?: CliAudit,
 ): Promise<void> {
   if (!task) {
     console.error('usage: xezar run "<task>" [--workflow name] [--model model]');
     process.exitCode = 1;
+    await audit?.refused('missing_task');
     return;
   }
   await initWorkspace(repoRoot);
@@ -724,6 +765,7 @@ async function runCommand(
   if (!workflow) {
     console.error(`unknown workflow: ${name} (available: ${workflows.map((w) => w.name).join(', ')})`);
     process.exitCode = 1;
+    await audit?.refused('unknown_workflow');
     return;
   }
 
@@ -744,6 +786,7 @@ async function runCommand(
     if (blocked) {
       console.error(blocked);
       process.exitCode = 1;
+      await audit?.refused('provider_unavailable');
       return;
     }
   }
@@ -795,6 +838,7 @@ async function runCommand(
   });
 
   const run = manager.startRun(workflow, { task, model });
+  await audit?.applied({ resource: { kind: 'run', id: run.id } });
   // `review` is terminal here too (spec 009) — headless runs must not hang on
   // the GUI's review gate; the diff waits on the task branch/cockpit instead.
   const final = await new Promise<string>((resolveStatus) => {
@@ -853,6 +897,7 @@ async function serverCommand(
   mode: 'install' | 'uninstall' | 'deploy',
   repoRoot: string,
   platform: string | undefined,
+  audit: CliAudit,
   flags: {
     yes: boolean;
     reconfigure?: string;
@@ -905,18 +950,21 @@ async function serverCommand(
   if (!chosen) {
     console.error(`--platform is required. Valid platforms: ${ids.join(', ')}`);
     process.exitCode = 1;
+    await audit.refused('missing_platform');
     return;
   }
   const strategy = getStrategy(chosen);
   if (!strategy) {
     console.error(`unknown platform: ${chosen} (valid: ${ids.join(', ')})`);
     process.exitCode = 1;
+    await audit.refused('unknown_platform');
     return;
   }
   // Domain-keyed multi-instance is an ubuntu-vps feature (shared nginx front).
   if (instance !== DEFAULT_SERVER_INSTANCE && chosen !== 'ubuntu-vps') {
     console.error(`--domain (multi-instance) is only supported on ubuntu-vps, not ${chosen}.`);
     process.exitCode = 1;
+    await audit.refused('domain_not_supported');
     return;
   }
 
@@ -931,7 +979,12 @@ async function serverCommand(
     }
   }
 
+  // The installer's selected plan beginning is this command's effect boundary (#306 part 2, spec § 5).
+  let planRecorded: Promise<void> | undefined;
   const runOpts = {
+    onPlanStart: () => {
+      planRecorded ??= audit.applied();
+    },
     dryRun: process.env.XEZ_DRY_RUN === '1',
     assumeYes: flags.yes,
     reconfigure: new Set((flags.reconfigure ?? '').split(',').map((s) => s.trim()).filter(Boolean)),
@@ -971,9 +1024,11 @@ async function serverCommand(
     }
     // complete + cancelled (resumable) exit 0; failed exits 1.
     process.exitCode = result.status === 'failed' ? 1 : 0;
+    await (planRecorded ?? audit.refused(result.status === 'cancelled' ? 'cancelled' : 'refused_before_plan'));
   } catch (err) {
     console.error(err instanceof Error ? err.message : String(err));
     process.exitCode = 1;
+    await (planRecorded ?? audit.refused('refused_before_plan'));
   }
 }
 

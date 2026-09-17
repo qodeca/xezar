@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { xezarLaunchdPlist, launchdPlist, macosxNgrok } from './macosx-ngrok.ts';
+import { xezarLaunchdPlist, launchdPlist, macosxNgrok, ngrokTrafficPolicy } from './macosx-ngrok.ts';
 import { availablePlatformIds, getStrategy } from '../strategies.ts';
 import { runInstall, runUninstall } from '../engine.ts';
 import { loadServerState } from '../state.ts';
@@ -47,6 +47,22 @@ describe('macosx-ngrok', () => {
     expect(p).toContain('<string>ops:hunter2</string>');
     expect(p).toContain('<string>xezar.ngrok.app</string>');
     expect(p).toContain('<key>KeepAlive</key>');
+  });
+
+  // #572 — BREAK-NGROK-HEADER-STRIP: drop the `--traffic-policy-file` pair from
+  // the args array in launchdPlist() and this fails — a remote client through
+  // the tunnel could then set X-Xezar-User and have it trusted (loopback peer).
+  it('launchdPlist wires ngrok to the traffic-policy file that strips X-Xezar-User (#572)', () => {
+    const p = launchdPlist(4321, 'ops:hunter2', undefined, '/opt/homebrew/bin/ngrok', '/fake/home/ngrok-traffic-policy.json');
+    expect(p).toContain('<string>--traffic-policy-file</string>');
+    expect(p).toContain('<string>/fake/home/ngrok-traffic-policy.json</string>');
+  });
+
+  it('ngrokTrafficPolicy removes X-Xezar-User on the request phase', () => {
+    const policy = JSON.parse(ngrokTrafficPolicy());
+    expect(policy).toEqual({
+      on_http_request: [{ actions: [{ type: 'remove-headers', config: { headers: ['X-Xezar-User'] } }] }],
+    });
   });
 
   it('xezarLaunchdPlist embeds the argv, port, workdir and env', () => {
@@ -458,7 +474,38 @@ describe('macosx-ngrok steps in a real (non-dry) run', () => {
       const bootout = captured.find(([program, args]) => program === 'launchctl' && args[0] === 'bootout');
       expect(bootout?.[1]?.[1]).toMatch(/^gui\/\d+\/ai\.xezar\.ngrok$/);
       expect(interactive.some(([program, args]) => program === 'launchctl' && args[0] === 'bootstrap')).toBe(true);
-      expect(result!.artifacts.map((a) => a.type).sort()).toEqual(['launchd', 'ngrok-config']);
+      expect(result!.artifacts.map((a) => a.type).sort()).toEqual(['config', 'launchd', 'ngrok-config']);
+    });
+
+    // #572 — BREAK-NGROK-HEADER-STRIP: remove the trafficPolicyFile write (or drop it from the
+    // plist's args) and this fails, because either the file never lands on disk or the plist
+    // never points ngrok at it — both mean a remote client's X-Xezar-User reaches xezar untouched.
+    it('writes a traffic-policy file that strips X-Xezar-User and wires the plist to it (#572)', async () => {
+      const { runner } = healthyHost();
+
+      const result = await stepOf('ngrok').run(baseCtx(runner));
+
+      const policyPath = join(home, 'Library', 'Application Support', 'xezar', 'ngrok-traffic-policy.json');
+      const policy = JSON.parse(readFileSync(policyPath, 'utf8'));
+      expect(policy.on_http_request[0].actions[0]).toEqual({ type: 'remove-headers', config: { headers: ['X-Xezar-User'] } });
+
+      const plist = readFileSync(join(home, 'Library', 'LaunchAgents', 'ai.xezar.ngrok.plist'), 'utf8');
+      expect(plist).toContain('<string>--traffic-policy-file</string>');
+      expect(plist).toContain(`<string>${policyPath}</string>`);
+
+      expect(result!.artifacts).toContainEqual(expect.objectContaining({ type: 'config', name: 'ngrok-traffic-policy', path: policyPath }));
+    });
+
+    it('undo removes the traffic-policy file alongside the plist', async () => {
+      const { runner } = healthyHost();
+      const policyPath = join(home, 'Library', 'Application Support', 'xezar', 'ngrok-traffic-policy.json');
+
+      const result = await stepOf('ngrok').run(baseCtx(runner));
+      expect(statSync(policyPath)).toBeDefined();
+
+      await stepOf('ngrok').undo(baseCtx(runner), result);
+
+      expect(() => statSync(policyPath)).toThrow();
     });
   });
 
@@ -532,6 +579,30 @@ describe('macosx-ngrok steps in a real (non-dry) run', () => {
       // A verification step creates nothing, so it has nothing to undo.
       expect(result!.artifacts).toEqual([]);
       await expect(stepOf('identity').undo(baseCtx(runner), null)).resolves.toBeUndefined();
+    });
+
+    // BREAK-NGROK-PROOF-COPY: only the local tunnel API is ever asked (see the
+    // test above) — no request goes through the public URL, so the success
+    // copy must never claim basic-auth was enforced/verified, only configured.
+    it('never claims basic-auth was enforced or verified — only that it was configured', async () => {
+      const successes: string[] = [];
+      const { runner } = healthyHost();
+
+      await stepOf('identity').run(baseCtx(runner, { ui: { ...createAutoUi(), success: (m: string) => successes.push(m) } }));
+
+      expect(successes).toHaveLength(1);
+      expect(successes[0]).not.toMatch(/enforced|verified/i);
+      expect(successes[0]).toContain('not probed');
+    });
+
+    it('the dry-run preview makes the same disclosure', async () => {
+      const infos: string[] = [];
+      const { runner } = healthyHost();
+
+      await stepOf('identity').run(baseCtx(runner, { dryRun: true, ui: { ...createAutoUi(), info: (m: string) => infos.push(m) } }));
+
+      expect(infos.some((m) => m.includes('not probed'))).toBe(true);
+      expect(infos.some((m) => /enforced|verified/i.test(m))).toBe(false);
     });
 
     it('gives ngrok five tries before warning — it needs a moment to bind :4040', async () => {

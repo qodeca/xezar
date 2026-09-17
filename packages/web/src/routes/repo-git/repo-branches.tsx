@@ -6,7 +6,7 @@ import { createRepoBranch, putConfig } from '@/api/client'
 import { queryKeys, useGithub, useHealth } from '@/api/queries'
 import type { GithubItem, HealthResponse, RepoInfo, RepoResponse } from '@qodeca/xezar-api-client'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Input, nativeFieldClass } from '@/components/ui/input'
 import { toast } from '@/components/ui/toaster'
 import { cn, isHttpUrl } from '@/lib/utils'
 
@@ -77,7 +77,7 @@ export function RepoBranchesSection({ repo, info }: { repo: RepoResponse; info: 
   }
 
   return (
-    <section data-slot="repo-branches" className="flex flex-col gap-6 px-4 py-4 md:px-6">
+    <section data-slot="repo-branches" className="flex flex-col gap-section p-4 md:p-section">
       <div>
         <h2 className="text-xs font-semibold tracking-wide text-soft-foreground uppercase">Branches</h2>
         <Input
@@ -85,13 +85,13 @@ export function RepoBranchesSection({ repo, info }: { repo: RepoResponse; info: 
           placeholder="Filter branches…"
           value={branchQuery}
           onChange={(event) => setBranchQuery(event.target.value)}
-          className="mt-2 max-w-xl"
+          className="mt-stack max-w-xl"
         />
-        <ul data-slot="repo-branch-list" className="mt-2 flex max-w-xl flex-col divide-y divide-border">
+        <ul data-slot="repo-branch-list" className="mt-stack flex max-w-xl flex-col divide-y divide-border">
           {filteredBranches.map((name) => {
             const current = name === info.branch
             return (
-              <li key={name} data-slot="branch-row" data-branch={name} className="flex min-h-9 items-center gap-2 py-1">
+              <li key={name} data-slot="branch-row" data-branch={name} className="flex min-h-9 items-center gap-row py-1">
                 <GitBranchIcon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
                 <span className={cn('min-w-0 truncate font-mono text-xs', current && 'font-semibold')}>{name}</span>
                 {current ? (
@@ -124,7 +124,7 @@ export function RepoBranchesSection({ repo, info }: { repo: RepoResponse; info: 
           ) : null}
         </ul>
 
-        <form data-slot="branch-create" className="mt-3 flex max-w-md items-center gap-2" onSubmit={submitCreate}>
+        <form data-slot="branch-create" className="mt-stack flex max-w-md items-center gap-row" onSubmit={submitCreate}>
           <Input
             aria-label="New branch name"
             placeholder="new-branch-name"
@@ -152,14 +152,15 @@ export function RepoBranchesSection({ repo, info }: { repo: RepoResponse; info: 
           Agents’ base branch
         </label>
         {/* A native <select>: a handful of branch names needs no popover machinery, and the
-            OS picker is the better control on phones. */}
+            OS picker is the better control on phones. Its look is the shared native-field string
+            (G-11), which also carries the 44 px phone floor. */}
         <select
           id="base-branch-picker"
           data-slot="base-branch-picker"
           value={repo.baseBranch ?? ''}
           disabled={setBase.isPending}
           onChange={(event) => setBase.mutate(event.target.value === '' ? null : event.target.value)}
-          className="mt-1.5 block w-full rounded-md border border-input bg-card px-3 py-1.5 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
+          className={cn(nativeFieldClass, 'mt-row block')}
         >
           <option value="">follow checked-out branch (default)</option>
           {repo.branches.map((name) => (
@@ -168,7 +169,7 @@ export function RepoBranchesSection({ repo, info }: { repo: RepoResponse; info: 
             </option>
           ))}
         </select>
-        <p className="mt-1 text-[11px] text-soft-foreground">New task worktrees branch from this.</p>
+        <p className="mt-row text-[11px] text-soft-foreground">New task worktrees branch from this.</p>
       </div>
 
       {health.data?.forge?.available ? <ForgePullRequests /> : null}
@@ -185,17 +186,17 @@ function ForgePullRequests() {
     <div data-slot="repo-prs" className="max-w-xl">
       <h2 className="text-xs font-semibold tracking-wide text-soft-foreground uppercase">Open pull requests</h2>
       {github.isPending ? (
-        <p className="mt-2 text-xs text-soft-foreground">Loading pull requests…</p>
+        <p className="mt-stack text-xs text-soft-foreground">Loading pull requests…</p>
       ) : github.isError ? (
-        <p className="mt-2 text-xs text-soft-foreground">{github.error.message}</p>
+        <p role="alert" className="mt-stack text-xs text-danger">{github.error.message}</p>
       ) : !github.data.available ? (
-        <p data-slot="repo-prs-unavailable" className="mt-2 text-xs text-soft-foreground">
+        <p data-slot="repo-prs-unavailable" className="mt-stack text-xs text-soft-foreground">
           {github.data.reason ?? 'The forge is unreachable right now.'}
         </p>
       ) : github.data.prs.length === 0 ? (
-        <p className="mt-2 text-xs text-soft-foreground">No open pull requests.</p>
+        <p className="mt-stack text-xs text-soft-foreground">No open pull requests.</p>
       ) : (
-        <ul className="mt-2 flex flex-col divide-y divide-border">
+        <ul className="mt-stack flex flex-col divide-y divide-border">
           {github.data.prs.map((pr) => (
             <PullRequestRow key={pr.number} pr={pr} />
           ))}
@@ -214,12 +215,13 @@ function PullRequestRow({ pr }: { pr: GithubItem }) {
       {pr.checks ? <ChecksBadge checks={pr.checks} /> : null}
     </>
   )
-  const rowClass = 'flex min-w-0 items-center gap-2 rounded-sm px-1.5 py-2'
+  // `min-h-tap … md:min-h-0`: the row link is a 44 px phone target at every density (#453 Q40).
+  const rowClass = 'flex min-h-tap min-w-0 items-center gap-row rounded-sm px-1.5 py-2 md:min-h-0'
   return (
     <li data-slot="pr-row" data-number={pr.number}>
       {/* href protocol guard (#431): link only for http(s) URLs, else inert row. */}
       {isHttpUrl(pr.url) ? (
-        <a href={pr.url} target="_blank" rel="noopener noreferrer" className={cn(rowClass, 'hover:bg-muted')}>
+        <a href={pr.url} target="_blank" rel="noopener noreferrer" className={cn(rowClass, 'outline-none hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/50')}>
           {inner}
         </a>
       ) : (

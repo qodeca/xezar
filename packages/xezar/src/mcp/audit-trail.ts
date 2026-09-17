@@ -1,5 +1,18 @@
 import { createHash } from 'node:crypto';
-import { appendFileSync, closeSync, fstatSync, openSync, readFileSync, readSync } from 'node:fs';
+import {
+  chmodSync,
+  closeSync,
+  existsSync,
+  fchmodSync,
+  fstatSync,
+  openSync,
+  readFileSync,
+  readSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import {
   auditActionRecordSchema,
@@ -10,13 +23,15 @@ import {
   type AuditEntry,
   type AuditOrigin,
   type AuditResource,
+  type AuditRotatedRecord,
 } from '@qodeca/xezar-contract';
+import { acquireFileLock, queueByLockPath } from '../core/file-lock.ts';
 import { collectSecretValues, redactSecrets } from '../core/secret-redaction.ts';
 import { PROJECT_ID_RE } from '../workspace/config.ts';
 
 /**
  * The audit trail (#102, #306) — D-06 § 10, spec `docs/features/mcp-server/audit-trail-origins-2026-09-17.md`.
- * Built for every door; written today by the MCP door only (see THE SHARED PATH below).
+ * Built for every door, and written by all four (see THE SHARED PATH below).
  *
  * WHAT. One append-only NDJSON file per project, `<project>/.local/xezar/audit.ndjson`, one v2
  * `AuditRecord` (packages/contract/src/audit.ts) per settled operation: sequence, UTC time, project,
@@ -32,27 +47,49 @@ import { PROJECT_ID_RE } from '../workspace/config.ts';
  * disk indefinitely; 0.15.0, after a downgrade, still reads its own file untouched. The alias is
  * removed no earlier than 0.18.0.
  *
- * THE SHARED PATH, AND THE ONE DOOR THAT USES IT. A door stamps its origin through an
+ * THE SHARED PATH, AND THE FOUR DOORS THAT USE IT. A door stamps its origin through an
  * `AuditChannel`: the entry point that owns the door asks `trail.channel(origin)` ONCE and hands
  * operations to it. The origin — and the actor's `type` — is therefore derived from which door the
  * call came through; an operation object has no origin and no project field, and a stray `origin`
  * or `projectId` key on one is ignored (D-06 § 10.4 rule 1).
  *
- * **Exactly one door does this today, and it is the MCP one:** `mcp/index.ts` builds
- * `.channel('mcp')`, and it is the only non-test construction of this class in `packages/`. The
- * cockpit's HTTP routes, the automation scheduler and the command line record NOTHING yet; wiring
- * them is the next delivery step of #306. `channel()` takes any `AuditOrigin` because those doors
- * are the point, but do not read this comment as a description of four live writers.
+ * **Four doors do this, one channel each** (#306 part 2, spec § 4), and
+ * `audit-origin-wiring.test.ts` pins every production construction:
+ *   - `mcp` — `mcp/index.ts`, for each MCP tool call the shared inventory classifies as a mutation;
+ *   - `ui` — `server/audit-ui.ts`, for each inventoried HTTP route reached over a real connection;
+ *   - `automation` — `automations/audit.ts`, for each run the automation runner launches, linked
+ *     to its receipt;
+ *   - `cli` — `cli-audit.ts`, once per valid command-line subcommand.
+ * Which actions `ui` and `mcp` record is decided by ONE table, `audit-inventory.ts` (spec § 6).
+ * Every door writes through `AuditChannel.record`, so every door gets the same field checks, the
+ * same secret dropping and the same one warning.
  *
  * OUTCOMES (spec § 3.2). `applied`: the effect took place. `refused`: the door rejected the
  * operation BEFORE any effect, with a machine reason. There is no third value, so an operation that
  * may have started its effect and then failed is not recorded at all — calling it `refused` would
  * be a lie. `skip(code)` says so explicitly, and it uses the one warning below.
  *
- * SEQUENCE. `seq` is the last valid persisted v2 record's `seq` plus one, read from the file at
- * every write — never from a cache — so a failed append allocates nothing. Two PROCESSES appending
- * at the same instant can still read the same last value; the shared lock that closes that is
- * later #306 work (spec § 7), as are rotation and repairing the mode of an existing file.
+ * ONE LOCK, ONE SEQUENCE, ONE ROTATION (#306 part 3, spec § 7). Every door's record goes through
+ * `write` → the in-process queue → the project's `audit.ndjson.lock` (the bounded `core/file-lock.ts`
+ * lock: 2 s wait, 20 ms polling, 30 s stale takeover) → `appendAuditRecord`. Under the lock, and only
+ * there:
+ *   - SEQUENCE. `seq` is the last valid persisted v2 record's `seq` plus one, read from the files at
+ *     every write — never from a cache — so a failed append allocates nothing and two processes
+ *     cannot read the same last value. The live file is read first; when it has no valid record the
+ *     four rotated files are, and their maximum wins.
+ *   - MODES. The live file and every retained rotation are repaired to `0600` before a byte is
+ *     written; a file that cannot be made `0600` gets nothing.
+ *   - ROTATION, BEFORE THE APPEND. When the live file plus the pending line would pass
+ *     `AUDIT_ROTATE_BYTES` (10,000,000), `.4` is deleted, `.3→.4`, `.2→.3`, `.1→.2`, live→`.1`,
+ *     and a new `0600` live file starts with one `kind: rotated` marker whose `previousLastSeq` is
+ *     the last sequence allocated before it; the action follows as its second line. Five files are
+ *     retained: live plus `.1`–`.4`.
+ *   - CRASH REPAIR. A live file that is absent or empty while `.1` exists is a rotation that died
+ *     between its rename and its marker. The next lock holder writes the marker first, from the
+ *     maximum retained sequence, and never invents the action that may have been lost.
+ * The lock is not waited on forever and is never skipped around: after its 2 s bound, or when the
+ * folder cannot be written, the record is DROPPED with the one warning — an unlocked append could
+ * duplicate a sequence or race a rotation. The legacy `mcp-audit.ndjson` takes no part in any of it.
  *
  * MUST vs SHOULD (D-06 § 10.2):
  *   - MUST: the project id comes from the trusted scope, the origin and actor from the door, and no
@@ -77,8 +114,17 @@ import { PROJECT_ID_RE } from '../workspace/config.ts';
 export const AUDIT_TRAIL_FILE = 'audit.ndjson';
 /** The name 0.13.0–0.15.0 wrote. Read-only: never written, renamed, chmodded or deleted here. */
 export const LEGACY_AUDIT_TRAIL_FILE = 'mcp-audit.ndjson';
+/** The live file never grows past this many bytes on purpose: the line that would pass it rotates first. */
+export const AUDIT_ROTATE_BYTES = 10_000_000;
+/** Rotated generations kept beside the live file (`.1` newest … `.4` oldest) — five files in all. */
+export const AUDIT_RETAINED_ROTATIONS = 4;
 
 export const auditTrailPath = (dataDir: string): string => join(dataDir, AUDIT_TRAIL_FILE);
+/** `audit.ndjson.<generation>`, 1 (newest) to `AUDIT_RETAINED_ROTATIONS` (oldest). */
+export const rotatedAuditTrailPath = (dataDir: string, generation: number): string =>
+  join(dataDir, `${AUDIT_TRAIL_FILE}.${generation}`);
+/** The cross-process lock every writer of this project's trail holds, whichever door it is. */
+export const auditLockPath = (dataDir: string): string => join(dataDir, `${AUDIT_TRAIL_FILE}.lock`);
 export const legacyAuditTrailPath = (dataDir: string): string => join(dataDir, LEGACY_AUDIT_TRAIL_FILE);
 
 /** The one line a process prints the first time it reads the legacy file. */
@@ -113,6 +159,23 @@ export interface AuditTrailOptions {
   secretValues?: () => readonly string[];
   /** Where the one-time warning and the legacy deprecation line go. */
   warn?: (message: string) => void;
+  /** @internal — test seams for the cross-process and crash fixtures. Production never sets them. */
+  hooks?: AuditWriteHooks;
+}
+
+/** @internal — the points a fixture may pause or crash a writer at. */
+export interface AuditWriteHooks {
+  /** After the in-process queue, immediately before the file lock is requested. */
+  beforeLock?: () => void | Promise<void>;
+  /**
+   * The moment the size check has decided to rotate, before the first rename. A fixture pauses HERE
+   * to hold two writers inside one critical window: a break that moves the decision or the renames
+   * out of the lock is then red wherever it is placed, which pausing after the renames was not
+   * (#306 part 3 review, m1).
+   */
+  beforeRotateRename?: () => void;
+  /** Under the lock, after live→`.1` and before the new live file and its marker exist. */
+  afterRotateRename?: () => void;
 }
 
 /** The actor fields a door supplies beyond `type`, which the channel stamps itself. */
@@ -127,8 +190,16 @@ export interface AuditedOperation<O extends AuditOrigin = AuditOrigin> {
   action: string;
   /** The resource acted on, when known before the effect. */
   resource?: AuditResource;
-  /** The zod-PARSED payload. Only its digest is kept; never the raw params (D-06 § 5.4 step 1). */
+  /**
+   * The zod-PARSED payload. Only its digest is kept; never the raw params (D-06 § 5.4 step 1). Known
+   * secret values inside it are replaced BEFORE hashing, so the digest does not fingerprint one.
+   */
   payload?: unknown;
+  /**
+   * The top-level key names of a configuration write or request body — names, never values. Kept
+   * sorted and distinct; a name that is not a plain bounded key, or that looks like a secret, is dropped.
+   */
+  fieldNames?: readonly string[];
   /** The `expectedVersion` the caller sent (D-06 § 4.2). Kept only when it has the `rev1` shape. */
   expectedVersion?: string;
   /** MCP only — the client's `operationId` (D-06 § 5.2). */
@@ -198,6 +269,7 @@ export class AuditTrail {
   private readonly now: () => Date;
   private readonly callerSecrets: () => readonly string[];
   private readonly warn: (message: string) => void;
+  private readonly hooks: AuditWriteHooks;
   private warned = false;
 
   constructor(scope: AuditScope, options: AuditTrailOptions = {}) {
@@ -208,19 +280,21 @@ export class AuditTrail {
     this.now = options.now ?? (() => new Date());
     this.callerSecrets = options.secretValues ?? (() => []);
     this.warn = options.warn ?? ((message) => console.warn(message));
+    this.hooks = options.hooks ?? {};
   }
 
   /**
    * The recorder for one door. Call it where the door is, once; the origin is fixed from then on.
-   * One production caller: `mcp/index.ts`, with `'mcp'`. Every other origin is test-only for now.
+   * One production caller per origin: see THE SHARED PATH in the module comment.
    */
   channel<O extends AuditOrigin>(origin: O): AuditChannel<O> {
     return new AuditChannel(this, origin);
   }
 
   /**
-   * Every record of THIS project, oldest first, from exactly one file (spec § 8):
-   *   1. `audit.ndjson` exists → its v2 action records; the legacy file is ignored even if present;
+   * Every record of THIS project, oldest first, from exactly one history (spec § 8):
+   *   1. `audit.ndjson` or a rotation of it exists → the v2 action records of `.4`, `.3`, `.2`, `.1`
+   *      and the live file, in that order; the legacy file is ignored even if present;
    *   2. only `mcp-audit.ndjson` exists → its v1 entries, read-only, with one deprecation line per
    *      process;
    *   3. neither → an empty `current` trail, silently.
@@ -229,15 +303,22 @@ export class AuditTrail {
    * Rotation markers are not actions and are skipped without counting as quarantined.
    */
   read(): AuditReadResult {
-    const current = this.readFile(auditTrailPath(this.scope.dataDir));
-    if (current !== 'absent') {
+    const files = [
+      ...Array.from({ length: AUDIT_RETAINED_ROTATIONS }, (_, i) => rotatedAuditTrailPath(this.scope.dataDir, AUDIT_RETAINED_ROTATIONS - i)),
+      auditTrailPath(this.scope.dataDir),
+    ].map((path) => this.readFile(path));
+    if (files.some((file) => file !== 'absent')) {
       const entries: AuditActionRecord[] = [];
-      const quarantined = eachLine(current, (json) => {
-        const parsed = auditRecordSchema.safeParse(json);
-        if (!parsed.success) return false;
-        if (parsed.data.kind === 'action' && parsed.data.projectId === this.scope.projectId) entries.push(parsed.data);
-        return true;
-      });
+      let quarantined = 0;
+      for (const file of files) {
+        if (file === 'absent') continue;
+        quarantined += eachLine(file, (json) => {
+          const parsed = auditRecordSchema.safeParse(json);
+          if (!parsed.success) return false;
+          if (parsed.data.kind === 'action' && parsed.data.projectId === this.scope.projectId) entries.push(parsed.data);
+          return true;
+        });
+      }
       return { source: 'current', entries, quarantined };
     }
     const legacy = this.readFile(legacyAuditTrailPath(this.scope.dataDir));
@@ -256,21 +337,34 @@ export class AuditTrail {
     return { source: 'legacy', entries, quarantined };
   }
 
-  /** @internal — build, check and append one record. Never throws. */
-  write<O extends AuditOrigin>(origin: O, op: AuditedOperation<O>, settlement: AuditSettlement): AuditActionRecord | null {
+  /**
+   * @internal — build, check and append one record under the project's lock. Never rejects: every
+   * failure — the lock's 2 s bound, an unwritable folder, a mode, rename or append error — resolves
+   * `null` after the one warning, and nothing already on disk is rolled back.
+   */
+  async write<O extends AuditOrigin>(
+    origin: O,
+    op: AuditedOperation<O>,
+    settlement: AuditSettlement,
+  ): Promise<AuditActionRecord | null> {
     try {
       const candidate = this.build(origin, op, settlement);
       if (!candidate) return null;
-      const path = auditTrailPath(this.scope.dataDir);
-      const tail = lastPersisted(path);
-      const parsed = auditActionRecordSchema.safeParse({ v: 2, seq: tail.seq + 1, ...candidate });
-      if (!parsed.success) {
-        this.warnOnce('write', new Error(`not an auditable operation: ${parsed.error.issues[0]?.message ?? 'invalid'}`));
-        return null;
-      }
-      // A torn last line (a crash mid-append) must not swallow this record into itself.
-      appendFileSync(path, `${tail.endsWithNewline ? '' : '\n'}${JSON.stringify(parsed.data)}\n`, { mode: 0o600 });
-      return parsed.data;
+      const lockPath = auditLockPath(this.scope.dataDir);
+      return await queueByLockPath(lockPath, async () => {
+        await this.hooks.beforeLock?.();
+        const lock = await acquireFileLock(lockPath);
+        if (!lock.acquired) {
+          // Skipped, never written unlocked: an unlocked append could repeat a sequence or race a rotation.
+          this.warnOnce('write', lock.reason === 'timeout' ? { code: 'lock_timeout' } : lock.error);
+          return null;
+        }
+        try {
+          return appendAuditRecord(this.scope.dataDir, candidate, this.now, this.hooks);
+        } finally {
+          await lock.release();
+        }
+      });
     } catch (err) {
       this.warnOnce('write', err);
       return null;
@@ -279,16 +373,16 @@ export class AuditTrail {
 
   /** @internal — an operation that settled without an honest v2 outcome. Warns once, writes nothing. */
   skip(code: string): null {
-    this.warnOnce('write', Object.assign(new Error(code), { code: /^[a-z][a-z0-9_]{0,63}$/.test(code) ? code : 'unrecordable' }));
+    this.warnOnce('write', { code: /^[a-z][a-z0-9_]{0,63}$/.test(code) ? code : 'unrecordable' });
     return null;
   }
 
-  /** The record without `v` and `seq`, which only the append path may allocate. */
+  /** The record without `v`, `seq` and `ts`, which only the append path, under the lock, may allocate. */
   private build<O extends AuditOrigin>(
     origin: O,
     op: AuditedOperation<O>,
     settlement: AuditSettlement,
-  ): Omit<AuditActionRecord, 'v' | 'seq'> | null {
+  ): Omit<AuditActionRecord, 'v' | 'seq' | 'ts'> | null {
     const secrets = this.knownSecrets();
     const clean = (value: string | undefined): string | undefined =>
       value !== undefined && redactSecrets(value, secrets) === value ? value : undefined;
@@ -303,7 +397,6 @@ export class AuditTrail {
 
     const candidate: Record<string, unknown> = {
       kind: 'action',
-      ts: this.now().toISOString(),
       projectId: this.scope.projectId,
       origin,
       // The door's details first, then its type: no details object can change which door this was.
@@ -327,20 +420,22 @@ export class AuditTrail {
           ? field('operationKey', clean(`${this.scope.projectId}/${op.operationId}`))
           : undefined,
       versionToken: field('versionToken', clean(op.expectedVersion)),
-      payloadDigest: op.payload === undefined ? undefined : field('payloadDigest', safeDigest(op.payload)),
+      fieldNames: op.fieldNames === undefined ? undefined : field('fieldNames', fieldNamesOf(op.fieldNames, clean)),
+      payloadDigest:
+        op.payload === undefined ? undefined : field('payloadDigest', safeDigest(redactPayload(op.payload, secrets))),
     };
     // Spread only what is present: an `undefined` key would be typed as present and dropped by
     // JSON.stringify anyway, and the read path must see exactly what was written.
     for (const [key, value] of Object.entries(optional)) if (value !== undefined) candidate[key] = value;
 
-    // Validated with a placeholder sequence, so a malformed operation is refused BEFORE the file is
-    // read for the real one. `write` validates again with the allocated value.
-    const parsed = auditActionRecordSchema.safeParse({ v: 2, seq: 1, ...candidate });
+    // Validated with a placeholder sequence and time, so a malformed operation is refused BEFORE the
+    // lock is taken. The append path validates again with the allocated values.
+    const parsed = auditActionRecordSchema.safeParse({ v: 2, seq: 1, ts: new Date(0).toISOString(), ...candidate });
     if (!parsed.success || clean(parsed.data.action) === undefined) {
-      this.warnOnce('write', new Error(`not an auditable operation: ${parsed.error?.issues[0]?.message ?? 'secret-shaped action'}`));
+      this.warnOnce('write', { code: 'invalid_record' });
       return null;
     }
-    const { v: _v, seq: _seq, ...record } = parsed.data;
+    const { v: _v, seq: _seq, ts: _ts, ...record } = parsed.data;
     return record;
   }
 
@@ -362,13 +457,14 @@ export class AuditTrail {
   }
 
   /**
-   * ONE warning per trail per process, shared by every read, write and skip failure (spec § 7.2).
-   * The code only — an error message can carry a path, and a path is not for logs either.
+   * ONE warning per trail per process, shared by every read, write, lock, mode, rotation and skip
+   * failure (spec § 7.2). A bounded code only — an error message can carry a path, and a path, a
+   * record, a proxy user, a receipt or a payload is not for logs either.
    */
   private warnOnce(what: 'read' | 'write', err: unknown): void {
     if (this.warned) return;
     this.warned = true;
-    const code = (err as NodeJS.ErrnoException | undefined)?.code ?? (err as Error | undefined)?.name ?? 'error';
+    const code = boundedCode(err);
     this.warn(
       what === 'read'
         ? `xezar: audit trail read failed (${code}); the trail reads as empty.`
@@ -384,8 +480,8 @@ export class AuditChannel<O extends AuditOrigin = AuditOrigin> {
     readonly origin: O,
   ) {}
 
-  /** Record an operation that has already settled. */
-  record(op: AuditedOperation<O>, settlement: AuditSettlement): AuditActionRecord | null {
+  /** Record an operation that has already settled. Resolves the persisted record, or `null` after the one warning. */
+  record(op: AuditedOperation<O>, settlement: AuditSettlement): Promise<AuditActionRecord | null> {
     return this.trail.write(this.origin, op, settlement);
   }
 
@@ -398,7 +494,7 @@ export class AuditChannel<O extends AuditOrigin = AuditOrigin> {
   }
 
   /** Record an operation that settled through an HTTP route, by its status. A 5xx is skipped. */
-  recordStatus(op: AuditedOperation<O>, status: number): AuditActionRecord | null {
+  async recordStatus(op: AuditedOperation<O>, status: number): Promise<AuditActionRecord | null> {
     const settlement = settlementForStatus(status);
     return settlement ? this.record(op, settlement) : this.skip(`http_${status}`);
   }
@@ -418,12 +514,12 @@ export class AuditChannel<O extends AuditOrigin = AuditOrigin> {
     try {
       value = await effect();
     } catch (err) {
-      if (err instanceof AuditRejection) this.record(op, { outcome: 'refused', reason: err.code });
+      if (err instanceof AuditRejection) await this.record(op, { outcome: 'refused', reason: err.code });
       else this.skip('effect_failed');
       throw err;
     }
     const resource = resourceOf?.(value);
-    this.record(op, { outcome: 'applied', ...(resource ? { resource } : {}) });
+    await this.record(op, { outcome: 'applied', ...(resource ? { resource } : {}) });
     return value;
   }
 }
@@ -445,23 +541,32 @@ function eachLine(raw: string, accept: (json: unknown) => boolean): number {
   return quarantined;
 }
 
+/** What the append path needs to know about one file of the set. */
+interface FileTail {
+  exists: boolean;
+  size: number;
+  /** The last valid v2 record's `seq` — `undefined` when the file holds none. */
+  seq: number | undefined;
+  endsWithNewline: boolean;
+}
+
 /**
- * The last valid v2 record's `seq` (0 when there is none), read backwards from the end of the file
- * so a long trail costs one tail read, and whether the file ends in a newline. A torn or corrupt
- * tail is skipped over to the last valid record, which is how a failed append allocates nothing.
- * A missing file is `{ seq: 0, endsWithNewline: true }`; any other read error throws to the caller.
+ * The last valid v2 record's `seq`, read backwards from the end of the file so a long trail costs
+ * one tail read, plus the file's size and whether it ends in a newline. A torn or corrupt tail is
+ * skipped over to the last valid record, which is how a failed append allocates nothing. A missing
+ * file is `{ exists: false, size: 0 }`; any other read error throws to the caller.
  */
-function lastPersisted(path: string): { seq: number; endsWithNewline: boolean } {
+function readTail(path: string): FileTail {
   let fd: number;
   try {
     fd = openSync(path, 'r');
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return { seq: 0, endsWithNewline: true };
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return { exists: false, size: 0, seq: undefined, endsWithNewline: true };
     throw err;
   }
   try {
     const size = fstatSync(fd).size;
-    if (size === 0) return { seq: 0, endsWithNewline: true };
+    if (size === 0) return { exists: true, size, seq: undefined, endsWithNewline: true };
     const last = Buffer.alloc(1);
     readSync(fd, last, 0, 1, size - 1);
     const endsWithNewline = last[0] === 0x0a;
@@ -476,21 +581,120 @@ function lastPersisted(path: string): { seq: number; endsWithNewline: boolean } 
       for (let i = data.length - 1; i >= 0; i -= 1) {
         if (data[i] !== 0x0a) continue;
         const seq = seqOf(data.subarray(i + 1, lineEnd));
-        if (seq !== undefined) return { seq, endsWithNewline };
+        if (seq !== undefined) return { exists: true, size, seq, endsWithNewline };
         lineEnd = i;
       }
-      if (start === 0) {
-        const seq = seqOf(data.subarray(0, lineEnd));
-        return { seq: seq ?? 0, endsWithNewline };
-      }
+      if (start === 0) return { exists: true, size, seq: seqOf(data.subarray(0, lineEnd)), endsWithNewline };
       // The first piece of this chunk may continue in the one before it.
       carry = data.subarray(0, lineEnd);
       end = start;
     }
-    return { seq: 0, endsWithNewline };
+    /* c8 ignore next -- the loop always returns once it reaches offset 0 */
+    return { exists: true, size, seq: undefined, endsWithNewline };
   } finally {
     closeSync(fd);
   }
+}
+
+/** Make an existing file `0600`. Absent is fine; a file that cannot be made `0600` throws. */
+function repairMode(path: string): void {
+  let mode: number;
+  try {
+    mode = statSync(path).mode & 0o777;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return;
+    throw err;
+  }
+  if (mode !== 0o600) chmodSync(path, 0o600);
+}
+
+/** Append `text` to `path`, creating it `0600` when absent. The mode is set before the first byte. */
+function appendText(path: string, text: string): void {
+  const fd = openSync(path, 'a', 0o600);
+  try {
+    // `open`'s mode passes through the umask and applies only on create; this makes it exact.
+    fchmodSync(fd, 0o600);
+    writeFileSync(fd, text);
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/**
+ * THE append path (spec § 7.2 steps 4–7), for every door. Runs only while the caller holds the
+ * project's `audit.ndjson.lock`; throws on any filesystem failure, which the caller turns into the
+ * one warning. Returns the persisted action record.
+ */
+function appendAuditRecord(
+  dataDir: string,
+  candidate: Omit<AuditActionRecord, 'v' | 'seq' | 'ts'>,
+  now: () => Date,
+  hooks: AuditWriteHooks,
+): AuditActionRecord {
+  const live = auditTrailPath(dataDir);
+  const rotations = Array.from({ length: AUDIT_RETAINED_ROTATIONS }, (_, i) => rotatedAuditTrailPath(dataDir, i + 1));
+  // 0600 on everything retained before anything is appended; the legacy file is not ours to touch.
+  for (const path of [live, ...rotations]) repairMode(path);
+
+  const tail = readTail(live);
+  let lastSeq = tail.seq;
+  if (lastSeq === undefined) {
+    for (const path of rotations) {
+      const seq = readTail(path).seq;
+      if (seq !== undefined && (lastSeq === undefined || seq > lastSeq)) lastSeq = seq;
+    }
+  }
+  const base = lastSeq ?? 0;
+  const actionAt = (seq: number): AuditActionRecord => auditActionRecordSchema.parse({ v: 2, seq, ts: now().toISOString(), ...candidate });
+  const markerAt = (seq: number): AuditRotatedRecord => ({
+    v: 2,
+    seq,
+    ts: now().toISOString(),
+    projectId: candidate.projectId,
+    kind: 'rotated',
+    previousLastSeq: seq - 1,
+  });
+  const startLive = (): AuditActionRecord => {
+    const marker = markerAt(base + 1);
+    const action = actionAt(base + 2);
+    appendText(live, `${JSON.stringify(marker)}\n${JSON.stringify(action)}\n`);
+    return action;
+  };
+
+  // A rotation that died between its rename and its marker: repair it before this record.
+  if (tail.size === 0 && existsSync(rotations[0]!)) return startLive();
+
+  const action = actionAt(base + 1);
+  const line = `${tail.endsWithNewline ? '' : '\n'}${JSON.stringify(action)}\n`;
+  if (tail.size + Buffer.byteLength(line) <= AUDIT_ROTATE_BYTES) {
+    appendText(live, line);
+    return action;
+  }
+
+  // Rotate first, so the live file is never knowingly over the limit.
+  hooks.beforeRotateRename?.();
+  rmSync(rotations[AUDIT_RETAINED_ROTATIONS - 1]!, { force: true });
+  for (let generation = AUDIT_RETAINED_ROTATIONS - 1; generation >= 1; generation -= 1) {
+    renameIfPresent(rotations[generation - 1]!, rotations[generation]!);
+  }
+  renameSync(live, rotations[0]!);
+  hooks.afterRotateRename?.();
+  for (const path of rotations) repairMode(path);
+  return startLive();
+}
+
+function renameIfPresent(from: string, to: string): void {
+  try {
+    renameSync(from, to);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+  }
+}
+
+/** A warning's code: an errno name or a short machine code, and never anything longer or freer. */
+function boundedCode(err: unknown): string {
+  const code = (err as { code?: unknown } | null | undefined)?.code;
+  return typeof code === 'string' && /^(?:E[A-Z0-9]{1,31}|[a-z][a-z0-9_]{0,63})$/.test(code) ? code : 'error';
 }
 
 function seqOf(line: Buffer): number | undefined {
@@ -525,6 +729,24 @@ export function payloadDigest(payload: unknown): string {
 function fencingTokenMs(token: string | undefined): number | undefined {
   const match = token === undefined ? null : /^(\d{1,15})-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.exec(token);
   return match ? Number(match[1]) : undefined;
+}
+
+/** Plain key names only (`tags`, `maxParallel`), sorted and distinct, at most the schema's 64. */
+function fieldNamesOf(names: readonly string[], clean: (value: string) => string | undefined): string[] {
+  const kept = new Set<string>();
+  for (const name of names) if (/^[A-Za-z_$][\w$-]{0,63}$/.test(name) && clean(name) !== undefined) kept.add(name);
+  return [...kept].sort().slice(0, 64);
+}
+
+/** Every string leaf with the known secret values masked, so a digest never fingerprints a secret. */
+function redactPayload(value: unknown, secrets: readonly string[]): unknown {
+  if (typeof value === 'string') return redactSecrets(value, secrets);
+  if (value === null || typeof value !== 'object' || value instanceof Uint8Array) return value;
+  if (Array.isArray(value)) return value.map((item) => redactPayload(item, secrets));
+  if (typeof (value as { toJSON?: unknown }).toJSON === 'function') return value;
+  const out: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value)) out[key] = redactPayload(item, secrets);
+  return out;
 }
 
 function safeDigest(payload: unknown): string | undefined {

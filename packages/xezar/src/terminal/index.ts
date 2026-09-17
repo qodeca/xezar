@@ -5,9 +5,9 @@
  * that produce events — the boot store, the project-context map and the HTTP boundary — and
  * calls `stop()` on the way out. Nothing else in the CLI knows the renderer exists.
  *
- * Everything this builds is on **stderr**. The `serve` stdout contract is untouched: the boot
- * banner, the version, the backend checks and the `cockpit → <url>` line are exactly the bytes
- * they were, so `xez | tee` and every script that reads the URL keep working
+ * Everything this builds is on **stderr**. The boot banner, version, backend checks and the
+ * `cockpit → <url>` stdout line remain exactly the bytes they were, so `xez | tee` and every
+ * script that reads the URL keep working
  * (`open-questions.md` Q-11). That also means a person piping stdout still sees the activity on
  * their screen, which is the whole reason the split is that way round.
  */
@@ -60,6 +60,8 @@ export interface TerminalActivity {
   startDisplay(): void;
   /** Boot recovery is over; everything from here prints normally. */
   endRecovery(): void;
+  /** Report the previous session once, without turning historical settlements into outcomes. */
+  reportRecovery(count: number, settled: number): void;
   /** One activity line, from a caller that is not a store (MCP, registry, ports). */
   log(entry: ActivityEntry): void;
   /**
@@ -133,6 +135,13 @@ export function startTerminalActivity(options: TerminalActivityOptions): Termina
   const counts: SessionCounts = { done: 0, review: 0, failed: 0, cancelled: 0 };
   const startedAtMs = Date.now();
   let url: string | undefined;
+  // A rich/lines terminal has no region yet at boot (`startDisplay()` has not run), so a line
+  // logged now is ordinary scrollback, written immediately — ABOVE the stdout banner that has
+  // not been printed yet (#556, B-1). Held here until `startDisplay()`, it lands after the
+  // banner instead. Plain output has no banner to land above and keeps the immediate order
+  // (`task.recovered` before `xezar.ready`, non-tty.txt).
+  let pendingRecovery: ActivityEntry | undefined;
+  let displayStarted = false;
 
   const emit = (activity: ActivityEntry): void => {
     renderer.log(activity);
@@ -230,7 +239,38 @@ export function startTerminalActivity(options: TerminalActivityOptions): Termina
     endRecovery: () => {
       bootSource.endRecovery();
     },
+    reportRecovery: (count, settled) => {
+      if (count <= 0) return;
+      const singular = settled === 1;
+      const recoveryEntry = entry({
+        level: 'info',
+        subject: 'xezar',
+        message:
+          settled > 0
+            ? `${settled} ${singular ? 'task' : 'tasks'} from the previous session`
+            : `recovered ${count} ${count === 1 ? 'task' : 'tasks'} from the previous session`,
+        ...(settled > 0
+          ? { continuation: [`${singular ? 'was' : 'were'} settled at start-up`] }
+          : {}),
+        event: 'task.recovered',
+        fields: [
+          ['count', count],
+          ['settled', settled],
+        ],
+      });
+      // Plain mode has already flushed by the time `startDisplay()` runs, so holding it there
+      // would drop the notice — emit it now, same as before. A rich/lines terminal holds it
+      // until `startDisplay()` unless the display already started (a caller that reports
+      // recovery after boot, same as any other activity line).
+      if (render.mode === 'plain' || displayStarted) emit(recoveryEntry);
+      else pendingRecovery = recoveryEntry;
+    },
     startDisplay: () => {
+      displayStarted = true;
+      if (pendingRecovery) {
+        emit(pendingRecovery);
+        pendingRecovery = undefined;
+      }
       if (!options.settings.quiet && isCapableTty(facts) && !facts.ci) renderer.startDisplay();
     },
     log: (activity) => emit(activity),

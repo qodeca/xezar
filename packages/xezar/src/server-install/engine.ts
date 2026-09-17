@@ -22,6 +22,8 @@ import {
  */
 
 export interface RunOptions {
+  /** Called once when the selected plan begins — the `cli` audit record's effect boundary (#306 part 2). */
+  onPlanStart?: () => void;
   dryRun: boolean;
   assumeYes: boolean;
   reconfigure: ReadonlySet<string>;
@@ -180,6 +182,7 @@ export async function runInstall(strategy: PlatformStrategy, opts: RunOptions): 
       }
     }
 
+    opts.onPlanStart?.();
     for (const step of steps) {
       // `--reinstall` forces every step; `--reconfigure` forces the named ones.
       const forced = opts.reinstall === true || opts.reconfigure.has(step.id);
@@ -286,6 +289,7 @@ export async function runUninstall(strategy: PlatformStrategy, opts: RunOptions)
       });
       if (proceed !== true) return { status: 'cancelled', state };
     }
+    opts.onPlanStart?.();
 
     // Reverse order: undo the last-created first. `failed` outcomes are undone
     // too — the step may have created artifacts before failing, and every undo
@@ -369,6 +373,7 @@ export async function runDeploy(strategy: PlatformStrategy, opts: RunOptions): P
       ctx.ui.warn(`${strategy.label} does not support server-deploy.`);
       return { status: 'failed', state };
     }
+    opts.onPlanStart?.();
     try {
       await strategy.redeploy(ctx);
     } catch (err) {

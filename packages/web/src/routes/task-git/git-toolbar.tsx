@@ -53,7 +53,7 @@ export function GitToolbar({
   return (
     <div
       data-slot="git-toolbar"
-      className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 border-b border-border px-4 py-2 md:px-6"
+      className="flex flex-wrap items-center gap-x-row gap-y-1.5 border-b border-border px-4 py-2 md:px-section"
     >
       {branch ? <BranchChip branch={branch} /> : null}
       {stat ? <AnimatedDiffStat stat={stat} /> : null}

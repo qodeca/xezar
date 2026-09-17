@@ -31,6 +31,19 @@ async function snapshotTree(dir: string, prefix = ''): Promise<Record<string, st
   return snapshot;
 }
 
+// The cli audit door (#306 part 2) writes one record per `init` invocation by
+// design (AGENTS.md § Changing a mechanism that already works — every valid
+// subcommand writes exactly one command-level record, including a repeat
+// call), so this one file is EXPECTED to grow on every rerun even though
+// nothing else in the tree changes. Compare it separately from the rest of
+// the byte-identical snapshot instead of folding it into the blanket check.
+const AUDIT_LOG_KEY = '.local/xezar/audit.ndjson';
+
+function withoutAuditLog(snapshot: Record<string, string>): Record<string, string> {
+  const { [AUDIT_LOG_KEY]: _auditLog, ...rest } = snapshot;
+  return rest;
+}
+
 test('the release tarball installs and runs the dry-run CLI workflow', { timeout: 120_000 }, async () => {
   const root = await mkdtemp(join(tmpdir(), 'xezar-package-e2e-'));
 
@@ -358,15 +371,25 @@ if (args.join(' ') === 'auth status --json') {
     );
     assert.match(await readFile(dataIgnore, 'utf8'), /^\*$/m, 'init keeps run state out of git history');
 
-    // A second init over the untouched scaffold changes nothing at all.
+    // A second init over the untouched scaffold changes no scaffolded file —
+    // it does still append its own `cli.init` audit record (#306 part 2): a
+    // repeat invocation is still a valid subcommand call and gets its own
+    // command-level record, so the audit log itself is checked separately.
     const afterFirstInit = await snapshotTree(initRepo);
     const secondInit = await execFile(process.execPath, [cliPath, 'init'], initExec);
     assert.match(secondInit.stdout, /exists, left untouched/, 'init says it skipped the existing files');
     assert.deepEqual(
-      await snapshotTree(initRepo),
-      afterFirstInit,
-      'a second init must leave every existing file byte-identical',
+      withoutAuditLog(await snapshotTree(initRepo)),
+      withoutAuditLog(afterFirstInit),
+      'a second init must leave every existing file byte-identical (audit log aside)',
     );
+    const auditAfterFirst = afterFirstInit[AUDIT_LOG_KEY]?.trim().split('\n').filter(Boolean) ?? [];
+    const auditAfterSecond = (await readFile(join(initRepo, AUDIT_LOG_KEY), 'utf8')).trim().split('\n').filter(Boolean);
+    assert.equal(auditAfterSecond.length, auditAfterFirst.length + 1, 'a second init appends exactly one audit record');
+    const secondAuditRecord = JSON.parse(auditAfterSecond.at(-1) ?? '{}') as { action?: string; outcome?: { status?: string } };
+    assert.equal(secondAuditRecord.action, 'cli.init', 'the appended record is a cli.init record');
+    assert.equal(secondAuditRecord.outcome?.status, 'applied', 'the appended record reports applied');
+    assert.deepEqual(auditAfterSecond.slice(0, -1), auditAfterFirst, 'a second init leaves every earlier audit line unchanged');
 
     // The rule that matters: work the user authored survives. A hand-edited kit
     // file, a hand-authored file inside `.xezar/`, and a file init never created.
@@ -380,10 +403,17 @@ if (args.join(' ') === 'auth status --json') {
     const beforeThirdInit = await snapshotTree(initRepo);
     await execFile(process.execPath, [cliPath, 'init'], initExec);
     assert.deepEqual(
-      await snapshotTree(initRepo),
-      beforeThirdInit,
-      'init over a hand-edited kit must leave every file byte-identical',
+      withoutAuditLog(await snapshotTree(initRepo)),
+      withoutAuditLog(beforeThirdInit),
+      'init over a hand-edited kit must leave every file byte-identical (audit log aside)',
     );
+    const auditBeforeThird = beforeThirdInit[AUDIT_LOG_KEY]?.trim().split('\n').filter(Boolean) ?? [];
+    const auditAfterThird = (await readFile(join(initRepo, AUDIT_LOG_KEY), 'utf8')).trim().split('\n').filter(Boolean);
+    assert.equal(auditAfterThird.length, auditBeforeThird.length + 1, 'a third init appends exactly one audit record');
+    const thirdAuditRecord = JSON.parse(auditAfterThird.at(-1) ?? '{}') as { action?: string; outcome?: { status?: string } };
+    assert.equal(thirdAuditRecord.action, 'cli.init', 'the appended record is a cli.init record');
+    assert.equal(thirdAuditRecord.outcome?.status, 'applied', 'the appended record reports applied');
+    assert.deepEqual(auditAfterThird.slice(0, -1), auditBeforeThird, 'a third init leaves every earlier audit line unchanged');
     assert.equal(
       await readFile(kitWorkflow, 'utf8'),
       handEdited,
@@ -433,6 +463,14 @@ if (args.join(' ') === 'auth status --json') {
       XEZ_HOME: join(root, 'serve-home'),
       XEZ_NO_BANNER: '1',
     };
+    // The earlier server-deploy refusals above ran with no `--repo` and this
+    // same `consumerDir` as cwd, so the cli audit door (#306 part 2) already
+    // wrote its own `.local/xezar/audit.ndjson` there — a `consumerDir` is a
+    // project like any other. Snapshot it now so the check below is about what
+    // THIS boot does, not about state earlier commands already left behind.
+    const consumerLocalBeforeServe = (await exists(join(consumerDir, '.local')))
+      ? await snapshotTree(join(consumerDir, '.local'))
+      : undefined;
     const wantedPort = await freePort();
     const firstBoot = await withServe(
       cliPath,
@@ -464,12 +502,17 @@ if (args.join(' ') === 'auth status --json') {
       'a boot keeps run state out of the repository history',
     );
     // `--repo` is the whole reason the boot above touched `serve-repo` at all:
-    // the process working directory is `consumerDir`, which is not a git repo.
+    // the process working directory is `consumerDir`. It may already carry its
+    // own `.local` from the earlier no-`--repo` cli audit writes above; what
+    // must stay true is that THIS boot adds nothing further to it.
     assert.match(firstBoot, /serve-repo$/m, 'serve reports the --repo directory as its root');
     assert.match(firstBoot, /branch main/, 'serve reads git state from the --repo directory');
-    assert.equal(
-      await exists(join(consumerDir, '.local')),
-      false,
+    const consumerLocalAfterServe = (await exists(join(consumerDir, '.local')))
+      ? await snapshotTree(join(consumerDir, '.local'))
+      : undefined;
+    assert.deepEqual(
+      consumerLocalAfterServe,
+      consumerLocalBeforeServe,
       '--repo must keep every boot write out of the process working directory',
     );
 

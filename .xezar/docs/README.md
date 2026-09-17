@@ -13,3 +13,5 @@ Phases and their records: `SDLC.md` § Task phases names the phases of one devel
 Start with ui-operations.md, worktrees.md, recovery.md and dogfooding.md. Files under docs are operational guidance; primary .local/xezar-tasks holds private runtime evidence. Never commit runtime. Root AGENTS/SDLC/review/backward compatibility rules continue to govern. Start with `.xezar/CLAUDE.md` for the complete directory guide. Maintained files here are versionable directly; only the paths in `.gitignore` are local runtime.
 
 model-routing.md – which model and runner the leader dispatches for each task kind, with the evidence
+
+account-limits.md – what usage cannot be read, how the leader probes an account for its limit, and how to recover a lane once it is hit

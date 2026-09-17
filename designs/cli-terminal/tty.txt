@@ -39,7 +39,7 @@ $ xez
 # stopped. Beta remembers no port, so xezar starts at 4321, skips it because
 # alpha remembers it, and binds 4322. The second cockpit line says so once;
 # on the next start beta remembers 4322 and the line is not printed.
-# Two tasks were still running when beta last stopped.
+# Thirteen waiting tasks were deliberately settled when beta recovered them.
 # ─────────────────────────────────────────────────────────────────────────────
 
 $ cd ~/Projects/beta && xez
@@ -55,15 +55,13 @@ $ cd ~/Projects/beta && xez
 
 [stderr]
   10:06:12  info   xezar     cleaned 1 orphaned worktree: 7f3a09c1
-  10:06:12  info   xezar     recovered 2 tasks from the previous session
+  10:06:12  info   xezar     13 tasks from the previous session
+                             were settled at start-up
   10:06:13  info   mcp       ready — run xez mcp in this project folder
   10:06:13  info   update    xezar 0.16.1 is available — restart with
                              npx @qodeca/xezar@latest
   ─ active tasks ──────────────────────────────────────────────────────────────
-  Task      State         Step        Agent           Time  Title
-  a12bc345  running       implement   Claude Code     0:02  Fix login redirect…
-  b98de765  queued        —           Codex           0:02  Bump vitest to 3.2
-  2 active — 1 running · 1 queued
+  No active tasks — start one at http://localhost:4322/p/beta/new
 
 
 # ─────────────────────────────────────────────────────────────────────────────

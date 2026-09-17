@@ -22,6 +22,7 @@ import type { LogLevel } from '../cli-settings.ts';
 export const TERMINAL_ONLY_EVENTS = [
   'task.queued',
   'task.started',
+  'task.recovered',
   'step.started',
   'output.fallback',
   'output.folded',

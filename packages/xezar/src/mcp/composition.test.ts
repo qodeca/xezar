@@ -190,7 +190,8 @@ describe('the composed MCP service, through the real bridge and socket', () => {
       origin: 'mcp',
       actor: { type: 'mcp' },
       projectId: c.id,
-      action: 'taskCreate.start',
+      // #306 part 2: the shared inventory's id, the one the cockpit's `POST /runs` records too.
+      action: 'run.start',
       outcome: { status: 'applied' },
       resource: { kind: 'run', id: runId },
       operationKey: `${c.id}/op-compose-0001`,
@@ -232,7 +233,7 @@ describe('the composed MCP service, through the real bridge and socket', () => {
     expect(row).toMatchObject({ category: 'E-01', origin: 'leader' });
     // #264: the row names the leader's OWN operation key, the one it can replay the cancel under.
     expect(row.causedBy).toBe('op-compose-0004');
-    expect(auditLines(c.dataDir).map((entry) => entry.action)).toEqual(['taskCreate.start', 'executionControl.cancel']);
+    expect(auditLines(c.dataDir).map((entry) => entry.action)).toEqual(['run.start', 'run.cancel']);
     expect(auditLines(c.dataDir)[1]).toMatchObject({ origin: 'mcp', outcome: { status: 'applied' }, resource: { kind: 'run', id: queued.id } });
   });
 
@@ -328,15 +329,23 @@ describe('the composed MCP service, through the real bridge and socket', () => {
     expect(boundary.isError, JSON.stringify(boundary)).toBe(true);
     expect(boundary.structuredContent, JSON.stringify(boundary)).toBeDefined();
     expect(boundary.structuredContent).toMatchObject({ refused: true, boundary: 'workspace-settings' });
-    // An error answer that does not say it refused: the effect may have started, so no record (spec § 3.2).
-    const failed = await client.call('execution_control', { action: 'cancel', runId: 'no-such-run', expectedVersion: 'rev1:run:no-such-run:1:0123456789ab', operationId: 'op-compose-0032' });
-    expect(failed.isError, JSON.stringify(failed)).toBe(true);
+    // A task this project does not have: looked up before any effect, so a refusal too (#573).
+    const missing = await client.call('execution_control', { action: 'cancel', runId: 'no-such-run', expectedVersion: 'rev1:run:no-such-run:1:0123456789ab', operationId: 'op-compose-0032' });
+    expect(missing.isError, JSON.stringify(missing)).toBe(true);
     const started = await client.call('task_create', { action: 'start', operationId: 'op-compose-0033', prompt: 'hello' });
     expect(started.isError, JSON.stringify(started)).toBeFalsy();
+    const runId = (started.structuredContent as { subject: { id: string } }).subject.id;
+    const read = await client.call('task_read', { view: 'task', taskId: runId });
+    const version = (JSON.parse((read.content[0] as { text: string }).text) as { version: string }).version;
+    // An error answer that does not say it refused: the door cannot tell it from one that followed an
+    // effect, so no record (spec § 3.2).
+    const failed = await client.call('execution_control', { action: 'edit_queued_message', runId, messageId: 'not a message id', text: 'x', expectedVersion: version, operationId: 'op-compose-0034' });
+    expect(failed.isError, JSON.stringify(failed)).toBe(true);
 
     expect(auditLines(c.dataDir).map((entry) => [entry.seq, entry.action, entry.outcome])).toEqual([
-      [1, 'projectConfig.setWorkspaceConfig', { status: 'refused', reason: 'workspace_settings' }],
-      [2, 'taskCreate.start', { status: 'applied' }],
+      [1, 'workspace.config.set', { status: 'refused', reason: 'workspace_settings' }],
+      [2, 'run.cancel', { status: 'refused', reason: 'not_found' }],
+      [3, 'run.start', { status: 'applied' }],
     ]);
     // One warning for the unrecorded call, carrying a code and never the call's own text.
     const auditWarnings = warnings.filter((m) => m.includes('audit trail'));

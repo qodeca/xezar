@@ -38,7 +38,7 @@ xezar server-install --platform macosx-ngrok
 |------|--------------|
 | **Dependencies** | Detects the agent CLIs / `gh` / `git`; offers to `brew install` the missing ones. |
 | **Autostart** | Installs a **launchd** agent (`~/Library/LaunchAgents/ai.xezar.cockpit.plist`, written `0600`) with `RunAtLoad` + `KeepAlive` that runs the cockpit itself, so xezar comes back at login. The tunnel has its own agent, installed by the next step. |
-| **ngrok tunnel** | Installs ngrok if needed, saves your **authtoken** (passed via the environment, never on a command line `ps` could read), and configures the tunnel to the cockpit port with **`--basic-auth`** (username + password) and, if provided, your **reserved domain**. It installs a second launchd agent, `ai.xezar.ngrok`, whose plist embeds those credentials and is written `0600`. |
+| **ngrok tunnel** | Installs ngrok if needed, saves your **authtoken** (passed via the environment, never on a command line `ps` could read), and configures the tunnel to the cockpit port with **`--basic-auth`** (username + password) and, if provided, your **reserved domain**. It also writes an ngrok **Traffic Policy** file that strips any `X-Xezar-User` header a client sends, so a remote caller can never choose the identity xezar's audit trail records for a hosted-mode change. It installs a second launchd agent, `ai.xezar.ngrok`, whose plist embeds those credentials and is written `0600`. |
 | **Verify** | Confirms the tunnel came up — the installer polls ngrok's local API at `localhost:4040` for a public URL. Basic-auth is enforced by ngrok at its edge; the installer sends no request through the tunnel to test the gate. |
 
 The **username + password** you set become the ngrok `--basic-auth`

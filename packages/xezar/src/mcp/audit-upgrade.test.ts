@@ -60,11 +60,11 @@ const upgradeFolder = (): string => {
 };
 
 /** Every record shape the candidate writes, through its real writer, one per door and outcome. */
-function writeEveryRecordKind(dir: string): string[] {
+async function writeEveryRecordKind(dir: string): Promise<string[]> {
   mkdirSync(dir, { recursive: true });
   const trail = new AuditTrail({ projectId: PROJECT, dataDir: dir }, { now, warn: () => undefined });
   const written = [
-    trail.channel('mcp').record(
+    await trail.channel('mcp').record(
       {
         action: 'organiseWork.pin',
         resource: { kind: 'run', id: 'run-1' },
@@ -75,15 +75,31 @@ function writeEveryRecordKind(dir: string): string[] {
       },
       { outcome: 'applied' },
     ),
-    trail.channel('mcp').record({ action: 'projectConfig.setWorkspaceConfig', operationId: 'op-upgrade-0002' }, { outcome: 'refused', reason: 'workspace_settings' }),
-    trail.channel('ui').record({ action: 'run.update', resource: { kind: 'run', id: 'run-1' } }, { outcome: 'applied' }),
-    trail.channel('ui').record({ action: 'run.update', actor: { proxyUser: { value: 'ada', trust: 'asserted-by-proxy' } } }, { outcome: 'refused', reason: 'http_409' }),
-    trail.channel('automation').record({ action: 'automation.launch', actor: { receiptId: 'rcpt-0001' } }, { outcome: 'applied' }),
-    trail.channel('cli').record({ action: 'cli.projects.remove', actor: { command: 'projects.remove' } }, { outcome: 'refused', reason: 'unknown_project' }),
+    await trail.channel('mcp').record({ action: 'projectConfig.setWorkspaceConfig', operationId: 'op-upgrade-0002' }, { outcome: 'refused', reason: 'workspace_settings' }),
+    await trail.channel('ui').record({ action: 'run.update', resource: { kind: 'run', id: 'run-1' } }, { outcome: 'applied' }),
+    await trail.channel('ui').record({ action: 'run.update', actor: { proxyUser: { value: 'ada', trust: 'asserted-by-proxy' } } }, { outcome: 'refused', reason: 'http_409' }),
+    await trail.channel('automation').record({ action: 'automation.launch', actor: { receiptId: 'rcpt-0001' } }, { outcome: 'applied' }),
+    await trail.channel('cli').record({ action: 'cli.projects.remove', actor: { command: 'projects.remove' } }, { outcome: 'refused', reason: 'unknown_project' }),
+    // #306 part 2 shapes: inventory action ids, `fieldNames`, a proxy user on an applied change, an
+    // automation refusal with its automation resource, and a command-line record with its project.
+    await trail.channel('mcp').record(
+      { action: 'run.pin', resource: { kind: 'run', id: 'run-1' }, payload: { pinned: true }, fieldNames: ['pinned'], operationId: 'op-upgrade-0003' },
+      { outcome: 'applied' },
+    ),
+    await trail.channel('ui').record(
+      { action: 'workspace.config.set', actor: { proxyUser: { value: 'ada', trust: 'asserted-by-proxy' } }, payload: { theme: 'dark' }, fieldNames: ['theme'] },
+      { outcome: 'applied' },
+    ),
+    await trail.channel('automation').record(
+      { action: 'automation.launch', actor: { receiptId: 'rcpt-0002' }, payload: { automationId: 'auto-1', revision: 3, event: 'issue:7' } },
+      { outcome: 'refused', reason: 'unknown_workflow', resource: { kind: 'automation', id: 'auto-1' } },
+    ),
+    await trail.channel('cli').record({ action: 'cli.serve', actor: { command: 'serve' }, resource: { kind: 'project', id: PROJECT } }, { outcome: 'applied' }),
   ];
   expect(written.every((record) => record !== null)).toBe(true);
   const lines = readFileSync(auditTrailPath(dir), 'utf8').trim().split('\n');
-  // The rotation marker has no writer in this version yet; its shape is the contract's own.
+  // A real marker needs a 10 MB rotation (`audit-rotation.test.ts` writes one and pins this same
+  // shape); here it is the contract's own, so the 0.15.0 reader still meets every record kind.
   const marker: AuditRecord = { v: 2, seq: lines.length + 1, ts: '2026-09-17T09:10:00.000Z', projectId: PROJECT, kind: 'rotated', previousLastSeq: lines.length };
   expect(auditRecordSchema.safeParse(marker).success).toBe(true);
   return [...lines, JSON.stringify(marker)];
@@ -107,9 +123,9 @@ describe('the frozen 0.15.0 reader is the released one', () => {
 });
 
 describe('P1-A5: the 0.15.0 reader over every record this version writes', () => {
-  it('never throws, keeps none of them, and quarantines each one — the measured break', () => {
-    const lines = writeEveryRecordKind(join(root, 'fresh'));
-    expect(lines).toHaveLength(7);
+  it('never throws, keeps none of them, and quarantines each one — the measured break', async () => {
+    const lines = await writeEveryRecordKind(join(root, 'fresh'));
+    expect(lines).toHaveLength(11);
     const perLine = lines.map((line) => {
       const result = readAudit0150(`${line}\n`, PROJECT);
       return { kind: (JSON.parse(line) as { kind: string; origin?: string }).origin ?? 'rotated', ...result };
@@ -121,15 +137,19 @@ describe('P1-A5: the 0.15.0 reader over every record this version writes', () =>
       ['ui', 0, 1],
       ['automation', 0, 1],
       ['cli', 0, 1],
+      ['mcp', 0, 1],
+      ['ui', 0, 1],
+      ['automation', 0, 1],
+      ['cli', 0, 1],
       ['rotated', 0, 1],
     ]);
     // Not by accident of JSON: each is a well-formed object the 0.15.0 schema itself refuses.
     for (const line of lines) expect(auditEntrySchema0150.safeParse(JSON.parse(line)).success).toBe(false);
   });
 
-  it('keeps every v1 entry and skips every v2 record in a file that holds both', () => {
+  it('keeps every v1 entry and skips every v2 record in a file that holds both', async () => {
     const v1 = readFileSync(join(FIXTURES, 'data-dir', AUDIT_TRAIL_FILE_0_15_0), 'utf8').trim().split('\n');
-    const v2 = writeEveryRecordKind(join(root, 'fresh'));
+    const v2 = await writeEveryRecordKind(join(root, 'fresh'));
     const mixed = v1.flatMap((line, i) => [line, v2[i] ?? '']).concat(v2.slice(v1.length)).join('\n');
     expect(() => readAudit0150(mixed, PROJECT)).not.toThrow();
     const read = readAudit0150(mixed, PROJECT);
@@ -139,7 +159,7 @@ describe('P1-A5: the 0.15.0 reader over every record this version writes', () =>
 });
 
 describe('P1-A6: 0.15.0 → this version → 0.15.0', () => {
-  it('upgrades without touching the old file, and downgrades with no crash and no lost entry', () => {
+  it('upgrades without touching the old file, and downgrades with no crash and no lost entry', async () => {
     const dir = upgradeFolder();
     const legacyPath = legacyAuditTrailPath(dir);
     expect(legacyPath).toBe(join(dir, AUDIT_TRAIL_FILE_0_15_0));
@@ -156,11 +176,11 @@ describe('P1-A6: 0.15.0 → this version → 0.15.0', () => {
     expect(warn.mock.calls).toEqual([[LEGACY_AUDIT_DEPRECATION]]);
 
     // It starts a new v2 history beside it; from now on the new file is the one it reads.
-    writeEveryRecordKind(dir);
+    await writeEveryRecordKind(dir);
     expect(readdirSync(dir).sort()).toEqual(['audit.ndjson', 'mcp-audit.ndjson']);
     const currentRead = upgraded.read();
     expect(currentRead.source).toBe('current');
-    expect(currentRead.entries.map((e) => (e as { seq: number }).seq)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(currentRead.entries.map((e) => (e as { seq: number }).seq)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     expect(sha(readFileSync(legacyPath))).toBe(sha(legacyBytes));
 
     // DOWNGRADE. 0.15.0 reads its own file name: every entry it wrote is still there, unchanged.
@@ -180,7 +200,8 @@ describe('P1-A6: 0.15.0 → this version → 0.15.0', () => {
     const again = new AuditTrail({ projectId: PROJECT, dataDir: dir }, { now, warn });
     const reread = again.read();
     expect(reread.source).toBe('current');
-    expect(reread.entries).toHaveLength(6);
+    // Only the ten v2 records: none of the six 0.15.0 entries is merged in.
+    expect(reread.entries).toHaveLength(10);
     expect(existsSync(legacyPath)).toBe(true);
   });
 });
