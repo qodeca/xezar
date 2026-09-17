@@ -275,7 +275,7 @@ describe('sidebar wiring', () => {
 
   // XEZ_SINGLE_PROJECT pins this response to the boot row even when the saved registry has more.
   // The shell must collapse from that ordinary one-row response, not grow a second capability
-  // branch for navigation: flat nav, one quick-list, repo chip, no group headers.
+  // branch for navigation: flat nav, repo chip, no group headers — and no task list (#546).
   it('keeps the sidebar flat when single-project mode pins the registry to the boot project', async () => {
     serve({
       '/api/v1/health': {
@@ -291,7 +291,6 @@ describe('sidebar wiring', () => {
     await waitFor(() => expect(repoChip()).not.toBeNull())
     expect(document.querySelector('[data-slot="project-groups"]')).toBeNull()
     expect(screen.getByRole('navigation', { name: 'Main' })).toBeTruthy()
-    expect(document.querySelector('[data-slot="task-quick-list"]')).not.toBeNull()
     expect(repoChip()?.textContent).toBe('xezar / feat/cockpit')
   })
 
@@ -330,11 +329,83 @@ describe('sidebar wiring', () => {
     await waitFor(() =>
       expect(document.querySelectorAll('[data-slot="project-group"]')).toHaveLength(2),
     )
-    // The flat nav and the shared quick-list step aside — each group brings its own.
+    // The flat nav steps aside — each group brings its own.
     expect(screen.queryByRole('navigation', { name: 'Main' })).toBeNull()
-    expect(document.querySelector('[data-slot="task-quick-list"]')).toBeNull()
     // …and so does the repo chip, which the boot project's own group header now carries.
     expect(repoChip()).toBeNull()
+  })
+
+  // #546: the sidebar is navigation only. With real runs in the cache — the data the removed
+  // panel used to list — neither shape paints a task row, a bucket heading, the Active/Archived
+  // tabs or the Search launcher, and the badges keep their meanings (#399).
+  describe('navigation-only sidebar (#546)', () => {
+    const RUNS = [
+      run({ id: 'waiting', titleSummary: 'Answer the waiting question', status: 'waiting' }),
+      run({ id: 'finished', titleSummary: 'Ship the finished change', status: 'done', finishedAt: '2026-07-21T12:30:00.000Z' }),
+      run({ id: 'old', titleSummary: 'Old archived work', status: 'done', archived: true }),
+    ]
+    const sidebarEl = () => document.querySelector('[data-slot="sidebar"]') as HTMLElement
+
+    function expectNoTaskPanel() {
+      const sidebar = within(sidebarEl())
+      for (const title of ['Answer the waiting question', 'Ship the finished change', 'Old archived work']) {
+        expect(sidebar.queryByText(title)).toBeNull()
+      }
+      expect(sidebar.queryByText(/^(Active|Archived|Needs you|Working|Recent|Pinned)$/)).toBeNull()
+      expect(sidebar.queryByRole('tab')).toBeNull()
+      expect(sidebar.queryByRole('button', { name: /search/i })).toBeNull()
+    }
+
+    it('lists no tasks in the flat single-project sidebar, and keeps the unread badge', async () => {
+      serve({ '/api/v1/health': HEALTH, '/api/v1/todos': [], '/api/v1/runs': RUNS })
+      renderShell()
+
+      const badge = await waitFor(() => {
+        const found = document.querySelector('[data-slot="nav-unread-badge"]')
+        expect(found).not.toBeNull()
+        return found as HTMLElement
+      })
+      expect(badge.getAttribute('title')).toBe('1 unread finished task')
+      expectNoTaskPanel()
+      expect(screen.getByRole('navigation', { name: 'Main' })).toBeTruthy()
+    })
+
+    it('lists no tasks inside project groups, and keeps the waiting/review attention badge', async () => {
+      serve({
+        '/api/v1/health': HEALTH,
+        '/api/v1/todos': [],
+        '/api/v1/projects': {
+          projects: [PROJECT, { ...PROJECT, id: 'shop', name: 'shop', lastOpenedAt: '2026-07-19T00:00:00.000Z' }],
+          bootProject: 'xezar',
+          projectsDir: '/home/me/xezar/projects',
+        },
+        '/api/v1/runs': RUNS,
+        '/api/v1/p/xezar/runs': RUNS,
+      })
+      renderShell('/p/xezar/')
+
+      const attention = await waitFor(() => {
+        const found = document.querySelector('[data-project="xezar"] [data-slot="project-attention"]')
+        expect(found).not.toBeNull()
+        return found as HTMLElement
+      })
+      expect(attention.getAttribute('title')).toBe('xezar: 1 task needs you')
+      expectNoTaskPanel()
+      expect(screen.getByRole('navigation', { name: 'xezar navigation' })).toBeTruthy()
+    })
+
+    it('still opens the globally mounted palette from the keyboard', async () => {
+      // cmdk measures its list with a ResizeObserver and scrolls the selection into view; jsdom
+      // has neither, and neither is what this test is about.
+      vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} })
+      Element.prototype.scrollIntoView = vi.fn()
+      serve({ '/api/v1/health': HEALTH, '/api/v1/todos': [], '/api/v1/runs': [] })
+      renderShell()
+
+      await waitFor(() => expect(versionChip()).not.toBeNull())
+      fireEvent.keyDown(document.body, { key: 'k', ctrlKey: true })
+      expect(await screen.findByRole('dialog', { name: 'Command palette' })).toBeTruthy()
+    })
   })
 
   it('shows the version chip even outside a git repo', async () => {

@@ -49,7 +49,7 @@ function density(value: string) {
 }
 
 // Actual interactive descendants, including disabled controls and portalled menu/command rows.
-// ToolsMenu and TaskQuickList slots belong to B5/B4; their controls are outside this manifest.
+// The ToolsMenu slot belongs to B5; its controls are outside this manifest.
 // Each target is scrolled into view before checking clipping and intersection. Pseudo-element
 // hit regions count only when painted, with non-overlap checked against sibling targets.
 type Geometry = { targets: string[]; short: string[]; clipped: string[]; overlaps: string[]; overflow: boolean; chips: number[] }
@@ -58,7 +58,7 @@ function geometry(scope: string): Geometry {
     const parent = document.querySelector(${JSON.stringify(scope)});
     if (!parent) throw new Error('Missing measured surface: ' + ${JSON.stringify(scope)});
     const visible = el => el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden';
-    const nodes = [...parent.querySelectorAll('a[href],button,input,[role="menuitem"],[role="option"]')].filter(visible).filter(el => !el.closest('[data-slot="tools-menu"], [data-slot="task-quick-list"]'));
+    const nodes = [...parent.querySelectorAll('a[href],button,input,[role="menuitem"],[role="option"]')].filter(visible).filter(el => !el.closest('[data-slot="tools-menu"]'));
     if (!nodes.length) throw new Error('No interactive targets in measured surface');
     const name = el => el.dataset.slot || el.getAttribute('aria-label') || el.textContent.trim().slice(0,60);
     const box = el => {
@@ -229,7 +229,10 @@ describe('B2 phone matrix',()=>{
 it('T-2/T-0 keyboard opens, traps and returns palette focus on phone and desktop',()=>{
   for(const width of [375,1280]){
     home(width)
-    const trigger=width===375?menu:'[data-slot="sidebar"] [data-slot="command-palette-hint"]'
+    // #546: no sidebar launcher any more — the palette opens from the keyboard wherever focus is,
+    // so the desktop trigger is an ordinary sidebar link focus must come back to (this fixture is
+    // multi-project, so the All tasks link rather than a flat nav row).
+    const trigger=width===375?menu:'aside a[href="/tasks"]'
     read(`(() => {document.querySelector('${trigger}').focus();return true})()`)
     browser.press('Control+k');wait('[data-slot="dialog-content"]:has([cmdk-root])')
     expect(read(`document.activeElement?.hasAttribute('cmdk-input')`)).toBe(true)
@@ -328,7 +331,7 @@ function contrast(scope: string) {
     const rgba=value=>{ctx.clearRect(0,0,1,1);ctx.fillStyle=value;ctx.fillRect(0,0,1,1);return [...ctx.getImageData(0,0,1,1).data].map((x,i)=>i===3?x/255:x)};
     const over=(fg,bg)=>fg.slice(0,3).map((v,i)=>v*fg[3]+bg[i]*(1-fg[3]));
     const lum=c=>c.map(v=>v/255).map(v=>v<=0.04045?v/12.92:((v+0.055)/1.055)**2.4).reduce((sum,v,i)=>sum+v*[0.2126,0.7152,0.0722][i],0);
-    return [...surface.querySelectorAll('*')].filter(el=>el.getClientRects().length && [...el.childNodes].some(n=>n.nodeType===3 && n.textContent.trim()) && !el.closest('[aria-hidden="true"], [disabled], [data-disabled="true"], [data-slot="tools-menu"], [data-slot="task-quick-list"]')).map(el=>{
+    return [...surface.querySelectorAll('*')].filter(el=>el.getClientRects().length && [...el.childNodes].some(n=>n.nodeType===3 && n.textContent.trim()) && !el.closest('[aria-hidden="true"], [disabled], [data-disabled="true"], [data-slot="tools-menu"]')).map(el=>{
       const chain=[];for(let p=el;p;p=p.parentElement)chain.unshift(p);
       let bg=[255,255,255];for(const node of chain)bg=over(rgba(getComputedStyle(node).backgroundColor),bg);
       const fg=over(rgba(getComputedStyle(el).color),bg),a=lum(fg),b=lum(bg);

@@ -253,7 +253,7 @@ Where the cockpit uses them:
 The Settings panes that are not a list of fields say so in their own spelling: Agent config is one editor
 pane (`gap-list` between its tab bar and its files), the Agent accounts refusal is one block (`gap-4`), and
 Bookmarklets has no list container. Step 3b of #424 put six hand-typed pixels on the scale: nav rows and
-project-group headers `md:h-9`, table header `h-10`, tool row `min-h-8 py-1`, quick-list rows `py-2`, brand row
+project-group headers `md:h-9`, table header `h-10`, tool row `min-h-8 py-1`, quick-list rows `py-2` (gone with the sidebar task list, #546), brand row
 `gap-row` and group body `ml-3.5`. The `no-arbitrary-spacing` allowlist in `design-guardian-spacing-allowlist.json`
 lists the ones still to convert.
 A seventh step is a design decision (`decisions.md` D-02), not a new token in one file.
@@ -351,14 +351,15 @@ Tailwind defaults. Counts are prefix occurrences in `packages/web/src/**/*.{ts,t
 | `sm:` | 640px | dialog max-widths, footer row direction |
 | `md:` | 768px | THE desktop line: the sidebar appears (`md:flex`), the mobile top bar and drawer disappear (`md:hidden`), nav rows shrink from `h-11` to `h-9`, text drops from 16px to 14px. `useIsDesktop()` in `lib/use-desktop.ts` asks the same `(min-width: 768px)`. |
 | `lg:` / `xl:` | 1024px / 1280px | command palette width, the ghost-code backdrop (`max-xl:hidden`) |
-| `@min-[23rem]/sidebar` | container query | the quick-list diff pair appears only when the sidebar is wide enough |
 
 ## 11. The `no-hover:` variant
 
 `@custom-variant no-hover (@media (hover: none))`. A control that is hidden until hover is unreachable on a
 device with no hover. `no-hover:` reveals it there; pair it with `focus-visible:` for the keyboard. The pointer,
 not the viewport, is the honest axis (a landscape tablet is `md` wide and still cannot hover). Worked example:
-the pin button in `task-quick-list.tsx` (`no-hover:mr-1 no-hover:size-7 no-hover:opacity-100`).
+the Tasks table's rename pencil and pin in `routes/tasks-overview.tsx` (`opacity-0 group-hover/row:opacity-100
+focus-visible:opacity-100 no-hover:opacity-100`); `components/pin-toggle.tsx` adds `no-hover:min-h-tap
+no-hover:min-w-tap`, so on a device that cannot hover the revealed pin is also a 44 px target.
 
 ## 12. Safe areas and the keyboard
 

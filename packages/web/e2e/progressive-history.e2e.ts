@@ -140,10 +140,20 @@ const NEAR_TAIL_PX = 80
  * measuring.
  */
 function navigateAndSampleArrival(runId: string): Arrival {
-  const href = `/p/${bootProject}/tasks/${runId}`
+  // A client-side task-to-task switch the way a person makes one from a thread: the ⌘K palette.
+  // The sidebar task row this used to click is gone (#546), and a switch through the Tasks page
+  // would be a thread → table → thread journey rather than the one #761 measures. The palette
+  // filters on the run id (its items carry it for exactly that), so the one selected row is the
+  // destination; focus is parked on <body> first so the palette's focus return on close cannot
+  // scroll the destination transcript.
+  browser.evaluate(`(() => { document.activeElement?.blur?.(); return true })()`)
+  browser.press('Control+k')
+  browser.waitForFunction(`document.activeElement?.hasAttribute('cmdk-input') === true`)
+  browser.fill('[cmdk-input]', runId)
+  browser.waitForFunction(
+    `document.querySelector('[cmdk-item][aria-selected="true"]')?.getAttribute('data-run-id') === ${JSON.stringify(runId)}`,
+  )
   browser.evaluate(`(() => {
-    const link = document.querySelector(${JSON.stringify(`a[href="${href}"]`)})
-    if (!link) throw new Error('missing task navigation link: ${href}')
     window.__xezArrivalSamples = []
     window.__xezArrivalSettled = null
     let attempts = 0
@@ -176,8 +186,9 @@ function navigateAndSampleArrival(runId: string): Arrival {
       else window.__xezArrivalSettled = 'never-settled'
     }
     requestAnimationFrame(sample)
-    link.click()
+    return true
   })()`)
+  browser.press('Enter')
   browser.waitForFunction(`window.__xezArrivalSettled !== null`)
   const settled = browser.evaluate(`window.__xezArrivalSettled`) as ArrivalSample | 'never-settled'
   const samples = browser.evaluate(`window.__xezArrivalSamples`) as ArrivalSample[]

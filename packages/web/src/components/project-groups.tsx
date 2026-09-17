@@ -2,25 +2,19 @@ import { ChevronDownIcon } from 'lucide-react'
 import * as React from 'react'
 import { useLocation } from 'react-router'
 
-import { useHealth, usePinRun, useProjectRuns } from '@/api/queries'
+import { useProjectRuns } from '@/api/queries'
 import type { ProjectListEntry } from '@qodeca/xezar-api-client'
 import { MissingProjectBadge, NavBadge, SkillsUpdateMarker, useSidebarNavigate } from '@/components/app-shell'
-import { useListView } from '@/components/list-view'
 import { activeNavPath, visibleNavItems } from '@/components/nav-items'
-import { ReferenceStatusProvider } from '@/components/reference-status'
-import { QuickListBuckets } from '@/components/task-quick-list'
-import { toast } from '@/components/ui/toaster'
-import { Link, pathnameProjectId, scopeTo, stripProjectPrefix, useProjectMatch } from '@/lib/project-router'
+import { Link, pathnameProjectId, scopeTo, stripProjectPrefix } from '@/lib/project-router'
 import { isProjectCollapsed, readStoredCollapsed, writeStoredCollapsed } from '@/lib/sidebar-collapse'
-import { capBuckets, groupRuns, listCounts, type ListView } from '@/lib/task-groups'
-import { taskReference } from '@/lib/tasks-table'
-import { usageMetricVisibility } from '@/lib/token-metrics'
-import { useNow } from '@/lib/use-now'
+import { listCounts } from '@/lib/task-groups'
 import { cn } from '@/lib/utils'
 
 /**
  * The multi-project sidebar (multi-project spec, "Sidebar"): one collapsible group per
- * registered project, each carrying its own nav and its own task quick-list.
+ * registered project, each carrying its own nav. Navigation only (#546): a group lists no tasks —
+ * its Tasks item is the door to that project's Tasks page.
  *
  * Mounted by `AppShellContainer` only when the registry holds MORE THAN ONE project — the
  * degenerate single-project workspace keeps the flat sidebar it has always had (`AppShell`
@@ -28,10 +22,6 @@ import { cn } from '@/lib/utils'
  * bolted on: with one project the group header would only repeat the repo chip, and every nav
  * row would gain a level of indentation to distinguish it from nothing.
  */
-
-/** The spec's "10 most recent tasks", counted ACROSS buckets — a collapsed variant tile is one
- *  row, because it occupies one row of sidebar. */
-const RECENT_LIMIT = 10
 
 /**
  * Read + write of the per-project collapse map (`lib/sidebar-collapse.ts`), which lives in
@@ -99,16 +89,7 @@ export function ProjectGroups({
   const collapseAnchorId = scopedProjectId ?? bootProjectId
   const { collapsed, toggle } = useSidebarCollapse(collapseAnchorId)
 
-  // One filter for the whole cockpit (`ListViewProvider`): switching the Tasks table to Archived
-  // switches every group with it, rather than leaving the sidebar answering a different question.
-  const [view] = useListView()
   const activeTo = activeNavPath(stripProjectPrefix(pathname))
-  const runMatch = useProjectMatch('/tasks/:id/*')
-  const runExact = useProjectMatch('/tasks/:id')
-  const currentRunId = runMatch?.params.id ?? runExact?.params.id ?? null
-  const now = useNow(30_000)
-  const health = useHealth()
-  const metricVisibility = usageMetricVisibility(health.data)
 
   // Most-recently-opened first, per the spec. Sorted here rather than trusted from the wire so
   // the order is a property of the sidebar, not of whichever route last touched the registry.
@@ -127,16 +108,11 @@ export function ProjectGroups({
           active={project.id === scopedProjectId}
           collapsed={isProjectCollapsed(collapsed, project.id, collapseAnchorId)}
           onToggle={toggle}
-          view={view}
           activeTo={activeTo}
-          currentRunId={currentRunId}
-          now={now}
           inboxAvailable={inboxAvailable}
           automationsAvailable={automationsAvailable}
           inboxCount={inboxCount}
           skillsUpdateAvailable={skillsUpdateAvailable}
-          showTokens={metricVisibility.tokens}
-          showCost={metricVisibility.cost}
         />
       ))}
     </div>
@@ -149,16 +125,11 @@ function ProjectGroup({
   active,
   collapsed,
   onToggle,
-  view,
   activeTo,
-  currentRunId,
-  now,
   inboxAvailable,
   automationsAvailable,
   inboxCount,
   skillsUpdateAvailable,
-  showTokens,
-  showCost,
 }: {
   project: ProjectListEntry
   /** The boot project's runs cache lives under the `'default'` scope key (it mounts
@@ -167,17 +138,12 @@ function ProjectGroup({
   active: boolean
   collapsed: boolean
   onToggle: (projectId: string) => void
-  view: ListView
   /** The `to` of the nav item that owns the current URL — applied to the ACTIVE group only. */
   activeTo: string | null
-  currentRunId: string | null
-  now: number
   inboxAvailable: boolean
   automationsAvailable: boolean
   inboxCount: number | null
   skillsUpdateAvailable: boolean
-  showTokens: boolean
-  showCost: boolean
 }) {
   const missing = project.status === 'missing'
   // Collapsed (or missing) groups never fetch — a 40-project workspace costs one registry
@@ -185,28 +151,10 @@ function ProjectGroup({
   // keeps its attention badge alive after the user shuts it.
   const runs = useProjectRuns(project.id, !collapsed && !missing, boot)
   const onNavigate = useSidebarNavigate()
-  // Pinning (#935) from a group that may not be the scoped project: the request is addressed to
-  // THIS project, and the cache invalidated is the one `useProjectRuns` above writes — which is
-  // `'default'` for the boot project, whose list mounts unscoped.
-  const pin = usePinRun(project.id, boot ? 'default' : project.id)
 
+  // The header's attention badge: waiting + review, counted by status. Its meaning is unchanged by
+  // #546 even though the group no longer lists the tasks it counts (#399 owns any redesign).
   const waiting = runs.data ? listCounts(runs.data).waiting : 0
-  const buckets = runs.data ? capBuckets(groupRuns(runs.data, view), RECENT_LIMIT) : []
-  // Only the rows this group actually paints: `buckets` is the capped list, so a project with
-  // four hundred runs asks about the handful on screen rather than all of them.
-  //
-  // Deliberately NOT memoized: `buckets` is rebuilt with a fresh identity on every render, so a
-  // `useMemo` keyed on it would recompute every time anyway while claiming otherwise. Nothing
-  // downstream needs a stable identity — `ReferenceStatusProvider` and `useReferenceStatuses` both
-  // key off the CONTENT of this list.
-  const referenceRequests = buckets.flatMap((bucket) =>
-    bucket.rows.flatMap((row) => {
-      // A collapsed variant group paints its FIRST member's chip, so that is the one to ask
-      // about — the others only become visible once the tile is expanded.
-      const reference = taskReference(row.kind === 'run' ? row.run : row.members[0]!)
-      return reference ? [{ projectId: project.id, kind: reference.kind, number: reference.number }] : []
-    }),
-  )
 
   // A missing project's panes all 409 (spec, "Registered project folder deleted/moved"), so
   // there is nothing behind the chevron — the row renders greyed and inert rather than
@@ -328,41 +276,6 @@ function ProjectGroup({
               )
             })}
           </nav>
-
-          {/* This group's own project, explicitly: a collapsed sidebar can show six projects at
-              once, and #42 means a different pull request in each of them. */}
-          <ReferenceStatusProvider projectId={project.id} requests={referenceRequests}>
-            <QuickListBuckets
-              buckets={buckets}
-              currentRunId={active ? currentRunId : null}
-              now={now}
-              scope={project.id}
-              showTokens={showTokens}
-              showCost={showCost}
-              onTogglePin={
-                // Withheld in the archived view, where the pin has nowhere to show its result —
-                // the same call `TaskQuickList` and the thread header make.
-                view === 'archived'
-                  ? undefined
-                  : (run, pinned) =>
-                      pin.mutate(
-                        { id: run.id, pinned },
-                        { onError: (error: Error) => toast(error.message, { tone: 'danger' }) },
-                      )
-              }
-            />
-          </ReferenceStatusProvider>
-
-          {/* Always present, not only past the cap: it is this group's door into the project's
-              tasks pane (`/p/<id>/`), which is worth an affordance even with two tasks listed. */}
-          <Link
-            to={scopeTo(project.id, '/')}
-            onClick={onNavigate}
-            data-slot="project-group-more"
-            className="flex min-h-tap items-center rounded-md px-3 text-[12px] text-muted-foreground transition-colors hover:text-foreground md:h-7 md:min-h-0"
-          >
-            More…
-          </Link>
         </div>
       )}
     </div>

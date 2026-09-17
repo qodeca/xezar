@@ -38,22 +38,14 @@ import { useCommandShortcut, useKeyShortcut } from '@/lib/use-command-shortcut'
  * The ⌘K command palette (spec, "Cross-cutting"): projects, tasks, views, actions, skills —
  * everything, one keystroke from anywhere.
  *
- * Opened by ⌘K *and* Ctrl+K (the shared `useCommandShortcut` registers both together), by the
- * sidebar footer's hint, or programmatically via `openCommandPalette()`. Escape and selecting
+ * Opened by ⌘K *and* Ctrl+K (the shared `useCommandShortcut` registers both together) — the
+ * keyboard is the only way in since the sidebar's clickable `Search…` launcher went away (#546),
+ * and with it the window-event seam that launcher was the one caller of. Escape and selecting
  * anything close it.
  */
 
-/** The programmatic-open seam: a window event rather than a context, so chrome that must stay
- *  presentational (the sidebar hint today, an onboarding nudge tomorrow) can open the palette
- *  without threading a setter through the tree. */
-export const OPEN_COMMAND_PALETTE_EVENT = 'xezar:open-command-palette'
-
-export function openCommandPalette(): void {
-  window.dispatchEvent(new Event(OPEN_COMMAND_PALETTE_EVENT))
-}
-
 /** Newest first — the palette's unfiltered Tasks group should lead with what you touched last,
- *  exactly like the sidebar. Stable for equal timestamps (variant groups started together). */
+ *  as the sidebar's list once did. Stable for equal timestamps (variant groups started together). */
 export function orderRuns(runs: readonly RunRecord[]): RunRecord[] {
   return [...runs].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
 }
@@ -235,12 +227,6 @@ export function CommandPalette() {
   useCommandShortcut('n', newTask)
   useKeyShortcut('c', newTask)
 
-  React.useEffect(() => {
-    const onOpen = () => changeOpen(true)
-    window.addEventListener(OPEN_COMMAND_PALETTE_EVENT, onOpen)
-    return () => window.removeEventListener(OPEN_COMMAND_PALETTE_EVENT, onOpen)
-  }, [changeOpen])
-
   // Compose the primitives here: this trigger-less palette owns focus return. The top anchor
   // keeps search still when results change; the viewport-aware width fits cross-project titles.
   return (
@@ -253,7 +239,10 @@ export function CommandPalette() {
           const target = returnFocus.current
           if (target?.isConnected && target.getClientRects().length > 0) target.focus()
           else {
-            const fallback = [...document.querySelectorAll<HTMLElement>('[data-slot="mobile-top-bar"] button, [data-slot="command-palette-hint"]')]
+            // The element that held focus is gone or hidden (a route change, a closed drawer). The
+            // phone top bar's menu button is the one always-present chrome control to land on;
+            // on desktop, where it is hidden, focus returns to the document as the browser would.
+            const fallback = [...document.querySelectorAll<HTMLElement>('[data-slot="mobile-top-bar"] button')]
               .find((element) => element.getClientRects().length > 0)
             fallback?.focus()
           }
@@ -331,7 +320,7 @@ function PaletteContent({ close }: { close: () => void }) {
   const searching = search.trim() !== ''
   const activeProjectId = useActiveProjectId()
   const { theme, setTheme } = useTheme()
-  // Runs are already cached by the sidebar's quick-list; skills fetch here, on first open.
+  // Runs are already cached by the shell (the Tasks badge reads them); skills fetch here, on first open.
   const runs = useRuns()
   const skills = useSkills()
   // The registry is workspace-scoped (not project-scoped), so this is the ONE list the palette

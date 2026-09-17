@@ -84,6 +84,6 @@ function fireRunNotification(run: ApiRun): void {
   try {
     new N(content.title, { body: content.body, tag: content.tag })
   } catch {
-    // Degrade silently — the dot in the quick-list still tells the truth.
+    // Degrade silently — the status dot on the Tasks page still tells the truth.
   }
 }

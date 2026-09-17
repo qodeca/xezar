@@ -212,7 +212,6 @@ Each entry maps a utility name to a theme token. Listed in foundations.md §1.7;
 | `packages/web/src/components/status-dot.tsx` | StatusDot | components.md §2 StatusDot | Documented with known gap (G-08 hand-rolled dots in routes; StatusDot itself now guards its pulse) |
 | `packages/web/src/components/tab-link.tsx` | TabLink | components.md §2 TabLink | Documented |
 | `packages/web/src/components/task-agent.tsx` | TaskAgent cells | components.md §2 TaskAgent cells | Documented |
-| `packages/web/src/components/task-quick-list.tsx` | TaskQuickList | components.md §2 TaskQuickList | Documented |
 | `packages/web/src/components/theme-provider.tsx` | ThemeProvider | components.md §2 ThemeProvider and ThemeToggle | Not applicable – context only, no markup (components.md §2 ThemeProvider and ThemeToggle). |
 | `packages/web/src/components/theme-toggle.tsx` | ThemeToggle | components.md §2 ThemeProvider and ThemeToggle | Documented |
 | `packages/web/src/components/tools-menu.tsx` | ToolsMenu | components.md §2 ToolsMenu | Documented |

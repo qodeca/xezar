@@ -1,20 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import type { RunRecord, RunStatus } from '@qodeca/xezar-api-client'
-import {
-  BUCKET_ORDER,
-  bucketOf,
-  capBuckets,
-  groupRuns,
-  groupTitle,
-  listCounts,
-  queuePositions,
-  refPrefixMatches,
-  runTitle,
-  sortRuns,
-  splitRefPrefix,
-  type QuickListBucket,
-} from '@/lib/task-groups'
+import type { RunRecord } from '@qodeca/xezar-api-client'
+import { groupTitle, listCounts, queuePositions, runTitle, sortRuns } from '@/lib/task-groups'
 
 let seq = 0
 
@@ -33,67 +20,6 @@ function run(over: Partial<RunRecord> = {}): RunRecord {
     ...over,
   }
 }
-
-/** Flatten to `Bucket: id, id` lines — the assertions are about placement and order, and a
- *  structural `toEqual` of whole records buries that in noise. */
-function shape(buckets: QuickListBucket[]): string[] {
-  return buckets.map(
-    (bucket) =>
-      `${bucket.label}: ${bucket.rows
-        .map((row) => (row.kind === 'group' ? `[${row.members.map((m) => m.variant).join('')}]` : row.run.id))
-        .join(', ')}`
-  )
-}
-
-/** `groupRuns(...)` rows for one bucket, asserted to exist — the tests are about their content,
- *  and `noUncheckedIndexedAccess` would otherwise put a `?.` on every line of that. */
-function rowsOf(buckets: QuickListBucket[], index = 0) {
-  const bucket = buckets[index]
-  if (!bucket) throw new Error(`no bucket at ${index}`)
-  return bucket.rows
-}
-
-/** The one group row a test expects, narrowed. */
-function groupRow(buckets: QuickListBucket[], index = 0) {
-  const row = rowsOf(buckets)[index]
-  if (!row || row.kind !== 'group') throw new Error('expected a group row')
-  return row
-}
-
-describe('bucketOf', () => {
-  const cases: ReadonlyArray<[RunStatus, string]> = [
-    ['waiting', 'Needs you'],
-    ['review', 'Needs you'],
-    ['running', 'Working'],
-    ['queued', 'Working'],
-    ['done', 'Recent'],
-    ['failed', 'Recent'],
-    ['cancelled', 'Recent'],
-  ]
-
-  it.each(cases)('%s → %s in the active view', (status, label) => {
-    expect(bucketOf(run({ status }), 'active')).toBe(label)
-  })
-
-  it.each(cases)('%s → Archived in the archived view', (status) => {
-    expect(bucketOf(run({ status, archived: true }), 'archived')).toBe('Archived')
-  })
-
-  it("a monitoring run stays in Working, not Needs you (#490)", () => {
-    expect(bucketOf(run({ status: 'running', activity: 'monitoring' }), 'active')).toBe('Working')
-  })
-
-  it('a run waiting out a usage limit is Working, not Recent', () => {
-    // Failed on the record, but it has an appointment to resume itself (spec
-    // 2026-08-03-auto-resume-after-usage-limit) — it is work in flight, not an outcome. And it
-    // asks for nothing, so never "Needs you".
-    const scheduled = run({ status: 'failed', autoResumeAt: '2026-08-03T19:33:53.000Z' })
-    expect(bucketOf(scheduled, 'active')).toBe('Working')
-    expect(bucketOf(run({ status: 'failed' }), 'active')).toBe('Recent')
-    // Archived still collapses everything, schedule or not.
-    expect(bucketOf({ ...scheduled, archived: true }, 'archived')).toBe('Archived')
-  })
-})
 
 describe('sortRuns', () => {
   it('orders by status priority, then newest first', () => {
@@ -222,41 +148,6 @@ describe('queuePositions', () => {
   })
 })
 
-describe('splitRefPrefix', () => {
-  it.each([
-    // Exactly what `postValidateTitle` writes.
-    ['775: implementing comment threads', 775, 'implementing comment threads'],
-    ['1: a', 1, 'a'],
-    ['123456789: nine digits still parse', 123_456_789, 'nine digits still parse'],
-    // Not the shape: no space, no digits, nothing after the colon, or a colon that is prose.
-    ['775:implementing comment threads', null, '775:implementing comment threads'],
-    ['fix: the login bug', null, 'fix: the login bug'],
-    ['775: ', null, '775: '],
-    ['775', null, '775'],
-    ['#775: hash-prefixed is not our shape', null, '#775: hash-prefixed is not our shape'],
-    [' 775: leading space is not our shape', null, ' 775: leading space is not our shape'],
-    ['1234567890: ten digits is not a tracker number', null, '1234567890: ten digits is not a tracker number'],
-    // A second `NNN: ` inside the rest is left alone — only the leading one is the prefix.
-    ['775: 776: nested', 775, '776: nested'],
-  ])('%s → %s / %s', (title, ref, rest) => {
-    expect(splitRefPrefix(title)).toEqual({ ref, rest })
-  })
-})
-
-describe('refPrefixMatches', () => {
-  it('agrees only when the prefix IS the reference the chip will show', () => {
-    expect(refPrefixMatches('775: implementing comment threads', 775)).toBe(true)
-    // Opened on issue #788, shipped as PR #790 — two numbers, two facts. Neither may be hidden.
-    expect(refPrefixMatches('788: implementing comment threads', 790)).toBe(false)
-    // A title that legitimately begins with a number is never mistaken for a reference.
-    expect(refPrefixMatches('2026: the year in review', 2026)).toBe(true)
-    expect(refPrefixMatches('2026: the year in review', 790)).toBe(false)
-    // Nothing to match against, or nothing to strip.
-    expect(refPrefixMatches('775: implementing comment threads', undefined)).toBe(false)
-    expect(refPrefixMatches('implementing comment threads', 775)).toBe(false)
-  })
-})
-
 describe('groupTitle', () => {
   it.each([
     ['Add skills autocomplete (A)', 'Add skills autocomplete'],
@@ -268,129 +159,6 @@ describe('groupTitle', () => {
     ['Rename the (D) flag', 'Rename the (D) flag'],
   ])('%s → %s', (title, expected) => {
     expect(groupTitle(run({ title }))).toBe(expected)
-  })
-})
-
-describe('groupRuns', () => {
-  it('emits the buckets in the mockup order, and omits empty ones', () => {
-    const runs = [
-      run({ id: 'done', status: 'done' }),
-      run({ id: 'waiting', status: 'waiting' }),
-      run({ id: 'running', status: 'running' }),
-    ]
-    expect(shape(groupRuns(runs, 'active'))).toEqual(['Needs you: waiting', 'Working: running', 'Recent: done'])
-
-    // Nothing waiting → no "Needs you" header at all.
-    expect(shape(groupRuns([run({ id: 'done', status: 'done' })], 'active'))).toEqual(['Recent: done'])
-  })
-
-  it('declares the bucket order it renders in', () => {
-    expect(BUCKET_ORDER).toEqual(['Pinned', 'Needs you', 'Working', 'Recent', 'Archived'])
-  })
-
-  it('puts every archived run under one Archived bucket regardless of status', () => {
-    const runs = [
-      run({ id: 'w', status: 'waiting', archived: true }),
-      run({ id: 'd', status: 'done', archived: true, createdAt: '2026-07-14T11:00:00.000Z' }),
-      run({ id: 'active', status: 'running' }),
-    ]
-    expect(shape(groupRuns(runs, 'archived'))).toEqual(['Archived: w, d'])
-  })
-
-  it('carries queue positions onto the rows', () => {
-    const runs = [
-      run({ id: 'q2', status: 'queued', createdAt: '2026-07-14T11:00:00.000Z' }),
-      run({ id: 'q1', status: 'queued', createdAt: '2026-07-14T10:00:00.000Z' }),
-      run({ id: 'r', status: 'running' }),
-    ]
-    const rows = rowsOf(groupRuns(runs, 'active'))
-    expect(
-      rows.map((row) => (row.kind === 'run' ? [row.run.id, row.queuePosition] : null))
-    ).toEqual([
-      // FIFO now (the sort), so the rows run in the same order as the numbers they carry —
-      // the engine's start order, top to bottom.
-      ['r', null],
-      ['q1', 1],
-      ['q2', 2],
-    ])
-  })
-
-  describe('variant groups (spec 010)', () => {
-    const group = (over: Partial<RunRecord>[]): RunRecord[] =>
-      over.map((o) => run({ groupId: 'g1', title: 'Add autocomplete (X)', ...o }))
-
-    it('collapses a groupId into one tile, members ordered by letter', () => {
-      const runs = group([
-        { id: 'b', variant: 'B', status: 'running', title: 'Add autocomplete (B)' },
-        { id: 'c', variant: 'C', status: 'running', title: 'Add autocomplete (C)' },
-        { id: 'a', variant: 'A', status: 'running', title: 'Add autocomplete (A)' },
-      ])
-      const buckets = groupRuns(runs, 'active')
-      expect(shape(buckets)).toEqual(['Working: [ABC]'])
-
-      const row = groupRow(buckets)
-      expect(row.groupId).toBe('g1')
-      // The shared title, without any variant's suffix.
-      expect(row.title).toBe('Add autocomplete')
-      expect(row.members).toHaveLength(3)
-    })
-
-    it('places the tile where its best-ranked member would sit — the group moves as a unit', () => {
-      const runs = [
-        ...group([
-          { id: 'a', variant: 'A', status: 'running', title: 'Add autocomplete (A)' },
-          { id: 'b', variant: 'B', status: 'waiting', title: 'Add autocomplete (B)' },
-        ]),
-        run({ id: 'other', status: 'running' }),
-      ]
-      // B is waiting, so the whole tile is under "Needs you" — it does not tear in half with A
-      // left behind under Working.
-      expect(shape(groupRuns(runs, 'active'))).toEqual(['Needs you: [AB]', 'Working: other'])
-    })
-
-    it('renders a lone survivor as a plain row, not a one-member group', () => {
-      // What the "pick a winner" flow leaves behind: the winner keeps its groupId forever.
-      const runs = group([{ id: 'winner', variant: 'A', status: 'done', title: 'Add autocomplete (A)' }])
-      expect(shape(groupRuns(runs, 'active'))).toEqual(['Recent: winner'])
-    })
-
-    it('does not pull members across the view filter', () => {
-      const runs = group([
-        { id: 'a', variant: 'A', status: 'done', title: 'Add autocomplete (A)' },
-        { id: 'b', variant: 'B', status: 'done', title: 'Add autocomplete (B)', archived: true },
-      ])
-      // One active member left → a plain row, and the archived one is not smuggled into its tile.
-      expect(shape(groupRuns(runs, 'active'))).toEqual(['Recent: a'])
-      expect(shape(groupRuns(runs, 'archived'))).toEqual(['Archived: b'])
-    })
-
-    it('emits each group once, however many members it has', () => {
-      const runs = [
-        ...group([
-          { id: 'a', variant: 'A', status: 'done', title: 'Add autocomplete (A)' },
-          { id: 'b', variant: 'B', status: 'done', title: 'Add autocomplete (B)' },
-          { id: 'c', variant: 'C', status: 'done', title: 'Add autocomplete (C)' },
-        ]),
-      ]
-      expect(rowsOf(groupRuns(runs, 'active'))).toHaveLength(1)
-    })
-
-    it('keeps separate groups separate', () => {
-      const runs = [
-        run({ id: 'a1', groupId: 'g1', variant: 'A', status: 'running', title: 'One (A)' }),
-        run({ id: 'a2', groupId: 'g1', variant: 'B', status: 'running', title: 'One (B)' }),
-        run({ id: 'b1', groupId: 'g2', variant: 'A', status: 'running', title: 'Two (A)' }),
-        run({ id: 'b2', groupId: 'g2', variant: 'B', status: 'running', title: 'Two (B)' }),
-      ]
-      const rows = rowsOf(groupRuns(runs, 'active'))
-      expect(rows).toHaveLength(2)
-      expect(rows.map((row) => (row.kind === 'group' ? row.title : row.run.id))).toEqual(['One', 'Two'])
-    })
-  })
-
-  it('handles an empty list', () => {
-    expect(groupRuns([], 'active')).toEqual([])
-    expect(groupRuns([], 'archived')).toEqual([])
   })
 })
 
@@ -469,21 +237,6 @@ describe('listCounts', () => {
 describe('pinned tasks (#935)', () => {
   const pinned = (over: Partial<RunRecord> = {}) => run({ pinned: true, pinnedAt: '2026-08-29T10:00:00.000Z', ...over })
 
-  describe('bucketOf', () => {
-    it.each(['waiting', 'review', 'running', 'queued', 'done', 'failed', 'cancelled'] as RunStatus[])(
-      'a pinned %s run is Pinned, and nothing else',
-      (status) => {
-        expect(bucketOf(pinned({ status }), 'active')).toBe('Pinned')
-      },
-    )
-
-    it('the archived view still collapses everything, pin or no pin', () => {
-      // Archiving retires the pin server-side, so this is a hand-edited record — and in that
-      // view the answer is history either way.
-      expect(bucketOf(pinned({ status: 'waiting', archived: true }), 'archived')).toBe('Archived')
-    })
-  })
-
   describe('sortRuns', () => {
     it('puts pinned runs first, ahead of every status weight', () => {
       const runs = [
@@ -516,78 +269,7 @@ describe('pinned tasks (#935)', () => {
     })
   })
 
-  describe('groupRuns', () => {
-    it('emits Pinned at the head, and each pinned run exactly once', () => {
-      const runs = [
-        run({ id: 'waiting', status: 'waiting' }),
-        pinned({ id: 'p-waiting', status: 'waiting' }),
-        run({ id: 'running', status: 'running' }),
-        pinned({ id: 'p-done', status: 'done' }),
-      ]
-      expect(shape(groupRuns(runs, 'active'))).toEqual([
-        'Pinned: p-waiting, p-done',
-        'Needs you: waiting',
-        'Working: running',
-      ])
-    })
-
-    it('omits the bucket entirely when nothing is pinned', () => {
-      expect(shape(groupRuns([run({ id: 'done', status: 'done' })], 'active'))).toEqual(['Recent: done'])
-    })
-
-    it('lifts a whole variant tile when any member is pinned', () => {
-      // The existing best-ranked-member rule, applied to the new bucket: the tile moves as a
-      // unit rather than tearing in half across Pinned and Recent.
-      const runs = [
-        run({ id: 'a', groupId: 'g1', variant: 'A', status: 'done' }),
-        pinned({ id: 'b', groupId: 'g1', variant: 'B', status: 'done' }),
-        run({ id: 'other', status: 'done' }),
-      ]
-      expect(shape(groupRuns(runs, 'active'))).toEqual(['Pinned: [AB]', 'Recent: other'])
-    })
-  })
-
-  describe('capBuckets', () => {
-    const bucketRows = (n: number, prefix: string) =>
-      Array.from({ length: n }, (_, index) => ({
-        kind: 'run' as const,
-        run: run({ id: `${prefix}${index}` }),
-        queuePosition: null,
-      }))
-
-    it('trims across buckets in order and drops the ones the cap empties', () => {
-      const capped = capBuckets(
-        [
-          { label: 'Needs you', rows: bucketRows(2, 'n') },
-          { label: 'Working', rows: bucketRows(3, 'w') },
-          { label: 'Recent', rows: bucketRows(4, 'r') },
-        ],
-        4,
-      )
-      expect(capped.map((bucket) => `${bucket.label}:${bucket.rows.length}`)).toEqual([
-        'Needs you:2',
-        'Working:2',
-      ])
-    })
-
-    it('never trims Pinned, and spends none of the budget on it', () => {
-      // A pin is an explicit request for that row to be on screen — and the ten rows still go
-      // to the other buckets, so pinning three tasks cannot hide what needs you.
-      const capped = capBuckets(
-        [
-          { label: 'Pinned', rows: bucketRows(12, 'p') },
-          { label: 'Needs you', rows: bucketRows(3, 'n') },
-        ],
-        10,
-      )
-      expect(capped.map((bucket) => `${bucket.label}:${bucket.rows.length}`)).toEqual([
-        'Pinned:12',
-        'Needs you:3',
-      ])
-    })
-  })
-
-  it('does not change the tab counts — those count by status, never by bucket', () => {
+  it('does not change the tab counts — those count by status, never by pin', () => {
     const runs = [pinned({ status: 'waiting' }), run({ status: 'done' }), run({ archived: true })]
     expect(listCounts(runs)).toEqual({ active: 2, archived: 1, waiting: 1 })
   })

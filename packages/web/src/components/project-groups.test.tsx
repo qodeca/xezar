@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createQueryClient } from '@/api/query-client'
 import type { ProjectListEntry, RunRecord } from '@qodeca/xezar-api-client'
-import { ListViewProvider } from '@/components/list-view'
 import { ProjectGroups } from '@/components/project-groups'
 import { SIDEBAR_COLLAPSED_STORAGE_KEY } from '@/lib/sidebar-collapse'
 
@@ -95,9 +94,7 @@ function renderGroups(
   return render(
     <QueryClientProvider client={createQueryClient()}>
       <MemoryRouter initialEntries={[entry]}>
-        <ListViewProvider>
-          <ProjectGroups projects={projects} bootProjectId="xezar" automationsAvailable={automations} />
-        </ListViewProvider>
+        <ProjectGroups projects={projects} bootProjectId="xezar" automationsAvailable={automations} />
       </MemoryRouter>
     </QueryClientProvider>,
   )
@@ -109,26 +106,35 @@ const group = (id: string) =>
 const header = (id: string) =>
   within(group(id)).getByRole('button') as HTMLButtonElement
 
-/** Every task row of a group, in render order — the rows are `[data-slot="quick-list-row"]`
- *  links inside the group's body. */
-function taskLinks(id: string): HTMLAnchorElement[] {
-  return Array.from(
-    group(id).querySelectorAll('[data-slot="quick-list-bucket"] a[href^="/p/"]'),
-  ) as HTMLAnchorElement[]
-}
-
 describe('ProjectGroups', () => {
-  it('caps an expanded group at 10 rows and links More… at that project’s tasks pane', async () => {
-    const runs = Array.from({ length: 15 }, () => run())
+  // #546: a group is navigation only. With runs in its cache — the data the removed quick-list
+  // painted — an expanded group holds its header and its nav, and nothing else: no task row, no
+  // bucket heading, no pin button, no More… row. The Tasks nav item is the door to that project's
+  // tasks.
+  it('lists no tasks in an expanded group, only the project nav', async () => {
+    const runs = [
+      ...Array.from({ length: 12 }, (_, index) => run({ titleSummary: `Listed task ${index}` })),
+      run({ titleSummary: 'Waiting on you', status: 'waiting' }),
+      run({ titleSummary: 'Pinned work', pinned: true }),
+    ]
     serve({ '/api/v1/p/xezar/runs': runs })
     renderGroups([project(), project({ id: 'shop', name: 'shop', lastOpenedAt: '2026-07-19T00:00:00.000Z' })])
 
-    await waitFor(() => expect(taskLinks('xezar').length).toBeGreaterThan(0))
-    // Ten of fifteen — the spec's "10 most recent tasks", counted across buckets.
-    expect(taskLinks('xezar')).toHaveLength(10)
-
-    const more = within(group('xezar')).getByRole('link', { name: 'More…' })
-    expect(more.getAttribute('href')).toBe('/p/xezar/')
+    // The badge proves the runs arrived before the absence below is read.
+    await waitFor(() =>
+      expect(group('xezar').querySelector('[data-slot="project-attention"]')?.textContent).toBe('1'),
+    )
+    const xezar = within(group('xezar'))
+    expect(xezar.queryByText(/^Listed task|^Waiting on you$|^Pinned work$/)).toBeNull()
+    expect(xezar.queryByText(/^(Needs you|Working|Recent|Pinned)$/)).toBeNull()
+    expect(xezar.queryByRole('link', { name: 'More…' })).toBeNull()
+    expect(xezar.queryByRole('button', { name: /pin task/i })).toBeNull()
+    // Every link in the group is a nav item, and the Tasks item still leads to the project's tasks.
+    const nav = xezar.getByRole('navigation', { name: 'xezar navigation' })
+    expect(xezar.getAllByRole('link')).toEqual(within(nav).getAllByRole('link'))
+    expect(within(nav).getByRole('link', { name: 'Tasks' }).getAttribute('href')).toBe('/p/xezar/')
+    // The only button is the header's disclosure toggle.
+    expect(xezar.getAllByRole('button')).toEqual([header('xezar')])
   })
 
   it('orders groups by lastOpenedAt and only fetches the expanded one', async () => {
@@ -265,73 +271,29 @@ describe('ProjectGroups', () => {
 
   it("the boot group reads the 'default' cache entry — the one the stream patches", async () => {
     // The boot project mounts UNSCOPED (routes.tsx), so the main view and the SSE patcher both
-    // live under the 'default' scope key. The boot group must share that entry, or its list and
-    // needs-you badge freeze at whatever the expand-time fetch answered.
+    // live under the 'default' scope key. The boot group must share that entry, or its needs-you
+    // badge freezes at whatever the expand-time fetch answered.
     const client = createQueryClient()
     serve({ '/api/v1/p/xezar/runs': [] })
     render(
       <QueryClientProvider client={client}>
         <MemoryRouter initialEntries={['/p/xezar/']}>
-          <ListViewProvider>
-            <ProjectGroups projects={[project(), project({ id: 'shop', name: 'shop', lastOpenedAt: '2026-07-19T00:00:00.000Z' })]} bootProjectId="xezar" />
-          </ListViewProvider>
+          <ProjectGroups projects={[project(), project({ id: 'shop', name: 'shop', lastOpenedAt: '2026-07-19T00:00:00.000Z' })]} bootProjectId="xezar" />
         </MemoryRouter>
       </QueryClientProvider>,
     )
     await waitFor(() => expect(header('xezar').getAttribute('aria-expanded')).toBe('true'))
-    expect(taskLinks('xezar')).toHaveLength(0)
+    expect(group('xezar').querySelector('[data-slot="project-attention"]')).toBeNull()
 
     // A live `run` event lands in the cache exactly where global-events writes it: under
     // ['default', 'runs', 'list'], never under the boot project's own id.
     client.setQueryData(['default', 'runs', 'list'], [run({ status: 'waiting' })])
 
-    await waitFor(() => expect(taskLinks('xezar')).toHaveLength(1))
-    expect(group('xezar').querySelector('[data-slot="project-attention"]')?.textContent).toBe('1')
-    // The non-boot group keeps its own per-project key untouched.
-    expect(taskLinks('shop')).toHaveLength(0)
-  })
-
-  it('keeps pinned rows past the 10-row cap, and spends the budget on the rest (#935)', async () => {
-    const runs = [
-      ...Array.from({ length: 15 }, () => run()),
-      run({ id: 'kept-a', pinned: true }),
-      run({ id: 'kept-b', pinned: true }),
-    ]
-    serve({ '/api/v1/p/xezar/runs': runs })
-    renderGroups([project()])
-
-    await waitFor(() => expect(taskLinks('xezar').length).toBeGreaterThan(0))
-    // Twelve: both pins, plus the ten the ordinary buckets are still allowed.
-    expect(taskLinks('xezar')).toHaveLength(12)
-    const pinnedBucket = group('xezar').querySelector('[data-bucket="Pinned"]')
-    expect(pinnedBucket?.querySelectorAll('[data-slot="task-row"]')).toHaveLength(2)
-  })
-
-  it("pins through the row's OWN project, not the one the URL names (#935)", async () => {
-    // The failure this pins: `queryScope()` would address whichever project the page is standing
-    // in, so a pin on another group's row would 404 — or, with a colliding run id, pin the wrong
-    // task in the wrong repo.
-    const posts: string[] = []
-    fetchMock.mockImplementation(async (input, init: RequestInit = {}) => {
-      const path = String(input)
-      if (init.method === 'POST') {
-        posts.push(path)
-        return json({})
-      }
-      if (path === '/api/v1/p/xezar/runs') return json([run({ id: 'other-project-task' })])
-      if (path === '/api/v1/p/shop/runs') return json([])
-      return json({ error: 'not found' }, 404)
-    })
-    // Standing in `shop`, with the boot project's group open beside it.
-    storeCollapsed({ xezar: false })
-    renderGroups(
-      [project(), project({ id: 'shop', name: 'shop', lastOpenedAt: '2026-07-19T00:00:00.000Z' })],
-      '/p/shop/',
+    await waitFor(() =>
+      expect(group('xezar').querySelector('[data-slot="project-attention"]')?.textContent).toBe('1'),
     )
-
-    await waitFor(() => expect(taskLinks('xezar')).toHaveLength(1))
-    fireEvent.click(within(group('xezar')).getByRole('button', { name: 'Pin task' }))
-    await waitFor(() => expect(posts).toEqual(['/api/v1/p/xezar/runs/other-project-task/pin']))
+    // The non-boot group keeps its own per-project key untouched.
+    expect(group('shop').querySelector('[data-slot="project-attention"]')).toBeNull()
   })
 
   it('renders a missing project greyed and inert, with no nav behind it', async () => {

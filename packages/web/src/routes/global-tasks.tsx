@@ -254,10 +254,9 @@ export function GlobalTasksRoute() {
     [searchParams],
   )
   // …and the Active/Archived split is published to the SHARED filter context, one way. That
-  // context is what keeps this page, the per-project table and the sidebar quick-list answering
-  // one question; here the URL is the authority, so the context follows it rather than the other
-  // way round. Nothing else on this route can change it — the multi-project sidebar's groups
-  // only READ the view — so there is no loop to break.
+  // context is what keeps this page and the per-project table answering one question; here the
+  // URL is the authority, so the context follows it rather than the other way round. Nothing else
+  // on this route can change it, so there is no loop to break.
   const [sharedView, setSharedView] = useListView()
   React.useEffect(() => {
     if (sharedView !== view) setSharedView(view)

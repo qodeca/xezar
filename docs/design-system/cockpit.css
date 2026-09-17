@@ -729,6 +729,9 @@ svg.icon.xxs {
   background: var(--violet);
 }
 
+/* `.list-tabs`, `.quick-head` and `.quick` drew the sidebar task list, which the cockpit removed in
+   #546 (the sidebar is navigation only). They stay for the existing mockups under designs/ that
+   use them; do not use them to put tasks back in a sidebar. */
 .list-tabs {
   display: flex;
   gap: 4px;
