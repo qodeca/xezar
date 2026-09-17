@@ -33,8 +33,20 @@ const DEFAULT_DISCOVERY_TIMEOUT_MS = 5_000;
 const MAX_MODEL_PAGES = 25;
 const MAX_MODELS = 500;
 
+/** The fixture `XEZ_DRY_RUN=1` answers with (AGENTS.md: "XEZ_DRY_RUN=1 must keep working,
+ *  bundled mock, no real CLI"). Every other backend's discovery either has this same early
+ *  return (`backend-detect.ts`'s claude/pi probes) or spawns a bundled mock binary that answers
+ *  in-process; Codex had neither, so a dry-run boot with no real `codex` on PATH (every CI
+ *  runner) still tried to spawn `codex app-server` and always got `models: []` — the composer's
+ *  Codex model menu was structurally empty under dry-run, not just when Codex is genuinely
+ *  absent. */
+const DRY_RUN_MODELS: ModelOption[] = [
+  { id: 'mock-codex-model', label: 'Mock Codex model', description: 'mock (XEZ_DRY_RUN=1)' },
+];
+
 /** Discover the visible catalog exposed by the authenticated host Codex CLI. */
 export async function discoverCodexModels(options: CodexModelDiscoveryOptions): Promise<ModelOption[]> {
+  if (process.env.XEZ_DRY_RUN === '1') return DRY_RUN_MODELS;
   const child = (options.spawn ?? spawnCodexAppServer)(
     resolveCodexExecutable(options.bin),
     options.cwd,
