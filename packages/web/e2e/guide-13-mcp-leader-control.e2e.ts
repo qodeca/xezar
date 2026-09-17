@@ -1,39 +1,84 @@
+import { spawn, type ChildProcess } from 'node:child_process'
+import { createServer } from 'node:net'
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { bootProjectId, readTestEnv } from './agent-browser'
+import { bootProjectId, fixtureServeEnv, removeDataRoot, stopFixtureServer, xezarCli } from './agent-browser'
 import { GuideBrowser } from './guide-browser'
 
 /**
  * Guide 13 — MCP project leader (docs/guide/13-mcp-leader.md): the Settings → MCP connection page
- * this task worktree has no attached leader for, so the page is read exactly in its
- * "not connected yet" state — itself one of the guide's own named states (§ "To choose the
- * leader's role": Files prepared / Connected / Attached / Delivery verified — none implies the
+ * read in its "not connected yet" state — itself one of the guide's own named states (§ "To choose
+ * the leader's role": Files prepared / Connected / Attached / Delivery verified — none implies the
  * next).
  *
- * Dry-run exception register: an actual client attaching, receiving a push and acknowledging it
- * is manual with a dated record (browser-test-spec.md's guide-13 row); this file asserts only the
+ * This needs its OWN spec-owned server rather than the shared suite instance: `mcp-live-sync.e2e.ts`
+ * and `mcp-collaboration.e2e.ts` attach a real leader to the shared project, and once one of them
+ * has run, the shared server is no longer in the unattached state this file reads — a real
+ * isolation bug this file itself shipped with, caught by running the whole suite in shuffled order
+ * (browser-test-spec.md § Isolation rule, Proof 2) rather than only in the suite's default,
+ * alphabetical one.
+ *
+ * Dry-run exception register: an actual client attaching, receiving a push and acknowledging it is
+ * manual with a dated record (browser-test-spec.md's guide-13 row); this file asserts only the
  * page's own unattached-state text and the setup commands it prints for every client.
  */
 
+function freePort(): Promise<number> {
+  return new Promise((done, fail) => {
+    const probe = createServer()
+    probe.once('error', fail)
+    probe.listen(0, '127.0.0.1', () => {
+      const address = probe.address()
+      const port = typeof address === 'object' && address ? address.port : 0
+      probe.close(() => done(port))
+    })
+  })
+}
+
+async function waitForHealth(url: string): Promise<void> {
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    try {
+      if ((await fetch(`${url}/api/v1/health`)).ok) return
+    } catch {
+      /* not up yet */
+    }
+    await new Promise((r) => setTimeout(r, 250))
+  }
+  throw new Error(`xezar e2e: the guide-13 fixture server never answered at ${url}`)
+}
+
 let browser: GuideBrowser
+let server: ChildProcess
+let dataRoot: string
 let baseUrl: string
 let bootProject: string
 
 beforeAll(async () => {
-  baseUrl = readTestEnv().baseUrl
+  dataRoot = mkdtempSync(join(tmpdir(), 'xezar-e2e-guide-13-'))
+  const port = await freePort()
+  baseUrl = `http://127.0.0.1:${port}`
+  server = spawn(
+    process.execPath,
+    [xezarCli, 'serve', '--repo', dataRoot, '--port', String(port), '--no-open'],
+    { env: fixtureServeEnv(dataRoot), stdio: 'ignore' },
+  )
+  await waitForHealth(baseUrl)
   bootProject = await bootProjectId(baseUrl)
-  browser = GuideBrowser.open(`e2e-guide-13-${process.pid}`)
-}, 60_000)
 
-afterAll(() => {
+  browser = GuideBrowser.open(`e2e-guide-13-${process.pid}`)
+  browser.goto(`${baseUrl}/p/${bootProject}/settings/mcp-connection`)
+}, 90_000)
+
+afterAll(async () => {
   browser?.close()
+  await stopFixtureServer(server)
+  await removeDataRoot(dataRoot)
 })
 
 describe('guide 13 — MCP project leader', () => {
-  beforeAll(() => {
-    browser.goto(`${baseUrl}/p/${bootProject}/settings/mcp-connection`)
-  })
-
   it('names local-only scope and every client\'s one-time setup section', async () => {
     await browser.waitForRole('heading', 'Bound project')
     expect(browser.hasRole('heading', 'Local-only scope')).toBe(true)
