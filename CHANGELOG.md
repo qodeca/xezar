@@ -18,6 +18,7 @@
   cockpit records too (`run.start`, `run.pin`), not the tool action (`taskCreate.start`), and a read
   action inside a mutating tool is no longer recorded. Details: `BACKWARD_COMPATIBILITY.md` § 3.
 - Hosted servers now refuse every WebSocket upgrade before the handshake; remote clients continue to use authenticated HTTP and event streams. Local native clients and the Vite development proxy keep their existing access. (#547, SM1)
+- 💥 **Start-up recovery now says when it deliberately settled previous-session tasks.** (#467) One aggregate stderr activity entry reports `task.recovered count=<all candidates> settled=<waiting tasks settled>` before the cockpit-ready event, while seeded per-task outcomes and transient restart failures stay suppressed and session totals stay unchanged. Wide and 40-column terminals say “N tasks from the previous session were settled at start-up”; plain output carries only `event=task.recovered count=… settled=…`; `--quiet` omits it. The old stdout line `recovered N run(s) from the previous session` is removed, so scripts that consumed it must read stderr's plain output and select `event=task.recovered`. No state, exit code, API, MCP event or recovery behavior changed.
 
 ## ✨ Features
 
