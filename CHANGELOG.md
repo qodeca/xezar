@@ -28,8 +28,9 @@
   change in the cockpit and over MCP. Every command-line subcommand — `serve`, `run`, `init`,
   `projects` (list, add, remove, tag, port), `mcp`, `server-install`, `server-deploy` and
   `server-uninstall` — writes one record, `applied` or `refused` with a reason; `--help`, `--version`
-  and unknown commands write none, and a folder that is not a xezar project gets no new state. Each
-  run an automation launches gets its own record linked to its receipt id. Reads are never recorded,
+  and unknown commands write none, and a folder that is not a xezar project (the home directory or a
+  task worktree) gets no new state, printing the same one-warning line a write failure uses instead of
+  staying silent. Each run an automation launches gets its own record linked to its receipt id. Reads are never recorded,
   and a failed audit write never fails the action (one warning). On a hosted server, the cockpit
   record also keeps the user the reverse proxy authenticated, from the `X-Xezar-User` header, marked
   `asserted-by-proxy`; the header is read only in hosted mode and only from a loopback proxy, and the
