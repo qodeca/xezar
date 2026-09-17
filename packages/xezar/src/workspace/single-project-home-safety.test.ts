@@ -184,13 +184,20 @@ describe('single-project mode never opens the real xezar home (AC-11)', () => {
       });
 
     // `projects` opens no port, so it is the cheapest command that boots the
-    // layout for real — and `add` makes it WRITE the registry, which is the
-    // half of the proof a read-only home can actually refuse.
+    // layout for real — and the listing WRITES the registry, which is the half
+    // of the proof a read-only home can actually refuse: with the registry
+    // narrowed to one project a listing registers the boot folder through the
+    // normal self-healing path (`initWorkspace` in `index.ts`).
     const run = runCli('projects', 'list', '--single-project');
+    // The same binary, the same folder, one command later: `add` is REFUSED
+    // now (#600 SP-3.2), which is why the write above is the boot's own. Proved
+    // here as well as in `single-project-doors.test.ts`, because this is the
+    // only place the refusal is exercised through the real CLI end to end.
     const added = runCli('projects', 'add', project);
 
     expect(run.status, run.stderr).toBe(0);
-    expect(added.status, added.stderr).toBe(0);
+    expect(added.status).toBe(1);
+    expect(added.stderr).toContain('this project owns its xezar state; adding projects is disabled');
     // The registry landed in the project. Without this the case is also
     // satisfied by a boot that TRIED the read-only home, failed and degraded
     // quietly — which is the leak, not the fix.

@@ -56,7 +56,7 @@ import { entry as activityEntry, startTerminalActivity, type TerminalActivity } 
 import { recoverAndReport } from './terminal/recovery.ts';
 import { formatDuration, formatTokens, glyphsFor } from './terminal/format.ts';
 import { runMigrations } from './workspace/migrations.ts';
-import { registerProject, shouldRegisterProject } from './workspace/projects.ts';
+import { registerProject, shouldRegisterProject, singleProjectRegistry } from './workspace/projects.ts';
 import { runProjectsCommand } from './workspace/projects-cli.ts';
 import { cliAudit, PROJECTS_SUBCOMMANDS, projectResource, type CliAudit } from './cli-audit.ts';
 import { WorkspaceSemaphore } from './workspace/semaphore.ts';
@@ -264,12 +264,16 @@ async function main(): Promise<void> {
     }
     case 'projects':
       // Registry-only (no server, no HTTP) — see workspace/projects-cli.ts.
-      // In single-project mode a listing is a launch-context read: register
-      // the boot repo through the normal self-healing path and pin the output
-      // to that explicit identity. Mutations are left to their own guards.
+      // With the registry narrowed to one project a listing is a launch-context
+      // read: register the boot repo through the normal self-healing path and
+      // pin the output to that explicit identity. Mutations are left to their
+      // own guards. EITHER narrowing qualifies (#600 SP-3.1) — the folder that
+      // owns its xezar state is exactly as much "the one project" as
+      // `XEZ_SINGLE_PROJECT=1` is, and registering it here is what puts its row
+      // in `<project>/.xezar/workspace.json` now that `projects add` is refused.
       const projectArgs = positionals.slice(1);
       const isList = projectArgs.length === 0 || projectArgs[0] === 'list';
-      const bootProjectId = process.env.XEZ_SINGLE_PROJECT === '1' && isList
+      const bootProjectId = singleProjectRegistry() && isList
         ? await initWorkspace(repoRoot)
         : undefined;
       // One audit record per VALID subcommand (#306 part 2); an unknown word gets none.

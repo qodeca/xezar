@@ -43,6 +43,18 @@
   layout, the detection, the capability and the boot line; the cockpit badge, the refusals in all
   three doors and the import from a global setup follow. Details:
   `BACKWARD_COMPATIBILITY.md` § "Single-project ROOT mode".
+- ✨ **A folder that owns its xezar setup has a registry of exactly one project, and says so at
+  every door.** (#600, part 3 of 5) In single-project mode `GET /api/v1/projects`, `xezar projects`
+  and the cockpit list one project — the folder — even when a `workspace.json` a clone carried names
+  more; rows for other machines' paths are ignored, never rewritten. Adding, cloning, editing and
+  removing a project, and browsing host folders, are refused in all three doors: the HTTP API
+  answers `409` with a plain sentence, `xezar projects add/remove/tag/port` exits 1 with the same
+  sentence, and the MCP `project_config` tool refuses at its boundary and now says why there is
+  nothing to manage. Every refusal is recorded in the project's audit trail, with a reason that says
+  which narrowing refused. Nothing changes for an ordinary multi-project workspace, and
+  `XEZ_SINGLE_PROJECT=1` refuses with exactly the status codes, sentences, exit codes and audit
+  reasons it always has — the guards widened what turns them on, never what they do. Details:
+  `BACKWARD_COMPATIBILITY.md` § 2 and § "Single-project ROOT mode".
 - ✨ **The sidebar is navigation-only.** (#546) The Active/Archived task switcher, task list, and `Search…` launcher have been removed from the sidebar. Manage and search tasks on the Tasks page, and open the command palette with `⌘K` on macOS or `Ctrl+K` elsewhere. Existing task badges, task data, APIs, and saved UI state are unchanged.
 - **The audit trail is bounded, and safe to share between processes.** (#306, part 3 of 4) A
   project's `.local/xezar/audit.ndjson` now rotates before it passes 10 MB (10,000,000 bytes) and
