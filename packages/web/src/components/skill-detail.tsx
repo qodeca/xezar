@@ -48,7 +48,7 @@ export function SkillDetailBody({
 }) {
   return (
     <div data-slot="skill-detail" className="min-w-0">
-      <div className="flex min-w-0 flex-wrap items-center gap-2.5">
+      <div className="flex min-w-0 flex-wrap items-center gap-row">
         <Heading className="min-w-0 font-mono text-lg font-semibold break-all">{skill.name}</Heading>
         <SkillSourceTag source={skill.source} />
       </div>
@@ -57,13 +57,13 @@ export function SkillDetailBody({
         {skill.team ? ` · from ${skill.team.repo}` : ''}
       </p>
       {skill.description ? (
-        <p data-slot="skill-description" className="mt-2.5 text-[13px] text-muted-foreground">
+        <p data-slot="skill-description" className="mt-stack text-[13px] text-muted-foreground">
           {skill.description}
         </p>
       ) : null}
 
       {usedBy !== undefined ? (
-        <section data-slot="skill-used-by" className="mt-5">
+        <section data-slot="skill-used-by" className="mt-group">
           <h3 className="text-[11px] font-semibold tracking-[.04em] text-soft-foreground uppercase">
             Used by
           </h3>
@@ -84,11 +84,11 @@ export function SkillDetailBody({
         </section>
       ) : null}
 
-      <section className="mt-5">
+      <section className="mt-group">
         <h3 className="text-[11px] font-semibold tracking-[.04em] text-soft-foreground uppercase">
           Content
         </h3>
-        <div data-slot="skill-body" className="mt-2 text-sm">
+        <div data-slot="skill-body" className="mt-row text-sm">
           <Markdown>{skill.body}</Markdown>
         </div>
       </section>
@@ -114,12 +114,12 @@ export function SkillPreviewDialog({ skill, onClose }: { skill: Skill | null; on
             <DialogTitle className="sr-only">{skill.name}</DialogTitle>
             <DialogDescription className="sr-only">Read-only skill preview</DialogDescription>
             <SkillDetailBody skill={skill} heading="h3" />
-            <p className="mt-5">
+            <p className="mt-group">
               <Link
                 to={`/skills?skill=${encodeURIComponent(skill.name)}`}
                 data-slot="skill-preview-manage"
                 onClick={onClose}
-                className="text-xs font-semibold text-violet hover:underline"
+                className="inline-flex min-h-tap items-center text-xs font-semibold text-violet hover:underline md:min-h-0"
               >
                 Open in the Skills catalog
               </Link>

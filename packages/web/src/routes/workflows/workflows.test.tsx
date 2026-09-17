@@ -341,13 +341,42 @@ describe('save', () => {
 
     fireEvent.click(document.querySelector('[data-slot="wb-save"]')!)
     await screen.findByText('“ship-it” already exists')
-    fireEvent.click(document.querySelector('[data-slot="wb-overwrite-confirm"]')!)
+    // #453 B7 / T-7: overwriting a file is irreversible, so the confirm wears the danger button
+    // (G-10) – never the ordinary contrast action – and the cancel keeps the file.
+    const confirm = document.querySelector<HTMLElement>('[data-slot="wb-overwrite-confirm"]')!
+    expect(confirm.classList.contains('bg-danger')).toBe(true)
+    expect(confirm.classList.contains('bg-contrast')).toBe(false)
+    expect(screen.getByRole('button', { name: 'Keep it' })).toBeTruthy()
+    fireEvent.click(confirm)
 
     await screen.findByText('Saved — ship-it.yaml')
     const posts = sent.filter((r) => r.method === 'POST' && r.path === '/api/v1/workflows')
     expect(posts).toHaveLength(2)
     expect(posts[0]!.body).not.toHaveProperty('overwrite')
     expect(posts[1]!.body).toMatchObject({ name: 'ship-it', overwrite: true })
+  })
+
+  it('#453 B7: a refused clipboard never claims the YAML was copied', async () => {
+    stubFetch()
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText: vi.fn(async () => { throw new Error('denied') }) } })
+    renderAt('/workflows')
+    await waitFor(() => expect(stepCards()).toHaveLength(2))
+
+    fireEvent.click(document.querySelector('[data-slot="wb-copy"]')!)
+    await screen.findByText('Could not copy the YAML — select it below instead')
+    expect(document.querySelector('[data-slot="wb-copy"]')?.textContent).toBe('Copy')
+  })
+
+  it('#453 B7: a clipboard that took the YAML says Copied', async () => {
+    stubFetch()
+    const writeText = vi.fn(async () => {})
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } })
+    renderAt('/workflows')
+    await waitFor(() => expect(stepCards()).toHaveLength(2))
+
+    fireEvent.click(document.querySelector('[data-slot="wb-copy"]')!)
+    await waitFor(() => expect(document.querySelector('[data-slot="wb-copy"]')?.textContent).toBe('Copied'))
+    expect(writeText).toHaveBeenCalledWith(yamlText())
   })
 
   it('an empty canvas refuses to save with the legacy message', async () => {
@@ -377,7 +406,7 @@ describe('delete and “+ new”', () => {
     await screen.findByText('Delete workflow “ship-it”?')
     fireEvent.click(document.querySelector('[data-slot="wb-delete-confirm"]')!)
 
-    await screen.findByText('Deleted "ship-it".')
+    await screen.findByText('Deleted “ship-it”')
     expect(sent.some((r) => r.method === 'DELETE' && r.path === '/api/v1/workflows/ship-it')).toBe(true)
     await waitFor(() => expect(stepCards()).toHaveLength(0))
     expect(nameInput().value).toBe('my-workflow')

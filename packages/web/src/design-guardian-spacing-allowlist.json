@@ -6,49 +6,5 @@
   "src/components/reference-chip.tsx|min-h-[24px]": {
     "count": 1,
     "reason": "WCAG 2.2 SC 2.5.8 floor: an absolute 24 px minimum height the density lever cannot shrink"
-  },
-  "src/components/skills-import-panel.tsx|pl-[22px]": {
-    "count": 1,
-    "reason": "convert in 3b: indent"
-  },
-  "src/routes/github/github.tsx|size-[9px]": {
-    "count": 1,
-    "reason": "convert in 3b: glyph"
-  },
-  "src/routes/github/github.tsx|pl-[22px]": {
-    "count": 2,
-    "reason": "convert in 3b: indent"
-  },
-  "src/routes/github/hand-to-agent.tsx|px-[5px]": {
-    "count": 1,
-    "reason": "convert in 3b: kbd hint"
-  },
-  "src/routes/inbox.tsx|mt-[5px]": {
-    "count": 1,
-    "reason": "convert in 3b: § 9.3 list"
-  },
-  "src/routes/new-task.tsx|px-[5px]": {
-    "count": 1,
-    "reason": "convert in 3b: kbd hint"
-  },
-  "src/routes/new-task.tsx|p-[3px]": {
-    "count": 1,
-    "reason": "convert in 3b: segmented control"
-  },
-  "src/routes/new-task.tsx|h-[30px]": {
-    "count": 1,
-    "reason": "convert in 3b: pill button – floor candidate, keep it at or above 24 px"
-  },
-  "src/routes/skills.tsx|pl-[22px]": {
-    "count": 3,
-    "reason": "convert in 3b: indent"
-  },
-  "src/routes/workflows/workflows.tsx|h-[3px]": {
-    "count": 2,
-    "reason": "convert in 3b: hairline"
-  },
-  "src/routes/workflows/workflows.tsx|h-[9px]": {
-    "count": 1,
-    "reason": "convert in 3b: connector"
   }
 }

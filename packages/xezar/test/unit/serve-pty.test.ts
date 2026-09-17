@@ -64,7 +64,14 @@ async function makeRepo(name: string): Promise<string> {
   return repo;
 }
 
-/** Boot `serve` on a terminal `columns` wide, let it settle, send one Ctrl-C, return the bytes. */
+/**
+ * Boot `serve` on a terminal `columns` wide, let it settle, send one Ctrl-C, return the bytes.
+ *
+ * The six-second settle is counted from the boot line, not from exec (`--until cockpit`, which
+ * every capture below reaches, `--quiet` included). Counting it from exec measured the machine
+ * instead of the renderer: with the gate's three lanes running at once a cold tsx boot spent the
+ * whole window, and the capture came back empty on output the program had not written yet.
+ */
 function captureServe(repo: string, home: string, columns: number, args: string[] = []): string {
   return execFileSync(
     'python3',
@@ -73,6 +80,8 @@ function captureServe(repo: string, home: string, columns: number, args: string[
       String(columns),
       '24',
       '6',
+      '--until',
+      'cockpit',
       process.execPath,
       '--import',
       tsxLoader,

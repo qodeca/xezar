@@ -11,11 +11,18 @@ Node has no pseudo-terminal of its own, so this is the smallest thing that does.
      program measures is the size this script asked for;
   2. starts the command in its OWN session, so the interrupt below can only ever reach that one
      process group -- never this script, never a sibling, never anything else on the machine;
-  3. reads for `seconds` after the command's first output (waiting up to `seconds` more for it
-     to start at all), sends one SIGINT (what a person pressing Ctrl-C sends), drains the
+  3. reads for `seconds`, sends one SIGINT (what a person pressing Ctrl-C sends), drains the
      rest, and writes the raw bytes to stdout.
 
-Usage:  pty-capture.py <columns> <rows> <seconds> <command> [args...]
+`--until <text>` makes `seconds` a settle window that starts when that text first appears,
+instead of a wall clock that starts at exec. Without it the wait is exactly the fixed window it
+always was. Boot cost belongs to the machine, not to the observation: on a busy host -- three
+gate lanes at once -- a cold tsx boot ate the whole fixed window and the capture came back
+empty, failing assertions about output the program had simply not reached yet. The marker wait
+is bounded by MARKER_CEILING_SECONDS, after which the capture proceeds anyway and the test
+reports the real absence.
+
+Usage:  pty-capture.py <columns> <rows> <seconds> [--until <text>] <command> [args...]
 Output: the raw terminal byte stream on stdout, escape sequences and all.
 """
 
@@ -31,20 +38,13 @@ import termios
 import time
 
 
-def drain(master_fd, out, window, boot_wait=0.0):
-    """Read the terminal for `window` seconds, or until the far end closes.
+# A `serve` that never reaches the boot marker now takes ~2 minutes to fail instead of the ~6s
+# fixed window it used to be -- the real absence is still reported, just later (#342 review m2).
+MARKER_CEILING_SECONDS = 120.0
 
-    With `boot_wait`, the window starts at the FIRST byte instead of at the call, and the whole
-    call still ends after `window + boot_wait` at the latest. The window is meant to watch a
-    program that is already up; on a loaded machine the child's own start-up ate all of it and
-    the capture came back empty, which reads as "the program printed nothing" rather than "it
-    had not started yet". The window is unchanged -- it just begins where it always meant to.
-    """
-    now = time.time()
-    deadline = now + window + boot_wait
-    if boot_wait <= 0:
-        deadline = now + window
-    started = boot_wait <= 0
+
+def drain(master_fd, out, deadline, marker=None):
+    """Read the terminal until `deadline`, the far end closes, or `marker` shows up."""
     while time.time() < deadline:
         readable, _, _ = select.select([master_fd], [], [], 0.2)
         if not readable:
@@ -52,13 +52,13 @@ def drain(master_fd, out, window, boot_wait=0.0):
         try:
             chunk = os.read(master_fd, 65536)
         except OSError:
-            return
+            return False
         if not chunk:
-            return
-        if not started:
-            started = True
-            deadline = min(deadline, time.time() + window)
+            return False
         out.append(chunk)
+        if marker and marker in b"".join(out):
+            return True
+    return False
 
 
 def main():
@@ -68,7 +68,18 @@ def main():
     columns = int(sys.argv[1])
     rows = int(sys.argv[2])
     seconds = float(sys.argv[3])
-    command = sys.argv[4:]
+    rest = sys.argv[4:]
+    marker = None
+    if rest and rest[0] == "--until":
+        if len(rest) < 3:
+            sys.stderr.write(__doc__)
+            return 2
+        marker = rest[1].encode()
+        rest = rest[2:]
+    command = rest
+    if not command:
+        sys.stderr.write(__doc__)
+        return 2
 
     master_fd, slave_fd = pty.openpty()
     # Size first. A program that measures the terminal in its first milliseconds must find the
@@ -95,9 +106,11 @@ def main():
     os.close(slave_fd)
 
     out = []
-    # Up to `seconds` of extra patience for the child to say anything at all, then `seconds` of
-    # watching it -- see `drain`.
-    drain(master_fd, out, seconds, boot_wait=seconds)
+    # The settle window starts once the program is up, so a slow boot costs the capture nothing.
+    # With no marker asked for -- and when the marker never arrives -- this is the fixed window.
+    if marker:
+        drain(master_fd, out, time.time() + MARKER_CEILING_SECONDS, marker)
+    drain(master_fd, out, time.time() + seconds)
 
     # Stop it the way a person does. `killpg` on the child's OWN session id -- never a name,
     # never a pattern: a pattern would match every unrelated process this user happens to run.
@@ -105,7 +118,7 @@ def main():
         os.killpg(os.getpgid(child.pid), signal.SIGINT)
     except (ProcessLookupError, PermissionError):
         pass
-    drain(master_fd, out, 4)
+    drain(master_fd, out, time.time() + 4)
 
     try:
         child.wait(timeout=4)

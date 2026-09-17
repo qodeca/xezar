@@ -533,11 +533,11 @@ export function NewTaskRoute() {
     return (
       <div
         data-route="new"
-        className="relative isolate flex min-h-full flex-col items-center justify-center overflow-x-clip px-6"
+        className="relative isolate flex min-h-full flex-col items-center justify-center overflow-x-clip px-4 md:px-section"
       >
         <TwinkleBackdrop />
         <div data-slot="auto-starting" role="status" className="text-center">
-          <h1 className="animate-pulse text-lg font-semibold tracking-tight">Starting task…</h1>
+          <h1 className="text-lg font-semibold tracking-tight motion-safe:animate-pulse">Starting task…</h1>
           <p className="mt-1.5 text-[13.5px] text-muted-foreground">
             Launched from a bookmarklet — taking you to the run.
           </p>
@@ -549,13 +549,15 @@ export function NewTaskRoute() {
   return (
     <div
       data-route="new"
-      className="relative isolate flex min-h-full flex-col items-center overflow-x-clip px-6 pt-[clamp(32px,7vh,84px)] pb-16 max-md:px-3.5 max-md:pt-7"
+      // The hero's top room scales with the viewport between two rhythm-sized bounds (`section` and
+      // 21 spacing steps), so it moves with the density lever like the rest of the page (#453 B7).
+      className="relative isolate flex min-h-full flex-col items-center overflow-x-clip px-section pt-[clamp(var(--spacing-section),7vh,calc(var(--spacing)*21))] pb-16 max-md:px-4 max-md:pt-group"
     >
       <TwinkleBackdrop />
       <GhostCodeBackdrop />
 
       <div className="w-full max-w-[720px]">
-        <header className="mb-6 text-center max-md:mb-4">
+        <header className="mb-group text-center max-md:mb-list">
           <h1 className="text-lg font-semibold tracking-tight max-md:text-base">
             What should the agent work on?
           </h1>
@@ -702,7 +704,7 @@ export function NewTaskRoute() {
               {!providersReady && !providers.isPending ? (
                 <Link
                   to="/settings/agents#providers"
-                  className="text-xs font-medium text-foreground underline underline-offset-4"
+                  className="inline-flex min-h-tap items-center text-xs font-medium text-foreground underline underline-offset-4 md:min-h-0"
                 >
                   Configure providers
                 </Link>
@@ -714,7 +716,7 @@ export function NewTaskRoute() {
               />
               <kbd
                 aria-hidden="true"
-                className="rounded-[5px] border border-b-2 border-border bg-card px-[5px] py-px font-mono text-[10.5px] font-medium text-muted-foreground"
+                className="rounded-[5px] border border-b-2 border-border bg-card px-1.25 py-px font-mono text-[10.5px] font-medium text-muted-foreground"
               >
                 {submitShortcutHint()}
               </kbd>
@@ -739,7 +741,7 @@ export function NewTaskRoute() {
           }
           startUnavailableAction={
             !providers.isPending ? (
-              <Link to="/settings/agents#providers">Configure providers</Link>
+              <Link to="/settings/agents#providers" className="inline-flex min-h-tap items-center underline underline-offset-4 md:min-h-0">Configure providers</Link>
             ) : undefined
           }
           onStepsChange={(steps) => setPlan((current) => (current ? { ...current, steps } : current))}
@@ -1135,7 +1137,7 @@ function SourcePill({
             event.stopPropagation()
             setPreview(skill)
           }}
-          className="ml-auto shrink-0 rounded-sm p-0.5 text-soft-foreground transition-colors hover:text-foreground"
+          className="ml-auto inline-flex shrink-0 items-center justify-center rounded-sm p-0.5 text-soft-foreground transition-colors hover:text-foreground max-md:min-h-tap max-md:min-w-tap"
         >
           <EyeIcon aria-hidden="true" className="size-3.5" />
         </button>
@@ -1368,7 +1370,7 @@ function ModeSegment({
       data-slot="mode-seg"
       role="radiogroup"
       aria-label="Run mode"
-      className="inline-flex items-center gap-0.5 rounded-lg bg-muted p-[3px]"
+      className="inline-flex items-center gap-0.5 rounded-lg bg-muted p-0.75"
     >
       <button
         type="button"
@@ -1376,7 +1378,7 @@ function ModeSegment({
         aria-checked={!planFirst}
         onClick={() => onModeChange(false)}
         className={cn(
-          'h-6 rounded-md px-2 text-xs transition-colors',
+          'h-6 rounded-md px-2 text-xs transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 max-md:min-h-tap max-md:min-w-tap',
           !planFirst
             ? 'bg-card font-semibold text-foreground shadow-xs'
             : 'font-medium text-muted-foreground hover:text-foreground',
@@ -1392,11 +1394,11 @@ function ModeSegment({
         data-slot="mode-plan"
         onClick={() => onModeChange(true)}
         className={cn(
-          'h-6 rounded-md px-2 text-xs transition-colors',
+          'h-6 rounded-md px-2 text-xs transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 max-md:min-h-tap max-md:min-w-tap',
           planFirst
             ? 'bg-contrast font-semibold text-contrast-foreground ring-2 ring-ring/55'
             : 'font-medium text-muted-foreground hover:text-foreground',
-          planning && 'animate-pulse',
+          planning && 'motion-safe:animate-pulse',
         )}
       >
         {planning ? 'Planning…' : 'Plan first'}
@@ -1415,14 +1417,14 @@ const SUGGESTIONS = [
 
 function SuggestedChips({ onPick }: { onPick: (text: string) => void }) {
   return (
-    <div className="mt-7 flex flex-wrap justify-center gap-2 max-md:justify-start">
+    <div className="mt-section flex flex-wrap justify-center gap-row max-md:justify-start">
       {SUGGESTIONS.map((suggestion) => (
         <button
           key={suggestion}
           type="button"
           data-slot="suggested-chip"
           onClick={() => onPick(suggestion)}
-          className="inline-flex h-[30px] items-center gap-1.5 rounded-full border border-border px-3 text-[12.5px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          className="inline-flex h-7.5 min-h-chip items-center gap-1.5 rounded-full border border-border px-3 text-[12.5px] font-medium text-muted-foreground transition-colors outline-none hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 max-md:min-h-tap"
         >
           <SparklesIcon aria-hidden="true" className="size-3 shrink-0 text-soft-foreground" />
           {suggestion}

@@ -1,11 +1,11 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { useParams } from 'react-router'
-import { ClockIcon, PlayIcon, PlusIcon, WorkflowIcon, ZapIcon } from 'lucide-react'
+import { ClockIcon, PlayIcon, PlusIcon, TriangleAlertIcon, ZapIcon } from 'lucide-react'
 import type { AutomationDefinition, AutomationLogRecord, AutomationsResponse } from '@qodeca/xezar-api-client'
 
 import { checkAutomation, createAutomation, getAutomationCheck, getAutomationLog, getAutomations, setAutomationEnabled, updateAutomation } from '@/api/client'
 import { useHealth } from '@/api/queries'
-import { CenteredState } from '@/components/centered-state'
+import { CenteredState, PageHeader } from '@/components/centered-state'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -44,8 +44,8 @@ export function AutomationsRoute({ mode = 'list' }: { mode?: 'list' | 'new' | 'e
   // server — and a submit inside that window POSTs straight into a 409.
   if (!healthKnown) {
     return (
-      <div data-route="automations" className="flex min-h-full flex-col p-4 md:p-section">
-        <PageState text="Loading automations…" />
+      <div data-route="automations" className="flex min-h-full flex-col">
+        <LoadingLine text="Loading automations…" />
       </div>
     )
   }
@@ -53,7 +53,7 @@ export function AutomationsRoute({ mode = 'list' }: { mode?: 'list' | 'new' | 'e
   // Before every mode branch, so all four `/automations*` routes degrade the same way.
   if (automationsOff) {
     return (
-      <div data-route="automations" className="flex min-h-full flex-col p-4 md:p-section">
+      <div data-route="automations" className="flex min-h-full flex-col">
         <CenteredState
           icon={<ZapIcon />}
           tone="neutral"
@@ -68,13 +68,26 @@ export function AutomationsRoute({ mode = 'list' }: { mode?: 'list' | 'new' | 'e
   if (mode === 'new') return <AutomationEditor onSaved={() => { navigate('/automations'); void refresh() }} />
   if (mode === 'edit') {
     const automation = data?.automations.find((item) => item.id === automationId)
-    return automation ? <AutomationEditor automation={automation} onSaved={() => { navigate('/automations'); void refresh() }} /> : <PageState text="Loading automation…" />
+    if (automation) return <AutomationEditor automation={automation} onSaved={() => { navigate('/automations'); void refresh() }} />
+    // A list that answered without this id is an answer, not a wait (#453 B7: already-done and
+    // missing stay honest); a failed list says so.
+    return (
+      <PageFrame title="Edit automation" subtitle="Define a bounded GitHub trigger and the ordinary xezar task it launches." action={<BackToAutomations />}>
+        {error ? <LoadFailed message={error} /> : !data ? <LoadingLine text="Loading automation…" /> : <MissingAutomation />}
+      </PageFrame>
+    )
   }
   if (mode === 'log') {
     const automation = data?.automations.find((item) => item.id === automationId)
-    return automationId
-      ? <AutomationLog automationId={automationId} automationName={automation?.name} />
-      : <PageState text="Automation not found." />
+    // The log endpoint answers 200 with no records for an id that does not exist, so an unknown id
+    // would read as "no checks have run yet". The answered list is what tells the two apart — the
+    // same guard the `edit` branch uses above (#453 B7 review, NB-1).
+    if (automationId && automation) return <AutomationLog automationId={automationId} automationName={automation.name} />
+    return (
+      <PageFrame title="Execution log" subtitle="Automation activity" action={<BackToAutomations />}>
+        {error ? <LoadFailed message={error} /> : !data ? <LoadingLine text="Loading automation…" /> : <MissingAutomation />}
+      </PageFrame>
+    )
   }
 
   const preview = async (automation: AutomationDefinition) => {
@@ -101,29 +114,42 @@ export function AutomationsRoute({ mode = 'list' }: { mode?: 'list' | 'new' | 'e
     <PageFrame
       title="Automations"
       subtitle="Checks run while xezar is open. No webhook or public URL required."
+      titleHiddenOnPhone
       action={<Button asChild><Link to="/automations/new"><PlusIcon />New automation</Link></Button>}
     >
-      {error ? <PageState text={error} /> : !data ? <PageState text="Loading automations…" /> : (
+      {error ? <LoadFailed message={error} /> : !data ? <LoadingLine text="Loading automations…" /> : (
         <>
-          <div className="mb-4 rounded-lg border bg-muted/30 px-4 py-3 text-sm">
+          <div data-slot="automations-status" className="rounded-lg border border-border bg-muted/30 px-4 py-stack text-sm">
             <span className="font-medium">GitHub {data.available ? 'available' : 'unavailable'}</span>
             <span className="text-muted-foreground"> · Scheduler {data.scheduler.state}{data.reason ? ` · ${data.reason}` : ''}</span>
           </div>
-          {data.automations.length === 0 ? <PageState text="No automations yet. Create one paused, test its bounded filter, then enable it from a current-time baseline." /> : (
-            <div className="grid gap-3">
+          {data.automations.length === 0 ? (
+            <CenteredState
+              icon={<ZapIcon />}
+              tone="neutral"
+              heading="h2"
+              title="No automations yet"
+              subtitle="Create one paused, test its bounded filter, then enable it from a current-time baseline."
+              className="py-section"
+            />
+          ) : (
+            <div data-slot="automation-list" className="flex flex-col gap-list">
               {data.automations.map((automation) => (
-                <article key={automation.id} className="rounded-xl border bg-card p-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div><h2 className="font-semibold">{automation.name}</h2><p className="mt-1 text-sm text-muted-foreground">{automation.events.join(', ')} · every {Math.round(automation.intervalSeconds / 60)} min</p></div>
-                    <span className="rounded-full border px-2 py-1 text-xs">{automation.enabled ? 'Enabled' : 'Paused'}</span>
+                <article key={automation.id} data-slot="automation-card" className={CARD}>
+                  <div className="flex flex-wrap items-start justify-between gap-stack">
+                    <div className="min-w-0">
+                      <h2 className="font-semibold">{automation.name}</h2>
+                      <p className="mt-1 text-sm text-muted-foreground">{automation.events.join(', ')} · every {Math.round(automation.intervalSeconds / 60)} min</p>
+                    </div>
+                    <span data-slot="automation-state" className="rounded-full border border-border px-2 py-1 text-xs">{automation.enabled ? 'Enabled' : 'Paused'}</span>
                   </div>
-                  <div className="mt-4 flex flex-wrap gap-2">
+                  <div className="mt-stack flex flex-wrap gap-row">
                     <Button size="sm" variant="outline" onClick={() => void preview(automation)} disabled={checkStatus[automation.id] === 'Checking…'}><PlayIcon />Test filter</Button>
                     <Button size="sm" variant="outline" onClick={() => void setAutomationEnabled(automation.id, !automation.enabled).then(refresh)}>{automation.enabled ? 'Pause' : 'Enable'}</Button>
                     <Button size="sm" variant="ghost" asChild><Link to={`/automations/${automation.id}`}>Edit</Link></Button>
                     <Button size="sm" variant="ghost" asChild><Link to={`/automations/${automation.id}/log`}>View log</Link></Button>
                   </div>
-                  {checkStatus[automation.id] && <p className="mt-3 text-sm text-muted-foreground" role="status">{checkStatus[automation.id]}</p>}
+                  {checkStatus[automation.id] && <p className="mt-stack text-sm text-muted-foreground" role="status">{checkStatus[automation.id]}</p>}
                 </article>
               ))}
             </div>
@@ -142,18 +168,18 @@ function AutomationLog({ automationId, automationName }: { automationId: string;
   useEffect(() => onWorkspaceEvent((name, payload) => {
     if (name === 'automation-change' && (payload as { automationId?: unknown }).automationId === automationId) void refresh()
   }), [automationId])
-  return <PageFrame title="Execution log" subtitle={automationName ?? 'Automation activity'} action={<Button variant="outline" asChild><Link to="/automations">Back to automations</Link></Button>}>
-    {error ? <PageState text={error} /> : !records ? <PageState text="Loading execution log…" /> : records.length === 0 ? <PageState text="No checks have run yet." /> : (
-      <ol className="grid gap-3" aria-label="Automation execution log">
-        {records.map((record) => <li key={record.seq} className="rounded-xl border bg-card p-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
+  return <PageFrame title="Execution log" subtitle={automationName ?? 'Automation activity'} action={<BackToAutomations />}>
+    {error ? <LoadFailed message={error} /> : !records ? <LoadingLine text="Loading execution log…" /> : records.length === 0 ? <p className={QUIET_LINE}>No checks have run yet.</p> : (
+      <ol className="flex flex-col gap-list" aria-label="Automation execution log">
+        {records.map((record) => <li key={record.seq} className={CARD}>
+          <div className="flex flex-wrap items-center justify-between gap-row">
             <span className="font-medium capitalize">{record.result.replace('-', ' ')}</span>
             <time className="text-xs text-muted-foreground" dateTime={record.ts}>{new Date(record.ts).toLocaleString()}</time>
           </div>
-          {record.reason && <p className="mt-2 text-sm text-muted-foreground">{record.reason}</p>}
-          {(record.githubUrl || record.runId) && <div className="mt-3 flex flex-wrap gap-3 text-sm">
-            {record.githubUrl && <a className="underline underline-offset-4" href={record.githubUrl} target="_blank" rel="noreferrer">{record.githubTitle ?? `GitHub #${record.githubNumber ?? ''}`}</a>}
-            {record.runId && <Link className="underline underline-offset-4" to={`/runs/${record.runId}`}>Open task</Link>}
+          {record.reason && <p className="mt-row text-sm text-muted-foreground">{record.reason}</p>}
+          {(record.githubUrl || record.runId) && <div className="mt-row flex flex-wrap gap-x-stack text-sm">
+            {record.githubUrl && <a className={TEXT_LINK} href={record.githubUrl} target="_blank" rel="noreferrer">{record.githubTitle ?? `GitHub #${record.githubNumber ?? ''}`}</a>}
+            {record.runId && <Link className={TEXT_LINK} to={`/runs/${record.runId}`}>Open task</Link>}
           </div>}
         </li>)}
       </ol>
@@ -188,17 +214,62 @@ function AutomationEditor({ automation, onSaved }: { automation?: AutomationDefi
     } catch (cause) { setError(String(cause)) }
   }
   return <PageFrame title={automation ? 'Edit automation' : 'New automation'} subtitle="Define a bounded GitHub trigger and the ordinary xezar task it launches.">
-    <form className="grid max-w-3xl gap-6" onSubmit={submit}>
-      <fieldset className="grid gap-4 rounded-xl border p-5"><legend className="px-2 font-semibold">When GitHub changes</legend><div className="grid gap-2"><Label htmlFor="automation-name">Name</Label><Input id="automation-name" value={name} onChange={(event) => setName(event.target.value)} required /></div><div className="flex items-center gap-2 text-sm"><ClockIcon className="size-4" />New issue · every 5 minutes · last 7 days · maximum 25 records</div></fieldset>
-      <fieldset className="grid gap-4 rounded-xl border p-5"><legend className="px-2 font-semibold">What task to run</legend><div className="grid gap-2"><Label htmlFor="automation-prompt">Prompt</Label><Textarea id="automation-prompt" value={prompt} onChange={(event) => setPrompt(event.target.value)} rows={8} required /></div><p className="text-xs text-muted-foreground">Placeholders include {'{{github.number}}'}, {'{{github.title}}'}, {'{{github.url}}'}, and {'{{github.labels}}'}. GitHub content is appended as untrusted context.</p></fieldset>
-      <fieldset className="rounded-xl border p-5"><legend className="px-2 font-semibold">Review and enable</legend><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={enable} onChange={(event) => setEnable(event.target.checked)} />Save and enable from a current-time baseline (existing matches will not launch)</label></fieldset>
-      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-      <div className="flex gap-2"><Button type="submit">Save automation</Button><Button type="button" variant="outline" onClick={onSaved}>Cancel</Button></div>
+    <form className="flex max-w-3xl flex-col gap-section" onSubmit={submit}>
+      <fieldset className={FIELDSET}><legend className={LEGEND}>When GitHub changes</legend><div className="flex flex-col gap-row"><Label htmlFor="automation-name">Name</Label><Input id="automation-name" value={name} onChange={(event) => setName(event.target.value)} required /></div><div className="flex items-center gap-row text-sm"><ClockIcon aria-hidden="true" className="size-4 shrink-0" />New issue · every 5 minutes · last 7 days · maximum 25 records</div></fieldset>
+      <fieldset className={FIELDSET}><legend className={LEGEND}>What task to run</legend><div className="flex flex-col gap-row"><Label htmlFor="automation-prompt">Prompt</Label><Textarea id="automation-prompt" value={prompt} onChange={(event) => setPrompt(event.target.value)} rows={8} required /></div><p className="text-xs text-muted-foreground">Placeholders include {'{{github.number}}'}, {'{{github.title}}'}, {'{{github.url}}'} and {'{{github.labels}}'}. GitHub content is appended as untrusted context.</p></fieldset>
+      <fieldset className={FIELDSET}><legend className={LEGEND}>Review and enable</legend><label className="flex min-h-tap cursor-pointer items-center gap-row text-sm md:min-h-0"><input type="checkbox" className="size-4 shrink-0 accent-primary" checked={enable} onChange={(event) => setEnable(event.target.checked)} />Save and enable from a current-time baseline (existing matches will not launch)</label></fieldset>
+      {error && <p role="alert" className="text-sm text-danger">{error}</p>}
+      <div className="flex flex-wrap gap-row"><Button type="submit">Save automation</Button><Button type="button" variant="outline" onClick={onSaved}>Cancel</Button></div>
     </form>
   </PageFrame>
 }
 
-function PageFrame({ title, subtitle, action, children }: { title: string; subtitle: string; action?: ReactNode; children: ReactNode }) {
-  return <main className="mx-auto w-full max-w-6xl p-4 sm:p-6"><header className="mb-6 flex flex-wrap items-start justify-between gap-3"><div><div className="mb-2 flex items-center gap-2"><WorkflowIcon className="size-5" /><h1 className="text-2xl font-semibold">{title}</h1></div><p className="text-sm text-muted-foreground">{subtitle}</p></div>{action}</header>{children}</main>
+/**
+ * The Automations page frame on the #424 rhythm (#447 OD-1, #453 B7): the shared `PageHeader`
+ * (canonical `text-base` title on the `section` gutter), shown on a phone as well — the phone top
+ * bar only names the area, and the sub-pages' titles ("New automation", "Execution log") are the
+ * only place that says which one this is — over the canonical page body (`patterns.md` § 3), so
+ * the title and the first card share one gutter at every density.
+ */
+function PageFrame({ title, subtitle, action, titleHiddenOnPhone, children }: { title: string; subtitle: string; action?: ReactNode; titleHiddenOnPhone?: boolean; children: ReactNode }) {
+  return (
+    <div data-route="automations" className="flex min-h-full flex-col">
+      {/* The list's title repeats the phone top bar, so it reads to screen readers only there (the
+          Git page's spelling, #453 B7 review NB-2); the sub-page titles name something the top bar
+          does not and stay visible. */}
+      <PageHeader title={title} className="flex" titleClassName={titleHiddenOnPhone ? 'sr-only md:not-sr-only' : undefined}>
+        {action}
+        <p data-slot="page-subtitle" className="order-last basis-full text-[13px] text-muted-foreground">{subtitle}</p>
+      </PageHeader>
+      <div data-slot="automations-body" className="flex flex-1 flex-col gap-list p-4 pb-[calc(90px+env(safe-area-inset-bottom))] md:p-section md:pb-section">
+        {children}
+      </div>
+    </div>
+  )
 }
-function PageState({ text }: { text: string }) { return <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">{text}</div> }
+
+/** The canonical card (known-gaps G-02): the ad-hoc border + card fill, raised, `inset` inside. */
+const CARD = 'rounded-lg border border-border bg-card p-inset shadow-xs'
+const FIELDSET = 'flex flex-col gap-stack rounded-lg border border-border bg-card p-inset shadow-xs'
+const LEGEND = 'px-row font-semibold'
+/** One muted line inside a surface (known-gaps G-05's rule for an in-page state). */
+const QUIET_LINE = 'px-4 py-6 text-center text-xs text-soft-foreground'
+/** An inline text link that is still a 44 px target on a phone. */
+const TEXT_LINK = 'inline-flex min-h-tap items-center underline underline-offset-4 md:min-h-0'
+
+function BackToAutomations() {
+  return <Button variant="outline" asChild><Link to="/automations">Back to automations</Link></Button>
+}
+
+function LoadingLine({ text }: { text: string }) {
+  return <p role="status" className={QUIET_LINE}>{text}</p>
+}
+
+/** A failed load is a failure, never a quiet line that reads like an empty list. */
+function LoadFailed({ message }: { message: string }) {
+  return <CenteredState icon={<TriangleAlertIcon />} tone="danger" heading="h2" title="Could not load automations" subtitle={message} className="py-section" />
+}
+
+function MissingAutomation() {
+  return <CenteredState icon={<ZapIcon />} tone="neutral" heading="h2" title="Automation not found" subtitle="It may have been deleted. The list shows every automation this project has." className="py-section" />
+}
