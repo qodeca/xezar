@@ -1,3 +1,7 @@
+# Unreleased
+
+- Added a saved, re-runnable deterministic two-project product harness (`npm run test:multi-project`, `packages/xezar/scripts/multi-project-harness.mjs`) proving registry/context composition, route aliases, the shared workspace cap, the cross-project runs index, workspace SSE stamping, and per-project MCP ownership for the boot project, all against one built cockpit with two registered scratch repositories in one isolated `XEZ_HOME`. See `docs/testing/multi-project-harness.md`.
+
 # 0.15.0 (2026-09-17)
 
 ## Highlights

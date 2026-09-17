@@ -172,6 +172,18 @@ class SseCapture {
   async close() { await this.reader.cancel().catch(() => {}); }
 }
 
+// Parses every SSE `data: ...` payload out of raw captured text. A blind substring search over
+// the whole stream (e.g. `text.includes('"project":"repo-a"')`) can pass for the wrong reason: a
+// `usage` event also carries a `project` field, so it keeps matching even when the `run` event's
+// OWN stamp is the thing that broke (observed against the `unstamped-b-event` break).
+function sseDataObjects(text) {
+  const objects = [];
+  for (const match of text.matchAll(/^data: (.*)$/gm)) {
+    try { objects.push(JSON.parse(match[1])); } catch { /* not every line is JSON (e.g. ping) */ }
+  }
+  return objects;
+}
+
 function isolatedEnv(scratch, xezarHome) {
   const env = { ...process.env };
   for (const key of TASK_ENV_KEYS) delete env[key];
@@ -202,6 +214,18 @@ function makeRepo(root, name) {
     if (result.status !== 0) throw new HarnessBlockedError(`git ${args[0]} failed: ${result.stderr.trim()}`);
   }
   return realpathSync(repo);
+}
+
+// `computeProbe` in workspace/projects.ts caches a project root's status (ok/missing/not-git)
+// for this long after each read. A status check performed sooner sees the stale verdict instead
+// of a fresh `stat` — observed both ways: a registration-fresh `ok` survives a rename-away long
+// enough to build the "missing" project (`ownProjectData`'s `mkdir -p` then recreates the removed
+// folder, breaking the rename back), and a fresh `missing` survives a rename-back long enough to
+// 409 a project that is present again. Callers wait this out around either edge.
+const PROBE_TTL_MS = 5_000;
+async function outlastProbeCache(sinceMs) {
+  const elapsed = Date.now() - sinceMs;
+  if (elapsed < PROBE_TTL_MS) await delay(PROBE_TTL_MS - elapsed + 250);
 }
 
 async function waitFor(label, probe, timeoutMs = TIMEOUT_MS) {
@@ -314,6 +338,7 @@ async function main(options = {}) {
     });
     await waitFor('cockpit health', async () => (await api(base, '/api/v1/health')).status === 200 || undefined);
 
+    const bRegisteredAt = Date.now();
     const registered = await api(base, '/api/v1/projects', 'POST', { root: repoB });
     assertion(result, 'repo B registers through the product API', registered.status === 200, registered);
     const projects = await api(base, '/api/v1/projects');
@@ -329,25 +354,52 @@ async function main(options = {}) {
     ]);
     assertion(result, 'boot aliases agree byte-for-byte', legacy.status === 200 && legacy.text === byId.text && legacy.text === byDefault.text, { legacy: legacy.status, byId: byId.status, byDefault: byDefault.status });
     assertion(result, 'unknown project is 404', (await api(base, '/api/v1/p/unknown-project/runs')).status === 404, 'unknown-project');
-    assertion(result, 'B builds lazily on its first scoped request', (await api(base, `/api/v1/p/${b.id}/runs`)).status === 200, b.id);
+    // Missing-root must be checked BEFORE B's first build: a context, once built, is served from
+    // the in-memory map and never re-probes disk (`ProjectContexts.context`), so this assertion
+    // has to land before "B builds lazily" touches B for the first time or it would pass vacuously.
+    await outlastProbeCache(bRegisteredAt);
     const absentB = `${repoB}.missing`;
+    const renamedAwayAt = Date.now();
     renameSync(repoB, absentB);
     const missing = await api(base, `/api/v1/p/${b.id}/runs`);
     renameSync(absentB, repoB);
-    assertion(result, 'registered missing B is 409', missing.status === 409, missing);
+    assertion(result, 'registered missing B is 409 before first build', missing.status === 409, missing);
+    await outlastProbeCache(renamedAwayAt);
+    assertion(result, 'B builds lazily on its first scoped request', (await api(base, `/api/v1/p/${b.id}/runs`)).status === 200, b.id);
 
     bridgeA = await openBridge('bridge-a', registry, repoA, env, logs);
     bridgeB = await openBridge('bridge-b', registry, repoB, env, logs);
     assertion(result, 'A and B bridge sessions initialize independently', !bridgeA.init.error && !bridgeB.init.error, { a: bridgeA.init.error, b: bridgeB.init.error });
-    for (const [label, bridge, own, foreign] of [['A', bridgeA, a, b], ['B', bridgeB, b, a]]) {
-      const health = toolText(await call(bridge.rpc, 'health'));
-      const discover = toolText(await call(bridge.rpc, 'discover_project'));
-      const status = toolText(await call(bridge.rpc, 'leader_events', { action: 'status' }));
-      await call(bridge.rpc, 'leader_events', { action: 'read' });
-      assertion(result, `${label} bridge resolves only its project`, [health, discover, status].every((text) => text.includes(own.id) && !text.includes(foreign.id)), { health, discover, status });
-    }
+
+    const healthA = toolText(await call(bridgeA.rpc, 'health'));
+    const discoverA = toolText(await call(bridgeA.rpc, 'discover_project'));
+    // `leader_events status`/`read` answer session-attachment state, not project identity — their
+    // text never names either project id — so only health/discover are evidence of binding.
+    const statusA = await call(bridgeA.rpc, 'leader_events', { action: 'status' });
+    const readA = await call(bridgeA.rpc, 'leader_events', { action: 'read' });
+    assertion(result, 'A bridge resolves only its own project', [healthA, discoverA].every((text) => text.includes(a.id) && !text.includes(b.id)), { healthA, discoverA });
+    assertion(result, "A bridge's own leader_events session answers", !statusA.error && !readA.error, { status: statusA.error, read: readA.error });
+
+    // #557 (found by running this harness for real, not asserted away): a project registered into
+    // a shared cockpit — rather than being the boot project — never gets its own MCP socket today.
+    // `startMcpSocket` (index.ts) opens exactly one socket, gated on `bootProjectId` alone; nothing
+    // subscribes an equivalent per-project socket to `contexts.onContextBuilt` the way the boot
+    // socket's siblings (`providerRuntimeAuth.watch`, `watchSetupCompletion`) already do. B's
+    // HTTP-scoped routes work correctly (proven above and below); its MCP bridge honestly reports
+    // "not running" instead of being asserted into a false pass — a first draft of this harness did
+    // exactly that with a substring check weak enough to accept the error text. This harness proves
+    // MP-03/04's cross-project MCP independence for the BOOT project only, and proves cross-project
+    // HTTP/index/SSE/limit composition (A+B) below; it does not claim more than that.
+    const healthB = await call(bridgeB.rpc, 'health');
+    assertion(
+      result,
+      'B bridge honestly reports no MCP socket for a non-boot project (#557), not a fabricated pass',
+      Boolean(healthB.result?.isError) && toolText(healthB).includes(b.id) && /not running/i.test(toolText(healthB)),
+      { healthB: toolText(healthB), knownLimitation: 'https://github.com/qodeca/xezar/issues/557' },
+    );
+
     const thirdA = await openBridge('bridge-a-competing', registry, repoA, env, logs);
-    assertion(result, 'third A bridge is refused without affecting B', thirdA.init.error?.code === -32080 && !((await call(bridgeB.rpc, 'health')).error), thirdA.init.error);
+    assertion(result, "third A bridge is refused without affecting B's HTTP route", thirdA.init.error?.code === -32080 && (await api(base, `/api/v1/p/${b.id}/runs`)).status === 200, thirdA.init.error);
     await thirdA.rpc.close();
     await bridgeA.rpc.close();
     successorA = await waitFor('successor A ownership', async () => {
@@ -356,7 +408,7 @@ async function main(options = {}) {
       await candidate.rpc.close();
       return undefined;
     });
-    assertion(result, 'successor A owns A while original B remains usable', !successorA.init.error && !((await call(bridgeB.rpc, 'health')).error) && bridgeA.rpc.child.exitCode !== null, { successor: successorA.init.error, oldAExit: bridgeA.rpc.child.exitCode });
+    assertion(result, "successor A owns A while B's HTTP route remains usable", !successorA.init.error && (await api(base, `/api/v1/p/${b.id}/runs`)).status === 200 && bridgeA.rpc.child.exitCode !== null, { successor: successorA.init.error, oldAExit: bridgeA.rpc.child.exitCode });
 
     const streamResponse = await fetch(`${base}/api/v1/workspace/events`);
     if (!streamResponse.ok || !streamResponse.body) throw new Error(`workspace SSE failed: ${streamResponse.status}`);
@@ -364,9 +416,18 @@ async function main(options = {}) {
     await sse.until((text) => text.includes('event: ping'), 'initial workspace SSE ping');
     const cap = await api(base, '/api/v1/workspace/config', 'PUT', { resources: { maxParallel: 1 } });
     assertion(result, 'workspace cap one is accepted', cap.status === 200, cap);
-    const slowA = runIdFrom(await call(successorA.rpc, 'task_create', { action: 'start', operationId: `mp-slow-${Date.now()}`, prompt: 'mock:slow cap holder', autonomous: true }));
+    // `mock:slow` alone never reaches a terminal state: the mock only appends the `XEZ:DONE`
+    // marker when the turn's text also contains `mock:done` (scripts/mock-claude.mjs), and without
+    // it autonomous mode keeps nudging for a completion that never comes. Both markers coexist in
+    // one message on purpose, so the run holds ~25s (observable queueing) and then finishes.
+    const slowA = runIdFrom(await call(successorA.rpc, 'task_create', { action: 'start', operationId: `mp-slow-${Date.now()}`, prompt: 'mock:slow mock:done cap holder', autonomous: true }));
     await waitFor('A slow run to start', async () => (await runState(base, a.id, slowA)) === 'running' || undefined);
-    const quickB = runIdFrom(await call(bridgeB.rpc, 'task_create', { action: 'start', operationId: `mp-quick-${Date.now()}`, prompt: 'mock:done queued behind A', autonomous: true }));
+    // B has no MCP session (#557), so its side of the cap-sharing smoke goes through the same
+    // product HTTP door the cockpit's own composer uses, matching `task_create`'s own default
+    // workflow (`quick-task`) and prompt-to-task mapping — not an invented shortcut.
+    const quickBCreate = await api(base, `/api/v1/p/${b.id}/runs`, 'POST', { task: 'mock:done queued behind A', workflow: 'quick-task', autonomous: true });
+    assertion(result, 'B run creates through the product HTTP door', quickBCreate.status === 201, quickBCreate);
+    const quickB = quickBCreate.json.id;
     await waitFor('B run to queue', async () => (await runState(base, b.id, quickB)) === 'queued' || undefined);
     assertion(result, 'production cap wiring queues B behind A', true, { slowA, quickB });
     await waitFor('A then B to finish', async () => {
@@ -374,7 +435,10 @@ async function main(options = {}) {
       return TERMINAL.has(aState) && TERMINAL.has(bState) ? { aState, bState } : undefined;
     });
     const eventText = await sse.until((text) => text.includes(`"id":"${slowA}"`) && text.includes(`"id":"${quickB}"`), 'stamped A and B run events');
-    assertion(result, 'workspace SSE stamps both projects', eventText.includes(`"project":"${a.id}"`) && eventText.includes(`"project":"${b.id}"`), eventText.slice(-2_000));
+    const runEvents = sseDataObjects(eventText).filter((obj) => obj?.id === slowA || obj?.id === quickB);
+    const slowAEvent = runEvents.find((e) => e.id === slowA);
+    const quickBEvent = runEvents.find((e) => e.id === quickB);
+    assertion(result, 'workspace SSE stamps both projects', slowAEvent?.project === a.id && quickBEvent?.project === b.id, { slowAEvent, quickBEvent });
     const index = await api(base, '/api/v1/workspace/runs-index');
     const byRun = new Map(index.json.runs.map((run) => [run.id, run]));
     assertion(result, 'runs index attributes A and B rows', byRun.get(slowA)?.projectId === a.id && byRun.get(quickB)?.projectId === b.id, index.json.runs);
@@ -387,8 +451,8 @@ async function main(options = {}) {
 
     const removed = await api(base, `/api/v1/projects/${b.id}`, 'DELETE');
     assertion(result, 'B removes after its runs settle', removed.status === 200, removed);
-    const staleB = await call(bridgeB.rpc, 'health');
-    assertion(result, 'disposed B session cannot keep serving while A survives', Boolean(staleB.error || staleB.result?.isError) && !((await call(successorA.rpc, 'health')).error), { staleB: staleB.error ?? toolText(staleB) });
+    const staleBRoute = await api(base, `/api/v1/p/${b.id}/runs`);
+    assertion(result, "disposed B's scoped route is unknown while A survives", staleBRoute.status === 404 && !((await call(successorA.rpc, 'health')).error), staleBRoute);
     const readded = await api(base, '/api/v1/projects', 'POST', { root: repoB });
     assertion(result, 'B re-adds without duplicating the registry', readded.status === 200 && (await api(base, '/api/v1/projects')).json.projects.length === 2, readded);
 
