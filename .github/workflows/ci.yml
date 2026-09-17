@@ -72,6 +72,33 @@ jobs:
       - name: Verify the release package packs
         run: npm pack --dry-run --ignore-scripts -w @qodeca/xezar
 
+  # Unconditional and separate from `verify`: the MCP floor applies to its own deliberately
+  # scoped suites, but this job must report on every pull request so it can safely be required.
+  # Running alongside the main lane preserves that lane's timing and makes a coverage failure
+  # distinct from its typecheck/build/package result. Measured 2026-09-17: 85.00s wall clock
+  # locally (61 test files, 2,070 tests; docs/testing/coverage-gaps.md § 10.12). Ten minutes
+  # covers `npm ci` plus bounded headroom on a GitHub-hosted 2-core runner.
+  mcp-coverage:
+    name: MCP per-file coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Enforce MCP per-file coverage floor
+        run: npm run test:coverage:mcp
+
   # The cockpit's browser suite: 35 `*.e2e.ts` specs that boot the real app and drive it in a
   # real Chrome through the agent-browser provider (docs/testing/agent-browser.md). Until this
   # job existed, CI never ran them, so every cockpit journey whose only coverage is a browser
