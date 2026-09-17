@@ -131,16 +131,23 @@ describe('the cli audit door (#306 part 2)', () => {
     expect(records(invocation)).toEqual([]);
   });
 
-  it('a folder that is not a project gets no record and no new .local/xezar', async () => {
+  it('an ordinary folder with no prior xezar state still gets its one record (M1)', async () => {
+    // A folder `shouldRegisterProject` would accept is a project even before anything ever ran
+    // there — `xezar init` in a brand-new `git init` folder is the case M1 found silent.
     const plain = temp('xez-cli-audit-plain-');
-    await cliAudit('projects.list', plain).applied();
-    await cliAudit('init', plain).refused('anything');
     expect(existsSync(projectDataDir(plain))).toBe(false);
-    // …but one that already keeps xezar state (a `run` made it) is written to.
-    mkdirSync(projectDataDir(plain), { recursive: true });
     await cliAudit('init', plain).applied();
     expect(records(plain).map((record) => record.action)).toEqual(['cli.init']);
     expect(records(plain)[0]!.projectId).toBe((await invocationScope(plain))!.projectId);
+    expect(readFileSync(join(plain, '.local', '.gitignore'), 'utf8')).toContain('*');
+  });
+
+  it('a task worktree path gets no record and no new .local/xezar — it is not a project', async () => {
+    const host = temp('xez-cli-audit-worktree-host-');
+    const nested = join(host, '.local', 'xezar', 'worktrees', 'fake-run-id');
+    await cliAudit('projects.list', nested).applied();
+    await cliAudit('init', nested).refused('anything');
+    expect(existsSync(projectDataDir(nested))).toBe(false);
   });
 
   it('a registered project that was never served gets its data folder created for the record', async () => {

@@ -186,3 +186,57 @@ test('every command-line subcommand of the packed CLI writes one cli audit recor
     await rm(root, { recursive: true, force: true });
   }
 });
+
+/**
+ * M1 regression guard (code review on #568): the test above runs `run` first, which creates the
+ * repo's `.local/xezar/` before any other row — so it could never catch a command silently writing
+ * nothing in a folder that has no xezar state yet. This one runs `init` and a refusal in a FRESH
+ * folder, before any `run` or `serve` has ever touched it.
+ */
+test('a fresh, never-run git folder still gets its cli.init and refusal records', { timeout: 300_000 }, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'xezar-package-audit-fresh-'));
+  try {
+    const packDir = join(root, 'pack');
+    await mkdir(packDir);
+    const packed = await execFile(npm, ['pack', '--json', '--ignore-scripts', '--pack-destination', packDir], {
+      cwd: packageRoot,
+      maxBuffer: 10 * 1024 * 1024,
+    });
+    const [record] = JSON.parse(packed.stdout) as Array<{ filename: string }>;
+    assert.ok(record);
+    const consumer = join(root, 'consumer');
+    await mkdir(consumer);
+    await writeFile(join(consumer, 'package.json'), '{"private":true}\n', 'utf8');
+    await execFile(npm, ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--no-package-lock', join(packDir, record.filename)], {
+      cwd: consumer,
+      maxBuffer: 10 * 1024 * 1024,
+    });
+    const cli = join(consumer, 'node_modules', '@qodeca', 'xezar', 'dist', 'index.js');
+
+    const repo = join(root, 'repo');
+    await gitRepo(repo);
+    const { XEZ_HANDOFF_FILE: _h, XEZ_TODOS_FILE: _t, XEZ_TASK_ID: _i, ...inherited } = process.env;
+    const env = { ...inherited, XEZ_DRY_RUN: '1', XEZ_HOME: join(root, 'xez-home'), XEZ_NO_BANNER: '1', XEZ_SKILLS_AUTO_UPDATE: '0' };
+    const exec = (args: string[], ok = true) => {
+      const pending = execFile(process.execPath, [cli, ...args], { cwd: consumer, env, timeout: 90_000, maxBuffer: 10 * 1024 * 1024 });
+      return ok ? pending : pending.catch((err: unknown) => err);
+    };
+
+    // Nothing has ever run here: no data folder yet, and `init` is the command's main use.
+    assert.equal(existsSync(join(repo, '.local', 'xezar')), false);
+
+    await exec(['init', '--repo', repo]);
+    await exec(['server-deploy', '--platform', 'no-such-platform', '--repo', repo], false);
+
+    const lines = await auditOf(repo);
+    assert.deepEqual(
+      lines.map((line) => [line.action, line.outcome.status, ...(line.outcome.reason ? [line.outcome.reason] : [])]),
+      [
+        ['cli.init', 'applied'],
+        ['cli.serverDeploy', 'refused', 'unknown_platform'],
+      ],
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

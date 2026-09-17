@@ -5,7 +5,7 @@ import type { AuditActor, AuditResource } from '@qodeca/xezar-contract';
 import { AuditTrail, type AuditChannel, type AuditScope } from './mcp/audit-trail.ts';
 import { ensureProjectDataIgnored, projectDataDir } from './project-data-paths.ts';
 import { loadWorkspaceConfig } from './workspace/config.ts';
-import { allocateProjectSlug } from './workspace/projects.ts';
+import { allocateProjectSlug, shouldRegisterProject } from './workspace/projects.ts';
 
 /**
  * The command-line door of the audit trail (#306, part 2) — spec
@@ -23,12 +23,13 @@ import { allocateProjectSlug } from './workspace/projects.ts';
  * `projects` subcommand that names another project writes to THAT project's trail, resolved before
  * the effect (a removal deletes the row that says where the project lives).
  *
- * NO STATE PLANTED IN A FOLDER THAT IS NOT A PROJECT. A registered project gets its `.local/xezar/`
- * created (and ignored) when it has none yet, exactly as a first `serve` would. A folder that is not
- * registered is written to only when its `.local/xezar/` already exists — i.e. xezar already keeps
- * state there (a `run` or `serve` made it). Otherwise the command writes no record and no warning:
- * `xezar projects list` in `$HOME` must not create `~/.local/xezar/`, and a folder with no project
- * state has no audit trail to append to.
+ * NO STATE PLANTED IN A FOLDER THAT IS NOT A PROJECT. Any folder `shouldRegisterProject` would accept
+ * (every folder except `$HOME` itself and a path inside a xezar task worktree) is a project for this
+ * purpose, whether or not it is registered yet or has ever run xezar before: its `.local/xezar/` is
+ * created (and ignored) when it has none, exactly as a first `serve` would, and the command writes its
+ * one record. A folder `shouldRegisterProject` excludes writes no record and no state, and no warning
+ * either — `xezar projects list` in `$HOME` must not create `~/.local/xezar/`, and a nested `xezar`
+ * invocation inside a task worktree stays exactly as quiet as it is today.
  *
  * WHAT IS KEPT. The canonical command id (`actor.command`), the action, a bounded resource id, the
  * outcome, and for `projects tag` / `projects port` the field name plus a digest — never `argv`, a
@@ -72,9 +73,13 @@ export interface CliRecordDetails {
   readonly fieldNames?: readonly string[];
 }
 
-/** An audit scope, and whether the registry knows the project (which allows creating its data folder). */
+/**
+ * An audit scope, and whether the invocation folder is a project — the same rule
+ * `shouldRegisterProject` uses to gate registry auto-registration, true whether or not the folder is
+ * registered yet. Unlocks creating its data folder.
+ */
 export interface CliAuditScope extends AuditScope {
-  readonly registered: boolean;
+  readonly isProject: boolean;
 }
 
 export interface CliAudit {
@@ -114,7 +119,8 @@ export async function invocationScope(repoRoot: string): Promise<CliAuditScope |
     const { projects } = await loadWorkspaceConfig();
     const known = projects.find((project) => project.root === root);
     const projectId = known?.id ?? allocateProjectSlug(root, projects.map((project) => project.id));
-    return { projectId, dataDir: projectDataDir(known?.root ?? root), registered: known !== undefined };
+    const isProject = known !== undefined || (await shouldRegisterProject(root));
+    return { projectId, dataDir: projectDataDir(known?.root ?? root), isProject };
   } catch {
     return undefined;
   }
@@ -136,8 +142,8 @@ export function cliAudit(
     try {
       const where = target ?? (await scope());
       if (!where) return;
+      if (!where.isProject) return;
       if (!existsSync(where.dataDir)) {
-        if (!where.registered) return;
         ensureProjectDataIgnored(where.dataDir);
         mkdirSync(where.dataDir, { recursive: true, mode: 0o700 });
       }
@@ -173,7 +179,7 @@ export function cliAudit(
     async projectScope(projectId) {
       try {
         const known = (await loadWorkspaceConfig()).projects.find((project) => project.id === projectId);
-        return known ? { projectId: known.id, dataDir: projectDataDir(known.root), registered: true } : undefined;
+        return known ? { projectId: known.id, dataDir: projectDataDir(known.root), isProject: true } : undefined;
       } catch {
         return undefined;
       }

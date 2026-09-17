@@ -175,7 +175,7 @@ async function addCommand(root: string, io: ProjectsCommandIo, audit?: CliAudit)
   // Registration dedupes by realpath, so a second `add` of the same folder
   // (or a symlink to it) reports the entry that already exists.
   io.log(known.has(entry.id) ? `  = ${entry.id} (already registered)  ${entry.root}` : `  + ${entry.id}  ${entry.root}`);
-  const target = { projectId: entry.id, dataDir: projectDataDir(entry.root), registered: true };
+  const target = { projectId: entry.id, dataDir: projectDataDir(entry.root), isProject: true };
   await audit?.applied({ resource: projectResource(target) }, target);
   return 0;
 }
