@@ -307,7 +307,10 @@ export interface UiPlanUpdatedEvent {
 /**
  * RESERVED — wired when auto-approve becomes optional. Types only for now.
  * claude: `control_request can_use_tool`; codex: the per-item
- * `requestApproval` JSON-RPC requests; opencode: `permission.updated`.
+ * `requestApproval` JSON-RPC requests; opencode: `permission.asked` /
+ * `permission.replied` (the runner already answers these — see
+ * `opencode-server-runner.ts`'s `handlePermissionAsked` — but reports the
+ * outcome as a v1 `note`, not yet through this reserved v2 pair).
  */
 export interface UiPermissionRequestedEvent {
   type: 'permission.requested';

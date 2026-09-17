@@ -1,6 +1,8 @@
 import { spawn as nodeSpawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import http from 'node:http';
 import https from 'node:https';
+import os from 'node:os';
+import path from 'node:path';
 import type {
   AgentEvent,
   AgentRunResult,
@@ -36,6 +38,17 @@ const SERVER_START_TIMEOUT_MS = 30_000;
 /** Grace between the teardown SIGTERM and the SIGKILL that follows it. */
 export const KILL_GRACE_MS = 4_000;
 
+/** Total denied permission asks in one session before the run fails closed
+ *  rather than running out the step's own (much longer) wall clock — see
+ *  `handlePermissionAsked`. */
+export const MAX_PERMISSION_DENIALS = 20;
+
+/** Denials of the SAME `permission`+`patterns` pair, back to back, before the
+ *  run treats it as a loop the model isn't adapting to. Lower than the total
+ *  bound because a model asking the identical thing repeatedly is the
+ *  `doom_loop` case OpenCode itself names — it never gets better on its own. */
+export const MAX_REPEATED_PERMISSION_DENIAL = 3;
+
 /**
  * `AgentRunner` over `opencode serve` — a headless HTTP server (the same one
  * the opencode TUI talks to) with an SSE event stream. One server per session,
@@ -44,9 +57,19 @@ export const KILL_GRACE_MS = 4_000;
  * session (history is kept server-side), `session/abort` cancels, and reusing
  * the session id resumes for "Continue".
  *
- * Auth = the host's opencode config/logins. The agent runs autonomously
- * (auto-approved permissions); OpenCode has no per-tool allowlist, so
- * `spec.allowedTools` is ignored. `spec.model` is `provider/model`.
+ * Auth = the host's opencode config/logins. OpenCode has no per-tool
+ * allowlist, so `spec.allowedTools` is ignored; `spec.model` is
+ * `provider/model`.
+ *
+ * **Permissions are answered, not auto-approved** (#578 — the prior claim to
+ * the contrary here was wrong and the reason a run hung forever). OpenCode
+ * defaults `external_directory` (a tool touching a path outside the session
+ * directory — `$XEZ_HANDOFF_FILE`, pasted attachments, the run's own NDJSON
+ * dir) and `doom_loop` (repeated identical calls) to `ask`, publishing
+ * `permission.asked` on the SSE bus and then blocking the tool call until
+ * `POST /session/:id/permissions/:requestId` answers it. Nothing here used to
+ * read that event, so the ask sat forever and the turn died on the generic
+ * 30-minute step timeout with no named cause. See `handlePermissionAsked`.
  */
 export class OpencodeServerRunner implements AgentRunner {
   readonly backend = 'opencode' as const;
@@ -146,6 +169,21 @@ class OpencodeSession implements AgentSession {
   private timedOut = false;
   /** One teardown per session — see `terminate()`. */
   private signalled = false;
+  /** Directories a permission ask may be answered `once` for — `cwd` plus
+   *  whatever `spec.additionalDirectories` already grants the other runners
+   *  (the run's NDJSON dir, `$TMPDIR`), plus the OS temp dir unconditionally
+   *  since a caller that forgot to pass `TMPDIR` should not turn into a wider
+   *  denial surface. Anything outside these is DENIED — see
+   *  `handlePermissionAsked`. */
+  private readonly allowedRoots: string[];
+  /** Denials seen this session, keyed by `permission:patterns` — the loop
+   *  guard in `handlePermissionAsked`. */
+  private readonly permissionDenials = new Map<string, number>();
+  private totalPermissionDenials = 0;
+  /** Set once a permission ask can't be answered at all, or is denied in a
+   *  loop — read by `result`'s error path instead of the generic timeout
+   *  message. */
+  private permissionFailure: string | null = null;
   /** This run's wall clock in ms, `0` when the run is deliberately uncapped
    *  (the last, interactive workflow step). It is also the ONLY bound on a
    *  blocking prompt request — see `request()`. */
@@ -158,6 +196,9 @@ class OpencodeSession implements AgentSession {
     private readonly onEvent: ((event: AgentEvent) => void) | undefined,
     private readonly opts: SessionOptions,
   ) {
+    this.allowedRoots = [spec.cwd, ...(spec.additionalDirectories ?? []), os.tmpdir()].map((dir) =>
+      path.resolve(dir),
+    );
     // `--port 0` is written out rather than left to the default, because it is
     // a decision: opencode's own `serve` handles the collision, and does it in
     // the only place that can — the process holding the socket. It prefers its
@@ -249,6 +290,8 @@ class OpencodeSession implements AgentSession {
       if (this.timedOut) {
         const mins = Math.round((limitMs / 60_000) * 10) / 10;
         this.emit({ type: 'error', message: `opencode timed out after ${mins}m and was killed` });
+      } else if (this.permissionFailure) {
+        this.emit({ type: 'error', message: this.permissionFailure });
       }
       this.emit({ type: 'done' });
       return base;
@@ -614,7 +657,85 @@ class OpencodeSession implements AgentSession {
       // makes in `mapIdle`, including treating an absent id as this session's.
       const sid = stringField(props, 'sessionID');
       if (sid === undefined || sid === this.sessionId) this.turnIdle?.();
+    } else if (type === 'permission.asked') {
+      this.handlePermissionAsked(props);
     }
+  }
+
+  /**
+   * Answer a `permission.asked` ask (`PermissionV1.Event.Asked` — schema
+   * `{id, sessionID, permission, patterns, metadata, always, tool?}`,
+   * https://github.com/anomalyco/opencode `packages/schema/src/v1/permission.ts`)
+   * instead of leaving it to block the tool call forever, which is the whole
+   * defect this method exists to close (#578).
+   *
+   * `patterns` are the filesystem paths/globs the ask is about. `once`
+   * (approve just this call) when every one resolves inside `allowedRoots`,
+   * `reject` otherwise — never `always`, so a later ask for a genuinely new
+   * path is still seen and judged rather than silently pre-approved by an
+   * earlier `remember`. A denial is recorded as a transcript `note` so the
+   * cockpit shows it (the reserved `permission.requested`/`.resolved` v2
+   * pair stays unwired — a cockpit that treats them as `'reserved'`, per
+   * `ui-events.test.ts`, would not render them anyway).
+   */
+  private handlePermissionAsked(props: Record<string, unknown>): void {
+    const id = stringField(props, 'id');
+    const sessionID = stringField(props, 'sessionID') ?? this.sessionId;
+    const permission = stringField(props, 'permission') ?? 'unknown';
+    const patterns = Array.isArray(props.patterns) ? props.patterns.filter((p): p is string => typeof p === 'string') : [];
+    if (id === undefined || sessionID === undefined) return;
+
+    const allowed = patterns.length > 0 && patterns.every((p) => this.isPathAllowed(p));
+    const reply: PermissionReply = allowed ? 'once' : 'reject';
+    const key = `${permission}:${patterns.join('|')}`;
+
+    if (!allowed) {
+      this.totalPermissionDenials += 1;
+      const repeat = (this.permissionDenials.get(key) ?? 0) + 1;
+      this.permissionDenials.set(key, repeat);
+      const patternText = patterns.length > 0 ? patterns.join(', ') : '(no path given)';
+      this.emit({
+        type: 'note',
+        message: `opencode: denied permission '${permission}' for ${patternText} — outside this run's allowed directories`,
+      });
+      if (repeat >= MAX_REPEATED_PERMISSION_DENIAL) {
+        this.failOnPermission(
+          `opencode denied '${permission}' for ${patternText} ${repeat} times in a row — the model is not adapting, failing the run rather than waiting out the step timeout`,
+        );
+      } else if (this.totalPermissionDenials >= MAX_PERMISSION_DENIALS) {
+        this.failOnPermission(
+          `opencode hit ${this.totalPermissionDenials} denied permission asks this run (last: '${permission}' for ${patternText}) — failing the run rather than waiting out the step timeout`,
+        );
+      }
+    }
+
+    void this.http('POST', `/session/${sessionID}/permissions/${id}`, { reply }).catch((err: unknown) => {
+      const message = err instanceof Error ? err.message : String(err);
+      this.failOnPermission(`opencode: failed to answer a permission ask ('${permission}', ${id}): ${message}`);
+    });
+  }
+
+  /** Is `pattern` (an absolute path, optionally glob-suffixed) inside one of
+   *  `allowedRoots`? The glob suffix (anything from the first `*`/`?` on) is
+   *  stripped before comparing — this runner only ever needs to know the real
+   *  directory the ask is about, never to replicate opencode's own matcher. */
+  private isPathAllowed(pattern: string): boolean {
+    const wildcard = pattern.search(/[*?]/);
+    const literal = wildcard === -1 ? pattern : pattern.slice(0, wildcard);
+    const trimmed = literal.replace(/\/+$/, '');
+    if (!trimmed) return false;
+    const expanded = trimmed.startsWith('~') ? path.join(os.homedir(), trimmed.slice(1)) : trimmed;
+    const resolved = path.resolve(this.spec.cwd, expanded);
+    return this.allowedRoots.some((root) => resolved === root || resolved.startsWith(root + path.sep));
+  }
+
+  /** Record the named cause once (first failure wins — a reply-failure and a
+   *  denial-loop can both fire for the same event) and stop the session, so
+   *  `result`'s error path reports it instead of the generic step timeout. */
+  private failOnPermission(message: string): void {
+    if (this.permissionFailure) return;
+    this.permissionFailure = message;
+    this.interrupt();
   }
 
   private handlePart(part: Record<string, unknown>): void {
@@ -772,6 +893,12 @@ interface OpencodeEvent {
   type?: string;
   properties?: Record<string, unknown>;
 }
+
+/** `PermissionV1.Reply` (`packages/schema/src/v1/permission.ts`) — the body
+ *  field `POST /session/:id/permissions/:requestId` expects. This runner
+ *  never sends `'always'`: a later ask for a genuinely different path must
+ *  still be judged, not silently pre-approved by an earlier remembered rule. */
+type PermissionReply = 'once' | 'reject';
 
 /** The slice of a response this runner reads — `http()` parses the body,
  *  `submitPrompt()` reads the status and drains. Deliberately the same three

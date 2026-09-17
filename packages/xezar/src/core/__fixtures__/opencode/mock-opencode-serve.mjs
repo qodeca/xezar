@@ -51,6 +51,18 @@
 //                                    Only the run's own wall clock, `end()` or
 //                                    `interrupt()` can end such a turn, which
 //                                    is what those tests assert.
+//   MOCK_OPENCODE_PERMISSION_ASK=1   publish `permission.asked` for a path
+//                                    outside the session directory instead of
+//                                    answering the prompt POST — the real
+//                                    server blocks the tool call (and the
+//                                    response) until `POST
+//                                    /session/:id/permissions/:id` replies.
+//                                    Before #578 nothing ever posted that
+//                                    reply, so this is the same indefinite
+//                                    hang as MOCK_OPENCODE_NEVER_ANSWER_PROMPT
+//                                    unless the client answers the ask.
+//   MOCK_OPENCODE_PERMISSION_REPLY_LOG=<path>  append `<requestId> <body>`
+//                                    for every permission reply received.
 //   MOCK_OPENCODE_SIGNAL_LOG=<path>  append every stop signal actually
 //                                    received, one per line — SIGKILL cannot
 //                                    be caught, so an escalation shows up as
@@ -93,10 +105,17 @@ const rejectPrompt = process.env.MOCK_OPENCODE_REJECT_PROMPT === '1';
 const richTurn = process.env.MOCK_OPENCODE_RICH_TURN === '1';
 const asyncPrompt = process.env.MOCK_OPENCODE_ASYNC_PROMPT === '1';
 const neverAnswerPrompt = process.env.MOCK_OPENCODE_NEVER_ANSWER_PROMPT === '1';
+const permissionAsk = process.env.MOCK_OPENCODE_PERMISSION_ASK === '1';
+const permissionReplyLog = process.env.MOCK_OPENCODE_PERMISSION_REPLY_LOG;
 const signalLog = process.env.MOCK_OPENCODE_SIGNAL_LOG;
 
 const SESSION_ID = 'ses_mock_1';
 const MESSAGE_ID = 'msg_mock_1';
+const PERMISSION_ID = 'per_mock_1';
+/** The blocking `/message` response, held open until the permission ask it
+ *  published is answered — same shape the real server's tool-call block
+ *  takes on that same socket. */
+let pendingPermissionRes = null;
 
 let sse = null;
 const sendRaw = (frame) => {
@@ -381,6 +400,54 @@ const server = createServer((req, res) => {
           sse = null;
         }
       }, 50);
+      return;
+    }
+    if (req.method === 'POST' && url === `/session/${SESSION_ID}/message` && permissionAsk) {
+      // A tool call needs a path outside the session directory: publish the
+      // ask and hold this socket open exactly as the real server holds the
+      // blocking prompt response until the tool call it guards resolves.
+      // Before #578 nothing ever answered this, so the response below never
+      // ran — the same indefinite hang as MOCK_OPENCODE_NEVER_ANSWER_PROMPT.
+      pendingPermissionRes = res;
+      send({ type: 'message.updated', properties: { info: info({}) } });
+      send({
+        type: 'permission.asked',
+        properties: {
+          id: PERMISSION_ID,
+          sessionID: SESSION_ID,
+          permission: 'external_directory',
+          patterns: ['/etc/xezar-test-outside/secret'],
+          metadata: {},
+          always: [],
+          tool: { messageID: MESSAGE_ID, callID: 'call_mock_perm' },
+        },
+      });
+      return;
+    }
+    if (req.method === 'POST' && url === `/session/${SESSION_ID}/permissions/${PERMISSION_ID}`) {
+      if (permissionReplyLog) appendFileSync(permissionReplyLog, `${PERMISSION_ID} ${body}\n`);
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end('true');
+      if (pendingPermissionRes) {
+        const held = pendingPermissionRes;
+        pendingPermissionRes = null;
+        send({
+          type: 'message.part.updated',
+          properties: {
+            part: {
+              id: 'prt_mock_perm',
+              messageID: MESSAGE_ID,
+              sessionID: SESSION_ID,
+              type: 'text',
+              text: 'Denied — skipping that path.',
+              time: { start: 1760000000500, end: 1760000000600 },
+            },
+          },
+        });
+        held.writeHead(200, { 'content-type': 'application/json' });
+        held.end(JSON.stringify({ info: info({}), parts: [] }));
+        setTimeout(() => send({ type: 'session.idle', properties: { sessionID: SESSION_ID } }), 20);
+      }
       return;
     }
     if (req.method === 'POST' && url === `/session/${SESSION_ID}/message`) {
