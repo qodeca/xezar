@@ -840,7 +840,7 @@ describe('G9 deterministic quota recovery', () => {
         expect(runner.specs).toHaveLength(1);
         clock.advanceTo(deadline);
         if (mode === 'recovery' || mode === 'repeat limit') {
-          await expect.poll(() => runner.specs.length).toBe(2);
+          await expect.poll(() => runner.specs.length, { timeout: 10_000 }).toBe(2);
           await terminal(store, run.id);
           expect(store.getRun(run.id)?.status).toBe(mode === 'recovery' ? 'done' : 'failed');
           expect(runner.specs[1]?.resume).toBe(true);
@@ -884,7 +884,9 @@ describe('G9 account/project quota isolation', () => {
       }
       expect(stores[0]!.getRun(limited.id)?.status).toBe('failed');
       clock.advanceTo(reset * 1000 + AUTO_RESUME_GRACE_MS);
-      await expect.poll(() => runner.specs.length).toBe(account === 'same' ? 4 : 3);
+      // The same explicit window every other wait in this file uses: the expected COUNT is
+      // unchanged, only the patience. The default 1 s window is what a loaded gate run misses.
+      await expect.poll(() => runner.specs.length, { timeout: 10_000 }).toBe(account === 'same' ? 4 : 3);
       await terminal(stores[0]!, limited.id); await terminal(stores[1]!, other.id);
       expect(stores[0]!.getRun(limited.id)?.status).toBe('done');
       expect(stores[1]!.getRun(other.id)?.steps.filter(step => step.id.startsWith('continue-'))).toHaveLength(0);

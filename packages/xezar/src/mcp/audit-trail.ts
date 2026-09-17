@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import {
   chmodSync,
   closeSync,
@@ -13,7 +12,7 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import {
   auditActionRecordSchema,
   auditEntrySchema,
@@ -26,7 +25,8 @@ import {
   type AuditRotatedRecord,
 } from '@qodeca/xezar-contract';
 import { acquireFileLock, queueByLockPath } from '../core/file-lock.ts';
-import { collectSecretValues, redactSecrets } from '../core/secret-redaction.ts';
+import { collectSecretValues } from '../core/secret-redaction.ts';
+import { redactAuditInput, type RedactedAuditInput } from './audit-redaction.ts';
 import { PROJECT_ID_RE } from '../workspace/config.ts';
 
 /**
@@ -61,8 +61,8 @@ import { PROJECT_ID_RE } from '../workspace/config.ts';
  *     to its receipt;
  *   - `cli` — `cli-audit.ts`, once per valid command-line subcommand.
  * Which actions `ui` and `mcp` record is decided by ONE table, `audit-inventory.ts` (spec § 6).
- * Every door writes through `AuditChannel.record`, so every door gets the same field checks, the
- * same secret dropping and the same one warning.
+ * Every door writes through `AuditChannel.record`, so every door reaches the same seam, the same
+ * secret dropping and the same one warning.
  *
  * OUTCOMES (spec § 3.2). `applied`: the effect took place. `refused`: the door rejected the
  * operation BEFORE any effect, with a machine reason. There is no third value, so an operation that
@@ -101,13 +101,23 @@ import { PROJECT_ID_RE } from '../workspace/config.ts';
  *     refuse-before-effect rule (D-06 § 7.5) and deliberately so — idempotency is mandatory, audit
  *     is not.
  *
+ * ONE REDACTION SEAM (#306 part 4, spec § 9). `write` builds nothing itself: `redactAuditInput`
+ * (`audit-redaction.ts`) is the only constructor of what `appendAuditRecord` accepts, and its type
+ * says so. The seam holds the field list per door — which record fields that door may fill, and its
+ * own rule for each of six field classes — so no door can keep a field by spelling it differently.
+ *
  * NO SECRETS, TWICE. First by construction: the schema has no free-text field, and payloads enter
- * only as a SHA-256 digest (D-06 § 5.4). Second by value: every client-influenced identifier
- * (`resource.id`, the operation id, the version token, the refusal reason) is checked against the
- * host's secret env values, the caller's known secrets (the MCP connection token, D-04) and the
+ * only as a SHA-256 digest (D-06 § 5.4), taken over the payload with the door's rules already
+ * applied. Second by value: every client-influenced identifier (`resource.id`, the operation id, the
+ * version token, the refusal reason, an asserted proxy user, a receipt id) is checked against the
+ * host's secret env values, the caller's known secrets (the MCP service's own env, D-04) and the
  * well-known token shapes, and a field that matches is DROPPED rather than masked. The check
  * deliberately ignores `XEZ_REDACT_SECRETS=0`: that opt-out exists because masking can corrupt a
  * transcript, and dropping an audit field corrupts nothing.
+ *
+ * ONE WARNING PER PROJECT (spec A7, #573 m3). Every trail and every door of one project share the
+ * latch below, so a `serve` process running the cockpit, MCP and the automation runner on one
+ * project prints the line at most once; the text carries a bounded code and never a path.
  */
 
 /** File name under the project's data dir (`.local/xezar/`). D-06 § 10.5 puts it beside the receipts. */
@@ -139,8 +149,52 @@ export function resetLegacyAuditNoticeForTests(): void {
   legacyNoticeShown = false;
 }
 
-/** The same floor `secret-redaction.ts` applies to env values: below it a value is a common word. */
-const MIN_KNOWN_SECRET_LEN = 12;
+/**
+ * The projects that have already printed their one audit warning in this process (spec A7, #573 m3).
+ * Keyed by the project's data folder, so EVERY door instance of one project — the cockpit, the MCP
+ * service, the automation runner, a command — shares one latch: a project prints at most one audit
+ * warning per process, however many doors fail.
+ */
+const warnedProjects = new Set<string>();
+
+/**
+ * Print the one audit warning for the project whose data folder is `dataDir`, unless it already has.
+ * The text carries a bounded code only — never a path, a record, a proxy user or an error message.
+ */
+export function warnAuditOnce(dataDir: string, warn: (message: string) => void, what: 'read' | 'write', err: unknown): void {
+  const key = resolve(dataDir);
+  if (warnedProjects.has(key)) return;
+  warnedProjects.add(key);
+  const code = boundedCode(err);
+  warn(
+    what === 'read'
+      ? `xezar: audit trail read failed (${code}); the trail reads as empty.`
+      : `xezar: audit trail write failed (${code}); the action continued without an audit record.`,
+  );
+}
+
+/**
+ * The warning for a door's OWN setup failures (a project it cannot resolve, a data folder it cannot
+ * create): at most one per door instance, and never a second one for a project that has already
+ * warned — the door and every trail of that project share the project's latch above.
+ */
+export function doorAuditWarning(warn: (message: string) => void): (dataDir: string | undefined, err: unknown) => void {
+  let warned = false;
+  return (dataDir, err) => {
+    if (warned) return;
+    warned = true;
+    if (dataDir === undefined) {
+      warn(`xezar: audit trail write failed (${boundedCode(err)}); the action continued without an audit record.`);
+      return;
+    }
+    warnAuditOnce(dataDir, warn, 'write', err);
+  };
+}
+
+/** @internal — tests that need to observe a project's one warning again. */
+export function resetAuditWarningsForTests(): void {
+  warnedProjects.clear();
+}
 
 /** How much of the file's tail one read looks at while searching back for the last valid record. */
 const TAIL_CHUNK_BYTES = 64 * 1024;
@@ -215,6 +269,11 @@ export interface AuditedOperation<O extends AuditOrigin = AuditOrigin> {
    * door, never by a caller; `type` is always the channel's origin, whatever this object says.
    */
   actor?: AuditActorDetails<O>;
+  /**
+   * Secrets this operation's door knows beyond the environment — a request's own credentials. Used
+   * only to mask them before hashing (the seam's `door-specific` rule); never persisted.
+   */
+  secrets?: readonly string[];
 }
 
 /** How an operation settled, in the two words v2 has. */
@@ -234,9 +293,6 @@ export class AuditRejection extends Error {
     this.name = 'AuditRejection';
   }
 }
-
-/** The reason a refusal gets when its own code cannot be kept (malformed, or secret-shaped). */
-const UNSPECIFIED_REASON = 'unspecified';
 
 /**
  * The settlement an HTTP status stands for, for callers that settle through a route. The routes
@@ -270,7 +326,6 @@ export class AuditTrail {
   private readonly callerSecrets: () => readonly string[];
   private readonly warn: (message: string) => void;
   private readonly hooks: AuditWriteHooks;
-  private warned = false;
 
   constructor(scope: AuditScope, options: AuditTrailOptions = {}) {
     if (scope.projectId === 'default' || !PROJECT_ID_RE.test(scope.projectId)) {
@@ -348,8 +403,17 @@ export class AuditTrail {
     settlement: AuditSettlement,
   ): Promise<AuditActionRecord | null> {
     try {
-      const candidate = this.build(origin, op, settlement);
-      if (!candidate) return null;
+      // THE seam (#306 part 4): nothing reaches the append path except what it returns.
+      const redaction = redactAuditInput(origin, op, settlement, {
+        projectId: this.scope.projectId,
+        envSecrets: collectSecretValues(),
+        doorSecrets: this.callerSecrets(),
+      });
+      if (!redaction.ok) {
+        this.warnOnce('write', { code: redaction.code });
+        return null;
+      }
+      const candidate = redaction.input;
       const lockPath = auditLockPath(this.scope.dataDir);
       return await queueByLockPath(lockPath, async () => {
         await this.hooks.beforeLock?.();
@@ -377,68 +441,6 @@ export class AuditTrail {
     return null;
   }
 
-  /** The record without `v`, `seq` and `ts`, which only the append path, under the lock, may allocate. */
-  private build<O extends AuditOrigin>(
-    origin: O,
-    op: AuditedOperation<O>,
-    settlement: AuditSettlement,
-  ): Omit<AuditActionRecord, 'v' | 'seq' | 'ts'> | null {
-    const secrets = this.knownSecrets();
-    const clean = (value: string | undefined): string | undefined =>
-      value !== undefined && redactSecrets(value, secrets) === value ? value : undefined;
-    const field = <K extends keyof AuditActionRecord>(key: K, value: unknown): AuditActionRecord[K] | undefined => {
-      const parsed = auditActionRecordSchema.shape[key].safeParse(value);
-      return parsed.success ? (parsed.data as AuditActionRecord[K]) : undefined;
-    };
-    const resourceOf = (resource: AuditResource | undefined): AuditResource | undefined => {
-      if (!resource || clean(resource.id) === undefined || clean(resource.kind) === undefined) return undefined;
-      return field('resource', { kind: resource.kind, id: resource.id });
-    };
-
-    const candidate: Record<string, unknown> = {
-      kind: 'action',
-      projectId: this.scope.projectId,
-      origin,
-      // The door's details first, then its type: no details object can change which door this was.
-      actor: { ...(op.actor ?? {}), type: origin },
-      action: op.action,
-      outcome:
-        settlement.outcome === 'applied'
-          ? { status: 'applied' }
-          : {
-              status: 'refused',
-              reason: field('outcome', { status: 'refused', reason: clean(settlement.reason) })
-                ? settlement.reason
-                : UNSPECIFIED_REASON,
-            },
-    };
-    const optional: Partial<AuditActionRecord> = {
-      resource: resourceOf(settlement.resource) ?? resourceOf(op.resource),
-      ownerGeneration: origin === 'mcp' ? field('ownerGeneration', fencingTokenMs(op.ownerGeneration)) : undefined,
-      operationKey:
-        origin === 'mcp' && op.operationId !== undefined
-          ? field('operationKey', clean(`${this.scope.projectId}/${op.operationId}`))
-          : undefined,
-      versionToken: field('versionToken', clean(op.expectedVersion)),
-      fieldNames: op.fieldNames === undefined ? undefined : field('fieldNames', fieldNamesOf(op.fieldNames, clean)),
-      payloadDigest:
-        op.payload === undefined ? undefined : field('payloadDigest', safeDigest(redactPayload(op.payload, secrets))),
-    };
-    // Spread only what is present: an `undefined` key would be typed as present and dropped by
-    // JSON.stringify anyway, and the read path must see exactly what was written.
-    for (const [key, value] of Object.entries(optional)) if (value !== undefined) candidate[key] = value;
-
-    // Validated with a placeholder sequence and time, so a malformed operation is refused BEFORE the
-    // lock is taken. The append path validates again with the allocated values.
-    const parsed = auditActionRecordSchema.safeParse({ v: 2, seq: 1, ts: new Date(0).toISOString(), ...candidate });
-    if (!parsed.success || clean(parsed.data.action) === undefined) {
-      this.warnOnce('write', { code: 'invalid_record' });
-      return null;
-    }
-    const { v: _v, seq: _seq, ts: _ts, ...record } = parsed.data;
-    return record;
-  }
-
   /** The file's text, `'absent'` when it does not exist, or `''` (after the one warning) when it cannot be read. */
   private readFile(path: string): string | 'absent' {
     try {
@@ -450,26 +452,13 @@ export class AuditTrail {
     }
   }
 
-  private knownSecrets(): string[] {
-    const values = new Set(collectSecretValues());
-    for (const value of this.callerSecrets()) if (value.length >= MIN_KNOWN_SECRET_LEN) values.add(value);
-    return [...values].sort((a, b) => b.length - a.length);
-  }
-
   /**
    * ONE warning per trail per process, shared by every read, write, lock, mode, rotation and skip
    * failure (spec § 7.2). A bounded code only — an error message can carry a path, and a path, a
    * record, a proxy user, a receipt or a payload is not for logs either.
    */
   private warnOnce(what: 'read' | 'write', err: unknown): void {
-    if (this.warned) return;
-    this.warned = true;
-    const code = boundedCode(err);
-    this.warn(
-      what === 'read'
-        ? `xezar: audit trail read failed (${code}); the trail reads as empty.`
-        : `xezar: audit trail write failed (${code}); the action continued without an audit record.`,
-    );
+    warnAuditOnce(this.scope.dataDir, this.warn, what, err);
   }
 }
 
@@ -627,7 +616,7 @@ function appendText(path: string, text: string): void {
  */
 function appendAuditRecord(
   dataDir: string,
-  candidate: Omit<AuditActionRecord, 'v' | 'seq' | 'ts'>,
+  candidate: RedactedAuditInput,
   now: () => Date,
   hooks: AuditWriteHooks,
 ): AuditActionRecord {
@@ -692,7 +681,7 @@ function renameIfPresent(from: string, to: string): void {
 }
 
 /** A warning's code: an errno name or a short machine code, and never anything longer or freer. */
-function boundedCode(err: unknown): string {
+export function boundedCode(err: unknown): string {
   const code = (err as { code?: unknown } | null | undefined)?.code;
   return typeof code === 'string' && /^(?:E[A-Z0-9]{1,31}|[a-z][a-z0-9_]{0,63})$/.test(code) ? code : 'error';
 }
@@ -707,72 +696,5 @@ function seqOf(line: Buffer): number | undefined {
   }
 }
 
-/**
- * D-06 § 5.4's canonical form: object keys sorted by code unit at every level, arrays in order,
- * `undefined` keys dropped, and a byte blob replaced by `{ sha256, bytes }` so the digest covers
- * bytes, never a path. A non-finite number is refused (zod refuses it upstream).
- */
-export function canonicalJson(value: unknown): string {
-  return JSON.stringify(canonicalize(value));
-}
-
-/** SHA-256, lowercase hex, of `canonicalJson(payload)`. */
-export function payloadDigest(payload: unknown): string {
-  return createHash('sha256').update(canonicalJson(payload)).digest('hex');
-}
-
-/**
- * The wall-clock prefix of a D-02.3 fencing token, `<ms>-<UUIDv4>` — the number D-06 § 10.2 keeps.
- * D-02 names human-readable audit as the prefix's one consumer; the random half is what the fence
- * compares, so it is dropped here. Anything not shaped like a token yields nothing.
- */
-function fencingTokenMs(token: string | undefined): number | undefined {
-  const match = token === undefined ? null : /^(\d{1,15})-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.exec(token);
-  return match ? Number(match[1]) : undefined;
-}
-
-/** Plain key names only (`tags`, `maxParallel`), sorted and distinct, at most the schema's 64. */
-function fieldNamesOf(names: readonly string[], clean: (value: string) => string | undefined): string[] {
-  const kept = new Set<string>();
-  for (const name of names) if (/^[A-Za-z_$][\w$-]{0,63}$/.test(name) && clean(name) !== undefined) kept.add(name);
-  return [...kept].sort().slice(0, 64);
-}
-
-/** Every string leaf with the known secret values masked, so a digest never fingerprints a secret. */
-function redactPayload(value: unknown, secrets: readonly string[]): unknown {
-  if (typeof value === 'string') return redactSecrets(value, secrets);
-  if (value === null || typeof value !== 'object' || value instanceof Uint8Array) return value;
-  if (Array.isArray(value)) return value.map((item) => redactPayload(item, secrets));
-  if (typeof (value as { toJSON?: unknown }).toJSON === 'function') return value;
-  const out: Record<string, unknown> = {};
-  for (const [key, item] of Object.entries(value)) out[key] = redactPayload(item, secrets);
-  return out;
-}
-
-function safeDigest(payload: unknown): string | undefined {
-  try {
-    return payloadDigest(payload);
-  } catch {
-    return undefined;
-  }
-}
-
-function canonicalize(value: unknown): unknown {
-  if (value instanceof Uint8Array) {
-    return { bytes: value.byteLength, sha256: createHash('sha256').update(value).digest('hex') };
-  }
-  if (typeof value === 'number' && !Number.isFinite(value)) throw new Error('non-finite number in payload');
-  if (typeof value === 'bigint' || typeof value === 'function' || typeof value === 'symbol') {
-    throw new Error(`${typeof value} in payload`);
-  }
-  if (value === null || typeof value !== 'object') return value;
-  const withJson = value as { toJSON?: () => unknown };
-  if (typeof withJson.toJSON === 'function') return canonicalize(withJson.toJSON());
-  if (Array.isArray(value)) return value.map((item) => (item === undefined ? null : canonicalize(item)));
-  const out: Record<string, unknown> = {};
-  for (const key of Object.keys(value).sort()) {
-    const item = (value as Record<string, unknown>)[key];
-    if (item !== undefined) out[key] = canonicalize(item);
-  }
-  return out;
-}
+/** Re-exported: the digest the seam keeps (`audit-redaction.ts`). */
+export { canonicalJson, payloadDigest } from './audit-redaction.ts';
