@@ -7,7 +7,7 @@ import { ProviderAuthService } from '../core/provider-auth.ts';
 import { emitUsageForTest, type ProcessUsage } from '../core/process-usage.ts';
 import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
-import { clearProjectProbeCache, listProjects, registerProject } from '../workspace/projects.ts';
+import { clearProjectProbeCache, listProjects, registerProject, removeProject } from '../workspace/projects.ts';
 import { ProjectContexts } from './project-context.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { WorkspaceEventBus, createApp } from './server.ts';
@@ -396,6 +396,56 @@ describe('GET /api/v1/workspace/events', () => {
     expect(payloadsOf<{ id: string; project: string }>(body, 'run')).toEqual([
       { ...JSON.parse(JSON.stringify(run)), project: readded.id },
     ]);
+  });
+
+  /**
+   * #592 review round 1, Major 1: the sibling of the test above, but for the OUT-OF-BAND drift the
+   * removal route never sees (#591) — a second process, a hand-edited `~/.xezar/config.json`, or a
+   * test seeding the registry directly re-points the same slug to a different root, so
+   * `ProjectContexts.context()` disposes and rebuilds on its own, with no `project-removed` event
+   * ever firing. Before the fix, the attach guard in `attach()` kept pinning the DISPOSED store, so
+   * an already-open workspace stream never saw the re-pointed project's events again.
+   */
+  it('an out-of-band drift rebuild (no removal route involved) resumes flowing on an already-open stream', async () => {
+    const base = mkdtempSync(join(tmpdir(), 'xez-wsev-drift-'));
+    const rootOld = join(base, 'run-1', 'shared');
+    const rootNew = join(base, 'run-2', 'shared');
+    for (const root of [rootOld, rootNew]) {
+      mkdirSync(join(root, '.xezar'), { recursive: true });
+      writeFileSync(join(root, '.xezar', 'config.json'), '{"skillsRepos": []}\n', 'utf8');
+    }
+
+    const first = await registerProject(rootOld);
+    expect((await apiRequest(app, `/api/v1/p/${first.id}/runs`)).status).toBe(200);
+    const oldStore = contexts.peek(first.id)?.store;
+    expect(oldStore).toBeDefined();
+
+    const ws = await openStream('/api/v1/workspace/events');
+    await ws.readUntil('event: ping');
+
+    // Out-of-band: remove and re-register directly, never through `DELETE /projects/:id` — so no
+    // `project-removed` event is ever emitted on `bus`.
+    await removeProject(first.id);
+    const second = await registerProject(rootNew);
+    expect(second.id).toBe(first.id); // same basename → same slug, the scenario #591 names
+
+    expect((await apiRequest(app, `/api/v1/p/${second.id}/runs`)).status).toBe(200);
+    const rebuilt = contexts.peek(second.id)?.store;
+    expect(rebuilt).toBeDefined();
+    expect(rebuilt).not.toBe(oldStore);
+
+    const run = (rebuilt as RunStore).createRun({
+      title: 'drift',
+      workflow: 'quick-task',
+      task: 'd',
+      steps: [],
+    });
+    const body = await ws.readUntil(`"id":"${run.id}"`);
+    expect(payloadsOf<{ id: string; project: string }>(body, 'run')).toEqual([
+      { ...JSON.parse(JSON.stringify(run)), project: second.id },
+    ]);
+
+    rmSync(base, { recursive: true, force: true });
   });
 
   it('relays workspace-level bus events under their own names (projects, checkout, provider status)', async () => {
