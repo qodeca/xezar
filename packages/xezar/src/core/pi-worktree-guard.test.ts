@@ -182,6 +182,10 @@ describe('pi linked-worktree tool guard (#537)', () => {
       ['a temp folder outside the primary', (f: Fixture) => `cd ${f.outside} && echo hi > ${f.outside}/out.txt`],
       ['git -C the worktree itself', (f: Fixture) => `git -C ${f.worktree} status`],
       ['git ranges and grep -C', () => 'git log origin/main..HEAD && grep -C 3 foo README.md'],
+      ['cd through a worktree symlink that points outside the primary', (f: Fixture) => {
+        symlinkSync(f.outside, join(f.worktree, 'linked-cache'));
+        return 'cd linked-cache && ls';
+      }],
       ['a known variable outside the primary', (f: Fixture) => {
         process.env.XEZ_GUARD_OUTSIDE = f.outside;
         return 'cd "$XEZ_GUARD_OUTSIDE" && ls';

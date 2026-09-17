@@ -220,8 +220,11 @@ function shellPathEscapes(spelling: string, cwd: string | undefined, roots: Root
   const lexical = absolute ? resolve(expanded) : resolve(cwd as string, expanded);
   const real = realPotential(lexical) ?? lexical;
   if (permitted(real, roots)) return false;
-  if (inside(roots.primary, real) || inside(roots.primary, lexical)) return true;
-  return directoryChange && !absolute && inside(roots.worktree, cwd as string);
+  const lexicallyInWorktree = inside(roots.worktree, lexical);
+  if (inside(roots.primary, real) || (inside(roots.primary, lexical) && !lexicallyInWorktree)) return true;
+  // A relative directory change that climbs out of the worktree is refused even outside the
+  // primary checkout; one that stays in it and follows a symlink elsewhere is not a primary write.
+  return directoryChange && !absolute && inside(roots.worktree, cwd as string) && !lexicallyInWorktree;
 }
 
 /** Split `--git-dir=/x`, `A=/x:/y` and similar words into the path-like parts worth checking. */
