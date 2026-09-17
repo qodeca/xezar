@@ -35,6 +35,23 @@
   that cannot be done — a folder xezar cannot write, a lock held by another process for more than
   two seconds, a failed rename — the record is dropped and xezar warns once; **your action still
   happens**, exactly as before. The old `mcp-audit.ndjson` is untouched by all of it.
+- 🔒 **The audit trail redacts through one seam, and no longer says a change was applied when it was
+  refused.** (#306, part 4 of 4, with #577 and #573) Everything a record could hold now passes one
+  redaction step, whichever door wrote it: a value that matches one of this machine's secret
+  environment values or a well-known token shape is dropped rather than stored, and prompts, messages,
+  titles, paths, URLs, a request's own credentials and an automation candidate's author never reach
+  the file — not even inside the fingerprint (digest) a record keeps to say "this same change again".
+  A settings change stores the NAMES of the settings you changed and a fingerprint taken with every
+  value removed, so the trail says which settings changed and never what you set them to; an MCP
+  settings change now records those names too. Three answers that changed nothing were recorded as if
+  they had been applied and are now recorded as refusals with a reason: an action the task's state does
+  not allow, an Inbox action while the Inbox is off, and a `handoff_git` commit, push, pull request,
+  ready or merge the cockpit's own rules, the merge verdict or the forge refused. A hand-off that
+  failed in a way xezar cannot be sure about writes no record at all rather than a wrong one, and says
+  so in one warning. That warning is now one line **per project** per process however many doors fail,
+  and it never carries a folder path or an error object's own words. The file format is unchanged, so a
+  0.15.0 xezar still reads its own `mcp-audit.ndjson` and still skips every `audit.ndjson` record
+  without crashing.
 - **An MCP "not found" is now recorded as a refusal.** (#573, with #306 part 3) Asking MCP to cancel,
   continue, pin or push a task this project does not have left no trace at all — and for `handoff_git`
   it was recorded as if it had been applied. Such an answer comes from a lookup before anything

@@ -50,6 +50,9 @@ const projects = (invocation: string, ...args: string[]) => {
   return runProjectsCommand(args, { defaultRoot: invocation, env: {}, io, ...(command ? { audit: cliAudit(command, invocation) } : {}) });
 };
 
+/** The one warning a folder that is not a project prints — a bounded code, never the folder's path (#573 m3). */
+const NOT_A_PROJECT = 'xezar: audit trail write failed (not_a_project_folder); the action continued without an audit record.';
+
 const summary = (record: AuditActionRecord) => [record.actor, record.action, record.outcome];
 
 describe('the cli audit door (#306 part 2)', () => {
@@ -158,7 +161,7 @@ describe('the cli audit door (#306 part 2)', () => {
     await audit.applied();
     await audit.refused('anything'); // same process, same latch: still just the one warning
     expect(existsSync(projectDataDir(nested))).toBe(false);
-    expect(warnings).toEqual([`xezar: no audit record – ${nested} is not a project folder (home directory or task worktree)`]);
+    expect(warnings).toEqual([NOT_A_PROJECT]);
   });
 
   it('$HOME itself warns once instead of staying silent (R1)', async () => {
@@ -170,7 +173,7 @@ describe('the cli audit door (#306 part 2)', () => {
       const audit = cliAudit('projects.list', home, { warn: (m) => warnings.push(m) });
       await audit.applied();
       expect(existsSync(projectDataDir(home))).toBe(false);
-      expect(warnings).toEqual([`xezar: no audit record – ${home} is not a project folder (home directory or task worktree)`]);
+      expect(warnings).toEqual([NOT_A_PROJECT]);
     } finally {
       if (savedHomeEnv === undefined) delete process.env.HOME;
       else process.env.HOME = savedHomeEnv;
