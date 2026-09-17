@@ -1,3 +1,5 @@
+import { projectDataDir } from '../project-data-paths.ts';
+import { projectResource, type CliAudit } from '../cli-audit.ts';
 import { stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { parsePortValue, PORT_MAX, PORT_MIN } from '../cli-settings.ts';
@@ -54,39 +56,56 @@ const SINGLE_PROJECT_EDIT_ERROR = 'single-project mode is enabled; editing proje
  */
 export async function runProjectsCommand(
   args: string[],
-  opts: { defaultRoot: string; bootProjectId?: string; env?: NodeJS.ProcessEnv; io?: ProjectsCommandIo },
+  opts: {
+    defaultRoot: string;
+    bootProjectId?: string;
+    env?: NodeJS.ProcessEnv;
+    io?: ProjectsCommandIo;
+    /** The `cli` audit door for this subcommand (#306 part 2) — absent for an unknown word. */
+    audit?: CliAudit;
+  },
 ): Promise<number> {
   const io = opts.io ?? defaultIo;
+  const audit = opts.audit;
   const singleProject = (opts.env ?? process.env).XEZ_SINGLE_PROJECT === '1';
   const [sub = 'list', ...rest] = args;
   switch (sub) {
-    case 'list':
-      return listCommand(io, singleProject, opts.bootProjectId);
+    case 'list': {
+      const code = await listCommand(io, singleProject, opts.bootProjectId);
+      // The owner's explicit exception to "reads never": every subcommand is recorded, and the
+      // record keeps neither the listed roots nor how many there were.
+      await audit?.applied({ resource: projectResource(await audit.scope()) });
+      return code;
+    }
     case 'add':
       if (singleProject) {
         io.error(SINGLE_PROJECT_ADD_ERROR);
+        await audit?.refused('single_project_mode');
         return 1;
       }
-      return addCommand(rest[0] ? resolve(rest[0]) : opts.defaultRoot, io);
+      return addCommand(rest[0] ? resolve(rest[0]) : opts.defaultRoot, io, audit);
     case 'remove':
     case 'rm':
       if (singleProject) {
         io.error(SINGLE_PROJECT_REMOVE_ERROR);
+        await audit?.refused('single_project_mode');
         return 1;
       }
-      return removeCommand(rest[0], io);
+      return removeCommand(rest[0], io, audit);
     case 'tag':
       if (singleProject) {
         io.error(SINGLE_PROJECT_EDIT_ERROR);
+        await audit?.refused('single_project_mode');
         return 1;
       }
-      return tagCommand(rest[0], rest.slice(1), io);
+      return tagCommand(rest[0], rest.slice(1), io, audit);
     case 'port':
       if (singleProject) {
         io.error(SINGLE_PROJECT_EDIT_ERROR);
+        await audit?.refused('single_project_mode');
         return 1;
       }
-      return portCommand(rest[0], rest[1], io);
+      return portCommand(rest[0], rest[1], io, audit);
     default:
       io.error(`unknown projects subcommand: ${sub}\n`);
       io.error(USAGE);
@@ -135,11 +154,12 @@ async function listCommand(
   return 0;
 }
 
-async function addCommand(root: string, io: ProjectsCommandIo): Promise<number> {
+async function addCommand(root: string, io: ProjectsCommandIo, audit?: CliAudit): Promise<number> {
   try {
     if (!(await stat(root)).isDirectory()) throw new Error('not a directory');
   } catch {
     io.error(`not a directory: ${root}`);
+    await audit?.refused('not_a_directory');
     return 1;
   }
   // Same guards `serve`/`run` apply at boot: a task worktree or `$HOME` itself
@@ -147,6 +167,7 @@ async function addCommand(root: string, io: ProjectsCommandIo): Promise<number> 
   // not buy an exemption.
   if (!(await shouldRegisterProject(root))) {
     io.error(`refusing to register ${root} — xezar task worktrees and your home directory are not projects`);
+    await audit?.refused('not_registrable');
     return 1;
   }
   const known = new Set((await loadWorkspaceConfig()).projects.map((p) => p.id));
@@ -154,14 +175,19 @@ async function addCommand(root: string, io: ProjectsCommandIo): Promise<number> 
   // Registration dedupes by realpath, so a second `add` of the same folder
   // (or a symlink to it) reports the entry that already exists.
   io.log(known.has(entry.id) ? `  = ${entry.id} (already registered)  ${entry.root}` : `  + ${entry.id}  ${entry.root}`);
+  const target = { projectId: entry.id, dataDir: projectDataDir(entry.root), registered: true };
+  await audit?.applied({ resource: projectResource(target) }, target);
   return 0;
 }
 
-async function removeCommand(id: string | undefined, io: ProjectsCommandIo): Promise<number> {
+async function removeCommand(id: string | undefined, io: ProjectsCommandIo, audit?: CliAudit): Promise<number> {
   if (!id) {
     io.error(USAGE);
+    await audit?.refused('missing_argument');
     return 1;
   }
+  // Resolved BEFORE the removal: afterwards no row says where this project's trail lives.
+  const target = await audit?.projectScope(id);
   // Unlike `DELETE /api/projects/:projectId`, there is no boot-project refusal
   // here: that rule exists because a running server would break its own
   // sidebar, and the CLI runs with no server and no boot project. Removing the
@@ -169,8 +195,10 @@ async function removeCommand(id: string | undefined, io: ProjectsCommandIo): Pro
   // next `xezar serve` in it registers it again (said in the note below).
   if (!(await removeProject(id))) {
     io.error(`unknown project: ${id}`);
+    await audit?.refused('unknown_project');
     return 1;
   }
+  await audit?.applied({ resource: { kind: 'project', id } }, target);
   io.log(`  - ${id} (registry entry only — the repo and its .local/xezar/ are untouched)`);
   return 0;
 }
@@ -189,9 +217,11 @@ async function tagCommand(
   id: string | undefined,
   tags: string[],
   io: ProjectsCommandIo,
+  audit?: CliAudit,
 ): Promise<number> {
   if (!id) {
     io.error(USAGE);
+    await audit?.refused('missing_argument');
     return 1;
   }
   const normalized = normalizeProjectTags(tags);
@@ -207,8 +237,14 @@ async function tagCommand(
   });
   if (!known) {
     io.error(`unknown project: ${id}`);
+    await audit?.refused('unknown_project');
     return 1;
   }
+  // The field name and a digest of the normalized list — never a tag string (spec § 5).
+  await audit?.applied(
+    { resource: { kind: 'project', id }, fieldNames: ['tags'], payload: { tags: normalized ?? [] } },
+    await audit.projectScope(id),
+  );
   io.log(
     normalized === undefined
       ? `  = ${id} (no tags)`
@@ -232,9 +268,11 @@ async function portCommand(
   id: string | undefined,
   port: string | undefined,
   io: ProjectsCommandIo,
+  audit?: CliAudit,
 ): Promise<number> {
   if (!id) {
     io.error(USAGE);
+    await audit?.refused('missing_argument');
     return 1;
   }
   let value: number | undefined;
@@ -242,6 +280,7 @@ async function portCommand(
     const parsed = parsePortValue(port);
     if (parsed === null) {
       io.error(`port must be a whole number from ${PORT_MIN} to ${PORT_MAX} — got “${port}”.`);
+      await audit?.refused('invalid_port');
       return 1;
     }
     value = parsed;
@@ -263,8 +302,14 @@ async function portCommand(
   });
   if (!known) {
     io.error(`unknown project: ${id}`);
+    await audit?.refused('unknown_project');
     return 1;
   }
+  // The field name and a digest of the value — never the port itself (spec § 5).
+  await audit?.applied(
+    { resource: { kind: 'project', id }, fieldNames: ['port'], payload: { port: value ?? null } },
+    await audit.projectScope(id),
+  );
   io.log(
     value === undefined
       ? `  = ${id} (no port set — it starts from its remembered port, then 4321)`

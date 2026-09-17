@@ -443,3 +443,43 @@ describe('payload digest (D-06 § 5.4)', () => {
     expect(entry?.outcome).toEqual({ status: 'applied' });
   });
 });
+
+describe('#306 part 2: field names and a digest that never hashes a secret', () => {
+  it('keeps valid field names sorted and distinct, and drops a secret-shaped or malformed one', () => {
+    const dataDir = dataDirOf('alpha');
+    const knownToken = 'deadbeefcafe0000feedface1234';
+    const trail = new AuditTrail({ projectId: 'alpha', dataDir }, { now, secretValues: () => [knownToken] });
+    const record = trail.channel('ui').record(
+      { action: 'workspace.config.set', payload: { theme: 'dark' }, fieldNames: ['theme', 'density', 'theme', 'not a name', knownToken, '9lives'] },
+      { outcome: 'applied' },
+    );
+    expect(record?.fieldNames).toEqual(['density', 'theme']);
+    const many = trail.channel('ui').record(
+      { action: 'workspace.config.set', fieldNames: Array.from({ length: 80 }, (_, i) => `k${String(i).padStart(2, '0')}`) },
+      { outcome: 'applied' },
+    );
+    expect(many?.fieldNames).toHaveLength(64);
+  });
+
+  it('the payload digest is taken over the redacted payload, so it cannot confirm a guessed secret', () => {
+    const dataDir = dataDirOf('alpha');
+    const first = 'deadbeefcafe0000feedface1234';
+    const second = 'feedface1234deadbeefcafe0000';
+    const digestFor = (secret: string) =>
+      new AuditTrail({ projectId: 'alpha', dataDir }, { now, secretValues: () => [secret] })
+        .channel('mcp')
+        .record({ action: 'workspace.config.set', payload: { note: `token ${secret}`, keep: 'visible' } }, { outcome: 'applied' })?.payloadDigest;
+    const a = digestFor(first);
+    const b = digestFor(second);
+    // Populated-input guarantee: a digest was written, and it is not the digest of the raw payload.
+    expect(a).toMatch(/^[0-9a-f]{64}$/);
+    expect(a).not.toBe(payloadDigest({ note: `token ${first}`, keep: 'visible' }));
+    // Two different secrets in the same place give the same digest: the secret never reached the hash.
+    expect(b).toBe(a);
+    // Control: a change outside the secret still changes the digest.
+    const other = new AuditTrail({ projectId: 'alpha', dataDir }, { now, secretValues: () => [first] })
+      .channel('mcp')
+      .record({ action: 'workspace.config.set', payload: { note: `token ${first}`, keep: 'changed' } }, { outcome: 'applied' })?.payloadDigest;
+    expect(other).not.toBe(a);
+  });
+});

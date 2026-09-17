@@ -258,7 +258,9 @@ The audit trail is now `.local/xezar/audit.ndjson`, with a new record shape (#30
 `mcp-audit.ndjson` is read-only: xezar reads it only while the new file does not exist, prints one
 deprecation line when it does, and never changes it. Keep it if you want the old history. xezar 0.15.0,
 after a downgrade, reads its old file but cannot read records written by 0.16.0. The old name stops
-being read no earlier than 0.18.0. Details: [`BACKWARD_COMPATIBILITY.md`](BACKWARD_COMPATIBILITY.md).
+being read no earlier than 0.18.0. The trail now records cockpit, automation and command-line changes
+too, not only MCP; on a hosted server behind a custom reverse proxy, set `X-Xezar-User` to the
+authenticated user (the bundled nginx site already does). Details: [`BACKWARD_COMPATIBILITY.md`](BACKWARD_COMPATIBILITY.md).
 
 ## Upgrading to 0.15.0
 
