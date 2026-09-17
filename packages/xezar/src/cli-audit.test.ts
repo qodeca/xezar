@@ -150,6 +150,33 @@ describe('the cli audit door (#306 part 2)', () => {
     expect(existsSync(projectDataDir(nested))).toBe(false);
   });
 
+  it('a task worktree path warns once instead of staying silent (R1)', async () => {
+    const host = temp('xez-cli-audit-worktree-warn-host-');
+    const nested = join(host, '.local', 'xezar', 'worktrees', 'fake-run-id');
+    const warnings: string[] = [];
+    const audit = cliAudit('init', nested, { warn: (m) => warnings.push(m) });
+    await audit.applied();
+    await audit.refused('anything'); // same process, same latch: still just the one warning
+    expect(existsSync(projectDataDir(nested))).toBe(false);
+    expect(warnings).toEqual([`xezar: no audit record – ${nested} is not a project folder (home directory or task worktree)`]);
+  });
+
+  it('$HOME itself warns once instead of staying silent (R1)', async () => {
+    const home = temp('xez-cli-audit-home-excluded-');
+    const savedHomeEnv = process.env.HOME;
+    process.env.HOME = home;
+    try {
+      const warnings: string[] = [];
+      const audit = cliAudit('projects.list', home, { warn: (m) => warnings.push(m) });
+      await audit.applied();
+      expect(existsSync(projectDataDir(home))).toBe(false);
+      expect(warnings).toEqual([`xezar: no audit record – ${home} is not a project folder (home directory or task worktree)`]);
+    } finally {
+      if (savedHomeEnv === undefined) delete process.env.HOME;
+      else process.env.HOME = savedHomeEnv;
+    }
+  });
+
   it('a registered project that was never served gets its data folder created for the record', async () => {
     const root = temp('xez-cli-audit-unserved-');
     await registerProject(root);

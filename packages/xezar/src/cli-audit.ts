@@ -27,9 +27,11 @@ import { allocateProjectSlug, shouldRegisterProject } from './workspace/projects
  * (every folder except `$HOME` itself and a path inside a xezar task worktree) is a project for this
  * purpose, whether or not it is registered yet or has ever run xezar before: its `.local/xezar/` is
  * created (and ignored) when it has none, exactly as a first `serve` would, and the command writes its
- * one record. A folder `shouldRegisterProject` excludes writes no record and no state, and no warning
- * either — `xezar projects list` in `$HOME` must not create `~/.local/xezar/`, and a nested `xezar`
- * invocation inside a task worktree stays exactly as quiet as it is today.
+ * one record. A folder `shouldRegisterProject` excludes writes no record and no state, but never
+ * silently — it prints the trail's one warning (the same `warned` latch a write failure uses) so a
+ * reader can tell "never ran" from "ran without an audit record": `xezar projects list` in `$HOME`
+ * must not create `~/.local/xezar/`, but it does warn once on stderr, and a nested `xezar` invocation
+ * inside a task worktree warns the same way.
  *
  * WHAT IS KEPT. The canonical command id (`actor.command`), the action, a bounded resource id, the
  * outcome, and for `projects tag` / `projects port` the field name plus a digest — never `argv`, a
@@ -141,8 +143,15 @@ export function cliAudit(
   ): Promise<void> => {
     try {
       const where = target ?? (await scope());
-      if (!where) return;
-      if (!where.isProject) return;
+      if (!where || !where.isProject) {
+        if (!warned) {
+          warned = true;
+          (options.warn ?? ((message: string) => console.warn(message)))(
+            `xezar: no audit record – ${repoRoot} is not a project folder (home directory or task worktree)`,
+          );
+        }
+        return;
+      }
       if (!existsSync(where.dataDir)) {
         ensureProjectDataIgnored(where.dataDir);
         mkdirSync(where.dataDir, { recursive: true, mode: 0o700 });

@@ -389,6 +389,7 @@ if (args.join(' ') === 'auth status --json') {
     const secondAuditRecord = JSON.parse(auditAfterSecond.at(-1) ?? '{}') as { action?: string; outcome?: { status?: string } };
     assert.equal(secondAuditRecord.action, 'cli.init', 'the appended record is a cli.init record');
     assert.equal(secondAuditRecord.outcome?.status, 'applied', 'the appended record reports applied');
+    assert.deepEqual(auditAfterSecond.slice(0, -1), auditAfterFirst, 'a second init leaves every earlier audit line unchanged');
 
     // The rule that matters: work the user authored survives. A hand-edited kit
     // file, a hand-authored file inside `.xezar/`, and a file init never created.
@@ -406,6 +407,13 @@ if (args.join(' ') === 'auth status --json') {
       withoutAuditLog(beforeThirdInit),
       'init over a hand-edited kit must leave every file byte-identical (audit log aside)',
     );
+    const auditBeforeThird = beforeThirdInit[AUDIT_LOG_KEY]?.trim().split('\n').filter(Boolean) ?? [];
+    const auditAfterThird = (await readFile(join(initRepo, AUDIT_LOG_KEY), 'utf8')).trim().split('\n').filter(Boolean);
+    assert.equal(auditAfterThird.length, auditBeforeThird.length + 1, 'a third init appends exactly one audit record');
+    const thirdAuditRecord = JSON.parse(auditAfterThird.at(-1) ?? '{}') as { action?: string; outcome?: { status?: string } };
+    assert.equal(thirdAuditRecord.action, 'cli.init', 'the appended record is a cli.init record');
+    assert.equal(thirdAuditRecord.outcome?.status, 'applied', 'the appended record reports applied');
+    assert.deepEqual(auditAfterThird.slice(0, -1), auditBeforeThird, 'a third init leaves every earlier audit line unchanged');
     assert.equal(
       await readFile(kitWorkflow, 'utf8'),
       handEdited,
