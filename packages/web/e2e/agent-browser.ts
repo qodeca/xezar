@@ -45,6 +45,15 @@ export function readTestEnv(): EnvDescriptor {
 }
 
 /**
+ * A running xezar task's own control-plane env vars. A spec-owned server or MCP bridge that
+ * inherits them (rather than its own per-run values) writes mock notes into the CALLING task's
+ * real handoff/follow-up files instead of a fixture's — the #554 leak. `fixtureServeEnv` strips
+ * them from every fixture-owned process; `capture/cockpit.ts` reuses this same list rather than
+ * hand-rolling a second copy.
+ */
+export const TASK_CONTROL_ENV_VARS = ['XEZ_HANDOFF_FILE', 'XEZ_TODOS_FILE', 'XEZ_TASK_ID'] as const
+
+/**
  * The environment for a spec-owned `xezar serve` over a throwaway `dataRoot`.
  *
  * `XEZ_DRY_RUN` is why these boots need no network and no agent login. `XEZ_HOME` is why they
@@ -57,17 +66,20 @@ export function readTestEnv(): EnvDescriptor {
  *
  * The shared test env pins the same variable under `.local/qa/xez-home`
  * (`scripts/test-env-up.sh`); this is that rule for the specs that boot their own server.
+ * `HOME` is pinned too: the product deliberately includes user-scoped skills in the effective
+ * catalog, so `XEZ_HOME` alone would leave a spec reading skills from the developer's machine.
  */
 export function fixtureServeEnv(
   dataRoot: string,
   extra: Record<string, string> = {},
 ): NodeJS.ProcessEnv {
-  return {
+  const env: NodeJS.ProcessEnv = {
     ...process.env,
     // One line on purpose: the `fixture-serve-must-pin-xez-home` design guardian reads these
     // two together, and a XEZ_DRY_RUN without XEZ_HOME beside it is exactly the mistake it
     // exists to catch.
     XEZ_DRY_RUN: '1', XEZ_HOME: resolve(dataRoot, '.xez-home'),
+    HOME: resolve(dataRoot, 'home'),
     // A fixture repo must hold exactly the skills the fixture wrote. xezar-skills updates
     // are default-on (AGENTS.md § Zero config), so a boot inside the six-hour window installs the
     // whole `xez-*` collection INTO the fixture and every "these are the project skills"
@@ -77,6 +89,8 @@ export function fixtureServeEnv(
     XEZ_SKILLS_AUTO_UPDATE: '0',
     ...extra,
   }
+  for (const name of TASK_CONTROL_ENV_VARS) delete env[name]
+  return env
 }
 
 /**

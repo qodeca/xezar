@@ -92,13 +92,8 @@ export async function bootCockpit(): Promise<Cockpit> {
     XEZ_PI_BIN: agentBin('pi'),
   })
   delete env.ANTHROPIC_MODEL
-  // Run from inside a xezar task, the harness inherits that task's own handoff and follow-up
-  // files. An agent process the fixture server starts without its own per-run values (a probe,
-  // not a run) would otherwise write mock notes into the CALLING task's handoff and the real
-  // follow-up inbox — observed once from a hand-booted dry-run server during this work.
-  delete env.XEZ_HANDOFF_FILE
-  delete env.XEZ_TODOS_FILE
-  delete env.XEZ_TASK_ID
+  // `fixtureServeEnv` already strips TASK_CONTROL_ENV_VARS (the calling task's own handoff and
+  // follow-up files) — no hand-rolled delete needed here.
   const server = spawn(
     process.execPath,
     [xezarCli, 'serve', '--repo', demoRoot, '--port', String(port), '--no-open'],
