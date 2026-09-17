@@ -577,9 +577,12 @@ export async function createAbWorld(options: AbWorldOptions = {}): Promise<AbWor
         const wiredContext = { ...ctx, service: recordingService.entry } as McpToolContext;
         const result = await tool.call(args, options.toolContext?.(tool.name, args, wiredContext) ?? wiredContext);
         // The door's audit record (D-06 § 10): who, what, how it settled — a digest, never the args.
-        sideOf(ctx.project)
-          ?.audit.channel('mcp')
-          .record(
+        // Like the real door (#306, spec § 3.2), an error answer may have started its effect, so it
+        // is not recorded: `refused` would claim nothing happened.
+        const channel = sideOf(ctx.project)?.audit.channel('mcp');
+        if (result.isError) channel?.skip('tool_error');
+        else
+          channel?.record(
             {
               action: `mcp.${tool.name.replaceAll('_', '-')}`,
               payload: args,
@@ -587,7 +590,7 @@ export async function createAbWorld(options: AbWorldOptions = {}): Promise<AbWor
                 ? { operationId: (args as { operationId: string }).operationId }
                 : {}),
             },
-            result.isError ? { outcome: 'refused', reason: 'tool_error' } : { outcome: 'applied' },
+            { outcome: 'applied' },
           );
         return result;
       },
