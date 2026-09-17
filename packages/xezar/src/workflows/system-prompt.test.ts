@@ -11,6 +11,8 @@ import type { WorkflowDef } from './types.ts';
 import {
   RunManager,
   composeSystemPrompt,
+  quickTaskWorktreeInstructions,
+  worktreeGuardRoots,
   makeRunTitle,
   resolveExtraSystemPrompt,
   skillSystemPrompt,
@@ -45,6 +47,23 @@ describe('composeSystemPrompt', () => {
     ['blank parts drop out', ['', '   ', H], H],
   ] as const)('%s', (_name, parts, expected) => {
     expect(composeSystemPrompt(...parts)).toBe(expected);
+  });
+});
+
+describe('quick-task worktree instructions (#537)', () => {
+  it('adds the stay-inside guard only to an isolated built-in quick task', () => {
+    expect(quickTaskWorktreeInstructions('quick-task', '/repo/.local/xezar/worktrees/task', '/repo'))
+      .toContain('Treat that directory as the project tool root');
+    expect(quickTaskWorktreeInstructions('quick-task', '/repo', '/repo')).toBeUndefined();
+    expect(quickTaskWorktreeInstructions('quick-task', '/plain-folder', '/plain-folder')).toBeUndefined();
+    expect(quickTaskWorktreeInstructions('bug-fix', '/repo/.local/xezar/worktrees/task', '/repo')).toBeUndefined();
+  });
+
+  it('gives the pi guard both roots for an isolated run and nothing for an in-place or non-git run', () => {
+    expect(worktreeGuardRoots('/repo/.local/xezar/worktrees/task', '/repo'))
+      .toEqual({ worktreeRoot: '/repo/.local/xezar/worktrees/task', primaryRoot: '/repo' });
+    expect(worktreeGuardRoots('/repo', '/repo')).toEqual({});
+    expect(Object.keys(worktreeGuardRoots('/plain-folder', '/plain-folder'))).toEqual([]);
   });
 });
 
