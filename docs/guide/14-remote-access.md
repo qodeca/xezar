@@ -4,7 +4,7 @@ Use this page to reach a cockpit running on another machine. Choose a deployment
 
 ## To choose local or hosted mode
 
-A normal `xezar` launch binds to `127.0.0.1`, starting at port `4321`. Local mode reports `capabilities.localHandoff: true`. Setting `XEZ_REMOTE=1` or choosing a non-loopback `--bind-host` changes that capability to `false` and enables hosted mode. `XEZ_REMOTE` does not itself change the listening address.
+A normal `xezar` launch binds to `127.0.0.1`. The port is the project's saved port if one exists, else `XEZ_PORT`, else the port it last listened on, else `4321` — then the next free port from there. Local mode reports `capabilities.localHandoff: true`. Setting `XEZ_REMOTE=1` or choosing a non-loopback `--bind-host` changes that capability to `false` and enables hosted mode. `XEZ_REMOTE` does not itself change the listening address.
 
 For example, when an authenticated reverse proxy runs on the same host, keep the server on loopback:
 

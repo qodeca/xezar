@@ -33,6 +33,7 @@
 - Added a reusable POSIX authenticated reverse-proxy harness (`npm run test:server-mode`), a dedicated bounded CI job, and registration-derived coverage of local-only routes. The harness exercises the built CLI, isolated homes, spoofed headers, rejected writes, event-stream reconnects and exact-PID cleanup.
 - test(mcp): cover fragile leader delivery across owner switches, ack/journal epoch boundaries and the opt-in acceptance judge, plus an executable inventory assertion (#532 slice 3, G4/G5/G6/G11/G12).
 - Added a saved, re-runnable deterministic two-project product harness (`npm run test:multi-project`, `packages/xezar/scripts/multi-project-harness.mjs`) proving registry/context composition, route aliases, the shared workspace cap, the cross-project runs index, workspace SSE stamping, and per-project MCP ownership for the boot project, all against one built cockpit with two registered scratch repositories in one isolated `XEZ_HOME`. See `docs/testing/multi-project-harness.md`.
+- Reconciled the remote-access docs with verified behavior and pinned both claims with a new test: a normal launch no longer claims an unconditional starting port of 4321 (it actually prefers a saved port, then `XEZ_PORT`, then the port it last listened on), and the macOS/ngrok installer's success message no longer says basic-auth was "enforced" when it was only configured, never probed through the tunnel. (#547, SM2)
 
 # 0.15.0 (2026-09-17)
 
