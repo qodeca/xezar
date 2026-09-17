@@ -202,7 +202,7 @@ export function McpOperationFeedback({ operation, onRetry }: McpOperationFeedbac
         <button
           type="button"
           data-testid="mcp-operation-retry"
-          className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-[12px] font-medium text-foreground hover:bg-muted"
+          className="mt-3 inline-flex min-h-tap items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-[12px] font-medium text-foreground hover:bg-muted md:min-h-0"
           // D-06: a same-id retry replays the stored outcome — no second effect. This button
           // NEVER generates a new operation identity; it hands back the one already shown.
           aria-label={`Retry operation ${operation.operationId} — reuses the same operation identity`}

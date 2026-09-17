@@ -90,11 +90,11 @@ export function ToolsMenu({ health }: { health: HealthResponse | undefined }) {
           type="button"
           data-slot="tools-menu-trigger"
           title={toolsTooltip(health)}
-          className="flex items-center gap-1.5 rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          className="flex min-h-tap items-center gap-1.5 rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors outline-none hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 md:min-h-0"
         >
           <StatusDot tone={blocker ? 'pending' : 'success'} />
           Tools
-          <ChevronDownIcon className="size-[11px]" aria-hidden="true" />
+          <ChevronDownIcon className="size-3" aria-hidden="true" />
         </button>
       </DropdownMenuTrigger>
 
@@ -182,7 +182,7 @@ function UnavailableToolRow({ check }: { check: BackendCheck }) {
             not found
           </span>
         </span>
-        <span className="flex items-end justify-between gap-3 pl-[15px]">
+        <span className="flex items-end justify-between gap-3 pl-3.75">
           {check.hint ? (
             <span data-slot="tool-hint" className="min-w-0 text-[11px] leading-snug text-muted-foreground">
               {check.hint}

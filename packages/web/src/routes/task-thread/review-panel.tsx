@@ -17,6 +17,7 @@ import { RunDiff } from '@/components/run-diff'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/components/ui/toaster'
+import { copyText } from '@/lib/clipboard-result'
 import { Link } from '@/lib/project-router'
 import { isSubmitShortcut } from '@/lib/use-submit-shortcut'
 import { isHttpUrl } from '@/lib/utils'
@@ -137,7 +138,7 @@ function ReviewActions({ run }: { run: ApiRun }) {
             submitNotes()
           }
         }}
-        className="min-h-[52px] text-[13px]"
+        className="min-h-15 text-[13px] md:min-h-13"
       />
       {!continuation.canContinue ? (
         <p
@@ -148,7 +149,7 @@ function ReviewActions({ run }: { run: ApiRun }) {
           {!continuation.providerPending ? (
             <Link
               to="/settings/agents#providers"
-              className="font-medium text-foreground underline underline-offset-4"
+              className="inline-flex min-h-tap items-center font-medium text-foreground underline underline-offset-4 md:min-h-0"
             >
               Configure providers
             </Link>
@@ -225,12 +226,10 @@ function ManualMergeLine({ command }: { command: string }) {
       data-slot="review-manual"
       title="Copy the command"
       onClick={() => {
-        void navigator.clipboard
-          .writeText(command)
-          .then(() => toast('Command copied to clipboard.'))
-          .catch(() => toast(`Run manually: ${command}`))
+        // The shared helper (G-16) answers a refusal rather than throwing; the command is the payload.
+        void copyText(command).then((result) => toast(result.ok ? 'Command copied' : `Run manually: ${command}`))
       }}
-      className="flex w-full min-w-0 items-center gap-1.5 rounded-sm px-1 py-0.5 text-left font-mono text-[11px] text-soft-foreground hover:bg-muted hover:text-foreground"
+      className="flex min-h-tap w-full min-w-0 items-center gap-1.5 rounded-sm px-1 py-0.5 text-left font-mono md:min-h-0 text-[11px] text-soft-foreground hover:bg-muted hover:text-foreground"
     >
       <CopyIcon className="size-3 shrink-0" aria-hidden="true" />
       <span className="truncate">manual path: {command}</span>

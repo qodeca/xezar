@@ -58,12 +58,12 @@ export function AgentsDock({
       className="min-w-0 overflow-hidden rounded-lg border border-border bg-card shadow-xs"
     >
       {/* The mockup's `.grad-edge` — the brand gradient as a hairline top edge. */}
-      <div aria-hidden data-slot="grad-edge" className="h-[3px]" style={{ background: 'var(--grad)' }} />
+      <div aria-hidden data-slot="grad-edge" className="h-0.75" style={{ background: 'var(--grad)' }} />
       <button
         type="button"
         onClick={toggle}
         aria-expanded={open}
-        className={cn('flex w-full items-center gap-2 px-3.5 text-left text-[13px]', open ? 'pt-2 pb-1.5' : 'py-2')}
+        className={cn('flex min-h-tap w-full items-center gap-2 px-3.5 text-left text-[13px] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 md:min-h-0', open ? 'pt-2 pb-1.5' : 'py-2')}
       >
         <BotIcon aria-hidden className="size-3.5 shrink-0 text-soft-foreground" />
         <span className="shrink-0 font-semibold">Agents</span>
@@ -81,7 +81,7 @@ export function AgentsDock({
         />
       </button>
       {open ? (
-        <ul data-slot="agents-list" className="flex flex-col gap-[7px] px-3.5 pb-3">
+        <ul data-slot="agents-list" className="flex flex-col gap-1.75 px-3.5 pb-3">
           {agents.map((agent) => (
             <AgentRow key={agent.id} agent={agent} onSelect={onSelect} />
           ))}
@@ -122,7 +122,7 @@ function AgentRow({ agent, onSelect }: { agent: SubagentSummary; onSelect?: (id:
           type="button"
           onClick={() => onSelect(agent.id)}
           aria-haspopup="dialog"
-          className="flex min-h-5 w-full min-w-0 items-center gap-2.5 rounded-sm text-left hover:bg-muted/50"
+          className="flex min-h-tap w-full min-w-0 items-center gap-2.5 rounded-sm text-left outline-none hover:bg-muted/50 focus-visible:ring-[3px] focus-visible:ring-ring/50 md:min-h-5"
         >
           {body}
         </button>
@@ -148,7 +148,7 @@ function AgentIcon({ status, stalled = false }: { status: ToolStatus; stalled?: 
         aria-hidden
         data-slot="agent-glyph"
         data-stalled="true"
-        className="size-[15px] shrink-0 text-soft-foreground"
+        className="size-4 shrink-0 text-soft-foreground"
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
@@ -165,7 +165,7 @@ function AgentIcon({ status, stalled = false }: { status: ToolStatus; stalled?: 
       <svg
         aria-hidden
         data-slot="agent-glyph"
-        className="size-[15px] shrink-0 text-success"
+        className="size-4 shrink-0 text-success"
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
@@ -183,7 +183,7 @@ function AgentIcon({ status, stalled = false }: { status: ToolStatus; stalled?: 
       <svg
         aria-hidden
         data-slot="agent-glyph"
-        className="size-[15px] shrink-0 text-danger"
+        className="size-4 shrink-0 text-danger"
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
@@ -199,7 +199,7 @@ function AgentIcon({ status, stalled = false }: { status: ToolStatus; stalled?: 
     <svg
       aria-hidden
       data-slot="agent-glyph"
-      className="size-[15px] shrink-0 animate-pulse motion-reduce:animate-none"
+      className="size-4 shrink-0 animate-pulse motion-reduce:animate-none"
       viewBox="0 0 24 24"
       fill="none"
     >

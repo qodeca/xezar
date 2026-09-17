@@ -164,4 +164,6 @@ Form dialogs use a plain phrase, no question mark: "Commit changes", "Add agent 
   Connect to sign in", "{project} removed from the workspace — its files are untouched".
 - Errors: the server message, `tone: 'danger'`. Hand-written only when there is no server:
   "Could not copy the command".
+- Copying: "Command copied", "Worktree path copied", "No terminal found — command copied". When the
+  clipboard refuses, the toast is the payload itself: "Run manually: {command}", "Path: {path}".
 - Browser notification body: "Task needs you", "Task needs review", "Task failed"; title is the run title.
