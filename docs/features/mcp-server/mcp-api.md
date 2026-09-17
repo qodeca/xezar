@@ -607,6 +607,14 @@ the shared inventory (`packages/xezar/src/mcp/audit-inventory.ts`), not by the t
 a read action inside a mutating tool, such as `check_automation` with `mode: preview`, is not
 recorded. The file is created with mode `0600`.
 
+Since #306 part 3 the trail is bounded and shared safely between processes. Before the append that
+would take `audit.ndjson` past 10,000,000 bytes, it rotates to `audit.ndjson.1` (the older files move
+on to `.2`–`.4`, and the oldest is deleted), and the new live file starts with one `kind: "rotated"`
+marker — five files are kept. Every door takes the same per-project lock for the sequence, the append
+and the rotation, and every retained file is kept at mode `0600`. When that cannot be done within two
+seconds, or the folder cannot be written, the record is dropped with the same one warning; the tool's
+answer never depends on it.
+
 Since [#306](https://github.com/qodeca/xezar/issues/306) part 2 the same file also holds the
 cockpit's (`ui`), the automation runner's (`automation`) and the command line's (`cli`) records, so a
 leader's change and a human's sit side by side. The same change has the same `action` id through the
@@ -631,6 +639,10 @@ How the MCP door settles a call:
 - a stale-version rejection is `refused` with reason `stale_version`;
 - a `project_config` boundary refusal (`refused: true` with a `boundary`) is `refused` with the
   boundary as the reason, for example `workspace_settings`;
+- a target this project does not have, from the lookup a tool makes before any effect, is `refused`
+  with reason `not_found` (#573): `execution_control`'s `failed` answer with reason `not found`,
+  `organise_work`'s `not found in this project` or route 404, `task_create`'s inbox 404, and
+  `handoff_git`'s `No such task in this project.`;
 - an error answer carrying the route's 4xx `status` is `refused` with `http_<status>`; a rejected
   `leader_events` cursor is `refused` with `invalid_cursor` or `cursor_project_mismatch`; a
   `local_handoff` answer with `performed: false` is `refused` with its HTTP status or outcome;
