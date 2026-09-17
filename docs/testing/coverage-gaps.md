@@ -145,7 +145,8 @@ HTTP API.
 | Skills catalog page | cockpit unit + browser e2e | `routes/skills.test.tsx:151`; `e2e/settings-skills.e2e.ts:66` | C |
 | Inbox | cockpit unit + browser e2e | `routes/inbox.test.tsx:224`; `e2e/inbox.e2e.ts:96` | C |
 | Workflows builder | cockpit unit + browser e2e | `routes/workflows/workflows.test.tsx:118`; `e2e/workflows.e2e.ts:89` | C |
-| Settings, project and global scopes | cockpit unit + browser e2e | `routes/settings/settings.test.tsx:164,271` | C |
+| Settings, project and global scopes | cockpit unit + browser e2e | `routes/settings/settings.test.tsx:164,271`; every project and global section's own heading, in `e2e/guide-10-settings.e2e.ts` | C |
+| User-guide flow contracts (guides 04, 10–16 — providers/models/tools, settings, zero-config defaults, CLI/mcp cross-check, MCP leader connection, local vs. hosted, project kit, troubleshooting) | browser e2e, one file per guide, semantic role/label/text locators only | `e2e/guide-browser.ts` (the shared helper); `e2e/guide-04-providers-models-tools.e2e.ts`, `guide-10-settings.e2e.ts`, `guide-11-configuration.e2e.ts`, `guide-12-cli-reference.e2e.ts`, `guide-13-mcp-leader-control.e2e.ts`, `guide-14-local-hosted.e2e.ts`, `guide-15-project-kit.e2e.ts`, `guide-16-troubleshooting.e2e.ts`; each file's own header names the guide flows it is not honestly dry-run testable and the lower-level test that covers them instead | C |
 | Project scope, `/p/default` alias, legacy redirects, 404 | cockpit unit | `routes.test.tsx:271,636-731` | C |
 | Bookmarklet grammar, launch key never in the DOM | cockpit unit | `routes.test.tsx:763-767` | C |
 | SSE cache patching, multi-project scoping, reconnect | cockpit unit | `api/global-events.test.tsx:252,373,652,724,746` | C |
