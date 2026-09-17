@@ -259,7 +259,12 @@ The floor refuses: a file below it with no written exemption or sequencing recor
 
 **Exemptions are written down or they do not exist.** A file below the floor carries an entry in `docs/testing/coverage-gaps.md` § 10 naming the uncovered branches, why no real test reaches them, what does hold the behaviour if anything does, and the event that ends the exemption. "Hard to test" is not a reason. An exemption answers the floor only; it never excuses a test that cannot fail.
 
-`npm run test:coverage:mcp` is a required check for a PR on this scope, not a sixth command of the gate above: it stays out of `.xezar/pipeline/config.json` and CI until it passes on `main`. This subsection adds requirements and removes none. It changes no command in the gate above, and no exemption, label or request for permission waives a mandatory check (F-22).
+`npm run test:coverage:mcp` is an unconditional, separate required CI job on every pull request,
+with a 10-minute timeout. It is not a sixth command of the local gate above: it stays out of
+`.xezar/pipeline/config.json`, so the main validation lane stays fast while CI enforces the floor
+without a path-filtered required check that could be skipped. This subsection adds requirements and
+removes none. It changes no command in the gate above, and no exemption, label or request for
+permission waives a mandatory check (F-22).
 
 ## Amending this process
 

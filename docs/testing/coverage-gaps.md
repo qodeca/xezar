@@ -535,9 +535,10 @@ branches. It writes to `.local/coverage/mcp/` and exits non-zero naming each fil
 The 2026-09-15 run took 65.99 seconds (55 test files, 1,273 tests); it excludes unrelated server tests,
 which is the point – coverage a module picks up from an unrelated test was never aimed at it.
 
-What it cannot see is listed in 10.4. It is not in CI and not in `.xezar/pipeline/config.json`. It was
-red on `main` from the day it shipped until #352; 10.9 is the re-measurement that turned it green,
-and making it a CI step is the sequenced work that record leaves open.
+What it cannot see is listed in 10.4. CI runs it in the separate, unconditional `MCP per-file
+coverage` job on every pull request, with a 10-minute timeout; it remains outside
+`.xezar/pipeline/config.json` and the local canonical gate. It was red on `main` from the day it
+shipped until #352; 10.9 is the re-measurement that turned it green.
 
 ### 10.2 Measured – before and after this change
 
@@ -1004,10 +1005,10 @@ are `bridge.ts` (92.1 / **80.0**), `index.ts` (87.7 / 80.2) and `tools/results-e
 The two files #311 added are measured here for the first time: `leader-delivery.ts` (100.0 / 84.1)
 and `project-leaders.ts` (100.0 / 100.0).
 
-**Sequenced work this record leaves open.** `npm run test:coverage:mcp` may now become a CI step and
-an entry in `.xezar/pipeline/config.json` – 10.1 says it stays out "until it passes on `main`", and the
-condition is met. That is a separate PR: it needs the CI job written and its ~40 s measured on a
-2-core runner, and it should land before the next MCP PR meets a gate nobody runs for them.
+**Completed sequencing (#550).** `npm run test:coverage:mcp` runs in its own unconditional CI job
+on every pull request, rather than as a sixth local canonical-gate command. This keeps the main
+lane independent and ensures the job always reports a status that can be required; its hard
+10-minute timeout bounds installation and test execution on a GitHub-hosted 2-core runner.
 
 ### 10.10 Re-measured for the MCP leader door (#450)
 

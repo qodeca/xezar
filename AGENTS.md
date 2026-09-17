@@ -201,8 +201,9 @@ the suite that actually covers them, and records where high line coverage sits o
 untested behaviour.
 
 One scoped exception is a requirement rather than a measurement: `npm run test:coverage:mcp` holds
-every MCP source file to 80 % lines and 80 % branches, and a PR on the MCP scope must also show
-each new test failing against a named break. Neither half passes alone – see
+every MCP source file to 80 % lines and 80 % branches, and CI runs it in its own required job on
+every pull request. A PR on the MCP scope must also show each new test failing against a named break.
+Neither half passes alone – see
 [SDLC.md § The MCP test floor](SDLC.md#the-mcp-test-floor). Its slower counterpart is
 `npm run test:mutation:mcp`: StrykerJS over the same code and the same suites, never run by
 `npm test` or by per-PR CI because a full run takes hours. **It runs nightly against `main`** in
