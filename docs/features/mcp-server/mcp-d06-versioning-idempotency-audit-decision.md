@@ -54,7 +54,7 @@ Everything this record closes, in one table. Each row links to the section that 
 | 11 | Uncertain outcome status | **`unverified`** — the tool result status, the receipt phase, and the thing a retry returns | § 9 |
 | 12 | Reconciliation | Per-action reconciler declared beside the action; an unreachable external system leaves the receipt `unverified` and **never** repeats the effect | § 9.3 |
 | 13 | Audit record fields | The 11-field list in § 10.2; free text, payload bodies and diffs are excluded by construction | § 10 |
-| 14 | Audit retention | **Open.** N-04 keeps it open and this record does not close it. § 10.5 gives a technical proposal only | § 10.5 |
+| 14 | Audit retention | **Accepted in the 2026-09-17 follow-on:** rotate at 10 MB and retain five files; implementation remains pending | § 10.5 |
 | 15 | New persisted fields | **None.** The run id is predicted from the operation key instead, because `runRecordSchema` has no `.passthrough()` and a downgrade would erase a new key rather than merely ignore it | § 12.1, § 13.3 |
 | 16 | Which origins the trail records | **`mcp` only for 0.14.0.** `ui`, `automation` and `cli` stay in the enum as reserved members that no door writes; [#364](https://github.com/qodeca/xezar/issues/364) owns wiring them. Added 2026-09-12, after the rest of this record | § 10.6 |
 
@@ -72,7 +72,7 @@ tidy. No timeout, transport or tool name is invented anywhere.
 | **1 000 journal lines** — snapshot cadence | § 7.2 | Measured: a 1 000-line journal scans in 0.7 ms (§ 3.2), so compacting below that saves under a millisecond and is not worth a write | **Decision** |
 | **8–128 characters** — `operationId` length | § 5.2 | Shape bounds only: 8 refuses a trivially short id, 128 bounds a key the journal writes on every line. No behaviour depends on either | **Technical proposal** |
 | **12 hex characters** — version digest truncation | § 4.2, § 6 | Not fixed by evidence; phase 4 must evaluate it against the final projection | **Technical proposal** |
-| Audit retention | § 10.5 | Nothing yet — the measurement that would fix it does not exist | **Open**, no number proposed |
+| Audit retention | § 10.5 | Owner decision recorded 2026-09-17; implementation must measure the chosen bound | **Decision:** 10 MB, five files |
 
 ## 2. What is agreed and is not reopened
 
@@ -93,8 +93,8 @@ application field the client generates.
 
 **Agreed (N-04), and deliberately weaker.** History **should** identify action, time, project,
 resource, outcome and UI/MCP origin without storing secrets. The identity model and audit retention
-**remain open**. Source attribution must not bypass permissions. § 10 preserves that weakness: it
-splits its own answer into MUST and SHOULD, and it leaves audit retention open.
+were open in the original record and are closed for the planned 0.16.0 implementation by the dated
+follow-on in § 10.5. Source attribution must not bypass permissions. The SHOULD remains a SHOULD.
 
 **Agreed (N-08).** Compatibility is preserved. New persisted fields are optional, a corrupt file
 degrades to fresh, and an upgrade must not break project binding or expand permissions. § 12 works
@@ -736,10 +736,9 @@ state-inventory row "never offer blind repeat with a new key".
 ### 10.1 What is weak here, and stays weak
 
 **Agreed, and deliberately weaker than N-03 and N-10.** N-04 says history *should* identify action,
-time, project, resource, outcome and UI/MCP origin without storing secrets, and that the identity
-model and audit retention **remain open**. This record does not upgrade "should" to "must", does not
-close retention, and does not invent an identity model. What follows is split so the difference is
-visible at a glance.
+time, project, resource, outcome and UI/MCP origin without storing secrets. The original record did
+not upgrade "should" to "must", close retention, or invent an identity model. The 2026-09-17
+follow-on in § 10.5 later closes the design choices while preserving that SHOULD.
 
 **Scoped absence claim:** no audit-log surface and no `origin` field on run records were found in
 the files examined (`packages/contract/src/`, `packages/xezar/src/server/`,
@@ -807,11 +806,20 @@ F-16):
    particular, an `origin: "ui"` entry must never widen what MCP may do, and the record's presence
    must never substitute for a permission check.
 
-### 10.5 Open — retention and identity model
+### 10.5 Accepted follow-on design — implementation pending
 
-**Open.** N-04 keeps audit retention and the identity model open, and this record leaves them open.
+**Originally open.** N-04 left audit retention and the identity model open in this record's first
+revision. The following dated decision closes the design question without claiming it is implemented.
 
-**Technical proposal**, offered for the phase that closes it and explicitly not a decision: store the
+**Accepted follow-on design, implementation pending (2026-09-17, [#306](https://github.com/qodeca/xezar/issues/306)).**
+The owner has now selected a 10 MB (10,000,000-byte) rotation threshold, five files, and the four door-derived actors;
+the dated [four-origin audit specification](audit-trail-origins-2026-09-17.md) supersedes the technical
+proposal below for the 0.16.0 implementation. This is a local operational trail, not a tamper-proof
+security log: a local agent or person with shell access to the project can alter or delete the live
+and rotated audit files. This paragraph records the accepted design; it does not claim the pending
+writers or rotation already ship.
+
+**Superseded historical proposal:** store the
 audit trail as its own append-only NDJSON beside the receipts, with the same line-level quarantine
 (§ 7.4), and bound it the way the run store bounds its own history — by count, not by duration.
 `store.ts` retains by count (`MAX_RUNS_KEPT`, `MAX_ARCHIVED_KEPT`) rather than by age, and an audit
@@ -819,9 +827,8 @@ trail has the same property that motivated that: its size is driven by activity,
 time. **No number is proposed**, because the measurement that would fix one is a real audit entry
 size against a real activity rate, and neither exists yet.
 
-Note the deliberate asymmetry: **receipt** retention is closed by this record (§ 8) because D-06
-requires it and idempotency depends on it. **Audit** retention is a different question that N-04
-holds open, and closing it here would be softening the requirements document in the other direction.
+The original record deliberately closed **receipt** retention (§ 8) while leaving **audit** retention
+open. The 2026-09-17 owner decision above is the later authority that closes the audit design.
 
 Operational packaging bounds more broadly are decision **D-09**, issue
 [#84](https://github.com/qodeca/xezar/issues/84).
@@ -861,9 +868,8 @@ every surface now says which member is live: `auditOriginSchema`'s own comment
 subsection. A reserved member with no ticket is how "reserved" becomes "forgotten", so #364 owns the
 reservation.
 
-**What stays open is unchanged.** § 10.5's retention and identity-model questions are not touched
-here, and three more doors would add lines per day without answering either — #364 carries that
-note.
+**Historical scope at this amendment.** § 10.5's retention and identity-model questions were not
+touched by the 2026-09-12 amendment. The 2026-09-17 follow-on in § 10.5 later answers them.
 
 **Limit of this subsection.** It records scope and it corrects documents. It changes no field, no
 rule, no MUST and no SHOULD in § 10.2 through § 10.5, and it narrows no enum.
@@ -1046,8 +1052,8 @@ unless marked otherwise.
 6. An **optional `id` input** on `createRun`, defaulting to `randomUUID()` and throwing on a
    duplicate — the only source change outside the MCP layer, and **no** new persisted field
    (§ 12.1).
-7. The audit writer with the § 10.2 fields, server-derived `origin`, and no free text. Its retention
-   stays **open** (§ 10.5).
+7. The audit writer with the § 10.2 fields, server-derived `origin`, and no free text. The original
+   implementation left retention open; the 2026-09-17 follow-on in § 10.5 now governs it.
 8. Contract schemas for `expectedVersion`, `operationId`, `stale_version`, `operation_key_conflict`
    and `unverified` in `packages/contract`, per `AGENTS.md` § "The HTTP API": one zod definition per
    shape, type inferred, route registered by chaining, validated as middleware.
@@ -1063,7 +1069,7 @@ unless marked otherwise.
 | `ownerGeneration` semantics — lease, fencing, expiry | D-02, issue [#80](https://github.com/qodeca/xezar/issues/80) | Recorded in the receipt; **not settled here** |
 | Event ids, ordering, replay cursor and acknowledgements | D-05, issue [#82](https://github.com/qodeca/xezar/issues/82) | The version token consumes `seq`, which that decision also touches; the two must agree that `seq` stays monotonic and never reused |
 | Transport and bridge | D-01, issue [#79](https://github.com/qodeca/xezar/issues/79) | Assumed only to deliver `operationId` and `expectedVersion` as ordinary arguments |
-| Operational limits, retention bounds and packaging | D-09, issue [#84](https://github.com/qodeca/xezar/issues/84) | Receipt retention is closed here (§ 8); audit retention is **not**, and belongs with the open question in § 10.5 |
+| Operational limits, retention bounds and packaging | D-09, issue [#84](https://github.com/qodeca/xezar/issues/84) | Receipt retention is closed here (§ 8); the later audit-retention decision is recorded in § 10.5 |
 | Whether real clients can carry these fields | issue [#85](https://github.com/qodeca/xezar/issues/85) | **Not attempted here.** No client was exercised by this spike |
 
 ## 16. Acceptance-case traceability
@@ -1089,7 +1095,7 @@ unless marked otherwise.
   verified, and on a `createRun` change that has not been written.
 - **The concrete projection field lists** (§ 4.3) and the **12-hex truncation width** (§ 6) are
   technical proposals, not decisions, and both need the final schemas to settle.
-- **Audit retention and the audit identity model stay open** (§ 10.5). This record deliberately does
-  not close what N-04 keeps open.
+- **Audit retention and the audit identity model were open in the original record.** The dated
+  follow-on in § 10.5 now closes their design for #306; implementation evidence is still pending.
 - None of the numbers here is a product guarantee. They are engineering decisions with their
   derivation attached, and § 1 says which section owns each one.
