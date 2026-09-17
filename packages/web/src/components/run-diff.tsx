@@ -1,29 +1,25 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { ChevronRightIcon } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo } from 'react'
 
 import { queryKeys, useRunDiff } from '@/api/queries'
-import { Button } from '@/components/ui/button'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { highlight, highlightSync, type SynToken } from '@/lib/highlighter'
-import { diffTotals, parseUnifiedDiff, type DiffFile } from '@/lib/unified-diff'
-import { cn } from '@/lib/utils'
+import { Diff, type DiffFileChange } from '@/components/diff'
 
 /**
- * A run's worktree diff (`GET /api/runs/:id/diff`) as collapsible per-file sections — shared by
- * the review gate (R3 2.2) and the variants compare view (R3 2.3), extracted from review-panel
- * so "the same diff rendering" is one component rather than a convention.
+ * A run's worktree diff (`GET /api/runs/:id/diff`) — shared by the review gate and the variants
+ * compare view, so "the same diff rendering" is one component rather than a convention.
  *
- * Rendering is the honest R3 interim: unified text parsed by `parseUnifiedDiff`, lines
- * highlighted through the ONE Shiki singleton (`diff` grammar) with add/del backgrounds from
- * the `--diff-*` tokens. R5's Changes tab (word-level/split view, @pierre/diffs) replaces
- * `DiffFileBody` — that component is the named boundary, exactly like `InlineDiffPreview`.
+ * A thin compatibility facade over the ONE diff engine (#453 B6, G-09): the public API is still
+ * just a run id, and the rendering — gutters, word marks, copied/renamed/binary badges, every
+ * line of every file — is `<Diff>` from `@/components/diff`, exactly what the Git tabs render.
+ * The only thing this module does itself is cut the endpoint's unified text into the facade's
+ * per-file `DiffFileChange` shape; hunk parsing, highlighting and line rendering stay in the
+ * engine, never here.
  */
 
-/** Sections beyond this many start hidden behind "Show N more files". */
-const FILE_CAP = 20
-/** Per-file line cap — a generated lockfile must not wedge the page. */
-const DIFF_CLAMP_LINES = 300
+/** `worktreeDiff`'s whole-diff cap marker (src/git-worktree.ts). */
+const DIFF_TRUNCATION_MARKER = '… (diff truncated)'
+/** The engine's per-file cap marker (`parse-patch.ts`), which it turns into an honest note. */
+const PATCH_TRUNCATION_MARKER = '… (patch truncated)'
 
 export function RunDiff({ runId }: { runId: string }) {
   const queryClient = useQueryClient()
@@ -36,16 +32,19 @@ export function RunDiff({ runId }: { runId: string }) {
     void queryClient.invalidateQueries({ queryKey: queryKeys.runs.diff(runId) })
   }, [queryClient, runId])
 
-  const files = useMemo(() => parseUnifiedDiff(diff.data ?? ''), [diff.data])
-  const [showAllFiles, setShowAllFiles] = useState(false)
+  const split = useMemo(() => splitRunDiff(diff.data ?? ''), [diff.data])
 
   if (diff.isPending) {
     return <p className="px-1 text-xs text-soft-foreground">Loading diff…</p>
   }
   if (diff.isError) {
-    return <p className="px-1 text-xs text-danger">{diff.error.message}</p>
+    return (
+      <p role="alert" className="px-1 text-xs text-danger">
+        {diff.error.message}
+      </p>
+    )
   }
-  if (files.length === 0) {
+  if (split.files.length === 0) {
     // Not a diff: the server's own sentence ("(no worktree — …)", "(diff failed …)") or an
     // empty answer. Show its words — they were written for the reader.
     return (
@@ -55,155 +54,106 @@ export function RunDiff({ runId }: { runId: string }) {
     )
   }
 
-  const totals = diffTotals(files)
-  const shown = showAllFiles ? files : files.slice(0, FILE_CAP)
   return (
-    <div data-slot="run-diff" className="flex min-w-0 flex-col gap-2">
-      <p className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
-        <span>
-          {totals.files} {totals.files === 1 ? 'file' : 'files'} changed
-        </span>
-        <span className="font-mono font-semibold tabular-nums">
-          <span className="text-success">+{totals.additions}</span>{' '}
-          <span className="text-danger">−{totals.deletions}</span>
-        </span>
-      </p>
-      {shown.map((file) => (
-        <DiffFileSection key={`${file.oldPath ?? ''}→${file.path}`} file={file} />
-      ))}
-      {files.length > shown.length ? (
-        <Button variant="ghost" size="sm" className="self-start" onClick={() => setShowAllFiles(true)}>
-          Show {files.length - shown.length} more files
-        </Button>
+    <div data-slot="run-diff" className="flex min-w-0 flex-col gap-row">
+      {split.truncated ? (
+        <p data-slot="run-diff-truncated" className="px-1 text-xs text-soft-foreground">
+          The server cut this diff short — the counts cover only the part shown.
+        </p>
       ) : null}
+      <Diff files={split.files} className="min-w-0" />
     </div>
   )
 }
 
-const statusBadge: Partial<Record<DiffFile['status'], string>> = {
-  added: 'added',
-  deleted: 'deleted',
-  renamed: 'renamed',
-}
-
-/** One file of the diff as a collapsible card: path (with rename lineage), ± counts, body. */
-function DiffFileSection({ file }: { file: DiffFile }) {
-  const [open, setOpen] = useState(true)
-  const badge = statusBadge[file.status]
-  return (
-    <Collapsible
-      open={open}
-      onOpenChange={setOpen}
-      data-slot="diff-file"
-      className="min-w-0 overflow-hidden rounded-md border border-border bg-card"
-    >
-      <CollapsibleTrigger className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-muted/50">
-        <ChevronRightIcon
-          className={cn('size-3.5 shrink-0 text-soft-foreground transition-transform', open && 'rotate-90')}
-          aria-hidden="true"
-        />
-        <span data-slot="diff-file-path" className="min-w-0 truncate font-mono text-xs font-medium">
-          {file.oldPath ? (
-            <>
-              <span className="text-soft-foreground">{file.oldPath} → </span>
-              {file.path}
-            </>
-          ) : (
-            file.path
-          )}
-        </span>
-        {badge ? (
-          <span className="shrink-0 rounded-sm bg-muted px-1.5 py-px text-[10px] font-medium text-muted-foreground">
-            {badge}
-          </span>
-        ) : null}
-        {file.binary ? (
-          <span className="shrink-0 rounded-sm bg-muted px-1.5 py-px text-[10px] font-medium text-muted-foreground">
-            binary
-          </span>
-        ) : null}
-        <span className="ml-auto shrink-0 font-mono text-[11px] font-semibold tabular-nums">
-          <span className="text-success">+{file.additions}</span>{' '}
-          <span className="text-danger">−{file.deletions}</span>
-        </span>
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <div className="border-t border-border/50">
-          {file.binary ? (
-            <p className="px-4 py-2.5 text-xs text-soft-foreground">Binary file — no text diff.</p>
-          ) : file.lines.length === 0 ? (
-            <p className="px-4 py-2.5 text-xs text-soft-foreground">No content changes (metadata only).</p>
-          ) : (
-            <DiffFileBody lines={file.lines} />
-          )}
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
-  )
-}
-
 /**
- * NAMED BOUNDARY for R5 (like `InlineDiffPreview`): @pierre/diffs' word-level `<Diff>`
- * replaces this body without touching the section chrome. Until then: the hunk lines through
- * the Shiki singleton's `diff` grammar, backgrounds from the `--diff-*` tokens, clamped with
- * an explicit "Show all" for huge files.
+ * The endpoint's `git diff` text → the facade's files. Exported for its tests only.
+ *
+ * Reads each `diff --git` section's extended header — rename, copy, new, deleted, binary — and
+ * counts its `+`/`-` hunk lines, then hands the section text over untouched as `patch`. Anything
+ * before the first header (or text with no header at all: the server's "(no worktree — …)"
+ * sentence) is not a diff and yields no files.
  */
-function DiffFileBody({ lines }: { lines: string[] }) {
-  const [expanded, setExpanded] = useState(false)
-  const shown = expanded ? lines : lines.slice(0, DIFF_CLAMP_LINES)
-  const text = shown.join('\n')
+export function splitRunDiff(text: string): { files: DiffFileChange[]; truncated: boolean } {
+  const lines = text.split('\n')
+  // git ends the diff with a newline; the split leaves a phantom ''.
+  if (lines.at(-1) === '') lines.pop()
+  let truncated = false
+  if (lines.at(-1) === DIFF_TRUNCATION_MARKER) {
+    truncated = true
+    lines[lines.length - 1] = PATCH_TRUNCATION_MARKER
+  }
 
-  // Sync when the grammar is already resident (every file after the first), async once.
-  const [loaded, setLoaded] = useState<{ text: string; tokens: SynToken[][] } | null>(null)
-  useEffect(() => {
-    let cancelled = false
-    void highlight(text, 'diff').then((result) => {
-      if (!cancelled) setLoaded({ text, tokens: result.tokens })
-    })
-    return () => {
-      cancelled = true
+  const files: DiffFileChange[] = []
+  let current: { file: DiffFileChange; lines: string[]; inHunks: boolean } | null = null
+  const close = () => {
+    if (current) current.file.patch = `${current.lines.join('\n')}\n`
+  }
+
+  for (const line of lines) {
+    if (line.startsWith('diff --git ')) {
+      close()
+      current = { file: { path: pathFromHeader(line), status: 'modified', adds: 0, dels: 0, patch: '' }, lines: [line], inHunks: false }
+      files.push(current.file)
+      continue
     }
-  }, [text])
-  const tokens = loaded?.text === text ? loaded.tokens : (highlightSync(text, 'diff')?.tokens ?? null)
+    if (!current) continue
+    current.lines.push(line)
+    const { file } = current
+    if (current.inHunks || line.startsWith('@@')) {
+      current.inHunks = true
+      if (line.startsWith('+')) file.adds += 1
+      else if (line.startsWith('-')) file.dels += 1
+      continue
+    }
+    // Extended header: rename/copy/mode/binary metadata plus the ---/+++ markers.
+    if (line.startsWith('rename from ') || line.startsWith('copy from ')) {
+      file.status = line.startsWith('rename') ? 'renamed' : 'copied'
+      file.oldPath = unquote(line.slice(line.indexOf(' from ') + 6))
+    } else if (line.startsWith('rename to ') || line.startsWith('copy to ')) {
+      file.status = line.startsWith('rename') ? 'renamed' : 'copied'
+      file.path = unquote(line.slice(line.indexOf(' to ') + 4))
+    } else if (line.startsWith('new file mode')) {
+      file.status = 'added'
+    } else if (line.startsWith('deleted file mode')) {
+      file.status = 'deleted'
+    } else if (line.startsWith('Binary files ') || line === 'GIT binary patch') {
+      file.binary = true
+    } else if (line.startsWith('+++ ')) {
+      const path = pathFromMarker(line)
+      if (path !== undefined) file.path = path
+    } else if (line.startsWith('--- ')) {
+      // A deletion has `+++ /dev/null`; the honest display path is the old one.
+      const path = pathFromMarker(line)
+      if (path !== undefined && file.status === 'deleted') file.path = path
+    }
+  }
+  close()
+  // A section with no hunks carries no text diff: the engine shows its metadata-only note.
+  for (const file of files) if (!/^@@/m.test(file.patch)) file.patch = ''
+  return { files, truncated }
+}
 
-  return (
-    <>
-      <pre
-        data-slot="diff-file-body"
-        className="overflow-x-auto py-2 font-mono text-xs leading-[1.7] whitespace-pre"
-      >
-        {shown.map((line, index) => (
-          <span
-            key={index}
-            className={cn(
-              'block px-4',
-              line.startsWith('+') && 'bg-diff-add',
-              line.startsWith('-') && 'bg-diff-del',
-              line.startsWith('@@') && 'text-soft-foreground',
-            )}
-          >
-            {tokens?.[index] !== undefined
-              ? tokens[index].map((token, i) => (
-                  <span key={i} style={token.color !== undefined ? { color: token.color } : undefined}>
-                    {token.content}
-                  </span>
-                ))
-              : line}
-            {/* An empty context line must still occupy its row. */}
-            {line === '' ? ' ' : ''}
-          </span>
-        ))}
-      </pre>
-      {lines.length > DIFF_CLAMP_LINES ? (
-        <button
-          type="button"
-          data-slot="diff-file-toggle"
-          onClick={() => setExpanded((value) => !value)}
-          className="block w-full border-t border-border/50 px-4 py-1.5 text-left text-[11px] font-medium text-soft-foreground hover:text-foreground"
-        >
-          {expanded ? 'Show less' : `Show all ${lines.length} lines`}
-        </button>
-      ) : null}
-    </>
-  )
+/** `diff --git a/old b/new` → the `b/` path. Paths with spaces make the split ambiguous — this
+ *  is the last resort; `+++ b/…`, `rename to` and `copy to` are read first where present. */
+function pathFromHeader(header: string): string {
+  const rest = header.slice('diff --git '.length)
+  const bIndex = rest.lastIndexOf(' b/')
+  return unquote(bIndex >= 0 ? rest.slice(bIndex + 3) : rest)
+}
+
+/** Git quotes paths with special characters (`"a/with \"quote\".txt"`). */
+function unquote(path: string): string {
+  const trimmed = path.trim()
+  if (trimmed.startsWith('"') && trimmed.endsWith('"') && trimmed.length >= 2) {
+    return trimmed.slice(1, -1).replace(/\\(.)/g, '$1')
+  }
+  return trimmed
+}
+
+/** `+++ b/path` / `--- a/path` → path, or undefined for `/dev/null`. */
+function pathFromMarker(line: string): string | undefined {
+  const raw = unquote(line.slice(4))
+  if (raw === '/dev/null') return undefined
+  return raw.replace(/^[ab]\//, '')
 }

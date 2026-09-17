@@ -223,7 +223,7 @@ describe('the Changes tab route', () => {
 
     await waitFor(() => expect(document.querySelector('[data-slot="repointed-head-note"]')).not.toBeNull())
     expect(document.querySelector('[data-slot="repointed-head-note"]')?.textContent).toContain(
-      "HEAD is on review/pr-42, not this task's branch xez/abc12345 — showing only what this task changed there.",
+      "HEAD is on review/pr-42, not this task’s branch xez/abc12345 — showing only what this task changed there.",
     )
   })
 
@@ -439,7 +439,7 @@ describe('the Changes tab route', () => {
         expect(writeText).toHaveBeenCalledWith('cd /tmp/wt/r1 && claude --resume s-1'),
       )
       await waitFor(() =>
-        expect(document.body.textContent).toContain('command copied to clipboard'),
+        expect(document.body.textContent).toContain('No terminal found — command copied'),
       )
     })
 
