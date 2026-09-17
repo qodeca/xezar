@@ -66,7 +66,7 @@ async function bootFixture(followups: boolean, tag: string): Promise<{
       join(dataRoot, '.local/xezar/todos.json'),
       JSON.stringify(
         [
-          { id: 'guide-08-run', summary: 'Add a regression test for the flaky parser', action: 'follow-up' },
+          { id: 'guide-08-run', summary: 'Add a regression test for the flaky parser', action: 'follow-up', runnable: true },
           { id: 'guide-08-note', summary: 'The release notes mention a removed flag', action: 'note' },
         ],
         null,
@@ -75,7 +75,7 @@ async function bootFixture(followups: boolean, tag: string): Promise<{
     )
   }
   git('add', '-A')
-  git('commit', '-q', '-m', 'seed')
+  git('commit', '-q', '--allow-empty', '-m', 'seed')
 
   const port = await freePort()
   const baseUrl = `http://127.0.0.1:${port}`

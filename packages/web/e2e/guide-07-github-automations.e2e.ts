@@ -116,7 +116,13 @@ describe('guide 07 — GitHub and automations', () => {
     expect(browser.isDisabled('button', 'Start drafting')).toBe(true)
 
     browser.fillLabel('What is the problem or the request?', 'The release notes mention a removed flag')
-    expect(browser.isDisabled('button', 'Start drafting')).toBe(false)
+    // The enabling re-render lands a tick after the fill event, not synchronously with it.
+    let enabled = false
+    for (let attempt = 0; attempt < 20 && !enabled; attempt += 1) {
+      enabled = !browser.isDisabled('button', 'Start drafting')
+      if (!enabled) browser.pause(150)
+    }
+    expect(enabled).toBe(true)
     browser.clickRole('button', 'Cancel')
     await browser.waitForRoleGone('heading', 'New issue')
   })
