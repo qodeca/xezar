@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { auditActionRecordSchema, auditCliCommandSchema, type AuditActionRecord } from '@qodeca/xezar-contract';
@@ -151,6 +151,18 @@ describe('the cli audit door (#306 part 2)', () => {
       ['cli.mcp', { status: 'refused', reason: 'project_occupied' }],
     ]);
     expect(readFileSync(join(root, '.local', '.gitignore'), 'utf8')).toContain('*');
+  });
+
+  it('a registered project whose data folder cannot be created warns once and never throws', async () => {
+    const root = temp('xez-cli-audit-nofolder-');
+    await registerProject(root);
+    // A file where `.local` should be: the data folder can never be created.
+    writeFileSync(join(root, '.local'), 'not a folder');
+    const warnings: string[] = [];
+    const audit = cliAudit('serve', root, { warn: (m) => warnings.push(m) });
+    await expect(audit.applied()).resolves.toBeUndefined();
+    await expect(audit.refused('listen_failed')).resolves.toBeUndefined();
+    expect(warnings).toEqual(['xezar: audit trail write failed (ENOTDIR); the action continued without an audit record.']);
   });
 
   it('a record that cannot be written never throws into the command', async () => {

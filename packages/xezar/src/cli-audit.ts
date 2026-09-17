@@ -126,6 +126,7 @@ export function cliAudit(
   options: { warn?: (message: string) => void } = {},
 ): CliAudit {
   let invocation: Promise<CliAuditScope | undefined> | undefined;
+  let warned = false;
   const scope = (): Promise<CliAuditScope | undefined> => (invocation ??= invocationScope(repoRoot));
   const write = async (
     settlement: { outcome: 'applied' } | { outcome: 'refused'; reason: string },
@@ -151,8 +152,17 @@ export function cliAudit(
         },
         { ...settlement, ...(details.resource ? { resource: details.resource } : {}) },
       );
-    } catch {
-      // Best effort by contract: the command's own result never depends on its audit record.
+    } catch (err) {
+      // Best effort by contract: the command's own result never depends on its audit record, and
+      // a record that could not be written says so once (spec § 7.2) — the trail's own write
+      // failures warn inside the trail; this covers the folder and channel setup before it.
+      if (!warned) {
+        warned = true;
+        const code = (err as NodeJS.ErrnoException | undefined)?.code ?? (err as Error | undefined)?.name ?? 'error';
+        (options.warn ?? ((message: string) => console.warn(message)))(
+          `xezar: audit trail write failed (${code}); the action continued without an audit record.`,
+        );
+      }
     }
   };
   return {

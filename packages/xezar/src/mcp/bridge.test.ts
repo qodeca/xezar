@@ -418,10 +418,9 @@ describe('the session-open report the `xezar mcp` audit record reads (#306 part 
 
   it('an unrecognised status reads as unavailable, and a throwing observer never changes the session', async () => {
     const reports: Report[] = [];
-    await bridge({ target: async () => ({ kind: 'unavailable', status: 'Not A Slug!', message: 'odd' }), onSessionOpen: (o) => reports.push(o) }).request(
-      'tools/call',
-      { name: 'health' },
-    );
+    // A status outside the typed set (an older or newer service) still reads as `unavailable`.
+    const odd = async () => ({ kind: 'unavailable', status: 'Not A Slug!', message: 'odd' }) as unknown as ServiceTarget;
+    await bridge({ target: odd, onSessionOpen: (o) => reports.push(o) }).request('tools/call', { name: 'health' });
     expect(reports).toEqual([{ kind: 'refused', reason: 'unavailable' }]);
 
     const svc = await service();
