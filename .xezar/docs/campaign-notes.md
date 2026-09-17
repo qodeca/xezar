@@ -13,7 +13,9 @@ and Codex memory hold only a pointer to the note (SDLC.md), but the note itself 
 whole at every session start and at every context-window compaction — so the file's own growth
 made every restart slower and every compaction more expensive. Splitting the live state from the
 append-only history cuts what loads at start-up to about a third of the old file, and lets the
-leader read the timeline's tail on demand instead of the whole day.
+leader read the timeline's tail on demand instead of the whole day. Splitting a note in place also
+leaves a short pointer stub at the old single-file path — see "The files and their contract" below
+— so a stale reference or a date-slug search still finds where the note went instead of dead-ending.
 
 ## The files and their contract
 
@@ -40,15 +42,23 @@ leader read the timeline's tail on demand instead of the whole day.
   by naming the leader-events sequence acked so far. Never read this file whole; read its tail.
 - **`archive-*.md`** – stale blocks kept for history (a past day's morning state, an old single-file
   note before a split). Never loaded at session start or compaction.
+- **The old single-file path** – kept in place as a short pointer stub, written once at split time
+  and never edited again. It holds a `# Moved` heading, the split date and time, the new folder's
+  name, and a line noting that `README.md` is the live state and
+  `archive-single-file-note-until-<hhmm>.md` holds the full old copy. A stale reference or a
+  date-slug search that still lands on the old path finds the stub and where the note actually
+  went, instead of finding nothing.
 
 ## Loading
 
-The leader's own bootstrap file (for example `.claude/CLAUDE.md`, itself git-ignored) imports
-`README.md`, `decisions.md`, `merges.md` and `plan.md` with `@`-paths — the four files a new
-session or a post-compaction reload needs to reconstruct state. It does **not** import the
-timeline; the leader reads a day's tail on demand instead. Claude Code or Codex memory holds one
-pointer to the folder, never a copy of its content (SDLC.md's "never its only copy" rule applies
-to the folder exactly as it did to the single file).
+The leader's own bootstrap file (for example `.claude/CLAUDE.md`, itself git-ignored) imports only
+`README.md`, `decisions.md` and `merges.md` with `@`-paths — the three files a new session or a
+post-compaction reload needs to reconstruct state. `plan.md` is named as a plain path instead, read
+on demand rather than `@`-imported: the plan is large, and auto-loading it at every session start
+and every compaction would defeat the split this page exists for (see "Why split" above). The
+timeline is likewise never `@`-imported; the leader reads a day's tail on demand instead. Claude
+Code or Codex memory holds one pointer to the folder, never a copy of its content (SDLC.md's "never
+its only copy" rule applies to the folder exactly as it did to the single file).
 
 ## Writing rules
 
