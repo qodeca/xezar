@@ -129,7 +129,12 @@ describe('guide 03 — worktrees and Git, a Git project', () => {
         dismissed = true
         break
       }
-      browser.clickRole('button', 'Keep it')
+      try {
+        browser.clickRole('button', 'Keep it')
+      } catch {
+        // Still covered by the overlay mid-animation ("Element … is covered by
+        // <div.fixed.inset-0>") — not dismissed yet, retry on the next attempt.
+      }
       browser.pause(50)
       dismissed = !browser.hasRole('button', 'Keep it')
     }
