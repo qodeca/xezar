@@ -466,7 +466,22 @@ export function buildPiArgs(spec: AgentRunSpec): string[] {
   if (spec.model) args.push('--model', spec.model);
   const tools = piTools(spec.allowedTools ?? [], spec.bashAllowlist);
   if (tools.length > 0) args.push('--tools', tools.join(','));
+  if (spec.worktreeRoot) {
+    // `--flag=value`: pi reads a separate value that starts with `-` or `@` as a boolean flag.
+    // A missing primary root is passed as absent, and the guard then fails closed.
+    args.push('--extension', piWorktreeGuardPath(), `--xezar-worktree-root=${spec.worktreeRoot}`);
+    if (spec.primaryRoot) args.push(`--xezar-primary-root=${spec.primaryRoot}`);
+    if (spec.additionalDirectories?.length) {
+      args.push(`--xezar-allowed-roots=${JSON.stringify(spec.additionalDirectories)}`);
+    }
+  }
   return args;
+}
+
+function piWorktreeGuardPath(): string {
+  // Source: src/core -> scripts. Published build: dist/core -> scripts. Keeping the extension in
+  // the package's existing `scripts` payload lets both layouts resolve the same relative path.
+  return resolvePath(dirname(fileURLToPath(import.meta.url)), '../../scripts/pi-worktree-guard.ts');
 }
 
 function piTools(tools: string[], bashAllowlist?: string[]): string[] {
