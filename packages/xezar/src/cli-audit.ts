@@ -158,7 +158,7 @@ export function cliAudit(
       }
       const channel = channelFor(where, options.warn);
       if (!channel) return;
-      channel.record(
+      await channel.record(
         {
           action: CLI_AUDIT_ACTIONS[command],
           actor: { command },

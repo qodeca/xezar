@@ -197,15 +197,15 @@ export function createUiAuditDoor(deps: UiAuditDeps): UiAuditDoor {
           return;
         }
         if (settlement.outcome === 'refused' && status === 409 && staleRejectionIn(await jsonOf(c))) {
-          channel.record(op, { outcome: 'refused', reason: 'stale_version' });
+          await channel.record(op, { outcome: 'refused', reason: 'stale_version' });
           return;
         }
         const answered = settlement.outcome === 'applied' ? answerRefusal(action, await jsonOf(c)) : undefined;
         if (answered) {
-          channel.record(op, { outcome: 'refused', reason: answered });
+          await channel.record(op, { outcome: 'refused', reason: answered });
           return;
         }
-        channel.record(op, settlement);
+        await channel.record(op, settlement);
       } catch (err) {
         warnOnce(err);
       }
