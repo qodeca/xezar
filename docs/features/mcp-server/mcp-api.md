@@ -633,6 +633,14 @@ Fields of a version 2 action record (`auditActionRecordSchema`, `packages/contra
 - `versionToken`: kept only when it has the `rev1` shape;
 - `payloadDigest`.
 
+Everything above passes one redaction seam before it is written (#306 part 4,
+`packages/xezar/src/mcp/audit-redaction.ts`), which holds a field list per door. An identifier that
+matches one of the host's secret environment values, one of the MCP service's own, or a well-known
+token shape is dropped rather than masked. Free text, paths, URLs and the caller's own framing keys
+are removed or replaced before `payloadDigest` is taken, so the digest cannot confirm a guessed value.
+A configuration write (`set_config`, `set_project`, `set_prompt_templates`, `write_agent_config`)
+stores the body's key names in `fieldNames` and a digest taken with every value replaced.
+
 How the MCP door settles a call:
 
 - a normal answer is `applied`;
@@ -646,8 +654,16 @@ How the MCP door settles a call:
 - an error answer carrying the route's 4xx `status` is `refused` with `http_<status>`; a rejected
   `leader_events` cursor is `refused` with `invalid_cursor` or `cursor_project_mismatch`; a
   `local_handoff` answer with `performed: false` is `refused` with its HTTP status or outcome;
+- an answer with `status: "conflict"` — a state the action does not allow, an Inbox action while the
+  Inbox is off, a moved pull-request head — is `refused` with `conflict`, or `stale_head` for the
+  moved head (#577);
+- a `handoff_git` answer with `status: "failed"` is `refused` when its own answer says it refused
+  before its effect: `policy`, `quality_blocker`, `forge_blocker`, `forge_unavailable`, or
+  `http_<status>` from the route it relayed (#577). Any other `failed` hand-off answer is **not
+  recorded**, because it may have followed the effect;
 - any other error answer, or a call that throws, may have started its effect, so it is **not
-  recorded**; xezar prints one warning per process that the action continued without an audit record.
+  recorded**; xezar prints one warning per project per process that the action continued without an
+  audit record.
 
 **Older files.** xezar 0.13.0–0.15.0 wrote version 1 records (`outcome` `ok`, `rejected`,
 `not-applied` or `unverified`, plus `errorCode`) to `mcp-audit.ndjson`. That file is read only while
