@@ -50,7 +50,8 @@ The rule (8 of 14 headers):
 
 - Hidden below `md` because the shell's mobile top bar already names the page.
 - The body below it is `flex flex-1 flex-col p-4 pb-[calc(90px+env(safe-area-inset-bottom))] md:p-section md:pb-section`, so the body starts `section` under the header and the title lines up with the content (`decisions.md` D-03).
-- Variations that exist (G-01): the Git and GitHub pages use `bg-background/95 backdrop-blur` with `text-lg`; the run header is `text-[15px]` and sticky only from `md`; `/new` centres an `h1 text-lg`; Compare uses `text-xl`; Automations uses `text-2xl` inside a `max-w-6xl` frame.
+- The Git page keeps its tabs in its header, so the header stays on a phone: it takes the run header's spacing (`px-4 pt-stack md:px-section md:pt-group`, tabs `mt-stack`), an opaque `bg-background`, and an `h1 sr-only text-base font-semibold md:not-sr-only` – the phone top bar already names the page (#453 B6). Its sections follow the body rule: toolbars `px-4 py-2 md:px-section`, bodies `p-4 md:p-section`, so the title, toolbar, tree and diff share the `section` gutter at every density. The task Changes, Commits and Files tabs use the same toolbar and body spellings under the run header.
+- Variations that exist (G-01): the GitHub page uses `bg-background/95 backdrop-blur` with `text-lg`; the run header is `text-[15px]` and sticky only from `md`; `/new` centres an `h1 text-lg`; Compare uses `text-xl`; Automations uses `text-2xl` inside a `max-w-6xl` frame.
 
 ## 4. Lists, cards and tables
 
