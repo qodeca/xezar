@@ -75,8 +75,9 @@ jobs:
   # Unconditional and separate from `verify`: the MCP floor applies to its own deliberately
   # scoped suites, but this job must report on every pull request so it can safely be required.
   # Running alongside the main lane preserves that lane's timing and makes a coverage failure
-  # distinct from its typecheck/build/package result. The command's observed local runtime is
-  # about a minute; ten minutes includes dependency installation and bounded runner headroom.
+  # distinct from its typecheck/build/package result. Measured 2026-09-17: 85.00s wall clock
+  # locally (61 test files, 2,070 tests; docs/testing/coverage-gaps.md § 10.12). Ten minutes
+  # covers `npm ci` plus bounded headroom on a GitHub-hosted 2-core runner.
   mcp-coverage:
     name: MCP per-file coverage
     runs-on: ubuntu-latest

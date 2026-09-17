@@ -532,8 +532,9 @@ quoting a number.
 `packages/xezar/src/server/stale-write-routes*`), v8 provider, coverage included over
 `packages/xezar/src/mcp/**` and `packages/xezar/scripts/pi-leader-extension.ts`, excluding `*.testkit.ts`, and a per-file threshold of 80 % lines and 80 %
 branches. It writes to `.local/coverage/mcp/` and exits non-zero naming each file under the floor.
-The 2026-09-15 run took 65.99 seconds (55 test files, 1,273 tests); it excludes unrelated server tests,
-which is the point – coverage a module picks up from an unrelated test was never aimed at it.
+The 2026-09-15 run took 65.99 seconds (55 test files, 1,273 tests); 10.12 has the freshest local
+measurement (85.00 seconds, 2026-09-17). It excludes unrelated server tests, which is the point –
+coverage a module picks up from an unrelated test was never aimed at it.
 
 What it cannot see is listed in 10.4. CI runs it in the separate, unconditional `MCP per-file
 coverage` job on every pull request, with a 10-minute timeout; it remains outside
@@ -1038,6 +1039,17 @@ newer number and supersedes the row below.
 
 `npm run test:coverage:mcp` **passed**, 55 test files / 1,273 tests, 65.99 seconds.
 Source and coverage configuration match `main` at `bb271fc`; the working diff was documentation only.
+
+### 10.12 Re-measured for CI enrollment (#550)
+
+**Measured 2026-09-17, branch `xez/f190f64a` off `7db8fd9` (0.15.0), `npm run test:coverage:mcp`,
+exit 0 – 61 test files, 2,070 tests passed (21 expected fail), no `ERROR:` line. Wall clock 85.00s**
+(`time -p`: `real 85.00`, `user 230.69`, `sys 110.75`) on this machine. Aggregate 94.12 % statements,
+87.14 % branches, 94.72 % functions, 97.45 % lines. Every MCP file is at or above the 80/80 floor;
+the floor is green on `main` today, so #550 enrolls it in CI without lowering any threshold. This is
+a local measurement, not the GitHub-hosted 2-core runner the new `MCP per-file coverage` CI job
+actually runs on; the job's own 10-minute timeout (`.github/workflows/ci.yml`) bounds `npm ci` plus
+test execution there, and its first real pull-request run is the authoritative runner-time reading.
 The command’s 40 included source files all meet **80 % lines and 80 % branches**; no exemption is active.
 Aggregate: **97.33 % lines, 86.28 % branches**. At this baseline the nearest branch floor is
 `mcp/index.ts` at exactly 80 %, so one uncovered branch can make it fail; 10.10 measures it at 80.3 %
