@@ -78,7 +78,7 @@ Status key: **C** covered, **P** partially covered, **N** no test found in the s
 | `server-install` (platforms, flags, unknown platform) | packaged e2e | `test/e2e/package-cli.test.ts` | C |
 | `server-uninstall` | packaged e2e | `test/e2e/package-cli.test.ts` | C |
 | `init` scaffolds `.xezar/` and never overwrites | server unit | `project-kit-cli.test.ts:20,29` — spawns the real CLI and asserts both halves | C |
-| `serve` boots: port auto-pick, orphan-worktree prune, `.local/.gitignore` upkeep | packaged CLI e2e | `test/e2e/package-cli.test.ts` boots the default command against the installed tarball (#43). No test found for `--repo`, `--bind-host` or `--no-open` | C |
+| `serve` boots: port auto-pick, orphan-worktree prune, `.local/.gitignore` upkeep | packaged CLI e2e | `test/e2e/package-cli.test.ts` boots the default command against the installed tarball (#43). `test:server-mode` additionally exercises the built CLI with `--repo`, `--bind-host`, `--no-open` and OS-assigned ports | C |
 | `server-deploy` | packaged e2e | `test/e2e/package-cli.test.ts` — help text, a real `--platform ubuntu --yes` invocation, and the unknown-platform exit 1 (#56) | C |
 | **unknown command → exit 1 + help** | none | the `default` arm of `src/index.ts` not exercised by any spawn found | **N** |
 | `mcp` bridge subcommand | server unit (child process) | `src/mcp/cli.test.ts` | C |
@@ -121,7 +121,7 @@ HTTP API.
 | agent-config (`agentConfigRoutes`) | server unit | `agent-config-api.test.ts:73,92` | C |
 | workspace runs-index (`runsIndexRoutes`) | server unit | `runs-index-api.test.ts:85,101` | C |
 | origin/host guard (middleware, before every `/api/*` route bar health) | server unit | `origin-guard.test.ts:67,74,88,95`, `host-guard.test.ts:61,79` | C |
-| WebSocket bus `/api/v1/ws` | server unit | `ws.test.ts:108-266` (hub), `:312,354` (upgrade guard) | C |
+| WebSocket bus `/api/v1/ws` | server unit | `ws.test.ts` (hub, local upgrade controls, hosted real-socket refusal); authenticated proxy composition in `test:server-mode` — see mode × transport matrix | C |
 | Route registration and alias parity | server unit | `route-parity.test.ts:158,206,215`; `versioned-surface.test.ts:93,108`; `bc-route-inventory.test.ts:119` | C |
 | Contract ↔ route shape agreement | typecheck | `contract-parity*.test.ts`, `typed-bodies.test.ts` – compile-time only | C (types), N (behaviour) |
 | MCP reference (`mcpReferenceRoutes`) | server unit | `server/mcp-reference-route.test.ts`, `server/mcp-reference-route.unavailable.test.ts` (see 10.5) | C |
@@ -1097,3 +1097,25 @@ results; [#443](https://github.com/qodeca/xezar/issues/443) tracks that failure.
 was still running. The 10.8 score/spread is the dated 2026-09-12 laptop run, not the current CI score.
 No mutation run was started by this docs sweep. Neither a configured schedule nor this passing
 coverage command proves a successful nightly mutation run.
+
+
+## Hosted mode: mode × transport verification (#547, SM1)
+
+| Mode | HTTP / request boundary | WebSocket | Live event streams | Browser / platform evidence |
+| --- | --- | --- | --- | --- |
+| Local loopback | `origin-guard`, `host-guard`, `capabilities`: Host rebinding, Origin, forwarded-header controls, health-only non-credentialed CORS | `ws.test`: native/same-authority trusted; Vite trusted with browser vouch, health-only without; foreign origins refused | `sse-headers`, `workspace-events`, `route-parity` | Existing local browser suite; does not establish hosted behavior |
+| Hosted (`XEZ_REMOTE=1` or non-loopback bind) | `local-handoff-routes`: non-empty registration-derived inventory, every guarded route and alias returns 409 before local effects; source parity rejects an untagged inline refusal. `origin-guard`, `health-forge`, `agent-config-api`, `agent-profiles-api`: Origin, CORS and conditional disclosure | `ws.test`: real-socket pre-handshake 403 for absent, foreign, forged loopback and same-authority Origins under both mode selectors; local controls unchanged | Existing in-process suites plus the built-CLI harness below | `client`, `global-events`, `run-events`, `queries` unit suites pin included HTTP/SSE credentials and zero remote browser WebSockets; no hosted real-browser claim |
+| Hosted through authenticated fixture proxy | `test:server-mode`: built CLI, Basic Auth on, missing/wrong credentials denied before forwarding; canonical Host and overwritten forwarding metadata; direct-backend controls; forbidden writes leave runs unchanged, authenticated same-/no-Origin controls create dry-run runs | Proxy forwards authenticated upgrades; backend refuses all tested Origins. Anonymous/wrong credentials receive 401 | Workspace, project and run streams authenticate, expose no-buffer/no-transform headers, yield a complete frame within 3s, reconnect and abort cleanly | POSIX-only for 0.16.0. Saved local reverse proxy; no real nginx/ngrok, TLS, public-network or browser proof |
+| Real Ubuntu/ngrok install | Unknown in this package; operator's authentication and private backend reachability require live installation verification | Unknown platform proxy behavior | Unknown public TLS/proxy buffering | SM2 owns user-facing claim reconciliation; SM1 does not certify an installation |
+
+Registration metadata identifies the existing handler guards; valid fixtures reach hosted 409 while validation and missing-run 404 precedence stay unchanged. Conditional provider-connect and home-config reads retain their existing route policy. The direct-backend control deliberately shows that hosted mode has no built-in authentication: the backend port must remain private. Runtime state and agent homes belong to a fresh ignored `.local/server-mode-*` fixture; teardown closes streams and the proxy and terminates only the saved child PID. Missing builds, early exits, incomplete streams, unavailable sockets/platform support or incomplete cleanup fail the command; no skip is a pass.
+
+### Reuse for #306 QA (no browser required)
+
+1. Use a POSIX checkout with Node 20+ and run `npm ci`.
+2. Run `npm run test:server-mode` (builds `packages/xezar/dist/index.js` first).
+3. Require all named `PASS` lines, including exact-PID teardown, and exit status zero.
+4. Run it again to check fresh homes, OS-assigned ports and cleanup.
+5. Record the revision and complete output; this proves the local authenticated HTTP/event-stream path only.
+
+The separate CI job **Hosted server boundary and proxy** has a five-minute hard timeout: the harness itself is bounded to 45 seconds, with room for cold dependency installation and server compilation. Unit/route policy remains in `npm test`; this harness tests composition, not a second exhaustive policy table. Named-break evidence belongs in the PR body, including an actual failed assertion for each behavior group.
