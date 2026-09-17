@@ -29,6 +29,7 @@
 
 ## 🐛 Bug Fixes
 
+- 🐛 Keep contract test declarations out of the published package, and make the archive gate reject test artifacts if they return. (#466, P7)
 - 🐛 Update Hono and its Node adapter to clear the shipped server advisories. (#428)
 - 🐛 fix(release): stage the web manifest in version-bump PRs so main keeps every stamped release manifest aligned (#461).
 - A live task now stays pinned to its tail when the late current-state response mounts the Plan and Agents docks; slower machines no longer leave the thread exactly 130 px above the bottom.

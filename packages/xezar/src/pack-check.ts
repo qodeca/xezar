@@ -125,6 +125,11 @@ export function findArchiveGaps(entries: readonly ArchiveEntry[]): string[] {
   if (entries.length === 0) return ['the packed archive has no files — nothing could be checked'];
   const paths = new Set(entries.map((e) => e.path));
   const gaps = REQUIRED_ARCHIVE_ENTRIES.filter((p) => !paths.has(p)).map((p) => `${p} is missing from the packed archive`);
+  for (const path of paths) {
+    if (/(?:^|\/)__tests__(?:\/|$)/.test(path) || /(?:^|\/)[^/]+\.(?:test|spec|testkit)\.[^/]+$/.test(path)) {
+      gaps.push(`${path} is a test artifact and must not ship`);
+    }
+  }
   if (!entries.some((e) => e.path.startsWith('package/dist/') && e.path.endsWith('.js') && e.data.length > 0)) {
     gaps.push('the packed archive has no non-empty dist/*.js — nothing executable could be checked');
   }

@@ -92,7 +92,7 @@ execFileSync(
   [
     tscBin,
     '--project',
-    join(contractRoot, 'tsconfig.json'),
+    join(contractRoot, 'tsconfig.build.json'),
     '--emitDeclarationOnly',
     '--declarationMap',
     'false',
@@ -105,6 +105,18 @@ execFileSync(
   ],
   { stdio: 'inherit' },
 );
+
+// The build config is the primary exclusion. Keep this second boundary so a future config change
+// cannot make a test declaration publishable merely by causing tsc to emit it again (#466 P7).
+const removeTestDeclarations = (dir) => {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const p = join(dir, entry.name);
+    if (entry.isDirectory()) removeTestDeclarations(p);
+    else if (/\.test\.d\.ts(?:\.map)?$/.test(entry.name)) rmSync(p);
+  }
+};
+removeTestDeclarations(outdir);
+
 if (!existsSync(join(outdir, 'index.d.ts'))) {
   console.error('inline-contract: tsc emitted no index.d.ts — the bundled contract would ship untyped');
   process.exit(1);
