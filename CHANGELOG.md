@@ -14,9 +14,26 @@
   **Upgrade:** nothing to do; keep `mcp-audit.ndjson` if you want the old history. **Downgrade:**
   0.15.0 still reads its untouched `mcp-audit.ndjson`, and skips every `audit.ndjson` record as
   unreadable (measured, not assumed), so records written by 0.16.0 are not visible to it. The alias
-  is removed no earlier than 0.18.0 (#563). Still MCP-only: the cockpit, automation and command-line
-  writers are later parts of #306. Details: `BACKWARD_COMPATIBILITY.md` § 3.
+  is removed no earlier than 0.18.0 (#563). An MCP record's `action` is now the shared action id the
+  cockpit records too (`run.start`, `run.pin`), not the tool action (`taskCreate.start`), and a read
+  action inside a mutating tool is no longer recorded. Details: `BACKWARD_COMPATIBILITY.md` § 3.
 - Hosted servers now refuse every WebSocket upgrade before the handshake; remote clients continue to use authenticated HTTP and event streams. Local native clients and the Vite development proxy keep their existing access. (#547, SM1)
+
+## ✨ Features
+
+- **The audit trail now records every door, not only MCP.** (#306, part 2 of 4) A change made in the
+  cockpit (`ui`), by the automation runner (`automation`) or by a command (`cli`) is written to the
+  project's `.local/xezar/audit.ndjson` beside the MCP records, with the same action id for the same
+  change in the cockpit and over MCP. Every command-line subcommand — `serve`, `run`, `init`,
+  `projects` (list, add, remove, tag, port), `mcp`, `server-install`, `server-deploy` and
+  `server-uninstall` — writes one record, `applied` or `refused` with a reason; `--help`, `--version`
+  and unknown commands write none, and a folder that is not a xezar project gets no new state. Each
+  run an automation launches gets its own record linked to its receipt id. Reads are never recorded,
+  and a failed audit write never fails the action (one warning). On a hosted server, the cockpit
+  record also keeps the user the reverse proxy authenticated, from the `X-Xezar-User` header, marked
+  `asserted-by-proxy`; the header is read only in hosted mode and only from a loopback proxy, and the
+  bundled nginx site now sets it to the authenticated user, overwriting any value a client sends.
+  Details: `BACKWARD_COMPATIBILITY.md` § 3.
 
 ## Tests
 
