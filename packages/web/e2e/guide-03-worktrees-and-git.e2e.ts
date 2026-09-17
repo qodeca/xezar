@@ -115,6 +115,10 @@ describe('guide 03 — worktrees and Git, a Git project', () => {
     browser.clickRole('button', 'Reclaim now')
     await browser.waitForText('Reclaim old worktrees?')
     expect(browser.hasRole('button', 'Keep it')).toBe(true)
+    // The AlertDialog's own entrance animation still covers its content for a beat after the
+    // text lands in the DOM — a click during it lands on the fixed backdrop instead (#579-style
+    // finding, this package's own instance of it).
+    browser.pause(300)
     browser.clickRole('button', 'Keep it')
     await browser.waitForRoleGone('button', 'Keep it')
   })
