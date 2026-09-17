@@ -13,6 +13,13 @@ its own change with the entry deleted.
 Every row now has exactly one of three dispositions, stated in its own last bullet and dated:
 
 - **Fixed** — the row is deleted and its id retired. Twenty rows went this way across B1–B8.
+  **G-10's retirement was challenged and re-earned** (design review B-1 on #602, 2026-09-17): the
+  focus return worked from the desktop bar but not from the phone "Run actions" kebab, and the only
+  test for it read the SOURCE for a hook call, so it stayed green against the defect. The fix passes
+  the opening control explicitly, and the proof is now a rendered journey in
+  `packages/web/e2e/design-debt-b8.e2e.ts` — kebab → Delete → Escape (and "Keep it") at 375 px in
+  the dark theme, checking `document.activeElement` by identity. A retirement whose only evidence is
+  a source string is not a retirement.
 - **Filed** — the row stays and names the issue that owns it. Six issues cover twenty of the
   twenty-two remaining rows: **#593** small text below AA contrast (G-23, G-38, G-46), **#594**
   rendered Markdown's phone targets (G-36, G-45), **#595** phone and desktop layout (G-26, G-27,

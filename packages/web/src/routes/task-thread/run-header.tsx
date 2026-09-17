@@ -17,7 +17,7 @@ import {
   SquareTerminalIcon,
   Trash2Icon,
 } from 'lucide-react'
-import { Fragment, useId, useMemo, useReducer, useState, type ReactNode } from 'react'
+import { Fragment, useCallback, useId, useMemo, useReducer, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate } from '@/lib/project-router'
 
 import { ApiError, archiveRun, cancelRun, continueRun, deleteRun, openRunIn, openRunInCli } from '@/api/client'
@@ -428,7 +428,17 @@ function OpenInMenuForRun({
 function useRunActions(run: ApiRun, onMarkedUnread?: () => void) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
-  const [confirming, setConfirming] = useState<'cancel' | 'delete' | null>(null)
+  const [confirming, setConfirmingState] = useState<'cancel' | 'delete' | null>(null)
+  // The control focus goes back to when the confirm closes. The desktop bar's own buttons stay
+  // focused and need not name themselves, so this is `null` there and `useReturnFocus` reads
+  // `document.activeElement` as before; the phone kebab MUST name its trigger, because the open
+  // menu — not the trigger — holds focus when the row is chosen, and it unmounts (design review
+  // B-1 on #602: focus was landing on `<body>`, exactly the G-10 symptom).
+  const confirmOpener = useRef<HTMLElement | null>(null)
+  const setConfirming = useCallback((value: 'cancel' | 'delete' | null, opener?: HTMLElement | null) => {
+    confirmOpener.current = opener ?? null
+    setConfirmingState(value)
+  }, [])
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: queryKeys.runs.all })
   const onError = (error: Error) => toast(error.message, { tone: 'danger' })
@@ -509,6 +519,7 @@ function useRunActions(run: ApiRun, onMarkedUnread?: () => void) {
     terminal,
     confirming,
     setConfirming,
+    confirmOpener,
   }
 }
 
@@ -897,10 +908,14 @@ function ActionsKebab({
   onToggleNotes: () => void
 }) {
   const flags = runActionFlags(run)
+  // The control the destructive confirms hand focus back to. It has to be captured HERE, from the
+  // element that opened the menu: by the time a row is chosen, focus is on the menu container,
+  // and that container unmounts as the dialog opens (design review B-1 on #602).
+  const trigger = useRef<HTMLButtonElement>(null)
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon-sm" aria-label="Run actions" className="md:hidden">
+        <Button ref={trigger} variant="ghost" size="icon-sm" aria-label="Run actions" className="md:hidden">
           <EllipsisVerticalIcon aria-hidden="true" />
         </Button>
       </DropdownMenuTrigger>
@@ -956,12 +971,19 @@ function ActionsKebab({
         ) : null}
         {flags.cancel || flags.deleteRun ? <DropdownMenuSeparator /> : null}
         {flags.cancel ? (
-          <DropdownMenuItem variant="destructive" onSelect={() => actions.setConfirming('cancel')}>
+          <DropdownMenuItem
+            variant="destructive"
+            onSelect={() => actions.setConfirming('cancel', trigger.current)}
+          >
             <CircleStopIcon aria-hidden="true" /> Cancel
           </DropdownMenuItem>
         ) : null}
         {flags.deleteRun ? (
-          <DropdownMenuItem variant="destructive" onSelect={() => actions.setConfirming('delete')}>
+          <DropdownMenuItem
+            data-slot="delete-run"
+            variant="destructive"
+            onSelect={() => actions.setConfirming('delete', trigger.current)}
+          >
             <Trash2Icon aria-hidden="true" /> Delete
           </DropdownMenuItem>
         ) : null}
@@ -977,10 +999,16 @@ function ActionsKebab({
  * nothing to hand focus back to and a Cancel or Escape dropped keyboard focus on `<body>` — most
  * visibly on a phone, where the dialog opens from the "Run actions" kebab (#453 B8, G-10; #571
  * design review NB-3). `useReturnFocus` is the same hook B3 wired into the settings confirms.
+ *
+ * The kebab is why the opener is passed EXPLICITLY rather than read from `document.activeElement`:
+ * with the menu open, the focused element is the menu container, and it unmounts as the dialog
+ * opens, so the hook's own capture was disconnected by close time and focus still landed on
+ * `<body>` (design review B-1 on #602). `ActionsKebab` records its trigger instead; the desktop
+ * bar's buttons pass nothing and keep the hook's original behaviour.
  */
 function ConfirmDialog({ run, actions }: { run: ApiRun; actions: RunActions }) {
   const confirming = actions.confirming
-  const returnFocus = useReturnFocus(confirming !== null)
+  const returnFocus = useReturnFocus(confirming !== null, actions.confirmOpener.current)
   return (
     <AlertDialog open={confirming !== null} onOpenChange={(open) => !open && actions.setConfirming(null)}>
       <AlertDialogContent onCloseAutoFocus={returnFocus}>

@@ -124,13 +124,17 @@ describe('#453 A06 — the image preview is a real dialog', () => {
 // ---------------------------------------------------------------------------
 
 describe('#453 B8 — the deferred gaps', () => {
-  /** G-10: the run confirm opens from state, so Radix has no trigger to hand focus back to. */
-  it('G-10: the run confirm hands keyboard focus back to the control that opened it', () => {
-    const src = code('routes/task-thread/run-header.tsx')
-    expect(src).toMatch(/import \{ useReturnFocus \} from '@\/routes\/settings\/remove-project'/)
-    expect(src).toContain('const returnFocus = useReturnFocus(confirming !== null)')
-    expect(src).toContain('<AlertDialogContent onCloseAutoFocus={returnFocus}>')
-  })
+  /**
+   * G-10 is NOT asserted here, deliberately. It used to be — by reading the source for
+   * `const returnFocus = useReturnFocus(confirming !== null)` — and that test was green against a
+   * cockpit where Escape on the kebab's confirm still dropped focus on `<body>`, because the hook
+   * captured the Radix menu container and the menu unmounts (design review B-1 on #602). A source
+   * string cannot see that; only a rendered journey can.
+   *
+   * It now lives in `packages/web/e2e/design-debt-b8.e2e.ts` — "returns focus to the Run actions
+   * kebab" — which drives the real menu at 375 px in the dark theme and checks
+   * `document.activeElement` by IDENTITY for both exits, Escape and "Keep it".
+   */
 
   /**
    * G-21 follow-up: B5 made the rename pencil permanently visible for touch, which took 28 px

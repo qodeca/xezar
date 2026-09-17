@@ -56,14 +56,25 @@ export function useProjectRemoval() {
  * dropped keyboard focus on `<body>`. The opener is read in a layout effect — before Radix's
  * focus scope moves focus into the dialog — and restored in `onCloseAutoFocus` while it is still
  * in the document (a removed row's button is not, and then Radix's default applies).
+ *
+ * `explicitOpener` is for the case `document.activeElement` cannot answer: when the confirm is
+ * opened from a row of a Radix MENU, the focused element at that moment is the menu container
+ * itself, and the menu unmounts as the dialog opens — so the captured target is disconnected by
+ * close time and focus silently lands on `<body>` again (#453 B8 design review B-1). The caller
+ * that owns the control which opened the MENU passes it here, and it stays mounted throughout.
  */
-export function useReturnFocus(open: boolean) {
+export function useReturnFocus(open: boolean, explicitOpener?: HTMLElement | null) {
   const opener = useRef<HTMLElement | null>(null)
   useLayoutEffect(() => {
-    if (open && opener.current === null && document.activeElement instanceof HTMLElement) {
+    if (!open || opener.current !== null) return
+    if (explicitOpener) {
+      opener.current = explicitOpener
+      return
+    }
+    if (document.activeElement instanceof HTMLElement) {
       opener.current = document.activeElement
     }
-  }, [open])
+  }, [open, explicitOpener])
   return (event: SyntheticEvent | Event) => {
     const target = opener.current
     opener.current = null

@@ -490,3 +490,96 @@ describe('#453 B8 — the image preview in a real browser', () => {
     expect(read<boolean>(`matchMedia('(prefers-reduced-motion: reduce)').matches`)).toBe(false)
   })
 })
+
+/**
+ * G-10 in a real browser — the second repair this batch claims, and the one a source-string test
+ * could not judge.
+ *
+ * `design-debt-b8.test.tsx` used to assert that `run-header.tsx` CONTAINS
+ * `useReturnFocus(confirming !== null)`. It did, and focus still landed on `<body>`: with the
+ * "Run actions" menu open, `document.activeElement` is the menu container, the hook captured
+ * THAT, and the menu unmounts as the confirm opens — so by close time the captured element was
+ * disconnected and the hook silently returned focus to nothing (design review B-1 on #602).
+ *
+ * This measures the journey the PR itself names — phone width, dark, opened from the kebab — and
+ * checks `document.activeElement` by IDENTITY against the kebab trigger, for BOTH exits: Escape
+ * and the "Keep it" button. Nothing is deleted: the destructive action is never pressed.
+ */
+const KEBAB = '[aria-label="Run actions"]'
+const MENU = '[data-slot="run-actions-menu"]'
+const DELETE_ROW = `${MENU} [data-slot="delete-run"]`
+const CONFIRM = '[data-slot="alert-dialog-content"]'
+const KEEP_IT = '[data-slot="alert-dialog-cancel"]'
+
+/**
+ * The kebab is opened with the KEYBOARD, not with a click, and that is a measurement decision.
+ *
+ * On a phone the run header is not sticky, the thread restores its own scroll position underneath
+ * it and the fixed top bar covers whatever ends up at the top — so a click at the trigger's centre
+ * is silently refused and the menu simply never opens. Measured: #584's hit-test-and-wait recipe,
+ * ported here from `design-debt-b1.e2e.ts`, still timed out on two of three cases in one run,
+ * because the control cannot always be brought clear of the fixed chrome on this surface.
+ *
+ * Focusing the trigger and pressing Enter needs no hit test at all, and it is the more honest
+ * journey for a finding about KEYBOARD focus return: it reproduces the defect identically, because
+ * what breaks the hook is the open menu owning focus, however the menu was opened. It is also the
+ * pattern this file already uses for the thumbnail (`focusThumb`).
+ */
+function openMenuFromKebab(): void {
+  browser.evaluate(
+    `(() => { const el = document.querySelector('${KEBAB}'); el.scrollIntoView({ block: 'center', behavior: 'instant' }); el.focus(); return true })()`,
+  )
+  until(`document.activeElement === document.querySelector('${KEBAB}')`)
+  browser.press('Enter')
+  until(`document.querySelector('${DELETE_ROW}') !== null`)
+  settle()
+}
+
+/** Kebab → Delete → the confirm is open, with focus inside it. Leaves the confirm open. */
+function openDeleteConfirm(): void {
+  openThread()
+  openMenuFromKebab()
+  browser.click(DELETE_ROW)
+  until(`document.querySelector('${CONFIRM}') !== null`)
+  settle()
+}
+
+describe('#453 B8 — G-10, the run confirm opened from the phone kebab', () => {
+  beforeAll(() => {
+    browser.setMedia('dark')
+  })
+
+  it('opens the confirm from the kebab and moves focus into it', () => {
+    openDeleteConfirm()
+    expect(read<string>(`document.querySelector('${CONFIRM}').textContent`)).toContain(
+      'Delete this task?',
+    )
+    expect(read<boolean>(`document.querySelector('${CONFIRM}').contains(document.activeElement)`)).toBe(
+      true,
+    )
+    browser.press('Escape')
+    until(`document.querySelector('${CONFIRM}') === null`)
+    settle()
+  })
+
+  it.each(['Escape', 'Keep it'] as const)(
+    'returns focus to the Run actions kebab when the confirm is closed with %s',
+    (exit) => {
+      openDeleteConfirm()
+
+      if (exit === 'Escape') browser.press('Escape')
+      else browser.click(KEEP_IT)
+      until(`document.querySelector('${CONFIRM}') === null`)
+      settle()
+
+      // Identity, not "something is focused": `<body>` and an unrelated `div` are precisely what
+      // the pre-fix build left behind on these two exits.
+      expect(
+        read<boolean>(`document.activeElement === document.querySelector('${KEBAB}')`),
+        `focus landed on ${read<string>('focused()')} instead of the kebab`,
+      ).toBe(true)
+      // And the run is still here — closing a confirm must not have deleted anything.
+      expect(read<boolean>(`document.querySelector('${KEBAB}') !== null`)).toBe(true)
+    },
+  )
+})
