@@ -10,9 +10,9 @@ import { GuideBrowser } from './guide-browser'
 
 /**
  * Guide 13 — MCP project leader (docs/guide/13-mcp-leader.md): the Settings → MCP connection page
- * read in its "not connected yet" state — itself one of the guide's own named states (§ "To choose
- * the leader's role": Files prepared / Connected / Attached / Delivery verified — none implies the
- * next).
+ * read in its "not connected yet" state — the MCP service available, nobody owns the project and
+ * no client attached — itself one of the guide's own named states (§ "To choose the leader's
+ * role": Files prepared / Connected / Attached / Delivery verified — none implies the next).
  *
  * This needs its OWN spec-owned server rather than the shared suite instance: `mcp-live-sync.e2e.ts`
  * and `mcp-collaboration.e2e.ts` attach a real leader to the shared project, and once one of them
@@ -98,43 +98,29 @@ describe('guide 13 — MCP project leader', () => {
     // "Connection status" (`SettingsField title="Connection status"`,
     // packages/web/src/routes/settings/mcp-connection-section.tsx) is a STATIC heading rendered
     // regardless of query state — waiting on it says nothing about whether the panel underneath
-    // has settled (#579 round 3 re-read of the component: rounds 1-2 treated it as the thing to
-    // wait for, but it was never the gate). The real gate is `McpLeaderControl`'s own loading
-    // state (packages/web/src/routes/settings/mcp-leader-control.tsx): it renders
-    // "Loading the leader connection…" (`role="status"`) until `useMcpLeader`'s `GET
-    // /api/v1/mcp/leader` settles, then either the error branch or this panel. Waiting for that
-    // role to clear — rather than jumping straight to the final sentence — turns "never appeared"
-    // into two distinguishable failures: still loading (a real timeout) vs. loaded into a
-    // different state (a real bug this suite would then have evidence for, not a wait-budget
-    // question). #579 rounds 1-2 only ever saw the undifferentiated failure.
+    // has settled. The real gate is `McpLeaderControl`'s own loading state
+    // (packages/web/src/routes/settings/mcp-leader-control.tsx): it renders "Loading the leader
+    // connection…" (`role="status"`) until `useMcpLeader`'s `GET /api/v1/mcp/leader` settles.
     await browser.waitForRole('heading', 'Connection status')
     await browser.waitForRoleGone('status', 'Loading the leader connection…', { attempts: 80 })
-    // #579 round 3: the loading indicator clearing means `useMcpLeader`'s query left `isPending`,
-    // not that it settled with data — a slow/loaded CI runner can flip it straight into
-    // `isError && !leader.data` (McpLeaderControl's "Could not load the leader connection." branch)
-    // on a first fetch, then resolve on react-query's background retry a few seconds later. Every
-    // other data-dependent read below in this same file already carries the `{ attempts: 80 }`
-    // (20s) CI-runner budget for exactly this reason (round 2 evidence); this read never got it.
-    try {
-      await browser.waitForText(
-        'The MCP service is not running for this project, so there is no event delivery to report.',
-        { attempts: 80 },
-      )
-    } catch (cause) {
-      // Anchor on the LAST "Connection status" occurrence, not the first: the per-client
-      // "One-time setup" notes for Claude Code and Codex both name "Connection status" in their
-      // own prose (mcp-connection-section.tsx lines 123, 179) well before the actual heading at
-      // line 471, and the first attempt at this capture (#579 round 3, run 35263083541) anchored
-      // on one of those earlier mentions and printed client-setup prose instead of the panel
-      // under test. The real heading is the only occurrence after it — nothing later on the page
-      // repeats the phrase.
-      const body = browser.bodyText()
-      const anchor = body.lastIndexOf('Connection status')
-      const near = anchor === -1 ? body.slice(0, 2000) : body.slice(anchor, anchor + 3000)
-      throw new Error(`xezar e2e: unattached-state text missing; page text near "Connection status" was: ${near}`, {
-        cause,
-      })
-    }
+    // #579 round 3, resolved with real evidence (CI run 35264822119, diagnostic capture anchored
+    // on the panel itself): rounds 1-2 assumed a fresh dedicated fixture server's MCP socket is
+    // NOT running yet ("The MCP service is not running for this project…", `available: false` in
+    // `mcpLeaderStatus`, packages/xezar/src/server/server.ts). That is false on a real host —
+    // `startMcpService` (packages/xezar/src/mcp/index.ts) registers the project's leader
+    // unconditionally once its socket opens, which is the normal case on a working machine. The
+    // rounds 1-2 authoring machine is the outlier: this sandbox's own nested xezar orchestration
+    // reliably keeps that socket from opening (round 2's BLOCKED note), so every local run before
+    // this one only ever observed the degraded "service not running" branch, never the real one.
+    // CI is a clean host and shows the actually honest first-boot reading: the MCP service IS
+    // available, nobody owns the project yet, and nothing is attached —
+    // `McpLeaderPanel`'s `summary()` (mcp-leader-control.tsx) for `status.owner === null`.
+    await browser.waitForText(
+      'No leader client is connected to this project. Start your leader client here: it can read its events with leader_events, and a Claude Code, Codex, OpenCode or pi session can be attached below.',
+      { attempts: 80 },
+    )
+    expect(browser.hasText('Owning client')).toBe(true)
+    expect(browser.hasText('None attached')).toBe(true)
     expect(browser.hasRole('button', 'Refresh')).toBe(true)
   })
 
