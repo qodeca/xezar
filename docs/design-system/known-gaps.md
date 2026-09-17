@@ -123,12 +123,12 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 | Empty list text | "Nothing matches." (5) | "No skills match.", "(no skills match)" | `routes/workflows/workflows.tsx:946`, `routes/skills.tsx:153` |
 | Column label case | sentence case | "Tool Name" | `lib/task-columns.ts:62` |
 | Heading period | none | "This page could not be displayed." | `components/route-error-boundary.tsx:27` |
-| Bucket label case | "Needs you" (heading) | "needs you" (dot label) | `lib/task-groups.ts:20` vs `lib/attention.ts:111`, intentional per the comment |
 | Oxford comma | omitted (25) | present (2) | `routes/settings/agents-section.tsx:315`, `notifications-section.tsx:97` |
 
 - **Fix**: one copy pass over the minority sites; a `no-en-dash-in-ui` guardian rule.
 - **Status (#453 batch B4, task lists)**: fixed rows – "Tool name" (`lib/task-columns.ts:62`), "Could not load tasks across projects" (`routes/global-tasks.tsx:367`) and "Search templates…" (`components/prompt-template-menu.tsx`). Still open (B5, B7): the placeholders in `routes/new-task.tsx` and `routes/github/hand-to-agent.tsx`, and the other rows.
 - **Status (#453 batch B3, settings)**: the settings rows are fixed – "Could not load …" in all ten settings sites, "Retry" in provider settings, "Filter skills…", "Nothing matches." for the bookmarklet filter, the em dash in `mcp-api-section.tsx`, curly apostrophes in `appearance.tsx`, `project-general.tsx` and the hints of `agents-section.tsx`, `resources-section.tsx`, `mcp-connection-section.tsx`, `projects-section.tsx`, `accounts-section.tsx` and `prompt-templates-section.tsx`, and no Oxford comma in `agents-section.tsx`, `notifications-section.tsx` and `prompt-templates-section.tsx`. Still open (B4, B5, B7): the other rows. The guardian rule is not added.
+- **Status (#546, navigation-only sidebar)**: the "Bucket label case" row is closed – the sidebar's `Needs you` bucket heading went with the sidebar task list, so the phrase now appears only as the lower-case attention label (`lib/attention.ts`).
 
 ### G-16 Toast punctuation
 
@@ -156,7 +156,7 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Differs**: `size-[15px]` ×12, `size-[22px]`, `size-[19px]`, `size-[13px]`, `size-[9px]` (`routes/github/github.tsx:527`) beside the `size-3` / `size-3.5` / `size-4` scale.
 - **Rule**: the scale.
 - **Fix**: round the one-offs to the nearest step.
-- **Status (#453 batch B4, task lists)**: the task-list one-offs are gone – `size-4` for the compare icon and the variant letter, `size-5.5` for the new-task button icon, and no fixed size on the table pin (`routes/tasks-overview.tsx`, `components/task-quick-list.tsx`), `size-1.5` for the reference status dot. Still open (B5, B7): `composer/composer.tsx`, `task-thread/agents-dock.tsx`, `plan-dock.tsx`, `step-rail.tsx` and `github/github.tsx`.
+- **Status (#453 batch B4, task lists)**: the task-list one-offs are gone – `size-4` for the compare icon and the variant letter, `size-5.5` for the new-task button icon, and no fixed size on the table pin (`routes/tasks-overview.tsx`; the sidebar row pin was removed with the task list in #546), `size-1.5` for the reference status dot. Still open (B5, B7): `composer/composer.tsx`, `task-thread/agents-dock.tsx`, `plan-dock.tsx`, `step-rail.tsx` and `github/github.tsx`.
 
 ### G-20 Dead primitives
 
@@ -166,10 +166,10 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 
 ### G-21 Hover-only affordances without `no-hover:`
 
-- **Differs**: `index.css:29-31` says "Reach for this on any control that is hidden until hover"; `no-hover:` is used at exactly two sites (`components/task-quick-list.tsx:339`, `routes/tasks-overview.tsx:807`). The composer's attachment remove overlay (`components/composer/composer.tsx:504`) reveals on `group-hover` and `group-focus-visible` only.
+- **Differs**: `index.css:29-31` says "Reach for this on any control that is hidden until hover"; `no-hover:` is used in exactly two files (`components/pin-toggle.tsx:49`, `routes/tasks-overview.tsx:852,867`; the sidebar row pin went with the task list in #546). The composer's attachment remove overlay (`components/composer/composer.tsx:504`) reveals on `group-hover` and `group-focus-visible` only.
 - **Rule**: `no-hover:` on every hover-revealed control.
 - **Fix**: add the variant to the composer overlay and audit `group-hover` sites.
-- **Status (#453 batch B4, task lists)**: the task lists are done – the pin (`components/pin-toggle.tsx`), the drawer row pin (`components/task-quick-list.tsx:340`) and the table's rename pencil and pin (`routes/tasks-overview.tsx:853,868`) show on a no-hover device and grow to 44 px there. Still open (B5): the composer overlay, and the run header's rename pencil (`routes/task-thread/run-header.tsx:544`), which is `opacity-0` and about 22 px on a phone.
+- **Status (#453 batch B4, task lists)**: the task lists are done – the pin (`components/pin-toggle.tsx`) and the table's rename pencil and pin (`routes/tasks-overview.tsx:852,867`) show on a no-hover device and grow to 44 px there. Still open (B5): the composer overlay, and the run header's rename pencil (`routes/task-thread/run-header.tsx:544`), which is `opacity-0` and about 22 px on a phone.
 
 ### G-22 Save behaviour split inside one pane
 
@@ -199,7 +199,7 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 
 ### G-28 The version chip truncates at Roomy density
 
-- **Differs**: at Roomy the sidebar footer leaves the version chip too little room, and its `truncate` span (`components/app-shell.tsx:822`) reads `v0.1…`. Comfortable and Compact show the whole version.
+- **Differs**: at Roomy the sidebar footer leaves the version chip too little room, and its `truncate` span (`components/app-shell.tsx:750`) reads `v0.1…`. Comfortable and Compact show the whole version.
 - **Rule**: a version number is never truncated.
 - **Fix**: give the chip `shrink-0` and let the footer's other controls give way first. Seen in the 0.15.0 docs captures (#448, design review NB-9).
 
@@ -215,7 +215,7 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 
 ### G-32 The phone run header opens partly under the top bar
 
-- **Differs**: on a phone the task thread opens scrolled to its end, and the run header scrolls with it (it is sticky only from `md`, `routes/task-thread/run-header.tsx:160`). With a thread slightly taller than the screen, the header's first row sits under the top bar. Measured at 375 px on the `subagents-run` fixture: the page scrolls 25 px on `main` and 37 px with the B4 44 px run tabs, so the "Run actions" button (`run-header.tsx:895`) shows 27 px of 44 before B4 and 15 px after. Its centre is then under the top bar (`components/app-shell.tsx:855`), which is why a click there is refused. Pre-existing; B4's taller tabs add 12 px. Found by the #529 CI run (`e2e/design-debt-b1.e2e.ts`, which now scrolls the button into view first).
+- **Differs**: on a phone the task thread opens scrolled to its end, and the run header scrolls with it (it is sticky only from `md`, `routes/task-thread/run-header.tsx:160`). With a thread slightly taller than the screen, the header's first row sits under the top bar. Measured at 375 px on the `subagents-run` fixture: the page scrolls 25 px on `main` and 37 px with the B4 44 px run tabs, so the "Run actions" button (`run-header.tsx:895`) shows 27 px of 44 before B4 and 15 px after. Its centre is then under the top bar (`components/app-shell.tsx:797`), which is why a click there is refused. Pre-existing; B4's taller tabs add 12 px. Found by the #529 CI run (`e2e/design-debt-b1.e2e.ts`, which now scrolls the button into view first).
 - **Rule**: a control in the page's first row is fully visible when the page opens.
 - **Fix**: open a short thread at its top, or keep the phone run header's first row visible. Owner: B5 (`run-header.tsx`) or B8 reconciliation of #453; the thread's scroll behaviour is outside B4.
 
@@ -245,16 +245,16 @@ for new work.
 | Class | Mockup value (`cockpit.css`; the `qc-` rows live in `designs/quality-checks/styles.css`) | Cockpit value | Source |
 | --- | --- | --- | --- |
 | `.btn` (small button) | 30px, `padding 0 12px`, weight 500, 12.5px | `h-[30px] px-2.5 text-[12.5px] font-semibold` | `components/ui/button.tsx` |
-| `.btn-new-task` | `calc(var(--spacing) * 10)` (40px), weight 500; `.new-task-row .btn-icon` matches at 40px | `h-10` (40px), `font-semibold`; Add project `size-11 md:size-10` | `components/app-shell.tsx:509`, `components/app-shell.tsx:740` |
-| `.quick li` | fixed `height: 32px`, `padding 0 10px` | row from content: link `py-2` (35.5px at Comfortable, scales with density), 44 px below `md` | `components/task-quick-list.tsx:432` |
-| `.list-tabs span.on` | `bg card-2`, weight 500 | `bg-card font-semibold shadow-xs` | `components/task-quick-list.tsx:193` |
+| `.btn-new-task` | `calc(var(--spacing) * 10)` (40px), weight 500; `.new-task-row .btn-icon` matches at 40px | `h-10` (40px), `font-semibold`; Add project `size-11 md:size-10` | `components/app-shell.tsx:498`, `components/app-shell.tsx:704` |
+| `.quick li` | fixed `height: 32px`, `padding 0 10px` | none since #546: the sidebar lists no tasks; the class stays in `cockpit.css` for existing mockups only | `components/task-quick-list.tsx` (removed, #546) |
+| `.list-tabs span.on` | `bg card-2`, weight 500 | none in the sidebar since #546; the class stays in `cockpit.css` for existing mockups only | `components/task-quick-list.tsx` (removed, #546) |
 | `.tasks-table th` | 11.5px, weight 500, no transform | `text-[11px] font-semibold tracking-[0.05em] uppercase` | `TASK_TH_CLASS`, `lib/task-columns.ts:143` |
 | `.nav-badge.danger` | red badge | no red nav badge exists; the cockpit's badges are violet | design decision, pending review |
 | `.qc-empty` | dashed box, 40px icon, 15px title | `CenteredState`: 72px tile, `text-2xl` | `components/centered-state.tsx` |
 | `.qc-skeleton` | sheen sweep | `animate-pulse rounded-md bg-accent` | `components/ui/skeleton.tsx` |
 | `.task-body` | `padding 18px 24px 24px`, fixed px | thread column `md:px-section md:py-section` (32 px on the density unit) | `routes/task-thread/task-thread.tsx:307` |
 | `.task-head h1`, `.task-head .row` | `margin 8px 0 10px`, fixed px | tab row `mt-stack` (12 px) under the title | `routes/task-thread/run-header.tsx:222` |
-| `.quick-head` | `padding 12px 22px 4px`, fixed px | bucket heading `px-3 pt-stack pb-1` | `components/task-quick-list.tsx:144` |
+| `.quick-head` | `padding 12px 22px 4px`, fixed px | none since #546: the sidebar has no bucket headings; the class stays in `cockpit.css` for existing mockups only | `components/task-quick-list.tsx` (removed, #546) |
 | `.tasks-table td` | `padding 10px 12px`, height from content | `h-11 px-3` | `TASK_TD_CLASS`, `lib/task-columns.ts:145` |
 | `.qc-toast` | card surface with a success icon | `bg-contrast text-contrast-foreground`, no icon | `components/ui/toaster.tsx` |
 | `--diff-add` / `--diff-del` (removed) | mockup-only aliases | `text-success` / `text-danger` | `components/diff-stat.tsx` |

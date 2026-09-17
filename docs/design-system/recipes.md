@@ -30,8 +30,8 @@ for this repository, not a file structure other projects should adopt. Start wit
 
 ## 1. Task table, phone cards and pinned list
 
-**Use when:** scanning, filtering or opening concurrent tasks, including the
-sidebar's narrow quick list.
+**Use when:** scanning, filtering or opening concurrent tasks. The sidebar lists
+no tasks (#546); every task list is a Tasks page.
 
 **Compose:** `TASK_COLUMNS`, `ToolNameCell`, `ModelNameCell`, `Pill`, `StatusDot`,
 `ReferenceChip`, `DiffStatLabel`, `DirectionalUsage` and `PinToggle`. Keep backend
@@ -40,20 +40,20 @@ than inserting desktop cell components. Use `bg-card`, `border-border`,
 `hover:bg-muted`, foreground/muted text and `text-violet` for the pin/unread marks.
 Phone cards use `p-inset` and `gap-list`; the table footer uses `mt-list`.
 See [lists and tables](patterns.md#4-lists-cards-and-tables) and
-[TaskQuickList](components.md#taskquicklist).
+[PinToggle](components.md#pintoggle).
 
 **Real implementations:** [tasks-overview.tsx](../../packages/web/src/routes/tasks-overview.tsx),
 [task-columns.ts](../../packages/web/src/lib/task-columns.ts),
 [task-agent.tsx](../../packages/web/src/components/task-agent.tsx) and
-[task-quick-list.tsx](../../packages/web/src/components/task-quick-list.tsx).
+[pin-toggle.tsx](../../packages/web/src/components/pin-toggle.tsx).
 
 - Desktop header, colgroup and rows consume the same column list. Preserve
   capability-hidden columns and fold controls with `aria-pressed`.
 - Below `md`, the per-project table becomes cards with an always-visible pin.
   Nested links and buttons must act without opening the row.
-- The quick list keeps the title flexible and lets secondary details drop as
-  width shrinks. Dot, reference chip and pin are siblings of its link. Preserve
-  pinned, hovered, focused and no-hover pin visibility.
+- The table row's pin and rename pencil reveal on hover, focus and on a no-hover
+  device; a pinned row keeps its pin lit. Preserve pinned, hovered, focused and
+  no-hover pin visibility.
 - The cross-project table in
   [global-tasks.tsx](../../packages/web/src/routes/global-tasks.tsx) has its own
   columns and hides some at breakpoints; it does not share the phone-card layout
@@ -71,9 +71,9 @@ mutation, empty archive, unread/read, queued/running/terminal rows, unavailable
 reference data and an already-pinned task; explain any inapplicable refusal.
 
 **Design review:** use the [table/pin, phone target and state rows](verification.md#check-matrix).
-Check long titles/models, folded columns, narrow quick-list priorities, nested
-clicks, keyboard access and touch visibility. G-03, G-17, G-21 and G-23 remain
-relevant debt. Historical table and quick-list dimensions have the limits below.
+Check long titles/models, folded columns, nested clicks, keyboard access and
+touch visibility. G-03, G-17, G-21 and G-23 remain relevant debt. Historical
+table dimensions have the limits below.
 
 ## 2. Task thread and composer
 
@@ -264,9 +264,11 @@ then use [verification](verification.md) to measure the actual result.
   44 px requirement at every density.
 - [quality-checks](../../designs/quality-checks/README.md) remains an In review
   proposal with a FAIL recorded in its handoff at this source revision. Its old
-  thread body/header, quick-list heading and table spacing are superseded by #424's
-  rhythm for new cockpit work. The exact remaining differences, including empty
-  boxes, skeletons, toasts and the proposed red nav badge, are recorded in
+  thread body/header and table spacing are superseded by #424's rhythm for new
+  cockpit work; its quick-list heading has no cockpit counterpart since the
+  sidebar task list was removed (#546). The exact remaining differences,
+  including empty boxes, skeletons, toasts and the proposed red nav badge, are
+  recorded in
   [mockup fidelity](known-gaps.md#mockup-fidelity-designsquality-checks-on-the-shared-stylesheet).
   Its state gallery can suggest cases; it does not approve that grammar.
 - [decisions](../../designs/decisions/README.md) is a Draft for a new feature, not a
