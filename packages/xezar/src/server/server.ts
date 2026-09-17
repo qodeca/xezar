@@ -2,6 +2,8 @@ import { expectEventTransition } from '../mcp/event-catalog.ts';
 import { EventCorrectionError } from '../runs/event-corrections.ts';
 import { validateLegacyHistoryResume } from '../runs/event-history.ts';
 import { projectDataDir } from '../project-data-paths.ts';
+import { createUiAuditDoor } from './audit-ui.ts';
+import { automationAudit } from '../automations/audit.ts';
 import { projectKitDir } from '../project-kit-paths.ts';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
@@ -1209,6 +1211,24 @@ export function createApp(deps: ServerDeps) {
     automationStore: deps.automationStore ?? AutomationStore.open(bootDataDir),
     launchKey: ensureLaunchKey(bootDataDir), // bookmarklet auto-start secret (spec 011)
   };
+  // The cockpit door of the audit trail (#306 part 2, `audit-ui.ts`). Its decorator sits in the
+  // chain of every route the shared inventory maps; it records only requests that arrived over a
+  // real connection, so the MCP tools' in-process calls stay recorded once, as `mcp`.
+  const bootAuditScope = async () => ({ projectId: await resolveBootProject(), dataDir: bootDataDir });
+  const ui = createUiAuditDoor({
+    hosted: () => !capabilities().localHandoff,
+    bootScope: bootAuditScope,
+    requestScope: async (c) => {
+      const project = (c as Context<ProjectApiEnv>).get('project') as ProjectContext | undefined;
+      if (!project) return undefined;
+      return project === bootContext ? bootAuditScope() : { projectId: project.id, dataDir: project.dataDir };
+    },
+    projectScope: async (projectId) => {
+      if (projectId === 'default' || projectId === (await resolveBootProject())) return bootAuditScope();
+      const entry = (await listProjects()).find((project) => project.id === projectId);
+      return entry ? { projectId: entry.id, dataDir: projectDataDir(entry.root) } : undefined;
+    },
+  });
   // Non-boot projects build lazily on first scoped request; their managers
   // count against the same workspace semaphore as the boot manager (step 2.5).
   const contexts = deps.contexts ?? new ProjectContexts({
@@ -1784,6 +1804,7 @@ export function createApp(deps: ServerDeps) {
       '/providers/:provider/enabled',
       paramZodValidator(z.object({ provider: providerParamSchema }), { message: 'provider and enabled boolean are required' }),
       jsonZodValidator(providerEnabledSchema, { message: 'provider and enabled boolean are required' }),
+      ui.route('provider.setEnabled', { resource: { kind: 'provider', param: 'provider' } }),
       async (c) => {
         const provider = { data: c.req.valid('param').provider };
         const body = { data: c.req.valid('json') };
@@ -1812,6 +1833,7 @@ export function createApp(deps: ServerDeps) {
       '/providers/:provider/retry',
       paramZodValidator(z.object({ provider: providerParamSchema }), { message: 'provider and current authFailureId are required' }),
       jsonZodValidator(providerRetrySchema, { message: 'provider and current authFailureId are required' }),
+      ui.route('provider.retry', { resource: { kind: 'provider', param: 'provider' } }),
       async (c) => {
         const provider = { data: c.req.valid('param').provider };
         const body = { data: c.req.valid('json') };
@@ -1825,7 +1847,7 @@ export function createApp(deps: ServerDeps) {
       },
     )
 
-    .post('/providers/connect', jsonZodValidator(providerConnectSchema, { message: 'provider must be claude, codex, opencode, or pi' }), async (c) => {
+    .post('/providers/connect', jsonZodValidator(providerConnectSchema, { message: 'provider must be claude, codex, opencode, or pi' }), ui.route('provider.connect'), async (c) => {
       const body = { data: c.req.valid('json') };
 
       const provider = body.data.provider as ProviderId;
@@ -2050,7 +2072,7 @@ export function createApp(deps: ServerDeps) {
       });
     })
 
-    .post('/workspace/agent-profiles', localHandoffRoute, jsonZodValidator(() => createAgentProfileSchema), async (c) => {
+    .post('/workspace/agent-profiles', localHandoffRoute, jsonZodValidator(() => createAgentProfileSchema), ui.route('account.create'), async (c) => {
       if (!capabilities().localHandoff) return c.json(hostedProfileRefusal, 409);
       const { provider, configDir, label } = c.req.valid('json');
       if (!supportsProfiles(provider)) {
@@ -2107,6 +2129,7 @@ export function createApp(deps: ServerDeps) {
       localHandoffRoute,
       paramZodValidator(z.object({ id: z.string() })),
       jsonZodValidator(() => updateAgentProfileSchema),
+      ui.route('account.update', { resource: { kind: 'account', param: 'id' }, fieldNames: true }),
       async (c) => {
         if (!capabilities().localHandoff) return c.json(hostedProfileRefusal, 409);
         const id = c.req.param('id');
@@ -2232,6 +2255,7 @@ export function createApp(deps: ServerDeps) {
       localHandoffRoute,
       paramZodValidator(z.object({ id: z.string() })),
       jsonZodValidator(() => openAgentAccountFileSchema),
+      ui.route('account.openFile', { resource: { kind: 'account', param: 'id' } }),
       async (c) => {
         if (!capabilities().localHandoff) return c.json(hostedProfileRefusal, 409);
         const account = await accountById(c.req.param('id'));
@@ -2284,6 +2308,7 @@ export function createApp(deps: ServerDeps) {
       '/workspace/agent-profiles/selection',
       localHandoffRoute,
       jsonZodValidator(() => selectAgentProfileSchema),
+      ui.route('account.select'),
       async (c) => {
         if (!capabilities().localHandoff) return c.json(hostedProfileRefusal, 409);
         const { projectId, provider, profileId } = c.req.valid('json');
@@ -2338,6 +2363,7 @@ export function createApp(deps: ServerDeps) {
       '/workspace/agent-profiles/:id',
       localHandoffRoute,
       paramZodValidator(z.object({ id: z.string() })),
+      ui.route('account.remove', { resource: { kind: 'account', param: 'id' } }),
       async (c) => {
         if (!capabilities().localHandoff) return c.json(hostedProfileRefusal, 409);
         const id = c.req.param('id');
@@ -2421,14 +2447,14 @@ export function createApp(deps: ServerDeps) {
       return c.json(body);
     })
 
-    .post('/projects', jsonZodValidator(() => registerProjectSchema, { message: 'root must be a non-empty path' }), async (c) => {
+    .post('/projects', jsonZodValidator(() => registerProjectSchema, { message: 'root must be a non-empty path' }), ui.route('project.registry.add', { project: 'registered' }), async (c) => {
       const parsed = { data: c.req.valid('json') };
       const registered = await registerFolder(parsed.data.root, 'local');
       if (registered.status !== 200) return c.json(registered.body, registered.status);
       return c.json(registered.body, 200);
     })
 
-    .delete('/projects/:projectId', async (c) => {
+    .delete('/projects/:projectId', ui.route('project.registry.remove', { resource: { kind: 'project', param: 'projectId' }, project: { param: 'projectId' } }), async (c) => {
       if (capabilities().singleProject) {
         return c.json(singleProjectRefusal('removing projects'), 409);
       }
@@ -2538,7 +2564,7 @@ export function createApp(deps: ServerDeps) {
     // Deliberately NOT the home of the agent-account selection: that lives in
     // `~/.xezar/agent-accounts.json` beside the accounts it names, so a xezar version that has
     // never heard of accounts cannot drop it (see workspace/agent-accounts.ts).
-    .patch('/projects/:projectId', jsonZodValidator(updateProjectInputSchema), async (c) => {
+    .patch('/projects/:projectId', jsonZodValidator(updateProjectInputSchema), ui.route('project.registry.update', { resource: { kind: 'project', param: 'projectId' }, project: { param: 'projectId' }, fieldNames: true }), async (c) => {
       if (capabilities().singleProject) {
         return c.json(singleProjectRefusal('editing projects'), 409);
       }
@@ -2606,7 +2632,7 @@ export function createApp(deps: ServerDeps) {
       return c.json(body);
     })
 
-    .post('/projects/checkout', jsonZodValidator(() => checkoutSchema, { message: 'url must be a GitHub repository' }), async (c) => {
+    .post('/projects/checkout', jsonZodValidator(() => checkoutSchema, { message: 'url must be a GitHub repository' }), ui.route('project.registry.clone', { project: 'registered' }), async (c) => {
       if (capabilities().singleProject) {
         return c.json(singleProjectRefusal('adding projects'), 409);
       }
@@ -2855,7 +2881,7 @@ export function createApp(deps: ServerDeps) {
       return c.json(await skillsUpdateResponse(await skillsUpdate.check(resolved.root, true)));
     })
 
-    .post('/workspace/skills-update/apply', jsonZodValidator(skillsUpdateInputSchema, { message: 'body must contain only projectId' }), async (c) => {
+    .post('/workspace/skills-update/apply', jsonZodValidator(skillsUpdateInputSchema, { message: 'body must contain only projectId' }), ui.route('skills.applyUpdates', { project: { body: 'projectId' } }), async (c) => {
       const parsed = { data: c.req.valid('json') };
       const resolved = await resolveSkillsUpdateRoot(parsed.data.projectId);
       if ('error' in resolved) return c.json({ error: resolved.error }, resolved.status);
@@ -2947,7 +2973,7 @@ export function createApp(deps: ServerDeps) {
   const workspaceConfigRoutes = new Hono<ProjectApiEnv>()
     .get('/workspace/config', async (c) => c.json(workspaceConfigBody(await loadWorkspaceConfig())))
 
-    .put('/workspace/config', jsonZodValidator(() => workspaceConfigUpdateSchema), async (c) => {
+    .put('/workspace/config', jsonZodValidator(() => workspaceConfigUpdateSchema), ui.route('workspace.config.set', { fieldNames: true }), async (c) => {
       const parsed = { data: c.req.valid('json') };
       const {
         browseRoot,
@@ -3066,7 +3092,7 @@ export function createApp(deps: ServerDeps) {
     // chain's type accumulation alone. Method-agnostic here, which the GET does not mind.
     .use('/workspace/ui-state', bodyLimit({ maxSize: UI_STATE_BODY_LIMIT }))
 
-    .put('/workspace/ui-state', jsonZodValidator(setWorkspaceUiStateInputSchema), async (c) => {
+    .put('/workspace/ui-state', jsonZodValidator(setWorkspaceUiStateInputSchema), ui.route('workspace.uiState.set', { fieldNames: true }), async (c) => {
       const parsed = { data: c.req.valid('json') };
       try {
         return c.json(
@@ -3189,7 +3215,7 @@ export function createApp(deps: ServerDeps) {
     // Refresh team skills (spec 005): clone/fetch the configured skills repos,
     // then return the merged catalog. Degrades quietly — offline just means the
     // team entries stay as they were (or absent).
-    .post('/skills/refresh', async (c) => {
+    .post('/skills/refresh', ui.route('skills.refresh'), async (c) => {
       const { root: repoRoot } = c.get('project');
       await refreshTeamSkills(repoRoot);
       return c.json(await discoverSkills(repoRoot));
@@ -3202,7 +3228,7 @@ export function createApp(deps: ServerDeps) {
     // On `use`, not inline on the route — see the workspace ui-state PUT above.
     .use('/ui-state', bodyLimit({ maxSize: UI_STATE_BODY_LIMIT }))
 
-    .put('/ui-state', jsonZodValidator(uiStateBody), async (c) => {
+    .put('/ui-state', jsonZodValidator(uiStateBody), ui.route('project.uiState.set', { fieldNames: true }), async (c) => {
       const { root: repoRoot, dataDir } = c.get('project');
       // `.passthrough()` keeps unknown prefs (BACKWARD_COMPATIBILITY §3), but a
       // single request may not stuff an unbounded key set (#429) — the shared
@@ -3228,7 +3254,7 @@ export function createApp(deps: ServerDeps) {
     // Save an approved plan as a reusable chain (spec 008): YAML in
     // `.xezar/workflows/<slug>.yaml` — from then on it's in the dropdown
     // like any other workflow.
-    .post('/workflows', jsonZodValidator(saveWorkflowSchema), async (c) => {
+    .post('/workflows', jsonZodValidator(saveWorkflowSchema), ui.route('workflow.save'), async (c) => {
       const { root: repoRoot } = c.get('project');
       const parsed = { data: c.req.valid('json') };
       const steps = parsed.data.steps ?? skillsToSteps(parsed.data.skills ?? []);
@@ -3266,7 +3292,7 @@ export function createApp(deps: ServerDeps) {
 
     // Delete a saved workflow (spec 012 follow-up): file workflows only —
     // built-ins have no file and always come back.
-    .delete('/workflows/:name', async (c) => {
+    .delete('/workflows/:name', ui.route('workflow.delete', { resource: { kind: 'workflow', param: 'name' } }), async (c) => {
       const { root: repoRoot } = c.get('project');
       const name = c.req.param('name');
       const { workflows } = await loadWorkflows(repoRoot);
@@ -3415,7 +3441,7 @@ export function createApp(deps: ServerDeps) {
       });
     })
 
-    .post('/automations', jsonZodValidator(() => automationCreateSchema), async (c) => {
+    .post('/automations', jsonZodValidator(() => automationCreateSchema), ui.route('automation.create'), async (c) => {
       const { automationStore } = c.get('project');
       const parsed = { data: c.req.valid('json') };
       const promptIssue = validateAutomationPrompt(parsed.data.task.prompt);
@@ -3453,7 +3479,7 @@ export function createApp(deps: ServerDeps) {
       });
     })
 
-    .put('/automations/:id', jsonZodValidator(() => automationUpdateSchema), async (c) => {
+    .put('/automations/:id', jsonZodValidator(() => automationUpdateSchema), ui.route('automation.update', { resource: { kind: 'automation', param: 'id' }, fieldNames: true }), async (c) => {
       const { automationStore } = c.get('project');
       const parsed = { data: c.req.valid('json') };
       const promptIssue = validateAutomationPrompt(parsed.data.task.prompt);
@@ -3471,7 +3497,7 @@ export function createApp(deps: ServerDeps) {
       }
     })
 
-    .delete('/automations/:id', (c) => {
+    .delete('/automations/:id', ui.route('automation.delete', { resource: { kind: 'automation', param: 'id' } }), (c) => {
       const id = c.req.param('id');
       const store = c.get('project').automationStore;
       const current = store.get(id);
@@ -3481,7 +3507,7 @@ export function createApp(deps: ServerDeps) {
       return c.body(null, 204);
     })
 
-    .post('/automations/:id/enable', (c) => {
+    .post('/automations/:id/enable', ui.route('automation.enable', { resource: { kind: 'automation', param: 'id' } }), (c) => {
       const store = c.get('project').automationStore;
       const current = store.get(c.req.param('id'));
       if (!current) return c.json({ error: 'not found' }, 404);
@@ -3500,7 +3526,7 @@ export function createApp(deps: ServerDeps) {
       return c.json({ automation });
     })
 
-    .post('/automations/:id/pause', (c) => {
+    .post('/automations/:id/pause', ui.route('automation.pause', { resource: { kind: 'automation', param: 'id' } }), (c) => {
       const store = c.get('project').automationStore;
       const current = store.get(c.req.param('id'));
       if (!current) return c.json({ error: 'not found' }, 404);
@@ -3513,7 +3539,7 @@ export function createApp(deps: ServerDeps) {
     // The body is validated as MIDDLEWARE, which is what puts it in the route type — and moves
     // the 400 ahead of this route's 404: `POST /automations/<unknown>/check` with a malformed
     // body now answers 400 rather than 404. Nothing else about either answer changed.
-    .post('/automations/:id/check', jsonZodValidator(() => automationCheckRequestSchema), async (c) => {
+    .post('/automations/:id/check', jsonZodValidator(() => automationCheckRequestSchema), ui.route('automation.checkExecute', { resource: { kind: 'automation', param: 'id' }, select: (body) => (body?.mode === 'execute' ? 'automation.checkExecute' : undefined) }), async (c) => {
       const project = c.get('project');
       const store = project.automationStore;
       const automation = store.get(c.req.param('id'));
@@ -3541,6 +3567,9 @@ export function createApp(deps: ServerDeps) {
               ? (definition, candidate, receiptId) => launchAutomationRun({ root: project.root, manager: project.manager, store: project.store, definition, candidate, receiptId })
               : undefined,
             onChange: (automationId, revision) => emitAutomationChange(project, automationId, revision),
+            ...(parsed.data.mode === 'execute'
+              ? { audit: automationAudit(project === bootContext ? await bootAuditScope() : { projectId: project.id, dataDir: project.dataDir }) }
+              : {}),
           });
           const result = await scheduler.check(automation, parsed.data.mode);
           Object.assign(check, { status: 'complete', completedAt: new Date().toISOString(), matches: result.candidates.length, truncated: result.truncated });
@@ -3555,7 +3584,7 @@ export function createApp(deps: ServerDeps) {
       return c.json({ records: c.get('project').automationStore.logs(c.req.valid('query')) });
     })
 
-    .post('/automation-log/:receiptId/retry', async (c) => {
+    .post('/automation-log/:receiptId/retry', ui.route('automation.receipt.retry', { resource: { kind: 'receipt', param: 'receiptId' } }), async (c) => {
       const project = c.get('project');
       const store = project.automationStore;
       const receipt = [...store.latestReceipts().values()].find((row) => row.receiptId === c.req.param('receiptId'));
@@ -3642,13 +3671,13 @@ export function createApp(deps: ServerDeps) {
 
     // Registered before the `/:id/...` routes so "archive-finished" and "read-all"
     // never match as a run id.
-    .post('/runs/archive-finished', (c) => c.json({ archived: c.get('project').store.archiveFinished() }))
+    .post('/runs/archive-finished', ui.route('run.archiveFinished'), (c) => c.json({ archived: c.get('project').store.archiveFinished() }))
 
     // The read-receipt sweep (#unread-done-items) — the mark-read twin of the archive
     // sweep above, and under the same registration-order guard.
-    .post('/runs/read-all', (c) => c.json({ read: c.get('project').store.markAllRead() }))
+    .post('/runs/read-all', ui.route('run.markAllRead'), (c) => c.json({ read: c.get('project').store.markAllRead() }))
 
-    .post('/runs/:id/archive', jsonZodValidator(archiveRunInputSchema, { absent: ({}) }), async (c) => {
+    .post('/runs/:id/archive', jsonZodValidator(archiveRunInputSchema, { absent: ({}) }), ui.route(['run.archive', 'run.restore'], { resource: { kind: 'run', param: 'id' }, select: (body) => (body?.archived === false ? 'run.restore' : 'run.archive') }), async (c) => {
       const { store } = c.get('project');
       const id = c.req.param('id');
       // An empty/absent body archives (the common case); a malformed body degrades
@@ -3670,7 +3699,7 @@ export function createApp(deps: ServerDeps) {
     // twin in every respect: an absent body pins (the common case), the answer is the updated
     // record, and the change rides the existing `run` SSE because `setPinned` touches. No new
     // event and no new response shape.
-    .post('/runs/:id/pin', jsonZodValidator(pinRunInputSchema, { absent: ({}) }), (c) => {
+    .post('/runs/:id/pin', jsonZodValidator(pinRunInputSchema, { absent: ({}) }), ui.route(['run.pin', 'run.unpin'], { resource: { kind: 'run', param: 'id' }, select: (body) => (body?.pinned === false ? 'run.unpin' : 'run.pin') }), (c) => {
       const { store } = c.get('project');
       const id = c.req.param('id');
       const { pinned, expectedVersion } = c.req.valid('json');
@@ -3686,7 +3715,7 @@ export function createApp(deps: ServerDeps) {
     // The per-task off switch for that resume (the workspace setting is Settings → Resources).
     // Idempotent: a run with nothing pending answers 200 too, because "this task will not
     // resume itself" is equally true either way.
-    .delete('/runs/:id/auto-resume', optionalJsonZodValidator(runVersionGuardInputSchema, { absent: ({}) }), (c) => {
+    .delete('/runs/:id/auto-resume', optionalJsonZodValidator(runVersionGuardInputSchema, { absent: ({}) }), ui.route('run.autoResume.cancel', { resource: { kind: 'run', param: 'id' } }), (c) => {
       const { store, manager } = c.get('project');
       const id = c.req.param('id');
       if (!store.getRun(id)) return c.json({ error: 'not found' }, 404);
@@ -3697,14 +3726,14 @@ export function createApp(deps: ServerDeps) {
       return c.json({ cancelled: true as const });
     })
 
-    .post('/runs/:id/read', (c) => {
+    .post('/runs/:id/read', ui.route('run.markRead', { resource: { kind: 'run', param: 'id' } }), (c) => {
       // No body: opening a thread marks it read, full stop. Stamps `seenAt = now` and
       // returns the updated record (which also rides the `run` SSE via `touch`).
       const run = c.get('project').store.setRead(c.req.param('id'));
       return run ? c.json(run) : c.json({ error: 'not found' }, 404);
     })
 
-    .post('/runs/:id/unread', (c) => {
+    .post('/runs/:id/unread', ui.route('run.markUnread', { resource: { kind: 'run', param: 'id' } }), (c) => {
       // The mark-unread twin (#775) — bodyless like its read counterpart: clearing the
       // receipt is the whole action, so there is nothing to say about it. Sits under
       // `/runs/:id/`, so the `read-all` registration-order caveat above does not apply.
@@ -3712,7 +3741,7 @@ export function createApp(deps: ServerDeps) {
       return run ? c.json(run) : c.json({ error: 'not found' }, 404);
     })
 
-    .post('/runs', jsonZodValidator(startRunSchema), async (c) => {
+    .post('/runs', jsonZodValidator(startRunSchema), ui.route('run.start'), async (c) => {
       const { root: repoRoot, dataDir, manager, store } = c.get('project');
       const parsed = { data: c.req.valid('json') };
       if (agentModelsLocked(repoRoot) && parsed.data.model?.trim()) {
@@ -3883,7 +3912,7 @@ export function createApp(deps: ServerDeps) {
     // actually displays). The auto-summarizer only ever fills an *unset*
     // titleSummary (RunManager.recordTurnEnd), so an edit wins over any past or
     // future auto-summary. Answers the updated record.
-    .patch('/runs/:id', jsonZodValidator(patchRunInputSchema), async (c) => {
+    .patch('/runs/:id', jsonZodValidator(patchRunInputSchema), ui.route('run.update', { resource: { kind: 'run', param: 'id' }, fieldNames: true }), async (c) => {
       const { store, manager } = c.get('project');
       const id = c.req.param('id');
       if (!store.getRun(id)) return c.json({ error: 'not found' }, 404);
@@ -3921,7 +3950,7 @@ export function createApp(deps: ServerDeps) {
       return c.json(store.getRun(id));
     })
 
-    .post('/runs/:id/cancel', optionalJsonZodValidator(runVersionGuardInputSchema, { absent: ({}) }), (c) => {
+    .post('/runs/:id/cancel', optionalJsonZodValidator(runVersionGuardInputSchema, { absent: ({}) }), ui.route('run.cancel', { resource: { kind: 'run', param: 'id' } }), (c) => {
       const { store, manager } = c.get('project');
       const id = c.req.param('id');
       if (!store.getRun(id)) return c.json({ error: 'not found' }, 404);
@@ -3935,7 +3964,7 @@ export function createApp(deps: ServerDeps) {
 
     // Live-session participation (spec 002): deliver a user message (text +
     // pasted screenshots) into the run's open claude session.
-    .post('/runs/:id/messages', jsonZodValidator(messageInputSchema), async (c) => {
+    .post('/runs/:id/messages', jsonZodValidator(messageInputSchema), ui.route('run.message', { resource: { kind: 'run', param: 'id' } }), async (c) => {
       const { store, manager } = c.get('project');
       const id = c.req.param('id');
       const run = store.getRun(id);
@@ -3999,7 +4028,7 @@ export function createApp(deps: ServerDeps) {
 
     // Edit / remove a stacked message (#472). Registered before any conflicting
     // `/:id` route so `queued-messages` never matches as a run id.
-    .patch('/runs/:id/queued-messages/:msgId', jsonZodValidator(queuedMessagePatchInputSchema), async (c) => {
+    .patch('/runs/:id/queued-messages/:msgId', jsonZodValidator(queuedMessagePatchInputSchema), ui.route('run.queuedMessage.edit', { resource: { kind: 'run', param: 'id' } }), async (c) => {
       const { store, manager } = c.get('project');
       const id = c.req.param('id');
       const run = store.getRun(id);
@@ -4043,7 +4072,7 @@ export function createApp(deps: ServerDeps) {
       return c.json({ message });
     })
 
-    .delete('/runs/:id/queued-messages/:msgId', optionalJsonZodValidator(runVersionGuardInputSchema, { absent: ({}) }), (c) => {
+    .delete('/runs/:id/queued-messages/:msgId', optionalJsonZodValidator(runVersionGuardInputSchema, { absent: ({}) }), ui.route('run.queuedMessage.remove', { resource: { kind: 'run', param: 'id' } }), (c) => {
       const { store, manager } = c.get('project');
       const id = c.req.param('id');
       const run = store.getRun(id);
@@ -4060,7 +4089,7 @@ export function createApp(deps: ServerDeps) {
     })
 
     // "Finish": gracefully close a waiting session — the run completes as done.
-    .post('/runs/:id/finish', optionalJsonZodValidator(runVersionGuardInputSchema, { absent: ({}) }), (c) => {
+    .post('/runs/:id/finish', optionalJsonZodValidator(runVersionGuardInputSchema, { absent: ({}) }), ui.route('run.finish', { resource: { kind: 'run', param: 'id' } }), (c) => {
       const { store, manager } = c.get('project');
       const id = c.req.param('id');
       if (!store.getRun(id)) return c.json({ error: 'not found' }, 404);
@@ -4073,7 +4102,7 @@ export function createApp(deps: ServerDeps) {
     })
 
     // "Continue" (spec 003): reopen a finished run's session in-process.
-    .post('/runs/:id/continue', jsonZodValidator(continueRunInputSchema, { absent: ({}) }), async (c) => {
+    .post('/runs/:id/continue', jsonZodValidator(continueRunInputSchema, { absent: ({}) }), ui.route('run.continue', { resource: { kind: 'run', param: 'id' } }), async (c) => {
       const { root: repoRoot, store, manager } = c.get('project');
       const id = c.req.param('id');
       const run = store.getRun(id);
@@ -4112,7 +4141,7 @@ export function createApp(deps: ServerDeps) {
 
     // "Open in terminal" (spec 003): hand the session off to a real terminal —
     // in the task's worktree when it still exists (spec 006).
-    .post('/runs/:id/open-in-cli', localHandoffRoute, async (c) => {
+    .post('/runs/:id/open-in-cli', localHandoffRoute, ui.route('run.openInTerminal', { resource: { kind: 'run', param: 'id' } }), async (c) => {
       const { root: repoRoot, store } = c.get('project');
       const id = c.req.param('id');
       const run = store.getRun(id);
@@ -4154,7 +4183,7 @@ export function createApp(deps: ServerDeps) {
     })
 
     // Open a run's worktree (or the repo root) in the chosen local app.
-    .post('/runs/:id/open-in', localHandoffRoute, jsonZodValidator(openInSchema), async (c) => {
+    .post('/runs/:id/open-in', localHandoffRoute, jsonZodValidator(openInSchema), ui.route('run.openInApp', { resource: { kind: 'run', param: 'id' } }), async (c) => {
       const { root: repoRoot, store } = c.get('project');
       const id = c.req.param('id');
       const run = store.getRun(id);
@@ -4434,7 +4463,7 @@ export function createApp(deps: ServerDeps) {
       });
     })
 
-    .post('/runs/:id/git/commit', jsonZodValidator(gitCommitInputSchema), async (c) => {
+    .post('/runs/:id/git/commit', jsonZodValidator(gitCommitInputSchema), ui.route('run.git.commit', { resource: { kind: 'run', param: 'id' } }), async (c) => {
       const { store } = c.get('project');
       const run = await ownedRun(c.get('project'), c.req.param('id'));
       if (!run) return store.getRun(c.req.param('id')) ? c.json({ error: FOREIGN_WORKTREE }, 409) : c.json({ error: 'not found' }, 404);
@@ -4449,7 +4478,7 @@ export function createApp(deps: ServerDeps) {
       return c.json({ committed: true, sha: result.sha });
     })
 
-    .post('/runs/:id/git/push', optionalJsonZodValidator(runVersionGuardInputSchema, { absent: ({}) }), async (c) => {
+    .post('/runs/:id/git/push', optionalJsonZodValidator(runVersionGuardInputSchema, { absent: ({}) }), ui.route('run.git.push', { resource: { kind: 'run', param: 'id' } }), async (c) => {
       const { root: repoRoot, store } = c.get('project');
       const run = await ownedRun(c.get('project'), c.req.param('id'));
       if (!run) return store.getRun(c.req.param('id')) ? c.json({ error: FOREIGN_WORKTREE }, 409) : c.json({ error: 'not found' }, 404);
@@ -4478,7 +4507,7 @@ export function createApp(deps: ServerDeps) {
     // `gh pr create --draft`; on success the run completes as done with the PR
     // badge. Failures come back as 409 with a `manual` merge command the GUI
     // shows next to the toast. XEZ_DRY_RUN=1 fakes the URL (no push, no gh).
-    .post('/runs/:id/pr', optionalJsonZodValidator(runVersionGuardInputSchema, { absent: ({}) }), async (c) => {
+    .post('/runs/:id/pr', optionalJsonZodValidator(runVersionGuardInputSchema, { absent: ({}) }), ui.route('run.pr.create', { resource: { kind: 'run', param: 'id' } }), async (c) => {
       const { root: repoRoot, dataDir, store, manager } = c.get('project');
       const id = c.req.param('id');
       const run = await ownedRun(c.get('project'), id);
@@ -4522,7 +4551,7 @@ export function createApp(deps: ServerDeps) {
 
     // Archived tasks keep their worktree for inspection; this is the explicit
     // "🧹 Remove worktree" cleanup (spec 006).
-    .post('/runs/:id/remove-worktree', optionalJsonZodValidator(runVersionGuardInputSchema, { absent: ({}) }), async (c) => {
+    .post('/runs/:id/remove-worktree', optionalJsonZodValidator(runVersionGuardInputSchema, { absent: ({}) }), ui.route('run.worktree.remove', { resource: { kind: 'run', param: 'id' } }), async (c) => {
       const { root: repoRoot, store, manager } = c.get('project');
       const id = c.req.param('id');
       const run = await ownedRun(c.get('project'), id);
@@ -4536,7 +4565,7 @@ export function createApp(deps: ServerDeps) {
       return c.json({ removed: true });
     })
 
-    .delete('/runs/:id', optionalJsonZodValidator(runVersionGuardInputSchema, { absent: ({}) }), async (c) => {
+    .delete('/runs/:id', optionalJsonZodValidator(runVersionGuardInputSchema, { absent: ({}) }), ui.route('run.delete', { resource: { kind: 'run', param: 'id' } }), async (c) => {
       const { root: repoRoot, store, manager } = c.get('project');
       const id = c.req.param('id');
       if (manager.isActive(id)) return c.json({ error: 'run is active — cancel it first' }, 409);
@@ -4595,7 +4624,7 @@ export function createApp(deps: ServerDeps) {
     // "Pick this one": the winner rests at `review` (spec 009 takes it from
     // there — send back / draft PR / finish); the losers are cancelled if
     // alive, archived, and their worktrees + branches removed.
-    .post('/groups/:groupId/pick', jsonZodValidator(pickVariantInputSchema), async (c) => {
+    .post('/groups/:groupId/pick', jsonZodValidator(pickVariantInputSchema), ui.route('group.pickVariant', { resource: { kind: 'group', param: 'groupId' } }), async (c) => {
       const { root: repoRoot, dataDir, store, manager } = c.get('project');
       const runs = await ownedGroupRuns(c.get('project'), c.req.param('groupId'));
       if (!runs) return c.json({ error: 'not found' }, 404);
@@ -4659,7 +4688,7 @@ export function createApp(deps: ServerDeps) {
     // above opens a task worktree and needs a run to name one; this is the repo the cockpit is
     // scoped to, which the scope middleware has already resolved — so no path is accepted from
     // the client and there is nothing to contain.
-    .post('/open-in', localHandoffRoute, jsonZodValidator(openProjectInSchema), async (c) => {
+    .post('/open-in', localHandoffRoute, jsonZodValidator(openProjectInSchema), ui.route('project.openInApp'), async (c) => {
       const { root } = c.get('project');
       if (!capabilities().localHandoff) {
         return c.json(
@@ -4757,7 +4786,7 @@ export function createApp(deps: ServerDeps) {
       return c.json({ worktrees, totalBytes, keep });
     })
 
-    .post('/worktrees/reclaim', jsonZodValidator(() => reclaimBodySchema, { absent: ({}), message: 'invalid body' }), async (c) => {
+    .post('/worktrees/reclaim', jsonZodValidator(() => reclaimBodySchema, { absent: ({}), message: 'invalid body' }), ui.route('worktree.reclaim'), async (c) => {
       const { root: repoRoot, store } = c.get('project');
       // The body is validated (an empty or `{}` one is accepted) but carries nothing this
       // handler reads; retention is best-effort, so 200 always.
@@ -4822,6 +4851,7 @@ export function createApp(deps: ServerDeps) {
     .post(
       '/onboarding/offered',
       jsonZodValidator(() => onboardingOfferedInputSchema),
+      ui.route('onboarding.dismissOffer'),
       async (c) => {
         const project = c.get('project');
         const body = c.req.valid('json');
@@ -4863,7 +4893,7 @@ export function createApp(deps: ServerDeps) {
     .get('/todos', async (c) => c.json(capabilities().followups ? await readTodos(c.get('project').dataDir) : []))
 
     // Check off = delete the entry.
-    .delete('/todos/:id', async (c) => {
+    .delete('/todos/:id', ui.route('inbox.remove', { resource: { kind: 'inbox', param: 'id' } }), async (c) => {
       const { dataDir } = c.get('project');
       if (!capabilities().followups) return c.json({ error: FOLLOWUPS_OFF }, 409);
       const removed = await removeTodo(dataDir, c.req.param('id'));
@@ -4887,6 +4917,7 @@ export function createApp(deps: ServerDeps) {
       '/todos/:id/start',
       todoMustExist,
       jsonZodValidator(startTodoSchema, { absent: undefined, malformed: null }),
+      ui.route('run.startFromInbox', { resource: { kind: 'inbox', param: 'id' } }),
       async (c) => {
         const { root: repoRoot, dataDir, manager } = c.get('project');
         const id = c.req.param('id');
@@ -5317,6 +5348,7 @@ export function createApp(deps: ServerDeps) {
       '/github/prs/:number/merge',
       paramZodValidator(mergeNumberParams, { message: 'invalid pull request number' }),
       jsonZodValidator(() => mergeBodySchema, { message: 'invalid merge request' }),
+      ui.route('pr.merge', { resource: { kind: 'pr', param: 'number' } }),
       async (c) => {
         const { root: repoRoot } = c.get('project');
         const parsedNumber = { data: c.req.valid('param') };
@@ -5349,6 +5381,7 @@ export function createApp(deps: ServerDeps) {
       '/github/prs/:number/ready',
       paramZodValidator(mergeNumberParams, { message: 'invalid pull request number' }),
       jsonZodValidator(githubPrReadyInputSchema, { message: 'invalid ready request' }),
+      ui.route('pr.ready', { resource: { kind: 'pr', param: 'number' } }),
       async (c) => {
         const { root: repoRoot } = c.get('project');
         const { number } = c.req.valid('param');
@@ -5488,7 +5521,7 @@ export function createApp(deps: ServerDeps) {
       return c.json(result.changes);
     })
 
-    .post('/repo/branch', jsonZodValidator(() => repoBranchSchema), async (c) => {
+    .post('/repo/branch', jsonZodValidator(() => repoBranchSchema), ui.route('repo.branch'), async (c) => {
       const { root: repoRoot } = c.get('project');
       const info = await getRepoInfo(repoRoot);
       if (!info) return c.json({ error: 'not a git repository' }, 409);
@@ -5540,7 +5573,7 @@ export function createApp(deps: ServerDeps) {
       return c.json(await configAnswer(repoRoot, await loadConfig(repoRoot)));
     })
 
-    .put('/config', jsonZodValidator(() => setConfigSchema), async (c) => {
+    .put('/config', jsonZodValidator(() => setConfigSchema), ui.route('project.config.set', { fieldNames: true }), async (c) => {
       const { root: repoRoot } = c.get('project');
       const dataDir = projectKitDir(repoRoot);
       const parsed = { data: c.req.valid('json') };
@@ -5724,7 +5757,7 @@ export function createApp(deps: ServerDeps) {
       return c.json(read);
     })
 
-    .put('/agent-config/:id', localHandoffRoute, jsonZodValidator(setAgentConfigSchema), async (c) => {
+    .put('/agent-config/:id', localHandoffRoute, jsonZodValidator(setAgentConfigSchema), ui.route('agentConfig.write', { resource: { kind: 'agent-config', param: 'id' } }), async (c) => {
       // Config files may define hooks and MCP commands, so writes remain a
       // local-machine capability and are re-gated on every request.
       if (!capabilities().localHandoff) {
@@ -5786,7 +5819,7 @@ export function createApp(deps: ServerDeps) {
     };
   const mcpLeaderRoutes = new Hono<ProjectApiEnv>()
     .get('/mcp/leader', (c) => c.json(mcpLeaderStatus(c.get('project').id)))
-    .post('/mcp/leader', localHandoffRoute, jsonZodValidator(() => mcpLeaderActionInputSchema), async (c) => {
+    .post('/mcp/leader', localHandoffRoute, jsonZodValidator(() => mcpLeaderActionInputSchema), ui.route(['leader.attach', 'leader.stop'], { select: (body) => (body?.action === 'stop' ? 'leader.stop' : body?.action === 'attach' ? 'leader.attach' : undefined) }), async (c) => {
       if (!capabilities().localHandoff) {
         return c.json({ error: 'a leader session is attached from the machine that owns the checkout (this cockpit runs in hosted mode)' }, 409);
       }
@@ -6146,6 +6179,7 @@ export function startServer(deps: ServerDeps, port: number): ServerType {
         poller: new GithubPoller(),
         onChange: (automationId, revision) =>
           workspaceEvents.emit('automation-change', { project: projectId, automationId, revision }),
+        audit: automationAudit({ projectId, dataDir: projectDataDir(project.root) }),
         launch: async (definition, candidate, receiptId) => {
           const bootId = deps.bootProjectId ?? 'default';
           const context = projectId === bootId

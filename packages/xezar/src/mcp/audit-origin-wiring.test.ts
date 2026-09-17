@@ -8,16 +8,18 @@ import { auditOriginSchema } from '@qodeca/xezar-contract';
 /**
  * #266 — WHICH AUDIT ORIGINS PRODUCTION ACTUALLY WRITES.
  *
- * `auditOriginSchema` offers four members and production opens one channel. That is a decided state
- * for 0.14.0 (D-06 § 10.6), not a defect — the defect was that four documents could quietly stop
- * describing it. Four surfaces say "only `mcp`": the schema's own comment
- * (`packages/contract/src/audit.ts`), the module comment of `audit-trail.ts`, and two sections
- * of `docs/features/mcp-server/mcp-api.md` ("The two meanings of `origin`", Findings 3). This file
- * is what makes those four sentences a checked claim instead of a remembered one.
+ * `auditOriginSchema` offers four members, and since #306 part 2 production opens one channel per
+ * member, each in exactly one file (spec `docs/features/mcp-server/audit-trail-origins-2026-09-17.md`
+ * § 4): `mcp` in `mcp/index.ts`, `ui` in `server/audit-ui.ts`, `automation` in
+ * `automations/audit.ts` and `cli` in `cli-audit.ts`. Until then it opened only `mcp`, and the
+ * defect this file closed was that the documents describing that could quietly stop being true.
+ * The surfaces that name the doors — the schema's own comment (`packages/contract/src/audit.ts`),
+ * the module comment of `audit-trail.ts`, and `docs/features/mcp-server/mcp-api.md` — are what this
+ * file keeps a checked claim instead of a remembered one.
  *
  * TWO NETS, BECAUSE ONE SPELLING IS NOT THE CLAIM. The claim is "production opens exactly one
- * channel and its origin is `mcp`", and a second door does not have to be spelled the way the first
- * one is.
+ * channel per origin, in the file named for it", and a fifth door does not have to be spelled the
+ * way the first four are.
  *
  *   Net 1 — WHO NAMES THE TYPES. A new origin can only be created by `trail.channel(origin)` or by
  *   `new AuditChannel(trail, origin)`. Either way the file must name `AuditTrail` or `AuditChannel`,
@@ -89,13 +91,24 @@ const AUDIT_TYPES = /\b(AuditTrail|AuditChannel)\b/;
 /**
  * Where the audit types legitimately appear in production source, and why.
  *
- * `audit-trail.ts` declares both classes; `mcp/index.ts` is the one door. Any third file here is
- * either a new door or a new reader, and both want the four surfaces revisited.
+ * `audit-trail.ts` declares both classes; the other four files are the four doors. Any further file
+ * here is either a new door or a new reader, and both want the surfaces above revisited.
  */
-const EXPECTED_TYPE_USERS = ['packages/xezar/src/mcp/audit-trail.ts', 'packages/xezar/src/mcp/index.ts'];
+const EXPECTED_TYPE_USERS = [
+  'packages/xezar/src/automations/audit.ts',
+  'packages/xezar/src/cli-audit.ts',
+  'packages/xezar/src/mcp/audit-trail.ts',
+  'packages/xezar/src/mcp/index.ts',
+  'packages/xezar/src/server/audit-ui.ts',
+];
 
-/** The one production door, and the origin it stamps. */
-const EXPECTED_DOORS = [{ file: 'packages/xezar/src/mcp/index.ts', origin: 'mcp' }];
+/** The four production doors, one per origin, and the origin each stamps. */
+const EXPECTED_DOORS = [
+  { file: 'packages/xezar/src/automations/audit.ts', origin: 'automation' },
+  { file: 'packages/xezar/src/cli-audit.ts', origin: 'cli' },
+  { file: 'packages/xezar/src/mcp/index.ts', origin: 'mcp' },
+  { file: 'packages/xezar/src/server/audit-ui.ts', origin: 'ui' },
+];
 
 /**
  * `new AuditChannel(…)` is the constructor `channel()` itself calls. Exactly one production
@@ -108,11 +121,11 @@ const EXPECTED_DIRECT_CONSTRUCTIONS = [
 ];
 
 const FIX_HINT =
-  'The set of audit doors changed. Update every surface that says the trail is MCP-only: ' +
+  'The set of audit doors changed. Update every surface that names the doors: ' +
   'auditOriginSchema (packages/contract/src/audit.ts), the module comment of ' +
-  'packages/xezar/src/mcp/audit-trail.ts, and mcp-api.md ("The two meanings of `origin`" and ' +
-  'Findings 3) — then D-06 § 10.6 and #364. If this fired for an unrelated `.channel(` on some ' +
-  'other object, say so here rather than widening the pattern.';
+  'packages/xezar/src/mcp/audit-trail.ts, and mcp-api.md ("The two meanings of `origin`") — ' +
+  'then D-06 § 10.6 and spec audit-trail-origins § 4. If this fired for an unrelated `.channel(` on ' +
+  'some other object, say so here rather than widening the pattern.';
 
 /** A `/` starts a regex literal unless the previous token could have ended an expression. */
 const KEYWORDS_BEFORE_REGEX = new Set([
@@ -389,11 +402,11 @@ describe('audit origins that production actually writes (#266)', () => {
     expect(scan.doors).toContainEqual({ file: 'packages/xezar/src/mcp/index.ts', origin: 'mcp' });
   });
 
-  it('net 1 — only the definition and the one door name AuditTrail or AuditChannel', () => {
+  it('net 1 — only the definition and the four doors name AuditTrail or AuditChannel', () => {
     expect(scan.typeUsers, FIX_HINT).toEqual(EXPECTED_TYPE_USERS);
   });
 
-  it('net 2 — writes `mcp` and nothing else; `ui`, `automation` and `cli` stay reserved', () => {
+  it('net 2 — each origin is stamped by exactly one production door (#306 part 2)', () => {
     expect(scan.doors, FIX_HINT).toEqual(EXPECTED_DOORS);
   });
 
