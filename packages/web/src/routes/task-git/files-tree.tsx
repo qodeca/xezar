@@ -125,12 +125,14 @@ function DirNode({
         data-state={open ? 'open' : 'closed'}
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
-        className="flex w-full min-w-0 items-center gap-1.5 rounded-sm px-1.5 py-1 text-left text-muted-foreground hover:bg-muted hover:text-foreground"
+        // `min-h-tap … md:min-h-0`: on a phone this tree is the only way to pick a file, so every
+        // row is a 44 px target at every density (#453 Q69).
+        className="flex min-h-tap w-full min-w-0 items-center gap-1.5 rounded-sm px-1.5 py-1 text-left text-muted-foreground hover:bg-muted hover:text-foreground md:min-h-0"
         style={{ paddingLeft: `${6 + depth * 14}px` }}
       >
         <ChevronRightIcon
           aria-hidden="true"
-          className={cn('size-3.5 shrink-0 transition-transform', open && 'rotate-90')}
+          className={cn('size-3.5 shrink-0 motion-safe:transition-transform', open && 'rotate-90')}
         />
         <FolderIcon aria-hidden="true" className="size-3.5 shrink-0" />
         <span className="min-w-0 truncate font-medium">{name}</span>
@@ -170,7 +172,7 @@ function FileNode({
         aria-current={active ? 'true' : undefined}
         onClick={() => onSelect(path)}
         className={cn(
-          'flex w-full min-w-0 items-center gap-1.5 rounded-sm px-1.5 py-1 text-left hover:bg-muted',
+          'flex min-h-tap w-full min-w-0 items-center gap-1.5 rounded-sm px-1.5 py-1 text-left hover:bg-muted md:min-h-0',
           active ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground hover:text-foreground',
         )}
         style={{ paddingLeft: `${24 + depth * 14}px` }}

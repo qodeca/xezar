@@ -43,7 +43,7 @@ function CommitsView({ run }: { run: ApiRun }) {
       {sha ? (
         <CommitDiffView runId={run.id} sha={sha} />
       ) : commits.isPending ? (
-        <p data-slot="commits-loading" className="px-4 py-6 text-center text-xs text-soft-foreground md:px-6">
+        <p data-slot="commits-loading" className="px-4 py-6 text-center text-xs text-soft-foreground md:px-section">
           Loading commits…
         </p>
       ) : commits.isError ? (
@@ -64,7 +64,7 @@ function CommitsView({ run }: { run: ApiRun }) {
           tone="neutral"
           heading="h2"
           title="No commits yet"
-          subtitle="This task hasn't committed anything on its branch. Autosave commits and any the agent makes appear here."
+          subtitle="This task hasn’t committed anything on its branch. Autosave commits and any the agent makes appear here."
         />
       ) : (
         <CommitList
@@ -93,7 +93,7 @@ function CommitDiffView({ runId, sha }: { runId: string; sha: string }) {
 
   return (
     <section data-slot="task-commit" data-sha={sha} className="mx-auto flex min-h-0 w-full max-w-[var(--measure)] flex-1 flex-col">
-      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 border-b border-border px-4 py-2 md:px-6">
+      <div className="flex flex-wrap items-center gap-x-row gap-y-1.5 border-b border-border px-4 py-2 md:px-section">
         <Button asChild variant="ghost" size="sm" data-slot="commit-back">
           <Link to={`/tasks/${runId}/commits`}>
             <ArrowLeftIcon aria-hidden="true" />
@@ -107,7 +107,7 @@ function CommitDiffView({ runId, sha }: { runId: string; sha: string }) {
       </div>
 
       {commit.isPending ? (
-        <p data-slot="commit-loading" className="px-4 py-6 text-center text-xs text-soft-foreground md:px-6">
+        <p data-slot="commit-loading" className="px-4 py-6 text-center text-xs text-soft-foreground md:px-section">
           Loading commit…
         </p>
       ) : commit.isError ? (
@@ -120,7 +120,7 @@ function CommitDiffView({ runId, sha }: { runId: string; sha: string }) {
         />
       ) : (
         <>
-          <div data-slot="commit-meta" className="border-b border-border px-4 py-3 md:px-6">
+          <div data-slot="commit-meta" className="border-b border-border px-4 py-stack md:px-section">
             <h2 className="text-sm font-semibold">{commit.data.subject}</h2>
             <p className="mt-0.5 text-[11px] text-soft-foreground">
               {commit.data.author} · {commit.data.when} ·{' '}
@@ -133,10 +133,12 @@ function CommitDiffView({ runId, sha }: { runId: string; sha: string }) {
               tone="neutral"
               heading="h2"
               title="No file changes"
-              subtitle="This commit carries no diff of its own — a merge commit's changes live on the commits it merged."
+              subtitle="This commit carries no diff of its own — a merge commit’s changes live on the commits it merged."
             />
           ) : (
-            <div className="px-4 py-4 [--diff-sticky-top:10rem] md:px-6">
+            <div className="p-4 [--diff-sticky-top:var(--page-header-h,10rem)] md:p-section">
+              {/* The sticky offset is the run header's MEASURED height, never a constant — see
+                  `task-changes.tsx` and `lib/page-header-offset.ts` (#453 B6, NB-1). */}
               <Diff files={commit.data.files} mode={effectiveMode} wrap={effectiveWrap} className="min-w-0" />
             </div>
           )}

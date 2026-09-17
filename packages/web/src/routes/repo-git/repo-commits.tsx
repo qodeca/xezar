@@ -66,7 +66,7 @@ function CommitDiffView({ sha }: { sha: string }) {
 
   return (
     <section data-slot="repo-commit" data-sha={sha} className="flex min-h-0 flex-1 flex-col">
-      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 border-b border-border px-4 py-2 md:px-6">
+      <div className="flex flex-wrap items-center gap-x-row gap-y-1.5 border-b border-border px-4 py-2 md:px-section">
         <Button asChild variant="ghost" size="sm" data-slot="commit-back">
           <Link to="/git/commits">
             <ArrowLeftIcon aria-hidden="true" />
@@ -80,7 +80,7 @@ function CommitDiffView({ sha }: { sha: string }) {
       </div>
 
       {commit.isPending ? (
-        <p data-slot="commit-loading" className="px-4 py-6 text-center text-xs text-soft-foreground md:px-6">
+        <p data-slot="commit-loading" className="px-4 py-6 text-center text-xs text-soft-foreground md:px-section">
           Loading commit…
         </p>
       ) : commit.isError ? (
@@ -93,7 +93,7 @@ function CommitDiffView({ sha }: { sha: string }) {
         />
       ) : (
         <>
-          <div data-slot="commit-meta" className="border-b border-border px-4 py-3 md:px-6">
+          <div data-slot="commit-meta" className="border-b border-border px-4 py-stack md:px-section">
             <h2 className="text-sm font-semibold">{commit.data.subject}</h2>
             <p className="mt-0.5 text-[11px] text-soft-foreground">
               {commit.data.author} · {commit.data.when} ·{' '}
@@ -106,10 +106,10 @@ function CommitDiffView({ sha }: { sha: string }) {
               tone="neutral"
               heading="h2"
               title="No file changes"
-              subtitle="This commit carries no diff of its own — a merge commit's changes live on the commits it merged."
+              subtitle="This commit carries no diff of its own — a merge commit’s changes live on the commits it merged."
             />
           ) : (
-            <div className="px-4 py-4 [--diff-sticky-top:7rem] md:px-6">
+            <div className="p-4 [--diff-sticky-top:7rem] md:p-section">
               <Diff files={commit.data.files} mode={effectiveMode} wrap={effectiveWrap} className="min-w-0" />
             </div>
           )}

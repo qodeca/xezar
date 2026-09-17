@@ -8,8 +8,8 @@ to-do list: an entry becomes a `design-debt` issue on the triggers [CONTRIBUTING
 names, and a fix arrives as its own change with the entry deleted.
 
 Ids are never reused: a deleted entry retires its number, so a new entry takes the next number after the
-highest ever used. G-01..G-23, G-26..G-28 and G-30..G-37 are live, G-24, G-25 and G-29 are retired, and
-the next free id is G-38.
+highest ever used. G-01..G-23, G-26..G-28 and G-30..G-41 are live, G-24, G-25 and G-29 are retired, and
+the next free id is G-42.
 
 Counts are non-test files or occurrences in `packages/web/src`. Corrected counts in G-02, G-06,
 G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the original inventory date.
@@ -21,6 +21,7 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Differs**: heading size and wrapper. Canonical `sticky top-0 z-10 hidden h-14 … md:flex` + `h1 text-base font-semibold` (8 sites: `routes/tasks-overview.tsx`, `global-tasks.tsx`, `inbox.tsx`, `skills.tsx`, `skills-loading.tsx`, `workflows/workflows.tsx`, `settings/settings-shell.tsx` ×2). `bg-background/95 backdrop-blur` + `text-lg` (`routes/repo-git/repo-git.tsx`, `routes/github/github.tsx`). `text-[15px]`, sticky from `md` (`routes/task-thread/run-header.tsx`). Centred `text-lg` (`routes/new-task.tsx`). `text-xl` (`routes/compare-variants.tsx`). `text-2xl` in a `max-w-6xl` frame (`routes/automations/automations.tsx`).
 - **Rule**: the canonical form. It is the majority and the newest list pages use it.
 - **Fix**: extract a `PageHeader` component; migrate Git, GitHub, Compare and Automations. The run header is a different surface (editable title) and may stay.
+- **Status (#453 batch B6, Git tabs)**: the Git part is fixed – `routes/repo-git/repo-git.tsx` is opaque, its title is `text-base font-semibold` (visible from `md`, `sr-only` below it, where the phone top bar names the page) and it takes the run header's spacing, because its tabs live in the header and `PageHeader` hides below `md`. Every Git toolbar is `px-4 py-2 md:px-section` and every body `p-4 md:p-section`, repository and task tabs alike, so D-03 holds there: `e2e/design-debt-b6.e2e.ts` measures the title, toolbar and tree on one `section` gutter at Comfortable and Compact for real. Still open (B7): GitHub, Compare, Automations.
 
 ### G-02 Three card spellings and a dead primitive
 
@@ -54,6 +55,7 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Differs**: `focus-visible:ring-[3px] focus-visible:ring-ring/50` (eight primitives, 51 sites outside `components/ui`) vs `focus:ring-2 focus:ring-ring focus:ring-offset-2` on the dialog and sheet close buttons (`components/ui/dialog.tsx:73`, `sheet.tsx:78`). `focus-visible:border-ring` is on six primitives but not `button.tsx` or `scroll-area.tsx`. `tooltip.tsx:45` applies `animate-in` unconditionally where every other floating surface gates on `data-[state=open]`.
 - **Rule**: the `focus-visible` ring.
 - **Fix**: restyle the two close buttons; gate the tooltip animation.
+- **Also found (#453 batch B6, Git tabs)**: a third idiom – none. The rows of both Git trees (`routes/task-git/changes-tree.tsx`, `files-tree.tsx`) carry no focus-visible class at all, so they wear the browser's default ring while the diff file header and the expandable gap row beside them wear the cockpit ring. Focus stays visible, so nothing is lost; it is a consistency gap. Found by the #574 design review (NB-5). Owner: B8 reconciliation of #453.
 
 ### G-07 Primitive-level divergences
 
@@ -73,6 +75,7 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Differs**: `components/run-diff.tsx` (review panel, compare view: own parser via `lib/unified-diff`, no gutter, no word diff, 300-line clamp, its own status badge map without `copied`, a third inline `fileKey`) vs `components/diff/` (seven routes: gutters, word marks, split mode, virtualisation). `run-diff.tsx:17` calls itself "the honest R3 interim".
 - **Rule**: `Diff` from `@/components/diff`.
 - **Fix**: migrate the review panel and compare view; delete `run-diff.tsx`.
+- **Status (#453 batch B6, diff renderer)**: fixed without touching the two consumers – `RunDiff` keeps its `runId` API and is now a facade that splits the diff text into `DiffFileChange[]` and renders `Diff`. `lib/unified-diff.ts` is deleted. The review gate and compare view get gutters, word marks, the `copied` badge and every line (no 300-line clamp, no 20-file cap). `design-debt-b6.test.tsx` fails on a parser, highlighter or clamp in `run-diff.tsx`, on a lost `copied` status and on a 420-line patch that does not render in full; the named-break logs are in the task evidence. The entry stays until B8 retires it.
 
 ### G-10 Destructive confirm styling is a copied string
 
@@ -88,6 +91,7 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Rule**: the raw control class for settings (it is what ships).
 - **Fix**: decide between adopting `Select` and deleting it; extract the raw class into a `NativeSelect` component.
 - **Status (#453 batch B3, settings)**: all 28 raw settings fields (the 22 listed plus `projects-section.tsx` ×2, `accounts-section.tsx:700` and `add-account-dialog.tsx` ×3) wear `nativeFieldClass` from `components/ui/input.tsx`, so they reach 44 px on a phone. Still open: `routes/repo-git/repo-branches.tsx` (B6).
+- **Status (#453 batch B6, Git tabs)**: the base-branch picker in `routes/repo-git/repo-branches.tsx` wears `nativeFieldClass` too, so no raw field class is left in the cockpit. The `Select` decision stays open for B8.
 
 ### G-12 Search input markup duplicated
 
@@ -132,6 +136,7 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Status (#453 batch B3, settings)**: the settings rows are fixed – "Could not load …" in all ten settings sites, "Retry" in provider settings, "Filter skills…", "Nothing matches." for the bookmarklet filter, the em dash in `mcp-api-section.tsx`, curly apostrophes in `appearance.tsx`, `project-general.tsx` and the hints of `agents-section.tsx`, `resources-section.tsx`, `mcp-connection-section.tsx`, `projects-section.tsx`, `accounts-section.tsx` and `prompt-templates-section.tsx`, and no Oxford comma in `agents-section.tsx`, `notifications-section.tsx` and `prompt-templates-section.tsx`. Still open (B4, B5, B7): the other rows. The guardian rule is not added.
 - **Status (#546, navigation-only sidebar)**: the "Bucket label case" row is closed – the sidebar's `Needs you` bucket heading went with the sidebar task list, so the phrase now appears only as the lower-case attention label (`lib/attention.ts`).
 - **Status (#453 batch B5, thread, composer and launch menus)**: the negatives row's `routes/task-thread/task-thread.tsx` site reads "Could not load earlier items · Retry". Still open (B7): `routes/github/github.tsx`, the placeholders in `routes/new-task.tsx` and `routes/github/hand-to-agent.tsx`, and the workflows rows.
+- **Status (#453 batch B6, Git tabs)**: the apostrophes row's `task-commits.tsx` site is curly (“hasn’t”), and so are “merge commit’s” (`repo-commits.tsx`, `task-commits.tsx`), “repo’s” (`repo-git-loading.tsx`) and “task’s” (`commit-dialog.tsx`, `task-changes.tsx`, which used `&apos;`). Still open (B7): the other rows.
 
 ### G-16 Toast punctuation
 
@@ -140,6 +145,7 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Fix**: normalise the ~14 toasts; share one `copyToClipboard` helper (three copies exist in `run-header.tsx`, `review-panel.tsx`, `task-changes.tsx`).
 - **Status (#453 batch B4, task lists)**: the helper exists – `copyText` in `lib/clipboard-result.ts` answers `{ ok: true }` or `{ ok: false, reason }` and never throws, so a refused or missing clipboard is never reported as copied. It has no consumer yet. Still open (B5, B6, B7): move the three copies onto it and normalise the toasts.
 - **Status (#453 batch B5, thread, composer and launch menus)**: `run-header.tsx` (the resume hint, the terminal fallback and the worktree path) and `review-panel.tsx` (the manual merge line) copy through `copyText`; a refusal toasts the payload ("Run manually: …", "Path: …"), never "copied". Their toasts are fragments: "Command copied", "No terminal found — command copied", "Worktree path copied" (writing.md §13). Still open (B6, B7): `routes/task-git/task-changes.tsx` and `routes/skills.tsx`.
+- **Status (#453 batch B6, Git tabs)**: `routes/task-git/task-changes.tsx`'s terminal fallback copies through `copyText` and toasts the same fragment as the run header (“No terminal found — command copied”); a refusal shows “Run manually: …”. Still open (B7): `routes/skills.tsx`.
 
 ### G-17 Two hand-written task tables
 
@@ -154,6 +160,7 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Rule**: `formatMem` in `lib/tasks-table.ts`.
 - **Fix**: import it in `worktree-files.ts`.
 - **Status (#453 batch B4, task lists)**: one formatter with two named contracts – `formatBytes(bytes, 'memory' | 'file')` (`lib/tasks-table.ts:54`); `formatMem` is its memory form, and the file form matches `formatFileSize` byte for byte (pinned in `design-debt-b4.test.tsx`). The precisions differ on purpose: memory rounds, file sizes keep one decimal. Still open (B6): `routes/task-git/worktree-files.ts:36` still has its own copy.
+- **Status (#453 batch B6, Git tabs)**: fixed – `formatFileSize` (`routes/task-git/worktree-files.ts`) returns `formatBytes(bytes, 'file')`, so there is one formatter; `design-debt-b6.test.tsx` checks it byte for byte and fails if file sizes take the memory rounding. The entry stays until B8 retires it.
 
 ### G-19 One-off icon sizes
 
@@ -192,6 +199,7 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Rule**: keep the tokens; do not add more small text in `--soft-foreground` on light, and keep the badge count announced in words.
 - **Fix**: darken light `--soft-foreground` to about `#767676` (4.5:1) and revisit the danger pair; then re-check every specimen swatch.
 - **Also measured (#453 batch B4, 375 px, light theme)**: three ink tokens are below 4.5:1 as small text on the task lists – `--success` (`#10b981`) 2.5:1 and `--danger` (`#ef4444`) 3.8:1 in the `+`/`−` diff counts (`components/diff-stat.tsx`), and `--violet` (`#8f86e8`) 3.1:1 in a reference chip with no forge status (`components/reference-chip.tsx`). The dark theme passes. B4 may not change a token, so `e2e/design-debt-b4.e2e.ts` reports these three colours and fails on any other. Owner: a token change after B1, through B8 reconciliation.
+- **Also measured (#453 batch B6, 375–1280 px, light theme)**: two more sites paint the same token pairs as small text. The repository Branches tab spells a check's state in 10 px words – "passing" in `--success` at 2.54:1 and "failing" in `--danger` at 3.76:1 (`routes/repo-git/repo-branches.tsx`), the same pairs this entry already records for the diff counts. The review gate's manual-merge URL renders `text-primary` on white at **1.34:1**, which fails AA for text of any size, not only small text; that one was measured in the running cockpit and its source site is still to be located – `routes/task-thread/review-panel.tsx` paints its own manual path in `--soft-foreground`, so the lime ink comes from somewhere else on that surface. Both found by the #574 design review (NB-6, NB-7). B6 may not change a token. Owner: the same token change, through B8 reconciliation of #453.
 
 ### G-26 The thread header shows scrolled content through it
 
@@ -259,6 +267,31 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Differs**: at 1280 px, in both themes, the "Session / Changes / Commits / Files" run tab labels print over each other (`routes/task-thread/run-header.tsx` tab row). The base revision (`e2c00eed`) shows the same overlap, so batch B5 did not cause it. Found by the #571 design review (NB-5).
 - **Rule**: tab labels never overlap at any documented width.
 - **Fix**: give the tab row enough width, or wrap or truncate the labels, so the four never collide at 1280 px. Owner: B8 reconciliation of #453, or a standalone issue.
+- **Also at 1024 px (#453 batch B6)**: the same header's action row overflows `main` by about 2 px there, and the four tab labels print over each other at that width too. Pre-existing; `run-header.tsx` is not a B6 file. Found by the #574 design review (NB-7), so the fix has to hold at 1024 px as well as 1280 px. Owner: unchanged.
+
+### G-38 Syntax colours on a diff tint are below 4.5:1
+
+- **Differs**: in the light theme, two syntax-token colours miss AA as 12 px code on the diff's tints – the number colour (`--syn-num`, `#b91c1c`) on a strong deletion word mark (`bg-diff-del-strong`) is 4.05:1, and the punctuation colour (`--syn-punc`, `#6b7280`) on a line tint is 4.42:1. The comment colour misses AA in **both** themes: `--syn-com` is 2.36:1 in light and 3.22:1 in dark (`#6b7280` on `bg-diff-add-bg`), so the dark theme does **not** pass. Measured on the review gate and the task Changes tab at 1280 px by `e2e/design-debt-b6.e2e.ts` (#453 B6) for the first two; the comment colour was measured composited by the #574 design review (NB-2), whose fixture carries a comment line where the browser suite's does not.
+- **Rule**: keep the tokens; a syntax colour must still reach 4.5:1 on every `--diff-*` surface it is painted on.
+- **Fix**: darken the two light `--syn-*` colours and the comment colour in both themes, or lighten the `--diff-*` tints, and re-measure every diff surface. B6 may not change a token (#453: B1 owns them), so the browser suite reports these colours instead of passing them. Owner: B8 reconciliation of #453.
+
+### G-39 The changed-files tree marks a file's status with colour alone
+
+- **Differs**: in the task Changes tree (`routes/task-git/changes-tree.tsx:115`) an added or copied file is marked only by a green file icon and a renamed file carries no mark at all, while the diff card beside it spells "copied" and "renamed" in words. [README.md](README.md) rule 10 puts the word first and colour second, and colour alone is not readable for a reader who cannot tell the two greens apart; the icon is `aria-hidden`, so the row carries no accessible status either. Pre-existing; found by the #574 design review (NB-3).
+- **Rule**: a status is a word, or an accessible name; colour only ever repeats it.
+- **Fix**: give each row an `aria-label` carrying the status, or a short status word beside the file name, matching the diff card's vocabulary. Owner: B8 reconciliation of #453.
+
+### G-40 The Files tab forgets the selected file when the reader leaves the tab
+
+- **Differs**: on a task's Files tab (`routes/task-git/task-files.tsx`), picking a file, switching to another top-level tab and coming back resets the preview to "Select a file" – the selection lives in component state that the route change unmounts. Every other Git tab keeps what the reader was looking at. Pre-existing: #574 changed only spacing classes in that file. Found by the #574 QA pass (non-blocking, accepted).
+- **Rule**: a reader's place on a tab survives a trip to another tab.
+- **Fix**: keep the selected path in the run's stored UI state, or in a query parameter, the way the diff view keeps its mode. Owner: B8 reconciliation of #453, or a standalone issue.
+
+### G-41 The same change is named two different things on two surfaces
+
+- **Differs**: the review gate calls `src/copy.ts` "copied" while the task Changes tab calls the same file "added", and calls `logo.png` "binary" where the Changes tab calls it "image". The renderer is one engine; the difference comes from the two endpoints' own rename and copy detection (server-side diff flags), so the reader sees one change named twice moving between tabs. Found by the #574 design review (NB-4).
+- **Rule**: one change has one name, whichever surface shows it.
+- **Fix**: make the two endpoints ask `git diff` for the same detection, then re-check both surfaces. This is server work, not a design-system change, so it wants its own issue. Owner: B8 reconciliation of #453, or a standalone issue.
 
 ## Comment vs code
 
@@ -266,7 +299,6 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 | --- | --- | --- |
 | "Views never hand-roll a centered message" | the error boundary, `skills-loading.tsx` and `PageState` do | `components/centered-state.tsx:17-18` (G-05) |
 | pulse follows the "quiet motion" rule | no reduced-motion guard | `components/status-dot.tsx:8-9,21` (G-08) |
-| `run-diff.tsx` is an interim to be replaced by `DiffFileBody`'s successor | the successor shipped; two consumers were never migrated | `components/run-diff.tsx:17,145-150` (G-09) |
 | "Reach for this on any control that is hidden until hover" | the task lists, the thread's pencil and message actions, and the composer's remove mark use it (#453 B5) | `styles/index.css:29-31` (G-21) |
 | `PopoverTitle` is typed `h2` | renders a `div` | `components/ui/popover.tsx:67-70` (G-07) |
 | the reference tones share `StatusDot`'s five roles | `ReferenceStatusTone` adds `info` and `conflict`, which `StatusDot` cannot paint | `lib/reference-status.ts:11-13`, `components/reference-chip.tsx:469` |

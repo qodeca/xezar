@@ -11,7 +11,7 @@ export function RepoGitLoading() {
         icon={<LoaderCircleIcon className="motion-safe:animate-spin" />}
         tone="neutral"
         title="Loading repository…"
-        subtitle="Fetching the repo's git state."
+        subtitle="Fetching the repo’s git state."
       />
     </div>
   )

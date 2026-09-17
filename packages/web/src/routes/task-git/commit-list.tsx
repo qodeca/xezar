@@ -81,7 +81,9 @@ export function CommitList({ slot, commits, className }: { slot: string; commits
       }}
       data-slot={slot}
       data-virtualized={virtual}
-      className={cn('flex flex-col divide-y divide-border px-2 py-1 md:px-4', className)}
+      // `md:px-group` plus the row's `px-2` is 8 spacing units, the page's `md:px-section` gutter, at
+      // every density: the sha lines up with the toolbar and the page title above (D-03).
+      className={cn('flex flex-col divide-y divide-border px-2 py-1 md:px-group', className)}
     >
       {virtual ? (
         // No `shift`: commit logs are newest-first and only ever grow at the start on a
@@ -106,7 +108,8 @@ function CommitRow({ commit }: { commit: CommitListItem }) {
         data-slot="commit-row"
         data-sha={commit.sha}
         to={commit.href}
-        className="flex min-w-0 items-baseline gap-3 rounded-sm px-2 py-2.5 hover:bg-muted"
+        // `min-h-tap … md:min-h-0`: a 44 px phone target at every density (#453 Q67).
+        className="flex min-h-tap min-w-0 items-center gap-stack rounded-sm px-2 py-2.5 hover:bg-muted md:min-h-0 md:items-baseline"
       >
         <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{commit.shaLabel}</span>
         <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{commit.subject}</span>
