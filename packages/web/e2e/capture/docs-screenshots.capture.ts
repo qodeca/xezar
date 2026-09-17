@@ -430,6 +430,14 @@ const PREPARE: Record<string, Prepare> = {
     open('/settings/global/resources', theme)
     wait(exists('[data-slot="resources-section"]'))
   },
+  // Planned for 0.16.0 (#453 B8). Waits for a real registered row, not only the section, because
+  // an empty table is exactly the picture that would hide G-30 — the sideways scroll below `md`
+  // only happens once there are rows to squeeze.
+  'settings-projects': (theme) => {
+    open('/settings/global/projects', theme)
+    wait(exists('[data-slot="projects-section"]'))
+    wait(exists('[data-slot="project-row"]'))
+  },
   'settings-mcp-connection': (theme) => {
     open(demo('/settings/mcp-connection'), theme)
     wait(exists('[data-slot="mcp-connection-section"] [data-slot="mcp-leader"]'))
