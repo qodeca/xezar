@@ -62,6 +62,7 @@
 - test(mcp): cover fragile leader delivery across owner switches, ack/journal epoch boundaries and the opt-in acceptance judge, plus an executable inventory assertion (#532 slice 3, G4/G5/G6/G11/G12).
 - Added a saved, re-runnable deterministic two-project product harness (`npm run test:multi-project`, `packages/xezar/scripts/multi-project-harness.mjs`) proving registry/context composition, route aliases, the shared workspace cap, the cross-project runs index, workspace SSE stamping, and per-project MCP ownership for the boot project, all against one built cockpit with two registered scratch repositories in one isolated `XEZ_HOME`. See `docs/testing/multi-project-harness.md`.
 - Reconciled the remote-access docs with verified behavior and pinned both claims with a new test: a normal launch no longer claims an unconditional starting port of 4321 (it actually prefers a saved port, then `XEZ_PORT`, then the port it last listened on), and the macOS/ngrok installer's success message no longer says basic-auth was "enforced" when it was only configured, never probed through the tunnel. (#547, SM2)
+- Added `guide-02-running-a-task.e2e.ts` and the shared `guide-browser.ts` semantic-locator helper: one scripted browser journey against a live dry run covering guide 02's compose, mode toggles, queueing, thread output, Finish/review and Changes/Files/Commits tabs, and the Draft PR/Accept hand-off. Locators are role, accessible label or visible text only — never a class, id or `data-*` attribute. (#549)
 
 # 0.15.0 (2026-09-17)
 

@@ -278,6 +278,28 @@ verification.
   suite whose every test passed. The helpers await the exit and retry the removal, and
   still report a directory that genuinely cannot be deleted.
 
+### The user-guide flow package
+
+`packages/web/e2e/guide-*.e2e.ts` — one file per `docs/guide/` part, plus the shared
+`guide-browser.ts` helper — walk the flows each guide describes as a first-time reader would
+follow them, asserting only role, accessible-label or visible-text facts (never a class, id,
+`data-*` attribute or other selector coupled to implementation markup). `guide-browser.ts` wraps
+`agent-browser find <locator> <value> [action]` — the CLI's own semantic-locator command — rather
+than the CSS-selector methods on `AgentBrowser`; it is the one new interaction helper this package
+adds, and existing specs are not retrofitted to it.
+
+`guide-02-running-a-task.e2e.ts` (browser-test pull request 2 of 4, #549) covers guide 02 —
+Tasks and runs — as one continuous scripted journey against its own dry-run fixture: compose
+through the real `/new` composer, the Worktree/Autonomous/Plan-first mode controls, a run
+queueing behind another while the workspace's one agent slot is held, the running turn's thread
+output (agent text and a real tool call), a reply round trip, Finish parking the run at review,
+the Changes/Files/Commits tabs against the resulting real diff and commit, and the review panel's
+Draft PR/Accept hand-off — Draft PR is asserted present, never clicked, because opening a real
+pull request is out of honest dry-run scope (see its own header comment for the exact lower-test
+citations). Finish runs before the git tabs in this file, not after: Finish is what actually
+commits the worktree (`autosaveCommit(dir, 'run finalize')`), so the Commits tab has nothing to
+show before it runs, even though the guide documents the two as independent capabilities.
+
 ### The docs capture harness
 
 `packages/web/e2e/capture/` drives the same provider to produce the README and user-guide
