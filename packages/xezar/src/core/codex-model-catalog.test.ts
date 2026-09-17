@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { PassThrough } from 'node:stream';
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { discoverCodexModels } from './codex-model-catalog.ts';
 
 const fixtures = fileURLToPath(new URL('__fixtures__/codex/', import.meta.url));
@@ -146,5 +146,26 @@ describe('Codex model discovery', () => {
     const discovery = discoverCodexModels({ cwd: '/repo', spawn: () => fake.child });
     queueMicrotask(() => fake.emitExit(7));
     await expect(discovery).rejects.toThrow('exited (7)');
+  });
+
+  describe('XEZ_DRY_RUN=1', () => {
+    const original = process.env.XEZ_DRY_RUN;
+    afterEach(() => {
+      if (original === undefined) delete process.env.XEZ_DRY_RUN;
+      else process.env.XEZ_DRY_RUN = original;
+    });
+
+    it('answers a fixed fixture list without ever spawning the real app-server (#579)', async () => {
+      process.env.XEZ_DRY_RUN = '1';
+      // A `spawn` that throws if called at all: before this fix, `discoverCodexModels` spawned
+      // unconditionally, so this same assertion fails red against the pre-fix code (CI has no
+      // `codex` binary and hits exactly this path every dry-run boot).
+      const spawn = (): never => {
+        throw new Error('discoverCodexModels must not spawn a real process under XEZ_DRY_RUN=1');
+      };
+      await expect(discoverCodexModels({ cwd: '/repo', spawn })).resolves.toEqual([
+        { id: 'mock-codex-model', label: 'Mock Codex model', description: 'mock (XEZ_DRY_RUN=1)' },
+      ]);
+    });
   });
 });
