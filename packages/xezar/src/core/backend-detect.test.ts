@@ -97,7 +97,7 @@ async function check(name: string) {
 beforeEach(() => {
   execHook.replies.clear();
   execHook.calls.length = 0;
-  // The dry-run short-circuit would answer for claude and pi before any probe runs.
+  // The dry-run short-circuit would answer for claude, codex and pi before any probe runs.
   vi.stubEnv('XEZ_DRY_RUN', undefined);
   vi.stubEnv('XEZ_CLAUDE_BIN', undefined);
   vi.stubEnv('XEZ_CODEX_BIN', undefined);
@@ -286,6 +286,22 @@ describe('the XEZ_DRY_RUN short-circuit', () => {
     });
     expect(execHook.calls.map((c) => c.file)).not.toContain('claude');
     expect(execHook.calls.map((c) => c.file)).not.toContain('pi');
+  });
+
+  it('reports the mocked codex runner without ever spawning the real binary (#549)', async () => {
+    vi.stubEnv('XEZ_DRY_RUN', '1');
+    // A `codex` on PATH that would record an invocation if the probe ever called it —
+    // before the fix, probeCodex spawned unconditionally, so this same assertion fails
+    // red against the pre-fix code (it would find `codex` in execHook.calls).
+    reply('codex', { kind: 'ok', stdout: 'codex-cli 0.21.0\n' });
+
+    const checks = await detectEnvironment();
+
+    expect(checks.find((c) => c.name === 'codex')).toMatchObject({
+      available: true,
+      version: 'mock (XEZ_DRY_RUN=1)',
+    });
+    expect(execHook.calls.map((c) => c.file)).not.toContain('codex');
   });
 });
 
