@@ -176,7 +176,7 @@ Each entry maps a utility name to a theme token. Listed in foundations.md §1.7;
 | `packages/web/src/components/appearance-provider.tsx` | AppearanceProvider | components.md §2 AppearanceProvider | Not applicable – context only, no markup (components.md §2 AppearanceProvider). |
 | `packages/web/src/components/centered-state.tsx` | CenteredState, TwinkleBackdrop | components.md §2 CenteredState and TwinkleBackdrop | Documented with known gap (G-05) |
 | `packages/web/src/components/clone-project-dialog.tsx` | CloneProjectDialog | components.md §2 AddProjectDialog and CloneProjectDialog | Documented |
-| `packages/web/src/components/code-editor.tsx` | CodeEditor | components.md §2 CodeEditor | Documented |
+| `packages/web/src/components/code-editor.tsx` | CodeEditor | components.md §2 CodeEditor | Documented with known gap (G-44: the entry still says the focus ring is suppressed; the frame shows it since #453 B7) |
 | `packages/web/src/components/command-palette.tsx` | CommandPalette | components.md §2 CommandPalette | Documented with known gap (G-14) |
 | `packages/web/src/components/default-agent-picker.tsx` | DefaultAgentPicker | components.md §2 DefaultAgentPicker | Documented |
 | `packages/web/src/components/diff-stat.tsx` | DiffStatLabel | components.md §2 DiffStatLabel | Documented |
@@ -199,7 +199,7 @@ Each entry maps a utility name to a theme token. Listed in foundations.md §1.7;
 | `packages/web/src/components/project-groups.tsx` | ProjectGroups | components.md §2 ProjectGroups | Documented with known gap (G-14) |
 | `packages/web/src/components/prompt-template-menu.tsx` | PromptTemplateMenu | components.md §2 PromptTemplateMenu | Documented |
 | `packages/web/src/components/provider-banner-container.tsx` | ProviderBannerContainer | components.md §2 ProviderBanner and ProviderBannerContainer | Documented |
-| `packages/web/src/components/provider-banner.tsx` | ProviderBanner | components.md §2 ProviderBanner and ProviderBannerContainer | Documented |
+| `packages/web/src/components/provider-banner.tsx` | ProviderBanner | components.md §2 ProviderBanner and ProviderBannerContainer | Documented with known gap (G-44: the entry still gives the pre-#453 B7 row classes) |
 | `packages/web/src/components/reference-chip.tsx` | ReferenceChip | components.md §2 ReferenceChip | Documented with known gap (G-23, light violet ink) |
 | `packages/web/src/components/reference-conflict-action.tsx` | ReferenceConflictAction | components.md §2 ReferenceConflictAction | Documented |
 | `packages/web/src/components/reference-status.tsx` | ReferenceStatus registry | components.md §2 ReferenceStatus registry | Not applicable – a registry of status → tone/label; rendered by ReferenceChip (components.md §2 ReferenceStatus registry). |

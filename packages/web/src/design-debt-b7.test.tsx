@@ -118,6 +118,12 @@ describe('C4 / G-10 irreversible confirms wear the danger button', () => {
     expect(workflows).not.toContain('hover:brightness-[0.96]')
     expect(workflows).not.toContain('Keep the file')
   })
+
+  it('the plan review’s chain overwrite confirm uses the danger variant too', () => {
+    const actions = [...code('routes/plan-review.tsx').matchAll(/<AlertDialogAction[\s\S]*?>/g)].map((m) => m[0])
+    expect(actions).toHaveLength(1)
+    expect(actions[0]).toContain("className={buttonVariants({ variant: 'danger' })}")
+  })
 })
 
 describe('C5 honest clipboard and copy rules', () => {

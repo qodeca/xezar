@@ -21,7 +21,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import {
   Dialog,
   DialogClose,
@@ -364,7 +364,10 @@ function SaveAsChain({ steps, disabled }: { steps: WorkflowStepDef[]; disabled: 
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Keep the existing chain</AlertDialogCancel>
-            <AlertDialogAction onClick={() => void save(true)}>Overwrite</AlertDialogAction>
+            {/* Irreversible, so it wears the danger confirm (G-10, #453 B7). */}
+            <AlertDialogAction className={buttonVariants({ variant: 'danger' })} onClick={() => void save(true)}>
+              Overwrite
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
