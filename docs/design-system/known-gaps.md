@@ -8,8 +8,8 @@ to-do list: an entry becomes a `design-debt` issue on the triggers [CONTRIBUTING
 names, and a fix arrives as its own change with the entry deleted.
 
 Ids are never reused: a deleted entry retires its number, so a new entry takes the next number after the
-highest ever used. G-01..G-23, G-26..G-28 and G-30..G-35 are live, G-24, G-25 and G-29 are retired, and
-the next free id is G-36.
+highest ever used. G-01..G-23, G-26..G-28 and G-30..G-37 are live, G-24, G-25 and G-29 are retired, and
+the next free id is G-38.
 
 Counts are non-test files or occurrences in `packages/web/src`. Corrected counts in G-02, G-06,
 G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the original inventory date.
@@ -80,7 +80,7 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Rule**: tint every irreversible confirm; cancel reads "Keep it" unless a more specific kept outcome exists.
 - **Fix**: add a `danger` Button variant and use it in `AlertDialogAction`.
 - **Status (#453 batch B3, settings)**: `remove-project.tsx`, `worktrees-panel.tsx` and the agent-account remove confirm pass `buttonVariants({ variant: 'danger' })` to `AlertDialogAction`, cancel with "Keep it", and hand focus back to the opener (`useReturnFocus`); the per-row worktree Delete is `danger-ghost`. Still open: `task-thread/run-header.tsx` (B5), `workflows/workflows.tsx` (B7).
-- **Status (#453 batch B5, thread, composer and launch menus)**: the run confirm (`routes/task-thread/run-header.tsx`) wears `buttonVariants({ variant: 'danger' })` and cancels with "Keep it". Focus return was not changed: it does not use `useReturnFocus`, and where focus lands after the dialog opened from the phone kebab closes was not measured in B5 (left for B5 QA and B8). Still open: `workflows/workflows.tsx` (B7).
+- **Status (#453 batch B5, thread, composer and launch menus)**: the run confirm (`routes/task-thread/run-header.tsx`) wears `buttonVariants({ variant: 'danger' })` and cancels with "Keep it". Focus return was not changed: it does not use `useReturnFocus`, and when the dialog opened from the phone kebab closes, focus lands on `<body>`, not on "Run actions" (measured 375 px, dark Compact for real and light Comfortable; #571 design review NB-3). Fix it with `useReturnFocus` in B8, as B3 did. Still open: `workflows/workflows.tsx` (B7).
 
 ### G-11 Raw `<select>` in settings while the Select primitive is unused
 
@@ -176,6 +176,8 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Fix**: add the variant to the composer overlay and audit `group-hover` sites.
 - **Status (#453 batch B4, task lists)**: the task lists are done – the pin (`components/pin-toggle.tsx`) and the table's rename pencil and pin (`routes/tasks-overview.tsx:852,867`) show on a no-hover device and grow to 44 px there. Still open (B5): the composer overlay, and the run header's rename pencil (`routes/task-thread/run-header.tsx:544`), which is `opacity-0` and about 22 px on a phone.
 - **Status (#453 batch B5, thread, composer and launch menus)**: fixed – the composer's attachment remove mark shows on a no-hover device as a `size-5` corner badge (the thumbnail stays visible), and the run header's rename pencil and a user message's edit and remove actions show there and grow to 44 px. `e2e/design-debt-b5.e2e.ts` measures the pencil at 1024 px no-hover and keyboard reveal on a hover device. The audit of other `group-hover` sites in B5 files found no further hidden control. The entry stays until B8 retires it.
+- **Follow-up (B8, #571 design review NB-2)**: the now-visible 44 px pencil takes 28 px away from the phone run title (`routes/task-thread/run-header.tsx`), so at 375 px the title cuts off after about 15 characters ("Summarize wha…", "— a parallel fan-o…"). This is the intended G-21 trade-off, not a defect, but the title is the first thing to read on the page. Fix in B8: let the phone title wrap to two lines, or offer Rename in the run-actions menu. Evidence: `captures/subagent-thread-dark-ultra-375-none.png`, `captures/queued-bubble-actions-dark-ultra-375-none.png`, `captures/BASE-e2c00ee-subagent-thread-dark-ultra-375-none.png` (`.local/xezar-tasks/7aead3b9-f82f-42b5-895c-852c382a4ce3/` in the primary checkout).
+- **Follow-up (low, #571 design review NB-4)**: a queued message's action row ("Edit the prompt", "Edit message", "Remove message") opens as a mostly empty 44 px band above the bubble's text (`routes/task-thread/thread-items.tsx`); it works, it is just heavy. Proposed: put the actions on the text's own row, or below the text. Evidence: `captures/queued-bubble-actions-dark-ultra-375-none.png`, `captures/queued-bubble-editing-dark-ultra-375-none.png`.
 
 ### G-22 Save behaviour split inside one pane
 
@@ -251,6 +253,12 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Differs**: the copy and download buttons on a fenced code block in a thread message are 22–26 px at 375 px across the four densities (`data-streamdown="code-block-copy-button"`, `code-block-download-button`). They come from the Markdown library (`streamdown`), configured in `routes/task-thread/markdown.tsx`. Every other thread control is 44 px. Pre-existing; found by `e2e/design-debt-b5.e2e.ts`, which reports these buttons in `known-g36-markdown-actions.json` and fails on any other small target.
 - **Rule**: a touch target on a phone is 44 px.
 - **Fix**: pass the library's class hook for code-block actions, or render the actions through `Button size="icon-sm"`. Owner: B8 reconciliation of #453; `markdown.tsx` is in no batch manifest.
+
+### G-37 The desktop run tabs overlap at 1280 px
+
+- **Differs**: at 1280 px, in both themes, the "Session / Changes / Commits / Files" run tab labels print over each other (`routes/task-thread/run-header.tsx` tab row). The base revision (`e2c00eed`) shows the same overlap, so batch B5 did not cause it. Found by the #571 design review (NB-5).
+- **Rule**: tab labels never overlap at any documented width.
+- **Fix**: give the tab row enough width, or wrap or truncate the labels, so the four never collide at 1280 px. Owner: B8 reconciliation of #453, or a standalone issue.
 
 ## Comment vs code
 
