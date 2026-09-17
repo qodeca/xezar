@@ -1,6 +1,7 @@
 # Single-project mode – the cockpit surface
 
-**Status:** Draft – waiting for the first `design-review`. Authored 2026-09-17 by the `design`
+**Status:** Approved – design review PASS WITH FOLLOW-UPS on PR #604 (`design-approved`); NB-1
+through NB-5 each carry a disposition in § Design review below. Authored 2026-09-17 by the `design`
 workflow (`xezar-ux-design`, authoring mode) for the cockpit slice (PR4) of
 [qodeca/xezar#600](https://github.com/qodeca/xezar/issues/600).
 
@@ -445,4 +446,13 @@ viewport, not through a frame.
 
 ## Design review
 
-Pending.
+**Verdict: PASS WITH FOLLOW-UPS**, posted on PR #604:
+[comment](https://github.com/qodeca/xezar/pull/604#issuecomment-5721745323).
+
+| Finding | Disposition |
+| --- | --- |
+| NB-1 – `.mode-badge`, `.file-note` and `.refusal-line` lose to a more specific shared `cockpit.css` rule | Accepted with reason: the prose spec (§6, §7, `index.html`'s decision table) already pins the shipped value (`text-muted-foreground`) unambiguously; PR4 implements from that spec text, not from this mockup's CSS, so the specificity bug does not propagate |
+| NB-2 – `settings.html:144` and the PR body cite the wrong `states.html` section number for the refusal | Accepted with reason: the `#refused-projects` anchor itself is correct and lands on the right content; only the printed number is stale, which is cosmetic and does not affect PR4 |
+| NB-3 – the copy deck (§9) and the rendered strings use straight apostrophes where `writing.md` §1 requires curly | Tracked for PR4 (cockpit slice): the character is settled here as curly, per `writing.md` §1; PR4 ships the curly form in its own copy, and the mockup's straight quotes are corrected whenever the pages are next touched |
+| NB-4 – §14 does not record the phone top bar's own worst case (a 67-character title against the fixed 101 px badge) | Accepted with reason: the reviewer's own measurement (title truncates, badge holds 101 px, no overlap, `scrollWidth` 375) is recorded here so it is not rediscovered; §14 itself is unchanged in this docs-only round |
+| NB-5 – `index.html`, `sidebar.html` and `states.html` embed a `phone.html` iframe that renders empty from `file://` | Accepted with reason: already recorded honestly in §21 as a known mockup limitation with a working link in each frame; replacing or dropping the iframe is a mockup content change, out of scope for this docs-only round |
