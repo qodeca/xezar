@@ -162,8 +162,22 @@ Notable fields (full doc-comments in the source):
   **Caveat (pre-rename issue 430):** the zero-config default (`DEFAULT_ALLOWED_TOOLS`) includes
   unrestricted `Bash`, and Codex/OpenCode do not honor `allowedTools` at all.
   Treat the default `auto` permission mode as full shell access, not a
-  sandbox: Codex uses `danger-full-access` with `approvalPolicy: never`, and
-  OpenCode auto-approves every permission. Configurable restrictive modes are
+  sandbox: Codex uses `danger-full-access` with `approvalPolicy: never`.
+  **OpenCode does NOT auto-approve every permission (#578 corrects the prior
+  claim here).** It defaults `external_directory` (a tool touching a path
+  outside the session directory — `$XEZ_HANDOFF_FILE`, pasted attachments,
+  the run's own NDJSON dir) and `doom_loop` (repeated identical calls) to
+  `ask`, publishing `permission.asked` on the SSE bus and blocking the tool
+  call until `POST /session/:id/permissions/:requestId` answers it. Before
+  #578 nothing read that event, so the ask sat forever and the run died on
+  the generic 30-minute step timeout with no named cause. The runner now
+  answers every ask as soon as it arrives — `once` when every path in the
+  ask resolves inside `spec.cwd`, `spec.additionalDirectories` or the OS temp
+  dir, `reject` otherwise, logged as a `note` — and fails the session with a
+  named error (not the generic timeout) when it cannot answer at all, or when
+  the same ask is denied `MAX_REPEATED_PERMISSION_DENIAL` times running or
+  `MAX_PERMISSION_DENIALS` times in total (`opencode-server-runner.ts`,
+  `handlePermissionAsked`). Configurable restrictive modes are
   specified by `2026-07-17-permission-modes` (pre-rename issue 475).
 - **Codex MCP isolation (#324):** before `thread/start` / `thread/resume` the
   Codex runner calls `config/read` for the run's cwd and passes a `config`

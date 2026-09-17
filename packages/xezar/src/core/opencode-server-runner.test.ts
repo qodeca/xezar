@@ -640,6 +640,49 @@ describe('the blocking fallback outlives the fetch transport wall (#153 AC 2)', 
 });
 
 /**
+ * #578 — `read` (and any other tool) asking for a path outside the session
+ * directory used to hang forever: nothing answered `permission.asked`, so the
+ * real server never unblocked the tool call and the run only ended on the
+ * generic 30-minute step timeout with no named cause. `MOCK_OPENCODE_PERMISSION_ASK`
+ * reproduces the real server's blocking shape — the prompt POST is held open
+ * until `POST /session/:id/permissions/:id` answers — so the SAME fixture is
+ * the red/green proof: against the runner as it was, this is byte-identical
+ * to `MOCK_OPENCODE_NEVER_ANSWER_PROMPT` above (nothing ever posts the reply);
+ * against the fix, the runner answers immediately and the turn completes well
+ * inside the bounded timeout.
+ */
+describe('a permission ask for a path outside the session directory (#578)', () => {
+  it('denies it, tells the cockpit why, and lets the turn complete', async () => {
+    const replyLog = join(tmpDir, 'permission-replies.log');
+    const { session, pid, v1 } = start({
+      env: { MOCK_OPENCODE_PERMISSION_ASK: '1', MOCK_OPENCODE_PERMISSION_REPLY_LOG: replyLog },
+      // Bounded and short — before #578 this test would have to wait out the
+      // real 30-minute default to observe the hang at all.
+      timeoutMs: 5_000,
+      autoEnd: true,
+    });
+    try {
+      const result = await session.result;
+
+      // Answered — not the generic timeout this fixture used to hit.
+      expect(v1.some((e) => e.type === 'error')).toBe(false);
+      expect(readFileSync(replyLog, 'utf8').trim().split('\n')).toEqual([
+        'per_mock_1 {"reply":"reject"}',
+      ]);
+      expect(v1).toContainEqual({
+        type: 'note',
+        message:
+          "opencode: denied permission 'external_directory' for /etc/xezar-test-outside/secret — outside this run's allowed directories",
+      });
+      expect(result.text).toContain('Denied — skipping that path.');
+      expect(isAlive(pid)).toBe(false);
+    } finally {
+      session.interrupt();
+    }
+  }, 30_000);
+});
+
+/**
  * #858 — `opencode serve` installs its own SIGTERM handler, so the teardown
  * watchdog must decide "is it dead?" from a real exit, never from
  * `ChildProcess.killed`, which Node flips the moment a signal is *delivered*.
