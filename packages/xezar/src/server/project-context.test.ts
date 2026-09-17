@@ -198,6 +198,134 @@ describe('ProjectContexts', () => {
   });
 
   /**
+   * #592 review round 1, Blocker 1: `registeredAt()` (now `driftFor()`) used to ask
+   * `projects.some(p => p.id === id && p.root === cachedRoot)` — against an EMPTY list, "the
+   * registry says this id moved" and "we could not read the registry at all" were the same branch.
+   * AGENTS.md names this outright: "a fail-open helper needs a populated-input guarantee … against
+   * empty input, 'we never loaded the list' and 'no match' are the same branch and must not read
+   * the same." `loadWorkspaceConfig` is DESIGNED to answer zero projects when the registry can't be
+   * read, so a transient failure (permissions, a dropped network mount, fd exhaustion) used to
+   * dispose every non-boot project's live context on its very next request.
+   */
+  it('a registry read with no information (empty result, or a rejection) never disposes the cached context', async () => {
+    let projects: ProjectContextSource[] = [{ id: 'a', root: rootA, status: 'not-git' }];
+    let fail: 'reject' | 'empty' | undefined;
+    const contexts = new ProjectContexts({
+      listProjects: async () => {
+        if (fail === 'reject') throw new Error('registry unreadable');
+        if (fail === 'empty') return [];
+        return projects;
+      },
+    });
+    const first = await contexts.context('a');
+
+    // `listProjects()` rejects outright (e.g. `$XEZ_HOME` briefly unreadable).
+    fail = 'reject';
+    await expect(contexts.context('a')).resolves.toBe(first);
+
+    // The selector-scoped read finds nothing for this id at all — still no information, never
+    // "removed": the explicit removal route is what disposes on an actual removal.
+    fail = 'empty';
+    await expect(contexts.context('a')).resolves.toBe(first);
+
+    // A normal, positive re-read (same root) still just confirms the cache — no dispose fired in
+    // between, so this is still the SAME context instance throughout.
+    fail = undefined;
+    await expect(contexts.context('a')).resolves.toBe(first);
+    expect(contexts.peek('a')).toBe(first);
+
+    await contexts.dispose('a');
+  });
+
+  /**
+   * #592 review round 1, Major 2: the removal route refuses to dispose a project with running
+   * tasks (409). The on-access drift check had no equivalent guard, so a benign out-of-band
+   * re-point (a moved and re-registered repo) while runs were live would tear down the manager
+   * those runs depend on — leaving them running but unreachable by `cancel()` forever
+   * (`workflows/run.ts`'s "dispose() is not a run-stopper" doc). The fix keeps serving the cached
+   * context while any run is active, logs exactly ONE warning, and only rebuilds once nothing is.
+   */
+  it('does not dispose a cached context with active runs when the registry root drifts; warns once, rebuilds once idle', async () => {
+    const registry: ProjectContextSource[] = [{ id: 'a', root: rootA, status: 'not-git' }];
+    const contexts = new ProjectContexts({ listProjects: async () => registry });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    const ctx = await contexts.context('a');
+    const run = ctx.store.createRun({ title: 'live', workflow: 'quick-task', task: 'x', steps: [] });
+    expect(run.status).toBe('queued'); // one of the three statuses the engine still owns
+
+    registry[0] = { id: 'a', root: rootB, status: 'not-git' };
+
+    const stillCached = await contexts.context('a');
+    expect(stillCached).toBe(ctx); // kept serving the cache — the run was never stranded
+    expect(stillCached.root).toBe(rootA);
+    expect(warn).toHaveBeenCalledTimes(1);
+    const [message] = warn.mock.calls[0] as [string];
+    expect(message).toContain('a');
+    expect(message).toContain(rootA);
+    expect(message).toContain(rootB);
+
+    // A second access while the run is still active must not warn again.
+    await contexts.context('a');
+    expect(warn).toHaveBeenCalledTimes(1);
+
+    // The manager backing the served context is untouched (not disposed): calling into it is safe
+    // and does not throw, unlike a manager whose store has already been closed.
+    expect(() => ctx.manager.cancel(run.id)).not.toThrow();
+
+    // Once the run finishes, the SAME drift is now safe to act on.
+    ctx.store.updateRun(run.id, { status: 'done' });
+    const rebuilt = await contexts.context('a');
+    expect(rebuilt).not.toBe(ctx);
+    expect(rebuilt.root).toBe(rootB);
+
+    await contexts.dispose('a');
+  });
+
+  /**
+   * #592 review round 1, Minor 1: several requests landing on a stale cache hit together (the
+   * cockpit fires scoped requests in parallel) each used to read the registry independently, each
+   * conclude "moved" and each call `dispose()` — bumping `generations` again out from under
+   * whichever one started first, so its build lost its publish check (`buildAndPublish`) and
+   * rejected `unknown-project` for a project that exists. The fix single-flights the dispose+
+   * rebuild itself: exactly one caller's `RunManager.dispose()` should fire for the OLD context,
+   * and every concurrent caller should resolve to the SAME rebuilt one — never a rejection.
+   */
+  it('several concurrent drift detections share ONE dispose+rebuild, never a spurious 404', async () => {
+    let registry: ProjectContextSource[] = [{ id: 'a', root: rootA, status: 'not-git' }];
+    const gates: (() => void)[] = [];
+    const contexts = new ProjectContexts({
+      listProjects: async (selector) => {
+        if (selector) {
+          // The drift check's own selector-scoped read — parked so several concurrent context()
+          // calls can all observe "stale" before any of them acts on it.
+          await new Promise<void>((resolve) => gates.push(resolve));
+          return registry.filter((p) => p.id === selector.projectId);
+        }
+        return registry; // build()'s unselected read resolves immediately.
+      },
+    });
+    const managerDispose = vi.spyOn(RunManager.prototype, 'dispose');
+
+    const first = await contexts.context('a');
+    registry = [{ id: 'a', root: rootB, status: 'not-git' }];
+
+    const calls = [contexts.context('a'), contexts.context('a'), contexts.context('a')];
+    await vi.waitFor(() => expect(gates).toHaveLength(3));
+    for (const gate of gates.splice(0)) gate();
+
+    const results = await Promise.all(calls);
+    for (const result of results) {
+      expect(result.root).toBe(rootB); // none 404s — the pre-fix symptom
+      expect(result).toBe(results[0]); // all three share the SAME rebuilt context
+    }
+    expect(results[0]).not.toBe(first);
+    expect(managerDispose).toHaveBeenCalledTimes(1); // the old context's manager, exactly once
+
+    await contexts.dispose('a');
+  });
+
+  /**
    * The two removal-versus-build races (#199/#200 follow-up). Both were reachable for as long as
    * `dispose()` read `contexts` only: a build that was still in flight was invisible to it, so
    * the build published itself into the map AFTERWARDS and `context()` — which reads `contexts`
