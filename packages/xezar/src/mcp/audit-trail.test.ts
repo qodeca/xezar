@@ -450,12 +450,13 @@ describe('#306 part 2: field names and a digest that never hashes a secret', () 
     const knownToken = 'deadbeefcafe0000feedface1234';
     const trail = new AuditTrail({ projectId: 'alpha', dataDir }, { now, secretValues: () => [knownToken] });
     const record = await trail.channel('ui').record(
-      { action: 'workspace.config.set', payload: { theme: 'dark' }, fieldNames: ['theme', 'density', 'theme', 'not a name', knownToken, '9lives'] },
+      // Not a configuration write: for one of those the seam takes the names from the body itself.
+      { action: 'run.update', payload: { theme: 'dark' }, fieldNames: ['theme', 'density', 'theme', 'not a name', knownToken, '9lives'] },
       { outcome: 'applied' },
     );
     expect(record?.fieldNames).toEqual(['density', 'theme']);
     const many = await trail.channel('ui').record(
-      { action: 'workspace.config.set', fieldNames: Array.from({ length: 80 }, (_, i) => `k${String(i).padStart(2, '0')}`) },
+      { action: 'run.update', fieldNames: Array.from({ length: 80 }, (_, i) => `k${String(i).padStart(2, '0')}`) },
       { outcome: 'applied' },
     );
     expect(many?.fieldNames).toHaveLength(64);

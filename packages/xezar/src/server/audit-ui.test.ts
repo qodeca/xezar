@@ -108,7 +108,8 @@ describe('the ui audit door (#306 part 2)', () => {
     }
     expect(calls).toBe(3);
     expect(warnings).toHaveLength(1);
-    expect(warnings[0]).toMatch(/^xezar: audit trail write failed \(Error\); the action continued without an audit record\.$/);
+    // A bounded code, never an error's name or message (#573 m3): `new Error(…)` has no code.
+    expect(warnings[0]).toMatch(/^xezar: audit trail write failed \(error\); the action continued without an audit record\.$/);
   });
 
   it('a body selector picks the action, and a preview (undefined) records nothing', async () => {
