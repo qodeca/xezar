@@ -245,6 +245,22 @@ export interface McpResultShape {
   readonly structuredContent?: Record<string, unknown>;
 }
 
+/**
+ * Refusals a route answers with a SUCCESS status: the answer says nothing was written. Both doors
+ * read the same table, so the cockpit and MCP record the same outcome for the same answer. Recording
+ * such an answer as `applied` would put a change that never happened into the trail.
+ */
+const ANSWER_REFUSALS: Readonly<Record<string, (answer: Record<string, unknown>) => string | undefined>> = {
+  // "Later" on the setup offer for an identity that moved on: `conflict`, nothing recorded.
+  'onboarding.dismissOffer': (answer) => (answer.status === 'conflict' ? 'conflict' : undefined),
+};
+
+/** The refusal reason a successful answer carries for `actionId`, if it is one. */
+export function answerRefusal(actionId: string, answer: unknown): string | undefined {
+  const read = ANSWER_REFUSALS[actionId];
+  return read && answer !== null && typeof answer === 'object' ? read(answer as Record<string, unknown>) : undefined;
+}
+
 /** `delivery` values that mean the call reached `/runs/:id/continue` rather than `/runs/:id/messages`. */
 const CONTINUE_DELIVERIES = new Set(['continued', 'resumed']);
 

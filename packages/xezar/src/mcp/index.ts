@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { realpath } from 'node:fs/promises';
 import { basename, resolve } from 'node:path';
 import {
+  mcpJournalCursorRejectionSchema,
   operationIdSchema,
   type AuditResource,
   type OperationAnswer,
@@ -15,7 +16,7 @@ import type { RunStore } from '../runs/store.ts';
 import { loadWorkspaceConfig } from '../workspace/config.ts';
 import { ProjectOwnership } from '../workspace/project-owner.ts';
 import { codexControlHome } from './adapters/codex-link.ts';
-import { classifyMcpCall } from './audit-inventory.ts';
+import { answerRefusal, classifyMcpCall } from './audit-inventory.ts';
 import { AuditTrail, type AuditChannel } from './audit-trail.ts';
 import { runBridge, type BridgeOptions, type ServiceTarget } from './bridge.ts';
 import { writeMcpConnectionFile } from './connection-file.ts';
@@ -337,7 +338,12 @@ function composeDoor(input: DoorInput): {
     // refusal (`refused: true` with its `boundary`), which dispatched nothing (spec § 6.2).
     const resource = resourceOf(result);
     const stale = staleRejectionOf(result);
-    const boundary = boundaryRefusalOf(result) ?? routeRefusalOf(result);
+    const boundary =
+      boundaryRefusalOf(result) ??
+      routeRefusalOf(result) ??
+      cursorRefusalOf(result) ??
+      notPerformedOf(result) ??
+      (result.isError ? undefined : answerRefusal(recorded.action, result.structuredContent?.result));
     if (stale) auditFor.record(recorded, { outcome: 'refused', reason: 'stale_version', resource: stale.resource });
     else if (boundary) auditFor.record(recorded, { outcome: 'refused', reason: boundary });
     else if (result.isError) auditFor.skip('tool_error');
@@ -467,6 +473,29 @@ function routeRefusalOf(result: McpToolResult): string | undefined {
   if (!result.isError) return undefined;
   const status = result.structuredContent?.status;
   return typeof status === 'number' && Number.isInteger(status) && status >= 400 && status < 500 ? `http_${status}` : undefined;
+}
+
+/**
+ * A handoff answer that says, in its structured content, that it did nothing (`performed: false`) —
+ * a refusal, an unavailable host capability, or a no-terminal fallback. Such an answer is not an MCP
+ * error (D-05: a conflict is something to reason about), so without this it would be recorded as
+ * `applied`. The reason is the route's status when it gave one, otherwise the answer's outcome.
+ */
+function notPerformedOf(result: McpToolResult): string | undefined {
+  const content = result.structuredContent;
+  if (content?.performed !== false) return undefined;
+  const status = content.httpStatus;
+  if (typeof status === 'number' && Number.isInteger(status) && status >= 400 && status < 500) return `http_${status}`;
+  return typeof content.outcome === 'string' && /^[a-z][a-z_-]{0,63}$/.test(content.outcome)
+    ? content.outcome.replace(/-/g, '_')
+    : 'not_performed';
+}
+
+/** A leader cursor the journal refused outright (`invalid_cursor`): nothing was acknowledged. */
+function cursorRefusalOf(result: McpToolResult): string | undefined {
+  if (!result.isError) return undefined;
+  const parsed = mcpJournalCursorRejectionSchema.safeParse(result.structuredContent);
+  return parsed.success ? parsed.data.error : undefined;
 }
 
 /** The resource a result names: a tool's `subject`, or a receipt's `resultRef`. */

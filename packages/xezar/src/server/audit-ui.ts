@@ -1,9 +1,10 @@
+import { existsSync, mkdirSync } from 'node:fs';
 import type { Context, MiddlewareHandler, Next } from 'hono';
 import type { AuditProxyUser } from '@qodeca/xezar-contract';
-import { auditAction } from '../mcp/audit-inventory.ts';
+import { answerRefusal, auditAction } from '../mcp/audit-inventory.ts';
 import { AuditTrail, settlementForStatus, type AuditChannel, type AuditScope } from '../mcp/audit-trail.ts';
 import { staleRejectionIn } from '../mcp/stale-write.ts';
-import { projectDataDir } from '../project-data-paths.ts';
+import { ensureProjectDataIgnored, projectDataDir } from '../project-data-paths.ts';
 
 /**
  * The cockpit door of the audit trail (#306, part 2) — spec
@@ -164,7 +165,7 @@ export function createUiAuditDoor(deps: UiAuditDeps): UiAuditDoor {
       try {
         const status = c.res.status;
         const body = bodyOf(c);
-        const action = list.length === 1 ? list[0] : options.select?.(body);
+        const action = options.select ? options.select(body) : list[0];
         if (action === undefined || !list.includes(action)) return;
         const settlement = settlementForStatus(status);
         const scope =
@@ -172,7 +173,15 @@ export function createUiAuditDoor(deps: UiAuditDeps): UiAuditDoor {
           (named ? await named : undefined) ??
           (await deps.requestScope(c)) ??
           (await deps.bootScope());
-        const channel = scope ? channelFor(scope) : undefined;
+        if (!scope) return;
+        // Every scope here is a registered project (or this server's own), so a project that has
+        // never been served — one the request just registered — gets its data folder the way a
+        // first `serve` would create it.
+        if (!existsSync(scope.dataDir)) {
+          ensureProjectDataIgnored(scope.dataDir);
+          mkdirSync(scope.dataDir, { recursive: true, mode: 0o700 });
+        }
+        const channel = channelFor(scope);
         if (!channel) return;
         const param = options.resource ? c.req.param(options.resource.param) : undefined;
         const proxyUser = proxyUserOf(c, connection);
@@ -189,6 +198,11 @@ export function createUiAuditDoor(deps: UiAuditDeps): UiAuditDoor {
         }
         if (settlement.outcome === 'refused' && status === 409 && staleRejectionIn(await jsonOf(c))) {
           channel.record(op, { outcome: 'refused', reason: 'stale_version' });
+          return;
+        }
+        const answered = settlement.outcome === 'applied' ? answerRefusal(action, await jsonOf(c)) : undefined;
+        if (answered) {
+          channel.record(op, { outcome: 'refused', reason: answered });
           return;
         }
         channel.record(op, settlement);
