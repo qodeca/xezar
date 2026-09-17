@@ -1624,7 +1624,7 @@ describe('the hand-to-agent pickers (#385)', () => {
     )
 
     // cmdk filtering: a query narrows the list.
-    fireEvent.change(screen.getByPlaceholderText('search workflows…'), { target: { value: 'ship' } })
+    fireEvent.change(screen.getByPlaceholderText('Search workflows…'), { target: { value: 'ship' } })
     await waitFor(() =>
       expect(document.querySelectorAll('[data-slot="gh-workflow-option"]')).toHaveLength(1),
     )
@@ -1672,7 +1672,7 @@ describe('the hand-to-agent pickers (#385)', () => {
     expect(document.querySelector('[data-slot="gh-skills-trigger"]')?.textContent).toContain('· 2')
 
     // The filter narrows the list but can never hide the selection — the chips live outside.
-    fireEvent.change(screen.getByPlaceholderText('search skills…'), { target: { value: 'team' } })
+    fireEvent.change(screen.getByPlaceholderText('Search skills…'), { target: { value: 'team' } })
     await waitFor(() =>
       expect(document.querySelectorAll('[data-slot="gh-skill-option"]')).toHaveLength(1),
     )
@@ -1724,7 +1724,7 @@ describe('the hand-to-agent pickers (#385)', () => {
     )
 
     // "fix project" should match xez-fix (name splits "om","fix" + description "project fixer")
-    fireEvent.change(screen.getByPlaceholderText('search skills…'), { target: { value: 'fix project' } })
+    fireEvent.change(screen.getByPlaceholderText('Search skills…'), { target: { value: 'fix project' } })
     await waitFor(() => {
       const visible = [...document.querySelectorAll('[data-slot="gh-skill-option"]')]
       expect(visible).toHaveLength(1)

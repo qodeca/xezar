@@ -39,7 +39,7 @@ export function UnknownProjectRoute({
             <li key={project.id}>
               <Link
                 to={`/p/${encodeURIComponent(project.id)}/`}
-                className="flex items-baseline gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-foreground shadow-xs transition-colors hover:bg-card-2"
+                className="flex min-h-tap flex-wrap content-center items-baseline gap-x-row rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-foreground shadow-xs transition-colors hover:bg-card-2 md:min-h-0"
               >
                 {project.name || project.id}
                 <span className="font-mono text-[11px] font-normal text-soft-foreground">/p/{project.id}</span>

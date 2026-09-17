@@ -377,7 +377,7 @@ describe('delete and “+ new”', () => {
     await screen.findByText('Delete workflow “ship-it”?')
     fireEvent.click(document.querySelector('[data-slot="wb-delete-confirm"]')!)
 
-    await screen.findByText('Deleted "ship-it".')
+    await screen.findByText('Deleted “ship-it”')
     expect(sent.some((r) => r.method === 'DELETE' && r.path === '/api/v1/workflows/ship-it')).toBe(true)
     await waitFor(() => expect(stepCards()).toHaveLength(0))
     expect(nameInput().value).toBe('my-workflow')

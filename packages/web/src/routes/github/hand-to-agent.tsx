@@ -244,13 +244,13 @@ export function HandToAgent({
     )
 
   return (
-    <section data-slot="gh-hand" className="mt-7 rounded-lg border border-border bg-card p-inset">
+    <section data-slot="gh-hand" className="mt-section rounded-lg border border-border bg-card p-inset shadow-xs">
       <h3 className="flex items-center gap-1.5 text-[11px] font-semibold tracking-[.04em] text-soft-foreground uppercase">
         <ZapIcon aria-hidden="true" className="size-3.5 text-violet" />
         Hand this to the agent
       </h3>
 
-      <div className="mt-3 flex flex-wrap items-center gap-2">
+      <div className="mt-stack flex flex-wrap items-center gap-row">
         <WorkflowPicker workflows={workflows} value={workflow} onChange={onWorkflowChange} />
         <SkillsPicker
           skills={skills}
@@ -277,7 +277,7 @@ export function HandToAgent({
               : 'Connect an agent provider to run this item.'}
             <Link
               to="/settings/agents#providers"
-              className="font-medium text-foreground underline underline-offset-4"
+              className="inline-flex min-h-tap items-center font-medium text-foreground underline underline-offset-4 md:min-h-0"
             >
               Configure providers
             </Link>
@@ -290,7 +290,7 @@ export function HandToAgent({
           POSTs `validSkills`, so showing a deleted skill here would promise the run a skill it
           will not use. What the composer shows and what it sends are the same list. */}
       {validSkills.length > 0 ? (
-        <div data-slot="gh-skill-chips" className="mt-2.5 flex flex-wrap gap-1.5">
+        <div data-slot="gh-skill-chips" className="mt-stack flex flex-wrap gap-1.5">
           {validSkills.map((name) => (
             <button
               key={name}
@@ -299,7 +299,7 @@ export function HandToAgent({
               data-skill={name}
               onClick={() => toggleSkill(name)}
               title="Remove this skill"
-              className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2 py-px font-mono text-[11px] font-medium text-foreground transition-colors hover:bg-danger/10 hover:text-danger"
+              className="inline-flex min-h-tap min-w-tap items-center justify-center gap-1 rounded-full border border-border bg-muted px-2 py-px font-mono text-[11px] font-medium text-foreground transition-colors outline-none hover:bg-danger/10 hover:text-danger focus-visible:ring-[3px] focus-visible:ring-ring/50 md:min-h-chip md:min-w-0"
             >
               {name}
               <XIcon aria-hidden="true" className="size-3" />
@@ -317,10 +317,10 @@ export function HandToAgent({
         onChange={(event) => setPrompt(event.target.value)}
         onKeyDown={submitShortcut}
         placeholder={`Instructions for the agent… (#${item.number} and its link are always sent)`}
-        className="mt-3 min-h-20 text-[13px]"
+        className="mt-stack min-h-20 text-[13px]"
       />
 
-      <div className="mt-4 flex flex-wrap items-center gap-2.5">
+      <div className="mt-list flex flex-wrap items-center gap-row">
         <Button
           variant="contrast"
           data-action="gh-run"
@@ -332,7 +332,7 @@ export function HandToAgent({
         </Button>
         <kbd
           aria-hidden="true"
-          className="rounded-[5px] border border-b-2 border-border bg-card px-[5px] py-px font-mono text-[10.5px] font-medium text-muted-foreground"
+          className="rounded-[5px] border border-b-2 border-border bg-card px-1.25 py-px font-mono text-[10.5px] font-medium text-muted-foreground"
         >
           {submitShortcutHint()}
         </kbd>
@@ -345,7 +345,7 @@ export function HandToAgent({
             <Link
               to={`/tasks/${queuedRunId}`}
               data-slot="gh-view-run"
-              className="text-xs font-semibold text-violet hover:underline"
+              className="inline-flex min-h-tap items-center text-xs font-semibold text-violet hover:underline md:min-h-0"
             >
               View task →
             </Link>
@@ -397,7 +397,7 @@ function WorkflowPicker({
       <PopoverContent align="start" sideOffset={8} className="w-[320px] max-w-[calc(100vw-2rem)] p-0">
         <Command shouldFilter={false}>
           <CommandInput
-            placeholder="search workflows…"
+            placeholder="Search workflows…"
             value={search}
             onValueChange={setSearch}
             onInput={() => listRef.current?.scrollTo(0, 0)}
@@ -492,7 +492,7 @@ function SkillsPicker({
             event.stopPropagation()
             setPreview(skill)
           }}
-          className="ml-auto shrink-0 rounded-sm p-0.5 text-soft-foreground transition-colors hover:text-foreground"
+          className="ml-auto inline-flex shrink-0 items-center justify-center rounded-sm p-0.5 text-soft-foreground transition-colors hover:text-foreground max-md:min-h-tap max-md:min-w-tap"
         >
           <EyeIcon aria-hidden="true" className="size-3.5" />
         </button>
@@ -527,7 +527,7 @@ function SkillsPicker({
         <PopoverContent align="start" sideOffset={8} className="w-[336px] max-w-[calc(100vw-2rem)] p-0">
           <Command shouldFilter={false}>
             <CommandInput
-              placeholder="search skills…"
+              placeholder="Search skills…"
               value={search}
               onValueChange={setSearch}
               onInput={() => listRef.current?.scrollTo(0, 0)}

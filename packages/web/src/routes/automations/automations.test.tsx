@@ -251,9 +251,10 @@ describe('/automations with the capability on', () => {
     stubFetch({ automations: [] })
     renderAt('/automations')
 
-    await screen.findByText(
-      'No automations yet. Create one paused, test its bounded filter, then enable it from a current-time baseline.',
-    )
+    await screen.findByText('No automations yet')
+    expect(
+      screen.getByText('Create one paused, test its bounded filter, then enable it from a current-time baseline.'),
+    ).toBeTruthy()
     expect(rows()).toHaveLength(0)
   })
 })
@@ -314,9 +315,10 @@ describe('/automations/new', () => {
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Never saved' } })
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
 
-    await screen.findByText(
-      'No automations yet. Create one paused, test its bounded filter, then enable it from a current-time baseline.',
-    )
+    await screen.findByText('No automations yet')
+    expect(
+      screen.getByText('Create one paused, test its bounded filter, then enable it from a current-time baseline.'),
+    ).toBeTruthy()
     expect(posts(sent, '/api/v1/automations')).toHaveLength(0)
   })
 })

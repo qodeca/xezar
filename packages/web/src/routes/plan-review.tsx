@@ -100,14 +100,14 @@ export function PlanReview({
           'sm:top-1/2 sm:left-1/2 sm:h-auto sm:max-h-[85dvh] sm:max-w-[680px] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-xl',
         )}
       >
-        <DialogHeader className="gap-1 border-b border-border px-5 pt-4 pb-3.5 text-left sm:text-left">
-          <div className="flex items-start justify-between gap-3">
+        <DialogHeader className="gap-1 border-b border-border px-inset pt-list pb-stack text-left sm:text-left">
+          <div className="flex items-start justify-between gap-stack">
             <DialogTitle className="text-[11px] font-semibold tracking-[0.08em] text-muted-foreground uppercase">
               Proposed chain
             </DialogTitle>
             <DialogClose
               aria-label="Discard the plan"
-              className="-mt-1 -mr-1 rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              className="-mt-1 -mr-1 inline-flex min-h-tap min-w-tap items-center justify-center rounded-md p-1 text-muted-foreground transition-colors outline-none hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 md:min-h-0 md:min-w-0"
             >
               <XIcon aria-hidden="true" className="size-4" />
             </DialogClose>
@@ -130,7 +130,7 @@ export function PlanReview({
           ) : null}
         </DialogHeader>
 
-        <ol data-slot="plan-steps" className="flex-1 space-y-2 overflow-y-auto px-5 py-4">
+        <ol data-slot="plan-steps" className="flex-1 space-y-row overflow-y-auto px-inset py-list">
           {empty ? (
             <li className="py-6 text-center text-sm text-muted-foreground">
               (no steps left — discard and plan again)
@@ -151,7 +151,7 @@ export function PlanReview({
                 onDrop={(event) => drop(event, index)}
                 onDragEnd={endDrag}
                 className={cn(
-                  'flex items-center gap-2.5 rounded-lg border border-border bg-card-2 px-3 py-2.5',
+                  'flex items-center gap-row rounded-lg border border-border bg-card-2 px-3 py-2.5',
                   dragIndex === index && 'opacity-50',
                   overIndex === index && dragIndex !== null && dragIndex !== index && 'border-ring',
                 )}
@@ -235,13 +235,13 @@ export function PlanReview({
         {!startAvailable && startUnavailableReason ? (
           <p
             id="plan-start-guidance"
-            className="flex flex-wrap items-center gap-1.5 border-t border-border px-5 pt-3 text-xs text-muted-foreground"
+            className="flex flex-wrap items-center gap-1.5 border-t border-border px-inset pt-stack text-xs text-muted-foreground"
           >
             <span>{startUnavailableReason}</span>
             {startUnavailableAction}
           </p>
         ) : null}
-        <div className="flex items-center gap-2 px-5 py-3.5 pb-[max(14px,env(safe-area-inset-bottom))]">
+        <div className="flex flex-wrap items-center gap-row px-inset py-stack pb-[max(var(--spacing-stack),env(safe-area-inset-bottom))]">
           <Button
             type="button"
             data-slot="plan-start"
@@ -338,7 +338,7 @@ function SaveAsChain({ steps, disabled }: { steps: WorkflowStepDef[]; disabled: 
               maxLength={80}
               autoFocus
             />
-            <DialogFooter className="mt-4">
+            <DialogFooter className="mt-list">
               <Button type="button" variant="outline" onClick={() => setOpen(false)}>
                 Cancel
               </Button>
