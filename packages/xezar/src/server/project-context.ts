@@ -6,7 +6,7 @@ import { DEFAULT_WORKTREE_RETENTION, resolveWorktreeRetention } from '../config.
 import { pruneOrphans } from '../git-worktree.ts';
 import { armRepoHandle } from '../runs/arm-repo-handle.ts';
 import { reclaimWorktrees } from '../runs/retention.ts';
-import { RunStore } from '../runs/store.ts';
+import { RunStore, type RunStatus } from '../runs/store.ts';
 import { ownProjectData } from '../runs/project-writer.ts';
 import { WorkspaceSemaphore } from '../workspace/semaphore.ts';
 import { RunManager } from '../workflows/run.ts';
@@ -54,8 +54,11 @@ export interface ProjectContextSource {
 }
 
 export interface ProjectContextDeps {
-  /** Registry lookup — the workspace `listProjects()` in production. */
-  listProjects: () => Promise<readonly ProjectContextSource[]>;
+  /** Registry lookup — the workspace `listProjects()` in production. An optional selector narrows
+   *  the read to one id (#592 review round 1, Minor 2) — the drift re-check on every cache hit
+   *  uses it so a request against one project no longer probes every registered root; a full
+   *  build still passes nothing, since it must validate an id it does not yet know is registered. */
+  listProjects: (selector?: { projectId: string }) => Promise<readonly ProjectContextSource[]>;
   /** Resolve the one automation store owned by this project. Production
    *  injects the workspace automation coordinator's cached store so API
    *  mutations and scheduler reads share the same in-memory state. */
@@ -85,6 +88,12 @@ export class ProjectContextError extends Error {
     this.name = 'ProjectContextError';
   }
 }
+
+/** Mirrors `ACTIVE_RUN_STATUSES` in server.ts — the same three statuses the removal route's own
+ *  running-tasks 409 guard treats as "this process is actively responsible for it" (#592 review
+ *  round 1, Major 2). Kept as a second literal rather than an import: `server.ts` declares its
+ *  copy inside `createApp`'s closure, not at module scope, so there is nothing to import from. */
+const ACTIVE_RUN_STATUSES: ReadonlySet<RunStatus> = new Set<RunStatus>(['queued', 'running', 'waiting']);
 
 /**
  * Lazy `Map<projectId, ProjectContext>`. Nothing is instantiated at
@@ -117,6 +126,19 @@ export class ProjectContexts {
    * as 0; the map only grows by one small entry per project actually removed.
    */
   private readonly generations = new Map<string, number>();
+  /** One in-flight drift dispose+rebuild per id (#592 review round 1, Minor 1): several requests
+   *  can land on a cache hit together (the cockpit fires scoped requests in parallel), and each
+   *  independently reading the registry as "moved" would each call `dispose()` — bumping
+   *  `generations` again out from under whichever one started first, so its build lost its publish
+   *  check and 404ed for a project that exists. Checked-and-set with no `await` between them (see
+   *  `context()`), so exactly one caller's dispose+rebuild runs and every other one — including a
+   *  caller still mid-registry-read right now — shares its promise instead. */
+  private readonly driftRebuilds = new Map<string, Promise<ProjectContext>>();
+  /** The target root last warned about for each id (#592 review round 1, Major 2) — keyed by
+   *  target so a drift to a NEW root warns again, but repeated cache hits while the same drift
+   *  stays un-rebuildable (runs still active) warn exactly once, the way `warnOncePerState` in
+   *  `workspace/config.ts` avoids repeating the same degraded-state line on every load. */
+  private readonly activeDriftWarned = new Map<string, string>();
   /** Live store-created subscribers; invoked before RunManager recovery. */
   private readonly storeListeners = new Set<(store: RunStore, projectId: string) => void>();
   /** Live `onContextBuilt` subscribers (workspace SSE, step 2.8). */
@@ -137,7 +159,47 @@ export class ProjectContexts {
    *  time that build finished, that is what it was. */
   async context(projectId: string): Promise<ProjectContext> {
     const existing = this.contexts.get(projectId);
-    if (existing) return existing;
+    if (existing) {
+      const inFlightDrift = this.driftRebuilds.get(projectId);
+      if (inFlightDrift) return inFlightDrift;
+      const drift = await this.driftFor(projectId, existing);
+      if (drift !== 'stale') return existing;
+      // The registry POSITIVELY names a different root for this id, and nothing is actively using
+      // the cached one — re-pointed by a second process, a hand-edited `config.json`, or a test
+      // seeding the registry directly (#591), none of which go through the removal route that
+      // would otherwise have disposed this already. Dispose it exactly as that route would, then
+      // fall through and build fresh — `build()` re-reads the registry itself, so this always
+      // resolves to whatever it says NOW.
+      //
+      // Checked and set with NO `await` between them (#592 review round 1, Minor 1): several
+      // requests can reach this same verdict from their OWN independent registry reads, and
+      // whichever one's continuation actually runs first claims the slot atomically — every other
+      // one, however far into its own `driftFor` it already was, finds this entry set once it gets
+      // here and shares the one dispose+rebuild instead of bumping `generations` a second time out
+      // from under the first.
+      const already = this.driftRebuilds.get(projectId);
+      if (already) return already;
+      const rebuild = this.buildAfterDispose(projectId);
+      this.driftRebuilds.set(projectId, rebuild);
+      try {
+        return await rebuild;
+      } finally {
+        if (this.driftRebuilds.get(projectId) === rebuild) this.driftRebuilds.delete(projectId);
+      }
+    }
+    return this.acquireBuild(projectId);
+  }
+
+  /** Dispose the stale cached context, then run the same build-acquisition every fresh access
+   *  goes through — so a drift rebuild and an ordinary first-touch build share one generation/
+   *  in-flight-build seam rather than two. */
+  private async buildAfterDispose(projectId: string): Promise<ProjectContext> {
+    await this.dispose(projectId);
+    return this.acquireBuild(projectId);
+  }
+
+  /** Acquire (or join) the build for `projectId`'s CURRENT registration. */
+  private async acquireBuild(projectId: string): Promise<ProjectContext> {
     const generation = this.generation(projectId);
     const inFlight = this.building.get(projectId);
     // A build started for an EARLIER registration is never adopted: it is going to tear itself
@@ -159,6 +221,65 @@ export class ProjectContexts {
   /** The registration counter for `projectId`; 0 until its first `dispose()`. */
   private generation(projectId: string): number {
     return this.generations.get(projectId) ?? 0;
+  }
+
+  /**
+   * The drift verdict for a cache hit against the registry's CURRENT view (#591; corrected #592
+   * review round 1, Blocker 1 + Major 2):
+   *
+   * - `'unchanged'` — the registry still names `existing.root` for this id, OR the read named
+   *   nothing definite at all: an empty result for this id, a `listProjects()` rejection, or
+   *   (structurally the same case) an unreadable registry. A fail-open helper needs a
+   *   populated-input guarantee (AGENTS.md) — "no information" must read as "still current", never
+   *   as "moved" or "removed", or a transient read failure (permissions, a dropped network mount,
+   *   fd exhaustion) would dispose every non-boot project's live context on the next request. The
+   *   removal route is what disposes on an actual removal; this on-access check only ever catches
+   *   a POSITIVE root change.
+   * - `'active'` — the registry positively names a different root, but this process is actively
+   *   responsible for runs against the cached context (the same three statuses the removal route's
+   *   own running-tasks 409 guard treats as "do not tear this down"). Disposing here would strand
+   *   them exactly as `workflows/run.ts`'s `dispose()`-is-not-a-run-stopper doc warns: invisible to
+   *   `cancel()`, unrecoverable in this process, forever.
+   * - `'stale'` — the registry positively names a different root and nothing is active: safe to
+   *   dispose and rebuild.
+   */
+  private async driftFor(
+    projectId: string,
+    existing: ProjectContext,
+  ): Promise<'unchanged' | 'active' | 'stale'> {
+    let projects: readonly ProjectContextSource[];
+    try {
+      // Narrowed to this one id (#592 review round 1, Minor 2): every project-scoped request used
+      // to re-read and re-probe the ENTIRE registry on every cache hit, which also widened Blocker
+      // 1's blast radius from "this project" to "every registered project".
+      projects = await this.deps.listProjects({ projectId });
+    } catch {
+      return 'unchanged'; // a rejected read is no information — see the doc above.
+    }
+    const current = projects.find((p) => p.id === projectId);
+    if (current === undefined || current.root === existing.root) return 'unchanged';
+    if (this.hasActiveRuns(existing)) {
+      this.warnActiveDrift(projectId, existing.root, current.root);
+      return 'active';
+    }
+    return 'stale';
+  }
+
+  /** Whether this process is actively responsible for any of `ctx`'s runs — the same read the
+   *  removal route's `activeRunCount` guard makes off the store, so a benign drift under a live
+   *  run is refused the same way an explicit removal already is. */
+  private hasActiveRuns(ctx: ProjectContext): boolean {
+    return ctx.store.listRuns().some((run) => ACTIVE_RUN_STATUSES.has(run.status));
+  }
+
+  /** Logs once per (id, target root) pair — see `activeDriftWarned`'s field doc for why. */
+  private warnActiveDrift(projectId: string, oldRoot: string, newRoot: string): void {
+    if (this.activeDriftWarned.get(projectId) === newRoot) return;
+    this.activeDriftWarned.set(projectId, newRoot);
+    console.warn(
+      `[xez] project ${projectId}: registry root changed from ${oldRoot} to ${newRoot} while runs `
+        + 'are active — keeping the cached context until they finish',
+    );
   }
 
   /**
@@ -325,6 +446,7 @@ export class ProjectContexts {
     // Bumped BEFORE anything is awaited, so a build that has not reached its publish check yet is
     // already a loser by the time it gets there — no window, no second removal path.
     this.generations.set(projectId, this.generation(projectId) + 1);
+    this.activeDriftWarned.delete(projectId);
     const pending = this.building.get(projectId);
     const ctx = this.contexts.get(projectId);
     if (ctx) this.contexts.delete(projectId); // synchronously, before any await — see below
