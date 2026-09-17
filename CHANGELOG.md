@@ -1,5 +1,7 @@
 # Unreleased
 
+- test(engine): cover MCP–leader engine incidents, nudges, continuation and quota clocks (#532 slice 2, G7/G8/G9; supersedes #538).
+
 - Fixed: a standalone `XEZ:DONE` line before a final-turn checkpoint stops autonomous nudges (#524), while fenced examples never count.
 - Fixed: Continue resumes the failed workflow step and remaining steps after repair, and reports success only after the workflow finishes (#520).
 

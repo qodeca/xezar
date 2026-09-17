@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { RunStore } from '../runs/store.ts';
+import { providerClock, scriptedRunner, SINGLE_STEP, terminal } from './engine-incidents.testkit.ts';
 import { WorkspaceSemaphore } from '../workspace/semaphore.ts';
 import {
   AUTO_RESUME_GRACE_MS,
@@ -811,4 +812,87 @@ describe('a run stopped by a usage limit resumes itself', () => {
     const events = store.readEvents(record.id);
     expect(events.some((event) => String(event.message ?? '').includes('resuming automatically (1/12)'))).toBe(true);
   }, 40_000);
+});
+
+// G9: observable schedules/continuations, with only the provider clock and agent process scripted.
+describe('G9 deterministic quota recovery', () => {
+  it.each(['recovery', 'repeat limit', 'cancelled schedule', 'disabled'])(
+    '%s starts at most one continuation at reset plus grace', async mode => {
+      const root = mkdtempSync(join(tmpdir(), 'xez-g9-'));
+      const store = RunStore.open(join(root, 'data'));
+      const clock = providerClock();
+      const reset = clock.reset();
+      const runner = scriptedRunner([{ error: `Claude AI usage limit reached|${reset}` },
+        mode === 'repeat limit' ? { error: `Claude AI usage limit reached|${clock.reset(180)}` } : {}]);
+      const manager = new RunManager(store, root, {
+        autoResumeTimer: clock.timer,
+        semaphore: new WorkspaceSemaphore({ initial: { autoResumeOnUsageLimit: mode !== 'disabled' } }),
+      });
+      try {
+        const run = manager.startRun(SINGLE_STEP, { task: 'quota fixture', worktree: false });
+        await terminal(store, run.id);
+        expect(store.getRun(run.id)?.status).toBe('failed');
+        const deadline = reset * 1000 + AUTO_RESUME_GRACE_MS;
+        if (mode === 'disabled') expect(store.getRun(run.id)?.autoResumeAt).toBeUndefined();
+        else expect(store.getRun(run.id)?.autoResumeAt).toBe(new Date(deadline).toISOString());
+        if (mode === 'cancelled schedule') expect(manager.cancelAutoResume(run.id)).toBe(true);
+        clock.advanceTo(deadline - 1);
+        expect(runner.specs).toHaveLength(1);
+        clock.advanceTo(deadline);
+        if (mode === 'recovery' || mode === 'repeat limit') {
+          await expect.poll(() => runner.specs.length).toBe(2);
+          await terminal(store, run.id);
+          expect(store.getRun(run.id)?.status).toBe(mode === 'recovery' ? 'done' : 'failed');
+          expect(runner.specs[1]?.resume).toBe(true);
+          expect(store.readEvents(run.id).filter(e => e.type === 'user-message')).toHaveLength(1);
+          if (mode === 'repeat limit') expect(store.getRun(run.id)?.autoResumeAt)
+            .toBe(new Date((reset + 120) * 1000 + AUTO_RESUME_GRACE_MS).toISOString());
+        } else {
+          expect(store.getRun(run.id)?.status).toBe('failed');
+          expect(store.getRun(run.id)?.autoResumeAt).toBeUndefined();
+          expect(runner.specs).toHaveLength(1);
+        }
+      } finally { await manager.quiesce(); store.flush(); runner.restore(); clock.restore(); rmSync(root, { recursive: true, force: true }); }
+    },
+  );
+});
+
+
+describe('G9 account/project quota isolation', () => {
+  it.each(['same', 'second'])('%s account in a second project respects only its own quota hold', async account => {
+    const roots = [mkdtempSync(join(tmpdir(), 'xez-quota-a-')), mkdtempSync(join(tmpdir(), 'xez-quota-b-'))];
+    const stores = roots.map(root => RunStore.open(join(root, 'data')));
+    const clock = providerClock(); const reset = clock.reset();
+    const runner = scriptedRunner([{ error: `Claude AI usage limit reached|${reset}` }, {}, {}, {}]);
+    const semaphore = new WorkspaceSemaphore({ initial: { maxParallel: 2 } });
+    const managers = roots.map((root, i) => new RunManager(stores[i]!, root, { semaphore, autoResumeTimer: clock.timer }));
+    try {
+      const limited = managers[0]!.startRun(SINGLE_STEP, { task: 'limited', worktree: false });
+      await terminal(stores[0]!, limited.id);
+      const other = managers[1]!.startRun(SINGLE_STEP, { task: 'other project', worktree: false,
+        ...(account === 'second' ? { agentProfile: 'second' } : {}) });
+      if (account === 'second') {
+        await terminal(stores[1]!, other.id);
+        expect(stores[1]!.getRun(other.id)?.status).toBe('done');
+      } else {
+        // A different account completes through this SAME manager, proving its queue was pumped.
+        const control = managers[1]!.startRun(SINGLE_STEP, { task: 'queue barrier', worktree: false, agentProfile: 'second' });
+        await terminal(stores[1]!, control.id);
+        expect(stores[1]!.getRun(control.id)?.status).toBe('done');
+        expect(stores[1]!.getRun(other.id)?.status).toBe('queued');
+        expect(runner.specs).toHaveLength(2);
+      }
+      expect(stores[0]!.getRun(limited.id)?.status).toBe('failed');
+      clock.advanceTo(reset * 1000 + AUTO_RESUME_GRACE_MS);
+      await expect.poll(() => runner.specs.length).toBe(account === 'same' ? 4 : 3);
+      await terminal(stores[0]!, limited.id); await terminal(stores[1]!, other.id);
+      expect(stores[0]!.getRun(limited.id)?.status).toBe('done');
+      expect(stores[1]!.getRun(other.id)?.steps.filter(step => step.id.startsWith('continue-'))).toHaveLength(0);
+      expect(stores[0]!.getRun(limited.id)?.steps.filter(step => step.id.startsWith('continue-'))).toHaveLength(1);
+    } finally {
+      for (const manager of managers) await manager.quiesce();
+      for (const store of stores) store.flush(); runner.restore(); clock.restore();
+      for (const root of roots) rmSync(root, { recursive: true, force: true });
+    }
+  });
 });
