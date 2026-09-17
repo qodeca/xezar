@@ -44,7 +44,7 @@ function FilesView({ run }: { run: ApiRun }) {
       <RunHeader run={run} tab="files" />
 
       {root.isPending ? (
-        <p data-slot="files-loading" className="px-4 py-6 text-center text-xs text-soft-foreground md:px-6">
+        <p data-slot="files-loading" className="px-4 py-6 text-center text-xs text-soft-foreground md:px-section">
           Loading files…
         </p>
       ) : root.isError ? (
@@ -56,7 +56,7 @@ function FilesView({ run }: { run: ApiRun }) {
           subtitle={root.error.message}
         />
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col items-stretch gap-5 px-4 py-4 [--diff-sticky-top:7rem] md:flex-row md:items-start md:px-6">
+        <div className="flex min-h-0 flex-1 flex-col items-stretch gap-list p-4 [--diff-sticky-top:7rem] md:flex-row md:items-start md:gap-section md:p-section">
           {/* Sticky beside a long preview on desktop, with its own scroller so a deep tree scrolls
               without dragging the preview along; first in the stack (and no scroller of its own) on
               phones, where the page IS the pane. The cap reads the same var the pin is set from, so

@@ -72,7 +72,7 @@ export function CommitDialog({
         <DialogHeader>
           <DialogTitle>Commit changes</DialogTitle>
           <DialogDescription>
-            Stages everything in the task&apos;s worktree (git add -A) and commits to{' '}
+            Stages everything in the task’s worktree (git add -A) and commits to{' '}
             {run.branch ? <span className="font-mono">{run.branch}</span> : 'its branch'}.
           </DialogDescription>
         </DialogHeader>
