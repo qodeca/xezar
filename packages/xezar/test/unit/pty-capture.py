@@ -38,6 +38,8 @@ import termios
 import time
 
 
+# A `serve` that never reaches the boot marker now takes ~2 minutes to fail instead of the ~6s
+# fixed window it used to be -- the real absence is still reported, just later (#342 review m2).
 MARKER_CEILING_SECONDS = 120.0
 
 

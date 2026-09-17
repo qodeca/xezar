@@ -71,7 +71,9 @@ export class PiRunner implements AgentRunner {
   ): AgentSession {
     // What this run may reach over MCP is decided once, before the child exists (#342): the
     // project's servers keep working, xezar's own leader bridge is switched off for this client.
-    const isolation = piMcpIsolation(spec.cwd);
+    // `spec.env` carries `PI_CODING_AGENT_DIR` for a stored pi agent account (`profileEnv`), so the
+    // env the child actually spawns with is what must resolve the agent home — not the host default.
+    const isolation = piMcpIsolation(spec.cwd, { ...process.env, ...spec.env });
     const isolationNote = runMcpIsolationNote('pi', isolation);
     if (isolationNote) onEvent?.({ type: 'note', message: isolationNote });
     const mcpOverlay = writeMcpOverlay('mcp.json', isolation.overlay);

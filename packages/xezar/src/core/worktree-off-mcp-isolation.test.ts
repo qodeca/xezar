@@ -20,14 +20,17 @@
  * claims a bridge nobody declared.
  */
 
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import type { ChildProcessWithoutNullStreams } from 'node:child_process';
+import { EventEmitter } from 'node:events';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { PassThrough } from 'node:stream';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AgentRunSpec } from './agent-runner.js';
 import { buildClaudeArgs } from './claude-cli-runner.js';
-import { buildPiArgs } from './pi-runner.js';
+import { buildPiArgs, PiRunner } from './pi-runner.js';
 import { opencodeChildEnv } from './opencode-server-runner.js';
 import {
   claudeMcpIsolation,
@@ -36,6 +39,19 @@ import {
   runMcpIsolationNote,
   writeMcpOverlay,
 } from './run-mcp-isolation.js';
+
+/** Only the M1 regression test below swaps the child out, mirroring the identical hook in
+ *  `pi-runner.test.ts`; every other test in this file never reaches `node:child_process`. */
+const spawnHook = vi.hoisted(() => ({ override: null as null | ((...args: unknown[]) => unknown) }));
+
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>();
+  return {
+    ...actual,
+    spawn: (...args: Parameters<typeof actual.spawn>) =>
+      spawnHook.override ? spawnHook.override(...args) : actual.spawn(...args),
+  };
+});
 
 /** The entry a person adds so their leader session can reach xezar (docs/guide/13-mcp-leader.md). */
 const BRIDGE = { command: 'npx', args: ['-y', '@qodeca/xezar', 'mcp'], lifecycle: 'keep-alive' };
@@ -103,6 +119,64 @@ describe('the seam keeps the project xezar bridge out of a task-spawned client',
     expect(content.mcp.xezar).toEqual({ enabled: false });
     // OPENCODE_CONFIG is merged BELOW the project's own opencode.json and would lose to it.
     expect(env.OPENCODE_CONFIG).toBeUndefined();
+  });
+});
+
+// ---- M1: the seam must resolve the ACCOUNT's pi home, not the host default's --------------
+
+describe('pi startSession resolves the agent home from the env the child actually spawns with (#342 review M1)', () => {
+  it("the run's overlay carries the account pi home's servers, not the host default account's", async () => {
+    write('host-pi-home/mcp.json', { mcpServers: { 'host-only': { command: 'h' } } });
+    write('account-pi-home/mcp.json', { mcpServers: { 'account-only': { command: 'a' } } });
+
+    // The host process's OWN default account — must lose to `spec.env` below.
+    const savedHostDir = process.env.PI_CODING_AGENT_DIR;
+    process.env.PI_CODING_AGENT_DIR = join(root, 'host-pi-home');
+
+    const stdout = new PassThrough();
+    const child = Object.assign(new EventEmitter(), {
+      stdin: new PassThrough(),
+      stdout,
+      stderr: new PassThrough(),
+      exitCode: null as number | null,
+      signalCode: null as NodeJS.Signals | null,
+      killed: false,
+      pid: 4242,
+      kill: () => true,
+    }) as unknown as ChildProcessWithoutNullStreams;
+    let overlayPath: string | undefined;
+    spawnHook.override = (_bin: unknown, args: unknown) => {
+      const argv = args as string[];
+      overlayPath = argv[argv.indexOf('--mcp-config') + 1];
+      return child;
+    };
+
+    let session: ReturnType<PiRunner['startSession']>;
+    try {
+      // The step runs under a STORED pi agent account: `spec.env` is what `workflows/run.ts`
+      // gives the child, carrying that account's own `PI_CODING_AGENT_DIR` (#342 review M1).
+      session = new PiRunner({ bin: 'pi', timeoutMs: 0 }).startSession(
+        { userPrompt: 'do it', cwd: root, env: { PI_CODING_AGENT_DIR: join(root, 'account-pi-home') } },
+        () => {},
+      );
+    } finally {
+      spawnHook.override = null;
+      if (savedHostDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+      else process.env.PI_CODING_AGENT_DIR = savedHostDir;
+    }
+
+    expect(overlayPath).toBeDefined();
+    const overlay = JSON.parse(readFileSync(overlayPath as string, 'utf8')) as {
+      mcpServers: Record<string, unknown>;
+    };
+    // Reviewer's probe: the runner must answer `account-only,xezar`, never `host-only,xezar`.
+    expect(Object.keys(overlay.mcpServers).sort()).toEqual(['account-only', 'xezar']);
+
+    Object.assign(child, { exitCode: 0 });
+    stdout.end();
+    child.emit('exit', 0, null);
+    child.emit('close', 0, null);
+    await session.result.catch(() => {});
   });
 });
 
