@@ -1,75 +1,123 @@
-# Unreleased
+# 0.15.0 (2026-09-17)
 
-- test(engine): cover MCP–leader engine incidents, nudges, continuation and quota clocks (#532 slice 2, G7/G8/G9; supersedes #538).
+## Highlights
 
-- Fixed: a standalone `XEZ:DONE` line before a final-turn checkpoint stops autonomous nudges (#524), while fenced examples never count.
-- Fixed: Continue resumes the failed workflow step and remaining steps after repair, and reports success only after the workflow finishes (#520).
+The terminal now reports live task activity, and projects remember their cockpit ports.
+Guided project setup, issue drafting and a complete user guide make the first steps clearer.
+Leaders gain event delivery, progress advisories and more reliable steering and recovery.
+The cockpit adds Roomy density and larger phone controls, alongside dependency and isolation fixes.
 
-- Fixed: known MCP `applied:false` refusals replay as rejected after retry or restart (#536).
-- Fixed: replacing a pending question invalidates and persists the MCP decision token (#534).
-
-- test(mcp): cover fragile leader delivery, causal outcomes, decision tokens and receipt replay invariants (#532, slice 1).
-
-- Fixed: #449 — decision-only run versions keep busy-task steering valid while detecting reversed decisions.
-- Fixed: #530 — rejected operations cannot claim or suppress later task outcomes.
-
-- fix(runners): keep timeout SIGKILL escalation armed until Claude and Codex child processes exit (#462)
-- docs(guide): getting started and project kit pages for the onboarding flow – guided setup, re-check offer, project and machine configuration, optional agent pipeline (#464, P4)
-- chore(mcp): the leader role, the `initialize` instructions and the `leader_events` description now suit any project – GitHub and worktrees are named only as capabilities a project may have, and the leader role adds the work order, restart reconciliation, authority and a local path when a capability is missing; the generic-instructions guard carries no software-framing exceptions any more (#466, P3)
-- docs(guide): make the MCP project-leader guide the canonical per-client setup, launch, delivery and recovery reference (#515, PR 1)
-- docs(guide): filing an issue from the cockpit and the issue-filing skill (#468, step 4)
-- feat(onboarding): project setup now discovers whether issue filing works here (GitHub CLI signed in, a GitHub remote, the `xez-issue-create` skill) and reports it – `issueFiling` on `GET /api/v1/onboarding` and in `discover_project`, plus an "Issue filing:" line in the setup and re-check report; a missing part is a reason, never an error (#468, step 3)
-- docs(project): leader run guidance for contributors – per-client pointers and kit tips (#515, PR 2)
-
-## 💥 Breaking defaults
+## 💥 Breaking
 
 - 💥 **`xezar` remembers which port a project ran on, and starts there next time.** (#467, PR 2) This changes a default, accepted by the owner on 2026-09-16 and shipped through the minor-release path in `BACKWARD_COMPATIBILITY.md`. Without `-p/--port`, a project now starts from the port you pinned for it (`xezar projects port <id> <port>`), then `XEZ_PORT`, then the port it last listened on, then 4321 — and takes the next free port from there, exactly as before. A start from memory or from 4321 also steps over ports other registered projects hold or remember, so two projects stop swapping ports and breaking each other's bookmarks. **`xezar --port 4321` restores the old start point** for one launch, and `xezar projects port <id> 4321` makes that permanent. Unchanged: the 50-bind budget (a port skipped for another project does not spend from it), the 65535 ceiling, `EADDRINUSE`-only retry, the printed port always being the one the server really holds, `--port 0` (which ignores memory and is never remembered), every exit code, and `server-install`'s own ports, which are never reinterpreted with `serve` memory.
 
 - 💥 **`xezar serve` now tells you what your tasks are doing, on stderr.** (#467, PR 3) It used to print a banner and then go almost silent, so the only way to see that a task had finished, failed or was waiting for you was to open the browser. It now reports each of those as it happens. Every new line is on **stderr**: stdout keeps the banner, the agent and tool checks and the `cockpit → <url>` line byte for byte, so anything that pipes, tees or greps stdout is unaffected, and `xezar mcp` still writes JSON-RPC and nothing else. Off a terminal — a file, a pipe, a non-empty `CI`, `TERM=dumb` — the output is plain append-only lines with **no escape byte at all**, even when `--output rich` was asked for. **`2>/dev/null` restores the old near-silence exactly**, and `--output lines` keeps the words without the live table.
 
-## 🐛 Bug Fixes
+- 💥 **A Codex run xezar starts no longer loads your own Codex MCP servers, plugins or apps.**
+  (#324, #323) Every Codex task run used to load each MCP server and plugin in
+  `$CODEX_HOME/config.toml` – a browser, the Messages plugin, ChatGPT connectors – and
+  `approvalPolicy: never` let the agent call them with no prompt. The runner now asks the Codex
+  app-server which servers it would load (`config/read`) and starts the thread with only the
+  servers that the project's own trusted `.codex/config.toml` alone declares. Servers from your
+  home config, plugins, apps and xezar's own leader bridge are switched off for that thread, and
+  the run transcript names what was switched off. The bridge is known by its launch line
+  (`npx @qodeca/xezar mcp`, `xezar mcp`, `env … xezar mcp`, `sh -c "…"`,
+  `node …/@qodeca/xezar/dist/index.js mcp`) and by the name `xezar`, which is now reserved: a
+  project server called that is switched off too, so rename it. Your config files are not
+  changed. To use a server in Codex runs, declare it in the project's `.codex/config.toml` and
+  keep your home config from adding keys to it. A Codex CLI that cannot answer `config/read`
+  now fails the run with a message instead of starting it. No setting and no environment
+  variable. Migration: README § "Codex runs and MCP servers".
 
-- 🐛 Keep contract test declarations out of the published package, and make the archive gate reject test artifacts if they return. (#466, P7)
+- 💥 **Agent config no longer follows individual file symlinks (#363); ship in the next minor release.** Reads and writes return 409 with the existing error body; listings expose no hash and seeding skips the link. Directory links below an agent home or repository may not escape that root. Replace file links with regular config files; relocating an entire configured home remains supported.
+
+- 💥 **The default team skills source is now `qodeca/xezar-skills`, and the skills are named
+  `xez-*`.** (#394) The previous default repository is no longer loaded, and the automatic updater no
+  longer recognises it: an `npx skills` install from the old source is reported as "Installed
+  skills come from another source; xezar does not update them" and is never touched. Existing
+  installs are not migrated – run `npx skills remove <om-* names> -p` (or `-g`), then
+  `npx skills add qodeca/xezar-skills --skill '*'`; `~/.cache/xez/skills/open-mercato__skills`
+  and `.claude/skills/om-*` are orphaned afterwards and safe to delete. A curated Manage-skills
+  selection that still names `om-*` skills keeps working: each `om-<name>` is read as
+  `xez-<name>`, and the stored list is never rewritten. An explicit
+  `"skillsRepos": [{ "repo": "open-mercato/skills" }]` in `.xezar/config.json` restores loading of
+  the old collection (ungated) but not automatic updates. The cockpit, the `xezar serve` banner
+  and `--help` name the new repository.
+
+Merged PRs for the preserved entries above: (#394), (#410), (#415), (#488), (#505).
+
+## 🔒 Security
+
 - 🐛 Update Hono and its Node adapter to clear the shipped server advisories. (#428)
-- 🐛 fix(release): stage the web manifest in version-bump PRs so main keeps every stamped release manifest aligned (#461).
-- A live task now stays pinned to its tail when the late current-state response mounts the Plan and Agents docks; slower machines no longer leave the thread exactly 130 px above the bottom.
-- Terminal recovery now preserves the boot banner and counts only new task failures, including projects opened later. Step text is sanitized before display, quiet mode has no live region, and pipes remain free of escape codes even when colour is requested.
-- 🐛 fix(test): the Claude Code adapter's source guard (no process, no environment – #311) now ignores the helper functions Stryker injects into the file it reads, so the nightly mutation run's dry run no longer fails on Stryker's own `process.env` read; a real `child_process` or `process.env` in the adapter still fails it (#436, #377).
+
 - 🐛 Fix agent-config API tests reading inherited agent homes; isolate all four agent config directories and HOME per test (#362).
+
+- 🔒 **Two high-severity advisories in shipped dependencies are fixed.** (#426) `smol-toml` 1.7.0 → 1.8.0 fixes GHSA-7w5x-hrqm-74c2: a malformed TOML document – a comment with no trailing newline inside an array or inline table – made the parser loop for ever at full CPU, and xezar parses TOML agent config with it. Its minimum is now 1.7.1, so every install of `@qodeca/xezar` gets the fix, not only builds from the lockfile. The cockpit's `react-router` 7.18.1 → 7.18.3 fixes GHSA-qwww-vcr4-c8h2, which affects only the unstable RSC APIs; the cockpit uses only `BrowserRouter`, so that bump is precautionary. The dev-only `nanoid` (3.3.19) and `undici` (7.29.1) move too, and `npm audit` reports no high or critical finding.
+
+Merged PRs for the preserved entries above: (#410), (#427), (#525).
 
 ## ✨ Features
 
+- chore(mcp): the leader role, the `initialize` instructions and the `leader_events` description now suit any project – GitHub and worktrees are named only as capabilities a project may have, and the leader role adds the work order, restart reconciliation, authority and a local path when a capability is missing; the generic-instructions guard carries no software-framing exceptions any more (#466, P3)
+
+- feat(onboarding): project setup now discovers whether issue filing works here (GitHub CLI signed in, a GitHub remote, the `xez-issue-create` skill) and reports it – `issueFiling` on `GET /api/v1/onboarding` and in `discover_project`, plus an "Issue filing:" line in the setup and re-check report; a missing part is a reason, never an error (#468, step 3)
+
+- Terminal recovery now preserves the boot banner and counts only new task failures, including projects opened later. Step text is sanitized before display, quiet mode has no live region, and pipes remain free of escape codes even when colour is requested.
+
 - ✨ **The terminal and a project leader now use the same event names.** (#467, PR 4) Every `event=` in `xezar serve`'s activity is either a kind from the MCP event catalog or one of a short list of terminal-only names, and one table decides whether the task store or the MCP journal prints each catalog kind, so no fact prints twice. A task waiting with no structured question is now `event=task.blocked`, as the leader sees it (it was `question.asked`; the words on screen are unchanged). A check marked `resultScope: routine` prints its success at `debug`, the same rule that keeps it from waking a leader, and every check line carries `result_scope`. The terminal now also shows the stall advisory (`task.stalled` / `task.resumed`), recorded reviewer verdicts, agent providers becoming available or unavailable, configuration and workflow changes, and (at `debug`) a person's edits to a queued task – each printed from the MCP journal row, so these lines need the project's MCP service and are absent when it is unavailable. A stall warning is always followed by the line `still running — nothing was stopped` and, when the cockpit address is known, the task link (in plain output, a `url=` field), so it cannot be read as a task that is waiting for you. `--output rich` is documented as it behaves: on a narrow terminal it gives one line per event with no notice, and only a file, a pipe, CI or `TERM=dumb` prints the `output.fallback` notice and switches to plain lines. The CLI guide now covers port memory, the live activity, every output flag and the full list of event names. No new setting, flag or environment variable.
+
 - ✨ **onboarding: leader setup verification – prepared, connected, attached, delivery verified – and recovery after a restart (#464, P3).** The bundled setup fallback carries project-only Claude Code, Codex and pi snippets plus their trust, launch, adapter or shared-home prerequisites. Its checklist keeps four facts separate: a candidate file is only **files prepared**; a real MCP tool result proves **connected**; `leader_events` attach/status proves **attached**; and only a real pushed event or an attached-session `read` proves **delivery verified**. `leader_events` reports that progression around its existing result without another status mechanism or a structured-shape change. It never promotes durable counters from an earlier process into current-session proof: after a restart the leader is connected but unattached, attaches with a new operation ID, then checks retained replay. Hosted mode and client blockers stay pending with their existing fix; stalls remain advisory, verdicts remain unproved until reported, and replay keeps its documented limits. No setting, environment variable, route, home write or cockpit surface was added.
+
 - design-system: batch B2 – shell, page states, palette and project dialogs (#453)
+
 - ✨ mcp: routine gate events are omitted from leader pushes; `resultScope` on check steps and `omittedRoutineCount` on pages (#460, PR 4)
+
 - design-system: batch B3 – every Settings control is a 44 px target on a phone at every density, settings fields share one look and one field chassis, confirmations use the danger button and give focus back, and settings copy follows the house wording (#453)
+
 - design-system: batch B4 – on a phone every task-list control is a 44 px target at every density: pins, tabs, rows, filter chips, composer pills, the template menu, the default-agent picker and the task page tabs. PR and issue chips keep their small look with a 44 px tap area. The Tasks pages show their tabs, actions and search on a phone, and the cross-project Tasks page shows cards there. Both task tables share one header, cell and usage style, and there is one byte formatter with two named precisions (#453)
+
 - ✨ **A project can offer to set itself up, and says so once when xezar changes.** (#464 P2) A project with no tasks yet shows a quiet second block under the "No tasks yet" hero — **Set up this project** — and the same entry has a durable home in **Settings → Project setup**, which also answers "what was actually checked, and when". Both start an **ordinary task** from a new bundled workflow, `project-setup`: it appears in the task list like every other task, you can open it, read what it did and cancel it, and it shows you a preview of every change before writing anything. Nothing starts on its own — not at boot, not on registering a project, not on any event except your click or a project leader's call. When the running xezar or its pinned setup templates differ from what a finished check covered, one non-blocking row appears above the page with exactly two actions, **Re-check** and **Later**; it appears once per version pair and never comes back for that pair, and Settings still shows the change and a working re-check at any time. Pressing **Set up this project** or **Re-check** twice in quick succession starts one task, never two — the rule is held where the task is created, so it covers the cockpit's three buttons and a project leader's own call alike, and the control reads **Starting…** until the state catches up. Three separate rows — *last observed*, *last offered*, *last successfully checked* — keep the distinction the surface exists for: only a check that finished moves the last one, and a cancelled or failed check leaves it exactly where it was. Missing, corrupt and read-only state are all designed states: the record at `.local/xezar/onboarding-state.json` is disposable local scratch, deleting it loses the history of checks and nothing else, and none of those cases blocks boot or any ordinary task. New routes `GET /api/v1/onboarding` (read-only — it creates nothing) and `POST /api/v1/onboarding/offered`. A project leader gets the same picture through the MCP: `discover_project` carries an `onboarding` block with the three identities and the launch definition to name, and `project_config` gains `dismiss_onboarding_offer`. No new setting, no new environment variable and no file anyone has to create.
+
 - ✨ **Every control in the cockpit's building blocks is big enough to tap, quiet under reduced motion, and readable.** (part of #453, batch 1 of 8) Buttons, fields, menu rows, tab segments, the switch and the dialog and drawer close buttons now keep a 44 px touch area on a phone at **every** density, including Compact and Compact for real, where they used to shrink to 27 px; on a desktop they keep the size they had. Overlays, menus, popovers and tooltips no longer move for anyone whose system asks for less motion, and neither do the loading placeholder or a pulsing status dot. Three colours changed so small text passes the AA readability bar: the faint grey text in both themes, and the label printed on a red button or toast and on the violet Inbox count, which are now dark instead of white. A popover's heading is a real heading, so a screen reader can find it. Four shadcn files nothing imported (card, select, separator, scroll area) were deleted. No setting, no flag, and no page or route changed.
+
 - ✨ **A project leader is told when a task goes quiet — and told, in the same breath, that nothing was stopped.** (#460, PR 3) A leader learned when a task finished, failed, blocked or asked a question, and nothing at all about the long middle: a task that wedged twenty minutes ago and a task working hard looked identical until one of them ended. xezar now watches its own running steps and publishes two advisory events. `task.stalled` says a step has shown no agent activity for **five minutes**, or has used **80 %** of a finite step time limit — two independent conditions, so a busy step still gets warned about an approaching limit, and a quiet one still gets warned about with no limit in sight. `task.resumed` says real activity came back. Both reach the leader the way every other event does, through the pushed channel and `leader_events`, and the task record carries the same observation on the step: when it last showed activity, the time limit it actually spawned with, its deadline, and the current suspicion. **It is an observation and nothing else** — nothing is cancelled, no timeout moves, no status changes, and the wording of every row says so, because the cheapest way to misuse this signal is to read it as a failure. No model is involved: it is arithmetic on timestamps, on a 30-second timer that exists only while a step is executing. There is **no setting and no environment variable** — an advisory that needs configuring before it is useful is not one. Two rules are load-bearing in the detail: the time limit is asked of the backend that is really running the step, so a step with no limit at all is never rendered as one about to expire; and a step xezar has not been watching has **no** activity baseline, so it reads as unknown rather than stalled — the earliest a restarted cockpit can warn about anything is a full five minutes after it starts watching.
+
 - ✨ **A reviewer's verdict is on the task record, in the reviewer's own words.** (#460, PR 2) A finished task told a project leader only that the chain ran to the end — whether anyone had reviewed the work was a question the leader had to answer by going and reading a pull-request comment. A reviewing task now writes one small JSON packet beside its handoff journal after it has posted its review and attempted its labels, and xezar records it on the task when that step settles. `task_read view=task` returns it inside the record it already answers with: the role, the verdict **verbatim** (`APPROVE` / `REQUEST CHANGES` for a code review, `PASS` / `FAIL` for QA, `PASS` / `PASS WITH FOLLOW-UPS` / `FAIL` for a design review — a design review's follow-ups are never flattened into a pass), the full commit sha it was made against, a bounded summary, an optional link to the posted review, and what the label changes actually did. That last part distinguishes "we read the labels and there were none" from "we could not read them at all", because against a fail-open reader those are the same empty list. A new `verdict.posted` event (E-03) is journalled only after the verdict is durably on the record, and the completion event now says whether any verdict is recorded — **an absent verdict is not a pass**, and `task done` on its own still proves no quality gate. Nothing a task reports is treated as proof of GitHub state: the record says the verdict is task-reported, ingestion never touches a forge, and a packet that is oversized, malformed, a symlink, or about another task or step is refused into a bounded note on the record rather than becoming a verdict. A reviewing task is told which step it is running as, through a new `XEZ_STEP_ID` variable on the agent's environment beside the task id and the handoff path, so the packet's step never has to be guessed. Task agents gain no new MCP write capability, and there is no setting, flag or route.
-- ✨ **A leader that lost its context is told how to get its events back.** (#460, PR 1) After a context compaction a project leader cannot know which pushed messages it still holds, and xezar re-pushes nothing on a timer — so the recovery is a read, and xezar now says so where a leader actually reads it: in the `leader_events` tool description, in all three MCP `initialize` instruction variants, and in the README and the MCP API reference. The wording is the same everywhere: after a compaction call `leader_events` with action `read` and no cursor, page through with `nextCursor` while `hasMore` is true, deduplicate by `eventId`, reconcile the current task state, then acknowledge only what you accounted for — a transport receipt is not an acknowledgement — and if the journal reports a gap, reconcile the returned current state before acknowledging `resumeCursor`. Do not poll while idle. The guarantee is now stated as it is: **at-least-once within retained durable state, not exactly-once**. The journal keeps at least the newest 10 000 events per project and evicts none younger than 14 days, a page carries at most 100 events or 40 000 bytes, anything outside that is an explicit gap rather than silence, only `ack` advances the acknowledged position (and it is cumulative, monotonic and idempotent), and nothing already delivered to a session is pushed again on a timer. Text and documentation only: no behaviour, schema, action, answer or retention value changed, and there is no new setting, flag or route.
+
 - ✨ **A live view of your tasks, in the terminal you started xezar in.** (#467, PR 3) On a terminal at least 60 columns wide, the bottom few lines are a small table of the tasks that are active right now — their state, the step, the agent, how long they have been going and their title — redrawn in place, at most ten rows plus a count of the rest, and at most four times a second. Above it, one line each time something happens: a task queued, started, finished, failed, cancelled or parked for review; a question, with the cockpit link to answer it; a check that passed or failed, with its exit code when the check reported one; a backend that broke, with a short cause. Nothing spins: a task that is waiting says what it is waiting for, in words. Stopping prints a session summary — how many finished, need review, failed or were cancelled, and how many were still running. **Colour only ever repeats a word that is already there**, so `NO_COLOR=1`, a screen reader and a log file lose nothing. Below 60 columns the table gives way to lines, and the terminal being resized is handled while it runs. Untrusted text — a task title, a path, an agent's own words — is stripped of escape sequences and control characters, bounded in length and scanned for known credential shapes before it can reach your terminal, so a task cannot repaint your screen or forge a log row. Failed HTTP requests are reported as `<status> <method> <route template>` with no body, query string or header, and a burst of the same failure folds into one line and a count. When the output closes, the drawing stops and your tasks and the server carry on.
+
 - ✨ **Four new command-line settings for the terminal, with working defaults.** (#467, PR 2) `--output <auto|lines|rich>` / `XEZ_OUTPUT` / `cli.output`, `--color <auto|always|never>` / `XEZ_COLOR` + `NO_COLOR` / `cli.color`, `--log-level <debug|info|warn|error>` / `XEZ_LOG_LEVEL` / `cli.logLevel`, and `-q/--quiet` / `XEZ_QUIET`. A flag beats a saved value, and a saved value beats the environment — the pattern `followups` and `agentEnvPassthrough` already follow, so a variable exported once in a shell profile cannot outrank a preference you saved. A flag or `XEZ_*` value the vocabulary does not know refuses the start with the accepted values and exit 1, **before** the registry is read, the project writer is claimed or any port is bound; a saved value that is broken degrades to absent with one warning and the file is left as it is. These values are accepted and resolved now and are painted by the terminal renderer that follows — nothing about the current output changes.
+
 - ✨ **`xezar projects port <id> [<port>]`.** (#467, PR 2) Pins the cockpit port of one project, or clears it when you name no port. It is the only writer of that preference: `--port` and `XEZ_PORT` are instructions for one launch and are never saved as configuration. Refused in single-project mode, like `add`, `remove` and `tag`.
+
 - ✨ **Every writer of `~/.xezar/config.json` now takes a bounded cross-process lock.** (#467, PR 2) The atomic write already stopped a torn file; it did not stop a lost update, and two xezar commands that start at the same moment could drop each other's registry row. `serve`, `xezar projects`, the settings routes, migrations and the MCP all inherit the lock by writing through the one merge function. It is fail-open by design: a lock held past its bound, a crashed holder's leftover lock, or a home it cannot be written into all degrade to the previous behaviour with one warning, and never block a start.
+
 - ✨ **A leader attaches itself over MCP, and acks a pushed event without reading.** (#450) `leader_events` gains `attach`, `stop` and `status`: a Claude Code, Codex or pi leader attaches its own session (xezar takes the client from the session, never from an argument), sees whether it is attached and can receive pushes, and stops. It calls the same delivery path as Settings → MCP connection → Attach leader and `POST /api/v1/mcp/leader`, whose bodies, answers and refusal texts are unchanged. Hosted mode refuses attach and stop, and a leader never replaces or detaches a leader that another session or a person attached. An OpenCode leader is still attached by a person, because xezar takes no `opencode serve` address from an MCP session. Each pushed event names its cursor (`next_cursor` on a Claude Code channel message, a sentence in the Codex, OpenCode and pi turn text), so the leader acks it with no read. The bridge registers the Claude Code channel only when xezar says it can push, or cannot be reached yet; `session/open` gains an additive `canPush` answer and `channelAdvertised` parameter within bridge protocol 2. A Claude Code session whose handshake did not register the channel reads `claude-code-channel-not-advertised`, fix: Reconnect the xezar MCP server in Claude Code. An attachment ends when xezar restarts (observed in the restart test): a Claude Code leader whose channel is registered gets one notice from its bridge, and `status` says to attach again. Every instruction, description and blocker a leader reads now names `leader_events` action `attach` instead of the HTTP call. No setting, no environment variable and no new route.
+
 - ✨ **The nightly MCP mutation gate tells new survivors from known ones.** (part of #377) Its report now sorts every surviving and uncovered mutant into three groups: **known** – in the committed starting list `docs/testing/mcp-mutation-survivors.json`, the 2 171 survivors of the first complete nightly run (34999068325 on `fe33541`), with their #338 or #353 tag; **already seen** – in the previous complete run on `main`; and **new**. A survivor is matched by file, mutator and the text it mutates, not by line, so moving code does not make it new. When new survivors appear and the score still clears the floor, the run stays green and the `mutation-nightly` tracking issue gets one comment listing them; the run still fails only below the floor, and the grouping never changes the verdict. One run posts at most one comment, also when its report job is re-run. A new `force_red` input on the manual dispatch skips the shards and takes the red path on purpose, so the path a real failure takes can be proven in minutes. The six-shard split, the summed counts, the one floor and the open/close behaviour of the tracking issue are unchanged. How to refresh the starting list is in `docs/testing/coverage-gaps.md` § 10.8. Fixture-tested; not yet live-verified: the first dispatched run happens after merge.
+
 - ✨ **Xezar's own instructions now suit any project, and a guard keeps it that way.** (part of #466) A released xezar no longer tells users or agents to follow the project it is developed in. The missing-cockpit page now says to reinstall xezar instead of naming a build command of xezar's source repository. `xezar init` writes a `fix-and-verify` workflow whose last step runs the check your project really has (`npm test`, `make test`/`make check`) or, when there is none, reviews the result and reports what it could not verify – never an `echo` that always passes. Its `project-conventions` skill asks for the outcome, deliverables, constraints and evidence, with labeled software, advertising-agency and research examples. The planner and the task namer describe any kind of project, and the planner no longer invents a check command when the project has none. The handoff contract uses general milestones, with Git and GitHub examples only where they apply (every marker is unchanged). The dry-run mocks use a fictional `example-org/example-project` pull request, and Settings → Agents mentions a draft pull request only for a GitHub project and says "Review changes" in its toast. The package description and CLI help name all four agent CLIs. A new vitest guard (`generic-instructions.test.ts`) scans every instruction producer – prompts, init output, the MCP surface, cockpit copy, the npm README and the mocks – and `npm run check:pack` now packs a real archive and scans its text; both carry a small, shrink-only list of known remaining items owned by #448 (README) and the MCP wording work. The published JavaScript and type declarations no longer include source comments.
+
 - ✨ **A red "D" on the logo tells you the cockpit is the development build.** (#442) When xezar runs from a source checkout – `npm run dev`, the checkout's own `dist`, or an `npm link` – the X logo in the sidebar and the phone menu carries a small red badge with a dark "D", announced as "Development build". The released package from npm shows the plain logo, with no badge and no placeholder. xezar decides this by itself (a checkout has `packages/xezar/src/index.ts`, the published package never does), so there is no setting or flag. `GET /api/v1/health` gains a top-level `channel` field, `"dev"` or `"release"`; every other field is unchanged, and `npm run check:pack` now refuses a tarball that would ship `src/index.ts`.
+
 - ✨ **Settings has a little more room, and the design system gains a rhythm scale.** (part of #424) Settings fields now sit 32 px apart instead of 28, and a field's title, control and hint 12 px apart instead of 8, at the default density; Compact and Compact for real scale the same change down. Behind it are six named spacing steps – `row`, `stack`, `list`, `inset`, `group` and `section` (8 to 32 px) – built on the density unit and documented in `docs/design-system/foundations.md` §4.1. No other page changes yet, and there is no setting or flag.
+
 - ✨ **The whole cockpit has more space between blocks.** (part of #424) Page gutters grow from 20 to 32 px on desktop and from 12 to 16 px on phone, and a page body starts 32 px under its header. Cards get 20 px inside and 16 px between them. In a thread, rows of one turn sit 8 px apart and a change of speaker opens 24 px. The run header, composer dock, Inbox, task table cells, provider banner and sidebar groups loosen to match. This is the shipped default with no switch; Compact and Compact for real scale the same spacing down, so no density reproduces the old look. Table rows stay 44 px, and no text size, colour or radius changes.
+
 - ✨ **A new Roomy density.** (part of #424) Settings → Appearance offers Roomy first, at the loose end of the density setting: the spacing unit is 5 px instead of Comfortable's 4, so every gap, gutter and padding is 25 % larger while text stays the same size.
+
 - ✨ **Sidebar rows, the table header and tool rows now follow the density setting, and small chips never drop under 24 px.** (part of #424) At the default density the sidebar nav rows and project headers grow from 34 to 36 px, the New task button from 36 to 40 px, the task table header from 38 to 40 px, a thread's tool row from 28 to 32 px and a quick-list row by 2 px; the brand row gap moves from 9 to 8 px. These were fixed pixels before, so Roomy now grows them and Compact and Compact for real shrink them like everything else. The composer's picker pill goes from 26 to 28 px and the PR/issue reference chip from 22 to 24 px; both follow density but never shrink under 24 px, the WCAG 2.2 minimum target size, so the reference chip in the quick list and on the phone task card grows to 24 px too.
+
 - ✨ **Codex leaders can opt into project-event delivery through their existing local app-server.** (#374, part of #73)
   - Wired: the Codex session's own `xezar mcp` bridge announces only its thread id (Codex passes the MCP server no `CODEX_HOME`). `xezar serve` looks for the control socket in its own Codex home – `CODEX_HOME` when the serve process has one, else `~/.codex` – and trusts it only after the app-server's `initialize` answer names that same home. It attaches only when exactly one thread is both saved for this project folder and loaded, and it is the announced one. It never starts Codex, a daemon or a thread, and it holds the thread's subscription only while it hands an event over, so an exited TUI's thread unloads normally. An approval or question already open at attach, or opened later, is never spoken over. A hand-off whose acceptance was lost is checked against the thread's own turns before anything is sent again, also after a re-attach. After the TUI or the app-server goes, events stay in the journal for `leader_events`, and the cockpit names a recoverable blocker.
   - Measured once with the real bridge, service and a real `codex app-server --listen unix://` (codex-cli 0.154.0, macOS, scripted model endpoint): one event-caused model request and none more in a 30-second quiet window, shown in the person's own TUI; the wrong-home, missing-socket and unloaded-thread refusals; TUI exit and app-server exit.
   - Fixture-tested only: open prompts at attach, lost acceptance and replay, request counting.
   - A real model's decision to react was verified on 2026-09-15 with the owner's own Codex login (`gpt-6-astra`, see the 📝 entry for #67). Not verified: Linux and Windows; other codex-cli versions; a Codex session whose home differs from the one `xezar serve` looks in – it is refused and falls back to `leader_events`.
   - A thread status the app-server sends in a shape xezar does not recognise now holds events, and keeps an open approval's wait, until a status it can read arrives. It used to read as "idle" and could start a turn through an open approval. This includes a status whose `activeFlags` list holds an entry xezar does not recognise, such as an object or an unknown word: at attach it is refused as `codex-thread-state-unknown`, and while attached it keeps the wait.
+
 - ✨ **Settings → MCP connection can attach a leader.** (#374) Connection status shows who owns the project, whether a leader is attached and, when events are waiting, the server's own reason with a `Fix:` line. Attach leader takes its client from that status: a Codex session that runs on Codex's shared app-server in the Codex home xezar uses, is loaded, and has called a xezar tool attaches without typing anything, OpenCode takes the address and session id of its `opencode serve`, pi works when it runs xezar's leader extension, and Claude Code attaches once it was started with `--dangerously-load-development-channels server:xezar` (below). A refused Codex attach names which cause it was – no tool call yet, no shared app-server, another Codex home, a session that is not loaded, or a session state xezar does not recognise – with its own fix. The Codex setup card moves its attach guidance out of the small footnote into the card body. When the project's owner changes under an attached leader – a Claude Code leader whose session closed, then a Codex session that took the project – the server keeps the attachment and names `claude-code-not-owner`; the control then shows its client selector again, defaulting to the new owner, and Attach leader replaces the stale attachment with the client you choose. Fixture-tested in the cockpit's unit suite; the real-client Codex leg attaches through the same route the button calls. `GET /api/v1/mcp/leader` gains an additive `owner` field.
   - The status is live while the page is open. The server pushes each change – a leader attached or stopped, an owner session that opened, announced itself or went away, a delivery that worked or failed, an app-server or thread that was lost – over the cockpit's existing WebSocket as a new `mcp-leader` topic, only while the page is on screen and only when something changed. It is also re-read when the window regains focus and after the event stream reconnects. A remote cockpit opens no WebSocket and keeps the HTTP read. Refresh is in every state, including when the first read fails and when the MCP service is not running, and Attach leader is a 44 px touch target on a phone.
+
 - ✨ **A Claude Code leader can be woken by a project event, over Claude Code Channels.** (#374, part
   of #73) Until now a project leader you run pulled its events with the `leader_events` MCP tool and
   nothing was pushed to it. A **Claude Code** leader can now be **woken**: xezar turns a project event
@@ -110,44 +158,75 @@ fix: Reconnect the xezar MCP server in Claude Code (/mcp, then reconnect xezar) 
 
 fix: If the leader is working, nothing is needed. Otherwise check that Claude Code was started with --dangerously-load-development-channels server:xezar and that its startup notice says channels from server:xezar inject into the session. Channels need a claude.ai or Console API-key login, do not work on Bedrock, Vertex or Foundry, must be enabled by a Team or Enterprise admin, and are off while CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC is set. Until then, read events with leader_events.
 
-## 🔒 Security
-- 🔒 **Two high-severity advisories in shipped dependencies are fixed.** (#426) `smol-toml` 1.7.0 → 1.8.0 fixes GHSA-7w5x-hrqm-74c2: a malformed TOML document – a comment with no trailing newline inside an array or inline table – made the parser loop for ever at full CPU, and xezar parses TOML agent config with it. Its minimum is now 1.7.1, so every install of `@qodeca/xezar` gets the fix, not only builds from the lockfile. The cockpit's `react-router` 7.18.1 → 7.18.3 fixes GHSA-qwww-vcr4-c8h2, which affects only the unstable RSC APIs; the cockpit uses only `BrowserRouter`, so that bump is precautionary. The dev-only `nanoid` (3.3.19) and `undici` (7.29.1) move too, and `npm audit` reports no high or critical finding.
+- 📝 **The development process now checks itself: security before the verdict, a phase record readiness refuses without, and repair counters that survive a resume.** (part of #469, P2) Nothing about the published package changes — this is xezar's own `.xezar/` kit and its root contracts. `.xezar/checks/security-scan.sh` is a new gate 2 of the canonical run, straight after the install and ahead of every gate that produces a quality signal: it reads the lines this candidate added over its base, records one entry per check as `pass`, `findings`, `unknown` or `not-applicable`, and writes a structured `security.json` into the gate attempt. Sealing refuses an attempt that carries no such result, the seal records its status, and `unknown` is carried as `unknown` — it is never rewritten into a pass. `.xezar/checks/phase-record.sh` writes and validates the phase record `SDLC.md` § Task phases names, and `worktree-preflight.sh --readiness` now refuses a writing task whose record is incomplete, with the predicate and the command that fixes it; the accepted-criteria record is validated rather than counted, so a file that names no criterion and no accepting authority is not acceptance. The same command owns the three durable repair counters: a round is counted before it is applied, an exhausted counter or an unreconciled history blocks another one, and `resume-complete.sh` refuses to re-run the gates on a spent `gate-return` budget — a resume continues the count and never starts a fresh allowance. The eight-step workflow shape and the five validation commands in `.xezar/pipeline/config.json` are unchanged.
+
+- 🚀 **The MCP mutation gate runs nightly on GitHub Actions.** (part of #377) A new
+  `.github/workflows/mutation.yml` runs `npm run test:mutation:mcp`'s scope against `main` every
+  night and on manual dispatch – never on a pull request and never in the release path. The scope
+  is split across six parallel jobs so no job meets GitHub's 6-hour limit; each job runs with no
+  floor of its own, and one aggregate step applies the unchanged 80 % `thresholds.break` from
+  `packages/xezar/stryker.config.mjs` to the summed counts. It fails closed on a missing or broken
+  shard report, a shard or run that tested nothing, and a file reported twice, outside its shard or
+  never. On `main` a red night files, comments on or reopens one `mutation-nightly` issue, and the
+  next green night closes it. The scripts live in `packages/xezar/mutation/`, outside the npm
+  tarball. `publishing-surface.test.ts` now forbids publish power by role – only `release.yml` may
+  hold `id-token` or a publish command – instead of pinning the list of workflow files. Not yet
+  live-verified: the first dispatched run on `main` happens after merge. Telling new survivors from
+  known ones is the second half of #377.
+
+- ✨ **The project kit can author and review designs as separate tasks.** The design workflow
+  produces mockups and a handoff; design-review reads the result and records its verdict without
+  editing it. (#389)
+
+- ✨ **Terminal activity and project port behavior have an implementation design.** Text mockups
+  cover wide terminals, narrow terminals and pipes, with a handoff for the later CLI implementation.
+  (#467, #482)
+
+- ✨ **First setup and post-update re-checks have reviewed mockups.** The design covers the task-page
+  entry and Re-check / Later offer, with a developer handoff; this PR itself changes no product
+  code. (#464, #489)
+
+- ✨ **The project kit can run the shared issue-creation procedure.** Its local wrapper adds
+  repository policy to the pinned reusable skill while retaining the draft and approval boundary.
+  (#468, #493)
+
+- ✨ **New issue starts a drafting task from the GitHub tab.** The dialog identifies the destination
+  and launches the issue-filing skill with the supplied brief. The task asks Create or Revise
+  against the proposed title, body and labels before filing, and MCP can launch the equivalent task.
+  (#468, #502)
+
+Merged PRs for the preserved entries above: (#403), (#404), (#432), (#433), (#437), (#438), (#441),
+(#444), (#474), (#481), (#486), (#488), (#495), (#497), (#500), (#503), (#504), (#505), (#510),
+(#511), (#512), (#519), (#522), (#523), (#528), (#529).
 
 ## 🐛 Fixes
+
+- Fixed: a standalone `XEZ:DONE` line before a final-turn checkpoint stops autonomous nudges (#524), while fenced examples never count.
+
+- Fixed: Continue resumes the failed workflow step and remaining steps after repair, and reports success only after the workflow finishes (#520).
+
+- Fixed: known MCP `applied:false` refusals replay as rejected after retry or restart (#536).
+
+- Fixed: replacing a pending question invalidates and persists the MCP decision token (#534).
+
+- Fixed: #449 — decision-only run versions keep busy-task steering valid while detecting reversed decisions.
+
+- Fixed: #530 — rejected operations cannot claim or suppress later task outcomes.
+
+- fix(runners): keep timeout SIGKILL escalation armed until Claude and Codex child processes exit (#462)
+
+- 🐛 Keep contract test declarations out of the published package, and make the archive gate reject test artifacts if they return. (#466, P7)
+
+- 🐛 fix(release): stage the web manifest in version-bump PRs so main keeps every stamped release manifest aligned (#461).
+
+- A live task now stays pinned to its tail when the late current-state response mounts the Plan and Agents docks; slower machines no longer leave the thread exactly 130 px above the bottom.
+
+- 🐛 fix(test): the Claude Code adapter's source guard (no process, no environment – #311) now ignores the helper functions Stryker injects into the file it reads, so the nightly mutation run's dry run no longer fails on Stryker's own `process.env` read; a real `child_process` or `process.env` in the adapter still fails it (#436, #377).
+
 - 🐛 Stamp the private cockpit workspace and its internal dependency ranges during releases, so minor and major bump PRs keep npm workspaces linked. (#382)
+
 - 🐛 **MCP integration harnesses now use the port actually bound by xezar.** (#325)
 
-## 💥 Breaking
-- 💥 **A Codex run xezar starts no longer loads your own Codex MCP servers, plugins or apps.**
-  (#324, #323) Every Codex task run used to load each MCP server and plugin in
-  `$CODEX_HOME/config.toml` – a browser, the Messages plugin, ChatGPT connectors – and
-  `approvalPolicy: never` let the agent call them with no prompt. The runner now asks the Codex
-  app-server which servers it would load (`config/read`) and starts the thread with only the
-  servers that the project's own trusted `.codex/config.toml` alone declares. Servers from your
-  home config, plugins, apps and xezar's own leader bridge are switched off for that thread, and
-  the run transcript names what was switched off. The bridge is known by its launch line
-  (`npx @qodeca/xezar mcp`, `xezar mcp`, `env … xezar mcp`, `sh -c "…"`,
-  `node …/@qodeca/xezar/dist/index.js mcp`) and by the name `xezar`, which is now reserved: a
-  project server called that is switched off too, so rename it. Your config files are not
-  changed. To use a server in Codex runs, declare it in the project's `.codex/config.toml` and
-  keep your home config from adding keys to it. A Codex CLI that cannot answer `config/read`
-  now fails the run with a message instead of starting it. No setting and no environment
-  variable. Migration: README § "Codex runs and MCP servers".
-- 💥 **Agent config no longer follows individual file symlinks (#363); ship in the next minor release.** Reads and writes return 409 with the existing error body; listings expose no hash and seeding skips the link. Directory links below an agent home or repository may not escape that root. Replace file links with regular config files; relocating an entire configured home remains supported.
-- 💥 **The default team skills source is now `qodeca/xezar-skills`, and the skills are named
-  `xez-*`.** (#394) The previous default repository is no longer loaded, and the automatic updater no
-  longer recognises it: an `npx skills` install from the old source is reported as "Installed
-  skills come from another source; xezar does not update them" and is never touched. Existing
-  installs are not migrated – run `npx skills remove <om-* names> -p` (or `-g`), then
-  `npx skills add qodeca/xezar-skills --skill '*'`; `~/.cache/xez/skills/open-mercato__skills`
-  and `.claude/skills/om-*` are orphaned afterwards and safe to delete. A curated Manage-skills
-  selection that still names `om-*` skills keeps working: each `om-<name>` is read as
-  `xez-<name>`, and the stored list is never rewritten. An explicit
-  `"skillsRepos": [{ "repo": "open-mercato/skills" }]` in `.xezar/config.json` restores loading of
-  the old collection (ungated) but not automatic updates. The cockpit, the `xezar serve` banner
-  and `--help` name the new repository.
-
-## 🐛 Fixes
 - 🐛 **A xezar tool gated behind pi-mcp-adapter's `approveTools` no longer stalls a pi run.** (#369) pi's
   approval dialog (`extension_ui_request`, `method: "select"`, no `timeout`) blocks pi until a client
   answers it, and xezar's pi runner never did: a step that reached a gated tool died on the runner's
@@ -163,28 +242,12 @@ fix: If the leader is working, nothing is needed. Otherwise check that Claude Co
   process is. pi-mcp-adapter's `notify` notices (`MCP: 1 servers connected`) now appear as transcript
   notes. A pi that is never offered a xezar tool is unchanged, and a leader in your own pi window was
   never affected; a headless pi that some other RPC client drives remains that client's to answer.
+
 - 🐛 **The `bug-fix` workflow now names and instructs its only writing step as the complete
   repair stage.** (#408) Agents are told to reproduce, add the red test, apply the fix, run
   focused tests and commit before finishing, instead of deferring the repair to a nonexistent
   later step and then failing readiness with an empty branch.
 
-## 📝 Specs & Documentation
-
-- 📝 **The development process now checks itself: security before the verdict, a phase record readiness refuses without, and repair counters that survive a resume.** (part of #469, P2) Nothing about the published package changes — this is xezar's own `.xezar/` kit and its root contracts. `.xezar/checks/security-scan.sh` is a new gate 2 of the canonical run, straight after the install and ahead of every gate that produces a quality signal: it reads the lines this candidate added over its base, records one entry per check as `pass`, `findings`, `unknown` or `not-applicable`, and writes a structured `security.json` into the gate attempt. Sealing refuses an attempt that carries no such result, the seal records its status, and `unknown` is carried as `unknown` — it is never rewritten into a pass. `.xezar/checks/phase-record.sh` writes and validates the phase record `SDLC.md` § Task phases names, and `worktree-preflight.sh --readiness` now refuses a writing task whose record is incomplete, with the predicate and the command that fixes it; the accepted-criteria record is validated rather than counted, so a file that names no criterion and no accepting authority is not acceptance. The same command owns the three durable repair counters: a round is counted before it is applied, an exhausted counter or an unreconciled history blocks another one, and `resume-complete.sh` refuses to re-run the gates on a spent `gate-return` budget — a resume continues the count and never starts a fresh allowance. The eight-step workflow shape and the five validation commands in `.xezar/pipeline/config.json` are unchanged.
-- docs(kit): model routing map for the project leader (`.xezar/docs/model-routing.md`, loaded through `CLAUDE.md`)
-- 📝 **The 0.15.0 user guide has a complete index and navigation.** (part of #448) All 16 parts are linked from the guide index, with cross-part and Next links, and the README and documentation map point to the guide.
-- 📝 **A project leader works through the MCP tools only, attached so events are pushed.** (related #439) The owner's operating rule of 2026-09-15 is now stated in the README, `AGENTS.md`, the MCP API reference, the dogfooding findings and the `.xezar` kit: a leader uses the xezar MCP tools, never the cockpit UI or the HTTP API; it is attached so events arrive as `<channel source="xezar">` messages (a started turn for Codex, OpenCode and pi); `leader_events` is the fallback for a leader that is not attached; `gh` stays the way to read GitHub facts. The strings a leader reads follow it: the MCP `initialize` instructions and the `leader_events`, `discover_project` and `health` descriptions no longer promise pushes to an unattached session and name the attach door (Settings → MCP connection → Attach leader, or `POST /api/v1/p/<projectId>/mcp/leader {"action":"attach","client":"claude-code"}` against the cockpit, with `<projectId>` from `discover_project` and the leader's own client – OpenCode also sends `baseUrl` and `sessionId`), the `no-leader-session` blocker names it too, the role text pushed with each event states the rule, and a tool that is not connected tells the leader to report the blocker instead of using the cockpit. No behaviour changes; there is still no MCP action that attaches a leader. #450, in this release, adds that action (✨ above), and the strings now name it instead of the HTTP call.
-- 📝 **Staleness sweep area A: root contracts.** (#447)
-- 📝 **MCP real-model leg for A-19 passed post-release on pi.** (#373) The manual measurement uses the bare model id and verifies nonce/cursor acknowledgement. The logged revision is `7aa4a0258cd99852ff0a6878dff1c96257f49024`, stamp `2026-09-13T17-43-42.875Z`, model `deepseek-v4-flash-vision`, and the ack arrived +15.8 s after delivery in a 120 s window.
-- 📝 **MCP real-model leg for A-19/A-23 passed for Claude Code and Codex.** (part of #67) On revision `a6d53b4bccfe07803a792c54ff335432d4ad0b49` (`main` at `ab28cb0` plus test-only commits), a real model read a delivered `task.done` event and acknowledged it through `leader_events` with the exact run-id nonce and the cursor of its own read: Claude Code 2.1.272 with `sonnet` over Channels (stamp `2026-09-15T10-42-29.522Z`, ack +8.6 s) and Codex CLI 0.154.0 with `gpt-6-astra` through its shared app-server (stamp `2026-09-15T10-41-35.784Z`, ack +11.9 s), each with the owner's own login. OpenCode is out of scope for this clause by the owner's decision of 2026-09-13 (#340). The Definition of Done record now reads 8 of 8, clause 2 by the owner's acceptance of 2026-09-15: the rows span three revisions and never all passed on one.
-- 📝 **`SDLC.md`, `CODE_REVIEW.md` and `CONTRIBUTING.md` name the kit roles.** (#396) The process documents
-  name the `.xezar/workflows/*` workflows and `xezar-*` roles that run this repository's pipeline
-  instead of the previous team skill names, and the optional `xez-*` collection only where a
-  document describes it. Links to the pre-rename issue tracker were replaced with plain
-  `pre-rename issue n` text across the maintained documents.
-- 📝 Leader dogfooding record of the 2026-09-13 MCP campaign: findings, trust ledger per model, gate cost, close-out and numbers (`docs/features/mcp-server/leader-dogfooding-2026-09-13.md`).
-
-## 🐛 Bug Fixes
 - 🐛 **Two project-kit readiness checks no longer fail correctly-completed work.** (#356, #402)
   Independent QA of another PR always ended `failed` — reviewing a PR's head detaches HEAD, and the
   kit's `branch.owned-by-run` check refused that before the PR's `VERIFICATION` record was ever
@@ -196,7 +259,6 @@ fix: If the leader is working, nothing is needed. Otherwise check that Claude Co
   is writable by the same agent the check exists to hold accountable and proves no push at all
   (#416 review).
 
-## 🚀 CI/CD & Infrastructure
 - 🐛 **Two flaky tests no longer race a live child process during their own teardown.** (#326, #346)
   `skills-remote-git.test.ts`'s fixture commits armed git's detached auto-maintenance, whose
   `objects/maintenance.lock` vanished between `git clone --bare`'s stat and copy of the source
@@ -205,31 +267,224 @@ fix: If the leader is working, nothing is needed. Otherwise check that Claude Co
   CLI it spawned as a child of the cockpit kept appending `notes.md` to the project root after the
   cockpit was SIGKILLed, colliding with the teardown `rm`; the test now waits for the run to reach a
   terminal state before the cockpit is stopped. No product behaviour changed.
-- 🚀 Add an opt-in pi real-model MCP harness that judges a delivered event by its exact nonce/cursor acknowledgement, with a scripted request-only negative control. (#373)
-- 🚀 Extend that harness with opt-in Claude Code and Codex real-model legs (`XEZ_REAL_MODEL_CLIENTS`) that drive a real `xezar serve` and judge the ack on the wire through a pass-through stdio tee and in the service's `leader-cursors.json`. (part of #67)
-- 🚀 **The pipeline files moved to `.xezar/pipeline/`.** (#396) `.ai/agentic.config.json` is now
-  `.xezar/pipeline/config.json` and `.ai/trackers/github.md` is `.xezar/pipeline/trackers/github.md`;
-  the `.ai/` directory is gone from the repository, and `pipeline` joined the fingerprinted kit set
-  (`tree_fingerprint` in `.xezar/checks/lib/common.sh`).
-- 🚀 **The MCP mutation gate runs nightly on GitHub Actions.** (part of #377) A new
-  `.github/workflows/mutation.yml` runs `npm run test:mutation:mcp`'s scope against `main` every
-  night and on manual dispatch – never on a pull request and never in the release path. The scope
-  is split across six parallel jobs so no job meets GitHub's 6-hour limit; each job runs with no
-  floor of its own, and one aggregate step applies the unchanged 80 % `thresholds.break` from
-  `packages/xezar/stryker.config.mjs` to the summed counts. It fails closed on a missing or broken
-  shard report, a shard or run that tested nothing, and a file reported twice, outside its shard or
-  never. On `main` a red night files, comments on or reopens one `mutation-nightly` issue, and the
-  next green night closes it. The scripts live in `packages/xezar/mutation/`, outside the npm
-  tarball. `publishing-surface.test.ts` now forbids publish power by role – only `release.yml` may
-  hold `id-token` or a publish command – instead of pinning the list of workflow files. Not yet
-  live-verified: the first dispatched run on `main` happens after merge. Telling new survivors from
-  known ones is the second half of #377.
 
-## 🐛 Bug Fixes
 - 🐛 **The cockpit's take-over hint now shows the correct CLI for each backend.** The pi runner
   was silently falling through to `claude --resume` instead of showing `pi --session`. A Node-free
   helper in the shared contract now builds both the cockpit hint and server handoff command, with
   an exhaustive runner switch that makes an unmapped backend fail typecheck. (#354)
+
+- 🐛 **The 0.14.0 changelog distinguishes wired delivery from measured reactions.** Its historical
+  claims are corrected to identify the clients that actually had a wake path in that release; the
+  original package, tag and GitHub Release are unchanged. (#383, #398)
+
+Merged PRs for the preserved entries above: (#409), (#411), (#412), (#413), (#416), (#417), (#418),
+(#440), (#514), (#526), (#527), (#531), (#539), (#541), (#543).
+
+## 🔧 Changed
+
+- 📝 **`SDLC.md`, `CODE_REVIEW.md` and `CONTRIBUTING.md` name the kit roles.** (#396) The process documents
+  name the `.xezar/workflows/*` workflows and `xezar-*` roles that run this repository's pipeline
+  instead of the previous team skill names, and the optional `xez-*` collection only where a
+  document describes it. Links to the pre-rename issue tracker were replaced with plain
+  `pre-rename issue n` text across the maintained documents.
+
+- 🚀 **The pipeline files moved to `.xezar/pipeline/`.** (#396) `.ai/agentic.config.json` is now
+  `.xezar/pipeline/config.json` and `.ai/trackers/github.md` is `.xezar/pipeline/trackers/github.md`;
+  the `.ai/` directory is gone from the repository, and `pipeline` joined the fingerprinted kit set
+  (`tree_fingerprint` in `.xezar/checks/lib/common.sh`).
+
+Merged PRs for the preserved entries above: (#396).
+
+## 📝 Specs & Documentation
+
+- docs(guide): getting started and project kit pages for the onboarding flow – guided setup, re-check offer, project and machine configuration, optional agent pipeline (#464, P4)
+
+- docs(guide): make the MCP project-leader guide the canonical per-client setup, launch, delivery and recovery reference (#515, PR 1)
+
+- docs(guide): filing an issue from the cockpit and the issue-filing skill (#468, step 4)
+
+- docs(project): leader run guidance for contributors – per-client pointers and kit tips (#515, PR 2)
+
+- ✨ **A leader that lost its context is told how to get its events back.** (#460, PR 1) After a context compaction a project leader cannot know which pushed messages it still holds, and xezar re-pushes nothing on a timer — so the recovery is a read, and xezar now says so where a leader actually reads it: in the `leader_events` tool description, in all three MCP `initialize` instruction variants, and in the README and the MCP API reference. The wording is the same everywhere: after a compaction call `leader_events` with action `read` and no cursor, page through with `nextCursor` while `hasMore` is true, deduplicate by `eventId`, reconcile the current task state, then acknowledge only what you accounted for — a transport receipt is not an acknowledgement — and if the journal reports a gap, reconcile the returned current state before acknowledging `resumeCursor`. Do not poll while idle. The guarantee is now stated as it is: **at-least-once within retained durable state, not exactly-once**. The journal keeps at least the newest 10 000 events per project and evicts none younger than 14 days, a page carries at most 100 events or 40 000 bytes, anything outside that is an explicit gap rather than silence, only `ack` advances the acknowledged position (and it is cumulative, monotonic and idempotent), and nothing already delivered to a session is pushed again on a timer. Text and documentation only: no behaviour, schema, action, answer or retention value changed, and there is no new setting, flag or route.
+
+- docs(kit): model routing map for the project leader (`.xezar/docs/model-routing.md`, loaded through `CLAUDE.md`)
+
+- 📝 **The 0.15.0 user guide has a complete index and navigation.** (part of #448) All 16 parts are linked from the guide index, with cross-part and Next links, and the README and documentation map point to the guide.
+
+- 📝 **A project leader works through the MCP tools only, attached so events are pushed.** (related #439) The owner's operating rule of 2026-09-15 is now stated in the README, `AGENTS.md`, the MCP API reference, the dogfooding findings and the `.xezar` kit: a leader uses the xezar MCP tools, never the cockpit UI or the HTTP API; it is attached so events arrive as `<channel source="xezar">` messages (a started turn for Codex, OpenCode and pi); `leader_events` is the fallback for a leader that is not attached; `gh` stays the way to read GitHub facts. The strings a leader reads follow it: the MCP `initialize` instructions and the `leader_events`, `discover_project` and `health` descriptions no longer promise pushes to an unattached session and name the attach door (Settings → MCP connection → Attach leader, or `POST /api/v1/p/<projectId>/mcp/leader {"action":"attach","client":"claude-code"}` against the cockpit, with `<projectId>` from `discover_project` and the leader's own client – OpenCode also sends `baseUrl` and `sessionId`), the `no-leader-session` blocker names it too, the role text pushed with each event states the rule, and a tool that is not connected tells the leader to report the blocker instead of using the cockpit. No behaviour changes; there is still no MCP action that attaches a leader. #450, in this release, adds that action (✨ above), and the strings now name it instead of the HTTP call.
+
+- 📝 **Staleness sweep area A: root contracts.** (#447)
+
+- 📝 **MCP real-model leg for A-19 passed post-release on pi.** (#373) The manual measurement uses the bare model id and verifies nonce/cursor acknowledgement. The logged revision is `7aa4a0258cd99852ff0a6878dff1c96257f49024`, stamp `2026-09-13T17-43-42.875Z`, model `deepseek-v4-flash-vision`, and the ack arrived +15.8 s after delivery in a 120 s window.
+
+- 📝 **MCP real-model leg for A-19/A-23 passed for Claude Code and Codex.** (part of #67) On revision `a6d53b4bccfe07803a792c54ff335432d4ad0b49` (`main` at `ab28cb0` plus test-only commits), a real model read a delivered `task.done` event and acknowledged it through `leader_events` with the exact run-id nonce and the cursor of its own read: Claude Code 2.1.272 with `sonnet` over Channels (stamp `2026-09-15T10-42-29.522Z`, ack +8.6 s) and Codex CLI 0.154.0 with `gpt-6-astra` through its shared app-server (stamp `2026-09-15T10-41-35.784Z`, ack +11.9 s), each with the owner's own login. OpenCode is out of scope for this clause by the owner's decision of 2026-09-13 (#340). The Definition of Done record now reads 8 of 8, clause 2 by the owner's acceptance of 2026-09-15: the rows span three revisions and never all passed on one.
+
+- 📝 Leader dogfooding record of the 2026-09-13 MCP campaign: findings, trust ledger per model, gate cost, close-out and numbers (`docs/features/mcp-server/leader-dogfooding-2026-09-13.md`).
+
+- 🚀 Extend that harness with opt-in Claude Code and Codex real-model legs (`XEZ_REAL_MODEL_CLIENTS`) that drive a real `xezar serve` and judge the ack on the wire through a pass-through stdio tee and in the service's `leader-cursors.json`. (part of #67)
+
+- 📝 **The cockpit design system and quality-checks mockups are documented.** Tokens, components and
+  patterns now have a shared reference and static specimens, with a drift test to flag missing
+  documentation. The quality-checks pages are designs, not a shipped screen. (#384)
+
+- 📝 **UI changes have an explicit design-review gate in this repository.** The development process
+  and merge policy distinguish design approval from QA approval and record the applicable labels.
+  (#385)
+
+- 📝 **Review checklists and templates ask for design evidence.** UI review guidance now covers
+  states, phone layouts, shared components and documentation alongside the existing code checks.
+  (#386)
+
+- 📝 **Design contributions have criteria and a documented lifecycle.** The reference explains token
+  and component proposals, deprecation, decision records and the transitions from draft mockup to
+  implemented or archived design. (#390)
+
+- 📝 **The first quality-checks design review is recorded with its findings.** The design remains in
+  review, and the review skill now explicitly ends its turn after delivering a verdict. (#393)
+
+- 📝 **The quality-checks mockup uses the Xezar name.** The collapsed-project example no longer names
+  the previous team skills source. (#395)
+
+- 📝 **A Codex wake-path decision record separates measurement from implementation.** It records
+  external-turn delivery into an existing TUI through a shared app-server, with isolation limits and
+  a bounded quiet-window measurement. (#400)
+
+- 📝 **The Claude Code Channels wake-path investigation is documented.** The record describes
+  measured event-triggered turns and the conditions required to deliver them to an existing leader
+  session. (#374, #401)
+
+- 📝 **The OpenCode wake-path record identifies what already works and what is missing.** It
+  documents a measured prompt delivery and quiet window, while keeping discovery and attachment
+  limitations explicit. (#374, #405)
+
+- 📝 **Four release and testing documentation claims are corrected.** The prose now reflects the
+  removal of mutation testing from the release path and the evidence from its QA review. (#379,
+  #406)
+
+- 📝 **The leader campaign record captures a missing product-approval check.** It records that an
+  attachment control passed technical review without establishing owner demand; the proposed process
+  improvement is not presented as implemented. (#423)
+
+- 📝 **Decision handling and roomier layouts have design proposals.** Static mockups and requirements
+  describe an owner decision gate and the cockpit spacing proposal. This PR adds no application
+  behavior. (#425)
+
+- 📝 **The spacing proposal has full-page before-and-after mockups.** The comparison provides the
+  design-review input for the later spacing rollout without changing the product stylesheet. (#424,
+  #429)
+
+- 📝 **The README has themed product graphics.** Hero, architecture and lifecycle SVGs and a
+  consistent icon set provide the assets for the product overview. (#448, #452)
+
+- 📝 **The user guide explains backends, workflows and skills.** Three chapters cover the available
+  agents and how task workflows and skill discovery fit together. (#448, #454)
+
+- 📝 **The user guide covers installation and the first task.** The opening chapters also explain
+  task controls, review, isolated working copies, retention and Git. (#448, #455)
+
+- 📝 **Campaign notes have a durable home and a recovery format.** The development process records
+  decisions, open work and next steps across sessions and context compaction. (#456)
+
+- 📝 **Design-system users have a reading route and verification matrix.** Source-backed walkthroughs
+  distinguish phone touch targets from chip floors and connect implementation changes to evidence.
+  (#453, #457)
+
+- 📝 **The documentation gains reproducible cockpit screenshots and a tour GIF.** A capture harness
+  uses isolated state and scripted agents to produce the recorded views. (#448, #458)
+
+- 📝 **The user guide covers GitHub, automations, inbox, projects and settings.** These reference
+  chapters describe the existing controls and their source-checked availability and limitations.
+  (#448, #459)
+
+- 📝 **Issue creation has a documented reusable contract.** It defines draft contents, authority
+  modes, questions and receipts; selecting or launching a skill alone does not authorize filing.
+  (#473)
+
+- 📝 **Onboarding has a documented reusable contract.** It defines minimal project writes and
+  customization-preserving re-checks, with inspection and preview separated from approval to apply
+  changes. (#475)
+
+- 📝 **Project-kit documentation is reconciled with current behavior.** Workflow counts, pointers and
+  qualification limits are corrected while historical observations retain dated updates. (#447,
+  #476)
+
+- 📝 **The documentation tree has a source-backed staleness sweep.** Setup, implementation,
+  acceptance and testing claims are corrected, and retired pilot material is removed or relocated as
+  recorded. (#447, #477)
+
+- 📝 **The README becomes a concise product overview with a tour and guide links.** Contributor setup
+  moves to the contributor guide, and npm README generation also rewrites picture source sets.
+  (#448, #479)
+
+- 📝 **Configuration, CLI and MCP leader references are available in the user guide.** Three chapters
+  document the existing settings and operational interfaces. (#448, #480)
+
+- 📝 **The user guide covers remote access and troubleshooting.** The final chapters explain project
+  kits and common recovery paths alongside remote usage. (#448, #483)
+
+- 📝 **Design lifecycle and storage responsibilities are documented.** The guide assigns transitions,
+  evidence, capture provenance and retirement to their corresponding roles. (#453, #484)
+
+- 📝 **The design system includes recipes for common cockpit surfaces.** Task tables, threads,
+  settings, overlays and state markers link back to their source, interaction rules and verification
+  evidence. (#453, #485)
+
+- 📝 **Release guidance requires instructions that suit any project.** The repository rules
+  distinguish client capabilities from project-specific process and require producer-guard and
+  packed-archive evidence. (#466, #490)
+
+- 📝 **The development contract names task phases and durable repair limits.** It distinguishes
+  accepted criteria, self-review and independent evidence, and requires security assessment before a
+  quality verdict. (#469, #492)
+
+- 📝 **Design-system documentation reflects the delivered spacing work.** The inventory, coverage
+  claims and mockup statuses are reconciled with source, while the original proposal remains dated
+  history. (#447, #494)
+
+- 📝 **The New issue flow has a design and developer handoff.** Static mockups describe the
+  GitHub-tab entry, drafting dialog and ordinary task launch without implementing the control in
+  this PR. (#468, #496)
+
+- 📝 **Design entry points lead to the same maintained guidance.** Skills and workflows route authors
+  and reviewers through usage, verification, recipes, lifecycle and storage documentation. (#453,
+  #498)
+
+- 📝 **Authorship and project lineage are stated consistently.** Licences, the README and package
+  metadata name Qodeca, retain the open-mercato/cezar lineage and update release-text checks. (#499,
+  #501)
+
+- 📝 **The leader model-routing guide includes recent operating findings.** It records explicit
+  action boundaries, checks against the exact revision and whole-workflow verification after
+  quota-related continuation. (#516)
+
+Merged PRs for the preserved entries above: (#414), (#422), (#434), (#451), (#465), (#487), (#491),
+(#508), (#509), (#517), (#518), (#521).
+
+## 🚀 CI/CD & Infrastructure
+
+- test(engine): cover MCP–leader engine incidents, nudges, continuation and quota clocks (#532 slice 2, G7/G8/G9; supersedes #538).
+
+- test(mcp): cover fragile leader delivery, causal outcomes, decision tokens and receipt replay invariants (#532, slice 1).
+
+- 🚀 Add an opt-in pi real-model MCP harness that judges a delivered event by its exact nonce/cursor acknowledgement, with a scripted request-only negative control. (#373)
+
+- 🚀 **Automated checks catch undocumented colours and incomplete design handoffs.** Colour guards
+  flag unsupported tokens and inline colour functions, and a browser sweep checks accessible names,
+  focus and overflow. Existing warning colours now use the documented conflict token. (#391)
+
+- 🚀 **Skill fixtures use the current xez-* names.** Unit and browser examples now match the default
+  collection, including the search and caret expectations affected by longer names. (#397)
+
+- 🚀 **A design guard prevents new arbitrary spacing values.** An explicit occurrence allowance
+  retains existing debt, while fixture controls verify both rejected and permitted spellings. (#431)
+
+- 🚀 **The development kit records its selected local OpenCode model.** Keeping the chosen setting in
+  the kit prevents new task snapshots from disagreeing with the installed configuration; published
+  runtime defaults are unchanged. (#513)
+
+Merged PRs for the preserved entries above: (#407), (#533), (#542).
+
+---
 
 # 0.14.0 (2026-09-12)
 
