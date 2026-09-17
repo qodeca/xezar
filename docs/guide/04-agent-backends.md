@@ -37,6 +37,38 @@ OpenCode does not support extra accounts through this feature: its configuration
 
 ![Global Agent accounts settings](../screenshots/0.15.0/settings-accounts-dark-1280.png)
 
+## To pin an account's model and effort
+
+Claude Code reads its model and its reasoning effort from its own `settings.json` in the account's configuration directory. When a task leaves the model on **auto (default)**, no cockpit preset is saved and `ANTHROPIC_MODEL` is unset, xezar passes no model flag and the account's saved `model` decides. xezar passes no effort flag at all, so a saved effort applies to that account's tasks.
+
+```json
+{
+  "model": "opus[1m]",
+  "modelSettings": { "claude-opus-5": { "effortLevel": "medium" } }
+}
+```
+
+An explicit choice always outranks saved settings: `CLAUDE_CODE_EFFORT_LEVEL` in the environment, the CLI's `--effort` flag, or an in-session `/effort` change. To save an effort instead, set the top-level `effortLevel` for every model or one entry under `modelSettings` for a single model. The per-model key takes the model's canonical name even when `model` selects an alias such as `opus[1m]`. Both keys accept `low`, `medium`, `high` and `xhigh`; with nothing saved the CLI's own per-model default applies.
+
+xezar forwards Claude Code's own variables to that backend, so a `CLAUDE_CODE_EFFORT_LEVEL` exported before xezar starts reaches every Claude Code task and outranks whatever each account saved. Keep efforts in the account homes to vary them per account, and reserve the variable for a deliberate machine-wide override.
+
+## To keep a task account's initial context small
+
+Every skill, plugin and instruction file Claude Code loads at startup occupies part of the context each task begins with. Keep that set small for an account that runs xezar tasks.
+
+Adding the account is already half of it: an added Claude Code account has its own configuration directory, and its settings, session history, instruction file, skills and plugins live there too. Nothing is inherited from your default home: not its instruction file, not the skills it synced, not the plugins it enabled. Only settings your organization installs through managed policy apply to every home and cannot be excluded from any.
+
+Then trim what the account home itself loads by adding keys to its `settings.json`:
+
+| Key | Effect |
+| --- | --- |
+| `syncClaudeAiPlugins: false` | Stops syncing the hosted account's plugins and skills into this home; already-synced entries move to a trash folder on the next launch. |
+| `disableBundledSkills: true` | Removes the skills and workflows that ship with the CLI. Skills you authored are unaffected. |
+| `enabledPlugins` | Set `"<name>@<source>"` to `false` to disable one plugin; the identifier pairs the plugin name with where it came from. |
+| `skillOverrides` | Set a visible skill's name to `"off"` to drop it from context. It does not reach a skill that comes from a plugin; disable that one with `enabledPlugins`. |
+
+These keys do not affect xezar's own skills: xezar hands a skill body to the agent inside the task instructions and never depends on the CLI discovering it. Open the CLI once with `CLAUDE_CONFIG_DIR` pointed at the account's directory to let the changes land: entries that were already synced are moved aside during that launch, so the following launch starts with the smaller set. Check the CLI's status output to confirm its plugin and skill lists are what you expect.
+
 ## To control tool access per backend
 
 Workflow agent steps accept `allowedTools` and `bashAllowlist`. Without overrides, the tools are `Read`, `Edit`, `Write`, `Grep`, `Glob` and unrestricted `Bash`. Treat that default as full shell access.
@@ -77,6 +109,8 @@ If a task fails before the agent starts with a temporary-directory error, fix th
 - Project **Agents**: `defaultRunner`, `defaultModels`, `systemPrompt`, `plannerModel`, `namerModel` in `.xezar/config.json`.
 - Model lock: `XEZ_AGENT_MODELS_LOCKED=1` or `modelsLocked: true` in global or project configuration; shown read-only in **Agents**.
 - Global **Agent accounts** and **Resources**: account selections, usage-limit auto-resume and environment passthrough.
+- Claude Code account homes: `model`, `effortLevel` and `modelSettings`, plus the context-trimming keys above, live in each account's own `settings.json`.
+- `CLAUDE_CODE_EFFORT_LEVEL` is forwarded to Claude Code and outranks the effort an account saved; use it as a machine-wide override, not a default.
 - Binary, approval, sandbox, environment and redaction switches: [environment contract](../../.env.example).
 - [Workflows](05-workflows.md) explains per-step overrides; [Skills](06-skills.md) explains reusable instructions.
 

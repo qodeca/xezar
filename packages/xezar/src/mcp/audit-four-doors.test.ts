@@ -430,6 +430,74 @@ describe('the saved four-door audit harness (#306 part 2)', () => {
     });
   });
 
+  /**
+   * #577 — an ordinary answer that says nothing was applied. Before the fix each of these was
+   * recorded as `applied`: `execution_control`'s and `organise_work`'s conflicts and `task_create`'s
+   * (the Inbox is off, so its routes answer 409 before looking anything up), and every `handoff_git`
+   * refusal that is not an MCP error. Named break `B-577-OUTCOME`: remove `conflictRefusalOf` and
+   * `handoffGitRefusalOf` from the door (`mcp/index.ts`) and every case fails.
+   */
+  describe('mcp: an answer that applied nothing is refused, never applied (#577)', () => {
+    /** The Inbox is OFF for these: its routes answer 409 without reaching an entry. */
+    const inboxOff: Array<[tool: string, args: Record<string, unknown>, action: string, reason: string]> = [
+      ['organise_work', { action: 'start_inbox_item', todoId: 'any-inbox-item' }, 'run.startFromInbox', 'conflict'],
+      ['organise_work', { action: 'remove_inbox_item', todoId: 'any-inbox-item' }, 'inbox.remove', 'conflict'],
+      ['task_create', { action: 'start_from_inbox', todoId: 'any-inbox-item' }, 'run.startFromInbox', 'conflict'],
+    ];
+
+    it.each(inboxOff)('inbox off: %s %o → %s', async (tool, args, action, reason) => {
+      process.env.XEZ_FOLLOWUPS = '0';
+      const c = await cockpit();
+      const handle = await startMcpService({ projectId: c.id, version: VERSION, service: c.app, store: c.store });
+      closers.push(() => handle.close());
+      const leader = agent(c.root);
+      const answer = await leader.call(tool, { ...args, operationId: operationId() });
+      const all = records(c.dataDir);
+      expect(all, JSON.stringify(answer).slice(0, 400)).toHaveLength(1);
+      expect(all[0]).toMatchObject({ origin: 'mcp', action, outcome: { status: 'refused', reason } });
+    });
+
+    it('execution_control: a state the action does not allow, and a hand-off refused by policy', async () => {
+      const c = await cockpit();
+      const handle = await startMcpService({ projectId: c.id, version: VERSION, service: c.app, store: c.store });
+      closers.push(() => handle.close());
+      const leader = agent(c.root);
+      const mcp = (tool: string, args: Record<string, unknown>) => leader.call(tool, { ...args, operationId: operationId() });
+      const started = await mcp('task_create', { action: 'start', prompt: 'wait' });
+      const runId = (started.structuredContent as { subject: { id: string } }).subject.id;
+      const read = await leader.call('task_read', { view: 'task', taskId: runId });
+      const version = (JSON.parse((read.content[0] as { text: string }).text) as { version: string }).version;
+
+      const before = records(c.dataDir).length;
+      // A queued task is still active, so `continue` is refused with nothing changed.
+      const answer = await mcp('execution_control', { action: 'continue', runId, text: 'go on', expectedVersion: version });
+      // The three hand-off actions this task cannot do: it has no worktree, no remote, no forge.
+      for (const action of ['commit', 'push', 'create_pr'] as const) {
+        await mcp('handoff_git', { action, taskId: runId, expectedVersion: version, ...(action === 'commit' ? { message: 'x' } : {}) });
+      }
+      const added = records(c.dataDir).slice(before);
+      expect(added.map((record) => [record.action, record.outcome]), JSON.stringify(answer).slice(0, 300)).toEqual([
+        ['run.continue', { status: 'refused', reason: 'conflict' }],
+        ['run.git.commit', { status: 'refused', reason: 'policy' }],
+        ['run.git.push', { status: 'refused', reason: 'policy' }],
+        ['run.pr.create', { status: 'refused', reason: 'policy' }],
+      ]);
+    }, 120_000);
+
+    it('ui: the same Inbox refusal through the cockpit is the route 409 it always was', async () => {
+      // The control for the door pair: the cockpit door already recorded this as refused.
+      process.env.XEZ_FOLLOWUPS = '0';
+      const c = await cockpit();
+      const res = await c.app.request(
+        '/api/v1/todos/any-inbox-item/start',
+        { method: 'POST', headers: { host: '127.0.0.1:4321', 'content-type': 'application/json', origin: 'http://127.0.0.1:4321' }, body: '{}' },
+        CONNECTION,
+      );
+      expect(res.status).toBe(409);
+      expect(records(c.dataDir)).toMatchObject([{ origin: 'ui', action: 'run.startFromInbox', outcome: { status: 'refused', reason: 'http_409' } }]);
+    });
+  });
+
   it('a caller-supplied origin or actor never changes a record', async () => {
     const c = await cockpit();
     const handle = await startMcpService({ projectId: c.id, version: VERSION, service: c.app, store: c.store });

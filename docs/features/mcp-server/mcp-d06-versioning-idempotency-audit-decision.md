@@ -868,10 +868,24 @@ holder that paused past the 30 s bound cannot delete its successor's lock (#306 
    a `.1`. The next lock holder repairs it: it writes the marker from the maximum retained sequence
    before its own action, and never invents the action the crash may have lost.
 5. Anything that fails — the lock's 2 s bound, an unwritable folder, a mode, rename or append error —
-   drops THAT record and warns once per project-scoped trail per process, with a bounded error code
-   and no path, record or payload. The user's operation is never changed, delayed past the bound, or
+   drops THAT record and warns once per PROJECT per process (#306 part 4, closing the part-3 review's
+   m3): every door of a project, and every trail it opens, shares that one line, and a door's own
+   setup failure — a project it cannot resolve, a data folder it cannot create — is at most one more
+   line per door instance. The text carries a bounded error code and no path, record or payload. The user's operation is never changed, delayed past the bound, or
    rolled back; an unlocked append is never attempted, because it could repeat a sequence or race a
    rotation.
+
+**One redaction seam (#306 part 4, `packages/xezar/src/mcp/audit-redaction.ts`).** § 10.3's "no free
+text by construction" is now one function, `redactAuditInput`, and the append path accepts nothing
+else: a door hands over what it knows about an operation and the seam decides what may persist. It
+holds a field list per door — which record fields that door may fill, and, for each of six field
+classes, that door's own rule: an identifier that matches a host secret value or a token shape is
+dropped rather than masked; free text, paths, URLs and a door's own keys (request headers, a caller's
+origin, a candidate's author, `argv`) are removed or replaced BEFORE the digest; control characters
+are stripped; and a configuration write persists the body's key names with a digest in which every
+value has been replaced, so neither the value nor a guessable hash of it is stored. Each rule has a
+failing-first proof per door (`audit-redaction.test.ts`), and a source-and-runtime guard proves no
+writer reaches the file around the seam (`audit-redaction-seam.test.ts`).
 
 **Known limit — a crash inside the rename cascade costs one generation (#306 part 3 review, m1).**
 A writer that dies after `.1`→`.2` but before live→`.1` leaves no `.1`, so the next rotation deletes
