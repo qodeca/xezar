@@ -74,6 +74,17 @@
 
 ## 🐛 Fixes
 
+- 🐛 **A conversation image can be opened, read and left with the keyboard.** (#453)
+  The full-screen image preview in a task thread used to be a clickable picture over a
+  hand-rolled overlay: a keyboard reader could not open it at all, and once it was open there
+  was no way in or out except the Escape key. It is a proper dialog now — Enter or Space on the
+  thumbnail opens it, focus moves inside and stays there while you Tab, and Escape or the close
+  button in the corner hands focus back to the thumbnail you started from. The thumbnail and
+  the close button both reach the 44 px phone target, the close button stays on top of a
+  picture larger than the screen, and an image the server no longer has says so in words
+  instead of showing a broken picture. Two smaller repairs ship with it: on a phone a task
+  title now wraps to a second line instead of cutting off after about fifteen characters, and
+  a task's Files tab remembers which file you were reading when you come back to it.
 - 🐛 **The macOS ngrok tunnel no longer lets a remote client choose the audited proxy user.** (#572)
   In hosted mode, xezar's audit trail trusts an `X-Xezar-User` header sent by a loopback peer — the
   bundled nginx site sets it from the authenticated user and overwrites any client value, but the

@@ -271,6 +271,51 @@ function waitPlaced(selector: string): void {
   )
 }
 
+/**
+ * Until a control is really there to be clicked: painted, enabled, fully inside the viewport, the
+ * topmost thing at its own centre, and holding that position for 250 ms.
+ *
+ * This is the fix for #584. Two sites here scrolled a control into view and clicked it in the next
+ * statement, and the click landed on whatever was at those coordinates a moment later. On the
+ * thread that is not a load-dependent flake, which is why it reproduced alone on a quiet machine:
+ * the thread scroller ends its restore with `behavior: 'smooth'` (`thread-scroller.tsx:217`) and
+ * virtua keeps writing `scrollTop` while it measures newly mounted items, so the run header is
+ * still MOVING several hundred milliseconds after the header exists. `scrollIntoView` competed
+ * with that instead of settling it.
+ *
+ * The three conditions are each one of the ways the old code could be wrong, and none of them is a
+ * retry, a longer timeout or a softer assertion: the box must stop moving (the smooth scroll and
+ * virtua's corrections have finished), it must be inside the viewport (G-32's run header can sit
+ * under the top bar), and `elementFromPoint` at its centre must be the control itself (the phone
+ * top bar is the thing that was intercepting the click, and a click that hits the bar is a click
+ * the control never sees). If any of them never becomes true the wait fails loudly, naming the
+ * control — which is what a real regression here should look like.
+ */
+function waitHittable(selector: string): void {
+  browser.evaluate(
+    `document.querySelector('${selector}').scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' })`,
+  )
+  browser.waitForFunction(
+    `(() => {
+      const el = document.querySelector('${selector}');
+      if (el === null || el.disabled) return false;
+      const box = el.getBoundingClientRect();
+      if (box.width === 0 || box.height === 0) return false;
+      if (box.top < 0 || box.left < 0 || box.bottom > window.innerHeight || box.right > window.innerWidth) return false;
+      const cx = box.left + box.width / 2, cy = box.top + box.height / 2;
+      const hit = document.elementFromPoint(cx, cy);
+      if (hit === null || !(hit === el || el.contains(hit))) return false;
+      const at = box.x + ',' + box.y, now = performance.now();
+      window.__hittable = window.__hittable ?? {};
+      if (window.__hittable['${selector}']?.at !== at) {
+        window.__hittable['${selector}'] = { at, since: now };
+        return false;
+      }
+      return now - window.__hittable['${selector}'].since >= 250;
+    })()`,
+  )
+}
+
 function openDrawer(): void {
   browser.click(MENU_BUTTON)
   browser.waitForFunction(DRAWER_SETTLED)
@@ -386,9 +431,9 @@ function sweep(): Sweep {
   )
   overflow.push(read<Overflow>(`__overflow('/settings/global/accounts')`))
 
-  // A 44px shell bar can leave this control partly below the phone viewport. Bring the
-  // whole target into view before a pointer click; the driver may accept partial visibility.
-  browser.evaluate(`document.querySelector('${ADD_ACCOUNT}').scrollIntoView({ block: 'center' })`)
+  // A 44px shell bar can leave this control partly below the phone viewport. Wait until the
+  // whole target is in view, still and hittable before the pointer click (#584).
+  waitHittable(ADD_ACCOUNT)
   browser.click(ADD_ACCOUNT)
   browser.waitForFunction(`document.querySelector('${DIALOG_CLOSE}') !== null`)
   waitStill(ADD_ACCOUNT_DIALOG)
@@ -412,9 +457,12 @@ function sweep(): Sweep {
   targets.push(
     read<Target>(`__measure('Button size=icon-sm (Run actions)', 'button[aria-label="Run actions"]')`),
   )
-  // The thread opens scrolled to its end and the phone run header is not sticky, so the header
-  // can sit partly under the top bar. Bring the control into view first, as a finger would (#453).
-  browser.evaluate(`document.querySelector('button[aria-label="Run actions"]').scrollIntoView({ block: 'center' })`)
+  // The thread opens scrolled to its end, the restore finishes with a SMOOTH scroll and virtua
+  // keeps correcting `scrollTop` behind it, and the phone run header is not sticky — so the
+  // header is still moving, and can sit partly under the top bar, well after it exists. Wait for
+  // the control to be in view, still and the topmost thing at its own centre, as a finger would
+  // (#584; G-32 is the underlying layout gap).
+  waitHittable('button[aria-label="Run actions"]')
   browser.click('button[aria-label="Run actions"]')
   browser.waitForFunction(`document.querySelector('[data-slot="run-actions-menu"] [data-slot="dropdown-menu-item"]') !== null`)
   waitStill('[data-slot="run-actions-menu"]')

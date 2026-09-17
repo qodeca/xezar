@@ -464,7 +464,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 
 - **Purpose**: the shell's banner row for provider authentication failures and "no usable provider".
 - **Source**: `packages/web/src/components/provider-banner.tsx`, `packages/web/src/components/provider-banner-container.tsx`.
-- **Look**: alert `flex min-h-10 items-center gap-2 border-b border-border bg-destructive/10 px-section text-sm text-foreground` with `role="alert"` and a danger dot; status `bg-muted/50 text-muted-foreground` with `role="status"` and a pending dot.
+- **Look**: alert `flex min-h-10 flex-wrap items-center gap-x-row gap-y-1 border-b border-border bg-danger/10 px-4 py-1 text-sm text-foreground md:px-section` with `role="alert"` and a danger dot; status the same row on `bg-muted/50 text-muted-foreground` with `role="status"` and a pending dot. (`bg-danger/10`, not `bg-destructive/10`, since #453 B7: `destructive` is the shadcn primitives' alias and app code spells `danger`.)
 - **Copy**: `Provider authentication failed during a task: {labels}.`, `Open agent settings`, `No agent provider is enabled.`, `No connected provider could be verified.`, `No agent provider credentials were found.`, `Configure providers`.
 - **Where used**: 1 file each.
 
@@ -495,16 +495,17 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 
 - **Purpose**: a transparent textarea over Shiki tokens for editing agent config files.
 - **Source**: `packages/web/src/components/code-editor.tsx`. Props `value`, `onChange`, `language`, `readOnly`, `className`, `aria-label`.
-- **Look**: `rounded-md border border-input bg-card`, `font-mono text-xs leading-[1.7] [tab-size:2]`, caret `caret-foreground`, ring suppressed.
+- **Look**: `rounded-md border border-input bg-card`, `font-mono text-xs leading-[1.7] [tab-size:2]`, caret `caret-foreground`. The FRAME carries the focus ring for the textarea inside it — `transition-[border-color,box-shadow] focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50` — so the editor shows focus like any other field (#453 B7; the ring used to be suppressed with nothing in its place).
 - **Rules**: Tab is not trapped.
 - **Where used**: 1 file.
 
 ### ZoomableImage
 
 - **Purpose**: click-to-lightbox image.
-- **Source**: `packages/web/src/components/zoomable-image.tsx`. Props `src`, `alt`, `className`.
-- **Look**: overlay `fixed inset-0 z-[100] bg-black/80 p-4 backdrop-blur-sm` (the one allowed `bg-black` outside `ui/`).
-- **Accessibility**: `role="dialog" aria-modal="true" aria-label="Image preview"`; Escape and backdrop click close.
+- **Source**: `packages/web/src/components/zoomable-image.tsx`. Props `src`, `alt`, `className`; the rest of an `<img>`'s props pass through to the PICTURE, not to the control around it.
+- **Look**: the thumbnail is a `DialogTrigger` button — `inline-flex min-h-tap min-w-tap max-w-full cursor-zoom-in items-center justify-center self-start rounded-md p-0` with the cockpit focus ring, released at `md:` — wrapping the caller-sized `<img>`. The preview is a full-bleed `DialogContent`: `top-0 left-0 flex h-dvh w-full max-w-none translate-x-0 translate-y-0 items-center justify-center gap-0 rounded-none border-0 bg-black/60 p-4 shadow-none backdrop-blur-sm sm:max-w-none` (the one allowed `bg-black` outside `ui/`). The scrim reads as **80 %**: `DialogContent` always paints its own `DialogOverlay` at `bg-black/50` underneath, so `0.5` and `0.6` composite to `1 − (0.5 × 0.4) = 0.8`. Move one number and the other has to move with it.
+- **Accessibility**: a real `Dialog` since #453 B8 (G-A06), not a portalled `div`. That buys the four things the hand-rolled version had none of: the thumbnail is a button, so Enter and Space open the preview; focus moves into the dialog; Tab is trapped inside it; and focus returns to the thumbnail on close. `role="dialog"` with `aria-labelledby` pointing at an `sr-only` DialogTitle "Image preview" (the name it always announced, now a real heading) and `aria-describedby` at the alt text. Escape, a backdrop click and the 44 px-floored Close button all close it; the Close button renders after the image, so a large picture can never cover the way out.
+- **States**: an image that fails to load is said in words — a `border-border bg-muted` chip reading "Image unavailable", named `"<alt> — image unavailable"` — and no preview is offered, because there is nothing to enlarge.
 - **Where used**: 2 files.
 
 ### LastLocationController

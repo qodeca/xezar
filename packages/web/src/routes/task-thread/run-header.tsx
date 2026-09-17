@@ -71,6 +71,7 @@ import { copyText } from '@/lib/clipboard-result'
 import { usePageHeaderOffsetVar } from '@/lib/page-header-offset'
 import { queuePositions, runTitle } from '@/lib/task-groups'
 import { usableRunners } from '@/lib/provider-status'
+import { useReturnFocus } from '@/routes/settings/remove-project'
 import {
   formatCost,
   prNumber,
@@ -539,7 +540,13 @@ function EditableTitle({ run }: { run: ApiRun }) {
 
   return (
     <span className="group flex min-w-0 items-center gap-1">
-      <h1 className="min-w-0 truncate text-[15px] font-semibold" title={run.task}>
+      {/* Two lines on a phone, one on a desktop (#453 B8, G-21; #571 design review NB-2). B5 made
+          the rename pencil permanently visible for touch readers, which is right, and it took
+          28 px from a 375 px title row — enough to cut "Summarize wha…" after about fifteen
+          characters. The title is the first thing to read on the page, so below `md:` it wraps
+          instead of truncating; `line-clamp-1` from `md:` is the same one-line ellipsis `truncate`
+          gave, so the desktop header is unchanged. */}
+      <h1 className="line-clamp-2 min-w-0 text-[15px] font-semibold md:line-clamp-1" title={run.task}>
         {title}
       </h1>
       <button
@@ -963,12 +970,20 @@ function ActionsKebab({
   )
 }
 
-/** The destructive confirms — one dialog, two scripts. Never a native confirm(). */
+/**
+ * The destructive confirms — one dialog, two scripts. Never a native confirm().
+ *
+ * It opens from STATE (a menu row sets `confirming`), not from a Radix trigger, so Radix has
+ * nothing to hand focus back to and a Cancel or Escape dropped keyboard focus on `<body>` — most
+ * visibly on a phone, where the dialog opens from the "Run actions" kebab (#453 B8, G-10; #571
+ * design review NB-3). `useReturnFocus` is the same hook B3 wired into the settings confirms.
+ */
 function ConfirmDialog({ run, actions }: { run: ApiRun; actions: RunActions }) {
   const confirming = actions.confirming
+  const returnFocus = useReturnFocus(confirming !== null)
   return (
     <AlertDialog open={confirming !== null} onOpenChange={(open) => !open && actions.setConfirming(null)}>
-      <AlertDialogContent>
+      <AlertDialogContent onCloseAutoFocus={returnFocus}>
         <AlertDialogHeader>
           <AlertDialogTitle>{confirming === 'delete' ? 'Delete this task?' : 'Cancel this task?'}</AlertDialogTitle>
           <AlertDialogDescription>
