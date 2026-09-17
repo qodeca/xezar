@@ -21,6 +21,9 @@ import { mergeWriteAgentAccounts } from './agent-accounts.ts';
 import { registerProject } from './projects.ts';
 import { runMigrations } from './migrations.ts';
 
+/** Resolved in the test process, where this repo's node_modules is reachable. */
+const tsxLoader = import.meta.resolve('tsx');
+
 /**
  * AC-11 / SP-1.5 — the never-open-`~/.xezar` proof.
  *
@@ -161,13 +164,24 @@ describe('single-project mode never opens the real xezar home (AC-11)', () => {
     // rather than the redirection.
     delete env.VITEST;
 
-    // `node --import tsx`, not the `tsx` binary: that binary re-executes node
-    // through a unix-socket IPC channel under `TMPDIR`, and the nested temp
-    // directory a xezar task run inherits exceeds the ~104-byte socket-path
-    // limit (EINVAL). The loader form runs the CLI in THIS process's child and
-    // needs no socket.
+    // `node --import <loader>`, not the `tsx` binary: that binary re-executes
+    // node through a unix-socket IPC channel under `TMPDIR`, and the nested
+    // temp directory a xezar task run inherits exceeds the ~104-byte
+    // socket-path limit (EINVAL). The loader form runs the CLI in THIS
+    // process's child and needs no socket.
+    //
+    // The loader is resolved HERE, to an absolute URL, and never passed as the
+    // bare `tsx`: `--import` resolves a bare specifier from the CHILD's cwd,
+    // and this child's cwd is the scratch project — which, when the checkout
+    // under test is a task worktree, sits under the OS temp dir with no
+    // node_modules above it (#19, #27). Same trap, same fix as
+    // `test/unit/cli-version.test.ts`.
     const runCli = (...args: string[]): SpawnSyncReturns<string> =>
-      spawnSync(process.execPath, ['--import', 'tsx', cliEntry, ...args], { cwd: project, env, encoding: 'utf8' });
+      spawnSync(process.execPath, ['--import', tsxLoader, cliEntry, ...args], {
+        cwd: project,
+        env,
+        encoding: 'utf8',
+      });
 
     // `projects` opens no port, so it is the cheapest command that boots the
     // layout for real — and `add` makes it WRITE the registry, which is the
