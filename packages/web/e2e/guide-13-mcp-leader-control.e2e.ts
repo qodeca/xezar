@@ -95,13 +95,17 @@ describe('guide 13 — MCP project leader', () => {
   })
 
   it('reports the unattached state honestly — a real "no leader connected" reading, not a faked one', async () => {
-    // The heading is static; the status sentence itself comes from the connection check the page
-    // runs after mount, so it — not the heading — is what this test actually has to wait for
-    // (#579 round 1: waiting only for the heading, or re-checking the heading a second time
-    // right after its own wait, both raced this under CI load).
+    // The heading is static; the status sentence itself comes from the page's own
+    // `GET /api/v1/mcp/leader` fetch (`useMcpLeader`, staleTime 0), which only starts once this
+    // panel mounts — so it, not the heading, is what this test actually has to wait for (#579
+    // round 1: waiting only for the heading, or re-checking the heading a second time right after
+    // its own wait, both raced this under CI load). The fetch itself is a cheap in-memory status
+    // read, but it still exceeded the suite's default 10s wait twice on a loaded CI runner (#579
+    // round 2), so it gets a longer, evidenced budget here.
     await browser.waitForRole('heading', 'Connection status')
     await browser.waitForText(
       'The MCP service is not running for this project, so there is no event delivery to report.',
+      { attempts: 80 },
     )
     expect(browser.hasRole('button', 'Refresh')).toBe(true)
   })
@@ -114,16 +118,18 @@ describe('guide 13 — MCP project leader', () => {
     expect(health.capabilities.followups).toBe(false)
 
     await browser.waitForRole('heading', 'What the leader can do')
-    await browser.waitForText('Why: GitHub automations are off on this xezar.')
+    await browser.waitForText('Why: GitHub automations are off on this xezar.', { attempts: 80 })
     expect(browser.hasText('GitHub automations')).toBe(true)
-    await browser.waitForText('Why: The follow-up inbox is off for this workspace.')
+    await browser.waitForText('Why: The follow-up inbox is off for this workspace.', { attempts: 80 })
     expect(browser.hasText('Follow-up inbox')).toBe(true)
   })
 
   it('"Shared limits" repeats the same workspace resource defaults guide 11 verifies', async () => {
+    // `useWorkspaceConfig` (`GET /api/workspace/config`, a plain config read) — cheap, but the
+    // same loaded-CI-runner evidence as above applies (#579 round 2).
     await browser.waitForRole('heading', 'Shared limits')
-    await browser.waitForText('2 across all projects')
-    await browser.waitForText('8192 MiB')
+    await browser.waitForText('2 across all projects', { attempts: 80 })
+    await browser.waitForText('8192 MiB', { attempts: 80 })
     expect(browser.hasRole('link', 'See every tool this server exposes')).toBe(true)
   })
 })
