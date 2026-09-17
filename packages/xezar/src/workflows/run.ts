@@ -110,14 +110,15 @@ function hasFinalDoneMarker(text: string): boolean {
   const lines = text.trimEnd().split('\n');
   for (const [index, line] of lines.entries()) {
     const delimiter = /^[ \t]*(`{3,}|~{3,})(.*)\r?$/.exec(line);
+    const marker = delimiter?.[1];
     if (fence) {
       // Inner/shorter fences and info strings cannot close the outer fence.
-      if (delimiter && delimiter[1][0] === fence[0] &&
-          delimiter[1].length >= fence.length && delimiter[2].trim() === '') fence = undefined;
+      if (marker && marker[0] === fence[0] &&
+          marker.length >= fence.length && delimiter?.[2]?.trim() === '') fence = undefined;
       continue;
     }
-    if (delimiter) {
-      fence = delimiter[1];
+    if (marker) {
+      fence = marker;
       continue;
     }
     if (/^[ \t]*XEZ:DONE[ \t]*\r?$/.test(line) ||
