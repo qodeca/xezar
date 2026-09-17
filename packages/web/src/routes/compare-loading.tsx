@@ -15,7 +15,7 @@ export function CompareLoading() {
         icon={<LoaderCircleIcon className="motion-safe:animate-spin" />}
         tone="neutral"
         title="Loading variants…"
-        subtitle="Fetching every variant's status, spend and diff summary."
+        subtitle="Fetching every variant’s status, spend and diff summary."
       />
     </div>
   )

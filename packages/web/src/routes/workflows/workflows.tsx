@@ -20,6 +20,7 @@ import {
   DownloadIcon,
   GripVerticalIcon,
   PlusIcon,
+  SearchIcon,
   SparklesIcon,
   SquareTerminalIcon,
   Trash2Icon,
@@ -46,10 +47,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/components/ui/toaster'
+import { copyText } from '@/lib/clipboard-result'
 import { isProjectSkill, orderSkillsByUsage } from '@/lib/skills'
 import { cn } from '@/lib/utils'
 import {
@@ -135,6 +137,15 @@ function WorkflowsBuilder({ routeName }: { routeName: string | undefined }) {
   const [autoText, setAutoText] = useState('')
   const [confirmOverwrite, setConfirmOverwrite] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  // Neither confirm has a Radix trigger (overwrite opens on the server's 409), so closing one would
+  // drop keyboard focus on <body>; hand it back to the button that asked instead (#453 B7).
+  const saveButton = useRef<HTMLButtonElement>(null)
+  const deleteButton = useRef<HTMLButtonElement>(null)
+  const returnFocusTo = (button: { current: HTMLButtonElement | null }) => (event: Event) => {
+    if (!button.current?.isConnected) return
+    event.preventDefault()
+    button.current.focus()
+  }
   const [dragging, setDragging] = useState<DragItem | null>(null)
   // The step id (or CANVAS_ID) the pointer is over mid-drag — drives the "drop to insert"
   // indicator between cards, the affordance the legacy `.wb-gap` slots gave (#wb-drop-line).
@@ -220,7 +231,7 @@ function WorkflowsBuilder({ routeName }: { routeName: string | undefined }) {
     mutationFn: (workflowName: string) => deleteWorkflow(workflowName),
     onSuccess: (_, workflowName) => {
       setConfirmDelete(false)
-      toast(`Deleted "${workflowName}".`)
+      toast(`Deleted “${workflowName}”`)
       setDraft(emptyDraft())
       void queryClient.invalidateQueries({ queryKey: queryKeys.workflows })
     },
@@ -350,11 +361,12 @@ function WorkflowsBuilder({ routeName }: { routeName: string | undefined }) {
           setOverId(null)
         }}
       >
-        <div className="flex flex-1 flex-col gap-6 p-4 pb-[calc(90px+env(safe-area-inset-bottom))] md:flex-row md:p-section md:pb-section">
+        <div className="flex flex-1 flex-col gap-group p-4 pb-[calc(90px+env(safe-area-inset-bottom))] md:flex-row md:p-section md:pb-section">
           {/* ---- canvas ---------------------------------------------------------------- */}
           <section data-slot="wb-main" className="mx-auto w-full min-w-0 max-w-3xl flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="flex min-w-0 flex-1 items-center gap-2.5">
+            <div className="flex flex-wrap items-center gap-row">
+              {/* Below `md` the name takes its own row: five 44 px actions leave it no room beside them. */}
+              <div className="flex min-w-0 flex-1 basis-full items-center gap-row md:basis-auto">
                 <Input
                   ref={nameInput}
                   data-slot="wb-name"
@@ -368,12 +380,13 @@ function WorkflowsBuilder({ routeName }: { routeName: string | undefined }) {
                   {stepCountLabel(steps)}
                 </span>
               </div>
-              <div className="flex shrink-0 items-center gap-1.5">
+              <div className="flex shrink-0 flex-wrap items-center gap-1.5">
                 {savedFile ? (
                   <Button
                     type="button"
                     variant="danger-ghost"
                     size="sm"
+                    ref={deleteButton}
                     data-slot="wb-delete"
                     title="Delete the saved workflow file"
                     onClick={() => setConfirmDelete(true)}
@@ -426,6 +439,7 @@ function WorkflowsBuilder({ routeName }: { routeName: string | undefined }) {
                   type="button"
                   variant="contrast"
                   size="sm"
+                  ref={saveButton}
                   data-slot="wb-save"
                   disabled={save.isPending}
                   onClick={runSave}
@@ -437,7 +451,7 @@ function WorkflowsBuilder({ routeName }: { routeName: string | undefined }) {
             </div>
 
             {/* Load chips: every known workflow, plus "+ new" — the legacy edit row. */}
-            <div data-slot="wb-load" className="mt-3 flex flex-wrap items-center gap-1.5">
+            <div data-slot="wb-load" className="mt-stack flex flex-wrap items-center gap-1.5">
               <span className="mr-0.5 text-[11px] font-medium tracking-wide text-soft-foreground uppercase">
                 edit
               </span>
@@ -451,7 +465,8 @@ function WorkflowsBuilder({ routeName }: { routeName: string | undefined }) {
                   aria-pressed={trimmedName === workflow.name}
                   onClick={() => setDraft(draftFrom(workflow))}
                   className={cn(
-                    'rounded-full border border-border bg-card px-2.5 py-1 font-mono text-[11.5px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
+                    LOAD_CHIP,
+                    'border-border bg-card',
                     trimmedName === workflow.name && 'border-primary/40 bg-primary/10 text-foreground',
                   )}
                 >
@@ -463,14 +478,14 @@ function WorkflowsBuilder({ routeName }: { routeName: string | undefined }) {
                 data-slot="wb-new"
                 title="Start an empty workflow"
                 onClick={() => setDraft(emptyDraft())}
-                className="rounded-full border border-dashed border-border px-2.5 py-1 font-mono text-[11.5px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                className={cn(LOAD_CHIP, 'border-dashed border-border')}
               >
                 + new
               </button>
             </div>
 
             {autoOpen ? (
-              <div data-slot="wb-auto-panel" className="mt-4 rounded-lg border border-border bg-card p-3 shadow-xs">
+              <div data-slot="wb-auto-panel" className="mt-list rounded-lg border border-border bg-card p-stack shadow-xs">
                 <div className="text-[11px] font-medium tracking-wide text-soft-foreground uppercase">
                   Build a chain from a prompt
                 </div>
@@ -492,9 +507,9 @@ function WorkflowsBuilder({ routeName }: { routeName: string | undefined }) {
                       runAuto()
                     }
                   }}
-                  className="mt-2 min-h-20 text-[13px]"
+                  className="mt-row min-h-20 text-[13px]"
                 />
-                <div className="mt-3 flex items-center gap-1.5">
+                <div className="mt-stack flex items-center gap-1.5">
                   <Button
                     type="button"
                     variant="contrast"
@@ -523,7 +538,7 @@ function WorkflowsBuilder({ routeName }: { routeName: string | undefined }) {
             ) : null}
 
             {importOpen ? (
-              <div data-slot="wb-import-panel" className="mt-4 rounded-lg border border-border bg-card p-3 shadow-xs">
+              <div data-slot="wb-import-panel" className="mt-list rounded-lg border border-border bg-card p-stack shadow-xs">
                 <div className="text-[11px] font-medium tracking-wide text-soft-foreground uppercase">
                   Import workflow YAML
                 </div>
@@ -535,14 +550,14 @@ function WorkflowsBuilder({ routeName }: { routeName: string | undefined }) {
                   placeholder={'name: my-flow\nskills:\n  - test-conventions\n  - commit-style'}
                   value={importText}
                   onChange={(event) => setImportText(event.target.value)}
-                  className="mt-2 min-h-28 font-mono text-xs"
+                  className="mt-row min-h-28 font-mono text-xs"
                 />
                 {importError !== '' ? (
-                  <p data-slot="wb-import-error" className="mt-2 text-xs text-danger">
+                  <p data-slot="wb-import-error" role="alert" className="mt-row text-xs text-danger">
                     {importError}
                   </p>
                 ) : null}
-                <div className="mt-3 flex items-center gap-1.5">
+                <div className="mt-stack flex items-center gap-1.5">
                   <Button
                     type="button"
                     variant="contrast"
@@ -586,14 +601,21 @@ function WorkflowsBuilder({ routeName }: { routeName: string | undefined }) {
             <p className="mt-1 text-xs leading-relaxed text-soft-foreground">
               Drag into the flow. Order is execution order — the agent applies them top to bottom.
             </p>
-            <Input
-              data-slot="wb-filter"
-              placeholder="Filter skills…"
-              aria-label="Filter skills"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              className="mt-2.5 h-8 text-[13px]"
-            />
+            {/* The one search field (G-12): `Input` with a leading icon; 44 px on a phone. */}
+            <div className="relative mt-stack">
+              <SearchIcon
+                aria-hidden="true"
+                className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-soft-foreground"
+              />
+              <Input
+                data-slot="wb-filter"
+                placeholder="Filter skills…"
+                aria-label="Filter skills"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                className="h-8 pl-8 md:text-[13px]"
+              />
+            </div>
             <Palette
               skills={paletteSkills}
               query={query}
@@ -602,7 +624,7 @@ function WorkflowsBuilder({ routeName }: { routeName: string | undefined }) {
               onAdd={(skill) => addSkill(skill)}
             />
 
-            <div className="mt-5 flex items-center gap-2">
+            <div className="mt-group flex items-center gap-row">
               <span className="text-[11px] font-medium tracking-wide text-soft-foreground uppercase">
                 workflow.yaml
               </span>
@@ -611,11 +633,11 @@ function WorkflowsBuilder({ routeName }: { routeName: string | undefined }) {
             </div>
             <pre
               data-slot="wb-yaml"
-              className="mt-2 overflow-x-auto rounded-lg border border-border bg-card p-3 font-mono text-[11.5px] leading-relaxed whitespace-pre text-muted-foreground shadow-xs"
+              className="mt-row overflow-x-auto rounded-lg border border-border bg-card p-stack font-mono text-[11.5px] leading-relaxed whitespace-pre text-muted-foreground shadow-xs"
             >
               {yaml}
             </pre>
-            <p className="mt-2 text-[11.5px] leading-relaxed text-soft-foreground">
+            <p className="mt-row text-[11.5px] leading-relaxed text-soft-foreground">
               Portable — export this file and import it in any repo running xezar.
             </p>
           </aside>
@@ -636,16 +658,21 @@ function WorkflowsBuilder({ routeName }: { routeName: string | undefined }) {
 
       {/* Save-over confirm: the server answered 409 `exists` — legacy `confirm()`, as a dialog. */}
       <AlertDialog open={confirmOverwrite} onOpenChange={(open) => !open && setConfirmOverwrite(false)}>
-        <AlertDialogContent data-slot="wb-overwrite-dialog">
+        <AlertDialogContent data-slot="wb-overwrite-dialog" onCloseAutoFocus={returnFocusTo(saveButton)}>
           <AlertDialogHeader>
-            <AlertDialogTitle>&ldquo;{trimmedName}&rdquo; already exists</AlertDialogTitle>
+            <AlertDialogTitle>“{trimmedName}” already exists</AlertDialogTitle>
             <AlertDialogDescription>
               Saving overwrites the existing workflow file. There is no undo.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Keep the file</AlertDialogCancel>
-            <AlertDialogAction data-slot="wb-overwrite-confirm" onClick={() => save.mutate(true)}>
+            <AlertDialogCancel>Keep it</AlertDialogCancel>
+            {/* Irreversible, so it wears the danger confirm (G-10), like Delete beside it. */}
+            <AlertDialogAction
+              data-slot="wb-overwrite-confirm"
+              className={buttonVariants({ variant: 'danger' })}
+              onClick={() => save.mutate(true)}
+            >
               Overwrite
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -653,9 +680,9 @@ function WorkflowsBuilder({ routeName }: { routeName: string | undefined }) {
       </AlertDialog>
 
       <AlertDialog open={confirmDelete} onOpenChange={(open) => !open && setConfirmDelete(false)}>
-        <AlertDialogContent data-slot="wb-delete-dialog">
+        <AlertDialogContent data-slot="wb-delete-dialog" onCloseAutoFocus={returnFocusTo(deleteButton)}>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete workflow &ldquo;{trimmedName}&rdquo;?</AlertDialogTitle>
+            <AlertDialogTitle>Delete workflow “{trimmedName}”?</AlertDialogTitle>
             <AlertDialogDescription>
               Removes {savedFile?.path?.split('/').pop() ?? 'the saved file'} from{' '}
               <span className="font-mono">.xezar/workflows/</span>. There is no undo.
@@ -665,7 +692,7 @@ function WorkflowsBuilder({ routeName }: { routeName: string | undefined }) {
             <AlertDialogCancel>Keep it</AlertDialogCancel>
             <AlertDialogAction
               data-slot="wb-delete-confirm"
-              className="bg-danger text-danger-foreground hover:brightness-[0.96]"
+              className={buttonVariants({ variant: 'danger' })}
               onClick={() => del.mutate(trimmedName)}
             >
               Delete
@@ -705,7 +732,7 @@ function Canvas({
       data-slot="wb-steps"
       data-dragging={dragging || undefined}
       className={cn(
-        'mt-4 rounded-lg border border-dashed p-2 transition-colors',
+        'mt-list rounded-lg border border-dashed p-2 transition-colors',
         isOver ? 'border-primary/60 bg-primary/5' : 'border-muted-foreground/25',
       )}
     >
@@ -740,7 +767,7 @@ function Canvas({
           <div
             aria-hidden="true"
             className={cn(
-              'mx-1 mt-2.5 h-[3px] rounded-full transition-colors',
+              'mx-1 mt-2.5 h-0.75 rounded-full transition-colors',
               appendActive ? 'bg-primary' : 'bg-transparent',
             )}
           />
@@ -789,7 +816,7 @@ function StepCard({
       {connector && !dragging ? (
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute -top-[11px] left-1/2 h-[9px] w-px -translate-x-1/2 bg-muted-foreground/30"
+          className="pointer-events-none absolute -top-2.75 left-1/2 h-2.25 w-px -translate-x-1/2 bg-muted-foreground/30"
         />
       ) : null}
       {/* Drop-to-insert line: an accent bar in the gap above, where the card will land. */}
@@ -797,7 +824,7 @@ function StepCard({
         <span
           aria-hidden="true"
           data-slot="wb-drop-line"
-          className="pointer-events-none absolute -top-[7px] right-0 left-0 h-[3px] rounded-full bg-primary"
+          className="pointer-events-none absolute -top-1.75 right-0 left-0 h-0.75 rounded-full bg-primary"
         />
       ) : null}
       <StepCardBody
@@ -858,7 +885,7 @@ function StepCardBody({
         type="button"
         data-slot="wb-step-grip"
         aria-label={`Reorder step ${index + 1}: ${title}`}
-        className="shrink-0 cursor-grab rounded text-muted-foreground outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
+        className={cn(ICON_BUTTON, 'cursor-grab text-muted-foreground hover:text-foreground')}
         {...gripProps}
       >
         <GripVerticalIcon aria-hidden="true" className="size-3.5" />
@@ -897,7 +924,7 @@ function StepCardBody({
           aria-label={`Remove step ${index + 1}: ${title}`}
           title="Remove from flow"
           onClick={onRemove}
-          className="shrink-0 rounded p-0.5 text-soft-foreground transition-colors outline-none hover:text-danger focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          className={cn(ICON_BUTTON, 'p-0.5 text-soft-foreground transition-colors hover:text-danger')}
         >
           <XIcon aria-hidden="true" className="size-3.5" />
         </button>
@@ -921,7 +948,7 @@ function Palette({
 }) {
   if (error !== null) {
     return (
-      <p data-slot="wb-palette" className="mt-2.5 text-xs text-danger">
+      <p data-slot="wb-palette" role="alert" className="mt-stack text-xs text-danger">
         Could not load skills: {error}
       </p>
     )
@@ -936,14 +963,14 @@ function Palette({
       (skill.description ?? '').toLowerCase().includes(needle),
   )
   return (
-    <div data-slot="wb-palette" className="mt-2.5 flex flex-col gap-1">
+    <div data-slot="wb-palette" className="mt-stack flex flex-col gap-1">
       {shown.length > 0 ? (
         shown.map((skill) => (
           <PaletteSkill key={skill.path} skill={skill} inFlow={inFlow.has(skill.name)} onAdd={onAdd} />
         ))
       ) : (
         <p className="py-1 text-xs leading-relaxed text-soft-foreground">
-          {skills.length > 0 ? 'No skills match.' : <SkillEmptyHintCompact />}
+          {skills.length > 0 ? 'Nothing matches.' : <SkillEmptyHintCompact />}
         </p>
       )}
     </div>
@@ -997,7 +1024,7 @@ function PaletteSkill({
         aria-label={`Add ${skill.name} to the flow`}
         title="Add to the flow"
         onClick={() => onAdd(skill.name)}
-        className="shrink-0 rounded p-0.5 text-soft-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
+        className={cn(ICON_BUTTON, 'p-0.5 text-soft-foreground transition-colors hover:text-foreground')}
       >
         <PlusIcon aria-hidden="true" className="size-3.5" />
       </button>
@@ -1005,7 +1032,8 @@ function PaletteSkill({
   )
 }
 
-/** Copy flips to "✓ Copied" for a beat — the legacy `wbCopy` affordance. */
+/** Copy flips to "✓ Copied" for a beat — the legacy `wbCopy` affordance — but only when the
+ *  clipboard really took the text (`copyText`, G-16): a refused copy says so instead. */
 function CopyYamlButton({ yaml }: { yaml: string }) {
   const [copied, setCopied] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -1021,12 +1049,18 @@ function CopyYamlButton({ yaml }: { yaml: string }) {
       data-slot="wb-copy"
       title="Copy the YAML"
       onClick={() => {
-        void navigator.clipboard?.writeText(yaml).catch(() => {})
-        setCopied(true)
-        if (timer.current !== null) clearTimeout(timer.current)
-        timer.current = setTimeout(() => setCopied(false), 1600)
+        void copyText(yaml).then((result) => {
+          if (!result.ok) {
+            setCopied(false)
+            toast('Could not copy the YAML — select it below instead', { tone: 'danger' })
+            return
+          }
+          setCopied(true)
+          if (timer.current !== null) clearTimeout(timer.current)
+          timer.current = setTimeout(() => setCopied(false), 1600)
+        })
       }}
-      className="flex items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+      className="flex min-h-tap min-w-tap items-center justify-center gap-1 rounded-sm text-xs font-medium text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 md:min-h-0 md:min-w-0"
     >
       {copied ? (
         <>
@@ -1042,3 +1076,12 @@ function CopyYamlButton({ yaml }: { yaml: string }) {
     </button>
   )
 }
+
+/** A workflow chip in the "edit" row: pill look, a 44 px target on a phone (#453 B7). */
+const LOAD_CHIP =
+  'inline-flex min-h-tap items-center rounded-full border px-2.5 py-1 font-mono text-[11.5px] font-medium text-muted-foreground transition-colors outline-none hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 md:min-h-0'
+
+/** A glyph-only step or palette action (grip, remove, add): the glyph stays small, the target is
+ *  44 px on a phone (#453 B7). */
+const ICON_BUTTON =
+  'inline-flex shrink-0 items-center justify-center rounded outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 max-md:min-h-tap max-md:min-w-tap'

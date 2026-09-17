@@ -148,14 +148,16 @@ export function TwinkleBackdrop({ className }: { className?: string }) {
 }
 
 /** Desktop page heading; the shell supplies the phone heading. Actions wrap instead of clipping. */
-export function PageHeader({ title, children, className }: {
+export function PageHeader({ title, children, className, titleClassName }: {
   title: string
   children?: ReactNode
   className?: string
+  /** For a header kept visible on a phone whose title repeats the top bar: `sr-only md:not-sr-only`. */
+  titleClassName?: string
 }) {
   return (
     <header data-slot="page-header" className={cn('sticky top-0 z-10 hidden min-h-14 flex-wrap items-center gap-row border-b border-border bg-background px-4 py-2 md:flex md:px-section', className)}>
-      <h1 className="min-w-0 flex-1 text-base font-semibold break-words">{title}</h1>
+      <h1 className={cn('min-w-0 flex-1 text-base font-semibold break-words', titleClassName)}>{title}</h1>
       {children}
     </header>
   )
