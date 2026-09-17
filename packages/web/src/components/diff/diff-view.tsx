@@ -575,9 +575,11 @@ function LineContent({ cell, tokens, wrap }: { cell: DiffCell; tokens: SynToken[
   )
 }
 
+/** Line numbers are required small text, so they wear the full `soft-foreground` ink: the old
+ *  `/70` wash measured 2.7:1 (light) and 3.1:1 (dark) on a composited row (#453 B6). */
 function Gutter({ value }: { value: number | undefined }) {
   return (
-    <span className="w-10 shrink-0 pr-2 text-right text-soft-foreground/70 tabular-nums select-none">
+    <span className="w-10 shrink-0 pr-2 text-right text-soft-foreground tabular-nums select-none">
       {value ?? ''}
     </span>
   )

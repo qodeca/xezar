@@ -2,7 +2,7 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import type { ComponentProps, ReactElement } from 'react'
+import { useState, type ComponentProps, type ReactElement } from 'react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -360,6 +360,12 @@ describe('C8 reduced motion, honest clipboard, copy', () => {
     expect(bare).toEqual([])
   })
 
+  it('diff line numbers wear full ink, not a washed-out alpha (contrast)', () => {
+    const gutter = source('components/diff/diff-view.tsx').match(/function Gutter[\s\S]*?className="([^"]+)"/)
+    expect(gutter?.[1]).toContain('text-soft-foreground')
+    expect(gutter?.[1]).not.toMatch(/text-soft-foreground\/\d+/)
+  })
+
   it('the Git tabs copy only through the shared helper', () => {
     expect(B6_FILES.filter((rel) => /navigator\.clipboard/.test(source(rel)))).toEqual([])
   })
@@ -390,5 +396,27 @@ describe('C9 the commit dialog cancels without committing', () => {
     fireEvent.keyDown(field, { key: 'Escape' })
     expect(sent.filter((request) => request.startsWith('POST'))).toEqual([])
     expect(screen.getByText(/Stages everything in the task’s worktree/)).not.toBeNull()
+  })
+
+  it('hands keyboard focus back to the button that opened it', async () => {
+    stubDiff(() => new Response('', { status: 200 }))
+    function Opener() {
+      const [open, setOpen] = useState(false)
+      return (
+        <>
+          <button type="button" onClick={() => setOpen(true)}>
+            Commit
+          </button>
+          <CommitDialog run={run()} open={open} onOpenChange={setOpen} />
+        </>
+      )
+    }
+    renderWithProviders(<Opener />)
+    const opener = screen.getByRole('button', { name: 'Commit' })
+    opener.focus()
+    fireEvent.click(opener)
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(document.activeElement).toBe(opener)
   })
 })
