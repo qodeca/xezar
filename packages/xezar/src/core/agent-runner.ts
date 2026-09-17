@@ -46,6 +46,10 @@ export interface AgentRunSpec {
   /** Present only for an isolated linked-worktree run. Pi uses it to load its
    *  worktree tool guard; in-place and non-Git runs deliberately leave it absent. */
   worktreeRoot?: string;
+  /** The primary checkout that guard protects, set together with `worktreeRoot`
+   *  (`worktreeGuardRoots`). Xezar passes it rather than letting pi derive it from
+   *  the worktree's `.git` file, which bare-repository and submodule layouts break. */
+  primaryRoot?: string;
   /** Tool allowlist; the CLI is default-deny for anything not listed — but
    *  the zero-config default (`DEFAULT_ALLOWED_TOOLS`) includes `Bash`
    *  unrestricted unless `bashAllowlist` is set, so treat the default as

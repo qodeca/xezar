@@ -190,13 +190,15 @@ describe('pi RPC argv', () => {
   it('uses pi RPC mode, exact session selection, provider/model, pi tool names, and pins an isolated tool root', () => {
     expect(
       buildPiArgs({
-        cwd: '/repo',
+        cwd: '/repo/.local/xezar/worktrees/task',
         userPrompt: 'task',
         sessionId: 'session-1',
         resume: true,
         model: 'openai/gpt-5.1',
         systemPrompt: 'Keep changes focused.',
-        worktreeRoot: '/repo',
+        worktreeRoot: '/repo/.local/xezar/worktrees/task',
+        primaryRoot: '/repo',
+        additionalDirectories: ['/repo/.local/xezar/runs', '/repo/.local/xezar/tmp/task'],
         allowedTools: ['Read', 'Bash', 'Edit', 'Write', 'Grep', 'Glob'],
       }),
     ).toEqual([
@@ -212,13 +214,17 @@ describe('pi RPC argv', () => {
       'read,bash,edit,write,grep,find',
       '--extension',
       expect.stringMatching(/scripts\/pi-worktree-guard\.ts$/),
-      '--xezar-worktree-root',
-      '/repo',
+      // `--flag=value` keeps a root that starts with `-` or `@` from being read as a boolean flag.
+      '--xezar-worktree-root=/repo/.local/xezar/worktrees/task',
+      '--xezar-primary-root=/repo',
+      '--xezar-allowed-roots=["/repo/.local/xezar/runs","/repo/.local/xezar/tmp/task"]',
     ]);
   });
 
   it('does not add the worktree guard for an in-place or non-git run', () => {
-    expect(buildPiArgs({ cwd: '/repo', userPrompt: 'task' })).not.toContain('--xezar-worktree-root');
+    const args = buildPiArgs({ cwd: '/repo', userPrompt: 'task', additionalDirectories: ['/repo/.local/xezar/runs'] });
+    expect(args).not.toContain('--extension');
+    expect(args.some((arg) => arg.startsWith('--xezar-'))).toBe(false);
   });
 
   it('creates a new exact session id instead of invoking the interactive resume picker', () => {

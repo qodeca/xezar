@@ -467,7 +467,13 @@ export function buildPiArgs(spec: AgentRunSpec): string[] {
   const tools = piTools(spec.allowedTools ?? [], spec.bashAllowlist);
   if (tools.length > 0) args.push('--tools', tools.join(','));
   if (spec.worktreeRoot) {
-    args.push('--extension', piWorktreeGuardPath(), '--xezar-worktree-root', spec.worktreeRoot);
+    // `--flag=value`: pi reads a separate value that starts with `-` or `@` as a boolean flag.
+    // A missing primary root is passed as absent, and the guard then fails closed.
+    args.push('--extension', piWorktreeGuardPath(), `--xezar-worktree-root=${spec.worktreeRoot}`);
+    if (spec.primaryRoot) args.push(`--xezar-primary-root=${spec.primaryRoot}`);
+    if (spec.additionalDirectories?.length) {
+      args.push(`--xezar-allowed-roots=${JSON.stringify(spec.additionalDirectories)}`);
+    }
   }
   return args;
 }

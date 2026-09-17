@@ -2,7 +2,7 @@
 
 ## 🐛 Fixes
 
-- 🐛 Keep pi `quick-task` writes inside their isolated task worktree, including direct file writes, parent-directory and symlink escapes, and shell attempts to enter or target the primary checkout. In-place and non-Git runs, plus temporary and home-directory paths outside the primary checkout, retain their existing behavior. (#537)
+- 🐛 Keep pi `write` and `edit` calls in an isolated task worktree out of the primary checkout, whatever path spelling pi would accept (absolute, `..`, symlink, `~`, a leading `@`, a `file://` URL, Unicode spaces or different letter case); a spelling the guard cannot resolve with confidence is refused. Shell commands get a best-effort check only – it refuses commands that name the primary checkout or change into it through ordinary `cd`, `pushd`, `git -C`, `--git-dir`/`--work-tree` or `GIT_DIR` forms, but a shell command cannot be parsed completely, so it is not containment. The primary checkout now comes from xezar itself, so bare-repository and submodule layouts keep working, and the run's handoff and temp folders stay writable. In-place and non-Git runs, plus temporary and home-directory paths outside the primary checkout, retain their existing behavior. (#537)
 
 # 0.15.0 (2026-09-17)
 

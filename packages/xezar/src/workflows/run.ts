@@ -534,6 +534,16 @@ export function quickTaskWorktreeInstructions(
   ].join(' ');
 }
 
+/** The roots pi's worktree guard needs (#537), for both agent construction sites. An isolated
+ *  run (`cwd !== repoRoot`) gets its worktree and the primary checkout; in-place and non-Git runs
+ *  get neither key, so their spec and pi arguments stay exactly as before. */
+export function worktreeGuardRoots(
+  cwd: string,
+  repoRoot: string,
+): { worktreeRoot?: string; primaryRoot?: string } {
+  return cwd === repoRoot ? {} : { worktreeRoot: cwd, primaryRoot: repoRoot };
+}
+
 /**
  * The directories a spawned agent may reach outside its worktree: the run-state
  * folder that holds its handoff file, plus its own temp directory when this run
@@ -3200,7 +3210,7 @@ export class RunManager {
           : openingPrompt,
         ...(openingImages.length ? { images: openingImages } : {}),
         cwd: state.cwd,
-        worktreeRoot: state.cwd !== this.repoRoot ? state.cwd : undefined,
+        ...worktreeGuardRoots(state.cwd, this.repoRoot),
         allowedTools: toolsStep?.allowedTools ?? DEFAULT_ALLOWED_TOOLS,
         bashAllowlist: toolsStep?.bashAllowlist,
         additionalDirectories: agentDirectories(join(this.dataDir, 'runs'), continueProfile.env),
@@ -3963,7 +3973,7 @@ export class RunManager {
           userPrompt,
           images,
           cwd: state.cwd,
-          worktreeRoot: state.cwd !== this.repoRoot ? state.cwd : undefined,
+          ...worktreeGuardRoots(state.cwd, this.repoRoot),
           allowedTools: step.allowedTools ?? DEFAULT_ALLOWED_TOOLS,
           bashAllowlist: step.bashAllowlist,
           // The handoff file lives outside the worktree — grant access.

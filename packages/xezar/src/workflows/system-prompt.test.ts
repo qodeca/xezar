@@ -12,6 +12,7 @@ import {
   RunManager,
   composeSystemPrompt,
   quickTaskWorktreeInstructions,
+  worktreeGuardRoots,
   makeRunTitle,
   resolveExtraSystemPrompt,
   skillSystemPrompt,
@@ -56,6 +57,13 @@ describe('quick-task worktree instructions (#537)', () => {
     expect(quickTaskWorktreeInstructions('quick-task', '/repo', '/repo')).toBeUndefined();
     expect(quickTaskWorktreeInstructions('quick-task', '/plain-folder', '/plain-folder')).toBeUndefined();
     expect(quickTaskWorktreeInstructions('bug-fix', '/repo/.local/xezar/worktrees/task', '/repo')).toBeUndefined();
+  });
+
+  it('gives the pi guard both roots for an isolated run and nothing for an in-place or non-git run', () => {
+    expect(worktreeGuardRoots('/repo/.local/xezar/worktrees/task', '/repo'))
+      .toEqual({ worktreeRoot: '/repo/.local/xezar/worktrees/task', primaryRoot: '/repo' });
+    expect(worktreeGuardRoots('/repo', '/repo')).toEqual({});
+    expect(Object.keys(worktreeGuardRoots('/plain-folder', '/plain-folder'))).toEqual([]);
   });
 });
 
