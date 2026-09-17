@@ -1,3 +1,7 @@
+# Unreleased
+
+- fix(ci): balance the nightly MCP mutation gate's shards on measured per-file cost instead of byte size, and raise the shard count from 6 to 8, after run 35175010173 was cancelled at its 5-hour ceiling (#443).
+
 # 0.15.0 (2026-09-17)
 
 ## Highlights
