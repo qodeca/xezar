@@ -137,7 +137,16 @@ export class ProjectContexts {
    *  time that build finished, that is what it was. */
   async context(projectId: string): Promise<ProjectContext> {
     const existing = this.contexts.get(projectId);
-    if (existing) return existing;
+    if (existing) {
+      if (await this.registeredAt(projectId, existing.root)) return existing;
+      // The registry now says something ELSE for this id — re-pointed to a different root, or
+      // gone — and nothing tore the cached bundle down yet, because the only route that does that
+      // is removal (#591): a second process, a hand-edited `config.json`, or a test seeding the
+      // registry directly all leave this bundle holding the OLD root's dataDir, open store and
+      // writer claim. Dispose it exactly as that route would, then fall through and build fresh —
+      // `build()` re-reads the registry itself, so this always resolves to whatever it says NOW.
+      await this.dispose(projectId);
+    }
     const generation = this.generation(projectId);
     const inFlight = this.building.get(projectId);
     // A build started for an EARLIER registration is never adopted: it is going to tear itself
@@ -159,6 +168,20 @@ export class ProjectContexts {
   /** The registration counter for `projectId`; 0 until its first `dispose()`. */
   private generation(projectId: string): number {
     return this.generations.get(projectId) ?? 0;
+  }
+
+  /**
+   * Whether the registry CURRENTLY lists `projectId` with `cachedRoot` — the on-access check that
+   * catches a root change the removal route never saw (#591). This is a different question from
+   * the one the `generations` counter answers: that counter defends an in-flight BUILD against a
+   * removal landing mid-await, for a root the registry would happily reuse (re-adding the same
+   * folder gets the same slug back, so a post-build re-read cannot tell old registration from new).
+   * A root CHANGE has no such ambiguity — the registry's current entry for this id either still
+   * names `cachedRoot` or it does not — so a plain re-read settles it without another generation.
+   */
+  private async registeredAt(projectId: string, cachedRoot: string): Promise<boolean> {
+    const projects = await this.deps.listProjects();
+    return projects.some((p) => p.id === projectId && p.root === cachedRoot);
   }
 
   /**
