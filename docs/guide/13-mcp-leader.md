@@ -322,6 +322,13 @@ with a short first section addressed to those sessions: read this guide and the 
 immediately after every start and every compaction, before dispatching anything. Keep that section
 first and imperative — it is the whole fallback.
 
+**Add the recurring checks.** Some checks have to happen on a schedule even when nothing arrives: is
+anything waiting on a decision only the leader can make, and has a usage limit reset. That schedule
+is session state and does not survive a restart, so list each recurring check with its cadence and
+its prompt in the guide, and have the leader re-create what is missing on every start and compaction.
+A tick that changes nothing should do nothing, and the checks unblock existing work rather than
+starting new work.
+
 ## To keep your leader while tasks run in the same folder
 
 A task xezar starts is not the leader, and since 0.16.0 no task can take the leader's place.

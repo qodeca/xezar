@@ -147,6 +147,40 @@ dispatching any task. That section is written for a session that has just lost i
 imperative, short, and first in the file. A Codex or pi leader that skips it is not covered by the
 hook, which is why the first section is a requirement of the guide, not a nicety.
 
+## Standing loops the leader runs
+
+Two recurring checks keep a campaign moving when no push arrives. They are **session state**: a hook
+runs once per event and cannot schedule, and a machine cron cannot talk to the session, so a loop dies
+when the session ends or its context is cleared. The guide therefore orders the leader to re-create
+them on every start, resume and compaction: run `CronList`, compare what is scheduled against the
+guide's list, and re-create whatever is missing.
+
+**Loop A — bottleneck check.** A recurring cron job at `*/10 * * * *` (every ten minutes). Prompt,
+verbatim: "check every 10 minutes if you are not a bottlenect and if Xezar tasks are not waiting for
+you". Tasks stop at questions, review verdicts and merge steps that only the leader can move; the
+loop makes the leader read `leader_events` `status` / `read` and `task_read` `list` even when no push
+arrived, which is exactly the case after a compaction. A tick that finds nothing to move is a noop.
+
+**Loop B — usage-limit watch.** A self-paced `/loop` (a ScheduleWakeup of 3600 s, with noop ticks
+when nothing changed). Prompt, verbatim: "check every hour if the new limit is available and resume
+the work when it is available". When an account hits its usage limit, the leader re-probes at the
+reset time with one tiny task per account, updates the account table in the campaign `README.md`,
+cancels a wrong auto-resume (a weekly reset can be scheduled one day early, #581), and re-dispatches
+the held work.
+
+Rules that make the loops safe:
+
+- **The owner asks for a loop; the guide only re-creates it.** A loop exists because the owner
+  requested that recurring check, and the guide's job is to restore what the owner asked for — never
+  to invent new recurring work.
+- **A tick that changes nothing is a noop.** Neither loop dispatches new scope; they only unblock
+  work that is already waiting.
+- **A cron job expires after seven days** and must be re-created, which is one more reason the guide
+  carries the cadence and the prompt rather than relying on the job's own memory.
+
+Why not a hook: Claude Code hooks fire once per event and cannot schedule, and an operating-system
+cron cannot reach into the session. The guide's re-create order is the only durable mechanism.
+
 ## How to install it in a NEW project
 
 1. **Copy the loader.** Put `leader-context.sh` at the project's own kit path (`.xezar/checks/` in a
@@ -164,7 +198,10 @@ hook, which is why the first section is a requirement of the guide, not a nicety
 5. **Put campaign notes under `.local/xezar/campaigns/<release>/`.** `README.md` is live state,
    rewritten at every milestone; `decisions.md` is append-only owner words with date and channel.
    Both are runtime and stay uncommitted.
-6. **Verify with the test.** Run the loader's fixture case and confirm the primary is loud and all
+6. **Write the standing loops into the guide's checklist.** Record each recurring check the owner
+   asked for with its prompt and its cadence, plus the re-create order (list, compare, re-create),
+   so a new session restores them instead of relying on the loop's own memory.
+7. **Verify with the test.** Run the loader's fixture case and confirm the primary is loud and all
    three agent shapes are silent. If the project's docs changed, run its link checker as well.
 
 ## How to keep it honest
