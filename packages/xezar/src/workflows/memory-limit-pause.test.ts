@@ -107,29 +107,39 @@ describe('a run xezar terminates for the memory limit (#603)', () => {
   }, 30_000);
 
   it('ends failed, naming the memory limit — never done, on the Continue/restart-recovery path', async () => {
-    // `mock:done` closes the first turn cleanly, so the run is genuinely `done` and Continue
-    // opens a SECOND `ActiveRun` (`runContinuation`) — the #811-shaped twin construction site
-    // `runAgentStep`'s fix does not cover.
-    const record = manager.startRun(AGENT, { task: 'mock:done first pass', worktree: false });
+    // The post-first-turn state is BUILT, not produced by a first turn: a persisted `done` run
+    // whose step carries a resumable session, exactly what a finished run looks like to Continue
+    // and to restart recovery. Continue then opens a SECOND `ActiveRun` (`runContinuation`) — the
+    // #811-shaped twin construction site `runAgentStep`'s fix does not cover.
+    //
+    // It is built rather than run because a real first turn cannot reach `done` here: the 1 MiB
+    // ceiling this suite needs is also seen by the real process-tree sampler (`onUsage`, ~2 s
+    // tick), which ends any live turn that outlasts one tick as a memory-limit failure. Under
+    // CI load the mock's first turn did outlast it, so the run read `failed` and a wait for
+    // `done` could never be met, whatever its bound.
+    const record = store.createRun({
+      title: 'first pass',
+      workflow: AGENT.name,
+      task: 'first pass',
+      worktree: false,
+      steps: [{ id: 'task', name: 'Task', kind: 'agent' }],
+    });
+    store.updateRun(record.id, {
+      status: 'done',
+      finishedAt: new Date().toISOString(),
+      workflowDef: AGENT,
+    });
+    store.updateStep(record.id, 'task', { status: 'done', sessionId: 'sess-603', backend: 'claude' });
     currentId = record.id;
-    // CI showed this specific wait timing out under full-suite load — first at the old 15s
-    // default, then again at a raised 45s — so the mock CLI's first turn genuinely needs more
-    // wall-clock time under that contention than either bound gave it; there is no fixed
-    // constant here that is both tight and safe. The predicate itself also has to match
-    // exactly what `continueRun` right below actually gates on (`isActive`, i.e. membership in
-    // `active`/`starting`/`queue`): `status` alone reaches `'done'` the instant `settleSuccess`
-    // writes it, which is strictly BEFORE the manager finishes `dropActive()` a few awaits later
-    // — waiting on `status` alone (whatever the bound) can win that race and call `continueRun`
-    // while the run still reads as active. Waiting on both closes that gap regardless of timing.
-    await waitFor(
-      () => store.getRun(record.id)?.status === 'done' && !activeMap().has(record.id),
-      'the first turn to finish',
-      120_000,
-    );
 
     expect(manager.continueRun(record.id, { text: 'now do the second half' }).ok).toBe(true);
-    await waitFor(() => store.getRun(record.id)?.status === 'running', 'the continuation to start');
-    await waitForOpenSession(record.id);
+    // The real sampler may pause this session before the direct trigger below does. Both go
+    // through the same `enforceMemoryLimit`, so either one is the case under test; wait for the
+    // session to open or the run to settle, and the trigger is a no-op once the session closed.
+    await waitFor(
+      () => Boolean(activeMap().get(record.id)?.session?.open) || store.getRun(record.id)?.status === 'failed',
+      'the continuation session to open',
+    );
 
     await triggerMemoryPause(record.id);
 
@@ -141,7 +151,6 @@ describe('a run xezar terminates for the memory limit (#603)', () => {
     const run = store.getRun(record.id);
     expect(run?.status).toBe('failed');
     expect(run?.error).toContain('memory limit exceeded');
-    // The 120s wait above may itself need most of that under CI load (see its own comment);
-    // this test's own bound leaves room for that plus the rest of the steps that follow it.
-  }, 150_000);
+    expect(run?.steps.find((s) => s.id === 'continue-1')?.status).toBe('failed');
+  }, 30_000);
 });
