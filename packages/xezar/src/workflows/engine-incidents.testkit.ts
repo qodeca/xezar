@@ -66,7 +66,7 @@ export function scriptedRunner(turns: ScriptedTurn[]) {
 
 export const SINGLE_STEP: WorkflowDef = { name: 'incident', source: 'built-in', steps: [{ id: 'author', prompt: '{{task}}' }] };
 export async function terminal(store: RunStore, id: string) {
-  await expect.poll(() => store.getRun(id)?.status, { timeout: 3000, interval: 10 })
+  await expect.poll(() => store.getRun(id)?.status, { interval: 10 })
     .toSatisfy(status => ['done', 'failed', 'review', 'cancelled'].includes(String(status)));
 }
 
