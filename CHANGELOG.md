@@ -1,3 +1,9 @@
+# Unreleased
+
+## 📝 Specs & Documentation
+
+- 📝 **The project leader now carries its own contract, loaded for the leader and never for a task agent.** [.xezar/docs/leader-guide.md](.xezar/docs/leader-guide.md) collects what a leader session of this repository needs in one place: who the leader is and is not (MCP tools and `gh` only, never the cockpit or HTTP, never source diagnosis), session start and compaction recovery, this repository's single-project setup, the task lifecycle with the integration and conflict-repair recipes, review discipline and the repair counters, routing and account probing, the brief-writing rules, owner-only decisions, what to log where, and the release runbook as it is today. A committed Claude Code `SessionStart` hook (`.claude/settings.json` → `.xezar/checks/leader-context.sh`) appends the guide and the newest campaign folder's `README.md` and `decisions.md` at every start, resume, clear and compaction; the hook stays silent in a linked worktree, on a `/.local/xezar/worktrees/` path, and whenever `XEZ_HANDOFF_FILE` or `XEZ_TODOS_FILE` is set, so a xezar task agent never loads it (owner 2026-09-18).
+
 # 0.16.0 (2026-09-18)
 
 ## Highlights
