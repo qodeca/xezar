@@ -198,6 +198,17 @@ export type AuditRedaction = { readonly ok: true; readonly input: RedactedAuditI
 const C0_C1 = /[ --]/gu;
 const PATH_OR_URL = /^(?:\/|~[\\/]|[A-Za-z]:[\\/]|\\\\|file:)|[a-z][a-z0-9+.-]*:\/\/|^[\w.-]+@[\w.-]+:[\w./-]/i;
 
+/**
+ * Decode literal `\uXXXX` escapes before the secret check (#586 follow-up, m3): a secret typed or
+ * copied as JS/JSON unicode escapes contains none of its own literal bytes, so the plain substring
+ * match in `secret-redaction.ts` never sees it. Only engaged when the text actually contains `\u`,
+ * so a value without one is byte-identical to what the seam already checked.
+ */
+function unescapeUnicodeEscapes(text: string): string {
+  if (!text.includes('\\u')) return text;
+  return text.replace(/\\u([0-9a-fA-F]{4})/g, (_match, hex: string) => String.fromCharCode(parseInt(hex, 16)));
+}
+
 /** The seam. Never throws. */
 export function redactAuditInput<O extends AuditOrigin>(
   origin: O,
@@ -230,7 +241,9 @@ function redact<O extends AuditOrigin>(
   const clean = (field: AuditIdentifierField, value: string | undefined): string | undefined => {
     if (value === undefined) return undefined;
     if (!checked.has(field)) return value;
-    return redactSecrets(value, secrets) === value ? value : undefined;
+    if (redactSecrets(value, secrets) !== value) return undefined;
+    const unescaped = unescapeUnicodeEscapes(value);
+    return unescaped === value || redactSecrets(unescaped, secrets) === unescaped ? value : undefined;
   };
   const field = <K extends keyof AuditActionRecord>(key: K, value: unknown): AuditActionRecord[K] | undefined => {
     const parsed = auditActionRecordSchema.shape[key].safeParse(value);
@@ -387,7 +400,13 @@ function summaryOf(
     let text = value;
     if (rules['control-text'].payload) text = text.replace(C0_C1, '');
     if (rules['path-url'].shapes && PATH_OR_URL.test(text)) return AUDIT_REDACTED_VALUE;
-    return maskSecrets ? redactSecrets(text, secrets) : text;
+    if (!maskSecrets) return text;
+    const masked = redactSecrets(text, secrets);
+    if (masked !== text) return masked;
+    // Same escape-decoding check as `clean`: a secret cannot hide from the digest as literal `\uXXXX`
+    // text (m3). Once decoded there is no byte-exact substring left to mask, so the whole leaf drops.
+    const unescaped = unescapeUnicodeEscapes(text);
+    return unescaped !== text && redactSecrets(unescaped, secrets) !== unescaped ? AUDIT_REDACTED_VALUE : text;
   };
   const walk = (value: unknown): unknown => {
     if (typeof value === 'string') return leaf(value);

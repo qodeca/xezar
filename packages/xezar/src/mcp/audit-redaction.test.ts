@@ -51,6 +51,9 @@ const FREE_TEXT = 'PLANTED free text: ship it tonight';
 const PATH = '/Users/planted/private/repository';
 const URL_VALUE = 'https://planted.example/private?token=1';
 const CONFIG_VALUE = 'planted-config-value';
+/** Each character of `value` written as a literal `\uXXXX` escape (m3, #586 follow-up). */
+const asUnicodeEscapes = (value: string): string =>
+  [...value].map((c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`).join('');
 
 const dirs: string[] = [];
 const closers: Array<() => unknown> = [];
@@ -301,6 +304,54 @@ describe('mcp door', () => {
     await m.call('organise_work', { ...args, model: DOOR_SECRET });
     expect(only(m.dataDir).payloadDigest).toBe(payloadDigest({ ...args, model: '[REDACTED]' }));
     expectAbsent(m.dataDir, DOOR_SECRET);
+  }, 60_000);
+
+  it('B-REDACT-MCP-IDENTIFIER-SECRET-ESCAPED: a host secret written as \\u escapes in an argument is still masked before hashing (m3)', async () => {
+    const m = await mcpFixture();
+    const args = { action: 'start_inbox_item', todoId: 'no-such-todo', operationId: operationId() };
+    const escaped = asUnicodeEscapes(IDENTIFIER_SECRET);
+    await m.call('organise_work', { ...args, model: escaped });
+    expect(only(m.dataDir).payloadDigest).toBe(payloadDigest({ ...args, model: AUDIT_REDACTED_VALUE }));
+  }, 60_000);
+
+  it('B-REDACT-MCP-DOOR-SPECIFIC-ESCAPED: an escaped door secret in an argument is still masked before hashing (m3)', async () => {
+    const m = await mcpFixture({ ...process.env, AUDIT_SERVICE_ONLY_TOKEN: DOOR_SECRET });
+    const args = { action: 'start_inbox_item', todoId: 'no-such-todo', operationId: operationId() };
+    const escaped = asUnicodeEscapes(DOOR_SECRET);
+    await m.call('organise_work', { ...args, model: escaped });
+    expect(only(m.dataDir).payloadDigest).toBe(payloadDigest({ ...args, model: AUDIT_REDACTED_VALUE }));
+  }, 60_000);
+
+  it('B-REDACT-MCP-CONFIG-VALUE guard: every MCP config-write action keeps its body key out of the digest (m2)', async () => {
+    const project = await mcpFixture();
+    const projectArgs = { action: 'set_project', operationId: operationId() };
+    await project.call('project_config', { ...projectArgs, project: { tags: [CONFIG_VALUE] } });
+    const projectRecord = only(project.dataDir);
+    expect(projectRecord.action).toBe('project.registry.update');
+    expect(projectRecord.fieldNames).toEqual(['tags']);
+    expect(projectRecord.payloadDigest).toBe(payloadDigest({ ...projectArgs, project: { tags: AUDIT_REDACTED_VALUE } }));
+    expectAbsent(project.dataDir, CONFIG_VALUE);
+
+    const templates = await mcpFixture();
+    const templatesArgs = { action: 'set_prompt_templates', operationId: operationId() };
+    await templates.call('project_config', {
+      ...templatesArgs,
+      promptTemplates: [{ id: 'x', label: 'y', text: CONFIG_VALUE }],
+    });
+    const templatesRecord = only(templates.dataDir);
+    expect(templatesRecord.action).toBe('project.uiState.set');
+    expect(templatesRecord.fieldNames).toEqual(['promptTemplates']);
+    expect(templatesRecord.payloadDigest).toBe(payloadDigest({ ...templatesArgs, promptTemplates: AUDIT_REDACTED_VALUE }));
+    expectAbsent(templates.dataDir, CONFIG_VALUE);
+
+    const agentConfig = await mcpFixture();
+    const agentConfigArgs = { action: 'write_agent_config', operationId: operationId(), fileId: 'claude.project.settings', version: null };
+    await agentConfig.call('project_config', { ...agentConfigArgs, content: CONFIG_VALUE });
+    const agentConfigRecord = only(agentConfig.dataDir);
+    expect(agentConfigRecord.action).toBe('agentConfig.write');
+    expect(agentConfigRecord.fieldNames).toEqual(['content']);
+    expect(agentConfigRecord.payloadDigest).toBe(payloadDigest({ ...agentConfigArgs, content: AUDIT_REDACTED_VALUE }));
+    expectAbsent(agentConfig.dataDir, CONFIG_VALUE);
   }, 60_000);
 });
 
