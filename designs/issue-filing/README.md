@@ -342,7 +342,7 @@ Below `md` the GitHub tab's list pane **is** the page. Cut order, tightest first
 | At | What goes | What never goes |
 | --- | --- | --- |
 | Narrow desktop pane (360 px) | The `synced Nm ago` chip truncates first, as today. | The tab counts, the **New issue** button, the search box. |
-| < 860 px | **New issue** leaves the tab row and becomes a full-width 44 px row beneath it — two tabs plus a button cannot share 375 px without truncating a count, and a truncated count is a wrong number. The draft strip's link wraps to its own full-width line. | The button itself, its label (never icon-only: an icon-only `+` in a tab row reads as "add a tab"), and the strip's sentence. |
+| < 768 px | **New issue** leaves the tab row and becomes a full-width 44 px row beneath it — two tabs plus a button cannot share 375 px without truncating a count, and a truncated count is a wrong number. The draft strip's link wraps to its own full-width line. | The button itself, its label (never icon-only: an icon-only `+` in a tab row reads as "add a tab"), and the strip's sentence. |
 | Dialog < 640 px | The footer stacks in `column-reverse` — the shipped `DialogFooter` rule, unchanged — so **Start drafting** is the top of the stack and **Cancel** is under it, and the `⌘↵` hint drops to the bottom of the stack where it is out of the way. | The destination row, the brief, the standing note. |
 | 375 px | The engine pills wrap onto their own line; the destination row wraps label-above-value. | Nothing else. No horizontal scroll anywhere. |
 

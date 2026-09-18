@@ -271,7 +271,7 @@
 /* ---------- phone ---------- */
 .scrim.air-drawer-scrim { display: none; }
 
-@media (max-width: 860px) {
+@media (max-width: 767.98px) {
   /* The mobile top bar (app-shell.tsx:846-848): h-11 px-3 gap-2.5 bg-card; cockpit.css:2353 is 52. */
   .air-screen .mobile-bar {
     height: calc(var(--u) * 11);

@@ -53,8 +53,8 @@
   --composer-min-h: calc(var(--u) * 14); /* PR 3b */
 }
 
-/* phone (≤ 860 px): the md: prefixes drop away */
-@media (max-width: 860px) {
+/* phone (≤ 768 px): the md: prefixes drop away */
+@media (max-width: 767.98px) {
   :root[data-view='today'] {
     --title-gap: calc(var(--u) * 1.5);  /* run-header.tsx:222  mt-1.5 */
   }
@@ -292,8 +292,8 @@
   .air-tree-pane { width: calc(var(--u) * 60); } /* w-60 below lg – scale, not a hand-set pixel */
 }
 
-/* ---------- phone (≤ 860 px) ---------- */
-@media (max-width: 860px) {
+/* ---------- phone (≤ 768 px) ---------- */
+@media (max-width: 767.98px) {
   .air-run-head { position: relative; top: auto; } /* sticky from md only */
   .air-steps { padding: calc(var(--u) * 1) 0 0; }
   .air-steps button { min-height: calc(var(--u) * 7); gap: calc(var(--u) * 2); }

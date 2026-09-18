@@ -89,7 +89,7 @@ a.other-row:hover {
   background: var(--sidebar);
 }
 
-@media (max-width: 860px) {
+@media (max-width: 767.98px) {
   .other-frame { max-width: none; }
   .other-row { min-height: 44px; }
   .other-row .btn { height: 44px; }
