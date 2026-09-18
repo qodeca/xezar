@@ -6,7 +6,7 @@ Use the task views to start work, follow an agent, answer questions and inspect 
 
 Open **New task** in the project you want and describe the result. The project picker appears only when more than one project is available. Choose a skill or workflow and a model; the agent picker appears only when there is more than one usable agent or an account choice. With no skill or workflow selected, the task runs as one plain agent step. The composer also offers attachments, parallel variants, **Worktree**, **Autonomous** and **Plan first**.
 
-![New-task composer](../screenshots/0.15.0/new-task-dark-1280.png)
+![New-task composer](../screenshots/0.16.0/new-task-dark-1280.png)
 
 ## To read statuses and follow the lifecycle
 
@@ -26,7 +26,7 @@ Open **Tasks** for the current project. Select a row to open its thread. **All t
 
 A task normally moves from queued to running, then waits for you, reaches review, finishes or fails. Monitoring is an activity within running; scheduled is a display label for a pending automatic resume.
 
-![Project task list with run statuses](../screenshots/0.15.0/tasks-list-dark-1280.png)
+![Project task list with run statuses](../screenshots/0.16.0/tasks-list-dark-1280.png)
 
 ## To attach supporting files
 
@@ -36,7 +36,7 @@ Use the paperclip, paste files or drop them into the composer. Images, PDF and p
 
 Open the thread, type in the composer and choose the send (arrow) button. Use it to add a constraint, answer a question or point out a problem. When the agent presents answer options, select an option or type your own answer. Read its next response to confirm how it used the message.
 
-![Task thread with agent messages and tool activity](../screenshots/0.15.0/task-thread-dark-1280.png)
+![Task thread with agent messages and tool activity](../screenshots/0.16.0/task-thread-dark-1280.png)
 
 ## To manage the queue and edit a queued prompt
 
@@ -58,7 +58,7 @@ Choose **×2 variants** or **×3 variants** before starting. Variants require Gi
 
 Wait until all variants have stopped before choosing **Pick this one**. Read the confirmation carefully: the other variants are archived, and their worktrees and branches are removed with no undo. If the review gate is on and the chosen variant is not autonomous and has changes, it moves to review; otherwise a done variant stays done.
 
-![Side-by-side variant comparison](../screenshots/0.15.0/compare-variants-dark-1280.png)
+![Side-by-side variant comparison](../screenshots/0.16.0/compare-variants-dark-1280.png)
 
 ## To inspect the thread and Changes / Files / Commits tabs
 
@@ -70,7 +70,7 @@ Use the thread for agent text, tool calls and results. Expand the tool activity 
 
 These views describe the task's working location. The sidebar's **Git** view describes the project's main working tree; see [Worktrees and Git](03-worktrees-and-git.md).
 
-![Task Changes tab](../screenshots/0.15.0/task-changes-dark-1280.png)
+![Task Changes tab](../screenshots/0.16.0/task-changes-dark-1280.png)
 
 ## To use the review gate
 
@@ -78,7 +78,7 @@ Enable the review gate in the project's **Settings → Agents** if you want succ
 
 At **Needs review**, read the diff. Enter corrections and choose **Send back** to continue with that feedback. Choose **Accept** to mark the task done without a PR, or **Draft PR** to publish it for review. Accepting does not merge the branch.
 
-![Review gate with feedback and Draft PR controls](../screenshots/0.15.0/review-gate-dark-1280.png)
+![Review gate with feedback and Draft PR controls](../screenshots/0.16.0/review-gate-dark-1280.png)
 
 ## To create a draft PR
 
