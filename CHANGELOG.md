@@ -220,6 +220,7 @@
 
 ## 📝 Specs & Documentation
 
+- Brought the design system up to date after #424 (#447): decision D-03 now lists the Git, GitHub, Compare and Automations pages and the task Git tabs as moved to the `section` gutter, with the Settings loading lines as the one remaining follow-through; D-06 and [foundations](docs/design-system/foundations.md) explain the two remaining spacing-allowlist rows as WCAG 24 px floors (#445 closed as met); the shared specimen stylesheet now switches to the phone shell below 768 px, like the cockpit, instead of 860 px; and the counts in `components.md`, `behaviour.md`, `known-gaps.md` and `coverage.md` were re-measured.
 - Documented single-project ROOT mode's symbolic-link refusal and its independence from hosted mode's own local-machine `409`s in [guide 09](docs/guide/09-projects.md), and added a new [guide 17](docs/guide/17-audit-trail.md) covering the 0.16.0 audit trail: the four doors, `audit.ndjson` and its read-only `mcp-audit.ndjson` alias, rotation, redaction and its honest limits. (#306, #600, #447)
 
 # 0.15.0 (2026-09-17)

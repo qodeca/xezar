@@ -2422,7 +2422,9 @@ svg.icon.xxs {
 
 /* ---------- responsive ---------- */
 
-@media (max-width: 860px) {
+/* The phone shell starts where the cockpit's does: below Tailwind's `md:` (768 px), the same edge as the
+   phone-target block above. It was 860 px until 2026-09-18 (#447 OD-3). */
+@media (max-width: 767.98px) {
   .shell,
   .shell.settings {
     grid-template-columns: minmax(0, 1fr);

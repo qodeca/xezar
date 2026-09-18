@@ -70,7 +70,7 @@ Code facts behind the problem:
 - A cross-project total in the menu. The cross-project index stops at 200 tasks per project, so its total could be wrong.
 - Changing what Continue does (see open decision D1).
 - Showing check output on the Checks page. The task page already shows it.
-- Fixing the kit workflows that fail readiness by design. That is a separate kit change (see [Delivery plan](#10-delivery-plan)).
+- Fixing the kit workflows that fail readiness by design. That is a separate kit change (see [Delivery plan](#15-delivery-plan)).
 
 ## 5. Files
 

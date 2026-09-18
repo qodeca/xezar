@@ -149,19 +149,19 @@ Each entry maps a utility name to a theme token. Listed in foundations.md §1.7;
 | --- | --- | --- | --- |
 | `packages/web/src/components/ui/alert-dialog.tsx` | AlertDialog | components.md §1 AlertDialog | Documented |
 | `packages/web/src/components/ui/badge.tsx` | Badge | components.md §1 Badge | Documented |
-| `packages/web/src/components/ui/button.tsx` | Button | components.md §1 Button | Documented with known gap (G-10 consumers; the `danger` variant they adopt now exists) |
+| `packages/web/src/components/ui/button.tsx` | Button | components.md §1 Button | Documented (G-10 retired: every destructive confirm uses the `danger` variant) |
 | `packages/web/src/components/ui/collapsible.tsx` | Collapsible | components.md §1 Collapsible | Documented |
 | `packages/web/src/components/ui/command.tsx` | Command | components.md §1 Command | Documented |
 | `packages/web/src/components/ui/dialog.tsx` | Dialog | components.md §1 Dialog | Documented |
-| `packages/web/src/components/ui/dropdown-menu.tsx` | DropdownMenu | components.md §1 DropdownMenu | Documented with known gap (G-07) |
-| `packages/web/src/components/ui/input.tsx` | Input | components.md §1 Input | Documented with known gap (G-12) |
+| `packages/web/src/components/ui/dropdown-menu.tsx` | DropdownMenu | components.md §1 DropdownMenu | Documented (G-07 retired) |
+| `packages/web/src/components/ui/input.tsx` | Input | components.md §1 Input | Documented (G-12 retired) |
 | `packages/web/src/components/ui/label.tsx` | Label | components.md §1 Label | Documented |
 | `packages/web/src/components/ui/popover.tsx` | Popover | components.md §1 Popover | Documented |
 | `packages/web/src/components/ui/sheet.tsx` | Sheet | components.md §1 Sheet | Documented |
 | `packages/web/src/components/ui/skeleton.tsx` | Skeleton | components.md §1 Skeleton | Documented |
 | `packages/web/src/components/ui/switch.tsx` | Switch | components.md §1 Switch | Documented |
 | `packages/web/src/components/ui/tabs.tsx` | Tabs | components.md §1 Tabs | Documented |
-| `packages/web/src/components/ui/textarea.tsx` | Textarea | components.md §1 Textarea | Documented with known gap (G-07) |
+| `packages/web/src/components/ui/textarea.tsx` | Textarea | components.md §1 Textarea | Documented (G-07 retired) |
 | `packages/web/src/components/ui/toaster.tsx` | Toaster | components.md §1 Toaster | Documented with known gap (G-16 wording; the danger tone's ink now clears AA) |
 | `packages/web/src/components/ui/tooltip.tsx` | Tooltip | components.md §1 Tooltip | Documented |
 
@@ -175,9 +175,9 @@ Each entry maps a utility name to a theme token. Listed in foundations.md §1.7;
 | `packages/web/src/components/app-shell.tsx` | BrandTile development-build badge (private, #442) | components.md §2 AppShell, Brand tile and development-build badge; decisions.md D-08 | Documented |
 | `packages/web/src/components/app-shell.tsx` | ModeBadge single-project mode badge (private, #600) | components.md §2 AppShell, Single-project mode badge; `designs/single-project-mode/` §7 | Documented |
 | `packages/web/src/components/appearance-provider.tsx` | AppearanceProvider | components.md §2 AppearanceProvider | Not applicable – context only, no markup (components.md §2 AppearanceProvider). |
-| `packages/web/src/components/centered-state.tsx` | CenteredState, TwinkleBackdrop | components.md §2 CenteredState and TwinkleBackdrop | Documented with known gap (G-05) |
+| `packages/web/src/components/centered-state.tsx` | CenteredState, TwinkleBackdrop | components.md §2 CenteredState and TwinkleBackdrop | Documented (G-05 retired) |
 | `packages/web/src/components/clone-project-dialog.tsx` | CloneProjectDialog | components.md §2 AddProjectDialog and CloneProjectDialog | Documented |
-| `packages/web/src/components/code-editor.tsx` | CodeEditor | components.md §2 CodeEditor | Documented with known gap (G-44: the entry still says the focus ring is suppressed; the frame shows it since #453 B7) |
+| `packages/web/src/components/code-editor.tsx` | CodeEditor | components.md §2 CodeEditor | Documented (G-44 retired) |
 | `packages/web/src/components/command-palette.tsx` | CommandPalette | components.md §2 CommandPalette | Documented with known gap (G-14) |
 | `packages/web/src/components/default-agent-picker.tsx` | DefaultAgentPicker | components.md §2 DefaultAgentPicker | Documented |
 | `packages/web/src/components/diff-stat.tsx` | DiffStatLabel | components.md §2 DiffStatLabel | Documented |
@@ -200,30 +200,30 @@ Each entry maps a utility name to a theme token. Listed in foundations.md §1.7;
 | `packages/web/src/components/project-groups.tsx` | ProjectGroups | components.md §2 ProjectGroups | Documented with known gap (G-14) |
 | `packages/web/src/components/prompt-template-menu.tsx` | PromptTemplateMenu | components.md §2 PromptTemplateMenu | Documented |
 | `packages/web/src/components/provider-banner-container.tsx` | ProviderBannerContainer | components.md §2 ProviderBanner and ProviderBannerContainer | Documented |
-| `packages/web/src/components/provider-banner.tsx` | ProviderBanner | components.md §2 ProviderBanner and ProviderBannerContainer | Documented with known gap (G-44: the entry still gives the pre-#453 B7 row classes) |
+| `packages/web/src/components/provider-banner.tsx` | ProviderBanner | components.md §2 ProviderBanner and ProviderBannerContainer | Documented (G-44 retired) |
 | `packages/web/src/components/reference-chip.tsx` | ReferenceChip | components.md §2 ReferenceChip | Documented with known gap (G-23, light violet ink) |
 | `packages/web/src/components/reference-conflict-action.tsx` | ReferenceConflictAction | components.md §2 ReferenceConflictAction | Documented |
 | `packages/web/src/components/reference-status.tsx` | ReferenceStatus registry | components.md §2 ReferenceStatus registry | Not applicable – a registry of status → tone/label; rendered by ReferenceChip (components.md §2 ReferenceStatus registry). |
 | `packages/web/src/components/route-error-boundary.tsx` | RouteErrorBoundary | components.md §2 RouteErrorBoundary | Documented |
-| `packages/web/src/components/run-diff.tsx` | RunDiff | components.md §2 RunDiff | Documented with known gap (G-09) |
+| `packages/web/src/components/run-diff.tsx` | RunDiff | components.md §2 RunDiff | Documented (G-09 retired) |
 | `packages/web/src/components/run-notifications.tsx` | RunNotifications | components.md §2 RunNotifications | Documented |
 | `packages/web/src/components/skill-detail.tsx` | SkillDetail | components.md §2 SkillDetail, SkillEmptyHint, SkillsImportPanel | Documented |
 | `packages/web/src/components/skill-empty-hint.tsx` | SkillEmptyHint | components.md §2 SkillDetail, SkillEmptyHint, SkillsImportPanel | Documented |
 | `packages/web/src/components/skills-import-panel.tsx` | SkillsImportPanel | components.md §2 SkillDetail, SkillEmptyHint, SkillsImportPanel | Documented |
-| `packages/web/src/components/status-dot.tsx` | StatusDot | components.md §2 StatusDot | Documented with known gap (G-08 hand-rolled dots in routes; StatusDot itself now guards its pulse) |
+| `packages/web/src/components/status-dot.tsx` | StatusDot | components.md §2 StatusDot | Documented (G-08 retired: every pulse is guarded) |
 | `packages/web/src/components/tab-link.tsx` | TabLink | components.md §2 TabLink | Documented |
 | `packages/web/src/components/task-agent.tsx` | TaskAgent cells | components.md §2 TaskAgent cells | Documented |
 | `packages/web/src/components/theme-provider.tsx` | ThemeProvider | components.md §2 ThemeProvider and ThemeToggle | Not applicable – context only, no markup (components.md §2 ThemeProvider and ThemeToggle). |
 | `packages/web/src/components/theme-toggle.tsx` | ThemeToggle | components.md §2 ThemeProvider and ThemeToggle | Documented |
 | `packages/web/src/components/tools-menu.tsx` | ToolsMenu | components.md §2 ToolsMenu | Documented |
 | `packages/web/src/components/zoomable-image.tsx` | ZoomableImage | components.md §2 ZoomableImage | Documented |
-| `packages/web/src/components/composer/composer.tsx` | Composer | components.md §2 Composer | Documented with known gap (G-21) |
+| `packages/web/src/components/composer/composer.tsx` | Composer | components.md §2 Composer | Documented (G-21 retired) |
 | `packages/web/src/components/composer/composer-attachments.ts` | Composer attachments helpers | components.md §2 Composer | Not applicable – pure helpers for the Composer (components.md §2 Composer). |
 | `packages/web/src/components/composer/composer-text.ts` | Composer text helpers | components.md §2 Composer | Not applicable – pure helpers for the Composer (components.md §2 Composer). |
 | `packages/web/src/components/composer/dictation.ts` | Composer dictation | components.md §2 Composer | Not applicable – a speech-recognition hook, no markup (components.md §2 Composer). |
 | `packages/web/src/components/diff/index.ts` | Diff facade | components.md §2 Diff (facade, engine and helpers) | Not applicable – re-export facade (components.md §2 Diff). |
-| `packages/web/src/components/diff/diff.tsx` | Diff | components.md §2 Diff (facade, engine and helpers) | Documented with known gap (G-09) |
-| `packages/web/src/components/diff/diff-view.tsx` | DiffView | components.md §2 Diff (facade, engine and helpers) | Documented with known gap (G-09) |
+| `packages/web/src/components/diff/diff.tsx` | Diff | components.md §2 Diff (facade, engine and helpers) | Documented (G-09 retired) |
+| `packages/web/src/components/diff/diff-view.tsx` | DiffView | components.md §2 Diff (facade, engine and helpers) | Documented (G-09 retired) |
 | `packages/web/src/components/diff/image-preview.tsx` | ImagePreview | components.md §2 Diff (facade, engine and helpers) | Documented |
 | `packages/web/src/components/diff/diff-scroll.ts` | Diff scroll helper | components.md §2 Diff (facade, engine and helpers) | Not applicable – scroll helper, no markup (components.md §2 Diff). |
 | `packages/web/src/components/diff/parse-patch.ts` | parsePatch | components.md §2 Diff (facade, engine and helpers) | Not applicable – patch parser, no markup (components.md §2 Diff). |
@@ -236,12 +236,12 @@ Each entry maps a utility name to a theme token. Listed in foundations.md §1.7;
 | --- | --- | --- | --- |
 | 1. App shell | patterns.md §1 | `specimens/patterns.html` | Documented with known gap (G-14) |
 | 2. Sidebar navigation and badges | patterns.md §2 | `specimens/patterns.html` | Documented with known gap (G-14) |
-| 3. Page headers | patterns.md §3 | `specimens/patterns.html` | Documented with known gap (G-01) |
-| 4. Lists, cards and tables | patterns.md §4 | `specimens/patterns.html` | Documented with known gap (G-02, G-23; G-17 fixed in #453 B4) |
-| 5. Status | patterns.md §5 | `specimens/patterns.html` | Documented with known gap (G-04) |
-| 6. Empty, loading and error states | patterns.md §6 | `specimens/patterns.html` | Documented with known gap (G-05, G-08) |
-| 7. Dialogs, sheets, command palette, toasts and notifications | patterns.md §7 | `specimens/patterns.html` | Documented with known gap (G-10, G-16) |
-| 8. Settings and forms | patterns.md §8 | `specimens/patterns.html` | Documented with known gap (G-11, G-12; G-13 fixed and G-22 verified intentional in #453 B3) |
+| 3. Page headers | patterns.md §3 | `specimens/patterns.html` | Documented (G-01 retired in #453 B7) |
+| 4. Lists, cards and tables | patterns.md §4 | `specimens/patterns.html` | Documented with known gap (G-23; G-02 and G-17 retired) |
+| 5. Status | patterns.md §5 | `specimens/patterns.html` | Documented (G-04 retired) |
+| 6. Empty, loading and error states | patterns.md §6 | `specimens/patterns.html` | Documented (G-05 and G-08 retired) |
+| 7. Dialogs, sheets, command palette, toasts and notifications | patterns.md §7 | `specimens/patterns.html` | Documented with known gap (G-16; G-10 retired) |
+| 8. Settings and forms | patterns.md §8 | `specimens/patterns.html` | Documented (G-11, G-12 and G-13 retired; G-22 verified intentional in #453 B3) |
 | 9. The mobile drawer | patterns.md §9 | `specimens/patterns.html`, `specimens/mobile.html` | Documented |
 | 10. Live updates | patterns.md §10 | `specimens/patterns.html` | Documented |
 
@@ -249,19 +249,19 @@ Each entry maps a utility name to a theme token. Listed in foundations.md §1.7;
 
 | Area | Documented in | Specimen | Status |
 | --- | --- | --- | --- |
-| Colour roles | foundations.md §2 | `specimens/foundations.html` | Documented with known gap (G-04) |
+| Colour roles | foundations.md §2 | `specimens/foundations.html` | Documented (G-04 retired) |
 | Typography | foundations.md §3 | `specimens/foundations.html` | Documented |
 | Spacing, rhythm and density | foundations.md §4, §4.1, theming.md §Density | `specimens/foundations.html` | Documented |
 | Radius | foundations.md §5 | `specimens/foundations.html` | Documented |
 | Shadow | foundations.md §6 | `specimens/foundations.html` | Documented |
-| Motion and reduced motion | foundations.md §7, behaviour.md | `specimens/foundations.html` | Documented with known gap (G-08 outside the primitives; every `components/ui` animation is now `motion-safe:`) |
-| Iconography | foundations.md §8 | `specimens/foundations.html` | Documented with known gap (G-19) |
+| Motion and reduced motion | foundations.md §7, behaviour.md | `specimens/foundations.html` | Documented (G-08 retired: every animation outside the primitives is guarded too) |
+| Iconography | foundations.md §8 | `specimens/foundations.html` | Documented (G-19 retired) |
 | Layout and reading width | foundations.md §9, theming.md | `specimens/foundations.html` | Documented |
 | Breakpoints | foundations.md §10, behaviour.md | `specimens/foundations.html` | Documented |
-| `no-hover:` | foundations.md §11 | `specimens/foundations.html` | Documented with known gap (G-21; task lists fixed in #453 B4) |
+| `no-hover:` | foundations.md §11 | `specimens/foundations.html` | Documented (G-21 retired) |
 | Safe areas and the keyboard | foundations.md §12 | `specimens/foundations.html`, `specimens/mobile.html` | Documented |
 | Base layer (`border-color`, `html`/`body` height and overflow, placeholder, scrollbars) | foundations.md §13 | – | Documented |
 | Theming (theme, accent, density, width, pre-paint) | theming.md | the doc bar of index, foundations, components and patterns (mobile.html: theme only) | Documented |
 | Keyboard, focus and announcements | behaviour.md | `specimens/components.html` | Documented |
 | UX writing | writing.md | – | Documented with known gap (G-15, G-16) |
-| Number formatting | writing.md | – | Documented with known gap (G-18; one formatter since #453 B4, the worktree-files copy is open) |
+| Number formatting | writing.md | – | Documented (G-18 retired) |
