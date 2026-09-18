@@ -36,6 +36,11 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // Close the RunStore's debounced 300 ms save before the directory is removed, so a pending
+  // timer can never fire — and call console.error — while the worker is tearing the environment
+  // down (issue #631). A non-decision write (telemetry/presentation) debounces its save; leaving
+  // it pending across rmSync is what logged during teardown.
+  store.flush();
   rmSync(dataDir, { recursive: true, force: true });
 });
 
@@ -373,5 +378,29 @@ describe('#532 durable decision boundaries', () => {
     const apply = vi.fn(() => undefined);
     expect(guardedRunMutation(store, run.id, legacy, apply).status).toBe('conflict');
     expect(apply).not.toHaveBeenCalled();
+  });
+});
+
+// #631 — a teardown that leaves the RunStore's debounced save pending logs during worker
+// teardown: a late console.error fires `Closing rpc while "onUserConsoleLog" was pending`.
+// The afterEach flushes the store before it removes the directory; this pins that contract.
+describe('#631 teardown leaves no pending debounced save', () => {
+  it('logs nothing to the console after a telemetry write when the store is flushed', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      const run = createRun();
+      // A non-decision (telemetry/presentation) write debounces its save, exactly as in the runs above.
+      store.updateRun(run.id, { tokensUsed: 4096, costUsd: 0.37, peakRssBytes: 1 << 30 });
+      // The teardown contract: close the debounced save before removing the directory.
+      store.flush();
+      rmSync(dataDir, { recursive: true, force: true });
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      expect(warn).not.toHaveBeenCalled();
+      expect(error).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+      error.mockRestore();
+    }
   });
 });

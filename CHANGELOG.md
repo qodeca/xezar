@@ -168,6 +168,8 @@
 
 ## 🐛 Fixes
 
+- 🐛 **The MCP coverage job stopped failing intermittently on a stale log during worker teardown.** (#631)
+  `stale-write.test.ts` opened a real `RunStore` per test and its `afterEach` removed the test directory without flushing the store. A non-decision (telemetry/presentation) write debounces its `runs.json` save for 300 ms, so a pending timer survived teardown and, once the directory was gone, its `saveNow` hit the `catch` and called `console.error` — while vitest was already closing the worker rpc, producing `EnvironmentTeardownError: Closing rpc while "onUserConsoleLog" was pending`. The `afterEach` now flushes the store before it removes the directory, closing that timer before the directory disappears; the teardown contract is pinned by a new test.
 - 🐛 **A project added to a running cockpit now gets its own MCP connection.** (#557)
   Before, only the project the cockpit was started in could be led over MCP: `xez mcp` in a project
   added with **Add project** answered "xezar is not running" while the same cockpit served that
