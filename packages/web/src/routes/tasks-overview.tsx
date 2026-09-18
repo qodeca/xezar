@@ -198,13 +198,26 @@ export function TasksOverview({
   return (
     <div data-route="tasks" className="flex min-h-full flex-col">
       {/* Desktop header. Below `md` the shell's top bar already says "Tasks", and the drawer
-          carries the shared Active/Archived tabs — repeating them here would be a third copy. */}
-      <header className="sticky top-0 z-10 hidden h-14 shrink-0 items-center gap-3 border-b border-border bg-background md:flex md:px-section">
+          carries the shared Active/Archived tabs — repeating them here would be a third copy.
+          It wraps rather than scrolling sideways (#625, known-gaps G-48): with both actions lit and
+          the search at its 240 px, one row needs about 800 px of pane, a 1060 px window beside the
+          264 px sidebar; narrower, the row used to scroll the pane sideways and squeeze the search
+          to about 46 px. `min-h-14 flex-wrap … py-2` is `PageHeader`'s own spelling, so a wide
+          window still lays out one 56 px row exactly as before. The actions and the search wrap
+          as one right-aligned group, so the two actions never split across rows. */}
+      <header className="sticky top-0 z-10 hidden min-h-14 shrink-0 flex-wrap items-center gap-3 border-b border-border bg-background py-2 md:flex md:px-section">
         <h1 className="text-base font-semibold">Tasks</h1>
         {tabs}
-        <div className="flex-1" />
-        {actions}
-        <SearchField value={query} onChange={setQuery} placeholder="Search tasks…" label="Search tasks" className="w-60" />
+        <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-3">
+          {actions}
+          <SearchField
+            value={query}
+            onChange={setQuery}
+            placeholder="Search tasks…"
+            label="Search tasks"
+            className="w-60 max-w-full"
+          />
+        </div>
       </header>
 
       <div className="flex flex-1 flex-col p-4 pb-[calc(90px+env(safe-area-inset-bottom))] md:p-section md:pb-section">

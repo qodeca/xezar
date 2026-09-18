@@ -38,10 +38,18 @@ small fix, and **G-14**'s `useIsDesktop()` query is the one item with a real use
 Ids are never reused: a deleted entry retires its number, so a new entry takes the next number after
 the highest ever used. **G-06, G-14, G-15, G-16, G-20, G-23, G-26, G-27, G-28, G-30, G-31, G-32, G-33,
 G-35, G-36, G-37, G-38, G-39, G-41, G-42, G-45, G-46 and G-47 are live** (23 rows); **G-01 to G-05, G-07 to
-G-13, G-17 to G-19, G-21, G-22, G-24, G-25, G-29, G-34, G-40, G-43 and G-44 are retired** (24
-numbers); and **the next free id is G-48**. G-43 was retired by decision
+G-13, G-17 to G-19, G-21, G-22, G-24, G-25, G-29, G-34, G-40, G-43, G-44 and G-48 are retired** (25
+numbers); and **the next free id is G-49**. G-43 was retired by decision
 [D-09](decisions.md#d-09-compares-pick-confirm-keeps-the-ordinary-contrast-action) (the B7 design
 review) rather than by a fix: the pick confirm keeps its ordinary `contrast` action on purpose.
+**G-48** (the Tasks desktop header did not fit between 768 and 898 px, filed as #625 from docs wave
+5, #626) was **fixed on 2026-09-18** by #625's own change: the header wraps (`min-h-14 flex-wrap …
+py-2`, `PageHeader`'s spelling) and its actions and 240 px search wrap as one right-aligned group,
+in `tasks-overview.tsx` and in `designs/design-system-air/tasks.html`. Measured in the live
+cockpit, both themes: the main pane scrolled sideways at 768 and 800 px (602 px of header in 504
+and 536 px) and the search was squeezed to 46 px up to about 1060 px; after the fix every width
+from 768 to 1280 px fits with a 240 px search, and 1280 px lays out exactly as before.
+`guide-02-running-a-task.e2e.ts` pins it at 768, 800 and 897 px.
 
 Counts are non-test files or occurrences in `packages/web/src`. Counts in G-15 read on 2026-09-18
 (and G-06's recount in its own last bullet), in G-16 on 2026-09-16; other counts retain the original inventory date, and a row's own disposition bullet says
