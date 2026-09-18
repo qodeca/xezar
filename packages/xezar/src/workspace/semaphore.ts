@@ -252,7 +252,22 @@ export class WorkspaceSemaphore {
    * derivation (`deriveDefaultMemoryLimitMb`) fills an ABSENT key and nothing
    * else — it is a default, not a ceiling, and turning it into one would be
    * exactly the warning-and-substitute AC-7 forbids.
-   * `test/unit/single-project-limits.test.ts` fails if a clamp reappears.
+   *
+   * `test/unit/single-project-limits.test.ts` pins all three places, and which
+   * case pins which is the part worth writing down: its five injected-`load`
+   * cases reach only the GETTERS, so a clamp inside `loadResourceLimits` — the
+   * production loader an injected stub replaces — passes every one of them. The
+   * last case is the one that covers it: default `load`, an active project
+   * layout, a real committed `workspace.json`, measured red at `8192 !== 131072`
+   * against the loader-side clamp (#609 review round 1).
+   *
+   * What the file does NOT pin is the schema's own range validation. A
+   * `maxParallel` above 16 or a `memoryLimitMb` above 1 048 576 never reaches
+   * this class as written: `.catch()` in `workspace/config.ts` substitutes the
+   * shipped default and the host derivation respectively, silently. That is
+   * validation, not host reconciliation — but it IS a substitution, so the kit
+   * check (`.xezar/checks/catalog-check.mjs`) refuses a committed value outside
+   * those ranges rather than letting a file promise a number nothing applies.
    */
   maxParallel(): number {
     return this.limits.maxParallel;

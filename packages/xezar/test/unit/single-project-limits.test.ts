@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
-import { totalmem } from 'node:os';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir, totalmem } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
+import { projectStateLayout, setActiveStateLayout } from '../../src/state-layout.js';
 import { deriveDefaultMemoryLimitMb } from '../../src/workspace/config.js';
 import { WorkspaceSemaphore } from '../../src/workspace/semaphore.js';
 
@@ -95,4 +98,61 @@ test('a committed limit BELOW the host derivation is equally untouched', async (
   await semaphore.refresh();
   assert.equal(semaphore.memoryLimitMb(), 256);
   assert.equal(semaphore.maxParallel(), 1);
+});
+
+/**
+ * The case above and its four siblings all inject `load`, so between them they
+ * pin only the GETTERS. A `Math.min(resources.memoryLimitMb, deriveDefault…)`
+ * written inside `loadResourceLimits` — the production loader, which an
+ * injected stub replaces — passes every one of them and still reduces the
+ * committed number on every real launch, which is the AC-7 break itself.
+ *
+ * So this case uses the DEFAULT loader and a real committed file: an active
+ * project state layout whose `<project>/.xezar/workspace.json` carries the two
+ * machine-shaped keys, read through `loadWorkspaceConfig` exactly as a boot in
+ * that folder reads them. It is the only case here that would go red against a
+ * loader-side clamp, and it is what the comment in `semaphore.ts` now claims.
+ */
+test('the DEFAULT loader applies a committed workspace.json limit exactly (no loader-side clamp)', async () => {
+  const committedMemory = 131_072; // 128 GiB — above the derivation on every host this runs on
+  const committedParallel = 16; // the schema's own upper bound, deliberately left alone
+  assert.ok(
+    committedMemory > deriveDefaultMemoryLimitMb(totalmem()),
+    'fixture must exceed the host derivation to prove anything',
+  );
+
+  const projectRoot = mkdtempSync(join(tmpdir(), 'xez-sp-limits-'));
+  const layout = projectStateLayout(projectRoot);
+  mkdirSync(layout.root, { recursive: true });
+  writeFileSync(
+    layout.workspacePath,
+    `${JSON.stringify(
+      { resources: { maxParallel: committedParallel, memoryLimitMb: committedMemory } },
+      null,
+      2,
+    )}\n`,
+  );
+
+  setActiveStateLayout(layout);
+  try {
+    // No `load` — this is `loadResourceLimits`, reading the committed file.
+    const semaphore = new WorkspaceSemaphore();
+    await semaphore.refresh();
+
+    assert.equal(
+      semaphore.memoryLimitMb(),
+      committedMemory,
+      'the production loader reduced the committed memory ceiling — AC-7 forbids a clamp, a refusal and a warning-and-substitute',
+    );
+    assert.equal(
+      semaphore.maxParallel(),
+      committedParallel,
+      'the production loader reduced the committed parallel cap',
+    );
+    assert.equal(semaphore.projectMemoryLimitMb(projectRoot), committedMemory);
+    assert.equal(semaphore.projectMaxParallel(projectRoot), committedParallel);
+  } finally {
+    setActiveStateLayout(null);
+    rmSync(projectRoot, { recursive: true, force: true });
+  }
 });
