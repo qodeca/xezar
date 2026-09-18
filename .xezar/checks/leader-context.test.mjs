@@ -3,23 +3,27 @@
 //
 // The contract has two halves, and both are load-bearing:
 //   - the leader session in the primary checkout gets ONE JSON payload holding the guide and the
-//     newest campaign folder's README and decisions;
+//     newest campaign folder's README and decisions, bounded to each note's last bytes;
 //   - a xezar task agent gets NOTHING, because the guide is irrelevant to it. Every way a task can
 //     present itself is pinned here: a linked worktree, a path under `.local/xezar/worktrees/`,
-//     and the `XEZ_HANDOFF_FILE` / `XEZ_TODOS_FILE` variables xezar sets for the agent process.
+//     and the `XEZ_HANDOFF_FILE` / `XEZ_TODOS_FILE` / `XEZ_TASK_ID` variables xezar sets for the
+//     agent process.
 //
 // Fixtures are throwaway git repositories under the task's own git-ignored `.local/xezar-tests/`.
 // Each copies the real hook, so a regression in its guards fails here rather than in a leader
 // session that silently loaded the wrong context (or a task session that silently loaded this one).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const checks = dirname(fileURLToPath(import.meta.url));
 const hook = join(checks, 'leader-context.sh');
+// The committed settings file, copied into each fixture so the command Claude Code really runs is
+// what the subdirectory case exercises — not a copy of it retyped in this test.
+const settings = join(checks, '..', '..', '.claude', 'settings.json');
 // Scratch lives in the system temp dir, NOT under this task's own `.local/xezar-tests/`.
 // The hook's guards are the subject here, and one of them is the path rule: anything under a
 // checkout's `.local/xezar/worktrees/` is a task worktree and gets no leader context. A fixture
@@ -57,6 +61,8 @@ function fixture({ withGuide = true, withGit = true } = {}) {
   writeFileSync(join(root, '.gitignore'), '.local/\n');
   mkdirSync(join(root, '.xezar/checks'), { recursive: true });
   cpSync(hook, join(root, '.xezar/checks/leader-context.sh'));
+  mkdirSync(join(root, '.claude'), { recursive: true });
+  cpSync(settings, join(root, '.claude/settings.json'));
   if (withGuide) {
     mkdirSync(join(root, '.xezar/docs'), { recursive: true });
     writeFileSync(join(root, '.xezar/docs/leader-guide.md'), `${GUIDE_SENTINEL}\n`);
@@ -74,6 +80,12 @@ function fixture({ withGuide = true, withGit = true } = {}) {
 
 const run = (cwd, env = cleanEnv()) => spawnSync('bash', [join(cwd, '.xezar/checks/leader-context.sh')], { cwd, encoding: 'utf8', env });
 
+// The command Claude Code runs, read from the fixture's committed settings file.
+const hookCommand = (root) => {
+  const parsed = JSON.parse(readFileSync(join(root, '.claude/settings.json'), 'utf8'));
+  return parsed.hooks.SessionStart[0].hooks[0].command;
+};
+
 test('prints one JSON payload with the guide and the newest campaign folder in a primary checkout', () => {
   const root = fixture();
   const result = run(root);
@@ -88,6 +100,26 @@ test('prints one JSON payload with the guide and the newest campaign folder in a
   // The campaign files are appended after the guide, and the guide is named.
   assert.ok(context.indexOf('leader-guide.md') < context.indexOf('CAMPAIGN-README-SENTINEL'));
   assert.ok(context.indexOf('CAMPAIGN-README-SENTINEL') < context.indexOf('DECISIONS-SENTINEL'));
+});
+
+test('runs from a subdirectory of the primary checkout, as Claude Code invokes it', () => {
+  const root = fixture();
+  const subdir = join(root, 'packages/xezar');
+  mkdirSync(subdir, { recursive: true });
+  // Claude Code runs the settings command with the session's own cwd — the subdirectory, when the
+  // session was opened there — and provides CLAUDE_PROJECT_DIR for the project root. A relative
+  // command resolves against the subdirectory and fails, so the committed command must use it.
+  const command = hookCommand(root);
+  assert.match(command, /CLAUDE_PROJECT_DIR/);
+  const result = spawnSync('bash', ['-c', command], {
+    cwd: subdir,
+    encoding: 'utf8',
+    env: { ...cleanEnv(), CLAUDE_PROJECT_DIR: root },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const context = JSON.parse(result.stdout).hookSpecificOutput.additionalContext;
+  assert.match(context, /GUIDE-SENTINEL/);
+  assert.match(context, /CAMPAIGN-README-SENTINEL/);
 });
 
 test('prints only the guide when no campaign folder exists', () => {
@@ -130,6 +162,48 @@ test('stays silent for a xezar task agent: XEZ_TODOS_FILE set', () => {
   const result = run(root, { ...cleanEnv(), XEZ_TODOS_FILE: '/tmp/todos.json' });
   assert.equal(result.status, 0, result.stderr);
   assert.equal(result.stdout, '');
+});
+
+test('stays silent for a xezar task agent: XEZ_TASK_ID set', () => {
+  // The one agent signal that is unconditional and never empty: `XEZ_TODOS_FILE` is an empty
+  // string when follow-ups are off, so it cannot carry the guard on its own (`run.ts` `agentEnv`).
+  const root = fixture();
+  const result = run(root, { ...cleanEnv(), XEZ_TASK_ID: 'dff076f5-8696-4d68-bb94-30eebc96fdda' });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, '');
+});
+
+test('bounds each campaign note to its last bytes and names the note it truncated', () => {
+  const root = fixture();
+  const decisions = join(root, '.local/xezar/campaigns/release-9.9.9/decisions.md');
+  // The head sits outside the last 8000 bytes, so an unbounded cat would carry it into the
+  // payload. `decisions.md` is append-only by contract, so it only ever grows.
+  writeFileSync(decisions, `HEAD-SENTINEL\n${'x'.repeat(9000)}\nTAIL-SENTINEL\n`);
+  const result = run(root);
+  assert.equal(result.status, 0, result.stderr);
+  const context = JSON.parse(result.stdout).hookSpecificOutput.additionalContext;
+  assert.match(context, /TAIL-SENTINEL/);
+  assert.doesNotMatch(context, /HEAD-SENTINEL/);
+  assert.match(context, /\[note truncated: .*decisions\.md is \d+ bytes; showing only its last 8000 bytes\]/);
+});
+
+test('chooses the newest campaign folder by name, not by modification time', () => {
+  const root = fixture();
+  const campaigns = join(root, '.local/xezar/campaigns');
+  rmSync(join(campaigns, 'release-9.9.9'), { recursive: true, force: true });
+  mkdirSync(join(campaigns, '2026-09-17'), { recursive: true });
+  writeFileSync(join(campaigns, '2026-09-17/README.md'), 'OLDER-NAME-SENTINEL\n');
+  mkdirSync(join(campaigns, '2026-09-18'), { recursive: true });
+  writeFileSync(join(campaigns, '2026-09-18/README.md'), 'NEWER-NAME-SENTINEL\n');
+  // A restore or a `cp -r` can make the older-named folder look newest by mtime; the hook must
+  // still choose by name.
+  const future = new Date(Date.now() + 3600_000);
+  utimesSync(join(campaigns, '2026-09-17'), future, future);
+  const result = run(root);
+  assert.equal(result.status, 0, result.stderr);
+  const context = JSON.parse(result.stdout).hookSpecificOutput.additionalContext;
+  assert.match(context, /NEWER-NAME-SENTINEL/);
+  assert.doesNotMatch(context, /OLDER-NAME-SENTINEL/);
 });
 
 test('stays silent when the guide file is missing', () => {

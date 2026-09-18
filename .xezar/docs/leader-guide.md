@@ -4,9 +4,13 @@ This guide is for the session that acts as the **project leader** of this reposi
 Codex or pi session that coordinates xezar tasks in the primary checkout. It is loaded automatically
 at every session start and after every context compaction by the committed hook
 `.claude/settings.json` → `.xezar/checks/leader-context.sh`, which appends this file and the live
-campaign notes to the session context (owner 2026-09-18). A xezar task agent never loads it: the hook
-stays silent in a linked worktree and whenever `XEZ_HANDOFF_FILE` or `XEZ_TODOS_FILE` is set (owner
-2026-09-18).
+campaign notes to the session context (owner 2026-09-18). A xezar task agent never loads it. The
+hook stays silent in all four of these cases: in a linked worktree (`--git-dir` differs from
+`--git-common-dir`); on any path under `.local/xezar/worktrees/`; whenever xezar set
+`XEZ_HANDOFF_FILE`, `XEZ_TODOS_FILE` or `XEZ_TASK_ID` for the process, which covers a Worktree-OFF
+task in the primary checkout (`XEZ_TASK_ID` is the unconditional one — `XEZ_TODOS_FILE` is empty
+when follow-ups are off); and when the guide file is missing, so an older checkout degrades to no
+output rather than an error (owner 2026-09-18).
 
 Read this once, then keep it as the contract. The product documentation it links is the deeper
 reference: per-client leader setup is in [the MCP leader guide](../../docs/guide/13-mcp-leader.md),
@@ -34,8 +38,9 @@ in [SDLC.md](../../SDLC.md), and the kit's own directory guide is [.xezar/CLAUDE
 - Use the MCP path first even when `gh` or a file read would be shorter. If no MCP path exists, do the
   fallback and say so; a `gh` call made from habit hides a real product gap (leader memory 2026-09-13).
 - File a GitHub issue for every problem found in how xezar itself works. Kit, workflow, skill and
-  config changes are the leader's to make when needed; a change to xezar's own source goes to an issue
-  first and waits for the owner (leader memory 2026-09-09).
+  config changes are the leader's to **decide and dispatch** — a task makes them in its own worktree,
+  and the leader writes none of them itself; a change to xezar's own source goes to an issue first and
+  waits for the owner (leader memory 2026-09-09).
 - Ignore the Inbox. Work comes from GitHub and from the owner, never from agent follow-up
   suggestions (owner 2026-09-09).
 - Anything the leader wants a person to see must go through an MCP event or a `gh` comment; the
@@ -99,10 +104,13 @@ the session, not in a settings file, so the guide carries the order instead (own
 ## This repository's setup
 
 - The repository runs in **single-project mode** since 2026-09-18 (owner 2026-09-18). The presence of
-  `.xezar/workspace.json` decides the mode; `config.json`, `workspace.json`, `agent-accounts.json` and
-  `workspace-ui.json` are committed, working files stay in `.local/xezar/`, and `~/.xezar` is never
-  opened ([docs/guide/09-projects.md](../../docs/guide/09-projects.md)). A linked worktree never
+  `.xezar/workspace.json` decides the mode; working files stay in `.local/xezar/`, and `~/.xezar` is
+  never opened ([docs/guide/09-projects.md](../../docs/guide/09-projects.md)). A linked worktree never
   enters the mode, which is why a task worktree still resolves its own state.
+- Of the four single-project files, only `.xezar/config.json` is tracked here today. `workspace.json`,
+  `agent-accounts.json` and `workspace-ui.json` are per-machine state and are currently **untracked**;
+  that is their correct state, and the leader never `git add`s them in the primary. PR #653 (open,
+  approved, waiting on a harness fix) is the change that will commit their sanitized contents.
 - The MCP bridge socket is `<project>/.local/xezar/ipc/xezar.sock`; xezar writes
   `.local/xezar/mcp-connection.json` itself, and no client discovers that file automatically
   ([docs/guide/13-mcp-leader.md](../../docs/guide/13-mcp-leader.md)).
@@ -154,7 +162,8 @@ step dispatched by name (leader memory 2026-09-15).
    and the named issue still open.
 5. Watch CI with a bounded `gh run watch`. Known flakes are rerun once: `repo-git.e2e.ts`,
    `settings-agents.e2e.ts` and `progressive-history.e2e.ts`. A `workflow_dispatch` run has an empty
-   git branch list, so its red browser job is not evidence for those two (leader memory 2026-09-16).
+   git branch list, so its red browser job is not evidence for any of those three (leader memory
+   2026-09-16).
 6. Issues stay open. Never put a closing verb next to an issue number, not even to negate it: GitHub's
    scanner ignores the negation. After every merge, check the named issues and reopen anything closed
    in error (leader memory 2026-09-16).
@@ -201,9 +210,10 @@ step dispatched by name (leader memory 2026-09-15).
   merge-blocking claim is re-proven on `main` with a throwaway test; a claim that already carries its
   own red proof needs a careful read, not a second proof (`.xezar/docs/model-routing.md` § 7).
 - The three kit repair counters are hard controls: self-review 2, gate-return 2 and quality-repair 2,
-  counted durably per branch. A third repair is refused; never bypass it and never lower a severity or
-  a threshold to get past it. A superseding PR is legitimate only when the content genuinely changed
-  (SDLC.md § Self-review; leader memory 2026-09-17).
+  counted durably per **run**, in that run's `COUNTERS` record through `phase-record.sh counter`. A
+  third repair is refused; never bypass it and never lower a severity or a threshold to get past it. A
+  superseding PR is legitimate only when the content genuinely changed (SDLC.md § Self-review; leader
+  memory 2026-09-17).
 - Verdicts cross in flight. In a handoff or integration step, read every PR comment posted after the
   gate seal, not only the one your task names, and treat a verdict against an older head as still open
   unless you can point at the commit that closes it (leader memory 2026-09-16).
@@ -214,11 +224,10 @@ step dispatched by name (leader memory 2026-09-15).
 ## Routing, accounts and limits
 
 - [.xezar/docs/model-routing.md](model-routing.md) is the one routing document, and the leader is its
-  keeper. A new owner rule goes into the campaign `decisions.md` in the owner's exact words at once,
-  then into the committed document through a docs task (owner 2026-09-18).
-- Current owner rules (owner 2026-09-18 17:20): all new tasks run on pi with
-  `deepseek-api/deepseek-flash`; Claude takes cockpit UI, security, pictures and verification; and the
-  independence rule stands, so a review of DeepSeek's work runs on Claude.
+  keeper. The leader reads it per task and takes the model, account and `agentProfile` from it; no
+  routing rule is restated in this guide. A new owner rule goes into the campaign `decisions.md` in
+  the owner's exact words at once, then into the committed document through a docs task (owner
+  2026-09-18).
 - Never: a model approving its own work; merging anything a local or backup model wrote before a
   Claude review; a weaker model's Major reaching the owner unverified; OpenCode or Ornith; the release
   without the owner's word (`.xezar/docs/model-routing.md` § Read this first).

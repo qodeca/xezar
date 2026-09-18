@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash .xezar/checks/leader-context.sh",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.xezar/checks/leader-context.sh\"",
             "timeout": 15
           }
         ]
