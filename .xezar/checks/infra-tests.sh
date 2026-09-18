@@ -4973,6 +4973,8 @@ expect_ok "Actual repository catalog, changelog and contracts" bash "$SCRIPT_DIR
 
 expect_ok "Parallel gate ordering, evidence and owned cancellation" node --test "$SCRIPT_DIR/gate-parallel.test.mjs"
 
+expect_ok "Leader context hook: prints in a primary, silent for task agents" node --test "$SCRIPT_DIR/leader-context.test.mjs"
+
 # --- Verdict ---------------------------------------------------------------------------------------------
 printf '\n================ INFRA TESTS ================\n'
 printf 'passed %d, failed %d\n' "$pass" "$fail"

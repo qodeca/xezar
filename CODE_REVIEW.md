@@ -52,6 +52,7 @@ A review is a verdict about one set of bytes. Read these before forming it, and 
 - Path handling on user-supplied names: file-serving routes must sanitize (`basename()` as in `/api/v1/runs/:id/images/:file`); workflow names are slugified before becoming filenames. Any user string that reaches a path or a shell needs the same treatment.
 - Spawned processes use `execFile`/`spawn` with argument arrays — never string-interpolated shell commands. Tool access for agents goes through a per-step allowlist (`allowedTools`), but the zero-config default includes unrestricted `Bash` (no `bashAllowlist`), and unapproved tools are denied without prompting (`--permission-mode dontAsk`; `XEZ_APPROVAL_GATE=1` opts into `acceptEdits` and Claude's approval UI) — treat a run as having full shell access in its worktree, not a sandboxed allowlist. Codex and OpenCode don't honor `allowedTools` at all (Codex: its own sandbox, approvals off, network on; OpenCode: everything auto-approved), while pi maps `allowedTools` onto its own `--tools` allowlist and disables `Bash` when a `bashAllowlist` is set (pre-rename issue 430).
 - Writes that must not clobber use `wx` or tmp+rename; check new file writes follow one of those.
+- A diff that touches `.claude/settings.json` or `.xezar/checks/leader-context.sh` is a trust-boundary change and needs a security-minded reviewer: a branch that changes either file gets code execution in every Claude Code session opened on that branch, including a reviewer's own task worktree.
 
 ### State-file and API compatibility
 
