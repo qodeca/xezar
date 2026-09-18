@@ -47,8 +47,10 @@ skills-lock.json
 .ai/qa/agent-home/
 
 # Claude Code keeps per-machine state under .claude/ (locks, worktrees, checkpoints, settings.local.json).
-# Only the committed design-system skill is tracked (docs/design-system/README.md); everything else stays local.
+# Only the committed design-system skill and the leader SessionStart hook are tracked
+# (docs/design-system/README.md, .xezar/docs/leader-guide.md); everything else stays local.
 .claude/*
+!.claude/settings.json
 !.claude/skills/
 .claude/skills/*
 !.claude/skills/design-system/

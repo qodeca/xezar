@@ -17,3 +17,5 @@ model-routing.md – which model and runner the leader dispatches for each task 
 account-limits.md – what usage cannot be read, how the leader probes an account for its limit, and how to recover a lane once it is hit
 
 campaign-notes.md – the default folder layout for a campaign note once SDLC.md's single-file template outgrows one comfortable load
+
+leader-guide.md – the project leader's own contract: who the leader is, session start and compaction recovery, the task lifecycle, review discipline, routing, brief rules and the release runbook; loaded automatically for a leader session and never for a task agent
