@@ -217,6 +217,10 @@
 - Reconciled the remote-access docs with verified behavior and pinned both claims with a new test: a normal launch no longer claims an unconditional starting port of 4321 (it actually prefers a saved port, then `XEZ_PORT`, then the port it last listened on), and the macOS/ngrok installer's success message no longer says basic-auth was "enforced" when it was only configured, never probed through the tunnel. (#547, SM2)
 - Added `npm run check:links` (`scripts/check-links.mjs`), an offline relative-link and anchor checker for `docs/`, the root `README.md`, `.xezar/docs/` and `designs/**/README.md` — no network calls, so it runs in a task worktree and in CI alike. (#447)
 
+## 📝 Specs & Documentation
+
+- Documented single-project ROOT mode's symbolic-link refusal and its independence from hosted mode's own local-machine `409`s in [guide 09](docs/guide/09-projects.md), and added a new [guide 17](docs/guide/17-audit-trail.md) covering the 0.16.0 audit trail: the four doors, `audit.ndjson` and its read-only `mcp-audit.ndjson` alias, rotation, redaction and its honest limits. (#306, #600, #447)
+
 # 0.15.0 (2026-09-17)
 
 ## Highlights
