@@ -316,7 +316,34 @@ verification.
 `packages/web/e2e/guide-*.e2e.ts` — one file per `docs/guide/` part, plus the shared
 `guide-browser.ts` helper — walk the flows each guide describes as a first-time reader would
 follow them, asserting only role, accessible-label or visible-text facts (never a class, id,
-`data-*` attribute or other selector coupled to implementation markup). `guide-04-providers-models-tools.e2e.ts`,
+`data-*` attribute or other selector coupled to implementation markup). `guide-browser.ts` wraps
+`agent-browser find <locator> <value> [action]` — the CLI's own semantic-locator command — rather
+than the CSS-selector methods on `AgentBrowser`; it is the one new interaction helper this package
+adds, and existing specs are not retrofitted to it.
+
+`guide-02-running-a-task.e2e.ts` (browser-test pull request 2 of 4, #549) covers guide 02 —
+Tasks and runs — as one continuous scripted journey against its own dry-run fixture: compose
+through the real `/new` composer, the Worktree/Autonomous/Plan-first mode controls, a run
+queueing behind another while the workspace's one agent slot is held, the running turn's thread
+output (agent text and a real tool call), a reply round trip, Finish parking the run at review,
+the Changes/Files/Commits tabs against the resulting real diff and commit, and the review panel's
+Draft PR/Accept hand-off — Draft PR is asserted present, never clicked, because opening a real
+pull request is out of honest dry-run scope (see its own header comment for the exact lower-test
+citations). Finish runs before the git tabs in this file, not after: Finish is what actually
+commits the worktree (`autosaveCommit(dir, 'run finalize')`), so the Commits tab has nothing to
+show before it runs, even though the guide documents the two as independent capabilities.
+
+`guide-browser.ts`'s `clickRoleWhenStable(role, name, opts?)` (added in review-response round 3 of
+#590) clicks a role/name target only once its own live bounding box has read the same value on two
+consecutive polls, retrying past a transient "covered by" click-interception error within the same
+bounded attempt budget. Use it — instead of a bare `clickRole` — for any click on a control that
+sits in a row where a SIBLING can mount or unmount just beforehand (a right-anchored flex row with
+no reserved width shifts every button after the one that (dis)appears, in one synchronous frame);
+guide-02's own run-header actions row is the first real example. It needs no coverer named in
+advance, unlike a plain geometric overlap check, because a bounded retry on the click itself
+already covers an unanticipated coverer too.
+
+`guide-04-providers-models-tools.e2e.ts`,
 `guide-10-settings.e2e.ts`, `guide-11-configuration.e2e.ts`, `guide-12-cli-reference.e2e.ts`,
 `guide-13-mcp-leader-control.e2e.ts`, `guide-14-local-hosted.e2e.ts`, `guide-15-project-kit.e2e.ts`
 and `guide-16-troubleshooting.e2e.ts` cover the guides Batch 5's cockpit restyle does not touch;
