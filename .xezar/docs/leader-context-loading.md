@@ -75,18 +75,10 @@ to commit the hook at all, and the test pins each of them.
 
 ## The hook output shape
 
-A `SessionStart` hook prints nothing on stdout in the silent cases, and one JSON object otherwise:
+A `SessionStart` hook prints nothing on stdout in the silent cases, and one line of JSON otherwise:
 
 ```json
-{
-  "continue": true,
-  "suppressOutput": true,
-  "systemMessage": "Leader guide and campaign notes loaded",
-  "hookSpecificOutput": {
-    "hookEventName": "SessionStart",
-    "additionalContext": "…leader guide…\n\n…campaign README.md…\n\n…decisions.md…"
-  }
-}
+{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"=== .xezar/docs/leader-guide.md (project leader guide) ===\n\n# Leader guide\n…\n\n=== .local/xezar/campaigns/v0.16.0/README.md (campaign live state) ===\n…"}}
 ```
 
 `additionalContext` is one string holding three labelled blocks in a fixed order: the guide, the
@@ -98,11 +90,23 @@ registered in `.claude/settings.json` with the four matchers a leader has to sur
 {
   "hooks": {
     "SessionStart": [
-      { "matcher": "startup|resume|clear|compact", "hooks": [{ "type": "command", "command": ".xezar/checks/leader-context.sh" }] }
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .xezar/checks/leader-context.sh",
+            "timeout": 15
+          }
+        ]
+      }
     ]
   }
 }
 ```
+
+The explicit `bash` means the copied script does not depend on its executable bit surviving the
+copy, and `"timeout": 15` bounds a hook that runs on every session start and compaction.
 
 ## The test
 
