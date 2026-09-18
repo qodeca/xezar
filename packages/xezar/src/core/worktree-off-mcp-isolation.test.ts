@@ -22,15 +22,21 @@
 
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { AgentRunSpec } from './agent-runner.js';
+import type { AgentEvent, AgentRunSpec } from './agent-runner.js';
 import { buildClaudeArgs } from './claude-cli-runner.js';
-import { buildPiArgs, PiRunner } from './pi-runner.js';
+import {
+  buildPiArgs,
+  PiRunner,
+  piSupportsMcpConfig,
+  type PiMcpConfigAnswer,
+  type PiMcpConfigProbe,
+} from './pi-runner.js';
 import { opencodeChildEnv } from './opencode-server-runner.js';
 import {
   claudeMcpIsolation,
@@ -155,10 +161,13 @@ describe('pi startSession resolves the agent home from the env the child actuall
     try {
       // The step runs under a STORED pi agent account: `spec.env` is what `workflows/run.ts`
       // gives the child, carrying that account's own `PI_CODING_AGENT_DIR` (#342 review M1).
-      session = new PiRunner({ bin: 'pi', timeoutMs: 0 }).startSession(
+      session = new PiRunner({ bin: 'pi', timeoutMs: 0, supportsMcpConfig: async () => 'yes' }).startSession(
         { userPrompt: 'do it', cwd: root, env: { PI_CODING_AGENT_DIR: join(root, 'account-pi-home') } },
         () => {},
       );
+      // The capability question is asked before the child exists (#548), so the spawn the hook
+      // is waiting for happens a microtask later.
+      await vi.waitFor(() => expect(overlayPath).toBeDefined());
     } finally {
       spawnHook.override = null;
       if (savedHostDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
@@ -179,6 +188,267 @@ describe('pi startSession resolves the agent home from the env the child actuall
     await session.result.catch(() => {});
   });
 });
+
+// ---- #548: `--mcp-config` belongs to an OPTIONAL pi extension --------------
+
+/**
+ * The #342 pi lever is `--mcp-config`, and that flag is not pi's own: the optional
+ * `pi-mcp-adapter` extension registers it. Pushing it unconditionally made EVERY pi task die at
+ * spawn (`Error: Unknown option: --mcp-config`, exit 1) wherever the extension is absent —
+ * verified against pi 0.85.1 with an empty `PI_CODING_AGENT_DIR`.
+ *
+ * Review round 1 then showed the first answer could still be wrong FOR THE CHILD: an extension
+ * resolves from the project folder as well as the agent home, and a process-wide cache never went
+ * stale. So the probe now runs with the child's own cwd and env, is not cached, is asynchronous
+ * and hard-bounded, and a pi that refuses the option anyway restarts the session once without it.
+ *
+ * Named break for the red proof: `pi-mcp-config-unconditional` — revert `pi-runner.ts` to the
+ * state that runs `piMcpIsolation` and pushes the flag without asking; the guard case stays green
+ * either way, because it pins the behaviour with the extension present that must not change.
+ */
+describe('pi only passes --mcp-config when the pi MCP extension is installed (#548)', () => {
+  /** A child that never really spawns. Each call is a fresh one, so a restart gets its own. */
+  function fakePiChild(): { child: ChildProcessWithoutNullStreams; stdout: PassThrough; stderr: PassThrough } {
+    const stdout = new PassThrough();
+    const stderr = new PassThrough();
+    const child = Object.assign(new EventEmitter(), {
+      stdin: new PassThrough(),
+      stdout,
+      stderr,
+      exitCode: null as number | null,
+      signalCode: null as NodeJS.Signals | null,
+      killed: false,
+      pid: 4343,
+      kill: () => true,
+    }) as unknown as ChildProcessWithoutNullStreams;
+    return { child, stdout, stderr };
+  }
+
+  /** Executable stub `pi`s. `--help` is all the probe ever asks for. */
+  function fakeBin(name: string, helpText: string): string {
+    const path = join(root, name);
+    writeFileSync(path, `#!/bin/sh\nif [ "$1" = "--help" ]; then\n  echo '${helpText}'\n  exit 0\nfi\nexit 7\n`, 'utf8');
+    chmodSync(path, 0o755);
+    return path;
+  }
+
+  /**
+   * Drive one `PiRunner` session over a fake child and report what the runner asked for.
+   * `exit` decides how each child dies, which is what the restart case needs.
+   */
+  async function piSpawn(
+    probe: PiMcpConfigProbe,
+    exit: (n: number) => { code: number; stderr?: string } = () => ({ code: 0 }),
+    specEnv: Record<string, string> = { PI_CODING_AGENT_DIR: join(root, 'pi-home') },
+    cwd: string = root,
+  ): Promise<{ argv: string[][]; overlay: string | undefined; notes: string[] }> {
+    write('.pi/mcp.json', { mcpServers: { xezar: BRIDGE, docs: PROJECT_SERVER } });
+    write('pi-home/mcp.json', { mcpServers: { personal: { command: 'node' } } });
+
+    const argv: string[][] = [];
+    let overlay: string | undefined;
+    let spawns = 0;
+    const settle = (fake: ReturnType<typeof fakePiChild>, at: number): void => {
+      const how = exit(at);
+      if (how.stderr) fake.stderr.write(how.stderr);
+      Object.assign(fake.child, { exitCode: how.code });
+      fake.stdout.end();
+      fake.child.emit('exit', how.code, null);
+      fake.child.emit('close', how.code, null);
+    };
+    spawnHook.override = (_bin: unknown, args: unknown) => {
+      const these = args as string[];
+      // The capability probe spawns too. Hand it a child that never settles — that is the
+      // "never exits" case, and its own bound is what has to end it — and never count it as
+      // a session spawn.
+      if (these[0] === '--help') return fakePiChild().child;
+      argv.push(these);
+      const at = these.indexOf('--mcp-config');
+      // Read it here: the overlay is removed as soon as the child settles.
+      if (at >= 0) overlay = readFileSync(these[at + 1] as string, 'utf8');
+      const fake = fakePiChild();
+      const which = spawns++;
+      // One turn of the loop later, so the runner has wired its listeners first.
+      setImmediate(() => settle(fake, which));
+      return fake.child;
+    };
+
+    const notes: string[] = [];
+    try {
+      const session = new PiRunner({ bin: 'pi', timeoutMs: 0, supportsMcpConfig: probe }).startSession(
+        { userPrompt: 'do it', cwd, env: specEnv },
+        (event: AgentEvent) => {
+          if (event.type === 'note') notes.push(event.message);
+        },
+      );
+      await session.result.catch(() => {});
+    } finally {
+      spawnHook.override = null;
+    }
+
+    return { argv, overlay, notes };
+  }
+
+  it('extension absent: no --mcp-config in the argv, and one note says the extension is not there', async () => {
+    const { argv, overlay, notes } = await piSpawn(async () => 'no');
+
+    expect(argv).toHaveLength(1);
+    expect(argv[0]).not.toContain('--mcp-config');
+    expect(overlay).toBeUndefined();
+    const explained = notes.filter((note) => note.includes('MCP adapter extension is not available'));
+    expect(explained).toHaveLength(1);
+    // With no MCP config read at all there is no bridge to switch off, so the run must not
+    // claim it switched one off.
+    expect(notes.some((note) => note.includes('does not load xezar'))).toBe(false);
+  });
+
+  it('extension present: the flag and the overlay are exactly what #342 shipped (guard)', async () => {
+    const { argv, overlay, notes } = await piSpawn(async () => 'yes');
+
+    expect(argv[0]).toContain('--mcp-config');
+    const written = JSON.parse(overlay ?? '{}') as { mcpServers: Record<string, unknown> };
+    expect(written.mcpServers.xezar).toEqual({ disabled: true });
+    expect(written.mcpServers.personal).toEqual({ command: 'node' });
+    expect(notes.some((note) => note.includes('does not load xezar'))).toBe(true);
+    expect(notes.some((note) => note.includes('MCP adapter extension is not available'))).toBe(false);
+  });
+
+  // ---- round 1, M-A: the answer has to be about the CHILD's folder and environment ----
+
+  it('the probe is asked with the task\'s own cwd and the child\'s env, not the server\'s', async () => {
+    const asked: Array<{ env: NodeJS.ProcessEnv; cwd: string }> = [];
+    const here = join(root, 'task-folder');
+    mkdirSync(here, { recursive: true });
+
+    await piSpawn(
+      async (_bin, env, cwd) => {
+        asked.push({ env, cwd });
+        return 'no';
+      },
+      () => ({ code: 0 }),
+      { PI_CODING_AGENT_DIR: join(root, 'account-pi-home') },
+      here,
+    );
+
+    expect(asked).toHaveLength(1);
+    // `spec.cwd`, because a project-local install of the adapter only exists for THAT folder.
+    expect(asked[0]?.cwd).toBe(here);
+    // …and the built child env, so a stored agent account resolves the same home the child gets.
+    expect(asked[0]?.env.PI_CODING_AGENT_DIR).toBe(join(root, 'account-pi-home'));
+  });
+
+  it('the same binary and agent folder are asked again for a different folder — no cached answer', async () => {
+    const asked: string[] = [];
+    const probe: PiMcpConfigProbe = async (_bin, _env, cwd) => {
+      asked.push(cwd);
+      return 'no';
+    };
+    const one = join(root, 'folder-one');
+    const other = join(root, 'folder-two');
+    mkdirSync(one, { recursive: true });
+    mkdirSync(other, { recursive: true });
+    const env = { PI_CODING_AGENT_DIR: join(root, 'pi-home') };
+
+    await piSpawn(probe, () => ({ code: 0 }), env, one);
+    await piSpawn(probe, () => ({ code: 0 }), env, other);
+
+    // Same bin, same agent directory, different folder: two questions, each about its own folder.
+    expect(asked).toEqual([one, other]);
+  });
+
+  // ---- round 1, M-B: a change while the server runs may not be absorbed by a cache ----
+
+  it('a failed probe is never cached: the next session asks again and can get a different answer', async () => {
+    const answers: PiMcpConfigAnswer[] = ['unknown', 'yes'];
+    let asked = 0;
+    const probe: PiMcpConfigProbe = async () => {
+      asked += 1;
+      return answers.shift() ?? 'no';
+    };
+
+    const first = await piSpawn(probe);
+    const second = await piSpawn(probe);
+
+    expect(asked).toBe(2);
+    expect(first.argv[0]).not.toContain('--mcp-config');
+    // The failure answered nothing, so the extension that was there all along is used next time.
+    expect(second.argv[0]).toContain('--mcp-config');
+  });
+
+  // ---- round 1, m-1: the probe is bounded and never blocks ----
+
+  it('a probe that never exits is cut at its bound, and the session still starts without the flag', async () => {
+    const hanging = join(root, 'hanging-pi');
+    writeFileSync(hanging, '#!/bin/sh\nsleep 300\n', 'utf8');
+    chmodSync(hanging, 0o755);
+
+    // First against a REAL process that ignores everything: the bound, not the child, ends it.
+    const alone = Date.now();
+    await expect(piSupportsMcpConfig(hanging, {}, root, 120)).resolves.toBe('unknown');
+    expect(Date.now() - alone).toBeLessThan(5_000);
+
+    // Then through the runner, so the session's own behaviour at the bound is pinned too.
+    const started = Date.now();
+    const { argv, notes } = await piSpawn((_bin, env, cwd) => piSupportsMcpConfig(hanging, env, cwd, 120));
+
+    expect(Date.now() - started).toBeLessThan(5_000);
+    expect(argv).toHaveLength(1);
+    expect(argv[0]).not.toContain('--mcp-config');
+    expect(notes.some((note) => note.includes('could not confirm'))).toBe(true);
+  });
+
+  // ---- round 1, m-2: a failed probe never claims the extension is absent ----
+
+  it('a probe that fails says so, and never reports a cause it could not measure', async () => {
+    const { argv, notes } = await piSpawn(async () => {
+      throw new Error('probe exploded');
+    });
+
+    expect(argv[0]).not.toContain('--mcp-config');
+    expect(notes.filter((note) => note.includes('could not confirm'))).toHaveLength(1);
+    expect(notes.some((note) => note.includes('is not available'))).toBe(false);
+  });
+
+  // ---- round 1, item 3: the self-healing fallback ----
+
+  it('a pi that refuses the option anyway is restarted exactly once, without the flag', async () => {
+    const { argv, notes } = await piSpawn(async () => 'yes', (at) =>
+      at === 0 ? { code: 1, stderr: 'Error: Unknown option: --mcp-config\n' } : { code: 0 },
+    );
+
+    expect(argv).toHaveLength(2);
+    expect(argv[0]).toContain('--mcp-config');
+    expect(argv[1]).not.toContain('--mcp-config');
+    expect(notes.filter((note) => note.includes('rejected the MCP configuration option'))).toHaveLength(1);
+  });
+
+  it('no restart for any other spawn failure — one attempt, and the error stands', async () => {
+    const { argv, notes } = await piSpawn(async () => 'yes', () => ({
+      code: 1,
+      stderr: 'Error: No API key found for the selected model\n',
+    }));
+
+    expect(argv).toHaveLength(1);
+    expect(notes.some((note) => note.includes('rejected the MCP configuration option'))).toBe(false);
+  });
+
+  // ---- the real probe, both directions ----
+
+  it('the real probe answers "yes" for a binary whose --help prints --mcp-config', async () => {
+    const bin = fakeBin('pi-with-adapter', '  --mcp-config <file>  use this MCP config');
+    await expect(piSupportsMcpConfig(bin, {}, root)).resolves.toBe('yes');
+  });
+
+  it('the real probe answers "no" for a binary whose --help does not', async () => {
+    const bin = fakeBin('pi-without-adapter', '  --mode <mode>  the run mode');
+    await expect(piSupportsMcpConfig(bin, {}, root)).resolves.toBe('no');
+  });
+
+  it('the real probe answers "unknown" for a binary that is not there, and never throws', async () => {
+    await expect(piSupportsMcpConfig(join(root, 'no-such-pi-binary'), {}, root)).resolves.toBe('unknown');
+  });
+});
+
 
 // ---- controls: the pure seam and the fail-open guard -----------------------
 

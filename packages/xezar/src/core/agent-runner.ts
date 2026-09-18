@@ -223,6 +223,14 @@ export interface AgentSession {
    *  tree (agents spawn Bash children under it). Absent when the spawn
    *  failed before a pid existed. Feeds live resource telemetry (#348). */
   readonly pid?: number;
+  /**
+   * Optional companion to `pid`, for a runner whose child does not exist yet when
+   * `startSession` returns — pi has to ask the binary a capability question first (#548).
+   * The listener is called with the pid as soon as there IS one, and again if the runner
+   * restarts the child itself, so process telemetry never tracks a pid that is already gone.
+   * Absent means `pid` is the whole story: it was known before `startSession` returned.
+   */
+  onProcessStart?(listener: (pid: number) => void): void;
   /** Write a user message into the live session. False when it is closed. */
   sendMessage(content: ContentBlock[]): boolean;
   /** Graceful close: end input, then a SIGTERM→SIGKILL watchdog. */

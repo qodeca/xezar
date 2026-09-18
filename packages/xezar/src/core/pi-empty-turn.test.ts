@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { AgentEvent, AgentRunResult } from './agent-runner.js';
-import { PiRunner } from './pi-runner.js';
+import { PiRunner, type PiMcpConfigProbe } from './pi-runner.js';
 
 /**
  * #164 — a pi turn that ends with NO assistant text and NO tool call.
@@ -23,16 +23,36 @@ import { PiRunner } from './pi-runner.js';
  * Lives beside `pi-runner.test.ts` rather than inside it: PR #163 is rewriting
  * that file's text handling in the same wave.
  */
-const spawnHook = vi.hoisted(() => ({ override: null as null | (() => unknown) }));
+const spawnHook = vi.hoisted(() => ({
+  override: null as null | (() => unknown),
+  onSpawn: null as null | (() => void),
+}));
 
 vi.mock('node:child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:child_process')>();
   return {
     ...actual,
-    spawn: (...args: Parameters<typeof actual.spawn>) =>
-      spawnHook.override ? spawnHook.override() : actual.spawn(...args),
+    spawn: (...args: Parameters<typeof actual.spawn>) => {
+      if (!spawnHook.override) return actual.spawn(...args);
+      const child = spawnHook.override();
+      spawnHook.onSpawn?.();
+      return child;
+    },
   };
 });
+
+/** The runner asks the binary a capability question before it spawns (#548), so the child exists
+ *  one microtask turn after `startSession` returns; these tests wait for the spawn itself rather
+ *  than for a guessed number of turns. The probe is injected so it never reaches a real `pi`. */
+const NO_MCP_CONFIG: PiMcpConfigProbe = async () => 'no';
+function whenSpawned(): Promise<void> {
+  return new Promise<void>((resolve) => {
+    spawnHook.onSpawn = () => {
+      spawnHook.onSpawn = null;
+      resolve();
+    };
+  });
+}
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), '__fixtures__', 'pi');
 
@@ -76,14 +96,16 @@ function fakePiChild(): {
   };
 }
 
-function feedStream(lines: string[]): { events: AgentEvent[]; result: Promise<AgentRunResult> } {
+async function feedStream(lines: string[]): Promise<{ events: AgentEvent[]; result: Promise<AgentRunResult> }> {
   const fake = fakePiChild();
   spawnHook.override = () => fake.child;
+  const spawned = whenSpawned();
   const events: AgentEvent[] = [];
-  const session = new PiRunner({ bin: 'pi', timeoutMs: 20_000 }).startSession(
+  const session = new PiRunner({ bin: 'pi', timeoutMs: 20_000, supportsMcpConfig: NO_MCP_CONFIG }).startSession(
     { userPrompt: 'do the thing', cwd: process.cwd() },
     (event) => events.push(event),
   );
+  await spawned;
   for (const line of lines) fake.write(line);
   fake.finish(0);
   return { events, result: session.result };
@@ -99,7 +121,7 @@ describe('pi empty turn is visible (#164)', () => {
   });
 
   it('says the turn produced nothing, and names the output cap as the cause', async () => {
-    const { events, result } = feedStream(fixtureLines('empty-turn-output-cap'));
+    const { events, result } = await feedStream(fixtureLines('empty-turn-output-cap'));
     await result;
     expect(notes(events)).toContain(OUTPUT_CAP_NOTE);
     // The transcript reads in order: the notice, then the turn boundary.
@@ -110,7 +132,7 @@ describe('pi empty turn is visible (#164)', () => {
   });
 
   it('claims no cause when pi reported no stop reason', async () => {
-    const { events, result } = feedStream([
+    const { events, result } = await feedStream([
       JSON.stringify({ id: 's', type: 'response', command: 'get_state', success: true, data: { sessionId: 's1' } }),
       JSON.stringify({
         type: 'message_update',
@@ -134,7 +156,7 @@ describe('pi empty turn is visible (#164)', () => {
   /** GUARD: a normal turn — the golden lifecycle fixture, which emits text AND
    *  tool calls — must be untouched by this change and gain no notice. */
   it('GUARD: a turn that emits text and tool calls gets no empty-turn notice', async () => {
-    const { events, result } = feedStream(fixtureLines('rpc-lifecycle'));
+    const { events, result } = await feedStream(fixtureLines('rpc-lifecycle'));
     await result;
     expect(notes(events)).not.toContain(OUTPUT_CAP_NOTE);
     expect(notes(events)).not.toContain(PLAIN_NOTE);
@@ -144,7 +166,7 @@ describe('pi empty turn is visible (#164)', () => {
   /** GUARD: work counts as output even when the model says nothing — a turn
    *  that only calls a tool is not a silent turn. */
   it('GUARD: a turn with a tool call but no text gets no empty-turn notice', async () => {
-    const { events, result } = feedStream([
+    const { events, result } = await feedStream([
       JSON.stringify({ id: 's', type: 'response', command: 'get_state', success: true, data: { sessionId: 's1' } }),
       JSON.stringify({ type: 'tool_execution_start', toolCallId: 'bash-1', toolName: 'bash', args: { command: 'ls' } }),
       JSON.stringify({
