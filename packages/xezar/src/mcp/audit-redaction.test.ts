@@ -184,6 +184,43 @@ describe('ui door', () => {
     expect(only(f.dataDir).payloadDigest).toBe(payloadDigest({ target: '[REDACTED]' }));
     expectAbsent(f.dataDir, DOOR_SECRET);
   });
+
+  it('B-REDACT-UI-FREE-TEXT-SYSTEM-PROMPT: a run-start systemPrompt override does not move the digest, unlike an ordinary field', async () => {
+    const f = uiFixture();
+    const app = new Hono().post('/runs', f.body, f.door.route('run.start'), (c) => c.json({}));
+    const base = { task: 'ship it', workflow: 'quick-task' };
+    await f.send(app, '/runs', { ...base, systemPrompt: 'Be terse.' });
+    await f.send(app, '/runs', { ...base, systemPrompt: 'Be verbose and thorough instead.' });
+    await f.send(app, '/runs', { ...base, workflow: 'other-workflow' });
+    const [promptA, promptB, control] = records(f.dataDir);
+    expect(promptA!.payloadDigest).toBe(promptB!.payloadDigest);
+    expect(promptA!.payloadDigest).not.toBe(control!.payloadDigest);
+    expectAbsent(f.dataDir, 'Be terse.', 'Be verbose and thorough instead.');
+  });
+
+  it('B-REDACT-UI-FREE-TEXT-IMAGES: run-start and message attachment bytes do not move the digest, unlike an ordinary field', async () => {
+    const f = uiFixture();
+    const startApp = new Hono().post('/runs', f.body, f.door.route('run.start'), (c) => c.json({}));
+    const base = { task: 'ship it', workflow: 'quick-task' };
+    const imageA = [{ mimeType: 'image/png', data: 'planted-attachment-bytes-aaaa' }];
+    const imageB = [{ mimeType: 'image/png', data: 'planted-attachment-bytes-bbbb' }];
+    await f.send(startApp, '/runs', { ...base, images: imageA });
+    await f.send(startApp, '/runs', { ...base, images: imageB });
+    await f.send(startApp, '/runs', { ...base, workflow: 'other-workflow' });
+    const [startA, startB, startControl] = records(f.dataDir);
+    expect(startA!.payloadDigest).toBe(startB!.payloadDigest);
+    expect(startA!.payloadDigest).not.toBe(startControl!.payloadDigest);
+
+    const messageApp = new Hono().post('/m', f.body, f.door.route('run.message'), (c) => c.json({}));
+    await f.send(messageApp, '/m', { delivery: 'queue', images: imageA });
+    await f.send(messageApp, '/m', { delivery: 'queue', images: imageB });
+    await f.send(messageApp, '/m', { delivery: 'live', images: imageA });
+    const [msgA, msgB, msgControl] = records(f.dataDir).slice(3);
+    expect(msgA!.payloadDigest).toBe(msgB!.payloadDigest);
+    expect(msgA!.payloadDigest).not.toBe(msgControl!.payloadDigest);
+
+    expectAbsent(f.dataDir, 'planted-attachment-bytes-aaaa', 'planted-attachment-bytes-bbbb');
+  });
 });
 
 // ---- mcp: the real bridge, service and tools ---------------------------------------------------
