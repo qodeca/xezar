@@ -202,8 +202,8 @@ describe('ui door', () => {
     const f = uiFixture();
     const startApp = new Hono().post('/runs', f.body, f.door.route('run.start'), (c) => c.json({}));
     const base = { task: 'ship it', workflow: 'quick-task' };
-    const imageA = [{ mimeType: 'image/png', data: 'planted-attachment-bytes-aaaa' }];
-    const imageB = [{ mimeType: 'image/png', data: 'planted-attachment-bytes-bbbb' }];
+    const imageA = [{ mediaType: 'image/png', data: 'planted-attachment-bytes-aaaa' }];
+    const imageB = [{ mediaType: 'image/png', data: 'planted-attachment-bytes-bbbb' }];
     await f.send(startApp, '/runs', { ...base, images: imageA });
     await f.send(startApp, '/runs', { ...base, images: imageB });
     await f.send(startApp, '/runs', { ...base, workflow: 'other-workflow' });
