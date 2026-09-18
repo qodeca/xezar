@@ -333,6 +333,16 @@ citations). Finish runs before the git tabs in this file, not after: Finish is w
 commits the worktree (`autosaveCommit(dir, 'run finalize')`), so the Commits tab has nothing to
 show before it runs, even though the guide documents the two as independent capabilities.
 
+`guide-browser.ts`'s `clickRoleWhenStable(role, name, opts?)` (added in review-response round 3 of
+#590) clicks a role/name target only once its own live bounding box has read the same value on two
+consecutive polls, retrying past a transient "covered by" click-interception error within the same
+bounded attempt budget. Use it — instead of a bare `clickRole` — for any click on a control that
+sits in a row where a SIBLING can mount or unmount just beforehand (a right-anchored flex row with
+no reserved width shifts every button after the one that (dis)appears, in one synchronous frame);
+guide-02's own run-header actions row is the first real example. It needs no coverer named in
+advance, unlike a plain geometric overlap check, because a bounded retry on the click itself
+already covers an unanticipated coverer too.
+
 `guide-04-providers-models-tools.e2e.ts`,
 `guide-10-settings.e2e.ts`, `guide-11-configuration.e2e.ts`, `guide-12-cli-reference.e2e.ts`,
 `guide-13-mcp-leader-control.e2e.ts`, `guide-14-local-hosted.e2e.ts`, `guide-15-project-kit.e2e.ts`
