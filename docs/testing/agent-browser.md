@@ -261,6 +261,27 @@ to know the other seeds the same file — but a THIRD spec doing the same must s
 registry it found, not the single-project default, or it silently undoes whichever of the two
 ran first.
 
+### The user-guide flow package
+
+`packages/web/e2e/guide-*.e2e.ts` — one file per `docs/guide/` part, plus the shared
+`guide-browser.ts` helper — walk the flows each guide describes as a first-time reader would
+follow them, asserting only role, accessible-label or visible-text facts (never a class, id,
+`data-*` attribute or other selector coupled to implementation markup). `guide-01-getting-started.e2e.ts`,
+`guide-03-worktrees-and-git.e2e.ts`, `guide-05-workflows.e2e.ts`, `guide-06-skills.e2e.ts`,
+`guide-07-github-automations.e2e.ts` and `guide-08-inbox-notifications.e2e.ts` each boot their own
+spec-owned fixture server rather than the shared instance, so a feature flag one guide needs
+(`XEZ_AUTOMATIONS=1`, `XEZ_FOLLOWUPS=1`) never changes what another guide's test observes. Guide 09
+has no `guide-09-*.e2e.ts` file: `project-switching.e2e.ts` already proves its one browser-only
+journey (switching between registered projects, a cross-project task opening at its own project
+from All tasks, and a registered-but-missing project's inert row), and the remaining guide-09
+flows (tags, Max parallel, the Add-project dialog) are settings-only mutations already covered at
+jsdom level (`projects-section.test.tsx`, `clone-project-dialog.test.tsx`, `global-tasks.test.tsx`)
+with no additional browser-only risk to prove. Each file's own header names the flows that cannot
+honestly cross a real boundary in dry-run and the lower-level or manual evidence that covers them
+instead. `guide-browser.ts` wraps `agent-browser find <locator> <value> [action]` — the CLI's own
+semantic-locator command — rather than the CSS-selector methods on `AgentBrowser`; it is the one
+new interaction helper this package adds, and existing specs are not retrofitted to it.
+
 ### Iterating on one spec
 
 The `npm run test:e2e` wrapper takes no file filter, so iterating on ONE spec means booting

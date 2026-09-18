@@ -198,6 +198,9 @@ import {
   registerProject,
   removeProject,
   shouldRegisterProject,
+  singleProjectNarrowing,
+  singleProjectRefusalText,
+  singleProjectRegistry,
   toProjectListEntry,
   type ProjectListEntry,
 } from '../workspace/projects.ts';
@@ -1165,7 +1168,7 @@ export function createApp(deps: ServerDeps) {
     try {
       const registry = (await loadWorkspaceConfig()).projects;
       const bootProject = await resolveBootProject(registry);
-      const visible = capabilities().singleProject
+      const visible = singleProjectRegistry()
         ? registry.filter((project) => project.id === bootProject)
         : registry;
       return {
@@ -1188,9 +1191,14 @@ export function createApp(deps: ServerDeps) {
   // every workspace-config PUT, which is the one reload hook this file already fires.
   const capabilities = () =>
     resolveCapabilities(process.env, bindHost, deps.semaphore?.storedFollowups());
+  // Either narrowing refuses (#600 SP-3.2, SP-3.3): today's `XEZ_SINGLE_PROJECT=1`, or a folder
+  // that owns its own xezar state. The CONDITION widens, the EFFECT does not — with the env flag
+  // set these routes answer the same 409 and the same sentence they always have, and the layout
+  // speaks only for itself (`singleProjectRefusalText`). `singleProjectRegistry` is the shared
+  // predicate all three doors read, so no door can silently no-op what another refuses (BR-6).
   const singleProjectRefusal = (
     action: 'adding projects' | 'editing projects' | 'removing projects' | 'folder browsing',
-  ) => ({ error: `single-project mode is enabled; ${action} is disabled` });
+  ) => ({ error: singleProjectRefusalText(singleProjectNarrowing() ?? 'env-flag', action) });
   // Inbox live updates (spec 007). Opt-in (#471): no capability, no watcher —
   // and since step 2.3 the per-dataDir watch is created lazily by the first
   // SSE subscription (and torn down with the last), nothing to start here.
@@ -1233,7 +1241,7 @@ export function createApp(deps: ServerDeps) {
   // count against the same workspace semaphore as the boot manager (step 2.5).
   const contexts = deps.contexts ?? new ProjectContexts({
     listProjects: async () => {
-      const selector = capabilities().singleProject
+      const selector = singleProjectRegistry()
         ? { projectId: await resolveBootProject() }
         : undefined;
       return listProjects(selector);
@@ -2432,7 +2440,7 @@ export function createApp(deps: ServerDeps) {
       let projectsDir = defaultWorkspaceConfig().projectsDir;
       try {
         projectsDir = (await loadWorkspaceConfig()).projectsDir;
-        const selector = capabilities().singleProject
+        const selector = singleProjectRegistry()
           ? { projectId: await resolveBootProject() }
           : undefined;
         projects = await listProjects(selector);
@@ -2455,7 +2463,7 @@ export function createApp(deps: ServerDeps) {
     })
 
     .delete('/projects/:projectId', ui.route('project.registry.remove', { resource: { kind: 'project', param: 'projectId' }, project: { param: 'projectId' } }), async (c) => {
-      if (capabilities().singleProject) {
+      if (singleProjectRegistry()) {
         return c.json(singleProjectRefusal('removing projects'), 409);
       }
       const raw = c.req.param('projectId');
@@ -2565,7 +2573,7 @@ export function createApp(deps: ServerDeps) {
     // `~/.xezar/agent-accounts.json` beside the accounts it names, so a xezar version that has
     // never heard of accounts cannot drop it (see workspace/agent-accounts.ts).
     .patch('/projects/:projectId', jsonZodValidator(updateProjectInputSchema), ui.route('project.registry.update', { resource: { kind: 'project', param: 'projectId' }, project: { param: 'projectId' }, fieldNames: true }), async (c) => {
-      if (capabilities().singleProject) {
+      if (singleProjectRegistry()) {
         return c.json(singleProjectRefusal('editing projects'), 409);
       }
       const raw = c.req.param('projectId');
@@ -2633,7 +2641,7 @@ export function createApp(deps: ServerDeps) {
     })
 
     .post('/projects/checkout', jsonZodValidator(() => checkoutSchema, { message: 'url must be a GitHub repository' }), ui.route('project.registry.clone', { project: 'registered' }), async (c) => {
-      if (capabilities().singleProject) {
+      if (singleProjectRegistry()) {
         return c.json(singleProjectRefusal('adding projects'), 409);
       }
       const parsed = { data: c.req.valid('json') };
@@ -2696,7 +2704,7 @@ export function createApp(deps: ServerDeps) {
     | { status: 200; body: RegisterProjectResponse }
     | { status: 400 | 409 | 500; body: RegisterProjectResponse | { error: string } }
   > => {
-    if (capabilities().singleProject) {
+    if (singleProjectRegistry()) {
       return { status: 409, body: singleProjectRefusal('adding projects') };
     }
     // `~` is expanded for the same reason `/api/fs/browse` expands it: the
@@ -3159,7 +3167,7 @@ export function createApp(deps: ServerDeps) {
       '/fs/browse',
       queryZodValidator(z.object({ path: queryValue, showHidden: queryValue })),
       async (c) => {
-        if (capabilities().singleProject) {
+        if (singleProjectRegistry()) {
           return c.json(singleProjectRefusal('folder browsing'), 409);
         }
         const query = c.req.valid('query');
@@ -6010,7 +6018,7 @@ export function createApp(deps: ServerDeps) {
     .get('/workspace/runs-index', async (c) => {
       let projects: ProjectListEntry[] = [];
       try {
-        const selector = capabilities().singleProject
+        const selector = singleProjectRegistry()
           ? { projectId: await resolveBootProject() }
           : undefined;
         projects = await listProjects(selector);

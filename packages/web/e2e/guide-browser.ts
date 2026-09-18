@@ -148,6 +148,37 @@ export class GuideBrowser {
     return match[1] ?? ''
   }
 
+  /**
+   * The current CHECKED state of a checkbox/radio addressed by role and accessible name — read
+   * off `snapshot`'s own `[checked=true|false]` annotation, the same source `valueOfRole` reads
+   * a combobox's value from. `find`'s `text` action has no notion of "checked": a checkbox has no
+   * text content to report, only the boolean the accessibility tree already carries.
+   */
+  isChecked(role: string, name: string): boolean {
+    const snapshot = String(this.run(['snapshot', '-i']).snapshot ?? '')
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const pattern = new RegExp(`^\\s*-\\s*${role}\\s+"${escaped}"[^\\n]*\\[checked=(true|false)`, 'm')
+    const match = pattern.exec(snapshot)
+    if (!match) {
+      throw new Error(`xezar e2e: no ${role} named "${name}" with a checked state in the current snapshot`)
+    }
+    return match[1] === 'true'
+  }
+
+  /** Whether a control is currently DISABLED — `snapshot`'s own bare `[disabled, ...]` flag,
+   *  read the same way `isChecked` reads `[checked=…]`. Used for a form's own submit-readiness
+   *  (e.g. "Start drafting" stays disabled until its one required field has text). */
+  isDisabled(role: string, name: string): boolean {
+    const snapshot = String(this.run(['snapshot', '-i']).snapshot ?? '')
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const pattern = new RegExp(`^\\s*-\\s*${role}\\s+"${escaped}"\\s*\\[([^\\]]*)\\]`, 'm')
+    const match = pattern.exec(snapshot)
+    if (!match) {
+      throw new Error(`xezar e2e: no ${role} named "${name}" found in the current snapshot`)
+    }
+    return /(^|,\s*)disabled(\s*,|$)/.test(match[1] ?? '')
+  }
+
   /** Poll for a role+name to exist, the semantic-locator equivalent of `waitForFunction` — no
    *  markup expression, just repeated `find … text` attempts a fixed number of times. */
   async waitForRole(role: string, name: string, opts: { attempts?: number; intervalMs?: number } = {}): Promise<void> {
