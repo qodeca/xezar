@@ -52,7 +52,7 @@ function fixture(turns: Array<{ text?: string; before?: (spec: AgentRunSpec) => 
 }
 
 async function settled(store: RunStore, id: string) {
-  await expect.poll(() => store.getRun(id)?.status, { timeout: 3000, interval: 10 })
+  await expect.poll(() => store.getRun(id)?.status, { interval: 10 })
     .toSatisfy(value => ['done', 'failed'].includes(String(value)));
 }
 
@@ -83,8 +83,9 @@ async function finalTurn(text: string) {
   const context = fixture([{ text }]);
   let previous: string | undefined;
   let completions = 0;
-  // Observe completion directly; startup can outlast expect.poll's one-second default
-  // during the full gate. The enclosing test timeout still bounds a missing transition.
+  // Observe completion directly; startup can outlast a poll budget during the full gate, and a
+  // direct observation says which transition never came rather than only that one did not.
+  // The enclosing test timeout still bounds a missing transition.
   let resolveFinalStatus!: () => void;
   const finalStatus = new Promise<void>(resolve => { resolveFinalStatus = resolve; });
   context.store.on('run', (record: RunRecord) => {

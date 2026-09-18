@@ -12,6 +12,24 @@
   launcher renaming, moving or writing anything in the repository root. `environment.stateLayout`
   joins the reuse fingerprint so an instance booted by an older launcher is never reused. Task
   worktrees are unaffected — a linked worktree is never a single-project root.
+- 🐛 **A red `npm test` now means a real defect more often: the suite stops timing out on its own
+  clock and stops reading the agent's model.** (Refs #644) Two causes, both in test setup and
+  neither in shipped code — nothing about xezar's behaviour changes. First, the server suite ran on
+  vitest's 5 000 ms default while its cases spawn agent CLIs, open sockets and create git
+  worktrees; in 1 012 sealed local gate attempts `npm test` failed on 16.6 % against 0.1–3.2 % for
+  every other gate, and 217 of the 225 timeouts fired at exactly that default on tests that pass in
+  isolation. It now has a 15 000 ms budget and one suite-wide `expect.poll` budget replacing
+  vitest's one-second default, which four call sites had already hand-patched. Second,
+  `ANTHROPIC_MODEL` outranks every Claude settings file, so four cases in the config-API suite
+  answered whichever model the agent running the gate was pinned to; it is scrubbed for every test
+  worker, with a guard test so the next suite to read an agent default inherits the fix. A third,
+  found by this change's own gate run: two cases in the pi leader-extension suite assumed no
+  `.local/xezar` existed anywhere above `/tmp`, so a peer checkout running its own suite on the
+  same machine turned one of them red and made the other assert nothing; both now use fixtures
+  deeper than the walk's own limit, which no other process can reach into. **What
+  this does not do:** it makes no test faster and fixes no slow product path — a test that is slow
+  because the code is slow is still slow, and a genuinely hung test still fails, three seconds
+  later than before. A run that was green stays green at the same cost.
 
 ## 📝 Specs & Documentation
 
