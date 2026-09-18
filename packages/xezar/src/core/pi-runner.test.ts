@@ -12,21 +12,41 @@ import type { UiEvent } from './ui-events.js';
 import { buildChildEnv } from './agent-env.js';
 import { detectEnvironment } from './backend-detect.js';
 import { createRunner } from './runner-factory.js';
-import { buildPiArgs, KILL_GRACE_MS, PiRunner } from './pi-runner.js';
+import { buildPiArgs, KILL_GRACE_MS, PiRunner, type PiMcpConfigProbe } from './pi-runner.js';
 
 /** Only the escalation (#D), text-coalescing (#151) and signal-termination (#156) tests below
  *  swap the child out; every other test in this file keeps spawning its real stub binary
  *  through the untouched `spawn`. Mirrors the identical hook in `claude-cli-runner.test.ts`. */
-const spawnHook = vi.hoisted(() => ({ override: null as null | (() => unknown) }));
+const spawnHook = vi.hoisted(() => ({
+  override: null as null | (() => unknown),
+  onSpawn: null as null | (() => void),
+}));
 
 vi.mock('node:child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:child_process')>();
   return {
     ...actual,
-    spawn: (...args: Parameters<typeof actual.spawn>) =>
-      spawnHook.override ? spawnHook.override() : actual.spawn(...args),
+    spawn: (...args: Parameters<typeof actual.spawn>) => {
+      if (!spawnHook.override) return actual.spawn(...args);
+      const child = spawnHook.override();
+      spawnHook.onSpawn?.();
+      return child;
+    },
   };
 });
+
+/** The runner asks the binary a capability question before it spawns (#548), so the child exists
+ *  one microtask turn after `startSession` returns; these tests wait for the spawn itself rather
+ *  than for a guessed number of turns. The probe is injected so it never reaches a real `pi`. */
+const NO_MCP_CONFIG: PiMcpConfigProbe = async () => 'no';
+function whenSpawned(): Promise<void> {
+  return new Promise<void>((resolve) => {
+    spawnHook.onSpawn = () => {
+      spawnHook.onSpawn = null;
+      resolve();
+    };
+  });
+}
 
 /**
  * The `pi` runner (#387): a new AgentBackend slotted into the runner seam as
@@ -109,12 +129,12 @@ describe('a dry-run pi session emits normalized AgentEvents', () => {
  */
 describe('pi signal terminations', () => {
   /** A child that exits on command — nothing here signals a real process. */
-  function startWithFakeChild(): {
+  async function startWithFakeChild(): Promise<{
     signals: NodeJS.Signals[];
     exit: (code: number) => void;
     events: AgentEvent[];
     session: ReturnType<PiRunner['startSession']>;
-  } {
+  }> {
     const signals: NodeJS.Signals[] = [];
     const emitter = new EventEmitter();
     const stdout = new PassThrough();
@@ -139,12 +159,14 @@ describe('pi signal terminations', () => {
       emitter.emit('close', code, null);
     };
     spawnHook.override = () => child;
+    const spawned = whenSpawned();
     try {
       const events: AgentEvent[] = [];
-      const session = new PiRunner({ bin: 'pi', timeoutMs: 0 }).startSession(
+      const session = new PiRunner({ bin: 'pi', timeoutMs: 0, supportsMcpConfig: NO_MCP_CONFIG }).startSession(
         { userPrompt: 'do it', cwd: process.cwd() },
         (event) => events.push(event),
       );
+      await spawned;
       return { signals, exit, events, session };
     } finally {
       spawnHook.override = null;
@@ -152,7 +174,7 @@ describe('pi signal terminations', () => {
   }
 
   it('names the signal and says xezar did not send it', async () => {
-    const { signals, exit, events, session } = startWithFakeChild();
+    const { signals, exit, events, session } = await startWithFakeChild();
 
     exit(143); // injected, never signalled — the #156 shape
 
@@ -167,7 +189,7 @@ describe('pi signal terminations', () => {
   /** GUARD — a teardown xezar asked for stays an intentional stop (#703) and
    *  must never pick up the "xezar sent no signal" wording. */
   it('reports a xezar-initiated teardown as a teardown, not a failure', async () => {
-    const { signals, exit, events, session } = startWithFakeChild();
+    const { signals, exit, events, session } = await startWithFakeChild();
 
     session.interrupt();
     expect(signals).toEqual(['SIGTERM']);
@@ -356,25 +378,27 @@ describe('pi v1 text coalescing (claude parity, #151)', () => {
     };
   }
 
-  function feedStream(lines: string[], uiEvents?: UiEvent[]): {
+  async function feedStream(lines: string[], uiEvents?: UiEvent[]): Promise<{
     events: AgentEvent[];
     result: Promise<AgentRunResult>;
-  } {
+  }> {
     const fake = fakePiChild();
     spawnHook.override = () => fake.child;
+    const spawned = whenSpawned();
     const events: AgentEvent[] = [];
-    const session = new PiRunner({ bin: 'pi', timeoutMs: 20_000 }).startSession(
+    const session = new PiRunner({ bin: 'pi', timeoutMs: 20_000, supportsMcpConfig: NO_MCP_CONFIG }).startSession(
       { userPrompt: 'do the thing', cwd: process.cwd() },
       (event) => events.push(event),
       uiEvents ? { onUiEvent: (e) => uiEvents.push(e) } : undefined,
     );
+    await spawned;
     for (const line of lines) fake.write(line);
     fake.finish(0);
     return { events, result: session.result };
   }
 
   it('emits ONE v1 text event per completed message, never per delta', async () => {
-    const { events, result } = feedStream(fixture.trim().split('\n').filter(Boolean));
+    const { events, result } = await feedStream(fixture.trim().split('\n').filter(Boolean));
     await result;
     const texts = events.filter((e) => e.type === 'text');
     expect(texts).toEqual([
@@ -387,7 +411,7 @@ describe('pi v1 text coalescing (claude parity, #151)', () => {
     // The done marker is built at runtime so this source never contains the
     // parseable literal (the parser would otherwise read it as a real emission).
     const DONE = 'X-E-Z'.replaceAll('-', '') + ':DONE';
-    const { events, result } = feedStream([
+    const { events, result } = await feedStream([
       JSON.stringify({ id: 's', type: 'response', command: 'get_state', success: true, data: { sessionId: 's1' } }),
       JSON.stringify({ type: 'message_update', message: {}, assistantMessageEvent: { type: 'text_start', contentIndex: 0, partial: {} } }),
       JSON.stringify({ type: 'message_update', message: {}, assistantMessageEvent: { type: 'text_delta', contentIndex: 0, delta: ' tree is clean.\n\n' + DONE.slice(0, 3) } }),
@@ -411,7 +435,7 @@ describe('pi v1 text coalescing (claude parity, #151)', () => {
    *  separate them the way claude, codex and opencode all do. Concatenating
    *  would run two messages together ("…first message.Second message."). */
   it('joins whole messages with a newline in the result text, like the other runners', async () => {
-    const { result } = feedStream(fixture.trim().split('\n').filter(Boolean));
+    const { result } = await feedStream(fixture.trim().split('\n').filter(Boolean));
     const run = await result;
     expect(run.text).toBe('Checking the working tree.\nAll gates passed.');
   });
@@ -423,7 +447,7 @@ describe('pi v1 text coalescing (claude parity, #151)', () => {
    *  ended before agent_settled". Without a flush after the loop the buffered
    *  prose is dropped, which is prose a pre-coalescing pi run used to keep. */
   it('keeps buffered prose when the stream ends before message_end and agent_settled', async () => {
-    const { events, result } = feedStream([
+    const { events, result } = await feedStream([
       JSON.stringify({ id: 's', type: 'response', command: 'get_state', success: true, data: { sessionId: 's1' } }),
       JSON.stringify({ type: 'message_update', message: {}, assistantMessageEvent: { type: 'text_start', contentIndex: 0, partial: {} } }),
       JSON.stringify({ type: 'message_update', message: {}, assistantMessageEvent: { type: 'text_delta', contentIndex: 0, delta: 'Partial prose ' } }),
@@ -440,7 +464,7 @@ describe('pi v1 text coalescing (claude parity, #151)', () => {
    *  completed. `complete()` deletes the pending bucket, so a later `flush()`
    *  finds nothing — this pins that and passes both with and without the fix. */
   it('GUARD: a normally completed turn emits its text exactly once, never twice', async () => {
-    const { events, result } = feedStream([
+    const { events, result } = await feedStream([
       JSON.stringify({ id: 's', type: 'response', command: 'get_state', success: true, data: { sessionId: 's1' } }),
       JSON.stringify({ type: 'message_update', message: {}, assistantMessageEvent: { type: 'text_start', contentIndex: 0, partial: {} } }),
       JSON.stringify({ type: 'message_update', message: {}, assistantMessageEvent: { type: 'text_delta', contentIndex: 0, delta: 'Settled ' } }),
@@ -460,7 +484,7 @@ describe('pi v1 text coalescing (claude parity, #151)', () => {
 
   it('GUARD: the v2 item.delta stream still emits per delta, not coalesced', async () => {
     const uiEvents: UiEvent[] = [];
-    const { result } = feedStream(
+    const { result } = await feedStream(
       [
         JSON.stringify({ id: 's', type: 'response', command: 'get_state', success: true, data: { sessionId: 's1' } }),
         JSON.stringify({ type: 'message_update', message: {}, assistantMessageEvent: { type: 'text_start', contentIndex: 0, partial: {} } }),
@@ -558,13 +582,15 @@ describe('pi extension dialogs reach the cockpit and are answered on the wire (#
   it('raises the dialog as an ask card and routes the answer back as extension_ui_response', async () => {
     const fake = scriptedPi();
     spawnHook.override = () => fake.child;
+    const spawned = whenSpawned();
     const events: AgentEvent[] = [];
     const uiEvents: UiEvent[] = [];
-    const session = new PiRunner({ bin: 'pi', timeoutMs: 20_000 }).startSession(
+    const session = new PiRunner({ bin: 'pi', timeoutMs: 20_000, supportsMcpConfig: NO_MCP_CONFIG }).startSession(
       { userPrompt: 'CALL health', cwd: process.cwd() },
       (event) => events.push(event),
       { onUiEvent: (event) => uiEvents.push(event) },
     );
+    await spawned;
     fake.write(APPROVAL_DIALOG);
     await tick();
 
@@ -594,8 +620,9 @@ describe('pi extension dialogs reach the cockpit and are answered on the wire (#
   it('sends pi the exact choice behind the card label — a comma inside it and a label shortened to fit both survive (#411 review)', async () => {
     const fake = scriptedPi();
     spawnHook.override = () => fake.child;
+    const spawned = whenSpawned();
     const uiEvents: UiEvent[] = [];
-    const session = new PiRunner({ bin: 'pi', timeoutMs: 20_000 }).startSession(
+    const session = new PiRunner({ bin: 'pi', timeoutMs: 20_000, supportsMcpConfig: NO_MCP_CONFIG }).startSession(
       { userPrompt: 'CALL health', cwd: process.cwd() },
       undefined,
       { onUiEvent: (event) => uiEvents.push(event) },
@@ -636,12 +663,14 @@ describe('pi extension dialogs reach the cockpit and are answered on the wire (#
   it('sends pi the case-distinct choice the card named, not its case-twin (#411 review round 2)', async () => {
     const fake = scriptedPi();
     spawnHook.override = () => fake.child;
+    const spawned = whenSpawned();
     const uiEvents: UiEvent[] = [];
-    const session = new PiRunner({ bin: 'pi', timeoutMs: 20_000 }).startSession(
+    const session = new PiRunner({ bin: 'pi', timeoutMs: 20_000, supportsMcpConfig: NO_MCP_CONFIG }).startSession(
       { userPrompt: 'CALL health', cwd: process.cwd() },
       undefined,
       { onUiEvent: (event) => uiEvents.push(event) },
     );
+    await spawned;
     fake.write(
       JSON.stringify({ type: 'extension_ui_request', id: 'dlg-4', method: 'select', title: 'MCP: xezar wants to run health', options: ['Allow', 'allow', 'Deny'] }),
     );
@@ -663,13 +692,15 @@ describe('pi extension dialogs reach the cockpit and are answered on the wire (#
   it('refuses at once in an autonomous session, and records the refusal', async () => {
     const fake = scriptedPi();
     spawnHook.override = () => fake.child;
+    const spawned = whenSpawned();
     const events: AgentEvent[] = [];
     const uiEvents: UiEvent[] = [];
-    const session = new PiRunner({ bin: 'pi', timeoutMs: 20_000 }).startSession(
+    const session = new PiRunner({ bin: 'pi', timeoutMs: 20_000, supportsMcpConfig: NO_MCP_CONFIG }).startSession(
       { userPrompt: 'CALL health', cwd: process.cwd() },
       (event) => events.push(event),
       { onUiEvent: (event) => uiEvents.push(event), autonomous: true },
     );
+    await spawned;
     fake.write(APPROVAL_DIALOG);
     await tick();
 
@@ -688,11 +719,13 @@ describe('pi extension dialogs reach the cockpit and are answered on the wire (#
   it('dismisses a dialog the card cannot show instead of leaving pi blocked on it', async () => {
     const fake = scriptedPi();
     spawnHook.override = () => fake.child;
+    const spawned = whenSpawned();
     const events: AgentEvent[] = [];
-    const session = new PiRunner({ bin: 'pi', timeoutMs: 20_000 }).startSession(
+    const session = new PiRunner({ bin: 'pi', timeoutMs: 20_000, supportsMcpConfig: NO_MCP_CONFIG }).startSession(
       { userPrompt: 'do it', cwd: process.cwd() },
       (event) => events.push(event),
     );
+    await spawned;
     fake.write(JSON.stringify({ type: 'extension_ui_request', id: 'in-1', method: 'input', title: 'Enter a value' }));
     await tick();
     expect(fake.written().filter((frame) => frame.type === 'extension_ui_response')).toEqual([
@@ -706,7 +739,9 @@ describe('pi extension dialogs reach the cockpit and are answered on the wire (#
   it('dismisses a pending dialog at session close, so pi ends its turn on its own protocol', async () => {
     const fake = scriptedPi();
     spawnHook.override = () => fake.child;
-    const session = new PiRunner({ bin: 'pi', timeoutMs: 20_000 }).startSession({ userPrompt: 'do it', cwd: process.cwd() });
+    const spawned = whenSpawned();
+    const session = new PiRunner({ bin: 'pi', timeoutMs: 20_000, supportsMcpConfig: NO_MCP_CONFIG }).startSession({ userPrompt: 'do it', cwd: process.cwd() });
+    await spawned;
     fake.write(APPROVAL_DIALOG);
     await tick();
     session.end();
@@ -720,12 +755,14 @@ describe('pi extension dialogs reach the cockpit and are answered on the wire (#
   it('GUARD: a fire-and-forget notify gets no response — pi expects none (passes with and without the fix)', async () => {
     const fake = scriptedPi();
     spawnHook.override = () => fake.child;
+    const spawned = whenSpawned();
     const uiEvents: UiEvent[] = [];
-    const session = new PiRunner({ bin: 'pi', timeoutMs: 20_000 }).startSession(
+    const session = new PiRunner({ bin: 'pi', timeoutMs: 20_000, supportsMcpConfig: NO_MCP_CONFIG }).startSession(
       { userPrompt: 'do it', cwd: process.cwd() },
       undefined,
       { onUiEvent: (event) => uiEvents.push(event) },
     );
+    await spawned;
     fake.write(JSON.stringify({ type: 'extension_ui_request', id: 'n-1', method: 'notify', message: 'MCP: xezar connected', notifyType: 'info' }));
     fake.write(JSON.stringify({ type: 'extension_ui_request', id: 's-1', method: 'setStatus', statusKey: 'mcp', statusText: 'ok' }));
     await tick();
@@ -767,25 +804,29 @@ describe('pi wall-clock timeout escalates SIGTERM -> SIGKILL (D)', () => {
     return { child, signals, exit };
   }
 
-  function withFakeChild(run: (fake: ReturnType<typeof signallableChild>) => void): void {
+  async function withFakeChild(
+    run: (fake: ReturnType<typeof signallableChild> & { spawned: Promise<void> }) => Promise<void>,
+  ): Promise<void> {
     const fake = signallableChild();
     spawnHook.override = () => fake.child;
+    const spawned = whenSpawned();
     vi.useFakeTimers();
     try {
-      run(fake);
+      await run({ ...fake, spawned });
     } finally {
       vi.useRealTimers();
       spawnHook.override = null;
     }
   }
 
-  it('force-kills a pi that survives the SIGTERM its timeout sent', () => {
-    withFakeChild((fake) => {
-      const session = new PiRunner({ bin: 'pi', timeoutMs: 20 }).startSession({
+  it('force-kills a pi that survives the SIGTERM its timeout sent', async () => {
+    await withFakeChild(async (fake) => {
+      const session = new PiRunner({ bin: 'pi', timeoutMs: 20, supportsMcpConfig: NO_MCP_CONFIG }).startSession({
         userPrompt: 'do it',
         cwd: process.cwd(),
       });
       void session.result.catch(() => undefined);
+      await fake.spawned;
 
       vi.advanceTimersByTime(20);
       expect(fake.signals).toEqual(['SIGTERM']);
@@ -798,13 +839,14 @@ describe('pi wall-clock timeout escalates SIGTERM -> SIGKILL (D)', () => {
     });
   });
 
-  it('stops escalating once pi really exits after the SIGTERM', () => {
-    withFakeChild((fake) => {
-      const session = new PiRunner({ bin: 'pi', timeoutMs: 20 }).startSession({
+  it('stops escalating once pi really exits after the SIGTERM', async () => {
+    await withFakeChild(async (fake) => {
+      const session = new PiRunner({ bin: 'pi', timeoutMs: 20, supportsMcpConfig: NO_MCP_CONFIG }).startSession({
         userPrompt: 'do it',
         cwd: process.cwd(),
       });
       void session.result.catch(() => undefined);
+      await fake.spawned;
 
       vi.advanceTimersByTime(20);
       expect(fake.signals).toEqual(['SIGTERM']);
@@ -815,15 +857,16 @@ describe('pi wall-clock timeout escalates SIGTERM -> SIGKILL (D)', () => {
     });
   });
 
-  it('still signals when the session had already auto-ended (the `open` guard)', () => {
+  it('still signals when the session had already auto-ended (the `open` guard)', async () => {
     // `autoEndAfterFirstTurn` sets `open = false`; the old `interrupt()` returned early on
     // that, so the deadline fired into a no-op and nothing was ever killed.
-    withFakeChild((fake) => {
-      const session = new PiRunner({ bin: 'pi', timeoutMs: 20 }).startSession({
+    await withFakeChild(async (fake) => {
+      const session = new PiRunner({ bin: 'pi', timeoutMs: 20, supportsMcpConfig: NO_MCP_CONFIG }).startSession({
         userPrompt: 'do it',
         cwd: process.cwd(),
       });
       void session.result.catch(() => undefined);
+      await fake.spawned;
       session.end();
       fake.signals.length = 0;
 
@@ -834,13 +877,14 @@ describe('pi wall-clock timeout escalates SIGTERM -> SIGKILL (D)', () => {
     });
   });
 
-  it('arms no wall clock at all when the step disabled it (timeoutMs: 0)', () => {
-    withFakeChild((fake) => {
-      const session = new PiRunner({ bin: 'pi', timeoutMs: 0 }).startSession({
+  it('arms no wall clock at all when the step disabled it (timeoutMs: 0)', async () => {
+    await withFakeChild(async (fake) => {
+      const session = new PiRunner({ bin: 'pi', timeoutMs: 0, supportsMcpConfig: NO_MCP_CONFIG }).startSession({
         userPrompt: 'do it',
         cwd: process.cwd(),
       });
       void session.result.catch(() => undefined);
+      await fake.spawned;
 
       vi.advanceTimersByTime(60 * 60_000);
       expect(fake.signals).toEqual([]);

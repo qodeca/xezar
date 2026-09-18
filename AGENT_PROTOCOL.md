@@ -85,12 +85,24 @@ A live session over one spawned process, alive between turns:
 interface AgentSession {
   result: Promise<AgentRunResult>;   // resolves when the process exits
   readonly pid?: number;             // root of the run's process tree (resource telemetry, pre-rename issue 348)
+  onProcessStart?(listener: (pid: number) => void): void;  // for a child that starts after startSession returns
   sendMessage(content: ContentBlock[]): boolean;  // false when closed
   end(): void;                       // graceful: end input, SIGTERM→SIGKILL watchdog
   interrupt(): void;                 // hard stop (cancel)
   readonly open: boolean;
 }
 ```
+
+`startSession` RETURNS SYNCHRONOUSLY, and that stays true even for a runner that cannot spawn its
+child synchronously. pi has to ask its binary a capability question first — `--mcp-config` belongs
+to an optional extension, and the answer depends on the task's own folder and account (#548) — so
+it returns a facade over the child that is about to exist: messages, `end()` and `interrupt()`
+arriving in that window are replayed onto the real session, and `result` settles with its result.
+The one thing a facade cannot answer synchronously is `pid`, so such a runner implements the
+optional `onProcessStart`, which fires with the pid when the child exists and again if the runner
+restarts the child itself. A runner whose child exists before `startSession` returns omits it —
+`pid` is then the whole story. `RunManager.publishSession` reads `pid` first and falls back to
+`onProcessStart`, so resource telemetry never tracks a pid that is already gone.
 
 A termination the runner itself caused is **not** an agent failure (pre-rename issue 703).
 `end()` arms a SIGTERM→SIGKILL watchdog for CLIs that ignore EOF, and

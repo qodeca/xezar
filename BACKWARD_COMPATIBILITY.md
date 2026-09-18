@@ -777,11 +777,23 @@ so it is recorded here rather than silently.
   anything a settings file would have enabled — the same narrowing Codex runs have had since
   0.13.0. It is the only lever the CLI offers: without `--strict-mcp-config`, claude merges the
   project file and the user file on top of the overlay and the bridge comes back.
-- **Broken, pi**: a task run is started with `--mcp-config` pointing at a private per-run file.
-  That file carries the pi agent directory's own `mcp.json` forward unchanged — the person's global
-  pi servers still load — and adds `"disabled": true` for xezar's bridge. The flag substitutes for
-  exactly one slot of the adapter's six-file chain, and the chain merges a server entry field by
-  field, so the flag survives the project files layered above it.
+- **Broken, pi — only where the MCP extension is installed**: a task run is started with
+  `--mcp-config` pointing at a private per-run file. That file carries the pi agent directory's own
+  `mcp.json` forward unchanged — the person's global pi servers still load — and adds
+  `"disabled": true` for xezar's bridge. The flag substitutes for exactly one slot of the adapter's
+  six-file chain, and the chain merges a server entry field by field, so the flag survives the
+  project files layered above it. `--mcp-config` is registered by the optional `pi-mcp-adapter`
+  extension, not by pi itself, and an extension resolves from the agent directory AND from the
+  project folder the child runs in — pi also loads a project's own `.pi/extensions/*` and the
+  packages its `.pi/settings.json` names, once that project is trusted. One binary and one agent
+  home therefore answer differently per folder, so xezar asks this pi with the agent directory AND
+  the working folder the child will really use, once per session and without caching the answer
+  (#548). Where the extension is absent the flag is left out, nothing is written, and the run says
+  so once: that pi reads no MCP configuration at all, so there is no bridge to switch off. A probe
+  that cannot answer leaves the flag out too, and says only that it could not confirm — never that
+  the extension is absent (§ Zero config: a missing peer degrades, never fails). Should a pi refuse
+  the option anyway — the extension removed between the question and the spawn — the session is
+  started once more without it rather than failing.
 - **Broken, OpenCode**: a task run is started with `OPENCODE_CONFIG_CONTENT` carrying
   `{"mcp": {"xezar": {"enabled": false}}}`. That is the one layer OpenCode merges ABOVE the
   project's own `opencode.json`; `OPENCODE_CONFIG` is merged below it and the project entry would
@@ -812,7 +824,9 @@ so it is recorded here rather than silently.
   and do not name an unrelated server `xezar`. Released as part of a **minor** version.
 - **No opt-out knob**: no stored key and no `XEZ_*` variable was added (§ Zero config: never trade
   a working default for a knob). `core/worktree-off-mcp-isolation.test.ts` pins the default path;
-  it fails against runners that pass no isolation (named break `worktree-off-inherits-xezar`).
+  it fails against runners that pass no isolation (named break `worktree-off-inherits-xezar`), and
+  against a pi runner that passes `--mcp-config` without asking whether this pi knows it (named
+  break `pi-mcp-config-unconditional`).
 
 ## Pi isolated runs stay in their task worktree (#537) — deliberate, 0.16.0
 

@@ -2309,7 +2309,11 @@ export class RunManager {
     this.flushDeferred(runId);
     state.currentStepId = stepId;
     state.interrupt = () => session.interrupt();
+    // Still ONE registration site. A runner whose child exists already answers through `pid`;
+    // one that has to ask its binary something first (pi, #548) answers through
+    // `onProcessStart`, which also fires again when that runner restarts its own child.
     if (session.pid !== undefined) registerRunProcess(runId, session.pid);
+    else session.onProcessStart?.((pid) => registerRunProcess(runId, pid));
     // The adopt. Ordering is load-bearing exactly as it is in `adoptActive`: `state.interrupt`
     // already points at this session, so a `cancel()` arriving one tick later takes the ordinary
     // path and this call is not a second, racing teardown.
