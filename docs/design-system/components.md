@@ -3,7 +3,7 @@
 Every primitive in `packages/web/src/components/ui/` and every shared module in
 `packages/web/src/components/` (including `composer/` and `diff/`). One entry per file, in a fixed order:
 purpose · source · variants and props that matter · states · rules · accessibility · where used.
-"Where used" counts importing files outside tests. Button, Collapsible, Input, Label and StatusDot counts read on 2026-09-16; other importer counts retain the 2026-09-13 inventory. Class strings are quoted from the source.
+"Where used" counts importing files outside tests. Button, Collapsible, Input, Label and StatusDot counts read on 2026-09-18; other importer counts retain the 2026-09-13 inventory. Class strings are quoted from the source.
 
 Definitions the drift test uses:
 
@@ -27,9 +27,9 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Sizes** (`size`, default `default`): `default` = `h-9 px-3.5 text-[13.5px]`; `sm` = `h-7.5 rounded-sm px-2.5 text-[12.5px]`; `icon` = `size-9`; `icon-sm` = `size-7.5 rounded-sm`. Every size also carries `min-h-tap min-w-tap md:min-h-0 md:min-w-0` — the absolute 44 px phone floor, released at `md:` (foundations.md §4).
 - **Base**: `inline-flex … gap-1.75 rounded-md font-semibold … focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50`; unsized svg children become `size-4`. `asChild` renders a Radix `Slot`.
 - **States**: hover (brightness or background), focus-visible ring, disabled (50% opacity, no pointer events), pending (caller swaps the label to `Verb-ing…` and disables).
-- **Rules**: DO use `contrast` for the sidebar CTA and dialog confirms, `primary` for the one send/start action on a surface, `outline` for cancel, `ghost` for icon buttons, `danger` for a solid destructive confirm, `danger-ghost` for destructive row actions. DO NOT hand-write `bg-danger text-danger-foreground` on a destructive confirm — use `variant="danger"`; the four remaining hand-written copies adopt it in their own batches (known gap G-10). DO NOT add a `secondary` variant.
+- **Rules**: DO use `contrast` for the sidebar CTA and dialog confirms, `primary` for the one send/start action on a surface, `outline` for cancel, `ghost` for icon buttons, `danger` for a solid destructive confirm, `danger-ghost` for destructive row actions. DO NOT hand-write `bg-danger text-danger-foreground` on a destructive confirm – use `variant="danger"`; every confirm does since #453 (G-10 retired; on 2026-09-18 the pair appears only inside `components/ui`, in the `danger` variant and the toaster's error tone). DO NOT add a `secondary` variant.
 - **Accessibility**: an icon-only button MUST carry `aria-label`. Every size meets the 44 px phone target at every density through `min-h-tap` / `min-w-tap`; a caller no longer adds `size-11` for that.
-- **Where used**: 46 files (most-imported primitive).
+- **Where used**: 47 files (most-imported primitive).
 
 ### Badge
 
@@ -46,7 +46,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Purpose**: unstyled open/close wrapper (Radix).
 - **Source**: `packages/web/src/components/ui/collapsible.tsx`. Exports `Collapsible`, `CollapsibleTrigger`, `CollapsibleContent`. Adds only `data-slot`.
 - **Rules**: the trigger MUST be a real button (Radix supplies `aria-expanded`). Rotate the chevron with `rotate-90` (`-rotate-90` when collapsed) and `transition-transform`.
-- **Where used**: 5 files (`run-diff.tsx`, `compare-variants.tsx`, `settings/mcp-connection-section.tsx`, `task-thread/step-rail.tsx`, `task-thread/thread-items.tsx`).
+- **Where used**: 4 files (`compare-variants.tsx`, `settings/mcp-connection-section.tsx`, `task-thread/step-rail.tsx`, `task-thread/thread-items.tsx`).
 
 ### Command
 
@@ -119,10 +119,10 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 ### Input
 
 - **Purpose**: single-line text field.
-- **Source**: `packages/web/src/components/ui/input.tsx`. Exports `Input` and `nativeFieldClass` — the class a pane that keeps a raw `<select>`/`<input>` on purpose wears (settings fields, the branch picker; G-11). It lives on the field primitive so there is one string to fix and no second, half-adopted primitive. A field inside a chip row may narrow its desktop text with a later `md:text-xs` (the projects tag input), which `cn` merges over the `md:text-sm` default; its phone size stays `text-base`.
+- **Source**: `packages/web/src/components/ui/input.tsx`. Exports `Input` and `nativeFieldClass` — the class a pane that keeps a raw `<select>`/`<input>` on purpose wears (settings fields, the branch picker; G-11, kept with a reason, folded into G-20's 2026-09-17 disposition since `Select` still has zero importers). It lives on the field primitive so there is one string to fix and no second, half-adopted primitive. A field inside a chip row may narrow its desktop text with a later `md:text-xs` (the projects tag input), which `cn` merges over the `md:text-sm` default; its phone size stays `text-base`.
 - **Look**: `h-9 min-h-tap w-full rounded-md border border-input bg-card px-3 py-1 text-base shadow-xs … placeholder:text-soft-foreground md:min-h-0 md:text-sm`; focus `focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50`; invalid `aria-invalid:border-destructive aria-invalid:ring-destructive/20`; disabled `pointer-events-none cursor-not-allowed opacity-50`.
-- **Rules**: DO keep `text-base` on phone (iOS zooms below 16px). DO pair with `Label htmlFor` or `aria-label`. Two routes hand-roll the search input markup instead of using Input (G-12); new search fields use `Input`.
-- **Where used**: 10 files.
+- **Rules**: DO keep `text-base` on phone (iOS zooms below 16px). DO pair with `Label htmlFor` or `aria-label`. New search fields use `Input` with a leading icon; G-12 is fixed (every search route does), and the remaining hand-spelled wrapper duplication across four routes is tracked as G-42, filed as #598.
+- **Where used**: 18 files.
 
 ### Textarea
 
@@ -221,7 +221,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Source**: `packages/web/src/components/centered-state.tsx`. Exports `CenteredState`, `TwinkleBackdrop`, type `CenteredStateTone`.
 - **Props**: `icon` (required), `title` (required), `subtitle`, `children`, `actions`, `tone` `neutral | primary | danger` (default `neutral`), `backdrop` (default `false`), `heading` `h1 | h2` (default `h1`), `className`.
 - **Look**: root `flex min-h-full flex-1 flex-col items-center justify-center px-6 py-12 text-center`; tile `size-[72px] rounded-[18px] border` with tone `neutral` = `border-border bg-card text-foreground shadow-xs`, `primary` = `border-primary/25 bg-primary/15 text-primary`, `danger` = `border-danger/20 bg-danger/15 text-danger`; title `text-2xl font-semibold text-balance`; subtitle `text-sm text-pretty text-muted-foreground`; actions `flex gap-3 pt-2`.
-- **Rules**: DO use `heading="h2"` under an existing page heading. DO use `tone="danger"` with the server message as the subtitle for load errors. DO reserve `backdrop` for the hero empty state (first task, `/new`). DO NOT hand-roll a centered message (the route error boundary and `skills-loading.tsx` do; G-05).
+- **Rules**: DO use `heading="h2"` under an existing page heading. DO use `tone="danger"` with the server message as the subtitle for load errors. DO reserve `backdrop` for the hero empty state (first task, `/new`). DO NOT hand-roll a centered message: G-05 is fixed (2026-09-17) — `route-error-boundary.tsx` now renders `CenteredState` — and `skills-loading.tsx` is the one accepted exception, spelled by hand so the Suspense fallback does not pull in a lazy chunk before it loads.
 - **Accessibility**: the backdrop is `aria-hidden` and `pointer-events-none`; twinkles are `motion-safe:animate-pulse`.
 - **Where used**: 39 files.
 
@@ -231,7 +231,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Source**: `packages/web/src/components/status-dot.tsx`. Exports `StatusDot`, `statusDotVariants`, type `StatusDotTone`.
 - **Variants**: `tone` `success | pending | danger | violet | neutral` (default `neutral`) → `bg-success | bg-pending | bg-danger | bg-violet | bg-soft-foreground`; `pulse` adds `animate-pulse`. Base `inline-block size-[7px] shrink-0 rounded-full`.
 - **Rules**: DO derive tone and pulse from `deriveAttention(run)`. DO give it `role="img"` and `aria-label={attention.label}` when it stands alone. The pulse carries `motion-reduce:animate-none`; the colour is what names the state. DO NOT hand-roll a dot (three ad-hoc dots exist, G-08).
-- **Where used**: 13 files.
+- **Where used**: 16 files.
 
 ### Pill
 
@@ -248,7 +248,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Look** (`chipClass`): `inline-flex h-7 min-h-[24px] items-center gap-1.5 rounded-full border border-border bg-card px-2.5 text-xs font-medium text-muted-foreground transition-colors outline-none hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-55 max-md:min-h-tap max-md:min-w-tap`. `h-7` rides the density lever (28 / 24.5 px at Comfortable / Compact); `min-h-[24px]` is an absolute floor, so at Compact for real it stays 24 px instead of 21 (WCAG 2.2 SC 2.5.8). Below `md` the chip is a 44 px phone target at every density; `max-md:` keeps the unprefixed 24 px floor for the desktop.
 - **Props**: `slot`, `ariaLabel`, `label`, `value`, `options[{value,label,desc?}]`, `onPick`, `disabled`, `readOnly`, `hint`, `disabledHint`, `status`.
 - **States**: enabled, read-only (`cursor-default`, no hover), disabled (bare button in a `title` span so the reason still shows), open menu (`DropdownMenuRadioGroup`), catalog status row.
-- **Rules**: DO import `chipClass` rather than copy it (`PromptTemplateMenu` does; the settings copy is G-03). The runner pill shows the raw backend id on purpose; product names come from `runner-label.ts` everywhere else.
+- **Rules**: DO import `chipClass` rather than copy it (`PromptTemplateMenu`, `new-task.tsx` and `github/hand-to-agent.tsx` do; G-03 retired in #453 B4). The runner pill shows the raw backend id on purpose; product names come from `runner-label.ts` everywhere else.
 - **Where used**: 5 files.
 
 ### EnginePills

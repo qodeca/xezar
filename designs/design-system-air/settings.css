@@ -94,7 +94,7 @@
   font-size: 13px;
 }
 
-@media (min-width: 861px) {
+@media (min-width: 768px) {
   .air-pills { display: none; }
 }
 
@@ -221,8 +221,8 @@
  * a 343 px phone column; today's inline-flex w-fit row cannot wrap (appearance.tsx:66). R-7, PR 4. */
 :root:not([data-view='today']) .air-seg:not(.air-runner) { flex-wrap: wrap; }
 
-/* ---------- phone (≤ 860 px, the mockup's shell breakpoint; the app's md is 768) ---------- */
-@media (max-width: 860px) {
+/* ---------- phone (≤ 768 px, the mockup's shell breakpoint, matching the app's md) ---------- */
+@media (max-width: 767.98px) {
   .air-set { flex-direction: column; }
 
   .air-fields,

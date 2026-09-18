@@ -33,10 +33,10 @@ The next six records (D-02 to D-07; counts read on 2026-09-16) carry the decisio
 | | |
 | --- | --- |
 | **Date** | 2026-09-14 (owner); 2026-09-15 (step-0 design review) |
-| **Status** | Accepted – applied in step 2 of #424 |
+| **Status** | Accepted – applied in step 2 of #424 to the list pages; the Git, GitHub, Compare and Automations pages and the task Git tabs followed in design Batches 6 and 7 of #453 (#574, #585) after #424 was reopened on 2026-09-17 |
 | **Context** | Page bodies use `p-3 … md:p-5` (12 / 20 px), and the page body starts at the gutter. The air design dropped a separate `page` step: a gutter is the same distance as a section break. The step-0 review ruled on the two open exceptions: the task-table wrapper and the page header. |
 | **Decision** | From `md:` up, the page gutter is `section` (32 px) on both axes, and the page body starts `section` under the header. The task-table wrapper keeps `px-section` – no exemption (Air D-11, option A) – and the page header takes `md:px-section`, so the title lines up with the content. On phone the gutter is `p-4`. |
-| **Consequences** | Step 2 changed `patterns.md` §3 and every page body and header. A page that wants a different gutter needs a new record. |
+| **Consequences** | Step 2 (#437) changed `patterns.md` §3 and the list-page bodies and headers (Tasks, All tasks, Inbox, Skills, Workflows, Settings) and the task thread. It left eleven route files on `md:px-6` or `sm:p-6`; the owner reopened #424 for them on 2026-09-17 (#447 OD-1), and Batches 6 and 7 moved every one to the `section` gutter (read on 2026-09-18): `repo-git/repo-git.tsx:69`, `repo-branches.tsx:80`, `repo-changes.tsx:53,84`, `repo-commits.tsx:69`, `task-git/git-toolbar.tsx:56`, `task-changes.tsx:195`, `task-commits.tsx:96`, `task-files.tsx:66`, `compare-variants.tsx:155`, `automations/automations.tsx:244`, `skills-loading.tsx:9,13`, and the GitHub header `github/github.tsx:514`. **Follow-through, not yet done:** the loading line of twelve Settings sections still pads itself `p-4 … md:p-6` inside the page body (for example `routes/settings/agents-section.tsx:71`, `project-setup-section.tsx:34`; one per `*-section.tsx` that has a loading state) – a hand-picked 24 px where the rhythm would give `md:p-group`. **#424 owns this follow-through** (reopened 2026-09-17 for exactly this gutter scope). A page that wants a different gutter needs a new record. |
 | **Source** | `designs/design-system-air/README.md` § 9.1, § 11 and § 13; the step-0 `## Design review` on PR #429 (open point 6 → Air D-11, finding NB-1). |
 
 ### D-04 One density lever scales rhythm and control size together
@@ -66,10 +66,10 @@ The next six records (D-02 to D-07; counts read on 2026-09-16) carry the decisio
 | | |
 | --- | --- |
 | **Date** | 2026-09-14 (owner); recorded 2026-09-15 |
-| **Status** | Accepted, applied in step 3a of #424 |
+| **Status** | Accepted, applied in step 3a of #424 (#431); the allowlist reached its target on 2026-09-18 (#445 closed as met) |
 | **Context** | 88 hand-set spacing pixels (47 spellings, 32 files on 2026-09-14) sit outside the density lever, which is why the tight densities look uneven. A prose rule would be argued in every review. |
-| **Decision** | A design-guardian rule, `no-arbitrary-spacing`, fails `npm test` – the validation gate, not the build – for a new arbitrary pixel on padding, margin, gap, space, height, min-height or size (Air D-5). An allowlist keyed on file and spelling holds today's occurrences and only shrinks; after step 3b its only rows are the two 24 px chip floors (WCAG 2.2 SC 2.5.8). |
-| **Consequences** | Until step 3a merges, `foundations.md` §4 asks for scale units in prose. After it, a UI change that needs a hand-typed spacing pixel converts it to the scale instead of adding a row. |
+| **Decision** | A design-guardian rule, `no-arbitrary-spacing` (`packages/web/src/design-guardian.test.ts:238`), fails `npm test` – the validation gate, not the build – for a new arbitrary pixel on padding, margin, gap, space, height, min-height or size (Air D-5). An allowlist keyed on file and spelling holds the occurrences that stay and only shrinks; its ceiling is its row count, 2 (`design-guardian.test.ts:143`). The two rows are the `min-h-[24px]` floors on the composer picker pill (`components/picker-pill.tsx:28`) and the reference chip (`components/reference-chip.tsx:161`): each is an absolute 24 px minimum height that the density lever cannot shrink, so the control never drops under the WCAG 2.2 SC 2.5.8 target size at Compact or Compact for real. |
+| **Consequences** | A UI change that needs a hand-typed spacing pixel converts it to the scale instead of adding a row. History: #431 seeded 70 rows, #441 left 62, and the design-debt batches of #453 converted the rest; the owner closed #445 as met at the two justified rows on 2026-09-18 ("Yes, 2 justified rows is done"). A third row needs a new record here. |
 | **Source** | `designs/design-system-air/README.md` § 9.3 and § 13 (Air D-5); the step-0 design review, finding NB-7. |
 
 ### D-07 The New-task button stays taller than the nav rows

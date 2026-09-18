@@ -170,8 +170,8 @@
 :root[data-state='empty'] .air-project-nav .nav-badge,
 :root[data-state='error'] .air-project-nav .nav-badge { display: none; }
 
-/* ---------- phone (≤ 860 px, the mockup's shell breakpoint; the app's md is 768) ---------- */
-@media (max-width: 860px) {
+/* ---------- phone (≤ 768 px, the mockup's shell breakpoint, matching the app's md) ---------- */
+@media (max-width: 767.98px) {
   .air-inbox-body {
     padding-bottom: calc(90px + env(safe-area-inset-bottom, 0px)); /* inbox.tsx:93, hand-set – not in § 9.2, unchanged */
   }

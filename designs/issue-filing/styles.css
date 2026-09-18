@@ -426,7 +426,7 @@
 
 /* ---------- 6. Phone (375 px) ---------- */
 
-@media (max-width: 860px) {
+@media (max-width: 767.98px) {
   .gh-pane {
     max-width: none;
   }

@@ -2,12 +2,12 @@
 
 | | |
 |---|---|
-| **Status** | Implemented (PRs #429, #432, #431, #437, #438, #441). #424 closed on 2026-09-15; remaining allowlist conversion is tracked in #445. D-1..D-12 closed; the step-0 verdict was PASS WITH FOLLOW-UPS ([comment](https://github.com/qodeca/xezar/pull/429#issuecomment-5678658435), § 16). Revision 3 applied the four-reviewer verdict ([`review-2026-09-14.md`](review-2026-09-14.md)). The mockup preserves the pre-#424 Today view beside the proposal. |
+| **Status** | Implemented (PRs #429, #432, #431, #437, #438, #441). #424 closed on 2026-09-15 and was reopened on 2026-09-17 (#447 OD-1) for the Git, GitHub, Compare and Automations pages and the task Git tabs, which design Batches 6 and 7 of #453 moved onto the `section` gutter (#574, #585). The allowlist target was met at two rows, the WCAG floors: #445 closed as met on 2026-09-18. D-1..D-12 closed; the step-0 verdict was PASS WITH FOLLOW-UPS ([comment](https://github.com/qodeca/xezar/pull/429#issuecomment-5678658435), § 16). Revision 3 applied the four-reviewer verdict ([`review-2026-09-14.md`](review-2026-09-14.md)). The mockup preserves the pre-#424 Today view beside the proposal. |
 | **Date** | 2026-09-15 |
 | **Mockup** | Open [`index.html`](index.html): a hub linking five 1:1 screen pages (flip Today \| Proposed in place), a stacked compare page, and three review aids (375 px pairs, states, appearance axes). No build, no server. |
 | **Replaces** | Nothing. This design changes the system's spacing rules, not a feature surface. |
 | **Comes from** | The owner, 2026-09-14: "the entire design system requires more air – more space between elements on the pages." |
-| **Facts** | The proposal and its source line numbers are historical evidence from 2026-09-14, not a current-code inventory. Rollout outcomes below distinguish shipped work from targets. Allowlist counts read on 2026-09-16: 70 rows / 86 occurrences at #431 (`673c6ed`), 62 rows / 76 occurrences at this sweep; the remaining conversion is #445. Inferred statements are marked *inferred*. |
+| **Facts** | The proposal and its source line numbers are historical evidence from 2026-09-14, not a current-code inventory. Rollout outcomes below distinguish shipped work from targets. Allowlist counts read on 2026-09-16: 70 rows / 86 occurrences at #431 (`673c6ed`), 62 rows / 76 occurrences at this sweep; the remaining conversion was #445, closed as met on 2026-09-18 at 2 rows (the two `min-h-[24px]` WCAG floors). Inferred statements are marked *inferred*. |
 
 ## 1. Summary
 
@@ -180,12 +180,12 @@ A `s/ on//` strip is not enough: the quick-list row spells it `<li class="on">`,
   | `width` | narrow, wide | narrow | `data-width="wide"` | `air-mock-width` | all |
   | `v` | today, air | air | `data-view` | `air-mock-view` | screen pages |
   | `table`, `cta` | a, b | a | `data-table`, `data-cta` | no | tasks |
-  | `drawer` | open | none | `data-drawer` (takes effect at 860 px and below) | no | tasks |
+  | `drawer` | open | none | `data-drawer` (takes effect at 768 px and below) | no | tasks |
   | `state` | thread: loading, dialog · inbox: empty, error · settings: error | none | `data-state` | no | thread, inbox, settings |
   | `section` | agents, appearance, accounts | agents | `data-section` | no | settings |
   | `page`, `at`, `section`, `state` | page: tasks, thread, changes, settings, inbox · at: speaker-2, ask-card, dock (thread) · section, state: the target page's lists | tasks / none | – | no | compare |
 - **(g) Local replicas.** Surfaces `cockpit.css` has no class for are drawn with local `air-` classes: the thread column, user bubble, assistant text, tool row and group, ask card, run header (`.air-run-head`), Inbox card layout, composer dock, drawer and settings field list (`.air-field`). Where `cockpit.css` has a `.base el` rule, an `air-` container mirrors its selector shape (`.air-quick li`, `.air-table th`, `.air-dock .composer textarea`, `.air-diffs .diff header`), so a today value is not lost to specificity. They stayed local because step 0 could not touch `docs/design-system/`; they preserve the pre-#424 Today view.
-- **(h) Shell breakpoint.** The replica switches to the phone shell at 860 px, `cockpit.css`'s breakpoint, not the app's `md` at 768 px; the review widths, 1280 and 375, sit clear of both.
+- **(h) Shell breakpoint.** The replica switched to the phone shell at 860 px, `cockpit.css`'s breakpoint when this mockup was drawn, until this folder's own sheets moved to the same 767.98 px edge as `cockpit.css` (docs wave PR 5, 2026-09-18, following #447 OD-3), so the replica now agrees with the app's `md` at 768 px; the review widths, 1280 and 375, sit clear of it either way.
 - **(i) Captions.** Figure captions use `--muted-foreground`, not `.frame-label`, whose `--soft-foreground` is about 2.5:1 in light (`cockpit.css:378`).
 - **(j) Mockup-only departures.** Where a `cockpit.css` base class disagrees with the source, the mockup draws the source value in both views, through a local replica or a mirrored selector, and leaves `cockpit.css` as it is. `known-gaps.md` could not change in step 0. Step 2 (#437) updated the Mockup fidelity table for the classes it restyled; the remaining § 5 (j) rows are not recorded there (open).
 
@@ -341,7 +341,7 @@ The gates and measurements below describe the rollout plan; the Merged column re
 | PR 1 | `--spacing` + six tokens in `index.css` and `cockpit.css`, `tailwind-merge`, foundations § 4.1, specimens, G-25, and the Settings field-list pilot (D-9) | `needs-design` + `needs-qa` – the pilot ships; drift test | the specimen bars at 8/12/16/20/24/32 from disk (AC 2) | #432 (`d0c5def`) |
 | PR 2 | § 9.2 across `packages/web/src`; G-25 deleted | `needs-design` + `needs-qa`; before/after screenshots at 1280 and 375, both themes, comfortable and ultra; `npm run test:e2e` | measured page heights (AC 4); `rhythm.e2e.ts` (AC 3) | #437 (`aa6416d`) |
 | PR 3a | the guardian rule, per-occurrence map, allowlist seeded at 70 rows / 86 occurrences (counts read on 2026-09-16 at `673c6ed`), fixture self-test | `skip-design` (no rendered change) | allowlist seeded at 70 rows | #431 (`673c6ed`) |
-| PR 3b | § 9.3 conversions; `button.test.tsx`; the known-gaps chip row | `needs-design` + `needs-qa`; `npm run test:e2e` (the suite asserts real geometry: `task-thread.e2e.ts:452`, `quick-list.e2e.ts:271-276, 650-668`, `diff-scroll.e2e.ts:38, 254-287`) | target: two chip-floor rows; #441 left 62 rows / 76 occurrences (counts read on 2026-09-16); burn-down in #445 | #441 (`00ee895`) |
+| PR 3b | § 9.3 conversions; `button.test.tsx`; the known-gaps chip row | `needs-design` + `needs-qa`; `npm run test:e2e` (the suite asserts real geometry: `task-thread.e2e.ts:452`, `quick-list.e2e.ts:271-276, 650-668`, `diff-scroll.e2e.ts:38, 254-287`) | target: two chip-floor rows; #441 left 62 rows / 76 occurrences (counts read on 2026-09-16); burn-down in #445, met at the two floor rows on 2026-09-18 | #441 (`00ee895`) |
 | PR 4 | Roomy: the density schema exported from the contract and imported by the server (duplicate deleted), `normalizeDensity`, pre-paint, `THEME_SELECTORS`, Settings option, BC note, release note | `needs-design`; contract parity | AC 8 | #438 (`8d29ea3`) |
 
 Order (issue #424): step 0 → 1 → 2 → 3a → 3b → 4; the step-0 verdict gates step 1 onward. 3b after 2 so PR 2's screenshots compare rhythm alone.
@@ -359,7 +359,7 @@ Order (issue #424): step 0 → 1 → 2 → 3a → 3b → 4; the step-0 verdict g
 - Nothing scrolls sideways at 375 px: the rhythm adds vertical space only; the table keeps `.table-scroll`; `a11y-sweep.e2e.ts` (390 / 1440) and `ios-sweep.e2e.ts` stay green.
 - One container scrolls sideways on purpose: the run header's tab row, `overflow-x: auto` on `.air-tabs` – the treatment the shipped settings pill row already has (`cockpit.css:2248`). Measured: at a true 375 px viewport nothing overflows at any density; the row needs 339 px at Roomy, so below 327 px it scrolls inside itself rather than pushing the page. Intentional, not a defect, and step 2 keeps that rule when it converts the real component.
 - Roomy on a phone: rows 55 px – opt-in.
-- The mockup's screen pages render the true 375 px view in a 375 px window. The aid pages' 375 px frames shrink below their own width in a window narrower than about 425 px. The review bar is sticky from 861 px and static at 860 px and below. Focus and anchors clear it through a scroll margin on the page's content (`chrome.css`, `thread.css`), not a root `scroll-padding-top`.
+- The mockup's screen pages render the true 375 px view in a 375 px window. The aid pages' 375 px frames shrink below their own width in a window narrower than about 425 px. The review bar is sticky from 769 px and static at 768 px and below. Focus and anchors clear it through a scroll margin on the page's content (`chrome.css`, `thread.css`), not a root `scroll-padding-top`.
 
 ## 12. Acceptance criteria
 
@@ -367,7 +367,7 @@ Order (issue #424): step 0 → 1 → 2 → 3a → 3b → 4; the step-0 verdict g
 2. `specimens/foundations.html` opened **from disk** shows the six rhythm bars at 8 / 12 / 16 / 20 / 24 / 32 px.
 3. `packages/web/e2e/rhythm.e2e.ts` asserts through `getComputedStyle` at the default density: a thread row inside a turn 8, the gap between two speakers' rows 24, card padding 20, card-list gap 16, settings field gap 12, settings list gap 32, desktop page padding 32, page body top 32 – and 75 % of each at `data-density='ultra'`, 125 % at `roomy`.
 4. PR 2 reports measured `document.scrollHeight` for Tasks, a 30-row thread, Settings → Agents and Inbox at 1280×900, before and after.
-5. The original target was an allowlist containing only the two `min-h-[24px]` chip floors after PR 3b, with red/green fixture proofs for new arbitrary pixels. **Not met by #424:** #431 seeded 70 rows / 86 occurrences; after #441, 62 rows / 76 occurrences remain (counts read on 2026-09-16). #445 carries the burn-down.
+5. The original target was an allowlist containing only the two `min-h-[24px]` chip floors after PR 3b, with red/green fixture proofs for new arbitrary pixels. **Not met by #424:** #431 seeded 70 rows / 86 occurrences; after #441, 62 rows / 76 occurrences remain (counts read on 2026-09-16). #445 carried the burn-down and closed as met on 2026-09-18: the allowlist holds exactly the two floors (`components/picker-pill.tsx:28`, `components/reference-chip.tsx:161`).
 6. Touch targets ≥ 44 px on phone at Roomy and Comfortable, no smaller than today at Compact and Compact for real, and no interactive target under 24 px at any density – the two chips carry `min-h-[24px]`.
 7. Nothing scrolls sideways at 375 and 390 px; both themes pass the design-system review checklist.
 8. Roomy round-trips: the contract enum accepts it and the server imports that schema with no second copy left in `server.ts`, `contract-parity*` and `typed-bodies` green; `normalizeDensity('roomy') === 'roomy'`; `index.html` stamps it before first paint on a cold load; an older cockpit falls back to Comfortable; BACKWARD_COMPATIBILITY.md carries the line.

@@ -319,7 +319,7 @@ On an answer the run returns to `queued`. When it gets a slot the same workflow 
 
 ## 12. Responsive
 
-- Below `md` (768 px; the mockup sheet collapses at 860 px): the sidebar is the drawer; the mobile bar shows "Decisions" and the count;  option buttons, the details summary, Send, Reopen, Take it back and Retry are 44 px; Not a decision and Leader decides share a row and Send takes the row below them.
+- Below `md` (768 px; the mockup sheet collapses at the same 767.98 px edge): the sidebar is the drawer; the mobile bar shows "Decisions" and the count;  option buttons, the details summary, Send, Reopen, Take it back and Retry are 44 px; Not a decision and Leader decides share a row and Send takes the row below them.
 - Nothing scrolls sideways at 375 px: the question, the diff stat, the option labels and the decided line wrap (`overflow-wrap: anywhere`); the head line wraps to a second line for the long category words.
 - The longest expected question is 400 characters (the `XEZ:ASK` cap, reused); the longest option label 60; owner words ≤ 1 000, shown `whitespace-pre-line`.
 - Scanning many: the Open segment keeps full cards (the expected night wave is ~10); the Decided segment pages by 20.

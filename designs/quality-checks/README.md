@@ -70,14 +70,14 @@ Code facts behind the problem:
 - A cross-project total in the menu. The cross-project index stops at 200 tasks per project, so its total could be wrong.
 - Changing what Continue does (see open decision D1).
 - Showing check output on the Checks page. The task page already shows it.
-- Fixing the kit workflows that fail readiness by design. That is a separate kit change (see [Delivery plan](#10-delivery-plan)).
+- Fixing the kit workflows that fail readiness by design. That is a separate kit change (see [Delivery plan](#15-delivery-plan)).
 
 ## 5. Files
 
 | File | Content |
 |---|---|
 | `index.html` | Overview, decision table, phone preview, accessibility list |
-| `checks.html` | The app shell with the new menu item and the full Checks page. Narrow the window below 860 px for the phone layout. |
+| `checks.html` | The app shell with the new menu item and the full Checks page. Narrow the window below 768 px for the phone layout. |
 | `states.html` | Badge states, all card states, empty, loading and error |
 | `task.html` | Task list chip, task page banner and steps, leader tool changes |
 | `settings.html` | MCP connection section before and after |
@@ -361,8 +361,8 @@ Tokens only: use `bg-danger`, `text-danger`, `bg-card-2` and the rest. No raw he
 
 | Width | Layout |
 |---|---|
-| 860 px and up | Sidebar plus page. Card actions sit to the right of the text. |
-| Below 860 px | Sidebar becomes the drawer. The mobile bar shows the menu button, "Checks" and the badge. Card actions wrap under the text at 40 px height. Page padding is 12 px. |
+| 768 px and up | Sidebar plus page. Card actions sit to the right of the text. |
+| Below 768 px | Sidebar becomes the drawer. The mobile bar shows the menu button, "Checks" and the badge. Card actions wrap under the text at 40 px height. Page padding is 12 px. |
 | Phone (390 px) | Previewed in `index.html`. The page never scrolls sideways. Long commands wrap. |
 
 ## 13. Acceptance criteria
@@ -510,6 +510,7 @@ Seven things block approval:
 - **Rule broken:** `behaviour.md` §3, which makes `md:` (768 px) the one layout switch.
 - **Fix:** the handoff should say `md:` (768 px) and 375 px.
 - **Design-system follow-up** (not this design's fault): `cockpit.css` uses 860 px, makes `.mobile-bar .btn-icon` 34 px where the cockpit uses `size-11`, and colours `.page-head p` with `--soft-foreground` where `patterns.md` §3 says `text-muted-foreground`. None of these are in `known-gaps.md` § Mockup fidelity.
+- **Resolved (2026-09-18, docs wave PR 5):** `cockpit.css` and this folder's own sheet both switch at the same 767.98 px edge as `md:` (768 px); the tables above are updated to match.
 
 **NB-2 – The live region covers the whole list.**
 - **Where:** `checks.html:126`, `README.md:140`, `README.md:352`.

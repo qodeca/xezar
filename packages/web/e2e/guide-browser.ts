@@ -15,6 +15,36 @@ import { readTestEnv } from './agent-browser'
 
 type FindLocator = 'role' | 'text' | 'label' | 'placeholder' | 'alt' | 'title'
 
+type Box = { x: number; y: number; width: number; height: number }
+
+/** Whether two live boxes read exactly equal — `clickRoleWhenStable`'s own "Stable" check,
+ *  Playwright's actionability model applied to agent-browser's `get box` numbers verbatim. */
+function boxesEqual(a: Box, b: Box): boolean {
+  return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height
+}
+
+/**
+ * Whether an error thrown by `run()` is agent-browser's own click-interception failure (the
+ * click point resolved to a different element than the one requested), as opposed to any other
+ * failure `find … click` can raise. `run()`'s own thrown message embeds
+ * `JSON.stringify(parsed.error)` verbatim, and the one real occurrence of this failure captured
+ * against the installed CLI so far (PR #590's own round-2 scoped re-check, reproduced against a
+ * covered "Open in…" trigger) read:
+ *   Element '@e54' is covered by <button.inline-flex.shrink-0 inside div#root> at its click point
+ * — i.e. the human-readable "covered by" phrase agent-browser's own error text uses, not a
+ * separate structured field naming the coverer. This round's own RED attempt (6 foreground runs,
+ * temporarily reverting the `clickRoleWhenStable` guard on that same click) did not reproduce the
+ * race live to re-confirm the exact JSON shape — the failure is load-dependent (previously 2 of 3
+ * fresh-instance runs, this round 0 of 6), consistent with the research's cause 2 (a one-shot
+ * hit-test against an accessibility-tree snapshot that can lag by a fraction of a second under
+ * contention). The check below matches on that phrase rather than a specific JSON key for exactly
+ * that reason: nothing here asserts a field name that has not actually been observed on a live
+ * failure.
+ */
+function isCoveredClickError(cause: unknown): boolean {
+  return cause instanceof Error && /covered by/i.test(cause.message)
+}
+
 export class GuideBrowser {
   private constructor(
     private readonly bin: string,
@@ -64,6 +94,15 @@ export class GuideBrowser {
 
   goto(url: string): void {
     this.run(['open', url])
+  }
+
+  /** Desktop viewport — several run-header actions (Finish, Cancel, Continue) render only at
+   *  the `md` breakpoint, the same reason every other fixture spec pins one (`AgentBrowser`'s
+   *  own `setViewport`, reused verbatim here since it carries no selector). Added in browser-test
+   *  pull request 2 (#549) because guide 02 is the first guide file to reach those controls;
+   *  PR 1 (#579) did not need it. */
+  setViewport(width: number, height: number): void {
+    this.run(['set', 'viewport', String(width), String(height)])
   }
 
   /** Navigation state, not markup — the descriptor's `get url` operation. */
@@ -146,6 +185,79 @@ export class GuideBrowser {
       throw new Error(`xezar e2e: no ${role} named "${name}" with a readable value in the current snapshot`)
     }
     return match[1] ?? ''
+  }
+
+  /** The live accessibility-tree reference (`@e1`, …) for the element with this role and
+   *  accessible name — `snapshot`'s own JSON `refs` map, still zero selectors: the lookup key
+   *  is the same role/name pair every other method here takes, never a class, id or `data-*`
+   *  attribute. Throws when no element matches, the same contract `textOfRole` already has. */
+  private refFor(role: string, name: string): string {
+    const snapshot = this.run(['snapshot', '-i']) as { refs?: Record<string, { role: string; name: string }> }
+    for (const [id, info] of Object.entries(snapshot.refs ?? {})) {
+      if (info.role === role && info.name === name) return `@${id}`
+    }
+    throw new Error(`xezar e2e: no ${role} named "${name}" in the current snapshot`)
+  }
+
+  /** The live bounding box of the element with this role and accessible name. */
+  boxOfRole(role: string, name: string): Box {
+    const raw = this.run(['get', 'box', this.refFor(role, name)])
+    return {
+      x: Number(raw.x ?? 0),
+      y: Number(raw.y ?? 0),
+      width: Number(raw.width ?? 0),
+      height: Number(raw.height ?? 0),
+    }
+  }
+
+  /** Scroll the element with this role and accessible name into view. */
+  scrollIntoViewRole(role: string, name: string): void {
+    this.run(['scrollintoview', this.refFor(role, name)])
+  }
+
+  /**
+   * Click the element with this role and accessible name once its OWN bounding box has read the
+   * same value on two consecutive polls (Playwright's "Stable" actionability check, applied here
+   * with no coverer to name in advance — see `docs/testing/agent-browser.md` and the round-3
+   * research this replaced `waitForUncoveredRole` with, `.local/xezar-tasks/9a994a7d-…/
+   * click-race-research.md` Remedy A). A sibling action button in this app can mount/unmount
+   * (e.g. Pin on Archive/Unarchive), which shifts every button after it in a right-anchored
+   * (`ml-auto`) flex row by a single, synchronous, single-frame DOM/layout jump — not a CSS
+   * transition — so "stable" here means "the same commit's geometry has been read twice in a
+   * row", not "no longer animating".
+   *
+   * If the click itself still lands on a moment where agent-browser reports the click point
+   * covered, this retries within the same bounded attempt budget after a fresh box read, rather
+   * than failing on the first transient race: `find … click`'s own covered-click error is a
+   * one-shot hit-test with no retry of its own (agent-browser issue #1434), and re-reading the
+   * accessibility-tree snapshot is agent-browser's own documented remedy for that failure.
+   */
+  async clickRoleWhenStable(
+    role: string,
+    name: string,
+    opts: { attempts?: number; intervalMs?: number } = {},
+  ): Promise<void> {
+    const attempts = opts.attempts ?? 40
+    const intervalMs = opts.intervalMs ?? 250
+    this.scrollIntoViewRole(role, name)
+
+    let lastBox: Box | null = null
+    for (let i = 0; i < attempts; i += 1) {
+      const box = this.boxOfRole(role, name)
+      const stable = lastBox !== null && boxesEqual(lastBox, box)
+      lastBox = box
+      if (stable) {
+        try {
+          this.clickRole(role, name)
+          return
+        } catch (cause) {
+          if (!isCoveredClickError(cause)) throw cause
+          lastBox = null // a covered click means the geometry just changed again; re-establish stability
+        }
+      }
+      this.run(['wait', String(intervalMs)])
+    }
+    throw new Error(`xezar e2e: ${role} "${name}" never became stable and clickable`)
   }
 
   /**
