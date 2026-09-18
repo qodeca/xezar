@@ -1,4 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { resolveStateLayout, setActiveStateLayout } from '../state-layout.ts';
 import { isLoopbackHost, isLoopbackHostHeader, normalizeHostname, resolveCapabilities } from './capabilities.ts';
 
 /**
@@ -250,5 +254,66 @@ describe('resolveCapabilities — usage presentation', () => {
       tokenUsageMetrics: true,
       costMetrics: true,
     });
+  });
+});
+
+/**
+ * SP-1.3 / risk R4: `XEZ_SINGLE_PROJECT` must not change meaning, and the new
+ * mode must not be reachable from the environment.
+ *
+ * The cross-product is the test, not the two single cases: the regression this
+ * closes is one of the two narrowings quietly implying the other, and that is
+ * invisible to any test that varies only one of them. `singleProject` is
+ * `XEZ_SINGLE_PROJECT=1` (one project, no project management, GLOBAL state);
+ * `singleProjectRoot` is the resolved layout (#600), and nothing in the
+ * environment can turn it on.
+ */
+describe('resolveCapabilities — singleProject and singleProjectRoot are independent (#600)', () => {
+  let project: string;
+
+  beforeEach(() => {
+    project = mkdtempSync(join(realpathSync(tmpdir()), 'xez-cap-layout-'));
+  });
+
+  afterEach(() => {
+    setActiveStateLayout(null);
+    rmSync(project, { recursive: true, force: true });
+  });
+
+  const enterMode = (): void => {
+    setActiveStateLayout(resolveStateLayout(project, ['--single-project'], {}));
+  };
+
+  it('neither: a plain xez', () => {
+    expect(resolveCapabilities({})).toMatchObject({ singleProject: false });
+    expect(resolveCapabilities({}).singleProjectRoot).toBeUndefined();
+  });
+
+  it('env only: today’s exact behaviour, and the state stays global', () => {
+    expect(resolveCapabilities({ XEZ_SINGLE_PROJECT: '1' })).toMatchObject({ singleProject: true });
+    expect(resolveCapabilities({ XEZ_SINGLE_PROJECT: '1' }).singleProjectRoot).toBeUndefined();
+  });
+
+  it('mode only: the state is in the project, and the env narrowing is untouched', () => {
+    enterMode();
+
+    expect(resolveCapabilities({})).toMatchObject({ singleProject: false, singleProjectRoot: true });
+  });
+
+  it('both: each answers its own question', () => {
+    enterMode();
+
+    expect(resolveCapabilities({ XEZ_SINGLE_PROJECT: '1' })).toMatchObject({
+      singleProject: true,
+      singleProjectRoot: true,
+    });
+  });
+
+  it('omits the key entirely in the global layout, so the payload is additive on the wire', () => {
+    // A `false` would be a new REQUIRED-looking field for every consumer; an
+    // absent one is what makes a 0.15.0 and a global-layout 0.16.0 payload the
+    // same bytes (SP-1.6).
+    expect('singleProjectRoot' in resolveCapabilities({})).toBe(false);
+    expect(JSON.stringify(resolveCapabilities({}))).not.toContain('singleProjectRoot');
   });
 });

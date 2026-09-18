@@ -42,8 +42,13 @@ Sources: `packages/web/src/lib/theme.ts`, `packages/web/src/lib/appearance.ts`,
 - Type sizes never change with density. A hand-typed spacing or height pixel (`h-[34px]`) opts out
   of the lever, and a new occurrence fails the `no-arbitrary-spacing` guardian rule; use scale units.
 - Target sizes are the one thing density must NOT reach: `--spacing-tap` (44 px) and `--spacing-chip`
-  (24 px) are flat pixels for that reason (foundations.md § 4). Remaining hand-typed chip floors are
-  allowlisted debt tracked in #445 and convert batch by batch.
+  (24 px) are flat pixels for that reason (foundations.md § 4). The hand-typed chip floors tracked in
+  #445 converted batch by batch, and the count **ends at two**: `components/picker-pill.tsx` and
+  `components/reference-chip.tsx` each keep one `min-h-[24px]`, because both are WCAG 2.2 SC 2.5.8
+  minimums the density lever must not be able to shrink. Deleting them would remove an accessibility
+  floor to reach a count of zero, so the allowlist ceiling stays at 2 — leader decision, 2026-09-17,
+  on the #453 B8 design review (NB-1); owner confirmation pending. It still only shrinks: nothing new
+  is added to it, and neither row may grow its `count`.
 - Stored like the accent (`appearance.density`, mirror `xez-density`).
 
 ## Reading width
