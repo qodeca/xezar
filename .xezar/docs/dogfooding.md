@@ -11,6 +11,13 @@ Loop: observe during real work → classify problem versus environment/unknown �
 Installation validation is reported in installation.md. Real-task entries follow; each names its evidence level.
 
 ## Real-task entries
+### 2026-09-18 — #557 an MCP door for every registered project, `bug-fix` step `Reproduce, diagnose and fix`, `xezar-bug-investigation`, Claude Code (Opus 5) — real-task observed
+- Input: issue #557 and the leader brief; base `fe860b27`. Reproduced with the #567 two-project harness: B's bridge answered "xezar is not running for project repo-b" while B's routes served.
+- Observed: **the harness fails on A, not B, under the task's default `TMPDIR`.** The engine's per-task tmp directory pushes the scratch `XEZ_HOME/ipc` socket past the 104-byte macOS limit, so A's MCP is "unavailable" and the first assertion about A fails. `TMPDIR=/tmp` fixed it; the harness doc now says so.
+- Observed: **the boot-only listener was load-bearing for "one door per project per machine", and the writer claim already carries that.** A non-boot door opens only after the context build took `ownProjectData`, so a folder served by its own cockpit fails the build and gets no second door. Naming that first is what kept the fix to a lifecycle follower instead of a registry-wide listener.
+- Observed (kit friction, recorded before): `phase-record.sh check` refused `AC1:`; renamed to `AC-1:`.
+- Regression/control: fix stashed → the new tests red (import, and with the build hook removed 7 lifecycle cases + the integration case red; boot-skip and already-built guards green both ways) and the harness FAILED "timed out waiting for B MCP door"; with the fix 10/10, harness PASSED, MCP coverage floor green (`project-doors.ts` 100 % lines, 95 % branches).
+- Remaining limit: after a restart a non-boot project's door returns only once it is opened in the cockpit (the door follows the lazy context build).
 ### 2026-09-18 — #613 bound the continue re-prompt loop, `bug-fix` step `investigate`, `xezar-bug-investigation`, Claude Code (Opus 5) — real-task observed
 - Input: issue #613 and the incident run's own NDJSON (read-only in the primary run store); leader brief with a five-part scope.
 - Observed: **the brief's idle rule would not have stopped the incident.** Counting per-turn events in the run file showed every one of the 40 re-prompted turns made 1–3 tool calls (CI polling); the cap is what bounds it. The issue's own "stop when no new tool call" suggestion was data to verify, and the event file settled it in one pass. Both rules shipped; the PR says which one catches which case.

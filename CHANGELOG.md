@@ -163,6 +163,13 @@
 
 ## 🐛 Fixes
 
+- 🐛 **A project added to a running cockpit now gets its own MCP connection.** (#557)
+  Before, only the project the cockpit was started in could be led over MCP: `xez mcp` in a project
+  added with **Add project** answered "xezar is not running" while the same cockpit served that
+  project's tasks. Now each project gets the same connection once the cockpit opens it, and loses it
+  when the project is removed. The starting project's connection, the socket location and the
+  connection file are unchanged. After a restart, a project other than the starting one is served
+  again once it is opened in the cockpit.
 - 🐛 **A run xezar itself terminates for the memory limit no longer ends `done` with no deliverable.** (#603)
   `enforceMemoryLimit` closes a breaching run's session with `session.end()`, and — deliberately,
   per #703 — a CLI that does not exit on its own is then signalled by xezar and settles on the same

@@ -17,17 +17,16 @@ The harness records each child PID before proceeding and tears down only those s
 
 The Worktree-OFF leg covers Xezar's deterministic dry-run launch path only. It does not reproduce issue #342's external-client configuration loading, replace the real-client acceptance suite, or cover browser project switching; those require the separately sliced follow-up tests.
 
-## Known limitation: B has no MCP session (#557)
+## B's MCP door (#557)
 
-A running cockpit only opens an MCP socket for its **boot** project. A project registered later
-through the product API (B here) never gets one — running `xezar mcp` with `cwd` pointed at a
-registered-but-not-boot project always answers "xezar is not running for project ...", even while
-that project's HTTP routes work normally. This harness proves MP-03/04's cross-project MCP
-independence for the **boot project only** (A); B's MCP bridge is opened and asserted to fail with
-that exact, stable error rather than being asserted into a false pass — an earlier draft of this
-harness used a substring check weak enough to accept the error text as a "resolves its own
-project" success. Cross-project composition for B (registration, lazy build, disposal, the
-workspace runs index, SSE stamping, and the shared workspace cap) is proven through the same HTTP
-door the cockpit's own composer uses, not through MCP. See
-[issue #557](https://github.com/qodeca/xezar/issues/557) for the underlying gap and a suggested
-fix shape.
+B is registered through the product API, not booted, and still gets its own MCP door once its
+context is built. The harness waits for B's `health` to answer as a non-error result naming B and not
+A — the error text for a missing door also names B, which is how an earlier draft passed against the
+bug — then checks `discover_project` and B's own `leader_events` session. After B is removed its
+bridge must stop answering while A's keeps answering; after B is re-added and rebuilt, a fresh bridge
+from B's folder must answer again. B's side of the cap-sharing smoke still goes through the HTTP door
+the cockpit's own composer uses.
+
+Run it with a short `TMPDIR` (for example `TMPDIR=/tmp npm run test:multi-project`) when the default
+temporary directory is deep: the scratch home's socket path must fit the 104-byte local-socket limit
+on macOS, and a longer one makes A's MCP unavailable and the harness fail on A.
