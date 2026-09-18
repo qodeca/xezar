@@ -112,6 +112,85 @@ describe('SkillsUpdateService', () => {
     expect(blocked.status).toBe('unavailable'); expect(secondRun).not.toHaveBeenCalled();
   });
 
+  it('serializes the machine-global check across folders whose caches differ', async () => {
+    const lock = { skills: { alpha: { source: 'qodeca/xezar-skills' } } };
+    const { home, repo } = await fixture(lock, lock);
+    const otherRepo = join(home, 'other-repo'); await mkdir(otherRepo);
+    await writeFile(join(otherRepo, 'skills-lock.json'), JSON.stringify(lock));
+    let release!: () => void; const gate = new Promise<void>((resolve) => { release = resolve; });
+    const owner = new SkillsUpdateService({ homeDir: home, cacheDir: join(home, 'cache-a'), resolveNpx: async () => 'npx',
+      run: async (_file, args) => { if (args.includes('-g')) await gate; return { stdout: '', stderr: '' }; } });
+    const contenderRun = vi.fn(async () => ({ stdout: '', stderr: '' }));
+    const contender = new SkillsUpdateService({ homeDir: home, cacheDir: join(home, 'cache-b'), resolveNpx: async () => 'npx', run: contenderRun });
+    const active = owner.check(repo);
+    await vi.waitFor(async () => { await expect(readFile(join(home, '.agents', '.xez-skills-update.lock'), 'utf8')).resolves.toContain(String(process.pid)); });
+    const blocked = await contender.check(otherRepo);
+    release(); await active;
+    expect(blocked.status).toBe('unavailable');
+    expect(contenderRun).not.toHaveBeenCalled();
+  });
+
+  it('serializes the machine-global apply across folders whose caches differ', async () => {
+    const lock = { skills: { alpha: { source: 'qodeca/xezar-skills' } } };
+    const { home, repo } = await fixture(lock, lock);
+    const otherRepo = join(home, 'other-repo'); await mkdir(otherRepo);
+    await writeFile(join(otherRepo, 'skills-lock.json'), JSON.stringify(lock));
+    let release!: () => void; const gate = new Promise<void>((resolve) => { release = resolve; });
+    let updating!: () => void; const updatingStarted = new Promise<void>((resolve) => { updating = resolve; });
+    const owner = new SkillsUpdateService({ homeDir: home, cacheDir: join(home, 'cache-a'), resolveNpx: async () => 'npx',
+      run: async (_file, args) => {
+        if (args[2] === 'update' && args.includes('-g')) { updating(); await gate; return { stdout: '', stderr: '' }; }
+        return { stdout: args[2] === 'check' ? 'alpha update available' : '', stderr: '' };
+      } });
+    const contenderRun = vi.fn(async (_file: string, args: readonly string[]) => ({ stdout: args[2] === 'check' ? 'alpha update available' : '', stderr: '' }));
+    const contender = new SkillsUpdateService({ homeDir: home, cacheDir: join(home, 'cache-b'), resolveNpx: async () => 'npx', run: contenderRun });
+    await owner.check(repo);
+    const active = owner.update(repo);
+    await updatingStarted;
+    const blocked = await contender.update(otherRepo);
+    release(); await active;
+    expect(blocked.status).toBe('unavailable');
+    expect(contenderRun).not.toHaveBeenCalled();
+  });
+
+  it('still excludes two services that share one cache directory', async () => {
+    const lock = { skills: { alpha: { source: 'qodeca/xezar-skills' } } };
+    const { home, repo } = await fixture(lock, lock);
+    const sharedCache = join(home, 'shared-cache');
+    let release!: () => void; const gate = new Promise<void>((resolve) => { release = resolve; });
+    const owner = new SkillsUpdateService({ homeDir: home, cacheDir: sharedCache, resolveNpx: async () => 'npx', run: async () => { await gate; return { stdout: '', stderr: '' }; } });
+    const contenderRun = vi.fn(async () => ({ stdout: '', stderr: '' }));
+    const contender = new SkillsUpdateService({ homeDir: home, cacheDir: sharedCache, resolveNpx: async () => 'npx', run: contenderRun });
+    const active = owner.check(repo);
+    await vi.waitFor(async () => { await expect(readFile(join(sharedCache, 'skills-update.lock'), 'utf8')).resolves.toContain(String(process.pid)); });
+    const blocked = await contender.check(repo);
+    release(); await active;
+    expect(blocked.status).toBe('unavailable');
+    expect(contenderRun).not.toHaveBeenCalled();
+  });
+
+  it('degrades without throwing when the machine-global mirror directory is missing', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'xez-skills-update-noagents-'));
+    const home = join(root, 'home'); const repo = join(root, 'repo');
+    await mkdir(home, { recursive: true }); await mkdir(repo);
+    await writeFile(join(repo, 'skills-lock.json'), JSON.stringify({ skills: { alpha: { source: 'qodeca/xezar-skills' } } }));
+    const run = vi.fn(async () => ({ stdout: '', stderr: '' }));
+    const state = await new SkillsUpdateService({ homeDir: home, cacheDir: join(root, 'cache'), resolveNpx: async () => 'npx', run }).check(repo);
+    expect(state.status).toBe('current');
+    expect(state.scopes.find((scope) => scope.scope === 'global')).toMatchObject({ status: 'current', reason: 'installation is not tracked' });
+  });
+
+  it('degrades to unavailable without throwing when the machine-global mirror cannot hold a lock', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'xez-skills-update-badagents-'));
+    const home = join(root, 'home'); const repo = join(root, 'repo');
+    await mkdir(home, { recursive: true }); await mkdir(repo);
+    await writeFile(join(home, '.agents'), 'not a directory');
+    const run = vi.fn(async () => ({ stdout: '', stderr: '' }));
+    const state = await new SkillsUpdateService({ homeDir: home, cacheDir: join(root, 'cache'), resolveNpx: async () => 'npx', run }).check(repo);
+    expect(state.status).toBe('unavailable');
+    expect(run).not.toHaveBeenCalled();
+  });
+
   it('returns deterministic dry-run state without files, tools, or network', async () => {
     process.env.XEZ_DRY_RUN = '1'; const run = vi.fn();
     const state = await new SkillsUpdateService({ homeDir: '/missing', run, resolveNpx: async () => { throw new Error('no'); } }).check('/missing');

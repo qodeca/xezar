@@ -291,7 +291,7 @@ The multi-project workspace adds per-user state next to the per-repo files in se
 
 Breaking: renaming/removing a key or changing a default in either file; making any field required; stripping unknown keys on a write; a migration that deletes or rewrites per-repo files, or whose failure blocks boot; any code path that requires the registry to exist. Required path: same spirit as section 3 — additive first, read the old key as an alias for at least one minor release; anything more structural ships as a numbered migration that obeys the contract above.
 
-The default-on team skills updater is an owner-approved exception to the normal opt-in rule for network and external-file mutation. Its compatibility boundary is deliberately narrow: work begins only after listen; checks are six-hour cached and bounded; updates name only sorted, lock-proven `qodeca/xezar-skills` entries, run serially under a stale-recoverable cross-process lock, and failures never reject startup. `XEZ_SKILLS_AUTO_UPDATE=0` (or the stored global override) restores detection-only behavior. Broad scope-only updates, invoking `gh`, updating untracked/manual skills, or making this work boot-blocking are breaking changes.
+The default-on team skills updater is an owner-approved exception to the normal opt-in rule for network and external-file mutation. Its compatibility boundary is deliberately narrow: work begins only after listen; checks are six-hour cached and bounded; updates name only sorted, lock-proven `qodeca/xezar-skills` entries, run serially under two stale-recoverable cross-process locks — the PROJECT half at `<cacheDir>/skills-update.lock` (`~/.cache/xez` globally, `<project>/.local/xezar/cache` in single-project mode) and the machine-wide `~/.agents` mirror at `<home>/.agents/.xez-skills-update.lock`, taken in every layout because that mirror never moves with the project — and failures never reject startup. `XEZ_SKILLS_AUTO_UPDATE=0` (or the stored global override) restores detection-only behavior. Broad scope-only updates, invoking `gh`, updating untracked/manual skills, or making this work boot-blocking are breaking changes.
 
 ### Default team skills source moved to `qodeca/xezar-skills` – deliberate, 2026-09-13
 
@@ -504,8 +504,12 @@ contract from this release on.
   the shared `~/.cache/xez/skills/`, so a clone of the project fetches its own team skills rather
   than inheriting whatever this machine happened to fetch last. The MCP bridge's socket directory
   follows the same rule (`<project>/.local/xezar/ipc`, not `~/.xezar/ipc`), because `~/.xezar` is
-  not opened at all. **In the global layout both are byte-identical to 0.15.0**, `~/.cache/xez`
-  included — and `XEZ_HOME` still does not move that cache, exactly as before this mode existed.
+  not opened at all. The skills updater's PROJECT lock follows that cache too (each folder serializes
+  its own project half), while the machine-wide `~/.agents` mirror keeps a machine-wide lock beside
+  it (`<home>/.agents/.xez-skills-update.lock`) in every layout, so two folders — or a folder and an
+  ordinary xezar — still cannot check or apply a global update at the same moment. **In the global
+  layout both are byte-identical to 0.15.0**, `~/.cache/xez` included — and `XEZ_HOME` still does not
+  move that cache, exactly as before this mode existed.
 - **Agent logins, global skill libraries, `gh` and `git` do NOT move.** `CLAUDE_CONFIG_DIR`,
   `CODEX_HOME`, `OPENCODE_CONFIG_DIR` and `PI_CODING_AGENT_DIR` resolve identically inside and
   outside the mode, as do `~/.agents/skills`, `~/.claude/skills` and `~/Applications`. These are the
