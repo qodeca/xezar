@@ -12,7 +12,11 @@
   vitest's one-second default, which four call sites had already hand-patched. Second,
   `ANTHROPIC_MODEL` outranks every Claude settings file, so four cases in the config-API suite
   answered whichever model the agent running the gate was pinned to; it is scrubbed for every test
-  worker, with a guard test so the next suite to read an agent default inherits the fix. **What
+  worker, with a guard test so the next suite to read an agent default inherits the fix. A third,
+  found by this change's own gate run: two cases in the pi leader-extension suite assumed no
+  `.local/xezar` existed anywhere above `/tmp`, so a peer checkout running its own suite on the
+  same machine turned one of them red and made the other assert nothing; both now use fixtures
+  deeper than the walk's own limit, which no other process can reach into. **What
   this does not do:** it makes no test faster and fixes no slow product path — a test that is slow
   because the code is slow is still slow, and a genuinely hung test still fails, three seconds
   later than before. A run that was green stays green at the same cost.
