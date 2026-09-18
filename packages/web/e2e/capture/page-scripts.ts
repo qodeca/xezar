@@ -8,8 +8,10 @@
  * `normalizeJs` rewrites the texts that differ on every run to fixed values — relative ages,
  * clock times, ISO timestamps, run ids, `xez/<id8>` branch suffixes, the throwaway workspace path —
  * and the few identifiers that only exist because the forge runs in dry-run mode (its fake
- * `mock/repo`, its author `mock`, its fake PR URL and its `mock (…)` agent version). It changes
- * what a value SAYS, never which elements exist, so the layout is the real one.
+ * `mock/repo`, its author `mock`, its fake PR URL and its `mock (…)` agent version). Given a
+ * `VersionRewrite`, it also pins the footer's version chip to the docs version instead of the
+ * pre-release build's own. It changes what a value SAYS, never which elements exist, so the
+ * layout is the real one.
  *
  * Per-task values stay per task: each seeded run has its own branch suffix and age (`looks`), so a
  * list of tasks never reads as clones.
@@ -49,16 +51,33 @@ const AUTHORS: Record<string, string> = {
   '124': 'noor-haddad',
 }
 
-export function normalizeJs(workspaceRoot: string, home: string, looks: Record<string, RunLook> = {}): string {
+export interface VersionRewrite {
+  /** The version the running build actually reports (`package.json`'s `version`). */
+  build: string
+  /** The version these docs describe — the chip is pinned to this instead. */
+  docs: string
+}
+
+export function normalizeJs(
+  workspaceRoot: string,
+  home: string,
+  looks: Record<string, RunLook> = {},
+  version?: VersionRewrite,
+): string {
   const variants = (path: string) => [path, path.replace(/^\/private/, '')]
   // The sandboxed HOME reads as `~`, and the fixture projects as if they lived in `~/code`.
   const pairs = [
     ...variants(home).map((p) => [p, '~']),
     ...variants(workspaceRoot).map((p) => [p, '~/code']),
     // The dry-run forge's stand-ins, as the fixture repository's own GitHub remote would read.
-    ['https://github.com/qodeca/demo/pull/777', 'https://github.com/acme/demo-shop/pull/152'],
+    // The URL matches `createDraftPr`'s own dry-run stand-in (packages/xezar/src/server/forge/github.ts).
+    ['https://github.com/example-org/example-project/pull/777', 'https://github.com/acme/demo-shop/pull/152'],
     [' (dry run — no real PR)', ''],
     ['mock/repo', 'acme/demo-shop'],
+    // The footer's version chip: pinned to the docs version, not the pre-release build's own.
+    // The bare number, not `v${…}` — `v{version}` is two JSX children, so React renders it as
+    // two separate text nodes ("v" and "0.15.0"), and a `pairs` entry only ever sees one node.
+    ...(version ? [[version.build, version.docs]] : []),
   ]
   return `(() => {
   const pairs = ${JSON.stringify(pairs)}

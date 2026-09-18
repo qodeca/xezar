@@ -25,7 +25,7 @@ Open project **Settings → Agents** to select the default agent and per-agent m
 
 To lock models to native agent settings, set `XEZ_AGENT_MODELS_LOCKED=1` or `"modelsLocked": true` in global `~/.xezar/config.json` or project `.xezar/config.json`. Project **Settings → Agents** shows the locked model as read-only; it has no lock switch. While locked, requests that set a model override are refused with HTTP 409. The Agents section also has a shared system prompt and the planner and namer model controls. Those two background-model controls apply to Claude; their defaults are `sonnet` and `haiku` respectively. For Claude only, `ANTHROPIC_MODEL` supplies the native default when no cockpit preset is saved and the task model is left on **auto (default)**. A saved cockpit preset is layered over that default and the selected model is passed as `--model`.
 
-![Project Agents settings](../screenshots/0.15.0/settings-agents-dark-1280.png)
+![Project Agents settings](../screenshots/0.16.0/settings-agents-dark-1280.png)
 
 ## To use another agent account
 
@@ -35,7 +35,7 @@ To lock models to native agent settings, set `XEZ_AGENT_MODELS_LOCKED=1` or `"mo
 
 OpenCode does not support extra accounts through this feature: its configuration directory does not also move its credentials. Account registrations and selections live in `~/.xezar/agent-accounts.json`. **Remove** unregisters an added account; it does not delete its directory or sessions. Existing sessions belong to the account that created them, so changing the default does not move those sessions.
 
-![Global Agent accounts settings](../screenshots/0.15.0/settings-accounts-dark-1280.png)
+![Global Agent accounts settings](../screenshots/0.16.0/settings-accounts-dark-1280.png)
 
 ## To pin an account's model and effort
 

@@ -537,13 +537,20 @@ export const SCENARIOS: Record<string, Scenario> = {
     expect(ctx.guide.hasRole('combobox', 'Max parallel tasks'), 'xezar screenshot-states: resource limit control missing').toBe(true)
   },
 
-  // Planned for 0.16.0 (#453 B8). Waits for a real registered row, not only the section, because
-  // an empty table is exactly the picture that would hide G-30 — the sideways scroll below `md`
-  // only happens once there are rows to squeeze.
-  'settings-projects': (ctx, theme) => {
+  // Shot for the first time in 0.16.0 (#453 B8). Waits for a real registered row, not only the
+  // section, because an empty table is exactly the picture that would hide G-30 — the sideways
+  // scroll below `md` only happens once there are rows to squeeze. The registered-projects table
+  // sits below the fold on a phone (two settings fields precede it), so the row is scrolled into
+  // view before the shot — otherwise the 375-wide capture would show the prose above the table
+  // instead of the table the state exists to picture.
+  'settings-projects': (ctx, theme, width) => {
     open(ctx, '/settings/global/projects', theme)
     wait(ctx.browser, exists('[data-slot="projects-section"]'))
     wait(ctx.browser, exists('[data-slot="project-row"]'))
+    if (width === 375) {
+      ctx.browser.evaluate(`document.querySelector('[data-slot="project-row"]').scrollIntoView({ block: 'center' })`)
+      wait(ctx.browser, `document.querySelector('[data-slot="project-row"]').getBoundingClientRect().top >= 0`)
+    }
 
     expect(ctx.guide.hasRole('heading', 'Projects'), 'xezar screenshot-states: Projects heading missing').toBe(true)
     expect(ctx.guide.hasRole('table', 'Projects registered in this workspace'), 'xezar screenshot-states: projects table missing').toBe(true)
@@ -553,12 +560,23 @@ export const SCENARIOS: Record<string, Scenario> = {
   'settings-mcp-connection': (ctx, theme) => {
     open(ctx, demo('/settings/mcp-connection'), theme)
     wait(ctx.browser, exists('[data-slot="mcp-connection-section"] [data-slot="mcp-leader"]'))
-    // The leader status and its Attach control, not only the setup prose above them.
-    ctx.browser.evaluate(`document.querySelector('[data-slot="mcp-leader"]').scrollIntoView({ block: 'center' })`)
-    wait(ctx.browser, `document.querySelector('[data-slot="mcp-leader"]').getBoundingClientRect().bottom <= innerHeight`)
+    // No owner is identified yet, so the client picker defaults to Codex (#404's `?? 'codex'`
+    // fallback) — pick OpenCode instead, since it is the one client the setup guide (13:224)
+    // captions this capture for (the "person-driven OpenCode attachment" walkthrough).
+    wait(ctx.browser, exists('[data-slot="mcp-leader-client"] [data-value="opencode"]'))
+    ctx.browser.click('[data-slot="mcp-leader-client"] [data-value="opencode"]')
+    wait(ctx.browser, `document.querySelector('[data-slot="mcp-leader-client"] [data-value="opencode"]').getAttribute('aria-checked') === 'true'`)
+    // The card's top, not only the leader status further down — a center scroll cut off the
+    // "Owning client" row above it (design review NB-2).
+    ctx.browser.evaluate(`document.querySelector('[data-slot="mcp-leader"]').scrollIntoView({ block: 'start' })`)
+    // A sub-pixel rounding offset (e.g. -0.5) is still "at the top", not cut off; only a real
+    // scroll-past (the old center scroll's multi-hundred-pixel cutoff) should fail this.
+    wait(ctx.browser, `document.querySelector('[data-slot="mcp-leader"]').getBoundingClientRect().top > -2`)
 
     expect(ctx.guide.hasRole('heading', 'Connection status'), 'xezar screenshot-states: MCP connection heading missing').toBe(true)
     expect(ctx.guide.hasRole('button', 'Attach leader'), 'xezar screenshot-states: Attach leader control missing').toBe(true)
+    expect(ctx.guide.hasRole('radio', 'OpenCode'), 'xezar screenshot-states: OpenCode client choice missing').toBe(true)
+    expect(ctx.guide.hasRole('textbox', 'Server address'), 'xezar screenshot-states: OpenCode server address field missing').toBe(true)
   },
 
   'command-palette': (ctx, theme) => {

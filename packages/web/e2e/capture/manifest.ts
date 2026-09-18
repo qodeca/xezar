@@ -1,5 +1,5 @@
 /**
- * The 0.15.0 screenshot contract — one row per cockpit state, with the theme × width variants
+ * The 0.16.0 screenshot contract — one row per cockpit state, with the theme × width variants
  * each state is captured in.
  *
  * Source: the #448 plan's § 3.2 table (19 states). The plan's prose says "40 files", but its own
@@ -18,7 +18,7 @@ export type Width = 1280 | 375
 export interface ShotState {
   /** File-name stem: `<name>-<theme>-<width>.png`. */
   name: string
-  /** What the picture shows, in words — copied into docs/screenshots/0.15.0/README.md. */
+  /** What the picture shows, in words — copied into docs/screenshots/0.16.0/README.md. */
   shows: string
   variants: ReadonlyArray<readonly [Theme, Width]>
   /**
@@ -34,7 +34,7 @@ export interface ShotState {
    * and inside `allPlannedShotFiles()` (what to shoot). The docs wave that re-captures the set
    * moves `SCREENSHOT_DIR` to the new version and deletes these markers in the same commit.
    */
-  plannedFor?: '0.16.0'
+  plannedFor?: string
 }
 
 const both1280 = [['dark', 1280], ['light', 1280]] as const
@@ -61,21 +61,21 @@ export const SHOT_STATES: readonly ShotState[] = [
   { name: 'settings-resources', shows: 'Global Settings → Resources: parallel tasks, monitoring sessions and limits', variants: dark1280 },
   { name: 'settings-mcp-connection', shows: 'Project Settings → MCP connection with the leader status', variants: dark1280 },
   { name: 'command-palette', shows: 'The ⌘K command palette open', variants: dark1280 },
-  // Planned for 0.16.0 (#453 B8). The registered-projects table is the one documented surface the
-  // 0.15.0 set never pictured, and it is also where G-30 lives: below `md` it scrolls sideways
-  // inside its box instead of reflowing as cards, squeezing the Project column to 60 px. The
-  // phone variants are the point of the row — a debt nobody has a picture of keeps being read as
-  // a small one, and whoever fixes G-30 needs a before shot to compare against.
+  // Shot for the first time in 0.16.0 (#453 B8, un-planned here). The registered-projects table is
+  // the one documented surface the 0.15.0 set never pictured, and it is also where G-30 lives:
+  // below `md` it scrolls sideways inside its box instead of reflowing as cards, squeezing the
+  // Project column to 60 px. The phone variants are the point of the row — a debt nobody has a
+  // picture of keeps being read as a small one, and whoever fixes G-30 needs a before shot to
+  // compare against.
   {
     name: 'settings-projects',
     shows: 'Global Settings → Projects: the registered-projects table, and how it folds on a phone',
     variants: [['dark', 1280], ['light', 1280], ['dark', 375]],
-    plannedFor: '0.16.0',
   },
 ]
 
 /** Where the PNGs and the GIF live, relative to the repository root. */
-export const SCREENSHOT_DIR = 'docs/screenshots/0.15.0'
+export const SCREENSHOT_DIR = 'docs/screenshots/0.16.0'
 
 /** Per-file budget for a still, in bytes (the plan's "≤ 300 KB"). */
 export const SHOT_MAX_BYTES = 300 * 1024
