@@ -63,7 +63,9 @@ for (const client of DELIVERY_CLIENTS) describe(`engine incidents → ${client}`
     const runner = scriptedRunner([streamed ? { streamed: true, chunks: ['XEZ:', 'DO', 'NE'] } : {}]); cleanup.push(runner.restore);
     const manager = new RunManager(h.store, h.root); cleanup.push(() => manager.quiesce());
     const run = manager.startRun(SINGLE_STEP, { task: 'review', worktree: false, autonomous: true });
-    await expect.poll(() => runner.messages.length > 0 || h.store.getRun(run.id)?.status === 'done').toBe(true);
+    // Same race as the G7 completion-variant case below: match its 3000ms/10ms budget.
+    await expect.poll(() => runner.messages.length > 0 || h.store.getRun(run.id)?.status === 'done',
+      { timeout: 3000, interval: 10 }).toBe(true);
     expect(runner.messages).toEqual([]);
     await terminal(h.store, run.id);
     expect(runner.specs).toHaveLength(1);
@@ -82,8 +84,13 @@ for (const client of DELIVERY_CLIENTS) describe(`engine incidents → ${client}`
       const tool = calls(h, manager);
       expect(await tool.continue(run.id, await tool.version(run.id), 'complete-review')).not.toHaveProperty('error');
     }
+    // Races an unwanted nudge against the real completion chain (agent turn -> events ->
+    // journal -> run store), which is not a single awaitable promise; default poll budget
+    // (1000ms/50ms) is too tight under coverage instrumentation (#603) – match terminal()'s
+    // budget above for the same chain.
     await expect.poll(() => runner.messages.length > 0 ||
-      (runner.specs.length === (variant.continued ? 2 : 1) && h.store.getRun(run.id)?.status === 'done')).toBe(true);
+      (runner.specs.length === (variant.continued ? 2 : 1) && h.store.getRun(run.id)?.status === 'done'),
+      { timeout: 3000, interval: 10 }).toBe(true);
     expect(runner.messages, '#524: completion must precede nudge').toHaveLength(0);
     await terminal(h.store, run.id);
     expect(rows(h).map(row => row.kind)).toEqual(variant.continued ? ['task.done', 'task.done'] : ['task.done']);
@@ -103,7 +110,8 @@ for (const client of DELIVERY_CLIENTS) describe(`engine incidents → ${client}`
     await receipt(h, failure);
     const tool = calls(h, manager);
     expect(await tool.continue(run.id, await tool.version(run.id), 'repair-check')).not.toHaveProperty('error');
-    await expect.poll(() => runner.specs.length).toBe(2);
+    // Same completion-chain race: reproduced flaking under load with the default 1000ms/50ms budget.
+    await expect.poll(() => runner.specs.length, { timeout: 3000, interval: 10 }).toBe(2);
     await terminal(h.store, run.id);
     await h.settle();
     expect(order(h.root), '#520: required check must rerun after repair').toEqual(mode === 'repair succeeds'
@@ -140,7 +148,8 @@ for (const client of DELIVERY_CLIENTS) describe(`engine incidents → ${client}`
       await receipt(h, failed);
       return;
     }
-    await expect.poll(() => runner.specs.length).toBe(2);
+    // Same completion-chain race: reproduced flaking under load with the default 1000ms/50ms budget.
+    await expect.poll(() => runner.specs.length, { timeout: 3000, interval: 10 }).toBe(2);
     await terminal(h.store, run.id);
     expect(h.store.getRun(run.id)?.status).toBe(mode === 'repeat limit' ? 'failed' : 'done');
     if (mode === 'repeat limit') expect(h.store.getRun(run.id)?.autoResumeAt).toBe(new Date((reset + 120) * 1000 + AUTO_RESUME_GRACE_MS).toISOString());
