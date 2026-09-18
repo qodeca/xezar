@@ -333,6 +333,15 @@ reliably never opens, so `guide-13-mcp-leader-control.e2e.ts`'s unattached-state
 degraded "service not running" branch rather than the real first-boot reading a bare CI runner
 shows — the spec asserts an honest reading in either branch instead of hard-requiring one (#579).
 
+`packages/web/e2e/screenshot-states.e2e.ts` is the package's last file (browser-test-spec.md "PR
+4 — screenshot-state contract", Refs #549): one thin consumer of `capture/scenario-state.ts`'s
+`SCENARIOS` (see below), asserting every manifest state's visible facts by role, accessible label
+or visible text — never a screenshot, never `SCREENSHOT_DIR`. Unlike the guide files above it
+does not reuse the shared instance: it boots its own fixture through `capture/cockpit.ts`'s
+`bootCockpit()`, the same one the capture harness boots, because the screenshot states need the
+Inbox/Automations/review-gate/second-project fixture the shared suite server runs with those
+opt-ins off.
+
 ### The docs capture harness
 
 `packages/web/e2e/capture/` drives the same provider to produce the README and user-guide
@@ -356,3 +365,16 @@ so the pictures carry no mock text and no cloned rows. A new seeded task needs a
 tool is required: PNG decoding, palette re-encoding and GIF assembly are `node:zlib` code in
 `image-codec.ts`. What it normalises before each capture, and why, is in the generated
 `docs/screenshots/<version>/README.md`.
+
+**The seeded workspace and the per-state preparation live in `capture/scenario-state.ts`, not in
+`docs-screenshots.capture.ts` itself.** `seedScenario()` is the whole fixture (every task status, a
+variant pair, the review-gate run, the second project, the inbox, the automation, the second agent
+account) and `SCENARIOS` is one `Scenario` per manifest state — the same `data-slot` navigation and
+wait steps the 0.15.0 capture plan always used, now followed, immediately before a state would be
+captured, by `expect(...)` assertions that name the state's visible facts using only an ARIA role
+with an accessible name, an associated accessible label, or literal visible text (never a class,
+id, `data-*` attribute or other selector coupled to markup — the same locator rule the guide
+package above follows). `docs-screenshots.capture.ts` calls `SCENARIOS` immediately before
+`shoot()`; `screenshot-states.e2e.ts` calls the identical `SCENARIOS` and shoots nothing. One
+scenario, two callers, so a preparation change can never leave a picture and its own visible-fact
+test disagreeing about what the state shows.

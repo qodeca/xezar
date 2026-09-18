@@ -117,6 +117,18 @@ export class GuideBrowser {
     }
   }
 
+  /** Whether a form control with this placeholder text exists — the input-level counterpart to
+   *  `hasRole`/`hasText`, for a control (such as the command palette's search box) whose only
+   *  accessible name comes from its `placeholder`, not a role name, a label, or rendered text. */
+  hasPlaceholder(text: string, opts: { exact?: boolean } = {}): boolean {
+    try {
+      this.find('placeholder', text, 'text', { exact: opts.exact })
+      return true
+    } catch {
+      return false
+    }
+  }
+
   /**
    * The current VALUE of a form control addressed by role and accessible name — a `<select>` or
    * `<input>`'s own `.value`, which `find`'s `text` action cannot read (a native control has no
