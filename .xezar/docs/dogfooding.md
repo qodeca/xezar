@@ -11,6 +11,15 @@ Loop: observe during real work → classify problem versus environment/unknown �
 Installation validation is reported in installation.md. Real-task entries follow; each names its evidence level.
 
 ## Real-task entries
+
+### 2026-09-18 — #625 Tasks header overflow (G-48), `bug-fix` step `investigate`, `xezar-bug-investigation`, Claude Code (Opus 5) — real-task observed
+- Input: issue #625 (filed from the draft docs wave PR #626 mockup), the leader brief with criteria C1–C6; base `3792db54`.
+- Observed: **the brief's metric would have passed against the bug.** `document.documentElement.scrollWidth === innerWidth` held at 768 and 800 px before the fix too: the app shell clips at the document, and the overflow shows as the `main` pane scrolling sideways (602 px of header in 504/536 px) with the search squeezed to 46 px. Read the nearest scrolling ancestor, not the document; the regression test asserts the search box's own role-located geometry instead.
+- Observed: **the known-gaps row the brief said to update was not on `main`.** G-48 exists only in draft #626, so this branch retires the id in the id paragraph and the PR names the reconciliation #626 needs.
+- Observed: **measurement data seeded into the shared dry-run instance broke an unrelated spec.** Two unread runs I created for the measurements put a badge on the sidebar "Tasks" link and failed three `smoke.e2e.ts` nav-label cases in the first full run; the reboot reuses the same data folder, so the runs survived it. Delete seeded runs before `npm run test:e2e`, or measure against a fixture server.
+- Observed: the full browser suite (~590 s plus boot) sits at the 600 s tool-call ceiling, so a "foreground, one call" run gets moved to the background by the harness; a second run failed one file at fixture setup (`ECONNRESET`, 38 skipped), and that file passed 32/32 alone.
+- Kit friction (recorded before): `phase-record.sh check` refused the brief's `C1:` ids; written as `AC-C1:`.
+- Regression/control: stash of `tasks-overview.tsx` only + web rebuild → guide-02's new case red (`search right edge at 768 px: expected 866.296875 to be less than or equal to 768`), restored → 9/9.
 ### 2026-09-18 — #557 an MCP door for every registered project, `bug-fix` step `Reproduce, diagnose and fix`, `xezar-bug-investigation`, Claude Code (Opus 5) — real-task observed
 - Input: issue #557 and the leader brief; base `fe860b27`. Reproduced with the #567 two-project harness: B's bridge answered "xezar is not running for project repo-b" while B's routes served.
 - Observed: **the harness fails on A, not B, under the task's default `TMPDIR`.** The engine's per-task tmp directory pushes the scratch `XEZ_HOME/ipc` socket past the 104-byte macOS limit, so A's MCP is "unavailable" and the first assertion about A fails. `TMPDIR=/tmp` fixed it; the harness doc now says so.

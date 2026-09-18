@@ -50,8 +50,19 @@
 
 .air-tabs button[aria-pressed='true'] { background: var(--card); color: var(--foreground); font-weight: 600; box-shadow: var(--shadow-xs); }
 .air-tabs .n { font-family: var(--mono); font-size: 11px; font-variant-numeric: tabular-nums; }
-.air-head-fill { flex: 1; }
-.air-search-box { position: relative; width: calc(var(--u) * 60); } /* :195 w-60 */
+/* The Tasks head wraps rather than scrolling sideways (#625, known-gaps G-48): min-h-14 flex-wrap
+ * py-2, PageHeader's own spelling, so a wide window still draws one 56 px row. The actions and the
+ * search wrap as one right-aligned group (ml-auto flex max-w-full flex-wrap justify-end gap-3). */
+:root .air-screen .page-head.air-tasks-head {
+  flex-wrap: wrap; height: auto; min-height: calc(var(--u) * 14); padding-block: calc(var(--u) * 2);
+}
+
+.air-head-group {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: calc(var(--u) * 3);
+  max-width: 100%; margin-inline-start: auto;
+}
+
+.air-search-box { position: relative; width: calc(var(--u) * 60); max-width: 100%; } /* w-60 max-w-full */
 
 .air-search-box .icon { /* :197 absolute top-1/2 left-2.5 size-3.5 */
   position: absolute; inset-block-start: 50%; inset-inline-start: calc(var(--u) * 2.5);

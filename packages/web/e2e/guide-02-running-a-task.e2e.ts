@@ -293,4 +293,42 @@ describe('guide 02 — tasks and runs', () => {
     const reopened = await waitForStatus(baseUrl, runId, ['running', 'waiting'], 40)
     expect(reopened).not.toBe('done')
   }, 30_000)
+
+  it('the Tasks header fits a narrow desktop window with both sweep actions lit (#625, G-48)', async () => {
+    // The widest the header gets: "Mark all read" needs an unread finished run and "Archive
+    // finished" a finished one. Cancel the reopened run B (it holds the one agent slot) and
+    // finish one autonomous mock run beside it.
+    await fetch(`${baseUrl}/api/v1/runs/${runId}/cancel`, { method: 'POST' })
+    await waitForStatus(baseUrl, runId, ['cancelled'], 40)
+    const done = (await (
+      await fetch(`${baseUrl}/api/v1/runs`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ task: 'mock:done a finished task for the header width', workflow: 'quick-task', autonomous: true }),
+      })
+    ).json()) as { id: string }
+    await waitForStatus(baseUrl, done.id, ['done'])
+
+    // The project's own Tasks page, read off the thread URL the browser is on: a bare `/` would
+    // bring the cockpit back to the last route it showed rather than to the table.
+    const project = /\/p\/([^/]+)\//.exec(browser.url())?.[1]
+    expect(project, `a project-scoped URL, not ${browser.url()}`).toBeDefined()
+    browser.goto(`${baseUrl}/p/${project}/`)
+    await browser.waitForRole('button', 'Mark all read')
+    await browser.waitForRole('button', 'Archive finished')
+    try {
+      // 768 is the `md` edge. Before #625 the one-row header scrolled the main pane sideways at
+      // 768 and 800 px, pushing the search past the window, and squeezed it to about 46 px at
+      // every width up to about 1060 px, 897 included.
+      for (const width of [768, 800, 897]) {
+        browser.setViewport(width, 900)
+        browser.pause(300)
+        const search = browser.boxOfRole('textbox', 'Search tasks')
+        expect(search.x + search.width, `search right edge at ${width} px`).toBeLessThanOrEqual(width)
+        expect(search.width, `search width at ${width} px`).toBeGreaterThanOrEqual(160)
+      }
+    } finally {
+      browser.setViewport(1440, 900)
+    }
+  }, 60_000)
 })

@@ -37,11 +37,20 @@ small fix, and **G-14**'s `useIsDesktop()` query is the one item with a real use
 
 Ids are never reused: a deleted entry retires its number, so a new entry takes the next number after
 the highest ever used. **G-06, G-14, G-15, G-16, G-20, G-23, G-26, G-27, G-28, G-30, G-31, G-32, G-33,
-G-35, G-36, G-37, G-38, G-39, G-41, G-42, G-45, G-46, G-47 and G-48 are live** (24 rows); **G-01 to G-05, G-07 to
-G-13, G-17 to G-19, G-21, G-22, G-24, G-25, G-29, G-34, G-40, G-43 and G-44 are retired** (24
+G-35, G-36, G-37, G-38, G-39, G-41, G-42, G-45, G-46 and G-47 are live** (23 rows); **G-01 to G-05, G-07 to
+G-13, G-17 to G-19, G-21, G-22, G-24, G-25, G-29, G-34, G-40, G-43, G-44 and G-48 are retired** (25
 numbers); and **the next free id is G-49**. G-43 was retired by decision
 [D-09](decisions.md#d-09-compares-pick-confirm-keeps-the-ordinary-contrast-action) (the B7 design
 review) rather than by a fix: the pick confirm keeps its ordinary `contrast` action on purpose.
+**G-48** (the Tasks desktop header did not fit below about 896 px at comfortable density – density-
+dependent, from 958 px (roomy) to 835 px (ultra) at `innerWidth` 800 – filed as #625 from docs wave
+5, #626) was **fixed on 2026-09-18** by #625's own change: the header wraps (`min-h-14 flex-wrap …
+py-2`, `PageHeader`'s spelling) and its actions and 240 px search wrap as one right-aligned group,
+in `tasks-overview.tsx` and in `designs/design-system-air/tasks.html`. Measured in the live
+cockpit, both themes: the main pane scrolled sideways at 768 and 800 px (602 px of header in 504
+and 536 px) and the search was squeezed to 46 px up to about 1060 px; after the fix every width
+from 768 to 1280 px fits with a 240 px search, and 1280 px lays out exactly as before.
+`guide-02-running-a-task.e2e.ts` pins it at 768, 800 and 897 px.
 
 Counts are non-test files or occurrences in `packages/web/src`. Counts in G-15 read on 2026-09-18
 (and G-06's recount in its own last bullet), in G-16 on 2026-09-16; other counts retain the original inventory date, and a row's own disposition bullet says
@@ -251,13 +260,6 @@ is gone says so and keeps its line so the history reads.
 - **Rule**: the shipped behaviour above; a change to any of the five updates this row or the mockup.
 - **Fix**: none planned — these are deliberate. Bring the mockup's README into line when the design is next revised.
 - **Final disposition (#611, 2026-09-18)**: kept, with a reason — each deviation is accepted on #611's `## Design review`; the fifth on #612's `## Design review (scoped, PR5 copy items)`.
-
-### G-48 The Tasks desktop header does not fit between 768 and 896 px at comfortable density
-
-- **Differs**: `tasks.html`'s desktop header (`.air-tabs`, the flex-1 spacer, `.air-search-box` at a fixed `w-60`/240 px, both faithful to `tasks-overview.tsx:195-208`) needs at least 896 px of window width at comfortable density to fit beside the 264 px sidebar. Measured in a real Chrome (agent-browser 0.36.0): `scrollWidth` is 896 at `innerWidth` 800 and stays exact (`scrollWidth === innerWidth`) from 896 px up (767, 768–895 overflow, 896, 900, 950 and 1280 all exact), both themes identical (a layout, not a colour, issue). The figure is density-dependent – at `innerWidth` 800 the `scrollWidth` is 958 (roomy), 896 (comfortable), 866 (compact) and 835 (ultra) – so a single number without its density will not reproduce. `settings.html`, `inbox.html` and `thread.html` in the same folder do not overflow at 800 px (#621 design review), so this is specific to the Tasks header's combination of tabs, actions and the fixed-width search field. The sidebar is draggable up to 420 px but has no lower bound below its 264 px default (`app-shell.tsx:291`), so this is plausibly reproducible in the shipped cockpit too, not only in the mockup – not verified against a live cockpit build in this task (docs-only; `packages/web/src` is out of scope here). The gap pre-dates the docs-wave PR 5 breakpoint move (#447 NB-2): at base `2478bfaa`, before that move, `air/tasks.html` already measured `scrollWidth` 896 at 768, 800 and 859 px, because the shared `cockpit.css` was already at the 767.98 px edge while the folder's own `shell.css:274` was still at 860 px – a hybrid band where the shared sheet's desktop shell rendered under the folder's still-phone rules. Moving the folder's breakpoint to 767.98 px removed that hybrid band; it did not create the overflow.
-- **Rule**: no state scrolls sideways at a reviewed width (`docs/design-system/new-designs.md` §4); 768 px and 800 px are among the widths this docs wave's own criteria name.
-- **Fix**: not attempted here – it would touch either `packages/web/src/routes/tasks-overview.tsx` (shrink or wrap the header row) or a redesign of the header at narrow desktop widths, both out of scope for a docs task.
-- **Final disposition (#625, 2026-09-18)**: filed as **#625** – this PR touches `designs/design-system-air/tasks.css` (CONTRIBUTING.md §6 trigger 1), and fixing the header is out of scope for a docs-only task. Still open at the start of this task; the row above stays as corrected rather than as fixed-with-date.
 
 ## Comment vs code
 
