@@ -59,6 +59,48 @@ describe('parseUsageLimit', () => {
     expect(hit?.resetAt.toISOString()).toBe('2026-08-04T18:10:00.000Z');
   });
 
+  it('reads a weekly-limit reset that names an explicit month/day, not just a clock (#581)', () => {
+    // Real CLI text, run 24ec6a4d-65f7-46e9-90d4-a2a9b3687e4e (.local/xezar/runs.json):
+    // hit at 2026-09-17T16:15:23Z, message names Sep 19 at 6pm Warsaw — two days out. A parser
+    // that drops the month/day and only reads the clock guesses "the next 18:00 from now", which
+    // lands on Sep 18 (one day early) because 18:00 had already passed on the 17th.
+    const hitAt = Date.parse('2026-09-17T16:15:23.000Z');
+    const hit = parseUsageLimit(
+      "step \"review\" failed: You've hit your weekly limit · resets Sep 19 at 6pm (Europe/Warsaw)",
+      hitAt,
+    );
+    expect(hit?.resetAt.toISOString()).toBe('2026-09-19T16:00:00.000Z');
+    expect(hit?.evidence).toBe('date');
+  });
+
+  it('reads a weekly-limit reset named for tomorrow, not today\'s next occurrence (#581)', () => {
+    // Real CLI text, run 35489d1a-43f3-4765-b2d9-e3a247cf3ec7: hit at 2026-09-17T16:30:58Z,
+    // message names Sep 18 at 9pm Warsaw. The clock-only reading picks today (17th) because
+    // 21:00 had not yet passed on the 17th — the explicit date says otherwise.
+    const hitAt = Date.parse('2026-09-17T16:30:58.000Z');
+    const hit = parseUsageLimit(
+      "step \"address\" failed: You've hit your weekly limit · resets Sep 18 at 9pm (Europe/Warsaw)",
+      hitAt,
+    );
+    expect(hit?.resetAt.toISOString()).toBe('2026-09-18T19:00:00.000Z');
+    expect(hit?.evidence).toBe('date');
+  });
+
+  it('reads a month/day reset in the zone the machine is not in', () => {
+    const hitAt = Date.parse('2026-09-17T16:15:23.000Z');
+    const hit = parseUsageLimit("You've hit your weekly limit · resets Sep 19 at 6pm (America/Los_Angeles)", hitAt);
+    expect(hit?.resetAt.toISOString()).toBe('2026-09-20T01:00:00.000Z');
+    expect(hit?.evidence).toBe('date');
+  });
+
+  it('still reads the session-limit clock-only form the same way (unaffected by #581)', () => {
+    // Real CLI text, run b9c9ddfd-5a3d-4c9e-8d3f-50a125a8c781 — already correct before the fix.
+    const hitAt = Date.parse('2026-09-17T16:00:00.000Z');
+    const hit = parseUsageLimit("You've hit your session limit · resets 6:30pm (Europe/Warsaw)", hitAt);
+    expect(hit?.resetAt.toISOString()).toBe('2026-09-17T16:30:00.000Z');
+    expect(hit?.evidence).toBe('clock');
+  });
+
   it('reads a relative delay, and a bare retry-after', () => {
     expect(parseUsageLimit('rate limit exceeded — try again in 42 minutes', NOW)?.resetAt.toISOString())
       .toBe('2026-08-03T12:42:00.000Z');
