@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
-import { LineFramer, mcpSocketLocation } from './ipc.ts';
+import { afterEach, describe, expect, it } from 'vitest';
+import { projectStateLayout, setActiveStateLayout } from '../state-layout.ts';
+import { LineFramer, mcpSocketDir, mcpSocketLocation } from './ipc.ts';
 import { negotiateProtocolVersion, SUPPORTED_PROTOCOL_VERSIONS } from './protocol.ts';
 
 describe('mcpSocketLocation (D-01 § 1.3–1.4)', () => {
@@ -33,6 +34,30 @@ describe('mcpSocketLocation (D-01 § 1.3–1.4)', () => {
     expect(tooLong).toMatchObject({ kind: 'unavailable' });
     expect(tooLong.kind === 'unavailable' && tooLong.reason).toMatch(/too long.*XEZ_HOME/);
     expect(mcpSocketLocation(project, { XEZ_HOME: '/h' }, 'win32')).toMatchObject({ kind: 'unavailable' });
+  });
+
+  // #600: in single-project mode the socket dir is inside the project, so both the
+  // path and the remedy the message names change. "Point XEZ_HOME somewhere shorter"
+  // is advice a user in this mode cannot take — the folder decides, not the variable.
+  describe('single-project mode', () => {
+    afterEach(() => setActiveStateLayout(null));
+
+    it('puts the socket under <project>/.local/xezar/ipc, never in the per-user home', () => {
+      setActiveStateLayout(projectStateLayout('/work/shop'));
+      expect(mcpSocketDir({ XEZ_HOME: '/h' })).toBe(join('/work/shop', '.local', 'xezar', 'ipc'));
+      expect(mcpSocketLocation(project, { XEZ_HOME: '/h' }, 'darwin')).toEqual({
+        kind: 'socket',
+        path: join('/work/shop', '.local', 'xezar', 'ipc', 'shop.sock'),
+      });
+    });
+
+    it('names the project path, not XEZ_HOME, when even the fallback is too long', () => {
+      setActiveStateLayout(projectStateLayout(`/${'a'.repeat(120)}`));
+      const tooLong = mcpSocketLocation(project, { XEZ_HOME: '/h' }, 'darwin');
+      expect(tooLong).toMatchObject({ kind: 'unavailable' });
+      expect(tooLong.kind === 'unavailable' && tooLong.reason).toMatch(/too long.*move the project to a shorter path/);
+      expect(tooLong.kind === 'unavailable' && tooLong.reason).not.toMatch(/XEZ_HOME/);
+    });
   });
 });
 

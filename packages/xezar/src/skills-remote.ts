@@ -1,18 +1,25 @@
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { loadConfig, type SkillsRepoSource } from './config.ts';
+import { expandTilde, xezCacheDir } from './paths.ts';
 import { parseFrontmatter, type Skill } from './skills.ts';
 
 /**
  * Team skills from remote git repos (spec 005), janitor-style: a bare clone
  * without a checkout, listed with `git ls-tree` and read with `git show`.
- * The cache lives in `~/.cache/xez/skills/<owner>__<name>/` — global, so one
- * fetch serves every project. Everything degrades: no network / no access to
- * the skills repo means the team skills quietly disappear from the list while
- * local skills keep working. Nothing here ever blocks startup.
+ * The cache lives in `<xezCacheDir()>/skills/<owner>__<name>/`. In the default
+ * global layout that is `~/.cache/xez/skills/…`, unchanged and shared, so one
+ * fetch serves every project on the machine. In single-project mode (#600
+ * AC-5) it is `<project>/.local/xezar/cache/skills/…` instead: a folder that
+ * owns its settings, accounts and limits must not reach a directory every other
+ * project shares, and a clone of it must fetch its own team skills rather than
+ * inherit whatever this machine happened to fetch last.
+ *
+ * Everything degrades: no network / no access to the skills repo means the team
+ * skills quietly disappear from the list while local skills keep working.
+ * Nothing here ever blocks startup.
  */
 
 const LIST_TIMEOUT_MS = 10_000; // ls-tree / show / rev-parse
@@ -163,7 +170,11 @@ export function safeRemoteFor(repo: string): string | null {
   //
   // `~/…` — git runs via execFile with no shell, so expand it here or git would
   // look for a directory literally named `~`.
-  if (/^~\//.test(value)) return join(homedir(), value.slice(2));
+  //
+  // `expandTilde` rather than a local `homedir()` join: this `~` is the USER'S
+  // home in the path they wrote, in every layout (#600 SP-2.3 — a source repo
+  // on the host does not move when the state does).
+  if (/^~\//.test(value)) return expandTilde(value);
   if (/^(\/|\.\/|\.\.\/)/.test(value)) return value;
   // Windows drive-letter path (`C:\repo`, `C:/repo`). Not a transport — no
   // scheme, and a leading `-` is already refused above — and win32 is a
@@ -202,7 +213,11 @@ export function isPinnedSha(ref: string): boolean {
   return /^[0-9a-f]{40}$/i.test(ref) || /^[0-9a-f]{64}$/i.test(ref);
 }
 
-/** Stable cache directory name: the last two path segments, `owner__name`. */
+/**
+ * Stable cache directory name: the last two path segments, `owner__name`,
+ * under the layout's cache root (`~/.cache/xez/skills` globally,
+ * `<project>/.local/xezar/cache/skills` in single-project mode).
+ */
 export function bareDirFor(repo: string): string {
   const trimmed = repo
     .replace(/\/+$/, '')
@@ -211,7 +226,7 @@ export function bareDirFor(repo: string): string {
     .replace(/^~\//, '');
   const segments = trimmed.split(/[/:]/).filter(Boolean).map(sanitizeSegment);
   const key = segments.slice(-2).join('__') || 'skills';
-  return join(homedir(), '.cache', 'xez', 'skills', key);
+  return join(xezCacheDir(), 'skills', key);
 }
 
 function sanitizeSegment(s: string): string {

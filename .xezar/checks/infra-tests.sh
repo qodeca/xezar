@@ -539,6 +539,100 @@ expect_fail "a repo-level memoryLimitMb is rejected on kit policy, not as ignore
 expect_fail "and its refusal never claims the scheduler ignores it" \
   "must not set" node "$SCRIPT_DIR/catalog-check.mjs" "$root"
 
+# In the GLOBAL layout the advice must not mention a file this folder does not have. This is
+# the control for the single-project cases below: the falsifier of SP-2.6 is a check that
+# accepts a machine-shaped key in the global layout, and the near miss is a check that starts
+# telling every repository about a mode it is not in.
+if node "$SCRIPT_DIR/catalog-check.mjs" "$root" 2>&1 | grep -qF 'workspace.json'; then
+  bad "the global-layout refusal never mentions workspace.json" "it did"
+else
+  ok "the global-layout refusal never mentions workspace.json"
+fi
+
+# --- 1a-bis. Single-project mode: the machine-shaped keys (#600 FR-7.2, SP-2.6) -------------
+# `<project>/.xezar/workspace.json` is committed state in the mode and the engine reads its
+# `resources` slice. So the kit accepts a committed memoryLimitMb/maxParallel THERE — refusing
+# one would refuse a legitimate setting the mode exists to make possible — while the
+# `.xezar/config.json` refusal above is unchanged, because that file is still not read for them.
+root="$(catalog_fixture single-project)"
+mkdir -p "$root/.xezar/workflows"
+cat > "$root/.xezar/workflows/w.yaml" <<'EOF'
+name: w
+steps:
+  - id: a
+    prompt: "{{task}}"
+    skill: s
+EOF
+printf '{\n  "resources": {\n    "maxParallel": 16,\n    "memoryLimitMb": 131072\n  }\n}\n' \
+  > "$root/.xezar/workspace.json"
+expect_ok "a committed maxParallel and memoryLimitMb in workspace.json -> resources are accepted" \
+  node "$SCRIPT_DIR/catalog-check.mjs" "$root"
+if node "$SCRIPT_DIR/catalog-check.mjs" "$root" 2>&1 | grep -qF 'never clamped to this host'; then
+  ok "and the acceptance says they are applied as written"
+else
+  bad "and the acceptance says they are applied as written" "the note did not say so"
+fi
+
+# Acceptance is bounded by the ENGINE SCHEMA's own ranges, and outside them the promise the note
+# makes is false: `workspace/config.ts` ends both keys with a `.catch()`, so 17 becomes the shipped
+# default 2 and 2 000 000 becomes this host's derivation, silently. A committed file that says a
+# number nothing runs is worse than no key, so each of these is refused with the range named.
+printf '{\n  "resources": {\n    "maxParallel": 17\n  }\n}\n' > "$root/.xezar/workspace.json"
+expect_fail "a committed maxParallel above the schema range is refused" \
+  "must be a whole number in 1–16" node "$SCRIPT_DIR/catalog-check.mjs" "$root"
+printf '{\n  "resources": {\n    "maxParallel": 0\n  }\n}\n' > "$root/.xezar/workspace.json"
+expect_fail "and below it too" \
+  "must be a whole number in 1–16" node "$SCRIPT_DIR/catalog-check.mjs" "$root"
+printf '{\n  "resources": {\n    "maxParallel": null\n  }\n}\n' > "$root/.xezar/workspace.json"
+expect_fail "a null maxParallel is refused — unlike memoryLimitMb it has no no-limit spelling" \
+  "not null" node "$SCRIPT_DIR/catalog-check.mjs" "$root"
+printf '{\n  "resources": {\n    "memoryLimitMb": 2000000\n  }\n}\n' > "$root/.xezar/workspace.json"
+expect_fail "a committed memoryLimitMb above the schema range is refused" \
+  "must be a whole number in 0–1048576 or null" node "$SCRIPT_DIR/catalog-check.mjs" "$root"
+printf '{\n  "resources": {\n    "memoryLimitMb": -1\n  }\n}\n' > "$root/.xezar/workspace.json"
+expect_fail "and a negative one too" \
+  "must be a whole number in 0–1048576 or null" node "$SCRIPT_DIR/catalog-check.mjs" "$root"
+printf '{\n  "resources": {\n    "memoryLimitMb": 4096.5\n  }\n}\n' > "$root/.xezar/workspace.json"
+expect_fail "a fractional memoryLimitMb is refused: the schema takes whole numbers only" \
+  "must be a whole number in 0–1048576 or null" node "$SCRIPT_DIR/catalog-check.mjs" "$root"
+printf '{\n  "resources": {\n    "memoryLimitMb": "8192"\n  }\n}\n' > "$root/.xezar/workspace.json"
+expect_fail "a memoryLimitMb written as a string is refused, and the message names the range" \
+  "found \"8192\"" node "$SCRIPT_DIR/catalog-check.mjs" "$root"
+# The two in-range boundaries stay accepted: this is validation, not a new policy against big
+# numbers, and the whole point of FR-7.2 is that a committed limit the schema takes is honoured.
+printf '{\n  "resources": {\n    "maxParallel": 1,\n    "memoryLimitMb": 0\n  }\n}\n' > "$root/.xezar/workspace.json"
+expect_ok "the low boundary of each range is accepted" node "$SCRIPT_DIR/catalog-check.mjs" "$root"
+printf '{\n  "resources": {\n    "maxParallel": 16,\n    "memoryLimitMb": 1048576\n  }\n}\n' > "$root/.xezar/workspace.json"
+expect_ok "and the high boundary of each range is accepted" node "$SCRIPT_DIR/catalog-check.mjs" "$root"
+printf '{\n  "resources": {\n    "memoryLimitMb": null\n  }\n}\n' > "$root/.xezar/workspace.json"
+expect_ok "an explicit null memoryLimitMb — the user's own \"no limit\" — is accepted" \
+  node "$SCRIPT_DIR/catalog-check.mjs" "$root"
+
+# The same fault the config.json rule catches, in the other file: a key where nothing reads it.
+printf '{\n  "memoryLimitMb": 131072\n}\n' > "$root/.xezar/workspace.json"
+expect_fail "a machine-shaped key at the top level of workspace.json is rejected" \
+  "where nothing reads it" node "$SCRIPT_DIR/catalog-check.mjs" "$root"
+
+# The mode does NOT lift the config.json refusal; it redirects the advice, because ~/.xezar is
+# never opened in the mode and telling the user to edit it there would be advice they cannot take.
+printf '{\n  "resources": {\n    "memoryLimitMb": 4096\n  }\n}\n' > "$root/.xezar/workspace.json"
+printf '{\n  "baseBranch": "main",\n  "worktreeRetention": 0,\n  "memoryLimitMb": 4096\n}\n' \
+  > "$root/.xezar/config.json"
+expect_fail "a machine-shaped key in .xezar/config.json is still refused in the mode" \
+  "must not set" node "$SCRIPT_DIR/catalog-check.mjs" "$root"
+expect_fail "and the refusal now names the committed home the mode does have" \
+  "single-project mode, so the committed home for this key is .xezar/workspace.json -> resources" \
+  node "$SCRIPT_DIR/catalog-check.mjs" "$root"
+
+# A workspace.json the engine would refuse to boot on must not pass the kit check either.
+printf '{\n  "baseBranch": "main",\n  "worktreeRetention": 0\n}\n' > "$root/.xezar/config.json"
+printf '{ not json\n' > "$root/.xezar/workspace.json"
+expect_fail "a malformed workspace.json is reported as the boot refusal it is" \
+  "refuses to boot in this folder" node "$SCRIPT_DIR/catalog-check.mjs" "$root"
+printf '[]\n' > "$root/.xezar/workspace.json"
+expect_fail "a workspace.json that is valid JSON but not an object is refused too" \
+  "not an object" node "$SCRIPT_DIR/catalog-check.mjs" "$root"
+
 # --- 1b. Changelog structure ---------------------------------------------------------------------
 # Added 2026-09-09 (#31). Two fix PRs each added their own `# Unreleased` section in different
 # places and the release had to consolidate them by hand. The `changelog` step of the `release`

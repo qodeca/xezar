@@ -143,6 +143,23 @@ export function agentAccountsPath(env: NodeJS.ProcessEnv = process.env): string 
 }
 
 /**
+ * Where xezar caches what it can always fetch again: the bare clones of team
+ * skills repos under `<cacheDir>/skills/<owner>__<name>`, and the
+ * skills-update lock beside them.
+ *
+ * Global layout: `~/.cache/xez`, unchanged and `XEZ_HOME`-independent, exactly
+ * as `skills-remote.ts` resolved it before single-project mode existed.
+ * Project layout: `<project>/.local/xezar/cache` (#600 AC-5) — the cache is the
+ * one thing besides the four state files that a shared home made shared, and a
+ * folder that owns its state owns its skills too.
+ *
+ * A path helper, not a cache: nothing here creates a directory or reads one.
+ */
+export function xezCacheDir(env: NodeJS.ProcessEnv = process.env): string {
+  return activeStateLayout(env).cacheDir;
+}
+
+/**
  * Expand a leading `~` to the user's home. Lives here with the other homedir
  * logic (see the module note above — one place owns `homedir()`): the
  * workspace browse/checkout roots are stored as the user wrote them (a literal `~`), so
