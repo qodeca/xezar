@@ -40,20 +40,27 @@ import {
  */
 
 /**
- * Reproducible 0.15.0 cockpit captures (#448 PR-1b): every still in `manifest.ts`, then the tour
- * GIF, from one dry-run fixture cockpit.
+ * Reproducible 0.16.0 cockpit captures (#448 PR-1b, re-shot each release): every still in
+ * `manifest.ts`, then the tour GIF, from one dry-run fixture cockpit.
  *
  *   npm run build
  *   npm run capture:screenshots -w @qodeca/xezar-web
  *   npm run capture:screenshots -w @qodeca/xezar-web -- -t tasks-list   # one state
  *
- * Output goes straight to `docs/screenshots/0.15.0/`. Nothing here asserts product behaviour;
+ * Output goes straight to `docs/screenshots/0.16.0/`. Nothing here asserts product behaviour;
  * the `expect`s only refuse to write a picture of the wrong state.
  */
 
 const repoRoot = resolve(import.meta.dirname, '../../../..')
 const outDir = resolve(repoRoot, SCREENSHOT_DIR)
 const sessionId = `capture-docs-${process.pid}`
+
+// The chip shows what the running (pre-release) build's own package.json says; the docs describe
+// the version the screenshot folder is named for. Pin the chip to the latter, derived here so it
+// never drifts from a second hand-typed literal.
+const buildVersion = (JSON.parse(readFileSync(resolve(repoRoot, 'packages/xezar/package.json'), 'utf8')) as { version: string }).version
+const docsVersion = SCREENSHOT_DIR.split('/').at(-1)!
+const versionRewrite = { build: buildVersion, docs: docsVersion }
 
 // Plan § 3.2: desktop stills at 1280 × 800, the same height as the tour.
 const HEIGHT: Record<Width, number> = { 1280: 800, 375: 812 }
@@ -97,7 +104,7 @@ const runPath = (id: string) => `/p/${DEMO_PROJECT}/runs/${id}`
 async function shoot(file: string): Promise<void> {
   browser.evaluate(freezeJs)
   await settle()
-  browser.evaluate(normalizeJs(cockpit.dataRoot, cockpit.home, looks()))
+  browser.evaluate(normalizeJs(cockpit.dataRoot, cockpit.home, looks(), versionRewrite))
   const raw = browser.screenshot(join(frameDir, file), { viewport: true })
   const png = readFileSync(raw)
   const bytes: Uint8Array = png.length > SHOT_MAX_BYTES ? encodePngPalette(decodePng(png)) : png
@@ -165,7 +172,7 @@ describe(`${SCREENSHOT_DIR}/${TOUR_FILE}`, () => {
     let index = 0
     const grab = () => {
       browser.evaluate(freezeJs)
-      browser.evaluate(normalizeJs(cockpit.dataRoot, cockpit.home, looks()))
+      browser.evaluate(normalizeJs(cockpit.dataRoot, cockpit.home, looks(), versionRewrite))
       const path = browser.screenshot(join(frameDir, `tour-${String(index).padStart(3, '0')}.png`), { viewport: true })
       index += 1
       return decodePng(readFileSync(path))
@@ -251,7 +258,7 @@ describe(`${SCREENSHOT_DIR}/README.md`, () => {
     const rows = SHOT_STATES.flatMap((state) =>
       state.variants.map(([theme, width]) => `| [\`${shotFileName(state.name, theme, width)}\`](${shotFileName(state.name, theme, width)}) | ${state.shows} | ${theme} | ${width} × ${HEIGHT[width]} |`),
     )
-    const readme = `# xezar 0.15.0 cockpit screenshots
+    const readme = `# xezar 0.16.0 cockpit screenshots
 
 Captured from a dry-run cockpit (\`XEZ_DRY_RUN=1\` with a sandboxed \`XEZ_HOME\`, no login, no network)
 with fixture data: a demo project with tasks in every status on Claude Code, Codex and pi, a second
@@ -294,7 +301,8 @@ agent-browser) and then its own fixture server. It is not part of \`npm run test
   pill are hidden, so no capture lands on a random frame.
 - The Tasks table folds Model, Cost, CPU and Mem; with every column open it is wider than 1280 px
   beside the sidebar and IN / OUT is cut off.
-- The version chip shows the version of the build that ran the capture.
+- The version chip is pinned to v${docsVersion}, the version these docs describe, not the
+  pre-release build's own \`package.json\` version.
 - A still larger than 300 KB would be re-encoded as an 8-bit palette PNG. The tour's streaming
   frames are sampled live, so their count can vary; their total time is fixed, and the tour runs
   at most 20 seconds.

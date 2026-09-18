@@ -36,13 +36,13 @@ you can `cat` and fix by hand.
 
 ## 60-second tour
 
-<a href="docs/screenshots/0.15.0/tour.gif"><img src="docs/screenshots/0.15.0/tour.gif" width="100%" alt="A short loop of the cockpit: tasks running in parallel, the queue starting, a live thread and the Inbox"></a>
+<a href="docs/screenshots/0.16.0/tour.gif"><img src="docs/screenshots/0.16.0/tour.gif" width="100%" alt="A short loop of the cockpit: tasks running in parallel, the queue starting, a live thread, review and a draft PR"></a>
 
 <table>
 <tr>
-<td width="33%"><a href="docs/screenshots/0.15.0/task-thread-dark-1280.png"><picture><source media="(prefers-color-scheme: light)" srcset="docs/screenshots/0.15.0/task-thread-light-1280.png"><img src="docs/screenshots/0.15.0/task-thread-dark-1280.png" alt="A running task streaming agent text, tool calls and results live"></picture></a></td>
-<td width="33%"><a href="docs/screenshots/0.15.0/compare-variants-dark-1280.png"><picture><source media="(prefers-color-scheme: light)" srcset="docs/screenshots/0.15.0/compare-variants-light-1280.png"><img src="docs/screenshots/0.15.0/compare-variants-dark-1280.png" alt="Two variants of the same task compared side by side"></picture></a></td>
-<td width="33%"><a href="docs/screenshots/0.15.0/github-issues-dark-1280.png"><picture><source media="(prefers-color-scheme: light)" srcset="docs/screenshots/0.15.0/github-issues-light-1280.png"><img src="docs/screenshots/0.15.0/github-issues-dark-1280.png" alt="The GitHub view handing an open issue to an agent"></picture></a></td>
+<td width="33%"><a href="docs/screenshots/0.16.0/task-thread-dark-1280.png"><picture><source media="(prefers-color-scheme: light)" srcset="docs/screenshots/0.16.0/task-thread-light-1280.png"><img src="docs/screenshots/0.16.0/task-thread-dark-1280.png" alt="A running task streaming agent text, tool calls and results live"></picture></a></td>
+<td width="33%"><a href="docs/screenshots/0.16.0/compare-variants-dark-1280.png"><picture><source media="(prefers-color-scheme: light)" srcset="docs/screenshots/0.16.0/compare-variants-light-1280.png"><img src="docs/screenshots/0.16.0/compare-variants-dark-1280.png" alt="Two variants of the same task compared side by side"></picture></a></td>
+<td width="33%"><a href="docs/screenshots/0.16.0/github-issues-dark-1280.png"><picture><source media="(prefers-color-scheme: light)" srcset="docs/screenshots/0.16.0/github-issues-light-1280.png"><img src="docs/screenshots/0.16.0/github-issues-dark-1280.png" alt="The GitHub view handing an open issue to an agent"></picture></a></td>
 </tr>
 <tr>
 <td align="center"><b>Watch a run live</b><br>Every step, tool call and token as it happens.</td>
@@ -295,6 +295,22 @@ step: start `xezar --single-project` once in the project folder – its first ru
 one-time import of your existing global `~/.xezar` setup. See
 [Projects § single-project mode](docs/guide/09-projects.md#to-keep-a-projects-xezar-setup-inside-the-project--single-project-mode).
 
+### Hosted WebSocket migration
+
+Hosted mode (`XEZ_REMOTE=1` or a non-loopback bind) now refuses all WebSocket upgrades, including
+native clients without an Origin. Use the authenticated HTTP API and SSE event endpoints through
+your reverse proxy; the cockpit already uses these transports remotely. Local-mode WebSocket
+clients and the Vite development proxy are unchanged.
+
+### MCP door for every registered project
+
+Every project registered in the cockpit now gets its own MCP door, opened at boot and when the
+project is registered (#557) – not only the one the cockpit started in. A leader started in a
+second project can attach without restarting the cockpit inside that project's folder; nothing to
+configure, and the starting project's connection, socket location and connection file are
+unchanged. See
+[Run a leader in each client](docs/guide/13-mcp-leader.md#to-run-a-leader-in-each-client).
+
 ## Upgrading to 0.15.0
 
 ### Codex runs and MCP servers
@@ -335,8 +351,3 @@ described in [SECURITY.md](SECURITY.md).
 
 **MIT** © Qodeca – full text in [LICENSE](LICENSE).
 Xezar is based on work done in [open-mercato/cezar](https://github.com/open-mercato/cezar).
-
-
-### Hosted WebSocket migration (0.16.0)
-
-Hosted mode (`XEZ_REMOTE=1` or a non-loopback bind) now refuses all WebSocket upgrades, including native clients without an Origin. Use the authenticated HTTP API and SSE event endpoints through your reverse proxy; the cockpit already uses these transports remotely. Local-mode WebSocket clients and the Vite development proxy are unchanged.

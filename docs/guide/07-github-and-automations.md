@@ -19,7 +19,7 @@ Open a project with a **github.com** remote. GitHub Enterprise hosts do not enab
 3. Search by number, title, or author, and use the label filter to narrow the list. An exact number such as `#448` asks GitHub for an item outside the open list only when there are no local matches. Local number matching uses substrings, so open #1448 prevents that lookup for #448. Use **Issues** for closed issues and **Pull requests** for merged PRs.
 4. Open an item to read its description and conversation. For a PR, open **Changes** to inspect the changed files and diff.
 
-![GitHub issues and the hand-to-agent panel](../screenshots/0.15.0/github-issues-dark-1280.png)
+![GitHub issues and the hand-to-agent panel](../screenshots/0.16.0/github-issues-dark-1280.png)
 
 ## To hand an issue to an agent
 
@@ -72,7 +72,7 @@ Automations are off by default. Enabling them allows GitHub polling and task lau
 
 For example, a prompt can say `Summarize {{github.url}} and suggest a next step.` The eight supported placeholders are `{{github.kind}}`, `{{github.number}}`, `{{github.title}}`, `{{github.url}}`, `{{github.author}}`, `{{github.assignees}}`, `{{github.labels}}`, and `{{github.event}}`; unknown placeholders are rejected. Appended untrusted context contains event metadata, not the issue body. When editing an existing automation, save the name and prompt, then use its card’s **Enable** action to enable it. The editor lets you change the name and prompt; it does not expose controls for changing the displayed event, interval, or filter bounds.
 
-![Automation cards and activity](../screenshots/0.15.0/automations-dark-1280.png)
+![An automation card with Test filter, Pause, Edit and View log controls](../screenshots/0.16.0/automations-dark-1280.png)
 
 ## To inspect the automation log
 
