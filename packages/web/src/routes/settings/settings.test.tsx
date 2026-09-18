@@ -262,6 +262,15 @@ describe('single-project mode names the file each section writes (#600)', () => 
     renderAt('/settings/global', { singleProjectRoot: true })
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Workspace settings')
     expect(document.querySelector('[data-slot="settings-index"] [data-section="projects"]')).toBeNull()
+    cleanup()
+    // The project index's cross-link names the same area, and no registry the mode does not have.
+    renderAt('/settings', { singleProjectRoot: true })
+    const link = document.querySelector('[data-slot="settings-global-link"]')
+    expect(link?.textContent).toBe('Workspace settings')
+    expect(link?.parentElement?.textContent).not.toContain('project registry')
+    cleanup()
+    renderAt('/settings')
+    expect(document.querySelector('[data-slot="settings-global-link"]')?.textContent).toBe('Global settings')
   })
 })
 

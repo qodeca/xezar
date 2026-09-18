@@ -276,13 +276,17 @@ export function SettingsIndexRoute({ scope, capabilities }: {
               <>Agents, worktrees, bookmarklets and prompt templates are per project.</>
             ) : (
               <>
-                Appearance, notifications, host resources and the project registry live in{' '}
+                {/* Single-project mode (#600) has no project registry to point at, and the area is
+                    "Workspace settings" there — the same word its chip and index title use. */}
+                {projectRoot
+                  ? 'Appearance, notifications, host resources and agent accounts live in'
+                  : 'Appearance, notifications, host resources and the project registry live in'}{' '}
                 <RouterLink
                   to={settingsIndexPath('global')}
                   data-slot="settings-global-link"
                   className="inline-flex min-h-tap items-center underline underline-offset-2 hover:text-foreground md:min-h-0"
                 >
-                  Global settings
+                  {projectRoot ? 'Workspace settings' : 'Global settings'}
                 </RouterLink>
                 .
               </>
