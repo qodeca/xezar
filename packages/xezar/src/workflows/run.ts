@@ -294,6 +294,17 @@ interface ActiveRun {
    *  going until it signals done or the safety cap is hit. */
   autonomous?: boolean;
   autoContinues?: number;
+  /** A smaller nudge budget than `MAX_AUTO_CONTINUES` for this run's live turn — set only by
+   *  `runContinuation` when the continued turn must end with `XEZ:DONE` for the workflow tail to
+   *  run (#613). Read through `autoContinueCap`, never directly. */
+  autoContinueCap?: number;
+  /** `tool-call` events seen in the turn in flight; read and reset at every turn end (#613). */
+  turnToolCalls?: number;
+  /** Did an automatic nudge start the turn in flight? Read and reset at every turn end (#613). */
+  turnWasNudged?: boolean;
+  /** Why `autoContinueTurn` last declined to nudge because of a bound (cap or idle turn), for the
+   *  failure message a Continue-gated turn ends with (#613). */
+  autoContinueStop?: string;
   /** Registry snapshot used to expand `/skill` follow-ups before a backend can
    *  mistake them for its own slash commands (#676). */
   skills?: Skill[];
@@ -322,6 +333,29 @@ interface ActiveRun {
 /** Safety cap on autonomous auto-continues per run — stops a stuck agent from nudging forever.
  *  Exported so the regression suite pins the bound against the real number instead of a copy. */
 export const MAX_AUTO_CONTINUES = 40;
+/**
+ * The nudge budget of an autonomous Continue whose remaining workflow needs `XEZ:DONE` from the
+ * continued turn (#613). On the workflow path that same interrupted step is a non-final one, which
+ * runs ONE turn and is never nudged (#317); 40 nudges there bought one $144 failure (run
+ * `04af6692`: 41 turns of "Waiting for CI", then a 15-minute idle close, then the same error).
+ * Three still lets a nudge answer a question and see a short wait through, and past it the
+ * turn fails at once with this number in the message. Resolved only in `autoContinueCap`.
+ */
+export const MAX_GATED_CONTINUE_NUDGES = 3;
+/** The one place a run's nudge budget is resolved (#613). */
+function autoContinueCap(state: ActiveRun): number {
+  return state.autoContinueCap ?? MAX_AUTO_CONTINUES;
+}
+/** What the turn that just ended did, as far as the nudge bounds care (#613). */
+interface TurnActivity { toolCalls: number; nudged: boolean }
+/** Read and reset the per-turn activity. BOTH turn-end handlers call it at every turn end — also
+ *  a DONE or monitoring one — so a count never leaks into the next turn. */
+function takeTurnActivity(state: ActiveRun): TurnActivity {
+  const turn = { toolCalls: state.turnToolCalls ?? 0, nudged: state.turnWasNudged === true };
+  state.turnToolCalls = 0;
+  state.turnWasNudged = false;
+  return turn;
+}
 const AUTONOMOUS_NUDGE =
   'Continue working autonomously until the task is fully complete. Do not ask me for confirmation or clarification — make reasonable assumptions and proceed. When everything is done, end the session with your done signal.';
 const MONITORING_WAKE_NUDGE =
@@ -3003,6 +3037,9 @@ export class RunManager {
       record?.steps.find(saved => saved.id === step.id)?.status !== 'done') ?? -1;
     const hasUnfinishedSteps = record?.steps.some(step =>
       step.id !== stepId && !step.id.startsWith('continue-') && step.status !== 'done');
+    // The workflow tail runs only after this turn's DONE (#520), so an autonomous nudge loop here
+    // stands in for a step the workflow path never nudges (#317) — give it the small budget (#613).
+    if (resumeIndex >= 0) state.autoContinueCap = MAX_GATED_CONTINUE_NUDGES;
     let completedTurn = false;
     let stepCost = 0;
     let turnText = '';
@@ -3021,6 +3058,7 @@ export class RunManager {
         return;
       }
       this.store.appendEvent(runId, { ...event, stepId });
+      if (event.type === 'tool-call') state.turnToolCalls = (state.turnToolCalls ?? 0) + 1;
       if (event.type === 'error') {
         sessionError ??= event.message;
         state.session?.interrupt();
@@ -3046,6 +3084,7 @@ export class RunManager {
         // spawns `git diff --shortstat` inside a worktree under the data root. `quiesce()` waits
         // for it; dispose() deliberately does not, so no existing caller's timing changes.
         this.trackRun(this.recordTurnEnd(runId, turnText)); // titleSummary + diffStat (#389)
+        const activity = takeTurnActivity(state);
         const sessionOpen = !state.cancelled && state.session?.open;
         const done = sessionOpen && hasFinalDoneMarker(turnText.trimEnd());
         completedTurn = Boolean(done);
@@ -3064,12 +3103,19 @@ export class RunManager {
           return;
         }
         let autoContinued = false;
+        let gatedStop = false;
         if (sessionOpen) {
           // Autonomous (#autonomous): never hand the ball back to the user. Nudge the agent to
-          // keep going (bounded by MAX_AUTO_CONTINUES) instead of parking at `waiting`. Shared
-          // with `execute`'s turn-end handler — one sender, both sites (#141).
-          autoContinued = !monitoring && this.autoContinueTurn(runId, state);
-          if (!autoContinued) {
+          // keep going (bounded by `autoContinueCap` and the idle rule) instead of parking at
+          // `waiting`. Shared with `execute`'s turn-end handler — one sender, both sites (#141).
+          autoContinued = !monitoring && this.autoContinueTurn(runId, state, activity);
+          // A bound stopped an autonomous turn whose tail needs DONE (#613). Parking would only
+          // wait out the idle close and then fail with the same error (run `04af6692` sat 15
+          // minutes), so close now and let the settle below fail with the reason.
+          gatedStop = !autoContinued && resumeIndex >= 0 && state.autoContinueStop !== undefined;
+          if (gatedStop) {
+            state.session?.end();
+          } else if (!autoContinued) {
             // `XEZ:ASK` → park `waiting` (attention) AND surface the structured
             // question as an ask card (#473). `XEZ:MONITORING` → non-attention
             // `running`/`activity:'monitoring'` (#490). Both share the waiting
@@ -3108,7 +3154,7 @@ export class RunManager {
           runId,
           // A nudged turn did NOT park — the agent is working again, so the heartbeat must not
           // read `waiting` (#141; before the fix this branch was unreachable).
-          `turn complete — status=${autoContinued ? 'running' : monitoring ? 'monitoring' : sessionOpen ? 'waiting' : 'running'}`,
+          `turn complete — status=${autoContinued || gatedStop ? 'running' : monitoring ? 'monitoring' : sessionOpen ? 'waiting' : 'running'}`,
         );
       }
     };
@@ -3290,7 +3336,9 @@ export class RunManager {
           throw new Error('workflow definition not recoverable; remaining steps cannot be completed');
         }
         if (resumeIndex >= 0 && !completedTurn) {
-          throw new Error('remaining workflow requires XEZ:DONE from the continued turn');
+          // The prefix is unchanged; a bound that closed the turn is named after it (#613).
+          const bound = state.autoContinueStop ? ` — ${state.autoContinueStop}` : '';
+          throw new Error(`remaining workflow requires XEZ:DONE from the continued turn${bound}`);
         }
         this.store.updateStep(runId, stepId, { status: 'done', finishedAt: finishedAt() });
         // Same collection point the workflow path uses (#460) — a Continue is how a reviewer step
@@ -3357,14 +3405,33 @@ export class RunManager {
    * grep the TYPE at every construction site, and treat the two near-identical turn-end handlers
    * as one place. Keep this the only sender of `AUTONOMOUS_NUDGE`.
    */
-  private autoContinueTurn(runId: string, state: ActiveRun): boolean {
+  private autoContinueTurn(runId: string, state: ActiveRun, turn: TurnActivity): boolean {
+    state.autoContinueStop = undefined;
     if (!state.autonomous || state.cancelled) return false;
-    if ((state.autoContinues ?? 0) >= MAX_AUTO_CONTINUES) return false;
+    const cap = autoContinueCap(state);
+    const used = state.autoContinues ?? 0;
+    // Two bounds (#613), both recorded so the stop is visible and a Continue-gated turn can name
+    // it in its failure. IDLE: a turn an automatic nudge started that made no tool call. Every
+    // backend reaches files, commands and the network only through a tool call, so such a turn
+    // changed nothing — another nudge would just buy the same prose again. The FIRST nudge is
+    // never judged: it is what answers a question in autonomous mode.
+    let stop: string | undefined;
+    if (turn.nudged && turn.toolCalls === 0) {
+      stop = `re-prompt ${used} of at most ${cap} made no tool call`;
+    } else if (used >= cap) {
+      stop = `cap of ${cap} automatic re-prompts reached`;
+    }
+    if (stop) {
+      state.autoContinueStop = `automatic re-prompting stopped after ${used + 1} turns — ${stop}`;
+      this.store.appendEvent(runId, { type: 'note', message: `autonomous — ${state.autoContinueStop}` });
+      return false;
+    }
     if (!state.session?.sendMessage([{ type: 'text', text: AUTONOMOUS_NUDGE }])) return false;
-    state.autoContinues = (state.autoContinues ?? 0) + 1;
+    state.autoContinues = used + 1;
+    state.turnWasNudged = true;
     this.store.appendEvent(runId, {
       type: 'note',
-      message: `autonomous — continuing without pausing (${state.autoContinues}/${MAX_AUTO_CONTINUES})`,
+      message: `autonomous — continuing without pausing (${state.autoContinues}/${cap})`,
     });
     return true;
   }
@@ -3815,6 +3882,7 @@ export class RunManager {
         return;
       }
       emit({ ...event, stepId: step.id });
+      if (event.type === 'tool-call') state.turnToolCalls = (state.turnToolCalls ?? 0) + 1;
       if (event.type === 'error') {
         sessionError ??= event.message;
         state.session?.interrupt();
@@ -3840,6 +3908,7 @@ export class RunManager {
         // spawns `git diff --shortstat` inside a worktree under the data root. `quiesce()` waits
         // for it; dispose() deliberately does not, so no existing caller's timing changes.
         this.trackRun(this.recordTurnEnd(runId, turnText)); // titleSummary + diffStat (#389)
+        const activity = takeTurnActivity(state);
         const sessionOpen = !state.cancelled && state.session?.open;
         const done = interactive && sessionOpen && hasFinalDoneMarker(turnText.trimEnd());
         // `XEZ:ASK` → the user is blocked; wins over `XEZ:MONITORING`, loses to
@@ -3871,7 +3940,7 @@ export class RunManager {
         // `runContinuation`'s handler (#141) — the field `execute` has always set is finally
         // read here. `interactive` still gates it: a mid-workflow step ends its own session and
         // the next step follows, so there is no ball to hand back and nothing to nudge.
-        const autoContinued = waiting && !monitoring ? this.autoContinueTurn(runId, state) : false;
+        const autoContinued = waiting && !monitoring ? this.autoContinueTurn(runId, state, activity) : false;
         if (waiting && !autoContinued) {
           // Turn over, session open. Either the ball is in the user's court
           // (`waiting`) — optionally with a structured `XEZ:ASK` question the

@@ -181,7 +181,7 @@ HTTP API.
 | `runContinuation` keeps step tools (the second `ActiveRun` site) | server unit | `workflows/continuation-tools.test.ts:50` | C |
 | `maxParallel` across projects, and `refresh()` raising it | server unit | `workspace-semaphore.test.ts:134,264,475` | C |
 | Message delivery into a live run | server unit (indirect) | `workflows/run.test.ts`; no direct unit test of `deliverMessage` by name | C |
-| Autonomous nudge actually delivered at turn end | server unit | `run-autonomous-nudge.test.ts` asserts delivery from BOTH `ActiveRun` sites (`execute` and `runContinuation`) since #59, closing the asymmetry with its twin `MONITORING_WAKE_NUDGE` at `run.test.ts:1005-1021`; `recover-autonomous.test.ts:26-84` covers the recovered flag | C |
+| Autonomous nudge actually delivered at turn end | server unit | `run-autonomous-nudge.test.ts` asserts delivery from BOTH `ActiveRun` sites (`execute` and `runContinuation`) since #59, closing the asymmetry with its twin `MONITORING_WAKE_NUDGE` at `run.test.ts:1005-1021`; `recover-autonomous.test.ts:26-84` covers the recovered flag; `run-continue-nudge-cap.test.ts` pins the #613 bounds (the 3-re-prompt cap of a Continue-gated turn and the idle-turn stop at both sites) | C |
 | Legacy `runs.json` shapes still parse (`claude-cli`, absent optional fields) | server unit | `runs/store.test.ts:1754-1821` | C |
 | NDJSON history paging and live cursor replay | server unit | `runs/event-history.test.ts:69,200` | C |
 | Task-diff anchoring (`resolveTaskDiffBase`) | server unit | `src/git-diff-base.test.ts` | C |

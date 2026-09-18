@@ -259,6 +259,18 @@ the step with a message naming the marker, and the run stops (Continue reopens t
 last agent step keeps its interactive rules. A custom workflow whose earlier agent steps finish
 without the marker is affected; there is deliberately no flag to restore the old default.
 
+Autonomous re-prompting is bounded twice (#613). An autonomous Continue whose remaining workflow
+needs `XEZ:DONE` from the continued turn (the #520 case above) gets at most 3 automatic re-prompts
+(`MAX_GATED_CONTINUE_NUDGES`) instead of 40, and when a bound stops it the turn fails at once
+instead of parking until the idle close. Its error keeps the prefix `remaining workflow requires
+XEZ:DONE from the continued turn` and appends `— automatic re-prompting stopped after N turns — `
+plus the reason, so a consumer matching the old text still matches. In every autonomous run, a turn
+started by an automatic re-prompt that emitted no `tool-call` event is idle and stops the
+re-prompting with a `note`; the first re-prompt is never judged. A last step (or a completed
+workflow's Continue) keeps its 40-re-prompt budget for turns that do work, and still parks when a
+bound stops it. Non-autonomous runs, `XEZ:DONE`, `XEZ:MONITORING` and the monitoring wake-up are
+unchanged. No flag restores the old loop; the marker vocabulary itself is unchanged.
+
 Breaking: removing or renaming a marker, or changing what an emitted marker does (e.g. making
 `XEZ:PR` gate an action instead of steering display). Additive is fine — a new `XEZ:*` marker is
 inert prose to older xezars, which is the property that keeps the vocabulary forward-compatible.
