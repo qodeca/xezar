@@ -10,6 +10,7 @@ import {
   loadWorkspaceConfig,
   type WorkspaceProject,
 } from './config.ts';
+import { readProjectMachineState, recordProjectOpened } from './project-machine-state.ts';
 
 /**
  * Project registry operations over `~/.xezar/config.json` (spec
@@ -174,6 +175,15 @@ export async function shouldRegisterProject(repoRoot: string): Promise<boolean> 
  * Register `root` in the workspace registry (idempotent). Known root (by
  * realpath) → bump its `lastOpenedAt` and return the existing entry, id and
  * all. Unknown → allocate a slug and append a new entry via merge-write.
+ *
+ * In the PROJECT layout this writes NOTHING into the committed
+ * `<project>/.xezar/workspace.json` (#600 defect A). The registry there is one
+ * row derived from the folder, and `projectLayoutRow` already derives it — so
+ * registration records only the per-machine launch stamp, in the working file
+ * `project-machine-state.ts` owns under `<project>/.local/xezar/`, and answers
+ * the derived row. Without this the committed file was rewritten with
+ * `lastOpenedAt` on every launch, and a clone at another path added a row
+ * carrying its own absolute path, so `git status` was dirty after every start.
  */
 export async function registerProject(
   root: string,
@@ -181,6 +191,16 @@ export async function registerProject(
 ): Promise<WorkspaceProject> {
   const real = await normalizeRoot(root);
   const now = new Date().toISOString();
+  if (activeStateLayout().mode === 'project') {
+    // Best-effort: a read-only `.local` must not fail a boot over a display
+    // fact, the same contract the port memory has always had.
+    try {
+      recordProjectOpened(now);
+    } catch {
+      // keep going — the launch simply will not remember it
+    }
+    return projectLayoutRow((await loadWorkspaceConfig()).projects, real);
+  }
   let entry: WorkspaceProject | undefined;
   await mergeWriteWorkspaceConfig((config) => {
     const existing = config.projects.find((p) => p.root === real);
@@ -355,9 +375,16 @@ export interface ProjectListSelector {
  * cap a person set survive. When there is none — a first run, or a
  * `workspace.json` a clone carries without one — the row is DERIVED from the
  * folder rather than left absent, because the mode's answer to "which projects
- * are there" is never "none": the folder is the project. The derived id is the
- * slug the boot allocator would hand the same root, so the row a first `serve`
- * writes a moment later has the same identity.
+ * are there" is never "none": the folder is the project. The derived id is
+ * allocated against the STORED ids, the same taken-set `resolveBootProject` and
+ * the boot registration use, so a foreign row holding this folder's slug cannot
+ * make the derived row and the boot identity disagree (#600 defect B) — which
+ * is what dropped the only row from `/api/v1/projects` and left health naming a
+ * different id.
+ *
+ * Per-machine facts (`lastOpenedAt`, `lastListen`) are overlaid from the working
+ * file `project-machine-state.ts` owns, so the committed `workspace.json` holds
+ * none of them (#600 defect A).
  *
  * Rows for OTHER roots are ignored rather than deleted. They can only come from
  * a `workspace.json` written on another machine, where their absolute paths mean
@@ -371,14 +398,26 @@ async function projectLayoutRow(
 ): Promise<WorkspaceProject> {
   const real = await normalizeRoot(projectRoot);
   const existing = stored.find((project) => project.root === real);
-  if (existing) return existing;
-  return {
-    id: allocateProjectSlug(real, []),
+  // Per-machine facts are overlaid from the working file, never from the
+  // committed one (#600 defect A): the stored row keeps identity (id, name,
+  // tags, cap) and the machine keeps its own stamps.
+  const machine = readProjectMachineState();
+  const row = existing ?? {
+    id: allocateProjectSlug(real, stored.map((project) => project.id)),
     root: real,
     name: basename(real),
-    addedAt: DERIVED_AT,
+    // `addedAt` is a fact about THIS machine's first registration, so a DERIVED
+    // row reads it from the working file and only falls back to the process
+    // stamp when nothing was recorded yet (#600 review m1). A STORED row keeps
+    // its committed `addedAt`, which is what a teammate inherits.
+    addedAt: machine.addedAt ?? DERIVED_AT,
     lastOpenedAt: DERIVED_AT,
-    source: 'local',
+    source: 'local' as const,
+  };
+  return {
+    ...row,
+    ...(machine.lastOpenedAt !== undefined ? { lastOpenedAt: machine.lastOpenedAt } : {}),
+    ...(machine.lastListen !== undefined ? { lastListen: machine.lastListen } : {}),
   };
 }
 
@@ -386,26 +425,67 @@ async function projectLayoutRow(
  * The timestamp a DERIVED row carries, minted once per process rather than per
  * read. A listing is a read, and a read that answers a different `addedAt` every
  * time makes the cockpit's cache see a changed row on every poll. Nothing is
- * claimed by it beyond "this process first saw the folder now" — it stops being
- * derived the moment a boot registers the folder, which is a write and carries
- * its own real timestamps.
+ * claimed by it beyond "this process first saw the folder now".
+ *
+ * In the project layout a row stays derived for the folder's whole life, because
+ * registration writes nothing there (#600 defect A) — so a derived `addedAt`
+ * comes from `machine-state.json` when this machine has registered the folder
+ * before, and only falls back to this process stamp otherwise (#600 review m1).
+ * `lastOpenedAt` is likewise from the machine state file, so "Last opened"
+ * survives a restart.
  */
 const DERIVED_AT = new Date().toISOString();
 
 export async function listProjects(selector?: ProjectListSelector): Promise<ProjectListEntry[]> {
+  const rows = await registryRows(selector);
+  return Promise.all(
+    rows.map(async (project) => toProjectListEntry(project, await probeRoot(project.root))),
+  );
+}
+
+/**
+ * The registry rows this process answers with, before the per-root status probe:
+ * the project layout's ONE derived row, or the stored registry. Shared by
+ * `listProjects` and health's `workspaceSummary` so the two doors can never
+ * name different ids for the same folder (#600 defect B).
+ *
+ * The mode's registry is derived from the folder, so it is exactly one row
+ * before any selector narrows it further — and a selector naming a project
+ * this folder is not still answers nothing, which is what keeps a scoped
+ * `/api/v1/p/<other>/…` request a 404 rather than the boot project.
+ */
+export async function registryRows(
+  selector?: ProjectListSelector,
+): Promise<WorkspaceProject[]> {
   const config = await loadWorkspaceConfig();
   const layout = activeStateLayout();
-  // The mode's registry is derived from the folder, so it is exactly one row
-  // before any selector narrows it further — and a selector naming a project
-  // this folder is not still answers nothing, which is what keeps a scoped
-  // `/api/v1/p/<other>/…` request a 404 rather than the boot project.
   const rows = layout.mode === 'project'
     ? [await projectLayoutRow(config.projects, layout.projectRoot!)]
     : config.projects;
-  const projects = selector ? rows.filter((project) => project.id === selector.projectId) : rows;
-  return Promise.all(
-    projects.map(async (project) => toProjectListEntry(project, await probeRoot(project.root))),
-  );
+  return selector ? rows.filter((project) => project.id === selector.projectId) : rows;
+}
+
+/**
+ * The ONE layout-aware lookup into the registry (#600 review M1/M2/m5).
+ *
+ * In the project layout the registry is the DERIVED row, so a raw
+ * `loadWorkspaceConfig().projects.find(...)` finds nothing for the folder that
+ * owns its state: the MCP service refused to start, the agent-account
+ * selection 404'd for the boot project, and CLI audit records lost their
+ * project scope. Every reader that needs a project row by id or by realpath
+ * goes through here instead, so the two layouts answer the same question the
+ * same way.
+ *
+ * `root` is compared as given — callers pass a realpath'd path, the same
+ * spelling `registerProject` dedupes on.
+ */
+export async function findRegistryProject(
+  query: { id: string } | { root: string },
+): Promise<WorkspaceProject | undefined> {
+  const rows = await registryRows();
+  return 'id' in query
+    ? rows.find((project) => project.id === query.id)
+    : rows.find((project) => project.root === query.root);
 }
 
 /**

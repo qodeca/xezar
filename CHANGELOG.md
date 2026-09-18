@@ -119,6 +119,20 @@
   the committed setup. The user guide (projects, settings, configuration, CLI and remote access) and
   the README describe the mode. Global mode is unchanged throughout. Details:
   `BACKWARD_COMPATIBILITY.md` § "Single-project ROOT mode".
+- 🐛 **A single-project launch no longer dirties the committed file, and its one project row can no
+  longer vanish.** (#600, release-candidate repair) In single-project mode a start writes no
+  per-machine fact into the committed `.xezar/workspace.json`: the first-registration time, the
+  launch time and the remembered port move to the uncommitted `.local/xezar/machine-state.json`, so
+  `git status` stays clean and teammates stop conflicting over the file, while port memory still
+  works across restarts and the "Added" date stays stable; the default global layout writes both
+  keys into `~/.xezar/config.json` exactly as before. The one exception is named: the FIRST start
+  that opts a folder in still writes `workspace.json` once through migration 001, with the schema
+  version and the materialized defaults — including the host-derived memory limit — and no later
+  start rewrites it. The one
+  project row's id is allocated against the stored ids, so a committed row for another machine's
+  folder of the same name can no longer make `GET /api/v1/projects` answer `projects: []` while
+  `/api/v1/health` names a different boot id — both doors now build their answer from the same
+  derived row. Details: `BACKWARD_COMPATIBILITY.md` § "Single-project ROOT mode".
 - ✨ **Single-project mode has a reviewed cockpit mockup and developer handoff.** `designs/single-project-mode/`
   covers the mode's sidebar next to the global one, the dev-badge plus mode-badge combination, the
   phone top bar, Settings' file-naming notes, the unavailable-account row, the composer and command

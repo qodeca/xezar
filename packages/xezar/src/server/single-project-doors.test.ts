@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { CliAudit, CliAuditScope } from '../cli-audit.ts';
 import { auditAction, classifyMcpCall } from '../mcp/audit-inventory.ts';
@@ -8,7 +8,7 @@ import { projectConfigTool, type ProjectConfigContext } from '../mcp/tools/proje
 import { RunStore } from '../runs/store.ts';
 import { resolveStateLayout, setActiveStateLayout } from '../state-layout.ts';
 import type { RunManager } from '../workflows/run.ts';
-import { registerProject } from '../workspace/projects.ts';
+import { allocateProjectSlug, listProjects, registerProject } from '../workspace/projects.ts';
 import { runProjectsCommand, type ProjectsCommandIo } from '../workspace/projects-cli.ts';
 import { createApp } from './server.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
@@ -62,6 +62,7 @@ const STAMP = '2026-01-01T00:00:00.000Z';
 describe('single-project mode — one registry, refused in all three doors (#600)', () => {
   let projectRoot: string;
   let otherRoot: string;
+  let foreignParent: string | undefined;
   let store: RunStore;
   const savedFlag = process.env.XEZ_SINGLE_PROJECT;
 
@@ -83,6 +84,8 @@ describe('single-project mode — one registry, refused in all three doors (#600
     store.flush();
     rmSync(projectRoot, { recursive: true, force: true });
     rmSync(otherRoot, { recursive: true, force: true });
+    if (foreignParent !== undefined) rmSync(foreignParent, { recursive: true, force: true });
+    foreignParent = undefined;
     if (savedFlag === undefined) delete process.env.XEZ_SINGLE_PROJECT;
     else process.env.XEZ_SINGLE_PROJECT = savedFlag;
   });
@@ -164,12 +167,77 @@ describe('single-project mode — one registry, refused in all three doors (#600
     expect(body.projects[0]).toMatchObject({ id: 'from-the-clone', name: 'From the clone', root: projectRoot });
   });
 
+  it('SP-3.1/B: a foreign row holding this folder’s slug never drops the only row, and health names the same id', async () => {
+    // A committed `workspace.json` that travelled with a clone (#600 defect B):
+    // ONE row, for a DIFFERENT folder that happens to share this folder's
+    // basename, and none for this folder. The derived row and the boot identity
+    // allocate against the STORED ids, so both land on the same suffixed slug —
+    // otherwise the derived row is dropped by the boot-id filter and the route
+    // answers `projects: []`.
+    foreignParent = realpathSync(mkdtempSync(join(tmpdir(), 'xez-sp-slug-')));
+    const foreign = join(foreignParent, basename(projectRoot));
+    mkdirSync(foreign, { recursive: true });
+    mkdirSync(join(projectRoot, '.xezar'), { recursive: true });
+    writeFileSync(
+      join(projectRoot, '.xezar', 'workspace.json'),
+      JSON.stringify({
+        projects: [
+          {
+            id: allocateProjectSlug(projectRoot, []),
+            root: foreign,
+            name: 'Another machine',
+            addedAt: STAMP,
+            lastOpenedAt: STAMP,
+            source: 'local',
+          },
+        ],
+      }),
+    );
+    narrow('project-root');
+
+    const res = await apiRequest(app(), '/api/v1/projects');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { projects: { id: string; root: string }[]; bootProject: string };
+    expect(body.projects).toHaveLength(1);
+    expect(body.projects[0]!.root).toBe(projectRoot);
+    expect(body.projects[0]!.id).toBe(body.bootProject);
+
+    // Health reads the same derived row, so the two doors can never name
+    // different ids (#600 defect B).
+    const health = (await (await apiRequest(app(), '/api/v1/health')).json()) as {
+      projects: { id: string }[];
+      bootProject: string;
+    };
+    expect(health.bootProject).toBe(body.bootProject);
+    expect(health.projects.map((project) => project.id)).toEqual([body.bootProject]);
+  });
+
   it('SP-3.1: a scoped request for the project this folder is NOT still resolves to nothing', async () => {
     narrow('project-root');
     // The narrowing must not turn every id into the boot project: a
     // `/p/<other>/…` request has to stay the 404 it is in the global layout.
     const res = await apiRequest(app(), '/api/v1/p/xez-sp-other/config');
     expect(res.status).toBe(404);
+  });
+
+  // ---- M2: the agent-account selection resolves the boot project ----------------
+
+  it('M2: the selection PUT answers 200 for the boot id and for `default` in the project layout', async () => {
+    // `PUT …/agent-profiles/selection` resolved the project through
+    // `projectRootFor`, which read only the STORED rows — so in the mode every
+    // selection answered `404 {error: "unknown project"}` and a person could not
+    // choose which account this project uses (Settings → agent accounts).
+    narrow('project-root');
+    const bootId = (await listProjects()).find((p) => p.root === projectRoot)!.id;
+
+    for (const projectId of [bootId, 'default']) {
+      const res = await apiRequest(app(), '/api/v1/workspace/agent-profiles/selection', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ projectId, provider: 'claude', profileId: null }),
+      });
+      expect(res.status, `${projectId}: ${await res.clone().text()}`).toBe(200);
+    }
   });
 
   // ---- SP-3.2 and SP-3.3: refused in all three doors -----------------------
