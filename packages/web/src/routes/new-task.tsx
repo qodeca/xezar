@@ -74,6 +74,7 @@ import {
 import { submitShortcutHint } from '@/lib/use-submit-shortcut'
 import { cn } from '@/lib/utils'
 import { usableRunners } from '@/lib/provider-status'
+import { projectsLocked } from '@/lib/project-mode'
 
 import {
   bookmarkletRunBody,
@@ -182,6 +183,10 @@ export function NewTaskRoute() {
   // The registry the project pill offers. Empty while it loads or when it errors — the pill
   // simply does not render, which is the honest state: there is no second project to offer.
   const projectList = projects.data?.projects ?? []
+  // A narrowed workspace (`XEZ_SINGLE_PROJECT=1` or single-project mode, #600) offers no second
+  // project BY CAPABILITY, whatever the registry lists — the pill is absent, never disabled. The
+  // composer's scope still comes from `/p/<id>/new`, never from the pill.
+  const offersProjectPill = !projectsLocked(health.data?.capabilities) && projectList.length > 1
   const sourcesReady =
     skills.data !== undefined && workflows.data !== undefined && !uiState.isPending
   // The draft's pick alone — a fresh `/new` selects nothing (see `resolveSource` for what the
@@ -595,7 +600,7 @@ export function NewTaskRoute() {
                   actually holds more than one project — with a single one the control offers
                   nothing and the composer keeps the shape it has always had, the same rule the
                   sidebar's project groups follow. */}
-              {projectList.length > 1 && urlProjectId !== undefined ? (
+              {offersProjectPill && urlProjectId !== undefined ? (
                 <ProjectPill
                   projects={projectList}
                   projectId={urlProjectId}

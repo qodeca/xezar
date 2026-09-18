@@ -86,11 +86,17 @@ const AGENTS_CONFIG = {
 /** Seeds the step-3.2 route gates — boot id (legacy redirect) + registry (known-check) — so a
  *  flat entry URL lands scoped immediately. The boot project mounts UNSCOPED, so the exact
  *  `/api/v1/*` paths this file's fetch stub matches stay byte-identical. */
-function gateSeededClient(singleProject = false) {
+function gateSeededClient(singleProject = false, singleProjectRoot = false) {
   const client = createQueryClient()
   client.setQueryData(queryKeys.health, {
     bootProject: 'boot',
-    capabilities: { localHandoff: true, followups: true, singleProject },
+    capabilities: {
+      localHandoff: true,
+      followups: true,
+      singleProject,
+      // Only sent when true, exactly as the server does (#600).
+      ...(singleProjectRoot ? { singleProjectRoot: true } : {}),
+    },
   })
   client.setQueryData(workspaceQueryKeys.projects, {
     projects: [],
@@ -100,9 +106,12 @@ function gateSeededClient(singleProject = false) {
   return client
 }
 
-function renderAt(entry: string, { singleProject = false }: { singleProject?: boolean } = {}) {
+function renderAt(
+  entry: string,
+  { singleProject = false, singleProjectRoot = false }: { singleProject?: boolean; singleProjectRoot?: boolean } = {},
+) {
   render(
-    <QueryClientProvider client={gateSeededClient(singleProject)}>
+    <QueryClientProvider client={gateSeededClient(singleProject, singleProjectRoot)}>
       <ThemeProvider>
         <AppearanceProvider>
           <MemoryRouter initialEntries={[entry]}>
@@ -166,6 +175,93 @@ describe('the section registry', () => {
     ])
     expect(visibleSettingsSections('global', { singleProject: false }).map((s) => s.id)).toEqual(GLOBAL_SECTIONS)
     expect(visibleSettingsSections('global').map((s) => s.id)).toEqual(GLOBAL_SECTIONS)
+  })
+
+  it('hides Projects in single-project mode too — the registry doors refuse there (#600)', () => {
+    expect(visibleSettingsSections('global', { singleProjectRoot: true }).map((s) => s.id)).toEqual([
+      'appearance', 'notifications', 'resources', 'skills', 'accounts',
+    ])
+    // The project area is unchanged by either narrowing.
+    expect(visibleSettingsSections('project', { singleProjectRoot: true }).map((s) => s.id)).toEqual(PROJECT_SECTIONS)
+  })
+})
+
+// #600 SP-4.3 (FR-9.3): in single-project mode each Settings section names the file its saves land
+// in — the names `packages/xezar/src/state-layout.ts` resolves for the project layout. A section
+// that writes no xezar file (a read-only reference, an action, the agents' own files) names none.
+describe('single-project mode names the file each section writes (#600)', () => {
+  const EXPECTED_FILE: Record<string, string | null> = {
+    // project scope
+    agents: '.xezar/config.json',
+    'agent-config': null,
+    'project-setup': null,
+    worktrees: '.xezar/config.json',
+    bookmarklets: null,
+    'prompt-templates': '.local/xezar/ui-state.json',
+    'mcp-connection': null,
+    'mcp-api': null,
+    // global scope
+    appearance: '.xezar/workspace-ui.json',
+    notifications: '.xezar/workspace-ui.json',
+    resources: '.xezar/workspace.json',
+    skills: '.xezar/workspace.json',
+    accounts: '.xezar/agent-accounts.json',
+  }
+  const note = () => document.querySelector('[data-slot="settings-file-note"]')
+
+  it('covers every section the mode shows, and no other', () => {
+    const shown = [
+      ...visibleSettingsSections('project', { singleProjectRoot: true }),
+      ...visibleSettingsSections('global', { singleProjectRoot: true }),
+    ].map((section) => section.id)
+    expect(shown.toSorted()).toEqual(Object.keys(EXPECTED_FILE).toSorted())
+  })
+
+  for (const [id, file] of Object.entries(EXPECTED_FILE)) {
+    const scope = PROJECT_SECTIONS.includes(id) ? 'project' : 'global'
+    const url = scope === 'project' ? `/settings/${id}` : `/settings/global/${id}`
+    it(`${id} names ${file ?? 'no file'}`, () => {
+      if (file === null) {
+        // Pinned on the registry entry: the shell renders a note only from `fileNote`.
+        expect(SETTINGS_SECTIONS.find((section) => section.id === id)?.fileNote).toBeUndefined()
+        return
+      }
+      renderAt(url, { singleProjectRoot: true })
+      expect(note()?.querySelector('code')?.textContent).toBe(file)
+    })
+  }
+
+  it('says the committed files travel and the runtime file does not', () => {
+    renderAt('/settings/global/resources', { singleProjectRoot: true })
+    expect(note()?.textContent).toBe(
+      'Saved in this project — .xezar/workspace.json. It is committed, so a clone starts with these limits.',
+    )
+    cleanup()
+    renderAt('/settings/prompt-templates', { singleProjectRoot: true })
+    expect(note()?.textContent).toBe(
+      'Saved in this project — .local/xezar/ui-state.json. It is not committed, so these templates stay on this machine.',
+    )
+  })
+
+  it('renders no file note in global mode, nor under the XEZ_SINGLE_PROJECT narrowing', () => {
+    renderAt('/settings/global/resources')
+    expect(note()).toBeNull()
+    cleanup()
+    renderAt('/settings/agents', { singleProject: true })
+    expect(note()).toBeNull()
+  })
+
+  it('renames the global scope chip and index to "Workspace settings" in the mode only', () => {
+    const chip = () => document.querySelector('[data-slot="settings-scope-chip"]')
+    renderAt('/settings/global/resources', { singleProjectRoot: true })
+    expect(chip()?.textContent).toBe('Workspace settings')
+    cleanup()
+    renderAt('/settings/global/resources')
+    expect(chip()?.textContent).toBe('Global settings')
+    cleanup()
+    renderAt('/settings/global', { singleProjectRoot: true })
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Workspace settings')
+    expect(document.querySelector('[data-slot="settings-index"] [data-section="projects"]')).toBeNull()
   })
 })
 

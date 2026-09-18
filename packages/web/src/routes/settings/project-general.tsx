@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router'
 
 import { useProjects, useWorkspaceConfig } from '@/api/queries'
-import type { Capabilities, ProjectListEntry } from '@qodeca/xezar-api-client'
+import type { ProjectListEntry } from '@qodeca/xezar-api-client'
+import { projectsLocked, type ProjectModeCapabilities } from '@/lib/project-mode'
 import { Button } from '@/components/ui/button'
 import { useActiveProjectId } from '@/lib/project-router'
 import { ProjectFolderField } from './project-location'
@@ -47,7 +48,7 @@ function fullDate(iso: string): string {
   return at.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
-export function ProjectGeneral({ capabilities }: { capabilities?: Pick<Capabilities, 'singleProject'> }) {
+export function ProjectGeneral({ capabilities }: { capabilities?: Partial<ProjectModeCapabilities> }) {
   const projectId = useActiveProjectId()
   const projects = useProjects()
   const config = useWorkspaceConfig()
@@ -76,8 +77,9 @@ export function ProjectGeneral({ capabilities }: { capabilities?: Pick<Capabilit
   // No registry entry for this URL (an unscoped mount, or an id the registry does not have):
   // there is nothing true to say about a project that isn't one.
   if (!registry || !project) return null
-  // See the header comment: single-project mode keeps the description, drops the management.
-  const managesRegistry = capabilities?.singleProject !== true
+  // See the header comment: a narrowed workspace (`XEZ_SINGLE_PROJECT=1` or single-project mode,
+  // #600) keeps the description, drops the management — the registry doors refuse both.
+  const managesRegistry = !projectsLocked(capabilities)
 
   return (
     <div data-slot="project-general" className="mx-auto flex w-full max-w-2xl flex-col gap-section">

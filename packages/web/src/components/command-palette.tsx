@@ -33,6 +33,7 @@ import { isUnread } from '@/lib/read-state'
 import { orderSkillsByUsage } from '@/lib/skills'
 import { runTitle } from '@/lib/task-groups'
 import { useCommandShortcut, useKeyShortcut } from '@/lib/use-command-shortcut'
+import { projectsLocked } from '@/lib/project-mode'
 
 /**
  * The ⌘K command palette (spec, "Cross-cutting"): projects, tasks, views, actions, skills —
@@ -336,9 +337,12 @@ function PaletteContent({ close }: { close: () => void }) {
   const now = Date.now()
 
   // Same threshold as the sidebar's grouped nav (`app-shell-container.tsx`): with one registered
-  // project there is nowhere to switch TO, and a one-row group would be pure noise.
+  // project there is nowhere to switch TO, and a one-row group would be pure noise. A narrowed
+  // workspace (`XEZ_SINGLE_PROJECT=1` or single-project mode, #600) has nowhere to switch to BY
+  // CAPABILITY, whatever the registry happens to list — the same gate the sidebar reads.
   const registry = projects.data
-  const multiProject = registry !== undefined && registry.projects.length > 1
+  const locked = projectsLocked(health.data?.capabilities)
+  const multiProject = !locked && registry !== undefined && registry.projects.length > 1
   // The cross-project index answers "which project is this task in", so it is only worth asking
   // when that question has more than one answer. A single-project cockpit issues no request.
   const runsIndex = useRunsIndex(multiProject)
@@ -400,7 +404,9 @@ function PaletteContent({ close }: { close: () => void }) {
   return (
     <>
       <CommandInput
-        placeholder="Search projects, tasks, views, actions, skills…"
+        placeholder={
+          locked ? 'Search tasks, views, actions, skills…' : 'Search projects, tasks, views, actions, skills…'
+        }
         value={search}
         onValueChange={setSearch}
       />

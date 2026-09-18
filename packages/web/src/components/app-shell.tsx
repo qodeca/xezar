@@ -18,6 +18,7 @@ import { GithubIcon } from '@/components/icons'
 import { Link, stripProjectPrefix } from '@/lib/project-router'
 import { StatusDot } from '@/components/status-dot'
 import { ThemeToggle } from '@/components/theme-toggle'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -88,6 +89,11 @@ export type AppShellProps = {
   /** Single-project capability gating: hides workspace-expansion affordances. Defaults off so
    *  standalone and older callers preserve the multi-project shell. */
   singleProject?: boolean
+  /** Single-project mode (#600): this cockpit serves a folder that owns its state. `true` renders
+   *  the mode badge on the sidebar brand block and in the phone top bar. Only a definite `true`
+   *  renders it — the container passes `false` while health is unknown, so the badge never
+   *  guesses and then corrects itself. Defaults off, so every other caller is unchanged. */
+  singleProjectRoot?: boolean
   /** Global chrome banner, rendered in its own row above the scroller. Absent renders nothing —
    *  the slot is generic and currently unused (the #391 skills promo it once held is gone,
    *  replaced by the opt-in Import panel on the Skills page). */
@@ -155,6 +161,7 @@ export function AppShell({
   inboxAvailable = true,
   automationsAvailable = true,
   singleProject = false,
+  singleProjectRoot = false,
   banner,
   projectGroups,
 }: AppShellProps) {
@@ -219,6 +226,7 @@ export function AppShell({
     toolsMenu,
     projectGroups,
     singleProject,
+    singleProjectRoot,
   }
 
   return (
@@ -235,7 +243,7 @@ export function AppShell({
         <MobileNavDrawer {...nav} onNavigate={() => setMenuOpen(false)} />
 
         <div className="grid min-w-0 flex-1 grid-rows-[auto_auto_1fr_auto] overflow-hidden">
-          <MobileTopBar title={current?.label ?? 'xezar'} />
+          <MobileTopBar title={current?.label ?? 'xezar'} singleProjectRoot={singleProjectRoot} />
 
           {banner ? (
             <div data-slot="banner-slot" className="row-start-2">
@@ -276,6 +284,7 @@ type NavProps = {
   toolsMenu?: ReactNode
   projectGroups?: ReactNode
   singleProject: boolean
+  singleProjectRoot: boolean
 }
 
 /**
@@ -461,6 +470,7 @@ function SidebarContent({
   toolsMenu,
   projectGroups,
   singleProject,
+  singleProjectRoot,
   onNavigate,
   headerAction,
 }: NavProps & {
@@ -471,28 +481,45 @@ function SidebarContent({
   /** The drawer's close button. Absent on desktop, which has nothing to close. */
   headerAction?: ReactNode
 }) {
+  const brandLine = (
+    <>
+      <BrandTile channel={channel} />
+      <span className="text-[15px] font-semibold">xezar</span>
+      {/* With project groups mounted the boot repo/branch is one group header among many —
+          a chip repeating it up here would just be the first group's header said twice. */}
+      {repo && !projectGroups ? (
+        <span
+          data-slot="repo-chip"
+          className="ml-auto truncate font-mono text-[11px] font-medium text-soft-foreground"
+        >
+          {repo.name} / {repo.branch}
+        </span>
+      ) : null}
+      {headerAction ? (
+        <div className={cn('shrink-0', (!repo || projectGroups) && 'ml-auto')}>{headerAction}</div>
+      ) : null}
+    </>
+  )
   return (
     <div
       data-slot="sidebar-content"
       className="flex min-h-0 flex-1 flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
     >
-      <div data-slot="sidebar-brand" className="flex items-center gap-row px-3.5 pt-3.5 pb-2.5">
-        <BrandTile channel={channel} />
-        <span className="text-[15px] font-semibold">xezar</span>
-        {/* With project groups mounted the boot repo/branch is one group header among many —
-            a chip repeating it up here would just be the first group's header said twice. */}
-        {repo && !projectGroups ? (
-          <span
-            data-slot="repo-chip"
-            className="ml-auto truncate font-mono text-[11px] font-medium text-soft-foreground"
-          >
-            {repo.name} / {repo.branch}
-          </span>
-        ) : null}
-        {headerAction ? (
-          <div className={cn('shrink-0', (!repo || projectGroups) && 'ml-auto')}>{headerAction}</div>
-        ) : null}
-      </div>
+      {singleProjectRoot ? (
+        // Single-project mode (#600): the brand block becomes two lines. Line one is the same row
+        // global mode renders; line two carries the mode badge, indented to the wordmark (the
+        // tile's fixed 26px plus the row's own gap). Global mode keeps the one-line block exactly.
+        <div data-slot="sidebar-brand" className="flex flex-col gap-1 px-3.5 pt-3.5 pb-2.5">
+          <div className="flex min-w-0 items-center gap-row">{brandLine}</div>
+          <div className="flex pl-[calc(26px+var(--spacing-row))]">
+            <ModeBadge />
+          </div>
+        </div>
+      ) : (
+        <div data-slot="sidebar-brand" className="flex items-center gap-row px-3.5 pt-3.5 pb-2.5">
+          {brandLine}
+        </div>
+      )}
 
       <div className="flex gap-1.5 px-2.5 pt-1 pb-2">
         <Button asChild variant="contrast" className="relative min-h-tap min-w-0 flex-1 justify-center md:h-10 md:min-h-0">
@@ -790,8 +817,30 @@ function BrandTile({ channel }: { channel: HealthResponse['channel'] | null }) {
   )
 }
 
+/**
+ * The single-project mode badge (#600, designs/single-project-mode §7): a read-only FACT about
+ * where this xezar keeps its state, never a control — no link, no button, not in the tab order,
+ * no hover state. `Badge variant="outline"` with no colour of its own: violet already means "a
+ * person is wanted" and danger is the development build, so a third colour here would teach two
+ * meanings for one place. Rendered by the brand block and the phone top bar only.
+ */
+function ModeBadge() {
+  return (
+    <Badge
+      variant="outline"
+      data-slot="mode-badge"
+      title="xezar settings and state live in this folder"
+      className="gap-1 px-1.5 text-[10.5px] text-muted-foreground [&>svg]:size-[11px]"
+    >
+      <FolderIcon aria-hidden="true" />
+      Single project
+      <span className="sr-only"> — xezar settings and state live in this folder, not in your home directory</span>
+    </Badge>
+  )
+}
+
 /** Mobile chrome (<md): the sidebar's replacement. Its menu button opens `MobileNavDrawer`. */
-function MobileTopBar({ title }: { title: string }) {
+function MobileTopBar({ title, singleProjectRoot }: { title: string; singleProjectRoot: boolean }) {
   return (
     <header
       data-slot="mobile-top-bar"
@@ -814,8 +863,12 @@ function MobileTopBar({ title }: { title: string }) {
           </Button>
         </SheetTrigger>
         <span className="truncate text-[14.5px] font-semibold">{title}</span>
-        {/* SLOT — the run status dot / kebab land with the thread view (Step R3). */}
-        <div data-slot="mobile-status" className="ml-auto flex items-center gap-2" />
+        {/* SLOT — the run status dot / kebab land with the thread view (Step R3). The mode badge
+            (#600) is its first occupant: below `md` the sidebar is a drawer, and the mode must be
+            legible without opening it. */}
+        <div data-slot="mobile-status" className="ml-auto flex items-center gap-2">
+          {singleProjectRoot ? <ModeBadge /> : null}
+        </div>
       </div>
     </header>
   )
