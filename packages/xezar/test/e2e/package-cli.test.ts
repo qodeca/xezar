@@ -139,6 +139,63 @@ test('the release tarball installs and runs the dry-run CLI workflow', { timeout
       'a headless run registers the boot repo in the workspace registry',
     );
 
+    // #600 R11 — single-project mode through the PUBLISHED file layout, which is the only place
+    // the packed `dist/` (and its inlined contract) runs the resolver, the first-run step and a
+    // whole task together. A separate repo and home, so nothing above is disturbed.
+    const spRepo = join(root, 'single-project-repo');
+    await mkdir(spRepo);
+    await execFile('git', ['init', '--initial-branch=main'], { cwd: spRepo });
+    await writeFile(join(spRepo, 'README.md'), '# single-project fixture\n', 'utf8');
+    await execFile('git', ['add', 'README.md'], { cwd: spRepo });
+    await execFile(
+      'git',
+      ['-c', 'user.name=Xezar CI', '-c', 'user.email=ci@example.invalid', 'commit', '-m', 'test fixture'],
+      { cwd: spRepo },
+    );
+    const spHome = join(root, 'sp-home');
+    await mkdir(spHome);
+    await writeFile(join(spHome, 'config.json'), '{"resources":{"maxParallel":7}}\n', 'utf8');
+    const spHomeBefore = await snapshotTree(spHome);
+    const spEnv = { ...process.env, XEZ_DRY_RUN: '1', XEZ_HOME: spHome };
+
+    const firstRun = await execFile(
+      process.execPath,
+      [cliPath, 'run', 'mock:done', '--repo', spRepo, '--single-project'],
+      { cwd: consumerDir, env: spEnv, timeout: 60_000, maxBuffer: 10 * 1024 * 1024 },
+    );
+    assert.ok(
+      firstRun.stdout.includes(`single-project mode — settings in ${join(spRepo, '.xezar')}`),
+      firstRun.stdout,
+    );
+    // execFile gives the child no terminal, so the first-run question has nobody to ask: nothing
+    // is imported (SP-5.1's falsifier is importing without asking), and the boot says so.
+    assert.ok(firstRun.stdout.includes('not a terminal, so nothing was imported from'), firstRun.stdout);
+    assert.match(firstRun.stdout, /run (done|review)/);
+    assert.deepEqual(
+      (await readdir(join(spRepo, '.xezar'))).filter((name) => name.endsWith('.json')).sort(),
+      ['agent-accounts.json', 'config.json', 'workspace-ui.json', 'workspace.json'],
+    );
+    const spWorkspace = JSON.parse(await readFile(join(spRepo, '.xezar', 'workspace.json'), 'utf8')) as {
+      resources?: { maxParallel?: number };
+    };
+    assert.notEqual(spWorkspace.resources?.maxParallel, 7, 'a declined/unasked import copies nothing from the home');
+    const spRuns = JSON.parse(await readFile(join(spRepo, '.local', 'xezar', 'runs.json'), 'utf8')) as Array<{
+      status: string;
+    }>;
+    assert.ok(['done', 'review'].includes(spRuns[0]?.status ?? ''), 'a whole task completes in the mode');
+
+    // The folder decides now: no flag, and no question — the state is already there (SP-5.2).
+    const secondRun = await execFile(process.execPath, [cliPath, 'projects', 'list', '--repo', spRepo], {
+      cwd: consumerDir,
+      env: spEnv,
+      timeout: 60_000,
+      maxBuffer: 10 * 1024 * 1024,
+    });
+    assert.ok(secondRun.stdout.includes('single-project mode — settings in'), secondRun.stdout);
+    assert.equal(secondRun.stdout.includes('nothing was imported'), false, secondRun.stdout);
+    // And the per-user home was never written, byte for byte (BR-2).
+    assert.deepEqual(await snapshotTree(spHome), spHomeBefore);
+
     workspace.disabledProviders = ['claude'];
     await writeFile(join(xezHome, 'config.json'), `${JSON.stringify(workspace, null, 2)}\n`, 'utf8');
     await assert.rejects(
