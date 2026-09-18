@@ -169,10 +169,11 @@
 ## 🐛 Fixes
 
 - 🐛 **The Tasks page header no longer scrolls sideways in a narrow desktop window.** (#625, #447, #424)
-  Between 768 px and about 1060 px of window, with “Mark all read” and “Archive finished” both shown,
-  the one-row header needed more width than the pane beside the sidebar had: the pane scrolled
-  sideways (602 px of header in 536 px at 800 px) and the search box was squeezed to 46 px and pushed
-  past the window. The header now wraps like the shared page header does: the actions and the
+  Below about 896 px at comfortable density (`known-gaps.md` G-48; density-dependent, from 958 px
+  roomy to 835 px ultra), with “Mark all read” and “Archive finished” both shown, the one-row header
+  needed more width than the pane beside the sidebar had: the pane scrolled sideways (602 px of
+  header in 536 px at 800 px) and the search box was squeezed to 46 px and pushed past the window up
+  to about 1060 px. The header now wraps like the shared page header does: the actions and the
   240 px search move to a second right-aligned row when they do not fit. A wide window and the
   phone layout are unchanged. The `designs/design-system-air` Tasks mockup carries the same fix.
 - 🐛 **A run xezar itself terminates for the memory limit no longer ends `done` with no deliverable.** (#603)

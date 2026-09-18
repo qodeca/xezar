@@ -42,7 +42,8 @@ G-13, G-17 to G-19, G-21, G-22, G-24, G-25, G-29, G-34, G-40, G-43, G-44 and G-4
 numbers); and **the next free id is G-49**. G-43 was retired by decision
 [D-09](decisions.md#d-09-compares-pick-confirm-keeps-the-ordinary-contrast-action) (the B7 design
 review) rather than by a fix: the pick confirm keeps its ordinary `contrast` action on purpose.
-**G-48** (the Tasks desktop header did not fit between 768 and 898 px, filed as #625 from docs wave
+**G-48** (the Tasks desktop header did not fit below about 896 px at comfortable density – density-
+dependent, from 958 px (roomy) to 835 px (ultra) at `innerWidth` 800 – filed as #625 from docs wave
 5, #626) was **fixed on 2026-09-18** by #625's own change: the header wraps (`min-h-14 flex-wrap …
 py-2`, `PageHeader`'s spelling) and its actions and 240 px search wrap as one right-aligned group,
 in `tasks-overview.tsx` and in `designs/design-system-air/tasks.html`. Measured in the live
