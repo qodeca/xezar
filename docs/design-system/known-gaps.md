@@ -37,9 +37,9 @@ small fix, and **G-14**'s `useIsDesktop()` query is the one item with a real use
 
 Ids are never reused: a deleted entry retires its number, so a new entry takes the next number after
 the highest ever used. **G-06, G-14, G-15, G-16, G-20, G-23, G-26, G-27, G-28, G-30, G-31, G-32, G-33,
-G-35, G-36, G-37, G-38, G-39, G-41, G-42, G-45, G-46 and G-47 are live** (23 rows); **G-01 to G-05, G-07 to
+G-35, G-36, G-37, G-38, G-39, G-41, G-42, G-45, G-46, G-47 and G-48 are live** (24 rows); **G-01 to G-05, G-07 to
 G-13, G-17 to G-19, G-21, G-22, G-24, G-25, G-29, G-34, G-40, G-43 and G-44 are retired** (24
-numbers); and **the next free id is G-48**. G-43 was retired by decision
+numbers); and **the next free id is G-49**. G-43 was retired by decision
 [D-09](decisions.md#d-09-compares-pick-confirm-keeps-the-ordinary-contrast-action) (the B7 design
 review) rather than by a fix: the pick confirm keeps its ordinary `contrast` action on purpose.
 
@@ -251,6 +251,13 @@ is gone says so and keeps its line so the history reads.
 - **Rule**: the shipped behaviour above; a change to any of the five updates this row or the mockup.
 - **Fix**: none planned — these are deliberate. Bring the mockup's README into line when the design is next revised.
 - **Final disposition (#611, 2026-09-18)**: kept, with a reason — each deviation is accepted on #611's `## Design review`; the fifth on #612's `## Design review (scoped, PR5 copy items)`.
+
+### G-48 The Tasks desktop header does not fit between 768 and 898 px
+
+- **Differs**: moving `designs/design-system-air`'s local phone breakpoint from 860 px to the shared 767.98 px edge (docs wave PR 5, #447 NB-2) exposed a genuine layout gap rather than a mockup artifact: `tasks.html`'s desktop header (`.air-tabs`, the flex-1 spacer, `.air-search-box` at a fixed `w-60`/240 px, both faithful to `tasks-overview.tsx:195-208`) needs at least 898 px of window width to fit beside the 264 px sidebar. Measured in a real Chrome (agent-browser 0.36.0) at `md` (768 px) and below 898 px generally, both themes identical (a layout, not a colour, issue): `scrollWidth` is 898 in a narrower window, for example 800 (`bodyScrollWidth: 898` at `innerWidth: 800`); it is exact (`scrollWidth === innerWidth`) at 767, 898, 900, 950 and 1280 px. `settings.html`, `inbox.html` and `thread.html` in the same folder do not overflow at 800 px (#621 design review), so this is specific to the Tasks header's combination of tabs, actions and the fixed-width search field. The sidebar is draggable up to 420 px but has no lower bound below its 264 px default (`app-shell.tsx:291`), so this is plausibly reproducible in the shipped cockpit too, not only in the mockup — not verified against a live cockpit build in this task (docs-only; `packages/web/src` is out of scope here).
+- **Rule**: no state scrolls sideways at a reviewed width (`docs/design-system/new-designs.md` §4); 768 px and 800 px are among the widths this docs wave's own criteria name.
+- **Fix**: not attempted here — it would touch either `packages/web/src/routes/tasks-overview.tsx` (shrink or wrap the header row) or a redesign of the header at narrow desktop widths, both out of scope for a docs task.
+- **Final disposition (#625, 2026-09-18)**: filed as **#625** — this PR touches `designs/design-system-air/tasks.css` (CONTRIBUTING.md §6 trigger 1), and fixing the header is out of scope for a docs-only task.
 
 ## Comment vs code
 

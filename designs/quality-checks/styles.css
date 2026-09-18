@@ -348,7 +348,7 @@
 
 /* ---------- responsive (feature parts only; the shell is handled by cockpit.css) ---------- */
 
-@media (max-width: 860px) {
+@media (max-width: 767.98px) {
   .check-card .top {
     flex-wrap: wrap;
   }

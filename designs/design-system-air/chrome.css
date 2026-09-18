@@ -7,7 +7,7 @@
  * and nowhere else (B-16); styles.css keeps its pair, --air-bar-h.
  */
 
-/* ---------- the bar (.doc-bar, cockpit.css:323): sticky above 860, static at 860 and below ---------- */
+/* ---------- the bar (.doc-bar, cockpit.css:323): sticky above 768, static at 768 and below ---------- */
 .air-bar {
   flex-direction: column;
   flex-wrap: nowrap;
@@ -136,7 +136,7 @@
  * head and any frame, where the bar is hidden and the script returns early. */
 :root { --air-head-h: var(--air-head-measured, 0px); }
 
-/* No width guard: the head is sticky at 860 and below too, which is where counting the bar alone
+/* No width guard: the head is sticky at 768 and below too, which is where counting the bar alone
  * parked focus under it. The head itself, the mobile bar and the sidebar keep the bar-only margin
  * above – they are the chrome being cleared, not content sliding under it. */
 .air-screen .main :not(.page-head, .page-head *, .air-run-head, .air-run-head *, .mobile-bar, .mobile-bar *) {
@@ -149,7 +149,7 @@
   display: none;
 }
 
-@media (min-width: 861px) {
+@media (min-width: 768px) {
   :root .air-phone-only { display: none; }
   .air-compare { overflow: hidden; }
 }
@@ -248,8 +248,8 @@
   border: 0;
 }
 
-/* ---------- at 860 and below ---------- */
-@media (max-width: 860px) {
+/* ---------- at 768 and below ---------- */
+@media (max-width: 767.98px) {
   .air-bar {
     position: static;
     padding: 10px 16px;

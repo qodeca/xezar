@@ -200,6 +200,11 @@ The composer picker pill (`chipClass`, `components/picker-pill.tsx:28`) and the 
 (`components/reference-chip.tsx:161`) spell the same 24 px floor by hand as `min-h-[24px]`. They are the only
 two rows of the `no-arbitrary-spacing` allowlist, and they stay: each is an absolute minimum height that keeps
 the control at the WCAG 2.2 SC 2.5.8 target size at every density (#445, closed as met on 2026-09-18).
+Converting either row to `md:min-h-chip` would keep the identical 24 px value – `--spacing-chip` is a flat
+pixel, not density-scaled – so the raw spelling is kept on purpose rather than for a functional reason: it is
+what the `no-arbitrary-spacing` allowlist scans for, and the token spelling would drop the row from the
+allowlist's count without removing the hand-typed floor it exists to track; the phone widening on both
+(`max-md:min-h-tap`) is the WCAG 2.2 SC 2.5.5 44 px target, alongside 2.5.8's 24 px desktop minimum.
 One more size is fixed on purpose, without a pixel: the development-build badge is `size-[54%]` with
 `-top-[15%] -right-[15%]` of the fixed `size-[26px]` brand tile it sits on (about 14 px and 4 px). A scale unit
 would grow and shrink the badge with density while the tile stays put (decisions.md D-08).
