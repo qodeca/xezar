@@ -83,9 +83,12 @@ function serve(resources: Partial<WorkspaceConfigResponse['resources']> = {}) {
 
 /** Seeds the step-3.2 route gates so the shell renders immediately. The global settings area is
  *  unscoped, but the gates still answer for the chrome rendered around it. */
-function gateSeededClient() {
+function gateSeededClient(singleProjectRoot = false) {
   const client = createQueryClient()
-  client.setQueryData(queryKeys.health, { bootProject: 'boot' })
+  client.setQueryData(
+    queryKeys.health,
+    singleProjectRoot ? { bootProject: 'boot', capabilities: { singleProjectRoot: true } } : { bootProject: 'boot' },
+  )
   client.setQueryData(workspaceQueryKeys.projects, {
     projects: [],
     bootProject: 'boot',
@@ -94,9 +97,9 @@ function gateSeededClient() {
   return client
 }
 
-function renderResources() {
+function renderResources({ singleProjectRoot = false }: { singleProjectRoot?: boolean } = {}) {
   render(
-    <QueryClientProvider client={gateSeededClient()}>
+    <QueryClientProvider client={gateSeededClient(singleProjectRoot)}>
       <MemoryRouter initialEntries={['/settings/global/resources']}>
         <AppRoutes />
         <Toaster />
@@ -146,6 +149,20 @@ describe('Global settings → Resources', () => {
     expect(memoryInput()!.value).toBe('4096')
     // The per-repo config is not even read by this pane.
     expect(requests.some((r) => r.url === '/api/v1/config')).toBe(false)
+  })
+
+  // Design NB-3 (#600): single-project mode has one project, so the hint does not say "every".
+  it('words the max-parallel hint for the mode', async () => {
+    serve()
+    renderResources({ singleProjectRoot: true })
+    await waitFor(() => expect(parallelSelect()).not.toBeNull())
+    expect(screen.getByText(/How many tasks run at once in this project\./)).not.toBeNull()
+    expect(screen.queryByText(/across every project/)).toBeNull()
+    cleanup()
+    serve()
+    renderResources()
+    await waitFor(() => expect(parallelSelect()).not.toBeNull())
+    expect(screen.getByText(/How many tasks run at once across every project\./)).not.toBeNull()
   })
 
   it('saves maxParallel to the WORKSPACE config, never the per-repo one', async () => {

@@ -17,7 +17,7 @@ import {
 } from 'lucide-react'
 import type { ComponentType, ReactNode, SVGProps } from 'react'
 
-import { projectsLocked, type ProjectModeCapabilities } from '@/lib/project-mode'
+import { inSingleProjectRoot, projectsLocked, type ProjectModeCapabilities } from '@/lib/project-mode'
 import { CenteredState } from '@/components/centered-state'
 import { AccountsSection } from './accounts-section'
 import { AgentConfigSection } from './agent-config-section'
@@ -75,6 +75,8 @@ export interface SettingsSection {
   title: string
   /** The one-liner under the title — the shell's desktop header and the index cards share it. */
   description: string
+  /** Single-project mode only (#600): replaces `description` where it would claim several projects. */
+  singleProjectDescription?: string
   icon: ComponentType<SVGProps<SVGSVGElement>>
   component: ComponentType
   /** `project` → `/p/<projectId>/settings/<id>`, `global` → `/settings/global/<id>`. */
@@ -234,6 +236,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     id: 'resources',
     title: 'Resources',
     description: 'Parallel tasks and per-task memory limit, across every project.',
+    singleProjectDescription: 'Parallel tasks and per-task memory limit for this project.',
     icon: GaugeIcon,
     component: ResourcesSection,
     scope: 'global',
@@ -263,7 +266,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
       tail: (
         <>
           The logins themselves stay on this machine; only which accounts to use travels. The
-          defaults for new projects are saved in <code className="font-mono">{WORKSPACE_CONFIG_FILE}</code>.
+          defaults are saved in <code className="font-mono">{WORKSPACE_CONFIG_FILE}</code>.
         </>
       ),
     },
@@ -286,6 +289,14 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     hidden: true,
   },
 ]
+
+/** The one-liner a section shows: its single-project wording in that mode, when it has one. */
+export function settingsSectionDescription(
+  section: SettingsSection,
+  capabilities?: Partial<ProjectModeCapabilities>,
+): string {
+  return (inSingleProjectRoot(capabilities) && section.singleProjectDescription) || section.description
+}
 
 /**
  * What one settings area's nav and route table actually show — hidden sections drop out

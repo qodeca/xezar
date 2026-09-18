@@ -297,9 +297,11 @@ function expandIdRanges(text: string): string[] {
 }
 
 describe('#453 T-9 — the known-gaps ledger has no merely-deferred debt', () => {
+  // A row added after B8 carries its own change's label (G-47: `(#611, …)`), so the label is any
+  // issue or pull request, optionally with its batch — the dated, filed-or-kept rule is unchanged.
   it('gives every live row a dated disposition', () => {
     const undisposed = SECTION_IDS.filter(
-      (id) => !/\*\*Final disposition \(#453 B8, \d{4}-\d{2}-\d{2}\)\*\*/.test(sectionBody(id)),
+      (id) => !/\*\*Final disposition \(#\d+(?: B\d+)?, \d{4}-\d{2}-\d{2}\)\*\*/.test(sectionBody(id)),
     )
     expect(undisposed).toEqual([])
   })
@@ -308,7 +310,7 @@ describe('#453 T-9 — the known-gaps ledger has no merely-deferred debt', () =>
     const problems: string[] = []
     for (const id of SECTION_IDS) {
       const body = sectionBody(id)
-      const at = body.indexOf('**Final disposition (#453 B8')
+      const at = body.indexOf('**Final disposition (#')
       const line = body.slice(at, body.indexOf('\n', at))
       const filed = /filed as \*\*#\d+\*\*/.test(line)
       const kept = /kept, with a reason/.test(line)

@@ -1,8 +1,10 @@
 import { MonitorIcon, MoonIcon, SunIcon } from 'lucide-react'
 import type { ComponentType, SVGProps } from 'react'
 
+import { useHealth } from '@/api/queries'
 import { useAppearance } from '@/components/appearance-provider'
 import { useTheme } from '@/components/theme-provider'
+import { inSingleProjectRoot } from '@/lib/project-mode'
 import { cn } from '@/lib/utils'
 import type { Accent, Density, Width } from '@/lib/appearance'
 import type { Theme } from '@/lib/theme'
@@ -108,6 +110,7 @@ function Segmented<V extends string>({
 export function AppearanceSection() {
   const { theme, setTheme } = useTheme()
   const { accent, density, width, setAccent, setDensity, setWidth } = useAppearance()
+  const projectRoot = inSingleProjectRoot(useHealth().data?.capabilities)
 
   return (
     <div
@@ -118,7 +121,16 @@ export function AppearanceSection() {
         <Segmented slot="appearance-theme" label="Theme" value={theme} options={THEME_OPTIONS} onChange={setTheme} />
       </SettingsField>
 
-      <SettingsField title="Accent" hint="The primary action color. Saved for you on this computer and used in every project.">
+      {/* Single-project mode (#600): the accent is saved in the project, and the file note above
+          says so — the storage sentence here would contradict it. */}
+      <SettingsField
+        title="Accent"
+        hint={
+          projectRoot
+            ? 'The primary action color.'
+            : 'The primary action color. Saved for you on this computer and used in every project.'
+        }
+      >
         <Segmented slot="appearance-accent" label="Accent" value={accent} options={ACCENT_OPTIONS} onChange={setAccent} />
       </SettingsField>
 

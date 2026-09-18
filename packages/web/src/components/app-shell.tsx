@@ -511,6 +511,7 @@ function SidebarContent({
         // tile's fixed 26px plus the row's own gap). Global mode keeps the one-line block exactly.
         <div data-slot="sidebar-brand" className="flex flex-col gap-1 px-3.5 pt-3.5 pb-2.5">
           <div className="flex min-w-0 items-center gap-row">{brandLine}</div>
+          {/* 26px is `BrandTile`'s `size-6.5` at its pinned `--spacing: 0.25rem` — change them together. */}
           <div className="flex pl-[calc(26px+var(--spacing-row))]">
             <ModeBadge />
           </div>
@@ -622,7 +623,7 @@ function SidebarContent({
             {toolsMenu}
           </div>
           {version ? <VersionChip version={version} latestVersion={latestVersion} /> : null}
-          <GlobalSettingsLink onNavigate={onNavigate} className="ml-auto" />
+          <GlobalSettingsLink onNavigate={onNavigate} singleProjectRoot={singleProjectRoot} className="ml-auto" />
           <ThemeToggle />
         </div>
       </div>
@@ -672,22 +673,26 @@ function AllTasksLink({ onNavigate }: { onNavigate?: () => void }) {
  * A PLAIN router Link, deliberately: global settings sit outside every project, and the scoped
  * `Link` this file otherwise uses would prefix the target with the active `/p/<id>` — a path
  * that is not a route. Icon-only to keep the footer's one row intact; the accessible name and
- * the tooltip both carry the label.
+ * the tooltip both carry the label. In single-project mode (#600) the label follows the page's own
+ * chip, "Workspace settings" — "Global" is the one word that is false there.
  */
 function GlobalSettingsLink({
   className,
   onNavigate,
+  singleProjectRoot = false,
 }: {
   className?: string
   onNavigate?: () => void
+  singleProjectRoot?: boolean
 }) {
+  const label = singleProjectRoot ? 'Workspace settings' : 'Global settings'
   return (
     <Button asChild variant="ghost" size="icon" className={cn('size-7', className)}>
       <RouterLink
         to="/settings/global"
         data-slot="global-settings-link"
-        aria-label="Global settings"
-        title="Global settings"
+        aria-label={label}
+        title={label}
         onClick={onNavigate}
       >
         <SettingsIcon className="size-4" aria-hidden="true" />
@@ -829,7 +834,6 @@ function ModeBadge() {
     <Badge
       variant="outline"
       data-slot="mode-badge"
-      title="xezar settings and state live in this folder"
       className="gap-1 px-1.5 text-[10.5px] text-muted-foreground [&>svg]:size-2.75"
     >
       <FolderIcon aria-hidden="true" />

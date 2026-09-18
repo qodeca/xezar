@@ -272,6 +272,48 @@ describe('single-project mode names the file each section writes (#600)', () => 
     renderAt('/settings')
     expect(document.querySelector('[data-slot="settings-global-link"]')?.textContent).toBe('Global settings')
   })
+
+  // Review M-1 / design B-1: the file note is only true if nothing else on the pane names another
+  // place. The mode never opens ~/.xezar, so the global nav must not claim it does.
+  it('makes no competing storage claim in the global nav in the mode', () => {
+    const nav = () => document.querySelector('[data-slot="settings-nav"]')
+    for (const url of ['/settings/global', ...GLOBAL_SECTIONS.filter((id) => id !== 'projects').map((id) => `/settings/global/${id}`)]) {
+      renderAt(url, { singleProjectRoot: true })
+      expect(nav()?.textContent, url).not.toContain('~/.xezar')
+      cleanup()
+    }
+    // Global mode keeps its line unchanged.
+    renderAt('/settings/global/notifications')
+    expect(nav()?.textContent).toContain('Stored in ~/.xezar')
+  })
+
+  // Review M-2 / design B-2: the accent hint must not contradict the Appearance file note.
+  it('drops the accent hint’s storage sentence in the mode only', () => {
+    const section = () => document.querySelector('[data-slot="appearance-section"]')
+    renderAt('/settings/global/appearance', { singleProjectRoot: true })
+    expect(section()?.textContent).toContain('The primary action color.')
+    expect(section()?.textContent).not.toContain('Saved for you on this computer')
+    cleanup()
+    renderAt('/settings/global/appearance')
+    expect(section()?.textContent).toContain(
+      'The primary action color. Saved for you on this computer and used in every project.',
+    )
+  })
+
+  // Design NB-3: this PR's own copy stops assuming several projects in the mode.
+  it('drops "every project" and "new projects" from its own copy in the mode', () => {
+    renderAt('/settings/global/resources', { singleProjectRoot: true })
+    const header = () => document.querySelector('[data-route="settings-global-resources"] header')
+    expect(header()?.textContent).toContain('Parallel tasks and per-task memory limit for this project.')
+    expect(header()?.textContent).not.toContain('across every project')
+    cleanup()
+    renderAt('/settings/global/resources')
+    expect(header()?.textContent).toContain('Parallel tasks and per-task memory limit, across every project.')
+    cleanup()
+    renderAt('/settings/global/accounts', { singleProjectRoot: true })
+    expect(note()?.textContent).toContain('The defaults are saved in .xezar/workspace.json.')
+    expect(note()?.textContent).not.toContain('new projects')
+  })
 })
 
 describe('the settings shell', () => {

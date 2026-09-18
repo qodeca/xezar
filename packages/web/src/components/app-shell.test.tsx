@@ -240,7 +240,8 @@ describe('AppShell', () => {
       // A fact, not a control: no link, no button, nothing in the tab order.
       expect(inBrand?.closest('a, button')).toBeNull()
       expect(inBrand?.getAttribute('tabindex')).toBeNull()
-      expect(inBrand?.getAttribute('title')).toBe('xezar settings and state live in this folder')
+      // No `title`: the sr-only tail already carries the sentence, and a tooltip would repeat it.
+      expect(inBrand?.hasAttribute('title')).toBe(false)
       // Line one of the brand block is untouched: the repo chip still renders beside the wordmark.
       expect(brand().querySelector('[data-slot="repo-chip"]')?.textContent).toBe('xezar / main')
     })
@@ -261,6 +262,15 @@ describe('AppShell', () => {
     it('is not implied by the XEZ_SINGLE_PROJECT narrowing, which keeps global state', () => {
       renderShell('/', { singleProject: true })
       expect(document.querySelector('[data-slot="mode-badge"]')).toBeNull()
+    })
+
+    // Design review NB-1: the gear opens a page titled "Workspace settings" in the mode, so its
+    // accessible name says the same; "Global" is the one word that is false there.
+    it('names the settings gear after the page it opens', () => {
+      renderShell('/', { singleProjectRoot: true })
+      const gear = within(sidebar()).getByRole('link', { name: 'Workspace settings' })
+      expect(gear.getAttribute('title')).toBe('Workspace settings')
+      expect(within(sidebar()).queryByRole('link', { name: 'Global settings' })).toBeNull()
     })
   })
 

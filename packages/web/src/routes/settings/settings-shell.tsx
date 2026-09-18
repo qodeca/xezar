@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 import { ProjectGeneral } from './project-general'
 import { ProjectLocationNav } from './project-location'
 import {
+  settingsSectionDescription,
   visibleSettingsSections,
   type SettingsFileNote,
   type SettingsScope,
@@ -107,9 +108,13 @@ function SectionNav({
       ))}
       {/* The nav footer answers "what am I editing?" — and each area answers it differently.
           Global: settings are per USER, not per repo, said once where the choice to write there
-          is being made. Project: WHICH repo, by its absolute path on disk. */}
+          is being made. Project: WHICH repo, by its absolute path on disk. Single-project mode
+          (#600) never opens ~/.xezar, so the global line would be false there; each section's
+          file note names the real file instead. */}
       {scope === 'global' ? (
-        <p className="mt-auto px-2.5 pt-3 text-[11px] text-soft-foreground">Stored in ~/.xezar</p>
+        inSingleProjectRoot(capabilities) ? null : (
+          <p className="mt-auto px-2.5 pt-3 text-[11px] text-soft-foreground">Stored in ~/.xezar</p>
+        )
       ) : (
         <ProjectLocationNav />
       )}
@@ -188,7 +193,7 @@ export function SettingsSectionRoute({
           breadcrumb is what tells the two areas apart at a glance (mockup: "Global settings"). */}
       <header className="sticky top-0 z-10 hidden h-14 shrink-0 items-center gap-3 border-b border-border bg-background md:flex md:px-section">
         <h1 className="text-base font-semibold">{section.title}</h1>
-        <p className="text-[13px] text-soft-foreground">{section.description}</p>
+        <p className="text-[13px] text-soft-foreground">{settingsSectionDescription(section, capabilities)}</p>
         {scope === 'global' ? (
           <span data-slot="settings-scope-chip" className="ml-auto text-[11px] text-soft-foreground">
             {projectRoot ? 'Workspace settings' : 'Global settings'}
@@ -262,7 +267,9 @@ export function SettingsIndexRoute({ scope, capabilities }: {
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block text-sm font-medium text-foreground">{section.title}</span>
-                    <span className="block text-xs text-soft-foreground">{section.description}</span>
+                    <span className="block text-xs text-soft-foreground">
+                      {settingsSectionDescription(section, capabilities)}
+                    </span>
                   </span>
                   <ChevronRightIcon aria-hidden="true" className="size-4 shrink-0 text-soft-foreground" />
                 </Link>
