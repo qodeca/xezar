@@ -70,6 +70,7 @@ import {
   stateLayoutBootLine,
 } from './state-layout.ts';
 import { createProjectStateFiles } from './workspace/config.ts';
+import { askInTerminal, firstRunImportLine, runFirstRunImport } from './workspace/import-global.ts';
 
 const HELP =`xezar — local cockpit for AI agent tasks in any project folder
 
@@ -107,6 +108,8 @@ Options:
                               and the registry live in .xezar/, working files in
                               .local/xezar/, and ~/.xezar is not opened. Needed
                               only the first time — afterwards the folder decides.
+                              That first run asks once, in a terminal, whether to
+                              copy your global setup in (never the project list).
                               A linked git worktree is never a project root.
       --platform <id>         server-install target (ubuntu-vps | macosx-ngrok)
       --domain <host>         server-install (ubuntu-vps): host a SECOND, independent
@@ -229,7 +232,6 @@ async function main(): Promise<void> {
     // keep their existing degrade-with-one-warning contracts.
     assertProjectStateUsable(stateLayout);
     setActiveStateLayout(stateLayout);
-    if (stateLayout.mode === 'project') createProjectStateFiles(stateLayout);
   } catch (err) {
     if (!(err instanceof SingleProjectStateError)) throw err;
     console.error(`error  ${err.message}`);
@@ -241,6 +243,17 @@ async function main(): Promise<void> {
   // human-readable line there is a protocol error, not a banner.
   const modeLine = stateLayoutBootLine(stateLayout);
   if (modeLine !== null && command !== 'mcp') console.log(modeLine);
+  if (stateLayout.mode === 'project') {
+    // The first-run ask (#600 FR-4.1, SP-5.1/5.2): a folder with no state yet
+    // is asked, once, in the terminal, whether to copy the global setup in —
+    // BEFORE the four files exist, so a decline writes nothing and a folder
+    // that already holds `workspace.json` is never asked. `mcp` has nobody to
+    // ask (its stdio is the protocol), so it imports nothing and says nothing.
+    const outcome = await runFirstRunImport(stateLayout, command === 'mcp' ? async () => null : askInTerminal);
+    const importLine = command === 'mcp' ? null : firstRunImportLine(outcome, stateLayout);
+    if (importLine !== null) console.log(importLine);
+    createProjectStateFiles(stateLayout);
+  }
 
   switch (command) {
     case 'serve':

@@ -186,6 +186,16 @@ describe('Global settings → Resources', () => {
     expect(screen.getByText(/Need a different limit for one project/)).not.toBeNull()
   })
 
+  // A #611 review follow-up: `/settings/global/projects` is page-not-found in single-project mode,
+  // so the link to it is absent there rather than dead.
+  it('drops the per-project limits link in single-project mode', async () => {
+    serve()
+    renderResources({ singleProjectRoot: true })
+    await waitFor(() => expect(parallelSelect()).not.toBeNull())
+    expect(screen.queryByRole('link', { name: 'Configure per-project limits' })).toBeNull()
+    expect(screen.queryByText(/Need a different limit for one project/)).toBeNull()
+  })
+
   it('saves the extra monitoring capacity and explains the two pools', async () => {
     serve({ maxParallel: 4, maxMonitoringSessions: 2 })
     renderResources()

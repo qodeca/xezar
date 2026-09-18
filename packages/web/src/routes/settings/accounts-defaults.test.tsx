@@ -132,7 +132,7 @@ function serve({
       if (url === '/api/v1/providers/status' && method === 'GET') return json(PROVIDERS)
       // The accounts page also paints per-agent facts from health; an empty answer is a real state
       // (it renders "Checking…") and keeps this file about the defaults block.
-      if (url === '/api/v1/health' && method === 'GET') return json({ checks: [], bootProject: 'boot' })
+      if (url === '/api/v1/health' && method === 'GET') return json({ checks: [], bootProject: 'boot', ...health })
       if (url.startsWith('/api/v1/open-targets')) return json({ targets: [] })
       if (url === '/api/v1/models?runner=codex') return json({ models: [] })
       return new Promise<never>(() => {})
@@ -140,9 +140,12 @@ function serve({
   )
 }
 
+/** What `/api/v1/health` adds beyond the empty answer — single-project mode's capability, per case. */
+let health: Record<string, unknown> = {}
+
 function renderAccounts() {
   const client = createQueryClient()
-  client.setQueryData(queryKeys.health, { bootProject: 'boot' })
+  client.setQueryData(queryKeys.health, { bootProject: 'boot', ...health })
   client.setQueryData(workspaceQueryKeys.projects, {
     projects: [],
     bootProject: 'boot',
@@ -170,12 +173,31 @@ const selections = () =>
 const repoConfigWrites = () => requests.filter((r) => r.url === '/api/v1/config')
 
 afterEach(() => {
+  health = {}
   act(() => resetToasts())
   cleanup()
   vi.unstubAllGlobals()
 })
 
 describe('Agent accounts → Defaults for new projects', () => {
+  // #600 OD-5, a #611 review follow-up: in single-project mode there are no "new projects" — the
+  // workspace IS this folder — so the card names what it sets instead.
+  it('names the card for this project in single-project mode, and keeps its name elsewhere', async () => {
+    health = { capabilities: { singleProjectRoot: true } }
+    serve()
+    renderAccounts()
+    await waitFor(() => expect(defaults()).not.toBeNull())
+    expect(defaults()!.querySelector('h3')?.textContent).toBe('Defaults for this project')
+    expect(defaults()!.textContent).not.toContain('new projects')
+
+    cleanup()
+    health = {}
+    serve()
+    renderAccounts()
+    await waitFor(() => expect(defaults()).not.toBeNull())
+    expect(defaults()!.querySelector('h3')?.textContent).toBe('Defaults for new projects')
+  })
+
   it('survives a server that has never heard of agent defaults', async () => {
     // Version skew, and it crashed this page for real: Vite serves this bundle while `dist/` or
     // another process serves the API, so an older server answers `/workspace/config` with no

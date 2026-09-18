@@ -38,7 +38,10 @@ function LocationProbe() {
   return <output data-testid="location">{pathname}</output>
 }
 
-function renderOverview(props: Partial<ComponentProps<typeof TasksOverview>> = {}) {
+function renderOverview(
+  props: Partial<ComponentProps<typeof TasksOverview>> = {},
+  { singleProjectRoot = false }: { singleProjectRoot?: boolean } = {},
+) {
   const onViewChange = props.onViewChange ?? vi.fn()
   const onArchiveFinished = props.onArchiveFinished ?? vi.fn()
   const onMarkAllRead = props.onMarkAllRead ?? vi.fn()
@@ -46,8 +49,10 @@ function renderOverview(props: Partial<ComponentProps<typeof TasksOverview>> = {
   // The hero's setup entry (#464 P2) reads `useOnboarding`, so the overview now needs a client.
   // Nothing is seeded: an unanswered onboarding query renders no setup block, which is exactly
   // the "do not show a state that has not answered yet" rule.
+  const client = createQueryClient()
+  if (singleProjectRoot) client.setQueryData(queryKeys.health, { bootProject: 'boot', capabilities: { singleProjectRoot: true } })
   const utils = render(
-    <QueryClientProvider client={createQueryClient()}>
+    <QueryClientProvider client={client}>
     <MemoryRouter initialEntries={['/']}>
       <LocationProbe />
       <Routes>
@@ -967,6 +972,18 @@ describe('TasksOverview — empty and loading states', () => {
     expect(within(empty).getByRole('link', { name: 'New task' }).getAttribute('href')).toBe('/new')
     // The hero moment: this is the one overview state that gets the decorative backdrop.
     expect(empty.querySelector('[data-slot="twinkle-backdrop"]')).not.toBeNull()
+  })
+
+  // #600 design handoff §8/§9 — the one sentence the mode adds to the hero, and only in the mode.
+  it('adds the single-project sentence to the no-tasks hero in the mode, and nowhere else', () => {
+    const SENTENCE =
+      'This xezar keeps its settings and its working files in this folder, so everything a task needs travels with the repository.'
+    renderOverview({ runs: [] }, { singleProjectRoot: true })
+    const empty = document.querySelector<HTMLElement>('[data-slot="tasks-empty"]')!
+    expect(empty.textContent).toContain(`Describe a task to get started. ${SENTENCE}`)
+    cleanup()
+    renderOverview({ runs: [] })
+    expect(document.querySelector('[data-slot="tasks-empty"]')!.textContent).not.toContain(SENTENCE)
   })
 
   it('says the archive is empty, plainly — neutral, no backdrop', () => {

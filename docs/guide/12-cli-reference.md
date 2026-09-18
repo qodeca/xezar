@@ -75,6 +75,26 @@ A flag beats a saved value in `~/.xezar/config.json` (`cli.output`, `cli.color`,
 
 `--bind-host` changes the listening host. A non-loopback bind switches off local-machine handoffs. xezar has no built-in authentication: provide an authenticated reverse proxy and TLS for a hosted deployment. See [server installation](../server-install/README.md).
 
+### To keep the setup in the project folder: `--single-project`
+
+```sh
+xezar --single-project
+```
+
+The folder you start in (its repository root, inside Git) owns its xezar setup: settings, agent accounts and the project registry live in `.xezar/`, working files in `.local/xezar/`, and `~/.xezar` is not opened. You need the flag only the first time; afterwards the folder decides, because `.xezar/workspace.json` exists, and every command started there is in the mode. A linked Git worktree, a folder under `.local/xezar/worktrees/` and your home directory are never a project root. Every command except `mcp` prints one line at start:
+
+```text
+  single-project mode — settings in <project>/.xezar, working files in <project>/.local/xezar
+```
+
+On the first run in a folder without `.xezar/workspace.json`, xezar asks once, in the terminal, whether to copy your global setup (`~/.xezar`, or `XEZ_HOME`) into the project, answered with `[y/N]`. Settings, agent accounts and GUI preferences are copied; your project list is not, and nothing is kept in sync afterwards. When standard input or output is not a terminal, for example in a script or CI, nothing is imported and one line says so:
+
+```text
+  not a terminal, so nothing was imported from your global setup — starting <project>/.xezar with defaults
+```
+
+`xezar mcp` never asks. A folder that already holds `.xezar/workspace.json`, such as a clone, is never asked. A `.xezar/workspace.json` that is not valid JSON, or a state folder that cannot be written, stops the start with a named error and exit code 1. See [single-project mode](09-projects.md#to-keep-a-projects-xezar-setup-inside-the-project--single-project-mode) for what the mode changes and how it differs from `XEZ_SINGLE_PROJECT=1`.
+
 ## To run a task headlessly: `run`
 
 ```sh
@@ -105,7 +125,7 @@ Creates `.xezar/workflows/fix-and-verify.yaml` and `.xezar/skills/project-conven
 
 ## To manage projects: `projects`
 
-These commands edit/read the workspace registry directly and work without a running server. `XEZ_HOME` selects that registry.
+These commands edit/read the workspace registry directly and work without a running server. `XEZ_HOME` selects that registry, except in single-project mode, where the registry is the project's own `.xezar/workspace.json`.
 
 | Command | Effect |
 | --- | --- |
@@ -117,7 +137,7 @@ These commands edit/read the workspace registry directly and work without a runn
 
 Use an ID from the listing for remove/tag. Registration rejects missing/non-directory paths, your home directory and task worktrees. Tags are trimmed, deduplicated case-insensitively and sorted; the first spelling is preserved. Successful commands return 0; usage errors, unknown IDs and refused registrations return 1.
 
-With `XEZ_SINGLE_PROJECT=1`, listing is limited to the launch project and add/remove/tag/port are refused. CLI removal is a registry operation: it does not perform the cockpit's active-task removal check. Check your tasks before removing an entry.
+With `XEZ_SINGLE_PROJECT=1`, listing is limited to the launch project and add/remove/tag/port are refused. In [single-project mode](#to-keep-the-setup-in-the-project-folder---single-project), listing shows the one project and add/remove/tag/port are refused with exit code 1 and the message `this project owns its xezar state; <action> is disabled`. CLI removal is a registry operation: it does not perform the cockpit's active-task removal check. Check your tasks before removing an entry.
 
 ## To connect an agent: `mcp`
 
@@ -146,6 +166,7 @@ Use the [server-install guide](../server-install/README.md) for prerequisites an
 | `--workflow <name>` | `run`: workflow name, default `quick-task`. |
 | `--model <model>` | `run`: task model override. |
 | `--no-open` | `serve`: do not open the browser. |
+| `--single-project` | Every command: this folder owns its xezar setup — settings, accounts and the registry in `.xezar/`, working files in `.local/xezar/`, `~/.xezar` not opened. Needed only the first time; afterwards the folder decides. The first run asks once, in a terminal, whether to copy your global setup in (never the project list). A linked Git worktree is never a project root. See [above](#to-keep-the-setup-in-the-project-folder---single-project). |
 | `--platform <id>` | Server commands: `ubuntu-vps` or `macosx-ngrok`. Required for install; optional for deploy/uninstall only when saved instance state supplies it. |
 | `--domain <host>` | `ubuntu-vps` server commands only: select the domain's instance; install can create a second independent one. |
 | `--bind-host <host>` | `serve` / `server-install`: bind host, default `127.0.0.1`. |
@@ -162,7 +183,7 @@ Flags are parsed globally, but only the command consumers listed above use them.
 
 - [Environment contract](../../.env.example): backend paths, `XEZ_HOME`, `XEZ_SINGLE_PROJECT`, `XEZ_REMOTE`, mock mode, and the port and terminal-output variables `XEZ_PORT`, `XEZ_OUTPUT`, `XEZ_COLOR`, `XEZ_LOG_LEVEL` and `XEZ_QUIET`.
 - [Troubleshooting](16-troubleshooting-faq.md) for a busy port or a cockpit that will not start.
-- `.xezar/config.json` supplies project defaults; `~/.xezar/config.json` supplies registry and resource settings. [Project layout](../project-layout.md) explains maintained files and runtime state.
+- `.xezar/config.json` supplies project defaults; `~/.xezar/config.json` supplies registry and resource settings, or `.xezar/workspace.json` in single-project mode ([file locations](11-configuration-reference.md#to-find-where-the-files-live-in-each-layout)). [Project layout](../project-layout.md) explains maintained files and runtime state.
 - [CLI source](../../packages/xezar/src/index.ts) and [projects command source](../../packages/xezar/src/workspace/projects-cli.ts).
 
 Next: [MCP project leader](13-mcp-leader.md)

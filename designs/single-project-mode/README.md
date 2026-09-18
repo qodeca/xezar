@@ -1,7 +1,10 @@
 # Single-project mode – the cockpit surface
 
 **Status:** Approved – design review PASS WITH FOLLOW-UPS on PR #604 (`design-approved`); NB-1
-through NB-5 each carry a disposition in § Design review below. Authored 2026-09-17 by the `design`
+through NB-5 each carry a disposition in § Design review below. Partly implemented: the cockpit
+slice merged as PR #611; PR #612 carries the four copy items #611 deferred, judged by a scoped
+design review (PASS, `design-approved`, § Design review below). Both statuses become
+**Implemented** once #612 merges. Authored 2026-09-17 by the `design`
 workflow (`xezar-ux-design`, authoring mode) for the cockpit slice (PR4) of
 [qodeca/xezar#600](https://github.com/qodeca/xezar/issues/600).
 
@@ -456,3 +459,19 @@ viewport, not through a frame.
 | NB-3 – the copy deck (§9) and the rendered strings use straight apostrophes where `writing.md` §1 requires curly | Tracked for PR4 (cockpit slice): the character is settled here as curly, per `writing.md` §1; PR4 ships the curly form in its own copy, and the mockup's straight quotes are corrected whenever the pages are next touched |
 | NB-4 – §14 does not record the phone top bar's own worst case (a 67-character title against the fixed 101 px badge) | Accepted with reason: the reviewer's own measurement (title truncates, badge holds 101 px, no overlap, `scrollWidth` 375) is recorded here so it is not rediscovered; §14 itself is unchanged in this docs-only round |
 | NB-5 – `index.html`, `sidebar.html` and `states.html` embed a `phone.html` iframe that renders empty from `file://` | Accepted with reason: already recorded honestly in §21 as a known mockup limitation with a working link in each frame; replacing or dropping the iframe is a mockup content change, out of scope for this docs-only round |
+
+### Scoped design review – PR #612, the four deferred copy items
+
+**Verdict: PASS**, posted on PR #612 (`design-approved`):
+[comment](https://github.com/qodeca/xezar/pull/612#issuecomment-5724843480).
+Scope: only the four #611 review items folded into PR #612 (the accounts card title and
+description, the unavailable account row, the Resources pane without "Configure per-project limits",
+and the Tasks empty-state sentence). PR #612's own feature, the first-run import, is asked in the
+terminal only, so `skip-design` covers it.
+
+| Finding | Disposition |
+| --- | --- |
+| NB-1 – the unavailable row's danger border tint (§7) is not shipped, and the departure was not recorded | Recorded as the fifth accepted deviation in `docs/design-system/known-gaps.md` G-47: the tint was reinforcement only, and the word, the sentence and the danger dot already carry the state. The row's path now renders in the mono face, as `settings.html` draws it (the code review's m3) |
+| NB-2 – `DefaultAgentPicker` (`components/default-agent-picker.tsx:46`) describes the account the global way inside the renamed card, and still offers the unavailable account | Deferred to the docs/copy wave, beside #604's NB-3 remainders: the string is identical in both modes, so nothing regressed, and it does not contradict the row |
+| Note – the straight apostrophe in "this account's folder" | Unchanged: the recorded open gap in `known-gaps.md` § copy conventions ("Apostrophes"); the string is byte-identical to the copy deck and pinned across two surfaces |
+| Note – under `XEZ_DRY_RUN=1` the credential probe answers `connected` for an absent folder, so `Connect` was hidden | An environment property of the dry-run fixture, not of this design; reported as unknown by the reviewer |

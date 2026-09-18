@@ -130,6 +130,11 @@ Nothing is required. `.xezar/config.json` (per repo) and `~/.xezar/config.json` 
 and the cockpit's Settings write them for you. Every user-facing `XEZ_*` variable is listed below.
 xezar never loads a `.env` file; export variables in your shell.
 
+To let a repository carry its own xezar setup, start `xezar --single-project` once in it: settings,
+agent accounts and limits then live in the project's `.xezar/` folder, `~/.xezar` is not opened, and a
+clone runs the same way with no setup step. The first run offers a one-time copy of your global
+setup. See [single-project mode](docs/guide/09-projects.md#to-keep-a-projects-xezar-setup-inside-the-project--single-project-mode).
+
 <details>
 <summary>Environment variables</summary>
 
@@ -154,7 +159,7 @@ xezar never loads a `.env` file; export variables in your shell.
 | `XEZ_AUTONOMOUS_DEFAULT=0` | Seed the New Task Autonomous default (`0` or `1`). Without a seed, skills default on and workflows off; a saved global Resources setting overrides it. |
 | `XEZ_WORKTREE_DEFAULT=1` | Seed the New Task Worktree default (`0` or `1`). Without a seed, eligible runs default on; a saved global Resources setting overrides it. |
 | `XEZ_DISABLE_REPO_LOCK=1` | Bypass the repository-root lease (default off, exact `1`). Concurrent agents may overwrite files or Git state. Isolated worktrees are unaffected. |
-| `XEZ_SINGLE_PROJECT=1` | Show only the launch project and refuse project management (default off, exact `1`). Restart required; registry rows are retained. |
+| `XEZ_SINGLE_PROJECT=1` | Show only the launch project and refuse project management (default off, exact `1`). Restart required; registry rows are retained. State stays in `~/.xezar`; not deprecated by `--single-project`, which also moves the state into the project. |
 | `XEZ_HIDE_TOKEN_USAGE=1` | Hide token counts, keeping cost visible (default off, exact `1`, restart required). API data is unchanged. |
 | `XEZ_HIDE_COST=1` | Hide cost, keeping token counts visible (default off, exact `1`, restart required). API data is unchanged. |
 | `XEZ_HIDE_TOKEN_METRICS=1` | Legacy switch hiding both counts and cost; overrides the two flags above (default off, exact `1`, restart required). |

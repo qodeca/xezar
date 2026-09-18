@@ -53,6 +53,16 @@ Browse the tool reference, filter it, and expand a tool to inspect its inputs an
 
 Open **Global settings**. Its sections live under `/settings/global/` and apply across projects, with browser-specific choices called out below.
 
+In [single-project mode](09-projects.md#to-keep-a-projects-xezar-setup-inside-the-project--single-project-mode), this area reads **Workspace settings**, keeps the same sections and URLs, and saves into the project's own files instead of `~/.xezar`. Each section names its file:
+
+| Section | File in single-project mode |
+| --- | --- |
+| Resources, Skills, and the workspace defaults | `.xezar/workspace.json` |
+| Agent accounts | `.xezar/agent-accounts.json` |
+| Appearance and Notifications | `.xezar/workspace-ui.json` |
+| Project Settings (Agents and the other project sections) | `.xezar/config.json`, as in every mode |
+| Projects | Not available: the workspace holds only this project. |
+
 ### To change the display — Appearance
 
 | Control | Choices and effect |
@@ -85,7 +95,7 @@ Turn on **Notify when an agent needs you** and allow browser permission. Notific
 | Extra variables agents receive | Save a comma-separated list of additional environment variable names, or choose **Follow XEZ_ENV_PASSTHROUGH**. An explicitly empty list forwards no extra variables. |
 | New task defaults | Set **Autonomous by default** and **Use a worktree by default** to **Inherit environment**, **On**, or **Off**. They inherit `XEZ_AUTONOMOUS_DEFAULT` and `XEZ_WORKTREE_DEFAULT`, respectively. Explicit task choices and task constraints still take precedence. |
 
-Open the project’s **Settings → Worktrees** table to inspect disk use and reclaim eligible task folders. A project's own Worktrees choice overrides default retention; its registry cap narrows the total concurrency limit. A project memory override, `memoryLimitMb` in `.xezar/config.json`, can supersede the workspace memory ceiling; no cockpit control sets it.
+Open the project’s **Settings → Worktrees** table to inspect disk use and reclaim eligible task folders. A project's own Worktrees choice overrides default retention; its registry cap narrows the total concurrency limit. A project memory override, `memoryLimitMb` in `.xezar/config.json`, can supersede the workspace memory ceiling; no cockpit control sets it. In single-project mode there is no **Configure per-project limits** link under Max parallel tasks, because the workspace holds only this project; limits saved here go to `.xezar/workspace.json` and apply exactly as written on every machine that uses the project.
 
 Automations have no control here: start the server with `XEZ_AUTOMATIONS=1` to enable them.
 
@@ -99,9 +109,11 @@ Use **Update xezar-skills automatically** to save an on/off workspace override a
 
 Choose a provider tab to inspect installation, version, and accounts. Use its login controls or add an account with a label and separate configuration folder where supported. **Defaults for new projects** supplies the agent and models when a project has not chosen its own. Account records live separately in `~/.xezar/agent-accounts.json`; see [Agent backends](04-agent-backends.md).
 
+In single-project mode, account records live in the project's `.xezar/agent-accounts.json`, and the defaults card reads **Defaults for this project**. An account the project names whose configuration folder does not exist on this machine reads **Unavailable — this account's folder does not exist on this machine: `<folder>`. Connect signs in and creates it, or pick another account for the task.** A task that asks for that account is refused before the agent starts, with the message `Agent account “<label>” is unavailable —` followed by the same sentence; xezar does not quietly use the default login instead. Outside single-project mode, a newly added account whose folder does not exist yet still reads **folder not created yet; Connect will make it**.
+
 ### To manage registered folders — Projects
 
-Set the default browse and checkout folders, and edit registered projects' tags or parallel-task caps. Removal unregisters a project and drops its tags and cap while leaving its files intact. This section is hidden in single-project mode. See [Projects](09-projects.md) for adding, cloning, removal, and missing-folder recovery.
+Set the default browse and checkout folders, and edit registered projects' tags or parallel-task caps. Removal unregisters a project and drops its tags and cap while leaving its files intact. This section is hidden under `XEZ_SINGLE_PROJECT=1` and in single-project mode (`--single-project`), where `/settings/global/projects` is not available. See [Projects](09-projects.md) for adding, cloning, removal, and missing-folder recovery.
 
 ### To find shortcut settings — Keyboard
 
@@ -119,6 +131,7 @@ Press **⌘K / Ctrl+K** to open the palette. Search for a view, project, task, o
 - `~/.xezar/config.json`: workspace resources, project registry, fallback agent/models, stored Inbox choice, skill-update choice, `disabledProviders`, `composerDefaults`, `agentEnvPassthrough`, `browseRoot` / `projectsDir`, and `modelsLocked`.
 - Terminal output (`cli.output`, `cli.color`, `cli.logLevel`) and each project's cockpit port have no control in Settings. Set them with command-line flags, environment variables, `xezar projects port`, or `~/.xezar/config.json`; see the [CLI reference](12-cli-reference.md#live-activity-in-the-terminal).
 - `~/.xezar/ui-state.json`: global appearance and notification preferences; project `.local/xezar/ui-state.json`: prompt templates.
+- In single-project mode, the three `~/.xezar` files above are the project's `.xezar/workspace.json`, `.xezar/agent-accounts.json` and `.xezar/workspace-ui.json`; see [Configuration reference](11-configuration-reference.md#to-find-where-the-files-live-in-each-layout).
 - Browser storage: theme and the appearance mirror. Native agent configuration files are separate from xezar's settings.
 - `XEZ_REVIEW_GATE`, `XEZ_TITLE_UPDATES`, `XEZ_FOLLOWUPS`, `XEZ_ENV_PASSTHROUGH`, `XEZ_SKILLS_AUTO_UPDATE`, `XEZ_AUTONOMOUS_DEFAULT`, and `XEZ_WORKTREE_DEFAULT` provide defaults where the corresponding stored setting has no opinion. See the [environment contract](../../.env.example) for precedence and startup details.
 

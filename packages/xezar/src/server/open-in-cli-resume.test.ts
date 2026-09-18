@@ -7,6 +7,8 @@ import type { RunnerId } from '../core/agent-runner.ts';
 import { RunStore } from '../runs/store.ts';
 import { defaultWorkspaceConfig, type WorkspaceConfig } from '../workspace/config.ts';
 import { mergeWriteAgentAccounts } from '../workspace/agent-accounts.ts';
+import { unavailableAgentAccountRefusal } from '@qodeca/xezar-contract';
+import { projectStateLayout, setActiveStateLayout } from '../state-layout.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { openInTerminal } from './open-in-terminal.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
@@ -306,6 +308,28 @@ describe('POST /api/v1/runs/:id/open-in — agent CLI resume vs fresh launch', (
       expect(res.status).toBe(409);
       expect(((await res.json()) as { error: string }).error).toContain('no longer exists');
       expect(mockOpenInTerminal).not.toHaveBeenCalled();
+    });
+
+    // #612 review m2: in single-project mode a committed account whose folder this machine lacks
+    // is refused with the Settings sentence, never opened as a CLI on a folder that is not here.
+    it('single-project mode: a FRESH CLI on a committed account this machine lacks is refused (#612 m2)', async () => {
+      setActiveStateLayout(projectStateLayout(realpathSync(repoRoot)));
+      try {
+        const missing = join(home, 'claude-not-here');
+        await mergeWriteAgentAccounts((accounts) => {
+          accounts.accounts.push({ id: 'work', provider: 'claude', configDir: missing, label: 'Work account', addedAt: '' });
+          accounts.selections[realpathSync(repoRoot)] = { claude: 'work' };
+        });
+        const run = makeRun('claude'); // no session — the fresh-launch branch
+
+        const res = await openIn(run.id, 'cli:claude');
+
+        expect(res.status).toBe(409);
+        expect(((await res.json()) as { error: string }).error).toBe(unavailableAgentAccountRefusal('Work account', missing));
+        expect(mockOpenInTerminal).not.toHaveBeenCalled();
+      } finally {
+        setActiveStateLayout(null);
+      }
     });
 
     it('adds nothing for a run recorded on the default account', async () => {

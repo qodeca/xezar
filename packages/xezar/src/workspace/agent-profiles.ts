@@ -3,6 +3,8 @@ import { profileEnv, looksLikeProfileDir } from '../core/agent-profiles.ts';
 import type { ProviderId } from '../core/provider-auth.ts';
 import { agentHomePaths, expandTilde } from '../paths.ts';
 import type { AgentHomePaths } from '../agent-config/catalog.ts';
+import { unavailableAgentAccountRefusal } from '@qodeca/xezar-contract';
+import { activeStateLayout } from '../state-layout.ts';
 import {
   DEFAULT_AGENT_ACCOUNT_ID,
   loadAgentAccounts,
@@ -185,9 +187,42 @@ export async function profileDirState(
   try {
     entries = await readdir(path);
   } catch {
+    // Any read failure lands here, not only ENOENT: a folder that exists but cannot be read
+    // (EACCES) or a path through a file (ENOTDIR) also reports `exists: false`, so the
+    // single-project refusal's "does not exist on this machine" covers those too (#612 review n2).
     return { exists: false, looksValid: false };
   }
   return { exists: true, looksValid: looksLikeProfileDir(provider, entries) };
+}
+
+/**
+ * A task asked for a committed account whose folder does not exist on this machine
+ * (single-project mode, #600 FR-6.3, BR-4). The message is the Settings row's own sentence with the
+ * account's name in front — `unavailableAgentAccountRefusal` builds both — so the person who reads
+ * the refusal recognises the row it came from.
+ */
+export class AgentAccountUnavailableError extends Error {
+  constructor(profile: Pick<ResolvedAgentProfile, 'label' | 'configDir'>) {
+    super(unavailableAgentAccountRefusal(profile.label, profile.configDir));
+    this.name = 'AgentAccountUnavailableError';
+  }
+}
+
+/**
+ * Refuse a task on an account the project carries but this machine lacks — single-project mode
+ * only, where accounts are committed project state and a clone can arrive naming a folder that was
+ * never created here.
+ *
+ * Global mode keeps its own, older answer on purpose: there an account whose folder is missing is
+ * one the user just ADDED, and "add, then Connect, and the CLI creates the folder" is the real flow
+ * (`agentProfileSchema.exists`). The discovered default account is never refused — it IS what this
+ * machine has. And there is no fallback in either mode: running on the default login while the task
+ * names "Work" would bill the wrong subscription (BR-4, "no silent fallback").
+ */
+export async function assertAgentAccountAvailable(profile: ResolvedAgentProfile): Promise<void> {
+  if (profile.isDefault || activeStateLayout().mode !== 'project') return;
+  if ((await profileDirState(profile.provider, profile.path)).exists) return;
+  throw new AgentAccountUnavailableError(profile);
 }
 
 /**

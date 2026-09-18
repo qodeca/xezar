@@ -5,7 +5,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { queryKeys, workspaceQueryKeys } from '@/api/queries'
 import { createQueryClient } from '@/api/query-client'
-import type { AgentProfile, AgentProfilesResponse } from '@qodeca/xezar-api-client'
+import {
+  unavailableAgentAccountRefusal,
+  type AgentProfile,
+  type AgentProfilesResponse,
+} from '@qodeca/xezar-api-client'
 import { Toaster, resetToasts } from '@/components/ui/toaster'
 import { AppRoutes } from '@/routes'
 
@@ -161,11 +165,12 @@ function serve(
   )
 }
 
-function renderAccounts() {
+function renderAccounts({ singleProjectRoot = false }: { singleProjectRoot?: boolean } = {}) {
   const client = createQueryClient()
   client.setDefaultOptions({ queries: { ...client.getDefaultOptions().queries, retry: false } })
   client.setQueryData(queryKeys.health, {
     bootProject: 'boot',
+    ...(singleProjectRoot ? { capabilities: { singleProjectRoot: true } } : {}),
     // The install/version rows come from the health probe — the one place a version can honestly
     // come from. Codex is present but UNAVAILABLE, which is "not installed"; an agent missing
     // from `checks` entirely is a different state ("Checking…") and must not be conflated.
@@ -277,6 +282,44 @@ describe('the agent accounts section', () => {
     expect(row.querySelector('[data-slot="account-missing"]')?.textContent).toContain(
       'Connect will make it',
     )
+  })
+
+  // #600 SP-5.5 / DP-5 — in single-project mode the accounts are committed project state, so a
+  // folder this machine lacks is a clone naming a login it does not have. The row says
+  // "Unavailable" with the path, and the task refusal the engine raises is THIS sentence with the
+  // account's name in front (`workspace/agent-profiles.test.ts` pins the engine half against the
+  // same contract helper) — one string, two surfaces.
+  it('shows a committed account whose folder is missing as Unavailable, with the refusal\'s own sentence', async () => {
+    serve({
+      defaults: {},
+      editable: true,
+      profileCapableProviders: ['claude', 'codex'],
+      selections: {},
+      profiles: [
+        ...DEFAULTS,
+        profile({ id: 'work', label: 'Work account', configDir: '~/.claude-work', exists: false, looksValid: false }),
+      ],
+    })
+    renderAccounts({ singleProjectRoot: true })
+
+    await waitFor(() => expect(rowFor('work')).not.toBeNull())
+    const row = rowFor('work')!
+    expect(row.querySelector('[data-slot="account-status"]')?.textContent).toBe('Unavailable')
+    const sentence = row.querySelector('[data-slot="account-unavailable"]')?.textContent ?? ''
+    expect(sentence).toBe(
+      '— this account\'s folder does not exist on this machine: ~/.claude-work. Connect signs in and creates it, or pick another account for the task.',
+    )
+    expect(unavailableAgentAccountRefusal('Work account', '~/.claude-work')).toBe(
+      `Agent account “Work account” is unavailable ${sentence}`,
+    )
+    // The path inside the sentence is in the mono face, as the #604 mockup draws it (#612 m3, NB-1).
+    const path = row.querySelector('[data-slot="account-unavailable-path"]')
+    expect(path?.textContent).toBe('~/.claude-work')
+    expect(path?.className).toContain('font-mono')
+    // Global mode's "Connect will make it" would contradict the refusal, so it is not shown too.
+    expect(row.querySelector('[data-slot="account-missing"]')).toBeNull()
+    // The discovered account is never unavailable — it is what this machine has.
+    expect(rowFor('default')?.querySelector('[data-slot="account-unavailable"]')).toBeNull()
   })
 
   it('flags an unrecognised folder without refusing it', async () => {

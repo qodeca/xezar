@@ -87,6 +87,7 @@ import { usageMetricVisibility } from '@/lib/token-metrics'
 import { useTaskTableColumns } from '@/lib/use-task-table-columns'
 import { useIsDesktop } from '@/lib/use-desktop'
 import { useNow } from '@/lib/use-now'
+import { inSingleProjectRoot } from '@/lib/project-mode'
 import { cn } from '@/lib/utils'
 
 /**
@@ -336,6 +337,9 @@ export function TasksOverview({
  * a fact, so those stay flat. `heading="h2"` because the page's h1 is the header's "Tasks".
  */
 function TasksEmptyState({ view, query }: { view: ListView; query: string }) {
+  // Single-project mode's one added sentence (#600, design handoff §8/§9): the first screen a
+  // clone opens says why it already carries the project's setup.
+  const projectRoot = inSingleProjectRoot(useHealth().data?.capabilities)
   const needle = query.trim()
   const kind = needle ? 'search-miss' : view === 'archived' ? 'archive' : 'no-tasks'
   return (
@@ -363,7 +367,11 @@ function TasksEmptyState({ view, query }: { view: ListView; query: string }) {
           tone="primary"
           backdrop
           title="No tasks yet"
-          subtitle="Describe a task to get started."
+          subtitle={
+            projectRoot
+              ? 'Describe a task to get started. This xezar keeps its settings and its working files in this folder, so everything a task needs travels with the repository.'
+              : 'Describe a task to get started.'
+          }
           actions={
             <Button asChild>
               <Link to="/new">

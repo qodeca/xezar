@@ -94,6 +94,31 @@ export function agentAccountRouteId(profile: Pick<AgentProfile, 'id' | 'provider
   return profile.isDefault ? `default:${profile.provider}` : profile.id;
 }
 
+/**
+ * Why a committed account cannot run on this machine — single-project mode (#600 FR-6, BR-4).
+ *
+ * ONE sentence, two surfaces: the Settings row shows it after "Unavailable", and a task that asks
+ * for the account is refused with it, prefixed by the account's name
+ * ({@link unavailableAgentAccountRefusal}). Both are built here so the two can never drift — a
+ * person who reads the refusal must recognise the row it came from. `configDir` is shown as the
+ * repository carries it (`~/.claude-work`), because that is the spelling a person can find in
+ * `.xezar/agent-accounts.json`.
+ *
+ * The remedy is the local one. Over a hosted connection the accounts pane renders no rows at all
+ * (it is refused there as a whole), so the hosted wording of the copy deck has no surface yet.
+ */
+export function unavailableAgentAccountReason(configDir: string): string {
+  return (
+    `this account's folder does not exist on this machine: ${configDir}. ` +
+    'Connect signs in and creates it, or pick another account for the task.'
+  );
+}
+
+/** The task refusal for an unavailable account: its name, then {@link unavailableAgentAccountReason}. */
+export function unavailableAgentAccountRefusal(label: string, configDir: string): string {
+  return `Agent account “${label}” is unavailable — ${unavailableAgentAccountReason(configDir)}`;
+}
+
 /** One project's account choice, per provider. An absent key = the discovered account. */
 export const agentAccountSelectionSchema = z.object({
   claude: z.string().optional(),

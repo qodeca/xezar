@@ -8,6 +8,32 @@ Start the cockpit in your project. You do not need to create `.xezar/config.json
 
 Keep maintained project configuration in `.xezar/`; runtime task state belongs under `.local/xezar/`. See [Project layout](../project-layout.md). `XEZ_HOME` changes the global state directory from `~/.xezar`; separate homes have separate registries and preferences.
 
+## To find where the files live in each layout
+
+xezar has two layouts. The global layout is the default. The single-project layout applies to a project folder started once with `xezar --single-project`, and from then on to every start in that folder, because the presence of `.xezar/workspace.json` decides. See [single-project mode](09-projects.md#to-keep-a-projects-xezar-setup-inside-the-project--single-project-mode).
+
+| What | Global layout | Single-project layout |
+| --- | --- | --- |
+| Project configuration | `<project>/.xezar/config.json` | `<project>/.xezar/config.json` (unchanged) |
+| Workspace configuration and project registry | `~/.xezar/config.json` | `<project>/.xezar/workspace.json` |
+| Agent accounts | `~/.xezar/agent-accounts.json` | `<project>/.xezar/agent-accounts.json` |
+| Workspace GUI preferences | `~/.xezar/ui-state.json` | `<project>/.xezar/workspace-ui.json` |
+| Working files (tasks, worktrees, logs) | `<project>/.local/xezar/` | `<project>/.local/xezar/` |
+| Team-skills cache | `~/.cache/xez/` | `<project>/.local/xezar/cache/` |
+| Host-install records (`server.json`, `server-instances/`) | `~/.xezar/` | `~/.xezar/` (they describe the machine) |
+
+In the single-project layout, xezar does not open `~/.xezar` for settings, and `XEZ_HOME` neither turns the layout on nor off. The four `.xezar/` files can be committed, so a clone runs with the same settings, accounts and limits. Agent logins (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `OPENCODE_CONFIG_DIR`, `PI_CODING_AGENT_DIR`), `gh`, `git` and global skill libraries stay on the machine. Resource limits in `.xezar/workspace.json` apply exactly as written, within the ranges in the tables below, even above what this machine would choose for itself; an absent key still takes the machine-derived default. A `.xezar/workspace.json` that is not valid JSON, or a state folder that cannot be written, stops the start with a named error rather than falling back to your global setup.
+
+The first single-project start in a folder without `.xezar/workspace.json` asks once, in a terminal, whether to copy your global setup (`~/.xezar`, or `XEZ_HOME`) into the project:
+
+| Global file | Copied to | What is left out |
+| --- | --- | --- |
+| `config.json` | `.xezar/workspace.json` | The `projects` list. |
+| `agent-accounts.json` | `.xezar/agent-accounts.json` | Account choices saved for other folders; this folder's own choice is kept. |
+| `ui-state.json` | `.xezar/workspace-ui.json` | Nothing. |
+
+Nothing is written before you answer, and only `y` or `yes` imports. Existing project files are never overwritten, an unreadable global file is skipped and named, and `~/.xezar` is only read. Without a terminal, nothing is imported and one line says so. The copy is one-time and one-way; nothing is kept in sync afterwards.
+
 ## To configure this project: `.xezar/config.json`
 
 The [project schema and resolver](../../packages/xezar/src/config.ts) define these thirteen keys. Defaults below include workspace inheritance where applicable.
@@ -70,9 +96,11 @@ Use global Settings for the exposed controls. This file also holds the project r
 
 ## To manage `agent-accounts.json`
 
-Global **Settings → Agent accounts** manages `~/.xezar/agent-accounts.json`, a separate store from workspace configuration. It contains `version`, `accounts`, `defaults` and `selections`. Added account rows contain `id`, `provider`, `configDir`, `label` and `addedAt`; `defaults` chooses account IDs per provider, and `selections` maps project roots to per-provider choices. Project choices override machine defaults.
+Global **Settings → Agent accounts** manages `~/.xezar/agent-accounts.json` (in the single-project layout, `.xezar/agent-accounts.json`), a separate store from workspace configuration. It contains `version`, `accounts`, `defaults` and `selections`. Added account rows contain `id`, `provider`, `configDir`, `label` and `addedAt`; `defaults` chooses account IDs per provider, and `selections` maps project roots to per-provider choices. Project choices override machine defaults.
 
 Extra accounts are supported for Claude Code, Codex and pi. OpenCode's credentials do not move with its config directory, so it does not support this feature. The discovered default account is not an added row. This file registers directories and choices; sign in through the agent. Removing an account unregisters it without deleting its configuration directory or sessions.
+
+In the single-project layout, an account whose `configDir` does not exist on this machine is **Unavailable**: a task that asks for it is refused before the agent starts, instead of running with the default login. Sign in with **Connect** to create the folder, or choose another account. The start itself never fails because of it.
 
 ## To set user-facing environment variables
 
@@ -82,7 +110,7 @@ Export variables before starting xezar, for example `XEZ_REVIEW_GATE=1 xezar`. T
 | --- | --- |
 | `XEZ_REMOTE=1` | Hosted-mode capabilities; hides local-machine handoffs. |
 | `XEZ_BROWSE_ROOT`, `XEZ_PROJECTS_DIR` | Seeds for the two stored folder settings above. |
-| `XEZ_HOME` | Global state directory; empty means `~/.xezar`. |
+| `XEZ_HOME` | Global state directory; empty means `~/.xezar`. Not consulted for settings in the single-project layout. |
 | `XEZ_PORT=4321` | The port `xezar` starts from, then the next free port above it. Without `-p/--port` and without this variable the start port is the one pinned for this project (`xezar projects port <id> <port>`), then the port it last listened on, then `4321`. A flag beats this variable, and a pinned project port beats it too, so a `XEZ_PORT` exported once in a shell profile cannot pull every project to one start port. A value that is not a whole number from 0 to 65535 refuses the start with exit 1 before anything is claimed. `--port 0` asks the operating system for any free port and is never remembered. |
 | `XEZ_OUTPUT=auto` | How `xezar serve` presents its activity: `auto` (the default), `lines` or `rich`. A saved `cli.output` overrides this variable; `--output` overrides both. |
 | `XEZ_COLOR=auto` | Colour: `auto` (the default), `always` or `never`. `NO_COLOR` with any non-empty value is honoured and outranks both a saved `cli.color` and this variable; an explicit `--color` outranks `NO_COLOR`; and a transport that must stay byte-exact — the MCP's JSON-RPC stdout — outranks all of them. |
@@ -95,7 +123,7 @@ Export variables before starting xezar, for example `XEZ_REVIEW_GATE=1 xezar`. T
 | `XEZ_SKILLS_AUTO_UPDATE=0` | Disable automatic tracked-skill update application unless the stored setting overrides it. |
 | `XEZ_AUTONOMOUS_DEFAULT`, `XEZ_WORKTREE_DEFAULT` | Exact `0`/`1` New Task seeds; stored composer defaults win. |
 | `XEZ_DISABLE_REPO_LOCK=1` | Bypass the repository-root lease. Concurrent in-place runs can overwrite each other's work; isolated worktrees are unaffected. |
-| `XEZ_SINGLE_PROJECT=1` | Show only the launch project and refuse project add/edit/browse/checkout/remove. Registry entries remain. |
+| `XEZ_SINGLE_PROJECT=1` | Show only the launch project and refuse project add/edit/browse/checkout/remove. Registry entries remain, and state stays in the global layout. Not deprecated; the separate `--single-project` flag also moves the state into the project. |
 | `XEZ_HIDE_TOKEN_USAGE=1`, `XEZ_HIDE_COST=1` | Hide the corresponding cockpit metrics; telemetry is still collected. Restart after changing. |
 | `XEZ_HIDE_TOKEN_METRICS=1` | Legacy switch hiding both token counts and cost. |
 | `XEZ_NO_BANNER=1` | Suppress the team-skills terminal banner for `serve`. |
