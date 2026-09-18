@@ -111,6 +111,11 @@
   the committed setup. The user guide (projects, settings, configuration, CLI and remote access) and
   the README describe the mode. Global mode is unchanged throughout. Details:
   `BACKWARD_COMPATIBILITY.md` § "Single-project ROOT mode".
+- ✨ **Single-project mode has a reviewed cockpit mockup and developer handoff.** `designs/single-project-mode/`
+  covers the mode's sidebar next to the global one, the dev-badge plus mode-badge combination, the
+  phone top bar, Settings' file-naming notes, the unavailable-account row, the composer and command
+  palette without project controls, and the `/settings/global/projects` refusal — every state, in
+  both themes. This PR itself changes no cockpit code; the parts above are what ships it. (#600, #604)
 - ✨ **The sidebar is navigation-only.** (#546) The Active/Archived task switcher, task list, and `Search…` launcher have been removed from the sidebar. Manage and search tasks on the Tasks page, and open the command palette with `⌘K` on macOS or `Ctrl+K` elsewhere. Existing task badges, task data, APIs, and saved UI state are unchanged.
 - **The audit trail is bounded, and safe to share between processes.** (#306, part 3 of 4) A
   project's `.local/xezar/audit.ndjson` now rotates before it passes 10 MB (10,000,000 bytes) and
@@ -221,6 +226,21 @@
 ## 📝 Specs & Documentation
 
 - Documented single-project ROOT mode's symbolic-link refusal and its independence from hosted mode's own local-machine `409`s in [guide 09](docs/guide/09-projects.md), and added a new [guide 17](docs/guide/17-audit-trail.md) covering the 0.16.0 audit trail: the four doors, `audit.ndjson` and its read-only `mcp-audit.ndjson` alias, rotation, redaction and its honest limits. (#306, #600, #447)
+
+## 🚀 CI/CD & Infrastructure
+
+- 🚀 **Browser tests no longer share a server with the task that launched them.** The shared
+  browser-test server boot (`scripts/test-env-up.sh`) now unsets `XEZ_HANDOFF_FILE`,
+  `XEZ_TODOS_FILE` and `XEZ_TASK_ID` before launch, so a dry-run mock server it starts can no
+  longer write into the parent xezar task's own handoff or todos files. The skill-search E2E's
+  fixture servers also pin `HOME`, not only `XEZ_HOME`, so the picker's multi-keyword search no
+  longer returns the developer's own machine-local skills alongside the fixture's. (#553, #554)
+- 🚀 **The MCP per-file coverage floor runs on every pull request.** `npm run test:coverage:mcp`
+  (SDLC.md § The MCP test floor) is now a separate, unconditional `mcp-coverage` CI job with a
+  10-minute timeout, so it enforces the 80% per-file lines/branches floor without slowing the main
+  typecheck/test/build lane and without depending on a path filter that could skip a required
+  check. `.xezar/pipeline/config.json` is unchanged — this command was never meant to become a
+  sixth local-gate command. (#550)
 
 # 0.15.0 (2026-09-17)
 
