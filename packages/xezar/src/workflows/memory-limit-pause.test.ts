@@ -69,10 +69,14 @@ describe('a run xezar terminates for the memory limit (#603)', () => {
     }
   };
 
+  /** The live `active` registry — same reach-in the #489 nudge suite uses. Resolved fresh on
+   *  every call, never hoisted, because `manager` is only assigned inside `beforeEach`. */
+  const activeMap = (): Map<string, { session?: { open: boolean } }> =>
+    (manager as unknown as { active: Map<string, { session?: { open: boolean } }> }).active;
+
   /** The live `ActiveRun` the memory guard reads — same reach-in the #489 nudge suite uses. */
   const waitForOpenSession = async (id: string): Promise<void> => {
-    const active = (manager as unknown as { active: Map<string, { session?: { open: boolean } }> }).active;
-    await waitFor(() => Boolean(active.get(id)?.session?.open), 'the step session to open');
+    await waitFor(() => Boolean(activeMap().get(id)?.session?.open), 'the step session to open');
   };
 
   /** `enforceMemoryLimit` is normally driven by the shared `ps` sampler on a ~2s tick
@@ -108,15 +112,20 @@ describe('a run xezar terminates for the memory limit (#603)', () => {
     // `runAgentStep`'s fix does not cover.
     const record = manager.startRun(AGENT, { task: 'mock:done first pass', worktree: false });
     currentId = record.id;
-    // CI showed this specific wait timing out at the old 15s default under full-suite load
-    // (534/535 other files running concurrently) — the mock CLI's first turn genuinely needs
-    // more wall-clock time under that contention, not a different detection mechanism: an
-    // event-driven wait on the store's own `'run'` bus fires the instant `status` becomes
-    // `'done'`, which lands strictly before the manager finishes dropping the run from its
-    // internal `active` registry — `continueRun` right below would then race that cleanup and
-    // read the run as still active. Polling and giving it a bound within this test's own
-    // (also raised) vitest timeout keeps that ordering intact while tolerating slow CI.
-    await waitFor(() => store.getRun(record.id)?.status === 'done', 'the first turn to finish', 45_000);
+    // CI showed this specific wait timing out under full-suite load — first at the old 15s
+    // default, then again at a raised 45s — so the mock CLI's first turn genuinely needs more
+    // wall-clock time under that contention than either bound gave it; there is no fixed
+    // constant here that is both tight and safe. The predicate itself also has to match
+    // exactly what `continueRun` right below actually gates on (`isActive`, i.e. membership in
+    // `active`/`starting`/`queue`): `status` alone reaches `'done'` the instant `settleSuccess`
+    // writes it, which is strictly BEFORE the manager finishes `dropActive()` a few awaits later
+    // — waiting on `status` alone (whatever the bound) can win that race and call `continueRun`
+    // while the run still reads as active. Waiting on both closes that gap regardless of timing.
+    await waitFor(
+      () => store.getRun(record.id)?.status === 'done' && !activeMap().has(record.id),
+      'the first turn to finish',
+      120_000,
+    );
 
     expect(manager.continueRun(record.id, { text: 'now do the second half' }).ok).toBe(true);
     await waitFor(() => store.getRun(record.id)?.status === 'running', 'the continuation to start');
@@ -132,7 +141,7 @@ describe('a run xezar terminates for the memory limit (#603)', () => {
     const run = store.getRun(record.id);
     expect(run?.status).toBe('failed');
     expect(run?.error).toContain('memory limit exceeded');
-    // The 45s wait above may itself need most of that (see its own comment); this test's own
-    // bound leaves room for that plus the rest of the steps that follow it.
-  }, 60_000);
+    // The 120s wait above may itself need most of that under CI load (see its own comment);
+    // this test's own bound leaves room for that plus the rest of the steps that follow it.
+  }, 150_000);
 });
