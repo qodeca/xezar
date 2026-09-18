@@ -26,14 +26,11 @@ Sizes are bytes (limit: 60,000 bytes per SVG).
 | [icons/skills.svg](icons/skills.svg) | 310 | Feature grid: Skills |
 | [icons/workflows.svg](icons/workflows.svg) | 423 | Feature grid: Workflows |
 | [icons/worktrees.svg](icons/worktrees.svg) | 399 | Feature grid: Worktrees |
-| [lifecycle-dark.svg](lifecycle-dark.svg) | 4,324 | Guide 02 “A task’s life”; guide 05 workflows |
-| [lifecycle-light.svg](lifecycle-light.svg) | 4,324 | Guide 02 “A task’s life”; guide 05 workflows |
 
 ## Design and use
 
-- Use the matching dark/light illustration in a `<picture>`; all six have explicit
-  dimensions and a `viewBox`. Hero: 1280 × 400; architecture: 1200 × 640;
-  lifecycle: 1200 × 360. Icons: 48 × 48.
+- Use the matching dark/light illustration in a `<picture>`; all four have explicit
+  dimensions and a `viewBox`. Hero: 1280 × 400; architecture: 1200 × 640. Icons: 48 × 48.
 - Colours are fixed values from [foundations](../../design-system/foundations.md)
   and [cockpit.css](../../design-system/cockpit.css): background, foreground, card,
   sidebar, muted, muted-foreground, soft-foreground, border, violet, success,
@@ -76,10 +73,10 @@ across themes. Preserve the canonical logo and GitHub paths. After editing, insp
 both themes at 50% scale, run the asset check below, and update the byte table by
 hand using file sizes in bytes (including this README).
 
-Placement follows the plan: the hero and architecture belong in the short README;
-“A task’s life” belongs in guide 02 (tasks and runs) and guide 05 (workflows).
-Those guide pages and embedding links are delivered by subsequent PRs. PR-2 must
-link each picture to its full-size SVG for phone readers (design review NB-6).
+Placement follows the plan: the hero and architecture belong in the short README.
+The lifecycle illustration once planned for guide 02 ("A task's life") and guide 05
+(workflows) was never embedded anywhere and has been removed (nothing referenced it).
+PR-2 must link each picture to its full-size SVG for phone readers (design review NB-6).
 
 ## Verification
 
