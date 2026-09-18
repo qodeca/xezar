@@ -15,7 +15,7 @@ function svgFiles(dir: string): string[] {
 
 test('README SVGs remain small, self-contained vector images (#448)', () => {
   const files = svgFiles(root);
-  assert.ok(files.length >= 18, 'all six illustrations and twelve icons must exist');
+  assert.ok(files.length >= 16, 'all four illustrations and twelve icons must exist');
   for (const file of files) {
     const bytes = readFileSync(file);
     const svg = bytes.toString('utf8');

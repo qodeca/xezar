@@ -180,6 +180,8 @@ import {
 } from '../workspace/agent-accounts.ts';
 import {
   accountHomePatch,
+  AgentAccountUnavailableError,
+  assertAgentAccountAvailable,
   defaultAgentProfile,
   listAgentProfiles,
   profileDirState,
@@ -198,6 +200,9 @@ import {
   registerProject,
   removeProject,
   shouldRegisterProject,
+  singleProjectNarrowing,
+  singleProjectRefusalText,
+  singleProjectRegistry,
   toProjectListEntry,
   type ProjectListEntry,
 } from '../workspace/projects.ts';
@@ -1165,7 +1170,7 @@ export function createApp(deps: ServerDeps) {
     try {
       const registry = (await loadWorkspaceConfig()).projects;
       const bootProject = await resolveBootProject(registry);
-      const visible = capabilities().singleProject
+      const visible = singleProjectRegistry()
         ? registry.filter((project) => project.id === bootProject)
         : registry;
       return {
@@ -1188,9 +1193,14 @@ export function createApp(deps: ServerDeps) {
   // every workspace-config PUT, which is the one reload hook this file already fires.
   const capabilities = () =>
     resolveCapabilities(process.env, bindHost, deps.semaphore?.storedFollowups());
+  // Either narrowing refuses (#600 SP-3.2, SP-3.3): today's `XEZ_SINGLE_PROJECT=1`, or a folder
+  // that owns its own xezar state. The CONDITION widens, the EFFECT does not — with the env flag
+  // set these routes answer the same 409 and the same sentence they always have, and the layout
+  // speaks only for itself (`singleProjectRefusalText`). `singleProjectRegistry` is the shared
+  // predicate all three doors read, so no door can silently no-op what another refuses (BR-6).
   const singleProjectRefusal = (
     action: 'adding projects' | 'editing projects' | 'removing projects' | 'folder browsing',
-  ) => ({ error: `single-project mode is enabled; ${action} is disabled` });
+  ) => ({ error: singleProjectRefusalText(singleProjectNarrowing() ?? 'env-flag', action) });
   // Inbox live updates (spec 007). Opt-in (#471): no capability, no watcher —
   // and since step 2.3 the per-dataDir watch is created lazily by the first
   // SSE subscription (and torn down with the last), nothing to start here.
@@ -1233,7 +1243,7 @@ export function createApp(deps: ServerDeps) {
   // count against the same workspace semaphore as the boot manager (step 2.5).
   const contexts = deps.contexts ?? new ProjectContexts({
     listProjects: async () => {
-      const selector = capabilities().singleProject
+      const selector = singleProjectRegistry()
         ? { projectId: await resolveBootProject() }
         : undefined;
       return listProjects(selector);
@@ -1771,6 +1781,25 @@ export function createApp(deps: ServerDeps) {
     }
     const { profile } = resolved;
     return { env: profile.isDefault ? {} : profileEnv(provider, profile.path) };
+  };
+
+  /**
+   * The environment a FRESH CLI in a worktree carries: the project's own account. A committed
+   * account this machine lacks (single-project mode, #600 BR-4) is refused with the Settings
+   * sentence rather than opening a CLI on a folder that does not exist here (#612 review m2).
+   */
+  const freshCliEnv = async (
+    root: string,
+    provider: ProviderId,
+  ): Promise<{ env: Record<string, string> } | { error: string }> => {
+    const resolved = await resolveProfileEnvForRoot(root, provider);
+    try {
+      await assertAgentAccountAvailable(resolved.profile);
+    } catch (err) {
+      if (err instanceof AgentAccountUnavailableError) return { error: err.message };
+      throw err;
+    }
+    return { env: resolved.env };
   };
 
   /** The copy-paste fallback shown when no terminal could be opened — same account, spelled for
@@ -2432,7 +2461,7 @@ export function createApp(deps: ServerDeps) {
       let projectsDir = defaultWorkspaceConfig().projectsDir;
       try {
         projectsDir = (await loadWorkspaceConfig()).projectsDir;
-        const selector = capabilities().singleProject
+        const selector = singleProjectRegistry()
           ? { projectId: await resolveBootProject() }
           : undefined;
         projects = await listProjects(selector);
@@ -2455,7 +2484,7 @@ export function createApp(deps: ServerDeps) {
     })
 
     .delete('/projects/:projectId', ui.route('project.registry.remove', { resource: { kind: 'project', param: 'projectId' }, project: { param: 'projectId' } }), async (c) => {
-      if (capabilities().singleProject) {
+      if (singleProjectRegistry()) {
         return c.json(singleProjectRefusal('removing projects'), 409);
       }
       const raw = c.req.param('projectId');
@@ -2565,7 +2594,7 @@ export function createApp(deps: ServerDeps) {
     // `~/.xezar/agent-accounts.json` beside the accounts it names, so a xezar version that has
     // never heard of accounts cannot drop it (see workspace/agent-accounts.ts).
     .patch('/projects/:projectId', jsonZodValidator(updateProjectInputSchema), ui.route('project.registry.update', { resource: { kind: 'project', param: 'projectId' }, project: { param: 'projectId' }, fieldNames: true }), async (c) => {
-      if (capabilities().singleProject) {
+      if (singleProjectRegistry()) {
         return c.json(singleProjectRefusal('editing projects'), 409);
       }
       const raw = c.req.param('projectId');
@@ -2633,7 +2662,7 @@ export function createApp(deps: ServerDeps) {
     })
 
     .post('/projects/checkout', jsonZodValidator(() => checkoutSchema, { message: 'url must be a GitHub repository' }), ui.route('project.registry.clone', { project: 'registered' }), async (c) => {
-      if (capabilities().singleProject) {
+      if (singleProjectRegistry()) {
         return c.json(singleProjectRefusal('adding projects'), 409);
       }
       const parsed = { data: c.req.valid('json') };
@@ -2696,7 +2725,7 @@ export function createApp(deps: ServerDeps) {
     | { status: 200; body: RegisterProjectResponse }
     | { status: 400 | 409 | 500; body: RegisterProjectResponse | { error: string } }
   > => {
-    if (capabilities().singleProject) {
+    if (singleProjectRegistry()) {
       return { status: 409, body: singleProjectRefusal('adding projects') };
     }
     // `~` is expanded for the same reason `/api/fs/browse` expands it: the
@@ -3159,7 +3188,7 @@ export function createApp(deps: ServerDeps) {
       '/fs/browse',
       queryZodValidator(z.object({ path: queryValue, showHidden: queryValue })),
       async (c) => {
-        if (capabilities().singleProject) {
+        if (singleProjectRegistry()) {
           return c.json(singleProjectRefusal('folder browsing'), 409);
         }
         const query = c.req.valid('query');
@@ -4277,7 +4306,7 @@ export function createApp(deps: ServerDeps) {
         // hands the user a different subscription than every task in the same project uses.
         const account = resume
           ? await handoffEnv(cliRunner, sessionStep?.profileId)
-          : { env: (await resolveProfileEnvForRoot(repoRoot, cliRunner)).env };
+          : await freshCliEnv(repoRoot, cliRunner);
         if ('error' in account) return c.json({ error: account.error }, 409);
         const fallback = handoffFallbackCommand(dir, command, account.env);
         if (fallback === null) {
@@ -5193,26 +5222,29 @@ export function createApp(deps: ServerDeps) {
 
         // Workspace-level events (project-added / project-removed /
         // checkout-progress plus host-wide unstamped provider-status) — relayed
-        // verbatim under their own names. A removal also drops the project's
-        // attach entry: the id guard in `attach` would otherwise pin the
-        // DISPOSED context forever, so a project removed and re-added on the
-        // same slug would rebuild a fresh context whose events never reach this
-        // already-open stream.
+        // verbatim under their own names.
         const offWorkspace = workspaceEvents.on((event, data) => {
-          if (event === 'project-removed') {
-            const removed = (data as { id?: string }).id;
-            if (removed !== undefined && attached.has(removed)) {
-              attached.get(removed)?.detach();
-              attached.delete(removed);
-            }
-          }
           void stream.writeSSE({ event, data: JSON.stringify(data) });
+        });
+
+        // A context going away drops the project's attach entry: the id guard in `attach` would
+        // otherwise pin the DISPOSED store forever, so a project rebuilt on the same slug would
+        // have its events silently lost until reconnect. `onContextDisposed` is the ONE seam for
+        // that (#592 review round 1, Major 1) — it fires for BOTH the removal route AND
+        // `ProjectContexts.context()`'s own out-of-band drift rebuild (#591), which never emits
+        // `project-removed` because nothing removed the project; only its root moved.
+        const offDisposed = contexts.onContextDisposed((disposed) => {
+          if (attached.has(disposed)) {
+            attached.get(disposed)?.detach();
+            attached.delete(disposed);
+          }
         });
 
         stream.onAbort(() => {
           offBuilt();
           offUsage();
           offWorkspace();
+          offDisposed();
           for (const { detach } of attached.values()) detach();
           attached.clear();
         });
@@ -6007,7 +6039,7 @@ export function createApp(deps: ServerDeps) {
     .get('/workspace/runs-index', async (c) => {
       let projects: ProjectListEntry[] = [];
       try {
-        const selector = capabilities().singleProject
+        const selector = singleProjectRegistry()
           ? { projectId: await resolveBootProject() }
           : undefined;
         projects = await listProjects(selector);
@@ -6220,14 +6252,35 @@ export function startServer(deps: ServerDeps, port: number): ServerType {
         });
       }
     } else if (event === 'project-removed') {
+      // Kept ALONGSIDE `onContextDisposed` below rather than folded into it (#592 review round 2,
+      // Major 1): `ProjectContexts.dispose()` only notifies `onContextDisposed` when the id had a
+      // built or in-flight context, but the removal route emits `project-removed` unconditionally.
+      // A registered project this process never touched (no context ever built) hits exactly that
+      // gap — without this branch it stayed in `automationProjects` and the coordinator forever,
+      // so the scheduler kept polling/auditing a repo the registry no longer lists. Both cleanups
+      // are idempotent, so a removal that DID have a built context simply runs them twice.
       const id = (data as { id?: unknown }).id;
-      if (typeof id === 'string') coordinator.remove(id);
       if (typeof id === 'string') {
+        coordinator.remove(id);
         automationCoordinator.remove(id);
         automationProjects.delete(id);
         rescheduleAutomations();
       }
     }
+  });
+  // A project's context going away — removal AND an out-of-band registry drift (#591) both
+  // dispose through the same seam (#592 review round 1, Major 1) — drops it from the skills-update
+  // coordinator and the automation scheduler's project map. Without this, a drift rebuild left both
+  // pinned to the OLD root/owner/repo forever: `handle()` above resolves a launch through
+  // `sharedContexts.context(projectId)` (the current root), but the poller kept running against the
+  // stale entry `automationProjects` held from before the drift. This does not cover every removal
+  // (see the `project-removed` branch above): `dispose()` only notifies here when the id had a
+  // built or in-flight context.
+  const offAutomationsDisposed = sharedContexts.onContextDisposed((id) => {
+    coordinator.remove(id);
+    automationCoordinator.remove(id);
+    automationProjects.delete(id);
+    rescheduleAutomations();
   });
   server.once('listening', () => {
     void listProjects().then((projects) => {
@@ -6249,7 +6302,7 @@ export function startServer(deps: ServerDeps, port: number): ServerType {
       })).then(() => automationScheduler.start()).catch(() => undefined);
     }).catch(() => undefined);
   });
-  server.once('close', () => { unsubscribe(); coordinator.stop(); automationScheduler.stop(); });
+  server.once('close', () => { unsubscribe(); offAutomationsDisposed(); coordinator.stop(); automationScheduler.stop(); });
   socketHub.attach(server, (req) => verifyWsUpgrade(req, deps.bindHost));
   return server;
 }

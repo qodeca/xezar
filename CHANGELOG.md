@@ -23,6 +23,94 @@
 
 ## ✨ Features
 
+- ✨ **A folder can own its whole xezar setup, so a clone runs the same way.** (#600, part 1 of 5)
+  Start `xez --single-project` once in a project folder and xezar keeps its settings, agent accounts
+  and project registry in `<project>/.xezar` — `config.json` (unchanged meaning), `workspace.json`,
+  `agent-accounts.json` and `workspace-ui.json` — with working files in `<project>/.local/xezar`,
+  and never opens `~/.xezar`. After that the folder decides: every `xez` started there is in the
+  mode, flag or no flag, so a teammate who clones the repository gets the same behaviour with no
+  host setup step. One terminal line names the mode and the folder, and `GET /api/v1/health`
+  reports `capabilities.singleProjectRoot`. A linked git worktree is never a project root, so xezar
+  tasks keep running against the project's own state. Nothing changes for anyone who does not pass
+  the flag: no migration, no conversion, and `~/.xezar` is untouched. `XEZ_SINGLE_PROJECT` keeps
+  its exact meaning — one project, no project management, global state — and is not deprecated; the
+  new mode is a separate superset with its own flag and its own capability key. A
+  `<project>/.xezar/workspace.json` that is corrupt or unwritable refuses the start with a named
+  error rather than quietly falling back to your global setup; the other three files degrade with
+  one warning as they always have. **Downgrade:** 0.15.0 in a single-project folder ignores the
+  project state and uses your global setup — an old binary cannot be taught a new rule, so it is
+  named rather than prevented, and nothing in the folder is damaged. This part ships the state
+  layout, the detection, the capability and the boot line; the cockpit badge, the refusals in all
+  three doors and the import from a global setup follow. Details:
+  `BACKWARD_COMPATIBILITY.md` § "Single-project ROOT mode".
+- ✨ **A single-project folder now keeps its team skills and its committed limits to itself.**
+  (#600, part 2 of 5) In single-project mode the cache of team skills xezar fetches is written to
+  `<project>/.local/xezar/cache/skills/`, not the machine-wide `~/.cache/xez/skills/`, so a clone of
+  the project fetches its own team skills instead of inheriting whatever this machine fetched last;
+  the MCP bridge's socket directory moves with it for the same reason. A committed
+  `resources.memoryLimitMb` (0 to 1 048 576 MiB, or `null` for no limit) or `resources.maxParallel`
+  (1 to 16) in `<project>/.xezar/workspace.json` is now applied exactly as written, above what this
+  host would have derived for itself included — no clamp, no refusal, no warning-and-substitute —
+  because a project that runs with different numbers on the reviewer's machine than on the author's
+  is what committing them was meant to end. Those two ranges are the workspace schema's own and are
+  unchanged: a value outside them has always been replaced silently, so a committed one is now
+  refused by name instead. One message changed in the DEFAULT global layout as well: when the socket
+  path is too long for this system, xezar names the socket directory it tried instead of "the xezar
+  home path"; the remedy it suggests is still `XEZ_HOME`, and in single-project mode it says to move
+  the project instead, because `XEZ_HOME` cannot move that folder. What does
+  **not** move: your agent logins (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `OPENCODE_CONFIG_DIR`,
+  `PI_CODING_AGENT_DIR`), your global skill libraries in `~/.agents/skills` and `~/.claude/skills`,
+  `gh`, `git`, and the host-install records in `~/.xezar` (`server.json`, `server-instances/`, the
+  systemd unit, the nginx site) — a cockpit is still installed on one machine. **Nothing changes in
+  the default global layout**: `~/.cache/xez` stays exactly where and what it was, `XEZ_HOME` still
+  does not move it, and a test now pins that from both sides. Details:
+  `BACKWARD_COMPATIBILITY.md` § "Single-project ROOT mode".
+- ✨ **A folder that owns its xezar setup has a registry of exactly one project, and says so at
+  every door.** (#600, part 3 of 5) In single-project mode `GET /api/v1/projects`, `xezar projects`
+  and the cockpit list one project — the folder — even when a `workspace.json` a clone carried names
+  more; rows for other machines' paths are ignored, never rewritten. Adding, cloning, editing and
+  removing a project, and browsing host folders, are refused in all three doors: the HTTP API
+  answers `409` with a plain sentence, `xezar projects add/remove/tag/port` exits 1 with the same
+  sentence, and the MCP `project_config` tool refuses at its boundary and now says why there is
+  nothing to manage. Every refusal is recorded in the project's audit trail, with a reason that says
+  which narrowing refused. Nothing changes for an ordinary multi-project workspace, and
+  `XEZ_SINGLE_PROJECT=1` refuses with exactly the status codes, sentences, exit codes and audit
+  reasons it always has — the guards widened what turns them on, never what they do. Details:
+  `BACKWARD_COMPATIBILITY.md` § 2 and § "Single-project ROOT mode".
+- ✨ **The cockpit says when it is in single-project mode, and Settings names the file each section
+  writes.** (#600, part 4 of 5) A neutral "Single project" badge sits under the logo in the sidebar
+  and in the phone top bar. Add project, the sidebar's project groups, the composer's project pill
+  and the command palette's Projects group are absent in the mode — and under `XEZ_SINGLE_PROJECT=1`
+  — whatever the registry happens to list. Each Settings section says where its saves land
+  (`.xezar/config.json`, `.xezar/workspace.json`, `.xezar/agent-accounts.json`,
+  `.xezar/workspace-ui.json`, or the uncommitted `.local/xezar/ui-state.json`), and the global
+  area reads "Workspace settings". The `/settings/global/…` URLs keep landing; in the mode they
+  write the project's files instead of the home directory. Global mode is unchanged. Details:
+  `BACKWARD_COMPATIBILITY.md` § 2.
+- ✨ **The first single-project run can bring your global setup along, and a clone never borrows a
+  login it does not have.** (#600, part 5 of 5) The first `xez --single-project` in a folder with no
+  `.xezar/workspace.json` asks once, in the terminal, whether to copy your global setup (`~/.xezar`,
+  or `XEZ_HOME`) into the project, `[y/N]`: workspace settings become `workspace.json` without your
+  project list, agent accounts keep only this folder's own account choice, and GUI preferences
+  become `workspace-ui.json`. Nothing is written before you answer, a decline imports nothing,
+  existing project files are never overwritten, an unreadable global file is skipped and named, and
+  `~/.xezar` is only read, never written. Nothing is written through a symbolic link: a
+  `.xezar` that links out of the project refuses the start, and a state file that is a link is left
+  alone and named. Ctrl-C or Ctrl-D at the question is a decline, not a crash. With no terminal — a script, CI — nothing is imported and
+  one line says so; `xezar mcp` never asks; a second run or a clone is never asked; and nothing is
+  kept in sync afterwards. That one read is the mode's single deliberate exception to "`~/.xezar` is
+  not opened", and a source scan now fails any other direct reach for the global layout. In the
+  mode, an agent account the project names whose folder does not exist on this machine reads
+  **Unavailable** in Settings → Agent accounts with a sentence saying why and what to do, and a task
+  that asks for it is refused before the agent starts with the same sentence — as are the task
+  namer, the chain planner and "Open in → agent CLI", which never start on it — never a silent
+  fallback to the default login; the start itself never fails because of it. The cockpit copy
+  follows the mode: the defaults card reads "Defaults for this project", Resources drops the
+  "Configure per-project limits" link, and the empty Tasks page says the folder carries its own
+  setup. A browser test now boots a fresh clone of a single-project repository to prove it runs with
+  the committed setup. The user guide (projects, settings, configuration, CLI and remote access) and
+  the README describe the mode. Global mode is unchanged throughout. Details:
+  `BACKWARD_COMPATIBILITY.md` § "Single-project ROOT mode".
 - ✨ **The sidebar is navigation-only.** (#546) The Active/Archived task switcher, task list, and `Search…` launcher have been removed from the sidebar. Manage and search tasks on the Tasks page, and open the command palette with `⌘K` on macOS or `Ctrl+K` elsewhere. Existing task badges, task data, APIs, and saved UI state are unchanged.
 - **The audit trail is bounded, and safe to share between processes.** (#306, part 3 of 4) A
   project's `.local/xezar/audit.ndjson` now rotates before it passes 10 MB (10,000,000 bytes) and
@@ -75,6 +163,28 @@
 
 ## 🐛 Fixes
 
+- 🐛 **A run xezar itself terminates for the memory limit no longer ends `done` with no deliverable.** (#603)
+  `enforceMemoryLimit` closes a breaching run's session with `session.end()`, and — deliberately,
+  per #703 — a CLI that does not exit on its own is then signalled by xezar and settles on the same
+  "our own signal coming back" path a legitimate `XEZ:DONE` close does, so `session.result` resolves
+  without throwing either way. Before this fix the step-completion handler could not tell that
+  distinction apart from a finished turn, and recorded the step, and the run, `done` even though
+  xezar cut it off mid-turn and nothing was posted. Both construction sites (`runAgentStep` for a
+  fresh run, `runContinuation` for Continue and restart recovery) now check the reason
+  `enforceMemoryLimit` records on the live `ActiveRun` and end the run `failed`, naming the memory
+  limit, instead — one of the statuses `continueRun` already accepts, so the leader's `Continue`
+  resumes it. The memory limit and the pause mechanism itself are unchanged.
+- 🐛 **A conversation image can be opened, read and left with the keyboard.** (#453)
+  The full-screen image preview in a task thread used to be a clickable picture over a
+  hand-rolled overlay: a keyboard reader could not open it at all, and once it was open there
+  was no way in or out except the Escape key. It is a proper dialog now — Enter or Space on the
+  thumbnail opens it, focus moves inside and stays there while you Tab, and Escape or the close
+  button in the corner hands focus back to the thumbnail you started from. The thumbnail and
+  the close button both reach the 44 px phone target, the close button stays on top of a
+  picture larger than the screen, and an image the server no longer has says so in words
+  instead of showing a broken picture. Two smaller repairs ship with it: on a phone a task
+  title now wraps to a second line instead of cutting off after about fifteen characters, and
+  a task's Files tab remembers which file you were reading when you come back to it.
 - 🐛 **The macOS ngrok tunnel no longer lets a remote client choose the audited proxy user.** (#572)
   In hosted mode, xezar's audit trail trusts an `X-Xezar-User` header sent by a loopback peer — the
   bundled nginx site sets it from the authenticated user and overwrites any client value, but the
@@ -93,6 +203,9 @@
 - 🐛 Balance the nightly MCP mutation gate's shards on measured per-file cost instead of byte size, raise the shard count from 6 to 9, and isolate the two files whose carried-over weight was still under-counted (`bridge.ts`, `tools/task-create.ts`) into their own shard, after two consecutive nightly runs were cancelled at the 5-hour job ceiling. (#443)
 - 🐛 **An OpenCode run no longer hangs on a permission ask.** (#578) OpenCode asks before a tool reaches a folder outside the task (the hand-off file, attachments, the run's own files), and nothing answered, so the run waited until its 30-minute step limit with no named cause. xezar now answers each ask at once and fails closed: a folder ask inside the run's own directories (symlinks resolved) is allowed for that one call; every other ask – a folder outside them, a web fetch, a shell command, a repeated-call warning – is denied and shown in the transcript. The same denial three times in a row, 20 denials in one session, or a reply OpenCode refuses stops the run with a named error. The claim that OpenCode approves every permission automatically is removed from the docs.
 - 🐛 **The OpenCode leader now gets the decision version on every pushed run event.** (#535, #532) `renderDispatch` in the OpenCode reaction adapter omitted `subject.version` from every rendered event, unlike the Claude Code, Codex and pi adapters, so an OpenCode leader could not pass it as `expectedVersion` without an extra `task_read`. The adapter now renders it the same way the other three do.
+- 🐛 **The Codex probe now honours `XEZ_DRY_RUN=1`, like the claude and pi probes beside it.** (#549) `GET /api/v1/health` under `XEZ_DRY_RUN=1` spawned the real system `codex --version`, writing `logs_2.sqlite` and `models_cache.json` into the real `~/.codex` even when `CODEX_HOME` is pinned to a sandbox — found by the QA of #579. `probeCodex` now answers with the same bundled mock the other backends already use, and never spawns anything.
+- 🐛 **A project re-registered outside the removal route no longer keeps serving its old, deleted folder.** (#591) `ProjectContexts` cached one `{store, manager, dataDir}` bundle per project id for the life of the process, and only the project-removal route ever threw it away — a second xezar process editing the registry, a hand edit to `~/.xezar/config.json`, or a test seeding it directly all left a re-registered id resolving to the FIRST folder's now-deleted `dataDir`, and a run against it crashed with `ENOENT`. Every scoped request now re-checks the id's current registry root before serving a cached context, and disposes and rebuilds it the same way removal would when the root has moved on.
+- 🐛 **A secret written as `\uXXXX` escapes could pass the audit redaction seam.** (#306, #586 follow-up) `redactAuditInput`'s secret check was a literal substring match, so a host or door secret copied into an MCP argument as JS/JSON unicode escapes (no literal secret bytes present) matched neither an identifier field nor a payload leaf, letting the escaped copy reach the digest — and, for the `identifier-secret` payload rule, the record itself — unmasked. Both checks now also try the value with `\uXXXX` sequences decoded before deciding a field is clean; a value with no such escape is unaffected. Also adds a guard test pinning the four MCP `config-value` body keys (`config`, `project`, `promptTemplates`, `content`) against a live call through each of the four config-write actions, closing the "no guard test" gap the #586 review left open.
 
 ## Tests
 
@@ -103,6 +216,7 @@
 - Added a real-browser project-switch journey (`packages/web/e2e/project-switching.e2e.ts`, #548): clicking from one registered project into another resets the destination page's own mount-time state (no stale filter carried over) and issues that project's own scoped requests with no reload; a cross-project task opened from the workspace-wide All tasks page lands at its owner project even while a different one is active; a registered project whose folder is gone stays listed and inert. A retained regression proof on a scratch branch (never landed) confirmed the existing `routes.test.tsx` remount case and this new browser file both fail the same way when the routed outlet stops remounting on a project change.
 - Reconciled the remote-access docs with verified behavior and pinned both claims with a new test: a normal launch no longer claims an unconditional starting port of 4321 (it actually prefers a saved port, then `XEZ_PORT`, then the port it last listened on), and the macOS/ngrok installer's success message no longer says basic-auth was "enforced" when it was only configured, never probed through the tunnel. (#547, SM2)
 - Added `guide-02-running-a-task.e2e.ts` and the shared `guide-browser.ts` semantic-locator helper: one scripted browser journey against a live dry run covering guide 02's compose, mode toggles, queueing, thread output, Finish/review and Changes/Files/Commits tabs, the Draft PR/Accept hand-off, and the finished run's own action menu (Archive/Unarchive, Open in…, Notes and Continue). Locators are role, accessible label or visible text only — never a class, id or `data-*` attribute. (#549)
+- Added `npm run check:links` (`scripts/check-links.mjs`), an offline relative-link and anchor checker for `docs/`, the root `README.md`, `.xezar/docs/` and `designs/**/README.md` — no network calls, so it runs in a task worktree and in CI alike. (#447)
 
 # 0.15.0 (2026-09-17)
 

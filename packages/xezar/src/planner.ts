@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { createRunner } from './core/runner-factory.ts';
 import { loadConfig } from './config.ts';
 import { discoverSkills, type Skill } from './skills.ts';
-import { resolveProfileEnvForRoot } from './workspace/agent-profiles.ts';
+import { AgentAccountUnavailableError, assertAgentAccountAvailable, resolveProfileEnvForRoot } from './workspace/agent-profiles.ts';
 import { workflowStepSchema, type WorkflowStepDef } from './workflows/types.ts';
 
 /**
@@ -74,7 +74,15 @@ export async function planChain(repoRoot: string, task: string): Promise<PlanRes
   // Plan under the SAME agent account this project's tasks run on (spec
   // 2026-07-29-agent-profiles). Without this the planner would quietly bill the personal
   // subscription for a project the user pointed at their work account.
-  const { env: profileEnv } = await resolveProfileEnvForRoot(repoRoot, config.defaultRunner);
+  const { env: profileEnv, profile } = await resolveProfileEnvForRoot(repoRoot, config.defaultRunner);
+  // A committed account this machine lacks (single-project mode, #600 BR-4) is never spawned on:
+  // the planner degrades to the one-step plan and says why, in the refusal's own words (#612 m2).
+  try {
+    await assertAgentAccountAvailable(profile);
+  } catch (err) {
+    if (!(err instanceof AgentAccountUnavailableError)) throw err;
+    return { ...fallbackPlan(), rationale: err.message };
+  }
   // One retry on an unparseable answer; a runner error goes straight to fallback.
   for (let attempt = 0; attempt < 2; attempt++) {
     let text: string;
@@ -100,6 +108,11 @@ export async function planChain(repoRoot: string, task: string): Promise<PlanRes
     return { ...(name ? { name } : {}), steps, rationale: parsed.rationale, fallback: false };
   }
 
+  return fallbackPlan();
+}
+
+/** The degraded one-step quick-task plan. */
+function fallbackPlan(): PlanResult {
   return {
     steps: [{ id: 'task', name: 'Do the task', prompt: '{{task}}' }],
     rationale: 'planner unavailable — single-step plan',

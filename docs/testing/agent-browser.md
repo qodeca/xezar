@@ -261,6 +261,27 @@ to know the other seeds the same file — but a THIRD spec doing the same must s
 registry it found, not the single-project default, or it silently undoes whichever of the two
 ran first.
 
+### The user-guide flow package
+
+`packages/web/e2e/guide-*.e2e.ts` — one file per `docs/guide/` part, plus the shared
+`guide-browser.ts` helper — walk the flows each guide describes as a first-time reader would
+follow them, asserting only role, accessible-label or visible-text facts (never a class, id,
+`data-*` attribute or other selector coupled to implementation markup). `guide-01-getting-started.e2e.ts`,
+`guide-03-worktrees-and-git.e2e.ts`, `guide-05-workflows.e2e.ts`, `guide-06-skills.e2e.ts`,
+`guide-07-github-automations.e2e.ts` and `guide-08-inbox-notifications.e2e.ts` each boot their own
+spec-owned fixture server rather than the shared instance, so a feature flag one guide needs
+(`XEZ_AUTOMATIONS=1`, `XEZ_FOLLOWUPS=1`) never changes what another guide's test observes. Guide 09
+has no `guide-09-*.e2e.ts` file: `project-switching.e2e.ts` already proves its one browser-only
+journey (switching between registered projects, a cross-project task opening at its own project
+from All tasks, and a registered-but-missing project's inert row), and the remaining guide-09
+flows (tags, Max parallel, the Add-project dialog) are settings-only mutations already covered at
+jsdom level (`projects-section.test.tsx`, `clone-project-dialog.test.tsx`, `global-tasks.test.tsx`)
+with no additional browser-only risk to prove. Each file's own header names the flows that cannot
+honestly cross a real boundary in dry-run and the lower-level or manual evidence that covers them
+instead. `guide-browser.ts` wraps `agent-browser find <locator> <value> [action]` — the CLI's own
+semantic-locator command — rather than the CSS-selector methods on `AgentBrowser`; it is the one
+new interaction helper this package adds, and existing specs are not retrofitted to it.
+
 ### Iterating on one spec
 
 The `npm run test:e2e` wrapper takes no file filter, so iterating on ONE spec means booting
@@ -312,6 +333,32 @@ citations). Finish runs before the git tabs in this file, not after: Finish is w
 commits the worktree (`autosaveCommit(dir, 'run finalize')`), so the Commits tab has nothing to
 show before it runs, even though the guide documents the two as independent capabilities.
 
+`guide-04-providers-models-tools.e2e.ts`,
+`guide-10-settings.e2e.ts`, `guide-11-configuration.e2e.ts`, `guide-12-cli-reference.e2e.ts`,
+`guide-13-mcp-leader-control.e2e.ts`, `guide-14-local-hosted.e2e.ts`, `guide-15-project-kit.e2e.ts`
+and `guide-16-troubleshooting.e2e.ts` cover the guides Batch 5's cockpit restyle does not touch;
+`guide-14-local-hosted.e2e.ts` boots its own `XEZ_REMOTE=1` fixture (the shared suite server always
+runs local) and the rest reuse the shared instance. Each file's own header names the flows that
+cannot honestly cross a real boundary in dry-run and the lower-level or manual evidence that covers
+them instead. `guide-browser.ts` wraps `agent-browser find <locator> <value> [action]` — the CLI's
+own semantic-locator command — rather than the CSS-selector methods on `AgentBrowser`; it is the
+one new interaction helper this package adds, and existing specs are not retrofitted to it.
+
+A **nested-host class** applies to any fixture server that is itself booted by a task this repo's
+own xezar is running (every QA, gate and UI-lane task dogfooding this repo): its MCP socket
+reliably never opens, so `guide-13-mcp-leader-control.e2e.ts`'s unattached-state case sees the
+degraded "service not running" branch rather than the real first-boot reading a bare CI runner
+shows — the spec asserts an honest reading in either branch instead of hard-requiring one (#579).
+
+`packages/web/e2e/screenshot-states.e2e.ts` is the package's last file (browser-test-spec.md "PR
+4 — screenshot-state contract", Refs #549): one thin consumer of `capture/scenario-state.ts`'s
+`SCENARIOS` (see below), asserting every manifest state's visible facts by role, accessible label
+or visible text — never a screenshot, never `SCREENSHOT_DIR`. Unlike the guide files above it
+does not reuse the shared instance: it boots its own fixture through `capture/cockpit.ts`'s
+`bootCockpit()`, the same one the capture harness boots, because the screenshot states need the
+Inbox/Automations/review-gate/second-project fixture the shared suite server runs with those
+opt-ins off.
+
 ### The docs capture harness
 
 `packages/web/e2e/capture/` drives the same provider to produce the README and user-guide
@@ -335,3 +382,16 @@ so the pictures carry no mock text and no cloned rows. A new seeded task needs a
 tool is required: PNG decoding, palette re-encoding and GIF assembly are `node:zlib` code in
 `image-codec.ts`. What it normalises before each capture, and why, is in the generated
 `docs/screenshots/<version>/README.md`.
+
+**The seeded workspace and the per-state preparation live in `capture/scenario-state.ts`, not in
+`docs-screenshots.capture.ts` itself.** `seedScenario()` is the whole fixture (every task status, a
+variant pair, the review-gate run, the second project, the inbox, the automation, the second agent
+account) and `SCENARIOS` is one `Scenario` per manifest state — the same `data-slot` navigation and
+wait steps the 0.15.0 capture plan always used, now followed, immediately before a state would be
+captured, by `expect(...)` assertions that name the state's visible facts using only an ARIA role
+with an accessible name, an associated accessible label, or literal visible text (never a class,
+id, `data-*` attribute or other selector coupled to markup — the same locator rule the guide
+package above follows). `docs-screenshots.capture.ts` calls `SCENARIOS` immediately before
+`shoot()`; `screenshot-states.e2e.ts` calls the identical `SCENARIOS` and shoots nothing. One
+scenario, two callers, so a preparation change can never leave a picture and its own visible-fact
+test disagreeing about what the state shows.

@@ -15,9 +15,9 @@ import {
   PaletteIcon,
   PlugIcon,
 } from 'lucide-react'
-import type { ComponentType, SVGProps } from 'react'
+import type { ComponentType, ReactNode, SVGProps } from 'react'
 
-import type { Capabilities } from '@qodeca/xezar-api-client'
+import { inSingleProjectRoot, projectsLocked, type ProjectModeCapabilities } from '@/lib/project-mode'
 import { CenteredState } from '@/components/centered-state'
 import { AccountsSection } from './accounts-section'
 import { AgentConfigSection } from './agent-config-section'
@@ -75,13 +75,51 @@ export interface SettingsSection {
   title: string
   /** The one-liner under the title — the shell's desktop header and the index cards share it. */
   description: string
+  /** Single-project mode only (#600): replaces `description` where it would claim several projects. */
+  singleProjectDescription?: string
   icon: ComponentType<SVGProps<SVGSVGElement>>
   component: ComponentType
   /** `project` → `/p/<projectId>/settings/<id>`, `global` → `/settings/global/<id>`. */
   scope: SettingsScope
   /** Declared but not yet implemented: no nav entry, no route (the URL is honestly a 404). */
   hidden?: boolean
+  /**
+   * Single-project mode only (#600, FR-9.3): the file this section's saves land in, named on the
+   * pane so "will this travel with the repository?" is answerable without reading the docs.
+   * Absent means the section writes no xezar file (a read-only reference, an action, or the
+   * agents' own config files, which that pane names itself) and shows no line. Global mode
+   * never renders it.
+   */
+  fileNote?: SettingsFileNote
 }
+
+/**
+ * One file note: `lead`, the file as code, then `tail`. The file names are the ones the server's
+ * single-project layout resolves (`packages/xezar/src/state-layout.ts` → `projectStateLayout`,
+ * and `ui-state.ts` for the per-repo runtime file) — this table is the cockpit's ONE copy of that
+ * mapping, so a key that moves between files is one edit here (designs/single-project-mode §10.2).
+ */
+export interface SettingsFileNote {
+  /** Defaults to "Saved in this project — ". */
+  lead?: string
+  /** The project-relative path, rendered as code. */
+  file: string
+  /** What follows the file name, starting after its full stop. */
+  tail?: ReactNode
+}
+
+/** `<project>/.xezar/config.json` — the project config, committed. */
+export const PROJECT_CONFIG_FILE = '.xezar/config.json'
+/** `<project>/.xezar/workspace.json` — the workspace config (limits, defaults, skills), committed. */
+export const WORKSPACE_CONFIG_FILE = '.xezar/workspace.json'
+/** `<project>/.xezar/workspace-ui.json` — workspace GUI preferences, committed (#600 Q2). */
+export const WORKSPACE_UI_FILE = '.xezar/workspace-ui.json'
+/** `<project>/.xezar/agent-accounts.json` — which agent accounts the project uses, committed. */
+export const AGENT_ACCOUNTS_FILE = '.xezar/agent-accounts.json'
+/** `<project>/.local/xezar/ui-state.json` — the per-repo runtime file, gitignored. */
+export const PROJECT_UI_STATE_FILE = '.local/xezar/ui-state.json'
+
+const COMMITTED_SETTINGS = 'It is committed, so a clone starts with these settings.'
 
 /** A registry entry whose real section arrives in a later Step — routable, honest about it. */
 function comingSoon(title: string, Icon: ComponentType<SVGProps<SVGSVGElement>>): ComponentType {
@@ -107,6 +145,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     icon: BotIcon,
     component: AgentsSection,
     scope: 'project',
+    fileNote: { file: PROJECT_CONFIG_FILE, tail: COMMITTED_SETTINGS },
   },
   {
     id: 'agent-config',
@@ -131,6 +170,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     icon: FolderGit2Icon,
     component: WorktreesSection,
     scope: 'project',
+    fileNote: { file: PROJECT_CONFIG_FILE, tail: COMMITTED_SETTINGS },
   },
   {
     id: 'bookmarklets',
@@ -147,6 +187,10 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     icon: NotebookPenIcon,
     component: PromptTemplatesSection,
     scope: 'project',
+    fileNote: {
+      file: PROJECT_UI_STATE_FILE,
+      tail: 'It is not committed, so these templates stay on this machine.',
+    },
   },
   {
     id: 'mcp-connection',
@@ -174,6 +218,10 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     icon: PaletteIcon,
     component: AppearanceSection,
     scope: 'global',
+    fileNote: {
+      lead: 'The theme is remembered in this browser; accent, density and reading width are saved in this project — ',
+      file: WORKSPACE_UI_FILE,
+    },
   },
   {
     id: 'notifications',
@@ -182,14 +230,17 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     icon: BellIcon,
     component: NotificationsSection,
     scope: 'global',
+    fileNote: { file: WORKSPACE_UI_FILE },
   },
   {
     id: 'resources',
     title: 'Resources',
     description: 'Parallel tasks and per-task memory limit, across every project.',
+    singleProjectDescription: 'Parallel tasks and per-task memory limit for this project.',
     icon: GaugeIcon,
     component: ResourcesSection,
     scope: 'global',
+    fileNote: { file: WORKSPACE_CONFIG_FILE, tail: 'It is committed, so a clone starts with these limits.' },
   },
   {
     id: 'skills',
@@ -198,6 +249,10 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     icon: PackageCheckIcon,
     component: SkillsSection,
     scope: 'global',
+    fileNote: {
+      file: WORKSPACE_CONFIG_FILE,
+      tail: 'The downloaded skills themselves stay on this machine and are not committed.',
+    },
   },
   {
     id: 'accounts',
@@ -206,6 +261,15 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     icon: IdCardIcon,
     component: AccountsSection,
     scope: 'global',
+    fileNote: {
+      file: AGENT_ACCOUNTS_FILE,
+      tail: (
+        <>
+          The logins themselves stay on this machine; only which accounts to use travels. The
+          defaults are saved in <code className="font-mono">{WORKSPACE_CONFIG_FILE}</code>.
+        </>
+      ),
+    },
   },
   {
     id: 'projects',
@@ -226,6 +290,14 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
   },
 ]
 
+/** The one-liner a section shows: its single-project wording in that mode, when it has one. */
+export function settingsSectionDescription(
+  section: SettingsSection,
+  capabilities?: Partial<ProjectModeCapabilities>,
+): string {
+  return (inSingleProjectRoot(capabilities) && section.singleProjectDescription) || section.description
+}
+
 /**
  * What one settings area's nav and route table actually show — hidden sections drop out
  * entirely, and so does everything belonging to the OTHER scope. The two areas are rendered by
@@ -233,12 +305,12 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
  */
 export function visibleSettingsSections(
   scope: SettingsScope,
-  capabilities?: Pick<Capabilities, 'singleProject'>,
+  capabilities?: Partial<ProjectModeCapabilities>,
 ): SettingsSection[] {
   return SETTINGS_SECTIONS.filter(
     (section) =>
       !section.hidden &&
       section.scope === scope &&
-      !(capabilities?.singleProject === true && section.id === 'projects'),
+      !(projectsLocked(capabilities) && section.id === 'projects'),
   )
 }

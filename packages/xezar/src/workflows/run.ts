@@ -59,7 +59,7 @@ import { extractTaskRefs, refineTaskRefs, titleRefNumber } from '../runs/task-re
 import { parseTaskMarkers, stripTaskMarkers } from '../runs/task-markers.ts';
 import { autoNamingActive, generateRunName, liveTitleUpdatesEnabled, postValidateTitle } from '../runs/auto-name.ts';
 import { reviewGateEnabled } from '../runs/review-gate.ts';
-import { resolveProfileEnvForRoot } from '../workspace/agent-profiles.ts';
+import { AgentAccountUnavailableError, assertAgentAccountAvailable, resolveProfileEnvForRoot } from '../workspace/agent-profiles.ts';
 import { DEFAULT_AGENT_ACCOUNT_ID } from '../workspace/agent-accounts.ts';
 import { DEFAULT_IDLE_TIMEOUT_MINUTES } from '../workspace/config.ts';
 import { WorkspaceSemaphore, type AccountHolds } from '../workspace/semaphore.ts';
@@ -310,6 +310,13 @@ interface ActiveRun {
     startedTurns: Set<string>;
     recordedTurns: Set<string>;
   };
+  /** Set by `enforceMemoryLimit` right before it closes this run's session (#603): a
+   *  xezar-initiated `session.end()` settles on the exact same path as a legitimate
+   *  `XEZ:DONE` close (#703 — our own SIGTERM/SIGKILL must not read as an agent crash), so
+   *  without this flag the step-completion handler cannot tell "the agent finished" from
+   *  "xezar cut it off" and recorded the pause as `done`. Consumed once, where `session.result`
+   *  resolves, and cleared there. */
+  memoryLimitPause?: string;
 }
 
 /** Safety cap on autonomous auto-continues per run — stops a stuck agent from nudging forever.
@@ -1101,6 +1108,10 @@ export class RunManager {
       // Closing the session frees the tree and lets the normal exit path settle the run and
       // pump the queue. Suppress autonomous auto-continue so the pause actually holds.
       state.autonomous = false;
+      // Named here so the step-completion handler (`runAgentStep`/`runContinuation`) can record
+      // this as a failed, Continue-able step instead of reading the xezar-initiated close as a
+      // finished turn (#603) — see the field doc on `ActiveRun.memoryLimitPause`.
+      state.memoryLimitPause = `memory limit exceeded (${usedMb} MiB > ${limitMb} MiB)`;
       this.clearIdleTimer(state);
       state.session.end();
     }
@@ -1165,8 +1176,10 @@ export class RunManager {
    *
    * Read fresh every time. `~/.xezar/config.json` is shared by every xezar process on this
    * machine, so a cached snapshot is a staleness bug, and one small JSON read is free next to
-   * spawning a CLI. Never throws: an unreadable home degrades to the default profile, which is
-   * exactly the behaviour that predates profiles.
+   * spawning a CLI. An unreadable home degrades to the default profile, which is exactly the
+   * behaviour that predates profiles. Throws `AgentTempDirError`, and in single-project mode
+   * `AgentAccountUnavailableError` for a committed account this machine lacks (#600 FR-6.3); both
+   * callers turn either into the step's named error before anything spawns.
    */
   private async agentEnvForStep(
     runId: string,
@@ -1177,6 +1190,8 @@ export class RunManager {
     const profileId = options.recordedProfileId
       ?? (backend === (run?.runner ?? 'claude') ? run?.agentProfile : undefined);
     const resolved = await resolveProfileEnvForRoot(this.repoRoot, backend, profileId);
+    // A committed account this machine lacks refuses the step rather than falling back (#600 BR-4).
+    await assertAgentAccountAvailable(resolved.profile);
     return {
       env: { ...this.agentEnv(runId, options.stepId, options.generateFollowups), ...resolved.env },
       profileId: resolved.profile.id,
@@ -3181,7 +3196,7 @@ export class RunManager {
         stepId,
       });
     } catch (err) {
-      if (!(err instanceof AgentTempDirError)) throw err;
+      if (!(err instanceof AgentTempDirError) && !(err instanceof AgentAccountUnavailableError)) throw err;
       failBeforeSpawn(err.message);
       return;
     }
@@ -3255,6 +3270,14 @@ export class RunManager {
     try {
       await session.result;
       if (sessionError) throw new Error(sessionError);
+      // Same "our own signal coming back" teardown path a legitimate `XEZ:DONE` close settles on
+      // (#703) — a close xezar forced for the memory guard must land on the `catch` below as a
+      // failed, Continue-able step rather than read as a finished turn (#603).
+      if (state.memoryLimitPause) {
+        const reason = state.memoryLimitPause;
+        state.memoryLimitPause = undefined;
+        throw new Error(reason);
+      }
       sink.sessionEnded(state.cancelled ? 'cancelled' : 'end_turn');
       await endTurn();
       if (state.cancelled) {
@@ -3924,7 +3947,7 @@ export class RunManager {
         stepId: step.id,
       });
     } catch (err) {
-      if (err instanceof AgentTempDirError) return err.message;
+      if (err instanceof AgentTempDirError || err instanceof AgentAccountUnavailableError) return err.message;
       throw err;
     }
     const runner = createRunner(stepBackend);
@@ -4006,6 +4029,15 @@ export class RunManager {
       if (sessionError) {
         sink.sessionEnded('error', sessionError);
         return sessionError;
+      }
+      // A close xezar itself forced for the memory guard settles the CLI teardown on the same
+      // "our own signal coming back" path a legitimate `XEZ:DONE` close does (#703), so without
+      // this check the step below reads it as a finished turn instead of the pause it is (#603).
+      if (state.memoryLimitPause) {
+        const reason = state.memoryLimitPause;
+        state.memoryLimitPause = undefined;
+        sink.sessionEnded('error', reason);
+        return reason;
       }
       // v2 counterpart of v1's `done` (spec: the mappers leave session-close
       // events to the RunManager — only it knows how the session settled).

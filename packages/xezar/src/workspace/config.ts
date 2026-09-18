@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { chmodSync, mkdirSync, renameSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { totalmem } from 'node:os';
 import { dirname } from 'node:path';
@@ -10,6 +10,13 @@ import { z } from 'zod';
 import { PROJECT_TAGS_MAX, PROJECT_TAG_MAX_LENGTH } from '@qodeca/xezar-contract';
 import { PROVIDER_IDS, type ProviderId } from '../core/provider-auth.ts';
 import { assertXezarHomeWriteIsSandboxed, workspaceConfigPath } from '../paths.ts';
+import {
+  isSymbolicLink,
+  projectStateDirRefusal,
+  projectStateFiles,
+  SingleProjectStateError,
+  type StateLayout,
+} from '../state-layout.ts';
 import { withWorkspaceConfigLock } from './config-lock.ts';
 
 /**
@@ -582,6 +589,34 @@ export function atomicWriteJsonSync(path: string, value: unknown): void {
     chmodSync(path, 0o600); // best-effort — ignored on some filesystems
   } catch {
     // non-fatal
+  }
+}
+
+/**
+ * Create single-project mode's four configuration files, for a first run with
+ * `--single-project` only (#600 AC-2).
+ *
+ * Every one is written as an empty JSON object: each loader already treats `{}`
+ * as its zero-config default, so the files carry no duplicated schema knowledge
+ * and an older xezar reading one sees exactly what it sees for a file it has
+ * never met. That also keeps the `workspace.json` marker honest — its PRESENCE
+ * is what decides the mode, never its contents.
+ *
+ * Existing files are never overwritten. A clone arrives with them populated,
+ * and re-running with the flag in a folder that already holds the state must
+ * change nothing (AC-4). The write is the shared atomic one (`0600`, dir
+ * `0700`) and throws on failure, which is what the boot's Q1 refusal reports.
+ *
+ * Nothing is written through a symbolic link (#612 review M1): a symlinked or
+ * outside-resolving `.xezar` throws the boot's refusal, and a symlinked file is
+ * left alone — never written through and never replaced.
+ */
+export function createProjectStateFiles(layout: StateLayout): void {
+  const linkRefusal = projectStateDirRefusal(layout);
+  if (linkRefusal !== null) throw new SingleProjectStateError(`single-project state ${linkRefusal}`);
+  for (const path of projectStateFiles(layout)) {
+    if (existsSync(path) || isSymbolicLink(path)) continue;
+    atomicWriteJsonSync(path, {});
   }
 }
 

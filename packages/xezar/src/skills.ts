@@ -57,7 +57,14 @@ export const SKILL_DIRS: Array<{ dir: string; source: Skill['source'] }> = [
 /* Deliberately `homedir()` and not `agentHomePaths().claude`: these do NOT follow an
    agent profile (`src/core/agent-profiles.ts`). A skill is CONTENT — a playbook — not
    identity, and a second Claude login is not a second skill library. `npx skills`, which
-   writes the `~/.claude/skills` mirror, is profile-unaware for the same reason. */
+   writes the `~/.claude/skills` mirror, is profile-unaware for the same reason.
+
+   And deliberately NOT the state layout either: single-project mode (#600) does not move
+   these. They are the user's OWN global skill libraries on this host, written by tools
+   xezar does not control, in the same category as `gh`, `git` and the agent logins that
+   BR-7/SP-2.3 leave where they are. What the mode DOES move is xezar's own cache of team
+   skills it fetched — `skills-remote.ts`, `xezCacheDir()` — because that one is xezar's
+   to place. `state-path-scan.test.ts` allowlists these two lines with this reason. */
 const GLOBAL_SKILL_DIRS: Array<{ dir: string; source: Skill['source'] }> = [
   { dir: join(homedir(), '.agents/skills'), source: 'global' },
   { dir: join(homedir(), '.claude/skills'), source: 'global' },

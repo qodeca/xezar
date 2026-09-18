@@ -83,9 +83,12 @@ function serve(resources: Partial<WorkspaceConfigResponse['resources']> = {}) {
 
 /** Seeds the step-3.2 route gates so the shell renders immediately. The global settings area is
  *  unscoped, but the gates still answer for the chrome rendered around it. */
-function gateSeededClient() {
+function gateSeededClient(singleProjectRoot = false) {
   const client = createQueryClient()
-  client.setQueryData(queryKeys.health, { bootProject: 'boot' })
+  client.setQueryData(
+    queryKeys.health,
+    singleProjectRoot ? { bootProject: 'boot', capabilities: { singleProjectRoot: true } } : { bootProject: 'boot' },
+  )
   client.setQueryData(workspaceQueryKeys.projects, {
     projects: [],
     bootProject: 'boot',
@@ -94,9 +97,9 @@ function gateSeededClient() {
   return client
 }
 
-function renderResources() {
+function renderResources({ singleProjectRoot = false }: { singleProjectRoot?: boolean } = {}) {
   render(
-    <QueryClientProvider client={gateSeededClient()}>
+    <QueryClientProvider client={gateSeededClient(singleProjectRoot)}>
       <MemoryRouter initialEntries={['/settings/global/resources']}>
         <AppRoutes />
         <Toaster />
@@ -148,6 +151,20 @@ describe('Global settings → Resources', () => {
     expect(requests.some((r) => r.url === '/api/v1/config')).toBe(false)
   })
 
+  // Design NB-3 (#600): single-project mode has one project, so the hint does not say "every".
+  it('words the max-parallel hint for the mode', async () => {
+    serve()
+    renderResources({ singleProjectRoot: true })
+    await waitFor(() => expect(parallelSelect()).not.toBeNull())
+    expect(screen.getByText(/How many tasks run at once in this project\./)).not.toBeNull()
+    expect(screen.queryByText(/across every project/)).toBeNull()
+    cleanup()
+    serve()
+    renderResources()
+    await waitFor(() => expect(parallelSelect()).not.toBeNull())
+    expect(screen.getByText(/How many tasks run at once across every project\./)).not.toBeNull()
+  })
+
   it('saves maxParallel to the WORKSPACE config, never the per-repo one', async () => {
     serve({ maxParallel: 2 })
     renderResources()
@@ -167,6 +184,16 @@ describe('Global settings → Resources', () => {
     const link = await screen.findByRole('link', { name: 'Configure per-project limits' })
     expect(link.getAttribute('href')).toBe('/settings/global/projects')
     expect(screen.getByText(/Need a different limit for one project/)).not.toBeNull()
+  })
+
+  // A #611 review follow-up: `/settings/global/projects` is page-not-found in single-project mode,
+  // so the link to it is absent there rather than dead.
+  it('drops the per-project limits link in single-project mode', async () => {
+    serve()
+    renderResources({ singleProjectRoot: true })
+    await waitFor(() => expect(parallelSelect()).not.toBeNull())
+    expect(screen.queryByRole('link', { name: 'Configure per-project limits' })).toBeNull()
+    expect(screen.queryByText(/Need a different limit for one project/)).toBeNull()
   })
 
   it('saves the extra monitoring capacity and explains the two pools', async () => {

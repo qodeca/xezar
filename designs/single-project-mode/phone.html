@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Single-project mode – phone, 375 px</title>
+<link rel="stylesheet" href="../../docs/design-system/cockpit.css">
+<link rel="stylesheet" href="styles.css">
+<script src="theme.js"></script>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-menu" viewBox="0 0 24 24"><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="18" y2="18"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v5h6"/></symbol>
+  <symbol id="i-tasks" viewBox="0 0 24 24"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol>
+  <symbol id="i-rotate" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></symbol>
+  <symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></symbol>
+</svg>
+
+<nav class="doc-bar" aria-label="Design pages">
+  <span class="brand">Single project · phone</span>
+  <a href="index.html">Overview</a>
+  <span class="spacer"></span>
+  <button class="theme-toggle" type="button" data-theme-toggle>Light / dark</button>
+</nav>
+
+<!-- 1. Tasks. Below 860 px the sidebar is a drawer, the desktop page header is hidden and the
+     mobile top bar names the page. The mode badge takes the bar's free `mobile-status` slot. -->
+<div class="shell short">
+  <main class="main">
+    <div class="mobile-bar">
+      <button class="btn-icon" type="button" aria-label="Open menu"><svg class="icon"><use href="#i-menu"/></svg></button>
+      <span class="title">Tasks</span>
+      <span class="badge outline mode-badge" data-slot="mode-badge" title="xezar settings and state live in this folder">
+        <svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg>
+        Single project
+        <span class="sr-only">— xezar settings and state live in this folder, not in your home directory</span>
+      </span>
+    </div>
+
+    <div class="page-body">
+      <div class="centered-state primary">
+        <div class="tile"><svg class="icon"><use href="#i-tasks"/></svg></div>
+        <h1>No tasks yet</h1>
+        <p>Describe a task to get started. This xezar keeps its settings and its working files in this folder, so everything a task needs travels with the repository.</p>
+      </div>
+    </div>
+
+    <div style="padding:0 var(--spacing-stack) var(--spacing-stack)">
+      <div class="composer">
+        <textarea rows="2" aria-label="Describe a task for the agent" placeholder="Describe a task for the agent — / for skills…"></textarea>
+        <div class="foot">
+          <!-- No project pill here either: one project, and there can be no other. -->
+          <span class="chip">quick-task</span>
+          <span class="chip">Claude Code</span>
+          <span class="spacer"></span>
+          <button class="send" type="button" aria-label="Send"><svg class="icon sm"><use href="#i-arrow-up"/></svg></button>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- 2. The phone drawer's brand block: the same two lines as the desktop sidebar. -->
+<div class="doc" style="padding:var(--spacing-inset) var(--spacing-stack) 0">
+  <p class="frame-label">The drawer's brand block, same width</p>
+  <div class="brand-demo" style="width:100%">
+    <div class="sidebar-head">
+      <span class="logo" aria-hidden="true">X</span>
+      <span class="name">xezar</span>
+      <span class="where">acme-api / main</span>
+    </div>
+    <div class="mode-line">
+      <span class="badge outline mode-badge" data-slot="mode-badge" title="xezar settings and state live in this folder">
+        <svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg>
+        Single project
+        <span class="sr-only">— xezar settings and state live in this folder, not in your home directory</span>
+      </span>
+    </div>
+    <div class="new-task-row">
+      <button class="btn-new-task" type="button"><svg class="icon sm"><use href="#i-plus"/></svg>New task <kbd>C</kbd></button>
+    </div>
+  </div>
+  <p style="font-size:12px;color:var(--soft-foreground);line-height:1.6">No <code>Add project</code> button beside <code>New task</code>, so the button takes the whole width — as it already does for anyone whose drawer never had one.</p>
+</div>
+
+<!-- 3. Settings on a phone: the section header is hidden, the pane's file note wraps. -->
+<div class="doc" style="padding:var(--spacing-inset) var(--spacing-stack) var(--spacing-section)">
+  <p class="frame-label">Settings → Agent accounts, 375 px</p>
+
+  <div class="frame">
+    <div class="mobile-bar">
+      <button class="btn-icon" type="button" aria-label="Open menu"><svg class="icon"><use href="#i-menu"/></svg></button>
+      <span class="title">Settings</span>
+      <span class="badge outline mode-badge" data-slot="mode-badge" title="xezar settings and state live in this folder">
+        <svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg>
+        Single project
+        <span class="sr-only">— xezar settings and state live in this folder, not in your home directory</span>
+      </span>
+    </div>
+    <div class="settings-pills">
+      <a href="#" aria-current="page">Agent accounts</a>
+      <a href="#">Resources</a>
+      <a href="#">Appearance</a>
+    </div>
+    <div class="pane">
+      <div class="pane-head">
+        <h2>Agent accounts</h2>
+        <p>One agent per tab: whether it is installed, and which logins you have.</p>
+        <p class="file-note">
+          <svg class="icon" aria-hidden="true"><use href="#i-file"/></svg>
+          <span>Saved in this project — <code>.xezar/agent-accounts.json</code>. The logins themselves stay on this machine; only which accounts to use travels.</span>
+        </p>
+      </div>
+      <ul class="acct-list">
+        <li class="settings-row acct">
+          <div class="top"><span class="label">Claude Code</span><span class="badge ghost">discovered</span></div>
+          <p class="path">~/.claude</p>
+          <p class="status"><span class="dot success" aria-hidden="true"></span><span>Connected</span></p>
+        </li>
+        <li class="settings-row acct unavailable">
+          <div class="top"><span class="label">Work account</span></div>
+          <p class="path">~/.claude-work</p>
+          <p class="status">
+            <span class="dot danger" aria-hidden="true"></span>
+            <span>Unavailable</span>
+            <span class="why">— this account's folder does not exist on this machine: <span class="mono">~/.claude-work</span>. Connect signs in and creates it, or pick another account for the task.</span>
+          </p>
+          <div class="acct-actions">
+            <button class="btn" type="button"><svg class="icon sm"><use href="#i-rotate"/></svg>Connect</button>
+            <button class="btn ghost" type="button">Show details</button>
+          </div>
+        </li>
+      </ul>
+    </div>
+  </div>
+  <p style="font-size:12px;color:var(--soft-foreground);line-height:1.6">The file note and the unavailable sentence wrap; the path breaks inside the word rather than pushing the page sideways. The two row actions go full width at 44 px.</p>
+</div>
+
+</body>
+</html>

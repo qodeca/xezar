@@ -12,6 +12,7 @@ import { ProjectGroups } from '@/components/project-groups'
 import { ToolsMenu } from '@/components/tools-menu'
 import { useDocumentTitle } from '@/lib/use-document-title'
 import { useActiveProjectId } from '@/lib/project-router'
+import { inSingleProjectRoot, projectsLocked } from '@/lib/project-mode'
 import { unreadDoneCount } from '@/lib/read-state'
 import { runTitle } from '@/lib/task-groups'
 import { pageTitleContext } from '@/routes'
@@ -105,7 +106,12 @@ export function AppShellContainer({ children }: { children: ReactNode }) {
   // group header would say nothing the repo chip does not already say, so the shell keeps the
   // flat nav it has always had. That degenerate case is the upgrade path:
   // an existing user boots the new version in their usual repo and sees no difference.
-  const projects = registry && registry.projects.length > 1 ? registry : null
+  // A narrowed workspace (`XEZ_SINGLE_PROJECT=1` or single-project mode, #600) never shows them,
+  // whatever the registry holds: that is a capability, and a registry that happens to list two
+  // rows must not bring the switcher back.
+  const capabilities = health.data?.capabilities
+  const projects =
+    !projectsLocked(capabilities) && registry && registry.projects.length > 1 ? registry : null
   // Destructured rather than read as a member: the audit-door guard
   // (packages/xezar/src/mcp/audit-origin-wiring.test.ts) scans every workspace source tree and
   // counts a property access spelled like the audit-trail method as a possible door.
@@ -146,7 +152,10 @@ export function AppShellContainer({ children }: { children: ReactNode }) {
             <OnboardingOfferContainer />
           </>
         }
-        singleProject={health.data?.capabilities.singleProject === true}
+        singleProject={projectsLocked(capabilities)}
+        // The mode badge (#600) renders only on the server's definite word — `false` while health
+        // is unknown, so it never appears and then disappears.
+        singleProjectRoot={inSingleProjectRoot(capabilities)}
         // Present only in a multi-project workspace; `AppShell` renders the flat nav whenever this
         // slot is absent.
         projectGroups={

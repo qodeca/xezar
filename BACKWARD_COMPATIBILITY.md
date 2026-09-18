@@ -11,7 +11,7 @@ xezar is a published npm CLI (`@qodeca/xezar`, currently 0.x) whose state lives 
 - **Bins:** `xezar` and `xez` (both in `package.json` `bin`). Removing either alias is breaking.
 - **Commands:** bare invocation = `serve` (cockpit); `xezar run "<task>"`; `xezar init`; `xezar mcp` (the stdio MCP bridge a coding agent starts); `xezar server-install` / `server-deploy` / `server-uninstall` (the hosted-instance provisioner).
 - **`xezar projects` subcommands:** `list` (the default), `add`, `remove`/`rm`, `tag`, `port`. `tag <id> [<tag>…]` replaces a project's grouping tags wholesale; naming none clears them. `port <id> [<port>]` (#467) pins the cockpit port of a project; naming none clears it. Both are refused in single-project mode.
-- **Flags:** `-p/--port` (see the port precedence in [Remembered ports](#per-project-port-memory-and-cli-output-settings--deliberate-0160-467) — it is no longer "default 4321" flat, and it still auto-picks the next free port), `--output <auto|lines|rich>`, `--color <auto|always|never>`, `--log-level <debug|info|warn|error>`, `-q/--quiet` (all four #467: accepted and resolved now, consumed by the renderer), `--repo <dir>`, `--workflow <name>` (default `quick-task`), `--model <model>`, `--no-open`, `-h/--help`, `-v/--version` (prints the bare package version to stdout, exits 0, runs before any repo or `~/.xezar` lookup), plus the `server-*` flags `--platform`, `--domain`, `--bind-host`, `--external-proxy`, `--yes`, `--reconfigure <name>`, `--reinstall`.
+- **Flags:** `-p/--port` (see the port precedence in [Remembered ports](#per-project-port-memory-and-cli-output-settings--deliberate-0160-467) — it is no longer "default 4321" flat, and it still auto-picks the next free port), `--output <auto|lines|rich>`, `--color <auto|always|never>`, `--log-level <debug|info|warn|error>`, `-q/--quiet` (all four #467: accepted and resolved now, consumed by the renderer), `--repo <dir>`, `--workflow <name>` (default `quick-task`), `--model <model>`, `--no-open`, `-h/--help`, `-v/--version` (prints the bare package version to stdout, exits 0, runs before any repo or `~/.xezar` lookup), `--single-project` (#600 — see [Single-project ROOT mode](#single-project-root-mode--the-folder-owns-the-state-0160-600); needed only the first time, and every command accepts it), plus the `server-*` flags `--platform`, `--domain`, `--bind-host`, `--external-proxy`, `--yes`, `--reconfigure <name>`, `--reinstall`.
 - **Exit codes:** `run` exits 0 on `done` **and** `review` (spec 009 — headless runs must not hang on the review gate), 1 on `failed`/`cancelled`/unknown workflow. CI scripts depend on this. A flag or `XEZ_*` value that is not a legal value exits 1 **before** the registry is read, the project writer is claimed or any port is bound, and names the accepted values.
 - **Env vars:** `XEZ_DRY_RUN`, `XEZ_AGENT_MODELS_LOCKED`, `XEZ_APPROVAL_GATE`, `XEZ_FOLLOWUPS`, `XEZ_HIDE_TOKEN_USAGE`, `XEZ_HIDE_COST`, `XEZ_HIDE_TOKEN_METRICS`, `XEZ_CLAUDE_BIN`, `XEZ_CODEX_BIN`, `XEZ_OPENCODE_BIN`, `XEZ_PI_BIN`, `XEZ_AGENT_TMPDIR`, `XEZ_PORT`, `XEZ_OUTPUT`, `XEZ_COLOR`, `XEZ_LOG_LEVEL`, `XEZ_QUIET`, `NO_COLOR`, `GITHUB_TOKEN`. Every other `XEZ_*` variable documented in `.env.example` is also protected, except those under its testing / internal section; that file is the env contract’s single documentation surface (AGENTS.md § Zero config).
   - `XEZ_AGENT_TMPDIR` (pre-rename issue 785) is an **opt-out** for a changed default, not a new feature switch: spawned agents now receive `TMPDIR`/`TEMP`/`TMP` pointing at this run's own `.local/xezar/tmp/<runId>` instead of the host's values, which the least-privilege env used to forward verbatim. An exact `0` restores the host `TMPDIR` **and** skips the new pre-spawn writability check — the behaviour before pre-rename issue 785, not merely its environment, so a run that used to start still starts. Removing that opt-out, weakening it to cover only the variables, or changing which spelling disables it, is breaking and takes the deprecation path below. The host `TMPDIR` is still forwarded unchanged to every process xezar spawns that is *not* an agent session.
@@ -31,8 +31,24 @@ What is protected now: **the shape of each route under `/api/v1`**, the three-wa
   - `repoRoot` is the absolute checkout path in local mode (the shape the saved bookmarklets read) but only the checkout's **basename** in hosted mode (`XEZ_REMOTE`), where health is CORS-open off the loopback and the absolute path would leak the developer's username (pre-rename issue 431). Always present, always a string — but a hosted consumer must not treat it as a filesystem path.
   - Additive for #442: `channel: "release" | "dev"`, top-level and always present (never under `capabilities`). `dev` means the server runs from a source checkout (its package root has `src/index.ts`); an installed tarball says `release`, and a failed check says `release` too. The cockpit badges its logo only for `dev`, and reads an absent field (an older server) as no badge. Every pre-existing health field stays byte-identical, and `version` is not suffixed.
   - Additive since the multi-project workspace: `projects: [{id, name}]` + `bootProject` enumerate the per-user registry (section 9). **`projects[].root` is deliberately absent** — health is the CORS-open route, and a per-project absolute path would reintroduce the pre-rename issue 431 username leak once per registered project; absolute roots live on the same-origin `GET /api/v1/projects` instead. Every pre-existing health field stays byte-identical; an unreadable registry degrades to `projects: []`, never an error.
+  - Additive for #600: `capabilities.singleProjectRoot`, an **optional** boolean sent only when it is `true`. It says this cockpit is serving a folder that owns its own xezar state (`<project>/.xezar`, `~/.xezar` not opened). It is a SEPARATE key from `capabilities.singleProject`, which keeps its exact meaning and is not deprecated; a consumer that wants to know WHERE the state lives reads this one. It is the first optional capability, and deliberately so: a 0.15.0 server never sends it, so a 0.16.0 client must read an absent value as `false` (the global layout) rather than fail to parse. A global-layout 0.16.0 payload is byte-identical to a 0.15.0 one.
   - Additive for pre-rename issue 737: `capabilities.tokenUsageMetrics` and `capabilities.costMetrics` independently control raw input/output token and reported-cost presentation. Current servers always send both booleans; newer clients fall back to the legacy `tokenMetrics` value (and then visible) for older servers. `tokenMetrics` remains as the fail-closed combined value `tokenUsageMetrics && costMetrics`, so an older cockpit never reveals a dimension a deployment hid. All three flags are presentation-only — run and event telemetry remain unchanged.
 - Workspace: `GET/POST /api/v1/projects`, `PATCH /api/v1/projects/:projectId`, `DELETE /api/v1/projects/:projectId`, `POST /api/v1/projects/checkout`, `GET /api/v1/fs/browse`, `GET /api/v1/models`, `GET /api/v1/providers/status`, `POST /api/v1/providers/connect`, `PUT /api/v1/providers/:provider/enabled`, `POST /api/v1/providers/:provider/retry` — the registered-project, filesystem, host model-catalog, and provider-authentication surface. The projects GET shape is `{projects: [{id, name, root, addedAt, lastOpenedAt, source, status, branch?, forge?, repoUrl?, maxParallel?, tags?}], bootProject, projectsDir}` (`status`: `ok`/`missing`/`not-git`; `branch` only when cheaply readable; `forge?` is the additive per-project forge classification (pre-rename issue 698) — `'github'` when the root's remote parses to a known forge host, omitted otherwise, so an old consumer that ignores it sees no change; `maxParallel?` is the additive per-project concurrency cap — omitted means "inherit the workspace cap", so an old consumer that ignores it sees no change; `repoUrl?` is the additive, credential-free web root of the project's remote (`https://github.com/owner/repo`, rebuilt from the PARSED remote so a token in it can never reach a client), which is what lets a cross-project surface link a reference the run knows only by number; `tags?` is the additive grouping-label list the global Tasks page filters and groups by — normalized (trimmed, deduped case-insensitively, sorted) and **omitted rather than `[]`** for an untagged project, so an old consumer that ignores it sees no change). `PATCH /api/v1/projects/:projectId` is additive and **per-key**: body `{maxParallel?: 1..16 | null, tags?: string[] | null}`, each field applied ONLY when the body names it, so the pre-tags `{maxParallel}` body still means exactly what it always did and a tags-only body cannot clear a concurrency ceiling. `null` clears either (an empty `tags` array clears too); an empty body is refused with a 400, as it always was. The answer is `{project}` in the same entry shape. **The agent-account selection is deliberately NOT here** — it lives in `~/.xezar/agent-accounts.json` and is written through `PUT /api/v1/workspace/agent-profiles/selection`, so this route and the project registry are untouched by that feature. Same-origin only — no CORS, which is exactly what licenses the absolute `root`s that health must never carry. The list never 404s: an empty or unreadable registry answers `projects: []`.
+  - **Narrowed by EITHER single-project narrowing (#600, part 3).** The five refusals this family
+    has answered since 2026-07-21 — `POST /api/v1/projects`, `POST /api/v1/projects/checkout`,
+    `PATCH /api/v1/projects/:projectId`, `DELETE /api/v1/projects/:projectId` and
+    `GET /api/v1/fs/browse`, each `409 {error}` before any side effect — now fire for
+    `XEZ_SINGLE_PROJECT=1` **or** a folder that owns its own xezar state. The CONDITION widened; the
+    EFFECT did not. With the environment flag set, the status code, the `{error}` shape and the
+    sentence (`single-project mode is enabled; <action> is disabled`) are byte-identical to what they
+    have always been, and `packages/xezar/src/server/single-project-doors.test.ts` pins them. The
+    state layout refuses with its own sentence (`this project owns its xezar state; <action> is
+    disabled`), because claiming a flag is enabled in a folder that carries none would be untrue; the
+    status and shape are the same. `GET /api/v1/projects` is narrowed the same way and answers
+    exactly ONE row — the folder — whatever a committed `workspace.json` names; rows for other roots
+    are ignored on read and never edited or deleted. Breaking: changing either status, either
+    sentence or the `{error}` shape; letting any of the five apply an effect in either narrowing; or
+    answering more than one project row in the state layout.
 - Agent accounts (additive): `GET/POST /api/v1/workspace/agent-profiles`, `PATCH /api/v1/workspace/agent-profiles/:id`, `DELETE /api/v1/workspace/agent-profiles/:id`, `PUT /api/v1/workspace/agent-profiles/selection` — extra config dirs for a second login of the same agent CLI (`CLAUDE_CONFIG_DIR` / `CODEX_HOME` / `PI_CODING_AGENT_DIR`; pi joined on 2026-09-12, #329 — the entry that said it had no such variable was wrong). Workspace-level and single-mount. `GET` answers `{editable, profiles: [{id, provider, label, configDir, path, exists, looksValid, isDefault, status?, files}], profileCapableProviders, selections, defaults}` (`files` is that agent's user-scope config files resolved inside THAT account's folder). **`status` is absent until the probe has warmed** and the listing never spawns a CLI to fill it — each probe is a shell-out to an agent CLI, one per provider plus one per account, which cost 2.5s on a real machine with four accounts. Absent means "not determined yet", which is NOT the same as the `unknown` a real probe can return; `GET …/:id/status` (optionally `?refresh=1`) is what actually probes, and the cockpit fills each row in from it. Provider auth for every account is warmed once at boot and kept in memory; reads are stale-while-revalidate (an expired answer is refreshed behind the response, never in front of it), a connected answer stands for minutes and a not-connected one is re-checked within a minute so a terminal login is noticed, the run gate re-verifies a provider before refusing, and anything xezar can observe (opening a login, repointing/removing an account, a runtime rejection) invalidates it explicitly, discovered defaults first (`id: "default"`, never stored, never deletable); `selections` maps a project's realpath'd ROOT to `{claude?, codex?, opencode?, pi?}`, and `defaults` is the same per-provider shape read as the machine-wide fallback for any repo that has chosen nothing (a repo's own selection always wins, which is what keeps it a default rather than an override). **Writing is a local-machine capability**: every mutator answers 409 in hosted mode (`XEZ_REMOTE`) and `GET` answers `{editable: false, profiles: [], selections: {}, defaults: {}}` there — the listing echoes absolute paths carrying the username, the same disclosure `/api/v1/health` trims. `DELETE` is deregistration only: the directory is never touched, and every selection referencing the removed id is scrubbed in the same atomic write.
   - Per-account reads: `GET /api/v1/workspace/agent-profiles/:id/status`, `GET /api/v1/workspace/agent-profiles/:id/details` and `POST /api/v1/workspace/agent-profiles/:id/open`. Both address the DISCOVERED account as `default:<provider>` (a bare `default` cannot say which agent, and that spelling is reserved by the selection routes). `details` answers `{available, reason?, fields: [{label, value}]}` read from the account's own files — Claude's `.claude.json` `oauthAccount`, Codex's `auth.json` `id_token` claims, and (additive, 2026-09-12, #329) pi's `auth.json` provider KEYS plus each entry's `type`, since that file carries no identity at all and its non-secret credential metadata is the only thing that tells two pi accounts apart — by **named field only**: the same files hold API keys and refresh tokens, and nothing is passed through, spread or stringified from a parsed vendor object. The per-provider answer is an exhaustive `Record<ProviderId, …>`: before #329 an unnamed provider fell through to OpenCode's "login lives outside the config folder" refusal, so a pi account was answered with a sentence about a different product. It is a SEPARATE route rather than a field on the listing on purpose, so identity is absent from the page until a user asks for it; it is never logged and never persisted. `open` takes `{file, target?}` where `file` is a **catalog id** from that account's own `files` (or the keyword `folder`) — never a path, so the route has no traversal surface — and `target` an `/api/v1/open-targets` id, absent meaning the OS default handler. A file the agent has not written yet answers 409 rather than a false success. Both are localHandoff-gated like the rest of the family.
   - **State file:** `~/.xezar/agent-accounts.json`, deliberately NOT a key in `config.json`. Its own file is what makes a xezar downgrade safe: a version that has never heard of accounts does not open it, so it cannot drop them — whereas living in `config.json` made their survival depend on a `.passthrough()` in that version's schema, and failed outright whenever any version could not parse `config.json` (it degrades to defaults, and its next merge-write persists them). Accounts written by the branch that first shipped them inside `config.json` are imported once, non-destructively: `config.json` keeps its keys so an older xezar sharing the home reads what it always read.
@@ -106,6 +122,7 @@ What is protected now: **the shape of each route under `/api/v1`**, the three-wa
 - **`/p/default/…` is the page-level twin of the API's `default` alias** — the reserved literal, never an allocated slug, normalized to the real boot slug with a `replace` navigation so the address bar always names the project; the remaining path, query and hash survive byte-for-byte. An id the registry doesn't know renders the "not registered here" screen — the cockpit twin of the API's `404`.
 - **The redirect IS the bookmarklet contract.** A generated launcher is now `<origin>/p/<projectId>/new?skill=&auto=&key=&ref=` (`packages/web/src/lib/bookmarklet.ts`): **only the path gained a prefix**, the query grammar after `?` is byte-identical, and `key` is that project's own `.local/xezar/launch-key` (each repo keeps its own — the scoped API client fetches the right one). Generating without a project id still emits the exact legacy flat `/new?…`. Every bookmarklet already saved in somebody's bar predates the prefix, so **the legacy redirect is the only thing keeping it working** — deleting it breaks browsers this repo cannot reach, which is why it is listed as permanent and not as a deprecation window.
 - **Settings split, old URLs kept** (`packages/web/src/routes/settings/registry.tsx`): project sections live at `/p/<id>/settings/<section>` (`agents`, `agent-config`, `worktrees`, `bookmarklets`, `prompt-templates`, `mcp-connection`, `mcp-api`), global ones at `/settings/global/<section>` (`appearance`, `notifications`, `resources`, `skills`, `accounts`, `projects`, `keyboard`) — the one cockpit area deliberately **outside** every project scope, because appearance and notifications are the user's, resources are the machine's, and the Projects pane *is* the registry. A section that moved keeps **both** old spellings landing: `/p/<id>/settings/<global-id>` redirects to the global twin, and the legacy flat `/settings/<global-id>` reaches it through the flat redirect first. The **store** moved with them — appearance and notifications now write `~/.xezar/ui-state.json` via `/api/v1/workspace/ui-state`, resources writes `/api/v1/workspace/config`, and the project sections stay on the per-repo `/api/v1/config` + `/api/v1/ui-state` (section 3). Migration 001 copied the pre-existing per-repo `appearance`/`notifications` values up (section 9), so the split is invisible on upgrade and a downgraded xezar still reads its local copies.
+  - **Single-project mode changes the store, not the route (#600, part 4).** With `capabilities.singleProjectRoot` true every `/settings/global/<section>` URL above still lands on the same section — no section moves between scopes and no redirect changes — but the store behind it is the project's own files: the workspace config becomes `<project>/.xezar/workspace.json`, workspace GUI state `<project>/.xezar/workspace-ui.json` and agent accounts `<project>/.xezar/agent-accounts.json` (`packages/xezar/src/state-layout.ts`), still reached through the same `/api/v1/workspace/*` and agent-account routes. Each section names that file on its pane and the global area's chip and index read "Workspace settings". `/settings/global/projects` is not routed in the mode, exactly as under `XEZ_SINGLE_PROJECT=1` (a not-found page, unchanged). Part 5 adds three copy changes, all in the mode only: the Resources pane has no "Configure per-project limits" link (its target is that unrouted page, and there is no second project to limit), the Agent accounts defaults card reads "Defaults for this project" instead of "Defaults for new projects", and the empty Tasks page adds one sentence ("This xezar keeps its settings and its working files in this folder, so everything a task needs travels with the repository."). In global mode nothing on this page changes. Breaking: moving a section between scopes, dropping a `/settings/global/<section>` URL other than `projects` in the mode, or rendering the file note or the new wording in global mode.
 
 Breaking: removing/renaming a route; making a previously optional body field required; removing a response field; changing an SSE event name (`run`, `run-event`, `run-deleted`, `todos`, `usage`, `ping` — or, on the workspace stream, `project-added`, `project-removed`, `checkout-progress`, `provider-status`) or the `seq` dedup contract; breaking the three-way alias parity (an unscoped `/api/v1/*` answer diverging in status, content type or body from its `/api/v1/p/<boot>`/`/api/v1/p/default` spellings); changing the scoped 404/409 project-resolution contract or the meaning of the `default` alias; stamping or widening the boot-project `/api/v1/events` stream; narrowing `/api/v1/health` CORS or its fields; changing `/new` query parameters (breaks saved bookmarklets); **dropping the legacy-flat → `/p/<boot>` page redirect** — or letting it lose the query/hash, which is the same break one step quieter; changing the meaning of the `default` page alias; moving a settings section without leaving its old URL redirecting to the new one. Required path: additive first; if removal is unavoidable, keep the old route/field answering for one minor release and note it in the CHANGELOG. `/new` deserves extra caution — it lives in users' browsers (saved bookmarklets), not in this repo.
 
@@ -251,6 +268,8 @@ the instructions emit the new one.
 ## 9. `~/.xezar/` per-user workspace files (`packages/xezar/src/workspace/`, `packages/xezar/src/paths.ts`)
 
 The multi-project workspace adds per-user state next to the per-repo files in section 3. Same contract, one extra twist: these files are shared by **every** xezar the user runs across all their repos, so an old CLI and a new one routinely read and write the *same file* — the `.passthrough()` rule cuts both ways (an **older writer must not lose keys a newer version wrote**, not just vice versa). All paths hang off `xezarHomeDir()`, so the `XEZ_HOME` override applies (tests and containers must pin it and never touch a real home).
+
+**Since 0.16.0 the three files below can live somewhere else** — in single-project mode they are `<project>/.xezar/workspace.json`, `<project>/.xezar/agent-accounts.json` and `<project>/.xezar/workspace-ui.json`, resolved through one resolver (`packages/xezar/src/state-layout.ts`). Every rule in this section — the key contracts, the `.passthrough()` discipline, the merge-write lock, the degradation behaviour — applies unchanged whichever layout is in force. What changes is only WHERE, and the twist above is what changes with it: in the project layout these files are NOT shared by every xezar the user runs, they are shared by everyone who clones the repository. See [Single-project ROOT mode](#single-project-root-mode--the-folder-owns-the-state-0160-600).
 
 - **`config.json`** (`packages/xezar/src/workspace/config.ts`) — workspace config + project registry: `schemaVersion` (the migration cursor), `browseRoot` (local-folder picker boundary), `projectsDir` (clone destination), optional `skillsAutoUpdate` (absence inherits `XEZ_SKILLS_AUTO_UPDATE`, then the default `true`), optional `modelsLocked` (only `true` makes native per-runner model settings authoritative in every project), optional `agentDefaults` (`runner`, `models` — the machine-wide agent and model a project with none of its own falls back to; absent means no opinion, which is what keeps them defaults rather than settings every repo inherits), optional `followups` and `agentEnvPassthrough` (the stored counterparts of `XEZ_FOLLOWUPS` / `XEZ_ENV_PASSTHROUGH`; absent inherits the env, and `agentEnvPassthrough: []` is a real "forward nothing"), optional `composerDefaults` (the New Task policy) and `disabledProviders` (host-wide provider preferences; absent = every provider enabled), `resources` (`maxParallel`, `maxMonitoringSessions`, `monitoringWakeIntervalMinutes`, `autoResumeOnUsageLimit`, `idleTimeoutMinutes`, `memoryLimitMb`, `worktreeRetentionDefault`), optional `cli` (`{output?, color?, logLevel?}` — the workspace-wide terminal presentation defaults of #467; absent inherits `XEZ_OUTPUT` / `XEZ_COLOR` / `XEZ_LOG_LEVEL`, then the built-in default, and a value the vocabulary does not know degrades to absent with one warning rather than failing the load), `projects[]` (`{id, root, name, addedAt, lastOpenedAt, source, maxParallel?, tags?, cli?, lastListen?}` — `tags?` are the grouping labels the global Tasks page reads; absent means untagged, and the writers delete the key rather than storing `[]`. `cli?.port` (#467) is the port a person CHOSE for this project, written only by `xezar projects port` and never by a start, by `--port` or by `XEZ_PORT`. `lastListen?` (`{port, host, observedAt}`, #467) is where this project's cockpit last really listened — a HINT, written once after `listen` succeeds, never for a `--port 0` start, carrying no pid, lease or socket path, and never to be rendered as "running" without a liveness check of its own). Every field is optional/defaulted — a bad value degrades per-key, a corrupt registry entry is dropped per-entry, never the whole array; `.passthrough()` at every object level so unknown keys survive round-trips through any version. The effective skills preference is computed at read time and unrelated writes must not materialize the optional key. Writes are read-modify-write merges with atomic tmp+rename, mode `0600` (dir `0700`), and since #467 the whole read→mutate→write runs under a bounded cross-process lock (`config.json.lock`, `packages/xezar/src/workspace/config-lock.ts`) that **every** writer inherits by going through `mergeWriteWorkspaceConfig` — `serve`, `xezar projects`, the settings routes, migrations and the MCP. The lock is fail-open by contract: a lock held past its bound, or a home it cannot be written into, degrades to exactly the pre-#467 behaviour with one warning and never blocks a start. Adding a second writer that does its own atomic write, or making the lock able to fail a start, is breaking. A corrupt file degrades to in-memory defaults with one warning and is **left on disk untouched** until the next successful merge-write replaces it. The registry is additive state that is *written, never required* — it rebuilds as projects are opened, so losing it is an inconvenience, not data loss, and no code path may ever demand its existence. **`resources.memoryLimitMb`'s ABSENT default changed (B1)**: it used to read as `null` (no guard) and now derives a host-sized ceiling — `floor(totalMiB * 0.6 / 2)` clamped to [1024, 8192] MiB (`deriveDefaultMemoryLimitMb`). This is deliberate and is the one direction § Zero config allows: the previous zero-config default was the UNSAFE one (the OS OOM-killer instead of the engine pausing one run). An explicit `"memoryLimitMb": null` on disk still means "no limit" and is never replaced, because zod's `.default()` fills `undefined` only. `resources.idleTimeoutMinutes` is additive with the same absent-vs-null discipline: absent reads as 15 (the value `IDLE_TIMEOUT_MS` hard-coded), explicit `null` means "never close an idle session". `resources` is the **enforced** copy since Phase 2: the workspace semaphore (`packages/xezar/src/workspace/semaphore.ts`) caches this slice in memory (refreshed at boot and by `PUT /api/v1/workspace/config`, never re-read per tick; a failed re-read keeps the last good snapshot, never degrading to unlimited) and applies `maxParallel` across every project's manager with the pre-rename issue 347 waiting-run exemption intact — the per-repo `maxParallel` stopped being consulted post-migration, while the per-repo `memoryLimitMb` is consulted again as of B2 and overrides the workspace ceiling for that repo's runs (sections 3 and 5).
 - **`agent-accounts.json`** (`packages/xezar/src/workspace/agent-accounts.ts`) — extra config dirs for a second login of the same agent CLI, plus which one each project uses: `version`, `accounts[]` (`{id, provider, configDir, label, addedAt}`), `selections` (repo root → `{claude?, codex?, opencode?, pi?}`), `defaults` (the machine-wide per-provider fallback a repo with no selection of its own uses). Same house rules as `config.json`: per-key `.catch` degradation, per-entry salvage for `accounts`, `.passthrough()` at every level, merge-write with atomic tmp+rename `0600`, and a corrupt file left on disk after one warning. **Its own file on purpose, and that IS the compatibility argument**: the twist named above — an older writer must not lose a newer version's keys — is a promise this repo cannot make on behalf of a build the user might switch to, and it fails outright whenever any version cannot parse `config.json` (that degrades to in-memory defaults, and the next merge-write persists them). A version that has never heard of accounts does not open this file, so it cannot drop them. Selections live here rather than on `projects[]` for the same reason, and so that deleting an account and scrubbing every reference to it is one atomic write. Accounts written into `config.json` by the branch that first shipped them are imported once and non-destructively — `config.json` keeps its keys, so an older xezar sharing the home reads exactly what it always read. Written, never required: delete the file and every project falls back to its discovered account.
@@ -419,6 +438,160 @@ an empty value, and an unset variable all preserve the default multi-project beh
 - **No deprecation alias**: no previously accepted input or default behavior changed. The explicit
   flag is the boundary authorizing the narrower protected surface, and removing it restores the
   protected default wholesale, so an old-spelling compatibility window would serve no purpose.
+- **Not superseded by single-project ROOT mode (#600, 0.16.0).** That mode is a separate SUPERSET
+  with its own flag, its own file layout and its own capability key, and this entry is unchanged by
+  it: `XEZ_SINGLE_PROJECT=1` still means one project, no project management and **global** state, it
+  is not deprecated, and nothing about it is scheduled for removal. The two are independent —
+  either, both or neither — and `capabilities.singleProject` keeps answering only this question.
+  See [Single-project ROOT mode](#single-project-root-mode--the-folder-owns-the-state-0160-600).
+  Since 0.16.0 the guards listed above fire for EITHER narrowing, and that widened their condition
+  only: with `XEZ_SINGLE_PROJECT=1` set, every refusal above keeps its exact status code, sentence,
+  exit code and audit reason, and `single-project-doors.test.ts` pins them byte for byte. The ROOT
+  mode refuses with its own sentence, at the same statuses and in the same shapes.
+
+## Single-project ROOT mode — the folder owns the state, 0.16.0 (#600)
+
+A folder can own its whole xezar setup. `xez --single-project` in a project folder creates
+`<project>/.xezar/{config.json, workspace.json, agent-accounts.json, workspace-ui.json}`, and from
+then on **the folder decides**: every `xez` started there is in the mode, flag or no flag, and the
+per-user `~/.xezar` is not opened for reading or writing. Working files stay in
+`<project>/.local/xezar`. The point is that a clone of the repository runs with the settings,
+accounts and limits the repository carries, with no host setup step.
+
+The feature ships **stable**, not experimental, so the names and the detection rule below are the
+contract from this release on.
+
+- **The default path is unchanged.** Without the flag and without `<project>/.xezar/workspace.json`,
+  every path, file, route and default is byte-identical to 0.15.0. The mode exists only in a folder
+  that was explicitly started with the flag; nothing on any existing machine moves, and there is no
+  migration and no conversion of projects already in the global registry.
+- **Locked file names.** `config.json` keeps its current meaning (the project config of section 3's
+  sibling `.xezar` kit). The workspace config is `workspace.json` — a different NAME because
+  `config.json` is taken, and `<project>/.xezar/workspace.json` is also the marker whose PRESENCE
+  decides the mode. GUI preferences are `workspace-ui.json` and deliberately **not**
+  `ui-state.json`: that name belongs to the per-repo runtime file in section 3, which
+  `packages/xezar/src/tracked-files.test.ts` requires to stay gitignored, and a committed file of
+  the same name could not coexist with that guard. `workspace.json.bak` — the registry snapshot
+  every successful merge-write has always refreshed beside `config.json` — follows its file into
+  the project directory; it is derived state, and `.gitignore` decides whether it travels.
+- **Locked detection rule.** A linked git worktree is never a single-project root, the flag
+  included, and neither is anything under `.local/xezar/worktrees/` or the user's home directory
+  itself. That is not tidiness: every xezar task worktree is a linked worktree, so a mode that
+  entered one would hand each running task its own copy of the state it is running against.
+  Detection reads `.git` (a directory answers "main checkout" with no subprocess) and asks git only
+  for the ambiguous `.git`-as-a-file case; a `.git` file git cannot answer for is treated as a
+  worktree, because refusing the mode merely keeps today's behaviour while entering it wrongly
+  splits a task's state.
+- **`XEZ_HOME` does not create this mode and cannot leave it.** `XEZ_HOME` still relocates the
+  GLOBAL state root and is unchanged. In the project layout it is not consulted for the three
+  workspace files: the folder outranks the environment, which is the whole design (an environment
+  variable can be lost by a plain `xez`, an IDE, a script or the MCP bridge; a file in the folder
+  cannot). `XEZ_SINGLE_PROJECT` is not consulted either — see the entry above.
+- **The team-skills cache moves with the folder; nothing else on the host does.** In the mode the
+  bare clones of team skills repos are written to `<project>/.local/xezar/cache/skills/` instead of
+  the shared `~/.cache/xez/skills/`, so a clone of the project fetches its own team skills rather
+  than inheriting whatever this machine happened to fetch last. The MCP bridge's socket directory
+  follows the same rule (`<project>/.local/xezar/ipc`, not `~/.xezar/ipc`), because `~/.xezar` is
+  not opened at all. **In the global layout both are byte-identical to 0.15.0**, `~/.cache/xez`
+  included — and `XEZ_HOME` still does not move that cache, exactly as before this mode existed.
+- **Agent logins, global skill libraries, `gh` and `git` do NOT move.** `CLAUDE_CONFIG_DIR`,
+  `CODEX_HOME`, `OPENCODE_CONFIG_DIR` and `PI_CODING_AGENT_DIR` resolve identically inside and
+  outside the mode, as do `~/.agents/skills`, `~/.claude/skills` and `~/Applications`. These are the
+  machine's, not the project's: relocating them would log a user out of a folder rather than isolate
+  it. The mode moves xezar's own state and xezar's own cache, and nothing else.
+- **A committed resource limit is applied exactly as written, inside the schema's own ranges.**
+  `resources.memoryLimitMb` (a whole number of MiB, **0 to 1 048 576**, or `null` for no limit) and
+  `resources.maxParallel` (a whole number, **1 to 16**) in `<project>/.xezar/workspace.json` are
+  honoured as they stand, including above what this host would have derived for itself: no clamp,
+  no refusal, and no warning-and-substitute. The host derivation (`floor(totalMiB * 0.6 / 2)`,
+  clamped to [1024, 8192] MiB) still fills an **absent** key and is a default, never a ceiling.
+  Identical behaviour on every machine that clones the project is the point of committing the file;
+  a host that cannot take the value fails visibly rather than quietly running a different
+  configuration than the one under review. The two ranges are the limit of that promise and are
+  unchanged from 0.15.0: a value outside them has always been replaced silently by the workspace
+  schema (`maxParallel` by the shipped 2, `memoryLimitMb` by the host derivation), which in a
+  committed file would be a number nothing runs, so `.xezar/checks/catalog-check.mjs` now refuses
+  one and names the range. The ranges are validation, identical on every machine — not host
+  reconciliation.
+- **The host-install records stay in `~/.xezar`.** `server.json`, `server-instances/`, the install
+  lock, the systemd unit and the nginx site describe the MACHINE, not the project, and are the one
+  part of the per-user home this mode still uses. `xezarHomeDir()` keeps answering the per-user home
+  for exactly that reason; a caller that wants "where does my state live" asks the resolver.
+- **Failing loudly, in one place only.** A `<project>/.xezar/workspace.json` that is not valid JSON,
+  or a state directory that cannot be written, **refuses the boot** with a named error and exit 1.
+  This is the deliberate exception to the zero-config "degrade, never fail the boot" rule, and it is
+  narrow on purpose: that file is what makes the folder a single-project root, so degrading would
+  mean silently running the project off the user's global setup. An EMPTY file is the user's own
+  state, not corruption. The other three files keep their existing degrade-with-one-warning
+  contracts unchanged.
+- **Downgrade to 0.15.0 is a real, silent behaviour split, and it is named rather than prevented.**
+  A 0.15.0 binary started in a single-project folder does not know the mode: it reads `~/.xezar` and
+  writes there, so **0.15.0 in a single-project folder ignores the project state and uses your
+  global setup.** It cannot be prevented — an old binary cannot be taught a new rule — and nothing
+  in the project directory is damaged by it; the committed files are simply not read. Upgrading back
+  to 0.16.0 resumes the mode with no repair step.
+- **Upgrade from 0.15.0 state: nothing happens.** A 0.15.0 `~/.xezar` is untouched. Opting a folder
+  in never writes to the per-user home, and no project row in `~/.xezar/config.json` is created,
+  edited or deleted by anything in the mode. The one-time import below READS the home on an explicit
+  yes; it never writes there either.
+- **The one-time import is the one deliberate exception to "never opened" (BR-2, #600 part 5).** The
+  first `--single-project` run in a folder with no `<project>/.xezar/workspace.json` asks once, in
+  the terminal, whether to copy the global setup (`~/.xezar`, or `XEZ_HOME`) in, `[y/N]`. Only then,
+  and only after an explicit yes, is the global home read — before the project files exist, and
+  READ-only: nothing is ever written to it. `config.json` becomes `workspace.json` without its
+  `projects` array, `agent-accounts.json` keeps only this folder's own entry in `selections` (other
+  folders' choices are dropped), and `ui-state.json` becomes `workspace-ui.json`. An existing project
+  file is never overwritten, an unreadable global file is skipped and named, and `workspace.json` is
+  written last, so an interrupted import still counts as a first run. Nothing is written through a
+  symbolic link: a `<project>/.xezar` that is a link, or resolves outside the project, refuses the
+  boot (and the import refuses every file), and a state file that is itself a link is refused and
+  named in the boot line, never written through or replaced (#612). A decline — including Ctrl-C or
+  Ctrl-D at the prompt — imports nothing; with no terminal (stdin or stdout not a TTY) nothing is
+  imported and one line says so; `xezar mcp` never asks, because its stdio is the protocol. A folder that already holds `workspace.json` — a
+  second run, or a clone — is never asked, and nothing is synchronised in either direction
+  afterwards. The exception is held to one call site: `packages/xezar/src/state-path-scan.test.ts`
+  fails any direct call of `globalStateLayout()` or `globalStateRoot()` outside
+  `packages/xezar/src/state-layout.ts`, and allowlists this import (`workspace/import-global.ts`) by
+  name, with its reason. Breaking: reading the home without a yes or after the first run, writing to
+  it, copying the registry or another folder's selection, overwriting a project file, writing outside
+  the project (including through a symbolic link), or asking where nobody can answer.
+- **A committed agent account that this machine does not have is refused, never substituted (#600
+  part 5).** In the mode an account in `<project>/.xezar/agent-accounts.json` whose `configDir` does
+  not exist on this machine reads, in Settings → Agent accounts, "Unavailable — this account's folder
+  does not exist on this machine: `<configDir>`. Connect signs in and creates it, or pick another
+  account for the task." A task that asks for it fails at that step before the agent starts, with
+  `Agent account “<label>” is unavailable — ` followed by the same sentence. Both strings are built
+  once, by `unavailableAgentAccountReason` / `unavailableAgentAccountRefusal` in
+  `packages/contract/src/agent-profiles.ts`, so a person who reads the refusal recognises the row it
+  came from. The boot never fails because of it. Global mode is unchanged: a just-added account whose
+  folder does not exist yet still reads "folder not created yet; Connect will make it" and is not
+  refused. Breaking: the two strings diverging, a silent fallback to the default account, or
+  applying the refusal in global mode.
+- **A registry of exactly one project, refused in all three doors (part 3).** In the mode the
+  registry IS the folder: `GET /api/v1/projects`, `xezar projects list` and the cockpit answer one
+  row, taken from `<project>/.xezar/workspace.json` when it holds one for this folder and DERIVED
+  from the folder when it does not, so the answer is never "no projects". A `workspace.json` a clone
+  carried holding rows for other machines' paths is read past, never rewritten — this mode migrates
+  and converts nothing, in either direction. Adding, cloning, editing and removing a project, and
+  browsing host folders, are refused in every door xezar has: `409 {error}` from the five HTTP routes
+  of section 2, exit code 1 from `xezar projects add/remove/tag/port`, and the existing boundary
+  refusal from the MCP `project_config` tool. Each refusal is settled in the project's audit trail —
+  `http_409` at the cockpit door, `single_project_root` at the CLI door (the flag keeps its
+  `single_project_mode`), and the unchanged `project_registry` / `host_filesystem` boundary reason at
+  the MCP door. **The MCP narrows nothing**: a project leader has never been able to manage the
+  registry or browse the host, in any mode; what the mode adds is a sentence telling it why there is
+  nothing to manage. A refusal in one door and a silent no-op in another is a defect, and the three
+  doors read ONE predicate (`singleProjectRegistry`) so they cannot drift apart.
+
+Breaking: changing any of the four file names or the marker; making the mode reachable from an
+environment variable; letting a linked worktree enter it; moving the host-install records into the
+project; moving an agent home, a global skill library or the global `~/.cache/xez` skills cache;
+clamping a committed resource limit to the host, or narrowing the ranges it is accepted in;
+widening the boot refusal beyond `workspace.json`; making `capabilities.singleProjectRoot`
+required on the wire; changing the status code, exit code or sentence of an `XEZ_SINGLE_PROJECT=1`
+refusal; answering more than one project row in the mode; letting any door apply a registry effect
+the others refuse; or letting a refusal go unrecorded by the audit door. Required path: the
+deprecation path at the top of this document.
 
 ## GitHub automations — opt-in gating (pre-rename issue 801), 2026-08-07
 
@@ -662,6 +835,26 @@ reach was an isolation defect, so the restriction is recorded here rather than s
 - **No opt-out knob**: linked-worktree containment is the safe zero-config default. The runner
   supplies the task root to its bundled pi extension, while the `quick-task` prompt carries the
   same instruction as the maintained workflow kit.
+
+## A run xezar itself terminates for the memory limit ends `failed`, not `done` (#603) — deliberate, 0.16.0
+
+`enforceMemoryLimit` closes a breaching run's session with `session.end()`, and a CLI that does not
+exit on its own is then signalled by xezar and settles on the same "our own signal coming back"
+teardown path a legitimate `XEZ:DONE` close does (#703) — so `session.result` resolved cleanly
+either way, and the step-completion handler could not tell "the agent finished" from "xezar cut it
+off". The run, and its last step, settled `done` with no deliverable and no error.
+
+- **Broken**: a run that reaches the memory ceiling and is terminated by xezar (fresh run or a
+  Continue/restart-recovery continuation) now ends `status: 'failed'` with an `error` naming the
+  memory limit, where it previously — incorrectly — ended `status: 'done'`. Any API, MCP or cockpit
+  consumer that read a memory-limit termination as a successful `done` run must instead expect
+  `failed`. `failed` is one of the statuses `continueRun`/`POST /runs/:id/continue` already accepts,
+  so the leader's `Continue` still resumes the run — this was already true for `failed` and is not
+  new for that path.
+- **Not broken**: the memory limit itself, when the guard fires, and the graceful-close-then-forced-
+  signal teardown of #703 are unchanged. Every other terminal path (`XEZ:DONE`, cancel, an ordinary
+  agent error, a real crash) settles exactly as before. No event or workflow schema changes; no new
+  `RunStatus` value is added.
 
 ## When in doubt
 

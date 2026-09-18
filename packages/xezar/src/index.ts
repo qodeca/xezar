@@ -56,14 +56,23 @@ import { entry as activityEntry, startTerminalActivity, type TerminalActivity } 
 import { recoverAndReport } from './terminal/recovery.ts';
 import { formatDuration, formatTokens, glyphsFor } from './terminal/format.ts';
 import { runMigrations } from './workspace/migrations.ts';
-import { registerProject, shouldRegisterProject } from './workspace/projects.ts';
+import { registerProject, shouldRegisterProject, singleProjectRegistry } from './workspace/projects.ts';
 import { runProjectsCommand } from './workspace/projects-cli.ts';
 import { cliAudit, PROJECTS_SUBCOMMANDS, projectResource, type CliAudit } from './cli-audit.ts';
 import { WorkspaceSemaphore } from './workspace/semaphore.ts';
 import { discoverProjectCheck, fixAndVerifyWorkflow, PROJECT_CONVENTIONS_SKILL } from './init-kit.ts';
 import { resolveCapabilities } from './server/capabilities.ts';
+import {
+  assertProjectStateUsable,
+  resolveStateLayout,
+  setActiveStateLayout,
+  SingleProjectStateError,
+  stateLayoutBootLine,
+} from './state-layout.ts';
+import { createProjectStateFiles } from './workspace/config.ts';
+import { askInTerminal, firstRunImportLine, runFirstRunImport } from './workspace/import-global.ts';
 
-const HELP = `xezar — local cockpit for AI agent tasks in any project folder
+const HELP =`xezar — local cockpit for AI agent tasks in any project folder
 
 Usage:
   xezar                     start the cockpit (server + GUI) for the current repo
@@ -95,6 +104,13 @@ Options:
       --workflow <name>       workflow for \`run\` (default: quick-task)
       --model <model>         model override for \`run\`
       --no-open               don't open the browser
+      --single-project        this folder owns its xezar setup: settings, accounts
+                              and the registry live in .xezar/, working files in
+                              .local/xezar/, and ~/.xezar is not opened. Needed
+                              only the first time — afterwards the folder decides.
+                              That first run asks once, in a terminal, whether to
+                              copy your global setup in (never the project list).
+                              A linked git worktree is never a project root.
       --platform <id>         server-install target (ubuntu-vps | macosx-ngrok)
       --domain <host>         server-install (ubuntu-vps): host a SECOND, independent
                               cockpit for this domain (own nginx site + service + port).
@@ -141,6 +157,13 @@ async function main(): Promise<void> {
       yes: { type: 'boolean', default: false },
       reconfigure: { type: 'string' },
       reinstall: { type: 'boolean', default: false },
+      // Registered so `parseArgs` accepts and documents it; the VALUE is read
+      // from argv by `resolveStateLayout`, which owns the detection rule and
+      // stays a pure function of `(cwd, argv, env)` so it can be tested
+      // without a process. One source of truth for what the flag means, and
+      // this entry is only what keeps `xez --single-project` from being an
+      // unknown option.
+      'single-project': { type: 'boolean', default: false },
       help: { type: 'boolean', short: 'h', default: false },
       version: { type: 'boolean', short: 'v', default: false },
     },
@@ -191,6 +214,47 @@ async function main(): Promise<void> {
   const repoInfo = await getRepoInfo(cwd);
   const repoRoot = repoInfo?.root ?? cwd;
 
+  // WHERE this process keeps its state is decided here and nowhere else (#600
+  // DC-1). This is the first point in the boot that knows which folder xezar
+  // was asked to operate on, and it is deliberately ahead of every command:
+  // `initWorkspace`, the registry read, the settings routes, the migrations and
+  // the MCP bridge all resolve their paths through the layout installed below,
+  // so none of them can read one layout and write another.
+  //
+  // The project ROOT decides, not the cwd, so a `xez` started in a
+  // subdirectory of a single-project repository is in the mode too — which is
+  // what "the folder you are in is your project root folder" means in a repo.
+  const stateLayout = resolveStateLayout(repoRoot, process.argv.slice(2), process.env);
+  try {
+    // Q1: a project root whose `workspace.json` is corrupt or unwritable
+    // refuses the boot with a named error, because degrading would silently run
+    // this project off the user's global setup. The other three state files
+    // keep their existing degrade-with-one-warning contracts.
+    assertProjectStateUsable(stateLayout);
+    setActiveStateLayout(stateLayout);
+  } catch (err) {
+    if (!(err instanceof SingleProjectStateError)) throw err;
+    console.error(`error  ${err.message}`);
+    process.exitCode = 1;
+    return;
+  }
+  // The one boot line naming the mode and the state folder (FR-9.1). Not for
+  // `mcp`: that command's stdout carries JSON-RPC frames for the agent, and a
+  // human-readable line there is a protocol error, not a banner.
+  const modeLine = stateLayoutBootLine(stateLayout);
+  if (modeLine !== null && command !== 'mcp') console.log(modeLine);
+  if (stateLayout.mode === 'project') {
+    // The first-run ask (#600 FR-4.1, SP-5.1/5.2): a folder with no state yet
+    // is asked, once, in the terminal, whether to copy the global setup in —
+    // BEFORE the four files exist, so a decline writes nothing and a folder
+    // that already holds `workspace.json` is never asked. `mcp` has nobody to
+    // ask (its stdio is the protocol), so it imports nothing and says nothing.
+    const outcome = await runFirstRunImport(stateLayout, command === 'mcp' ? async () => null : askInTerminal);
+    const importLine = command === 'mcp' ? null : firstRunImportLine(outcome, stateLayout);
+    if (importLine !== null) console.log(importLine);
+    createProjectStateFiles(stateLayout);
+  }
+
   switch (command) {
     case 'serve':
       await serveCommand(repoRoot, invocation, !values['no-open'], values['bind-host'], cliAudit('serve', repoRoot));
@@ -213,12 +277,16 @@ async function main(): Promise<void> {
     }
     case 'projects':
       // Registry-only (no server, no HTTP) — see workspace/projects-cli.ts.
-      // In single-project mode a listing is a launch-context read: register
-      // the boot repo through the normal self-healing path and pin the output
-      // to that explicit identity. Mutations are left to their own guards.
+      // With the registry narrowed to one project a listing is a launch-context
+      // read: register the boot repo through the normal self-healing path and
+      // pin the output to that explicit identity. Mutations are left to their
+      // own guards. EITHER narrowing qualifies (#600 SP-3.1) — the folder that
+      // owns its xezar state is exactly as much "the one project" as
+      // `XEZ_SINGLE_PROJECT=1` is, and registering it here is what puts its row
+      // in `<project>/.xezar/workspace.json` now that `projects add` is refused.
       const projectArgs = positionals.slice(1);
       const isList = projectArgs.length === 0 || projectArgs[0] === 'list';
-      const bootProjectId = process.env.XEZ_SINGLE_PROJECT === '1' && isList
+      const bootProjectId = singleProjectRegistry() && isList
         ? await initWorkspace(repoRoot)
         : undefined;
       // One audit record per VALID subcommand (#306 part 2); an unknown word gets none.

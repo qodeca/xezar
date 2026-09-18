@@ -139,6 +139,57 @@ test('reuses an instance whose sources were last touched inside the boot second'
   launchedPids.delete(first.app.pid);
 });
 
+/**
+ * #600 SP-5.6 — the third reuse dimension. A repository root holding `.xezar/workspace.json` boots
+ * in single-project mode (the folder decides), so its state lives in the project and not in the
+ * pinned `XEZ_HOME`. An instance booted in one layout must never be reused for the other: nothing
+ * else in the reuse check notices, because `.xezar/` is not a build input and the pins are equal.
+ */
+test('never reuses an instance booted in the other state layout (single-project mode)', { timeout: 60_000 }, async () => {
+  const fixture = makeFixture(hasSetsid);
+  const env = { ...process.env, PATH: fixture.path, TEST_ENV_CACHE_TTL_SECONDS: '600' };
+  const up = join(fixture.root, 'scripts/test-env-up.sh');
+  const down = join(fixture.root, 'scripts/test-env-down.sh');
+  const descriptorPath = join(fixture.root, '.local/qa/test-env.json');
+  const layoutOf = (): unknown =>
+    (JSON.parse(readFileSync(descriptorPath, 'utf8')) as { environment: { singleProjectRoot?: unknown } })
+      .environment.singleProjectRoot;
+
+  const cold = spawnSync('/bin/sh', [up], { cwd: tmpdir(), encoding: 'utf8', env, timeout: 20_000 });
+  assert.equal(cold.status, 0, cold.stderr);
+  const globalBoot = descriptor(fixture.root);
+  launchedPids.add(globalBoot.app.pid);
+  assert.equal(layoutOf(), false);
+
+  // The same checkout now owns its state. The pins, the build and the TTL are all unchanged, so
+  // only this dimension can tell the running global-layout instance is the wrong one.
+  mkdirSync(join(fixture.root, '.xezar'), { recursive: true });
+  writeFileSync(join(fixture.root, '.xezar/workspace.json'), '{}\n');
+  const intoMode = spawnSync('/bin/sh', [up], { encoding: 'utf8', env, timeout: 20_000 });
+  assert.equal(intoMode.status, 0, intoMode.stderr);
+  assert.match(
+    intoMode.stdout,
+    /TEST_ENV_REUSED=0/,
+    `a global-layout instance was reused for a single-project root.\n--- stderr ---\n${intoMode.stderr}`,
+  );
+  const modeBoot = descriptor(fixture.root);
+  launchedPids.add(modeBoot.app.pid);
+  assert.notEqual(modeBoot.app.pid, globalBoot.app.pid);
+  assert.equal(layoutOf(), true);
+
+  // And back: an instance booted in the mode is never reused for a global-mode spec.
+  rmSync(join(fixture.root, '.xezar'), { recursive: true, force: true });
+  const outOfMode = spawnSync('/bin/sh', [up], { encoding: 'utf8', env, timeout: 20_000 });
+  assert.equal(outOfMode.status, 0, outOfMode.stderr);
+  assert.match(outOfMode.stdout, /TEST_ENV_REUSED=0/);
+  const backToGlobal = descriptor(fixture.root);
+  launchedPids.add(backToGlobal.app.pid);
+  assert.equal(layoutOf(), false);
+
+  spawnSync('/bin/sh', [down], { encoding: 'utf8', env, timeout: 20_000 });
+  launchedPids.delete(backToGlobal.app.pid);
+});
+
 test('launcher strips inherited task-control variables before starting the shared server', { timeout: 60_000 }, async () => {
   const fixture = makeFixture(hasSetsid);
   const env = {

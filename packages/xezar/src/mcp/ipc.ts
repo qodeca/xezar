@@ -2,14 +2,14 @@ import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { mcpProjectOccupiedErrorSchema, mcpSessionExpiredErrorSchema } from '@qodeca/xezar-contract';
 import { z } from 'zod';
-import { xezarHomeDir } from '../paths.ts';
+import { activeStateLayout } from '../state-layout.ts';
 
 /**
  * The IPC leg between `xez mcp` (the bridge) and the running xezar service — D-01
  * (docs/features/mcp-server/mcp-d01-transport-decision.md) § 1.2–1.5.
  *
  * One Unix domain socket per registered project, owned by the service, at
- * `<xezarHomeDir()>/ipc/<projectId>.sock` (dir 0700, socket 0600). Frames are
+ * `<mcpSocketDir()>/<projectId>.sock` (dir 0700, socket 0600). Frames are
  * newline-delimited JSON, the same framing as the stdio leg. The socket IS the
  * project binding (§ 1.5): no frame carries a project field, and the service answers
  * only for the project it opened the socket for.
@@ -101,15 +101,29 @@ export function mcpSocketLocation(
   if (Buffer.byteLength(primary) <= limit) return { kind: 'socket', path: primary };
   const hashed = join(dir, `${createHash('sha256').update(project.root).digest('hex').slice(0, 12)}.sock`);
   if (Buffer.byteLength(hashed) <= limit) return { kind: 'socket', path: hashed };
+  // In single-project mode the socket directory is inside the project, so
+  // "point XEZ_HOME somewhere shorter" is advice the user cannot act on — the
+  // folder they started xezar in is what decides. Name the real remedy instead.
+  const remedy = activeStateLayout(env).mode === 'project'
+    ? 'move the project to a shorter path'
+    : 'point XEZ_HOME at a shorter directory';
   return {
     kind: 'unavailable',
-    reason: `the xezar home path is too long for a local socket on this system (limit ${limit} bytes) — point XEZ_HOME at a shorter directory`,
+    reason: `the xezar socket directory ${dir} is too long for a local socket on this system (limit ${limit} bytes) — ${remedy}`,
   };
 }
 
-/** `<xezarHomeDir()>/ipc` — the only directory the service creates for MCP. */
+/**
+ * The only directory the service creates for MCP: `~/.xezar/ipc` in the global
+ * layout, `<project>/.local/xezar/ipc` in single-project mode (#600).
+ *
+ * It follows the resolved layout rather than the per-user home because BR-2
+ * forbids opening `~/.xezar` at all in the mode, and it lands under
+ * `.local/xezar` rather than `<project>/.xezar` because a live socket is a
+ * working file, never committed state.
+ */
 export function mcpSocketDir(env: NodeJS.ProcessEnv = process.env): string {
-  return join(xezarHomeDir(env), 'ipc');
+  return activeStateLayout(env).ipcDir;
 }
 
 // ---- frames --------------------------------------------------------------------

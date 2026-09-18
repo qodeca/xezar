@@ -48,7 +48,8 @@
     "typecheck:web": "npm run typecheck -w @qodeca/xezar-web",
     "typecheck:contract": "npm run typecheck -w @qodeca/xezar-contract",
     "pretest:server-mode": "npm run build:server",
-    "test:server-mode": "npm run test:server-mode -w @qodeca/xezar"
+    "test:server-mode": "npm run test:server-mode -w @qodeca/xezar",
+    "check:links": "node scripts/check-links.mjs"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^4.1.10",

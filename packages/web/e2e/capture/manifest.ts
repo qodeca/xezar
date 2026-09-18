@@ -21,6 +21,20 @@ export interface ShotState {
   /** What the picture shows, in words — copied into docs/screenshots/0.15.0/README.md. */
   shows: string
   variants: ReadonlyArray<readonly [Theme, Width]>
+  /**
+   * Set when a state is PLANNED for a release whose pictures have not been shot yet (#453 B8).
+   *
+   * The two readers of this file want different answers and used to get the same one. The unit
+   * test asks "is every listed picture on disk, a PNG and inside its budget" — a contract about
+   * what SHIPPED — while the capture harness asks "what should I shoot next time". Adding a
+   * planned state to one list answered both questions with "missing file", so the debt a new
+   * capture is supposed to show could not be written down without turning the fast gate red.
+   *
+   * A state carrying `plannedFor` is therefore outside `allShotFiles()` (the on-disk contract)
+   * and inside `allPlannedShotFiles()` (what to shoot). The docs wave that re-captures the set
+   * moves `SCREENSHOT_DIR` to the new version and deletes these markers in the same commit.
+   */
+  plannedFor?: '0.16.0'
 }
 
 const both1280 = [['dark', 1280], ['light', 1280]] as const
@@ -47,6 +61,17 @@ export const SHOT_STATES: readonly ShotState[] = [
   { name: 'settings-resources', shows: 'Global Settings → Resources: parallel tasks, monitoring sessions and limits', variants: dark1280 },
   { name: 'settings-mcp-connection', shows: 'Project Settings → MCP connection with the leader status', variants: dark1280 },
   { name: 'command-palette', shows: 'The ⌘K command palette open', variants: dark1280 },
+  // Planned for 0.16.0 (#453 B8). The registered-projects table is the one documented surface the
+  // 0.15.0 set never pictured, and it is also where G-30 lives: below `md` it scrolls sideways
+  // inside its box instead of reflowing as cards, squeezing the Project column to 60 px. The
+  // phone variants are the point of the row — a debt nobody has a picture of keeps being read as
+  // a small one, and whoever fixes G-30 needs a before shot to compare against.
+  {
+    name: 'settings-projects',
+    shows: 'Global Settings → Projects: the registered-projects table, and how it folds on a phone',
+    variants: [['dark', 1280], ['light', 1280], ['dark', 375]],
+    plannedFor: '0.16.0',
+  },
 ]
 
 /** Where the PNGs and the GIF live, relative to the repository root. */
@@ -67,8 +92,18 @@ export function shotFileName(name: string, theme: Theme, width: Width): string {
   return `${name}-${theme}-${width}.png`
 }
 
-export function allShotFiles(): string[] {
-  return SHOT_STATES.flatMap((state) =>
+function filesOf(states: readonly ShotState[]): string[] {
+  return states.flatMap((state) =>
     state.variants.map(([theme, width]) => shotFileName(state.name, theme, width)),
   )
+}
+
+/** The pictures that must be on disk in `SCREENSHOT_DIR` — the shipped contract. */
+export function allShotFiles(): string[] {
+  return filesOf(SHOT_STATES.filter((state) => state.plannedFor === undefined))
+}
+
+/** Everything a re-capture should shoot, planned states included. */
+export function allPlannedShotFiles(): string[] {
+  return filesOf(SHOT_STATES)
 }

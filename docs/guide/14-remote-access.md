@@ -16,6 +16,8 @@ Use `--bind-host` only when the proxy needs another reachable interface, and res
 
 In hosted mode, the API refuses local-machine operations with HTTP `409`, including opening a task in a terminal or editor, editing agent configuration files, changing agent accounts, and attaching a local leader session. Home-directory agent configuration files are not served. For these operations, work from the machine that owns the checkout; a remote browser cannot open your laptop's editor through the server.
 
+The same applies when the hosted cockpit serves a project in [single-project mode](09-projects.md#to-keep-a-projects-xezar-setup-inside-the-project--single-project-mode). Agent accounts are stored in the project's `.xezar/agent-accounts.json` there, but changing agent accounts and editing agent configuration files are still refused with HTTP `409`. Change them on the machine that owns the checkout, or commit the project's `.xezar/` files from there. The host-install records (`server.json`, `server-instances/`, the systemd unit and the nginx site) stay in the service user's `~/.xezar`, because they describe the machine rather than the project.
+
 The remote cockpit uses authenticated HTTP and server-sent events (SSE) for updates. It does not open the browser WebSocket subscription connection in remote mode: that transport cannot explicitly carry the reverse proxy's credentials.
 
 ## To protect the public endpoint
@@ -72,6 +74,7 @@ For a named Ubuntu instance, include its `--domain`. Uninstall reverses the inst
 - `XEZ_REMOTE=1`: hosted-mode restrictions even with a loopback bind.
 - `--platform`, `--external-proxy`, `--domain`, `--reconfigure`: installer choices; see the [installation overview](../server-install/README.md).
 - `XEZ_HOME`: workspace-state location for the service user. See the [environment contract](../../.env.example).
+- `--single-project`: the served project keeps its settings in its own `.xezar/`; installation records stay in `~/.xezar`.
 
 Next: [Project kit](15-project-kit.md)
 

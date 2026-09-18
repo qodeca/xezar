@@ -242,11 +242,10 @@ describe('guide 02 — tasks and runs', () => {
     //
     // The sticky run header's own "Open in…" trigger can transiently sit at Accept's click
     // point right as this panel first mounts — the header's height is still settling (a
-    // ResizeObserver tick), so waiting for the two elements to stop overlapping (round 2 of
-    // #590's review) is what makes this click land on Accept every time rather than only most
-    // of the time.
-    await browser.waitForUncoveredRole('button', 'Accept', 'button', 'Open in…')
-    browser.clickRole('button', 'Accept')
+    // ResizeObserver tick right after the review panel mounts). `clickRoleWhenStable` (round 3
+    // of #590's review, replacing round 2's narrower `waitForUncoveredRole`) waits for Accept's
+    // own box to stop moving before clicking, rather than naming a specific coverer in advance.
+    await browser.clickRoleWhenStable('button', 'Accept')
     await waitForStatus(baseUrl, runId, ['done'])
   }, 30_000)
 
@@ -265,7 +264,13 @@ describe('guide 02 — tasks and runs', () => {
     // suite, the same real-boundary reason the Draft PR button above is asserted present and
     // never clicked, so "Copy worktree path" is the one item here that is both real and safe:
     // it only writes to the clipboard.
-    browser.clickRole('button', 'Open in…')
+    //
+    // The Archive→Unarchive→Archive round trip above mounts/unmounts the header's own Pin
+    // button three times in quick succession, which shifts this trigger horizontally in its
+    // right-anchored (`ml-auto`) row each time (a synchronous, single-frame DOM/layout jump,
+    // not a CSS transition) — `clickRoleWhenStable` waits for its box to stop moving first
+    // (round 3 of #590's review; this call had no guard at all through round 2).
+    await browser.clickRoleWhenStable('button', 'Open in…')
     await browser.waitForRole('menuitem', 'Terminal (resume session)')
     expect(browser.hasRole('menuitem', 'Copy worktree path')).toBe(true)
     browser.clickRole('menuitem', 'Copy worktree path')

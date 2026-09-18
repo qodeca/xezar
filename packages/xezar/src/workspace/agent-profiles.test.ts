@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { agentAccountsPath } from '../paths.ts';
 import { PROVIDER_IDS } from '../core/provider-auth.ts';
 import {
+  AgentAccountUnavailableError,
+  assertAgentAccountAvailable,
   accountHomePatch,
   defaultAgentProfile,
   listAgentProfiles,
@@ -16,6 +18,8 @@ import {
   selectProfile,
 } from './agent-profiles.ts';
 import { DEFAULT_AGENT_ACCOUNT_ID, loadAgentAccounts } from './agent-accounts.ts';
+import { unavailableAgentAccountReason, unavailableAgentAccountRefusal } from '@qodeca/xezar-contract';
+import { projectStateLayout, setActiveStateLayout } from '../state-layout.ts';
 
 /**
  * Resolution rules from spec 2026-07-29-agent-profiles. The pair worth reading closely is the two
@@ -306,6 +310,50 @@ describe('agent profile resolution', () => {
       const store = await loadAgentAccounts();
       expect(selectProfile(store, { provider: 'claude', repoRoot: '/tmp/projects/a', env }).isDefault)
         .toBe(true);
+    });
+  });
+
+  // #600 FR-6.3 / SP-5.5 — a committed account whose folder this machine lacks. The Settings row
+  // (`accounts-section.test.tsx`) and this refusal are pinned to the SAME contract helpers, so the
+  // two strings cannot drift: the refusal is the row's sentence with the account's name in front.
+  describe('assertAgentAccountAvailable (single-project mode)', () => {
+    const missing = {
+      id: 'work',
+      provider: 'claude' as const,
+      label: 'Work account',
+      configDir: '~/.claude-work',
+      path: '/nonexistent/xez-sp-5-5/.claude-work',
+      isDefault: false,
+    };
+
+    afterEach(() => setActiveStateLayout(null));
+
+    it('refuses a task on a committed account whose folder does not exist, with the row\'s own sentence', async () => {
+      setActiveStateLayout(projectStateLayout(home));
+      const refusal = assertAgentAccountAvailable(missing);
+      await expect(refusal).rejects.toBeInstanceOf(AgentAccountUnavailableError);
+      await expect(refusal).rejects.toThrow(
+        'Agent account “Work account” is unavailable — this account\'s folder does not exist on this machine: ' +
+          '~/.claude-work. Connect signs in and creates it, or pick another account for the task.',
+      );
+      const message = await refusal.then(() => '', (err: Error) => err.message);
+      expect(message).toBe(unavailableAgentAccountRefusal('Work account', '~/.claude-work'));
+      expect(message.endsWith(unavailableAgentAccountReason('~/.claude-work'))).toBe(true);
+    });
+
+    it('lets an account whose folder exists run', async () => {
+      setActiveStateLayout(projectStateLayout(home));
+      await expect(assertAgentAccountAvailable({ ...missing, path: home })).resolves.toBeUndefined();
+    });
+
+    it('never refuses the discovered default account — it IS what this machine has', async () => {
+      setActiveStateLayout(projectStateLayout(home));
+      await expect(assertAgentAccountAvailable({ ...missing, isDefault: true })).resolves.toBeUndefined();
+    });
+
+    it('keeps global mode\'s answer: a just-added account whose folder Connect has not made yet still runs', async () => {
+      setActiveStateLayout(null);
+      await expect(assertAgentAccountAvailable(missing)).resolves.toBeUndefined();
     });
   });
 });

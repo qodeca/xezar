@@ -17,10 +17,32 @@ type FindLocator = 'role' | 'text' | 'label' | 'placeholder' | 'alt' | 'title'
 
 type Box = { x: number; y: number; width: number; height: number }
 
-/** Whether two viewport-relative boxes intersect — `get box`'s own coordinate space, so this
- *  reads the same numbers `boxOfRole` returns with no unit conversion. */
-function boxesOverlap(a: Box, b: Box): boolean {
-  return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y
+/** Whether two live boxes read exactly equal — `clickRoleWhenStable`'s own "Stable" check,
+ *  Playwright's actionability model applied to agent-browser's `get box` numbers verbatim. */
+function boxesEqual(a: Box, b: Box): boolean {
+  return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height
+}
+
+/**
+ * Whether an error thrown by `run()` is agent-browser's own click-interception failure (the
+ * click point resolved to a different element than the one requested), as opposed to any other
+ * failure `find … click` can raise. `run()`'s own thrown message embeds
+ * `JSON.stringify(parsed.error)` verbatim, and the one real occurrence of this failure captured
+ * against the installed CLI so far (PR #590's own round-2 scoped re-check, reproduced against a
+ * covered "Open in…" trigger) read:
+ *   Element '@e54' is covered by <button.inline-flex.shrink-0 inside div#root> at its click point
+ * — i.e. the human-readable "covered by" phrase agent-browser's own error text uses, not a
+ * separate structured field naming the coverer. This round's own RED attempt (6 foreground runs,
+ * temporarily reverting the `clickRoleWhenStable` guard on that same click) did not reproduce the
+ * race live to re-confirm the exact JSON shape — the failure is load-dependent (previously 2 of 3
+ * fresh-instance runs, this round 0 of 6), consistent with the research's cause 2 (a one-shot
+ * hit-test against an accessibility-tree snapshot that can lag by a fraction of a second under
+ * contention). The check below matches on that phrase rather than a specific JSON key for exactly
+ * that reason: nothing here asserts a field name that has not actually been observed on a live
+ * failure.
+ */
+function isCoveredClickError(cause: unknown): boolean {
+  return cause instanceof Error && /covered by/i.test(cause.message)
 }
 
 export class GuideBrowser {
@@ -78,7 +100,7 @@ export class GuideBrowser {
    *  the `md` breakpoint, the same reason every other fixture spec pins one (`AgentBrowser`'s
    *  own `setViewport`, reused verbatim here since it carries no selector). Added in browser-test
    *  pull request 2 (#549) because guide 02 is the first guide file to reach those controls;
-   *  PR 1 (#579) did not need it. If both land, keep whichever copy of this file has this method. */
+   *  PR 1 (#579) did not need it. */
   setViewport(width: number, height: number): void {
     this.run(['set', 'viewport', String(width), String(height)])
   }
@@ -134,6 +156,18 @@ export class GuideBrowser {
     }
   }
 
+  /** Whether a form control with this placeholder text exists — the input-level counterpart to
+   *  `hasRole`/`hasText`, for a control (such as the command palette's search box) whose only
+   *  accessible name comes from its `placeholder`, not a role name, a label, or rendered text. */
+  hasPlaceholder(text: string, opts: { exact?: boolean } = {}): boolean {
+    try {
+      this.find('placeholder', text, 'text', { exact: opts.exact })
+      return true
+    } catch {
+      return false
+    }
+  }
+
   /**
    * The current VALUE of a form control addressed by role and accessible name — a `<select>` or
    * `<input>`'s own `.value`, which `find`'s `text` action cannot read (a native control has no
@@ -182,35 +216,79 @@ export class GuideBrowser {
   }
 
   /**
-   * Wait until the element with this role and accessible name is no longer geometrically
-   * overlapped by another named element — a sticky header whose own height is still settling
-   * (a `ResizeObserver` tick right after a new panel first mounts, moving the header's bottom
-   * edge by a few px) can otherwise sit directly at the target's click point for a frame or two,
-   * which `find … click` refuses rather than mis-landing the click on the wrong element.
+   * Click the element with this role and accessible name once its OWN bounding box has read the
+   * same value on two consecutive polls (Playwright's "Stable" actionability check, applied here
+   * with no coverer to name in advance — see `docs/testing/agent-browser.md` and the round-3
+   * research this replaced `waitForUncoveredRole` with, `.local/xezar-tasks/9a994a7d-…/
+   * click-race-research.md` Remedy A). A sibling action button in this app can mount/unmount
+   * (e.g. Pin on Archive/Unarchive), which shifts every button after it in a right-anchored
+   * (`ml-auto`) flex row by a single, synchronous, single-frame DOM/layout jump — not a CSS
+   * transition — so "stable" here means "the same commit's geometry has been read twice in a
+   * row", not "no longer animating".
    *
-   * Scrolls the target into view first — the one position a sticky header can always reach is
-   * the very top of the viewport, so a target that starts there is the one this actually needs
-   * to guard. Polls the two live boxes rather than retrying the click itself: a failed click is
-   * indistinguishable from a different, real bug once retried blindly, while re-reading geometry
-   * only ever answers "is it still covered right now".
+   * If the click itself still lands on a moment where agent-browser reports the click point
+   * covered, this retries within the same bounded attempt budget after a fresh box read, rather
+   * than failing on the first transient race: `find … click`'s own covered-click error is a
+   * one-shot hit-test with no retry of its own (agent-browser issue #1434), and re-reading the
+   * accessibility-tree snapshot is agent-browser's own documented remedy for that failure.
    */
-  async waitForUncoveredRole(
+  async clickRoleWhenStable(
     role: string,
     name: string,
-    coveringRole: string,
-    coveringName: string,
     opts: { attempts?: number; intervalMs?: number } = {},
   ): Promise<void> {
     const attempts = opts.attempts ?? 40
     const intervalMs = opts.intervalMs ?? 250
     this.scrollIntoViewRole(role, name)
+
+    let lastBox: Box | null = null
     for (let i = 0; i < attempts; i += 1) {
-      const target = this.boxOfRole(role, name)
-      const covering = this.hasRole(coveringRole, coveringName) ? this.boxOfRole(coveringRole, coveringName) : null
-      if (covering === null || !boxesOverlap(target, covering)) return
+      const box = this.boxOfRole(role, name)
+      const stable = lastBox !== null && boxesEqual(lastBox, box)
+      lastBox = box
+      if (stable) {
+        try {
+          this.clickRole(role, name)
+          return
+        } catch (cause) {
+          if (!isCoveredClickError(cause)) throw cause
+          lastBox = null // a covered click means the geometry just changed again; re-establish stability
+        }
+      }
       this.run(['wait', String(intervalMs)])
     }
-    throw new Error(`xezar e2e: ${role} "${name}" stayed covered by ${coveringRole} "${coveringName}"`)
+    throw new Error(`xezar e2e: ${role} "${name}" never became stable and clickable`)
+  }
+
+  /**
+   * The current CHECKED state of a checkbox/radio addressed by role and accessible name — read
+   * off `snapshot`'s own `[checked=true|false]` annotation, the same source `valueOfRole` reads
+   * a combobox's value from. `find`'s `text` action has no notion of "checked": a checkbox has no
+   * text content to report, only the boolean the accessibility tree already carries.
+   */
+  isChecked(role: string, name: string): boolean {
+    const snapshot = String(this.run(['snapshot', '-i']).snapshot ?? '')
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const pattern = new RegExp(`^\\s*-\\s*${role}\\s+"${escaped}"[^\\n]*\\[checked=(true|false)`, 'm')
+    const match = pattern.exec(snapshot)
+    if (!match) {
+      throw new Error(`xezar e2e: no ${role} named "${name}" with a checked state in the current snapshot`)
+    }
+    return match[1] === 'true'
+  }
+
+  /** Whether a control is currently DISABLED — `snapshot`'s own bare `[disabled, ...]` flag,
+   *  read the same way `isChecked` reads `[checked=…]`. Used for a form's own submit-readiness
+   *  (e.g. "Start drafting" stays disabled until its one required field has text). */
+  isDisabled(role: string, name: string): boolean {
+    const snapshot = String(this.run(['snapshot', '-i']).snapshot ?? '')
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const pattern = new RegExp(`^\\s*-\\s*${role}\\s+"${escaped}"\\s*\\[([^\\]]*)\\]`, 'm')
+    const match = pattern.exec(snapshot)
+    if (!match) {
+      throw new Error(`xezar e2e: no ${role} named "${name}" found in the current snapshot`)
+    }
+    return /(^|,\s*)disabled(\s*,|$)/.test(match[1] ?? '')
   }
 
   /** Poll for a role+name to exist, the semantic-locator equivalent of `waitForFunction` — no
@@ -223,6 +301,21 @@ export class GuideBrowser {
       this.run(['wait', String(intervalMs)])
     }
     throw new Error(`xezar e2e: role "${role}" named "${name}" never appeared`)
+  }
+
+  /** Poll for a role+name to STOP existing — `waitForRole`'s negation, for a loading/pending
+   *  indicator that must clear before the settled content underneath it can be asserted. Waiting
+   *  on the settled text alone cannot tell "still loading" from "loaded, but not this state" —
+   *  this makes that distinction a real, separately-failing assertion instead of folding both
+   *  into one generic "never appeared" (#579 round 3). */
+  async waitForRoleGone(role: string, name: string, opts: { attempts?: number; intervalMs?: number } = {}): Promise<void> {
+    const attempts = opts.attempts ?? 40
+    const intervalMs = opts.intervalMs ?? 250
+    for (let i = 0; i < attempts; i += 1) {
+      if (!this.hasRole(role, name)) return
+      this.run(['wait', String(intervalMs)])
+    }
+    throw new Error(`xezar e2e: role "${role}" named "${name}" never disappeared`)
   }
 
   /** Poll for `text` to appear anywhere in the page's visible text — the `hasText` counterpart to
