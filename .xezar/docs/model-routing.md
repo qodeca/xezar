@@ -13,7 +13,7 @@ A plain summary. The rules themselves live in the numbered sections.
 
 - **Who does what, in normal times:** DeepSeek and the small local models do the procedural work (tracker chores, merges, mechanical docs, bounded fixes). GPT models do the routine and judgement work (docs, QA, reviews). Claude Opus builds cockpit screens and checks the hardest claims. The strongest GPT model (astra) does security reviews, the hardest work and all generated images.
 - **Today (2026-09-18 evening):** GPT (Codex) is back Sun 2026-09-20 16:02. Claude: `westagilelabs-priv` works; `qodeca-priv` is out until Sun 21 Sep 19:00; `gmail-priv` reset Fri 18 Sep 21:00 (probe it before you count on it); `eqamana-priv` Sat 19 Sep 18:00. At most 4 Claude tasks at once.
-- **DeepSeek:** DeepSeek V4.1 Flash through pi is a normal lane now, not a backup. It is the first choice for procedural work – tracker chores, merges, mechanical docs, scoped re-checks, bounded fixes, evidence passes, the release role – and it works in every state, because its quota is its own. It is never used for security reviews, judging screens or pictures, cockpit UI, checking a big claim, or reviewing anything it wrote itself. Anything it writes still gets a full Claude review before it merges.
+- **DeepSeek:** DeepSeek V4.1 Flash through pi is a normal lane now, not a backup. It is the first choice for procedural work – tracker chores, merges, mechanical docs, scoped re-checks, bounded fixes, evidence passes, the release role – and its quota is its own, so a Claude or Codex limit does not move it. When neither Claude nor Codex has quota (state 3), three things it would otherwise get wait for a strong model instead: a merge to `main`, repairing a conflict and the release role. It is never used for security reviews, judging screens or pictures, cockpit UI, checking a big claim, or reviewing anything it wrote itself. Anything it writes still gets a full Claude review before it merges.
 - **Never allowed:**
   1. A model approving its own work.
   2. Merging anything a local or DeepSeek model wrote before Claude reviewed it.
@@ -41,7 +41,7 @@ the campaign `decisions.md`; each row cites it.
 | 2026-09-18 17:19 (quoted from the 0.16.0 campaign `decisions.md`, which the owner deleted on 2026-09-18 20:26; not verifiable in the repository today) | "All next task run with DeepSeek V4.1 Flash to speed it up. It will also allow us to verify it in this type of tasks" | SUPERSEDED by the 21:3x rule; kept for history. It is the reason 46 DeepSeek runs exist on 2026-09-18 (§ 13), which is the evidence behind the section 4 placement | superseded 2026-09-18 21:3x |
 | 2026-09-18 14:39 (quoted from the 0.16.0 campaign `decisions.md`, which the owner deleted on 2026-09-18 20:26; not verifiable in the repository today) | DeepSeek role = "Yes: second opinion on risky PRs" | STANDING ROLE beside its ordinary rows in section 4: a cold, read-only second-opinion review by pi + `deepseek-api/deepseek-flash` on every `risk-high` PR, in parallel with the main review; it writes nothing; at most one Opus check per PR for its Major claims | until changed |
 | 2026-09-18 14:39 (quoted from the 0.16.0 campaign `decisions.md`, which the owner deleted on 2026-09-18 20:26; not verifiable in the repository today) | Cloud limit = "No: it may read everything" | the DeepSeek API may read any code in the repository; no never-list | until changed |
-| 2026-09-18 14:18 (quoted from the 0.16.0 campaign `decisions.md`, which the owner deleted on 2026-09-18 20:26; not verifiable in the repository today) | "Keep DeepSeek V4.1 and Pi as a backup for situation that there will be no limits available on GPT and Claude accounts" | SUPERSEDED by the 21:3x rule: the lane is no longer backup-only. What survives is state 3 of section 4 – when Claude and Codex are both out, DeepSeek carries the work it is first or second choice for | superseded 2026-09-18 21:3x |
+| 2026-09-18 14:18 (quoted from the 0.16.0 campaign `decisions.md`, which the owner deleted on 2026-09-18 20:26; not verifiable in the repository today) | "Keep DeepSeek V4.1 and Pi as a backup for situation that there will be no limits available on GPT and Claude accounts" | SUPERSEDED by the 21:3x rule: the lane is no longer backup-only. What survives is state 3 of section 4 – when Claude and Codex are both out, DeepSeek carries every row whose state-3 cell names it, and every other row waits for a strong model | superseded 2026-09-18 21:3x |
 | 2026-09-18 13:53 (quoted from the 0.16.0 campaign `decisions.md`, which the owner deleted on 2026-09-18 20:26; not verifiable in the repository today) | "Drop Ornith usage completely" | `mac-m4/ornith-1.5-35b-a3b-mlx` gets no task | until changed |
 | 2026-09-17 22:58 (quoted from the 0.16.0 campaign `decisions.md`, which the owner deleted on 2026-09-18 20:26; not verifiable in the repository today) | "When you will have to generate images for the documentation update, use Astra" | generated images → `gpt-6-astra` only. A deterministic screenshot capture is tooling, not image generation (owner 2026-09-18 10:14). The second half of the same sentence, "but do not use GPT for coding", was campaign-only and expired at 0.16.0 (see below) | until changed |
 | 2026-09-17 (paraphrase, memory `xezar-codex-limit-2026-09-17`) | Codex limit: move the work to Claude | state 2 of section 4 | Codex reset 2026-09-20 16:02 |
@@ -108,12 +108,13 @@ on this machine. They are different lanes with different rules; do not read one 
 | Verifying a Major claim from a weaker model | opus → astra or sol | opus | wait | the author, the claimant, DeepSeek |
 | Release role | only on the owner's word; then DeepSeek first – it ran 0.16.0 end to end in state 2 (§ 13) | the same | wait | – |
 
-Rules for state 3: DeepSeek does every row where this table makes it a first or second choice. A row
-where it is in the "never" column waits for Claude or Codex, and so does a row that names it neither
-way – browser QA, a review response folding several verdicts and a kit refactor are those three.
-(Root-sync is the leader's own `git pull --ff-only` in every state, and generated images already read
-"every other model" in the never column.) Its cold reviews stay advisory: they inform a verdict, they
-are not one.
+Rules for state 3: read the state-3 column and nothing else. DeepSeek does every row whose state-3
+cell names it, as first choice or as an advisory second. Anything whose state-3 cell says `wait`
+waits for Claude or Codex, whatever the other columns say – conflict repair, the release role,
+browser QA, a review response folding several verdicts and a kit refactor all read `wait` today, and
+so does every row that lists DeepSeek in the "never" column. (Root-sync is the leader's own
+`git pull --ff-only` in every state, and generated images already read "every other model" in the
+never column.) Its cold reviews stay advisory: they inform a verdict, they are not one.
 
 Evidence behind the table. The state-3 column is a judgement of the leader's, not evidence: state 3
 (Claude and Codex both out) did not occur on 2026-09-18, the day this placement rests on, so no
@@ -170,7 +171,7 @@ campaign).
 
 - Nothing a local or DeepSeek-lane model WRITES merges without a Claude review, and no model reviews, re-checks or QAs its own work (owner 2026-09-18 17:23).
 - A Major or Blocker claim from a weaker model is checked by opus (astra or sol when no Claude account has quota) before it reaches the owner. A merge-blocking claim is re-proven on main with a throwaway test. A claim that already carries its own red proof needs a careful read, not a second proof.
-- Security verdicts and picture judging stay on the strong models. The release role no longer does: DeepSeek ran the whole 0.16.0 release, changelog through bump merge, on 2026-09-18 in state 2 (§ 13), so the owner's word is the only gate on it. Security, design and Major-claim verdicts inside a release still go to a strong model.
+- Security verdicts and picture judging stay on the strong models. The release role no longer does: DeepSeek ran the whole 0.16.0 release, changelog through bump merge, on 2026-09-18 in state 2 (§ 13), so in states 1 and 2 the owner's word is the only gate on it – in state 3 it waits for a strong model, like every other `wait` cell. Security, design and Major-claim verdicts inside a release still go to a strong model.
 - Out of the rotation now: the OpenCode runner (it stalled every time it was tried – § 13 enumerates eight stalls to 2026-09-16, and the leader's 2026-09-18 tally says 9 of 9), Ornith (worked in the primary checkout), `gpt-5.5` (retires 2026-10-14), haiku for reviews, `gpt-5.3-codex-spark` for fixes. Qwen on pi: allowed for one-shot tracker work only; it can loop after it finishes.
 
 ## 8. What the evidence says
