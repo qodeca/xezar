@@ -78,4 +78,4 @@ For a named Ubuntu instance, include its `--domain`. Uninstall reverses the inst
 
 Next: [Project kit](15-project-kit.md)
 
-Describes xezar 0.15.0.
+Describes xezar 0.16.0.

@@ -70,8 +70,8 @@
   --quick-py: calc(var(--u) * 2);
 }
 
-/* ---------- phone (≤ 860 px: the cockpit.css shell breakpoint; the app's md is 768) ---------- */
-@media (max-width: 860px) {
+/* ---------- phone (≤ 768 px: the cockpit.css shell breakpoint, matching the app's md) ---------- */
+@media (max-width: 767.98px) {
   :root {
     --air-bar-h: 0px; /* the bar is static here */
   }

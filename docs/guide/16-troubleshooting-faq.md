@@ -98,4 +98,4 @@ For a suspected vulnerability, follow [SECURITY.md](../../SECURITY.md) and repor
 
 Next: [User guide index](README.md)
 
-Describes xezar 0.15.0.
+Describes xezar 0.16.0.

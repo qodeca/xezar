@@ -37,7 +37,7 @@ Focus rules:
 
 ## 2. Announcements
 
-- Polite live regions: 12 — 11 literal `aria-live="polite"` attributes plus the conditional
+- Polite live regions: 12 – 11 literal `aria-live="polite"` attributes plus the conditional
   `aria-live` in `mcp-connection-section.tsx`; none assertive. Examples: the composer dictation transcript,
   the thread history loader (`sr-only`), the MCP connection status and operations, the skills update card,
   the GitHub merge box.
@@ -83,7 +83,7 @@ is `role="alert"`. A toast is `role="status"`.
   `transition-opacity` (6) reveals row actions.
 - `animate-spin` (18): seventeen are `motion-safe:animate-spin` and the step rail's one adds `motion-reduce:animate-none`
   (`routes/task-thread/step-rail.tsx:93`); none is unguarded, so G-08 is retired.
-- `animate-pulse` (8, plus one in a comment): guarded in the docks, step rail, twinkles and — since #453 B1 — in `StatusDot`
+- `animate-pulse` (8, plus one in a comment): guarded in the docks, step rail, twinkles and – since #453 B1 – in `StatusDot`
   and `Skeleton`; the two `/new` sites are `motion-safe:` too (`routes/new-task.tsx:545,1406`).
 - `animate-in` / `animate-out` from `tw-animate-css` on Radix `data-[state]` and on toasts. Every occurrence in
   `components/ui` is `motion-safe:`, so no overlay, menu, popover or tooltip moves for a reader who asked the OS

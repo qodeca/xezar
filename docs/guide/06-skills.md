@@ -87,4 +87,4 @@ Review workflow references using the old `om-` names and choose the matching cur
 
 Next: [GitHub and automations](07-github-and-automations.md)
 
-Describes xezar 0.15.0.
+Describes xezar 0.16.0.

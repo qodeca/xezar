@@ -622,9 +622,9 @@
 
 /* ---------- responsive (feature parts only; the shell is handled by cockpit.css) ----------
  * The cockpit's phone breakpoint is md = 768px; the shared mockup sheet collapses the shell at
- * 860px, so the feature rules follow the sheet. */
+ * the same 767.98px edge, so the feature rules follow the sheet. */
 
-@media (max-width: 860px) {
+@media (max-width: 767.98px) {
   .case-option,
   .case-card summary {
     min-height: 44px;

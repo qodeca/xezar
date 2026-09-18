@@ -51,4 +51,4 @@ The audit trail is best effort and local: there is no cockpit viewer, no cryptog
 
 Next: [User guide index](README.md)
 
-Describes xezar 0.15.0.
+Describes xezar 0.16.0.

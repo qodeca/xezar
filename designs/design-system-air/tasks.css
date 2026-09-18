@@ -197,10 +197,10 @@
 .air-cards .air-diff { font-size: 11.5px; } /* :978 */
 .air-cards .air-refchip { height: calc(var(--u) * 5); } /* :996 h-5 over h-[22px]; the proposed 24 px floor wins */
 
-/* ---------- phone (≤ 860 px, the shell breakpoint; the source's md is 768) ---------- */
+/* ---------- phone (≤ 768 px, the shell breakpoint, matching the source's md) ---------- */
 .air-cards, .air-fab { display: none; }
 
-@media (max-width: 860px) {
+@media (max-width: 767.98px) {
   .air-op6, .air-table-wrap { display: none; }
   .air-tasks-body { padding-block-end: calc(90px + env(safe-area-inset-bottom)); } /* :211, clears the FAB */
   .air-cards { display: flex; flex-direction: column; gap: var(--mcard-gap); }

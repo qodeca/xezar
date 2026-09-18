@@ -159,4 +159,4 @@ Export variables before starting xezar, for example `XEZ_REVIEW_GATE=1 xezar`. T
 
 Next: [CLI reference](12-cli-reference.md)
 
-Describes xezar 0.15.0.
+Describes xezar 0.16.0.

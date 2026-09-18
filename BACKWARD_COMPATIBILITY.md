@@ -868,6 +868,40 @@ off". The run, and its last step, settled `done` with no deliverable and no erro
   agent error, a real crash) settles exactly as before. No event or workflow schema changes; no new
   `RunStatus` value is added.
 
+## The sidebar is navigation-only; Active/Archived, the recent list and search moved to the Tasks pages — deliberate, 0.16.0 (#546)
+
+PR #559 removed the sidebar's `taskQuickList` slot on desktop and in the phone drawer. No route,
+CLI command, persisted-file schema or event type changed — the surfaces sections 1–9 protect are
+untouched — but the sidebar's own content changed for every user, so it is recorded here rather
+than only in the CHANGELOG.
+
+- **Removed**: `components/task-quick-list.tsx` and its test; the panel-only helpers only it used
+  — `groupRuns`, `capBuckets` and the bucket types in `lib/task-groups.ts`, `commandShortcutHint`
+  (`lib/use-command-shortcut.ts`), and the `openCommandPalette` event seam. `components/app-shell.tsx`
+  and `app-shell-container.tsx` dropped the `taskQuickList` slot and the palette hint (the comment
+  at `app-shell.tsx:616-618` names #546 directly); `components/project-groups.tsx` now renders only
+  a group's header, expand/collapse and navigation — no task rows, buckets, pin control or "More…"
+  row. Gone from both surfaces: the Active/Archived tabs, the RECENT task list (its "Needs you /
+  Working / Recent / Pinned" buckets and the "More…" row), and the "Search… ⌘K" box.
+- **Where each removed capability lives now**: the Active/Archived toggle and the task search box
+  are on the Tasks pages — the per-project route (`routes/tasks-overview.tsx:207` desktop,
+  `:222` phone) and the all-projects route (`routes/global-tasks.tsx:374`) — which is also where
+  pin/unpin, unread state, PR/issue references and diff statistics already lived; the recent list's
+  "Needs you / Working / Recent / Pinned" buckets have no direct replacement, and the Tasks page's
+  own sort and filters are what covers the same ground now. The "Search… ⌘K" launcher's only job was
+  opening the command palette, and that still works exactly the same way without it: `CommandPalette`
+  is mounted globally in `app-shell-container.tsx:182` and opens with ⌘K/Ctrl+K from any route, with
+  no sidebar click target required.
+- **Not broken**: `workspaceUiStateSchema`, every stored UI-state key and every migration are
+  unchanged — a `ui-state.json` carrying the legacy `sidebar.collapsed` map (section 2,
+  `GET/PUT /api/v1/workspace/ui-state`) is still accepted and round-tripped byte-for-byte, even
+  though the current cockpit reads and writes sidebar width through `xez-sidebar-collapsed` in
+  `localStorage` instead (`lib/sidebar-collapse.ts:14`) rather than that stored key. The navigation
+  badge meanings (#399), the phone 44 px tap targets (#430), and the sidebar's resizability are
+  unchanged.
+- **Deferred**: `docs/screenshots/` and `tour.gif` still show the old sidebar task panel; both are
+  regenerated once for 0.16.0 after every design batch lands (#447), not by this PR.
+
 ## When in doubt
 
 If a change might break any surface above, say so in the PR description, label the PR `risk-high`, and route it through the review + QA gates in `SDLC.md`. A silent break found in review is a blocker per `CODE_REVIEW.md`.

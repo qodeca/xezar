@@ -116,4 +116,4 @@ If a task fails before the agent starts with a temporary-directory error, fix th
 
 Next: [Workflows](05-workflows.md)
 
-Describes xezar 0.15.0.
+Describes xezar 0.16.0.
