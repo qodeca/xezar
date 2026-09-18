@@ -83,8 +83,8 @@ describe('followProjectDoors', () => {
     const o = controlledOpen();
     followProjectDoors(map.contexts, { bootProjectId: 'boot', open: o.open });
     map.build('boot');
-    map.dispose('boot');
     await tick();
+    map.dispose('boot');
     expect(o.events).toEqual([]);
   });
 
@@ -116,6 +116,32 @@ describe('followProjectDoors', () => {
     o.calls[0]!.resolve(o.handle('late b'));
     await tick();
     expect(o.events).toEqual(['open b', 'close late b']);
+  });
+
+  it('never calls onOpened for a door whose project was disposed while it was still opening', async () => {
+    const map = fakeContexts();
+    const o = controlledOpen();
+    const opened: string[] = [];
+    followProjectDoors(map.contexts, { open: o.open, onOpened: (ctx) => opened.push(ctx.id) });
+    map.build('b');
+    await tick();
+    map.dispose('b');
+    o.calls[0]!.resolve(o.handle('late b'));
+    await tick();
+    expect(o.events).toEqual(['open b', 'close late b']);
+    expect(opened).toEqual([]);
+  });
+
+  it('calls onOpened once a door is kept', async () => {
+    const map = fakeContexts();
+    const o = controlledOpen();
+    const opened: string[] = [];
+    followProjectDoors(map.contexts, { open: o.open, onOpened: (ctx) => opened.push(ctx.id) });
+    map.build('b');
+    await tick();
+    o.calls[0]!.resolve(o.handle('b'));
+    await tick();
+    expect(opened).toEqual(['b']);
   });
 
   it('opens a re-added project only after the door it replaces has settled', async () => {

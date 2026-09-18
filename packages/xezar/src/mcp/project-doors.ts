@@ -39,6 +39,13 @@ export interface ProjectDoorsOptions<C extends { readonly id: string }> {
   readonly bootProjectId?: string;
   /** Open one project's door; `undefined` means it could not open (the caller already said why). */
   readonly open: (ctx: C) => Promise<ProjectDoorHandle | undefined>;
+  /**
+   * Fires exactly when an opened handle is kept as the project's door — never when the project was
+   * disposed while its open was still in flight (the handle is closed instead, silently). The one
+   * safe place to announce a door as ready: `open`'s own return does not tell the caller whether the
+   * handle it just got back is still current.
+   */
+  readonly onOpened?: (ctx: C) => void;
 }
 
 interface Door {
@@ -71,8 +78,12 @@ export function followProjectDoors<C extends { readonly id: string }>(
       .then(
         (handle) => {
           if (!handle) return;
-          if (door.closed) handle.close();
-          else door.handle = handle;
+          if (door.closed) {
+            handle.close();
+          } else {
+            door.handle = handle;
+            options.onOpened?.(ctx);
+          }
         },
         // `open` reports its own failure; a throw past it is still one project without a door.
         () => undefined,

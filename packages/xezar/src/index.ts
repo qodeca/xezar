@@ -558,18 +558,22 @@ async function serveCommand(
                 }),
               ),
           });
-          if (handle && !stopping) {
-            terminal.log(
-              activityEntry({
-                level: 'info',
-                subject: 'mcp',
-                message: `ready ${glyphs.dash} run xez mcp in ${ctx.root}`,
-                event: 'mcp.ready',
-                projectId: ctx.id,
-              }),
-            );
-          }
           return handle;
+        },
+        // Fires only when the handle above is kept as the project's door — never for a project
+        // disposed while its open was still in flight, whose handle `followProjectDoors` closes
+        // silently instead. `open`'s own return does not carry that distinction.
+        onOpened: (ctx) => {
+          if (stopping) return;
+          terminal.log(
+            activityEntry({
+              level: 'info',
+              subject: 'mcp',
+              message: `ready ${glyphs.dash} run xez mcp in ${ctx.root}`,
+              event: 'mcp.ready',
+              projectId: ctx.id,
+            }),
+          );
         },
       });
     },
