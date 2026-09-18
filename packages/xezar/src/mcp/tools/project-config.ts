@@ -43,6 +43,7 @@ import { stripJsonComments } from '../../agent-config/validate.ts';
 import { agentHomePaths } from '../../paths.ts';
 import { slugify } from '../../planner.ts';
 import { projectWorkflowsDir } from '../../workflows/load.ts';
+import { singleProjectNarrowing } from '../../workspace/projects.ts';
 import type { AppType } from '../../server/app-type.ts';
 import { MCP_ORIGIN, type ServiceDispatch } from '../service-adapter.ts';
 import { staleRejectionIn } from '../stale-write.ts';
@@ -382,6 +383,42 @@ const ACTION_FIELDS: Record<ProjectConfigAction, { required: readonly Field[]; o
 };
 
 const isRefused = (action: string): action is RefusedAction => Object.hasOwn(REFUSED_ACTIONS, action);
+
+/**
+ * The four actions whose refusal reads differently once the registry is narrowed
+ * to one project (#600 SP-3.2, SP-3.3): the three registry mutations and the
+ * host-folder browse Add project reaches the filesystem through.
+ */
+const NARROWED_ACTIONS: ReadonlySet<string> = new Set([
+  'add_project',
+  'clone_project',
+  'remove_project',
+  'browse_folders',
+]);
+
+/**
+ * A mode-aware sentence appended to those four refusals, or `''`.
+ *
+ * NOTHING NARROWS HERE. `REFUSED_ACTIONS` already refuses all four
+ * UNCONDITIONALLY — a project leader has never been able to manage the registry
+ * or browse the host, in any mode — and the boundary, the answer shape and the
+ * audit settlement (`boundaryRefusalOf` in `mcp/index.ts`, reason
+ * `project_registry` / `host_filesystem`) are untouched. What #600 adds is that
+ * the leader is TOLD why there is nothing to manage, instead of reading a
+ * sentence about a workspace this folder does not have.
+ *
+ * Appended at call time rather than stored in the table, so
+ * `GET /api/v1/mcp/reference` and the generated tool reference keep answering the
+ * table's own text and the two cannot drift.
+ */
+function singleProjectNote(action: string): string {
+  if (!NARROWED_ACTIONS.has(action)) return '';
+  const narrowing = singleProjectNarrowing();
+  if (!narrowing) return '';
+  return narrowing === 'project-root'
+    ? ' This project owns its xezar state, so its registry holds this project alone.'
+    : ' This workspace is narrowed to one project, so its registry holds this project alone.';
+}
 
 /** A path segment the cockpit's routes would read as ONE segment: no slash, no dot segment. */
 const PATH_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
@@ -1337,7 +1374,7 @@ export const projectConfigTool = defineTool({
     }
     if (isRefused(args.action)) {
       const { boundary, reason } = REFUSED_ACTIONS[args.action];
-      return refused(args.action, boundary, reason);
+      return refused(args.action, boundary, `${reason}${singleProjectNote(args.action)}`);
     }
     if (!ctx.service) {
       return errorResult('project_config is unavailable: this xezar service did not hand the tool its in-process entry.');

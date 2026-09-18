@@ -11,6 +11,9 @@ import {
   registerProject,
   removeProject,
   shouldRegisterProject,
+  singleProjectNarrowing,
+  singleProjectRefusalText,
+  type SingleProjectNarrowing,
 } from './projects.ts';
 
 /**
@@ -43,11 +46,23 @@ const USAGE = `usage:
   xezar projects port <id> [<port>]
                                pin the cockpit port of a project (none clears it)
 
-  add/remove/tag/port are unavailable when XEZ_SINGLE_PROJECT=1`;
+  add/remove/tag/port are unavailable when XEZ_SINGLE_PROJECT=1,
+  and when this folder owns its own xezar state`;
 
-const SINGLE_PROJECT_ADD_ERROR = 'single-project mode is enabled; adding projects is disabled';
-const SINGLE_PROJECT_REMOVE_ERROR = 'single-project mode is enabled; removing projects is disabled';
-const SINGLE_PROJECT_EDIT_ERROR = 'single-project mode is enabled; editing projects is disabled';
+/**
+ * The refusals (#600 SP-3.2). One sentence per action, from the SAME rule the
+ * HTTP routes and the MCP tool read, so a refusal in one door is never a silent
+ * no-op in another (BR-6). With `XEZ_SINGLE_PROJECT=1` the sentence, the exit
+ * code and the audit reason are byte-identical to what they were before #600.
+ *
+ * The audit reason is the one mode-aware value: `single_project_mode` keeps the
+ * promised spelling for the flag, and the layout gets its own so the trail says
+ * which narrowing refused rather than blurring the two into one word.
+ */
+const AUDIT_REASON: Readonly<Record<SingleProjectNarrowing, string>> = {
+  'env-flag': 'single_project_mode',
+  'project-root': 'single_project_root',
+};
 
 /**
  * Run one `projects` subcommand. Returns the process exit code (0 ok, 1 for a
@@ -67,44 +82,35 @@ export async function runProjectsCommand(
 ): Promise<number> {
   const io = opts.io ?? defaultIo;
   const audit = opts.audit;
-  const singleProject = (opts.env ?? process.env).XEZ_SINGLE_PROJECT === '1';
+  const env = opts.env ?? process.env;
+  const narrowing = singleProjectNarrowing(env);
+  /** Refuse `action`, with this narrowing's sentence, exit code and audit reason. */
+  const refuse = async (action: string): Promise<number> => {
+    io.error(singleProjectRefusalText(narrowing!, action));
+    await audit?.refused(AUDIT_REASON[narrowing!]);
+    return 1;
+  };
   const [sub = 'list', ...rest] = args;
   switch (sub) {
     case 'list': {
-      const code = await listCommand(io, singleProject, opts.bootProjectId);
+      const code = await listCommand(io, narrowing === 'env-flag', opts.bootProjectId);
       // The owner's explicit exception to "reads never": every subcommand is recorded, and the
       // record keeps neither the listed roots nor how many there were.
       await audit?.applied({ resource: projectResource(await audit.scope()) });
       return code;
     }
     case 'add':
-      if (singleProject) {
-        io.error(SINGLE_PROJECT_ADD_ERROR);
-        await audit?.refused('single_project_mode');
-        return 1;
-      }
+      if (narrowing) return refuse('adding projects');
       return addCommand(rest[0] ? resolve(rest[0]) : opts.defaultRoot, io, audit);
     case 'remove':
     case 'rm':
-      if (singleProject) {
-        io.error(SINGLE_PROJECT_REMOVE_ERROR);
-        await audit?.refused('single_project_mode');
-        return 1;
-      }
+      if (narrowing) return refuse('removing projects');
       return removeCommand(rest[0], io, audit);
     case 'tag':
-      if (singleProject) {
-        io.error(SINGLE_PROJECT_EDIT_ERROR);
-        await audit?.refused('single_project_mode');
-        return 1;
-      }
+      if (narrowing) return refuse('editing projects');
       return tagCommand(rest[0], rest.slice(1), io, audit);
     case 'port':
-      if (singleProject) {
-        io.error(SINGLE_PROJECT_EDIT_ERROR);
-        await audit?.refused('single_project_mode');
-        return 1;
-      }
+      if (narrowing) return refuse('editing projects');
       return portCommand(rest[0], rest[1], io, audit);
     default:
       io.error(`unknown projects subcommand: ${sub}\n`);
@@ -125,14 +131,22 @@ function statusMark(status: string): string {
   return status === 'missing' ? '✗' : status === 'not-git' ? '·' : '✓';
 }
 
+/**
+ * `envFlagNarrowing` is the ENV flag alone, not the shared predicate, and that is
+ * deliberate: with `XEZ_SINGLE_PROJECT=1` and no boot project this command has
+ * genuinely been told "one project" without being told WHICH, and answering
+ * nothing is the behaviour it has always had. The project layout is the opposite
+ * case — the folder names the project — so it needs no branch here at all:
+ * `listProjects()` is already narrowed to that one row (#600 SP-3.1).
+ */
 async function listCommand(
   io: ProjectsCommandIo,
-  singleProject: boolean,
+  envFlagNarrowing: boolean,
   bootProjectId?: string,
 ): Promise<number> {
   const projects = bootProjectId
     ? await listProjects({ projectId: bootProjectId })
-    : singleProject
+    : envFlagNarrowing
       ? []
       : await listProjects();
   if (projects.length === 0) {
