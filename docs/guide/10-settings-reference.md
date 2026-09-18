@@ -137,4 +137,4 @@ Press **⌘K / Ctrl+K** to open the palette. Search for a view, project, task, o
 
 Next: [Configuration reference](11-configuration-reference.md)
 
-Describes xezar 0.15.0.
+Describes xezar 0.16.0.

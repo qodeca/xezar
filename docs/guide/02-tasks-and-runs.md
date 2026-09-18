@@ -108,4 +108,4 @@ Choose **Notes** in the task header or action menu. It renders the task's handof
 
 Next: [Worktrees and Git](03-worktrees-and-git.md)
 
-Describes xezar 0.15.0.
+Describes xezar 0.16.0.
