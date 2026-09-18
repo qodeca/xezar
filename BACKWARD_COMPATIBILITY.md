@@ -92,6 +92,7 @@ What is protected now: **the shape of each route under `/api/v1`**, the three-wa
   - `GET /api/v1/workspace/events` reuses the same event names but stamps every payload with the owning `project` id — additively where the legacy payload is an object (`run` grows a `project` key; `run-deleted` becomes `{id, project}`), wrapped where it is not (`todos` → `{project, items}`; `usage` → `{project, usage}`). `usage` is **filtered per project** — one event per project that has live rows, never a stamped whole and never an empty-record clear. Three workspace-only event names exist for the registry/GUI-clone flows: `project-added`, `project-removed`, `checkout-progress` (payloads relayed verbatim from the emitter). The host-wide `provider-status` event is also workspace-only and deliberately **unstamped**: its additive coarse provider row is `{provider, status, hint?, authFailureId?, enabled?}`. It is emitted on a runtime-authentication latch transition, a successful provider enablement change, and a successful incident-safe retry; runtime rows carry the fixed hint and opaque incident id, while enablement/retry rows carry the current `enabled` value. Evolution is additive: a new workspace event name is inert to older consumers, and subscribing never force-instantiates a project (a lazily-built project's events join streams already open).
 - WebSocket: `GET /api/v1/ws` — the topic subscription bus, upgrade-only and workspace-level (single-mount, never mirrored under `/api/v1/p/`). **The path is protected, the frame protocol is not.** The path is what the `packages/xezar/web/dist` bundle and the Vite dev proxy connect to and what the upgrade guard answers `403` on, so moving or removing it is breaking. The frames (`{type:'subscribe'|'unsubscribe',topic}` up; `{type:'event'|'error'|'ping',…}` down) and the topic names are deliberately **internal**: the cockpit bundle ships in lockstep with the server that serves it, there is no cross-version consumer, and unlike `/api/v1/events` nothing outside this repo can have scripted them. Topic names may therefore be added, renamed or dropped freely — but a topic's payload, when it mirrors an HTTP route's shape (`health` does), inherits that route's contract.
   - Topics today: `health` (subscribed once at the cockpit root; its payload is `GET /api/v1/health`'s, and it is the one topic marked readable by a page the loopback fallback admits) and `mcp-leader` (additive, #374: subscribed by Settings → MCP connection's leader control while it is on screen; trusted connections only). An `mcp-leader` frame's `data` is `{projects: {<registry project id>: <GET /api/v1/mcp/leader answer>}}` (`mcpLeaderTopicSchema` in `packages/contract`) — every project whose MCP service is running, plus one whose service stopped while the topic was held, as `{available: false, reason}`. It mirrors that route's shape, so it inherits that route's contract, and it is published only when the payload changed. It carries exactly what the route answers: no filesystem path or home, but an OpenCode blocker may repeat the address and session id the person typed and a pi blocker pi's own error text — which is why the topic is trusted-only. Both topics open only when `capabilities.localHandoff` is true: a remote cockpit opens no WebSocket and reads the same routes over HTTP.
+  - **Local mode only since 0.16.0 (#547).** A hosted server (`XEZ_REMOTE=1` or a non-loopback bind) refuses every upgrade on this path before the handshake, whatever the Origin and including a native client that sends none: it answers `HTTP/1.1 403 Forbidden` and closes the socket. See § "Hosted servers refuse every WebSocket upgrade" below.
   - **Not covered by the §2 drift guard.** `packages/xezar/src/server/bc-route-inventory.test.ts` derives its inventory from a built app's route table, and an upgrade-only endpoint is not in it (the socket is attached to the raw HTTP server, not to Hono) — so this entry is maintained by hand. Any future upgrade route needs the same treatment.
 - Repo/GitHub: `GET /api/v1/github`, `GET /api/v1/github/checks`, `GET /api/v1/github/search`, `GET /api/v1/github/ref-status`, `GET /api/v1/github/comments/:kind/:number`, `GET /api/v1/github/prs/:number/changes`, `GET /api/v1/github/prs/:number/merge-state`, `POST /api/v1/github/prs/:number/merge`, `POST /api/v1/github/prs/:number/ready`, `GET /api/v1/repo`, `GET /api/v1/repo/{diff,changes}`, `GET /api/v1/repo/commit/:sha`, `POST /api/v1/repo/branch`, `GET/PUT /api/v1/config`, `GET/PUT /api/v1/ui-state`
   - `GET /api/v1/github/comments/:kind/:number` (pre-rename issue 499) returns `{available, reason?, comments[], truncated?, events?}`. `events?` is additive (pre-rename issue 525) and may be absent entirely when the timeline fetch degrades; `comments[]` keeps its exact shape, contents and cap regardless of event volume.
@@ -947,6 +948,45 @@ than only in the CHANGELOG.
   unchanged.
 - **Deferred**: `docs/screenshots/` and `tour.gif` still show the old sidebar task panel; both are
   regenerated once for 0.16.0 after every design batch lands (#447), not by this PR.
+
+## Hosted servers refuse every WebSocket upgrade (#547) – deliberate, 0.16.0
+
+Before 0.16.0 a hosted server applied the same upgrade guard to `GET /api/v1/ws` as a local one,
+so a native client that sent no Origin could open the subscription bus through a reverse proxy.
+The bus carries local-machine signals and cannot carry the proxy's credentials from a browser, so
+hosted servers now close it. The endpoint is upgrade-only and outside the section 2 drift guard,
+so the change is recorded here by hand.
+
+- **Broken**: a hosted server – `XEZ_REMOTE=1`, or a bind address that is not loopback – refuses
+  every WebSocket upgrade on `/api/v1/ws` before the handshake. It answers `HTTP/1.1 403 Forbidden`
+  with `connection: close` and closes the socket; no subscription frame is ever exchanged. The
+  refusal does not depend on the Origin: a browser page, the cockpit itself and a native client
+  that sends no Origin are all refused.
+- **Migration**: a third-party client of a hosted server that used a native WebSocket must move to
+  the authenticated HTTP API plus the server-sent event stream, through the same reverse proxy.
+  A topic that mirrors an HTTP route (`health` mirrors `GET /api/v1/health`) is available by
+  reading that route.
+- **Not broken**: local mode (loopback bind, `XEZ_REMOTE` unset) keeps its existing rules – the
+  loopback Host check, the same-authority and no-Origin trusted connections, and the Vite
+  development proxy. The remote cockpit already opened no WebSocket – it subscribes only when
+  `capabilities.localHandoff` is true – so it needs no change. The path, the frames and the topic
+  names are unchanged.
+- **No opt-out knob**: refusing the bus when hosted is the safe default.
+
+## Every registered project gets its own MCP door (#557) – additive, 0.16.0
+
+Before 0.16.0 only the project the cockpit started in had an MCP door; `xez mcp` in a project added
+later answered "xezar is not running" while the same cockpit served that project's tasks.
+
+- **Added**: a running cockpit now opens an MCP door for every other registered project the first
+  time it serves that project – for example when the project is opened after it is added, or after
+  a restart – and closes it when the project is removed. A folder whose data another cockpit
+  already owns gets no second door.
+- **Unchanged**: the socket location pattern, the `mcp-connection.json` shape, the IPC frames and
+  the MCP tools. The starting project's door opens and behaves exactly as before.
+- **What a reader could notice**: one more listening socket and one more connection file per
+  served project, and `mcp.ready` or `mcp.unavailable` activity lines that name those projects.
+  MCP journal activity lines are still printed for the starting project only.
 
 ## When in doubt
 
