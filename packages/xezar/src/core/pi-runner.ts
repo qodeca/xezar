@@ -1,4 +1,8 @@
-import { spawn as nodeSpawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import {
+  spawn as nodeSpawn,
+  spawnSync as nodeSpawnSync,
+  type ChildProcessWithoutNullStreams,
+} from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve as resolvePath } from 'node:path';
 import type {
@@ -25,12 +29,63 @@ const DEFAULT_TIMEOUT_MS = 30 * 60_000;
  *  escalation test can advance fake timers by the real value instead of a copy. */
 export const KILL_GRACE_MS = 10_000;
 const AUTO_END_DELAY_MS = 250;
+/** How long one `--help` capability probe may take before it counts as "not supported" (#548). */
+const MCP_CONFIG_PROBE_TIMEOUT_MS = 10_000;
 
 export interface PiRunnerOptions {
   /** Override the binary name/path; defaults to `pi` on PATH (`XEZ_PI_BIN`). */
   bin?: string;
   /** Wall-clock timeout for a run (ms); per-spec `timeoutMs` still wins. */
   timeoutMs?: number;
+  /** Seam for the `--mcp-config` capability probe (`piSupportsMcpConfig`); tests inject here. */
+  supportsMcpConfig?: PiMcpConfigProbe;
+}
+
+/** Answers "does THIS pi, with THIS child env, know `--mcp-config`?" (#548). */
+export type PiMcpConfigProbe = (bin: string, env: NodeJS.ProcessEnv) => boolean;
+
+/** One answer per binary + agent directory; a CLI does not grow an option while xezar runs. */
+const mcpConfigSupportCache = new Map<string, boolean>();
+
+/**
+ * Is `--mcp-config` a flag this pi accepts?
+ *
+ * It is NOT a pi flag: the optional `pi-mcp-adapter` extension registers it, and extensions
+ * resolve per agent directory — so the honest question is about this binary AND the agent home
+ * the child will actually spawn with, which is why the probe takes the built child env rather
+ * than reading `process.env`. Passing the flag to a pi without the adapter is fatal at spawn
+ * (`Error: Unknown option: --mcp-config`, exit 1), which is what #548 reported.
+ *
+ * `pi --help` is the cheapest reliable question: it loads the same extensions, prints the option
+ * only when one registers it, exits 0 in about 0.2 s, and reads nothing from stdin. The answer is
+ * cached per binary + agent directory, so an ordinary run pays for it at most once.
+ *
+ * Never throws and never guesses upward: a missing binary, a non-zero exit, a timeout or any
+ * other failure answers "not supported". That is the safe direction — a pi that cannot read an
+ * MCP config file loads no MCP servers at all, so there is no bridge for #342 to switch off.
+ */
+export function piSupportsMcpConfig(bin: string, env: NodeJS.ProcessEnv): boolean {
+  const key = `${bin}\u0000${env.PI_CODING_AGENT_DIR ?? ''}`;
+  const cached = mcpConfigSupportCache.get(key);
+  if (cached !== undefined) return cached;
+
+  let supported = false;
+  try {
+    const probe = nodeSpawnSync(bin, ['--help'], {
+      env,
+      // An empty stdin, so a binary that reads it cannot hold the probe open.
+      input: '',
+      encoding: 'utf8',
+      timeout: MCP_CONFIG_PROBE_TIMEOUT_MS,
+      windowsHide: true,
+    });
+    supported = probe.status === 0
+      && `${probe.stdout ?? ''}${probe.stderr ?? ''}`.includes('--mcp-config');
+  } catch {
+    supported = false;
+  }
+  mcpConfigSupportCache.set(key, supported);
+  return supported;
 }
 
 /**
@@ -43,11 +98,13 @@ export class PiRunner implements AgentRunner {
   readonly backend = 'pi' as const;
   private readonly bin: string;
   private readonly timeoutMs: number;
+  private readonly supportsMcpConfig: PiMcpConfigProbe;
   private lastSession: AgentSession | null = null;
 
   constructor(opts: PiRunnerOptions = {}) {
     this.bin = opts.bin ?? process.env.XEZ_PI_BIN ?? (process.env.XEZ_DRY_RUN === '1' ? mockPiPath() : 'pi');
     this.timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    this.supportsMcpConfig = opts.supportsMcpConfig ?? piSupportsMcpConfig;
   }
 
   /** What a spec with no `timeoutMs` falls through to here (#460) — the same field the session
@@ -73,21 +130,44 @@ export class PiRunner implements AgentRunner {
     // project's servers keep working, xezar's own leader bridge is switched off for this client.
     // `spec.env` carries `PI_CODING_AGENT_DIR` for a stored pi agent account (`profileEnv`), so the
     // env the child actually spawns with is what must resolve the agent home — not the host default.
-    const isolation = piMcpIsolation(spec.cwd, { ...process.env, ...spec.env });
-    const isolationNote = runMcpIsolationNote('pi', isolation);
-    if (isolationNote) onEvent?.({ type: 'note', message: isolationNote });
-    const mcpOverlay = writeMcpOverlay('mcp.json', isolation.overlay);
-    if (!mcpOverlay) {
+    const childEnv = buildChildEnv({ backend: this.backend, extraEnv: spec.env });
+    // `--mcp-config` belongs to an OPTIONAL pi extension, so ask this pi — with the very env the
+    // child gets, agent directory included — before pushing the flag. Without the extension the
+    // flag is fatal at spawn and every pi task failed (#548); a pi that cannot read an MCP config
+    // file also loads no servers, so there is nothing for #342 to switch off. A probe that throws
+    // is the same answer as "no" (§ Zero config: a missing peer degrades, never fails).
+    let mcpConfigSupported = false;
+    try {
+      mcpConfigSupported = this.supportsMcpConfig(this.bin, childEnv);
+    } catch {
+      mcpConfigSupported = false;
+    }
+
+    let mcpOverlay: ReturnType<typeof writeMcpOverlay> = null;
+    if (mcpConfigSupported) {
+      const isolation = piMcpIsolation(spec.cwd, { ...process.env, ...spec.env });
+      const isolationNote = runMcpIsolationNote('pi', isolation);
+      if (isolationNote) onEvent?.({ type: 'note', message: isolationNote });
+      mcpOverlay = writeMcpOverlay('mcp.json', isolation.overlay);
+      if (!mcpOverlay) {
+        onEvent?.({
+          type: 'note',
+          message: 'pi: could not write this run\'s private MCP overlay, so the run starts without it '
+            + 'and may load xezar\'s leader bridge; check that $TMPDIR is writable (#342).',
+        });
+      }
+    } else {
       onEvent?.({
         type: 'note',
-        message: 'pi: could not write this run\'s private MCP overlay, so the run starts without it '
-          + 'and may load xezar\'s leader bridge; check that $TMPDIR is writable (#342).',
+        message: 'pi: the optional pi-mcp-adapter extension is not installed for this agent, so pi '
+          + 'reads no MCP configuration at all and this run starts with no MCP servers — there is '
+          + 'nothing to switch off, so no MCP isolation was applied (#342).',
       });
     }
 
     const child = nodeSpawn(this.bin, buildPiArgs(spec, mcpOverlay?.path), {
       cwd: spec.cwd,
-      env: buildChildEnv({ backend: this.backend, extraEnv: spec.env }),
+      env: childEnv,
     });
     // The overlay only has to outlive the child. Both events are wired because a spawn that
     // never starts emits `error`+`close` and no `exit`; `cleanup` is idempotent.

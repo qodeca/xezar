@@ -28,9 +28,9 @@ import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { AgentRunSpec } from './agent-runner.js';
+import type { AgentEvent, AgentRunSpec } from './agent-runner.js';
 import { buildClaudeArgs } from './claude-cli-runner.js';
-import { buildPiArgs, PiRunner } from './pi-runner.js';
+import { buildPiArgs, PiRunner, piSupportsMcpConfig, type PiMcpConfigProbe } from './pi-runner.js';
 import { opencodeChildEnv } from './opencode-server-runner.js';
 import {
   claudeMcpIsolation,
@@ -155,7 +155,7 @@ describe('pi startSession resolves the agent home from the env the child actuall
     try {
       // The step runs under a STORED pi agent account: `spec.env` is what `workflows/run.ts`
       // gives the child, carrying that account's own `PI_CODING_AGENT_DIR` (#342 review M1).
-      session = new PiRunner({ bin: 'pi', timeoutMs: 0 }).startSession(
+      session = new PiRunner({ bin: 'pi', timeoutMs: 0, supportsMcpConfig: () => true }).startSession(
         { userPrompt: 'do it', cwd: root, env: { PI_CODING_AGENT_DIR: join(root, 'account-pi-home') } },
         () => {},
       );
@@ -177,6 +177,111 @@ describe('pi startSession resolves the agent home from the env the child actuall
     child.emit('exit', 0, null);
     child.emit('close', 0, null);
     await session.result.catch(() => {});
+  });
+});
+
+// ---- #548: `--mcp-config` belongs to an OPTIONAL pi extension --------------
+
+/**
+ * The #342 pi lever is `--mcp-config`, and that flag is not pi's own: the optional
+ * `pi-mcp-adapter` extension registers it, per agent directory. Pushing it unconditionally made
+ * EVERY pi task die at spawn (`Error: Unknown option: --mcp-config`, exit 1) wherever the
+ * extension is absent — verified against pi 0.85.1 with an empty `PI_CODING_AGENT_DIR`.
+ *
+ * Named break for the red proof: `pi-mcp-config-unconditional` — revert `pi-runner.ts` to the
+ * state that runs `piMcpIsolation` and pushes the flag without asking. Measured: case (a) and
+ * case (c) below fail; case (b) is the GUARD and stays green either way, because it pins the
+ * behaviour with the extension present that this change must not alter.
+ */
+describe('pi only passes --mcp-config when the pi MCP extension is installed (#548)', () => {
+  /** A child that never really spawns, plus what the runner handed `spawn`. */
+  async function piSpawn(probe: PiMcpConfigProbe): Promise<{
+    argv: string[];
+    overlay: string | undefined;
+    notes: string[];
+  }> {
+    write('.pi/mcp.json', { mcpServers: { xezar: BRIDGE, docs: PROJECT_SERVER } });
+    write('pi-home/mcp.json', { mcpServers: { personal: { command: 'node' } } });
+
+    const stdout = new PassThrough();
+    const child = Object.assign(new EventEmitter(), {
+      stdin: new PassThrough(),
+      stdout,
+      stderr: new PassThrough(),
+      exitCode: null as number | null,
+      signalCode: null as NodeJS.Signals | null,
+      killed: false,
+      pid: 4343,
+      kill: () => true,
+    }) as unknown as ChildProcessWithoutNullStreams;
+
+    let argv: string[] = [];
+    let overlay: string | undefined;
+    spawnHook.override = (_bin: unknown, args: unknown) => {
+      argv = args as string[];
+      const at = argv.indexOf('--mcp-config');
+      // Read it here: the overlay is removed as soon as the child settles below.
+      if (at >= 0) overlay = readFileSync(argv[at + 1] as string, 'utf8');
+      return child;
+    };
+
+    const notes: string[] = [];
+    let session: ReturnType<PiRunner['startSession']>;
+    try {
+      session = new PiRunner({ bin: 'pi', timeoutMs: 0, supportsMcpConfig: probe }).startSession(
+        { userPrompt: 'do it', cwd: root, env: { PI_CODING_AGENT_DIR: join(root, 'pi-home') } },
+        (event: AgentEvent) => {
+          if (event.type === 'note') notes.push(event.message);
+        },
+      );
+    } finally {
+      spawnHook.override = null;
+    }
+
+    Object.assign(child, { exitCode: 0 });
+    stdout.end();
+    child.emit('exit', 0, null);
+    child.emit('close', 0, null);
+    await session.result.catch(() => {});
+
+    return { argv, overlay, notes };
+  }
+
+  it('extension absent: no --mcp-config in the argv, and one note says why', async () => {
+    const { argv, overlay, notes } = await piSpawn(() => false);
+
+    expect(argv).not.toContain('--mcp-config');
+    expect(overlay).toBeUndefined();
+    const explained = notes.filter((note) => note.includes('pi-mcp-adapter'));
+    expect(explained).toHaveLength(1);
+    expect(explained[0]).toContain('not installed');
+    // With no MCP config read at all there is no bridge to switch off, so the run must not
+    // claim it switched one off.
+    expect(notes.some((note) => note.includes('does not load xezar'))).toBe(false);
+  });
+
+  it('extension present: the flag and the overlay are exactly what #342 shipped (guard)', async () => {
+    const { argv, overlay, notes } = await piSpawn(() => true);
+
+    expect(argv).toContain('--mcp-config');
+    const written = JSON.parse(overlay ?? '{}') as { mcpServers: Record<string, unknown> };
+    expect(written.mcpServers.xezar).toEqual({ disabled: true });
+    expect(written.mcpServers.personal).toEqual({ command: 'node' });
+    expect(notes.some((note) => note.includes('does not load xezar'))).toBe(true);
+    expect(notes.some((note) => note.includes('pi-mcp-adapter'))).toBe(false);
+  });
+
+  it('a probe that throws degrades to no flag instead of taking the run down', async () => {
+    const { argv, notes } = await piSpawn(() => {
+      throw new Error('probe exploded');
+    });
+
+    expect(argv).not.toContain('--mcp-config');
+    expect(notes.filter((note) => note.includes('pi-mcp-adapter'))).toHaveLength(1);
+  });
+
+  it('the real probe answers "no" for a binary that is not there, and never throws', () => {
+    expect(piSupportsMcpConfig(join(root, 'no-such-pi-binary'), {})).toBe(false);
   });
 });
 
