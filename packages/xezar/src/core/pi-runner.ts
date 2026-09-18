@@ -1,8 +1,4 @@
-import {
-  spawn as nodeSpawn,
-  spawnSync as nodeSpawnSync,
-  type ChildProcessWithoutNullStreams,
-} from 'node:child_process';
+import { spawn as nodeSpawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve as resolvePath } from 'node:path';
 import type {
@@ -22,15 +18,35 @@ import { readNdjson } from './ndjson.js';
 import { answerPiDialog, cancelPiDialog, denyPiDialog, readPiDialog, type PiDialog } from './pi-dialog.js';
 import { createPiUiState, mapPiRpcMessage, piTurnStarted } from './pi-ui-mapper.js';
 import { V1TextCoalescer } from './v1-text-coalescer.js';
-import type { StopReason } from './ui-events.js';
+import type { StopReason, UiEvent } from './ui-events.js';
 
 const DEFAULT_TIMEOUT_MS = 30 * 60_000;
 /** Grace period between SIGTERM and SIGKILL, matching `claude-cli-runner`. Exported so the
  *  escalation test can advance fake timers by the real value instead of a copy. */
 export const KILL_GRACE_MS = 10_000;
 const AUTO_END_DELAY_MS = 250;
-/** How long one `--help` capability probe may take before it counts as "not supported" (#548). */
-const MCP_CONFIG_PROBE_TIMEOUT_MS = 10_000;
+/** Hard bound on one `--help` capability probe: past it the answer is UNKNOWN and the child is
+ *  SIGKILLed, because a pi that traps SIGTERM would otherwise hold the probe open (#548). */
+export const MCP_CONFIG_PROBE_TIMEOUT_MS = 10_000;
+/** Cap on the probe output kept in memory; `--help` is a page, anything larger is not an answer. */
+const MCP_CONFIG_PROBE_OUTPUT_CAP = 256 * 1024;
+/** The exact spawn failure a pi without the MCP adapter extension answers `--mcp-config` with. */
+const UNKNOWN_MCP_CONFIG_OPTION = 'Unknown option: --mcp-config';
+
+/* The three notes the capability answer can produce. Each says only what was established: the
+ * first that the extension was asked for and is not there, the second that the question could
+ * not be answered at all, the third that the running pi refused the option after all. */
+const EXTENSION_ABSENT_NOTE =
+  'pi: the optional MCP adapter extension is not available for this task\'s folder and agent '
+  + 'account, so pi reads no MCP configuration at all and this run starts with no MCP servers — '
+  + 'there is nothing to switch off, so no MCP isolation was applied.';
+const PROBE_UNKNOWN_NOTE =
+  'pi: could not confirm whether this pi accepts an MCP configuration file for this task\'s folder '
+  + 'and agent account, so the flag was left out; this run starts with no MCP servers and no MCP '
+  + 'isolation was applied.';
+const RESTARTED_WITHOUT_MCP_CONFIG_NOTE =
+  'pi: this pi rejected the MCP configuration option at start-up, so the session was started once '
+  + 'more without it; this run starts with no MCP servers and no MCP isolation was applied.';
 
 export interface PiRunnerOptions {
   /** Override the binary name/path; defaults to `pi` on PATH (`XEZ_PI_BIN`). */
@@ -41,51 +57,94 @@ export interface PiRunnerOptions {
   supportsMcpConfig?: PiMcpConfigProbe;
 }
 
-/** Answers "does THIS pi, with THIS child env, know `--mcp-config`?" (#548). */
-export type PiMcpConfigProbe = (bin: string, env: NodeJS.ProcessEnv) => boolean;
+/**
+ * What the probe established — three answers, not two. `unknown` is what a probe that could not
+ * run at all reports, and it is deliberately NOT the same fact as `no`: both leave the flag out,
+ * but only `no` licenses a note saying the extension is absent, a cause a failed probe cannot
+ * know. Keeping them apart is what stops the transcript asserting something nobody measured.
+ */
+export type PiMcpConfigAnswer = 'yes' | 'no' | 'unknown';
 
-/** One answer per binary + agent directory; a CLI does not grow an option while xezar runs. */
-const mcpConfigSupportCache = new Map<string, boolean>();
+/** Answers "does THIS pi, in THIS folder and with THIS child env, know `--mcp-config`?" (#548). */
+export type PiMcpConfigProbe = (
+  bin: string,
+  env: NodeJS.ProcessEnv,
+  cwd: string,
+) => Promise<PiMcpConfigAnswer>;
 
 /**
- * Is `--mcp-config` a flag this pi accepts?
+ * Is `--mcp-config` a flag this pi accepts, for the folder and the account THIS task will use?
  *
- * It is NOT a pi flag: the optional `pi-mcp-adapter` extension registers it, and extensions
- * resolve per agent directory — so the honest question is about this binary AND the agent home
- * the child will actually spawn with, which is why the probe takes the built child env rather
- * than reading `process.env`. Passing the flag to a pi without the adapter is fatal at spawn
- * (`Error: Unknown option: --mcp-config`, exit 1), which is what #548 reported.
+ * It is NOT a pi flag: the optional `pi-mcp-adapter` extension registers it, and an extension
+ * resolves from the agent directory AND from the project folder the child runs in — pi loads a
+ * project's own `.pi/extensions/*` and the packages named in its `.pi/settings.json` once that
+ * project is trusted. So one binary and one agent home answer differently per folder, and the
+ * only honest question carries all three: binary, child env, child cwd. Passing the flag to a pi
+ * that does not know it is fatal at spawn (`Error: Unknown option: --mcp-config`, exit 1), which
+ * is what #548 reported.
  *
  * `pi --help` is the cheapest reliable question: it loads the same extensions, prints the option
- * only when one registers it, exits 0 in about 0.2 s, and reads nothing from stdin. The answer is
- * cached per binary + agent directory, so an ordinary run pays for it at most once.
+ * only when one registers it, and exits 0 in about 0.2–0.4 s warm (2.5 s cold). It is asked once
+ * per session start and the answer is NOT cached: an answer that depends on the folder saves
+ * nothing across tasks, and a cached answer is exactly what goes stale when the extension is
+ * installed or removed while the server runs.
  *
- * Never throws and never guesses upward: a missing binary, a non-zero exit, a timeout or any
- * other failure answers "not supported". That is the safe direction — a pi that cannot read an
- * MCP config file loads no MCP servers at all, so there is no bridge for #342 to switch off.
+ * Never throws, never blocks the event loop and never guesses upward. A missing binary, a
+ * non-zero exit or any other failure answers `unknown`; past the hard bound the child is
+ * SIGKILLed — not SIGTERMed, which a pi with its own handler may simply ignore — and the answer
+ * is `unknown` at once, without waiting for the corpse. Both leave the flag out, which is the
+ * safe direction: a pi that reads no MCP config file loads no MCP servers at all.
  */
-export function piSupportsMcpConfig(bin: string, env: NodeJS.ProcessEnv): boolean {
-  const key = `${bin}\u0000${env.PI_CODING_AGENT_DIR ?? ''}`;
-  const cached = mcpConfigSupportCache.get(key);
-  if (cached !== undefined) return cached;
+export function piSupportsMcpConfig(
+  bin: string,
+  env: NodeJS.ProcessEnv,
+  cwd: string,
+  timeoutMs: number = MCP_CONFIG_PROBE_TIMEOUT_MS,
+): Promise<PiMcpConfigAnswer> {
+  return new Promise<PiMcpConfigAnswer>((resolve) => {
+    let child: ReturnType<typeof nodeSpawn> | undefined;
+    let done = false;
+    const settle = (answer: PiMcpConfigAnswer): void => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      resolve(answer);
+    };
+    // The hard bound. It resolves WITHOUT waiting for the corpse, so a child that ignores
+    // signals delays nothing, and it signals SIGKILL because SIGTERM is exactly what a CLI
+    // with its own handler absorbs (measured: 30 s held on a SIGTERM-trapping child).
+    const timer = setTimeout(() => {
+      child?.kill('SIGKILL');
+      settle('unknown');
+    }, timeoutMs);
+    timer.unref?.();
 
-  let supported = false;
-  try {
-    const probe = nodeSpawnSync(bin, ['--help'], {
-      env,
-      // An empty stdin, so a binary that reads it cannot hold the probe open.
-      input: '',
-      encoding: 'utf8',
-      timeout: MCP_CONFIG_PROBE_TIMEOUT_MS,
-      windowsHide: true,
+    try {
+      child = nodeSpawn(bin, ['--help'], {
+        cwd,
+        env,
+        // No stdin at all: a binary that reads it sees EOF and cannot hold the probe open.
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
+      });
+    } catch {
+      settle('unknown');
+      return;
+    }
+
+    let output = '';
+    const collect = (chunk: Buffer | string): void => {
+      if (output.length >= MCP_CONFIG_PROBE_OUTPUT_CAP) return;
+      output += String(chunk);
+    };
+    child.stdout?.on('data', collect);
+    child.stderr?.on('data', collect);
+    child.on('error', () => settle('unknown'));
+    child.on('close', (code) => {
+      if (code !== 0) return settle('unknown');
+      settle(output.includes('--mcp-config') ? 'yes' : 'no');
     });
-    supported = probe.status === 0
-      && `${probe.stdout ?? ''}${probe.stderr ?? ''}`.includes('--mcp-config');
-  } catch {
-    supported = false;
-  }
-  mcpConfigSupportCache.set(key, supported);
-  return supported;
+  });
 }
 
 /**
@@ -121,50 +180,147 @@ export class PiRunner implements AgentRunner {
     this.lastSession?.interrupt();
   }
 
+  /**
+   * AGENT_PROTOCOL's seam is unchanged: this still RETURNS an `AgentSession` synchronously.
+   *
+   * What changed underneath is that the child can no longer be spawned synchronously. The
+   * `--mcp-config` capability question has to be answered BEFORE the argv is final, it has to be
+   * answered for the folder and account THIS task uses, and asking it must never block the
+   * server's event loop (#548). So the answer is awaited, and what comes back from here is a
+   * facade over the child that is about to exist: `sendMessage`, `end()` and `interrupt()`
+   * arriving inside that window are replayed onto the real session the moment it opens, `pid`
+   * reports the child once there is one (`onProcessStart` announces it, and announces it again
+   * if the fallback below has to restart), and `result` settles with the real session's result.
+   */
   startSession(
     spec: AgentRunSpec,
     onEvent?: (event: AgentEvent) => void,
     opts: SessionOptions = {},
   ): AgentSession {
-    // What this run may reach over MCP is decided once, before the child exists (#342): the
-    // project's servers keep working, xezar's own leader bridge is switched off for this client.
-    // `spec.env` carries `PI_CODING_AGENT_DIR` for a stored pi agent account (`profileEnv`), so the
-    // env the child actually spawns with is what must resolve the agent home — not the host default.
-    const childEnv = buildChildEnv({ backend: this.backend, extraEnv: spec.env });
-    // `--mcp-config` belongs to an OPTIONAL pi extension, so ask this pi — with the very env the
-    // child gets, agent directory included — before pushing the flag. Without the extension the
-    // flag is fatal at spawn and every pi task failed (#548); a pi that cannot read an MCP config
-    // file also loads no servers, so there is nothing for #342 to switch off. A probe that throws
-    // is the same answer as "no" (§ Zero config: a missing peer degrades, never fails).
-    let mcpConfigSupported = false;
-    try {
-      mcpConfigSupported = this.supportsMcpConfig(this.bin, childEnv);
-    } catch {
-      mcpConfigSupported = false;
-    }
-
-    let mcpOverlay: ReturnType<typeof writeMcpOverlay> = null;
-    if (mcpConfigSupported) {
-      const isolation = piMcpIsolation(spec.cwd, { ...process.env, ...spec.env });
-      const isolationNote = runMcpIsolationNote('pi', isolation);
-      if (isolationNote) onEvent?.({ type: 'note', message: isolationNote });
-      mcpOverlay = writeMcpOverlay('mcp.json', isolation.overlay);
-      if (!mcpOverlay) {
-        onEvent?.({
-          type: 'note',
-          message: 'pi: could not write this run\'s private MCP overlay, so the run starts without it '
-            + 'and may load xezar\'s leader bridge; check that $TMPDIR is writable (#342).',
-        });
+    let live: AgentSession | null = null;
+    let ended = false;
+    let interrupted = false;
+    const queued: ContentBlock[][] = [];
+    /** What the facade has already handed to a child. A restart below re-queues it, so a message
+     *  typed while the first attempt was dying at spawn is not lost with that attempt. */
+    const delivered: ContentBlock[][] = [];
+    const pidListeners: Array<(pid: number) => void> = [];
+    let settleResult!: (inner: Promise<AgentRunResult>) => void;
+    const result = new Promise<AgentRunResult>((resolve, reject) => {
+      settleResult = (inner) => void inner.then(resolve, reject);
+    });
+    /** Point the facade at a real session — at the first child, and again at a restart. */
+    const adopt = (session: AgentSession): void => {
+      live = session;
+      if (session.pid !== undefined) for (const listener of pidListeners) listener(session.pid);
+      for (const content of queued.splice(0)) {
+        delivered.push(content);
+        session.sendMessage(content);
       }
-    } else {
-      onEvent?.({
-        type: 'note',
-        message: 'pi: the optional pi-mcp-adapter extension is not installed for this agent, so pi '
-          + 'reads no MCP configuration at all and this run starts with no MCP servers — there is '
-          + 'nothing to switch off, so no MCP isolation was applied (#342).',
-      });
-    }
+      if (interrupted) session.interrupt();
+      else if (ended) session.end();
+    };
 
+    const open = async (): Promise<AgentRunResult> => {
+      // What this run may reach over MCP is decided once, before the child exists (#342): the
+      // project's servers keep working, xezar's own leader bridge is switched off for this client.
+      // `spec.env` carries `PI_CODING_AGENT_DIR` for a stored pi agent account (`profileEnv`), so
+      // the env the child actually spawns with is what must resolve the agent home — not the host
+      // default — and `spec.cwd` is the folder whose own `.pi` the child will read.
+      const childEnv = buildChildEnv({ backend: this.backend, extraEnv: spec.env });
+      let answer: PiMcpConfigAnswer = 'unknown';
+      try {
+        answer = await this.supportsMcpConfig(this.bin, childEnv, spec.cwd);
+      } catch {
+        // A probe that rejects established nothing, which is not the same as "no extension".
+        answer = 'unknown';
+      }
+
+      let mcpOverlay: ReturnType<typeof writeMcpOverlay> = null;
+      if (answer === 'yes') {
+        const isolation = piMcpIsolation(spec.cwd, { ...process.env, ...spec.env });
+        const isolationNote = runMcpIsolationNote('pi', isolation);
+        if (isolationNote) onEvent?.({ type: 'note', message: isolationNote });
+        mcpOverlay = writeMcpOverlay('mcp.json', isolation.overlay);
+        if (!mcpOverlay) {
+          onEvent?.({
+            type: 'note',
+            message: 'pi: could not write this run\'s private MCP overlay, so the run starts without it '
+              + 'and may load xezar\'s leader bridge; check that $TMPDIR is writable (#342).',
+          });
+        }
+      } else {
+        // Two different facts, two different sentences. Saying "not installed" after a probe
+        // that failed would state a cause nobody measured.
+        onEvent?.({ type: 'note', message: answer === 'no' ? EXTENSION_ABSENT_NOTE : PROBE_UNKNOWN_NOTE });
+      }
+
+      // Belt to the probe's braces (the remove-late case): if this child dies at spawn on the
+      // very option the probe said it knew, start the session once more without it. Exactly
+      // one retry, only for that error, and only before any RPC output arrived.
+      const restart = mcpOverlay
+        ? (): AgentSession | null => {
+            if (interrupted) return null;
+            onEvent?.({ type: 'note', message: RESTARTED_WITHOUT_MCP_CONFIG_NOTE });
+            // The opening prompt rides `spec.userPrompt` and is sent again on its own; anything
+            // the facade had already handed to the dead attempt goes back on the queue.
+            queued.unshift(...delivered.splice(0));
+            const replacement = this.spawnSession(spec, onEvent, opts, childEnv, null, null);
+            adopt(replacement);
+            return replacement;
+          }
+        : null;
+
+      const session = this.spawnSession(spec, onEvent, opts, childEnv, mcpOverlay, restart);
+      adopt(session);
+      return await session.result;
+    };
+    settleResult(open());
+
+    const session: AgentSession = {
+      result,
+      sendMessage: (content) => {
+        if (live) return live.sendMessage(content);
+        if (ended || interrupted) return false;
+        queued.push(content);
+        return true;
+      },
+      end: () => {
+        ended = true;
+        live?.end();
+      },
+      interrupt: () => {
+        interrupted = true;
+        live?.interrupt();
+      },
+      onProcessStart: (listener) => {
+        pidListeners.push(listener);
+        if (live?.pid !== undefined) listener(live.pid);
+      },
+      get pid() {
+        return live?.pid;
+      },
+      get open() {
+        return live ? live.open : !ended && !interrupted;
+      },
+    };
+    this.lastSession = session;
+    return session;
+  }
+
+  /**
+   * The real session over one spawned pi child. `mcpOverlay` is the decided #342 answer (null =
+   * no `--mcp-config`), and `restart` is the one-shot fallback `startSession` supplies only when
+   * the flag really was passed.
+   */
+  private spawnSession(
+    spec: AgentRunSpec,
+    onEvent: ((event: AgentEvent) => void) | undefined,
+    opts: SessionOptions,
+    childEnv: NodeJS.ProcessEnv,
+    mcpOverlay: ReturnType<typeof writeMcpOverlay>,
+    restart: (() => AgentSession | null) | null,
+  ): AgentSession {
     const child = nodeSpawn(this.bin, buildPiArgs(spec, mcpOverlay?.path), {
       cwd: spec.cwd,
       env: childEnv,
@@ -213,6 +369,9 @@ export class PiRunner implements AgentRunner {
     let sessionId = spec.sessionId;
     let tokensUsed = 0;
     let spawnError: Error | null = null;
+    /** Did this child ever answer on the RPC channel? The restart below is only for a child
+     *  that died before saying anything — never for a failure mid-run. */
+    let sawRpcOutput = false;
     const stderr: string[] = [];
 
     child.on('error', (error: NodeJS.ErrnoException) => {
@@ -221,10 +380,29 @@ export class PiRunner implements AgentRunner {
     child.stderr.setEncoding('utf8');
     child.stderr.on('data', (chunk: string) => stderr.push(chunk));
 
+    /**
+     * v2 events, held while a restart is still on the table.
+     *
+     * The opening `turn.started` is emitted before the child has proved it can run at all, so on
+     * the one path that restarts — a spawn the flag killed — the cockpit would otherwise see two
+     * `turn.started` for one turn. Holding costs nothing: the writes still go out (pi is waiting
+     * for them), and the hold is released by the first RPC line or by the child's exit.
+     */
+    let heldUi: UiEvent[] | null = restart ? [] : null;
+    const emitUiEvent = (event: UiEvent): void => {
+      if (heldUi) heldUi.push(event);
+      else opts.onUiEvent?.(event);
+    };
+    const releaseUi = (): void => {
+      if (!heldUi) return;
+      const held = heldUi;
+      heldUi = null;
+      for (const event of held) opts.onUiEvent?.(event);
+    };
     const emitUi = (value: unknown): void => {
       const mapped = mapPiRpcMessage(value, piUi);
       piUi = mapped.state;
-      for (const event of mapped.events) opts.onUiEvent?.(event);
+      for (const event of mapped.events) emitUiEvent(event);
     };
     const write = (command: Record<string, unknown>): boolean => {
       if (!open || !child.stdin.writable) return false;
@@ -283,7 +461,7 @@ export class PiRunner implements AgentRunner {
         note: `pi: dismissed an extension dialog superseded by a newer one ("${truncate(previous.title, 120)}")`,
       }));
       pendingDialog = dialog;
-      opts.onUiEvent?.({ type: 'ask.requested', requestId: `pi-${dialog.id}`, questions: [dialog.question] });
+      emitUiEvent({ type: 'ask.requested', requestId: `pi-${dialog.id}`, questions: [dialog.question] });
     };
     const sendMessage = (content: ContentBlock[]): boolean => {
       const { message, images } = toPiPrompt(content);
@@ -320,7 +498,7 @@ export class PiRunner implements AgentRunner {
       }
       const mapped = piTurnStarted(piUi);
       piUi = mapped.state;
-      for (const event of mapped.events) opts.onUiEvent?.(event);
+      for (const event of mapped.events) emitUiEvent(event);
       turnTextMark = textChunks.length;
       turnToolMark = toolCalls.length;
       settled = false;
@@ -400,6 +578,10 @@ export class PiRunner implements AgentRunner {
         for await (const line of readNdjson(child.stdout)) {
           // The deadline destroyed stdout; stop consuming whatever is still buffered.
           if (timedOut) break;
+          // One RPC line is proof this child started: the restart window is over, and
+          // whatever v2 events were held for it are the real session's now.
+          sawRpcOutput = true;
+          releaseUi();
           let value: unknown;
           try {
             value = JSON.parse(line);
@@ -500,6 +682,24 @@ export class PiRunner implements AgentRunner {
       // genuinely gone is both safe and the only way it does its job.
       const exitCode = await waitForExit(child);
       if (timeoutKillTimer) clearTimeout(timeoutKillTimer);
+
+      // The self-healing fallback (#548). The probe said this pi knew the option and the pi that
+      // actually ran refused it — someone removed or disabled the extension between the two, or
+      // the probe was wrong. Exactly ONE more attempt, without the flag: only when the flag was
+      // really passed (`restart` is null otherwise), only for THIS error, and only for a child
+      // that died before a single RPC line, so a mid-run failure can never loop.
+      if (
+        restart
+        && !sawRpcOutput
+        && exitCode !== 0
+        && exitCode !== null
+        && stderr.join('').includes(UNKNOWN_MCP_CONFIG_OPTION)
+      ) {
+        const replacement = restart();
+        // Held v2 events belong to the attempt that never ran; the replacement emits its own.
+        if (replacement) return await replacement.result;
+      }
+      releaseUi();
       if (spawnError) throw spawnError;
 
       // Timeout/interrupt can end the read loop mid-message — recover buffered
@@ -542,7 +742,7 @@ export class PiRunner implements AgentRunner {
       }
       if (!settled) onEvent?.({ type: 'note', message: 'pi RPC session ended before agent_settled' });
       if (tokensUsed === 0) onEvent?.({ type: 'note', message: 'token usage not reported by pi CLI' });
-      opts.onUiEvent?.({ type: 'session.ended', reason: piUi.stopReason });
+      emitUiEvent({ type: 'session.ended', reason: piUi.stopReason });
       onEvent?.({ type: 'done' });
       return { text: textChunks.join('\n').trim(), toolCalls, tokensUsed, sessionId };
     })();

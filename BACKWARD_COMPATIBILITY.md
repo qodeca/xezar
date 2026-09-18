@@ -773,11 +773,17 @@ so it is recorded here rather than silently.
   `"disabled": true` for xezar's bridge. The flag substitutes for exactly one slot of the adapter's
   six-file chain, and the chain merges a server entry field by field, so the flag survives the
   project files layered above it. `--mcp-config` is registered by the optional `pi-mcp-adapter`
-  extension, not by pi itself, and extensions resolve per agent directory, so xezar asks this pi —
-  with the agent directory the child will really spawn with — before passing the flag (#548). Where
-  the extension is absent the flag is left out, nothing is written, and the run says so once:
-  that pi reads no MCP configuration at all, so there is no bridge to switch off. A probe that
-  cannot answer is treated as "absent" (§ Zero config: a missing peer degrades, never fails).
+  extension, not by pi itself, and an extension resolves from the agent directory AND from the
+  project folder the child runs in — pi also loads a project's own `.pi/extensions/*` and the
+  packages its `.pi/settings.json` names, once that project is trusted. One binary and one agent
+  home therefore answer differently per folder, so xezar asks this pi with the agent directory AND
+  the working folder the child will really use, once per session and without caching the answer
+  (#548). Where the extension is absent the flag is left out, nothing is written, and the run says
+  so once: that pi reads no MCP configuration at all, so there is no bridge to switch off. A probe
+  that cannot answer leaves the flag out too, and says only that it could not confirm — never that
+  the extension is absent (§ Zero config: a missing peer degrades, never fails). Should a pi refuse
+  the option anyway — the extension removed between the question and the spawn — the session is
+  started once more without it rather than failing.
 - **Broken, OpenCode**: a task run is started with `OPENCODE_CONFIG_CONTENT` carrying
   `{"mcp": {"xezar": {"enabled": false}}}`. That is the one layer OpenCode merges ABOVE the
   project's own `opencode.json`; `OPENCODE_CONFIG` is merged below it and the project entry would
