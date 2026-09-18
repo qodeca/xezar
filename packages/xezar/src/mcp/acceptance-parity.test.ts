@@ -97,6 +97,15 @@ function blocked(id: string, acceptance: readonly string[], records: readonly st
 const A_API = `/api/v1/p/${PROJECT_A}`;
 const OK_COMMAND = `node -e "process.stdout.write('ok')"`;
 const HOLD_COMMAND = `node -e "setTimeout(() => {}, 30000)"`;
+/**
+ * How long a four-variant group may take to finish. Every variant creates its own worktree and
+ * child process, and a loaded machine (several gate runs at once, all sharing one `.git`) makes
+ * that far slower than the helper's 30s default: gate attempt 0002 timed out here on a head that
+ * had passed the identical suite earlier, and this case alone takes ~2s unloaded. The case's own
+ * budget is 90s, so this still leaves room for the case to fail on its own terms instead of being
+ * cut off by the wait helper. Test-only; no production code changed (same remedy as #630).
+ */
+const VARIANTS_DONE_BUDGET_MS = 75_000;
 const AGENT_STEPS = [{ id: 'task', name: 'Task', prompt: '{{task}}' }];
 const DRY_HEAD = '0123456789abcdef0123456789abcdef01234567';
 const GITHUB_REMOTE = 'https://github.com/acme/demo.git';
@@ -474,7 +483,7 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
       expect(groupOf(uiIds).size).toBe(1);
       // Both groups run isolated: every member gets its own worktree.
       const all = [...mcpGroup.map((r) => r.id), ...uiIds];
-      await until(() => all.every((id) => run(w, id)?.status === 'done'), 'all variants to finish');
+      await until(() => all.every((id) => run(w, id)?.status === 'done'), 'all variants to finish', VARIANTS_DONE_BUDGET_MS);
       for (const id of all) expect(run(w, id)?.worktreePath && existsSync(run(w, id)!.worktreePath!)).toBeTruthy();
       // The availability condition is reported, not discovered by failure.
       const discovery = await mcp(w, 'discover_project');
@@ -581,7 +590,7 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
       const ok = [{ id: 'ok', name: 'Ok', command: OK_COMMAND }];
       const mcpGroup = await uiStart(w, { task: 'pick via mcp', steps: ok, variants: 2 });
       const uiGroup = await uiStart(w, { task: 'pick via ui', steps: ok, variants: 2 });
-      await until(() => [...mcpGroup, ...uiGroup].every((id) => run(w, id)?.status === 'done' && existsSync(run(w, id)!.worktreePath ?? '/nowhere')), 'all four variants to finish');
+      await until(() => [...mcpGroup, ...uiGroup].every((id) => run(w, id)?.status === 'done' && existsSync(run(w, id)!.worktreePath ?? '/nowhere')), 'all four variants to finish', VARIANTS_DONE_BUDGET_MS);
       const before = (id: string) => ({ tree: run(w, id)!.worktreePath!, branch: run(w, id)!.branch! });
       const m = { winner: before(mcpGroup[0]!), loser: before(mcpGroup[1]!) };
       const u = { winner: before(uiGroup[0]!), loser: before(uiGroup[1]!) };
