@@ -53,7 +53,18 @@ cleanup() {
   done
   fixture_scratch_remove "$WORK"
 }
-trap cleanup EXIT INT TERM
+# A SIGNAL MUST TERMINATE. This used to be `trap cleanup EXIT INT TERM`, whose handler tidied up
+# and then RESUMED, so an interrupted run carried on with its scratch already removed.
+# `repo-gates.sh` already gets this right — its `gate_cancel` clears the trap and ends in `exit` —
+# and this follows that shape. INT and TERM get their own handler, which clears the trap so a second
+# signal cannot re-enter it and exits with the conventional SIGINT status; the EXIT trap still owns
+# `cleanup`, so it runs exactly once on every path, normal or signalled.
+trap cleanup EXIT
+on_signal() {
+  trap '' INT TERM
+  exit 130
+}
+trap on_signal INT TERM
 
 pass=0
 fail=0
@@ -2214,8 +2225,8 @@ printf '%s' "$resume_out" | grep -q 'gate-return     1 of 2 used' \
 # --- 6g. The security stage inside the canonical run (#469) ---------------------------------------
 #
 # Named breaks: `security-after-quality` (an attempt sealed with no security result),
-# `stale-security-head` (a result about another candidate), `empty-scan-green` (a code change that
-# enumerated nothing and called it clean).
+# `stale-security-head` (a result about another candidate), `empty-scan-green` (the enumeration
+# fails and zero files must not become a pass).
 printf '\n-- security stage --\n'
 SCAN_MJS="$SCRIPT_DIR/lib/security-scan.mjs"
 scan_fixture() {
@@ -2307,7 +2318,8 @@ expect_ok "a changed lockfile resolves the stage" scan_json "$sw" "$WORK/scan-de
   || bad "and records the dependency check as unknown, never a pass" "status=$(scan_status "$WORK/scan-deps.json" status)"
 
 # `empty-scan-green`: a base that cannot be read is an unreadable input, not an empty one. The
-# stage has no opinion and says so by refusing.
+# stage has no opinion and says so by refusing. This is the half that must survive Defect A's fix:
+# an empty change set is not applicable, but a change set the stage could not read still refuses.
 sw="$(scan_fixture scan-nobase src/a.ts 'export const a = 1;')"
 node "$SCAN_MJS" --cwd "$sw" --head "$(git -C "$sw" rev-parse HEAD)" --out "$WORK/scan-nobase.json" --quiet \
   && bad "empty-scan-green: an unreadable change set refuses, it does not pass" "the scan exited 0" \
@@ -2315,31 +2327,40 @@ node "$SCAN_MJS" --cwd "$sw" --head "$(git -C "$sw" rev-parse HEAD)" --out "$WOR
 [ "$(scan_status "$WORK/scan-nobase.json" status)" = "unknown" ] && ok "and it is recorded as unknown" \
   || bad "and it is recorded as unknown" "status=$(scan_status "$WORK/scan-nobase.json" status)"
 
-# `empty-scan-green`, the reachable half (#503 review M1). A base that WAS resolved and a diff that
-# WAS readable, over a branch sitting on its own merge-base, enumerate zero files. That is the
-# shape a real task hits — a branch with no commits over its base — and it used to resolve
-# `unknown` and seal, because the refusal was driven off `assess`'s decision, which early-returns
-# "no" for an empty inventory and so could never satisfy `decision === "yes"`. The term was inert
-# and its named break went green either way. The refusal is now driven off the INVENTORY.
+# The other half of the same falsifier: the base resolves and the enumeration command is broken. Git
+# fails to enumerate, so zero files were enumerated — but this is not the empty change set below, it
+# is a stage that could not look, and it still refuses.
+node "$SCAN_MJS" --cwd "$sw" --base 0000000000000000000000000000000000000000 \
+  --head "$(git -C "$sw" rev-parse HEAD)" --out "$WORK/scan-broken-enumeration.json" --quiet \
+  && bad "empty-scan-green: a broken enumeration refuses, it does not pass" "the scan exited 0" \
+  || ok "empty-scan-green: a broken enumeration refuses, it does not pass"
+[ "$(scan_status "$WORK/scan-broken-enumeration.json" refused)" = "true" ] && ok "and the result records the refusal" \
+  || bad "and the result records the refusal" "refused=$(scan_status "$WORK/scan-broken-enumeration.json" refused)"
+
+# Defect A: a genuinely EMPTY change set is `not-applicable`, not a refusal. The gate can run before
+# the agent has committed anything, so a branch at its own merge-base is a routine shape; the old
+# refusal was a false red that cost a whole agent-step re-run (9 of 269 sealed attempts over
+# 2026-09-17/18). There is nothing to scan, so there is nothing to refuse — and `refused` is false,
+# so sealing accepts it.
 sw="$(add_worktree "$(make_fixture scan-empty-branch)" "$RUN_A")"
 scan_json "$sw" "$WORK/scan-empty-branch.json" \
-  && bad "empty-scan-green: a branch at its own merge-base refuses, it does not pass" "the scan exited 0" \
-  || ok "empty-scan-green: a branch at its own merge-base refuses, it does not pass"
-[ "$(scan_status "$WORK/scan-empty-branch.json" refused)" = "true" ] && ok "and the result records the refusal, so sealing cannot accept it" \
-  || bad "and the result records the refusal, so sealing cannot accept it" "refused=$(scan_status "$WORK/scan-empty-branch.json" refused)"
+  && ok "an empty change set resolves instead of refusing" \
+  || bad "an empty change set resolves instead of refusing" "the scan exited non-zero"
+[ "$(scan_status "$WORK/scan-empty-branch.json" status)" = "not-applicable" ] && ok "and the result says not-applicable, never a pass over an unseen change set" \
+  || bad "and the result says not-applicable, never a pass over an unseen change set" "status=$(scan_status "$WORK/scan-empty-branch.json" status)"
+[ "$(scan_status "$WORK/scan-empty-branch.json" refused)" = "false" ] && ok "and it records no refusal, so sealing accepts it" \
+  || bad "and it records no refusal, so sealing accepts it" "refused=$(scan_status "$WORK/scan-empty-branch.json" refused)"
 
-# The ONE declared exception, and it is declared by the DRIVER, never inferred here: a run whose
-# fix landed on another branch (`DELIVERED`) or that only verified an existing revision
-# (`VERIFICATION`) is documented to carry no commits of its own (§7b, §7d). Its empty change set
-# is expected, the reason is recorded in the result, and the stage still says `unknown` — an
-# explicit exception a reviewer reads, never a silent pass.
+# A DELIVERED/VERIFICATION run still declares itself, and the declaration is recorded — it is no
+# longer the escape hatch, because an empty change set resolves on its own, but a reviewer reads why
+# the branch is empty.
 node "$SCAN_MJS" --cwd "$sw" --base "$(git -C "$sw" merge-base HEAD main)" \
   --head "$(git -C "$sw" rev-parse HEAD)" --empty-declared "this run recorded DELIVERED" \
   --out "$WORK/scan-empty-declared.json" --quiet \
-  && ok "a declared-empty change set resolves instead of refusing" \
-  || bad "a declared-empty change set resolves instead of refusing" "the scan exited non-zero"
-[ "$(scan_status "$WORK/scan-empty-declared.json" status)" = "unknown" ] && ok "and it is still recorded as unknown, never a pass" \
-  || bad "and it is still recorded as unknown, never a pass" "status=$(scan_status "$WORK/scan-empty-declared.json" status)"
+  && ok "a declared-empty change set resolves" \
+  || bad "a declared-empty change set resolves" "the scan exited non-zero"
+[ "$(scan_status "$WORK/scan-empty-declared.json" status)" = "not-applicable" ] && ok "and it is not-applicable, never a pass over an unseen change set" \
+  || bad "and it is not-applicable, never a pass over an unseen change set" "status=$(scan_status "$WORK/scan-empty-declared.json" status)"
 [ "$(scan_status "$WORK/scan-empty-declared.json" emptyDeclared)" = "this run recorded DELIVERED" ] \
   && ok "and the declaration itself is in the record" \
   || bad "and the declaration itself is in the record" "emptyDeclared=$(scan_status "$WORK/scan-empty-declared.json" emptyDeclared)"
@@ -4974,6 +4995,50 @@ expect_ok "Actual repository catalog, changelog and contracts" bash "$SCRIPT_DIR
 expect_ok "Parallel gate ordering, evidence and owned cancellation" node --test "$SCRIPT_DIR/gate-parallel.test.mjs"
 
 expect_ok "Leader context hook: prints in a primary, silent for task agents" node --test "$SCRIPT_DIR/leader-context.test.mjs"
+
+# --- Signal handling: a real INT must TERMINATE -------------------------------------------------
+#
+# `trap cleanup EXIT INT TERM` tidied up on a signal and then RESUMED, so an interrupted run kept
+# going with its scratch already removed — exactly the shape `repo-gates.sh`'s `gate_cancel` avoids
+# by ending in `exit`. This drives the REAL script: it waits until the trap is installed (the banner
+# is printed on the line after it), sends a real SIGINT, and requires the conventional status 130.
+# A handler that only tidies up leaves the process alive, which is the failure.
+#
+# Job control is NOT what makes this work: a background command in a non-interactive shell is
+# started with SIGINT ignored, and an ignored signal cannot be trapped — so the nested run would not
+# see the INT at all and the case would pass for the wrong reason. `perl` resets the disposition to
+# default before `exec`, and a default disposition survives the exec, so the nested bash can trap
+# the signal however this suite itself was launched.
+printf '\n-- signal handling --\n'
+sig_out="$WORK/signal-probe.out"
+: > "$sig_out"
+perl -e '$SIG{INT}="DEFAULT"; $SIG{TERM}="DEFAULT"; exec @ARGV' \
+  bash "$SCRIPT_DIR/infra-tests.sh" >"$sig_out" 2>&1 &
+sig_pid=$!
+sig_polls=0
+while [ "$sig_polls" -lt 1200 ]; do
+  grep -q '=== xezar infra tests ===' "$sig_out" 2>/dev/null && break
+  kill -0 "$sig_pid" 2>/dev/null || break
+  sleep 0.05
+  sig_polls=$((sig_polls + 1))
+done
+if grep -q '=== xezar infra tests ===' "$sig_out" 2>/dev/null; then
+  ok "the nested run reached its main body, so its signal trap is installed"
+else
+  bad "the nested run reached its main body, so its signal trap is installed" "it exited or hung before the banner"
+fi
+kill -INT "$sig_pid" 2>/dev/null
+# A handler that does not terminate would block this suite for the whole nested run. The watchdog
+# kills it after 10s, and a killed run (137) is a failure, not a pass.
+perl -e 'select undef,undef,undef,$ARGV[1]; kill 9, $ARGV[0]' "$sig_pid" 10 &
+sig_watchdog=$!
+wait "$sig_pid" 2>/dev/null
+sig_rc=$?
+kill "$sig_watchdog" 2>/dev/null
+wait "$sig_watchdog" 2>/dev/null
+[ "$sig_rc" -eq 130 ] \
+  && ok "a real SIGINT terminates the run with the conventional status 130" \
+  || bad "a real SIGINT terminates the run with the conventional status 130" "exit status was $sig_rc (137 means the handler did not terminate it)"
 
 # --- Verdict ---------------------------------------------------------------------------------------------
 printf '\n================ INFRA TESTS ================\n'

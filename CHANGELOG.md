@@ -1,5 +1,9 @@
 # Unreleased
 
+## 🐛 Fixes
+
+- 🐛 **Two kit-check defects: an empty security change set no longer refuses, and an interrupted infra run now terminates.** `.xezar/checks/security-scan.sh` treated a genuinely empty change set — a branch the gate reached before anything was committed — as `unknown` and refused it, a false red that cost a whole agent-step re-run; it is now `not-applicable`, while a change set the stage could not read (an unresolved base, an unreadable repository, a failed enumeration) still refuses. `.xezar/checks/infra-tests.sh`'s `trap cleanup EXIT INT TERM` cleaned up on a signal and then carried on; INT and TERM now exit with the conventional signal status, matching `repo-gates.sh`. Both are kit-internal: neither changes shipped behaviour.
+
 ## 📝 Specs & Documentation
 
 - 📝 **The project leader now carries its own contract, loaded for the leader and never for a task agent.** [.xezar/docs/leader-guide.md](.xezar/docs/leader-guide.md) collects what a leader session of this repository needs in one place: who the leader is and is not (MCP tools and `gh` only, never the cockpit or HTTP, never source diagnosis), session start and compaction recovery, this repository's single-project setup, the task lifecycle with the integration and conflict-repair recipes, review discipline and the repair counters, routing and account probing, the brief-writing rules, owner-only decisions, what to log where, and the release runbook as it is today. A committed Claude Code `SessionStart` hook (`.claude/settings.json` → `.xezar/checks/leader-context.sh`) appends the guide and the newest campaign folder's `README.md` and `decisions.md` at every start, resume, clear and compaction; the hook stays silent in a linked worktree, on a `/.local/xezar/worktrees/` path, and whenever `XEZ_HANDOFF_FILE` or `XEZ_TODOS_FILE` is set, so a xezar task agent never loads it (owner 2026-09-18).
