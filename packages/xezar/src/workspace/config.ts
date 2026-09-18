@@ -10,7 +10,13 @@ import { z } from 'zod';
 import { PROJECT_TAGS_MAX, PROJECT_TAG_MAX_LENGTH } from '@qodeca/xezar-contract';
 import { PROVIDER_IDS, type ProviderId } from '../core/provider-auth.ts';
 import { assertXezarHomeWriteIsSandboxed, workspaceConfigPath } from '../paths.ts';
-import { projectStateFiles, type StateLayout } from '../state-layout.ts';
+import {
+  isSymbolicLink,
+  projectStateDirRefusal,
+  projectStateFiles,
+  SingleProjectStateError,
+  type StateLayout,
+} from '../state-layout.ts';
 import { withWorkspaceConfigLock } from './config-lock.ts';
 
 /**
@@ -600,10 +606,16 @@ export function atomicWriteJsonSync(path: string, value: unknown): void {
  * and re-running with the flag in a folder that already holds the state must
  * change nothing (AC-4). The write is the shared atomic one (`0600`, dir
  * `0700`) and throws on failure, which is what the boot's Q1 refusal reports.
+ *
+ * Nothing is written through a symbolic link (#612 review M1): a symlinked or
+ * outside-resolving `.xezar` throws the boot's refusal, and a symlinked file is
+ * left alone — never written through and never replaced.
  */
 export function createProjectStateFiles(layout: StateLayout): void {
+  const linkRefusal = projectStateDirRefusal(layout);
+  if (linkRefusal !== null) throw new SingleProjectStateError(`single-project state ${linkRefusal}`);
   for (const path of projectStateFiles(layout)) {
-    if (existsSync(path)) continue;
+    if (existsSync(path) || isSymbolicLink(path)) continue;
     atomicWriteJsonSync(path, {});
   }
 }

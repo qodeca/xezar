@@ -236,16 +236,17 @@ issue arrives by id.
 - **Fix**: raise the blend toward `--foreground` until the composited ratio clears 4.5:1 for any label colour, and pin it with a unit test over the extreme colours. Owner: B8 reconciliation of #453.
 - **Final disposition (#453 B8, 2026-09-17)**: filed as **#593**, with G-23 and G-38. Its blend is a pure function (`github-filter.ts`), so it is the one row of the three that can be pinned by a unit test rather than a browser measurement.
 
-### G-47 Single-project mode's cockpit differs from its mockup in four accepted places
+### G-47 Single-project mode's cockpit differs from its mockup in five accepted places
 
-- **Differs**: the shipped cockpit (#600 PR4, #611) departs from `designs/single-project-mode/` in four places, each accepted by the design review on #611 (NB-2, NB-4), so the mockup is not the current reference for them:
+- **Differs**: the shipped cockpit (#600 PR4, #611, and PR5, #612) departs from `designs/single-project-mode/` in five places — the first four accepted by the design review on #611 (NB-2, NB-4), the fifth by the scoped design review on #612 (NB-1) — so the mockup is not the current reference for them:
   - **Palette placeholder**: `Search tasks, views, actions, skills…` (`components/command-palette.tsx`), not the copy deck's `Search tasks and actions…` — the shipped string names the groups that are really there.
   - **Three file-map rows moved** (`routes/settings/registry.tsx`, the `fileNote` entries): Skills names `.xezar/workspace.json` (the mockup said `config.json`); Appearance names `.xezar/workspace-ui.json` for accent, density and reading width (the theme stays in the browser); Prompt templates names `.local/xezar/ui-state.json`. Each is the file the section really writes, checked against `state-layout.ts`; the copy deck gave that mapping to engineering (§10.2).
   - **Phone placement of the file note**: at 375 px the note sits above the section's heading, first in the content column, not under the heading and description (`phone.html`, README §7). Below `md` the desktop header is hidden (`patterns.md`), so the note is placed where it survives; the pill row carries the section name.
   - **`FileNote` is private** to `routes/settings/settings-shell.tsx`, not the shared `SettingsFileNote` component OD-3 proposed. `patterns.md` documents it where it lives.
-- **Rule**: the shipped behaviour above; a change to any of the four updates this row or the mockup.
+  - **No danger tint on the unavailable account row's border** (`routes/settings/accounts-section.tsx`, `data-slot="account-row"`): the row keeps the ordinary `--border`, where README §7 tints it. The tint was specified as reinforcement only, and the word "Unavailable", the shared sentence and `StatusDot tone="danger"` already carry the state (rule 10). The sentence's path does render in the mono face, as `settings.html` draws it.
+- **Rule**: the shipped behaviour above; a change to any of the five updates this row or the mockup.
 - **Fix**: none planned — these are deliberate. Bring the mockup's README into line when the design is next revised.
-- **Final disposition (#611, 2026-09-18)**: kept, with a reason — each deviation is accepted on #611's `## Design review`.
+- **Final disposition (#611, 2026-09-18)**: kept, with a reason — each deviation is accepted on #611's `## Design review`; the fifth on #612's `## Design review (scoped, PR5 copy items)`.
 
 ## Comment vs code
 

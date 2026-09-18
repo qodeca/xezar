@@ -465,6 +465,24 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   )
 }
 
+/**
+ * The contract's unavailable sentence with its path in the mono face, as the #604 mockup renders it
+ * (`settings.html`, `<span class="mono">`). The text stays byte-identical to
+ * `unavailableAgentAccountReason` — only the path's face changes (#612 review m3, design NB-1).
+ */
+function UnavailableReason({ configDir }: { configDir: string }) {
+  const reason = unavailableAgentAccountReason(configDir)
+  const at = reason.indexOf(configDir)
+  if (at < 0) return <>{reason}</>
+  return (
+    <>
+      {reason.slice(0, at)}
+      <span data-slot="account-unavailable-path" className="font-mono">{configDir}</span>
+      {reason.slice(at + configDir.length)}
+    </>
+  )
+}
+
 function AccountRow({ account, onRemove }: { account: AgentProfile; onRemove: () => void }) {
   const [showDetails, setShowDetails] = useState(false)
   const routeId = agentAccountRouteId(account)
@@ -513,7 +531,7 @@ function AccountRow({ account, onRemove }: { account: AgentProfile; onRemove: ()
               <>
                 <StatusDot tone="danger" />
                 <span data-slot="account-status">Unavailable</span>
-                <span data-slot="account-unavailable">— {unavailableAgentAccountReason(account.configDir)}</span>
+                <span data-slot="account-unavailable">— <UnavailableReason configDir={account.configDir} /></span>
               </>
             ) : (
               <>

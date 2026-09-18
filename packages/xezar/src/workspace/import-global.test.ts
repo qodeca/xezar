@@ -1,9 +1,28 @@
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { globalStateLayout, projectStateLayout, type StateLayout } from '../state-layout.ts';
 import {
+  assertProjectStateUsable,
+  globalStateLayout,
+  projectStateLayout,
+  SingleProjectStateError,
+  type StateLayout,
+} from '../state-layout.ts';
+import { createProjectStateFiles } from './config.ts';
+import {
+  askInTerminal,
   firstRunImportLine,
   importGlobalSetup,
   isFirstSingleProjectRun,
@@ -197,11 +216,119 @@ describe('import from the global setup (#600 FR-4)', () => {
       );
     });
 
+    it('a folder reached through a symlink keeps its own selection, looked up by realpath (#612 n1)', async () => {
+      const alias = join(base, 'alias');
+      symlinkSync(project, alias);
+      const aliasLayout = projectStateLayout(alias);
+      await runFirstRunImport(aliasLayout, async () => true, env);
+      expect((json(aliasLayout.accountsPath) as { selections: unknown }).selections).toEqual({
+        [project]: { claude: 'work' },
+      });
+    });
+
     it('an empty home imports nothing and says so', async () => {
       rmSync(home, { recursive: true, force: true });
       const outcome = await runFirstRunImport(layout, async () => true, env);
       expect(projectStateDirContents()).toEqual([]);
       expect(firstRunImportLine(outcome, layout, env)).toBe(`  nothing to import from ${home}`);
+    });
+  });
+
+  // #612 review M1: a repository must not be able to choose where xezar writes — neither by
+  // committing `.xezar` as a link out of the project, nor by making one state file a link.
+  describe('never writes through a symbolic link (#612 M1)', () => {
+    let outside: string;
+
+    beforeEach(() => {
+      outside = join(base, 'outside');
+      mkdirSync(outside, { recursive: true });
+    });
+
+    const outsideContents = (): string[] => readdirSync(outside).sort();
+
+    it('a symlinked .xezar: the import refuses every file and writes nothing outside the project', async () => {
+      symlinkSync('../outside', layout.root);
+      const before = homeBytes();
+
+      const outcome = await runFirstRunImport(layout, async () => true, env);
+
+      expect(outcome.kind).toBe('imported');
+      const files = outcome.kind === 'imported' ? outcome.files : [];
+      expect(files.map((file) => file.outcome)).toEqual(['refused-symlink', 'refused-symlink', 'refused-symlink']);
+      expect(outsideContents()).toEqual([]);
+      expect(homeBytes()).toEqual(before);
+      expect(firstRunImportLine(outcome, layout, env)).toBe(
+        `  nothing to import from ${home}; refused to write through a symbolic link: ` +
+          `${layout.accountsPath}, ${layout.uiStatePath}, ${layout.workspacePath}`,
+      );
+    });
+
+    it('a symlinked .xezar: the boot refuses, and creating the state files writes nothing outside', () => {
+      symlinkSync('../outside', layout.root);
+      expect(() => assertProjectStateUsable(layout)).toThrow(SingleProjectStateError);
+      expect(() => assertProjectStateUsable(layout)).toThrow(/symbolic link/);
+      expect(() => createProjectStateFiles(layout)).toThrow(SingleProjectStateError);
+      expect(outsideContents()).toEqual([]);
+    });
+
+    it('a symlinked target file is refused, left a link, and nothing is written through it', async () => {
+      mkdirSync(layout.root, { recursive: true });
+      // One link to an existing outside file, one dangling link to a file that does not exist yet.
+      writeFileSync(join(outside, 'existing.json'), '{"mine":true}\n');
+      symlinkSync(join(outside, 'existing.json'), layout.accountsPath);
+      symlinkSync(join(outside, 'dangling.json'), layout.uiStatePath);
+
+      const outcome = await runFirstRunImport(layout, async () => true, env);
+
+      const files = outcome.kind === 'imported' ? outcome.files : [];
+      expect(files.find((file) => file.to === layout.accountsPath)?.outcome).toBe('refused-symlink');
+      expect(files.find((file) => file.to === layout.uiStatePath)?.outcome).toBe('refused-symlink');
+      expect(files.find((file) => file.to === layout.workspacePath)?.outcome).toBe('copied');
+      expect(lstatSync(layout.accountsPath).isSymbolicLink()).toBe(true);
+      expect(lstatSync(layout.uiStatePath).isSymbolicLink()).toBe(true);
+      expect(outsideContents()).toEqual(['existing.json']);
+      expect(readFileSync(join(outside, 'existing.json'), 'utf8')).toBe('{"mine":true}\n');
+      expect(firstRunImportLine(outcome, layout, env)).toBe(
+        `  imported 1 file(s) into ${layout.root}; refused to write through a symbolic link: ` +
+          `${layout.accountsPath}, ${layout.uiStatePath}`,
+      );
+    });
+
+    it('creating the state files never replaces or writes through a symlinked file', () => {
+      mkdirSync(layout.root, { recursive: true });
+      symlinkSync(join(outside, 'dangling.json'), layout.uiStatePath);
+      createProjectStateFiles(layout);
+      expect(lstatSync(layout.uiStatePath).isSymbolicLink()).toBe(true);
+      expect(outsideContents()).toEqual([]);
+      expect(json(layout.workspacePath)).toEqual({});
+    });
+  });
+
+  // #612 review m1: Ctrl-C / Ctrl-D at the prompt rejects readline's question with an AbortError.
+  describe('askInTerminal (#612 m1)', () => {
+    it('an aborted prompt (Ctrl-C / Ctrl-D) is a decline, not a crash', async () => {
+      const lines: string[] = [];
+      const answer = await askInTerminal('question? ', {
+        isTerminal: true,
+        question: async () => {
+          throw Object.assign(new Error('The operation was aborted'), { name: 'AbortError', code: 'ABORT_ERR' });
+        },
+        say: (line) => lines.push(line),
+      });
+      expect(answer).toBe(false);
+      expect(lines).toEqual(['  import cancelled — nothing was imported from your global setup']);
+    });
+
+    it('any other failure still surfaces', async () => {
+      await expect(
+        askInTerminal('question? ', {
+          isTerminal: true,
+          question: async () => {
+            throw new Error('boom');
+          },
+          say: () => undefined,
+        }),
+      ).rejects.toThrow('boom');
     });
   });
 });

@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { accessSync, constants, existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { accessSync, constants, existsSync, lstatSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 
@@ -338,6 +338,8 @@ export function setActiveStateLayout(layout: StateLayout | null): void {
  */
 export function assertProjectStateUsable(layout: StateLayout): void {
   if (layout.mode !== 'project') return;
+  const linkRefusal = projectStateDirRefusal(layout);
+  if (linkRefusal !== null) throw new SingleProjectStateError(`single-project state ${linkRefusal}`);
   const path = layout.workspacePath;
   if (existsSync(path)) {
     let raw: string;
@@ -397,6 +399,46 @@ function assertWritable(path: string, what: string): void {
  * that imports nothing but node builtins, which is what keeps it importable
  * from `paths.ts` without a cycle.
  */
+/**
+ * Why `<project>/.xezar` must not be written, or `null` when it may (#612 review M1).
+ *
+ * Every state write resolves its path through the layout, and the layout's paths
+ * are `resolve()`d, never `realpath`ed — so a repository that commits `.xezar` as a
+ * symbolic link would choose where xezar writes this machine's settings and account
+ * list. The folder is refused when it IS a link, or when its real path is not
+ * inside the project's real path. An absent folder is fine: it is created fresh,
+ * as a real directory, by the first write.
+ */
+export function projectStateDirRefusal(layout: StateLayout): string | null {
+  if (layout.mode !== 'project' || layout.projectRoot === null) return null;
+  const dir = layout.root;
+  let isLink: boolean;
+  try {
+    isLink = lstatSync(dir).isSymbolicLink();
+  } catch {
+    return null;
+  }
+  const never = 'xezar writes this project\'s state only into a real folder inside the project, never through a link';
+  if (isLink) return `folder ${dir} is a symbolic link — ${never}`;
+  try {
+    const realProject = realpathSync(layout.projectRoot);
+    if (!realpathSync(dir).startsWith(`${realProject}${sep}`)) return `folder ${dir} resolves outside ${realProject} — ${never}`;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return `folder ${dir} cannot be resolved (${message}) — ${never}`;
+  }
+  return null;
+}
+
+/** Is `path` itself a symbolic link? `false` when it does not exist. */
+export function isSymbolicLink(path: string): boolean {
+  try {
+    return lstatSync(path).isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+
 export function projectStateFiles(layout: StateLayout): readonly string[] {
   if (layout.mode !== 'project') return [];
   return [layout.configPath!, layout.workspacePath, layout.accountsPath, layout.uiStatePath];

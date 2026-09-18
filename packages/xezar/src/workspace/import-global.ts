@@ -1,6 +1,6 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { createInterface } from 'node:readline/promises';
-import { globalStateLayout, type StateLayout } from '../state-layout.ts';
+import { globalStateLayout, isSymbolicLink, projectStateDirRefusal, type StateLayout } from '../state-layout.ts';
 import { atomicWriteJsonSync } from './config.ts';
 
 /**
@@ -45,6 +45,10 @@ import { atomicWriteJsonSync } from './config.ts';
  * A project file that already exists is never overwritten, and a global file that cannot be read
  * or is not a JSON object is skipped and named rather than copied: importing a corrupt workspace
  * file would turn the boot's Q1 refusal on the very next start.
+ *
+ * Nothing is written through a symbolic link (#612 review M1): when `<project>/.xezar` is a link,
+ * or resolves outside the project, every file is refused; a single target file that is a link is
+ * refused on its own. Either way the global file is not read, and the boot line names the refusal.
  */
 
 /** One file the import considered, and what happened to it. */
@@ -53,7 +57,7 @@ export interface ImportedFile {
   readonly from: string;
   /** Absolute path of the project file. */
   readonly to: string;
-  readonly outcome: 'copied' | 'absent' | 'kept-existing' | 'unreadable';
+  readonly outcome: 'copied' | 'absent' | 'kept-existing' | 'unreadable' | 'refused-symlink';
 }
 
 /**
@@ -131,7 +135,9 @@ export function importGlobalSetup(layout: StateLayout, env: NodeJS.ProcessEnv = 
     { from: global.uiStatePath, to: layout.uiStatePath, transform: (value) => value },
     { from: global.workspacePath, to: layout.workspacePath, transform: withoutRegistry },
   ];
+  const dirRefused = projectStateDirRefusal(layout) !== null;
   return plan.map(({ from, to, transform }) => {
+    if (dirRefused || isSymbolicLink(to)) return { from, to, outcome: 'refused-symlink' };
     if (existsSync(to)) return { from, to, outcome: 'kept-existing' };
     const value = readJsonObject(from);
     if (value === 'absent' || value === 'unreadable') return { from, to, outcome: value };
@@ -155,12 +161,26 @@ function withoutRegistry(config: Record<string, unknown>): Record<string, unknow
   return rest;
 }
 
-/** The accounts store with only this folder's per-repo selection kept. */
+/**
+ * The accounts store with only this folder's per-repo selection kept. Looked up on the literal
+ * spelling first and the realpath'd one second, as `selectionFor` does: stored keys are
+ * realpath'd, and a non-git folder reached through a symlink would otherwise lose its own
+ * selection (#612 review n1). The key is kept as stored, so `selectionFor` finds it the same way.
+ */
 function accountsForProject(store: Record<string, unknown>, projectRoot: string): Record<string, unknown> {
   const selections = store.selections;
   if (selections === null || typeof selections !== 'object' || Array.isArray(selections)) return store;
-  const own = (selections as Record<string, unknown>)[projectRoot];
-  return { ...store, selections: own === undefined ? {} : { [projectRoot]: own } };
+  const byRoot = selections as Record<string, unknown>;
+  const key = [projectRoot, realRoot(projectRoot)].find((candidate) => byRoot[candidate] !== undefined);
+  return { ...store, selections: key === undefined ? {} : { [key]: byRoot[key] } };
+}
+
+function realRoot(root: string): string {
+  try {
+    return realpathSync(root);
+  } catch {
+    return root;
+  }
 }
 
 function readJsonObject(path: string): Record<string, unknown> | 'absent' | 'unreadable' {
@@ -178,21 +198,49 @@ function readJsonObject(path: string): Record<string, unknown> | 'absent' | 'unr
   }
 }
 
+/** The terminal {@link askInTerminal} talks to — injected so the abort path is testable. */
+export interface TerminalIo {
+  readonly isTerminal: boolean;
+  question(question: string): Promise<string>;
+  say(line: string): void;
+}
+
+function processTerminal(): TerminalIo {
+  return {
+    isTerminal: Boolean(process.stdin.isTTY && process.stdout.isTTY),
+    question: async (question) => {
+      const rl = createInterface({ input: process.stdin, output: process.stdout });
+      try {
+        return await rl.question(question);
+      } finally {
+        rl.close();
+      }
+    },
+    say: (line) => console.log(line),
+  };
+}
+
 /**
  * The CLI's {@link ImportAsk}: a `[y/N]` prompt on the terminal. `null` when stdin or stdout is not
  * a terminal — a script, a CI job, an IDE task — because a question nobody can see must not be
  * answered on the person's behalf in either direction.
+ *
+ * Ctrl-C or Ctrl-D at the prompt makes readline reject with an `AbortError`; that is a decline,
+ * said in one plain line, not a boot crash (#612 review m1).
  */
-export const askInTerminal: ImportAsk = async (question) => {
-  if (!process.stdin.isTTY || !process.stdout.isTTY) return null;
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
+export async function askInTerminal(question: string, io: TerminalIo = processTerminal()): Promise<boolean | null> {
+  if (!io.isTerminal) return null;
+  let answer: string;
   try {
-    const answer = (await rl.question(question)).trim().toLowerCase();
-    return answer === 'y' || answer === 'yes';
-  } finally {
-    rl.close();
+    answer = await io.question(question);
+  } catch (err) {
+    if (!(err instanceof Error && err.name === 'AbortError')) throw err;
+    io.say('  import cancelled — nothing was imported from your global setup');
+    return false;
   }
-};
+  const normalized = answer.trim().toLowerCase();
+  return normalized === 'y' || normalized === 'yes';
+}
 
 /** The one line the boot prints after the step, or `null` when there is nothing to say. */
 export function firstRunImportLine(outcome: FirstRunOutcome, layout: StateLayout, env: NodeJS.ProcessEnv = process.env): string | null {
@@ -207,9 +255,11 @@ export function firstRunImportLine(outcome: FirstRunOutcome, layout: StateLayout
     case 'imported': {
       const copied = outcome.files.filter((file) => file.outcome === 'copied').map((file) => file.to);
       const skipped = outcome.files.filter((file) => file.outcome === 'unreadable').map((file) => file.from);
+      const refused = outcome.files.filter((file) => file.outcome === 'refused-symlink').map((file) => file.to);
       const parts = [
         copied.length > 0 ? `imported ${copied.length} file(s) into ${layout.root}` : `nothing to import from ${globalSetup(env).root}`,
         ...(skipped.length > 0 ? [`skipped unreadable ${skipped.join(', ')}`] : []),
+        ...(refused.length > 0 ? [`refused to write through a symbolic link: ${refused.join(', ')}`] : []),
       ];
       return `  ${parts.join('; ')}`;
     }

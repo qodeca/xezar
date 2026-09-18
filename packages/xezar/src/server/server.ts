@@ -180,6 +180,8 @@ import {
 } from '../workspace/agent-accounts.ts';
 import {
   accountHomePatch,
+  AgentAccountUnavailableError,
+  assertAgentAccountAvailable,
   defaultAgentProfile,
   listAgentProfiles,
   profileDirState,
@@ -1779,6 +1781,25 @@ export function createApp(deps: ServerDeps) {
     }
     const { profile } = resolved;
     return { env: profile.isDefault ? {} : profileEnv(provider, profile.path) };
+  };
+
+  /**
+   * The environment a FRESH CLI in a worktree carries: the project's own account. A committed
+   * account this machine lacks (single-project mode, #600 BR-4) is refused with the Settings
+   * sentence rather than opening a CLI on a folder that does not exist here (#612 review m2).
+   */
+  const freshCliEnv = async (
+    root: string,
+    provider: ProviderId,
+  ): Promise<{ env: Record<string, string> } | { error: string }> => {
+    const resolved = await resolveProfileEnvForRoot(root, provider);
+    try {
+      await assertAgentAccountAvailable(resolved.profile);
+    } catch (err) {
+      if (err instanceof AgentAccountUnavailableError) return { error: err.message };
+      throw err;
+    }
+    return { env: resolved.env };
   };
 
   /** The copy-paste fallback shown when no terminal could be opened — same account, spelled for
@@ -4285,7 +4306,7 @@ export function createApp(deps: ServerDeps) {
         // hands the user a different subscription than every task in the same project uses.
         const account = resume
           ? await handoffEnv(cliRunner, sessionStep?.profileId)
-          : { env: (await resolveProfileEnvForRoot(repoRoot, cliRunner)).env };
+          : await freshCliEnv(repoRoot, cliRunner);
         if ('error' in account) return c.json({ error: account.error }, 409);
         const fallback = handoffFallbackCommand(dir, command, account.env);
         if (fallback === null) {

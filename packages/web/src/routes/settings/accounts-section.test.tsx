@@ -312,6 +312,10 @@ describe('the agent accounts section', () => {
     expect(unavailableAgentAccountRefusal('Work account', '~/.claude-work')).toBe(
       `Agent account “Work account” is unavailable ${sentence}`,
     )
+    // The path inside the sentence is in the mono face, as the #604 mockup draws it (#612 m3, NB-1).
+    const path = row.querySelector('[data-slot="account-unavailable-path"]')
+    expect(path?.textContent).toBe('~/.claude-work')
+    expect(path?.className).toContain('font-mono')
     // Global mode's "Connect will make it" would contradict the refusal, so it is not shown too.
     expect(row.querySelector('[data-slot="account-missing"]')).toBeNull()
     // The discovered account is never unavailable — it is what this machine has.

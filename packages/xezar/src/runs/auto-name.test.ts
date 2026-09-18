@@ -141,6 +141,35 @@ describe('generateRunName (dry run)', () => {
   }, 30_000);
 });
 
+// #612 review m2: the namer spawns an agent CLI too, so a committed account this machine lacks
+// (single-project mode, #600 BR-4) must not be spawned on — the heuristic title stays.
+describe('generateRunName on an unavailable committed account (#612 m2)', () => {
+  it('skips the spawn and answers null, so the heuristic title stays', async () => {
+    const { mkdtempSync, realpathSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { projectStateLayout, setActiveStateLayout } = await import('../state-layout.ts');
+    const { mergeWriteAgentAccounts } = await import('../workspace/agent-accounts.ts');
+    const { generateRunName } = await import('./auto-name.ts');
+    const saved = process.env.XEZ_DRY_RUN;
+    process.env.XEZ_DRY_RUN = '1';
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'xez-namer-sp-')));
+    setActiveStateLayout(projectStateLayout(root));
+    try {
+      await mergeWriteAgentAccounts((store) => {
+        store.accounts.push({ id: 'work', provider: 'claude', configDir: join(root, 'not-here'), label: 'Work account', addedAt: '' });
+        store.selections[root] = { claude: 'work' };
+      });
+      expect(await generateRunName(root, { task: '437', skillName: 'xez-auto-review-pr' })).toBeNull();
+    } finally {
+      setActiveStateLayout(null);
+      rmSync(root, { recursive: true, force: true });
+      if (saved === undefined) delete process.env.XEZ_DRY_RUN;
+      else process.env.XEZ_DRY_RUN = saved;
+    }
+  }, 30_000);
+});
+
 describe('liveTitleUpdatesEnabled', () => {
   const saved = process.env.XEZ_TITLE_UPDATES;
   afterEach(() => {

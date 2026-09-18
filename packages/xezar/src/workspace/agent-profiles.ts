@@ -187,6 +187,9 @@ export async function profileDirState(
   try {
     entries = await readdir(path);
   } catch {
+    // Any read failure lands here, not only ENOENT: a folder that exists but cannot be read
+    // (EACCES) or a path through a file (ENOTDIR) also reports `exists: false`, so the
+    // single-project refusal's "does not exist on this machine" covers those too (#612 review n2).
     return { exists: false, looksValid: false };
   }
   return { exists: true, looksValid: looksLikeProfileDir(provider, entries) };

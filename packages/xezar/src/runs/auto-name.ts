@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { loadConfig } from '../config.ts';
 import { createRunner } from '../core/runner-factory.ts';
 import { parseStructured } from '../planner.ts';
-import { resolveProfileEnvForRoot } from '../workspace/agent-profiles.ts';
+import { assertAgentAccountAvailable, resolveProfileEnvForRoot } from '../workspace/agent-profiles.ts';
 import { extractTaskRefs, refineTaskRefs, titleRefNumber, type TaskRefs } from './task-refs.ts';
 
 /**
@@ -158,7 +158,10 @@ export async function generateRunName(repoRoot: string, ctx: NamerContext): Prom
     // Name under the project's own agent account (spec 2026-07-29-agent-profiles) — naming is
     // a model call like any other, and billing it to the personal subscription for a work
     // project is the exact confusion accounts exist to remove.
-    const { env: profileEnv } = await resolveProfileEnvForRoot(repoRoot, config.defaultRunner);
+    const { env: profileEnv, profile } = await resolveProfileEnvForRoot(repoRoot, config.defaultRunner);
+    // A committed account this machine lacks (single-project mode, #600 BR-4) throws here, before
+    // any spawn, and the catch below keeps the heuristic title (#612 review m2).
+    await assertAgentAccountAvailable(profile);
     for (let attempt = 0; attempt < 2; attempt++) {
       const result = await runner.run({
         systemPrompt: NAMER_SYSTEM_PROMPT,

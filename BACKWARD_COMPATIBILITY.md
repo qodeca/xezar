@@ -542,16 +542,19 @@ contract from this release on.
   `projects` array, `agent-accounts.json` keeps only this folder's own entry in `selections` (other
   folders' choices are dropped), and `ui-state.json` becomes `workspace-ui.json`. An existing project
   file is never overwritten, an unreadable global file is skipped and named, and `workspace.json` is
-  written last, so an interrupted import still counts as a first run. A decline imports nothing; with
-  no terminal (stdin or stdout not a TTY) nothing is imported and one line says so; `xezar mcp`
-  never asks, because its stdio is the protocol. A folder that already holds `workspace.json` — a
+  written last, so an interrupted import still counts as a first run. Nothing is written through a
+  symbolic link: a `<project>/.xezar` that is a link, or resolves outside the project, refuses the
+  boot (and the import refuses every file), and a state file that is itself a link is refused and
+  named in the boot line, never written through or replaced (#612). A decline — including Ctrl-C or
+  Ctrl-D at the prompt — imports nothing; with no terminal (stdin or stdout not a TTY) nothing is
+  imported and one line says so; `xezar mcp` never asks, because its stdio is the protocol. A folder that already holds `workspace.json` — a
   second run, or a clone — is never asked, and nothing is synchronised in either direction
   afterwards. The exception is held to one call site: `packages/xezar/src/state-path-scan.test.ts`
   fails any direct call of `globalStateLayout()` or `globalStateRoot()` outside
   `packages/xezar/src/state-layout.ts`, and allowlists this import (`workspace/import-global.ts`) by
   name, with its reason. Breaking: reading the home without a yes or after the first run, writing to
-  it, copying the registry or another folder's selection, overwriting a project file, or asking where
-  nobody can answer.
+  it, copying the registry or another folder's selection, overwriting a project file, writing outside
+  the project (including through a symbolic link), or asking where nobody can answer.
 - **A committed agent account that this machine does not have is refused, never substituted (#600
   part 5).** In the mode an account in `<project>/.xezar/agent-accounts.json` whose `configDir` does
   not exist on this machine reads, in Settings → Agent accounts, "Unavailable — this account's folder

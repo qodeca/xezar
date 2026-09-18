@@ -94,13 +94,16 @@
   project list, agent accounts keep only this folder's own account choice, and GUI preferences
   become `workspace-ui.json`. Nothing is written before you answer, a decline imports nothing,
   existing project files are never overwritten, an unreadable global file is skipped and named, and
-  `~/.xezar` is only read, never written. With no terminal — a script, CI — nothing is imported and
+  `~/.xezar` is only read, never written. Nothing is written through a symbolic link: a
+  `.xezar` that links out of the project refuses the start, and a state file that is a link is left
+  alone and named. Ctrl-C or Ctrl-D at the question is a decline, not a crash. With no terminal — a script, CI — nothing is imported and
   one line says so; `xezar mcp` never asks; a second run or a clone is never asked; and nothing is
   kept in sync afterwards. That one read is the mode's single deliberate exception to "`~/.xezar` is
   not opened", and a source scan now fails any other direct reach for the global layout. In the
   mode, an agent account the project names whose folder does not exist on this machine reads
   **Unavailable** in Settings → Agent accounts with a sentence saying why and what to do, and a task
-  that asks for it is refused before the agent starts with the same sentence — never a silent
+  that asks for it is refused before the agent starts with the same sentence — as are the task
+  namer, the chain planner and "Open in → agent CLI", which never start on it — never a silent
   fallback to the default login; the start itself never fails because of it. The cockpit copy
   follows the mode: the defaults card reads "Defaults for this project", Resources drops the
   "Configure per-project limits" link, and the empty Tasks page says the folder carries its own
