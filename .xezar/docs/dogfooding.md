@@ -12,6 +12,13 @@ Installation validation is reported in installation.md. Real-task entries follow
 
 ## Real-task entries
 
+### 2026-09-18 — #653 browser test harness in single-project mode (a gate timeout the diff could not reach), `bug-fix` step `Reproduce, diagnose and fix`, `xezar-bug-investigation`, pi (DeepSeek V4.1 Flash) — real-task observed
+- Input: the owner decision "Fix the test harness" for #653 (a plain clone of a repository that commits `.xezar/workspace.json` boots in single-project mode, so the pinned `XEZ_HOME` is never opened and the browser globalSetup wrote into a folder that was never created); base `a8b25a77`, head `bfc62466`; vitest 4.1.10; kit digest unknown.
+- Observed: **a gate failure that the diff cannot reach still costs a full repair round.** Gate attempt `0001-1789760455783-75699` failed only at `packages/xezar/src/mcp/acceptance-parity.test.ts` P-10, which hit its own 75 s `VARIANTS_DONE_BUDGET_MS` at 76.3 s; every other gate passed. The diff touches `scripts/test-env-up.sh`, `docs/testing/agent-browser.md`, `CHANGELOG.md` and a `node:test` file, and the parity test imports none of them. P-10 ran 1.64 s on base and 1.59 s on head; the full file was 48/48 in 40.7 s on base and 40.3 s on head. Machine load was 11.5 with four other gate runs live — the exact sensitivity the budget's own comment already documents. Classifying it first, instead of "fixing" a green test, is what kept the fix content unchanged.
+- Observed: **the `[xez] failed to save runs.json: ENOENT` line next to the failure is teardown noise, not a consequence of the diff.** It is the run store's 300 ms debounced `saveNow` firing after a fixture teardown removed `.local/xezar`; it is logged and swallowed. It appeared in neither unloaded run (base or head), and no module it passes through is in this diff.
+- Regression/control: `gate-return` round 1 of 2 consumed before the re-run; no fix content changed. P-10 on base `a8b25a77` → `1 passed | 47 skipped` in 1.64 s; on head `bfc62466` → `1 passed | 47 skipped` in 1.59 s; full file 48/48 on both.
+- Remaining limit: the flake is load-dependent, so the gate stage's own re-run against the current head is the confirmation; nothing was changed to chase it.
+
 ### 2026-09-18 — #644 model-routing document to version 3 (DeepSeek V4.1 Flash as a normal lane), `docs-maintenance` step `docs`, `xezar-docs-maintenance`, Claude Code (Opus 5) — real-task observed
 
 - Input: the owner's words of 2026-09-18 21:3x, 17:23, 17:19 and 14:18/14:39, the run store `.local/xezar/runs.json` for the day's DeepSeek runs, `gh` for the PR/issue/Release facts, and `.xezar/docs/model-routing.md` at version 2. Deliverable: that one file plus a `# Unreleased` changelog bullet; head `29294f89` over base `a8b25a77`.

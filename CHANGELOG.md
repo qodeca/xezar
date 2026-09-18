@@ -2,6 +2,16 @@
 
 ## 🐛 Fixes
 
+- 🐛 **The cockpit browser suite runs when the repository itself is in single-project mode.** (#653)
+  Once `.xezar/workspace.json` is committed, a plain clone is a single-project root, and the mode
+  never opens the pinned `XEZ_HOME` — so the shared test server kept its state in the repository and
+  the suite's `globalSetup` wrote its registry into a home that was never created
+  (`ENOENT … .local/qa/xez-home/config.json`). The app now takes an explicit `--global-layout` input
+  (`XEZ_GLOBAL_LAYOUT=1` says the same) that answers "global" for one launch and outranks the marker,
+  and `scripts/test-env-up.sh` passes it — so the suite boots in the pinned global layout without the
+  launcher renaming, moving or writing anything in the repository root. `environment.stateLayout`
+  joins the reuse fingerprint so an instance booted by an older launcher is never reused. Task
+  worktrees are unaffected — a linked worktree is never a single-project root.
 - 🐛 **A red `npm test` now means a real defect more often: the suite stops timing out on its own
   clock and stops reading the agent's model.** (Refs #644) Two causes, both in test setup and
   neither in shipped code — nothing about xezar's behaviour changes. First, the server suite ran on

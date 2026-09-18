@@ -121,6 +121,79 @@ describe('resolveStateLayout', () => {
     expect(layout.root).toBe(join(project, '.xezar'));
   });
 
+  /**
+   * #657 — the missing half of the mode's input: an explicit "global" answer.
+   *
+   * `--single-project` turns the mode ON and until this input existed nothing
+   * turned it OFF, so a folder carrying `workspace.json` was in the mode and the
+   * only way out was to move the file. The precedence is stated in
+   * `resolveStateLayout` and pinned here: the explicit global input outranks the
+   * marker, and nothing else changes.
+   */
+  it('lets the explicit global flag outrank a present marker', () => {
+    marker();
+
+    const layout = resolveStateLayout(project, ['--global-layout'], { XEZ_HOME: '/tmp/xez-global' });
+
+    expect(layout.mode).toBe('global');
+    // ...and it resolves the GLOBAL root, so the launch really lands in
+    // `XEZ_HOME` rather than in the project's own `.xezar/`.
+    expect(layout.root).toBe('/tmp/xez-global');
+  });
+
+  it('lets the explicit global environment variable outrank a present marker, and only exact `1` does it', () => {
+    marker();
+
+    expect(resolveStateLayout(project, [], { XEZ_GLOBAL_LAYOUT: '1', XEZ_HOME: '/tmp/xez-global' }).mode).toBe(
+      'global',
+    );
+    // Strict activation, the same spelling rule `XEZ_SINGLE_PROJECT` follows: a
+    // variable that is merely set must not move anybody's state.
+    for (const value of ['0', 'true', 'yes', '']) {
+      expect(resolveStateLayout(project, [], { XEZ_GLOBAL_LAYOUT: value }).mode, value).toBe('project');
+    }
+  });
+
+  it('still enters the mode when the input is absent and the marker is present', () => {
+    marker();
+
+    expect(resolveStateLayout(project, [], {}).mode).toBe('project');
+  });
+
+  it('still answers the global layout when the input is absent and there is no marker', () => {
+    expect(resolveStateLayout(project, [], {}).mode).toBe('global');
+  });
+
+  it('wins over --single-project too, because it is the explicit answer to "which layout"', () => {
+    expect(resolveStateLayout(project, ['--single-project', '--global-layout'], {}).mode).toBe('global');
+  });
+
+  it('changes nothing on disk — the marker is still there, byte for byte', () => {
+    const path = marker();
+
+    const layout = resolveStateLayout(project, ['--global-layout'], { XEZ_HOME: '/tmp/xez-global' });
+
+    expect(layout.mode).toBe('global');
+    expect(readFileSync(path, 'utf8')).toBe('{}\n');
+    expect(readdirSync(join(project, '.xezar'))).toEqual([PROJECT_STATE_MARKER]);
+  });
+
+  it('is still overruled by the linked-worktree rule, which no input can turn off (FR-1.3)', () => {
+    const worktree = join(project, '.local', 'xezar', 'worktrees', 'abc123');
+    mkdirSync(worktree, { recursive: true });
+
+    // Already the global layout, so this pins that the new input adds no way to
+    // reach the mode from a task worktree either.
+    expect(resolveStateLayout(worktree, ['--global-layout'], {}).mode).toBe('global');
+  });
+
+  it('exports the input names the CLI registers and the docs spell, so a rename cannot drift', async () => {
+    const module = await import('./state-layout.ts');
+
+    expect(module.GLOBAL_LAYOUT_FLAG).toBe('--global-layout');
+    expect(module.GLOBAL_LAYOUT_ENV).toBe('XEZ_GLOBAL_LAYOUT');
+  });
+
   it('never makes the user home a project root, flag or not', () => {
     expect(resolveStateLayout(homedir(), ['--single-project'], {}).mode).toBe('global');
   });

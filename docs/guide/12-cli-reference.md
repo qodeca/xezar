@@ -95,6 +95,14 @@ On the first run in a folder without `.xezar/workspace.json`, xezar asks once, i
 
 `xezar mcp` never asks. A folder that already holds `.xezar/workspace.json`, such as a clone, is never asked. A `.xezar/workspace.json` that is not valid JSON, or a state folder that cannot be written, stops the start with a named error and exit code 1. See [single-project mode](09-projects.md#to-keep-a-projects-xezar-setup-inside-the-project--single-project-mode) for what the mode changes and how it differs from `XEZ_SINGLE_PROJECT=1`.
 
+### To ask for the global layout: `--global-layout`
+
+```sh
+xezar --global-layout
+```
+
+One launch, the global layout, even in a folder that carries `.xezar/workspace.json`. The folder normally decides, so this is the explicit answer for the other side: the run keeps its settings, accounts and registry in `~/.xezar` (or `XEZ_HOME`) and reads none of the project's committed state. `XEZ_GLOBAL_LAYOUT=1` says the same, and only the exact value `1` enables it. It is the counterpart of `--single-project` and outranks the marker; given both flags, the explicit global request wins. Nothing in the folder is moved, renamed or written, so it is safe to use in a checkout another process — a running cockpit, a peer agent — is serving. `XEZ_HOME` keeps its own meaning: it relocates the global state root and neither turns the layout on nor off.
+
 ## To run a task headlessly: `run`
 
 ```sh
@@ -167,6 +175,7 @@ Use the [server-install guide](../server-install/README.md) for prerequisites an
 | `--model <model>` | `run`: task model override. |
 | `--no-open` | `serve`: do not open the browser. |
 | `--single-project` | Every command: this folder owns its xezar setup — settings, accounts and the registry in `.xezar/`, working files in `.local/xezar/`, `~/.xezar` not opened. Needed only the first time; afterwards the folder decides. The first run asks once, in a terminal, whether to copy your global setup in (never the project list). A linked Git worktree is never a project root. See [above](#to-keep-the-setup-in-the-project-folder---single-project). |
+| `--global-layout` | Every command: resolve the global layout for this launch, even in a folder that carries `.xezar/workspace.json`. The explicit counterpart of `--single-project`, and it outranks the marker; nothing is moved, renamed or written. `XEZ_GLOBAL_LAYOUT=1` says the same. See [above](#to-ask-for-the-global-layout---global-layout). |
 | `--platform <id>` | Server commands: `ubuntu-vps` or `macosx-ngrok`. Required for install; optional for deploy/uninstall only when saved instance state supplies it. |
 | `--domain <host>` | `ubuntu-vps` server commands only: select the domain's instance; install can create a second independent one. |
 | `--bind-host <host>` | `serve` / `server-install`: bind host, default `127.0.0.1`. |
