@@ -41,7 +41,8 @@ agent-browser) and then its own fixture server. It is not part of `npm run test:
   pill are hidden, so no capture lands on a random frame.
 - The Tasks table folds Model, Cost, CPU and Mem; with every column open it is wider than 1280 px
   beside the sidebar and IN / OUT is cut off.
-- The version chip shows the version of the build that ran the capture.
+- The version chip is pinned to v0.16.0, the version these docs describe, not the
+  pre-release build's own `package.json` version.
 - A still larger than 300 KB would be re-encoded as an 8-bit palette PNG. The tour's streaming
   frames are sampled live, so their count can vary; their total time is fixed, and the tour runs
   at most 20 seconds.

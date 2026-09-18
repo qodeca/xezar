@@ -72,7 +72,7 @@ Automations are off by default. Enabling them allows GitHub polling and task lau
 
 For example, a prompt can say `Summarize {{github.url}} and suggest a next step.` The eight supported placeholders are `{{github.kind}}`, `{{github.number}}`, `{{github.title}}`, `{{github.url}}`, `{{github.author}}`, `{{github.assignees}}`, `{{github.labels}}`, and `{{github.event}}`; unknown placeholders are rejected. Appended untrusted context contains event metadata, not the issue body. When editing an existing automation, save the name and prompt, then use its card’s **Enable** action to enable it. The editor lets you change the name and prompt; it does not expose controls for changing the displayed event, interval, or filter bounds.
 
-![Automation cards and activity](../screenshots/0.16.0/automations-dark-1280.png)
+![An automation card with Test filter, Pause, Edit and View log controls](../screenshots/0.16.0/automations-dark-1280.png)
 
 ## To inspect the automation log
 

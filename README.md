@@ -36,7 +36,7 @@ you can `cat` and fix by hand.
 
 ## 60-second tour
 
-<a href="docs/screenshots/0.16.0/tour.gif"><img src="docs/screenshots/0.16.0/tour.gif" width="100%" alt="A short loop of the cockpit: tasks running in parallel, the queue starting, a live thread and the Inbox"></a>
+<a href="docs/screenshots/0.16.0/tour.gif"><img src="docs/screenshots/0.16.0/tour.gif" width="100%" alt="A short loop of the cockpit: tasks running in parallel, the queue starting, a live thread, review and a draft PR"></a>
 
 <table>
 <tr>
