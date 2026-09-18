@@ -26,7 +26,7 @@ export interface UsageLimitHit {
   /** When the provider says the limit lifts. Never in the past — a stale instant clamps to now. */
   resetAt: Date;
   /** Which shape carried it — the lifecycle note quotes this so the schedule is auditable. */
-  evidence: 'claude-marker' | 'timestamp' | 'clock' | 'delay';
+  evidence: 'claude-marker' | 'timestamp' | 'date' | 'clock' | 'delay';
 }
 
 /**
@@ -53,6 +53,31 @@ const RESET_AT_RE =
 /** `...resets 8:10pm (Europe/Warsaw)`, `...try again at 20:10`. */
 const RESET_CLOCK_RE =
   /(?:resets?|reset[s]?\s+at|try\s+again|retry|available\s+again|unlocks?)\b[^\n]{0,24}?\b(?:at\s*)?(\d{1,2})(?:(?::(\d{2}))\s*([ap]\.?m\.?)?|\s*([ap]\.?m\.?))(?:\s*\(([^)]+)\))?/i;
+
+/**
+ * `...resets Sep 19 at 6pm (Europe/Warsaw)` — Claude Code's weekly-limit phrasing, which names a
+ * month and day instead of just a clock. This MUST be tried before `RESET_CLOCK_RE`: that regex
+ * ignores the month/day and only reads the trailing clock, so it guesses "the next occurrence of
+ * this time from now" — a day early whenever the named date is more than one day out and today's
+ * occurrence of that clock time has already passed (#581).
+ */
+const RESET_DATE_RE =
+  /(?:resets?|reset[s]?\s+at|try\s+again|retry|available\s+again|unlocks?)\b[^\n]{0,24}?\b([A-Za-z]{3,9})\.?\s+(\d{1,2})\s+at\s+(\d{1,2})(?:(?::(\d{2}))\s*([ap]\.?m\.?)?|\s*([ap]\.?m\.?))(?:\s*\(([^)]+)\))?/i;
+
+const MONTH_NAMES: Record<string, number> = {
+  jan: 1, january: 1,
+  feb: 2, february: 2,
+  mar: 3, march: 3,
+  apr: 4, april: 4,
+  may: 5,
+  jun: 6, june: 6,
+  jul: 7, july: 7,
+  aug: 8, august: 8,
+  sep: 9, sept: 9, september: 9,
+  oct: 10, october: 10,
+  nov: 11, november: 11,
+  dec: 12, december: 12,
+};
 
 /** `…try again in 42 minutes`, `…retry after 3600 seconds`, `retry-after: 3600`. */
 const RESET_IN_RE =
@@ -95,6 +120,12 @@ export function parseUsageLimit(message: string | undefined, now = Date.now()): 
     if (Number.isFinite(parsed)) return settle(parsed, now, 'timestamp');
   }
 
+  const dated = RESET_DATE_RE.exec(message);
+  if (dated) {
+    const parsed = parseDateReset(dated, now);
+    if (parsed !== null) return settle(parsed, now, 'date');
+  }
+
   const clock = RESET_CLOCK_RE.exec(message);
   if (clock) {
     const parsed = parseClockReset(clock, now);
@@ -110,6 +141,65 @@ export function parseUsageLimit(message: string | undefined, now = Date.now()): 
   if (header) return settle(now + Number(header[1]) * 1_000, now, 'delay');
 
   return null;
+}
+
+/**
+ * `Sep 19 at 6pm (Europe/Warsaw)` — an explicit month and day, so unlike `parseClockReset` this
+ * never has to guess which day the clock time belongs to.
+ */
+function parseDateReset(match: RegExpExecArray, now: number): number | null {
+  const month = MONTH_NAMES[match[1]!.toLowerCase()];
+  if (!month) return null;
+  const day = Number(match[2]);
+  if (!Number.isInteger(day) || day < 1 || day > 31) return null;
+
+  const hourRaw = Number(match[3]);
+  const minute = match[4] === undefined ? 0 : Number(match[4]);
+  const meridiem = (match[5] ?? match[6])?.toLowerCase().replaceAll('.', '');
+  if (!Number.isInteger(hourRaw) || !Number.isInteger(minute) || minute < 0 || minute > 59) {
+    return null;
+  }
+  let hour = hourRaw;
+  if (meridiem) {
+    if (hour < 1 || hour > 12) return null;
+    if (meridiem === 'am') hour = hour === 12 ? 0 : hour;
+    else if (meridiem === 'pm') hour = hour === 12 ? 12 : hour + 12;
+    else return null;
+  } else if (hour < 0 || hour > 23) {
+    return null;
+  }
+
+  const timeZone = validTimeZone(match[7]?.trim());
+  if (timeZone) return nextYearlyDateInTimeZone(month, day, hour, minute, timeZone, now);
+  return nextYearlyLocalDate(month, day, hour, minute, now);
+}
+
+/**
+ * The message never names a year, so the year is inferred: this year's occurrence of the named
+ * month/day/time, or next year's when this year's has already passed — the only case that arises
+ * is a reset named right around a New Year's boundary.
+ */
+function nextYearlyLocalDate(month: number, day: number, hour: number, minute: number, now: number): number {
+  const year = new Date(now).getFullYear();
+  const candidate = new Date(year, month - 1, day, hour, minute, 0, 0);
+  if (candidate.getTime() < now) candidate.setFullYear(year + 1);
+  return candidate.getTime();
+}
+
+function nextYearlyDateInTimeZone(
+  month: number,
+  day: number,
+  hour: number,
+  minute: number,
+  timeZone: string,
+  now: number,
+): number | null {
+  const currentYear = zonedParts(now, timeZone)?.year;
+  if (currentYear === undefined) return null;
+  const candidate = zonedWallTimeToUtc(currentYear, month, day, hour, minute, timeZone);
+  if (candidate === null) return null;
+  if (candidate < now) return zonedWallTimeToUtc(currentYear + 1, month, day, hour, minute, timeZone);
+  return candidate;
 }
 
 function parseClockReset(match: RegExpExecArray, now: number): number | null {
