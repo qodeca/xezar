@@ -101,7 +101,8 @@ The shadcn primitives expect these names. Each is mapped onto a token above and 
 | `--destructive-foreground` | `var(--danger-foreground)` | `text-destructive-foreground` |
 
 Rule: in app code write `text-danger`, not `text-destructive`. The alias exists for the primitives in
-`src/components/ui/` only (see [known-gaps.md](known-gaps.md) G-04).
+`src/components/ui/` only; no route or shared component spells a `destructive` class (read on 2026-09-18), so
+the old gap G-04 is retired ([known-gaps.md](known-gaps.md)).
 
 ### 1.7 The Tailwind mapping (`@theme inline`)
 
@@ -195,8 +196,10 @@ Two tokens are deliberately OUTSIDE the density lever, because a target size is 
 comfortable / roomy / compact / ultra, so a density-scaled height misses the floor at two of the four settings.
 Spell them `min-h-tap` / `min-w-tap` / `size-tap` on phone and release them at `md:`, where the pointer is a
 mouse; `min-h-chip` is the chip floor and is never a phone pass on its own.
-The older hand-typed spelling of that chip floor, `min-h-[24px]` on the composer picker pill (`chipClass`)
-and the reference chip, is the same 24 px and converts to the token in its own batch (#453 B4).
+The composer picker pill (`chipClass`, `components/picker-pill.tsx:28`) and the reference chip
+(`components/reference-chip.tsx:161`) spell the same 24 px floor by hand as `min-h-[24px]`. They are the only
+two rows of the `no-arbitrary-spacing` allowlist, and they stay: each is an absolute minimum height that keeps
+the control at the WCAG 2.2 SC 2.5.8 target size at every density (#445, closed as met on 2026-09-18).
 One more size is fixed on purpose, without a pixel: the development-build badge is `size-[54%]` with
 `-top-[15%] -right-[15%]` of the fixed `size-[26px]` brand tile it sits on (about 14 px and 4 px). A scale unit
 would grow and shrink the badge with density while the tile stays put (decisions.md D-08).
@@ -254,8 +257,10 @@ The Settings panes that are not a list of fields say so in their own spelling: A
 pane (`gap-list` between its tab bar and its files), the Agent accounts refusal is one block (`gap-4`), and
 Bookmarklets has no list container. Step 3b of #424 put six hand-typed pixels on the scale: nav rows and
 project-group headers `md:h-9`, table header `h-10`, tool row `min-h-8 py-1`, quick-list rows `py-2` (gone with the sidebar task list, #546), brand row
-`gap-row` and group body `ml-3.5`. The `no-arbitrary-spacing` allowlist in `design-guardian-spacing-allowlist.json`
-lists the ones still to convert.
+`gap-row` and group body `ml-3.5`; the #453 design-debt batches converted the rest. The `no-arbitrary-spacing`
+allowlist (`packages/web/src/design-guardian-spacing-allowlist.json`, ceiling 2 at
+`design-guardian.test.ts:143`) now holds only the two `min-h-[24px]` WCAG floors named in §4, each with that
+reason written in its row; #445 closed as met on 2026-09-18.
 A seventh step is a design decision (`decisions.md` D-02), not a new token in one file.
 
 ## 5. Radius
@@ -294,7 +299,7 @@ primitives need. There is no motion token scale.
 
 | Motion | Where | Reduced motion |
 | --- | --- | --- |
-| `animate-pulse` | status dots (`pulse`), twinkle backdrop, skeleton | twinkles use `motion-safe:animate-pulse`; `StatusDot`, `Skeleton` and the composer dictation dot add `motion-reduce:animate-none`. Route-level pulses outside the primitives are still being converted (G-08) |
+| `animate-pulse` | status dots (`pulse`), twinkle backdrop, skeleton | twinkles use `motion-safe:animate-pulse`; `StatusDot`, `Skeleton` and the composer dictation dot add `motion-reduce:animate-none`. Every route-level pulse is guarded too (`motion-safe:` or `motion-reduce:animate-none`, read on 2026-09-18); G-08 is retired |
 | `animate-spin` | refresh and loading icons | `motion-safe:animate-spin` in the skills update card |
 | `.shimmer` | running tool-card titles (muted → foreground sweep, 1.8s) | falls back to a plain muted title |
 | ghost code typewriter | the `/new` hero backdrop (`.ghost-code-line`, `steps(n)`) | renders every line fully typed and static |
