@@ -214,7 +214,7 @@ describe('single-project mode names the file each section writes (#600)', () => 
       ...visibleSettingsSections('project', { singleProjectRoot: true }),
       ...visibleSettingsSections('global', { singleProjectRoot: true }),
     ].map((section) => section.id)
-    expect(shown.toSorted()).toEqual(Object.keys(EXPECTED_FILE).toSorted())
+    expect([...shown].sort()).toEqual(Object.keys(EXPECTED_FILE).sort())
   })
 
   for (const [id, file] of Object.entries(EXPECTED_FILE)) {

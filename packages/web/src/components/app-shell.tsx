@@ -830,7 +830,7 @@ function ModeBadge() {
       variant="outline"
       data-slot="mode-badge"
       title="xezar settings and state live in this folder"
-      className="gap-1 px-1.5 text-[10.5px] text-muted-foreground [&>svg]:size-[11px]"
+      className="gap-1 px-1.5 text-[10.5px] text-muted-foreground [&>svg]:size-2.75"
     >
       <FolderIcon aria-hidden="true" />
       Single project
