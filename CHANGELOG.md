@@ -1,3 +1,9 @@
+# Unreleased
+
+## 📝 Specs & Documentation
+
+- 📝 The project's model-routing document moves to version 3: pi + DeepSeek V4.1 Flash becomes a normal lane of the routing table instead of a backup, first choice for procedural work and never used for security reviews, design judgement, cockpit UI, claim verification or its own work; the campaign-only owner rules are expired at 0.16.0; and the table is the guideline for every dispatch again. Kit-internal: `.xezar/docs/model-routing.md` guides how this repository dispatches its own agent tasks and changes no shipped behaviour.
+
 # 0.16.0 (2026-09-18)
 
 ## Highlights
