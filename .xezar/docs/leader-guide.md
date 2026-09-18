@@ -79,6 +79,23 @@ Do this in order after every session start and every context compaction, **befor
 11. If a required decision is not yours, write a `BLOCKED` record naming the decision and its
     options before you end the step. Silence is not authority (shared contract, SDLC.md).
 
+## Standing loops
+
+A hook cannot create or list Claude Code loops: `CronCreate`, `CronList` and `ScheduleWakeup` live in
+the session, not in a settings file, so the guide carries the order instead (owner 2026-09-18 20:59).
+
+- On **every** start, resume and compaction, run `CronList` before relying on any loop. A loop does
+  not survive a session, so a re-attached or compacted leader has none (owner 2026-09-18).
+- If a required loop is missing, create it again with its exact prompt. Two loops are required today
+  (owner-requested 2026-09-18):
+  1. A recurring 10-minute cron, `*/10 * * * *`, with the prompt "check every 10 minutes if you are
+     not a bottlenect and if Xezar tasks are not waiting for you".
+  2. The hourly dynamic loop `/loop check every hour if the new limit is available and resume the
+     work when it is available` (`ScheduleWakeup`, 3600 s), a no-op when nothing changed.
+- Claude Code cron jobs end with the session and expire after 7 days, which is why the re-check at
+  every start matters. Codex and pi leaders have no cron: they check the same two things at every
+  wake instead (owner 2026-09-18).
+
 ## This repository's setup
 
 - The repository runs in **single-project mode** since 2026-09-18 (owner 2026-09-18). The presence of
@@ -319,6 +336,8 @@ Session start, before any dispatch:
 - [ ] Reconcile each event with `task_read`, then `ack` only what you accounted for.
 - [ ] Reconcile recorded heads, verdicts and running tasks with current state; mark missing facts as
       unknown.
+- [ ] Run `CronList`; recreate any missing required loop with its exact prompt: the recurring
+      10-minute bottleneck check, and the hourly limit-and-resume dynamic loop (owner 2026-09-18).
 
 Before a dispatch:
 
