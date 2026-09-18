@@ -269,7 +269,7 @@ authenticated user (the bundled nginx site already does). Details: [`BACKWARD_CO
 
 ### Claude Code, pi and OpenCode runs and your own MCP servers
 
-A task run started with Claude Code, pi or OpenCode no longer loads your own `xezar` MCP entry (#342) —
+A task run started with Claude Code, pi or OpenCode no longer loads your own `xezar` MCP entry (#342) –
 the same rule Codex runs have had since #324. This closes a real bug: xezar's bridge took your
 project's one leader slot the moment it connected, so a task running in the project folder itself
 (Worktree off) could hold that slot for its whole lifetime and refuse your own leader session with
@@ -279,6 +279,21 @@ servers your project's own `.mcp.json` declares, not the ones in `~/.claude.json
 OpenCode a server literally named `xezar` is switched off in tasks even when it belongs to you, so
 rename an unrelated server of that name. Details: [`BACKWARD_COMPATIBILITY.md`](BACKWARD_COMPATIBILITY.md).
 Migration: [Run each supported client as the project leader](docs/guide/13-mcp-leader.md) § "To keep your leader while tasks run in the same folder".
+
+### The sidebar is navigation-only now
+
+The sidebar's task list, the Active/Archived toggle and the "Search… ⌘K" box are gone (#546); the
+sidebar shows navigation only. Active/Archived and search now live on the Tasks pages – the
+per-project Tasks page and the workspace-wide All tasks page – alongside pin/unpin, unread state
+and diff stats, which already lived there; ⌘K still opens the command palette from anywhere, with
+no sidebar click target needed. Details: [`BACKWARD_COMPATIBILITY.md`](BACKWARD_COMPATIBILITY.md).
+
+### Single-project mode
+
+A repository can now carry its own xezar setup so every clone runs the same way with no host setup
+step: start `xezar --single-project` once in the project folder – its first run there also offers a
+one-time import of your existing global `~/.xezar` setup. See
+[Projects § single-project mode](docs/guide/09-projects.md#to-keep-a-projects-xezar-setup-inside-the-project--single-project-mode).
 
 ## Upgrading to 0.15.0
 
