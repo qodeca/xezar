@@ -113,6 +113,13 @@ Options:
                               That first run asks once, in a terminal, whether to
                               copy your global setup in (never the project list).
                               A linked git worktree is never a project root.
+      --global-layout         resolve the GLOBAL layout for this launch, even in a
+                              folder that carries .xezar/workspace.json — the
+                              explicit answer to "which layout", and the
+                              counterpart of --single-project. XEZ_GLOBAL_LAYOUT=1
+                              says the same; XEZ_HOME still only relocates the
+                              global state root and neither turns the layout on
+                              nor off. Nothing is written or renamed.
       --platform <id>         server-install target (ubuntu-vps | macosx-ngrok)
       --domain <host>         server-install (ubuntu-vps): host a SECOND, independent
                               cockpit for this domain (own nginx site + service + port).
@@ -166,6 +173,12 @@ async function main(): Promise<void> {
       // this entry is only what keeps `xez --single-project` from being an
       // unknown option.
       'single-project': { type: 'boolean', default: false },
+      // The same arrangement for the flag that answers "global" (#657). The
+      // value is read from argv by `resolveStateLayout`, which owns the
+      // detection rule and stays a pure function of `(cwd, argv, env)`; this
+      // entry is only what keeps `xez --global-layout` from being an unknown
+      // option under `parseArgs`' strict default.
+      'global-layout': { type: 'boolean', default: false },
       help: { type: 'boolean', short: 'h', default: false },
       version: { type: 'boolean', short: 'v', default: false },
     },

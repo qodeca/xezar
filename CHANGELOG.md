@@ -3,10 +3,41 @@
 ## 🐛 Fixes
 
 - 🐛 **Two kit-check defects: an empty security change set no longer refuses, and an interrupted infra run now terminates.** `.xezar/checks/security-scan.sh` treated a genuinely empty change set — a branch the gate reached before anything was committed — as `unknown` and refused it, a false red that cost a whole agent-step re-run; it is now `not-applicable`, while a change set the stage could not read (an unresolved base, an unreadable repository, a failed enumeration) still refuses. `.xezar/checks/infra-tests.sh`'s `trap cleanup EXIT INT TERM` cleaned up on a signal and then carried on; INT and TERM now exit with the conventional signal status, matching `repo-gates.sh`. Both are kit-internal: neither changes shipped behaviour.
+- 🐛 **The cockpit browser suite runs when the repository itself is in single-project mode.** (#653)
+  Once `.xezar/workspace.json` is committed, a plain clone is a single-project root, and the mode
+  never opens the pinned `XEZ_HOME` — so the shared test server kept its state in the repository and
+  the suite's `globalSetup` wrote its registry into a home that was never created
+  (`ENOENT … .local/qa/xez-home/config.json`). The app now takes an explicit `--global-layout` input
+  (`XEZ_GLOBAL_LAYOUT=1` says the same) that answers "global" for one launch and outranks the marker,
+  and `scripts/test-env-up.sh` passes it — so the suite boots in the pinned global layout without the
+  launcher renaming, moving or writing anything in the repository root. `environment.stateLayout`
+  joins the reuse fingerprint so an instance booted by an older launcher is never reused. Task
+  worktrees are unaffected — a linked worktree is never a single-project root.
+- 🐛 **A red `npm test` now means a real defect more often: the suite stops timing out on its own
+  clock and stops reading the agent's model.** (Refs #644) Two causes, both in test setup and
+  neither in shipped code — nothing about xezar's behaviour changes. First, the server suite ran on
+  vitest's 5 000 ms default while its cases spawn agent CLIs, open sockets and create git
+  worktrees; in 1 012 sealed local gate attempts `npm test` failed on 16.6 % against 0.1–3.2 % for
+  every other gate, and 217 of the 225 timeouts fired at exactly that default on tests that pass in
+  isolation. It now has a 15 000 ms budget and one suite-wide `expect.poll` budget replacing
+  vitest's one-second default, which four call sites had already hand-patched. Second,
+  `ANTHROPIC_MODEL` outranks every Claude settings file, so four cases in the config-API suite
+  answered whichever model the agent running the gate was pinned to; it is scrubbed for every test
+  worker, with a guard test so the next suite to read an agent default inherits the fix. A third,
+  found by this change's own gate run: two cases in the pi leader-extension suite assumed no
+  `.local/xezar` existed anywhere above `/tmp`, so a peer checkout running its own suite on the
+  same machine turned one of them red and made the other assert nothing; both now use fixtures
+  deeper than the walk's own limit, which no other process can reach into. **What
+  this does not do:** it makes no test faster and fixes no slow product path — a test that is slow
+  because the code is slow is still slow, and a genuinely hung test still fails, three seconds
+  later than before. A run that was green stays green at the same cost.
 
 ## 📝 Specs & Documentation
 
+- 📝 The project's model-routing document moves to version 3: pi + DeepSeek V4.1 Flash becomes a normal lane of the routing table instead of a backup, first choice for procedural work and never used for security reviews, design judgement, cockpit UI, claim verification or its own work; the campaign-only owner rules are expired at 0.16.0; and the table is the guideline for every dispatch again. Kit-internal: `.xezar/docs/model-routing.md` guides how this repository dispatches its own agent tasks and changes no shipped behaviour.
 - 📝 **The project leader now carries its own contract, loaded for the leader and never for a task agent.** [.xezar/docs/leader-guide.md](.xezar/docs/leader-guide.md) collects what a leader session of this repository needs in one place: who the leader is and is not (MCP tools and `gh` only, never the cockpit or HTTP, never source diagnosis), session start and compaction recovery, this repository's single-project setup, the task lifecycle with the integration and conflict-repair recipes, review discipline and the repair counters, routing and account probing, the brief-writing rules, owner-only decisions, what to log where, and the release runbook as it is today. A committed Claude Code `SessionStart` hook (`.claude/settings.json` → `.xezar/checks/leader-context.sh`) appends the guide and the newest campaign folder's `README.md` and `decisions.md` at every start, resume, clear and compaction; the hook stays silent in a linked worktree, on a `/.local/xezar/worktrees/` path, and whenever `XEZ_HANDOFF_FILE` or `XEZ_TODOS_FILE` is set, so a xezar task agent never loads it (owner 2026-09-18).
+
+- Documented leader-context loading as a reusable standard for onboarding a project: [`.xezar/docs/leader-context-loading.md`](.xezar/docs/leader-context-loading.md) covers the committed leader guide, the `.claude/settings.json` `SessionStart` hook that reloads it, the guard that keeps it silent for task agents, the JSON output shape, the cost model, the Codex/pi fallback and a numbered install checklist; [guide 13](docs/guide/13-mcp-leader.md) gains a product-neutral section on giving a leader a guide that survives compaction. (#600)
 
 # 0.16.0 (2026-09-18)
 

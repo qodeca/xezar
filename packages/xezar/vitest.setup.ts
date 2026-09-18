@@ -29,6 +29,22 @@ const pinSandboxHome = (): void => {
 // defaulted: `GH_TELEMETRY=log` still records the id.
 process.env.GH_TELEMETRY = '0'
 
+// `ANTHROPIC_MODEL` outranks every Claude settings file — `agent-config/model-settings/claude.ts`
+// reads it BEFORE any file, deliberately, because Claude Code does. So a case that asks what the
+// host's agent defaults are gets whatever model the AGENT RUNNING THE GATE happens to be pinned
+// to, and pinning HOME or CLAUDE_CONFIG_DIR does not help: the variable wins over both.
+//
+// That is a measured failure, not a hypothetical. `src/server/config-api.test.ts` was red in 16
+// sealed gate attempts, 11 of them the only red gate in the whole run, purely because the
+// variable was set in the process that started `npm test`. It is scrubbed here for every worker
+// rather than patched into that one file, because the next case to read an agent default would
+// inherit the identical bug — a leak class, not a leaky file.
+//
+// This costs the product path no coverage: a case that needs the variable passes it as an
+// explicit env OBJECT instead of touching the process (`src/agent-config/models.test.ts`).
+// `src/vitest-env-isolation.test.ts` pins that this deletion stays.
+delete process.env.ANTHROPIC_MODEL
+
 pinSandboxHome()
 beforeEach(pinSandboxHome)
 // Registered before any suite's own hooks, so vitest runs it last on the way out —

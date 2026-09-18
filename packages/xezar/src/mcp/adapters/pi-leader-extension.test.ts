@@ -309,7 +309,12 @@ describe('announcing itself to xezar', () => {
 
   it('does nothing at all outside a xezar project — no socket, no descriptor', async () => {
     pinTmpDir(tmp('xzt-'));
-    const plain = tmp('xzext-notaproject-');
+    // Deeper than the walk's own limit, for the reason the walk case below spells out: a `/tmp`
+    // fixture cannot own its ancestor chain, and an ambient `/tmp/.local/xezar` would make this
+    // cwd a real xezar project — so the case would quietly assert nothing AND write a descriptor
+    // into a directory it does not own (#644).
+    const plain = join(tmp('xzext-notaproject-'), ...Array.from({ length: 45 }, (_, i) => `d${i}`));
+    mkdirSync(plain, { recursive: true });
     const harness = fakePi();
     extension(harness.pi as never);
     shutdowns.push(() => harness.shutdown());
@@ -328,7 +333,16 @@ describe('announcing itself to xezar', () => {
     const deep = join(project, 'packages', 'a', 'b');
     mkdirSync(deep, { recursive: true });
     expect(__internals.findProjectDataDir(deep)).toBe(join(project, '.local', 'xezar'));
-    expect(__internals.findProjectDataDir(tmp('xzext-nowhere-'))).toBeUndefined();
+
+    // "Nothing above it" is a claim about the WHOLE ancestor chain up to `/`, and a fixture two
+    // levels under /tmp does not own that chain. Asserting it anyway went red on 2026-09-18 for
+    // a real `/tmp/.local/xezar` that a peer clone left behind while running its own suite: the
+    // walk found a genuine project and was right to (#644). So the chain is made long instead of
+    // assumed clean — the same trick "stops walking up after a bounded number of levels" below
+    // already uses — and every directory the walk can reach from here is one this case created.
+    const nowhere = join(tmp('xzext-nowhere-'), ...Array.from({ length: 45 }, (_, i) => `d${i}`));
+    mkdirSync(nowhere, { recursive: true });
+    expect(__internals.findProjectDataDir(nowhere)).toBeUndefined();
   });
 
   it('never lets a session id become a path of its own', () => {
