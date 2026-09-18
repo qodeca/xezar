@@ -4,6 +4,7 @@ import { basename, join, resolve, sep } from 'node:path';
 import { PROJECT_TAGS_MAX, PROJECT_TAG_MAX_LENGTH } from '@qodeca/xezar-contract';
 import { forgeKindOfRemote, forgeWebRoot, type ForgeKind } from '../server/forge/index.ts';
 import { getRepoInfo } from '../server/git.ts';
+import { activeStateLayout } from '../state-layout.ts';
 import {
   mergeWriteWorkspaceConfig,
   loadWorkspaceConfig,
@@ -24,6 +25,58 @@ import {
  * - `removeProject(id)` — unregister only. It never touches any file inside
  *   the repo (a project's own state stays in `<repo>/.local/xezar/`).
  */
+
+/**
+ * Is the project registry narrowed to exactly ONE project (#600 SP-3.1, SP-3.2)?
+ *
+ * TWO narrowings answer yes, and they are deliberately different questions:
+ *
+ * - `XEZ_SINGLE_PROJECT=1` — today's opt-in flag, unchanged. One project, no
+ *   project management, GLOBAL state. Strict activation: only the exact string
+ *   `1` (`BACKWARD_COMPATIBILITY.md` § Single-project workspace mode).
+ * - The PROJECT state layout (#600) — the folder owns its own xezar state, so
+ *   its registry is that folder and there is no second project to manage.
+ *
+ * This is the ONE spelling of "is the registry narrowed", read by all three
+ * doors (the HTTP routes, `xezar projects`, the MCP `project_config` tool), so
+ * a refusal in one door and a silent no-op in another (#600 BR-6) cannot
+ * happen by two predicates drifting apart. It widens each guard's CONDITION and
+ * never its EFFECT: an `XEZ_SINGLE_PROJECT=1` refusal keeps its exact status
+ * code, message text and exit code, which `single-project-doors.test.ts` pins
+ * byte for byte because `BACKWARD_COMPATIBILITY.md` promises them.
+ */
+export type SingleProjectNarrowing = 'env-flag' | 'project-root';
+
+/**
+ * WHICH narrowing is in force, or `null` for the ordinary multi-project
+ * workspace. The env flag is asked FIRST and that order is load-bearing: with
+ * `XEZ_SINGLE_PROJECT=1` set, every door answers with the exact refusal text,
+ * status code, exit code and audit reason it answered with before #600,
+ * whichever layout the process resolved. The mode only ever speaks for itself.
+ */
+export function singleProjectNarrowing(env: NodeJS.ProcessEnv = process.env): SingleProjectNarrowing | null {
+  if (env.XEZ_SINGLE_PROJECT === '1') return 'env-flag';
+  return activeStateLayout(env).mode === 'project' ? 'project-root' : null;
+}
+
+export function singleProjectRegistry(env: NodeJS.ProcessEnv = process.env): boolean {
+  return singleProjectNarrowing(env) !== null;
+}
+
+/**
+ * The one sentence every door refuses with, for one narrowing and one action.
+ *
+ * The `env-flag` half is the promised text, byte for byte
+ * (`BACKWARD_COMPATIBILITY.md` § Single-project workspace mode); the
+ * `project-root` half is its own sentence because "the flag is enabled" would
+ * be a lie about a folder that carries no flag. Both name the mode, both are
+ * one plain sentence, and both ride the unchanged `{ error }` / stderr shape.
+ */
+export function singleProjectRefusalText(narrowing: SingleProjectNarrowing, action: string): string {
+  return narrowing === 'env-flag'
+    ? `single-project mode is enabled; ${action} is disabled`
+    : `this project owns its xezar state; ${action} is disabled`;
+}
 
 /**
  * Slugs the allocator must never hand out: `default` is the reserved alias
@@ -294,11 +347,62 @@ export interface ProjectListSelector {
   projectId: string;
 }
 
+/**
+ * The ONE row the project layout's registry has (#600 SP-3.1): the folder that
+ * owns the state, and nothing else.
+ *
+ * The stored row wins when there is one, so the id, name, tags and per-project
+ * cap a person set survive. When there is none — a first run, or a
+ * `workspace.json` a clone carries without one — the row is DERIVED from the
+ * folder rather than left absent, because the mode's answer to "which projects
+ * are there" is never "none": the folder is the project. The derived id is the
+ * slug the boot allocator would hand the same root, so the row a first `serve`
+ * writes a moment later has the same identity.
+ *
+ * Rows for OTHER roots are ignored rather than deleted. They can only come from
+ * a `workspace.json` written on another machine, where their absolute paths mean
+ * nothing; dropping them from the listing is what SP-3.1 asks for, and rewriting
+ * someone's committed file to enforce it is not (§ non-goals: no migration, no
+ * conversion).
+ */
+async function projectLayoutRow(
+  stored: readonly WorkspaceProject[],
+  projectRoot: string,
+): Promise<WorkspaceProject> {
+  const real = await normalizeRoot(projectRoot);
+  const existing = stored.find((project) => project.root === real);
+  if (existing) return existing;
+  return {
+    id: allocateProjectSlug(real, []),
+    root: real,
+    name: basename(real),
+    addedAt: DERIVED_AT,
+    lastOpenedAt: DERIVED_AT,
+    source: 'local',
+  };
+}
+
+/**
+ * The timestamp a DERIVED row carries, minted once per process rather than per
+ * read. A listing is a read, and a read that answers a different `addedAt` every
+ * time makes the cockpit's cache see a changed row on every poll. Nothing is
+ * claimed by it beyond "this process first saw the folder now" — it stops being
+ * derived the moment a boot registers the folder, which is a write and carries
+ * its own real timestamps.
+ */
+const DERIVED_AT = new Date().toISOString();
+
 export async function listProjects(selector?: ProjectListSelector): Promise<ProjectListEntry[]> {
   const config = await loadWorkspaceConfig();
-  const projects = selector
-    ? config.projects.filter((project) => project.id === selector.projectId)
+  const layout = activeStateLayout();
+  // The mode's registry is derived from the folder, so it is exactly one row
+  // before any selector narrows it further — and a selector naming a project
+  // this folder is not still answers nothing, which is what keeps a scoped
+  // `/api/v1/p/<other>/…` request a 404 rather than the boot project.
+  const rows = layout.mode === 'project'
+    ? [await projectLayoutRow(config.projects, layout.projectRoot!)]
     : config.projects;
+  const projects = selector ? rows.filter((project) => project.id === selector.projectId) : rows;
   return Promise.all(
     projects.map(async (project) => toProjectListEntry(project, await probeRoot(project.root))),
   );
