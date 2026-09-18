@@ -69,8 +69,10 @@
   global `~/.agents/.skill-lock.json` mirror is one per machine, but the lock guarding it had moved
   into each project's cache, so two folders — or a folder and an ordinary xezar — could check or
   apply a global update at the same moment and damage that file. The global half now takes a lock
-  beside the mirror in every layout; the project half keeps its per-cache lock, and the default
-  global layout serialises both exactly as 0.15.0 did.
+  beside the mirror, and only when a global check is stale or a global apply is due; the project half
+  keeps its per-cache lock. The default global layout serialises both scopes exactly as 0.15.0 did,
+  never creates `~/.agents` when no mirror is installed, and a mirror whose folder cannot hold the
+  lock leaves the project half checked and updated as before.
 - ✨ **A folder that owns its xezar setup has a registry of exactly one project, and says so at
   every door.** (#600, part 3 of 5) In single-project mode `GET /api/v1/projects`, `xezar projects`
   and the cockpit list one project — the folder — even when a `workspace.json` a clone carried names

@@ -166,8 +166,8 @@ const ALLOWED: readonly Allowance[] = [
     code: 'this.home = options.homeDir ?? homedir();',
     reason:
       'Locates ~/.agents/.skill-lock.json, the global mirror this service updates, and the machine-wide lock ' +
-      'taken beside it in every layout (.xez-skills-update.lock). The PROJECT half\'s cross-process lock ' +
-      'follows the layout (`cacheDir`); neither the mirror nor its machine-wide lock moves.',
+      'taken beside it only while a global check or apply will really run (.xez-skills-update.lock). The PROJECT ' +
+      "half's cross-process lock follows the layout (`cacheDir`); neither the mirror nor its machine-wide lock moves.",
   },
   {
     file: 'server/open-in-app.ts',
