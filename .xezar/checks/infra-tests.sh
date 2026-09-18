@@ -55,13 +55,15 @@ cleanup() {
 }
 # A SIGNAL MUST TERMINATE. This used to be `trap cleanup EXIT INT TERM`, whose handler tidied up
 # and then RESUMED, so an interrupted run carried on with its scratch already removed.
-# `repo-gates.sh` already gets this right — its `gate_cancel` clears the trap and ends in `exit` —
-# and this follows that shape. INT and TERM get their own handler, which clears the trap so a second
-# signal cannot re-enter it and exits with the conventional SIGINT status; the EXIT trap still owns
-# `cleanup`, so it runs exactly once on every path, normal or signalled.
+# `repo-gates.sh` already gets this right — its `gate_cancel` clears the trap, prints to stderr that
+# it was interrupted rather than failed, and ends in `exit` — and this follows that shape. INT and
+# TERM get their own handler, which clears the trap so a second signal cannot re-enter it and exits
+# with the conventional SIGINT status; the EXIT trap still owns `cleanup`, so it runs exactly once on
+# every path, normal or signalled.
 trap cleanup EXIT
 on_signal() {
   trap '' INT TERM
+  printf '\nINFRA TESTS INTERRUPTED: exiting on signal, not on a failure.\n' >&2
   exit 130
 }
 trap on_signal INT TERM
@@ -2336,6 +2338,46 @@ node "$SCAN_MJS" --cwd "$sw" --base 0000000000000000000000000000000000000000 \
   || ok "empty-scan-green: a broken enumeration refuses, it does not pass"
 [ "$(scan_status "$WORK/scan-broken-enumeration.json" refused)" = "true" ] && ok "and the result records the refusal" \
   || bad "and the result records the refusal" "refused=$(scan_status "$WORK/scan-broken-enumeration.json" refused)"
+
+# Defect B: a DELETION-ONLY change set is never "changes no file". `--diff-filter=ACMR` excludes
+# deletions, so a candidate that only deletes files enumerated zero paths under that filter alone —
+# and deciding "empty" from that enumeration sealed a record that positively lied about a real,
+# non-empty change set, with the deleted path never reaching the trust-boundary check either. This
+# fixture's candidate deletes the ONLY file that changed, and that file sits under a named trust
+# boundary, so a false "not-applicable / changes no file" here would also mean a security-relevant
+# deletion never got flagged for a reviewer.
+del_root="$(make_fixture scan-delete-only)"
+mkdir -p "$del_root/packages/xezar/src/server"
+printf 'export const guard = 1;\n' > "$del_root/packages/xezar/src/server/thing.ts"
+git -C "$del_root" -c user.email=t@t -c user.name=t add -A
+git -C "$del_root" -c user.email=t@t -c user.name=t commit -qm "main carries the trust-boundary file"
+del_wt="$(add_worktree "$del_root" "$RUN_A")"
+git -C "$del_wt" -c user.email=t@t -c user.name=t rm -q packages/xezar/src/server/thing.ts
+git -C "$del_wt" -c user.email=t@t -c user.name=t commit -qm "candidate: delete only"
+
+expect_ok "a deletion-only change set resolves the stage" scan_json "$del_wt" "$WORK/scan-delete-only.json"
+[ "$(scan_status "$WORK/scan-delete-only.json" status)" = "not-applicable" ] \
+  && ok "and the status is not-applicable, not a refusal over an unseen deletion" \
+  || bad "and the status is not-applicable, not a refusal over an unseen deletion" "status=$(scan_status "$WORK/scan-delete-only.json" status)"
+del_reason="$(scan_status "$WORK/scan-delete-only.json" decisionReason)"
+case "$del_reason" in
+  *"changes no file"*) bad "and it never claims the candidate changes no file" "$del_reason" ;;
+  *) ok "and it never claims the candidate changes no file" ;;
+esac
+del_total="$(node -e '
+  const r = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
+  process.stdout.write(String(r.inventory.total));' "$WORK/scan-delete-only.json")"
+[ "$del_total" = "1" ] && ok "and the inventory counts the deletion instead of reading zero" \
+  || bad "and the inventory counts the deletion instead of reading zero" "inventory.total=$del_total"
+[ "$(scan_status "$WORK/scan-delete-only.json" reviewerRequired)" = "true" ] \
+  && ok "and the deleted trust-boundary path still requires a reviewer" \
+  || bad "and the deleted trust-boundary path still requires a reviewer" "reviewerRequired=$(scan_status "$WORK/scan-delete-only.json" reviewerRequired)"
+del_boundary_file="$(node -e '
+  const r = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
+  process.stdout.write(String((r.trustBoundaries[0] || {}).file));' "$WORK/scan-delete-only.json")"
+[ "$del_boundary_file" = "packages/xezar/src/server/thing.ts" ] \
+  && ok "and the deleted path itself is named in the trust-boundary record" \
+  || bad "and the deleted path itself is named in the trust-boundary record" "trustBoundaries[0].file=$del_boundary_file"
 
 # Defect A: a genuinely EMPTY change set is `not-applicable`, not a refusal. The gate can run before
 # the agent has committed anything, so a branch at its own merge-base is a routine shape; the old
@@ -5029,7 +5071,10 @@ else
 fi
 kill -INT "$sig_pid" 2>/dev/null
 # A handler that does not terminate would block this suite for the whole nested run. The watchdog
-# kills it after 10s, and a killed run (137) is a failure, not a pass.
+# kills it after 10s, and a killed run (137) is a failure, not a pass. SIGKILL skips the nested
+# run's own EXIT trap, so if the watchdog is what ends it, that nested run's scratch under the
+# primary checkout's .local/xezar-tests/ survives — identifiable by pid and OWNER file per this
+# file's header, but not removed.
 perl -e 'select undef,undef,undef,$ARGV[1]; kill 9, $ARGV[0]' "$sig_pid" 10 &
 sig_watchdog=$!
 wait "$sig_pid" 2>/dev/null

@@ -30,6 +30,18 @@
 // but it no longer decides the outcome — an empty change set resolves whether or not it is
 // declared.
 //
+// EMPTY IS DECIDED FROM THE FULL ENUMERATION, NEVER FROM THE CONTENT-SCAN ONE. The content scan
+// runs on `--diff-filter=ACMR`, which excludes deletions — there is no surviving content to read
+// for a deleted path. A candidate that only DELETES files therefore enumerates zero ACMR paths,
+// and deciding "empty" from that alone misreads a real, non-empty change set as one that changed
+// nothing — a false statement, and false inside a security gate, because the deleted paths never
+// reach the trust-boundary check either. So two different questions use two different
+// enumerations: `allFiles` (no filter, deletions included) decides whether the change set is
+// empty at all and is what the trust-boundary check reads; `files` (ACMR) is what the content
+// scan — classification, secrets, kill-by-pattern, dependency inputs — reads. A change set that is
+// non-empty in `allFiles` but has nothing in `files` (deletion-only, or similar) says so in its own
+// words rather than claiming it changes no file.
+//
 // Usage:
 //   node security-scan.mjs --cwd <dir> --base <sha> --head <sha> [--out <file>] [--quiet]
 //                          [--empty-declared "<why this run legitimately carries no commits>"]
@@ -289,18 +301,20 @@ export function trustBoundariesTouched(files) {
  * The whole stage, as a pure function of the inventory and the diff, so the tests drive THIS
  * code rather than a copy of it.
  */
-export function assess({ files, addedByFile, truncated }) {
+export function assess({ files, allFiles, addedByFile, truncated }) {
   const { code, other } = classifyInventory(files);
   const applies = code.length > 0;
   const checks = [];
 
-  if (files.length === 0) {
+  if (allFiles.length === 0) {
     // Nothing changed at all, so there is nothing to scan and nothing to refuse. The gate can run
     // before the agent has committed anything, which makes a branch sitting on its own merge-base a
     // routine shape rather than a hole the stage fell into (9 of 269 sealed attempts over
     // 2026-09-17/18 were exactly this). The shapes that DO mean "the stage did not look" — an
     // unresolved base, an unreadable repository, an enumeration command that errored — never reach
-    // here; the driver records them as a read failure and refuses.
+    // here; the driver records them as a read failure and refuses. `allFiles` is the unfiltered
+    // enumeration (deletions included), never the ACMR one — a deletion-only candidate is a real,
+    // non-empty change set and must not resolve here (see `files.length === 0` below).
     return {
       decision: "no",
       decisionReason: "the candidate changes no file over its base, so no code or security capability applies",
@@ -313,8 +327,20 @@ export function assess({ files, addedByFile, truncated }) {
     };
   }
 
+  const scannable = files.length > 0;
   if (truncated) {
     checks.push(check("inventory", "unknown", `more than ${MAX_FILES} changed files; the scan was bounded and did not read all of them`));
+  } else if (!scannable) {
+    // Real changes exist (`allFiles` is non-empty) but none of them survive the ACMR filter — a
+    // deletion-only change set is the ordinary case. Say so in its own words: never "changes no
+    // file", which is only true for the truly-empty shape handled above.
+    checks.push(
+      check(
+        "inventory",
+        "not-applicable",
+        `${allFiles.length} changed file(s) enumerated over the base, none carrying content this scan reads (deletion-only or similar)`,
+      ),
+    );
   } else {
     checks.push(check("inventory", "pass", `${files.length} changed file(s) enumerated over the base`));
   }
@@ -358,7 +384,10 @@ export function assess({ files, addedByFile, truncated }) {
         ),
   );
 
-  const trustBoundaries = trustBoundariesTouched(files);
+  // `allFiles`, not `files`: a deleted path can be the trust-boundary change (deleting the origin
+  // guard is itself an authorization-relevant edit), and ACMR would hide it from this check the
+  // same way it hid it from the emptiness decision above.
+  const trustBoundaries = trustBoundariesTouched(allFiles);
   checks.push(
     trustBoundaries.length === 0
       ? check("trust-boundary", "not-applicable", "the candidate changes no named trust boundary")
@@ -386,8 +415,12 @@ export function assess({ files, addedByFile, truncated }) {
     decision: applies ? "yes" : "no",
     decisionReason: applies
       ? `${code.length} changed file(s) carry a code or dependency capability`
-      : `none of the ${other.length} changed file(s) carries a code or dependency capability`,
-    inventory: { total: files.length, code: code.length, other: other.length, truncated },
+      : scannable
+        ? `none of the ${other.length} changed file(s) carries a code or dependency capability`
+        : `${allFiles.length} changed file(s) over the base, none carrying content this scan reads (deletion-only or similar), so no code or dependency capability applies`,
+    // `total` is the full enumeration, so a deletion-only change set is never reported as 0 — that
+    // is the misreport this fixed. `code`/`other` stay derived from the ACMR content scan.
+    inventory: { total: allFiles.length, code: code.length, other: other.length, truncated },
     checks,
     trustBoundaries,
     reviewerRequired: trustBoundaries.length > 0,
@@ -410,6 +443,7 @@ function main() {
   const emptyDeclared = typeof args["empty-declared"] === "string" ? args["empty-declared"] : null;
 
   let files = [];
+  let allFiles = [];
   let diffText = "";
   let truncated = false;
   let readFailure = null;
@@ -419,6 +453,17 @@ function main() {
     // report a different change set than the one being gated. That is an unreadable input, not
     // an empty one.
     if (!base) throw new Error("no merge-base against the integration base could be resolved");
+    // The FULL enumeration, no filter: this is what decides whether the change set is empty and
+    // what the trust-boundary check reads. `--diff-filter=ACMR` excludes deletions, and deciding
+    // emptiness from that alone misreads a deletion-only candidate as one that changed nothing.
+    const allRaw = git(cwd, "diff", "--name-only", `${base}..${head}`);
+    allFiles = allRaw.split("\n").map((l) => l.trim()).filter(Boolean);
+    if (allFiles.length > MAX_FILES) {
+      truncated = true;
+      allFiles = allFiles.slice(0, MAX_FILES);
+    }
+    // The ACMR-filtered enumeration: what the content scan reads. A deleted path has no surviving
+    // content — this scan only ever reads added (`+`) lines, so there is nothing there for it.
     const raw = git(cwd, "diff", "--name-only", "--diff-filter=ACMR", `${base}..${head}`);
     files = raw.split("\n").map((l) => l.trim()).filter(Boolean);
     if (files.length > MAX_FILES) {
@@ -448,7 +493,7 @@ function main() {
       blocking: [],
     };
   } else {
-    result = assess({ files, addedByFile: addedLinesByFile(diffText), truncated });
+    result = assess({ files, allFiles, addedByFile: addedLinesByFile(diffText), truncated });
   }
 
   // NO EMPTY-INVENTORY REFUSAL, and the distinction it rests on is the whole point. An empty
