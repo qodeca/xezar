@@ -274,7 +274,7 @@ the same rule Codex runs have had since #324. This closes a real bug: xezar's br
 project's one leader slot the moment it connected, so a task running in the project folder itself
 (Worktree off) could hold that slot for its whole lifetime and refuse your own leader session with
 "project occupied". Every other MCP server your project declares still loads, for every backend; your
-config files are never edited. Two backends narrow further: a Claude Code task now sees only the MCP
+config files are never edited. Two narrowings follow: a Claude Code task now sees only the MCP
 servers your project's own `.mcp.json` declares, not the ones in `~/.claude.json`; and for pi and
 OpenCode a server literally named `xezar` is switched off in tasks even when it belongs to you, so
 rename an unrelated server of that name. Details: [`BACKWARD_COMPATIBILITY.md`](BACKWARD_COMPATIBILITY.md).
@@ -294,6 +294,19 @@ A repository can now carry its own xezar setup so every clone runs the same way 
 step: start `xezar --single-project` once in the project folder – its first run there also offers a
 one-time import of your existing global `~/.xezar` setup. See
 [Projects § single-project mode](docs/guide/09-projects.md#to-keep-a-projects-xezar-setup-inside-the-project--single-project-mode).
+
+### A few more things to expect
+
+- A task that intentionally needs the repository's primary working copy must now be created with
+  Worktree off; an isolated task run can no longer write outside its own task worktree.
+- A run xezar itself ends for the memory limit now finishes `failed`, not `done` – expect `failed`
+  instead of a done run with no deliverable.
+- The automatic re-prompt after a Continue on a workflow step still waiting for `XEZ:DONE` is
+  capped at 3 attempts; no flag restores the old 40-retry loop.
+- The stdout line `recovered N run(s) from the previous session` is gone; a script that read it
+  should instead read stderr's plain output and select `event=task.recovered`.
+
+Details for all four: [`BACKWARD_COMPATIBILITY.md`](BACKWARD_COMPATIBILITY.md).
 
 ## Upgrading to 0.15.0
 

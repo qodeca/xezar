@@ -4,7 +4,7 @@
 
 - 💥 **The audit trail moves to `audit.ndjson`, and its records change shape.** (#306, part 1 of 4)
   A project's audit trail is now written to `.local/xezar/audit.ndjson` as version 2 records; xezar
-  0.13.0–0.15.0 wrote version 1 records to `mcp-audit.ndjson`. A record now says `applied` or
+  0.14.0–0.15.0 wrote version 1 records to `mcp-audit.ndjson`. A record now says `applied` or
   `refused` (with a machine reason) instead of `ok`, `rejected` or `unverified`, and carries a
   sequence number, a UTC time and an `actor` that matches its origin. An MCP call that may have
   started its effect and then failed is no longer written as `unverified`: it is not recorded, and
@@ -185,7 +185,7 @@
   again once it is opened in the cockpit.
 - 🐛 **A run xezar itself terminates for the memory limit no longer ends `done` with no deliverable.** (#603)
   `enforceMemoryLimit` closes a breaching run's session with `session.end()`, and — deliberately,
-  per #703 — a CLI that does not exit on its own is then signalled by xezar and settles on the same
+  per pre-rename issue 703 — a CLI that does not exit on its own is then signalled by xezar and settles on the same
   "our own signal coming back" path a legitimate `XEZ:DONE` close does, so `session.result` resolves
   without throwing either way. Before this fix the step-completion handler could not tell that
   distinction apart from a finished turn, and recorded the step, and the run, `done` even though
@@ -228,7 +228,7 @@
 - 🐛 **A secret written as `\uXXXX` escapes could pass the audit redaction seam.** (#306, #586 follow-up) `redactAuditInput`'s secret check was a literal substring match, so a host or door secret copied into an MCP argument as JS/JSON unicode escapes (no literal secret bytes present) matched neither an identifier field nor a payload leaf, letting the escaped copy reach the digest — and, for the `identifier-secret` payload rule, the record itself — unmasked. Both checks now also try the value with `\uXXXX` sequences decoded before deciding a field is clean; a value with no such escape is unaffected. Also adds a guard test pinning the four MCP `config-value` body keys (`config`, `project`, `promptTemplates`, `content`) against a live call through each of the four config-write actions, closing the "no guard test" gap the #586 review left open.
 - 🐛 **An autonomous Continue can no longer re-prompt a turn 40 times before failing.** (#613) When a Continue finishes an interrupted workflow step, whose remaining steps need `XEZ:DONE`, an autonomous run now gets at most 3 automatic re-prompts (was 40, then a 15-minute idle close) and fails at once with `… requires XEZ:DONE from the continued turn — automatic re-prompting stopped after N turns — <cap or idle reason>`. In every autonomous run, a re-prompted turn that made no tool call now ends the re-prompting: a finished last step parks for you, a gated Continue fails. Busy last steps keep their 40-re-prompt budget. Details: `BACKWARD_COMPATIBILITY.md` § 8.
 - 🐛 **A Claude weekly-limit auto-resume no longer wakes a day early.** (#581) `parseUsageLimit` only ever read the trailing clock out of Claude Code's weekly-limit prose (`resets Sep 19 at 6pm (Europe/Warsaw)`), dropping the named month and day, and then guessed "the next occurrence of that clock time from now" — landing one day early whenever today's occurrence of that time had already passed. It now reads the named date first when the message carries one, and falls back to the clock-only guess only for the session-limit prose that has no date at all (unchanged).
-- 🐛 **`engine-leader-incidents.test.ts` no longer times out under coverage instrumentation.** (Refs #603) Four `expect.poll()` waits raced an unwanted nudge/message against the real agent-turn → event → journal → run-store completion chain on vitest's default 1000ms/50ms poll budget — too tight once `npm run test:coverage:mcp`'s v8 instrumentation and its 72 concurrent test files slow that chain down. Main CI run 35323455608 failed this way (`Matcher did not succeed in time`) though the same commit's PR CI and the prior main commit were both green; reproduced locally under CPU load with `--coverage`. All four now use the 3000ms/10ms budget the file's own `terminal()` helper already used for the identical chain. Test-only; no production code changed.
+- 🐛 **`engine-leader-incidents.test.ts` no longer times out under coverage instrumentation.** (Refs #603) Four `expect.poll()` waits raced an unwanted nudge/message against the real agent-turn → event → journal → run-store completion chain on vitest's default 1000ms/50ms poll budget — too tight once `npm run test:coverage:mcp`'s v8 instrumentation and its 73 test files, run under the worker cap rather than concurrently, slow that chain down. Main CI run 35323455608 failed this way (`Matcher did not succeed in time`) though the same commit's PR CI and the prior main commit were both green; reproduced locally under CPU load with `--coverage`. All four now use the 3000ms/10ms budget the file's own `terminal()` helper already used for the identical chain. Test-only; no production code changed.
 
 ## Tests
 
