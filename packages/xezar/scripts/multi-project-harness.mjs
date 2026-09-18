@@ -380,23 +380,22 @@ async function main(options = {}) {
     assertion(result, 'A bridge resolves only its own project', [healthA, discoverA].every((text) => text.includes(a.id) && !text.includes(b.id)), { healthA, discoverA });
     assertion(result, "A bridge's own leader_events session answers", !statusA.error && !readA.error, { status: statusA.error, read: readA.error });
 
-    // #557 (found by running this harness for real, not asserted away): a project registered into
-    // a shared cockpit — rather than being the boot project — never gets its own MCP socket today.
-    // `startMcpSocket` (index.ts) opens exactly one socket, gated on `bootProjectId` alone; nothing
-    // subscribes an equivalent per-project socket to `contexts.onContextBuilt` the way the boot
-    // socket's siblings (`providerRuntimeAuth.watch`, `watchSetupCompletion`) already do. B's
-    // HTTP-scoped routes work correctly (proven above and below); its MCP bridge honestly reports
-    // "not running" instead of being asserted into a false pass — a first draft of this harness did
-    // exactly that with a substring check weak enough to accept the error text. This harness proves
-    // MP-03/04's cross-project MCP independence for the BOOT project only, and proves cross-project
-    // HTTP/index/SSE/limit composition (A+B) below; it does not claim more than that.
-    const healthB = await call(bridgeB.rpc, 'health');
-    assertion(
-      result,
-      'B bridge honestly reports no MCP socket for a non-boot project (#557), not a fabricated pass',
-      Boolean(healthB.result?.isError) && toolText(healthB).includes(b.id) && /not running/i.test(toolText(healthB)),
-      { healthB: toolText(healthB), knownLimitation: 'https://github.com/qodeca/xezar/issues/557' },
-    );
+    // #557: B was registered through the product API, not booted, and still gets its own MCP door
+    // once its context is built (above). The door opens asynchronously after that build, so B's
+    // first answer is awaited rather than raced. "Answers" means a non-error result naming B and
+    // not A — the error text for a missing door also echoes B's id, which is how the first draft
+    // of this harness passed against the bug.
+    const bAnswers = async (rpc) => {
+      const health = await call(rpc, 'health');
+      const text = toolText(health);
+      return !health.error && !health.result?.isError && text.includes(b.id) && !text.includes(a.id) ? text : undefined;
+    };
+    const healthB = await waitFor('B MCP door', () => bAnswers(bridgeB.rpc));
+    const discoverB = toolText(await call(bridgeB.rpc, 'discover_project'));
+    const statusB = await call(bridgeB.rpc, 'leader_events', { action: 'status' });
+    const readB = await call(bridgeB.rpc, 'leader_events', { action: 'read' });
+    assertion(result, 'B bridge resolves only its own project (#557)', discoverB.includes(b.id) && !discoverB.includes(a.id), { healthB, discoverB });
+    assertion(result, "B bridge's own leader_events session answers (#557)", !statusB.error && !statusB.result?.isError && !readB.error && !readB.result?.isError, { status: toolText(statusB), read: toolText(readB) });
 
     const thirdA = await openBridge('bridge-a-competing', registry, repoA, env, logs);
     assertion(result, "third A bridge is refused without affecting B's HTTP route", thirdA.init.error?.code === -32080 && (await api(base, `/api/v1/p/${b.id}/runs`)).status === 200, thirdA.init.error);
@@ -422,9 +421,9 @@ async function main(options = {}) {
     // one message on purpose, so the run holds ~25s (observable queueing) and then finishes.
     const slowA = runIdFrom(await call(successorA.rpc, 'task_create', { action: 'start', operationId: `mp-slow-${Date.now()}`, prompt: 'mock:slow mock:done cap holder', autonomous: true }));
     await waitFor('A slow run to start', async () => (await runState(base, a.id, slowA)) === 'running' || undefined);
-    // B has no MCP session (#557), so its side of the cap-sharing smoke goes through the same
-    // product HTTP door the cockpit's own composer uses, matching `task_create`'s own default
-    // workflow (`quick-task`) and prompt-to-task mapping — not an invented shortcut.
+    // B's side of the cap-sharing smoke goes through the product HTTP door the cockpit's own
+    // composer uses, matching `task_create`'s default workflow (`quick-task`); B's MCP door is
+    // proven above and again across removal and re-add below.
     const quickBCreate = await api(base, `/api/v1/p/${b.id}/runs`, 'POST', { task: 'mock:done queued behind A', workflow: 'quick-task', autonomous: true });
     assertion(result, 'B run creates through the product HTTP door', quickBCreate.status === 201, quickBCreate);
     const quickB = quickBCreate.json.id;
@@ -453,8 +452,17 @@ async function main(options = {}) {
     assertion(result, 'B removes after its runs settle', removed.status === 200, removed);
     const staleBRoute = await api(base, `/api/v1/p/${b.id}/runs`);
     assertion(result, "disposed B's scoped route is unknown while A survives", staleBRoute.status === 404 && !((await call(successorA.rpc, 'health')).error), staleBRoute);
+    // #557: the removal closed B's door, and A's door is untouched by it.
+    const removedB = await call(bridgeB.rpc, 'health');
+    assertion(result, "removed B's MCP door stops answering while A's answers (#557)", (Boolean(removedB.error) || Boolean(removedB.result?.isError)) && !((await call(successorA.rpc, 'health')).error), { healthB: toolText(removedB) });
     const readded = await api(base, '/api/v1/projects', 'POST', { root: repoB });
     assertion(result, 'B re-adds without duplicating the registry', readded.status === 200 && (await api(base, '/api/v1/projects')).json.projects.length === 2, readded);
+    // A re-added B gets a fresh door once its context is built again.
+    assertion(result, 'B rebuilds after re-add', (await api(base, `/api/v1/p/${b.id}/runs`)).status === 200, b.id);
+    await bridgeB.rpc.close();
+    bridgeB = await openBridge('bridge-b-readded', registry, repoB, env, logs);
+    const readdedHealth = await waitFor('re-added B MCP door', () => bAnswers(bridgeB.rpc));
+    assertion(result, 're-added B answers through a new MCP door (#557)', Boolean(readdedHealth), { healthB: readdedHealth });
 
     result.status = 'PASSED';
   } catch (error) {

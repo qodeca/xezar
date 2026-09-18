@@ -26,6 +26,8 @@ import { loadWorkflows } from './workflows/load.ts';
 import { startServer, WorkspaceEventBus } from './server/server.ts';
 // Type-only: erased at run time, so the MCP module stays a lazy import (N-07).
 import type { ServiceDispatch } from './mcp/service-adapter.ts';
+// Type-only imports inside, so this static import does not load the MCP module either.
+import { followProjectDoors } from './mcp/project-doors.ts';
 import type { McpJournalRow, ProviderStatus } from '@qodeca/xezar-contract';
 import {
   ProviderRuntimeAuthObserver,
@@ -498,6 +500,17 @@ async function serveCommand(
   });
 
   let app: ServiceDispatch | undefined;
+  // The same rows `GET /providers/status` answers, so E-06 starts from what the cockpit shows.
+  // Shared by every project's MCP door, the boot one included.
+  const providerBaseline = async (): Promise<readonly ProviderStatus[]> => {
+    const discovered = await providerAuth.status();
+    if (providerAuthChecksDisabled()) return applyProviderEnablement(discovered, []).providers;
+    return applyProviderEnablement(discovered, (await loadWorkspaceConfig()).disabledProviders).providers;
+  };
+  const localHandoff = (): boolean => resolveCapabilities(process.env, bindHost).localHandoff;
+  let mcpService: { close(): void } | undefined;
+  let projectDoors: { close(): void } | undefined;
+  let stopping = false;
   const server = startServer({
     repoRoot,
     store,
@@ -516,7 +529,54 @@ async function serveCommand(
     },
     // Every project built later gets its own subscription, taken before ITS recovery, and
     // released when its context is disposed (#467, PR 3).
-    onContexts: terminal.onContexts,
+    onContexts: (contexts) => {
+      terminal.onContexts(contexts);
+      // Every project built after boot gets the MCP door the boot project has (#557): opened when
+      // its context is built, closed when it is disposed. The boot project is skipped — its door is
+      // the one opened below, unchanged.
+      projectDoors = followProjectDoors(contexts, {
+        ...(bootProjectId ? { bootProjectId } : {}),
+        open: async (ctx) => {
+          const handle = await startMcpSocket({
+            projectId: ctx.id,
+            version,
+            service: app,
+            store: ctx.store,
+            workspaceEvents,
+            providerBaseline,
+            localHandoff,
+            // No `onEventRow`: the terminal's journal lines are labelled as the boot project's.
+            onUnavailable: (reason) =>
+              terminal.log(
+                activityEntry({
+                  level: 'warn',
+                  subject: 'mcp',
+                  message: `unavailable ${glyphs.dash} ${reason}. The cockpit works without it.`,
+                  event: 'mcp.unavailable',
+                  projectId: ctx.id,
+                  fields: [['reason', reason]],
+                }),
+              ),
+          });
+          return handle;
+        },
+        // Fires only when the handle above is kept as the project's door — never for a project
+        // disposed while its open was still in flight, whose handle `followProjectDoors` closes
+        // silently instead. `open`'s own return does not carry that distinction.
+        onOpened: (ctx) => {
+          if (stopping) return;
+          terminal.log(
+            activityEntry({
+              level: 'info',
+              subject: 'mcp',
+              message: `ready ${glyphs.dash} run xez mcp in ${ctx.root}`,
+              event: 'mcp.ready',
+              projectId: ctx.id,
+            }),
+          );
+        },
+      });
+    },
     // One safe line per returned 4xx and thrown 5xx. Observe-only: the response is untouched.
     onHttpFailure: terminal.onHttpFailure,
   }, requestedPort);
@@ -580,8 +640,6 @@ async function serveCommand(
   // The boot project's MCP socket (#86, D-01 § 5.4), composed over the same app and store
   // the cockpit uses (#243). Fire-and-forget: it never delays or fails boot (N-07), and a
   // failure is one warning.
-  let mcpService: { close(): void } | undefined;
-  let stopping = false;
   if (bootProjectId) {
     void startMcpSocket({
       projectId: bootProjectId,
@@ -589,13 +647,8 @@ async function serveCommand(
       service: app,
       store,
       workspaceEvents,
-      // The same rows `GET /providers/status` answers, so E-06 starts from what the cockpit shows.
-      providerBaseline: async () => {
-        const discovered = await providerAuth.status();
-        if (providerAuthChecksDisabled()) return applyProviderEnablement(discovered, []).providers;
-        return applyProviderEnablement(discovered, (await loadWorkspaceConfig()).disabledProviders).providers;
-      },
-      localHandoff: () => resolveCapabilities(process.env, bindHost).localHandoff,
+      providerBaseline,
+      localHandoff,
       // Stall advisories, reviewer verdicts and executor changes reach the terminal as the MCP
       // journal wrote them (#467, PR 4), rather than as a second derivation of the same facts.
       onEventRow: (row) => terminal.onEventRow(row),
@@ -663,6 +716,7 @@ async function serveCommand(
     terminal.stop({ ...(repo ? { projectName: bootProjectId ?? repo.branch } : {}) });
     // MCP next, so no MCP listener is still attached while the store flushes.
     mcpService?.close();
+    projectDoors?.close();
     store.flush();
     process.exit(0);
   };
@@ -689,13 +743,14 @@ async function startMcpSocket(opts: {
   workspaceEvents: WorkspaceEventBus;
   providerBaseline: () => Promise<readonly ProviderStatus[]>;
   localHandoff: () => boolean;
-  /** Every journal row as it is appended, for the terminal's activity lines. */
-  onEventRow: (row: McpJournalRow) => void;
+  /** Every journal row as it is appended, for the terminal's activity lines. Boot project only. */
+  onEventRow?: (row: McpJournalRow) => void;
   /**
    * Where the one unavailability line goes (#467, PR 3).
    *
    * Required rather than optional on purpose: two spellings of the same warning is how a message
-   * a person greps for quietly becomes two, and there is exactly one caller.
+   * a person greps for quietly becomes two. Both callers (the boot door and #557's later-project
+   * doors) emit the same `mcp.unavailable` event.
    */
   onUnavailable: (reason: string) => void;
 }): Promise<{ close(): void } | undefined> {
@@ -708,7 +763,7 @@ async function startMcpSocket(opts: {
       workspaceEvents: opts.workspaceEvents,
       providerBaseline: opts.providerBaseline,
       localHandoff: opts.localHandoff,
-      onEventRow: opts.onEventRow,
+      ...(opts.onEventRow ? { onEventRow: opts.onEventRow } : {}),
       ...(opts.service ? { service: opts.service } : {}),
     });
   } catch (err) {
