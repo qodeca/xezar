@@ -1,3 +1,11 @@
+# Unreleased
+
+## 🔧 Changed
+
+- This repository now carries its own xezar setup in `.xezar/` (single-project mode); a fresh clone starts in that mode.
+
+---
+
 # 0.16.0 (2026-09-18)
 
 ## Highlights
