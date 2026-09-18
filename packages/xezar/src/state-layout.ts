@@ -22,9 +22,11 @@ import { join, resolve, sep } from 'node:path';
  * feature is half-isolation — one code path still reaching the real home, so
  * two projects quietly share state — and the structural defence is that every
  * state path is derived from a `StateLayout` rather than from `homedir()` at
- * the call site. `homedir()` therefore appears here (and in `paths.ts`'s
- * `globalStateRoot`, which this layout delegates to for the global case) and
- * nowhere else; PR2 adds the source-scanning test that keeps it that way.
+ * the call site. `homedir()` therefore appears here — `globalStateRoot` and
+ * `globalCacheRoot` below — and, outside this module, only where
+ * `state-path-scan.test.ts` carries a written reason for it (#600 SP-2.1).
+ * That test reads the source text of `packages/xezar/src`, so a new direct
+ * `homedir()` or `'.xezar'` join fails the suite by file and line.
  *
  * Zero config holds: nothing has to exist and nothing has to be set. Without
  * `--single-project` and without a `workspace.json` in the folder, every
@@ -81,6 +83,29 @@ export interface StateLayout {
   accountsPath: string;
   /** Project layout only: `<project>/.local/xezar` — the working files that are not committed. */
   dataDir: string | null;
+  /**
+   * Where xezar caches things it can always fetch again — today the bare clones
+   * of team skills repos (`<cacheDir>/skills/<owner>__<name>`) and the
+   * skills-update lock beside them.
+   *
+   * Global: `~/.cache/xez`, byte for byte what `skills-remote.ts` hardcoded
+   * before this field existed, `XEZ_HOME` deliberately NOT consulted — moving
+   * it would change a working default for every existing user for no reason
+   * (AGENTS.md § Zero config). Project: `<project>/.local/xezar/cache`, because
+   * a cache is a working file and AC-5 puts the mode's skills inside the
+   * project rather than in a directory every other project on the machine
+   * shares.
+   */
+  cacheDir: string;
+  /**
+   * The directory holding the MCP bridge's unix sockets, one per project.
+   *
+   * Global: `<root>/ipc`, i.e. `~/.xezar/ipc` — unchanged. Project:
+   * `<project>/.local/xezar/ipc`, NOT `<project>/.xezar/ipc`: BR-2 forbids
+   * opening the per-user home in the mode, and a socket is a working file that
+   * must never land in the committed state directory.
+   */
+  ipcDir: string;
 }
 
 /** The flag that creates the mode's state in the current folder (FR-1.1). */
@@ -99,6 +124,19 @@ export const PROJECT_STATE_MARKER = 'workspace.json';
 
 /** Project layout only: where the working files go, relative to the project root. */
 const PROJECT_DATA_DIR = join('.local', 'xezar');
+
+/**
+ * The per-user cache root — `~/.cache/xez`.
+ *
+ * `XEZ_HOME` is NOT read here, and that asymmetry with `globalStateRoot` is the
+ * behaviour this repository already shipped (`skills-remote.ts` hardcoded
+ * `join(homedir(), '.cache', 'xez', …)`), preserved deliberately: this function
+ * exists to move the cache in the PROJECT layout, not to move it for the
+ * millions of launches that are still global.
+ */
+function globalCacheRoot(): string {
+  return join(homedir(), '.cache', 'xez');
+}
 
 /**
  * Refused boot (#600 Q1). `workspace.json` is what makes the folder a
@@ -139,12 +177,15 @@ export function globalStateLayout(env: NodeJS.ProcessEnv = process.env): StateLa
     uiStatePath: join(root, 'ui-state.json'),
     accountsPath: join(root, 'agent-accounts.json'),
     dataDir: null,
+    cacheDir: globalCacheRoot(),
+    ipcDir: join(root, 'ipc'),
   };
 }
 
 /** The layout for a folder that owns its state. */
 export function projectStateLayout(projectRoot: string): StateLayout {
   const root = join(projectRoot, PROJECT_STATE_DIR);
+  const dataDir = join(projectRoot, PROJECT_DATA_DIR);
   return {
     mode: 'project',
     root,
@@ -153,7 +194,9 @@ export function projectStateLayout(projectRoot: string): StateLayout {
     workspacePath: join(root, PROJECT_STATE_MARKER),
     uiStatePath: join(root, 'workspace-ui.json'),
     accountsPath: join(root, 'agent-accounts.json'),
-    dataDir: join(projectRoot, PROJECT_DATA_DIR),
+    dataDir,
+    cacheDir: join(dataDir, 'cache'),
+    ipcDir: join(dataDir, 'ipc'),
   };
 }
 

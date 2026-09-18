@@ -25,6 +25,13 @@ const workflowsDir = join(root, ".xezar/workflows");
 const skillsDir = join(root, ".xezar/skills");
 const checksDir = join(root, ".xezar/checks");
 const configPath = join(root, ".xezar/config.json");
+// Single-project mode (#600): `<project>/.xezar/workspace.json` is the file whose PRESENCE
+// puts a folder in the mode, and it is the mode's home for the machine-shaped resource keys
+// (Q3 (a)). It is committed state, not kit, so this checker reads it for exactly two things:
+// that it is loadable at all, and that a committed resource key is in the place the engine
+// actually reads. Everything else in it is the user's own settings and none of the kit's business.
+const workspacePath = join(root, ".xezar/workspace.json");
+const singleProjectMode = existsSync(workspacePath);
 
 const errors = [];
 const notes = [];
@@ -438,11 +445,22 @@ if (!existsSync(configPath)) {
     // POLICY: `.xezar/CLAUDE.md` says the committed project config carries no global resource
     // limits, because this file travels to every checkout and a machine-sized ceiling is a
     // property of a machine, not of the project. Set it per user, where it belongs.
+    //
+    // Single-project mode (#600 FR-7.2, Q3 (a)) does not lift either refusal — it changes WHERE
+    // the advice points. In the mode there IS a committed home for a machine-shaped key, and it
+    // is `workspace.json -> resources`, which the engine reads; `.xezar/config.json` still is not,
+    // so a key here would still be a false promise. And the standing advice "set it per user in
+    // ~/.xezar/config.json" is advice the user cannot take in the mode, because BR-2 means that
+    // file is never opened there. Both texts below are AMENDED rather than replaced: outside the
+    // mode they still describe a real engine behaviour and are still the whole truth.
+    const modeSuffix = singleProjectMode
+      ? " This folder is in single-project mode, so the committed home for this key is .xezar/workspace.json -> resources, which the engine does read; ~/.xezar is never opened here."
+      : "";
     const REFUSED_IN_PROJECT_CONFIG = {
       maxParallel:
-        "The scheduler ignores it: parallelism is workspace state, in ~/.xezar/config.json -> projects[].maxParallel and resources.maxParallel. A committed key here would be a false promise.",
+        "The scheduler ignores it: parallelism is workspace state, in ~/.xezar/config.json -> projects[].maxParallel and resources.maxParallel. A committed key here would be a false promise." + modeSuffix,
       memoryLimitMb:
-        "The engine DOES honour a per-repo value, but the kit does not commit one: a memory ceiling is a property of a machine, not of a project, and this file travels to every checkout. Set it per user, in ~/.xezar/config.json -> resources.memoryLimitMb, or in an uncommitted local config.",
+        "The engine DOES honour a per-repo value, but the kit does not commit one: a memory ceiling is a property of a machine, not of a project, and this file travels to every checkout. Set it per user, in ~/.xezar/config.json -> resources.memoryLimitMb, or in an uncommitted local config." + modeSuffix,
     };
     for (const [key, why] of Object.entries(REFUSED_IN_PROJECT_CONFIG)) {
       if (key in config) {
@@ -451,6 +469,59 @@ if (!existsSync(configPath)) {
     }
     if (config.baseBranch != null && (typeof config.baseBranch !== "string" || !config.baseBranch.trim())) err("config", "baseBranch must be a nonempty string when supplied");
     notes.push("project config checked");
+  }
+}
+
+// --- Single-project mode: the committed workspace file (#600 FR-7.2, SP-2.6) -------------
+//
+// Absent = the global layout, and then there is nothing here to check: the workspace file is
+// in the per-user home, which travels to no checkout and is not the kit's business. Present =
+// the folder owns its state, and this file is now committed alongside the kit — so the two
+// things a kit check can usefully say about it are said here and nothing more.
+if (!singleProjectMode) {
+  notes.push("single-project workspace file absent: global layout, nothing committed to check");
+} else {
+  let workspace = null;
+  try {
+    workspace = JSON.parse(readFileSync(workspacePath, "utf8"));
+    if (workspace === null || typeof workspace !== "object" || Array.isArray(workspace)) {
+      // The engine REFUSES THE BOOT on this (`assertProjectStateUsable`, #600 Q1), because
+      // degrading would silently run the project off the user's global setup. A kit check that
+      // passed a file xezar will not start on would be reporting the wrong thing.
+      err(".xezar/workspace.json", "is valid JSON but not an object — xezar refuses to boot in this folder until it is repaired or deleted");
+      workspace = null;
+    }
+  } catch (error) {
+    err(".xezar/workspace.json", `is not valid JSON: ${error.message} — xezar refuses to boot in this folder until it is repaired or deleted`);
+  }
+  if (workspace === null) {
+    notes.push("single-project workspace file NOT checked — it could not be parsed (see the failure below)");
+  } else {
+    // The machine-shaped keys are ACCEPTED here, and that acceptance is the whole point of
+    // FR-7.2: in the mode a committed `memoryLimitMb` or `maxParallel` is honoured exactly as
+    // written (AC-7, no clamp), so refusing it would refuse a legitimate setting. What is still
+    // refused is the same fault the `.xezar/config.json` rule catches — a key in a place nothing
+    // reads. `resources` is where `loadWorkspaceConfig` looks; the top level is not.
+    const MACHINE_SHAPED = ["maxParallel", "memoryLimitMb"];
+    for (const key of MACHINE_SHAPED) {
+      if (key in workspace) {
+        err(
+          ".xezar/workspace.json",
+          `\`${key}\` is at the top level, where nothing reads it. Move it under "resources" — that is where the engine resolves it, and where the mode accepts it.`,
+        );
+      }
+    }
+    const resources = workspace.resources;
+    if (resources !== undefined && (resources === null || typeof resources !== "object" || Array.isArray(resources))) {
+      err(".xezar/workspace.json", '"resources" must be an object when supplied');
+    } else {
+      const committed = MACHINE_SHAPED.filter((key) => resources !== undefined && key in resources);
+      notes.push(
+        committed.length > 0
+          ? `single-project workspace file checked: committed ${committed.join(" and ")} accepted (applied as written, never clamped to this host)`
+          : "single-project workspace file checked",
+      );
+    }
   }
 }
 

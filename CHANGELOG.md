@@ -43,6 +43,22 @@
   layout, the detection, the capability and the boot line; the cockpit badge, the refusals in all
   three doors and the import from a global setup follow. Details:
   `BACKWARD_COMPATIBILITY.md` § "Single-project ROOT mode".
+- ✨ **A single-project folder now keeps its team skills and its committed limits to itself.**
+  (#600, part 2 of 5) In single-project mode the cache of team skills xezar fetches is written to
+  `<project>/.local/xezar/cache/skills/`, not the machine-wide `~/.cache/xez/skills/`, so a clone of
+  the project fetches its own team skills instead of inheriting whatever this machine fetched last;
+  the MCP bridge's socket directory moves with it for the same reason. A committed
+  `resources.memoryLimitMb` or `resources.maxParallel` in `<project>/.xezar/workspace.json` is now
+  applied exactly as written, above what this host would have derived for itself included — no
+  clamp, no refusal, no warning-and-substitute — because a project that runs with different numbers
+  on the reviewer's machine than on the author's is what committing them was meant to end. What does
+  **not** move: your agent logins (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `OPENCODE_CONFIG_DIR`,
+  `PI_CODING_AGENT_DIR`), your global skill libraries in `~/.agents/skills` and `~/.claude/skills`,
+  `gh`, `git`, and the host-install records in `~/.xezar` (`server.json`, `server-instances/`, the
+  systemd unit, the nginx site) — a cockpit is still installed on one machine. **Nothing changes in
+  the default global layout**: `~/.cache/xez` stays exactly where and what it was, `XEZ_HOME` still
+  does not move it, and a test now pins that from both sides. Details:
+  `BACKWARD_COMPATIBILITY.md` § "Single-project ROOT mode".
 - ✨ **The sidebar is navigation-only.** (#546) The Active/Archived task switcher, task list, and `Search…` launcher have been removed from the sidebar. Manage and search tasks on the Tasks page, and open the command palette with `⌘K` on macOS or `Ctrl+K` elsewhere. Existing task badges, task data, APIs, and saved UI state are unchanged.
 - **The audit trail is bounded, and safe to share between processes.** (#306, part 3 of 4) A
   project's `.local/xezar/audit.ndjson` now rotates before it passes 10 MB (10,000,000 bytes) and

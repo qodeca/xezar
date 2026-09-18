@@ -233,7 +233,27 @@ export class WorkspaceSemaphore {
     return total;
   }
 
-  /** Cached workspace-wide parallel cap. */
+  /**
+   * Cached workspace-wide parallel cap, **as configured** — never reconciled
+   * with this host.
+   *
+   * That "never" is a guarantee now rather than an accident (#600 FR-7.3,
+   * AC-7). In single-project mode the resource keys come out of a COMMITTED
+   * `<project>/.xezar/workspace.json`, so the same numbers reach every machine
+   * that clones the project — a 32 GiB laptop, a 4 GiB CI container, a
+   * colleague's desktop. BR-5 says identical behaviour everywhere outranks host
+   * fit, and the owner accepted "a committed limit larger than the host" as a
+   * risk with no mitigation to be built: xezar runs what the file says, and a
+   * host that cannot take it fails visibly rather than quietly running a
+   * different configuration than the one under review.
+   *
+   * So there is no `Math.min(committed, hostDerived)` here, none in
+   * `memoryLimitMb()` below, and none in `loadResourceLimits`. The host
+   * derivation (`deriveDefaultMemoryLimitMb`) fills an ABSENT key and nothing
+   * else — it is a default, not a ceiling, and turning it into one would be
+   * exactly the warning-and-substitute AC-7 forbids.
+   * `test/unit/single-project-limits.test.ts` fails if a clamp reappears.
+   */
   maxParallel(): number {
     return this.limits.maxParallel;
   }
@@ -257,7 +277,9 @@ export class WorkspaceSemaphore {
     return this.limits.autoResumeOnUsageLimit ?? true;
   }
 
-  /** Cached per-task memory ceiling (MiB), or null for no limit. */
+  /** Cached per-task memory ceiling (MiB), or null for no limit. Applied as
+   *  written, above this host's own size included — see `maxParallel()` for why
+   *  (#600 FR-7.3, AC-7). */
   memoryLimitMb(): number | null {
     return this.limits.memoryLimitMb;
   }

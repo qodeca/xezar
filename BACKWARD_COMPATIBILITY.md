@@ -467,6 +467,26 @@ contract from this release on.
   workspace files: the folder outranks the environment, which is the whole design (an environment
   variable can be lost by a plain `xez`, an IDE, a script or the MCP bridge; a file in the folder
   cannot). `XEZ_SINGLE_PROJECT` is not consulted either — see the entry above.
+- **The team-skills cache moves with the folder; nothing else on the host does.** In the mode the
+  bare clones of team skills repos are written to `<project>/.local/xezar/cache/skills/` instead of
+  the shared `~/.cache/xez/skills/`, so a clone of the project fetches its own team skills rather
+  than inheriting whatever this machine happened to fetch last. The MCP bridge's socket directory
+  follows the same rule (`<project>/.local/xezar/ipc`, not `~/.xezar/ipc`), because `~/.xezar` is
+  not opened at all. **In the global layout both are byte-identical to 0.15.0**, `~/.cache/xez`
+  included — and `XEZ_HOME` still does not move that cache, exactly as before this mode existed.
+- **Agent logins, global skill libraries, `gh` and `git` do NOT move.** `CLAUDE_CONFIG_DIR`,
+  `CODEX_HOME`, `OPENCODE_CONFIG_DIR` and `PI_CODING_AGENT_DIR` resolve identically inside and
+  outside the mode, as do `~/.agents/skills`, `~/.claude/skills` and `~/Applications`. These are the
+  machine's, not the project's: relocating them would log a user out of a folder rather than isolate
+  it. The mode moves xezar's own state and xezar's own cache, and nothing else.
+- **A committed resource limit is applied exactly as written.** `resources.memoryLimitMb` and
+  `resources.maxParallel` in `<project>/.xezar/workspace.json` are honoured as they stand, including
+  above what this host would have derived for itself: no clamp, no refusal, and no
+  warning-and-substitute. The host derivation (`floor(totalMiB * 0.6 / 2)`, clamped to
+  [1024, 8192] MiB) still fills an **absent** key and is a default, never a ceiling. Identical
+  behaviour on every machine that clones the project is the point of committing the file; a host
+  that cannot take the value fails visibly rather than quietly running a different configuration
+  than the one under review.
 - **The host-install records stay in `~/.xezar`.** `server.json`, `server-instances/`, the install
   lock, the systemd unit and the nginx site describe the MACHINE, not the project, and are the one
   part of the per-user home this mode still uses. `xezarHomeDir()` keeps answering the per-user home
@@ -490,8 +510,9 @@ contract from this release on.
 
 Breaking: changing any of the four file names or the marker; making the mode reachable from an
 environment variable; letting a linked worktree enter it; moving the host-install records into the
-project; widening the boot refusal beyond `workspace.json`; or making `capabilities.singleProjectRoot`
-required on the wire. Required path: the deprecation path at the top of this document.
+project; moving an agent home, a global skill library or the global `~/.cache/xez` skills cache;
+clamping a committed resource limit to the host; widening the boot refusal beyond `workspace.json`;
+or making `capabilities.singleProjectRoot` required on the wire. Required path: the deprecation path at the top of this document.
 
 ## GitHub automations — opt-in gating (pre-rename issue 801), 2026-08-07
 
