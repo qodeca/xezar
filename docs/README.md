@@ -5,7 +5,7 @@ project documentation. Use the table to find the part you need.
 
 | Path | What it holds | For |
 | --- | --- | --- |
-| [guide/](guide/README.md) | The 16-part user guide: getting started, tasks, settings and references. | Users |
+| [guide/](guide/README.md) | The 17-part user guide: getting started, tasks, settings and references. | Users |
 | [server-install/](server-install/README.md) | Host xezar on a server and reach it from another machine. | Users |
 | [project-layout.md](project-layout.md) | The `.xezar/` directory, discovery precedence and the legacy migration command. | Users and contributors |
 | [publishing.md](publishing.md) | How a release reaches npm through the manual Release workflow. | Maintainers |
