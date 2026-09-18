@@ -1,7 +1,7 @@
 # Behaviour
 
 Keyboard, focus, announcements, responsive rules, motion and theming as the code does them.
-Inventory counts read on 2026-09-16 from non-test `.ts`/`.tsx` in `packages/web/src`: literal occurrences, with breakpoint prefixes matched at a boundary (excluding `max-` prefixes).
+Inventory counts read on 2026-09-18 from non-test `.ts`/`.tsx` in `packages/web/src`: literal occurrences outside comments, with a breakpoint prefix counted only where no word character, `:` or `-` precedes it (so `max-md:` is not an `md:`). The `md:` figure is higher than the 2026-09-16 one partly because of that stated method and partly because the Git, GitHub, Compare and Automations pages moved to `md:` rhythm spellings in #453 B6 and B7.
 
 ## 1. Keyboard and focus
 
@@ -18,9 +18,9 @@ Inventory counts read on 2026-09-16 from non-test `.ts`/`.tsx` in `packages/web/
 
 Focus rules:
 
-- The focus ring is `focus-visible:ring-[3px] focus-visible:ring-ring/50` with `outline-none`, everywhere: ten primitives
-  and 51 sites outside `components/ui`. The dialog and sheet close buttons were the last two on the older
-  focus-on-anything ring and now carry this one (counts read on 2026-09-16).
+- The focus ring is `focus-visible:ring-[3px] focus-visible:ring-ring/50` with `outline-none`, everywhere: eight `components/ui`
+  primitives and 78 sites outside `components/ui`. The dialog and sheet close buttons were the last two on the older
+  focus-on-anything ring and now carry this one (counts read on 2026-09-18).
 - A hover-revealed control MUST also reveal on `focus-visible` (`focus-visible:opacity-100`) and on
   `no-hover:` devices. A zero-width hidden control stays focusable; never `hidden` it.
 - Dialogs and sheets trap focus through Radix; the mobile drawer button is a real `SheetTrigger` so closing
@@ -37,12 +37,12 @@ Focus rules:
 
 ## 2. Announcements
 
-- Polite live regions: 11 — 10 literal `aria-live="polite"` attributes plus the conditional
+- Polite live regions: 12 — 11 literal `aria-live="polite"` attributes plus the conditional
   `aria-live` in `mcp-connection-section.tsx`; none assertive. Examples: the composer dictation transcript,
   the thread history loader (`sr-only`), the MCP connection status and operations, the skills update card,
   the GitHub merge box.
-- `role="status"`: 20 sites (toasts, the running spinner, monitoring schedule lines, the provider status
-  banner, the dictation bar). `role="alert"`: 11 sites (inline errors, the provider auth banner, the route
+- `role="status"`: 27 sites (toasts, the running spinner, monitoring schedule lines, the provider status
+  banner, the dictation bar). `role="alert"`: 22 sites (inline errors, the provider auth banner, the route
   error boundary and the MCP leader refusal line).
 - `aria-busy`: the thread history boundary and the "Plan first" radio while planning.
 - Status dots that stand alone get `role="img"` and `aria-label` from `attention.label`; the unread marker
@@ -57,10 +57,10 @@ is `role="alert"`. A toast is `role="status"`.
 | Prefix | Count | What it does |
 | --- | --- | --- |
 | `sm:` | 54 | dialog widths, footer direction, plan-review full-screen below `sm` |
-| `md:` | 203 | the one layout switch: sidebar vs drawer, desktop header vs mobile top bar, table vs cards, 16px vs 14px inputs, `h-11` vs `md:h-9` rows, tree pane shown, diff forced to unified + wrap below |
+| `md:` | 416 | the one layout switch: sidebar vs drawer, desktop header vs mobile top bar, table vs cards, 16px vs 14px inputs, `h-11` vs `md:h-9` rows, tree pane shown, diff forced to unified + wrap below |
 | `lg:` | 11 | wider diff tree pane, one global-table column |
-| `xl:` | 12 | global-table column degradation, the ghost-code backdrop (`max-xl:hidden`) |
-| `max-md:` | 8 | phone-only borders and margins |
+| `xl:` | 13 | global-table column degradation, the ghost-code backdrop (`max-xl:hidden`) |
+| `max-md:` | 33 | phone-only borders and margins |
 | `2xl:` | 0 | – |
 
 - `useIsDesktop()` asks the same `(min-width: 768px)` as `md:`; jsdom counts as desktop.
@@ -79,12 +79,12 @@ is `role="alert"`. A toast is `role="status"`.
 
 ## 4. Motion
 
-- `transition-colors` (61) is the default hover transition. `transition-transform` (16) rotates chevrons.
+- `transition-colors` (52) is the default hover transition. `transition-transform` (14) rotates chevrons.
   `transition-opacity` (6) reveals row actions.
-- `animate-spin` (18): twelve are `motion-safe:animate-spin`; the step rail adds `motion-reduce:animate-none`;
-  five route-level spinners are still unguarded (G-08).
-- `animate-pulse` (10): guarded in the docks, step rail, composer, twinkles and — since #453 B1 — in `StatusDot`
-  and `Skeleton`; two `/new` sites are still unguarded (G-08).
+- `animate-spin` (18): seventeen are `motion-safe:animate-spin` and the step rail's one adds `motion-reduce:animate-none`
+  (`routes/task-thread/step-rail.tsx:93`); none is unguarded, so G-08 is retired.
+- `animate-pulse` (8, plus one in a comment): guarded in the docks, step rail, twinkles and — since #453 B1 — in `StatusDot`
+  and `Skeleton`; the two `/new` sites are `motion-safe:` too (`routes/new-task.tsx:545,1406`).
 - `animate-in` / `animate-out` from `tw-animate-css` on Radix `data-[state]` and on toasts. Every occurrence in
   `components/ui` is `motion-safe:`, so no overlay, menu, popover or tooltip moves for a reader who asked the OS
   for no animation; the sheet adds `motion-reduce:transition-none` for the transition its slide rides on.

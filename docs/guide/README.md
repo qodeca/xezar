@@ -2,7 +2,7 @@
 
 xezar is a local cockpit and CLI for running and tracking AI coding-agent tasks in your projects. It brings agent backends, workflows and task worktrees together so you can follow the work and review its results.
 
-Start with Getting started below, then follow the Next links to read the guide in order. For a specific task or setting, jump directly to the relevant part; parts 10–12 are references.
+Start with Getting started below, then follow the Next links to read the guide in order. For a specific task or setting, jump directly to the relevant part; parts 10–12 and 17 are references.
 
 1. [Getting started](01-getting-started.md) — Install xezar, connect an agent and run your first task.
 2. [Tasks and runs](02-tasks-and-runs.md) — Compose tasks, follow runs, compare variants and review results.
@@ -20,6 +20,7 @@ Start with Getting started below, then follow the Next links to read the guide i
 14. [Remote access](14-remote-access.md) — Host the cockpit and access it through an authenticated endpoint.
 15. [Project kit](15-project-kit.md) — Create and maintain project-local workflows and skills, set project configuration and add an optional agent pipeline.
 16. [Troubleshooting and FAQ](16-troubleshooting-faq.md) — Diagnose failures, understand usage and get help.
+17. [Audit trail](17-audit-trail.md) — Find where run-state and configuration changes are recorded, and what is redacted.
 
 For contributing to xezar itself, read [CONTRIBUTING.md](../../CONTRIBUTING.md) and [AGENTS.md](../../AGENTS.md).
 

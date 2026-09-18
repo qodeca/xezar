@@ -58,12 +58,13 @@ const GIT_ID = ['-c', 'user.name=test', '-c', 'user.email=test@local'];
  * Reverting either half alone turns exactly one of those two tests red, which is
  * the asymmetry #59 asked to have asserted.
  *
- * ON COUNTING NUDGES. The dry-run mock answers every message and never volunteers
- * `XEZ:DONE`, so a nudged autonomous run legitimately keeps going: nudge, turn,
- * nudge, … until `MAX_AUTO_CONTINUES`. The tests therefore assert the FIRST note
- * is `… (1/40)` and that at least one fired, rather than an exact total that only
- * describes how fast the machine happened to be. The cap itself has its own guard
- * test below.
+ * ON COUNTING NUDGES. The dry-run mock answers every message with prose, makes no
+ * tool call and never volunteers `XEZ:DONE`. Before #613 a nudged autonomous run
+ * therefore kept going until `MAX_AUTO_CONTINUES`; since #613 a re-prompted turn
+ * with no tool call is idle, so the mock's run takes exactly ONE nudge and parks
+ * with an `automatic re-prompting stopped` note. The tests assert that first
+ * `… (1/40)` note, the delivered nudge, and the idle park. The cap itself has its
+ * own guard test below; `run-continue-nudge-cap.test.ts` pins the #613 bounds.
  *
  * GUARD TESTS (must pass before AND after #141 — they pin what must NOT change):
  * `a non-autonomous run …`, `an autonomous run that emitted XEZ:DONE …`,
@@ -157,6 +158,9 @@ describe('the autonomous turn-end nudge (#489, gap R20)', () => {
 
   const nudgeNotes = (id: string): Array<Record<string, unknown>> =>
     readEvents(id).filter((e) => e.type === 'note' && String(e.message ?? '').includes(NUDGE_NOTE));
+  /** The note `run.ts` writes when the #613 idle rule stops the nudging. */
+  const idleStopNotes = (id: string): Array<Record<string, unknown>> =>
+    readEvents(id).filter((e) => e.type === 'note' && String(e.message ?? '').includes('made no tool call'));
 
   /** The live `ActiveRun` the turn-end handler reads, once the run has built it. */
   type LiveState = { autonomous?: boolean; autoContinues?: number };
@@ -191,8 +195,9 @@ describe('the autonomous turn-end nudge (#489, gap R20)', () => {
     });
     currentId = record.id;
     await waitFor(record.id, (r) => nudgeNotes(record.id).length > 0 || settled(r));
-    // Give a nudge that fired late the same wall clock a delivered one needs.
-    await new Promise((r) => setTimeout(r, 750));
+    // #613: the mock answers the nudge with prose and no tool call, so the idle rule parks the
+    // run after that one re-prompted turn. Wait for that park instead of a fixed clock.
+    await waitFor(record.id, (r) => r?.status === 'waiting');
 
     // The flag really is on — this is an autonomous run, not a mis-set fixture.
     expect(store.getRun(record.id)?.autonomous).toBe(true);
@@ -205,7 +210,11 @@ describe('the autonomous turn-end nudge (#489, gap R20)', () => {
     expect(nudgeNotes(record.id).length).toBeGreaterThan(0);
     expect(String(nudgeNotes(record.id)[0]?.message)).toContain(`(1/${MAX_AUTO_CONTINUES})`);
     expect(inbound().some((text) => text.includes(NUDGE_TEXT))).toBe(true);
-    expect(store.getRun(record.id)?.status).toBe('running'); // never parked
+    // Before #613 the mock's run never parked (`running`, nudging on to 40). Now the one
+    // re-prompted turn made no tool call, so it is idle: one nudge, a stop note, a park.
+    expect(nudgeNotes(record.id)).toHaveLength(1);
+    expect(idleStopNotes(record.id)).toHaveLength(1);
+    expect(store.getRun(record.id)?.status).toBe('waiting');
     // Whatever the outcome, the engine never fabricates a user turn — the same
     // rule the monitoring wake follows. This half is not a defect and must hold
     // before AND after #141: a nudge is the engine's own message.
@@ -269,7 +278,8 @@ describe('the autonomous turn-end nudge (#489, gap R20)', () => {
     // turn to settle, or the still-`done` record reads as an ended turn.
     await waitFor(record.id, (r) => r?.status === 'running');
     await waitFor(record.id, (r) => nudgeNotes(record.id).length > beforeContinue || settled(r));
-    await new Promise((r) => setTimeout(r, 750));
+    // #613: as above, the mock's prose-only reply to the nudge is idle, so the run parks.
+    await waitFor(record.id, (r) => r?.status === 'waiting');
 
     expect(nudgeNotes(record.id).length).toBeGreaterThan(beforeContinue);
     // The continuation's own `ActiveRun` starts a fresh budget, so its first
@@ -279,7 +289,11 @@ describe('the autonomous turn-end nudge (#489, gap R20)', () => {
       `(1/${MAX_AUTO_CONTINUES})`,
     );
     expect(inbound().some((text) => text.includes(NUDGE_TEXT))).toBe(true);
-    expect(store.getRun(record.id)?.status).toBe('running'); // never parked
+    // A completed workflow's Continue is not gated (#613), so the idle stop PARKS rather than
+    // failing: the one nudge fired, the re-prompted turn was idle, the ball is with the user.
+    expect(nudgeNotes(record.id).length - beforeContinue).toBe(1);
+    expect(idleStopNotes(record.id)).toHaveLength(1);
+    expect(store.getRun(record.id)?.status).toBe('waiting');
     // The cause, asserted beside the symptom: the RECORD says autonomous, and so
     // now does the rebuilt `ActiveRun` the turn-end handler actually reads.
     expect(store.getRun(record.id)?.autonomous).toBe(true);

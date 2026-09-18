@@ -43,8 +43,8 @@ numbers); and **the next free id is G-48**. G-43 was retired by decision
 [D-09](decisions.md#d-09-compares-pick-confirm-keeps-the-ordinary-contrast-action) (the B7 design
 review) rather than by a fix: the pick confirm keeps its ordinary `contrast` action on purpose.
 
-Counts are non-test files or occurrences in `packages/web/src`. Counts in G-15 and G-16 read on
-2026-09-16; other counts retain the original inventory date, and a row's own disposition bullet says
+Counts are non-test files or occurrences in `packages/web/src`. Counts in G-15 read on 2026-09-18
+(and G-06's recount in its own last bullet), in G-16 on 2026-09-16; other counts retain the original inventory date, and a row's own disposition bullet says
 what was re-read on 2026-09-17.
 
 ## The open gaps
@@ -56,11 +56,11 @@ issue arrives by id.
 
 ### G-06 Two focus-ring idioms and one unconditional animation
 
-- **Differs**: `focus-visible:ring-[3px] focus-visible:ring-ring/50` (eight primitives, 51 sites outside `components/ui`) vs `focus:ring-2 focus:ring-ring focus:ring-offset-2` on the dialog and sheet close buttons (`components/ui/dialog.tsx:73`, `sheet.tsx:78`). `focus-visible:border-ring` is on six primitives but not `button.tsx` or `scroll-area.tsx`. `tooltip.tsx:45` applies `animate-in` unconditionally where every other floating surface gates on `data-[state=open]`.
+- **Differs**: `focus-visible:ring-[3px] focus-visible:ring-ring/50` (eight primitives, 51 sites outside `components/ui` at the time) vs `focus:ring-2 focus:ring-ring focus:ring-offset-2` on the dialog and sheet close buttons (`components/ui/dialog.tsx:73`, `sheet.tsx:78`). `focus-visible:border-ring` is on six primitives but not `button.tsx` or `scroll-area.tsx`. `tooltip.tsx:45` applies `animate-in` unconditionally where every other floating surface gates on `data-[state=open]`.
 - **Rule**: the `focus-visible` ring.
 - **Fix**: restyle the two close buttons; gate the tooltip animation.
 - **Also found (#453 batch B6, Git tabs)**: a third idiom – none. The rows of both Git trees (`routes/task-git/changes-tree.tsx`, `files-tree.tsx`) carry no focus-visible class at all, so they wear the browser's default ring while the diff file header and the expandable gap row beside them wear the cockpit ring. Focus stays visible, so nothing is lost; it is a consistency gap. Found by the #574 design review (NB-5). Owner: B8 reconciliation of #453.
-- **Final disposition (#453 B8, 2026-09-17)**: mostly fixed, remainder filed as **#596**. Both close buttons (`components/ui/dialog.tsx`, `sheet.tsx`) wear the `focus-visible:ring-[3px] focus-visible:ring-ring/50` idiom and the tooltip's animation is `motion-safe:` gated, so the two original divergences are gone. What is left is the Git tree rows carrying no focus-visible class at all; focus stays visible, so it is a consistency gap, and both trees are B6's files.
+- **Final disposition (#453 B8, 2026-09-17)**: mostly fixed, remainder filed as **#596**. Both close buttons (`components/ui/dialog.tsx`, `sheet.tsx`) wear the `focus-visible:ring-[3px] focus-visible:ring-ring/50` idiom and the tooltip's animation is `motion-safe:` gated, so the two original divergences are gone. What is left is the Git tree rows carrying no focus-visible class at all; focus stays visible, so it is a consistency gap, and both trees are B6's files. Re-read on 2026-09-18: the `focus-visible:ring-[3px]` idiom is on the eight primitives and 78 sites outside `components/ui`.
 
 ### G-14 Duplicated shell helpers
 
@@ -72,20 +72,23 @@ issue arrives by id.
 
 ### G-15 Copy inconsistencies
 
+The table is the 2026-09-13 inventory with its minority column re-read on 2026-09-18; a row whose minority
+is gone says so and keeps its line so the history reads.
+
 | What differs | Majority (the rule) | Minority | Where |
 | --- | --- | --- | --- |
-| Load-error copy | "Could not load" (25 literal occurrences, case-insensitive) | "did not load" (10) | 9 of the 10 minority sites under `routes/settings/`, plus `routes/global-tasks.tsx` |
-| Retry label | "Retry" (5) | "Try again" (3) | `routes/settings/provider-settings.tsx` has both |
-| Search placeholder case | "Search tasks…" (12) | "search skills…" (6) | `routes/new-task.tsx`, `hand-to-agent.tsx`, `prompt-template-menu.tsx`, `prompt-templates-section.tsx` |
-| Dash | ` — ` | ` – ` (6 literal occurrences, including one comment) | `routes/settings/mcp-api-section.tsx:160,172,201,224,315,808` |
-| Negatives | "could not" | "couldn’t" (2, case-insensitive) | `routes/github/github.tsx:1252` (the file has both), `routes/task-thread/task-thread.tsx:540` |
-| Apostrophes | curly `’` (28) | straight `'` (~12) | `routes/settings/appearance.tsx`, `compare-loading.tsx`, `task-commits.tsx`, `project-general.tsx` |
-| Curly quotes | literal `“ ”` | `&ldquo;`/`&rdquo;` entities | `routes/workflows/workflows.tsx:641,658` |
-| Narrow-a-list verb | "Filter skills…" | "search skills…" | `routes/settings/prompt-templates-section.tsx:357` |
-| Empty list text | "Nothing matches." (5) | "No skills match.", "(no skills match)" | `routes/workflows/workflows.tsx:946`, `routes/skills.tsx:153` |
-| Column label case | sentence case | "Tool Name" | `lib/task-columns.ts:62` |
-| Heading period | none | "This page could not be displayed." | `components/route-error-boundary.tsx:27` |
-| Oxford comma | omitted (25) | present (2) | `routes/settings/agents-section.tsx:315`, `notifications-section.tsx:97` |
+| Load-error copy | "Could not load" (40 literal occurrences, case-insensitive) | "did not load" – none left (was 10) | fixed (#453 B3, B4) |
+| Retry label | "Retry" | "Try again" (1) | `routes/github/github.tsx:394` |
+| Search placeholder case | "Search tasks…" | "search …" (2) | `routes/new-task.tsx:957` ("search projects…"), `:1240` ("search skills & workflows…") |
+| Dash | ` — ` | ` – ` – none left in UI strings (the four in `.tsx` files are comments) | fixed (#453 B3) |
+| Negatives | "could not" | "couldn’t" – none left (was 2) | fixed; no "couldn’t" or "couldn't" in non-test source |
+| Apostrophes | curly `’` | straight `'` – not re-counted on 2026-09-18 (was ~12) | the B3, B6 and B7 sites are curly; see the status bullets below |
+| Curly quotes | literal `“ ”` | `&ldquo;`/`&rdquo;` entities – none left | fixed (#453 B7) |
+| Narrow-a-list verb | "Filter skills…" | "search skills…" – none left | fixed (#453 B3; `routes/settings/prompt-templates-section.tsx:360`) |
+| Empty list text | "Nothing matches." | "No skills match.", "(no skills match)" – none left | fixed (#453 B7) |
+| Column label case | sentence case | "Tool Name" – none left | fixed (#453 B4; `lib/task-columns.ts:62` reads "Tool name") |
+| Heading period | none | "This page could not be displayed." – none left | fixed (`components/route-error-boundary.tsx:33` reads "Could not display this page") |
+| Oxford comma | omitted | present – not re-counted on 2026-09-18 | B3 removed it from `agents-section.tsx`, `notifications-section.tsx` and `prompt-templates-section.tsx` |
 
 - **Fix**: one copy pass over the minority sites; a `no-en-dash-in-ui` guardian rule.
 - **Status (#453 batch B4, task lists)**: fixed rows – "Tool name" (`lib/task-columns.ts:62`), "Could not load tasks across projects" (`routes/global-tasks.tsx:367`) and "Search templates…" (`components/prompt-template-menu.tsx`). Still open (B5, B7): the placeholders in `routes/new-task.tsx` and `routes/github/hand-to-agent.tsx`, and the other rows.
@@ -95,6 +98,7 @@ issue arrives by id.
 - **Status (#453 batch B6, Git tabs)**: the apostrophes row's `task-commits.tsx` site is curly (“hasn’t”), and so are “merge commit’s” (`repo-commits.tsx`, `task-commits.tsx`), “repo’s” (`repo-git-loading.tsx`) and “task’s” (`commit-dialog.tsx`, `task-changes.tsx`, which used `&apos;`). Still open (B7): the other rows.
 - **Status (#453 batch B7, remaining routes)**: fixed rows – the negatives row ("Could not load comments", `routes/github/github.tsx`), the apostrophes row (`compare-loading.tsx`, and `&apos;` in `skills-import-panel.tsx`), the curly quotes row (`workflows.tsx`), the empty list row ("Nothing matches." in `workflows.tsx`, `skills.tsx` and `skills-import-panel.tsx`), and the placeholders in `routes/github/hand-to-agent.tsx` ("Search workflows…", "Search skills…"). Still open: the three lower-case placeholders in `routes/new-task.tsx` ("search projects…", "search skills & workflows…"). They are asserted verbatim by `routes/new-task-project.test.tsx`, which § B7's manifest does not list, so the batch did not change them; the PR records it under "Reconciliation needed". The guardian rule is not added.
 - **Final disposition (#453 B8, 2026-09-17)**: remaining rows filed as **#598**. Left: the two lower-case placeholders in `routes/new-task.tsx` ("search projects…", "search skills & workflows…"), asserted verbatim by `routes/new-task-project.test.tsx` and `routes/new-task.test.tsx`, which no batch manifest listed; the Retry/Try again split; the heading-period, negatives and Oxford-comma holdouts; and the proposed `no-en-dash-in-ui` guardian rule, which was never added.
+- **Re-read (docs wave, 2026-09-18)**: the heading-period and negatives holdouts are gone (table above). Still left for **#598**: the two `routes/new-task.tsx` placeholders (`:957`, `:1240`), the one "Try again" (`routes/github/github.tsx:394`), the apostrophe and Oxford-comma rows (not re-counted) and the guardian rule.
 
 ### G-16 Toast punctuation
 

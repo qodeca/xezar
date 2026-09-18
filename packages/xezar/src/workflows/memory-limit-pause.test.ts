@@ -86,7 +86,24 @@ describe('a run xezar terminates for the memory limit (#603)', () => {
       enforceMemoryLimit(snapshot: Record<string, { rssBytes: number }>): Promise<void>;
     }).enforceMemoryLimit({ [id]: { rssBytes: 999_999_999_999 } });
 
+  /** Detach this manager from the real process-tree sampler (`onUsage`, the constructor's
+   *  subscription `dispose()` also releases), so the direct trigger below is the ONLY thing
+   *  that can pause the session. */
+  const detachRealSampler = (): void => {
+    (manager as unknown as { offUsage(): void }).offUsage();
+  };
+
   it('ends failed, naming the memory limit — never done, on the fresh-run path', async () => {
+    // The real sampler is detached because at the 1 MiB ceiling it races the wait below:
+    // `registerRunProcess` takes a first sample the instant the session is published, and on a
+    // host where the fresh child already shows more than 1 MiB RSS that sample closes the session
+    // within one `ps` call. A 25 ms poll for `session.open` can then miss the whole open window,
+    // the run settles `failed`, and the wait times out whatever its bound — the 15 s timeout CI
+    // hit on #618 (the Linux first-sample RSS is inferred; a stub delivering that breach right
+    // after `publishSession` reproduces the timeout exactly).
+    // Detached, the interactive last step's session stays open until the direct trigger closes
+    // it, so the wait is for a state that holds once reached and the pause has exactly one cause.
+    detachRealSampler();
     const record = manager.startRun(AGENT, { task: 'do the thing', worktree: false });
     currentId = record.id;
     await waitForOpenSession(record.id);
