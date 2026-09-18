@@ -479,14 +479,20 @@ contract from this release on.
   outside the mode, as do `~/.agents/skills`, `~/.claude/skills` and `~/Applications`. These are the
   machine's, not the project's: relocating them would log a user out of a folder rather than isolate
   it. The mode moves xezar's own state and xezar's own cache, and nothing else.
-- **A committed resource limit is applied exactly as written.** `resources.memoryLimitMb` and
-  `resources.maxParallel` in `<project>/.xezar/workspace.json` are honoured as they stand, including
-  above what this host would have derived for itself: no clamp, no refusal, and no
-  warning-and-substitute. The host derivation (`floor(totalMiB * 0.6 / 2)`, clamped to
-  [1024, 8192] MiB) still fills an **absent** key and is a default, never a ceiling. Identical
-  behaviour on every machine that clones the project is the point of committing the file; a host
-  that cannot take the value fails visibly rather than quietly running a different configuration
-  than the one under review.
+- **A committed resource limit is applied exactly as written, inside the schema's own ranges.**
+  `resources.memoryLimitMb` (a whole number of MiB, **0 to 1 048 576**, or `null` for no limit) and
+  `resources.maxParallel` (a whole number, **1 to 16**) in `<project>/.xezar/workspace.json` are
+  honoured as they stand, including above what this host would have derived for itself: no clamp,
+  no refusal, and no warning-and-substitute. The host derivation (`floor(totalMiB * 0.6 / 2)`,
+  clamped to [1024, 8192] MiB) still fills an **absent** key and is a default, never a ceiling.
+  Identical behaviour on every machine that clones the project is the point of committing the file;
+  a host that cannot take the value fails visibly rather than quietly running a different
+  configuration than the one under review. The two ranges are the limit of that promise and are
+  unchanged from 0.15.0: a value outside them has always been replaced silently by the workspace
+  schema (`maxParallel` by the shipped 2, `memoryLimitMb` by the host derivation), which in a
+  committed file would be a number nothing runs, so `.xezar/checks/catalog-check.mjs` now refuses
+  one and names the range. The ranges are validation, identical on every machine — not host
+  reconciliation.
 - **The host-install records stay in `~/.xezar`.** `server.json`, `server-instances/`, the install
   lock, the systemd unit and the nginx site describe the MACHINE, not the project, and are the one
   part of the per-user home this mode still uses. `xezarHomeDir()` keeps answering the per-user home

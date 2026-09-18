@@ -515,10 +515,41 @@ if (!singleProjectMode) {
     if (resources !== undefined && (resources === null || typeof resources !== "object" || Array.isArray(resources))) {
       err(".xezar/workspace.json", '"resources" must be an object when supplied');
     } else {
+      // "Applied as written, never clamped to this host" is the promise below, and it is only
+      // true INSIDE the engine schema's own ranges. Outside them the value is not applied at
+      // all: `workspace/config.ts` ends both keys with a `.catch()`, so `maxParallel: 17`
+      // becomes the shipped default 2 and `memoryLimitMb: 2000000` becomes this host's
+      // derivation — silently, with no warning and no line anywhere. That is a committed file
+      // promising a number nothing runs, and the one machine-visible substitution AC-7 forbids,
+      // so the kit refuses it here rather than letting the note claim it was honoured.
+      //
+      // The ranges are VALIDATION, not host reconciliation: they are the same on every machine,
+      // so refusing an out-of-range value costs a clone nothing and tells the author now instead
+      // of after a run behaved unlike the file. Keep them equal to the schema in
+      // `packages/xezar/src/workspace/config.ts` (`maxParallel` :213, `memoryLimitMb` :280).
+      const RANGES = {
+        maxParallel: { min: 1, max: 16, nullable: false },
+        memoryLimitMb: { min: 0, max: 1_048_576, nullable: true },
+      };
+      for (const key of MACHINE_SHAPED) {
+        if (resources === undefined || !(key in resources)) continue;
+        const value = resources[key];
+        const { min, max, nullable } = RANGES[key];
+        const range = `${min}–${max}${nullable ? " or null" : ""}`;
+        if (value === null) {
+          if (!nullable) {
+            err(".xezar/workspace.json", `\`resources.${key}\` must be a whole number in ${range}, not null. The engine substitutes its shipped default for anything else, silently — so a committed value outside that range is a promise nothing keeps.`);
+          }
+          continue;
+        }
+        if (typeof value !== "number" || !Number.isInteger(value) || value < min || value > max) {
+          err(".xezar/workspace.json", `\`resources.${key}\` must be a whole number in ${range} (found ${JSON.stringify(value)}). The engine substitutes its shipped default for anything else, silently — so a committed value outside that range is a promise nothing keeps.`);
+        }
+      }
       const committed = MACHINE_SHAPED.filter((key) => resources !== undefined && key in resources);
       notes.push(
         committed.length > 0
-          ? `single-project workspace file checked: committed ${committed.join(" and ")} accepted (applied as written, never clamped to this host)`
+          ? `single-project workspace file checked: committed ${committed.join(" and ")} accepted, in range (maxParallel 1–16, memoryLimitMb 0–1048576 or null) and applied as written, never clamped to this host`
           : "single-project workspace file checked",
       );
     }

@@ -48,10 +48,16 @@
   `<project>/.local/xezar/cache/skills/`, not the machine-wide `~/.cache/xez/skills/`, so a clone of
   the project fetches its own team skills instead of inheriting whatever this machine fetched last;
   the MCP bridge's socket directory moves with it for the same reason. A committed
-  `resources.memoryLimitMb` or `resources.maxParallel` in `<project>/.xezar/workspace.json` is now
-  applied exactly as written, above what this host would have derived for itself included — no
-  clamp, no refusal, no warning-and-substitute — because a project that runs with different numbers
-  on the reviewer's machine than on the author's is what committing them was meant to end. What does
+  `resources.memoryLimitMb` (0 to 1 048 576 MiB, or `null` for no limit) or `resources.maxParallel`
+  (1 to 16) in `<project>/.xezar/workspace.json` is now applied exactly as written, above what this
+  host would have derived for itself included — no clamp, no refusal, no warning-and-substitute —
+  because a project that runs with different numbers on the reviewer's machine than on the author's
+  is what committing them was meant to end. Those two ranges are the workspace schema's own and are
+  unchanged: a value outside them has always been replaced silently, so a committed one is now
+  refused by name instead. One message changed in the DEFAULT global layout as well: when the socket
+  path is too long for this system, xezar names the socket directory it tried instead of "the xezar
+  home path"; the remedy it suggests is still `XEZ_HOME`, and in single-project mode it says to move
+  the project instead, because `XEZ_HOME` cannot move that folder. What does
   **not** move: your agent logins (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `OPENCODE_CONFIG_DIR`,
   `PI_CODING_AGENT_DIR`), your global skill libraries in `~/.agents/skills` and `~/.claude/skills`,
   `gh`, `git`, and the host-install records in `~/.xezar` (`server.json`, `server-instances/`, the

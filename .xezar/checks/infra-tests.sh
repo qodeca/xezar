@@ -573,6 +573,41 @@ else
   bad "and the acceptance says they are applied as written" "the note did not say so"
 fi
 
+# Acceptance is bounded by the ENGINE SCHEMA's own ranges, and outside them the promise the note
+# makes is false: `workspace/config.ts` ends both keys with a `.catch()`, so 17 becomes the shipped
+# default 2 and 2 000 000 becomes this host's derivation, silently. A committed file that says a
+# number nothing runs is worse than no key, so each of these is refused with the range named.
+printf '{\n  "resources": {\n    "maxParallel": 17\n  }\n}\n' > "$root/.xezar/workspace.json"
+expect_fail "a committed maxParallel above the schema range is refused" \
+  "must be a whole number in 1–16" node "$SCRIPT_DIR/catalog-check.mjs" "$root"
+printf '{\n  "resources": {\n    "maxParallel": 0\n  }\n}\n' > "$root/.xezar/workspace.json"
+expect_fail "and below it too" \
+  "must be a whole number in 1–16" node "$SCRIPT_DIR/catalog-check.mjs" "$root"
+printf '{\n  "resources": {\n    "maxParallel": null\n  }\n}\n' > "$root/.xezar/workspace.json"
+expect_fail "a null maxParallel is refused — unlike memoryLimitMb it has no no-limit spelling" \
+  "not null" node "$SCRIPT_DIR/catalog-check.mjs" "$root"
+printf '{\n  "resources": {\n    "memoryLimitMb": 2000000\n  }\n}\n' > "$root/.xezar/workspace.json"
+expect_fail "a committed memoryLimitMb above the schema range is refused" \
+  "must be a whole number in 0–1048576 or null" node "$SCRIPT_DIR/catalog-check.mjs" "$root"
+printf '{\n  "resources": {\n    "memoryLimitMb": -1\n  }\n}\n' > "$root/.xezar/workspace.json"
+expect_fail "and a negative one too" \
+  "must be a whole number in 0–1048576 or null" node "$SCRIPT_DIR/catalog-check.mjs" "$root"
+printf '{\n  "resources": {\n    "memoryLimitMb": 4096.5\n  }\n}\n' > "$root/.xezar/workspace.json"
+expect_fail "a fractional memoryLimitMb is refused: the schema takes whole numbers only" \
+  "must be a whole number in 0–1048576 or null" node "$SCRIPT_DIR/catalog-check.mjs" "$root"
+printf '{\n  "resources": {\n    "memoryLimitMb": "8192"\n  }\n}\n' > "$root/.xezar/workspace.json"
+expect_fail "a memoryLimitMb written as a string is refused, and the message names the range" \
+  "found \"8192\"" node "$SCRIPT_DIR/catalog-check.mjs" "$root"
+# The two in-range boundaries stay accepted: this is validation, not a new policy against big
+# numbers, and the whole point of FR-7.2 is that a committed limit the schema takes is honoured.
+printf '{\n  "resources": {\n    "maxParallel": 1,\n    "memoryLimitMb": 0\n  }\n}\n' > "$root/.xezar/workspace.json"
+expect_ok "the low boundary of each range is accepted" node "$SCRIPT_DIR/catalog-check.mjs" "$root"
+printf '{\n  "resources": {\n    "maxParallel": 16,\n    "memoryLimitMb": 1048576\n  }\n}\n' > "$root/.xezar/workspace.json"
+expect_ok "and the high boundary of each range is accepted" node "$SCRIPT_DIR/catalog-check.mjs" "$root"
+printf '{\n  "resources": {\n    "memoryLimitMb": null\n  }\n}\n' > "$root/.xezar/workspace.json"
+expect_ok "an explicit null memoryLimitMb — the user's own \"no limit\" — is accepted" \
+  node "$SCRIPT_DIR/catalog-check.mjs" "$root"
+
 # The same fault the config.json rule catches, in the other file: a key where nothing reads it.
 printf '{\n  "memoryLimitMb": 131072\n}\n' > "$root/.xezar/workspace.json"
 expect_fail "a machine-shaped key at the top level of workspace.json is rejected" \
