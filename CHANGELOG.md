@@ -13,6 +13,13 @@
   joins the reuse fingerprint so an instance booted by an older launcher is never reused. Task
   worktrees are unaffected — a linked worktree is never a single-project root.
 
+## 📝 Specs & Documentation
+
+- 📝 The project's model-routing document moves to version 3: pi + DeepSeek V4.1 Flash becomes a normal lane of the routing table instead of a backup, first choice for procedural work and never used for security reviews, design judgement, cockpit UI, claim verification or its own work; the campaign-only owner rules are expired at 0.16.0; and the table is the guideline for every dispatch again. Kit-internal: `.xezar/docs/model-routing.md` guides how this repository dispatches its own agent tasks and changes no shipped behaviour.
+- 📝 **The project leader now carries its own contract, loaded for the leader and never for a task agent.** [.xezar/docs/leader-guide.md](.xezar/docs/leader-guide.md) collects what a leader session of this repository needs in one place: who the leader is and is not (MCP tools and `gh` only, never the cockpit or HTTP, never source diagnosis), session start and compaction recovery, this repository's single-project setup, the task lifecycle with the integration and conflict-repair recipes, review discipline and the repair counters, routing and account probing, the brief-writing rules, owner-only decisions, what to log where, and the release runbook as it is today. A committed Claude Code `SessionStart` hook (`.claude/settings.json` → `.xezar/checks/leader-context.sh`) appends the guide and the newest campaign folder's `README.md` and `decisions.md` at every start, resume, clear and compaction; the hook stays silent in a linked worktree, on a `/.local/xezar/worktrees/` path, and whenever `XEZ_HANDOFF_FILE` or `XEZ_TODOS_FILE` is set, so a xezar task agent never loads it (owner 2026-09-18).
+
+- Documented leader-context loading as a reusable standard for onboarding a project: [`.xezar/docs/leader-context-loading.md`](.xezar/docs/leader-context-loading.md) covers the committed leader guide, the `.claude/settings.json` `SessionStart` hook that reloads it, the guard that keeps it silent for task agents, the JSON output shape, the cost model, the Codex/pi fallback and a numbered install checklist; [guide 13](docs/guide/13-mcp-leader.md) gains a product-neutral section on giving a leader a guide that survives compaction. (#600)
+
 # 0.16.0 (2026-09-18)
 
 ## Highlights

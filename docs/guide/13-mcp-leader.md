@@ -278,6 +278,57 @@ verdict. Replay is at-least-once within retained durable state, bounded by the r
 limits below; a gap is a recovery state, not delivery proof, until its current state has been
 reconciled.
 
+## Give the leader a project guide that survives compaction
+
+A leader's session can be cleared, resumed or compacted, and each time it may come back with an
+empty conversation. Standing rules and the current state of the work must not depend on the model
+remembering them. Give the leader a **project guide**: a short committed document it reloads
+automatically, plus a live note it reads from the project's runtime folder.
+
+**What to put in it.** Keep it short — it loads at every start and every compaction, so its size
+compounds. Put in the things that change rarely and must not be re-derived: how work is routed,
+which checks are mandatory, the merge order, recovery steps after a restart, the decisions only the
+owner may make, how to write a task brief, and a short checklist to run before dispatching work.
+Cite the source of each rule. Live state — open pull requests, their heads and verdicts, running
+tasks, the next action per item — belongs in a separate note that is rewritten as the work moves,
+not in the guide.
+
+**Let the client load it.** Claude Code can run a command at session start from the project's own
+`.claude/settings.json`. Register a `SessionStart` hook with the matchers
+`startup|resume|clear|compact`, pointing at a small script. The script prints one JSON object:
+
+```json
+{
+  "hookSpecificOutput": {
+    "hookEventName": "SessionStart",
+    "additionalContext": "…project guide…\n\n…live state note…\n\n…owner decisions…"
+  }
+}
+```
+
+`additionalContext` is one string; put the guide first and the live state last. A hook that prints
+nothing changes nothing.
+
+**Guard it so task agents never load it.** A hook committed in the project folder is discovered by
+every session started under it, including the sessions xezar starts for tasks — and an isolated
+working copy usually lives *inside* the project folder, so a parent-folder walk finds the hook there
+too. Make the script print nothing unless it is the leader's own session: detect a task session from
+the environment xezar sets, from the working copy's git directory differing from the common git
+directory, or from a path under the worktree folder, and stay silent in all of them. Silence is the
+safe default; the guard is what makes committing the hook safe.
+
+**When the client has no hook.** Codex and pi do not run a session-start command. Start the guide
+with a short first section addressed to those sessions: read this guide and the live note
+immediately after every start and every compaction, before dispatching anything. Keep that section
+first and imperative — it is the whole fallback.
+
+**Add the recurring checks.** Some checks have to happen on a schedule even when nothing arrives: is
+anything waiting on a decision only the leader can make, and has a usage limit reset. That schedule
+is session state and does not survive a restart, so list each recurring check with its cadence and
+its prompt in the guide, and have the leader re-create what is missing on every start and compaction.
+A tick that changes nothing should do nothing, and the checks unblock existing work rather than
+starting new work.
+
 ## To keep your leader while tasks run in the same folder
 
 A task xezar starts is not the leader, and since 0.16.0 no task can take the leader's place.

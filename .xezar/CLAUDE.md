@@ -1,6 +1,6 @@
 # Working with the Xezar project kit
 
-This is the maintained project operating kit for developing Xezar with Xezar. Read the repository's `AGENTS.md`, `SDLC.md`, `CODE_REVIEW.md` and `BACKWARD_COMPATIBILITY.md` first; this guide explains the local kit and does not replace those contracts. It does not implement a built-in leader or the distributed kit. The MCP server exists, and a project leader drives this kit only through it (see § Identity, decisions, evidence and recovery).
+This is the maintained project operating kit for developing Xezar with Xezar. Read the repository's `AGENTS.md`, `SDLC.md`, `CODE_REVIEW.md` and `BACKWARD_COMPATIBILITY.md` first; this guide explains the local kit and does not replace those contracts. It does not implement a built-in leader or the distributed kit. The MCP server exists, and a project leader drives this kit only through it (see § Identity, decisions, evidence and recovery). The project leader's own contract is `.xezar/docs/leader-guide.md`, loaded automatically at session start and after compaction for a leader session and never for a task agent.
 
 ## Structure
 
