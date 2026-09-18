@@ -537,13 +537,20 @@ export const SCENARIOS: Record<string, Scenario> = {
     expect(ctx.guide.hasRole('combobox', 'Max parallel tasks'), 'xezar screenshot-states: resource limit control missing').toBe(true)
   },
 
-  // Planned for 0.16.0 (#453 B8). Waits for a real registered row, not only the section, because
-  // an empty table is exactly the picture that would hide G-30 — the sideways scroll below `md`
-  // only happens once there are rows to squeeze.
-  'settings-projects': (ctx, theme) => {
+  // Shot for the first time in 0.16.0 (#453 B8). Waits for a real registered row, not only the
+  // section, because an empty table is exactly the picture that would hide G-30 — the sideways
+  // scroll below `md` only happens once there are rows to squeeze. The registered-projects table
+  // sits below the fold on a phone (two settings fields precede it), so the row is scrolled into
+  // view before the shot — otherwise the 375-wide capture would show the prose above the table
+  // instead of the table the state exists to picture.
+  'settings-projects': (ctx, theme, width) => {
     open(ctx, '/settings/global/projects', theme)
     wait(ctx.browser, exists('[data-slot="projects-section"]'))
     wait(ctx.browser, exists('[data-slot="project-row"]'))
+    if (width === 375) {
+      ctx.browser.evaluate(`document.querySelector('[data-slot="project-row"]').scrollIntoView({ block: 'center' })`)
+      wait(ctx.browser, `document.querySelector('[data-slot="project-row"]').getBoundingClientRect().top >= 0`)
+    }
 
     expect(ctx.guide.hasRole('heading', 'Projects'), 'xezar screenshot-states: Projects heading missing').toBe(true)
     expect(ctx.guide.hasRole('table', 'Projects registered in this workspace'), 'xezar screenshot-states: projects table missing').toBe(true)

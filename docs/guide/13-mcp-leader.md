@@ -218,7 +218,7 @@ The **Server address** is therefore `http://127.0.0.1:4096` and the **Session id
 
 **Tips and tricks.** Keep the chosen `serve` port stable so the settings value remains meaningful. If status reports `session-not-found`, open the intended project session and select its new ID; for `wrong-project`, select the session whose `directory` exactly matches the project. If the server is unreachable, restart it at the recorded loopback address; xezar retains the events and retries. Xezar applies an xezar-tools-only permission map to the attached session, including later messages you type in that session; use another OpenCode session for unrelated work that needs other tools.
 
-![MCP connection settings for person-driven OpenCode attachment](../screenshots/0.15.0/settings-mcp-connection-dark-1280.png)
+![MCP connection settings for person-driven OpenCode attachment](../screenshots/0.16.0/settings-mcp-connection-dark-1280.png)
 
 ## To stop an attachment
 

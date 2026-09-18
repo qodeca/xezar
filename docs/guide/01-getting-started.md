@@ -108,7 +108,7 @@ A project leader sees the same state through the MCP and can start the same setu
 4. In a Git repository, keep **Worktree** on for an isolated checkout. Leave **Autonomous** off if you want the agent to pause for your answers.
 5. Choose **Start** and send the task. Open its thread to follow the response.
 
-![New-task composer with task options](../screenshots/0.15.0/new-task-dark-1280.png)
+![New-task composer with task options](../screenshots/0.16.0/new-task-dark-1280.png)
 
 See [Tasks and runs](02-tasks-and-runs.md) for replies, review and task controls, and [Worktrees and Git](03-worktrees-and-git.md) for where changes go.
 
