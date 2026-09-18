@@ -233,7 +233,42 @@ export class WorkspaceSemaphore {
     return total;
   }
 
-  /** Cached workspace-wide parallel cap. */
+  /**
+   * Cached workspace-wide parallel cap, **as configured** — never reconciled
+   * with this host.
+   *
+   * That "never" is a guarantee now rather than an accident (#600 FR-7.3,
+   * AC-7). In single-project mode the resource keys come out of a COMMITTED
+   * `<project>/.xezar/workspace.json`, so the same numbers reach every machine
+   * that clones the project — a 32 GiB laptop, a 4 GiB CI container, a
+   * colleague's desktop. BR-5 says identical behaviour everywhere outranks host
+   * fit, and the owner accepted "a committed limit larger than the host" as a
+   * risk with no mitigation to be built: xezar runs what the file says, and a
+   * host that cannot take it fails visibly rather than quietly running a
+   * different configuration than the one under review.
+   *
+   * So there is no `Math.min(committed, hostDerived)` here, none in
+   * `memoryLimitMb()` below, and none in `loadResourceLimits`. The host
+   * derivation (`deriveDefaultMemoryLimitMb`) fills an ABSENT key and nothing
+   * else — it is a default, not a ceiling, and turning it into one would be
+   * exactly the warning-and-substitute AC-7 forbids.
+   *
+   * `test/unit/single-project-limits.test.ts` pins all three places, and which
+   * case pins which is the part worth writing down: its five injected-`load`
+   * cases reach only the GETTERS, so a clamp inside `loadResourceLimits` — the
+   * production loader an injected stub replaces — passes every one of them. The
+   * last case is the one that covers it: default `load`, an active project
+   * layout, a real committed `workspace.json`, measured red at `8192 !== 131072`
+   * against the loader-side clamp (#609 review round 1).
+   *
+   * What the file does NOT pin is the schema's own range validation. A
+   * `maxParallel` above 16 or a `memoryLimitMb` above 1 048 576 never reaches
+   * this class as written: `.catch()` in `workspace/config.ts` substitutes the
+   * shipped default and the host derivation respectively, silently. That is
+   * validation, not host reconciliation — but it IS a substitution, so the kit
+   * check (`.xezar/checks/catalog-check.mjs`) refuses a committed value outside
+   * those ranges rather than letting a file promise a number nothing applies.
+   */
   maxParallel(): number {
     return this.limits.maxParallel;
   }
@@ -257,7 +292,9 @@ export class WorkspaceSemaphore {
     return this.limits.autoResumeOnUsageLimit ?? true;
   }
 
-  /** Cached per-task memory ceiling (MiB), or null for no limit. */
+  /** Cached per-task memory ceiling (MiB), or null for no limit. Applied as
+   *  written, above this host's own size included — see `maxParallel()` for why
+   *  (#600 FR-7.3, AC-7). */
   memoryLimitMb(): number | null {
     return this.limits.memoryLimitMb;
   }

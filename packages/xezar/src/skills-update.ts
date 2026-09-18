@@ -4,6 +4,7 @@ import { access, mkdir, open, readFile, rm, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
+import { xezCacheDir } from './paths.ts';
 
 const execFileAsync = promisify(execFile);
 const CHECK_TTL_MS = 6 * 60 * 60 * 1_000;
@@ -37,7 +38,17 @@ export interface SkillsUpdateState {
 
 interface CommandResult { stdout: string; stderr: string }
 export interface SkillsUpdateServiceOptions {
+  /**
+   * The USER's home, which holds `~/.agents/.skill-lock.json` — the global
+   * skill mirror `npx skills` writes. It is a host file and single-project mode
+   * never moves it (#600 SP-2.3, BR-7: agent logins, skills mirrors, `gh` and
+   * `git` stay on the host). Only the cross-process lock below follows the
+   * layout, and `cacheDir` is what moves it.
+   */
   homeDir?: string;
+  /** The layout's cache root; defaults to `<homeDir>/.cache/xez` when a test pins a home,
+   *  else to `xezCacheDir()` (`~/.cache/xez` globally, inside the project in the mode). */
+  cacheDir?: string;
   now?: () => number;
   timeoutMs?: number;
   run?: (file: string, args: readonly string[], cwd: string, timeoutMs: number) => Promise<CommandResult>;
@@ -124,6 +135,7 @@ function availableNames(output: string, names: readonly string[]): string[] {
 
 export class SkillsUpdateService {
   private readonly home: string;
+  private readonly pinnedCacheDir: string | undefined;
   private readonly now: () => number;
   private readonly timeoutMs: number;
   private readonly runCommand: NonNullable<SkillsUpdateServiceOptions['run']>;
@@ -136,11 +148,23 @@ export class SkillsUpdateService {
 
   constructor(options: SkillsUpdateServiceOptions = {}) {
     this.home = options.homeDir ?? homedir();
+    // A pinned `homeDir` with no `cacheDir` keeps its old meaning exactly — the
+    // lock stays under that home — so every existing caller and test is
+    // unaffected by the split. Anything unpinned stays LAZY: resolving the
+    // layout in a constructor would freeze whichever layout happened to be
+    // installed when this object was built, and the one bug this feature is
+    // most afraid of is a path resolved at the wrong moment.
+    this.pinnedCacheDir = options.cacheDir ?? (options.homeDir ? join(options.homeDir, '.cache', 'xez') : undefined);
     this.now = options.now ?? Date.now;
     this.timeoutMs = options.timeoutMs ?? COMMAND_TIMEOUT_MS;
     this.runCommand = options.run ?? defaultRun;
     this.resolveNpx = options.resolveNpx ?? defaultResolveNpx;
     this.invalidateCatalog = options.invalidateCatalog ?? (() => undefined);
+  }
+
+  /** `~/.cache/xez`, or the project's own cache in single-project mode — read per call. */
+  private cacheDir(): string {
+    return this.pinnedCacheDir ?? xezCacheDir();
   }
 
   snapshot(repoRoot: string): SkillsUpdateState {
@@ -192,7 +216,7 @@ export class SkillsUpdateService {
       const state = { ...this.makeState(scopes), status: 'current' as const, checkedAt };
       this.states.set(repoRoot, state); return state;
     }
-    const lockPath = join(this.home, '.cache', 'xez', 'skills-update.lock');
+    const lockPath = join(this.cacheDir(), 'skills-update.lock');
     let release: (() => Promise<void>) | undefined;
     try {
       release = await this.acquireLock(lockPath, rejectIfBusy);
@@ -242,7 +266,7 @@ export class SkillsUpdateService {
     if (!current?.checkedAt) current = await this.performCheck(repoRoot, false, rejectIfBusy);
     if (!current.available) return current;
 
-    const lockPath = join(this.home, '.cache', 'xez', 'skills-update.lock');
+    const lockPath = join(this.cacheDir(), 'skills-update.lock');
     let release: (() => Promise<void>) | undefined;
     const completed = new Set<SkillsUpdateScope>();
     const outcomes: SkillsUpdateScopeState[] = [];

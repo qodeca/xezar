@@ -43,6 +43,28 @@
   layout, the detection, the capability and the boot line; the cockpit badge, the refusals in all
   three doors and the import from a global setup follow. Details:
   `BACKWARD_COMPATIBILITY.md` § "Single-project ROOT mode".
+- ✨ **A single-project folder now keeps its team skills and its committed limits to itself.**
+  (#600, part 2 of 5) In single-project mode the cache of team skills xezar fetches is written to
+  `<project>/.local/xezar/cache/skills/`, not the machine-wide `~/.cache/xez/skills/`, so a clone of
+  the project fetches its own team skills instead of inheriting whatever this machine fetched last;
+  the MCP bridge's socket directory moves with it for the same reason. A committed
+  `resources.memoryLimitMb` (0 to 1 048 576 MiB, or `null` for no limit) or `resources.maxParallel`
+  (1 to 16) in `<project>/.xezar/workspace.json` is now applied exactly as written, above what this
+  host would have derived for itself included — no clamp, no refusal, no warning-and-substitute —
+  because a project that runs with different numbers on the reviewer's machine than on the author's
+  is what committing them was meant to end. Those two ranges are the workspace schema's own and are
+  unchanged: a value outside them has always been replaced silently, so a committed one is now
+  refused by name instead. One message changed in the DEFAULT global layout as well: when the socket
+  path is too long for this system, xezar names the socket directory it tried instead of "the xezar
+  home path"; the remedy it suggests is still `XEZ_HOME`, and in single-project mode it says to move
+  the project instead, because `XEZ_HOME` cannot move that folder. What does
+  **not** move: your agent logins (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `OPENCODE_CONFIG_DIR`,
+  `PI_CODING_AGENT_DIR`), your global skill libraries in `~/.agents/skills` and `~/.claude/skills`,
+  `gh`, `git`, and the host-install records in `~/.xezar` (`server.json`, `server-instances/`, the
+  systemd unit, the nginx site) — a cockpit is still installed on one machine. **Nothing changes in
+  the default global layout**: `~/.cache/xez` stays exactly where and what it was, `XEZ_HOME` still
+  does not move it, and a test now pins that from both sides. Details:
+  `BACKWARD_COMPATIBILITY.md` § "Single-project ROOT mode".
 - ✨ **A folder that owns its xezar setup has a registry of exactly one project, and says so at
   every door.** (#600, part 3 of 5) In single-project mode `GET /api/v1/projects`, `xezar projects`
   and the cockpit list one project — the folder — even when a `workspace.json` a clone carried names

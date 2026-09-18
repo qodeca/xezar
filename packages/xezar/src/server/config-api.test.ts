@@ -23,6 +23,7 @@ describe('the config API', () => {
   const savedHome = process.env.HOME;
   const savedXezHome = process.env.XEZ_HOME;
   const savedCodexHome = process.env.CODEX_HOME;
+  const savedClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
   const savedXdgConfigHome = process.env.XDG_CONFIG_HOME;
   const savedModelsLocked = process.env.XEZ_AGENT_MODELS_LOCKED;
   let store: RunStore;
@@ -34,6 +35,13 @@ describe('the config API', () => {
     process.env.HOME = homeRoot;
     process.env.XEZ_HOME = join(homeRoot, '.xezar');
     process.env.CODEX_HOME = join(homeRoot, '.codex');
+    // The fourth agent home, pinned for the same reason as the other three.
+    // `agentHomePaths` reads `CLAUDE_CONFIG_DIR` BEFORE falling back to
+    // `<HOME>/.claude`, so pinning HOME alone leaves this file reading the
+    // developer's — or a coding agent's own — real Claude settings, and a model
+    // pinned there becomes a `defaultModels.claude` the cases below never wrote.
+    // On a host with the variable unset this is exactly today's value.
+    process.env.CLAUDE_CONFIG_DIR = join(homeRoot, '.claude');
     process.env.XDG_CONFIG_HOME = join(homeRoot, '.config');
     delete process.env.XEZ_AGENT_MODELS_LOCKED;
     mkdirSync(join(repoRoot, '.xezar'), { recursive: true });
@@ -53,6 +61,8 @@ describe('the config API', () => {
     else process.env.XEZ_HOME = savedXezHome;
     if (savedCodexHome === undefined) delete process.env.CODEX_HOME;
     else process.env.CODEX_HOME = savedCodexHome;
+    if (savedClaudeConfigDir === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+    else process.env.CLAUDE_CONFIG_DIR = savedClaudeConfigDir;
     if (savedXdgConfigHome === undefined) delete process.env.XDG_CONFIG_HOME;
     else process.env.XDG_CONFIG_HOME = savedXdgConfigHome;
     if (savedModelsLocked === undefined) delete process.env.XEZ_AGENT_MODELS_LOCKED;
