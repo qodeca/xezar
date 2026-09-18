@@ -1,10 +1,12 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { PROJECT_TAGS_MAX, PROJECT_TAG_MAX_LENGTH } from '@qodeca/xezar-contract';
+import { projectStateLayout, setActiveStateLayout } from '../state-layout.ts';
 import { loadWorkspaceConfig, mergeWriteWorkspaceConfig } from './config.ts';
+import { readStoredCliSettings, rememberLastListen } from './port-memory.ts';
 import {
   allocateProjectSlug,
   clearProjectProbeCache,
@@ -116,6 +118,32 @@ describe('workspace projects', () => {
       writeFileSync(join(root, 'keep.txt'), 'keep', 'utf8');
       await registerProject(root);
       expect(readdirSync(root)).toEqual(['keep.txt']);
+    });
+  });
+
+  /**
+   * The guard half of #600 defect A: the DEFAULT (global) layout keeps writing
+   * per-machine facts into `~/.xezar/config.json`, byte for byte as before.
+   * This row passes with and without the single-project fix, which is the point
+   * of it — it pins the behaviour the mode must not change.
+   */
+  describe('per-machine facts in the global layout (control)', () => {
+    it('still writes lastOpenedAt and lastListen into the per-user config', async () => {
+      const root = makeDir('machine-facts');
+      const entry = await registerProject(root);
+      await rememberLastListen(entry.id, 4321, '127.0.0.1');
+
+      const config = JSON.parse(readFileSync(join(home, 'config.json'), 'utf8')) as {
+        projects: { id: string; lastOpenedAt: string; lastListen: unknown }[];
+      };
+      expect(config.projects).toHaveLength(1);
+      expect(config.projects[0]!.id).toBe(entry.id);
+      expect(config.projects[0]!.lastOpenedAt).toBe(entry.lastOpenedAt);
+      expect(config.projects[0]!.lastListen).toEqual({
+        port: 4321,
+        host: '127.0.0.1',
+        observedAt: expect.any(String),
+      });
     });
   });
 
@@ -353,5 +381,75 @@ describe('workspace projects', () => {
     const listed = (await listProjects()).find((p) => p.id === entry.id);
     expect(listed).toBeDefined();
     expect(listed?.tags).toBeUndefined();
+  });
+});
+
+/**
+ * #600 release-candidate defect A: in the single-project layout the committed
+ * `<project>/.xezar/workspace.json` is the file the guide tells users to
+ * commit, so a launch must not rewrite it with per-machine facts. The rows here
+ * are the regression; the global-layout control above is the guard that passes
+ * both ways.
+ */
+describe('single-project layout — per-machine facts stay out of the committed file (#600 defect A)', () => {
+  let projectRoot: string;
+  let workspacePath: string;
+  let committed: string;
+
+  beforeEach(() => {
+    projectRoot = mkdtempSync(join(realpathSync(tmpdir()), 'xez-sp-facts-'));
+    mkdirSync(join(projectRoot, '.xezar'), { recursive: true });
+    workspacePath = join(projectRoot, '.xezar', 'workspace.json');
+    // A committed file as a clone carries it: ONE row for another machine's
+    // folder of the same name, none for this folder, and no per-machine keys.
+    committed = `${JSON.stringify(
+      {
+        schemaVersion: 1,
+        projects: [
+          {
+            id: allocateProjectSlug(projectRoot, []),
+            root: join(projectRoot, '..', 'elsewhere', basename(projectRoot)),
+            name: 'Another machine',
+            addedAt: '2026-01-01T00:00:00.000Z',
+            source: 'local',
+          },
+        ],
+      },
+      null,
+      2,
+    )}\n`;
+    writeFileSync(workspacePath, committed, 'utf8');
+    setActiveStateLayout(projectStateLayout(projectRoot));
+  });
+
+  afterEach(() => {
+    setActiveStateLayout(null);
+    rmSync(projectRoot, { recursive: true, force: true });
+  });
+
+  it('registerProject twice and rememberLastListen once leave the committed file byte-identical', async () => {
+    const first = await registerProject(projectRoot);
+    const second = await registerProject(projectRoot);
+    expect(second.id).toBe(first.id);
+
+    await rememberLastListen(first.id, 4323, '127.0.0.1');
+
+    expect(readFileSync(workspacePath, 'utf8')).toBe(committed);
+  });
+
+  it('still remembers the port across a fresh read, without writing it into the committed file', async () => {
+    const entry = await registerProject(projectRoot);
+    await rememberLastListen(entry.id, 4323, '127.0.0.1');
+
+    const stored = await readStoredCliSettings(entry.id);
+    expect(stored.rememberedPort).toBe(4323);
+    expect(readFileSync(workspacePath, 'utf8')).toBe(committed);
+  });
+
+  it('control: the derived row id is allocated against the STORED ids, never the empty set', async () => {
+    const entry = await registerProject(projectRoot);
+    const foreignId = allocateProjectSlug(projectRoot, []);
+    expect(entry.id).toBe(allocateProjectSlug(projectRoot, [foreignId]));
+    expect((await listProjects({ projectId: entry.id })).map((row) => row.id)).toEqual([entry.id]);
   });
 });

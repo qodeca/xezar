@@ -486,6 +486,17 @@ contract from this release on.
   the same name could not coexist with that guard. `workspace.json.bak` — the registry snapshot
   every successful merge-write has always refreshed beside `config.json` — follows its file into
   the project directory; it is derived state, and `.gitignore` decides whether it travels.
+- **The committed file holds no per-machine fact (#600, release-candidate repair).**
+  `<project>/.xezar/workspace.json` is the file a team commits, so a launch writes nothing about
+  THIS machine into it: registration does not append a row and does not stamp one, and the row
+  this folder is answered with is DERIVED from the folder (or taken from the stored row that
+  travelled with the clone) rather than written back. `lastOpenedAt` and `lastListen` — when this
+  clone was last opened here, and the port its cockpit last held here — live in
+  `<project>/.local/xezar/machine-state.json`, beside the other working files, which the blanket
+  `.local/.gitignore` keeps out of Git. Port memory therefore still works across restarts in the
+  mode, and `git status` stays clean after a launch. The default GLOBAL layout is byte-for-byte
+  unchanged: it still writes both keys into `~/.xezar/config.json`. Breaking: writing a
+  per-machine key into the committed file, or a launch that leaves `git status` dirty in the mode.
 - **Locked detection rule.** A linked git worktree is never a single-project root, the flag
   included, and neither is anything under `.local/xezar/worktrees/` or the user's home directory
   itself. That is not tidiness: every xezar task worktree is a linked worktree, so a mode that
@@ -580,9 +591,13 @@ contract from this release on.
   refused. Breaking: the two strings diverging, a silent fallback to the default account, or
   applying the refusal in global mode.
 - **A registry of exactly one project, refused in all three doors (part 3).** In the mode the
-  registry IS the folder: `GET /api/v1/projects`, `xezar projects list` and the cockpit answer one
-  row, taken from `<project>/.xezar/workspace.json` when it holds one for this folder and DERIVED
-  from the folder when it does not, so the answer is never "no projects". A `workspace.json` a clone
+  registry IS the folder: `GET /api/v1/projects`, `xezar projects list`, the cockpit and
+  `/api/v1/health` answer one row, taken from `<project>/.xezar/workspace.json` when it holds one
+  for this folder and DERIVED from the folder when it does not, so the answer is never "no
+  projects". The derived row's id is allocated against the STORED ids — the same taken-set the
+  boot identity uses — so a committed row for another machine's folder of the same name cannot
+  make the row and the boot project disagree and drop it, and health builds its list from that
+  same derived row rather than from the raw stored rows. A `workspace.json` a clone
   carried holding rows for other machines' paths is read past, never rewritten — this mode migrates
   and converts nothing, in either direction. Adding, cloning, editing and removing a project, and
   browsing host folders, are refused in every door xezar has: `409 {error}` from the five HTTP routes

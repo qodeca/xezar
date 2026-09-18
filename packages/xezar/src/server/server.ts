@@ -198,6 +198,7 @@ import {
   normalizeProjectTags,
   probeProjectStatus,
   registerProject,
+  registryRows,
   removeProject,
   shouldRegisterProject,
   singleProjectNarrowing,
@@ -1170,9 +1171,13 @@ export function createApp(deps: ServerDeps) {
     try {
       const registry = (await loadWorkspaceConfig()).projects;
       const bootProject = await resolveBootProject(registry);
+      // The SAME rows `/api/v1/projects` answers with (#600 defect B), and in a narrowed
+      // registry that is the derived row — a filter over the RAW stored rows would drop it
+      // whenever a committed `workspace.json` holds a foreign row of the same slug. The global
+      // layout keeps listing every project, unchanged.
       const visible = singleProjectRegistry()
-        ? registry.filter((project) => project.id === bootProject)
-        : registry;
+        ? await registryRows({ projectId: bootProject })
+        : await registryRows();
       return {
         // Explicit picks, not a spread: the registry schema passes unknown
         // keys through, and `root` must never ride along onto health.

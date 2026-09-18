@@ -1,6 +1,7 @@
 import { spawnSync, type SpawnSyncReturns } from 'node:child_process';
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -18,7 +19,7 @@ import { resolveStateLayout, setActiveStateLayout } from '../state-layout.ts';
 import { mergeWriteWorkspaceConfig } from './config.ts';
 import { mergeWriteWorkspaceUiState } from './ui-state.ts';
 import { mergeWriteAgentAccounts } from './agent-accounts.ts';
-import { registerProject } from './projects.ts';
+import { registerProject, listProjects } from './projects.ts';
 import { runMigrations } from './migrations.ts';
 
 /** Resolved in the test process, where this repo's node_modules is reachable. */
@@ -110,8 +111,15 @@ describe('single-project mode never opens the real xezar home (AC-11)', () => {
     const stateDir = join(project, '.xezar');
     expect(JSON.parse(readFileSync(join(stateDir, 'workspace.json'), 'utf8'))).toMatchObject({
       resources: { maxParallel: 7 },
-      projects: [{ root: realpathSync(project) }],
+      // No per-machine row is written into the committed file (#600 defect A):
+      // the mode's one row is DERIVED from the folder, and this boot's
+      // per-machine stamp went to the working file below.
+      projects: [],
     });
+    // The boot's registration is still visible as the project's own row, without
+    // a committed write, and its stamp lives under `.local/xezar`.
+    expect((await listProjects()).map((entry) => entry.root)).toEqual([realpathSync(project)]);
+    expect(existsSync(join(project, '.local', 'xezar', 'machine-state.json'))).toBe(true);
     expect(JSON.parse(readFileSync(join(stateDir, 'workspace-ui.json'), 'utf8'))).toMatchObject({
       appearance: { density: 'compact' },
     });
@@ -184,10 +192,10 @@ describe('single-project mode never opens the real xezar home (AC-11)', () => {
       });
 
     // `projects` opens no port, so it is the cheapest command that boots the
-    // layout for real — and the listing WRITES the registry, which is the half
-    // of the proof a read-only home can actually refuse: with the registry
-    // narrowed to one project a listing registers the boot folder through the
-    // normal self-healing path (`initWorkspace` in `index.ts`).
+    // layout for real — and the boot WRITES into the project, which is the half
+    // of the proof a read-only home can actually refuse: migrations rewrite
+    // `workspace.json` and registration records the per-machine launch stamp
+    // (`initWorkspace` in `index.ts`).
     const run = runCli('projects', 'list', '--single-project');
     // The same binary, the same folder, one command later: `add` is REFUSED
     // now (#600 SP-3.2), which is why the write above is the boot's own. Proved
@@ -198,23 +206,30 @@ describe('single-project mode never opens the real xezar home (AC-11)', () => {
     expect(run.status, run.stderr).toBe(0);
     expect(added.status).toBe(1);
     expect(added.stderr).toContain('this project owns its xezar state; adding projects is disabled');
-    // The registry landed in the project. Without this the case is also
+    // The boot landed in the project, and wrote no per-machine row into the
+    // committed file (#600 defect A). Without either half this case is also
     // satisfied by a boot that TRIED the read-only home, failed and degraded
     // quietly — which is the leak, not the fix.
     expect(JSON.parse(readFileSync(join(project, '.xezar', 'workspace.json'), 'utf8'))).toMatchObject({
-      projects: [{ root: realpathSync(project) }],
+      projects: [],
     });
+    const machineState = JSON.parse(
+      readFileSync(join(project, '.local', 'xezar', 'machine-state.json'), 'utf8'),
+    ) as { lastOpenedAt?: unknown };
+    expect(typeof machineState.lastOpenedAt).toBe('string');
     // FR-9.1: exactly one line names the mode and the state folder.
     const modeLines = run.stdout.split('\n').filter((line) => line.includes('single-project mode'));
     expect(modeLines).toHaveLength(1);
     expect(modeLines[0]).toContain(join(project, '.xezar'));
 
     // AC-2: the four files, in the project. The fifth entry is
-    // `workspace.json.bak` — the registry snapshot every successful
-    // merge-write has always refreshed beside `config.json`, now beside the
-    // file it protects. It is derived state, not a fifth state file: the
-    // first-run listing is exactly four (see `createProjectStateFiles` in
-    // `state-layout.test.ts`), and this case has just written a registry.
+    // `workspace.json.bak` — the config snapshot every successful merge-write
+    // has always refreshed beside `config.json`, now beside the file it
+    // protects. It is derived state, not a fifth state file: the first-run
+    // listing is exactly four (see `createProjectStateFiles` in
+    // `state-layout.test.ts`), and the boot's migrations have just written the
+    // config. The per-machine stamp is under `.local/xezar`, deliberately NOT
+    // here — this directory is the committed one.
     expect(readdirSync(join(project, '.xezar')).sort()).toEqual([
       'agent-accounts.json',
       'config.json',
