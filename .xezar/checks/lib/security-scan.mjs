@@ -20,16 +20,31 @@
 //   not-applicable  the check does not fit this change set, with the artefact that says so
 //
 // THE FAIL-OPEN TRAP THIS AVOIDS (AGENTS.md § Changing a mechanism that already works). Against
-// an empty input, "we never loaded the list" and "no match" are the same branch. So an empty
-// inventory where one was expected is `unknown` at the check level and a REFUSAL at the stage
-// level: a change set that enumerated zero files did not pass, it failed to look. The refusal is
-// driven off the INVENTORY, so it is reachable from this driver; the two run shapes the kit
-// documents as legitimately empty declare themselves with `--empty-declared`, and the
-// declaration is recorded in the result.
+// an empty input, "we never loaded the list" and "no match" are the same branch, so the two must
+// never read the same. Here they do not. A change set the stage could not READ — an unresolved
+// base, an unreadable repository, an enumeration command that errored — is `unknown` at the check
+// level and a REFUSAL at the stage level: the stage could not look. A change set that is genuinely
+// EMPTY is `not-applicable` and resolves: there is nothing to look at. The gate can run before the
+// agent has committed anything, which is what makes the second shape routine rather than a hole.
+// `--empty-declared` still records why a DELIVERED/VERIFICATION run carries no commits of its own,
+// but it no longer decides the outcome — an empty change set resolves whether or not it is
+// declared.
+//
+// EMPTY IS DECIDED FROM THE FULL ENUMERATION, NEVER FROM THE CONTENT-SCAN ONE. The content scan
+// runs on `--diff-filter=ACMR`, which excludes deletions — there is no surviving content to read
+// for a deleted path. A candidate that only DELETES files therefore enumerates zero ACMR paths,
+// and deciding "empty" from that alone misreads a real, non-empty change set as one that changed
+// nothing — a false statement, and false inside a security gate, because the deleted paths never
+// reach the trust-boundary check either. So two different questions use two different
+// enumerations: `allFiles` (no filter, deletions included) decides whether the change set is
+// empty at all and is what the trust-boundary check reads; `files` (ACMR) is what the content
+// scan — classification, secrets, kill-by-pattern, dependency inputs — reads. A change set that is
+// non-empty in `allFiles` but has nothing in `files` (deletion-only, or similar) says so in its own
+// words rather than claiming it changes no file.
 //
 // Usage:
 //   node security-scan.mjs --cwd <dir> --base <sha> --head <sha> [--out <file>] [--quiet]
-//                          [--empty-declared "<why this candidate legitimately changes nothing>"]
+//                          [--empty-declared "<why this run legitimately carries no commits>"]
 //
 // Exit codes: 0 resolved (pass / unknown / not-applicable) · 1 refused (findings, or the stage
 // could not look) · 2 usage.
@@ -286,27 +301,46 @@ export function trustBoundariesTouched(files) {
  * The whole stage, as a pure function of the inventory and the diff, so the tests drive THIS
  * code rather than a copy of it.
  */
-export function assess({ files, addedByFile, truncated }) {
+export function assess({ files, allFiles, addedByFile, truncated }) {
   const { code, other } = classifyInventory(files);
   const applies = code.length > 0;
   const checks = [];
 
-  if (files.length === 0) {
-    // Nothing changed at all. The stage still resolves — and says which question it answered.
+  if (allFiles.length === 0) {
+    // Nothing changed at all, so there is nothing to scan and nothing to refuse. The gate can run
+    // before the agent has committed anything, which makes a branch sitting on its own merge-base a
+    // routine shape rather than a hole the stage fell into (9 of 269 sealed attempts over
+    // 2026-09-17/18 were exactly this). The shapes that DO mean "the stage did not look" — an
+    // unresolved base, an unreadable repository, an enumeration command that errored — never reach
+    // here; the driver records them as a read failure and refuses. `allFiles` is the unfiltered
+    // enumeration (deletions included), never the ACMR one — a deletion-only candidate is a real,
+    // non-empty change set and must not resolve here (see `files.length === 0` below).
     return {
       decision: "no",
       decisionReason: "the candidate changes no file over its base, so no code or security capability applies",
       inventory: { total: 0, code: 0, other: 0, truncated: false },
-      checks: [check("inventory", "unknown", "no changed file was enumerated")],
+      checks: [check("inventory", "not-applicable", "the candidate changes no file over its base, so there is nothing to scan")],
       trustBoundaries: [],
       reviewerRequired: false,
-      status: "unknown",
+      status: "not-applicable",
       blocking: [],
     };
   }
 
+  const scannable = files.length > 0;
   if (truncated) {
     checks.push(check("inventory", "unknown", `more than ${MAX_FILES} changed files; the scan was bounded and did not read all of them`));
+  } else if (!scannable) {
+    // Real changes exist (`allFiles` is non-empty) but none of them survive the ACMR filter — a
+    // deletion-only change set is the ordinary case. Say so in its own words: never "changes no
+    // file", which is only true for the truly-empty shape handled above.
+    checks.push(
+      check(
+        "inventory",
+        "not-applicable",
+        `${allFiles.length} changed file(s) enumerated over the base, none carrying content this scan reads (deletion-only or similar)`,
+      ),
+    );
   } else {
     checks.push(check("inventory", "pass", `${files.length} changed file(s) enumerated over the base`));
   }
@@ -350,7 +384,10 @@ export function assess({ files, addedByFile, truncated }) {
         ),
   );
 
-  const trustBoundaries = trustBoundariesTouched(files);
+  // `allFiles`, not `files`: a deleted path can be the trust-boundary change (deleting the origin
+  // guard is itself an authorization-relevant edit), and ACMR would hide it from this check the
+  // same way it hid it from the emptiness decision above.
+  const trustBoundaries = trustBoundariesTouched(allFiles);
   checks.push(
     trustBoundaries.length === 0
       ? check("trust-boundary", "not-applicable", "the candidate changes no named trust boundary")
@@ -378,8 +415,12 @@ export function assess({ files, addedByFile, truncated }) {
     decision: applies ? "yes" : "no",
     decisionReason: applies
       ? `${code.length} changed file(s) carry a code or dependency capability`
-      : `none of the ${other.length} changed file(s) carries a code or dependency capability`,
-    inventory: { total: files.length, code: code.length, other: other.length, truncated },
+      : scannable
+        ? `none of the ${other.length} changed file(s) carries a code or dependency capability`
+        : `${allFiles.length} changed file(s) over the base, none carrying content this scan reads (deletion-only or similar), so no code or dependency capability applies`,
+    // `total` is the full enumeration, so a deletion-only change set is never reported as 0 — that
+    // is the misreport this fixed. `code`/`other` stay derived from the ACMR content scan.
+    inventory: { total: allFiles.length, code: code.length, other: other.length, truncated },
     checks,
     trustBoundaries,
     reviewerRequired: trustBoundaries.length > 0,
@@ -395,12 +436,14 @@ function main() {
   const cwd = args.cwd || die(EXIT_USAGE, "--cwd is required");
   const head = args.head || die(EXIT_USAGE, "--head is required");
   const base = args.base;
-  // The ONE declared exception to the empty-inventory refusal below, and the DRIVER declares it.
-  // Inferring it here would re-create the hole: this file cannot tell "the run legitimately has
-  // no commits of its own" from "the run was asked to change source and enumerated nothing".
+  // Why a DELIVERED/VERIFICATION run carries no commits, recorded from the DRIVER rather than
+  // inferred: this file cannot tell "the run legitimately has no commits of its own" from "the run
+  // was asked to change source and has not committed yet". The reason travels into the result for
+  // the reviewer; the outcome no longer depends on it.
   const emptyDeclared = typeof args["empty-declared"] === "string" ? args["empty-declared"] : null;
 
   let files = [];
+  let allFiles = [];
   let diffText = "";
   let truncated = false;
   let readFailure = null;
@@ -410,6 +453,17 @@ function main() {
     // report a different change set than the one being gated. That is an unreadable input, not
     // an empty one.
     if (!base) throw new Error("no merge-base against the integration base could be resolved");
+    // The FULL enumeration, no filter: this is what decides whether the change set is empty and
+    // what the trust-boundary check reads. `--diff-filter=ACMR` excludes deletions, and deciding
+    // emptiness from that alone misreads a deletion-only candidate as one that changed nothing.
+    const allRaw = git(cwd, "diff", "--name-only", `${base}..${head}`);
+    allFiles = allRaw.split("\n").map((l) => l.trim()).filter(Boolean);
+    if (allFiles.length > MAX_FILES) {
+      truncated = true;
+      allFiles = allFiles.slice(0, MAX_FILES);
+    }
+    // The ACMR-filtered enumeration: what the content scan reads. A deleted path has no surviving
+    // content — this scan only ever reads added (`+`) lines, so there is nothing there for it.
     const raw = git(cwd, "diff", "--name-only", "--diff-filter=ACMR", `${base}..${head}`);
     files = raw.split("\n").map((l) => l.trim()).filter(Boolean);
     if (files.length > MAX_FILES) {
@@ -439,22 +493,20 @@ function main() {
       blocking: [],
     };
   } else {
-    result = assess({ files, addedByFile: addedLinesByFile(diffText), truncated });
+    result = assess({ files, allFiles, addedByFile: addedLinesByFile(diffText), truncated });
   }
 
-  // THE EMPTY-INVENTORY REFUSAL. A change set that enumerated zero files did not pass; it failed
-  // to look. It is driven off the INVENTORY, not off `assess`'s decision: `assess` early-returns
-  // `decision: "no"` for a zero-file inventory, so the old `decision === "yes" && total === 0`
-  // form was unreachable from this driver and its named break went green either way (#503 review
-  // M1). "Could not read the input" is a separate question and `readFailure` already answers it.
+  // NO EMPTY-INVENTORY REFUSAL, and the distinction it rests on is the whole point. An empty
+  // change set is `not-applicable` and resolves: the gate can run before the agent has committed
+  // anything, so there is nothing to scan and nothing to refuse. A change set the stage could not
+  // READ is the opposite question, and `readFailure` still refuses it. `empty-scan-green` is the
+  // falsifier for that half — the enumeration is broken, and zero files must not become a pass.
   //
-  // The exception is DECLARED, never inferred: a run whose fix landed on another branch
+  // The declaration is RECORDED, never inferred: a run whose fix landed on another branch
   // (`DELIVERED`) or that only verified an existing revision (`VERIFICATION`) is documented to
-  // carry no commits of its own, so its empty change set is expected. The driver passes the
-  // reason, it is recorded in the result, and the stage still resolves `unknown` — which is not a
-  // pass. `empty-scan-green` is the falsifier both halves exist for.
-  const emptyWhereExpected = readFailure === null && result.inventory.total === 0 && emptyDeclared === null;
-  const refused = readFailure !== null || result.status === "findings" || emptyWhereExpected;
+  // carry no commits of its own. The driver passes the reason so a reviewer reads why the branch is
+  // empty; the outcome no longer depends on it.
+  const refused = readFailure !== null || result.status === "findings";
 
   const record = {
     schemaVersion: SCHEMA_VERSION,
@@ -470,9 +522,7 @@ function main() {
       ? "the change set could not be read"
       : result.status === "findings"
         ? `blocking findings in: ${result.blocking.join(", ")}`
-        : emptyWhereExpected
-          ? "the base was resolved and the diff was readable, and zero files were enumerated over it — the stage did not look. A run that legitimately carries no commits of its own declares that (DELIVERED, VERIFICATION); nothing declared it here."
-          : null,
+        : null,
   };
   record.digest = createHash("sha256").update(JSON.stringify(record)).digest("hex");
 

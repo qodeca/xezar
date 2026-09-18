@@ -2,6 +2,7 @@
 
 ## 🐛 Fixes
 
+- 🐛 **Two kit-check defects: an empty security change set no longer refuses, and an interrupted infra run now terminates.** `.xezar/checks/security-scan.sh` treated a genuinely empty change set — a branch the gate reached before anything was committed — as `unknown` and refused it, a false red that cost a whole agent-step re-run; it is now `not-applicable`, while a change set the stage could not read (an unresolved base, an unreadable repository, a failed enumeration) still refuses. `.xezar/checks/infra-tests.sh`'s `trap cleanup EXIT INT TERM` cleaned up on a signal and then carried on; INT and TERM now exit with the conventional signal status, matching `repo-gates.sh`. Both are kit-internal: neither changes shipped behaviour.
 - 🐛 **The cockpit browser suite runs when the repository itself is in single-project mode.** (#653)
   Once `.xezar/workspace.json` is committed, a plain clone is a single-project root, and the mode
   never opens the pinned `XEZ_HOME` — so the shared test server kept its state in the repository and
