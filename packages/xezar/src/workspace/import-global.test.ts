@@ -95,7 +95,7 @@ describe('import from the global setup (#600 FR-4)', () => {
       expect(outcome).toEqual({ kind: 'no-terminal' });
       expect(projectStateDirContents()).toEqual([]);
       expect(firstRunImportLine(outcome, layout, env)).toBe(
-        `  not a terminal, so nothing was imported from ${home} — starting ${layout.root} with defaults`,
+        `  not a terminal, so nothing was imported from your global setup — starting ${layout.root} with defaults`,
       );
     });
 

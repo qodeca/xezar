@@ -66,6 +66,24 @@ A non-Git folder runs one task at a time. See [Worktrees and Git](03-worktrees-a
 
 A deleted or moved folder is labeled **folder not found**, and its project pages cannot start a working project context. In the sidebar's project groups, that project's row stays listed alongside your other projects but does not expand into a nav — there is nothing behind it to open. Restore the folder at its recorded path, or remove the stale registry entry and add the new location, then restore its tags and cap and recreate its bookmarklets. A folder that exists without Git is shown as **no git repo**, which is different from **folder not found**. The CLI uses **not a git repo** and **missing** for these states.
 
+## To keep a project's xezar setup inside the project — single-project mode
+
+Use single-project mode when a repository should carry its own xezar setup, so that everyone who clones it runs with the same settings, agent accounts and limits, with no setup step on their machine.
+
+Start xezar once with the flag in the project folder:
+
+```sh
+xezar --single-project
+```
+
+The project then keeps its setup in its own `.xezar/` folder: `config.json`, `workspace.json`, `agent-accounts.json` and `workspace-ui.json`, which you can commit. Working files stay in `.local/xezar/`, and xezar does not open `~/.xezar`. You need the flag only the first time; after that the presence of `.xezar/workspace.json` decides, so every start in that folder, or in a clone of the repository, is in the mode. The terminal prints one line naming the mode and both folders. A linked Git worktree, a folder under `.local/xezar/worktrees/` and your home directory itself never enter the mode.
+
+The first run in a folder without `.xezar/workspace.json` asks once, in the terminal, whether to copy your global setup (`~/.xezar`, or your `XEZ_HOME`) into the project. Answer `y` to copy your workspace settings, agent accounts and GUI preferences; your project list is not copied, and only this folder's own account choice is kept. Files already in the project are never overwritten, and an unreadable global file is skipped and named. Any other answer imports nothing. Without a terminal, for example in a script or CI, nothing is imported and one line says so. The copy is one-time and one-way: nothing is kept in sync afterwards, and a folder that already holds `workspace.json`, such as a clone, is never asked.
+
+In the mode the workspace holds exactly this one project. Adding, cloning, editing and removing projects, and browsing host folders, are refused in the cockpit, the CLI and the MCP tools. The cockpit shows a **Single project** badge, and Global settings reads **Workspace settings**. Agent logins, `gh`, `git` and your global skill libraries stay on the machine. An agent account that the project names but whose folder does not exist on this machine is shown as **Unavailable**, and a task that asks for it is refused rather than run with another login. See [Settings reference](10-settings-reference.md) and [Configuration reference](11-configuration-reference.md).
+
+`XEZ_SINGLE_PROJECT=1` still exists with its old meaning and is not deprecated. The difference: `XEZ_SINGLE_PROJECT=1` narrows the cockpit to one project but keeps using your global state in `~/.xezar`, while `--single-project` moves that state into the project folder.
+
 ## Related settings / env / config
 
 - **Settings overview**: folder, status, task cap, and removal.
@@ -73,6 +91,7 @@ A deleted or moved folder is labeled **folder not found**, and its project pages
 - `~/.xezar/config.json`: `projects[]` and workspace resource limits; `XEZ_HOME` selects a different workspace home.
 - `XEZ_BROWSE_ROOT` / `XEZ_PROJECTS_DIR`: set browse/checkout locations **before the first start**. Startup registration saves these defaults into workspace config; change them afterwards in **Global settings → Projects**, not by changing the variables.
 - `XEZ_SINGLE_PROJECT=1`: restricts the cockpit to its startup project and disables registry add/remove/tag operations, including the CLI mutations. It also disables Max parallel edits, cloning, and folder browsing. Startup registration still happens for `serve`, `run`, and even `xezar projects`.
+- `--single-project`: moves the project's xezar setup into its own `.xezar/` folder; see [single-project mode](#to-keep-a-projects-xezar-setup-inside-the-project--single-project-mode).
 - [Settings reference](10-settings-reference.md) and the [environment contract](../../.env.example).
 
 Next: [Settings reference](10-settings-reference.md)

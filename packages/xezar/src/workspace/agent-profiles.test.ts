@@ -336,7 +336,7 @@ describe('agent profile resolution', () => {
         'Agent account “Work account” is unavailable — this account\'s folder does not exist on this machine: ' +
           '~/.claude-work. Connect signs in and creates it, or pick another account for the task.',
       );
-      const message = await refusal.catch((err: Error) => err.message);
+      const message = await refusal.then(() => '', (err: Error) => err.message);
       expect(message).toBe(unavailableAgentAccountRefusal('Work account', '~/.claude-work'));
       expect(message.endsWith(unavailableAgentAccountReason('~/.claude-work'))).toBe(true);
     });

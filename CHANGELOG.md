@@ -87,6 +87,27 @@
   area reads "Workspace settings". The `/settings/global/…` URLs keep landing; in the mode they
   write the project's files instead of the home directory. Global mode is unchanged. Details:
   `BACKWARD_COMPATIBILITY.md` § 2.
+- ✨ **The first single-project run can bring your global setup along, and a clone never borrows a
+  login it does not have.** (#600, part 5 of 5) The first `xez --single-project` in a folder with no
+  `.xezar/workspace.json` asks once, in the terminal, whether to copy your global setup (`~/.xezar`,
+  or `XEZ_HOME`) into the project, `[y/N]`: workspace settings become `workspace.json` without your
+  project list, agent accounts keep only this folder's own account choice, and GUI preferences
+  become `workspace-ui.json`. Nothing is written before you answer, a decline imports nothing,
+  existing project files are never overwritten, an unreadable global file is skipped and named, and
+  `~/.xezar` is only read, never written. With no terminal — a script, CI — nothing is imported and
+  one line says so; `xezar mcp` never asks; a second run or a clone is never asked; and nothing is
+  kept in sync afterwards. That one read is the mode's single deliberate exception to "`~/.xezar` is
+  not opened", and a source scan now fails any other direct reach for the global layout. In the
+  mode, an agent account the project names whose folder does not exist on this machine reads
+  **Unavailable** in Settings → Agent accounts with a sentence saying why and what to do, and a task
+  that asks for it is refused before the agent starts with the same sentence — never a silent
+  fallback to the default login; the start itself never fails because of it. The cockpit copy
+  follows the mode: the defaults card reads "Defaults for this project", Resources drops the
+  "Configure per-project limits" link, and the empty Tasks page says the folder carries its own
+  setup. A browser test now boots a fresh clone of a single-project repository to prove it runs with
+  the committed setup. The user guide (projects, settings, configuration, CLI and remote access) and
+  the README describe the mode. Global mode is unchanged throughout. Details:
+  `BACKWARD_COMPATIBILITY.md` § "Single-project ROOT mode".
 - ✨ **The sidebar is navigation-only.** (#546) The Active/Archived task switcher, task list, and `Search…` launcher have been removed from the sidebar. Manage and search tasks on the Tasks page, and open the command palette with `⌘K` on macOS or `Ctrl+K` elsewhere. Existing task badges, task data, APIs, and saved UI state are unchanged.
 - **The audit trail is bounded, and safe to share between processes.** (#306, part 3 of 4) A
   project's `.local/xezar/audit.ndjson` now rotates before it passes 10 MB (10,000,000 bytes) and

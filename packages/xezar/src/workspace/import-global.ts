@@ -201,7 +201,9 @@ export function firstRunImportLine(outcome: FirstRunOutcome, layout: StateLayout
     case 'declined':
       return null;
     case 'no-terminal':
-      return `  not a terminal, so nothing was imported from ${globalSetup(env).root} — starting ${layout.root} with defaults`;
+      // Names the project folder and NOT the home: with nobody asked, the home was not read, and
+      // no output of the mode names a path it did not open (`single-project-home-safety.test.ts`).
+      return `  not a terminal, so nothing was imported from your global setup — starting ${layout.root} with defaults`;
     case 'imported': {
       const copied = outcome.files.filter((file) => file.outcome === 'copied').map((file) => file.to);
       const skipped = outcome.files.filter((file) => file.outcome === 'unreadable').map((file) => file.from);
