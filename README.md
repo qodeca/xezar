@@ -313,12 +313,15 @@ unchanged. See
 
 ### A few more things to expect
 
-- A task that intentionally needs the repository's primary working copy must now be created with
-  Worktree off; an isolated task run can no longer write outside its own task worktree.
+- A pi task in its own isolated working copy (Git worktree) can no longer use its file tools to
+  write or edit the repository's primary working copy, and a shell command that names that copy is
+  refused (best effort, not containment). A pi task that needs the primary working copy on purpose
+  must be created with Worktree off.
 - A run xezar itself ends for the memory limit now finishes `failed`, not `done` – expect `failed`
   instead of a done run with no deliverable.
-- The automatic re-prompt after a Continue on a workflow step still waiting for `XEZ:DONE` is
-  capped at 3 attempts; no flag restores the old 40-retry loop.
+- In an autonomous run, the automatic re-prompt after a Continue on a workflow step still waiting
+  for `XEZ:DONE` is capped at 3 attempts; once that step says `XEZ:DONE`, the remaining steps keep
+  their usual budget. No flag restores the old 40-retry loop.
 - The stdout line `recovered N run(s) from the previous session` is gone; a script that read it
   should instead read stderr's plain output and select `event=task.recovered`.
 
