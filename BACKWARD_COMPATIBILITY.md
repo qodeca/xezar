@@ -801,6 +801,26 @@ reach was an isolation defect, so the restriction is recorded here rather than s
   supplies the task root to its bundled pi extension, while the `quick-task` prompt carries the
   same instruction as the maintained workflow kit.
 
+## A run xezar itself terminates for the memory limit ends `failed`, not `done` (#603) — deliberate, 0.16.0
+
+`enforceMemoryLimit` closes a breaching run's session with `session.end()`, and a CLI that does not
+exit on its own is then signalled by xezar and settles on the same "our own signal coming back"
+teardown path a legitimate `XEZ:DONE` close does (#703) — so `session.result` resolved cleanly
+either way, and the step-completion handler could not tell "the agent finished" from "xezar cut it
+off". The run, and its last step, settled `done` with no deliverable and no error.
+
+- **Broken**: a run that reaches the memory ceiling and is terminated by xezar (fresh run or a
+  Continue/restart-recovery continuation) now ends `status: 'failed'` with an `error` naming the
+  memory limit, where it previously — incorrectly — ended `status: 'done'`. Any API, MCP or cockpit
+  consumer that read a memory-limit termination as a successful `done` run must instead expect
+  `failed`. `failed` is one of the statuses `continueRun`/`POST /runs/:id/continue` already accepts,
+  so the leader's `Continue` still resumes the run — this was already true for `failed` and is not
+  new for that path.
+- **Not broken**: the memory limit itself, when the guard fires, and the graceful-close-then-forced-
+  signal teardown of #703 are unchanged. Every other terminal path (`XEZ:DONE`, cancel, an ordinary
+  agent error, a real crash) settles exactly as before. No event or workflow schema changes; no new
+  `RunStatus` value is added.
+
 ## When in doubt
 
 If a change might break any surface above, say so in the PR description, label the PR `risk-high`, and route it through the review + QA gates in `SDLC.md`. A silent break found in review is a blocker per `CODE_REVIEW.md`.

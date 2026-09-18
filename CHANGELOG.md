@@ -129,6 +129,17 @@
 
 ## 🐛 Fixes
 
+- 🐛 **A run xezar itself terminates for the memory limit no longer ends `done` with no deliverable.** (#603)
+  `enforceMemoryLimit` closes a breaching run's session with `session.end()`, and — deliberately,
+  per #703 — a CLI that does not exit on its own is then signalled by xezar and settles on the same
+  "our own signal coming back" path a legitimate `XEZ:DONE` close does, so `session.result` resolves
+  without throwing either way. Before this fix the step-completion handler could not tell that
+  distinction apart from a finished turn, and recorded the step, and the run, `done` even though
+  xezar cut it off mid-turn and nothing was posted. Both construction sites (`runAgentStep` for a
+  fresh run, `runContinuation` for Continue and restart recovery) now check the reason
+  `enforceMemoryLimit` records on the live `ActiveRun` and end the run `failed`, naming the memory
+  limit, instead — one of the statuses `continueRun` already accepts, so the leader's `Continue`
+  resumes it. The memory limit and the pause mechanism itself are unchanged.
 - 🐛 **A conversation image can be opened, read and left with the keyboard.** (#453)
   The full-screen image preview in a task thread used to be a clickable picture over a
   hand-rolled overlay: a keyboard reader could not open it at all, and once it was open there
