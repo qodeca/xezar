@@ -1,5 +1,10 @@
 import { parsePortValue, PORT_MAX } from '../cli-settings.ts';
+import { activeStateLayout } from '../state-layout.ts';
 import { loadWorkspaceConfig, mergeWriteWorkspaceConfig, type WorkspaceConfig } from './config.ts';
+import {
+  readProjectMachineState,
+  recordLastListen,
+} from './project-machine-state.ts';
 
 /**
  * Per-project port memory (#467; `designs/cli-terminal/multi-instance.md` § 3–4).
@@ -71,6 +76,11 @@ export function firstUnreservedPort(from: number, reserved: ReadonlySet<number>)
  * Returns the entry that was written, or `null` when nothing could be written. Never throws:
  * a read-only home, a registry that has no row for this project, or a lock that could not be
  * taken all mean "the cockpit runs, it just will not remember" (`error-cases.txt` A11).
+ *
+ * In the PROJECT layout the hint goes to the per-machine working file instead of the committed
+ * `<project>/.xezar/workspace.json` (#600 defect A) — the port is a fact about THIS machine's
+ * clone, and writing it into the committed file left `git status` dirty after every start.
+ * The hint still works across restarts, which is the whole point of it.
  */
 export async function rememberLastListen(
   projectId: string,
@@ -79,6 +89,14 @@ export async function rememberLastListen(
   now: () => Date = () => new Date(),
 ): Promise<LastListen | null> {
   const entry: LastListen = { port, host, observedAt: now().toISOString() };
+  if (activeStateLayout().mode === 'project') {
+    try {
+      recordLastListen(entry);
+    } catch {
+      return null;
+    }
+    return entry;
+  }
   let written = false;
   try {
     await mergeWriteWorkspaceConfig((config) => {
@@ -115,10 +133,16 @@ export async function readStoredCliSettings(projectId: string | undefined): Prom
     return {};
   }
   const project = projectId ? config.projects.find((p) => p.id === projectId) : undefined;
+  // The remembered port is a per-machine fact, so in the project layout it comes from the
+  // working file rather than the committed one (#600 defect A). `cli.port` — a preference a
+  // person set — stays in the workspace config in both layouts.
+  const rememberedPort = activeStateLayout().mode === 'project'
+    ? readProjectMachineState().lastListen?.port
+    : project?.lastListen?.port;
   return {
     config,
     ...(config.cli ? { workspace: config.cli } : {}),
     ...(project?.cli?.port !== undefined ? { projectPort: project.cli.port } : {}),
-    ...(project?.lastListen?.port !== undefined ? { rememberedPort: project.lastListen.port } : {}),
+    ...(rememberedPort !== undefined ? { rememberedPort } : {}),
   };
 }
