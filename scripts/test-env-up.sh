@@ -116,19 +116,62 @@ unset ANTHROPIC_MODEL
 # equal and the boot reuses the wrong one.
 AGENT_HOME_FINGERPRINT="$CLAUDE_CONFIG_DIR|$CODEX_HOME|$OPENCODE_CONFIG_DIR"
 
-# The third reuse dimension (#600 SP-5.6): WHERE the booted app keeps its state. A repository
-# root that holds `.xezar/workspace.json` boots in single-project mode — the folder decides, with
-# no flag and no variable — so an instance booted there reads and writes the project's own files
-# and never the pinned `XEZ_HOME`. Reusing it for a global-mode spec, or the reverse, would run
-# every spec against the wrong store while calling itself "reused". Mirrors the detection rule in
+# Does this repository root carry the single-project marker (#600)? The folder decides the
+# layout, with no flag and no variable, so a plain clone of a repository that commits
+# `.xezar/workspace.json` boots in the mode. Mirrors the detection rule in
 # `packages/xezar/src/state-layout.ts`: a `.git` FILE (a linked worktree, which every task
-# worktree is) is never a single-project root. A descriptor written before this dimension existed
-# has no such key, so the comparison fails and the boot goes cold — the correct answer.
+# worktree is) is never a single-project root.
+#
+# The shared suite must NOT boot in the mode. The mode never opens `XEZ_HOME` (a documented
+# guarantee — `docs/guide/11-configuration-reference.md`), and the specs are written against the
+# pinned global layout: the multi-project shell, the shipped defaults rather than the repository's
+# own committed `workspace.json`, and state that a test run is allowed to rewrite. So when the
+# marker is present the launcher HIDES it for the app's boot, and only for the boot: the layout is
+# resolved once, at startup, and cached (`resolveStateLayout` → `setActiveStateLayout`), so the
+# running app stays in the pinned global layout while the file is back on disk for every later
+# reader — a spec's `git status`, a `xezar` a spec spawns, and this script's own next reuse check.
+# Nothing is written: `mv` aside, `mv` back, on every exit path through the trap below, plus
+# `recover_single_project_marker` for a SIGKILL that could not run the trap.
+#
+# The marker is still a reuse dimension of its own (`environment.singleProjectRoot`): a change in
+# it changes the boot path, so an instance booted under the other condition must not be reused.
+# `environment.stateLayout` is the second half of that — the layout the app was actually booted
+# in — and its absence from a descriptor written before this fix is what keeps an instance booted
+# in project mode by an older launcher from ever being reused. Both are honest answers.
 single_project_root() {
   if [ -f "$REPO_ROOT/.xezar/workspace.json" ] && [ ! -f "$REPO_ROOT/.git" ]; then
     echo true
   else
     echo false
+  fi
+}
+
+# The layout this launcher boots the app in, recorded in the descriptor and compared on reuse.
+BOOT_STATE_LAYOUT=global
+MARKER_HIDDEN=0
+MARKER_BACKUP="$REPO_ROOT/.xezar/workspace.json.e2e-hidden"
+
+hide_single_project_marker() {
+  [ "$(single_project_root)" = true ] || return 0
+  mv "$REPO_ROOT/.xezar/workspace.json" "$MARKER_BACKUP"
+  MARKER_HIDDEN=1
+}
+
+restore_single_project_marker() {
+  [ "$MARKER_HIDDEN" = 1 ] || return 0
+  mv "$MARKER_BACKUP" "$REPO_ROOT/.xezar/workspace.json" || log "could not restore the single-project marker from $MARKER_BACKUP"
+  MARKER_HIDDEN=0
+}
+
+# A SIGKILL inside the hide window leaves the marker at its backup name. The backup is this
+# script's own doing, so it is the authority: restore it when the marker is missing, drop it when
+# it is not (an interrupted run whose marker a person put back by hand).
+recover_single_project_marker() {
+  [ -f "$MARKER_BACKUP" ] || return 0
+  if [ -f "$REPO_ROOT/.xezar/workspace.json" ]; then
+    rm -f "$MARKER_BACKUP"
+  else
+    mv "$MARKER_BACKUP" "$REPO_ROOT/.xezar/workspace.json"
   fi
 }
 
@@ -188,7 +231,8 @@ json_get() { node -e '
 # "source newer than startedAt" test is what keeps a stale build from being tested.
 LOCK_HELD=0
 release_lock() { [ "$LOCK_HELD" = 1 ] && rm -rf "$LOCK_DIR" 2>/dev/null || true; }
-trap release_lock EXIT INT TERM
+cleanup() { restore_single_project_marker; release_lock; }
+trap cleanup EXIT INT TERM
 
 acquire_lock() {
   waited=0
@@ -241,7 +285,11 @@ try_reuse() {
   [ "${XEZ_SINGLE_PROJECT:-}" = 1 ] && requested_single_project=true
   [ "$(json_get "$ENV_DESCRIPTOR" environment.singleProject)" = "$requested_single_project" ] || return 1
   [ "$(json_get "$ENV_DESCRIPTOR" environment.singleProjectRoot)" = "$(single_project_root)" ] || {
-    log "single-project mode differs from the running instance — booting cold"
+    log "single-project marker differs from the running instance — booting cold"
+    return 1
+  }
+  [ "$(json_get "$ENV_DESCRIPTOR" environment.stateLayout)" = "$BOOT_STATE_LAYOUT" ] || {
+    log "the booted state layout differs from the running instance — booting cold"
     return 1
   }
   [ "$(json_get "$ENV_DESCRIPTOR" environment.agentHome)" = "$AGENT_HOME_FINGERPRINT" ] || {
@@ -472,7 +520,7 @@ write_descriptor() {
   [ "${XEZ_SINGLE_PROJECT:-}" = 1 ] && SINGLE_PROJECT=true
   node -e '
     const fs = require("fs");
-    const [out, baseUrl, port, pid, cmd, bInstalled, bCmd, bVer, bNotes, desc, singleProject, platform, agentHome, singleProjectRoot] = process.argv.slice(1);
+    const [out, baseUrl, port, pid, cmd, bInstalled, bCmd, bVer, bNotes, desc, singleProject, platform, agentHome, singleProjectRoot, stateLayout] = process.argv.slice(1);
     fs.writeFileSync(out, JSON.stringify({
       version: 1,
       runId: "xezar-" + new Date().toISOString().slice(0, 10) + "-" + pid,
@@ -485,7 +533,7 @@ write_descriptor() {
       app: { startCommand: cmd, port: Number(port), healthPath: "/api/v1/health", pid: Number(pid) },
       services: [],
       credentials: [],
-      environment: { singleProject: singleProject === "true", agentHome, singleProjectRoot: singleProjectRoot === "true" },
+      environment: { singleProject: singleProject === "true", agentHome, singleProjectRoot: singleProjectRoot === "true", stateLayout },
       browser: {
         provider: "agent-browser",
         installed: bInstalled === "1",
@@ -497,17 +545,18 @@ write_descriptor() {
       testRunner: { name: "other", config: "packages/web/e2e/vitest.config.ts" },
       platform,
       startedAt: new Date().toISOString().replace(/\.\d+Z$/, "Z"),
-      notes: "Booted from a production build after npm ci with XEZ_DRY_RUN=1, so workspace links/runtime dependencies are present, the agent CLIs are mocked, and no agent login/network is needed. The agents\u2019 own user-scope config dirs are pinned to empty sandboxes under .local/qa/agent-home/ (environment.agentHome), so the app reads no model default from this machine; project-scope files in the repo are NOT isolated. No backing services. Stop with scripts/test-env-down.sh. App log: .local/qa/test-env-app.log.",
+      notes: "Booted from a production build after npm ci with XEZ_DRY_RUN=1, so workspace links/runtime dependencies are present, the agent CLIs are mocked, and no agent login/network is needed. The agents\u2019 own user-scope config dirs are pinned to empty sandboxes under .local/qa/agent-home/ (environment.agentHome), so the app reads no model default from this machine; project-scope files in the repo are NOT isolated. A repository root that carries `.xezar/workspace.json` is booted in the pinned GLOBAL layout anyway: the launcher hides that marker for the boot of the app itself, and restores it before the specs run. No backing services. Stop with scripts/test-env-down.sh. App log: .local/qa/test-env-app.log.",
     }, null, 2) + "\n");
   ' "$ENV_DESCRIPTOR" "$BASE_URL" "$PORT" "$APP_PID" \
     "XEZ_DRY_RUN=1 XEZ_HOME=.local/qa/xez-home CLAUDE_CONFIG_DIR=.local/qa/agent-home/claude CODEX_HOME=.local/qa/agent-home/codex OPENCODE_CONFIG_DIR=.local/qa/agent-home/opencode node packages/xezar/dist/index.js --repo $REPO_ROOT --port $PORT --no-open" \
     "$BROWSER_INSTALLED" "$BROWSER_COMMAND" "$BROWSER_VERSION" "$BROWSER_NOTES" "$BROWSER_DESCRIPTOR" \
     "$SINGLE_PROJECT" "$(uname -s 2>/dev/null | grep -qi Linux && { grep -qiE 'microsoft|wsl' /proc/version 2>/dev/null && echo wsl2 || echo linux; } || echo darwin)" \
-    "$AGENT_HOME_FINGERPRINT" "$(single_project_root)"
+    "$AGENT_HOME_FINGERPRINT" "$(single_project_root)" "$BOOT_STATE_LAYOUT"
 }
 
 # ---- main -------------------------------------------------------------------
 acquire_lock
+recover_single_project_marker
 
 if try_reuse; then
   log "reusing the healthy instance at $BASE_URL"
@@ -519,6 +568,8 @@ teardown_stale
 reset_agent_home
 ensure_browser
 ensure_build
+hide_single_project_marker
 start_app
+restore_single_project_marker
 write_descriptor
 emit 0
