@@ -24,6 +24,11 @@ import type { WorkflowDef } from './types.ts';
  *
  * RED WITHOUT THE FIX: the cap test and both idle tests. GUARDS (pass both ways): DONE on the
  * first re-prompt still completes the workflow tail, and a busy final step keeps its 40 budget.
+ *
+ * The last case is the follow-up: that small gated budget leaked past the continued turn into the
+ * workflow tail, which shares the same `ActiveRun`, so the tail's own last agent step stopped after
+ * 3 re-prompts and parked at `waiting`. It is RED without that reset; the cap case above is the
+ * guard proving the gated turn itself still stops at 3.
  */
 interface Turn { text: string; toolCalls?: number }
 
@@ -86,6 +91,11 @@ const GATED: WorkflowDef = {
   steps: [{ id: 'author', prompt: '{{task}}' }, { id: 'readiness', command: 'node -e ""' }],
 };
 const SINGLE: WorkflowDef = { name: 'single', source: 'built-in', steps: [{ id: 'task', prompt: '{{task}}' }] };
+/** Same gate, but the tail is a final AGENT step — the one the leaked cap starved (#613). */
+const GATED_AGENT_TAIL: WorkflowDef = {
+  name: 'gated-agent-tail', source: 'built-in',
+  steps: [{ id: 'author', prompt: '{{task}}' }, { id: 'finish', prompt: 'finish up' }],
+};
 
 const POLLING: Turn = { text: 'Waiting for CI run 35291913711.', toolCalls: 1 };
 const PROSE_ONLY: Turn = { text: 'Everything is finished and pushed.' };
@@ -120,14 +130,14 @@ describe('#613 — the autonomous re-prompt loop is bounded', { timeout: 30_000 
     expect.poll(pred, { timeout: 10_000, interval: 10 }).toBe(true);
 
   /** Start the gated run, let its author step fail on the missing marker, then Continue it. */
-  const continueGated = async (continued: Turn[]) => {
-    runner = nudgeRunner([AUTHOR_STOPS, continued]);
-    const record = manager.startRun(GATED, { task: 'address the review', worktree: false, autonomous: true });
+  const continueGated = async (continued: Turn[], workflow: WorkflowDef = GATED, tail?: Turn[]) => {
+    runner = nudgeRunner(tail ? [AUTHOR_STOPS, continued, tail] : [AUTHOR_STOPS, continued]);
+    const record = manager.startRun(workflow, { task: 'address the review', worktree: false, autonomous: true });
     await until(() => status(record.id) === 'failed');
     expect(manager.continueRun(record.id, { text: 'finish the remaining steps' })).toEqual({ ok: true });
     // Wait for the continued session, not for `running`: a bounded loop can go running → failed
     // between two polls. The run is `running` before this spawn, so a later status is its own.
-    await until(() => runner!.specs.length === 2);
+    await until(() => runner!.specs.length >= 2);
     return record.id;
   };
 
@@ -192,5 +202,29 @@ describe('#613 — the autonomous re-prompt loop is bounded', { timeout: 30_000 
 
     expect(MAX_AUTO_CONTINUES).toBe(40);
     expect(runner.nudges).toHaveLength(busy.length);
+  });
+
+  it('the workflow tail after a gated Continue gets the full budget back, not the gated cap', async () => {
+    // RED WITHOUT THE FIX: the gated cap (3) and the nudge the gated turn spent (1) stayed on the
+    // shared `ActiveRun`, so the tail's last agent step was allowed 2 more nudges and parked at
+    // `waiting` with "automatic re-prompting stopped after 4 turns" instead of finishing.
+    const busyTail = Array.from({ length: MAX_GATED_CONTINUE_NUDGES + 2 }, () => POLLING);
+    const id = await continueGated(
+      [POLLING, { text: 'Continued step complete.\nXEZ:DONE' }],
+      GATED_AGENT_TAIL,
+      [...busyTail, { text: 'Tail finished.\nXEZ:DONE' }],
+    );
+    await until(() => ['failed', 'done', 'waiting'].includes(String(status(id))));
+
+    expect(status(id)).toBe('done');
+    expect(store.getRun(id)?.steps.find(s => s.id === 'finish')?.status).toBe('done');
+    // One nudge inside the gated turn, then five in the tail — more than the gated cap of 3.
+    expect(runner!.nudges).toHaveLength(1 + busyTail.length);
+    expect(busyTail.length).toBeGreaterThan(MAX_GATED_CONTINUE_NUDGES);
+    // The tail counts from 1 again: the gated turn's spend does not come with it.
+    expect(store.readEvents(id).some(e =>
+      e.type === 'note' &&
+      String(e.message).includes(`continuing without pausing (${busyTail.length}/${MAX_AUTO_CONTINUES})`),
+    )).toBe(true);
   });
 });
