@@ -116,4 +116,4 @@ The kit can also wrap a shared skill locally. For example, its issue-filing wrap
 
 Next: [Troubleshooting and FAQ](16-troubleshooting-faq.md)
 
-Describes xezar 0.15.0.
+Describes xezar 0.16.0.

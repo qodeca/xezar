@@ -188,4 +188,4 @@ Flags are parsed globally, but only the command consumers listed above use them.
 
 Next: [MCP project leader](13-mcp-leader.md)
 
-Describes xezar 0.15.0.
+Describes xezar 0.16.0.
