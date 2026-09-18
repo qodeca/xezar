@@ -6,10 +6,12 @@
   Once `.xezar/workspace.json` is committed, a plain clone is a single-project root, and the mode
   never opens the pinned `XEZ_HOME` — so the shared test server kept its state in the repository and
   the suite's `globalSetup` wrote its registry into a home that was never created
-  (`ENOENT … .local/qa/xez-home/config.json`). `scripts/test-env-up.sh` now hides that marker for the
-  app's own boot, the one moment the layout is resolved, and restores it before the specs run;
-  `environment.stateLayout` joins the reuse fingerprint so an instance booted by an older launcher is
-  never reused. Task worktrees are unaffected — a linked worktree is never a single-project root.
+  (`ENOENT … .local/qa/xez-home/config.json`). The app now takes an explicit `--global-layout` input
+  (`XEZ_GLOBAL_LAYOUT=1` says the same) that answers "global" for one launch and outranks the marker,
+  and `scripts/test-env-up.sh` passes it — so the suite boots in the pinned global layout without the
+  launcher renaming, moving or writing anything in the repository root. `environment.stateLayout`
+  joins the reuse fingerprint so an instance booted by an older launcher is never reused. Task
+  worktrees are unaffected — a linked worktree is never a single-project root.
 
 # 0.16.0 (2026-09-18)
 

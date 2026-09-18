@@ -160,6 +160,7 @@ setup. See [single-project mode](docs/guide/09-projects.md#to-keep-a-projects-xe
 | `XEZ_WORKTREE_DEFAULT=1` | Seed the New Task Worktree default (`0` or `1`). Without a seed, eligible runs default on; a saved global Resources setting overrides it. |
 | `XEZ_DISABLE_REPO_LOCK=1` | Bypass the repository-root lease (default off, exact `1`). Concurrent agents may overwrite files or Git state. Isolated worktrees are unaffected. |
 | `XEZ_SINGLE_PROJECT=1` | Show only the launch project and refuse project management (default off, exact `1`). Restart required; registry rows are retained. State stays in `~/.xezar`; not deprecated by `--single-project`, which also moves the state into the project. |
+| `XEZ_GLOBAL_LAYOUT=1` | Ask for the global layout on this launch even in a folder that carries `.xezar/workspace.json` (default off, exact `1`; the flag is `--global-layout`). It outranks the marker, and it is how a script or test harness gets the global layout from a clone that commits the marker without moving the project's own state. `XEZ_HOME` still only relocates the global state root and neither turns the layout on nor off. |
 | `XEZ_HIDE_TOKEN_USAGE=1` | Hide token counts, keeping cost visible (default off, exact `1`, restart required). API data is unchanged. |
 | `XEZ_HIDE_COST=1` | Hide cost, keeping token counts visible (default off, exact `1`, restart required). API data is unchanged. |
 | `XEZ_HIDE_TOKEN_METRICS=1` | Legacy switch hiding both counts and cost; overrides the two flags above (default off, exact `1`, restart required). |

@@ -29,8 +29,9 @@ import { join, resolve, sep } from 'node:path';
  * `homedir()` or `'.xezar'` join fails the suite by file and line.
  *
  * Zero config holds: nothing has to exist and nothing has to be set. Without
- * `--single-project` and without a `workspace.json` in the folder, every
- * function here answers exactly what xezar answered before it existed.
+ * `--single-project`, without `--global-layout` and without a `workspace.json`
+ * in the folder, every function here answers exactly what xezar answered before
+ * it existed.
  */
 
 /** Which of the two layouts is in force. */
@@ -111,6 +112,32 @@ export interface StateLayout {
 /** The flag that creates the mode's state in the current folder (FR-1.1). */
 export const SINGLE_PROJECT_FLAG = '--single-project';
 
+/**
+ * The flag that ANSWERS "global" for this launch (#657), even in a folder
+ * whose `workspace.json` would otherwise put it in the mode.
+ *
+ * The missing half of `SINGLE_PROJECT_FLAG`: that one turns the mode ON, and
+ * until this one existed there was no input that turned it OFF — a folder that
+ * carried the marker was in the mode and the only way out was to move the file.
+ * A caller that needs the global layout for one launch (a test harness, a
+ * script, a person comparing the two) says so here instead of editing the
+ * project's committed state, which is not a thing an unlocked rename can do
+ * safely in a checkout another process may be serving.
+ */
+export const GLOBAL_LAYOUT_FLAG = '--global-layout';
+
+/**
+ * The environment counterpart of `GLOBAL_LAYOUT_FLAG`. Strict activation, like
+ * its `XEZ_SINGLE_PROJECT` sibling: only the exact string `1` asks for the
+ * global layout, and nothing else.
+ *
+ * `XEZ_HOME` is deliberately NOT consulted for this. It keeps its documented
+ * meaning exactly — it relocates the GLOBAL state root, and it neither turns
+ * the mode on nor off — so the day a variable moved somebody's state would be a
+ * surprise this module refuses to spring.
+ */
+export const GLOBAL_LAYOUT_ENV = 'XEZ_GLOBAL_LAYOUT';
+
 /** The directory, under the project root, that holds the mode's configuration. */
 export const PROJECT_STATE_DIR = '.xezar';
 
@@ -118,7 +145,9 @@ export const PROJECT_STATE_DIR = '.xezar';
  * The file whose presence IS the mode (FR-1.2). Once `<project>/.xezar` holds
  * it, every `xez` started in that folder is in the mode, flag or no flag —
  * which is the whole point of DC-2: an environment variable can be lost by an
- * IDE, a script or a plain `xez`, and a file in the folder cannot.
+ * IDE, a script or a plain `xez`, and a file in the folder cannot. The one
+ * exception is the explicit global input (#657), which is the caller SAYING
+ * which layout it wants rather than a variable that quietly stopped deciding.
  */
 export const PROJECT_STATE_MARKER = 'workspace.json';
 
@@ -271,12 +300,17 @@ function isInsideTaskWorktree(dir: string): boolean {
  * inputs and the filesystem they describe — which is what lets it run at the
  * very first point of the boot, before anything reads state.
  *
- * The order is load-bearing:
+ * The order is load-bearing, and it is stated HERE and nowhere else:
  *
  * 1. A linked worktree, anything under `.local/xezar/worktrees/`, and `$HOME`
- *    itself are never single-project roots — the flag does not override this.
- * 2. A folder already holding `workspace.json` is in the mode, flag or not.
- * 3. Otherwise the flag, and only the flag, creates the mode.
+ *    itself are never single-project roots — no input overrides this.
+ * 2. An explicit GLOBAL input (`GLOBAL_LAYOUT_FLAG`, or `GLOBAL_LAYOUT_ENV` set
+ *    to `1`) answers "global" for this launch, and it outranks the marker. It
+ *    is also the one input that outranks `SINGLE_PROJECT_FLAG`: a caller that
+ *    asks for both is contradicting itself, and the explicit answer to "which
+ *    layout" is the more specific of the two.
+ * 3. A folder already holding `workspace.json` is in the mode, flag or not.
+ * 4. Otherwise the flag, and only the flag, creates the mode.
  *
  * `XEZ_SINGLE_PROJECT` is deliberately NOT consulted. It keeps today's exact
  * meaning — one project, no project management, GLOBAL state — and the new mode
@@ -292,9 +326,22 @@ export function resolveStateLayout(
   if (isLinkedWorktree(projectRoot) || isInsideTaskWorktree(projectRoot) || isUserHome(projectRoot)) {
     return globalStateLayout(env);
   }
+  if (globalLayoutAsked(argv, env)) return globalStateLayout(env);
   const layout = projectStateLayout(projectRoot);
   if (existsSync(layout.workspacePath)) return layout;
   return argv.includes(SINGLE_PROJECT_FLAG) ? layout : globalStateLayout(env);
+}
+
+/**
+ * Is this launch explicitly asking for the global layout (#657)? The one
+ * spelling of that question, so a second reader cannot disagree with
+ * `resolveStateLayout` about what the input means.
+ */
+function globalLayoutAsked(
+  argv: readonly string[] = [],
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  return argv.includes(GLOBAL_LAYOUT_FLAG) || env[GLOBAL_LAYOUT_ENV] === '1';
 }
 
 /**

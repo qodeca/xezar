@@ -24,6 +24,8 @@ xezar has two layouts. The global layout is the default. The single-project layo
 
 In the single-project layout, xezar does not open `~/.xezar` for settings, and `XEZ_HOME` neither turns the layout on nor off. The four `.xezar/` files can be committed, so a clone runs with the same settings, accounts and limits. Agent logins (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `OPENCODE_CONFIG_DIR`, `PI_CODING_AGENT_DIR`), `gh`, `git` and global skill libraries stay on the machine. Resource limits in `.xezar/workspace.json` apply exactly as written, within the ranges in the tables below, even above what this machine would choose for itself; an absent key still takes the machine-derived default. A `.xezar/workspace.json` that is not valid JSON, or a state folder that cannot be written, stops the start with a named error rather than falling back to your global setup.
 
+The folder decides the layout, so ask for the other one explicitly when you need it: `xezar --global-layout` (or `XEZ_GLOBAL_LAYOUT=1`) resolves the **global** layout for that launch even in a folder that carries `.xezar/workspace.json`. The explicit request outranks the marker, so that run keeps its state in `~/.xezar` (or `XEZ_HOME`) and reads none of the project's committed state, and nothing in the folder is moved, renamed or written. It is the counterpart of `--single-project`, which asks for the single-project layout; given both, the explicit global request wins. `XEZ_HOME` keeps its own meaning throughout: it relocates the global state root, and it neither turns the layout on nor off.
+
 The first single-project start in a folder without `.xezar/workspace.json` asks once, in a terminal, whether to copy your global setup (`~/.xezar`, or `XEZ_HOME`) into the project:
 
 | Global file | Copied to | What is left out |
@@ -124,6 +126,7 @@ Export variables before starting xezar, for example `XEZ_REVIEW_GATE=1 xezar`. T
 | `XEZ_AUTONOMOUS_DEFAULT`, `XEZ_WORKTREE_DEFAULT` | Exact `0`/`1` New Task seeds; stored composer defaults win. |
 | `XEZ_DISABLE_REPO_LOCK=1` | Bypass the repository-root lease. Concurrent in-place runs can overwrite each other's work; isolated worktrees are unaffected. |
 | `XEZ_SINGLE_PROJECT=1` | Show only the launch project and refuse project add/edit/browse/checkout/remove. Registry entries remain, and state stays in the global layout. Not deprecated; the separate `--single-project` flag also moves the state into the project. |
+| `XEZ_GLOBAL_LAYOUT=1` | Resolve the global layout for this launch even in a folder that carries `.xezar/workspace.json` (exact `1`; the flag is `--global-layout`). It outranks the marker and reads none of the project's committed state. |
 | `XEZ_HIDE_TOKEN_USAGE=1`, `XEZ_HIDE_COST=1` | Hide the corresponding cockpit metrics; telemetry is still collected. Restart after changing. |
 | `XEZ_HIDE_TOKEN_METRICS=1` | Legacy switch hiding both token counts and cost. |
 | `XEZ_NO_BANNER=1` | Suppress the team-skills terminal banner for `serve`. |
