@@ -4,10 +4,10 @@ Use a project leader when you want a coding-agent session to coordinate tasks th
 
 ## Before setup: check that the running build carries leader delivery
 
-The published npm 0.14.0 package does **not** include the leader door: `leader_events` actions `attach` and `status`, or pushed project events. Do not infer support from a version promised by this page. Check the running cockpit's capabilities instead:
+The published npm package has carried the leader door since 0.15.0: `leader_events` actions `attach` and `status`, and pushed project events. A cockpit running an older build does not have it, so check the running cockpit's capabilities before relying on the steps below:
 
 1. In **Settings → MCP connection**, confirm that **Connection status** and **Attach leader** are present; or connect the MCP bridge, call `health` and `discover_project`, then confirm that `leader_events` accepts action `status`.
-2. If `status` is an unknown action, or the settings card has no attachment control, that running build cannot complete the instructions below. Update to a build that carries the door, restart the cockpit and start a new client session.
+2. If `status` is an unknown action, or the settings card has no attachment control, that running build predates 0.15.0 and cannot complete the instructions below. Update to 0.15.0 or later, restart the cockpit and start a new client session.
 
 `discover_project` establishes which project and effective capabilities this MCP session is bound to. `leader_events` `status` is the authoritative check for this session's attachment and push capability.
 
@@ -328,4 +328,4 @@ with no project MCP servers until the file is fixed.
 
 Next: [Remote access](14-remote-access.md)
 
-Describes the current capability-detected leader workflow. The published npm 0.14.0 package does not carry the leader door.
+Describes xezar 0.15.0.
