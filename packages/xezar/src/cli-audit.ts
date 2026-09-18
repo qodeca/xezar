@@ -5,7 +5,7 @@ import type { AuditActor, AuditResource } from '@qodeca/xezar-contract';
 import { AuditTrail, doorAuditWarning, type AuditChannel, type AuditScope } from './mcp/audit-trail.ts';
 import { ensureProjectDataIgnored, projectDataDir } from './project-data-paths.ts';
 import { loadWorkspaceConfig } from './workspace/config.ts';
-import { allocateProjectSlug, shouldRegisterProject } from './workspace/projects.ts';
+import { allocateProjectSlug, findRegistryProject, shouldRegisterProject } from './workspace/projects.ts';
 
 /**
  * The command-line door of the audit trail (#306, part 2) — spec
@@ -180,7 +180,10 @@ export function cliAudit(
     scope,
     async projectScope(projectId) {
       try {
-        const known = (await loadWorkspaceConfig()).projects.find((project) => project.id === projectId);
+        // Layout-aware (#600 review m5): in the project layout the registry is the DERIVED row, so
+        // a raw stored-row lookup returned undefined for the boot project and its records lost
+        // their scope.
+        const known = await findRegistryProject({ id: projectId });
         return known ? { projectId: known.id, dataDir: projectDataDir(known.root), isProject: true } : undefined;
       } catch {
         return undefined;

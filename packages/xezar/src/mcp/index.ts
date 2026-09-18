@@ -13,8 +13,8 @@ import {
 import { collectSecretValues } from '../core/secret-redaction.ts';
 import { projectDataDir } from '../project-data-paths.ts';
 import type { RunStore } from '../runs/store.ts';
-import { loadWorkspaceConfig } from '../workspace/config.ts';
 import { ProjectOwnership } from '../workspace/project-owner.ts';
+import { findRegistryProject } from '../workspace/projects.ts';
 import { codexControlHome } from './adapters/codex-link.ts';
 import { answerRefusal, classifyMcpCall } from './audit-inventory.ts';
 import { conflictRefusalOf, failedAnswerOf, handoffGitRefusalOf } from './audit-answer-refusals.ts';
@@ -87,7 +87,7 @@ export interface StartMcpServiceOptions {
  * it forwards every call to this socket, so both doors get exactly this behaviour.
  */
 export async function startMcpService(opts: StartMcpServiceOptions): Promise<McpServiceHandle> {
-  const project = (await loadWorkspaceConfig()).projects.find((p) => p.id === opts.projectId);
+  const project = await findRegistryProject({ id: opts.projectId });
   if (!project) throw new Error(`project ${opts.projectId} is not in the workspace registry`);
   const providerBaseline = await opts.providerBaseline?.().catch(() => undefined);
   const dataDir = opts.store?.dataDir ?? projectDataDir(project.root);
@@ -554,7 +554,7 @@ export async function runMcpCommand(opts: {
  */
 export async function resolveMcpTarget(repoRoot: string): Promise<ServiceTarget> {
   const root = await realpath(repoRoot).catch(() => resolve(repoRoot));
-  const project = (await loadWorkspaceConfig()).projects.find((p) => p.root === root);
+  const project = await findRegistryProject({ root });
   if (!project) {
     return {
       kind: 'unavailable',

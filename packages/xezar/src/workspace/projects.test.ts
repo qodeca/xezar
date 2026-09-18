@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PROJECT_TAGS_MAX, PROJECT_TAG_MAX_LENGTH } from '@qodeca/xezar-contract';
 import { projectStateLayout, setActiveStateLayout } from '../state-layout.ts';
 import { loadWorkspaceConfig, mergeWriteWorkspaceConfig } from './config.ts';
@@ -446,10 +446,37 @@ describe('single-project layout — per-machine facts stay out of the committed 
     expect(readFileSync(workspacePath, 'utf8')).toBe(committed);
   });
 
-  it('control: the derived row id is allocated against the STORED ids, never the empty set', async () => {
-    const entry = await registerProject(projectRoot);
+  it('the derived row id is allocated against the STORED ids, never the empty set', async () => {
+    // No `registerProject` call on purpose: the DERIVATION itself must allocate
+    // against the stored ids. With registration in the path this passed on the
+    // base too, where the write produced the same suffixed id (review m3).
     const foreignId = allocateProjectSlug(projectRoot, []);
-    expect(entry.id).toBe(allocateProjectSlug(projectRoot, [foreignId]));
-    expect((await listProjects({ projectId: entry.id })).map((row) => row.id)).toEqual([entry.id]);
+    const rows = await listProjects();
+    expect(rows.map((row) => row.id)).toEqual([allocateProjectSlug(projectRoot, [foreignId])]);
+    expect(rows[0]!.id).not.toBe(foreignId);
+  });
+
+  it('keeps addedAt stable across two starts in the mode', async () => {
+    const machinePath = join(projectRoot, '.local', 'xezar', 'machine-state.json');
+    const first = await registerProject(projectRoot);
+    // First registration persists the stamp, so a later start can reuse it.
+    expect(JSON.parse(readFileSync(machinePath, 'utf8'))).toMatchObject({ addedAt: first.addedAt });
+
+    // A second "start" is a fresh module instance: DERIVED_AT is minted at module
+    // load, so only a row that reads the persisted stamp keeps the same value.
+    // Wait past the first stamp's millisecond so a re-derived fallback is visibly
+    // different rather than equal by clock resolution.
+    const firstMs = Date.parse(first.addedAt);
+    while (Date.now() <= firstMs) await new Promise((resolve) => setTimeout(resolve, 1));
+
+    vi.resetModules();
+    const layout = await import('../state-layout.ts');
+    layout.setActiveStateLayout(layout.projectStateLayout(projectRoot));
+    const fresh = await import('./projects.ts');
+    const second = await fresh.registerProject(projectRoot);
+    layout.setActiveStateLayout(null);
+
+    expect(second.addedAt).toBe(first.addedAt);
+    expect(Date.parse(second.addedAt)).toBe(firstMs);
   });
 });

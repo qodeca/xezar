@@ -8,7 +8,7 @@ import { projectConfigTool, type ProjectConfigContext } from '../mcp/tools/proje
 import { RunStore } from '../runs/store.ts';
 import { resolveStateLayout, setActiveStateLayout } from '../state-layout.ts';
 import type { RunManager } from '../workflows/run.ts';
-import { allocateProjectSlug, registerProject } from '../workspace/projects.ts';
+import { allocateProjectSlug, listProjects, registerProject } from '../workspace/projects.ts';
 import { runProjectsCommand, type ProjectsCommandIo } from '../workspace/projects-cli.ts';
 import { createApp } from './server.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
@@ -218,6 +218,26 @@ describe('single-project mode — one registry, refused in all three doors (#600
     // `/p/<other>/…` request has to stay the 404 it is in the global layout.
     const res = await apiRequest(app(), '/api/v1/p/xez-sp-other/config');
     expect(res.status).toBe(404);
+  });
+
+  // ---- M2: the agent-account selection resolves the boot project ----------------
+
+  it('M2: the selection PUT answers 200 for the boot id and for `default` in the project layout', async () => {
+    // `PUT …/agent-profiles/selection` resolved the project through
+    // `projectRootFor`, which read only the STORED rows — so in the mode every
+    // selection answered `404 {error: "unknown project"}` and a person could not
+    // choose which account this project uses (Settings → agent accounts).
+    narrow('project-root');
+    const bootId = (await listProjects()).find((p) => p.root === projectRoot)!.id;
+
+    for (const projectId of [bootId, 'default']) {
+      const res = await apiRequest(app(), '/api/v1/workspace/agent-profiles/selection', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ projectId, provider: 'claude', profileId: null }),
+      });
+      expect(res.status, `${projectId}: ${await res.clone().text()}`).toBe(200);
+    }
   });
 
   // ---- SP-3.2 and SP-3.3: refused in all three doors -----------------------

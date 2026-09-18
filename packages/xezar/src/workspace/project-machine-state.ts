@@ -56,6 +56,14 @@ export type MachineLastListen = {
 };
 
 export interface ProjectMachineState {
+  /**
+   * When this machine FIRST registered the folder (#600 review m1). Stored here
+   * rather than derived so `addedAt` survives a restart: the mode's registry is
+   * the derived row, and a derived timestamp would reset on every start. Only
+   * a DERIVED row reads it — a committed stored row keeps its own committed
+   * `addedAt`.
+   */
+  addedAt?: string;
   lastOpenedAt?: string;
   lastListen?: MachineLastListen;
 }
@@ -82,6 +90,9 @@ export function readProjectMachineState(layout: StateLayout = activeStateLayout(
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
   const record = parsed as Record<string, unknown>;
   const state: ProjectMachineState = {};
+  if (typeof record.addedAt === 'string' && record.addedAt !== '') {
+    state.addedAt = record.addedAt;
+  }
   if (typeof record.lastOpenedAt === 'string' && record.lastOpenedAt !== '') {
     state.lastOpenedAt = record.lastOpenedAt;
   }
@@ -109,12 +120,18 @@ export function writeProjectMachineState(
   atomicWriteJsonSync(path, state);
 }
 
-/** Record the launch stamp, keeping whatever else the file holds. */
+/**
+ * Record the launch stamp, keeping whatever else the file holds. The FIRST
+ * launch in this folder also records `addedAt` — and never overwrites it on a
+ * later one — so the mode's derived row has a stable "Added" value across
+ * starts (#600 review m1).
+ */
 export function recordProjectOpened(
   openedAt: string,
   layout: StateLayout = activeStateLayout(),
 ): void {
   const state = readProjectMachineState(layout);
+  if (state.addedAt === undefined) state.addedAt = openedAt;
   state.lastOpenedAt = openedAt;
   writeProjectMachineState(state, layout);
 }

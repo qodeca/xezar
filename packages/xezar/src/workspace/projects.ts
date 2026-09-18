@@ -398,18 +398,22 @@ async function projectLayoutRow(
 ): Promise<WorkspaceProject> {
   const real = await normalizeRoot(projectRoot);
   const existing = stored.find((project) => project.root === real);
-  const row = existing ?? {
-    id: allocateProjectSlug(real, stored.map((project) => project.id)),
-    root: real,
-    name: basename(real),
-    addedAt: DERIVED_AT,
-    lastOpenedAt: DERIVED_AT,
-    source: 'local' as const,
-  };
   // Per-machine facts are overlaid from the working file, never from the
   // committed one (#600 defect A): the stored row keeps identity (id, name,
   // tags, cap) and the machine keeps its own stamps.
   const machine = readProjectMachineState();
+  const row = existing ?? {
+    id: allocateProjectSlug(real, stored.map((project) => project.id)),
+    root: real,
+    name: basename(real),
+    // `addedAt` is a fact about THIS machine's first registration, so a DERIVED
+    // row reads it from the working file and only falls back to the process
+    // stamp when nothing was recorded yet (#600 review m1). A STORED row keeps
+    // its committed `addedAt`, which is what a teammate inherits.
+    addedAt: machine.addedAt ?? DERIVED_AT,
+    lastOpenedAt: DERIVED_AT,
+    source: 'local' as const,
+  };
   return {
     ...row,
     ...(machine.lastOpenedAt !== undefined ? { lastOpenedAt: machine.lastOpenedAt } : {}),
@@ -424,10 +428,11 @@ async function projectLayoutRow(
  * claimed by it beyond "this process first saw the folder now".
  *
  * In the project layout a row stays derived for the folder's whole life, because
- * registration writes nothing there (#600 defect A) — so a derived `addedAt` is
- * per-process in that mode. `lastOpenedAt` is NOT: it comes from the machine
- * state file, so "Last opened" survives a restart. `addedAt` is a display fact
- * with no reader that depends on its stability across restarts.
+ * registration writes nothing there (#600 defect A) — so a derived `addedAt`
+ * comes from `machine-state.json` when this machine has registered the folder
+ * before, and only falls back to this process stamp otherwise (#600 review m1).
+ * `lastOpenedAt` is likewise from the machine state file, so "Last opened"
+ * survives a restart.
  */
 const DERIVED_AT = new Date().toISOString();
 
@@ -458,6 +463,29 @@ export async function registryRows(
     ? [await projectLayoutRow(config.projects, layout.projectRoot!)]
     : config.projects;
   return selector ? rows.filter((project) => project.id === selector.projectId) : rows;
+}
+
+/**
+ * The ONE layout-aware lookup into the registry (#600 review M1/M2/m5).
+ *
+ * In the project layout the registry is the DERIVED row, so a raw
+ * `loadWorkspaceConfig().projects.find(...)` finds nothing for the folder that
+ * owns its state: the MCP service refused to start, the agent-account
+ * selection 404'd for the boot project, and CLI audit records lost their
+ * project scope. Every reader that needs a project row by id or by realpath
+ * goes through here instead, so the two layouts answer the same question the
+ * same way.
+ *
+ * `root` is compared as given — callers pass a realpath'd path, the same
+ * spelling `registerProject` dedupes on.
+ */
+export async function findRegistryProject(
+  query: { id: string } | { root: string },
+): Promise<WorkspaceProject | undefined> {
+  const rows = await registryRows();
+  return 'id' in query
+    ? rows.find((project) => project.id === query.id)
+    : rows.find((project) => project.root === query.root);
 }
 
 /**

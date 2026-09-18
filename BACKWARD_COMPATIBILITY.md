@@ -486,17 +486,24 @@ contract from this release on.
   the same name could not coexist with that guard. `workspace.json.bak` — the registry snapshot
   every successful merge-write has always refreshed beside `config.json` — follows its file into
   the project directory; it is derived state, and `.gitignore` decides whether it travels.
-- **The committed file holds no per-machine fact (#600, release-candidate repair).**
-  `<project>/.xezar/workspace.json` is the file a team commits, so a launch writes nothing about
-  THIS machine into it: registration does not append a row and does not stamp one, and the row
-  this folder is answered with is DERIVED from the folder (or taken from the stored row that
-  travelled with the clone) rather than written back. `lastOpenedAt` and `lastListen` — when this
-  clone was last opened here, and the port its cockpit last held here — live in
+- **The committed file holds no per-machine fact after the first opt-in boot (#600,
+  release-candidate repair).** `<project>/.xezar/workspace.json` is the file a team commits, so an
+  ordinary launch writes nothing about THIS machine into it: registration does not append a row and
+  does not stamp one, and the row this folder is answered with is DERIVED from the folder (or taken
+  from the stored row that travelled with the clone) rather than written back. `addedAt` (when this
+  machine first registered the folder), `lastOpenedAt` and `lastListen` — when this clone was last
+  opened here, and the port its cockpit last held here — live in
   `<project>/.local/xezar/machine-state.json`, beside the other working files, which the blanket
   `.local/.gitignore` keeps out of Git. Port memory therefore still works across restarts in the
-  mode, and `git status` stays clean after a launch. The default GLOBAL layout is byte-for-byte
-  unchanged: it still writes both keys into `~/.xezar/config.json`. Breaking: writing a
-  per-machine key into the committed file, or a launch that leaves `git status` dirty in the mode.
+  mode, `addedAt` is stable across restarts, and `git status` stays clean after a launch. **One
+  exception is named rather than hidden:** the FIRST boot that opts a folder in still writes
+  `workspace.json` once, through migration 001, with `schemaVersion` and the materialized defaults —
+  including the host-derived `resources.memoryLimitMb` (`deriveDefaultMemoryLimitMb`), which then
+  becomes an explicit committed value every teammate inherits until someone edits it. That write
+  predates this repair and happens once per opt-in folder; no later launch rewrites it. The default
+  GLOBAL layout is byte-for-byte unchanged: it still writes both keys into `~/.xezar/config.json`.
+  Breaking: a launch after the first opt-in boot writing a per-machine key into the committed file,
+  or a launch that leaves `git status` dirty in the mode.
 - **Locked detection rule.** A linked git worktree is never a single-project root, the flag
   included, and neither is anything under `.local/xezar/worktrees/` or the user's home directory
   itself. That is not tidiness: every xezar task worktree is a linked worktree, so a mode that

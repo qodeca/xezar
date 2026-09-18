@@ -194,6 +194,7 @@ import { PROFILE_CAPABLE_PROVIDERS, profileEnv, supportsProfiles } from '../core
 import { withEnvPrefix } from '../core/shell-env.ts';
 import {
   allocateProjectSlug,
+  findRegistryProject,
   listProjects,
   normalizeProjectTags,
   probeProjectStatus,
@@ -1162,8 +1163,11 @@ export function createApp(deps: ServerDeps) {
     return bootProjectCache ?? allocateProjectSlug(bootRoot, registry.map((project) => project.id));
   };
   // Health's workspace garnish: id+name ONLY — never `root` (#431, see the
-  // health route). Reads only the registry file; no per-root status probes,
-  // so health stays cheap enough for the bookmarklet's 800 ms port sweep.
+  // health route). No per-root status probes, so health stays cheap enough for
+  // the bookmarklet's 800 ms port sweep. In the GLOBAL layout it reads only the
+  // registry file; in the project layout it reads the DERIVED row, which also
+  // realpath's the folder and reads the uncommitted `machine-state.json` — the
+  // two reads that make the row, not extra probes.
   const workspaceSummary = async (): Promise<{
     projects: { id: string; name: string }[];
     bootProject: string;
@@ -1814,10 +1818,12 @@ export function createApp(deps: ServerDeps) {
     return prefixed === null ? null : `cd '${cwd}' && ${prefixed}`;
   };
 
-  /** A registered project's realpath'd root, or null when the id is unknown. */
+  /** A registered project's realpath'd root, or null when the id is unknown. Layout-aware (#600
+   *  review M2): in the project layout the registry is the DERIVED row, so a raw stored-row lookup
+   *  answered `unknown project` for the boot project. */
   const projectRootFor = async (projectId: string): Promise<string | null> => {
     try {
-      return (await loadWorkspaceConfig()).projects.find((p) => p.id === projectId)?.root ?? null;
+      return (await findRegistryProject({ id: projectId }))?.root ?? null;
     } catch {
       return null;
     }
