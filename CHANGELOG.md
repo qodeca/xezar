@@ -77,6 +77,16 @@
   `XEZ_SINGLE_PROJECT=1` refuses with exactly the status codes, sentences, exit codes and audit
   reasons it always has — the guards widened what turns them on, never what they do. Details:
   `BACKWARD_COMPATIBILITY.md` § 2 and § "Single-project ROOT mode".
+- ✨ **The cockpit says when it is in single-project mode, and Settings names the file each section
+  writes.** (#600, part 4 of 5) A neutral "Single project" badge sits under the logo in the sidebar
+  and in the phone top bar. Add project, the sidebar's project groups, the composer's project pill
+  and the command palette's Projects group are absent in the mode — and under `XEZ_SINGLE_PROJECT=1`
+  — whatever the registry happens to list. Each Settings section says where its saves land
+  (`.xezar/config.json`, `.xezar/workspace.json`, `.xezar/agent-accounts.json`,
+  `.xezar/workspace-ui.json`, or the uncommitted `.local/xezar/ui-state.json`), and the global
+  area reads "Workspace settings". The `/settings/global/…` URLs keep landing; in the mode they
+  write the project's files instead of the home directory. Global mode is unchanged. Details:
+  `BACKWARD_COMPATIBILITY.md` § 2.
 - ✨ **The sidebar is navigation-only.** (#546) The Active/Archived task switcher, task list, and `Search…` launcher have been removed from the sidebar. Manage and search tasks on the Tasks page, and open the command palette with `⌘K` on macOS or `Ctrl+K` elsewhere. Existing task badges, task data, APIs, and saved UI state are unchanged.
 - **The audit trail is bounded, and safe to share between processes.** (#306, part 3 of 4) A
   project's `.local/xezar/audit.ndjson` now rotates before it passes 10 MB (10,000,000 bytes) and

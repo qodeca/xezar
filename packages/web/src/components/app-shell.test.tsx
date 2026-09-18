@@ -223,6 +223,57 @@ describe('AppShell', () => {
     })
   })
 
+  // #600 SP-4.1: single-project mode says so on the sidebar brand block AND in the phone top bar,
+  // because below `md` the sidebar is a drawer and the mode must be legible without opening it.
+  describe('single-project mode badge (#600)', () => {
+    const brand = () => document.querySelector('[data-slot="sidebar-brand"]') as HTMLElement
+    const mobileStatus = () => document.querySelector('[data-slot="mobile-status"]') as HTMLElement
+
+    it('renders the badge on the brand block and in the phone status slot', () => {
+      renderShell('/', { singleProjectRoot: true, repo: { name: 'xezar', branch: 'main' } })
+      const inBrand = brand().querySelector('[data-slot="mode-badge"]')
+      const onPhone = mobileStatus().querySelector('[data-slot="mode-badge"]')
+      expect(inBrand?.textContent).toBe(
+        'Single project — xezar settings and state live in this folder, not in your home directory',
+      )
+      expect(onPhone?.textContent).toBe(inBrand?.textContent)
+      // A fact, not a control: no link, no button, nothing in the tab order.
+      expect(inBrand?.closest('a, button')).toBeNull()
+      expect(inBrand?.getAttribute('tabindex')).toBeNull()
+      // No `title`: the sr-only tail already carries the sentence, and a tooltip would repeat it.
+      expect(inBrand?.hasAttribute('title')).toBe(false)
+      // Line one of the brand block is untouched: the repo chip still renders beside the wordmark.
+      expect(brand().querySelector('[data-slot="repo-chip"]')?.textContent).toBe('xezar / main')
+    })
+
+    it('keeps the development-build badge beside it on a dev build', () => {
+      renderShell('/', { singleProjectRoot: true, channel: 'dev' })
+      expect(brand().querySelector('[data-slot="dev-badge"]')).not.toBeNull()
+      expect(brand().querySelector('[data-slot="mode-badge"]')).not.toBeNull()
+    })
+
+    it('renders no badge and keeps the one-line brand block in global mode', () => {
+      renderShell('/', { repo: { name: 'xezar', branch: 'main' } })
+      expect(document.querySelector('[data-slot="mode-badge"]')).toBeNull()
+      expect(mobileStatus().childElementCount).toBe(0)
+      expect(brand().className).toBe('flex items-center gap-row px-3.5 pt-3.5 pb-2.5')
+    })
+
+    it('is not implied by the XEZ_SINGLE_PROJECT narrowing, which keeps global state', () => {
+      renderShell('/', { singleProject: true })
+      expect(document.querySelector('[data-slot="mode-badge"]')).toBeNull()
+    })
+
+    // Design review NB-1: the gear opens a page titled "Workspace settings" in the mode, so its
+    // accessible name says the same; "Global" is the one word that is false there.
+    it('names the settings gear after the page it opens', () => {
+      renderShell('/', { singleProjectRoot: true })
+      const gear = within(sidebar()).getByRole('link', { name: 'Workspace settings' })
+      expect(gear.getAttribute('title')).toBe('Workspace settings')
+      expect(within(sidebar()).queryByRole('link', { name: 'Global settings' })).toBeNull()
+    })
+  })
+
   it('puts the theme toggle in the sidebar footer', () => {
     renderShell()
     expect(within(footer()).getByRole('button', { name: /^Theme:/ })).toBeTruthy()

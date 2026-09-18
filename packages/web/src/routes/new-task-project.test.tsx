@@ -264,8 +264,8 @@ describe('the new-task project pill', () => {
 
   it('stays hidden when single-project mode pins the registry to the boot project', async () => {
     serve({
-      // Health advertises the mode, but the composer deliberately has no capability gate: the
-      // ordinary pinned registry response is enough to collapse a choice with one option.
+      // Health advertises the narrowing AND the registry is pinned to one row: either alone hides
+      // the pill (the capability gate is the #600 case below).
       health: {
         ...HEALTH,
         capabilities: { ...HEALTH.capabilities, singleProject: true },
@@ -276,6 +276,31 @@ describe('the new-task project pill', () => {
     await composerReady()
     expect(screen.queryByRole('button', { name: 'Project' })).toBeNull()
     expect(document.querySelector('[data-slot="source-pill"]')).not.toBeNull()
+  })
+})
+
+// #600 SP-4.2 / DP-6: in single-project mode the pill is absent by CAPABILITY, whatever the
+// registry lists, and the composer keeps its scope from `/p/<id>/new` — never from the pill.
+describe('project pill in single-project mode (#600)', () => {
+  it('is absent even when the registry lists two projects, and the task still posts to the URL scope', async () => {
+    serve({
+      health: {
+        ...HEALTH,
+        capabilities: { ...HEALTH.capabilities, singleProjectRoot: true },
+      },
+    })
+    renderAt(`/p/${OTHER}/new`)
+    await composerReady()
+    await waitFor(() => expect(requests.some((r) => r.url === '/api/v1/health')).toBe(true))
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Project' })).toBeNull())
+    expect(document.querySelector('[data-slot="source-pill"]')).not.toBeNull()
+
+    fireEvent.change(textarea(), { target: { value: 'Ship the storefront' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Start task' }))
+    await waitFor(() =>
+      expect(requests.some((r) => r.method === 'POST' && r.url === `/api/v1/p/${OTHER}/runs`)).toBe(true),
+    )
+    expect(requests.some((r) => r.method === 'POST' && r.url === '/api/v1/runs')).toBe(false)
   })
 })
 

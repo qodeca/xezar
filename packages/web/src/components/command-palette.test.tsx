@@ -1,5 +1,5 @@
 import { QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -99,7 +99,7 @@ function project(overrides: Partial<ProjectListEntry> & { id: string }): Project
 }
 
 /** Health with/without a working forge — what gates the Views group's GitHub row (R6 1.1). */
-function health(forgeAvailable: boolean, automations = false): HealthResponse {
+function health(forgeAvailable: boolean, automations = false, singleProjectRoot = false): HealthResponse {
   return {
     version: '0.0.0-test',
     channel: 'release',
@@ -110,7 +110,17 @@ function health(forgeAvailable: boolean, automations = false): HealthResponse {
     checks: [],
     defaultRunner: 'claude',
     forge: forgeAvailable ? { kind: 'github', available: true } : null,
-    capabilities: { localHandoff: true, tokenMetrics: true, tokenUsageMetrics: true, costMetrics: true, followups: true, singleProject: false, automations },
+    capabilities: {
+      localHandoff: true,
+      tokenMetrics: true,
+      tokenUsageMetrics: true,
+      costMetrics: true,
+      followups: true,
+      singleProject: false,
+      automations,
+      // Only sent when true, exactly as the server does (#600): a 0.15.0 server never sends it.
+      ...(singleProjectRoot ? { singleProjectRoot: true } : {}),
+    },
   }
 }
 
@@ -140,6 +150,7 @@ function renderPalette({
   theme,
   forge = true,
   automations = false,
+  singleProjectRoot = false,
   uiState = {} as Record<string, unknown>,
   entry = '/',
 }: {
@@ -153,6 +164,8 @@ function renderPalette({
   forge?: boolean
   /** `capabilities.automations` (#801) — off by default, exactly as a default server reports. */
   automations?: boolean
+  /** `capabilities.singleProjectRoot` (#600) — absent by default, exactly as a default server. */
+  singleProjectRoot?: boolean
   uiState?: Record<string, unknown>
   /** The URL to mount at. `/p/<id>/…` is what gives the palette an ACTIVE project. */
   entry?: string
@@ -161,7 +174,7 @@ function renderPalette({
   serve({
     '/api/v1/runs': runs,
     '/api/v1/skills': skills,
-    '/api/v1/health': health(forge, automations),
+    '/api/v1/health': health(forge, automations, singleProjectRoot),
     '/api/v1/ui-state': uiState,
     '/api/v1/projects': { projects, bootProject: projects[0]?.id ?? 'default', projectsDir: '/repos' },
     '/api/v1/workspace/runs-index': { runs: indexed, perProjectLimit: 200, truncated },
@@ -411,6 +424,37 @@ describe('Projects group', () => {
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled())
     expect(document.querySelector('[data-slot="palette-project"]')).toBeNull()
+  })
+
+  // #600 SP-4.2: the gate is the capability, never the registry's length — a registry that lists
+  // three rows in single-project mode still offers no Projects group and no "All tasks" view.
+  it('renders no Projects group in single-project mode, whatever the registry lists', async () => {
+    renderPalette({ projects: REGISTRY, entry: '/p/xezar/', singleProjectRoot: true })
+    openWith({ metaKey: true })
+    await screen.findByRole('dialog')
+    // Health has answered once the search box stops offering projects…
+    await waitFor(() =>
+      expect(screen.getByRole('combobox').getAttribute('placeholder')).toBe('Search tasks, views, actions, skills…'),
+    )
+    // …and the registry has answered once the fetch for it has settled.
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([input]) => String(input) === '/api/v1/projects')).toBe(true),
+    )
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    })
+    expect(document.querySelector('[data-slot="palette-project"]')).toBeNull()
+    expect(screen.queryByText('Projects')).toBeNull()
+    expect(document.querySelector('[data-nav-to="/tasks"]')).toBeNull()
+  })
+
+  it('keeps the Projects placeholder wording in global mode', async () => {
+    renderPalette({ projects: REGISTRY, entry: '/p/xezar/' })
+    openWith({ metaKey: true })
+    await screen.findByText('shop')
+    expect(screen.getByRole('combobox').getAttribute('placeholder')).toBe(
+      'Search projects, tasks, views, actions, skills…',
+    )
   })
 
   it('lists a missing folder but refuses to navigate into it', async () => {

@@ -78,12 +78,18 @@ function project(id: 'boot' | 'demo') {
  *  holding only the boot project. */
 function seededClient({
   singleProject = false,
+  singleProjectRoot = false,
   registry,
-}: { singleProject?: boolean; registry?: ProjectListEntry[] } = {}) {
+}: { singleProject?: boolean; singleProjectRoot?: boolean; registry?: ProjectListEntry[] } = {}) {
   const client = createQueryClient()
   client.setQueryData(queryKeys.health, {
     bootProject: 'boot',
-    capabilities: { localHandoff: true, followups: true, singleProject },
+    capabilities: {
+      localHandoff: true,
+      followups: true,
+      singleProject,
+      ...(singleProjectRoot ? { singleProjectRoot: true } : {}),
+    },
   })
   client.setQueryData(workspaceQueryKeys.projects, {
     projects: registry ?? [project('boot'), project('demo')],
@@ -232,6 +238,18 @@ describe('the General page', () => {
     })
     expect(document.querySelector('[data-slot="project-facts"]')).not.toBeNull()
     expect(document.querySelector('[data-slot="project-location-path"]')?.textContent).toBe(BOOT_ROOT)
+    expect(screen.queryByLabelText('Max parallel tasks for xezar')).toBeNull()
+    expect(document.querySelector('[data-action="project-general-remove"]')).toBeNull()
+  })
+
+  // #600: single-project mode drops the same two controls — the registry doors refuse there too —
+  // and it is the capability that decides, not a registry that happens to list one row.
+  it('single-project mode (#600) drops the registry controls even when the registry lists two rows', async () => {
+    renderAt('/settings', { singleProjectRoot: true })
+    await waitFor(() => {
+      expect(general()).not.toBeNull()
+    })
+    expect(document.querySelector('[data-slot="project-facts"]')).not.toBeNull()
     expect(screen.queryByLabelText('Max parallel tasks for xezar')).toBeNull()
     expect(document.querySelector('[data-action="project-general-remove"]')).toBeNull()
   })

@@ -312,6 +312,46 @@ describe('sidebar wiring', () => {
     expect(screen.getByRole('navigation', { name: 'Main' })).toBeTruthy()
   })
 
+  // #600 SP-4.2: the gate is the CAPABILITY, not the registry's length. A registry that lists two
+  // rows in single-project mode must not bring the project groups or Add project back.
+  it('hides the project groups and Add project in single-project mode whatever the registry lists', async () => {
+    serve({
+      '/api/v1/health': {
+        ...HEALTH,
+        capabilities: { ...HEALTH.capabilities, singleProjectRoot: true },
+      },
+      '/api/v1/todos': [],
+      '/api/v1/projects': {
+        projects: [PROJECT, { ...PROJECT, id: 'shop', name: 'shop', lastOpenedAt: '2026-07-19T00:00:00.000Z' }],
+        bootProject: 'xezar',
+        projectsDir: '/home/me/xezar/projects',
+      },
+      '/api/v1/runs': [],
+    })
+    const { client } = renderShell()
+
+    await waitFor(() => expect(client.getQueryData(workspaceQueryKeys.projects)).toBeDefined())
+    await waitFor(() => expect(document.querySelector('[data-slot="mode-badge"]')).not.toBeNull())
+    expect(document.querySelector('[data-slot="project-groups"]')).toBeNull()
+    expect(document.querySelectorAll('[data-slot="project-group"]')).toHaveLength(0)
+    expect(screen.queryByRole('button', { name: 'Add project' })).toBeNull()
+    expect(screen.getByRole('navigation', { name: 'Main' })).toBeTruthy()
+    expect(repoChip()?.textContent).toBe('xezar / feat/cockpit')
+  })
+
+  it('shows no mode badge while health is unknown or from a server that never sends the key', async () => {
+    serve({
+      '/api/v1/health': HEALTH,
+      '/api/v1/todos': [],
+      '/api/v1/projects': { projects: [PROJECT], bootProject: 'xezar', projectsDir: '/home/me/xezar/projects' },
+      '/api/v1/runs': [],
+    })
+    renderShell()
+    expect(document.querySelector('[data-slot="mode-badge"]')).toBeNull()
+    await waitFor(() => expect(versionChip()).not.toBeNull())
+    expect(document.querySelector('[data-slot="mode-badge"]')).toBeNull()
+  })
+
   it('renders one collapsible group per project once the workspace has two', async () => {
     serve({
       '/api/v1/health': HEALTH,

@@ -1,11 +1,17 @@
-import { ChevronRightIcon, SlidersHorizontalIcon } from 'lucide-react'
+import { ChevronRightIcon, FileIcon, SlidersHorizontalIcon } from 'lucide-react'
 import { Link as RouterLink, NavLink as RouterNavLink } from 'react-router'
-import type { Capabilities } from '@qodeca/xezar-api-client'
+import { inSingleProjectRoot, type ProjectModeCapabilities } from '@/lib/project-mode'
 import { Link as ScopedLink, NavLink as ScopedNavLink } from '@/lib/project-router'
 import { cn } from '@/lib/utils'
 import { ProjectGeneral } from './project-general'
 import { ProjectLocationNav } from './project-location'
-import { visibleSettingsSections, type SettingsScope, type SettingsSection } from './registry'
+import {
+  settingsSectionDescription,
+  visibleSettingsSections,
+  type SettingsFileNote,
+  type SettingsScope,
+  type SettingsSection,
+} from './registry'
 
 /**
  * The registry-driven Settings shell (R6 Step 1.3, spec §"Settings").
@@ -58,7 +64,7 @@ function SectionNav({
 }: {
   scope: SettingsScope
   activeId: SettingsSection['id'] | null
-  capabilities?: Pick<Capabilities, 'singleProject'>
+  capabilities?: Partial<ProjectModeCapabilities>
 }) {
   const { NavLink } = navComponents(scope)
   return (
@@ -102,9 +108,13 @@ function SectionNav({
       ))}
       {/* The nav footer answers "what am I editing?" — and each area answers it differently.
           Global: settings are per USER, not per repo, said once where the choice to write there
-          is being made. Project: WHICH repo, by its absolute path on disk. */}
+          is being made. Project: WHICH repo, by its absolute path on disk. Single-project mode
+          (#600) never opens ~/.xezar, so the global line would be false there; each section's
+          file note names the real file instead. */}
       {scope === 'global' ? (
-        <p className="mt-auto px-2.5 pt-3 text-[11px] text-soft-foreground">Stored in ~/.xezar</p>
+        inSingleProjectRoot(capabilities) ? null : (
+          <p className="mt-auto px-2.5 pt-3 text-[11px] text-soft-foreground">Stored in ~/.xezar</p>
+        )
       ) : (
         <ProjectLocationNav />
       )}
@@ -120,7 +130,7 @@ function SectionPills({
 }: {
   scope: SettingsScope
   activeId: SettingsSection['id']
-  capabilities?: Pick<Capabilities, 'singleProject'>
+  capabilities?: Partial<ProjectModeCapabilities>
 }) {
   const { NavLink } = navComponents(scope)
   return (
@@ -168,9 +178,12 @@ export function SettingsSectionRoute({
 }: {
   section: SettingsSection
   scope: SettingsScope
-  capabilities?: Pick<Capabilities, 'singleProject'>
+  capabilities?: Partial<ProjectModeCapabilities>
 }) {
   const Body = section.component
+  // Single-project mode (#600): nothing on the global side is global any more — it is committed
+  // to this repository — so the chip's one word changes, and each section names its file.
+  const projectRoot = inSingleProjectRoot(capabilities)
   return (
     <div
       data-route={scope === 'global' ? `settings-global-${section.id}` : `settings-${section.id}`}
@@ -180,10 +193,10 @@ export function SettingsSectionRoute({
           breadcrumb is what tells the two areas apart at a glance (mockup: "Global settings"). */}
       <header className="sticky top-0 z-10 hidden h-14 shrink-0 items-center gap-3 border-b border-border bg-background md:flex md:px-section">
         <h1 className="text-base font-semibold">{section.title}</h1>
-        <p className="text-[13px] text-soft-foreground">{section.description}</p>
+        <p className="text-[13px] text-soft-foreground">{settingsSectionDescription(section, capabilities)}</p>
         {scope === 'global' ? (
           <span data-slot="settings-scope-chip" className="ml-auto text-[11px] text-soft-foreground">
-            Global settings
+            {projectRoot ? 'Workspace settings' : 'Global settings'}
           </span>
         ) : null}
       </header>
@@ -191,6 +204,7 @@ export function SettingsSectionRoute({
         <SectionNav scope={scope} activeId={section.id} capabilities={capabilities} />
         <SectionPills scope={scope} activeId={section.id} capabilities={capabilities} />
         <div className="flex min-w-0 flex-1 flex-col">
+          {projectRoot && section.fileNote ? <FileNote note={section.fileNote} /> : null}
           <Body />
         </div>
       </div>
@@ -202,17 +216,22 @@ export function SettingsSectionRoute({
  *  page; on desktop it sits beside the nav as a plain directory). */
 export function SettingsIndexRoute({ scope, capabilities }: {
   scope: SettingsScope
-  capabilities?: Pick<Capabilities, 'singleProject'>
+  capabilities?: Partial<ProjectModeCapabilities>
 }) {
   const { Link } = navComponents(scope)
   const global = scope === 'global'
+  const projectRoot = inSingleProjectRoot(capabilities)
   return (
     <div data-route={global ? 'settings-global' : 'settings'} className="flex min-h-full flex-col">
       <header className="sticky top-0 z-10 hidden h-14 shrink-0 items-center gap-3 border-b border-border bg-background md:flex md:px-section">
-        <h1 className="text-base font-semibold">{global ? 'Global settings' : 'Settings'}</h1>
+        <h1 className="text-base font-semibold">
+          {global ? (projectRoot ? 'Workspace settings' : 'Global settings') : 'Settings'}
+        </h1>
         <p className="text-[13px] text-soft-foreground">
           {global
-            ? 'Preferences for you and this machine, shared by every project.'
+            ? projectRoot
+              ? 'Preferences for this workspace, saved in this project. Each section names its file.'
+              : 'Preferences for you and this machine, shared by every project.'
             : 'Configure this project and its agents.'}
         </p>
       </header>
@@ -248,7 +267,9 @@ export function SettingsIndexRoute({ scope, capabilities }: {
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block text-sm font-medium text-foreground">{section.title}</span>
-                    <span className="block text-xs text-soft-foreground">{section.description}</span>
+                    <span className="block text-xs text-soft-foreground">
+                      {settingsSectionDescription(section, capabilities)}
+                    </span>
                   </span>
                   <ChevronRightIcon aria-hidden="true" className="size-4 shrink-0 text-soft-foreground" />
                 </Link>
@@ -262,13 +283,17 @@ export function SettingsIndexRoute({ scope, capabilities }: {
               <>Agents, worktrees, bookmarklets and prompt templates are per project.</>
             ) : (
               <>
-                Appearance, notifications, host resources and the project registry live in{' '}
+                {/* Single-project mode (#600) has no project registry to point at, and the area is
+                    "Workspace settings" there — the same word its chip and index title use. */}
+                {projectRoot
+                  ? 'Appearance, notifications, host resources and agent accounts live in'
+                  : 'Appearance, notifications, host resources and the project registry live in'}{' '}
                 <RouterLink
                   to={settingsIndexPath('global')}
                   data-slot="settings-global-link"
                   className="inline-flex min-h-tap items-center underline underline-offset-2 hover:text-foreground md:min-h-0"
                 >
-                  Global settings
+                  {projectRoot ? 'Workspace settings' : 'Global settings'}
                 </RouterLink>
                 .
               </>
@@ -276,6 +301,31 @@ export function SettingsIndexRoute({ scope, capabilities }: {
           </p>
         </div>
       </div>
+    </div>
+  )
+}
+
+/**
+ * The file note (#600, FR-9.3; designs/single-project-mode §7): one line naming the file a
+ * section's saves land in, rendered only in single-project mode. Text, never a link or a button —
+ * a control here would imply the cockpit can move the setting somewhere else. It sits at the top
+ * of the pane, inside the content column, so it survives the phone layout where the desktop
+ * header (and its description) is hidden.
+ */
+function FileNote({ note }: { note: SettingsFileNote }) {
+  return (
+    <div className="mx-auto w-full max-w-2xl px-list pt-list md:px-group md:pt-group">
+      <p
+        data-slot="settings-file-note"
+        className="flex items-start gap-1.5 text-[12px] text-soft-foreground"
+      >
+        <FileIcon aria-hidden="true" className="mt-0.5 size-3 shrink-0" />
+        <span className="min-w-0">
+          {note.lead ?? 'Saved in this project — '}
+          <code className="rounded-sm bg-muted px-1 font-mono text-foreground">{note.file}</code>.
+          {note.tail ? <> {note.tail}</> : null}
+        </span>
+      </p>
     </div>
   )
 }

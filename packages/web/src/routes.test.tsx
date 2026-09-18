@@ -386,6 +386,21 @@ describe('the global settings area (/settings/global)', () => {
     expect(screen.queryByRole('heading', { level: 1, name: 'Projects' })).toBeNull()
   })
 
+  // #600: single-project mode keeps every global Settings URL landing — only the STORE behind
+  // them changes (project files instead of the home directory) — and drops Projects like the
+  // XEZ_SINGLE_PROJECT narrowing does (BACKWARD_COMPATIBILITY.md §2).
+  it('keeps the global Settings URLs in single-project mode and omits only Projects', () => {
+    const health = { ...HEALTH, capabilities: { ...HEALTH.capabilities, singleProjectRoot: true } }
+    for (const id of ['appearance', 'notifications', 'resources', 'skills', 'accounts']) {
+      renderAt(`/settings/global/${id}`, { health })
+      expect(routeName()).toBe(`settings-global-${id}`)
+      cleanup()
+    }
+    renderAt('/settings/global/projects', { health })
+    expect(routeName()).not.toBe('settings-global-projects')
+    expect(screen.queryByRole('heading', { level: 1, name: 'Projects' })).toBeNull()
+  })
+
   // A moved section's old URL, in both spellings a bookmark can have it.
   for (const id of ['appearance', 'notifications', 'resources']) {
     it(`/p/${BOOT}/settings/${id} redirects to the global twin`, () => {

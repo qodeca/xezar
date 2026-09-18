@@ -21,14 +21,15 @@ Every row now has exactly one of three dispositions, stated in its own last bull
   the dark theme, checking `document.activeElement` by identity. A retirement whose only evidence is
   a source string is not a retirement.
 - **Filed** — the row stays and names the issue that owns it. Six issues cover twenty of the
-  twenty-two remaining rows: **#593** small text below AA contrast (G-23, G-38, G-46), **#594**
+  twenty-three remaining rows: **#593** small text below AA contrast (G-23, G-38, G-46), **#594**
   rendered Markdown's phone targets (G-36, G-45), **#595** phone and desktop layout (G-26, G-27,
   G-28, G-30, G-32, G-33, G-37), **#596** accessibility (G-06, G-31, G-39), **#597** the two diff
   endpoints' status words (G-41, server work), **#598** shared helpers and copy rows (G-14, G-15,
   G-16, G-42).
-- **Kept, with a reason** — two rows: **G-20** (dead primitives; adding or deleting a catalogued
-  component file belongs to one commit, which has merged) and **G-35** (the palette hint, whose own
-  rule is conditional on a keyboard-help surface that does not exist).
+- **Kept, with a reason** — three rows: **G-20** (dead primitives; adding or deleting a catalogued
+  component file belongs to one commit, which has merged), **G-35** (the palette hint, whose own
+  rule is conditional on a keyboard-help surface that does not exist) and **G-47** (single-project
+  mode's accepted deviations from its mockup, added after B8 by #600 PR4).
 
 So nothing here is merely deferred: a row is either gone, owned by a number, or carries the reason it
 stays. Two rows to read first if you are picking work up: **G-31** is a live axe-core violation with a
@@ -36,9 +37,9 @@ small fix, and **G-14**'s `useIsDesktop()` query is the one item with a real use
 
 Ids are never reused: a deleted entry retires its number, so a new entry takes the next number after
 the highest ever used. **G-06, G-14, G-15, G-16, G-20, G-23, G-26, G-27, G-28, G-30, G-31, G-32, G-33,
-G-35, G-36, G-37, G-38, G-39, G-41, G-42, G-45 and G-46 are live** (22 rows); **G-01 to G-05, G-07 to
+G-35, G-36, G-37, G-38, G-39, G-41, G-42, G-45, G-46 and G-47 are live** (23 rows); **G-01 to G-05, G-07 to
 G-13, G-17 to G-19, G-21, G-22, G-24, G-25, G-29, G-34, G-40, G-43 and G-44 are retired** (24
-numbers); and **the next free id is G-47**. G-43 was retired by decision
+numbers); and **the next free id is G-48**. G-43 was retired by decision
 [D-09](decisions.md#d-09-compares-pick-confirm-keeps-the-ordinary-contrast-action) (the B7 design
 review) rather than by a fix: the pick confirm keeps its ordinary `contrast` action on purpose.
 
@@ -234,6 +235,17 @@ issue arrives by id.
 - **Rule**: small text is at least 4.5:1 on its actual surface.
 - **Fix**: raise the blend toward `--foreground` until the composited ratio clears 4.5:1 for any label colour, and pin it with a unit test over the extreme colours. Owner: B8 reconciliation of #453.
 - **Final disposition (#453 B8, 2026-09-17)**: filed as **#593**, with G-23 and G-38. Its blend is a pure function (`github-filter.ts`), so it is the one row of the three that can be pinned by a unit test rather than a browser measurement.
+
+### G-47 Single-project mode's cockpit differs from its mockup in four accepted places
+
+- **Differs**: the shipped cockpit (#600 PR4, #611) departs from `designs/single-project-mode/` in four places, each accepted by the design review on #611 (NB-2, NB-4), so the mockup is not the current reference for them:
+  - **Palette placeholder**: `Search tasks, views, actions, skills…` (`components/command-palette.tsx`), not the copy deck's `Search tasks and actions…` — the shipped string names the groups that are really there.
+  - **Three file-map rows moved** (`routes/settings/registry.tsx`, the `fileNote` entries): Skills names `.xezar/workspace.json` (the mockup said `config.json`); Appearance names `.xezar/workspace-ui.json` for accent, density and reading width (the theme stays in the browser); Prompt templates names `.local/xezar/ui-state.json`. Each is the file the section really writes, checked against `state-layout.ts`; the copy deck gave that mapping to engineering (§10.2).
+  - **Phone placement of the file note**: at 375 px the note sits above the section's heading, first in the content column, not under the heading and description (`phone.html`, README §7). Below `md` the desktop header is hidden (`patterns.md`), so the note is placed where it survives; the pill row carries the section name.
+  - **`FileNote` is private** to `routes/settings/settings-shell.tsx`, not the shared `SettingsFileNote` component OD-3 proposed. `patterns.md` documents it where it lives.
+- **Rule**: the shipped behaviour above; a change to any of the four updates this row or the mockup.
+- **Fix**: none planned — these are deliberate. Bring the mockup's README into line when the design is next revised.
+- **Final disposition (#611, 2026-09-18)**: kept, with a reason — each deviation is accepted on #611's `## Design review`.
 
 ## Comment vs code
 

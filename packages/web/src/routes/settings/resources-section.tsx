@@ -4,12 +4,13 @@ import { useState } from 'react'
 import { Link } from 'react-router'
 
 import { putWorkspaceConfig } from '@/api/client'
-import { useWorkspaceConfig, workspaceQueryKeys } from '@/api/queries'
+import { useHealth, useWorkspaceConfig, workspaceQueryKeys } from '@/api/queries'
 import type { SetWorkspaceConfigInput, WorkspaceConfigResponse } from '@qodeca/xezar-api-client'
 import { CenteredState } from '@/components/centered-state'
 import { Button } from '@/components/ui/button'
 import { nativeFieldClass } from '@/components/ui/input'
 import { toast } from '@/components/ui/toaster'
+import { inSingleProjectRoot } from '@/lib/project-mode'
 import { cn } from '@/lib/utils'
 import { SettingsField } from './settings-field'
 
@@ -74,6 +75,8 @@ export function ResourcesSection() {
 
 function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
   const queryClient = useQueryClient()
+  // Single-project mode (#600): there is one project, so "across every project" would be false.
+  const projectRoot = inSingleProjectRoot(useHealth().data?.capabilities)
 
   const save = useMutation({
     mutationFn: (patch: SetWorkspaceConfigInput) => putWorkspaceConfig(patch),
@@ -242,7 +245,7 @@ function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
     >
       <SettingsField
         title="Max parallel tasks"
-        hint="How many tasks run at once across every project. The rest wait in the queue. A non-git directory always runs one at a time."
+        hint={`How many tasks run at once ${projectRoot ? 'in this project' : 'across every project'}. The rest wait in the queue. A non-git directory always runs one at a time.`}
       >
         <select
           aria-label="Max parallel tasks"
