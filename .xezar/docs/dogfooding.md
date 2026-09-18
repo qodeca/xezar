@@ -11,6 +11,13 @@ Loop: observe during real work → classify problem versus environment/unknown �
 Installation validation is reported in installation.md. Real-task entries follow; each names its evidence level.
 
 ## Real-task entries
+### 2026-09-18 — #613 bound the continue re-prompt loop, `bug-fix` step `investigate`, `xezar-bug-investigation`, Claude Code (Opus 5) — real-task observed
+- Input: issue #613 and the incident run's own NDJSON (read-only in the primary run store); leader brief with a five-part scope.
+- Observed: **the brief's idle rule would not have stopped the incident.** Counting per-turn events in the run file showed every one of the 40 re-prompted turns made 1–3 tool calls (CI polling); the cap is what bounds it. The issue's own "stop when no new tool call" suggestion was data to verify, and the event file settled it in one pass. Both rules shipped; the PR says which one catches which case.
+- Observed: **the loop to bound was the autonomous nudge, not a Continue-specific re-prompt.** `requires XEZ:DONE` is only the error at the end; the spin was `MAX_AUTO_CONTINUES` (41 turns = 1 + 40). Grepping the note text (`continuing without pausing (n/40)`) in the run file found the mechanism faster than reading the continue path.
+- Observed: a fast bounded loop broke the new tests' `wait for running` step (running → failed between two 10 ms polls); waiting on the continued session's spawn instead fixed it (8/8). A red proof against a missing export reads "length of undefined" – pin the literal so the red shows the real 40.
+- Kit friction (recorded before): `phase-record.sh check` refused `AC1:` ids; renamed to `AC-1:`.
+- Regression/control: pre-fix `run.ts` swapped in → 3 new tests + 2 updated #141 tests red (`got 40`), 2 guards green; with the fix 24/24. Evidence in the run's `red-proof-without-fix.log`.
 ### 2026-09-18 — #612 review response round 1 (PR5 of #600), `address-review-findings` step `Address findings`, `xezar-review-response`, Claude Code — real-task observed
 - Input: three verdicts on `2410137b` (code review REQUEST CHANGES M1/m1/m2/m3/n1/n2, QA PASS, scoped design review PASS NB-1/NB-2) and the leader's adjudicated fix/record list; `origin/main` `4dae2ff1` merged in first.
 - Observed: **the path a layout resolves is not the path a write lands on.** Every state path was `resolve()`d and never `lstat`ed, so a committed `.xezar -> ../outside` redirected the one-time import (and the part-1 empty-file creation) out of the project. A dangling symlinked FILE was different: `rename` replaced the link rather than following it, so the old code "worked" there by accident — the test pins the outcome (`refused-symlink`) rather than relying on that.
