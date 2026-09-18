@@ -108,7 +108,15 @@ describe('a run xezar terminates for the memory limit (#603)', () => {
     // `runAgentStep`'s fix does not cover.
     const record = manager.startRun(AGENT, { task: 'mock:done first pass', worktree: false });
     currentId = record.id;
-    await waitFor(() => store.getRun(record.id)?.status === 'done', 'the first turn to finish');
+    // CI showed this specific wait timing out at the old 15s default under full-suite load
+    // (534/535 other files running concurrently) — the mock CLI's first turn genuinely needs
+    // more wall-clock time under that contention, not a different detection mechanism: an
+    // event-driven wait on the store's own `'run'` bus fires the instant `status` becomes
+    // `'done'`, which lands strictly before the manager finishes dropping the run from its
+    // internal `active` registry — `continueRun` right below would then race that cleanup and
+    // read the run as still active. Polling and giving it a bound within this test's own
+    // (also raised) vitest timeout keeps that ordering intact while tolerating slow CI.
+    await waitFor(() => store.getRun(record.id)?.status === 'done', 'the first turn to finish', 45_000);
 
     expect(manager.continueRun(record.id, { text: 'now do the second half' }).ok).toBe(true);
     await waitFor(() => store.getRun(record.id)?.status === 'running', 'the continuation to start');
@@ -124,5 +132,7 @@ describe('a run xezar terminates for the memory limit (#603)', () => {
     const run = store.getRun(record.id);
     expect(run?.status).toBe('failed');
     expect(run?.error).toContain('memory limit exceeded');
-  }, 30_000);
+    // The 45s wait above may itself need most of that (see its own comment); this test's own
+    // bound leaves room for that plus the rest of the steps that follow it.
+  }, 60_000);
 });
