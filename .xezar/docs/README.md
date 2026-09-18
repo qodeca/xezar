@@ -17,3 +17,5 @@ model-routing.md – which model and runner the leader dispatches for each task 
 account-limits.md – what usage cannot be read, how the leader probes an account for its limit, and how to recover a lane once it is hit
 
 campaign-notes.md – the default folder layout for a campaign note once SDLC.md's single-file template outgrows one comfortable load
+
+leader-context-loading.md – the committed leader guide and the SessionStart hook that reloads it, the guard that keeps it out of task agents, and the checklist for installing it in a new project
