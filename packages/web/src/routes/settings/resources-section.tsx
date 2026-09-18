@@ -263,17 +263,22 @@ function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
             ),
           )}
         </select>
-        <p className="text-[11px] text-soft-foreground">
-          Need a different limit for one project?{' '}
-          <Link
-            to="/settings/global/projects"
-            data-slot="resources-project-limits-link"
-            className="inline-flex min-h-tap items-center font-medium text-foreground underline decoration-border underline-offset-2 hover:decoration-foreground md:min-h-0"
-          >
-            Configure per-project limits
-          </Link>
-          .
-        </p>
+        {/* `/settings/global/projects` is not routed in single-project mode (a page-not-found), and
+            there is no second project to limit differently — so the link is absent, not dead
+            (#600, a #611 review follow-up; whether that page should explain the mode is OD-1). */}
+        {projectRoot ? null : (
+          <p className="text-[11px] text-soft-foreground">
+            Need a different limit for one project?{' '}
+            <Link
+              to="/settings/global/projects"
+              data-slot="resources-project-limits-link"
+              className="inline-flex min-h-tap items-center font-medium text-foreground underline decoration-border underline-offset-2 hover:decoration-foreground md:min-h-0"
+            >
+              Configure per-project limits
+            </Link>
+            .
+          </p>
+        )}
       </SettingsField>
 
       <SettingsField

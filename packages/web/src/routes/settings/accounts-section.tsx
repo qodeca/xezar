@@ -23,6 +23,7 @@ import {
 } from '@/api/queries'
 import {
   agentAccountRouteId,
+  unavailableAgentAccountReason,
   type AgentProfile,
   type AgentProfilesResponse,
   type BackendCheck,
@@ -49,6 +50,7 @@ import { StatusDot, type StatusDotTone } from '@/components/status-dot'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from '@/components/ui/toaster'
 import { cn } from '@/lib/utils'
+import { inSingleProjectRoot } from '@/lib/project-mode'
 import { OpenInMenu, cliTargetRunner } from '@/components/open-in-menu'
 import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
 import { DefaultAgentPicker, agentPickerRows } from '@/components/default-agent-picker'
@@ -360,6 +362,7 @@ function DefaultsForNewProjects({ profiles }: { profiles: AgentProfilesResponse 
   // A row per runner, so every runner's own host catalog is needed at once (#794).
   const catalogs = useRunnerModelCatalogs()
   const select = useSelectAgentProfile()
+  const projectRoot = inSingleProjectRoot(useHealth().data?.capabilities)
 
   const save = useMutation({
     mutationFn: (patch: SetWorkspaceConfigInput) => putWorkspaceConfig(patch),
@@ -378,10 +381,15 @@ function DefaultsForNewProjects({ profiles }: { profiles: AgentProfilesResponse 
   return (
     <section data-slot="accounts-defaults" className="flex flex-col gap-3 rounded-lg border border-border bg-card/40 p-3.5">
       <div>
-        <h3 className="text-[13px] font-semibold text-foreground">Defaults for new projects</h3>
+        {/* In single-project mode there are no "new projects" — the workspace IS this folder — so
+            the card names what it actually sets (#600 OD-5, a #611 review follow-up). */}
+        <h3 className="text-[13px] font-semibold text-foreground">
+          {projectRoot ? 'Defaults for this project' : 'Defaults for new projects'}
+        </h3>
         <p className="text-[13px] text-muted-foreground">
-          What a project runs when it has not chosen for itself — set once instead of per
-          repository. A project that has chosen keeps its own.
+          {projectRoot
+            ? 'What a task in this project runs when it does not choose for itself. Saved with the project, so a clone starts with the same choice.'
+            : 'What a project runs when it has not chosen for itself — set once instead of per repository. A project that has chosen keeps its own.'}
         </p>
       </div>
 
@@ -468,6 +476,12 @@ function AccountRow({ account, onRemove }: { account: AgentProfile; onRemove: ()
   const probed = useAgentAccountStatus(routeId, account.status === undefined)
   const status = account.status ?? probed.data?.status
   const presentation = status ? STATUS_PRESENTATION[status.status] : undefined
+  // Single-project mode (#600 FR-6, DP-5): accounts are committed project state, so a folder that
+  // does not exist here is a clone naming a login this machine lacks — not an account the user just
+  // added. It reads "Unavailable" with the engine's own refusal sentence, and a task asking for it
+  // is refused with that sentence too (`unavailableAgentAccountRefusal`). Global mode keeps
+  // "folder not created yet; Connect will make it", which is true there.
+  const unavailable = inSingleProjectRoot(useHealth().data?.capabilities) && !account.isDefault && !account.exists
 
   return (
     <li
@@ -495,9 +509,19 @@ function AccountRow({ account, onRemove }: { account: AgentProfile; onRemove: ()
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             {/* "Checking…" is a real, distinct state from any probe RESULT: the answer is not in
                 yet. Showing `unknown` here would claim a verification that never ran. */}
-            <StatusDot tone={presentation?.tone ?? 'neutral'} pulse={presentation === undefined} />
-            <span data-slot="account-status">{presentation?.label ?? 'Checking…'}</span>
-            {!account.exists ? (
+            {unavailable ? (
+              <>
+                <StatusDot tone="danger" />
+                <span data-slot="account-status">Unavailable</span>
+                <span data-slot="account-unavailable">— {unavailableAgentAccountReason(account.configDir)}</span>
+              </>
+            ) : (
+              <>
+                <StatusDot tone={presentation?.tone ?? 'neutral'} pulse={presentation === undefined} />
+                <span data-slot="account-status">{presentation?.label ?? 'Checking…'}</span>
+              </>
+            )}
+            {unavailable ? null : !account.exists ? (
               <span data-slot="account-missing">— folder not created yet; Connect will make it</span>
             ) : !account.looksValid ? (
               <span data-slot="account-unrecognised">

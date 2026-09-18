@@ -59,7 +59,7 @@ import { extractTaskRefs, refineTaskRefs, titleRefNumber } from '../runs/task-re
 import { parseTaskMarkers, stripTaskMarkers } from '../runs/task-markers.ts';
 import { autoNamingActive, generateRunName, liveTitleUpdatesEnabled, postValidateTitle } from '../runs/auto-name.ts';
 import { reviewGateEnabled } from '../runs/review-gate.ts';
-import { resolveProfileEnvForRoot } from '../workspace/agent-profiles.ts';
+import { AgentAccountUnavailableError, assertAgentAccountAvailable, resolveProfileEnvForRoot } from '../workspace/agent-profiles.ts';
 import { DEFAULT_AGENT_ACCOUNT_ID } from '../workspace/agent-accounts.ts';
 import { DEFAULT_IDLE_TIMEOUT_MINUTES } from '../workspace/config.ts';
 import { WorkspaceSemaphore, type AccountHolds } from '../workspace/semaphore.ts';
@@ -1176,8 +1176,10 @@ export class RunManager {
    *
    * Read fresh every time. `~/.xezar/config.json` is shared by every xezar process on this
    * machine, so a cached snapshot is a staleness bug, and one small JSON read is free next to
-   * spawning a CLI. Never throws: an unreadable home degrades to the default profile, which is
-   * exactly the behaviour that predates profiles.
+   * spawning a CLI. An unreadable home degrades to the default profile, which is exactly the
+   * behaviour that predates profiles. Throws `AgentTempDirError`, and in single-project mode
+   * `AgentAccountUnavailableError` for a committed account this machine lacks (#600 FR-6.3); both
+   * callers turn either into the step's named error before anything spawns.
    */
   private async agentEnvForStep(
     runId: string,
@@ -1188,6 +1190,8 @@ export class RunManager {
     const profileId = options.recordedProfileId
       ?? (backend === (run?.runner ?? 'claude') ? run?.agentProfile : undefined);
     const resolved = await resolveProfileEnvForRoot(this.repoRoot, backend, profileId);
+    // A committed account this machine lacks refuses the step rather than falling back (#600 BR-4).
+    await assertAgentAccountAvailable(resolved.profile);
     return {
       env: { ...this.agentEnv(runId, options.stepId, options.generateFollowups), ...resolved.env },
       profileId: resolved.profile.id,
@@ -3192,7 +3196,7 @@ export class RunManager {
         stepId,
       });
     } catch (err) {
-      if (!(err instanceof AgentTempDirError)) throw err;
+      if (!(err instanceof AgentTempDirError) && !(err instanceof AgentAccountUnavailableError)) throw err;
       failBeforeSpawn(err.message);
       return;
     }
@@ -3943,7 +3947,7 @@ export class RunManager {
         stepId: step.id,
       });
     } catch (err) {
-      if (err instanceof AgentTempDirError) return err.message;
+      if (err instanceof AgentTempDirError || err instanceof AgentAccountUnavailableError) return err.message;
       throw err;
     }
     const runner = createRunner(stepBackend);

@@ -48,6 +48,20 @@ const HOMEDIR_CALL = /\bhomedir\s*\(/;
  */
 const XEZAR_PATH_LITERAL = /(['"`])\.xezar(?:[/\\][^'"`]*)?\1/;
 
+/**
+ * The global layout named DIRECTLY, from outside the resolver (#600 SP-5.1).
+ *
+ * `globalStateLayout()` and `globalStateRoot()` answer `~/.xezar` whatever mode is in force — that
+ * is their job inside the resolver, and it is exactly what makes a call from anywhere else a
+ * half-isolation leak: the line reads like a resolution through `state-layout.ts`, so the two
+ * rules above never see it, and in the mode it opens the home all the same. The one-time import
+ * from the global setup is the deliberate exception, and it is on the allowlist below by name.
+ */
+const GLOBAL_LAYOUT_CALL = /\bglobalState(?:Layout|Root)\s*\(/;
+
+/** The resolver itself, where the global layout is defined and legitimately composed. */
+const RESOLVER_FILE = 'state-layout.ts';
+
 interface Allowance {
   /** Repo-relative path, POSIX separators. */
   readonly file: string;
@@ -86,6 +100,22 @@ const ALLOWED: readonly Allowance[] = [
     reason:
       'isUserHome — the rule that $HOME is never a single-project root. It must compare against the ' +
       'REAL home to refuse it, which is the opposite of resolving state there.',
+  },
+
+  {
+    file: 'paths.ts',
+    code: 'return globalStateRoot(env);',
+    reason:
+      'xezarHomeDir — the PER-USER home, which in the mode is still where the host-install records live ' +
+      '(FR-8.2, SP-2.5). It answers "what is this machine configured with", never "where is my state".',
+  },
+  {
+    file: 'workspace/import-global.ts',
+    code: 'return globalStateLayout(env);',
+    reason:
+      'The one deliberate exception to BR-2 (#600 FR-4, SP-5.1): the first run of the mode reads the global ' +
+      'setup ONCE, read-only, before the project files exist and only after the person answered yes, and ' +
+      'never writes there. Named in BACKWARD_COMPATIBILITY.md; every read in that module goes through this line.',
   },
 
   // ---- 2. The user's own host config: it stays on the host (BR-7, SP-2.3). -----------
@@ -288,6 +318,7 @@ function scan(): Finding[] {
       const kinds: string[] = [];
       if (HOMEDIR_CALL.test(code)) kinds.push('homedir()');
       if (XEZAR_PATH_LITERAL.test(code)) kinds.push("'.xezar' path");
+      if (file !== RESOLVER_FILE && GLOBAL_LAYOUT_CALL.test(code)) kinds.push('global layout');
       if (kinds.length > 0) findings.push({ file, line: index + 1, code, kinds: kinds.join(' + ') });
     });
   }
@@ -351,6 +382,13 @@ describe('no state path is derived outside the resolver (#600 DC-1)', () => {
     expect(HOMEDIR_CALL.test(stripped[0]!)).toBe(false);
     expect(HOMEDIR_CALL.test(stripped[1]!)).toBe(false);
     expect(XEZAR_PATH_LITERAL.test(stripped[2]!)).toBe(true);
+  });
+
+  it('names the global layout only as a call — an import or a mention is not a finding', () => {
+    expect(GLOBAL_LAYOUT_CALL.test('const global = globalStateLayout(env);')).toBe(true);
+    expect(GLOBAL_LAYOUT_CALL.test('return globalStateRoot();')).toBe(true);
+    expect(GLOBAL_LAYOUT_CALL.test("import { activeStateLayout, globalStateRoot } from './state-layout.ts';")).toBe(false);
+    expect(GLOBAL_LAYOUT_CALL.test('const layout = activeStateLayout();')).toBe(false);
   });
 
   it('reads a path literal and not the word — `metadata.xezar` and help text are not findings', () => {
