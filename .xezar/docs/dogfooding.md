@@ -11,6 +11,12 @@ Loop: observe during real work → classify problem versus environment/unknown �
 Installation validation is reported in installation.md. Real-task entries follow; each names its evidence level.
 
 ## Real-task entries
+### 2026-09-18 — #447 docs wave PR 4 (design-system staleness sweep), `docs-maintenance` step `docs`, `xezar-docs-maintenance`, Claude Code (Opus 5) — real-task observed
+- Input: the accepted 0.16.0 docs plan § 6 row 4, the 2026-09-15 audit C report (at `00ee895`) and the owner's OD-1..OD-3; head `72b9fb8c`.
+- Observed: **half of the brief's fix list had already landed.** The air status contradiction, the four-item delete list, the `--shadow-sm` claim, five of the eight known-gaps rows and the 2026-09-16 counts were applied by #494 and design Batch 8; the remaining claims had moved again with Batches 5–8. Re-reading every cited line at the task head, not the audit's line numbers, is what separated "fix" from "already true, verify and report".
+- Observed: **a count doc without a stated method cannot be re-measured.** `behaviour.md`'s `md:` figure did not reproduce under any regex tried against the commit that last wrote it (`sm:` did); the fix states the method in the header instead of guessing the old one.
+- Observed: `node scripts/check-links.mjs` (added by PR 3, not yet a gate) reported one broken anchor already on `main` (`designs/quality-checks/README.md:73`); fixed here because the brief requires a clean run.
+- Remaining limit: the mockup-local 860 px queries in seven `designs/` folders are left for PR 5 (file budget); between 768 and 860 px those mockups now mix the shared and local shells.
 ### 2026-09-18 — #613 bound the continue re-prompt loop, `bug-fix` step `investigate`, `xezar-bug-investigation`, Claude Code (Opus 5) — real-task observed
 - Input: issue #613 and the incident run's own NDJSON (read-only in the primary run store); leader brief with a five-part scope.
 - Observed: **the brief's idle rule would not have stopped the incident.** Counting per-turn events in the run file showed every one of the 40 re-prompted turns made 1–3 tool calls (CI polling); the cap is what bounds it. The issue's own "stop when no new tool call" suggestion was data to verify, and the event file settled it in one pass. Both rules shipped; the PR says which one catches which case.
