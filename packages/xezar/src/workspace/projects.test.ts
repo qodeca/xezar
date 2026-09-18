@@ -459,8 +459,6 @@ describe('single-project layout — per-machine facts stay out of the committed 
   it('keeps addedAt stable across two starts in the mode', async () => {
     const machinePath = join(projectRoot, '.local', 'xezar', 'machine-state.json');
     const first = await registerProject(projectRoot);
-    // First registration persists the stamp, so a later start can reuse it.
-    expect(JSON.parse(readFileSync(machinePath, 'utf8'))).toMatchObject({ addedAt: first.addedAt });
 
     // A second "start" is a fresh module instance: DERIVED_AT is minted at module
     // load, so only a row that reads the persisted stamp keeps the same value.
@@ -478,5 +476,7 @@ describe('single-project layout — per-machine facts stay out of the committed 
 
     expect(second.addedAt).toBe(first.addedAt);
     expect(Date.parse(second.addedAt)).toBe(firstMs);
+    // ...and the first start persisted it, so the next start can reuse it.
+    expect(JSON.parse(readFileSync(machinePath, 'utf8'))).toMatchObject({ addedAt: first.addedAt });
   });
 });
