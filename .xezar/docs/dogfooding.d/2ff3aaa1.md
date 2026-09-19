@@ -1,37 +1,11 @@
-# Run 2ff3aaa1 — bug-fix, issue #715 (Minors 1–2 of the #707 re-check)
+### 2026-09-19 — bounded fix for issue #715 (Minors 1–2 of the fable re-check of PR #707), `bug-fix` step `investigate`, `xezar-bug-investigation`, Claude Opus 5 — real-task observed
 
-## What worked
-
-- **A review's own throwaway, handed over as a file, is the cheapest red proof there is.** The
-  reviewer (run `23eb256f`) left `zz-reviewer-zombie-throwaway.test.ts` in its evidence directory.
-  Turning it into the permanent regression test took one read and one adaptation, and it was RED
-  against the pre-fix source on the first run — no re-derivation of the interleaving, no guessing
-  at which await the window sits behind. Evidence directories are worth reading before the code.
-- **The harness left a slot, and it paid.** `packages/xezar/test/red-proofs.mjs` (from #467/#647)
-  took the three new cases as three literals; one command proved all three RED and restored the
-  source. On a task whose whole point is "a test written after the diagnosis passes against the
-  bug more often than anyone expects", having the proof be a committed, re-runnable artifact
-  rather than a transcript is the difference between a claim and a record.
-
-## What cost time
-
-- **`gh issue view <n> --comments` printed nothing and exited 0 on this host.** No error, no body —
-  a silent empty success, twice, including with the sandbox disabled. `gh issue view <n> --json
-  body,title -q .body` returned the full issue immediately. Any brief or skill that tells an agent
-  to read an issue with the plain form should name the `--json` form as the fallback, because the
-  failure mode is indistinguishable from an empty issue.
-
-## What the fix itself teaches
-
-- **An async fix opens a window the synchronous shape it replaced did not have.** #707's Major 1
-  correctly replaced "skip the removal when superseded" with "remove, then REFRESH from the
-  registry". The refresh is async because the remote has to be resolved, and that await is a new
-  window in which the row it resolved can go stale. This is AGENTS.md § Changing a mechanism that
-  already works, one turn further on: the replacement was right, and it still needed the question
-  "what is the NEW mechanism load-bearing for, and what can change under it while it waits?".
-- **An assertion that pins two CALLS is not the same as one that pins the PROPERTY, and the gap is
-  invisible until you probe it.** RP-5's old form (`add` called, `remove` called) stayed green
-  against a refresh that re-adds and then removes again (net absent), and the whole 29-test file
-  stayed green against a refresh that never re-seeds the automation coordinator at all. Both probes
-  are now cases in the harness. "Which of my new assertions would survive the two most plausible
-  next regressions of this seam?" is a question worth asking of every test written from a diagnosis.
+- Input: the leader's brief, issue #715 (which quotes the reviewer's two findings verbatim and re-checks each against the reviewed head `befb2015`), base `main` at `63d70332` with PR #707 already merged as `00da4ec0`, and the reviewer's own throwaway tests left read-only in the primary checkout at `.local/xezar/tasks/23eb256f…/`. Deliverable: the liveness guard in the refresh branch, the rewritten RP-5 assertion, one permanent regression test, three harness cases, `changelog.d/715.md` and this fragment.
+- Observed: **a reviewer's throwaway, handed over as a FILE, is the cheapest red proof there is.** Run `23eb256f` left `zz-reviewer-zombie-throwaway.test.ts` in its evidence directory. Turning it into the permanent regression test took one read and one adaptation, and it was RED against the pre-fix source on the first run — no re-derivation of the interleaving, no guessing at which await the window sits behind. The evidence directory was worth reading before the source was.
+- Observed: **the red-proof harness from #467/#647 left a slot and it paid immediately.** The three new cases are three literals in its `CASES` array; one command proved all three RED and restored the source byte-exactly. On a task whose whole point is that a test written after the diagnosis passes against the bug more often than anyone expects, having the proof be a committed, re-runnable artifact rather than a transcript is the difference between a claim and a record.
+- Observed (the fix itself): **an async replacement opens a window the synchronous shape it replaced did not have.** #707's Major 1 correctly replaced "skip the removal when superseded" with "remove, then REFRESH from the registry". The refresh is async because the remote has to be resolved, and that await is a new window in which the row it already resolved can go stale. This is AGENTS.md § Changing a mechanism that already works one turn further on: the replacement was right, and it still needed the question "what can change under the NEW mechanism while it waits?".
+- Observed (the test): **an assertion that pins two CALLS is not the same as one that pins the PROPERTY, and the gap is invisible until it is probed.** RP-5's old form (`add` called, `remove` called) stayed green against a refresh that re-adds and then removes again — net absent — and the whole 29-test file stayed green against a refresh that never re-seeds the automation coordinator at all. Both probes are now harness cases. "Which of my new assertions would survive the two most plausible next regressions of this seam?" is worth asking of every test written from a diagnosis.
+- Observed (method): the first version of the new regression test waited on `rescheduleAutomations()` as its "the parked refresh has finished" signal, which is ambiguous — the genuine removal two lines earlier calls it too, so a late call could satisfy the wait before the parked refresh resumed at all, giving a spuriously GREEN regression test. Replaced with a signal that begs no question: the mock counts resumptions, the test waits for resumed == parked, then yields one macrotask, because everything between the resume and `coordinator.add()` is microtasks. Found by the author's own self-review round, not by a gate.
+- Observed (tooling, cost me time): **`gh issue view <n> --comments` printed nothing and exited 0 on this host** — no error, no body, twice, including with the sandbox disabled. `gh issue view <n> --json body,title -q .body` returned the full issue at once. The failure mode is indistinguishable from an empty issue, so a brief that tells an agent to read an issue with the plain form should name the `--json` form as its fallback.
+- Regression/control: `automations-refresh-resurrects-removed-project` RED without the guard and green with it; `rp5-net-absent-from-skills-coordinator` (probe E3a) and `rp5-refresh-forgets-reschedule` (probe E3b) both GREEN against the OLD RP-5 assertion and RED against the new one, which is what makes them proofs of the coverage hole and not of the code. The three pre-existing #707 cases were re-run and are unchanged: two RED, and `automations-never-built-removal` STILL-GREEN as the guard it is declared to be. The suite was run three consecutive times green to check the new race test for flakiness.
+- Remaining limit: the zombie interleaving is **fixture-tested, not observed in the field** — no user report names it, and it needs a `DELETE /projects/:id` landing within tens of milliseconds of a superseded dispose of the same project. The reproduction is a fixture run of the real modules at this branch's base revision, not a live incident on a released build.
