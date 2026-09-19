@@ -274,6 +274,113 @@ test('the fold creates the version section and removes the fragments', () => {
   );
 });
 
+// --- The fold is fence-aware (issue #684) --------------------------------------------------------
+// `changelog-check.sh` already refuses a `# ` line inside a fence as a section boundary. The fold
+// must use the same rule, or a release inserts its new `# <version>` section — heading, groups and
+// `---` separator — between an opening and a closing fence marker, i.e. inside a code block.
+test('the fold never inserts the new section inside a fenced code block (#684)', () => {
+  const dir = fixture();
+  writeFileSync(
+    join(dir, 'CHANGELOG.md'),
+    '# Unreleased\n\n- pending\n\n```\n# not-a-real-heading\n```\n\n# 0.1.0 (2026-01-01)\n\n- x\n',
+  );
+  const fragments = FRAGMENT_DIR(dir);
+  writeFileSync(join(fragments, '900.md'), '## 🐛 Fixes\n\n- folded bullet (#900)\n');
+
+  const result = run('node', [
+    CHANGELOG, '--fold', '--version', '0.2.0', '--date', '2026-09-19',
+    '--file', join(dir, 'CHANGELOG.md'), '--fragments', fragments,
+  ]);
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+
+  const after = readFileSync(join(dir, 'CHANGELOG.md'), 'utf8');
+  const fence = '```\n# not-a-real-heading\n```\n';
+  assert.ok(after.includes(fence), `the fenced block must survive intact, got:\n${after}`);
+  const inserted = after.indexOf('# 0.2.0 (2026-09-19)');
+  assert.ok(after.indexOf('# Unreleased') < inserted, `the new section sits below Unreleased, got:\n${after}`);
+  assert.ok(inserted > after.indexOf(fence), `the new section must land AFTER the fence, got:\n${after}`);
+  assert.ok(
+    inserted < after.indexOf('# 0.1.0 (2026-01-01)'),
+    `and BEFORE the older dated release, got:\n${after}`,
+  );
+});
+
+test('a file that ends inside an open fence is refused, not folded into (#684)', () => {
+  // The fence MODEL: a fence that opens and is never closed swallows the rest of the file, so no
+  // `# ` line below it is a top-level heading and the fold has no anchor. The previous name
+  // ("a fence that opens and never closes is content to the end of the file") described that model
+  // while asserting only that the section landed after the fenced text — an ordering that holds
+  // WHILE the section sits inside the open fence, which is the harm. What it pins now is the
+  // consequence: no anchor means no fold.
+  const before = '# Unreleased\n\n- pending\n\n```\n# not-a-real-heading\n';
+  const dir = fixture();
+  writeFileSync(join(dir, 'CHANGELOG.md'), before);
+  const fragments = FRAGMENT_DIR(dir);
+  writeFileSync(join(fragments, '900.md'), '## 🐛 Fixes\n\n- folded bullet (#900)\n');
+
+  const result = run('node', [
+    CHANGELOG, '--fold', '--version', '0.2.0', '--date', '2026-09-19',
+    '--file', join(dir, 'CHANGELOG.md'), '--fragments', fragments,
+  ]);
+  assert.equal(result.status, 1, result.stdout + result.stderr);
+  assert.match(result.stderr, /ends inside an unclosed code fence/);
+  assert.equal(readFileSync(join(dir, 'CHANGELOG.md'), 'utf8'), before, 'a refused fold leaves the file untouched');
+});
+
+test('an unclosed fence above a dated release is refused, never appended inside (#684)', () => {
+  // The reviewer's fixture (PR #696 review, Major M1). The unclosed fence swallows `# 0.1.0`, so
+  // the fold found no anchor and appended the whole `# 0.2.0` section — heading, `## 🐛 Fixes`
+  // group and `---` separator — at end of file, INSIDE the still-open fence, and exited 0. The
+  // section must never be inserted inside a fence, and a file that cannot host it safely is not
+  // rewritten at all: the fold refuses and leaves both the changelog and the fragment as they were.
+  const before = '# Unreleased\n\n- pending\n\n```\noops unclosed\n\n# 0.1.0 (2026-01-01)\n\n- x\n';
+  const dir = fixture();
+  writeFileSync(join(dir, 'CHANGELOG.md'), before);
+  const fragments = FRAGMENT_DIR(dir);
+  writeFileSync(join(fragments, '900.md'), '## 🐛 Fixes\n\n- folded bullet (#900)\n');
+
+  const result = run('node', [
+    CHANGELOG, '--fold', '--version', '0.2.0', '--date', '2026-09-19',
+    '--file', join(dir, 'CHANGELOG.md'), '--fragments', fragments,
+  ]);
+  assert.equal(result.status, 1, result.stdout + result.stderr);
+  assert.match(result.stderr, /ends inside an unclosed code fence/);
+  const after = readFileSync(join(dir, 'CHANGELOG.md'), 'utf8');
+  assert.equal(after, before, 'the file is left untouched');
+  assert.ok(!after.includes('# 0.2.0'), `no new section is written anywhere, got:\n${after}`);
+  assert.ok(existsSync(join(fragments, '900.md')), 'a refused fold does not consume the fragment');
+});
+
+test('a changelog with no fence folds to exactly the same bytes as before (#684 guard)', () => {
+  // The fence rule must change nothing about the DEFAULT path: a file whose sections hold no fence
+  // folds byte-for-byte as it did before the fix. This case is green with and without the fix on
+  // purpose — it pins the behaviour the fix must NOT change.
+  const dir = fixture();
+  writeFileSync(
+    join(dir, 'CHANGELOG.md'),
+    '# Unreleased\n\n## 🐛 Fixes\n\n- unreleased bullet\n\n# 0.1.0 (2026-01-01)\n\n- x\n',
+  );
+  const fragments = FRAGMENT_DIR(dir);
+  writeFileSync(join(fragments, '7.md'), '## ✨ Features\n\n- ✨ **a feature.** (#7)\n');
+  writeFileSync(
+    join(fragments, '668.md'),
+    '## 🐛 Fixes\n\n- 🐛 **from a fragment.** wrapped\n  continuation (#668)\n',
+  );
+
+  const result = run('node', [
+    CHANGELOG, '--fold', '--version', '0.2.0', '--date', '2026-02-01',
+    '--file', join(dir, 'CHANGELOG.md'), '--fragments', fragments,
+  ]);
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.equal(
+    readFileSync(join(dir, 'CHANGELOG.md'), 'utf8'),
+    '# Unreleased\n\n## 🐛 Fixes\n\n- unreleased bullet\n\n'
+      + '# 0.2.0 (2026-02-01)\n\n## ✨ Features\n\n- ✨ **a feature.** (#7)\n\n'
+      + '## 🐛 Fixes\n\n- 🐛 **from a fragment.** wrapped\n  continuation (#668)\n\n---\n\n'
+      + '# 0.1.0 (2026-01-01)\n\n- x\n',
+  );
+});
+
 test('the fold puts the new section at the top when there is no # Unreleased left', () => {
   const dir = fixture();
   writeFileSync(join(dir, 'CHANGELOG.md'), '# 0.1.0 (2026-01-01)\n\n- x\n');
