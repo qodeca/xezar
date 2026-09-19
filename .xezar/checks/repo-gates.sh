@@ -179,6 +179,29 @@ gate_phase() {
   done
 }
 
+# Publish the attempt and end the run with its verdict. Extracted so the security stage's early
+# stop goes through the SAME completion path as a full run: an attempt is never left green and
+# never left half-written, whatever ended it.
+gate_finish() {
+  printf '\n==================== SUMMARY ====================\n'
+  # Publishing result.json is the completion commit point. Bash may defer a signal
+  # during finalization; the trap then reports the completed record instead of denying it.
+  result="$(gate_attempt_complete)"
+  complete_rc=$?
+  printf 'attempt        %s\n' "$GATE_ATTEMPT_ID"
+  printf 'record         %s/result.json\n' "$GATE_ATTEMPT_DIR"
+  printf 'recorded       %s\n' "$result"
+
+  if [ "$complete_rc" -eq 0 ]; then
+    printf 'ALL GATES PASSED\n'
+    exit 0
+  fi
+  # The record can refuse an attempt the loop above thought was clean — a broken log, or a gate
+  # with no recorded outcome at all. That disagreement is itself the failure.
+  [ "$complete_rc" -eq 0 ] || printf 'The recorded result is "%s" — this attempt cannot be sealed.\n' "$result"
+  exit 1
+}
+
 if [ "$FAST" -eq 1 ]; then
   gate_note_skip "npm ci" "deps-verified-current" || exit 1
 else
@@ -198,24 +221,24 @@ fi
 # Security first, alone, and before any quality gate. A failing security stage stops the run
 # here: there is no point paying for a build to find out what the scan already refused, and a
 # quality verdict given ahead of the security result is the order this exists to prevent.
+#
+# `gate_phase` returns non-zero only for an INFRASTRUCTURE failure — a non-zero scheduler, or a
+# worker whose result could not be collected. A security gate that RAN and refused the candidate
+# exits 1 and records `failed`, and the phase still returns 0, so this stage used to fall
+# straight through to the five quality gates (#680). The stage's own recorded outcome is the
+# boundary that was missing. `unknown` and `not-applicable` are RESOLVED outcomes —
+# `security-scan.sh` exits 0 for both — so only a status that is neither `passed` nor
+# `not-applicable` stops the run; `unknown` deliberately does not, because it is not a refusal.
 gate_phase serial 2 || exit 1
+security_status="$(node -e 'process.stdout.write(JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")).status)' "$GATE_ATTEMPT_DIR/workers/2.json" 2>/dev/null)" || security_status="unreadable"
+case "$security_status" in
+  passed | not-applicable) ;;
+  *)
+    printf '\nGATES STOPPED AT THE SECURITY STAGE: the security gate recorded "%s", so no quality gate ran.\n' "$security_status"
+    printf 'Security is resolved before any quality verdict, and the attempt is completed as failed.\n'
+    gate_finish
+    ;;
+esac
 gate_phase application 3 4 5 6 7 || exit 1
 gate_phase serial 8 || exit 1
-
-printf '\n==================== SUMMARY ====================\n'
-# Publishing result.json is the completion commit point. Bash may defer a signal
-# during finalization; the trap then reports the completed record instead of denying it.
-result="$(gate_attempt_complete)"
-complete_rc=$?
-printf 'attempt        %s\n' "$GATE_ATTEMPT_ID"
-printf 'record         %s/result.json\n' "$GATE_ATTEMPT_DIR"
-printf 'recorded       %s\n' "$result"
-
-if [ "$complete_rc" -eq 0 ]; then
-  printf 'ALL GATES PASSED\n'
-  exit 0
-fi
-# The record can refuse an attempt the loop above thought was clean — a broken log, or a gate
-# with no recorded outcome at all. That disagreement is itself the failure.
-[ "$complete_rc" -eq 0 ] || printf 'The recorded result is "%s" — this attempt cannot be sealed.\n' "$result"
-exit 1
+gate_finish

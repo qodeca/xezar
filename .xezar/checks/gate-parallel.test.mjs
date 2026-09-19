@@ -133,6 +133,10 @@ function outerFixture(body) {
  return {dir,target,env:{...process.env,PATH:join(dir,'bin')+':'+process.env.PATH}};
 }
 function attemptFiles(dir){const list=[];for(const e of (existsSync(dir)?[...readdirSync(dir,{withFileTypes:true})]:[])) {const p=join(dir,e.name);if(e.isDirectory())list.push(...attemptFiles(p));else list.push(p);}return list;}
+// Gate 2 of the canonical list, replaced by a fixture. `repo-gates.sh` invokes it as
+// `.xezar/checks/security-scan.sh` with the fixture checkout as cwd, so a stub written into the
+// copied checks tree is the gate that actually runs.
+function stubSecurity(f,body){writeFileSync(join(f.target,'security-scan.sh'),body,{mode:0o755});}
 
 test('TERM to the outer runner reaps owned TERM-ignoring descendants and leaves no result', async () => {
  const f=outerFixture(`
@@ -210,6 +214,46 @@ test('control: an install whose workspace packages resolve inside the task runs 
  const r=spawnSync('bash',[join(f.target,'repo-gates.sh')],{cwd:f.dir,env:f.env,encoding:'utf8',timeout:30000});
  assert.equal(r.status,0,r.stdout+r.stderr);
  assert.ok(existsSync(join(f.dir,'install-stamp')));
+ assert.ok(existsSync(join(f.dir,'infra-ran')));
+ const file=attemptFiles(join(f.dir,'gates')).find(p=>p.endsWith('/result.json'));
+ assert.ok(file);assert.equal(JSON.parse(readFileSync(file)).result,'passed');
+});
+
+// #680. `gate_phase` returns non-zero only for an INFRASTRUCTURE failure — the scheduler, or a
+// worker whose result file could not be collected. A security gate that RAN and refused the
+// candidate therefore fell straight through to `gate_phase application 3 4 5 6 7`, and the five
+// quality gates judged a tree the scan had already refused. The scan's verdict is a stage
+// boundary, not a peer opinion: nothing after it runs, and the attempt still completes, as
+// `failed`, so the refusal is recorded rather than left half-written.
+test('a failing security stage stops the run before any quality gate and completes the attempt as failed', () => {
+ const f=outerFixture(npmLogger);
+ stubSecurity(f,'#!/usr/bin/env bash\nprintf "fixture: security stage refused the candidate\\n" >&2\nexit 1\n');
+ const r=spawnSync('bash',[join(f.target,'repo-gates.sh')],{cwd:f.dir,env:f.env,encoding:'utf8',timeout:30000});
+ const output=r.stdout+r.stderr;
+ assert.notEqual(r.status,0,output);
+ assert.match(output,/GATES STOPPED AT THE SECURITY STAGE/);
+ assert.equal(existsSync(join(f.dir,'infra-ran')),false,'gate 8 (repository checks) ran after a refused scan');
+ const calls=readFileSync(join(f.dir,'npm-calls'),'utf8').trim().split('\n');
+ assert.equal(calls.some(c=>c.startsWith('run')),false,calls.join('|'));
+ const file=attemptFiles(join(f.dir,'gates')).find(p=>p.endsWith('/result.json'));
+ assert.ok(file,output);
+ const record=JSON.parse(readFileSync(file));
+ assert.equal(record.result,'failed');
+ assert.deepEqual(record.commands.map(c=>c.name),['npm ci','.xezar/checks/security-scan.sh']);
+});
+
+// The guard for what must NOT change, and it passes with and without the fix. `unknown` is a
+// RESOLVED stage — `security-scan.sh` exits 0 for pass, unknown and not-applicable — and it is
+// deliberately not a refusal. Stopping there would change what counts as a security failure,
+// which this fix does not touch.
+test('a resolved-but-unknown security stage still runs every gate', () => {
+ const f=outerFixture(npmLogger);
+ stubSecurity(f,`#!/usr/bin/env bash
+node -e 'const fs=require("node:fs");fs.writeFileSync(process.env.GATE_ATTEMPT_DIR+"/security.json",JSON.stringify({schemaVersion:1,kind:"xezar.security-result",status:"unknown",refused:false}))'
+exit 0
+`);
+ const r=spawnSync('bash',[join(f.target,'repo-gates.sh')],{cwd:f.dir,env:f.env,encoding:'utf8',timeout:30000});
+ assert.equal(r.status,0,r.stdout+r.stderr);
  assert.ok(existsSync(join(f.dir,'infra-ran')));
  const file=attemptFiles(join(f.dir,'gates')).find(p=>p.endsWith('/result.json'));
  assert.ok(file);assert.equal(JSON.parse(readFileSync(file)).result,'passed');
