@@ -215,9 +215,13 @@ export async function recordLastListen(
  * roots — the MCP door, a scoped request, the cockpit's own probe — may reach it
  * more than once, and a read-only `.local` would otherwise print the same line
  * several times. Only the WARNING is remembered; every call still attempts the
- * write, so nothing here can serve a stale fact. Mirrors `warnOncePerState`
- * (`config.ts`), one flag for the process rather than one per path: this file
- * describes one folder per boot.
+ * write, so nothing here can serve a stale fact.
+ *
+ * ONE flag for the process lifetime, deliberately coarser than `warnOncePerState`
+ * (`config.ts`), which is a Map keyed by path and re-warns when the failure
+ * changes: once any failure has warned here, a later and different persistent
+ * failure is silent. This file describes one folder per boot, so one flag is the
+ * intended granularity, not a copy of that helper.
  */
 let warnedWriteFailure = false;
 

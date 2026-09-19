@@ -75,6 +75,9 @@ describe('project machine state (#649)', () => {
     if (originalHome === undefined) delete process.env.XEZ_HOME;
     else process.env.XEZ_HOME = originalHome;
     rmSync(root, { recursive: true, force: true });
+    // The warning latches for the process, so re-arm it between cases; a later
+    // warn-asserting case would otherwise pass vacuously.
+    machineState.resetProjectMachineStateWriteWarning();
   });
 
   const readRaw = (): Record<string, unknown> =>
@@ -121,6 +124,27 @@ describe('project machine state (#649)', () => {
       host: '127.0.0.1',
       observedAt: '2026-01-01T00:00:00.000Z',
     });
+  });
+
+  it('per-field salvage: one invalid stamp drops only itself, never its good siblings', async () => {
+    const good = '2026-01-01T00:00:00.000Z';
+    // `addedAt` is a number, so it fails the schema on its own. Whole-object rejection
+    // would drop the good stamp, the good address and the key a newer xezar wrote —
+    // the data loss this file exists to prevent.
+    writeRaw({
+      addedAt: 12345,
+      lastOpenedAt: good,
+      lastListen: { port: 1111, host: '127.0.0.1', observedAt: good },
+      unknownFromNewerXezar: { keep: 'this' },
+    });
+
+    await recordLastListen({ port: 4321, host: '127.0.0.1', observedAt: good });
+
+    const raw = readRaw();
+    expect(raw.addedAt).toBeUndefined();
+    expect(raw.lastOpenedAt).toBe(good);
+    expect(raw.lastListen).toEqual({ port: 4321, host: '127.0.0.1', observedAt: good });
+    expect(raw.unknownFromNewerXezar).toEqual({ keep: 'this' });
   });
 
   it('named break `lost-update`: a writer gated behind the lock keeps BOTH facts', async () => {
@@ -197,8 +221,11 @@ describe('project machine state (#649)', () => {
 
   it('guard: a missing, corrupt or non-object file answers {} and never throws', () => {
     expect(readProjectMachineState()).toEqual({});
-    for (const body of ['', 'not json', '[]', 'null', '"a string"', '42', 'true']) {
-      writeRaw(body);
+    mkdirSync(dirname(statePath), { recursive: true });
+    // Raw bodies, not `writeRaw`: stringifying them would land a JSON string every
+    // time and never exercise the parse failure or the real-array branch.
+    for (const body of ['', 'not json', '{oops', '[]', '[1,2]', 'null', '"a string"', '42', 'true']) {
+      writeFileSync(statePath, body, 'utf8');
       expect(readProjectMachineState()).toEqual({});
     }
     rmSync(statePath);

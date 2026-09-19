@@ -495,7 +495,9 @@ contract from this release on.
   machine first registered the folder), `lastOpenedAt` and `lastListen` — when this clone was last
   opened here, and the port its cockpit last held here — live in
   `<project>/.local/xezar/machine-state.json`, beside the other working files, which the blanket
-  `.local/.gitignore` keeps out of Git. Port memory therefore still works across restarts in the
+  `.local/.gitignore` keeps out of Git. Its `addedAt` and `lastOpenedAt` stamps are now validated to
+  at most 64 characters, so a longer hand-edited stamp reads as absent (xezar's own stamps are ~24
+  characters). Port memory therefore still works across restarts in the
   mode, `addedAt` is stable across restarts, and `git status` stays clean after a launch. **One
   exception is named rather than hidden:** the FIRST boot that opts a folder in still writes
   `workspace.json` once, through migration 001, with `schemaVersion` and the materialized defaults —
