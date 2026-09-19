@@ -572,6 +572,49 @@ const CASES = [
     "replace": "    unregisterLeader?.();",
     "test": "packages/xezar/src/mcp/acceptance-durability.test.ts -t onEventRow"
 },
+  {
+    name: 'automations-refresh-resurrects-removed-project',
+    ac: 'AC-715-1 (#715; #707 review round 1, Minor 1)',
+    why: 'the superseded-dispose refresh re-adds from the registry row it resolved BEFORE the await, so a project removed for real inside that window comes back in the skills-update coordinator until restart',
+    file: 'packages/xezar/src/server/server.ts',
+    find: `      if (!sharedContexts.peek(id) && !sharedContexts.pending(id)) return rescheduleAutomations();
+`,
+    replace: '',
+    test: 'packages/xezar/src/server/automations-gate.test.ts -t "removed for real while a superseded refresh"',
+  },
+  {
+    name: 'automations-refresh-resurrects-removed-project-in-the-map',
+    ac: 'AC-715-1 (#715; #717 review round 1, Minor 1)',
+    why: 'the guard is not repeated after the refresh\'s SECOND await, so a project removed for real while `getRepoInfo` spawns `git` is put back into `automationProjects` — the one holder with neither a later remove nor a poller to correct it',
+    file: 'packages/xezar/src/server/server.ts',
+    find: `      if (!sharedContexts.peek(id) && !sharedContexts.pending(id)) return rescheduleAutomations();
+      if (parsed?.host === 'github.com')`,
+    replace: `      if (parsed?.host === 'github.com')`,
+    test: 'packages/xezar/src/server/automations-gate.test.ts -t "second await"',
+  },
+  {
+    name: 'rp5-net-absent-from-skills-coordinator',
+    ac: 'AC-715-4/AC-715-5 (#715; #707 review round 1, Minor 2 — probe E3a)',
+    why: 'the refresh re-adds and then removes again, so the live project is NET ABSENT from the skills-update coordinator. RP-5 exists to pin its presence, and the call assertions it used to carry stayed green against exactly this',
+    file: 'packages/xezar/src/server/server.ts',
+    find: `      coordinator.add(project.id, project.root);
+      const parsed = parseRemote`,
+    replace: `      coordinator.add(project.id, project.root);
+      coordinator.remove(project.id);
+      const parsed = parseRemote`,
+    test: 'packages/xezar/src/server/automations-gate.test.ts -t "stays in both coordinators"',
+  },
+  {
+    name: 'rp5-refresh-forgets-reschedule',
+    ac: 'AC-715-4/AC-715-5 (#715; #707 review round 1, Minor 2 — probe E3b)',
+    why: 'the refresh returns without `rescheduleAutomations()`, so the automation coordinator\'s roots are never re-seeded after the removal — the half the old `removeAutomationSpy` assertion covered and the rewritten one had left pinned by nothing',
+    file: 'packages/xezar/src/server/server.ts',
+    find: `      // same registry, which re-seeds the root the \`remove\` above dropped.
+      return rescheduleAutomations();`,
+    replace: `      // same registry, which re-seeds the root the \`remove\` above dropped.
+      return;`,
+    test: 'packages/xezar/src/server/automations-gate.test.ts -t "stays in both coordinators"',
+  },
 ];
 
 function run(cmd, args, opts = {}) {
