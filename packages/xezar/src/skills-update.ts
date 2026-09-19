@@ -40,10 +40,12 @@ interface CommandResult { stdout: string; stderr: string }
 export interface SkillsUpdateServiceOptions {
   /**
    * The USER's home, which holds `~/.agents/.skill-lock.json` — the global
-   * skill mirror `npx skills` writes. It is a host file and single-project mode
-   * never moves it (#600 SP-2.3, BR-7: agent logins, skills mirrors, `gh` and
-   * `git` stay on the host). Only the cross-process lock below follows the
-   * layout, and `cacheDir` is what moves it.
+   * skill mirror `npx skills` writes — and the machine-wide lock taken beside
+   * it while a global check or apply runs. It is a host file and single-project
+   * mode never moves it (#600 SP-2.3, BR-7: agent logins, skills mirrors, `gh`
+   * and `git` stay on the host). The PROJECT half's cross-process lock follows
+   * the layout, and `cacheDir` is what moves it; the GLOBAL half's lock stays
+   * here, in every layout, and is only ever taken when global work will run.
    */
   homeDir?: string;
   /** The layout's cache root; defaults to `<homeDir>/.cache/xez` when a test pins a home,
@@ -56,9 +58,23 @@ export interface SkillsUpdateServiceOptions {
   invalidateCatalog?: (repoRoot: string) => Promise<unknown> | unknown;
 }
 
+/** The lock is held by a live process; the caller decides whether that is fatal. */
+class SkillsUpdateLockBusyError extends Error {
+  constructor() { super('another skills update check is running'); this.name = 'SkillsUpdateLockBusyError'; }
+}
+
 /** A manual apply distinguishes contention from ordinary unavailable state. */
 export class SkillsUpdateConflictError extends Error {
   constructor() { super('another skills update operation is running'); this.name = 'SkillsUpdateConflictError'; }
+}
+
+function isLockBusy(error: unknown): boolean {
+  return error instanceof SkillsUpdateLockBusyError || error instanceof SkillsUpdateConflictError;
+}
+
+/** Only the GLOBAL scope fails when its own lock cannot be taken; the reason says which case it is. */
+function globalLockReason(error: unknown): string {
+  return isLockBusy(error) ? 'another xezar is updating global skills' : 'global skills folder is not writable';
 }
 
 type LockRead = { kind: 'ok'; names: string[] } | { kind: 'missing' } | { kind: 'invalid' };
@@ -167,6 +183,20 @@ export class SkillsUpdateService {
     return this.pinnedCacheDir ?? xezCacheDir();
   }
 
+  /**
+   * The machine-wide half of the guard: a lock beside `~/.agents/.skill-lock.json`,
+   * the one mirror every layout shares. It is taken only while global work will
+   * really run, in every layout, because the global half never moves with the
+   * project while the project half keeps the per-cache lock above. Two
+   * single-project folders — or one folder and an ordinary xezar — contend here
+   * before either runs `-g`, which is exactly what moved when the single lock
+   * followed the cache into the project (#600). Its folder is never created: a
+   * machine without the mirror has no global work and must not gain `~/.agents`.
+   */
+  private globalLockPath(): string {
+    return join(this.home, '.agents', '.xez-skills-update.lock');
+  }
+
   snapshot(repoRoot: string): SkillsUpdateState {
     return this.states.get(repoRoot) ?? this.makeState();
   }
@@ -218,8 +248,30 @@ export class SkillsUpdateService {
     }
     const lockPath = join(this.cacheDir(), 'skills-update.lock');
     let release: (() => Promise<void>) | undefined;
+    let releaseGlobal: (() => Promise<void>) | undefined;
     try {
       release = await this.acquireLock(lockPath, rejectIfBusy);
+      // The machine-wide lock is taken only when the global half will really run:
+      // the mirror exists and owns xezar skills, AND its six-hour cache is stale.
+      // Nothing global is read or written otherwise, and a lock file beside a
+      // third-party tool's home is a write xezar has no business making.
+      const cachedGlobal = this.globalScopeCache;
+      const globalCacheFresh = !force && cachedGlobal?.checkedAt != null
+        && this.now() - Date.parse(cachedGlobal.checkedAt) < CHECK_TTL_MS;
+      const globalMirror = await readLock(join(this.home, '.agents', '.skill-lock.json'));
+      const globalWorkPending = globalMirror.kind === 'ok' && globalMirror.names.length > 0 && !globalCacheFresh;
+      let globalLockFailure: string | undefined;
+      if (globalWorkPending) {
+        try {
+          // createParents: false — if the mirror exists its folder exists, and a
+          // machine that never installed skills must not get a `~/.agents`.
+          releaseGlobal = await this.acquireLock(this.globalLockPath(), false, { createParents: false });
+        } catch (error) {
+          // A global lock we cannot take must never stop the project half: a
+          // read-only `~/.agents` behaved exactly this way in 0.15.0.
+          globalLockFailure = globalLockReason(error);
+        }
+      }
       const npx = await this.resolveNpx();
       if (!npx) throw Object.assign(new Error('missing executable'), { code: 'ENOENT' });
       const pairs: Array<[SkillsUpdateScope, string]> = [
@@ -228,9 +280,10 @@ export class SkillsUpdateService {
       ];
       const scopes: SkillsUpdateScopeState[] = [];
       for (const [scope, path] of pairs) {
-        if (scope === 'global' && !force && this.globalScopeCache?.checkedAt
-          && this.now() - Date.parse(this.globalScopeCache.checkedAt) < CHECK_TTL_MS) {
-          scopes.push(this.globalScopeCache);
+        if (scope === 'global' && globalLockFailure) {
+          scopes.push({ ...blankScope('global'), status: 'unavailable', checkedAt: new Date(this.now()).toISOString(), reason: globalLockFailure });
+        } else if (scope === 'global' && globalCacheFresh && cachedGlobal) {
+          scopes.push(cachedGlobal);
         } else {
           const result = await this.checkScope(scope, path, repoRoot, npx);
           if (scope === 'global') this.globalScopeCache = result;
@@ -251,7 +304,7 @@ export class SkillsUpdateService {
       const scopes = [blankScope('project'), blankScope('global')].map((scope) => ({ ...scope, status: 'unavailable' as const, checkedAt, reason }));
       const state = { ...this.makeState(scopes), status: 'unavailable' as const, checkedAt };
       this.states.set(repoRoot, state); return state;
-    } finally { await release?.(); }
+    } finally { await releaseGlobal?.(); await release?.(); }
   }
 
   private async performUpdate(repoRoot: string, rejectIfBusy: boolean): Promise<SkillsUpdateState> {
@@ -268,15 +321,37 @@ export class SkillsUpdateService {
 
     const lockPath = join(this.cacheDir(), 'skills-update.lock');
     let release: (() => Promise<void>) | undefined;
+    let releaseGlobal: (() => Promise<void>) | undefined;
+    let globalLockFailure: string | undefined;
     const completed = new Set<SkillsUpdateScope>();
     const outcomes: SkillsUpdateScopeState[] = [];
+    // A global apply is due only when the check proved global names available AND
+    // the mirror still owns them; otherwise no global command will run, so its
+    // machine-wide lock is not taken and its folder is not created.
+    const globalPrior = current.scopes.find((entry) => entry.scope === 'global');
+    let globalApplyDue = Boolean(globalPrior?.available && globalPrior.skills.length > 0);
+    if (globalApplyDue) {
+      const mirror = await readLock(join(this.home, '.agents', '.skill-lock.json'));
+      if (mirror.kind !== 'ok' || mirror.names.length === 0) globalApplyDue = false;
+    }
     try {
       release = await this.acquireLock(lockPath, rejectIfBusy);
+      if (globalApplyDue) {
+        try {
+          releaseGlobal = await this.acquireLock(this.globalLockPath(), false, { createParents: false });
+        } catch (error) {
+          globalLockFailure = globalLockReason(error);
+        }
+      }
       const npx = await this.resolveNpx();
       if (!npx) throw Object.assign(new Error('missing executable'), { code: 'ENOENT' });
       for (const scope of ['project', 'global'] as const) {
         const prior = current.scopes.find((entry) => entry.scope === scope) ?? blankScope(scope);
         if (!prior.available || prior.skills.length === 0) { outcomes.push(prior); continue; }
+        if (scope === 'global' && globalLockFailure) {
+          outcomes.push({ ...prior, status: 'unavailable', reason: globalLockFailure });
+          continue;
+        }
         const path = scope === 'project' ? join(repoRoot, 'skills-lock.json') : join(this.home, '.agents', '.skill-lock.json');
         const owned = await readLock(path);
         const names = owned.kind === 'ok' ? prior.skills.filter((name) => owned.names.includes(name)).sort() : [];
@@ -300,6 +375,7 @@ export class SkillsUpdateService {
         outcomes.push({ ...prior, status: prior.available ? 'error' : prior.status, reason: prior.available ? reason : prior.reason });
       }
     } finally {
+      await releaseGlobal?.();
       await release?.();
     }
 
@@ -334,8 +410,11 @@ export class SkillsUpdateService {
     }
   }
 
-  private async acquireLock(path: string, rejectIfBusy = false): Promise<() => Promise<void>> {
-    await mkdir(dirname(path), { recursive: true });
+  private async acquireLock(path: string, rejectIfBusy = false, options: { createParents?: boolean } = {}): Promise<() => Promise<void>> {
+    // A lock for a folder xezar owns creates its parents. The lock beside the
+    // third-party `~/.agents` mirror must NOT: if the mirror exists its folder
+    // exists, and a machine with no mirror must not gain one.
+    if (options.createParents !== false) await mkdir(dirname(path), { recursive: true });
     try {
       const handle = await open(path, 'wx', 0o600);
       await handle.writeFile(`${process.pid}\n${this.now()}\n`); await handle.close();
@@ -345,7 +424,7 @@ export class SkillsUpdateService {
       const age = this.now() - metadata.timestamp;
       if (age <= LOCK_STALE_MS && metadata.alive) {
         if (rejectIfBusy) throw new SkillsUpdateConflictError();
-        throw new Error('another skills update check is running');
+        throw new SkillsUpdateLockBusyError();
       }
       await rm(path, { force: true });
       const handle = await open(path, 'wx', 0o600); await handle.writeFile(`${process.pid}\n${this.now()}\n`); await handle.close();

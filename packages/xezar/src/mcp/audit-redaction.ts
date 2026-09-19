@@ -110,7 +110,27 @@ export const AUDIT_CONFIG_WRITES: readonly string[] = [
 ];
 
 /** Free text any door's body or arguments can carry. Removed before hashing. */
-const FREE_TEXT_KEYS = ['task', 'prompt', 'text', 'message', 'feedback', 'answer', 'title', 'brief', 'body', 'description', 'name', 'label', 'steps', 'yaml'];
+const FREE_TEXT_KEYS = [
+  'task',
+  'prompt',
+  'text',
+  'message',
+  'feedback',
+  'answer',
+  'title',
+  'brief',
+  'body',
+  'description',
+  'name',
+  'label',
+  'steps',
+  'yaml',
+  // Per-run system-prompt override and pasted attachments: both can carry the same free text (or
+  // its bytes) as `task`/`prompt` but were missing from this list, so two `POST /runs` (or message)
+  // bodies differing only in one of them still hashed to different digests.
+  'systemPrompt',
+  'images',
+];
 /** Keys that hold a path or a location. Removed before hashing. */
 const PATH_KEYS = ['root', 'path', 'dir', 'folder', 'cwd', 'file', 'url', 'remote', 'cloneUrl', 'worktreePath', 'dataDir'];
 

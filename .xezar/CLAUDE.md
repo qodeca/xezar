@@ -1,6 +1,6 @@
 # Working with the Xezar project kit
 
-This is the maintained project operating kit for developing Xezar with Xezar. Read the repository's `AGENTS.md`, `SDLC.md`, `CODE_REVIEW.md` and `BACKWARD_COMPATIBILITY.md` first; this guide explains the local kit and does not replace those contracts. It does not implement a built-in leader or the distributed kit. The MCP server exists, and a project leader drives this kit only through it (see § Identity, decisions, evidence and recovery).
+This is the maintained project operating kit for developing Xezar with Xezar. Read the repository's `AGENTS.md`, `SDLC.md`, `CODE_REVIEW.md` and `BACKWARD_COMPATIBILITY.md` first; this guide explains the local kit and does not replace those contracts. It does not implement a built-in leader or the distributed kit. The MCP server exists, and a project leader drives this kit only through it (see § Identity, decisions, evidence and recovery). The project leader's own contract is `.xezar/docs/leader-guide.md`, loaded automatically at session start and after compaction for a leader session and never for a task agent.
 
 ## Structure
 
@@ -17,7 +17,7 @@ Local-only state includes runs/indexes, worktrees, tmp/cache, UI state, todos, a
 
 ## Discovery and fresh worktrees
 
-The existing Xezar loaders discover `.xezar/workflows` and `.xezar/skills` directly, and the kit is committed, so a task worktree normally receives it through Git. Every workflow still begins with the explicit `kit` command, which locates the same repository's primary checkout and runs `checks/bootstrap.sh`. It copies only maintained kit assets into the validated task worktree, no dirty application source, runtime, personal configuration or secrets. `.local/xezar-kit/snapshot.json` records the local snapshot and is ignored. Existing snapshots are reused on continuation; conflicting existing task content and symlinks are refused, never overwritten — including when the committed kit is already present through Git.
+The existing Xezar loaders discover `.xezar/workflows` and `.xezar/skills` directly, and the kit is committed, so a task worktree normally receives it through Git. Every workflow still begins with the explicit `kit` command, which locates the same repository's primary checkout and runs `checks/bootstrap.sh`. It copies only maintained kit assets into the validated task worktree, no dirty application source, runtime, personal configuration or secrets. `.local/xezar/kit/snapshot.json` records the local snapshot and is ignored. Existing snapshots are reused on continuation; conflicting existing task content and symlinks are refused, never overwritten — including when the committed kit is already present through Git.
 
 Standalone skills explain the equivalent prerequisite when checks are absent. Bootstrap is a project command, not an engine feature; the current engine's personal-agent-config seeding does not seed this whole kit. Never solve missing files by committing unrelated primary-checkout work or by operating on a peer worktree. Read effective config/tool availability from the current run; successful static loading is not a live-client certification.
 

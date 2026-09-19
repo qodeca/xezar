@@ -92,6 +92,7 @@ What is protected now: **the shape of each route under `/api/v1`**, the three-wa
   - `GET /api/v1/workspace/events` reuses the same event names but stamps every payload with the owning `project` id — additively where the legacy payload is an object (`run` grows a `project` key; `run-deleted` becomes `{id, project}`), wrapped where it is not (`todos` → `{project, items}`; `usage` → `{project, usage}`). `usage` is **filtered per project** — one event per project that has live rows, never a stamped whole and never an empty-record clear. Three workspace-only event names exist for the registry/GUI-clone flows: `project-added`, `project-removed`, `checkout-progress` (payloads relayed verbatim from the emitter). The host-wide `provider-status` event is also workspace-only and deliberately **unstamped**: its additive coarse provider row is `{provider, status, hint?, authFailureId?, enabled?}`. It is emitted on a runtime-authentication latch transition, a successful provider enablement change, and a successful incident-safe retry; runtime rows carry the fixed hint and opaque incident id, while enablement/retry rows carry the current `enabled` value. Evolution is additive: a new workspace event name is inert to older consumers, and subscribing never force-instantiates a project (a lazily-built project's events join streams already open).
 - WebSocket: `GET /api/v1/ws` — the topic subscription bus, upgrade-only and workspace-level (single-mount, never mirrored under `/api/v1/p/`). **The path is protected, the frame protocol is not.** The path is what the `packages/xezar/web/dist` bundle and the Vite dev proxy connect to and what the upgrade guard answers `403` on, so moving or removing it is breaking. The frames (`{type:'subscribe'|'unsubscribe',topic}` up; `{type:'event'|'error'|'ping',…}` down) and the topic names are deliberately **internal**: the cockpit bundle ships in lockstep with the server that serves it, there is no cross-version consumer, and unlike `/api/v1/events` nothing outside this repo can have scripted them. Topic names may therefore be added, renamed or dropped freely — but a topic's payload, when it mirrors an HTTP route's shape (`health` does), inherits that route's contract.
   - Topics today: `health` (subscribed once at the cockpit root; its payload is `GET /api/v1/health`'s, and it is the one topic marked readable by a page the loopback fallback admits) and `mcp-leader` (additive, #374: subscribed by Settings → MCP connection's leader control while it is on screen; trusted connections only). An `mcp-leader` frame's `data` is `{projects: {<registry project id>: <GET /api/v1/mcp/leader answer>}}` (`mcpLeaderTopicSchema` in `packages/contract`) — every project whose MCP service is running, plus one whose service stopped while the topic was held, as `{available: false, reason}`. It mirrors that route's shape, so it inherits that route's contract, and it is published only when the payload changed. It carries exactly what the route answers: no filesystem path or home, but an OpenCode blocker may repeat the address and session id the person typed and a pi blocker pi's own error text — which is why the topic is trusted-only. Both topics open only when `capabilities.localHandoff` is true: a remote cockpit opens no WebSocket and reads the same routes over HTTP.
+  - **Local mode only since 0.16.0 (#547).** A hosted server (`XEZ_REMOTE=1` or a non-loopback bind) refuses every upgrade on this path before the handshake, whatever the Origin and including a native client that sends none: it answers `HTTP/1.1 403 Forbidden` and closes the socket. See § "Hosted servers refuse every WebSocket upgrade" below.
   - **Not covered by the §2 drift guard.** `packages/xezar/src/server/bc-route-inventory.test.ts` derives its inventory from a built app's route table, and an upgrade-only endpoint is not in it (the socket is attached to the raw HTTP server, not to Hono) — so this entry is maintained by hand. Any future upgrade route needs the same treatment.
 - Repo/GitHub: `GET /api/v1/github`, `GET /api/v1/github/checks`, `GET /api/v1/github/search`, `GET /api/v1/github/ref-status`, `GET /api/v1/github/comments/:kind/:number`, `GET /api/v1/github/prs/:number/changes`, `GET /api/v1/github/prs/:number/merge-state`, `POST /api/v1/github/prs/:number/merge`, `POST /api/v1/github/prs/:number/ready`, `GET /api/v1/repo`, `GET /api/v1/repo/{diff,changes}`, `GET /api/v1/repo/commit/:sha`, `POST /api/v1/repo/branch`, `GET/PUT /api/v1/config`, `GET/PUT /api/v1/ui-state`
   - `GET /api/v1/github/comments/:kind/:number` (pre-rename issue 499) returns `{available, reason?, comments[], truncated?, events?}`. `events?` is additive (pre-rename issue 525) and may be absent entirely when the timeline fetch degrades; `comments[]` keeps its exact shape, contents and cap regardless of event volume.
@@ -159,7 +160,7 @@ An optional `runs/<id>.ndjson.corrections.json` is reviewed incident evidence in
 
 - **`mcp/event-journal.ndjson` → `gate`** (#460, PR 4) — optional additive `{stepId, resultScope: 'routine' | 'stage'}` routing metadata on newly written `gate.passed` and `gate.failed` rows. Older rows without it remain valid and significant; absence means stage for delivery. The row is still retained and returned by `leader_events read` whichever scope it carries. A routine successful pass alone is omitted only from pushes, while every failure remains significant. Push dispatch pages may carry optional positive `omittedRoutineCount`; it counts routine passes covered by the pushed visible cursor and is never a journal row. Acknowledgement, cursor encoding, raw replay, retention and gap semantics are unchanged. Making either optional field required, defaulting absent metadata to routine, filtering raw reads or append, or counting a failure as omitted is breaking.
 
-- **`audit.ndjson`** and the read-only legacy **`mcp-audit.ndjson`** (#306, 0.16.0) — the project audit trail, one record per line. **Deliberate break, 0.16.0, recorded here on purpose** (spec `docs/features/mcp-server/audit-trail-origins-2026-09-17.md` § 3.1 and § 8). The file was renamed and the record went from `v: 1` to `v: 2` (`packages/contract/src/audit.ts`): `outcome` is now `{status: 'applied'}` or `{status: 'refused', reason}` instead of the strings `ok`/`rejected`/`not-applied`/`unverified`, `errorCode` became `outcome.reason`, and every record carries `seq`, `kind`, a UTC-only `ts` and a server-derived `actor` whose `type` equals `origin`; objects are strict. What the old name and shape were load-bearing FOR: (1) the released reader, which reads only `mcp-audit.ndjson` and only `v: 1`; (2) tests and tools that treated that one path as the door's own write when comparing state before and after a call; (3) the `unverified` outcome, which recorded a call whose effect may have started. The measured result for (1), run by `packages/xezar/src/mcp/audit-upgrade.test.ts` against a frozen copy of the 0.15.0 reader: it never throws, keeps 0 of the 11 v2 records it is given (MCP, UI, automation and command-line records, applied and refused, with and without a proxy user, receipt id, command, resource and `fieldNames`, plus a rotation marker) and counts each as quarantined; in a file holding both versions it keeps every v1 entry. For (3) there is no v2 value: such a call is not recorded, and the trail's one warning per process says `the action continued without an audit record` — a deliberate loss, because `refused` would claim that nothing happened. Rules that are now the contract, and changing any of them is breaking: **new wins** — when `audit.ndjson` exists (even empty) only it is read and the legacy file is ignored; **legacy is read-only** — `mcp-audit.ndjson` is read with the v1 schema only while `audit.ndjson` does not exist, is never written, renamed, chmodded, rotated or deleted, and reading it prints exactly one line per process, `xezar: mcp-audit.ndjson is deprecated; reading it read-only (removal not before 0.18.0)`; **no merge** — the two histories are never combined, so an interrupted upgrade cannot show an entry twice; **sequence** — `seq` is the last valid persisted v2 record's plus one, read from the files at each write and never from a cache, so a failed write allocates nothing and a torn last line is skipped and never glued to the next record; **best effort** — a failed or unrecordable audit write never changes the operation's result.
+- **`audit.ndjson`** and the read-only legacy **`mcp-audit.ndjson`** (#306, 0.16.0) — the project audit trail, one record per line. **Deliberate break, 0.16.0, recorded here on purpose** (spec `docs/features/mcp-server/audit-trail-origins-2026-09-17.md` § 3.1 and § 8). The file was renamed and the record went from `v: 1` to `v: 2` (`packages/contract/src/audit.ts`): `outcome` is now `{status: 'applied'}` or `{status: 'refused', reason}` instead of the strings `ok`/`rejected`/`not-applied`/`unverified`, `errorCode` became `outcome.reason`, and every record carries `seq`, `kind`, a UTC-only `ts` and a server-derived `actor` whose `type` equals `origin`; objects are strict. What the old name and shape were load-bearing FOR: (1) the released reader, which reads only `mcp-audit.ndjson` and only `v: 1`; (2) tests and tools that treated that one path as the door's own write when comparing state before and after a call; (3) the `unverified` outcome, which recorded a call whose effect may have started. The measured result for (1), run by `packages/xezar/src/mcp/audit-upgrade.test.ts` against a frozen copy of the 0.15.0 reader: it never throws, keeps 0 of the 16 v2 lines it is given – 15 records (MCP, UI, automation and command-line records, applied and refused, with and without a proxy user, receipt id, command, resource and `fieldNames`) plus a rotation marker – and counts each as quarantined; in a file holding both versions it keeps every v1 entry. For (3) there is no v2 value: such a call is not recorded, and the trail's one warning per process says `the action continued without an audit record` — a deliberate loss, because `refused` would claim that nothing happened. Rules that are now the contract, and changing any of them is breaking: **new wins** — when `audit.ndjson` exists (even empty) only it is read and the legacy file is ignored; **legacy is read-only** — `mcp-audit.ndjson` is read with the v1 schema only while `audit.ndjson` does not exist, is never written, renamed, chmodded, rotated or deleted, and reading it prints exactly one line per process, `xezar: mcp-audit.ndjson is deprecated; reading it read-only (removal not before 0.18.0)`; **no merge** — the two histories are never combined, so an interrupted upgrade cannot show an entry twice; **sequence** — `seq` is the last valid persisted v2 record's plus one, read from the files at each write and never from a cache, so a failed write allocates nothing and a torn last line is skipped and never glued to the next record; **best effort** — a failed or unrecordable audit write never changes the operation's result.
 
   **Rotation, retained names, sequence and modes** (#306 part 3, 0.16.0; spec § 7). These are the contract from 0.16.0 and changing any of them is breaking. **Names**: the live file is `audit.ndjson` and its rotations are `audit.ndjson.1` (newest) to `audit.ndjson.4` (oldest) in the same folder — five retained files, and no sixth is ever created; `audit.ndjson.lock` is the writers' lock file, and `audit.ndjson.lock.takeover` the short-lived guard beside it under which a stale lock is removed; neither is a retained file and neither outlives its writer. The legacy `mcp-audit.ndjson` is not part of the set and is never locked, renamed, chmodded, appended or rotated. **Ordering**: rotation happens BEFORE the append that would pass **10,000,000 bytes**, so a live file is never knowingly over the limit — `.4` is deleted, `.3`→`.4`, `.2`→`.3`, `.1`→`.2`, live→`.1`, and the new live file's FIRST line is one `{"kind":"rotated", seq, previousLastSeq, ts, projectId, v:2}` marker, with the action as its second line and the next sequence. A reader that expects only `kind: 'action'` lines must skip the marker; readers here already do. **Sequence** is monotonic across the whole retained set, so a rotation never restarts it, and reading the history means reading `.4`, `.3`, `.2`, `.1` and then the live file, in that order. **Modes**: every retained file is created AND repaired to `0600` at each write; a file that cannot be made `0600` gets nothing. **One lock**: all four doors take `audit.ndjson.lock` (2 s bound, 20 ms polling, takeover of a dead owner or a lock older than 30 s, and every removal guarded and checked against the lock's own token, so two holders are not possible) for the sequence, the append and the rotation; after the bound, or on any filesystem failure, that one record is dropped with one warning per PROJECT per process (#306 part 4: every door of a project shares it) — an audit write is never attempted unlocked and never changes or rolls back the user's operation; may delay the answer by at most the 2 s lock bound. A crash between the rename and the marker is repaired by the next writer, which writes the marker from the maximum retained sequence and never invents the lost action. Downgrade limit: 0.15.0 starts, reads its untouched legacy file and ignores `audit.ndjson`, but cannot show any record 0.16.0 wrote. Removal floor: the alias is removed no earlier than 0.18.0, only through #563, with release notes that give the manual preservation path; a user's `mcp-audit.ndjson` is never deleted by xezar.
 - **Audit record origins, actors and action ids** (#306 part 2, 0.16.0) — what each door writes into `audit.ndjson` (spec `docs/features/mcp-server/audit-trail-origins-2026-09-17.md` § 4–§ 9). **Origin is the server door, never a caller field**, in local and hosted mode alike: the HTTP routes write `ui` (`packages/xezar/src/server/audit-ui.ts`), the MCP door `mcp`, the automation runner `automation` (`packages/xezar/src/automations/audit.ts`) and the headless command line `cli` (`packages/xezar/src/cli-audit.ts`); a request body that names an origin or actor changes nothing. MCP tools call the HTTP routes in process, so the `ui` door records only a request that arrived over a real connection — one operation is one record. **Actor** is server-derived and door-specific: `{type:'mcp'}`; `{type:'ui'}` or `{type:'ui', proxyUser:{value, trust:'asserted-by-proxy'}}`; `{type:'automation', receiptId}`; `{type:'cli', command}` with `command` from the contract enum. **Action ids** come from one shared inventory (`packages/xezar/src/mcp/audit-inventory.ts`) and are the same for the same change through `ui` and `mcp` (`run.pin`, `workspace.config.set`); v1 records named the tool action (`taskCreate.start`), so a reader that matched those strings must match the inventory id. Renaming an id, or moving a route or MCP action to another id, is breaking. **Recorded set**: run-state changes and config writes, never reads; whether an MCP call is recorded is decided per action by the inventory, not by the tool's `readOnlyHint`, so a read action inside a mutating tool (`check_automation` with `mode: preview`) writes nothing. `audit-inventory.test.ts` fails when an MCP action or a non-GET route is unclassified. **Settlement**: 2xx is `applied`; 4xx is `refused` with `http_<status>` (a stale-version 409 is `stale_version`, an MCP boundary refusal its boundary, an invalid leader cursor `invalid_cursor`, a `performed: false` answer its HTTP status or outcome, and the onboarding `conflict` answer `conflict`); an MCP answer that says the target is not in this project, from a lookup that precedes every effect, is `refused` with `not_found` (#573 — `execution_control`, `organise_work`, `task_create` and `handoff_git`; before 0.16.0 shipped, the first three wrote nothing and `handoff_git` wrote `applied`); 5xx, a throw or an error that may have started its effect writes nothing. An MCP answer with `status: 'conflict'` — a state the action does not allow, an Inbox action while the Inbox is off, a moved pull-request head — is `refused` with `conflict` (`stale_head` for the moved head), and a `handoff_git` `status: 'failed'` answer is `refused` with `policy`, `quality_blocker`, `forge_blocker`, `forge_unavailable` or `http_<status>` when its own answer says it refused before its effect, and writes NO record otherwise (#577; before 0.16.0 shipped, both were recorded as `applied`). The cockpit's Inbox start route records its own 409 and 404 the same way. An automation launch is `applied` with the run as resource, a refusal known to come before any run (`invalid_steps`, `unknown_workflow`) is `refused` with the automation as resource, and a duplicate receipt, held lease, filter miss or preview writes nothing. **Commands**: every valid subcommand writes exactly one record (`--help`, `--version`, an unknown command and an unknown `projects` word write none); `projects add|remove|tag|port` write to the project they acted on, everything else to the invocation project; a folder that is neither registered nor already holding `.local/xezar` gets no record and no new state; `fieldNames` and the digest carry what changed, never a tag, port or path. **Proxy user**: read from `X-Xezar-User` only when the server is hosted (`capabilities().localHandoff` false) and only from a loopback peer; trimmed, control characters stripped, capped at 128 UTF-16 code units without splitting a surrogate pair, omitted when empty, and never trusted as authentication. The bundled nginx site sets `proxy_set_header X-Xezar-User $remote_user;`, which overwrites a client's value; a custom proxy must do the same or the value is whatever the client sent. The bundled macOS ngrok tunnel (`server-install --platform macosx-ngrok`, #572, 0.16.0) writes an ngrok Traffic Policy file (`remove-headers` on `on_http_request`) that strips a client-supplied `X-Xezar-User` before it reaches xezar, the ngrok-equivalent of nginx's overwrite; it does not set the header to the basic-auth identity, so a request through the tunnel with no forged header is recorded with no proxy user, same as any other unset case. Prior 0.16.0 pre-releases neither set nor stripped the header, so a signed-in client's own value was stored, still labelled `asserted-by-proxy`; the label never means authenticated. **Best effort** is unchanged: a failed audit write never changes a response, a command's exit code or a launch, and warns once per project per process. **Redaction** is one seam every door passes through (#306 part 4, `packages/xezar/src/mcp/audit-redaction.ts`): a record holds identifiers, enum members, sorted `fieldNames` and a SHA-256 digest, never a value. A configuration write — `PUT /config`, `PUT /ui-state`, `PATCH /projects/:projectId`, `PUT /agent-config/:id`, the workspace pair, `projects tag` and `projects port`, and their MCP counterparts — stores the body's top-level key names and a digest taken with EVERY value replaced, so the digest identifies which keys changed and never what they changed to; an MCP configuration write now carries those key names too, which it did not before. An identifier that matches one of the host's secret env values or a well-known token shape is dropped from the record rather than masked, and free text, paths, URLs, a request's own credentials and a candidate's author are removed or replaced before the digest is taken. The 0.15.0 reader result is unchanged by all of this: it still parses none of these records and quarantines each one without crashing (`audit-upgrade.test.ts`), so no new break is recorded here.
@@ -291,7 +292,7 @@ The multi-project workspace adds per-user state next to the per-repo files in se
 
 Breaking: renaming/removing a key or changing a default in either file; making any field required; stripping unknown keys on a write; a migration that deletes or rewrites per-repo files, or whose failure blocks boot; any code path that requires the registry to exist. Required path: same spirit as section 3 — additive first, read the old key as an alias for at least one minor release; anything more structural ships as a numbered migration that obeys the contract above.
 
-The default-on team skills updater is an owner-approved exception to the normal opt-in rule for network and external-file mutation. Its compatibility boundary is deliberately narrow: work begins only after listen; checks are six-hour cached and bounded; updates name only sorted, lock-proven `qodeca/xezar-skills` entries, run serially under a stale-recoverable cross-process lock, and failures never reject startup. `XEZ_SKILLS_AUTO_UPDATE=0` (or the stored global override) restores detection-only behavior. Broad scope-only updates, invoking `gh`, updating untracked/manual skills, or making this work boot-blocking are breaking changes.
+The default-on team skills updater is an owner-approved exception to the normal opt-in rule for network and external-file mutation. Its compatibility boundary is deliberately narrow: work begins only after listen; checks are six-hour cached and bounded; updates name only sorted, lock-proven `qodeca/xezar-skills` entries, run serially under two stale-recoverable cross-process locks — the PROJECT half at `<cacheDir>/skills-update.lock` (`~/.cache/xez` globally, `<project>/.local/xezar/cache` in single-project mode) and the machine-wide `~/.agents` mirror at `<home>/.agents/.xez-skills-update.lock`, taken in every layout because that mirror never moves with the project — and failures never reject startup. `XEZ_SKILLS_AUTO_UPDATE=0` (or the stored global override) restores detection-only behavior. Broad scope-only updates, invoking `gh`, updating untracked/manual skills, or making this work boot-blocking are breaking changes.
 
 ### Default team skills source moved to `qodeca/xezar-skills` – deliberate, 2026-09-13
 
@@ -486,6 +487,24 @@ contract from this release on.
   the same name could not coexist with that guard. `workspace.json.bak` — the registry snapshot
   every successful merge-write has always refreshed beside `config.json` — follows its file into
   the project directory; it is derived state, and `.gitignore` decides whether it travels.
+- **The committed file holds no per-machine fact after the first opt-in boot (#600,
+  release-candidate repair).** `<project>/.xezar/workspace.json` is the file a team commits, so an
+  ordinary launch writes nothing about THIS machine into it: registration does not append a row and
+  does not stamp one, and the row this folder is answered with is DERIVED from the folder (or taken
+  from the stored row that travelled with the clone) rather than written back. `addedAt` (when this
+  machine first registered the folder), `lastOpenedAt` and `lastListen` — when this clone was last
+  opened here, and the port its cockpit last held here — live in
+  `<project>/.local/xezar/machine-state.json`, beside the other working files, which the blanket
+  `.local/.gitignore` keeps out of Git. Port memory therefore still works across restarts in the
+  mode, `addedAt` is stable across restarts, and `git status` stays clean after a launch. **One
+  exception is named rather than hidden:** the FIRST boot that opts a folder in still writes
+  `workspace.json` once, through migration 001, with `schemaVersion` and the materialized defaults —
+  including the host-derived `resources.memoryLimitMb` (`deriveDefaultMemoryLimitMb`), which then
+  becomes an explicit committed value every teammate inherits until someone edits it. That write
+  predates this repair and happens once per opt-in folder; no later launch rewrites it. The default
+  GLOBAL layout is byte-for-byte unchanged: it still writes both keys into `~/.xezar/config.json`.
+  Breaking: a launch after the first opt-in boot writing a per-machine key into the committed file,
+  or a launch that leaves `git status` dirty in the mode.
 - **Locked detection rule.** A linked git worktree is never a single-project root, the flag
   included, and neither is anything under `.local/xezar/worktrees/` or the user's home directory
   itself. That is not tidiness: every xezar task worktree is a linked worktree, so a mode that
@@ -504,8 +523,18 @@ contract from this release on.
   the shared `~/.cache/xez/skills/`, so a clone of the project fetches its own team skills rather
   than inheriting whatever this machine happened to fetch last. The MCP bridge's socket directory
   follows the same rule (`<project>/.local/xezar/ipc`, not `~/.xezar/ipc`), because `~/.xezar` is
-  not opened at all. **In the global layout both are byte-identical to 0.15.0**, `~/.cache/xez`
-  included — and `XEZ_HOME` still does not move that cache, exactly as before this mode existed.
+  not opened at all. The skills updater's PROJECT lock follows that cache too (each folder serializes
+  its own project half); the machine-wide `~/.agents` mirror is guarded by a machine-wide lock beside
+  it (`<home>/.agents/.xez-skills-update.lock`), taken only while a global check is stale or a global
+  apply is due, never created when the mirror is absent, and never able to stop the project half. So
+  two folders — or a folder and an ordinary xezar — still cannot check or apply a global update at
+  the same moment, while a mirror whose folder cannot hold the lock marks only the global scope
+  unavailable. **In the global layout the team-skills cache and the MCP socket directory are
+  byte-identical to 0.15.0**, `~/.cache/xez` included — the one addition is the transient lock beside
+  the mirror, written only while a global check or apply runs — and `XEZ_HOME` still does not move
+  that cache, exactly as before this mode existed. A single-project 0.16.0 folder and a 0.15.0 xezar
+  on the same machine do not exclude each other on the global mirror, because 0.15.0 never takes the
+  new lock.
 - **Agent logins, global skill libraries, `gh` and `git` do NOT move.** `CLAUDE_CONFIG_DIR`,
   `CODEX_HOME`, `OPENCODE_CONFIG_DIR` and `PI_CODING_AGENT_DIR` resolve identically inside and
   outside the mode, as do `~/.agents/skills`, `~/.claude/skills` and `~/Applications`. These are the
@@ -580,9 +609,13 @@ contract from this release on.
   refused. Breaking: the two strings diverging, a silent fallback to the default account, or
   applying the refusal in global mode.
 - **A registry of exactly one project, refused in all three doors (part 3).** In the mode the
-  registry IS the folder: `GET /api/v1/projects`, `xezar projects list` and the cockpit answer one
-  row, taken from `<project>/.xezar/workspace.json` when it holds one for this folder and DERIVED
-  from the folder when it does not, so the answer is never "no projects". A `workspace.json` a clone
+  registry IS the folder: `GET /api/v1/projects`, `xezar projects list`, the cockpit and
+  `/api/v1/health` answer one row, taken from `<project>/.xezar/workspace.json` when it holds one
+  for this folder and DERIVED from the folder when it does not, so the answer is never "no
+  projects". The derived row's id is allocated against the STORED ids — the same taken-set the
+  boot identity uses — so a committed row for another machine's folder of the same name cannot
+  make the row and the boot project disagree and drop it, and health builds its list from that
+  same derived row rather than from the raw stored rows. A `workspace.json` a clone
   carried holding rows for other machines' paths is read past, never rewritten — this mode migrates
   and converts nothing, in either direction. Adding, cloning, editing and removing a project, and
   browsing host folders, are refused in every door xezar has: `409 {error}` from the five HTTP routes
@@ -765,13 +798,25 @@ so it is recorded here rather than silently.
   `--mcp-config` overlay built from the project's own `.mcp.json` minus xezar's bridge. It
   therefore no longer loads the MCP servers a person added for themselves in `~/.claude.json`, nor
   anything a settings file would have enabled — the same narrowing Codex runs have had since
-  0.13.0. It is the only lever the CLI offers: without `--strict-mcp-config`, claude merges the
+  0.15.0. It is the only lever the CLI offers: without `--strict-mcp-config`, claude merges the
   project file and the user file on top of the overlay and the bridge comes back.
-- **Broken, pi**: a task run is started with `--mcp-config` pointing at a private per-run file.
-  That file carries the pi agent directory's own `mcp.json` forward unchanged — the person's global
-  pi servers still load — and adds `"disabled": true` for xezar's bridge. The flag substitutes for
-  exactly one slot of the adapter's six-file chain, and the chain merges a server entry field by
-  field, so the flag survives the project files layered above it.
+- **Broken, pi — only where the MCP extension is installed**: a task run is started with
+  `--mcp-config` pointing at a private per-run file. That file carries the pi agent directory's own
+  `mcp.json` forward unchanged — the person's global pi servers still load — and adds
+  `"disabled": true` for xezar's bridge. The flag substitutes for exactly one slot of the adapter's
+  six-file chain, and the chain merges a server entry field by field, so the flag survives the
+  project files layered above it. `--mcp-config` is registered by the optional `pi-mcp-adapter`
+  extension, not by pi itself, and an extension resolves from the agent directory AND from the
+  project folder the child runs in — pi also loads a project's own `.pi/extensions/*` and the
+  packages its `.pi/settings.json` names, once that project is trusted. One binary and one agent
+  home therefore answer differently per folder, so xezar asks this pi with the agent directory AND
+  the working folder the child will really use, once per session and without caching the answer
+  (#548). Where the extension is absent the flag is left out, nothing is written, and the run says
+  so once: that pi reads no MCP configuration at all, so there is no bridge to switch off. A probe
+  that cannot answer leaves the flag out too, and says only that it could not confirm — never that
+  the extension is absent (§ Zero config: a missing peer degrades, never fails). Should a pi refuse
+  the option anyway — the extension removed between the question and the spawn — the session is
+  started once more without it rather than failing.
 - **Broken, OpenCode**: a task run is started with `OPENCODE_CONFIG_CONTENT` carrying
   `{"mcp": {"xezar": {"enabled": false}}}`. That is the one layer OpenCode merges ABOVE the
   project's own `opencode.json`; `OPENCODE_CONFIG` is merged below it and the project entry would
@@ -802,7 +847,9 @@ so it is recorded here rather than silently.
   and do not name an unrelated server `xezar`. Released as part of a **minor** version.
 - **No opt-out knob**: no stored key and no `XEZ_*` variable was added (§ Zero config: never trade
   a working default for a knob). `core/worktree-off-mcp-isolation.test.ts` pins the default path;
-  it fails against runners that pass no isolation (named break `worktree-off-inherits-xezar`).
+  it fails against runners that pass no isolation (named break `worktree-off-inherits-xezar`), and
+  against a pi runner that passes `--mcp-config` without asking whether this pi knows it (named
+  break `pi-mcp-config-unconditional`).
 
 ## Pi isolated runs stay in their task worktree (#537) — deliberate, 0.16.0
 
@@ -852,7 +899,7 @@ reach was an isolation defect, so the restriction is recorded here rather than s
 
 `enforceMemoryLimit` closes a breaching run's session with `session.end()`, and a CLI that does not
 exit on its own is then signalled by xezar and settles on the same "our own signal coming back"
-teardown path a legitimate `XEZ:DONE` close does (#703) — so `session.result` resolved cleanly
+teardown path a legitimate `XEZ:DONE` close does (pre-rename issue 703) — so `session.result` resolved cleanly
 either way, and the step-completion handler could not tell "the agent finished" from "xezar cut it
 off". The run, and its last step, settled `done` with no deliverable and no error.
 
@@ -864,7 +911,7 @@ off". The run, and its last step, settled `done` with no deliverable and no erro
   so the leader's `Continue` still resumes the run — this was already true for `failed` and is not
   new for that path.
 - **Not broken**: the memory limit itself, when the guard fires, and the graceful-close-then-forced-
-  signal teardown of #703 are unchanged. Every other terminal path (`XEZ:DONE`, cancel, an ordinary
+  signal teardown of pre-rename issue 703 are unchanged. Every other terminal path (`XEZ:DONE`, cancel, an ordinary
   agent error, a real crash) settles exactly as before. No event or workflow schema changes; no new
   `RunStatus` value is added.
 
@@ -901,6 +948,45 @@ than only in the CHANGELOG.
   unchanged.
 - **Deferred**: `docs/screenshots/` and `tour.gif` still show the old sidebar task panel; both are
   regenerated once for 0.16.0 after every design batch lands (#447), not by this PR.
+
+## Hosted servers refuse every WebSocket upgrade (#547) – deliberate, 0.16.0
+
+Before 0.16.0 a hosted server applied the same upgrade guard to `GET /api/v1/ws` as a local one,
+so a native client that sent no Origin could open the subscription bus through a reverse proxy.
+The bus carries local-machine signals and cannot carry the proxy's credentials from a browser, so
+hosted servers now close it. The endpoint is upgrade-only and outside the section 2 drift guard,
+so the change is recorded here by hand.
+
+- **Broken**: a hosted server – `XEZ_REMOTE=1`, or a bind address that is not loopback – refuses
+  every WebSocket upgrade on `/api/v1/ws` before the handshake. It answers `HTTP/1.1 403 Forbidden`
+  with `connection: close` and closes the socket; no subscription frame is ever exchanged. The
+  refusal does not depend on the Origin: a browser page, the cockpit itself and a native client
+  that sends no Origin are all refused.
+- **Migration**: a third-party client of a hosted server that used a native WebSocket must move to
+  the authenticated HTTP API plus the server-sent event stream, through the same reverse proxy.
+  A topic that mirrors an HTTP route (`health` mirrors `GET /api/v1/health`) is available by
+  reading that route.
+- **Not broken**: local mode (loopback bind, `XEZ_REMOTE` unset) keeps its existing rules – the
+  loopback Host check, the same-authority and no-Origin trusted connections, and the Vite
+  development proxy. The remote cockpit already opened no WebSocket – it subscribes only when
+  `capabilities.localHandoff` is true – so it needs no change. The path, the frames and the topic
+  names are unchanged.
+- **No opt-out knob**: refusing the bus when hosted is the safe default.
+
+## Every registered project gets its own MCP door (#557) – additive, 0.16.0
+
+Before 0.16.0 only the project the cockpit started in had an MCP door; `xez mcp` in a project added
+later answered "xezar is not running" while the same cockpit served that project's tasks.
+
+- **Added**: a running cockpit now opens an MCP door for every other registered project the first
+  time it serves that project – for example when the project is opened after it is added, or after
+  a restart – and closes it when the project is removed. A folder whose data another cockpit
+  already owns gets no second door.
+- **Unchanged**: the socket location pattern, the `mcp-connection.json` shape, the IPC frames and
+  the MCP tools. The starting project's door opens and behaves exactly as before.
+- **What a reader could notice**: one more listening socket and one more connection file per
+  served project, and `mcp.ready` or `mcp.unavailable` activity lines that name those projects.
+  MCP journal activity lines are still printed for the starting project only.
 
 ## When in doubt
 

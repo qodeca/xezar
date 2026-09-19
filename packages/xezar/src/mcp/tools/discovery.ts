@@ -22,6 +22,7 @@ import { resolveCapabilities } from '../../server/capabilities.ts';
 import { resolveForge } from '../../server/forge/index.ts';
 import { getRepoInfo } from '../../server/git.ts';
 import { loadWorkspaceConfig } from '../../workspace/config.ts';
+import { findRegistryProject } from '../../workspace/projects.ts';
 import { projectDataDir } from '../../project-data-paths.ts';
 import { discoverIssueFiling } from '../../onboarding/issue-filing.ts';
 import { observedIdentity, onboardingStatus } from '../../onboarding/status.ts';
@@ -294,7 +295,7 @@ export async function collectDiscoveryFacts(
   const availability = forge ? await forge.detect().catch(() => ({ available: false })) : null;
   providerAuth ??= new ProviderAuthService();
   const providers = applyProviderEnablement(await providerAuth.status(), workspace.disabledProviders);
-  const own = workspace.projects.find((p) => p.id === ctx.project.id);
+  const own = await findRegistryProject({ id: ctx.project.id });
   const resources = workspace.resources;
   const projectMaxParallel = own?.maxParallel ?? null;
   const projectMemoryLimitMb = typeof config.memoryLimitMb === 'number' && config.memoryLimitMb > 0 ? config.memoryLimitMb : null;

@@ -16,8 +16,8 @@ const target=path.join(cwd,'.xezar');
 // Refuse symlink traversal in both source and destination; never overwrite task edits.
 function safeParents(base,rel){let cur=base;for(const part of rel.split(path.sep)){cur=path.join(cur,part);try{if(fs.lstatSync(cur).isSymbolicLink())throw Error(`symlink refused: ${rel}`);}catch(e){if(e.code!=='ENOENT')throw e;}}}
 safeParents(cwd,'.xezar');fs.mkdirSync(target,{recursive:true});
-safeParents(cwd,'.local/xezar-kit');
-const local=path.join(cwd,'.local/xezar-kit');fs.mkdirSync(local,{recursive:true});
+safeParents(cwd,'.local/xezar/kit');
+const local=path.join(cwd,'.local/xezar/kit');fs.mkdirSync(local,{recursive:true});
 const record=path.join(local,'snapshot.json');
 if(fs.existsSync(record)){if(fs.lstatSync(record).isSymbolicLink())throw Error('snapshot symlink');const saved=JSON.parse(fs.readFileSync(record));if(saved.run!==run)throw Error('snapshot owner mismatch');console.log(`KIT REUSED: ${saved.digest}; preserves task-local edits`);process.exit(0);}
 const entries=[];

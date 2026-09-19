@@ -237,6 +237,20 @@ addition, and takes three coordinated changes:
 
 A fifth agent home that does have a variable needs adding to `test-env-up.sh` too.
 
+**A repository that runs in single-project mode is booted in the pinned global layout anyway.**
+Once `.xezar/workspace.json` is committed, a plain clone of this repository is a single-project
+root — the folder decides, with no flag — and the mode never opens `XEZ_HOME`
+(`docs/guide/11-configuration-reference.md`). The shared suite is written against the global layout:
+the multi-project shell, the shipped defaults rather than the repository's own committed
+`workspace.json`, and state a test run is allowed to rewrite. So `scripts/test-env-up.sh` starts the
+app with the explicit `--global-layout` input (`#657`), which outranks the marker: the app is TOLD
+which layout to resolve instead of the marker being moved out from under it, so the launcher renames,
+moves and writes **nothing** in the repository root, and a crash cannot leave the checkout in the
+wrong layout. `environment.singleProjectRoot` and `environment.stateLayout` record both halves in the
+descriptor — the marker the checkout carried, and the layout the launcher asked for — so an instance
+booted under the other condition is never reused. Task worktrees are unaffected: a linked worktree is
+never a single-project root.
+
 **Team skills are the other thing the boot does not isolate.** The shared instance and every
 fixture server boot with the default `skillsRepos`, so they clone `qodeca/xezar-skills` into
 `~/.cache/xez/skills/` in the background and the 37 `xez-*` skills appear in the catalog whenever

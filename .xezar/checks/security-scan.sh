@@ -72,14 +72,13 @@ if [ -z "$BASE_SHA" ]; then
   BASE_SHA="$(git -C "$TASK_CWD" merge-base HEAD "$base_ref" 2>/dev/null || printf '')"
 fi
 
-# THE ONE DECLARED EXCEPTION to the empty-inventory refusal, and it is declared HERE because
-# only the task's own records answer it. A run whose fix landed on the PR's own branch
-# (`DELIVERED`, #402) or that only verified a revision it was never asked to change
-# (`VERIFICATION`, §7d) legitimately carries no commits of its own — readiness is documented to
-# accept exactly those two shapes with an empty branch — so its empty change set is expected
-# rather than a hole the stage fell into. The scanner cannot tell the two apart from the diff
-# alone, so it refuses unless something declares it, and the declaration lands in the result
-# where a reviewer reads it. Nothing else is ever declared here.
+# Why a DELIVERED/VERIFICATION run declares itself, and it is declared HERE because only the
+# task's own records answer it. A run whose fix landed on the PR's own branch (`DELIVERED`, #402)
+# or that only verified a revision it was never asked to change (`VERIFICATION`, §7d) legitimately
+# carries no commits of its own — readiness is documented to accept exactly those two shapes with an
+# empty branch. An empty change set resolves as `not-applicable` on its own, so the declaration no
+# longer decides the outcome; it is recorded in the result so a reviewer reads WHY the branch is
+# empty. Nothing else is ever declared here.
 EMPTY_DECLARED=""
 EV_DIR="$(task_evidence_dir 2>/dev/null || printf '')"
 if [ -n "$EV_DIR" ]; then

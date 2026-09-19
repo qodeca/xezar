@@ -36,13 +36,13 @@ you can `cat` and fix by hand.
 
 ## 60-second tour
 
-<a href="docs/screenshots/0.15.0/tour.gif"><img src="docs/screenshots/0.15.0/tour.gif" width="100%" alt="A short loop of the cockpit: tasks running in parallel, the queue starting, a live thread and the Inbox"></a>
+<a href="docs/screenshots/0.16.0/tour.gif"><img src="docs/screenshots/0.16.0/tour.gif" width="100%" alt="A short loop of the cockpit: tasks running in parallel, the queue starting, a live thread, review and a draft PR"></a>
 
 <table>
 <tr>
-<td width="33%"><a href="docs/screenshots/0.15.0/task-thread-dark-1280.png"><picture><source media="(prefers-color-scheme: light)" srcset="docs/screenshots/0.15.0/task-thread-light-1280.png"><img src="docs/screenshots/0.15.0/task-thread-dark-1280.png" alt="A running task streaming agent text, tool calls and results live"></picture></a></td>
-<td width="33%"><a href="docs/screenshots/0.15.0/compare-variants-dark-1280.png"><picture><source media="(prefers-color-scheme: light)" srcset="docs/screenshots/0.15.0/compare-variants-light-1280.png"><img src="docs/screenshots/0.15.0/compare-variants-dark-1280.png" alt="Two variants of the same task compared side by side"></picture></a></td>
-<td width="33%"><a href="docs/screenshots/0.15.0/github-issues-dark-1280.png"><picture><source media="(prefers-color-scheme: light)" srcset="docs/screenshots/0.15.0/github-issues-light-1280.png"><img src="docs/screenshots/0.15.0/github-issues-dark-1280.png" alt="The GitHub view handing an open issue to an agent"></picture></a></td>
+<td width="33%"><a href="docs/screenshots/0.16.0/task-thread-dark-1280.png"><picture><source media="(prefers-color-scheme: light)" srcset="docs/screenshots/0.16.0/task-thread-light-1280.png"><img src="docs/screenshots/0.16.0/task-thread-dark-1280.png" alt="A running task streaming agent text, tool calls and results live"></picture></a></td>
+<td width="33%"><a href="docs/screenshots/0.16.0/compare-variants-dark-1280.png"><picture><source media="(prefers-color-scheme: light)" srcset="docs/screenshots/0.16.0/compare-variants-light-1280.png"><img src="docs/screenshots/0.16.0/compare-variants-dark-1280.png" alt="Two variants of the same task compared side by side"></picture></a></td>
+<td width="33%"><a href="docs/screenshots/0.16.0/github-issues-dark-1280.png"><picture><source media="(prefers-color-scheme: light)" srcset="docs/screenshots/0.16.0/github-issues-light-1280.png"><img src="docs/screenshots/0.16.0/github-issues-dark-1280.png" alt="The GitHub view handing an open issue to an agent"></picture></a></td>
 </tr>
 <tr>
 <td align="center"><b>Watch a run live</b><br>Every step, tool call and token as it happens.</td>
@@ -160,6 +160,7 @@ setup. See [single-project mode](docs/guide/09-projects.md#to-keep-a-projects-xe
 | `XEZ_WORKTREE_DEFAULT=1` | Seed the New Task Worktree default (`0` or `1`). Without a seed, eligible runs default on; a saved global Resources setting overrides it. |
 | `XEZ_DISABLE_REPO_LOCK=1` | Bypass the repository-root lease (default off, exact `1`). Concurrent agents may overwrite files or Git state. Isolated worktrees are unaffected. |
 | `XEZ_SINGLE_PROJECT=1` | Show only the launch project and refuse project management (default off, exact `1`). Restart required; registry rows are retained. State stays in `~/.xezar`; not deprecated by `--single-project`, which also moves the state into the project. |
+| `XEZ_GLOBAL_LAYOUT=1` | Ask for the global layout on this launch even in a folder that carries `.xezar/workspace.json` (default off, exact `1`; the flag is `--global-layout`). It outranks the marker, and it is how a script or test harness gets the global layout from a clone that commits the marker without moving the project's own state. `XEZ_HOME` still only relocates the global state root and neither turns the layout on nor off. |
 | `XEZ_HIDE_TOKEN_USAGE=1` | Hide token counts, keeping cost visible (default off, exact `1`, restart required). API data is unchanged. |
 | `XEZ_HIDE_COST=1` | Hide cost, keeping token counts visible (default off, exact `1`, restart required). API data is unchanged. |
 | `XEZ_HIDE_TOKEN_METRICS=1` | Legacy switch hiding both counts and cost; overrides the two flags above (default off, exact `1`, restart required). |
@@ -274,7 +275,7 @@ the same rule Codex runs have had since #324. This closes a real bug: xezar's br
 project's one leader slot the moment it connected, so a task running in the project folder itself
 (Worktree off) could hold that slot for its whole lifetime and refuse your own leader session with
 "project occupied". Every other MCP server your project declares still loads, for every backend; your
-config files are never edited. Two backends narrow further: a Claude Code task now sees only the MCP
+config files are never edited. Two narrowings follow: a Claude Code task now sees only the MCP
 servers your project's own `.mcp.json` declares, not the ones in `~/.claude.json`; and for pi and
 OpenCode a server literally named `xezar` is switched off in tasks even when it belongs to you, so
 rename an unrelated server of that name. Details: [`BACKWARD_COMPATIBILITY.md`](BACKWARD_COMPATIBILITY.md).
@@ -294,6 +295,38 @@ A repository can now carry its own xezar setup so every clone runs the same way 
 step: start `xezar --single-project` once in the project folder – its first run there also offers a
 one-time import of your existing global `~/.xezar` setup. See
 [Projects § single-project mode](docs/guide/09-projects.md#to-keep-a-projects-xezar-setup-inside-the-project--single-project-mode).
+
+### Hosted WebSocket migration
+
+Hosted mode (`XEZ_REMOTE=1` or a non-loopback bind) now refuses all WebSocket upgrades, including
+native clients without an Origin. Use the authenticated HTTP API and SSE event endpoints through
+your reverse proxy; the cockpit already uses these transports remotely. Local-mode WebSocket
+clients and the Vite development proxy are unchanged.
+
+### MCP door for every registered project
+
+Every project registered in the cockpit now gets its own MCP door, opened at boot and when the
+project is registered (#557) – not only the one the cockpit started in. A leader started in a
+second project can attach without restarting the cockpit inside that project's folder; nothing to
+configure, and the starting project's connection, socket location and connection file are
+unchanged. See
+[Run a leader in each client](docs/guide/13-mcp-leader.md#to-run-a-leader-in-each-client).
+
+### A few more things to expect
+
+- A pi task in its own isolated working copy (Git worktree) can no longer use its file tools to
+  write or edit the repository's primary working copy, and a shell command that names that copy is
+  refused (best effort, not containment). A pi task that needs the primary working copy on purpose
+  must be created with Worktree off.
+- A run xezar itself ends for the memory limit now finishes `failed`, not `done` – expect `failed`
+  instead of a done run with no deliverable.
+- In an autonomous run, the automatic re-prompt after a Continue on a workflow step still waiting
+  for `XEZ:DONE` is capped at 3 attempts; once that step says `XEZ:DONE`, the remaining steps keep
+  their usual budget. No flag restores the old 40-retry loop.
+- The stdout line `recovered N run(s) from the previous session` is gone; a script that read it
+  should instead read stderr's plain output and select `event=task.recovered`.
+
+Details for all four: [`BACKWARD_COMPATIBILITY.md`](BACKWARD_COMPATIBILITY.md).
 
 ## Upgrading to 0.15.0
 
@@ -335,8 +368,3 @@ described in [SECURITY.md](SECURITY.md).
 
 **MIT** © Qodeca – full text in [LICENSE](LICENSE).
 Xezar is based on work done in [open-mercato/cezar](https://github.com/open-mercato/cezar).
-
-
-### Hosted WebSocket migration (0.16.0)
-
-Hosted mode (`XEZ_REMOTE=1` or a non-loopback bind) now refuses all WebSocket upgrades, including native clients without an Origin. Use the authenticated HTTP API and SSE event endpoints through your reverse proxy; the cockpit already uses these transports remotely. Local-mode WebSocket clients and the Vite development proxy are unchanged.

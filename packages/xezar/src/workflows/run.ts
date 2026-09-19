@@ -296,7 +296,8 @@ interface ActiveRun {
   autoContinues?: number;
   /** A smaller nudge budget than `MAX_AUTO_CONTINUES` for this run's live turn — set only by
    *  `runContinuation` when the continued turn must end with `XEZ:DONE` for the workflow tail to
-   *  run (#613). Read through `autoContinueCap`, never directly. */
+   *  run (#613). Read through `autoContinueCap`, never directly. Cleared again before the workflow
+   *  tail starts on this same `ActiveRun` — the small budget bounds the gated turn, not the tail. */
   autoContinueCap?: number;
   /** `tool-call` events seen in the turn in flight; read and reset at every turn end (#613). */
   turnToolCalls?: number;
@@ -2308,7 +2309,11 @@ export class RunManager {
     this.flushDeferred(runId);
     state.currentStepId = stepId;
     state.interrupt = () => session.interrupt();
+    // Still ONE registration site. A runner whose child exists already answers through `pid`;
+    // one that has to ask its binary something first (pi, #548) answers through
+    // `onProcessStart`, which also fires again when that runner restarts its own child.
     if (session.pid !== undefined) registerRunProcess(runId, session.pid);
+    else session.onProcessStart?.((pid) => registerRunProcess(runId, pid));
     // The adopt. Ordering is load-bearing exactly as it is in `adoptActive`: `state.interrupt`
     // already points at this session, so a `cancel()` arriving one tick later takes the ordinary
     // path and this call is not a second, racing teardown.
@@ -3361,6 +3366,14 @@ export class RunManager {
             next++;
           }
           this.armAutosave(state);
+          // The gated budget belongs to the CONTINUED turn alone (#613). The tail reuses this
+          // same `ActiveRun`, so leaving the cap (and the nudges the gated turn already spent)
+          // behind gave the tail's last agent step 3 automatic continues instead of
+          // `MAX_AUTO_CONTINUES`, and it parked at `waiting` mid-work. The gated turn is over
+          // here — every path that needs the small cap has already run.
+          state.autoContinueCap = undefined;
+          state.autoContinues = 0;
+          state.autoContinueStop = undefined;
           await this.runWorkflowSteps(runId, state, workflow, {
             task: record.task, runner: record.runner, model: record.model,
             agentProfile: record.agentProfile, autonomous: record.autonomous,

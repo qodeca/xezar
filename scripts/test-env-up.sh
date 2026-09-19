@@ -116,14 +116,28 @@ unset ANTHROPIC_MODEL
 # equal and the boot reuses the wrong one.
 AGENT_HOME_FINGERPRINT="$CLAUDE_CONFIG_DIR|$CODEX_HOME|$OPENCODE_CONFIG_DIR"
 
-# The third reuse dimension (#600 SP-5.6): WHERE the booted app keeps its state. A repository
-# root that holds `.xezar/workspace.json` boots in single-project mode — the folder decides, with
-# no flag and no variable — so an instance booted there reads and writes the project's own files
-# and never the pinned `XEZ_HOME`. Reusing it for a global-mode spec, or the reverse, would run
-# every spec against the wrong store while calling itself "reused". Mirrors the detection rule in
+# Does this repository root carry the single-project marker (#600)? The folder decides the
+# layout, with no flag and no variable, so a plain clone of a repository that commits
+# `.xezar/workspace.json` boots in the mode. Mirrors the detection rule in
 # `packages/xezar/src/state-layout.ts`: a `.git` FILE (a linked worktree, which every task
-# worktree is) is never a single-project root. A descriptor written before this dimension existed
-# has no such key, so the comparison fails and the boot goes cold — the correct answer.
+# worktree is) is never a single-project root.
+#
+# The shared suite must NOT boot in the mode. The mode never opens `XEZ_HOME` (a documented
+# guarantee — `docs/guide/11-configuration-reference.md`), and the specs are written against the
+# pinned global layout: the multi-project shell, the shipped defaults rather than the repository's
+# own committed `workspace.json`, and state that a test run is allowed to rewrite. So the launcher
+# ASKS for the global layout with the app's own explicit input (`--global-layout`, #657) instead of
+# lying to the filesystem about it. Earlier this launcher renamed the marker aside for the app's
+# boot and restored it afterwards; that approach was rejected in review of #657 (B1-B3) because an
+# unlocked rename of a checkout's committed state is unsafe while another process — including a
+# cockpit served from this very checkout — may be reading it, and because no trap or self-heal
+# makes the crash window safe. The launcher now renames, moves and writes NOTHING in the
+# repository root.
+#
+# The marker is still a reuse dimension of its own (`environment.singleProjectRoot`): a change in
+# it changes the checkout the instance is serving, so an instance booted under the other condition
+# must not be reused. `environment.stateLayout` is the second half of that — the layout this
+# launcher actually asked the app for. Both are honest answers.
 single_project_root() {
   if [ -f "$REPO_ROOT/.xezar/workspace.json" ] && [ ! -f "$REPO_ROOT/.git" ]; then
     echo true
@@ -131,6 +145,22 @@ single_project_root() {
     echo false
   fi
 }
+
+# The layout input this launcher gives the app, in ONE place. `--global-layout` is the product's
+# explicit answer to "which layout", and it outranks the marker, so a marker-carrying clone still
+# boots in the pinned global layout.
+APP_LAYOUT_INPUT="--global-layout"
+
+# The layout recorded in the descriptor, DERIVED from the input above rather than asserted beside
+# it (review of #657, M1): a descriptor can then never claim a layout the command line did not ask
+# for. With no input at all the marker decides, which is what the app itself would read.
+case " $APP_LAYOUT_INPUT " in
+  *" --global-layout "*) BOOT_STATE_LAYOUT=global ;;
+  *" --single-project "*) BOOT_STATE_LAYOUT=project ;;
+  *)
+    if [ "$(single_project_root)" = true ]; then BOOT_STATE_LAYOUT=project; else BOOT_STATE_LAYOUT=global; fi
+    ;;
+esac
 
 FORCE=0
 FORCE_REBUILD=0
@@ -188,7 +218,8 @@ json_get() { node -e '
 # "source newer than startedAt" test is what keeps a stale build from being tested.
 LOCK_HELD=0
 release_lock() { [ "$LOCK_HELD" = 1 ] && rm -rf "$LOCK_DIR" 2>/dev/null || true; }
-trap release_lock EXIT INT TERM
+cleanup() { release_lock; }
+trap cleanup EXIT INT TERM
 
 acquire_lock() {
   waited=0
@@ -241,7 +272,11 @@ try_reuse() {
   [ "${XEZ_SINGLE_PROJECT:-}" = 1 ] && requested_single_project=true
   [ "$(json_get "$ENV_DESCRIPTOR" environment.singleProject)" = "$requested_single_project" ] || return 1
   [ "$(json_get "$ENV_DESCRIPTOR" environment.singleProjectRoot)" = "$(single_project_root)" ] || {
-    log "single-project mode differs from the running instance — booting cold"
+    log "single-project marker differs from the running instance — booting cold"
+    return 1
+  }
+  [ "$(json_get "$ENV_DESCRIPTOR" environment.stateLayout)" = "$BOOT_STATE_LAYOUT" ] || {
+    log "the booted state layout differs from the running instance — booting cold"
     return 1
   }
   [ "$(json_get "$ENV_DESCRIPTOR" environment.agentHome)" = "$AGENT_HOME_FINGERPRINT" ] || {
@@ -420,11 +455,12 @@ start_app() {
 
   log "starting xezar on $BASE_URL (XEZ_DRY_RUN=1)"
   # --no-open: a test boot must never hijack the operator's browser.
+  # $APP_LAYOUT_INPUT: the app is TOLD which layout to resolve, never tricked into it.
   if command -v setsid >/dev/null 2>&1; then
-    (cd "$REPO_ROOT" && exec setsid nohup node packages/xezar/dist/index.js --port "$PORT" --no-open --repo "$REPO_ROOT" \
+    (cd "$REPO_ROOT" && exec setsid nohup node packages/xezar/dist/index.js --port "$PORT" --no-open --repo "$REPO_ROOT" "$APP_LAYOUT_INPUT" \
       >"$APP_LOG" 2>&1 </dev/null) &
   else
-    (cd "$REPO_ROOT" && exec nohup node packages/xezar/dist/index.js --port "$PORT" --no-open --repo "$REPO_ROOT" \
+    (cd "$REPO_ROOT" && exec nohup node packages/xezar/dist/index.js --port "$PORT" --no-open --repo "$REPO_ROOT" "$APP_LAYOUT_INPUT" \
       >"$APP_LOG" 2>&1 </dev/null) &
   fi
   APP_PID=$!
@@ -472,7 +508,7 @@ write_descriptor() {
   [ "${XEZ_SINGLE_PROJECT:-}" = 1 ] && SINGLE_PROJECT=true
   node -e '
     const fs = require("fs");
-    const [out, baseUrl, port, pid, cmd, bInstalled, bCmd, bVer, bNotes, desc, singleProject, platform, agentHome, singleProjectRoot] = process.argv.slice(1);
+    const [out, baseUrl, port, pid, cmd, bInstalled, bCmd, bVer, bNotes, desc, singleProject, platform, agentHome, singleProjectRoot, stateLayout] = process.argv.slice(1);
     fs.writeFileSync(out, JSON.stringify({
       version: 1,
       runId: "xezar-" + new Date().toISOString().slice(0, 10) + "-" + pid,
@@ -485,7 +521,7 @@ write_descriptor() {
       app: { startCommand: cmd, port: Number(port), healthPath: "/api/v1/health", pid: Number(pid) },
       services: [],
       credentials: [],
-      environment: { singleProject: singleProject === "true", agentHome, singleProjectRoot: singleProjectRoot === "true" },
+      environment: { singleProject: singleProject === "true", agentHome, singleProjectRoot: singleProjectRoot === "true", stateLayout },
       browser: {
         provider: "agent-browser",
         installed: bInstalled === "1",
@@ -497,13 +533,13 @@ write_descriptor() {
       testRunner: { name: "other", config: "packages/web/e2e/vitest.config.ts" },
       platform,
       startedAt: new Date().toISOString().replace(/\.\d+Z$/, "Z"),
-      notes: "Booted from a production build after npm ci with XEZ_DRY_RUN=1, so workspace links/runtime dependencies are present, the agent CLIs are mocked, and no agent login/network is needed. The agents\u2019 own user-scope config dirs are pinned to empty sandboxes under .local/qa/agent-home/ (environment.agentHome), so the app reads no model default from this machine; project-scope files in the repo are NOT isolated. No backing services. Stop with scripts/test-env-down.sh. App log: .local/qa/test-env-app.log.",
+      notes: "Booted from a production build after npm ci with XEZ_DRY_RUN=1, so workspace links/runtime dependencies are present, the agent CLIs are mocked, and no agent login/network is needed. The agents\u2019 own user-scope config dirs are pinned to empty sandboxes under .local/qa/agent-home/ (environment.agentHome), so the app reads no model default from this machine; project-scope files in the repo are NOT isolated. The app is started with the explicit --global-layout input, so a repository root that carries `.xezar/workspace.json` still boots in the pinned GLOBAL layout; the launcher renames, moves and writes nothing in the repository root. No backing services. Stop with scripts/test-env-down.sh. App log: .local/qa/test-env-app.log.",
     }, null, 2) + "\n");
   ' "$ENV_DESCRIPTOR" "$BASE_URL" "$PORT" "$APP_PID" \
-    "XEZ_DRY_RUN=1 XEZ_HOME=.local/qa/xez-home CLAUDE_CONFIG_DIR=.local/qa/agent-home/claude CODEX_HOME=.local/qa/agent-home/codex OPENCODE_CONFIG_DIR=.local/qa/agent-home/opencode node packages/xezar/dist/index.js --repo $REPO_ROOT --port $PORT --no-open" \
+    "XEZ_DRY_RUN=1 XEZ_HOME=.local/qa/xez-home CLAUDE_CONFIG_DIR=.local/qa/agent-home/claude CODEX_HOME=.local/qa/agent-home/codex OPENCODE_CONFIG_DIR=.local/qa/agent-home/opencode node packages/xezar/dist/index.js --repo $REPO_ROOT --port $PORT --no-open $APP_LAYOUT_INPUT" \
     "$BROWSER_INSTALLED" "$BROWSER_COMMAND" "$BROWSER_VERSION" "$BROWSER_NOTES" "$BROWSER_DESCRIPTOR" \
     "$SINGLE_PROJECT" "$(uname -s 2>/dev/null | grep -qi Linux && { grep -qiE 'microsoft|wsl' /proc/version 2>/dev/null && echo wsl2 || echo linux; } || echo darwin)" \
-    "$AGENT_HOME_FINGERPRINT" "$(single_project_root)"
+    "$AGENT_HOME_FINGERPRINT" "$(single_project_root)" "$BOOT_STATE_LAYOUT"
 }
 
 # ---- main -------------------------------------------------------------------

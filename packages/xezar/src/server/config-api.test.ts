@@ -26,6 +26,7 @@ describe('the config API', () => {
   const savedClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
   const savedXdgConfigHome = process.env.XDG_CONFIG_HOME;
   const savedModelsLocked = process.env.XEZ_AGENT_MODELS_LOCKED;
+  const savedAnthropicModel = process.env.ANTHROPIC_MODEL;
   let store: RunStore;
   let app: Hono;
 
@@ -43,6 +44,12 @@ describe('the config API', () => {
     // On a host with the variable unset this is exactly today's value.
     process.env.CLAUDE_CONFIG_DIR = join(homeRoot, '.claude');
     process.env.XDG_CONFIG_HOME = join(homeRoot, '.config');
+    // The fifth pin, and the only one no directory can stand in for: `ANTHROPIC_MODEL` is read
+    // BEFORE any settings file, so with it set the four `defaultModels` cases below answer the
+    // model of whatever agent started `npm test` instead of the fixture's. `vitest.setup.ts`
+    // already scrubs it for every worker; this repeats it locally so the file states its own
+    // dependence and holds even when a case above it puts the variable back.
+    delete process.env.ANTHROPIC_MODEL;
     delete process.env.XEZ_AGENT_MODELS_LOCKED;
     mkdirSync(join(repoRoot, '.xezar'), { recursive: true });
     mkdirSync(join(homeRoot, '.xezar'), { recursive: true });
@@ -67,6 +74,8 @@ describe('the config API', () => {
     else process.env.XDG_CONFIG_HOME = savedXdgConfigHome;
     if (savedModelsLocked === undefined) delete process.env.XEZ_AGENT_MODELS_LOCKED;
     else process.env.XEZ_AGENT_MODELS_LOCKED = savedModelsLocked;
+    if (savedAnthropicModel === undefined) delete process.env.ANTHROPIC_MODEL;
+    else process.env.ANTHROPIC_MODEL = savedAnthropicModel;
   });
 
   const configPath = () => join(repoRoot, '.xezar', 'config.json');

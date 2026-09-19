@@ -53,7 +53,7 @@ metadata stays valid. Anything else in the old directory is local scratch or a
 credential: keep it out of Git rather than promoting it into `.xezar/`.
 
 For the Xezar repository's own kit, all current guidance and check commands use
-the new locations. Its task-local snapshot and lock live in `.local/xezar-kit/`,
+the new locations. Its task-local snapshot and lock live in `.local/xezar/kit/`,
 outside the maintained kit. Source mappings in `.xezar/kit-manifest.json` retain
 their original reference paths as provenance.
 

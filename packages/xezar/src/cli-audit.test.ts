@@ -3,9 +3,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { auditActionRecordSchema, auditCliCommandSchema, type AuditActionRecord } from '@qodeca/xezar-contract';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { CLI_AUDIT_ACTIONS, PROJECTS_SUBCOMMANDS, cliAudit, invocationScope, type CliCommandId } from './cli-audit.ts';
+import { cliAudit, CLI_AUDIT_ACTIONS, invocationScope, PROJECTS_SUBCOMMANDS, type CliCommandId } from './cli-audit.ts';
 import { AUDIT_TRAIL_FILE } from './mcp/audit-trail.ts';
 import { projectDataDir } from './project-data-paths.ts';
+import { projectStateLayout, setActiveStateLayout } from './state-layout.ts';
 import { clearProjectProbeCache, registerProject } from './workspace/projects.ts';
 import { runProjectsCommand, type ProjectsCommandIo } from './workspace/projects-cli.ts';
 
@@ -209,5 +210,23 @@ describe('the cli audit door (#306 part 2)', () => {
     const warnings: string[] = [];
     await expect(cliAudit('serve', root, { warn: (m) => warnings.push(m) }).applied()).resolves.toBeUndefined();
     expect(warnings).toHaveLength(1);
+  });
+
+  it('keeps the project scope in single-project mode (#600 review m5)', async () => {
+    // `projectScope` resolved the project in the STORED rows, which the mode no
+    // longer writes — so `projects remove/tag/port` records lost their scope and
+    // were written into the invocation folder instead of the project they acted on.
+    const root = temp('xez-sp-audit-');
+    setActiveStateLayout(projectStateLayout(root));
+    try {
+      const entry = await registerProject(root);
+      expect(await cliAudit('projects.list', root).projectScope(entry.id)).toEqual({
+        projectId: entry.id,
+        dataDir: projectDataDir(root),
+        isProject: true,
+      });
+    } finally {
+      setActiveStateLayout(null);
+    }
   });
 });
