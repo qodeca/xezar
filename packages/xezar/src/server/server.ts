@@ -1229,6 +1229,9 @@ export function createApp(deps: ServerDeps) {
     manager: deps.manager,
     automationStore: deps.automationStore ?? AutomationStore.open(bootDataDir),
     launchKey: ensureLaunchKey(bootDataDir), // bookmarklet auto-start secret (spec 011)
+    // It never enters the lazy map, so it is never disposed through that seam and never
+    // superseded: the boot project's registration cannot end while this process runs (#647).
+    generation: 0,
   };
   // The cockpit door of the audit trail (#306 part 2, `audit-ui.ts`). Its decorator sits in the
   // chain of every route the shared inventory maps; it records only requests that arrived over a

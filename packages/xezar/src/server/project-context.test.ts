@@ -6,7 +6,12 @@ import { AutomationStore } from '../automations/store.ts';
 import { emitUsageForTest } from '../core/process-usage.ts';
 import type { RunStore } from '../runs/store.ts';
 import { RunManager } from '../workflows/run.ts';
-import { ProjectContextError, ProjectContexts, type ProjectContextSource } from './project-context.ts';
+import {
+  ProjectContextError,
+  ProjectContexts,
+  type ContextDisposal,
+  type ProjectContextSource,
+} from './project-context.ts';
 
 /**
  * Lazy per-project context map (spec 2026-07-20-multi-project-workspace,
@@ -190,6 +195,62 @@ describe('ProjectContexts', () => {
     expect(b.id).toBe('b'); // built fine with only the throwing listener left
     expect(built).toEqual(['a']); // unsubscribed — not notified for b
     await contexts.disposeAll();
+  });
+
+  /**
+   * #647, AC-9 fan-out guard. The dispose payload is an ADDITIVE second parameter, which is
+   * exactly the "a replacement that ships OFF" trap AGENTS.md names: a listener that ignores it
+   * keeps the bug and still compiles. This pins that `notifyDisposed` is the one publisher and
+   * that every registered listener — migrated or not — is reached through it.
+   *
+   * A guard, deliberately: it asserts the payload's SHAPE, not its values, so it says nothing
+   * about whether the generations in it are right. RP-1 owns that.
+   */
+  it('onContextDisposed: every registered listener gets the payload, and a one-argument listener still works (guard)', async () => {
+    const contexts = makeContexts([{ id: 'a', root: rootA, status: 'not-git' }]);
+    const migrated: Array<[string, ContextDisposal]> = [];
+    const alsoMigrated: Array<[string, ContextDisposal]> = [];
+    const unmigrated: string[] = [];
+    contexts.onContextDisposed((id, disposal) => migrated.push([id, disposal]));
+    contexts.onContextDisposed((id, disposal) => alsoMigrated.push([id, disposal]));
+    contexts.onContextDisposed((id) => unmigrated.push(id));
+    const off = contexts.onContextDisposed(() => {
+      throw new Error('subscriber boom');
+    });
+
+    await contexts.context('a');
+    await expect(contexts.dispose('a')).resolves.toBe(true);
+
+    for (const seen of [migrated, alsoMigrated]) {
+      expect(seen).toHaveLength(1);
+      const [id, disposal] = seen[0]!;
+      expect(id).toBe('a');
+      expect(typeof disposal.generation).toBe('number');
+      expect(typeof disposal.superseded).toBe('boolean');
+    }
+    expect(unmigrated).toEqual(['a']); // a listener that ignores the payload is unaffected
+    off();
+  });
+
+  /**
+   * #647, AC-8 and the § 2(5) fail-open rule. `generations` holds no entry until a project's
+   * first removal, so that first dispose carries generation 0 — a real value, not an absent one.
+   * A guard written as `if (!generation) return` would make the FIRST removal of every project a
+   * no-op for every listener, which is the exact lie the rule names.
+   */
+  it('a project\'s first dispose is a real dispose: generation 0, not superseded, still a full teardown', async () => {
+    const contexts = makeContexts([{ id: 'a', root: rootA, status: 'not-git' }]);
+    const disposals: Array<[string, ContextDisposal]> = [];
+    contexts.onContextDisposed((id, disposal) => disposals.push([id, disposal]));
+
+    const ctx = await contexts.context('a');
+    expect(ctx.generation).toBe(0);
+    await expect(contexts.dispose('a')).resolves.toBe(true);
+
+    expect(disposals).toEqual([['a', { generation: 0, superseded: false }]]);
+    // …and the terminal states it exists to reach were reached, first removal or not.
+    expect(contexts.peek('a')).toBeUndefined();
+    expect(ctx.store.listenerCount('event')).toBe(0);
   });
 
   it('dispose() of a never-built project is a no-op returning false', async () => {
@@ -405,6 +466,69 @@ describe('ProjectContexts', () => {
 
       await expect(contexts.dispose('a')).resolves.toBe(true);
       expect(managerDispose).toHaveBeenCalledTimes(2);
+    });
+
+    /**
+     * #647 (RP-1) — the seam this whole change exists for. `dispose()` ends the registration and
+     * drops the context synchronously but notifies only AFTER `teardown` (#467's guarantee that
+     * no listener sees a half-released context), and that teardown awaits `RunManager.dispose()`.
+     * So a project re-added and REBUILT inside that window is already live when the removal's
+     * notification lands, and a listener told only the id releases the live project's state.
+     *
+     * What the payload has to say, then: which registration this dispose is about — captured
+     * before the bump — and whether that id has already moved past it.
+     */
+    it('tells a dispose listener WHICH registration went away, and that a rebuild already replaced it', async () => {
+      const registry: ProjectContextSource[] = [{ id: 'a', root: rootA, status: 'not-git' }];
+      const { contexts, gates } = gatedContexts(() => registry);
+      const disposals: Array<[string, ContextDisposal]> = [];
+      contexts.onContextDisposed((id, disposal) => disposals.push([id, disposal]));
+      const builtGenerations: number[] = [];
+      contexts.onContextBuilt((ctx) => builtGenerations.push(ctx.generation));
+
+      // Park the FIRST teardown only — the one the rebuild has to outrun.
+      const realDispose = RunManager.prototype.dispose;
+      let releaseTeardown!: () => void;
+      const parked = new Promise<void>((resolve) => {
+        releaseTeardown = resolve;
+      });
+      let teardowns = 0;
+      vi.spyOn(RunManager.prototype, 'dispose').mockImplementation(async function (this: RunManager) {
+        if (teardowns++ === 0) await parked;
+        return realDispose.call(this);
+      });
+
+      const first = contexts.context('a');
+      await vi.waitFor(() => expect(gates).toHaveLength(1));
+      gates[0]!();
+      const original = await first;
+      expect(original.generation).toBe(0);
+
+      // The user removes the project; its teardown parks.
+      const removed = contexts.dispose('a');
+      expect(contexts.peek('a')).toBeUndefined();
+      expect(disposals).toEqual([]); // not notified yet — the teardown is still running
+
+      // Re-added, and its first API touch rebuilds it while that teardown is still parked.
+      const rebuilding = contexts.context('a');
+      await vi.waitFor(() => expect(gates).toHaveLength(2));
+      gates[1]!();
+      const rebuilt = await rebuilding;
+      expect(rebuilt.generation).toBe(1);
+      expect(contexts.peek('a')).toBe(rebuilt);
+
+      releaseTeardown();
+      await expect(removed).resolves.toBe(true);
+
+      // The dispose names the registration it is about, and says the id has moved past it.
+      expect(disposals).toEqual([['a', { generation: 0, superseded: true }]]);
+      expect(builtGenerations).toEqual([0, 1]);
+      // The rebuilt context is untouched by that dispose: still published, still open.
+      expect(contexts.peek('a')).toBe(rebuilt);
+      expect(rebuilt.store.listenerCount('event')).toBe(1);
+
+      await expect(contexts.dispose('a')).resolves.toBe(true);
+      expect(disposals[1]).toEqual(['a', { generation: 1, superseded: false }]);
     });
 
     it('disposeAll() covers a build in flight, so shutdown leaves no store open behind it', async () => {

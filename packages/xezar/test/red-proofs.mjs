@@ -30,6 +30,49 @@ const T = 'packages/xezar/src/terminal';
  * expected to pass both ways and is reported as a guard, never as a red proof.
  */
 const CASES = [
+  {
+    name: 'dispose-payload-drops-generation',
+    ac: 'AC-01/AC-08 (#647)',
+    why: 'the dispose payload names the registration that REPLACED this one instead of the one it is about, so a listener cannot tell a late dispose from a live project\'s own',
+    file: 'packages/xezar/src/server/project-context.ts',
+    find: `    const generation = this.generation(projectId);
+    // Bumped BEFORE anything is awaited, so a build that has not reached its publish check yet is
+    // already a loser by the time it gets there — no window, no second removal path.
+    this.generations.set(projectId, generation + 1);`,
+    replace: `    this.generations.set(projectId, this.generation(projectId) + 1);
+    const generation = this.generation(projectId);`,
+    test: 'packages/xezar/src/server/project-context.test.ts',
+  },
+  {
+    name: 'door-early-return-on-stale-generation',
+    ac: 'AC-01 (#647)',
+    why: 'the door map keys on the id alone again, so a project rebuilt inside the teardown window gets no new door and the late dispose closes the live one',
+    file: 'packages/xezar/src/mcp/project-doors.ts',
+    find: `    if (stopped || ctx.id === options.bootProjectId) return;`,
+    replace: `    if (stopped || ctx.id === options.bootProjectId || doors.has(ctx.id)) return;`,
+    test: 'packages/xezar/src/mcp/project-doors.test.ts',
+  },
+  {
+    name: 'door-dedupe',
+    kind: 'guard',
+    ac: 'AC-05 (#647)',
+    why: 'pins the no-race default path: one context announced twice still opens exactly one door. Run against `door-early-return-on-stale-generation`\'s own defect, so it shows the two guards are independent',
+    file: 'packages/xezar/src/mcp/project-doors.ts',
+    find: `    if (stopped || ctx.id === options.bootProjectId) return;`,
+    replace: `    if (stopped || ctx.id === options.bootProjectId || doors.has(ctx.id)) return;`,
+    test: 'packages/xezar/src/mcp/project-doors.test.ts -t "opens once for a context reported twice"',
+  },
+  {
+    name: 'door-readd-waits',
+    kind: 'guard',
+    ac: 'AC-05/AC-07 (#647)',
+    why: 'pins the no-race default path: a re-added project still opens only after the door it replaces has settled, so no second listen races the same socket path. Run with the new dispose guard deleted, which is what makes it a guard and not a proof',
+    file: 'packages/xezar/src/mcp/project-doors.ts',
+    find: `    if (door.generation !== disposal.generation) return;
+`,
+    replace: '',
+    test: 'packages/xezar/src/mcp/project-doors.test.ts -t "opens a re-added project only after"',
+  },
 {
     "name": "recovery-replayed-for-later-projects",
     "ac": "AC-06",
@@ -476,15 +519,21 @@ for (const c of CASES) {
   const after = readFileSync(path, 'utf8');
   if (after !== original) throw new Error(`restore failed for ${c.file}`);
 
-  const outcome = passed ? 'STILL-GREEN (guard)' : 'RED';
-  results.push({ ...c, outcome });
-  console.log(`${passed ? '⚠ ' : '✓ '}${c.name} (${c.ac}) — ${outcome}`);
+  // A `kind: 'guard'` case is EXPECTED to pass both ways: it pins behaviour the change did not
+  // touch. Anything else is expected to go red, and a green one is a test that proves nothing.
+  const guard = c.kind === 'guard';
+  const outcome = guard
+    ? (passed ? 'STILL-GREEN (guard, as expected)' : 'RED (guard — UNEXPECTED, it was meant to pass both ways)')
+    : (passed ? 'STILL-GREEN (proves nothing)' : 'RED');
+  const asExpected = guard ? passed : !passed;
+  results.push({ ...c, outcome, asExpected });
+  console.log(`${asExpected ? '✓ ' : '⚠ '}${c.name} (${c.ac}) — ${outcome}`);
 }
 
-console.log('\n| Break | AC | What it breaks | Test | Result |');
-console.log('|---|---|---|---|---|');
+console.log('\n| Break | Kind | AC | What it breaks | Test | Result |');
+console.log('|---|---|---|---|---|---|');
 for (const r of results) {
-  console.log(`| \`${r.name}\` | ${r.ac} | ${r.why} | \`${r.test}\` | ${r.outcome} |`);
+  console.log(`| \`${r.name}\` | ${r.kind === 'guard' ? 'guard' : 'red proof'} | ${r.ac} | ${r.why} | \`${r.test}\` | ${r.outcome} |`);
 }
-const stillGreen = results.filter((r) => r.outcome !== 'RED');
-process.exit(stillGreen.length === 0 ? 0 : 1);
+const unexpected = results.filter((r) => !r.asExpected);
+process.exit(unexpected.length === 0 ? 0 : 1);
