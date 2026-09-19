@@ -259,6 +259,27 @@ exit 0
  assert.ok(file);assert.equal(JSON.parse(readFileSync(file)).result,'passed');
 });
 
+// #691 Minor 2. The stop path must not delegate its own verdict to `gate_finish`. Nothing in it
+// made a green exit impossible — the `exit 0` branch was unreachable only because
+// `gate_attempt_complete` derives the result from the `required` list and 6-7 commands are
+// unrecorded. Stubbing the completer to return 0 is what turns that into a property of the stop
+// path rather than of the completer's current arithmetic: the run must still exit 1, and it must
+// never print ALL GATES PASSED.
+test('a refused security stage still exits 1 when the completer claims a pass', () => {
+ const f=outerFixture(npmLogger);
+ stubSecurity(f,'#!/usr/bin/env bash\nprintf "fixture: security stage refused the candidate\\n" >&2\nexit 1\n');
+ const record=join(f.target,'lib/gate-record.sh');
+ writeFileSync(record,readFileSync(record,'utf8')+`
+ eval "$(declare -f gate_attempt_complete | sed '1s/gate_attempt_complete/original_complete/')"
+ gate_attempt_complete() { original_complete "$@" >/dev/null 2>&1; return 0; }
+ `);
+ const r=spawnSync('bash',[join(f.target,'repo-gates.sh')],{cwd:f.dir,env:f.env,encoding:'utf8',timeout:30000});
+ const output=r.stdout+r.stderr;
+ assert.notEqual(r.status,0,output);
+ assert.doesNotMatch(output,/ALL GATES PASSED/);
+ assert.match(output,/GATES STOPPED AT THE SECURITY STAGE/);
+});
+
 test('ordinary build failure still runs package and records aggregate failure',()=>{
  const f=fixture();
  const build=f.entries.find(e=>e.index===6);
