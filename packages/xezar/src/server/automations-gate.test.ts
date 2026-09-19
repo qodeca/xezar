@@ -14,6 +14,42 @@ import { createApp, startServer, type ServerDeps } from './server.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 
 /**
+ * One test in this file (#715) has to hold the refresh branch of `onContextDisposed` open BETWEEN
+ * its `await listProjects()` and the `coordinator.add()` that follows, which is the only window
+ * where a real removal can race a superseded dispose's refresh. Nothing else can park it: the
+ * refresh is a bus callback with no seam of its own, and an ES module namespace cannot be spied
+ * on, so the module itself is wrapped here.
+ *
+ * DISARMED by default — `gate.park` is false, every export is the original, and the other cases
+ * in this file see the real module. Only the server's OWN call is ever parked (the stack test):
+ * `ProjectContexts` and `AutomationCoordinator` call the same function and must pass through, or
+ * the rebuild this test needs would deadlock against its own park.
+ */
+const gate = vi.hoisted(() => ({
+  park: false,
+  parked: Promise.resolve<void>(undefined),
+  release: () => {},
+  hits: 0,
+  resumed: 0,
+}));
+vi.mock('../workspace/projects.ts', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../workspace/projects.ts')>();
+  return {
+    ...original,
+    listProjects: async (...args: Parameters<typeof original.listProjects>) => {
+      const fromServer = (new Error().stack ?? '').includes('/server/server.ts');
+      const rows = await original.listProjects(...args);
+      if (gate.park && fromServer) {
+        gate.hits += 1;
+        await gate.parked;
+        gate.resumed += 1;
+      }
+      return rows;
+    },
+  };
+});
+
+/**
  * GitHub automations are opt-in (#801): `XEZ_AUTOMATIONS=1` turns them on, off is the default.
  * Off, every route of the family answers `409` naming the flag — defense in depth behind the
  * cockpit's nav gate, so a bookmarked deep link or a script cannot drive a feature the operator
@@ -531,8 +567,24 @@ describe('automations gate (#801)', () => {
         // re-add that follows names the row the registry holds NOW, which for a plain re-add is
         // the same root it already had. (Skipping the removal instead is what left a DRIFT
         // rebuild pinned to the OLD root forever — the test below.)
-        await vi.waitFor(() => expect(addSkillsSpy).toHaveBeenCalledWith(live.id, liveRoot));
-        expect(removeSkillsSpy).toHaveBeenCalledWith(live.id);
+        //
+        // #715, Minor 2 of the re-check: read the two coordinators' own state rather than the
+        // two CALLS. `add` having been called says nothing if something removes again after it,
+        // and the automation half is not re-added at all — it comes back only through
+        // `rescheduleAutomations() → reschedule() → refresh()`, which the call assertions left
+        // pinned by nothing at all.
+        await vi.waitFor(() => expect(removeSkillsSpy).toHaveBeenCalledWith(live.id), { timeout: 4_000 });
+        await vi.waitFor(() => expect(removeAutomationSpy).toHaveBeenCalledWith(live.id), { timeout: 4_000 });
+        const skillsRoots = (removeSkillsSpy.mock.contexts[0] as unknown as { roots: Map<string, string> }).roots;
+        const automationRoots = (removeAutomationSpy.mock.contexts[0] as unknown as { roots: Map<string, string> }).roots;
+        await vi.waitFor(() => {
+          expect(skillsRoots.get(live.id)).toBe(liveRoot);
+          expect(automationRoots.get(live.id)).toBe(liveRoot);
+        }, { timeout: 4_000 });
+        // Presence is the re-add's doing and not a removal that never ran: the first `remove`
+        // precedes the last `add`.
+        expect(Math.min(...removeSkillsSpy.mock.invocationCallOrder))
+          .toBeLessThan(Math.max(...addSkillsSpy.mock.invocationCallOrder));
       } finally {
         release();
         parkedDispose.mockRestore();
@@ -633,6 +685,15 @@ describe('automations gate (#801)', () => {
         expect(removeAutomationSpy).toHaveBeenCalledWith(first.id);
         await vi.waitFor(() => expect(addSkillsSpy).toHaveBeenCalledWith(first.id, rootNew));
         expect(addSkillsSpy).not.toHaveBeenCalledWith(first.id, rootOld);
+        // #715, Minor 2: the same net-state read as RP-5, for the root that actually moved —
+        // both coordinators end up on the NEW root, which is the property the call assertions
+        // above only imply.
+        const skillsRoots = (removeSkillsSpy.mock.contexts[0] as unknown as { roots: Map<string, string> }).roots;
+        const automationRoots = (removeAutomationSpy.mock.contexts[0] as unknown as { roots: Map<string, string> }).roots;
+        await vi.waitFor(() => {
+          expect(skillsRoots.get(first.id)).toBe(rootNew);
+          expect(automationRoots.get(first.id)).toBe(rootNew);
+        }, { timeout: 4_000 });
       } finally {
         release();
         parkedDispose.mockRestore();
@@ -693,6 +754,120 @@ describe('automations gate (#801)', () => {
         expect(removeSkillsSpy).toHaveBeenCalledWith(first.id);
         expect(removeAutomationSpy).toHaveBeenCalledWith(first.id);
       } finally {
+        server.close();
+        await contexts.disposeAll().catch(() => undefined);
+        rmSync(base, { recursive: true, force: true });
+      }
+    });
+
+    /**
+     * #715, Minor 1 of the #707 re-check — the window the refresh itself opened.
+     *
+     * The refresh above is what makes a superseded dispose right, but it is ASYNC: it resolves
+     * the registry row, and only then calls `coordinator.add()`. Between those two the project
+     * can be removed FOR REAL — a `DELETE /projects/:id` lands, `project-removed` and a genuine
+     * (non-superseded) dispose both clean up — and the parked refresh then re-added it from the
+     * row it had already resolved. The removed project was back in the skills-update coordinator
+     * until restart, with `skills-update.ts` kicking a check for a root the registry no longer
+     * names; `automationProjects` got it back too when the remote was GitHub.
+     *
+     * The fix decides the re-add from LIVE registration state read after the await, not from
+     * that stale row. A superseded dispose means, by definition, that a newer context is built or
+     * in flight — so no `peek()` and no `pending()` is exactly "this id has no live registration
+     * any more", and the refresh returns through `rescheduleAutomations()` without re-adding.
+     *
+     * The automation coordinator self-heals either way (`reschedule() → refresh()` drops an id
+     * the registry no longer lists), which is why the skills-update coordinator is what this
+     * asserts: it is the half with no poller to put it right.
+     */
+    it('a project removed for real while a superseded refresh is in flight is not re-added', async () => {
+      process.env.XEZ_AUTOMATIONS = '1';
+      clearProjectProbeCache();
+      const base = mkdtempSync(join(tmpdir(), 'xez-automations-gate-zombie-'));
+      const rootOld = join(base, 'run-1', 'shared');
+      const rootNew = join(base, 'run-2', 'shared');
+      for (const root of [rootOld, rootNew]) mkdirSync(root, { recursive: true });
+      const first = await registerProject(rootOld);
+
+      const contexts = new ProjectContexts({ listProjects });
+      const removeSkillsSpy = vi.spyOn(SkillsUpdateCoordinator.prototype, 'remove');
+      const addSkillsSpy = vi.spyOn(SkillsUpdateCoordinator.prototype, 'add');
+      const reachedGate = vi.spyOn(SkillsUpdateCoordinator.prototype, 'start');
+      const started = vi.spyOn(WorkspaceAutomationScheduler.prototype, 'start');
+
+      let release!: () => void;
+      const parked = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const realDispose = RunManager.prototype.dispose;
+      const parkedDispose = vi
+        .spyOn(RunManager.prototype, 'dispose')
+        .mockImplementation(async function (this: RunManager) {
+          await parked;
+          await realDispose.call(this);
+        });
+
+      let app: ReturnType<typeof createApp> | undefined;
+      const server = startServer(
+        {
+          repoRoot,
+          store,
+          manager: { isActive: () => false } as unknown as RunManager,
+          version: '0.0.0-test',
+          contexts,
+          onApp: (built) => { app = built; },
+        },
+        0,
+      );
+      try {
+        await vi.waitFor(() => expect(reachedGate).toHaveBeenCalledTimes(1), { timeout: 4_000 });
+        await vi.waitFor(() => expect(started).toHaveBeenCalledTimes(1), { timeout: 4_000 });
+
+        expect((await apiRequest(app!, `/api/v1/p/${first.id}/runs`)).status).toBe(200);
+        removeSkillsSpy.mockClear();
+        addSkillsSpy.mockClear();
+
+        // The drift + overlapping request of the test above: the dispose that follows is
+        // `superseded`, so it takes the refresh branch.
+        await removeProject(first.id);
+        expect((await registerProject(rootNew)).id).toBe(first.id);
+        const drift = contexts.context(first.id);
+        await vi.waitFor(() => expect(parkedDispose).toHaveBeenCalled());
+        const concurrent = contexts.context(first.id);
+
+        // …and the refresh parks between its `listProjects()` and its `coordinator.add()`.
+        gate.parked = new Promise<void>((resolve) => { gate.release = resolve; });
+        gate.park = true;
+        release();
+        await Promise.all([drift, concurrent]);
+        await vi.waitFor(() => expect(gate.hits).toBeGreaterThan(0), { timeout: 4_000 });
+        gate.park = false;
+
+        // Inside that window the user removes the project for real. This dispose is NOT
+        // superseded — nothing rebuilt it — so the plain removal is its whole answer.
+        await removeProject(first.id);
+        expect(await contexts.dispose(first.id)).toBe(true);
+        expect(contexts.peek(first.id)).toBeUndefined();
+        expect(contexts.pending(first.id)).toBeUndefined();
+        addSkillsSpy.mockClear();
+
+        // Resuming the parked call is the only signal that does not beg the question: everything
+        // between it and `coordinator.add()` is microtasks, so one macrotask after the resume the
+        // refresh has taken whichever branch it takes. A fixed sleep would be a race dressed as a
+        // wait, and waiting on `rescheduleAutomations()` would be ambiguous — the real removal
+        // just above calls it too.
+        gate.release();
+        await vi.waitFor(() => expect(gate.resumed).toBe(gate.hits), { timeout: 4_000 });
+        await new Promise((resolve) => { setImmediate(resolve); });
+
+        const skillsRoots = (removeSkillsSpy.mock.contexts[0] as unknown as { roots: Map<string, string> }).roots;
+        expect(addSkillsSpy).not.toHaveBeenCalledWith(first.id, rootNew);
+        expect(skillsRoots.has(first.id)).toBe(false);
+      } finally {
+        gate.park = false;
+        gate.release();
+        release();
+        parkedDispose.mockRestore();
         server.close();
         await contexts.disposeAll().catch(() => undefined);
         rmSync(base, { recursive: true, force: true });
