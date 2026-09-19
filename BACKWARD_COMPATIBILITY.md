@@ -926,8 +926,12 @@ kept its slot until a person killed it. `REJECT_SILENCE_MS` (five minutes) now b
 state.
 
 - **Broken**: an OpenCode step in which xezar refused a permission ask and the session then started
-  no further part for five minutes now ends `status: 'failed'` with an `error` naming the permission
-  and the refused pattern. Before, the same step ended on the wall-clock timeout (`failed`, with the
+  no further part OF ITS OWN for five minutes now ends `status: 'failed'` with an `error` naming the
+  permission and the refused pattern. "Of its own" is load-bearing: only a part the model produces in
+  a new round trip counts (`text`, `reasoning`, `tool`, `subtask`, `step-start`), never the
+  `step-finish`/`patch` bookkeeping the server writes for the round trip that just ended — which it
+  does after every refusal, 40–110ms before `session.idle`, so counting it would leave this bound
+  unreachable. Before, the same step ended on the wall-clock timeout (`failed`, with the
   generic message) or — on the last step — did not end at all until the idle close, a cancel or a
   kill. A consumer that recognised the stall by the timeout text must read the new message; a
   consumer that treated the uncapped last step's silence as "still working" now sees a terminal run.

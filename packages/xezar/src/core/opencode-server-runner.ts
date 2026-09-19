@@ -71,6 +71,35 @@ const SERVER_START_TIMEOUT_MS = 30_000;
  */
 export const REJECT_SILENCE_MS = 5 * 60_000;
 
+/**
+ * The part kinds that count as the session's own SIGN OF LIFE for the
+ * post-reject watchdog (#692): the ones the model can only produce by starting
+ * a NEW round trip. Every other kind is bookkeeping the server writes about the
+ * round trip that just ENDED, and counting those is what made the first version
+ * of this watchdog inert on the real server while its tests stayed green (PR
+ * #695 review, Fable 5.1).
+ *
+ * **Why the allowlist, not a denylist of one.** OpenCode 1.18.31's stream
+ * processor (installed binary, embedded source) handles the LLM stream's
+ * `step-finish` by calling `updatePart({id: <fresh ascending id>, type:
+ * 'step-finish', reason, snapshot, tokens, cost})` and then `updateMessage(…)`,
+ * and when that step's snapshot carries file changes it writes a `patch` part
+ * with another fresh id. So after a REJECTED tool call the real server always
+ * writes at least one part the session "had not started yet", 40–110ms after
+ * the denial and BEFORE `session.idle` — visible in all 14 denial samples
+ * across the 7 transcripts in this machine's run store as the `usage.updated`
+ * the v2 mapper emits from `mapStepFinish` (`opencode-ui-mapper.ts`,
+ * AGENT_PROTOCOL.md §4). A watchdog that treats that as "the session carried
+ * on" disarms on every real denial and can never fire. The same is true of
+ * `snapshot`, `file`, `agent`, `retry` and `compaction`: none of them is the
+ * model speaking again.
+ *
+ * `step-start` IS here, and it is the discriminator that makes this safe: it is
+ * written when a NEW round trip begins, which is exactly the state the watchdog
+ * must not interrupt.
+ */
+const LIVE_PART_KINDS: ReadonlySet<string> = new Set(['text', 'reasoning', 'tool', 'subtask', 'step-start']);
+
 /** Grace between the teardown SIGTERM and the SIGKILL that follows it. */
 export const KILL_GRACE_MS = 4_000;
 
@@ -231,17 +260,20 @@ class OpencodeSession implements AgentSession {
    * an ask with `reject` and disarmed by the session's next sign of life.
    *
    * `parts` is `newParts` as it stood at the reject, so "a sign of life" is a
-   * part the session had NOT started yet — never the rejected tool call's own
-   * `completed` update, which arrives from the call the ask was guarding and
-   * says nothing about whether the session carried on.
+   * part of a kind in `LIVE_PART_KINDS` that the session had NOT started yet —
+   * never the rejected tool call's own `completed` update, which arrives from
+   * the call the ask was guarding, and never the `step-finish`/`patch` the
+   * server writes for the round trip that just ended. Neither says anything
+   * about whether the session carried on.
    */
   private rejectWatch: { parts: number; timer: NodeJS.Timeout } | undefined;
   /**
-   * Assistant parts this session has ever started, and the count of them. A
-   * `session.idle` is deliberately NOT one: the verified #692 shape is a turn
-   * that ENDS right after the refusal without a word, which on the last
-   * (interactive) step leaves the run parked on a human who has been given
-   * nothing to answer.
+   * Assistant parts this session has ever started (every kind, so an update to
+   * one is never mistaken for a new one) and the count of the `LIVE_PART_KINDS`
+   * among them. A `session.idle` is deliberately NOT one: the verified #692
+   * shape is a turn that ENDS right after the refusal without a word, which on
+   * the last (interactive) step leaves the run parked on a human who has been
+   * given nothing to answer.
    */
   private readonly partsSeen = new Set<string>();
   private newParts = 0;
@@ -724,7 +756,10 @@ class OpencodeSession implements AgentSession {
     this.emitUi((state) => mapOpencodeEvent(evt, state));
     this.handleEvent(evt);
     // One place, after the frame has been accounted for: a session that started
-    // a part it had not started before is working again, whatever the frame was.
+    // a MODEL-produced part (`LIVE_PART_KINDS`) it had not started before is
+    // working again, whatever the frame was. Server bookkeeping about the round
+    // trip that just ended does not count, or the watchdog would disarm on the
+    // `step-finish` real OpenCode writes after every denial.
     if (this.rejectWatch && this.newParts > this.rejectWatch.parts) this.clearRejectWatch();
   }
 
@@ -858,7 +893,10 @@ class OpencodeSession implements AgentSession {
     const partKey = `${kind ?? '?'}:${id}`;
     if (!this.partsSeen.has(partKey)) {
       this.partsSeen.add(partKey);
-      this.newParts += 1;
+      // Only a part the MODEL produces in a new round trip counts —
+      // `LIVE_PART_KINDS` says which, and why a fresh `step-finish` (the one
+      // the real server writes after every rejected tool call) must not.
+      if (kind !== undefined && LIVE_PART_KINDS.has(kind)) this.newParts += 1;
     }
     if (kind === 'text') {
       const full = stringField(part, 'text') ?? '';

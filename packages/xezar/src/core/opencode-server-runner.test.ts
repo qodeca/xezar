@@ -765,6 +765,12 @@ describe('a permission ask (#578)', () => {
  * human who has been given nothing to answer. `hang` is the second shape the
  * issue describes, where even the turn never finishes.
  *
+ * The mock's `idle` mode is wire-faithful down to the `step-finish` part the
+ * real server writes for the round trip that just ended (PR #695 review): that
+ * part is the reason "any unseen part is a sign of life" was inert on the real
+ * server, so leaving it out of the fixture would make every case below prove
+ * less than it appears to.
+ *
  * Both sessions here are INTERACTIVE (`autoEnd: false`, no wall clock) because
  * that is the case with no other way out. `rejectSilenceMs` is the same
  * mechanism at 300ms rather than five minutes — nothing about the arming or the
@@ -799,6 +805,30 @@ describe('a session that goes silent after a rejected ask (#692)', () => {
       // A named cause, never the bare wall-clock line.
       expect(v1.some((e) => e.type === 'error' && e.message.includes('timed out after'))).toBe(false);
       expect(result.sessionId).toBe('ses_mock_1');
+    } finally {
+      session.interrupt();
+    }
+  }, 30_000);
+
+  it("is not disarmed by the server's own step-finish part for the round trip that ended", async () => {
+    // The reviewer's probe for PR #695, made permanent. Real OpenCode 1.18.31
+    // writes a `step-finish` part with a FRESH id (and its `message.updated`
+    // snapshot) 40–110ms after a denial and BEFORE `session.idle` — all 14
+    // denial samples in this machine's run store carry it. The first watchdog
+    // counted any unseen part as a sign of life, so on the real server it
+    // disarmed on that part and the run parked forever while this suite stayed
+    // green, because the mock omitted it. The mock emits it now, and this case
+    // pins BOTH halves: the part really arrives, and the watchdog still fires.
+    const { session, v1, v2 } = silentSession('idle');
+    try {
+      await until(() => v1.some((e) => e.type === 'turn-end'), 'the turn to end');
+      // The fixture really did write the part — `usage.updated` is what the v2
+      // mapper emits from `mapStepFinish`, so it cannot be dropped unnoticed.
+      // Waited for rather than asserted on the spot: the frame order around the
+      // released prompt response is the server's business, not this case's.
+      await until(() => v2.some((e) => e.type === 'usage.updated'), "the server's step-finish part");
+      await session.result;
+      expect(errorAbout(v1, 'went silent')).toContain("denied permission 'external_directory'");
     } finally {
       session.interrupt();
     }

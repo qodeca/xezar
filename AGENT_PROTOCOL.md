@@ -208,9 +208,13 @@ Notable fields (full doc-comments in the source):
   `REJECT_SILENCE_MS` (5 minutes) after a `reject` — the observed shape where a
   correct refusal was followed by no output and no new turn, which a non-final
   step could only leave through the 30-minute wall clock and the last,
-  uncapped step could not leave at all. Any new assistant part disarms it;
-  a `session.idle` deliberately does not, because the turn ending in silence is
-  the failure. Nothing is armed on a run with no denied ask.
+  uncapped step could not leave at all. A new assistant part the MODEL produces
+  disarms it (`text`, `reasoning`, `tool`, `subtask`, `step-start`); a
+  `session.idle` deliberately does not, because the turn ending in silence is
+  the failure, and neither does the `step-finish`/`patch` bookkeeping the server
+  writes for the round trip that just ended — it arrives after every refusal, so
+  counting it would make the bound unreachable. Nothing is armed on a run with
+  no denied ask.
   Configurable restrictive modes are
   specified by `2026-07-17-permission-modes` (pre-rename issue 475).
 - **Codex MCP isolation (#324):** before `thread/start` / `thread/resume` the

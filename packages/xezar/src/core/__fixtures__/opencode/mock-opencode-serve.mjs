@@ -509,6 +509,45 @@ const server = createServer((req, res) => {
         if (silentAfterReply === 'idle') {
           held.writeHead(200, { 'content-type': 'application/json' });
           held.end(JSON.stringify({ info: info({}), parts: [] }));
+          // Wire-faithful, and this is the part the first version of the mock
+          // left out (PR #695 review): OpenCode 1.18.31 closes the round trip
+          // the refused tool call belonged to by writing a `step-finish` part
+          // with a FRESH ascending id plus the `message.updated` snapshot,
+          // 40–110ms after the denial and BEFORE `session.idle`. All 14 denial
+          // samples in this machine's run store carry it (as the
+          // `usage.updated` the v2 mapper emits from `mapStepFinish`). Omitting
+          // it made a watchdog that disarmed on ANY unseen part look fixed.
+          setTimeout(
+            () =>
+              send({
+                type: 'message.part.updated',
+                properties: {
+                  part: {
+                    id: 'prt_mock_stepfinish_1',
+                    messageID: MESSAGE_ID,
+                    sessionID: SESSION_ID,
+                    type: 'step-finish',
+                    reason: 'stop',
+                    cost: 0.0007,
+                    tokens: { input: 42, output: 7, reasoning: 0, cache: { read: 0, write: 0 } },
+                  },
+                },
+              }),
+            5,
+          );
+          setTimeout(
+            () =>
+              send({
+                type: 'message.updated',
+                properties: {
+                  info: info({
+                    cost: 0.0007,
+                    tokens: { input: 42, output: 7, reasoning: 0, cache: { read: 0, write: 0 } },
+                  }),
+                },
+              }),
+            8,
+          );
           setTimeout(() => send({ type: 'session.idle', properties: { sessionID: SESSION_ID } }), 20);
         }
         return;
