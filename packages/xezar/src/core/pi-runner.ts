@@ -47,6 +47,10 @@ const PROBE_UNKNOWN_NOTE =
 const RESTARTED_WITHOUT_MCP_CONFIG_NOTE =
   'pi: this pi rejected the MCP configuration option at start-up, so the session was started once '
   + 'more without it; this run starts with no MCP servers and no MCP isolation was applied.';
+/** What a session cancelled or closed inside the capability-probe window says (#648 B). */
+const CANCELLED_BEFORE_SPAWN_NOTE =
+  'pi: the session was closed before its pi process started, so no pi was spawned and nothing was '
+  + 'sent to one.';
 
 export interface PiRunnerOptions {
   /** Override the binary name/path; defaults to `pi` on PATH (`XEZ_PI_BIN`). */
@@ -65,11 +69,19 @@ export interface PiRunnerOptions {
  */
 export type PiMcpConfigAnswer = 'yes' | 'no' | 'unknown';
 
-/** Answers "does THIS pi, in THIS folder and with THIS child env, know `--mcp-config`?" (#548). */
+/** Answers "does THIS pi, in THIS folder and with THIS child env, know `--mcp-config`?" (#548).
+ *
+ *  The last two arguments are optional on purpose: an injected probe may ignore both, and the
+ *  runner supplies only `signal` — the seam by which a cancelled session stops waiting for an
+ *  answer it no longer wants AND gets the probe child killed rather than left running to its own
+ *  bound (#648 C). `timeoutMs` keeps its existing fourth position so `piSupportsMcpConfig` still
+ *  satisfies this type. */
 export type PiMcpConfigProbe = (
   bin: string,
   env: NodeJS.ProcessEnv,
   cwd: string,
+  timeoutMs?: number,
+  signal?: AbortSignal,
 ) => Promise<PiMcpConfigAnswer>;
 
 /**
@@ -94,12 +106,17 @@ export type PiMcpConfigProbe = (
  * SIGKILLed — not SIGTERMed, which a pi with its own handler may simply ignore — and the answer
  * is `unknown` at once, without waiting for the corpse. Both leave the flag out, which is the
  * safe direction: a pi that reads no MCP config file loads no MCP servers at all.
+ *
+ * `signal` is the cancel seam (#648 C): an aborted probe answers `unknown` at once and SIGKILLs
+ * its child on the way out, so cancelling a run inside the probe window is not delayed by up to
+ * `MCP_CONFIG_PROBE_TIMEOUT_MS` and leaves no `pi --help` behind.
  */
 export function piSupportsMcpConfig(
   bin: string,
   env: NodeJS.ProcessEnv,
   cwd: string,
   timeoutMs: number = MCP_CONFIG_PROBE_TIMEOUT_MS,
+  signal?: AbortSignal,
 ): Promise<PiMcpConfigAnswer> {
   return new Promise<PiMcpConfigAnswer>((resolve) => {
     let child: ReturnType<typeof nodeSpawn> | undefined;
@@ -108,7 +125,13 @@ export function piSupportsMcpConfig(
       if (done) return;
       done = true;
       clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
       resolve(answer);
+    };
+    // Same treatment as the bound above: SIGKILL, and answer without waiting for the corpse.
+    const onAbort = (): void => {
+      child?.kill('SIGKILL');
+      settle('unknown');
     };
     // The hard bound. It resolves WITHOUT waiting for the corpse, so a child that ignores
     // signals delays nothing, and it signals SIGKILL because SIGTERM is exactly what a CLI
@@ -118,6 +141,12 @@ export function piSupportsMcpConfig(
       settle('unknown');
     }, timeoutMs);
     timer.unref?.();
+    // Cancelled before the question was even asked: no child, no wait.
+    if (signal?.aborted) {
+      settle('unknown');
+      return;
+    }
+    signal?.addEventListener('abort', onAbort);
 
     try {
       child = nodeSpawn(bin, ['--help'], {
@@ -187,10 +216,15 @@ export class PiRunner implements AgentRunner {
    * `--mcp-config` capability question has to be answered BEFORE the argv is final, it has to be
    * answered for the folder and account THIS task uses, and asking it must never block the
    * server's event loop (#548). So the answer is awaited, and what comes back from here is a
-   * facade over the child that is about to exist: `sendMessage`, `end()` and `interrupt()`
-   * arriving inside that window are replayed onto the real session the moment it opens, `pid`
-   * reports the child once there is one (`onProcessStart` announces it, and announces it again
-   * if the fallback below has to restart), and `result` settles with the real session's result.
+   * facade over the child that is about to exist: a `sendMessage` arriving inside that window is
+   * replayed onto the real session the moment it opens, `pid` reports the child once there is one
+   * (`onProcessStart` announces it, and announces it again if the fallback below has to restart),
+   * and `result` settles with the real session's result.
+   *
+   * An `end()` or `interrupt()` arriving inside that window is NOT replayed onto a child: it
+   * cancels the child instead (#648 B), because there is nothing yet to close gracefully and
+   * spawning a pi only to tear it down writes the opening prompt to a session nobody is waiting
+   * on. The probe is aborted with it, so the cancel is not delayed by the probe's own bound.
    */
   startSession(
     spec: AgentRunSpec,
@@ -202,19 +236,32 @@ export class PiRunner implements AgentRunner {
     let interrupted = false;
     const queued: ContentBlock[][] = [];
     /** What the facade has already handed to a child. A restart below re-queues it, so a message
-     *  typed while the first attempt was dying at spawn is not lost with that attempt. */
+     *  typed while the first attempt was dying at spawn is not lost with that attempt — whether
+     *  it was typed before the child existed or after it was adopted (#648 A).
+     *
+     *  Kept only while `replayable`, which is what stops this being the whole transcript: a
+     *  session that cannot restart (no `--mcp-config` was passed) records nothing here at all,
+     *  and one that can stops recording the moment the child proves it runs. */
     const delivered: ContentBlock[][] = [];
+    /** Could a message already handed to the live child still need replaying onto a replacement? */
+    let replayable = false;
+    /** Cancels the capability probe. A session interrupted or closed inside the probe window must
+     *  not wait out `MCP_CONFIG_PROBE_TIMEOUT_MS`, and must not leave the probe child behind. */
+    const probeCancel = new AbortController();
     const pidListeners: Array<(pid: number) => void> = [];
     let settleResult!: (inner: Promise<AgentRunResult>) => void;
     const result = new Promise<AgentRunResult>((resolve, reject) => {
       settleResult = (inner) => void inner.then(resolve, reject);
     });
-    /** Point the facade at a real session — at the first child, and again at a restart. */
-    const adopt = (session: AgentSession): void => {
+    /** Point the facade at a real session — at the first child, and again at a restart.
+     *  `canReplay` says whether a restart is still on the table for THIS child; a replacement
+     *  gets `false`, because the fallback is one-shot. */
+    const adopt = (session: AgentSession, canReplay: boolean): void => {
       live = session;
+      replayable = canReplay;
       if (session.pid !== undefined) for (const listener of pidListeners) listener(session.pid);
       for (const content of queued.splice(0)) {
-        delivered.push(content);
+        if (canReplay) delivered.push(content);
         session.sendMessage(content);
       }
       if (interrupted) session.interrupt();
@@ -230,10 +277,23 @@ export class PiRunner implements AgentRunner {
       const childEnv = buildChildEnv({ backend: this.backend, extraEnv: spec.env });
       let answer: PiMcpConfigAnswer = 'unknown';
       try {
-        answer = await this.supportsMcpConfig(this.bin, childEnv, spec.cwd);
+        answer = await this.supportsMcpConfig(this.bin, childEnv, spec.cwd, undefined, probeCancel.signal);
       } catch {
         // A probe that rejects established nothing, which is not the same as "no extension".
         answer = 'unknown';
+      }
+
+      // Cancelled or closed while the question was being asked (#648 B). The probe still ran
+      // FIRST — that ordering is what #548 needs and it is unchanged — this only decides whether
+      // its answer is still wanted, and for a session nobody is waiting on any more it is not:
+      // spawning here would start a pi, write the opening prompt to it and only then tear it
+      // down. `open` already reported this session closed, so the child would also have flipped
+      // it back to open.
+      if (interrupted || ended) {
+        onEvent?.({ type: 'note', message: CANCELLED_BEFORE_SPAWN_NOTE });
+        opts.onUiEvent?.({ type: 'session.ended', reason: 'cancelled' });
+        onEvent?.({ type: 'done' });
+        return { text: '', toolCalls: [], tokensUsed: 0, sessionId: spec.sessionId };
       }
 
       let mcpOverlay: ReturnType<typeof writeMcpOverlay> = null;
@@ -266,13 +326,19 @@ export class PiRunner implements AgentRunner {
             // the facade had already handed to the dead attempt goes back on the queue.
             queued.unshift(...delivered.splice(0));
             const replacement = this.spawnSession(spec, onEvent, opts, childEnv, null, null);
-            adopt(replacement);
+            adopt(replacement, false);
             return replacement;
           }
         : null;
 
-      const session = this.spawnSession(spec, onEvent, opts, childEnv, mcpOverlay, restart);
-      adopt(session);
+      // The restart window closes at the first RPC line: whatever this child was handed has
+      // reached a pi that runs, so nothing needs holding for a replacement that can no longer
+      // happen.
+      const session = this.spawnSession(spec, onEvent, opts, childEnv, mcpOverlay, restart, () => {
+        replayable = false;
+        delivered.length = 0;
+      });
+      adopt(session, restart !== null);
       return await session.result;
     };
     settleResult(open());
@@ -280,17 +346,25 @@ export class PiRunner implements AgentRunner {
     const session: AgentSession = {
       result,
       sendMessage: (content) => {
-        if (live) return live.sendMessage(content);
+        if (live) {
+          const accepted = live.sendMessage(content);
+          // Recorded only while a restart could still need it (#648 A); a message the child
+          // refused was never handed over, so there is nothing to replay.
+          if (accepted && replayable) delivered.push(content);
+          return accepted;
+        }
         if (ended || interrupted) return false;
         queued.push(content);
         return true;
       },
       end: () => {
         ended = true;
+        probeCancel.abort();
         live?.end();
       },
       interrupt: () => {
         interrupted = true;
+        probeCancel.abort();
         live?.interrupt();
       },
       onProcessStart: (listener) => {
@@ -311,7 +385,8 @@ export class PiRunner implements AgentRunner {
   /**
    * The real session over one spawned pi child. `mcpOverlay` is the decided #342 answer (null =
    * no `--mcp-config`), and `restart` is the one-shot fallback `startSession` supplies only when
-   * the flag really was passed.
+   * the flag really was passed. `onRestartWindowClosed` fires at the first RPC line — the moment
+   * that fallback stops being possible — so the facade can drop what it was holding for it.
    */
   private spawnSession(
     spec: AgentRunSpec,
@@ -320,6 +395,7 @@ export class PiRunner implements AgentRunner {
     childEnv: NodeJS.ProcessEnv,
     mcpOverlay: ReturnType<typeof writeMcpOverlay>,
     restart: (() => AgentSession | null) | null,
+    onRestartWindowClosed?: () => void,
   ): AgentSession {
     const child = nodeSpawn(this.bin, buildPiArgs(spec, mcpOverlay?.path), {
       cwd: spec.cwd,
@@ -580,7 +656,10 @@ export class PiRunner implements AgentRunner {
           if (timedOut) break;
           // One RPC line is proof this child started: the restart window is over, and
           // whatever v2 events were held for it are the real session's now.
-          sawRpcOutput = true;
+          if (!sawRpcOutput) {
+            sawRpcOutput = true;
+            onRestartWindowClosed?.();
+          }
           releaseUi();
           let value: unknown;
           try {
