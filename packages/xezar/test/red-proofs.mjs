@@ -6,8 +6,9 @@
  * a green-either-way test is how the same regression ships twice (AGENTS.md § Changing a
  * mechanism that already works). So each named break from the spec's § 11 acceptance criteria
  * is applied here as ONE deliberate defect in the real source, the test that owns it is run, and
- * the file is put back with `git restore` — never `git stash`, whose stack is shared with every
- * other worktree on this machine.
+ * the file's original bytes are rewritten from memory — NOT `git restore`, which reads the index
+ * and so does nothing at all for a file this change ADDS, and never `git stash`, whose stack is
+ * shared with every other worktree on this machine.
  *
  * A case that does NOT go red is reported as such rather than quietly dropped: some of these
  * tests are guards that pin behaviour this change did not touch, and knowing which is which is
@@ -476,7 +477,45 @@ function run(cmd, args, opts = {}) {
   return spawnSync(cmd, args, { cwd: repoRoot, encoding: 'utf8', ...opts });
 }
 
+/**
+ * Split a spec into argv tokens, keeping a quoted `-t` filter in ONE token.
+ *
+ * `spec.split(' ')` sent `-t "opens once for a context reported twice"` to vitest as the name
+ * filter `"opens` plus six positional FILE filters (`once`, `for`, …). No file matched, so vitest
+ * skipped every file, executed ZERO tests and still exited 0 — and the guard branch read that as
+ * "STILL-GREEN (guard, as expected)". A zero-test run and a green run must not read the same.
+ */
+function splitSpec(spec) {
+  return (spec.match(/"[^"]*"|\S+/g) ?? []).map((token) =>
+    token.length > 1 && token.startsWith('"') && token.endsWith('"') ? token.slice(1, -1) : token,
+  );
+}
+
+/**
+ * The passed/failed counts from the runner's own summary line, or `null` when there is none.
+ * `Tests  1 passed | 12 skipped (13)` and `Tests  8478 skipped (8478)` both exit 0, and only the
+ * first ran the test the case names.
+ */
+function testCounts(output) {
+  const vitest = output.match(/(?:^|\s)Tests\s+(\d+[^\n]*)/m);
+  if (vitest) {
+    return {
+      passed: Number(vitest[1].match(/(\d+)\s+passed\b/)?.[1] ?? 0),
+      failed: Number(vitest[1].match(/(\d+)\s+failed\b/)?.[1] ?? 0),
+    };
+  }
+  const nodePass = output.match(/^# pass (\d+)$/m);
+  if (nodePass) {
+    return {
+      passed: Number(nodePass[1]),
+      failed: Number(output.match(/^# fail (\d+)$/m)?.[1] ?? 0),
+    };
+  }
+  return null;
+}
+
 function testPasses(spec) {
+  let r;
   if (spec.startsWith('node:')) {
     const file = spec.slice('node:'.length);
     const loader = execFileSync(
@@ -484,11 +523,11 @@ function testPasses(spec) {
       ['-e', 'process.stdout.write(import.meta.resolve("tsx"))'],
       { cwd: resolve(repoRoot, 'packages/xezar'), encoding: 'utf8' },
     );
-    const r = run(process.execPath, ['--import', loader, '--test', '--test-timeout', '180000', file]);
-    return r.status === 0;
+    r = run(process.execPath, ['--import', loader, '--test', '--test-timeout', '180000', file]);
+  } else {
+    r = run('npm', ['test', '--silent', '--', ...splitSpec(spec)]);
   }
-  const r = run('npm', ['test', '--silent', '--', ...spec.split(' ')]);
-  return r.status === 0;
+  return { passed: r.status === 0, counts: testCounts(`${r.stdout ?? ''}\n${r.stderr ?? ''}`) };
 }
 
 const wanted = process.argv.slice(2);
@@ -507,9 +546,9 @@ for (const c of CASES) {
   }
 
   writeFileSync(path, original.replace(c.find, c.replace));
-  let passed;
+  let check;
   try {
-    passed = testPasses(c.test);
+    check = testPasses(c.test);
   } finally {
     // Put the exact bytes back from memory. NOT `git restore`, which reads the index and so does
     // nothing at all for a file this change ADDS, and not `git stash`, whose stack is shared with
@@ -522,12 +561,20 @@ for (const c of CASES) {
   // A `kind: 'guard'` case is EXPECTED to pass both ways: it pins behaviour the change did not
   // touch. Anything else is expected to go red, and a green one is a test that proves nothing.
   const guard = c.kind === 'guard';
+  // A guard is only "as expected" when its test ACTUALLY RAN. Exit 0 with `Tests  8478 skipped
+  // (8478)` and exit 0 with `Tests  1 passed (1)` look the same to `spawnSync`; reading the first
+  // as green is the fail-open helper AGENTS.md warns about. A run with no passing test — or no
+  // summary line at all — is a harness failure, never a guard that held.
+  const ranTest = (check.counts?.passed ?? 0) > 0;
   const outcome = guard
-    ? (passed ? 'STILL-GREEN (guard, as expected)' : 'RED (guard — UNEXPECTED, it was meant to pass both ways)')
-    : (passed ? 'STILL-GREEN (proves nothing)' : 'RED');
-  const asExpected = guard ? passed : !passed;
+    ? (check.passed && !ranTest
+        ? 'NO TESTS RAN (harness failure — a zero-test run is never "as expected")'
+        : check.passed ? 'STILL-GREEN (guard, as expected)' : 'RED (guard — UNEXPECTED, it was meant to pass both ways)')
+    : (check.passed ? 'STILL-GREEN (proves nothing)' : 'RED');
+  const asExpected = guard ? (check.passed && ranTest) : !check.passed;
+  const counts = check.counts ? `${check.counts.passed} passed / ${check.counts.failed} failed` : 'no summary line';
   results.push({ ...c, outcome, asExpected });
-  console.log(`${asExpected ? '✓ ' : '⚠ '}${c.name} (${c.ac}) — ${outcome}`);
+  console.log(`${asExpected ? '✓ ' : '⚠ '}${c.name} (${c.ac}) — ${outcome} [${counts}]`);
 }
 
 console.log('\n| Break | Kind | AC | What it breaks | Test | Result |');

@@ -51,6 +51,7 @@ function fakeContexts(initial: string[] = []) {
     return ending;
   };
   const notifyDisposed = (id: string, ending: number): void => {
+    // Published context only: the real `superseded` also counts a build still in flight, which no case here starts.
     const published = live.get(id)?.generation;
     const disposal: ContextDisposal = {
       generation: ending,
