@@ -701,6 +701,17 @@ expect_fail "a missing changelog file is a failure, never a pass" \
 expect_ok "the repo's own CHANGELOG.md has at most one Unreleased section, above every dated release" \
   "$CLC" --file "$REPO_ROOT/CHANGELOG.md"
 
+# --- 1c. Changelog and dogfooding fragments (#668) ----------------------------------------------
+# Every pull request used to append to the one `# Unreleased` section of CHANGELOG.md and the top
+# of .xezar/docs/dogfooding.md, so the first merge made every other open pull request conflict —
+# and a content conflict stops GitHub from running CI on it at all. The cases live in their own
+# node:test file (like `gate-parallel.test.mjs` and `leader-context.test.mjs`) rather than as
+# thirty `expect_*` calls here, so the red proof for a check change is a sub-second focused run;
+# this suite still owns running it, unconditionally, with everything else.
+printf '\n-- changelog and dogfooding fragments --\n'
+expect_ok "Changelog fragments: direct-edit refusal, grammar, fold and dogfooding fold" \
+  node --test "$SCRIPT_DIR/fragments.test.mjs"
+
 # --- 2. Preflight: isolation --------------------------------------------------------------
 printf '\n-- preflight: isolation --\n'
 root="$(make_fixture iso)"
