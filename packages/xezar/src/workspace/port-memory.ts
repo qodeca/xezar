@@ -91,7 +91,10 @@ export async function rememberLastListen(
   const entry: LastListen = { port, host, observedAt: now().toISOString() };
   if (activeStateLayout().mode === 'project') {
     try {
-      recordLastListen(entry);
+      // Awaited: the write now takes the same cross-process lock the registry merge
+      // uses (#649), so a rejection — a read-only `.local`, a lock that could not be
+      // taken — must be caught here rather than surfacing as an unhandled rejection.
+      await recordLastListen(entry);
     } catch {
       return null;
     }

@@ -10,7 +10,12 @@ import {
   loadWorkspaceConfig,
   type WorkspaceProject,
 } from './config.ts';
-import { readProjectMachineState, recordProjectOpened } from './project-machine-state.ts';
+import {
+  projectMachineStatePath,
+  readProjectMachineState,
+  recordProjectOpened,
+  warnProjectMachineStateWriteFailure,
+} from './project-machine-state.ts';
 
 /**
  * Project registry operations over `~/.xezar/config.json` (spec
@@ -193,11 +198,14 @@ export async function registerProject(
   const now = new Date().toISOString();
   if (activeStateLayout().mode === 'project') {
     // Best-effort: a read-only `.local` must not fail a boot over a display
-    // fact, the same contract the port memory has always had.
+    // fact, the same contract the port memory has always had. The failure is
+    // reported ONCE per process (#649) — silence here used to be the only
+    // signal that the launch would not be remembered, which is exactly what
+    // made it undiagnosable.
     try {
-      recordProjectOpened(now);
-    } catch {
-      // keep going — the launch simply will not remember it
+      await recordProjectOpened(now);
+    } catch (error) {
+      warnProjectMachineStateWriteFailure(projectMachineStatePath(), error);
     }
     return projectLayoutRow((await loadWorkspaceConfig()).projects, real);
   }
