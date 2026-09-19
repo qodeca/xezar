@@ -597,11 +597,16 @@ export function worktreeGuardRoots(
  * exactly what it always was.
  *
  * The evidence directories are the ONE list `runEvidenceRoots` produces, shared
- * with the OpenCode runner (#686): the pi worktree guard takes this whole list
- * as `--xezar-allowed-roots` (#652), so without them a pi step cannot write the
- * diagnosis, the red proofs or the phase record the kit mandates. `env` carries
- * `XEZ_TASK_ID`, and a run without one is granted no evidence root rather than a
- * wider one.
+ * with the OpenCode runner (#686). `agentDirectories` feeds `additionalDirectories`
+ * on the session spec for EVERY backend — both call sites below pass it
+ * unconditionally, and each backend decides what to do with it: claude-cli turns
+ * every entry into `--add-dir`, the OpenCode runner folds the list into its
+ * permission policy, and the pi worktree guard takes the whole list as
+ * `--xezar-allowed-roots` (#652). So this is not a pi-only grant: without the
+ * evidence roots a pi step cannot write the diagnosis, the red proofs or the
+ * phase record the kit mandates, and a Claude step's `--add-dir` set is missing
+ * them too. `env` carries `XEZ_TASK_ID`, and a run without one is granted no
+ * evidence root rather than a wider one.
  */
 export function agentDirectories(
   repoRoot: string,

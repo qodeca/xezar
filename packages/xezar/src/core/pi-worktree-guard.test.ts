@@ -372,6 +372,52 @@ describe('pi linked-worktree tool guard (#537)', () => {
     });
   });
 
+  describe('Round 1 review: a shell flag\u2019s separate argument, and the quoted-.. exemption (#652)', () => {
+    it.each([
+      ['RED: -o takes a separate argument before -c', (f: Fixture) => `bash -o pipefail -c 'cd ${f.primary} && rm -rf x'`],
+      ['RED: -euo takes a separate argument before -c', (f: Fixture) => `bash -euo pipefail -c 'cd ${f.primary}'`],
+      ['RED: a long option takes a separate argument before -c', (f: Fixture) => `bash --rcfile /dev/null -c 'cd ${f.primary}'`],
+      ['RED: sh -o errexit -c', (f: Fixture) => `sh -o errexit -c 'cd ${f.primary}'`],
+      ['RED: zsh -o pipefail -c', (f: Fixture) => `zsh -o pipefail -c 'cd ${f.primary}'`],
+      ['RED: a -c whose script is not quoted at all fails closed', () => 'bash -c ls'],
+      ['RED: an interpreter word with no operand at all fails closed', () => 'sh -c'],
+      ['GUARD: a quoted script behind only dash-prefixed flags', (f: Fixture) => `bash --noprofile --norc -c 'cd ${f.primary}'`],
+      ['GUARD: a quoted script behind a combined flag', (f: Fixture) => `bash -lc 'cd ${f.primary}'`],
+      ['GUARD: a quoted script behind a bare -c', (f: Fixture) => `bash -c 'cd ${f.primary}'`],
+      ['GUARD: a quoted script through a path-spelled interpreter', (f: Fixture) => `env sh -c 'cd ${f.primary}'`],
+    ])('still refuses %s', (_name, command) => {
+      const f = fixture();
+      expect(guard(f, bash(command(f)))).toMatchObject(BLOCK);
+    });
+
+    it.each([
+      ['RED: a quoted .. handed to rm', () => "rm -rf '..'"],
+      ['RED: a double-quoted .. handed to rm', () => 'rm -rf ".."'],
+      ['RED: a quoted .. as mv\u2019s destination', () => "mv notes.md '..'"],
+      ['RED: a quoted ../.. as cp\u2019s destination', () => "cp -r . '../..'"],
+      ['RED: a quoted ../ as rsync\u2019s destination', () => "rsync -a . '../'"],
+      ['RED: a quoted .. as find\u2019s search root', () => "find '..' -delete"],
+      ['RED: a quoted .. as chmod\u2019s target', () => "chmod -R 777 '..'"],
+      ['RED: a quoted .. with a trailing slash', () => "rm -rf '../'"],
+      ['GUARD: an unquoted .. deletion target', () => 'rm -rf ..'],
+      ['GUARD: a quoted .. as a directory-change operand', () => "cd '..'"],
+      ['GUARD: a quoted .. as a git -C operand', () => "git -C '..'"],
+      ['GUARD: a quoted .. as a tar -C operand', () => "tar -C '..'"],
+      ['GUARD: a quoted .. as a redirect target', () => "echo hi > '../out.txt'"],
+    ])('still refuses %s', (_name, command) => {
+      expect(guard(fixture(), bash(command()))).toMatchObject(BLOCK);
+    });
+
+    it.each([
+      ['GUARD: printf prints a quoted .. (AC-2)', () => "printf '%s\\n' '..'"],
+      ['GUARD: echo prints a quoted .. (AC-2)', () => "echo '..'"],
+      ['GUARD: a quoted .. among a printf\u2019s other arguments', () => "printf '%s\\n' a '..' b"],
+      ['GUARD: a quoted .. as an option VALUE is a string, not an operand', () => 'git log --format=".."'],
+    ])('allows %s', (_name, command) => {
+      expect(guard(fixture(), bash(command()))).toBeUndefined();
+    });
+  });
+
   describe('Major 3: the primary checkout comes from Xezar, not from the .git marker', () => {
     it.each([
       ['a worktree of a bare repository', 'proj.git'],

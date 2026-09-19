@@ -32,11 +32,13 @@
  *     whose literal directory lies above or inside the primary checkout. A mention after a
  *     directory change the guard lost track of (`popd` of an empty stack, `pushd +1`) blocks.
  *     `~user` blocks. An unknown variable in a mention passes: it is everywhere in ordinary commands.
- *   Quoted text is read as a command only where the shell itself runs it as one: the `-c`
- *   operand of a shell interpreter (`sh -c "…"`, `bash -lc "…"`) and `eval`'s argument.
- *   Everywhere else a quoted word is ONE argument — a commit message, a printf argument, a
- *   pasted listing — so a `cd` or `..` inside it is text, not a directory change. A quoted
- *   word spelled only with `.`/`..` segments is not a path mention either; unquoted it is.
+ *   Quoted text is read as a command only where the shell itself runs it as one: the script
+ *   operand of a shell interpreter (`sh -c "…"`, `bash -lc "…"`, `bash -o pipefail -c "…"`)
+ *   and `eval`'s argument. Everywhere else a quoted word is ONE argument — a commit message, a
+ *   printf argument, a pasted listing — so a `cd` or `..` inside it is text, not a directory
+ *   change. A `..`-only word is a path mention like any other whether or not it is quoted; the
+ *   one deliberate loosening is a quoted `..` handed to a pure text emitter (`echo`, `printf`),
+ *   whose argument is a string it prints rather than a directory it operates on.
  *
  *   What it still cannot see, by construction: scripts and programs that build a path internally
  *   (`node x.js`, `make`, a hook), a primary-checkout path spelled inside a quoted string that
@@ -338,14 +340,26 @@ function directoryTarget(operand: string, state: ShellState, roots: Roots, searc
 /** A path spelled only with `.` and `..` segments names a directory, never a file. */
 const PARENT_ONLY = /^\.{1,2}(?:[\\/]\.{1,2})*[\\/]?$/;
 
-/** Does this path mention, read from where the command has reached, name the primary checkout? */
+/** A command whose arguments are text it PRINTS, never a filesystem target. It is the one kind of
+ *  command a quoted `..` word may be handed to, because the argument is a string, not a path. */
+const TEXT_EMITTER = /^(?:echo|printf)$/;
+
+/**
+ * Does this path mention, read from where the command has reached, name the primary checkout?
+ *
+ * The exemption here is deliberately narrow, and it is NOT "the word was quoted". The shell
+ * treats `'..'` and `..` identically, so keying on quoting alone exempted `rm -rf '..'`,
+ * `mv notes.md '..'`, `cp -r . '../..'`, `rsync -a . '../'`, `find '..' -delete` and
+ * `chmod -R 777 '..'` — every one of which operates on the directory itself, and this worktree's
+ * `..` is every peer run. A quoted `..`-only WORD is refused in `wordsEscape` before it reaches
+ * here unless its command word is a text emitter; what this exemption still covers is a `..` that
+ * `mentionParts` split out of an option VALUE (`--format=".."`), which is a string the option
+ * receives. The directory options that really do take a path (`--git-dir=`, `--work-tree=`,
+ * `--chdir=`, `GIT_DIR=`, `GIT_WORK_TREE=`) are checked as directory changes, separately.
+ */
 function mentionEscapes(spelling: string, state: ShellState, roots: Roots, quoted: boolean): boolean {
   if (/^~[^\\/]/.test(spelling)) return true;
   if (state.homeChanged && /^~|\$\{?HOME\b/.test(spelling)) return true;
-  // A quoted `..` is a string a program receives — a pasted listing, a printf argument — not a
-  // path the guard follows. Only the quoting separates the two, so every directory change
-  // (`cd '..'`, `git -C '..'`) and every UNQUOTED `..` argument (`rm -rf ..`) keeps its refusal,
-  // and a `..`-only word names a directory no write can target.
   if (quoted && PARENT_ONLY.test(spelling)) return false;
   const expanded = expandWord(spelling);
   if (expanded === undefined) return false;
@@ -384,13 +398,28 @@ function wordsEscape(words: ShellWord[], roots: Roots): boolean {
     const next = words[index];
     return next === undefined || next.text === SEPARATOR ? undefined : next;
   };
+  // The command word of the segment being read: the first word after a separator. It decides
+  // whether a quoted `..` word is a string a text emitter prints or a directory operand.
+  let commandWord: ShellWord | undefined;
 
   for (let i = 0; i < words.length; i++) {
     const word = words[i] as ShellWord;
-    if (word.text === SEPARATOR) continue;
+    if (word.text === SEPARATOR) {
+      commandWord = undefined;
+      continue;
+    }
+    commandWord ??= word;
     // A search path or an old directory changes what a later `cd` means; the guard cannot follow it.
     if (/^(?:CDPATH|OLDPWD)(?:\+?=|$)/.test(word.text)) return true;
     if (/^HOME(?:\+?=|$)/.test(word.text)) state.homeChanged = true;
+    // A `..`-only word is a directory operand, and quoting does not make it less of one: the
+    // shell treats `'..'` and `..` identically, so `rm -rf '..'`, `mv notes.md '..'`,
+    // `cp -r . '../..'`, `rsync -a . '../'`, `find '..' -delete` and `chmod -R 777 '..'` all
+    // name this worktree's parent — which is every peer run's worktree. The one command that may
+    // keep it is a pure text emitter, whose argument is a string it prints (`printf '%s\n' '..'`,
+    // `echo '..'`). Every directory change (`cd '..'`, `git -C '..'`) and every UNQUOTED `..`
+    // argument (`rm -rf ..`) refuses for its own reason, before and after this.
+    if (word.quoted && PARENT_ONLY.test(word.text) && !TEXT_EMITTER.test(commandWord.text)) return true;
     if (mentionParts(word.text).some((part) => mentionEscapes(part, state, roots, word.quoted))) return true;
 
     if (word.text === 'cd' || word.text === 'pushd') {
@@ -450,6 +479,15 @@ const MAX_SCRIPT_DEPTH = 8;
  * of a shell interpreter or of `eval`. Everything else quoted — a commit message, a printf
  * argument, a pasted listing — is a word the program receives, and reading it as a command line
  * is what made `echo "cd .."` and a pasted `..` look like directory changes.
+ *
+ * WHICH word is the script takes two steps, because a shell's flag list is not a list of
+ * dash-words. `bash -o pipefail -c '<script>'` and `bash --rcfile /dev/null -c '<script>'` pass
+ * a flag its ARGUMENT as a separate word (`pipefail`, `/dev/null`), so a scan that stops at the
+ * first word not beginning with `-` stops BEFORE the `-c` and then reads that argument as the
+ * operand — unquoted, so the script was never read at all, and `bash -euo pipefail -c` was
+ * ALLOWED where `main` refused it. So the flag scan now only answers "was a command flag seen?",
+ * and the operand is the FIRST QUOTED word anywhere in the rest of the segment. A segment that
+ * runs a script but contains no quoted word is one the guard cannot read, and it refuses it.
  */
 function scriptEscapes(words: ShellWord[], roots: Roots, depth: number): boolean {
   for (let i = 0; i < words.length; i++) {
@@ -457,14 +495,19 @@ function scriptEscapes(words: ShellWord[], roots: Roots, depth: number): boolean
     if (word.text === SEPARATOR) continue;
     let runsScript = word.text === 'eval';
     if (!runsScript && !SHELL_INTERPRETER.test(word.text)) continue;
-    let j = i + 1;
-    while (words[j] !== undefined && words[j]?.text !== SEPARATOR && /^-/.test(words[j]?.text ?? '')) {
+    for (let j = i + 1; words[j] !== undefined && words[j]?.text !== SEPARATOR; j++) {
       if (COMMAND_FLAG.test(words[j]?.text ?? '')) runsScript = true;
-      j++;
     }
-    const operand = words[j];
-    if (!runsScript || operand === undefined || operand.text === SEPARATOR || !operand.quoted) continue;
-    if (bashEscapes(operand.text, roots, depth + 1)) return true;
+    if (!runsScript) continue;
+    let script: ShellWord | undefined;
+    for (let j = i + 1; words[j] !== undefined && words[j]?.text !== SEPARATOR; j++) {
+      if (words[j]?.quoted) {
+        script = words[j];
+        break;
+      }
+    }
+    if (script === undefined) return true;
+    if (bashEscapes(script.text, roots, depth + 1)) return true;
   }
   return false;
 }
