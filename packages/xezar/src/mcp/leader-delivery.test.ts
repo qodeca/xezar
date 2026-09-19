@@ -1,4 +1,6 @@
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -47,8 +49,31 @@ const fakeOpenCode = async (opts: { directory: string; sessionId?: string }): Pr
   return fake;
 };
 
+/**
+ * A fake `opencode serve` that ACCEPTS the TCP connection and then never answers (#703). Nothing it
+ * returns is a valid OpenCode answer — the point is that a request to it hangs until the caller's
+ * own bound ends it, which is exactly what a paused `opencode serve` does. Kept in `servers`, so
+ * `afterEach` closes it whatever the case did.
+ */
+const neverAnsweringOpenCode = async (): Promise<FakeOpenCodeSession> => {
+  const server = createServer(() => {
+    // Deliberately writes no response and no headers: the request stays open until the caller aborts.
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const fake: FakeOpenCodeSession = {
+    baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+    sessionId: 'ses_never_answers_000000001',
+    stop: async () => {
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    },
+  };
+  servers.push(fake);
+  return fake;
+};
+
 /** A journal of its own, and the owner slot answering as the case needs. */
-function delivery(owns: boolean, warnings: string[] = [], guard?: Pick<EchoGuard, 'isOwn'>) {
+function delivery(owns: boolean, warnings: string[] = [], guard?: Pick<EchoGuard, 'isOwn'>, attachCheckMs?: number) {
   const dataDir = tmp();
   const journal = EventJournal.open({ dataDir, projectId: PROJECT, secretValues: [], warn: () => {} });
   journals.push(journal);
@@ -64,6 +89,7 @@ function delivery(owns: boolean, warnings: string[] = [], guard?: Pick<EchoGuard
     guard,
     warn: (message) => warnings.push(message),
     heartbeatMs: 200,
+    ...(attachCheckMs === undefined ? {} : { opencodeAttachCheckMs: attachCheckMs }),
   });
   deliveries.push(made);
   return { delivery: made, journal, warnings, dataDir };
@@ -728,6 +754,37 @@ describe('attaching OpenCode: the session is checked before the attachment is re
     const status = made.status();
     expect(status.available && status.leader).toEqual({ client: 'opencode', state: 'attached' });
     expect(status.available && status.blocker).toBeNull();
+  });
+});
+
+/**
+ * #703 — the attach-time check's bound is INJECTABLE, and a server that accepts a connection and
+ * then never answers is refused within it.
+ *
+ * The bound itself is load-bearing (#651): `POST /api/v1/mcp/leader` awaits this check, so an
+ * address that accepts a TCP connection and then says nothing — a paused `opencode serve` is
+ * exactly that — would otherwise hang the person's Attach leader click with no answer at all. The
+ * shipped default stays 10 s; this case injects a small bound so it can assert the bound instead of
+ * sleeping for ten seconds. Without the option the injected value is ignored, the default applies,
+ * and this case fails (the red proof is in the PR body).
+ */
+describe('the OpenCode attach-time check is bounded, and the bound is injectable (#703)', () => {
+  it('refuses a server that accepts the connection and never answers, within the injected bound', async () => {
+    const { delivery: made } = delivery(true, [], undefined, 150);
+    made.sessionOpened('session-1');
+    const silent = await neverAnsweringOpenCode();
+    const started = Date.now();
+    const attached = await made.act({ action: 'attach', client: 'opencode', baseUrl: silent.baseUrl, sessionId: silent.sessionId });
+    const elapsed = Date.now() - started;
+    // Refused with the attach-time unreachable wording, and nothing was attached.
+    expect(attached.ok).toBe(false);
+    expect(attached.ok === false && attached.error).toContain('the server did not answer');
+    expect(attached.ok === false && attached.error).toContain('Nothing was attached.');
+    expect(made.status()).toMatchObject({ leader: null });
+    // The INJECTED bound is what ended it — at least the 150 ms it was given, and nowhere near the
+    // 10 s shipped default.
+    expect(elapsed).toBeGreaterThanOrEqual(150);
+    expect(elapsed).toBeLessThan(5_000);
   });
 });
 
