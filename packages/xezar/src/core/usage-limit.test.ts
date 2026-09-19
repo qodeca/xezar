@@ -93,6 +93,64 @@ describe('parseUsageLimit', () => {
     expect(hit?.evidence).toBe('date');
   });
 
+  it('reads a reset date in the next calendar year, not the past (#645)', () => {
+    // A late-December message names Jan 3 with no year. The only reading that is not already past
+    // is the upcoming January: keeping this year would land on a date that has elapsed, `settle`
+    // would clamp it to now, and the task would resume immediately against a provider that is
+    // still refusing. The date is deliberately inside the one-week cap.
+    const lateDecember = Date.parse('2026-12-30T12:00:00.000Z');
+    const hit = parseUsageLimit(
+      "You've hit your weekly limit · resets Jan 3 at 6pm (Europe/Warsaw)",
+      lateDecember,
+    );
+    expect(hit?.resetAt.toISOString()).toBe('2027-01-03T17:00:00.000Z');
+    expect(hit?.evidence).toBe('date');
+  });
+
+  it('reads a single-digit day in a month/day reset (#645)', () => {
+    // `\d{1,2}` in the date pattern: a day of 3 must be read as Sep 3, not skipped in favour of
+    // the clock-only fallback, which would schedule the next occurrence of 6pm instead.
+    const hitAt = Date.parse('2026-09-01T12:00:00.000Z');
+    const hit = parseUsageLimit(
+      "You've hit your weekly limit · resets Sep 3 at 6pm (Europe/Warsaw)",
+      hitAt,
+    );
+    expect(hit?.resetAt.toISOString()).toBe('2026-09-03T16:00:00.000Z');
+    expect(hit?.evidence).toBe('date');
+  });
+
+  it('reads 12am as midnight and 12pm as noon in a month/day reset (#645)', () => {
+    // The classic 12-hour bug swaps these: 12am -> 12:00 (noon) and 12pm -> 00:00 (midnight),
+    // parking the resume half a day late and half a day early. Midnight on Sep 18 in Warsaw is
+    // 22:00 the previous UTC day; noon is 10:00 UTC.
+    const hitAt = Date.parse('2026-09-16T12:00:00.000Z');
+    const midnight = parseUsageLimit(
+      "You've hit your weekly limit · resets Sep 18 at 12am (Europe/Warsaw)",
+      hitAt,
+    );
+    const noon = parseUsageLimit(
+      "You've hit your weekly limit · resets Sep 18 at 12pm (Europe/Warsaw)",
+      hitAt,
+    );
+    expect(midnight?.resetAt.toISOString()).toBe('2026-09-17T22:00:00.000Z');
+    expect(midnight?.evidence).toBe('date');
+    expect(noon?.resetAt.toISOString()).toBe('2026-09-18T10:00:00.000Z');
+    expect(noon?.evidence).toBe('date');
+  });
+
+  it('reads a lower-case month name in a month/day reset (#645)', () => {
+    // The pattern is case-insensitive and the month table is lower-case; the CLI has been seen
+    // to spell the month in either case, and a lower-case one must not fall through to the
+    // clock-only path and lose the named day.
+    const hitAt = Date.parse('2026-09-17T14:00:00.000Z');
+    const hit = parseUsageLimit(
+      "You've hit your weekly limit · resets sep 19 at 6pm (Europe/Warsaw)",
+      hitAt,
+    );
+    expect(hit?.resetAt.toISOString()).toBe('2026-09-19T16:00:00.000Z');
+    expect(hit?.evidence).toBe('date');
+  });
+
   it('still reads the session-limit clock-only form the same way (unaffected by #581)', () => {
     // Real CLI text, run b9c9ddfd-5a3d-4c9e-8d3f-50a125a8c781 — already correct before the fix.
     const hitAt = Date.parse('2026-09-17T16:00:00.000Z');
