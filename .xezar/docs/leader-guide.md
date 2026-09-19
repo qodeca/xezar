@@ -315,7 +315,7 @@ because a head that moved since the brief makes the brief's exact-head guard sta
 - Ask with AskUserQuestion: two concrete options, one marked Recommended, and a conservative default
   if the owner stays silent (leader memory 2026-09-17).
 - An option's LABEL is the owner's; the DESCRIPTION under it is the leader's own reading. Never quote
-  a description back as the owner's decision (owner 2026-09-19; see "What to log where, and the
+  a description back as the owner's decision (leader observation, 2026-09-19; see "What to log where, and the
   honesty rule").
 - Silence is not authority. An unresolved dependent decision ends the step as blocked, with a
   `BLOCKED` record naming the decision and its options, so readiness cannot pass (shared contract).
@@ -337,7 +337,7 @@ because a head that moved since the brief makes the brief's exact-head guard sta
   requirements. The campaign `decisions.md` stays the append-only log of the owner's exact words and
   is a coordination aid, not the record.
 - **The owner's exact words go on their own line; the leader's reading goes on a separate line and is
-  marked as the leader's** (owner 2026-09-19). Twice that day a leader paraphrase was later quoted
+  marked as the leader's** (leader observation, 2026-09-19). Twice that day a leader paraphrase was later quoted
   back as the owner's decision and was wrong: the 2026-09-18 "sanitize" answer had five keys added to
   its strip list where the owner meant three (#653), and #634 was recorded as "parked" when the owner
   had never parked it. Never attribute a state to the owner — "parked", "approved", "deferred" —
