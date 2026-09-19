@@ -2,11 +2,11 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Hono } from 'hono';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProviderAuthService } from '../core/provider-auth.ts';
 import { emitUsageForTest, type ProcessUsage } from '../core/process-usage.ts';
 import { RunStore } from '../runs/store.ts';
-import type { RunManager } from '../workflows/run.ts';
+import { RunManager } from '../workflows/run.ts';
 import { clearProjectProbeCache, listProjects, registerProject, removeProject } from '../workspace/projects.ts';
 import { ProjectContexts } from './project-context.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
@@ -240,6 +240,40 @@ describe('GET /api/v1/workspace/events', () => {
     expect(all.filter((e) => e.project === other.id)).toHaveLength(1);
   });
 
+  /**
+   * #707 review round 1, Minor 1 (a): AC-8 for this listener — a generation-0 first dispose with
+   * NO re-add releases the attach entry — rested on reading the code. Probe A of that review
+   * replaced this listener's whole body with `return;` and left the file 11/11 green: the
+   * generation-aware `attach` repairs a missed release whenever the project is rebuilt, so every
+   * other case here passes through a re-add and cannot see the leak.
+   *
+   * This one never re-adds. The usage fan-out iterates `attached` and asks each entry's OWN store
+   * whether it owns the run, so a leaked entry is visible there and nowhere else: the disposed
+   * store still answers `getRun` for a row it created, and the project would keep receiving usage
+   * events for a context that is gone.
+   */
+  it('a disposed project with no re-add stops receiving usage — its attach entry is really released', async () => {
+    const other = await buildOtherContext();
+    const bootRunId = store.createRun({ title: 'boot', workflow: 'quick-task', task: 'b', steps: [] }).id;
+    const otherRunId = other.store.createRun({ title: 'other', workflow: 'quick-task', task: 'o', steps: [] }).id;
+
+    const ws = await openStream('/api/v1/workspace/events');
+    await ws.readUntil('event: ping');
+
+    expect(await contexts.dispose(other.id)).toBe(true);
+    expect(contexts.peek(other.id)).toBeUndefined();
+
+    // The disposed project's row goes out FIRST and the boot row second, in two snapshots: SSE
+    // writes keep their order, so by the time boot's event has arrived a leaked entry's event
+    // would already be in the body ahead of it. Boot's event is the control — it proves the
+    // fan-out ran at all, which is what makes the absence below a real absence rather than a
+    // stream that simply delivered nothing yet.
+    emitUsageForTest({ [otherRunId]: { cpuPct: 8, rssBytes: 2048, procCount: 1 } });
+    emitUsageForTest({ [bootRunId]: { cpuPct: 7, rssBytes: 1024, procCount: 1 } });
+    const body = await ws.readUntil(`"project":"${bootId}","usage"`);
+    expect(payloadsOf<{ project: string }>(body, 'usage').map((event) => event.project)).toEqual([bootId]);
+  });
+
   it("a late-built context's events appear after its first touch — and subscribing never force-instantiates", async () => {
     const other = await registerProject(otherRoot);
 
@@ -446,6 +480,78 @@ describe('GET /api/v1/workspace/events', () => {
     ]);
 
     rmSync(base, { recursive: true, force: true });
+  });
+
+  /**
+   * RP-3 (#647): the sibling of the two tests above, for the window they both step around.
+   *
+   * Each of them lets the dispose FINISH before the project comes back — the first waits for
+   * `project-removed`, the second re-registers between two awaited route calls — so the attach
+   * entry is already gone by the time the rebuilt context is published. The window this covers is
+   * the one where it is not: `dispose()` drops the context and bumps the registration
+   * synchronously but notifies only after `teardown` has finished, and that teardown can outlive
+   * a re-add and a rebuild of the same slug (which is exactly why `DELETE /projects/:id` bounds
+   * its own wait on that teardown and answers anyway rather than hanging on it).
+   *
+   * Keyed on the id alone, the stream then did BOTH halves wrong: the attach guard dropped the
+   * rebuilt context's store on the floor, and the late dispose deleted the entry for a
+   * registration that had already been replaced — so the project's events were silently lost
+   * until the browser reconnected.
+   *
+   * The teardown is parked at `RunManager.dispose()`, the one await inside `teardown`, rather
+   * than driven through the route, so the test never waits on that real bound.
+   */
+  it('a project rebuilt inside the previous context\'s teardown window keeps flowing on an already-open stream', async () => {
+    const other = await buildOtherContext();
+    expect(contexts.peek(other.id)?.generation).toBe(0);
+
+    const ws = await openStream('/api/v1/workspace/events');
+    await ws.readUntil('event: ping');
+
+    let release!: () => void;
+    const parked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const realDispose = RunManager.prototype.dispose;
+    const parkedDispose = vi
+      .spyOn(RunManager.prototype, 'dispose')
+      .mockImplementation(async function (this: RunManager) {
+        await parked;
+        await realDispose.call(this);
+      });
+
+    try {
+      // Not awaited: this is the teardown window, and the whole point is that it is still open.
+      const disposing = contexts.dispose(other.id);
+      await vi.waitFor(() => expect(parkedDispose).toHaveBeenCalled());
+      expect(contexts.peek(other.id)).toBeUndefined();
+
+      // The same slug, still registered, touched again: a fresh build publishes generation 1
+      // while generation 0's teardown is parked.
+      expect((await apiRequest(app, `/api/v1/p/${other.id}/runs`)).status).toBe(200);
+      const rebuilt = contexts.peek(other.id);
+      expect(rebuilt?.generation).toBe(1);
+      expect(rebuilt?.store).not.toBe(other.store);
+
+      // Now let generation 0's dispose land — after the rebuild, naming a registration this
+      // stream no longer holds.
+      release();
+      await disposing;
+
+      const run = (rebuilt as { store: RunStore }).store.createRun({
+        title: 'rebuilt-inside-the-window',
+        workflow: 'quick-task',
+        task: 'w',
+        steps: [],
+      });
+      const body = await ws.readUntil(`"id":"${run.id}"`);
+      expect(payloadsOf<{ id: string; project: string }>(body, 'run')).toEqual([
+        { ...JSON.parse(JSON.stringify(run)), project: other.id },
+      ]);
+    } finally {
+      release();
+      parkedDispose.mockRestore();
+    }
   });
 
   it('relays workspace-level bus events under their own names (projects, checkout, provider status)', async () => {

@@ -1,6 +1,6 @@
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AutomationStore } from '../automations/store.ts';
 import { emitUsageForTest } from '../core/process-usage.ts';
@@ -572,5 +572,75 @@ describe('ProjectContexts', () => {
     emitUsageForTest({});
     expect(spyA).not.toHaveBeenCalled();
     expect(spyB).not.toHaveBeenCalled();
+  });
+
+  /**
+   * AC-9 (#647): the fan-out guard.
+   *
+   * The second argument is ADDITIVE, which is exactly the trap AGENTS.md § Changing a mechanism
+   * that already works names: a listener that ignores it keeps the bug and still compiles, so the
+   * seam can ship complete while half its consumers behave as before. Nothing in the type system
+   * can fail for that, so this reads the source text instead — one missed listener is half a fix.
+   *
+   * Deliberately over the SHIPPED source only, never the tests: `project-context.test.ts` above
+   * subscribes a one-argument listener ON PURPOSE, to pin that an unmigrated third-party listener
+   * still compiles and still fires.
+   */
+  it('every onContextDisposed listener in the shipped source takes the disposal payload', () => {
+    const srcRoot = resolve(import.meta.dirname, '..');
+    const files: string[] = [];
+    const walk = (dir: string): void => {
+      for (const item of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, item.name);
+        if (item.isDirectory()) walk(full);
+        else if (item.name.endsWith('.ts') && !/\.(test|testkit)\.ts$/.test(item.name)) files.push(full);
+      }
+    };
+    walk(srcRoot);
+
+    /**
+     * An inline arrow — `(a, b) => …`, `async (a, b) => …`, or the one-parameter `id => …` and
+     * `async id => …` spellings — or an identifier naming a listener declared in the file.
+     *
+     * #707 review round 1, Minor 2: the two `async`/bare-identifier-arrow forms used to match
+     * NEITHER branch, so a listener spelled that way was skipped silently — and a scan that skips
+     * the listener it cannot read is the fail-open helper AGENTS.md § Changing a mechanism that
+     * already works warns about. The count check below is the guarantee that does not depend on
+     * this regex being complete: every `onContextDisposed(` in the file must end up classified,
+     * so the NEXT unrecognised spelling fails this test loudly instead of passing unseen.
+     */
+    const CALL = /onContextDisposed\(\s*(?:async\s*)?(?:\(([^)]*)\)\s*=>|([A-Za-z_$][\w$]*)\s*(\)|=>))/g;
+    const ALL = /onContextDisposed\(/g;
+    /** The hook's own TYPE signature (`onContextDisposed(listener: (…) => void)`), not a call. */
+    const SIGNATURE = /onContextDisposed\(\s*[A-Za-z_$][\w$]*\s*:/g;
+    const sites: Array<{ where: string; params: string }> = [];
+    for (const file of files) {
+      const text = readFileSync(file, 'utf8');
+      const classified = [...text.matchAll(CALL)];
+      const calls = [...text.matchAll(ALL)].length - [...text.matchAll(SIGNATURE)].length;
+      expect(calls, `${file}: an onContextDisposed call this scan cannot classify`)
+        .toBe(classified.length);
+      for (const match of classified) {
+        // A bare identifier followed by `=>` is a one-parameter arrow, not a named listener.
+        const named = match[3] === '=>' ? undefined : match[2];
+        if (named === undefined) {
+          sites.push({ where: `${file}: inline`, params: match[1] ?? match[2] ?? '' });
+          continue;
+        }
+        const declaration = text.match(
+          new RegExp(`(?:const\\s+${named}\\s*=\\s*|function\\s+${named}\\s*)\\(([^)]*)\\)`),
+        );
+        expect(declaration, `${file}: ${named} is passed to onContextDisposed but declared nowhere here`)
+          .not.toBeNull();
+        sites.push({ where: `${file}: ${named}`, params: declaration?.[1] ?? '' });
+      }
+    }
+
+    // The four consumers of the hook: MCP doors, the workspace SSE stream, the terminal and the
+    // automations/skills coordinators. A fifth is welcome — a fourth is a listener that went away.
+    expect(sites.length).toBeGreaterThanOrEqual(4);
+    for (const site of sites) {
+      expect(site.params.split(',').filter((part) => part.trim() !== ''), site.where).toHaveLength(2);
+    }
   });
 });

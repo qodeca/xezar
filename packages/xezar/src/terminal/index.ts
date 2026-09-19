@@ -179,8 +179,15 @@ export function startTerminalActivity(options: TerminalActivityOptions): Termina
     ...sourceOptions,
     ...(options.projectId ? { projectId: options.projectId } : {}),
   });
-  /** Every project's source, so a dispose releases exactly its own. */
-  const sources = new Map<string, ActivitySource>();
+  /**
+   * Every project's source, so a dispose releases exactly its own.
+   *
+   * Tagged with the REGISTRATION the store was opened for (#647), because an id alone cannot tell
+   * two registrations of the same project apart and this map is keyed on the id: a dispose that
+   * arrives after the project was re-added and rebuilt names the DEAD registration, and a source
+   * tagged with the live one must survive it.
+   */
+  const sources = new Map<string, { source: ActivitySource; generation: number }>();
 
   const http = new HttpDiagnostics({ emit, glyphs });
 
@@ -195,21 +202,44 @@ export function startTerminalActivity(options: TerminalActivityOptions): Termina
     },
     onHttpFailure: (failure) => http.record(failure),
     onContexts: (contexts) => {
-      const attach = (store: RunStore, projectId: string): ActivitySource => {
-        sources.get(projectId)?.detach();
+      /**
+       * Attach this project's rows to `store`, unless what is already here belongs to a LATER
+       * registration.
+       *
+       * `onStoreCreated` fires as a store opens, which is before its build knows whether it won:
+       * a build the removal route already superseded still opens a store and still announces it,
+       * and it can do so after the build that replaced it has published. Replacing on a strictly
+       * OLDER generation is what used to hand the live project's rows to a losing build's store
+       * (#647) — a defect that predates the dispose payload and is fixed here with it. An EQUAL
+       * generation still replaces, which is the unchanged default path: the same registration
+       * announced twice, and the last store is the one that counts.
+       */
+      const attach = (store: RunStore, projectId: string, generation: number): ActivitySource | undefined => {
+        const held = sources.get(projectId);
+        if (held && generation < held.generation) return undefined;
+        held?.source.detach();
         const source = attachRunStoreActivity(store, { ...sourceOptions, projectId });
-        sources.set(projectId, source);
+        sources.set(projectId, { source, generation });
         return source;
       };
       storeUnsubscribe = contexts.onStoreCreated(attach);
       // Publication follows this project's recovery, even when it was opened long after boot.
-      builtUnsubscribe = contexts.onContextBuilt((ctx) => sources.get(ctx.id)?.endRecovery());
+      builtUnsubscribe = contexts.onContextBuilt((ctx) => sources.get(ctx.id)?.source.endRecovery());
       for (const id of contexts.ids()) {
         const ctx = contexts.peek(id);
-        if (ctx) attach(ctx.store, id).endRecovery();
+        if (ctx) attach(ctx.store, id, ctx.generation)?.endRecovery();
       }
-      disposeUnsubscribe = contexts.onContextDisposed((projectId) => {
-        sources.get(projectId)?.detach();
+      // A dispose names the registration it is about, and this map is keyed on the id alone: a
+      // dispose whose teardown outlived a re-add and a rebuild names a registration this source
+      // no longer belongs to, and releasing it there would take the LIVE project's rows off the
+      // screen with no second `store` event to put them back (#647). The generation held here is
+      // exactly the one the matching dispose will name, so an equality test is the whole guard —
+      // and `generation: 0` is a real registration, never "no generation": a project's FIRST
+      // dispose carries 0 and must still release the source attached at 0.
+      disposeUnsubscribe = contexts.onContextDisposed((projectId, disposal) => {
+        const held = sources.get(projectId);
+        if (!held || held.generation !== disposal.generation) return;
+        held.source.detach();
         sources.delete(projectId);
       });
     },
@@ -284,7 +314,7 @@ export function startTerminalActivity(options: TerminalActivityOptions): Termina
       const stillRunning = stopOptions.stillRunning ?? renderer.activeRows.length;
       http.stop();
       bootSource.detach();
-      for (const source of sources.values()) source.detach();
+      for (const { source } of sources.values()) source.detach();
       sources.clear();
       storeUnsubscribe?.();
       builtUnsubscribe?.();
