@@ -12,7 +12,13 @@ import type { UiEvent } from './ui-events.js';
 import { buildChildEnv } from './agent-env.js';
 import { detectEnvironment } from './backend-detect.js';
 import { createRunner } from './runner-factory.js';
-import { buildPiArgs, KILL_GRACE_MS, PiRunner, type PiMcpConfigProbe } from './pi-runner.js';
+import {
+  buildPiArgs,
+  KILL_GRACE_MS,
+  PiRunner,
+  type PiMcpConfigAnswer,
+  type PiMcpConfigProbe,
+} from './pi-runner.js';
 
 /** Only the escalation (#D), text-coalescing (#151) and signal-termination (#156) tests below
  *  swap the child out; every other test in this file keeps spawning its real stub binary
@@ -889,5 +895,244 @@ describe('pi wall-clock timeout escalates SIGTERM -> SIGKILL (D)', () => {
       vi.advanceTimersByTime(60 * 60_000);
       expect(fake.signals).toEqual([]);
     });
+  });
+});
+
+/**
+ * #648 — the three minors the #636 second-opinion review recorded against the `--mcp-config`
+ * capability-probe facade. All three live in the window between `startSession` returning and the
+ * child existing, which is the window PR #636 opened.
+ *
+ * Named break for the red proofs: `pi-probe-facade-pre-648` — restore `pi-runner.ts` to its
+ * fc461704 state (the facade that records only pre-adopt sends, spawns regardless of an interrupt
+ * and holds no probe handle). Measured against that copy: A fails on the replayed message, B on
+ * both the interrupt and the close case, C by hanging until the test's own timeout.
+ *
+ * The GUARD case below pins what must NOT change — #588/#548: the probe is still asked BEFORE the
+ * child is spawned, and an answer that is not `yes` still fails closed to a session without the
+ * flag. It passes with and without the fix.
+ */
+describe('the pi capability-probe facade (#648)', () => {
+  let cwd: string;
+
+  beforeEach(() => {
+    cwd = mkdtempSync(join(tmpdir(), 'xez-pi-facade-'));
+  });
+  afterEach(() => {
+    spawnHook.override = null;
+    spawnHook.onSpawn = null;
+    rmSync(cwd, { recursive: true, force: true });
+  });
+
+  /** Let the awaited probe answer run the facade's next steps — a spawn, if it still makes one. */
+  const settleProbe = (): Promise<void> => new Promise<void>((resolve) => setImmediate(resolve));
+
+  /** A fake pi child that records what was written to it and how it was signalled. */
+  function fakeChild(pid: number): {
+    child: ChildProcessWithoutNullStreams;
+    prompts: () => string[];
+    signals: NodeJS.Signals[];
+    die: (code: number, stderr?: string) => void;
+  } {
+    const stdin = new PassThrough();
+    const stdout = new PassThrough();
+    const stderr = new PassThrough();
+    const signals: NodeJS.Signals[] = [];
+    let captured = '';
+    stdin.on('data', (chunk: Buffer | string) => {
+      captured += chunk.toString();
+    });
+    const emitter = new EventEmitter();
+    const child = Object.assign(emitter, {
+      stdin,
+      stdout,
+      stderr,
+      pid,
+      exitCode: null as number | null,
+      signalCode: null as NodeJS.Signals | null,
+      killed: false,
+      kill: (signal: NodeJS.Signals) => {
+        signals.push(signal);
+        Object.assign(child, { killed: true });
+        return true;
+      },
+    }) as unknown as ChildProcessWithoutNullStreams;
+    return {
+      child,
+      signals,
+      prompts: () =>
+        captured
+          .split('\n')
+          .filter(Boolean)
+          .map((line) => JSON.parse(line) as Record<string, unknown>)
+          .filter((frame) => frame.type === 'prompt')
+          .map((frame) => String(frame.message)),
+      die: (code: number, text?: string) => {
+        if (text) stderr.write(text);
+        Object.assign(child, { exitCode: code });
+        stdout.end();
+        emitter.emit('exit', code, null);
+        emitter.emit('close', code, null);
+      },
+    };
+  }
+
+  // ---- A: a message handed over after the first child was adopted ----
+
+  it('replays a message sent AFTER the first child was adopted onto the restarted child', async () => {
+    const first = fakeChild(6001);
+    const second = fakeChild(6002);
+    const children = [first, second];
+    let spawns = 0;
+    spawnHook.override = () => children[spawns++]?.child;
+
+    const firstSpawned = whenSpawned();
+    // `yes` is the only answer that arms the one-shot restart, which is what replays anything.
+    const session = new PiRunner({ bin: 'pi', timeoutMs: 0, supportsMcpConfig: async () => 'yes' }).startSession(
+      { userPrompt: 'do it', cwd },
+    );
+    void session.result.catch(() => undefined);
+    await firstSpawned;
+
+    // The window the review measured: the facade has a live child, and the person types.
+    expect(session.sendMessage([{ type: 'text', text: 'and also this' }])).toBe(true);
+    expect(first.prompts()).toEqual(['do it', 'and also this']);
+
+    const secondSpawned = whenSpawned();
+    // …and that child dies at spawn on the very flag the probe said it knew.
+    first.die(1, 'Error: Unknown option: --mcp-config\n');
+    await secondSpawned;
+
+    expect(spawns).toBe(2);
+    // The replacement gets BOTH: the opening prompt rides `spec.userPrompt`, and the message the
+    // dead attempt was handed goes back on the queue instead of dying with it.
+    expect(second.prompts()).toEqual(['do it', 'and also this']);
+
+    second.die(0);
+    await session.result;
+  });
+
+  // ---- B: an interrupt or a close inside the probe window ----
+
+  it('spawns no child at all when the session is interrupted inside the probe window', async () => {
+    let spawns = 0;
+    spawnHook.override = () => {
+      spawns += 1;
+      return fakeChild(6003).child;
+    };
+    let answer!: (value: PiMcpConfigAnswer) => void;
+    const probe = new Promise<PiMcpConfigAnswer>((resolve) => {
+      answer = resolve;
+    });
+
+    const events: AgentEvent[] = [];
+    const uiEvents: UiEvent[] = [];
+    const session = new PiRunner({ bin: 'pi', timeoutMs: 0, supportsMcpConfig: () => probe }).startSession(
+      { userPrompt: 'do it', cwd },
+      (event) => events.push(event),
+      { onUiEvent: (event) => uiEvents.push(event) },
+    );
+
+    session.interrupt();
+    answer('yes'); // the probe answers anyway — nobody wants the answer any more
+    // Read the spawn count before settling: a facade that spawns here leaves a child nothing
+    // will ever drive, so waiting for the result first would report a timeout instead of the bug.
+    await settleProbe();
+
+    expect(spawns).toBe(0);
+    const result = await session.result;
+    expect(result.text).toBe('');
+    expect(events.some((event) => event.type === 'note' && event.message.includes('no pi was spawned'))).toBe(true);
+    expect(events.filter((event) => event.type === 'done')).toHaveLength(1);
+    expect(uiEvents).toContainEqual({ type: 'session.ended', reason: 'cancelled' });
+  });
+
+  it('spawns no child when the session is closed inside the probe window', async () => {
+    let spawns = 0;
+    spawnHook.override = () => {
+      spawns += 1;
+      return fakeChild(6004).child;
+    };
+    let answer!: (value: PiMcpConfigAnswer) => void;
+    const probe = new Promise<PiMcpConfigAnswer>((resolve) => {
+      answer = resolve;
+    });
+
+    const session = new PiRunner({ bin: 'pi', timeoutMs: 0, supportsMcpConfig: () => probe }).startSession(
+      { userPrompt: 'do it', cwd },
+    );
+
+    session.end();
+    expect(session.open).toBe(false);
+    answer('no');
+    await settleProbe();
+
+    // A session that already reports itself closed must not acquire a child — which would also
+    // flip `open` back to true.
+    expect(spawns).toBe(0);
+    expect(session.open).toBe(false);
+    await session.result;
+  });
+
+  // ---- C: the in-flight probe itself ----
+
+  it('kills the in-flight probe child on interrupt instead of waiting out its bound', async () => {
+    const probeChild = fakeChild(6005);
+    let spawns = 0;
+    spawnHook.override = () => {
+      spawns += 1;
+      return probeChild.child;
+    };
+    const probeSpawned = whenSpawned();
+    // Fake timers, so `MCP_CONFIG_PROBE_TIMEOUT_MS` CANNOT be what ends this: nothing here
+    // advances them, and the probe child never exits on its own.
+    vi.useFakeTimers();
+    try {
+      // The real probe, not an injected one — the kill lives in it.
+      const session = new PiRunner({ bin: 'pi', timeoutMs: 0 }).startSession({ userPrompt: 'do it', cwd });
+      await probeSpawned;
+      expect(spawns).toBe(1);
+
+      session.interrupt();
+
+      expect(probeChild.signals).toEqual(['SIGKILL']);
+      await session.result;
+      // The probe was the only child: the session never spawned a pi of its own.
+      expect(spawns).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // ---- GUARD: what #548/#588 made load-bearing, unchanged either way ----
+
+  it('GUARD: the probe still runs BEFORE the spawn, and an unanswerable probe still fails closed', async () => {
+    const child = fakeChild(6006);
+    const order: string[] = [];
+    spawnHook.override = () => {
+      order.push('spawn');
+      return child.child;
+    };
+    const spawned = whenSpawned();
+    const events: AgentEvent[] = [];
+    const session = new PiRunner({
+      bin: 'pi',
+      timeoutMs: 0,
+      supportsMcpConfig: async () => {
+        order.push('probe');
+        return 'unknown';
+      },
+    }).startSession({ userPrompt: 'do it', cwd }, (event) => events.push(event));
+    await spawned;
+
+    // The ordering #588 turned on: ask first, spawn second.
+    expect(order).toEqual(['probe', 'spawn']);
+    // …and an answer that is not `yes` still leaves the flag out, with the note that says only
+    // what was established.
+    expect(events.some((event) => event.type === 'note' && event.message.includes('could not confirm'))).toBe(true);
+    expect(child.prompts()).toEqual(['do it']);
+
+    child.die(0);
+    await session.result;
   });
 });
