@@ -469,6 +469,15 @@ function wordsEscape(words: ShellWord[], roots: Roots): boolean {
 const SHELL_INTERPRETER = /(?:^|\/)(?:sh|bash|zsh|dash|ksh|ash|mksh|fish)$/;
 /** A short-flag cluster that asks for a command string: `-c`, `-lc`, `-xc`. */
 const COMMAND_FLAG = /^-[a-z]*c[a-z]*$/;
+/**
+ * A flag whose ARGUMENT is the NEXT WORD, so that word is a mode name or a file name and is never
+ * the script — quoted or not. `-o`/`+o` (set options) exist in every shell here; `-O`/`+O` (shopt)
+ * and `--rcfile`/`--init-file` are bash's; `--emulate` is zsh's. A combined cluster ending in one
+ * of those letters takes the argument too (`-euo pipefail`, and `-co pipefail`, which asks for a
+ * command string AND consumes a word). An `=`-attached argument (`--rcfile=x`) consumes no word,
+ * so it is deliberately not matched here.
+ */
+const FLAG_TAKES_ARGUMENT = /^(?:--rcfile|--init-file|--emulate)$|^[-+][a-zA-Z]*[oO]$/;
 /** How deep a script inside a script is read before the guard gives up and refuses. Nothing
  *  ordinary nests past two; the bound is here so a pathological command cannot turn the
  *  recursion into a thrown error, which would be a missed block rather than a false one. */
@@ -480,34 +489,61 @@ const MAX_SCRIPT_DEPTH = 8;
  * argument, a pasted listing — is a word the program receives, and reading it as a command line
  * is what made `echo "cd .."` and a pasted `..` look like directory changes.
  *
- * WHICH word is the script takes two steps, because a shell's flag list is not a list of
- * dash-words. `bash -o pipefail -c '<script>'` and `bash --rcfile /dev/null -c '<script>'` pass
- * a flag its ARGUMENT as a separate word (`pipefail`, `/dev/null`), so a scan that stops at the
- * first word not beginning with `-` stops BEFORE the `-c` and then reads that argument as the
- * operand — unquoted, so the script was never read at all, and `bash -euo pipefail -c` was
- * ALLOWED where `main` refused it. So the flag scan now only answers "was a command flag seen?",
- * and the operand is the FIRST QUOTED word anywhere in the rest of the segment. A segment that
- * runs a script but contains no quoted word is one the guard cannot read, and it refuses it.
+ * WHICH word is the script is the whole difficulty, because a shell's flag list is not a list of
+ * dash-words: several flags take their ARGUMENT as a SEPARATE word. `bash -o pipefail -c
+ * '<script>'` passes `pipefail`, `bash --rcfile x -c '<script>'` passes `x`. Two spellings of the
+ * same mistake have already shipped from this one function, and the rule below is what closes
+ * BOTH, so neither half may be dropped:
+ *
+ *   - Stopping at the first word not beginning with `-` stops BEFORE the `-c` and reads the flag's
+ *     own argument as the operand — unquoted, so the script was never read at all and
+ *     `bash -euo pipefail -c '<script>'` was ALLOWED where `main` refused it.
+ *   - Taking the first QUOTED word anywhere in the segment instead reads a flag argument that
+ *     happens to be quoted — `bash --rcfile 'x' -c '<script>'` — as the script, and the real `-c`
+ *     operand is never read. A live shell runs the `-c` operand regardless of `--rcfile`.
+ *
+ * So the operand is ANCHORED at the command flag: the scan walks the segment once, steps over each
+ * argument-taking flag's own word (`FLAG_TAKES_ARGUMENT`), notes WHERE the command flag is, and
+ * looks for the script only AT OR AFTER that flag. A word quoted before it is that earlier flag's
+ * argument and is never eligible. Past the anchor, every quoted word that is not a known flag's
+ * argument is read, because a cluster such as `-co pipefail '<script>'` asks for a command string
+ * and consumes a word in the same breath. A segment that runs a script but has no readable quoted
+ * word is one the guard cannot read, and it refuses it. `--` gets no special case: option parsing
+ * really does end there, but refusing the segment anyway is the safe direction.
  */
 function scriptEscapes(words: ShellWord[], roots: Roots, depth: number): boolean {
   for (let i = 0; i < words.length; i++) {
     const word = words[i] as ShellWord;
     if (word.text === SEPARATOR) continue;
-    let runsScript = word.text === 'eval';
-    if (!runsScript && !SHELL_INTERPRETER.test(word.text)) continue;
-    for (let j = i + 1; words[j] !== undefined && words[j]?.text !== SEPARATOR; j++) {
-      if (COMMAND_FLAG.test(words[j]?.text ?? '')) runsScript = true;
-    }
-    if (!runsScript) continue;
-    let script: ShellWord | undefined;
-    for (let j = i + 1; words[j] !== undefined && words[j]?.text !== SEPARATOR; j++) {
-      if (words[j]?.quoted) {
-        script = words[j];
-        break;
+    const isEval = word.text === 'eval';
+    if (!isEval && !SHELL_INTERPRETER.test(word.text)) continue;
+    // `eval` has no flag to anchor on: its operand is the first quoted word after it.
+    let from = i + 1;
+    if (!isEval) {
+      let anchored = false;
+      for (let j = i + 1; words[j] !== undefined && words[j]?.text !== SEPARATOR; j++) {
+        const text = words[j]?.text ?? '';
+        if (COMMAND_FLAG.test(text)) {
+          from = FLAG_TAKES_ARGUMENT.test(text) ? j + 2 : j + 1;
+          anchored = true;
+          break;
+        }
+        if (FLAG_TAKES_ARGUMENT.test(text)) j++;
       }
+      if (!anchored) continue;
     }
-    if (script === undefined) return true;
-    if (bashEscapes(script.text, roots, depth + 1)) return true;
+    let read = false;
+    for (let j = from; words[j] !== undefined && words[j]?.text !== SEPARATOR; j++) {
+      const candidate = words[j] as ShellWord;
+      if (FLAG_TAKES_ARGUMENT.test(candidate.text)) {
+        j++;
+        continue;
+      }
+      if (!candidate.quoted) continue;
+      read = true;
+      if (bashEscapes(candidate.text, roots, depth + 1)) return true;
+    }
+    if (!read) return true;
   }
   return false;
 }

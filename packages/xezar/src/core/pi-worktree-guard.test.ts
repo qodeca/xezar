@@ -418,6 +418,56 @@ describe('pi linked-worktree tool guard (#537)', () => {
     });
   });
 
+  /** Round 1 stopped reading a flag's UNQUOTED argument as the script. The scoped re-check found
+   *  the other half: a flag whose argument is QUOTED (`bash --rcfile 'x' -c '<script>'`) was read
+   *  as the script instead, and the real `-c` operand — which a live shell runs regardless of
+   *  `--rcfile` — was never read. One row per flag that takes a SEPARATE word in bash, sh, dash,
+   *  ksh or zsh, so the class is closed rather than the two reported spellings. */
+  describe('Scoped re-check: the script is anchored at the command flag, not at the first quoted word (#652)', () => {
+    it.each([
+      // The two spellings the scoped re-checker measured and proved red at dbb4b559.
+      ['RED (re-check): a quoted --rcfile argument precedes the real -c', (f: Fixture) => `bash --rcfile 'x' -c 'cd ${f.primary} && rm -rf x'`],
+      ['RED (re-check): a quoted --init-file argument precedes the real -c', (f: Fixture) => `bash --init-file 'x' -c 'cd ${f.primary}'`],
+      // One row per argument-taking flag, per shell.
+      ['RED: bash -o takes a separate QUOTED argument', (f: Fixture) => `bash -o 'pipefail' -c 'cd ${f.primary}'`],
+      ['RED: bash +o takes a separate QUOTED argument', (f: Fixture) => `bash +o 'noclobber' -c 'cd ${f.primary}'`],
+      ['RED: bash -O (shopt) takes a separate QUOTED argument', (f: Fixture) => `bash -O 'extglob' -c 'cd ${f.primary}'`],
+      ['RED: bash +O (shopt) takes a separate QUOTED argument', (f: Fixture) => `bash +O 'extglob' -c 'cd ${f.primary}'`],
+      ['RED: sh -o takes a separate QUOTED argument', (f: Fixture) => `sh -o 'nounset' -c 'cd ${f.primary}'`],
+      ['RED: dash -o takes a separate QUOTED argument', (f: Fixture) => `dash -o 'errexit' -c 'cd ${f.primary}'`],
+      ['RED: ksh -o takes a separate QUOTED argument', (f: Fixture) => `ksh -o 'pipefail' -c 'cd ${f.primary}'`],
+      ['RED: zsh -o takes a separate QUOTED argument', (f: Fixture) => `zsh -o 'pipefail' -c 'cd ${f.primary}'`],
+      ['RED: zsh +o takes a separate QUOTED argument', (f: Fixture) => `zsh +o 'nomatch' -c 'cd ${f.primary}'`],
+      ['RED: a combined short cluster ending in -o takes one', (f: Fixture) => `bash -euo 'pipefail' -c 'cd ${f.primary}'`],
+      ['RED: two argument-taking long options in a row', (f: Fixture) => `bash --rcfile 'x' --init-file 'y' -c 'cd ${f.primary}'`],
+      ['RED: the -c flag itself is quoted', (f: Fixture) => `bash '-c' 'cd ${f.primary}'`],
+      ['RED: -co asks for a command string AND consumes a word', (f: Fixture) => `bash -co 'pipefail' 'cd ${f.primary}'`],
+      ['RED: an argument-taking flag AFTER the -c', (f: Fixture) => `bash -c --rcfile 'x' 'cd ${f.primary}'`],
+      ['RED: a flag argument before a -c whose script is unquoted fails closed', () => "bash --rcfile 'x' -c ls"],
+      // Already refused before this round; they pin what the anchor must NOT lose.
+      ['GUARD: zsh --emulate takes a separate QUOTED argument', (f: Fixture) => `zsh --emulate 'sh' -c 'cd ${f.primary}'`],
+      ['GUARD: -- ends option parsing, and the segment is refused anyway', (f: Fixture) => `bash -- -c 'cd ${f.primary}'`],
+      ['GUARD: -ec, a cluster whose c is not last', (f: Fixture) => `bash -ec 'cd ${f.primary}'`],
+      ['GUARD: -xc, another such cluster', (f: Fixture) => `bash -xc 'cd ${f.primary}'`],
+      ['GUARD: an =-attached argument consumes no word', (f: Fixture) => `bash --rcfile=x -c 'cd ${f.primary}'`],
+      ['GUARD: the script is behind the flag, not before it', (f: Fixture) => `bash -c 'cd ${f.primary}' --rcfile 'x'`],
+      ['GUARD: eval keeps its no-flag anchor', (f: Fixture) => `eval 'cd ${f.primary}'`],
+    ])('still refuses %s', (_name, command) => {
+      const f = fixture();
+      expect(guard(f, bash(command(f)))).toMatchObject(BLOCK);
+    });
+
+    it.each([
+      ['GUARD: a benign script behind --rcfile', () => "bash --rcfile 'x' -c 'ls'"],
+      ['GUARD: a benign script behind -o', () => "bash -o 'pipefail' -c 'echo hi'"],
+      ['GUARD: a benign script behind -euo', () => "bash -euo 'pipefail' -c 'npm test'"],
+      ['GUARD: a benign script behind -co', () => "bash -co 'pipefail' 'npm test'"],
+      ['GUARD: a quoted script for a program that is not a shell', () => "awk '{print $1}' x.txt"],
+    ])('allows %s', (_name, command) => {
+      expect(guard(fixture(), bash(command()))).toBeUndefined();
+    });
+  });
+
   describe('Major 3: the primary checkout comes from Xezar, not from the .git marker', () => {
     it.each([
       ['a worktree of a bare repository', 'proj.git'],
