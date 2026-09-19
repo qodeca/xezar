@@ -167,7 +167,7 @@ test('task-local guide changes invalidate the judged kit content even when ignor
 test('bootstrap refuses a checkout under the retired pre-.xezar worktree location',()=>{
  const root=fixture();const id='cd123456-legacy';const wt=path.join(root,'.ai/xezar/worktrees',id);git(root,'worktree','add','-qb',`xez/${id.slice(0,8)}`,wt,'main');
  const result=bootstrap(root,wt);assert.notEqual(result.status,0);
- assert.ok(!fs.existsSync(path.join(wt,'.local/xezar-kit/snapshot.json')));
+ assert.ok(!fs.existsSync(path.join(wt,'.local/xezar/kit/snapshot.json')));
 });
 
 // Self-contained delivered skills deliberately retain the shared text; detect drift at authoring time.
