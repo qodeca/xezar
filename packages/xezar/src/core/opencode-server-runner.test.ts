@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import http from 'node:http';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -160,6 +160,10 @@ function start(
     timeoutMs?: number;
     autoEnd?: boolean;
     model?: string;
+    /** The run's own directory — a worktree in production, `process.cwd()` by default. */
+    cwd?: string;
+    /** The primary checkout, set together with a worktree `cwd` (`worktreeGuardRoots`). */
+    primaryRoot?: string;
     runner?: OpencodeServerRunner;
   } = {},
 ): Started {
@@ -169,7 +173,8 @@ function start(
   const session = runner.startSession(
     {
       userPrompt: 'check the working tree',
-      cwd: process.cwd(),
+      cwd: opts.cwd ?? process.cwd(),
+      ...(opts.primaryRoot ? { primaryRoot: opts.primaryRoot } : {}),
       env: { MOCK_OPENCODE_SIGNAL_LOG: signalLog, ...opts.env },
       ...(opts.model ? { model: opts.model } : {}),
     },
@@ -651,10 +656,14 @@ describe('the blocking fallback outlives the fetch transport wall (#153 AC 2)', 
  * error instead of passing against a mock that accepts anything.
  */
 describe('a permission ask (#578)', () => {
-  async function answer(env: Record<string, string>): Promise<{ replies: string[]; v1: AgentEvent[]; v2: UiEvent[]; text: string }> {
+  async function answer(
+    env: Record<string, string>,
+    run: { cwd?: string; primaryRoot?: string } = {},
+  ): Promise<{ replies: string[]; v1: AgentEvent[]; v2: UiEvent[]; text: string }> {
     const replyLog = join(tmpDir, 'permission-replies.log');
     const { session, pid, v1, v2 } = start({
       env: { MOCK_OPENCODE_PERMISSION_ASK: '1', MOCK_OPENCODE_PERMISSION_REPLY_LOG: replyLog, ...env },
+      ...run,
       // Bounded and short — before #578 this test would have to wait out the
       // real 30-minute default to observe the hang at all.
       timeoutMs: 5_000,
@@ -690,6 +699,31 @@ describe('a permission ask (#578)', () => {
     const { replies, v1, v2, text } = await answer({
       MOCK_OPENCODE_PERMISSION_PATTERNS: JSON.stringify([`${realpathSync.native(tmpDir)}/*`]),
     });
+    expect(v1.filter((e) => e.type === 'error' || e.type === 'note')).toEqual([]);
+    expect(v2.filter((e) => e.type === 'session.error')).toEqual([]);
+    expect(replies).toEqual(['per_mock_1 {"reply":"once"}']);
+    expect(text).toContain('Permission answered: once.');
+  }, 30_000);
+
+  it("allows an ask for the run's own task evidence directory in the primary checkout (#686)", async () => {
+    // The evidence directory is the one path a run must reach OUTSIDE its own
+    // cwd that the other three backends already reach: the kit writes the
+    // diagnosis, the red-proof transcripts and the phase record there. It lives
+    // in the PRIMARY checkout, so an isolated worktree run has no other route to
+    // it — hence a `cwd` under the temp dir with the checkout passed as
+    // `primaryRoot`, exactly the shape `worktreeGuardRoots` produces in
+    // production. Before #686 the reply here was `reject`, which is what this
+    // case proves RED against the real runner; no symbol from the fix is needed
+    // to observe it.
+    const runId = '68600000-0000-4000-8000-000000000686';
+    const worktree = join(tmpDir, 'worktree');
+    mkdirSync(worktree, { recursive: true });
+    const primary = realpathSync.native(process.cwd());
+    const evidence = join(primary, '.local', 'xezar', 'tasks', runId, 'red-proofs');
+    const { replies, v1, v2, text } = await answer(
+      { XEZ_TASK_ID: runId, MOCK_OPENCODE_PERMISSION_PATTERNS: JSON.stringify([`${evidence}/*`]) },
+      { cwd: worktree, primaryRoot: primary },
+    );
     expect(v1.filter((e) => e.type === 'error' || e.type === 'note')).toEqual([]);
     expect(v2.filter((e) => e.type === 'session.error')).toEqual([]);
     expect(replies).toEqual(['per_mock_1 {"reply":"once"}']);
