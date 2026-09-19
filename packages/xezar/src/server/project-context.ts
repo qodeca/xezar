@@ -41,6 +41,30 @@ export interface ProjectContext {
   automationStore: AutomationStore;
   /** Bookmarklet auto-start secret (spec 011), ensured at context build. */
   launchKey: string;
+  /**
+   * The REGISTRATION this bundle was built for (#647) — `ProjectContexts.generations` as it stood
+   * when the build was acquired. Required, not optional: a listener that tags its per-project state
+   * with this is only as safe as the guarantee that every context carries one, so a construction
+   * site that forgets it must be a compile error rather than an `undefined` that reads as 0.
+   */
+  readonly generation: number;
+}
+
+/**
+ * What an `onContextDisposed` listener is told (#647).
+ *
+ * A dispose used to say only which id went away, and an id is not enough inside the teardown
+ * window: `dispose()` bumps the generation and drops the context synchronously but notifies only
+ * after `teardown` has finished, so the same project can already have been re-added and REBUILT by
+ * the time the notification lands. A listener keyed on the id alone then releases the live
+ * registration's state on behalf of the dead one.
+ */
+export interface ContextDisposal {
+  /** The registration this dispose is about — the value BEFORE `dispose()` bumped it. */
+  readonly generation: number;
+  /** At notify time, this id already has a published context, or a build in flight,
+   *  for a generation greater than `generation`. */
+  readonly superseded: boolean;
 }
 
 /** Minimal registry shape the context map needs — matches
@@ -140,11 +164,11 @@ export class ProjectContexts {
    *  `workspace/config.ts` avoids repeating the same degraded-state line on every load. */
   private readonly activeDriftWarned = new Map<string, string>();
   /** Live store-created subscribers; invoked before RunManager recovery. */
-  private readonly storeListeners = new Set<(store: RunStore, projectId: string) => void>();
+  private readonly storeListeners = new Set<(store: RunStore, projectId: string, generation: number) => void>();
   /** Live `onContextBuilt` subscribers (workspace SSE, step 2.8). */
   private readonly builtListeners = new Set<(ctx: ProjectContext) => void>();
   /** Live `onContextDisposed` subscribers (#467, PR 3) — see the method for why they exist. */
-  private readonly disposedListeners = new Set<(projectId: string) => void>();
+  private readonly disposedListeners = new Set<(projectId: string, disposal: ContextDisposal) => void>();
   /** One semaphore for every manager this map builds — injected by boot,
    *  private-but-shared otherwise. */
   private readonly semaphore: WorkspaceSemaphore;
@@ -292,7 +316,7 @@ export class ProjectContexts {
    * the same promise.
    */
   private async buildAndPublish(projectId: string, generation: number): Promise<ProjectContext> {
-    const ctx = await this.build(projectId);
+    const ctx = await this.build(projectId, generation);
     if (this.generation(projectId) !== generation) {
       await teardown(ctx);
       throw new ProjectContextError('unknown-project', projectId);
@@ -333,8 +357,13 @@ export class ProjectContexts {
    * emitted it — so a subscriber that renders several projects had no safe way to label what it
    * received. Additive: the parameter is second, so every existing one-argument listener
    * (`providerRuntimeAuth.watch`) keeps compiling and behaving identically.
+   *
+   * The registration the opening build is running for is handed over third (#647), on the same
+   * additive terms: a subscriber that tags its per-project state with it can tell the store of a
+   * losing build from the store of the build that replaced it, and match the generation the
+   * matching `onContextDisposed` will name.
    */
-  onStoreCreated(listener: (store: RunStore, projectId: string) => void): () => void {
+  onStoreCreated(listener: (store: RunStore, projectId: string, generation: number) => void): () => void {
     this.storeListeners.add(listener);
     return () => this.storeListeners.delete(listener);
   }
@@ -347,28 +376,56 @@ export class ProjectContexts {
    * a cache) keeps it for a project that no longer exists. This is the notification for that,
    * and it fires after the teardown has finished, so a listener never sees a half-released
    * context. Returns an unsubscribe.
+   *
+   * WHICH registration went away is the second argument (#647), additive the way
+   * `onStoreCreated`'s `projectId` was, so an unmigrated one-argument listener still compiles.
+   *
+   * The ordering this notification has always had is what makes that argument necessary, and it
+   * is unchanged: `notifyDisposed(id, {generation: g})` never precedes `notifyBuilt` of generation
+   * `g`, and MAY arrive after `notifyBuilt` of any generation greater than `g` — the teardown it
+   * waits for can outlive a re-add and a rebuild of the same id. A listener holding state for a
+   * generation this payload does not name is holding the LIVE project's state and must keep it.
    */
-  onContextDisposed(listener: (projectId: string) => void): () => void {
+  onContextDisposed(listener: (projectId: string, disposal: ContextDisposal) => void): () => void {
     this.disposedListeners.add(listener);
     return () => this.disposedListeners.delete(listener);
   }
 
   /** A listener throwing must never fail the build (its store is usable). */
-  private notifyStoreCreated(store: RunStore, projectId: string): void {
+  private notifyStoreCreated(store: RunStore, projectId: string, generation: number): void {
     for (const listener of [...this.storeListeners]) {
       try {
-        listener(store, projectId);
+        listener(store, projectId, generation);
       } catch {
         // subscriber's problem — context construction can continue
       }
     }
   }
 
-  /** A listener throwing must never fail a dispose (the context is already released). */
-  private notifyDisposed(projectId: string): void {
+  /**
+   * A listener throwing must never fail a dispose (the context is already released).
+   *
+   * The ONE publisher of a dispose, so `superseded` is computed in exactly one place and cannot
+   * disagree between the build-only and the ordinary case. It is read HERE, synchronously at
+   * notify time rather than captured earlier, because that is the moment a listener acts on: a
+   * rebuild that published while `teardown` was running is exactly what the flag is about, and
+   * `notifyBuilt` and the `contexts.set` that publishes are one synchronous block, so this is
+   * never a stale read.
+   *
+   * `generation` is the disposed registration, which for a project's FIRST removal is 0 — a real
+   * value, not an absent one. Nothing here may read it as "no generation".
+   */
+  private notifyDisposed(projectId: string, generation: number): void {
+    const published = this.contexts.get(projectId)?.generation;
+    const inFlight = this.building.get(projectId)?.generation;
+    const disposal: ContextDisposal = {
+      generation,
+      superseded: (published !== undefined && published > generation)
+        || (inFlight !== undefined && inFlight > generation),
+    };
     for (const listener of [...this.disposedListeners]) {
       try {
-        listener(projectId);
+        listener(projectId, disposal);
       } catch {
         // subscriber's problem — the context is gone either way
       }
@@ -443,9 +500,13 @@ export class ProjectContexts {
    * in-memory list overwrite the fresh one.
    */
   async dispose(projectId: string): Promise<boolean> {
+    // Captured BEFORE the bump (#647): this is the registration being disposed, and it is what
+    // every listener is told. Read after the bump it would name the registration that REPLACED
+    // this one, which is the live project.
+    const generation = this.generation(projectId);
     // Bumped BEFORE anything is awaited, so a build that has not reached its publish check yet is
     // already a loser by the time it gets there — no window, no second removal path.
-    this.generations.set(projectId, this.generation(projectId) + 1);
+    this.generations.set(projectId, generation + 1);
     this.activeDriftWarned.delete(projectId);
     const pending = this.building.get(projectId);
     const ctx = this.contexts.get(projectId);
@@ -459,13 +520,13 @@ export class ProjectContexts {
       if (this.building.get(projectId) === pending) this.building.delete(projectId);
     }
     if (!ctx) {
-      if (pending !== undefined) this.notifyDisposed(projectId);
+      if (pending !== undefined) this.notifyDisposed(projectId, generation);
       return pending !== undefined;
     }
     await teardown(ctx);
     // After the teardown, never before: a listener releasing its own per-project state must not
     // be able to observe a context that is half-released (#467, PR 3).
-    this.notifyDisposed(projectId);
+    this.notifyDisposed(projectId, generation);
     return true;
   }
 
@@ -476,7 +537,7 @@ export class ProjectContexts {
     for (const id of new Set([...this.ids(), ...this.building.keys()])) await this.dispose(id);
   }
 
-  private async build(projectId: string): Promise<ProjectContext> {
+  private async build(projectId: string, generation: number): Promise<ProjectContext> {
     const projects = await this.deps.listProjects();
     const project = projects.find((p) => p.id === projectId);
     if (!project) throw new ProjectContextError('unknown-project', projectId);
@@ -490,7 +551,7 @@ export class ProjectContexts {
     const automationStore = this.deps.automationStore?.(project.id, project.root)
       ?? AutomationStore.open(dataDir);
     reconcileAutomationReceipts(automationStore, store);
-    this.notifyStoreCreated(store, project.id);
+    this.notifyStoreCreated(store, project.id, generation);
     const manager = new RunManager(store, project.root, { semaphore: this.semaphore });
     try {
       const launchKey = ensureLaunchKey(dataDir);
@@ -513,7 +574,7 @@ export class ProjectContexts {
       // build, and arming on the way out of here would outlive a build the project's removal
       // outlived — both end the same way, with a healed record `touch()`ing a store whose
       // lifecycle has ended and scheduling a `runs.json` write from a context nobody owns.
-      return { id: project.id, root: project.root, dataDir, store, manager, automationStore, launchKey };
+      return { id: project.id, root: project.root, dataDir, store, manager, automationStore, launchKey, generation };
     } catch (err) {
       // A failed build must not leak the half-built context's subscriptions.
       await teardown({ store, manager });
