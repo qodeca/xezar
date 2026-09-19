@@ -15,6 +15,7 @@ import { createRunner } from '../core/runner-factory.ts';
 import type { RunnerId } from '../core/agent-runner.ts';
 import { modelConflictsWithRunner } from '../core/model-presets.ts';
 import { AGENT_MODELS_LOCKED_ERROR, agentModelsLocked } from '../core/agent-model-policy.ts';
+import { runEvidenceRoots } from '../core/run-evidence-roots.ts';
 import {
   ModelIdentityError,
   formatModelIdentity,
@@ -588,14 +589,30 @@ export function worktreeGuardRoots(
 
 /**
  * The directories a spawned agent may reach outside its worktree: the run-state
- * folder that holds its handoff file, plus its own temp directory when this run
- * got one (#785). Handing an agent a `TMPDIR` its file tools are not allowed to
- * write would trade one silent failure for another, so the two travel together;
+ * folder that holds its handoff file, this run's own task-evidence directories
+ * in the primary checkout, plus its own temp directory when this run got one
+ * (#785). Handing an agent a `TMPDIR` its file tools are not allowed to write
+ * would trade one silent failure for another, so the two travel together;
  * under `XEZ_AGENT_TMPDIR=0` there is no per-run directory and the list is
  * exactly what it always was.
+ *
+ * The evidence directories are the ONE list `runEvidenceRoots` produces, shared
+ * with the OpenCode runner (#686): the pi worktree guard takes this whole list
+ * as `--xezar-allowed-roots` (#652), so without them a pi step cannot write the
+ * diagnosis, the red proofs or the phase record the kit mandates. `env` carries
+ * `XEZ_TASK_ID`, and a run without one is granted no evidence root rather than a
+ * wider one.
  */
-export function agentDirectories(runsDir: string, env: Record<string, string>): string[] {
-  return env.TMPDIR ? [runsDir, env.TMPDIR] : [runsDir];
+export function agentDirectories(
+  repoRoot: string,
+  dataDir: string,
+  env: Record<string, string>,
+): string[] {
+  return [
+    join(dataDir, 'runs'),
+    ...runEvidenceRoots(repoRoot, env.XEZ_TASK_ID),
+    ...(env.TMPDIR ? [env.TMPDIR] : []),
+  ];
 }
 
 /**
@@ -3279,7 +3296,7 @@ export class RunManager {
         ...worktreeGuardRoots(state.cwd, this.repoRoot),
         allowedTools: toolsStep?.allowedTools ?? DEFAULT_ALLOWED_TOOLS,
         bashAllowlist: toolsStep?.bashAllowlist,
-        additionalDirectories: agentDirectories(join(this.dataDir, 'runs'), continueProfile.env),
+        additionalDirectories: agentDirectories(this.repoRoot, this.dataDir, continueProfile.env),
         env: continueProfile.env,
         model: continueModel,
         sessionId,
@@ -4081,8 +4098,8 @@ export class RunManager {
           ...worktreeGuardRoots(state.cwd, this.repoRoot),
           allowedTools: step.allowedTools ?? DEFAULT_ALLOWED_TOOLS,
           bashAllowlist: step.bashAllowlist,
-          // The handoff file lives outside the worktree — grant access.
-          additionalDirectories: agentDirectories(join(this.dataDir, 'runs'), stepProfile.env),
+          // The handoff file and this run's evidence directory live outside the worktree — grant access.
+          additionalDirectories: agentDirectories(this.repoRoot, this.dataDir, stepProfile.env),
           env: stepProfile.env,
           model: backendModel,
           sessionId,

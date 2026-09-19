@@ -32,10 +32,16 @@
  *     whose literal directory lies above or inside the primary checkout. A mention after a
  *     directory change the guard lost track of (`popd` of an empty stack, `pushd +1`) blocks.
  *     `~user` blocks. An unknown variable in a mention passes: it is everywhere in ordinary commands.
- *   Quoted scripts (`sh -c "…"`) are read twice, once with the quotes honoured and once without.
+ *   Quoted text is read as a command only where the shell itself runs it as one: the `-c`
+ *   operand of a shell interpreter (`sh -c "…"`, `bash -lc "…"`) and `eval`'s argument.
+ *   Everywhere else a quoted word is ONE argument — a commit message, a printf argument, a
+ *   pasted listing — so a `cd` or `..` inside it is text, not a directory change. A quoted
+ *   word spelled only with `.`/`..` segments is not a path mention either; unquoted it is.
  *
  *   What it still cannot see, by construction: scripts and programs that build a path internally
- *   (`node x.js`, `make`, a hook), aliases and functions, `eval` or `sh -c` of text computed at
+ *   (`node x.js`, `make`, a hook), a primary-checkout path spelled inside a quoted string that
+ *   is not a shell script (`perl -e 'unlink "/p/x"'` — one argument, so the guard never reads
+ *   it as a command), aliases and functions, `eval` or `sh -c` of text computed at
  *   run time, variables assigned inside the command and then used in a mention, a relative glob in
  *   a mention (`p*` matching a symlink), and any other process that changes directory itself.
  *
@@ -171,14 +177,27 @@ function fileToolEscapes(spelling: string | undefined, roots: Roots): boolean {
 
 const SEPARATOR = '\0';
 
-/** Split a command into words; shell operators become SEPARATOR. Quotes are honoured unless flattened. */
-function shellWords(command: string): string[] {
-  const words: string[] = [];
+/** A shell word, and whether any of it came from inside quotes. A quoted word is ONE argument
+ *  the program receives; it is never a command line to read (see `scriptEscapes`). */
+interface ShellWord {
+  text: string;
+  quoted: boolean;
+}
+
+/** Split a command into words; shell operators become SEPARATOR. Quotes are honoured. */
+function shellWords(command: string): ShellWord[] {
+  const words: ShellWord[] = [];
   let word: string | undefined;
+  let quoted = false;
   let quote: '"' | "'" | undefined;
   const end = () => {
-    if (word !== undefined) words.push(word);
+    if (word !== undefined) words.push({ text: word, quoted });
     word = undefined;
+    quoted = false;
+  };
+  const separator = () => {
+    end();
+    words.push({ text: SEPARATOR, quoted: false });
   };
   for (let i = 0; i < command.length; i++) {
     const char = command[i] as string;
@@ -189,20 +208,19 @@ function shellWords(command: string): string[] {
     } else if (char === '"' || char === "'") {
       quote = char;
       word ??= '';
+      quoted = true;
     } else if (char === '\\' && i + 1 < command.length) {
       word = (word ?? '') + command[++i];
     } else if (/\s/.test(char)) {
       end();
-      if (char === '\n') words.push(SEPARATOR);
+      if (char === '\n') words.push({ text: SEPARATOR, quoted: false });
     } else if (char === '`') {
       // Keep the backtick on the word it ends, so `cd \`…\`` has an operand that reads as a
       // substitution (like `$(`), not an absent one.
       word = (word ?? '') + char;
-      end();
-      words.push(SEPARATOR);
+      separator();
     } else if (';&|()<>'.includes(char)) {
-      end();
-      words.push(SEPARATOR);
+      separator();
     } else {
       word = (word ?? '') + char;
     }
@@ -317,10 +335,18 @@ function directoryTarget(operand: string, state: ShellState, roots: Roots, searc
   return place;
 }
 
+/** A path spelled only with `.` and `..` segments names a directory, never a file. */
+const PARENT_ONLY = /^\.{1,2}(?:[\\/]\.{1,2})*[\\/]?$/;
+
 /** Does this path mention, read from where the command has reached, name the primary checkout? */
-function mentionEscapes(spelling: string, state: ShellState, roots: Roots): boolean {
+function mentionEscapes(spelling: string, state: ShellState, roots: Roots, quoted: boolean): boolean {
   if (/^~[^\\/]/.test(spelling)) return true;
   if (state.homeChanged && /^~|\$\{?HOME\b/.test(spelling)) return true;
+  // A quoted `..` is a string a program receives — a pasted listing, a printf argument — not a
+  // path the guard follows. Only the quoting separates the two, so every directory change
+  // (`cd '..'`, `git -C '..'`) and every UNQUOTED `..` argument (`rm -rf ..`) keeps its refusal,
+  // and a `..`-only word names a directory no write can target.
+  if (quoted && PARENT_ONLY.test(spelling)) return false;
   const expanded = expandWord(spelling);
   if (expanded === undefined) return false;
   const absolute = isAbsolute(expanded);
@@ -352,37 +378,40 @@ function mentionParts(word: string): string[] {
   return parts.flatMap((part) => [part, ...(part.includes(':') ? part.split(':') : [])]).filter(Boolean);
 }
 
-function wordsEscape(words: string[], roots: Roots): boolean {
+function wordsEscape(words: ShellWord[], roots: Roots): boolean {
   const state: ShellState = { cwd: { path: roots.worktree, linked: false }, previous: undefined, stack: [], homeChanged: false };
-  const operandAt = (index: number) => (words[index] === SEPARATOR ? undefined : words[index]);
+  const operandAt = (index: number): ShellWord | undefined => {
+    const next = words[index];
+    return next === undefined || next.text === SEPARATOR ? undefined : next;
+  };
 
   for (let i = 0; i < words.length; i++) {
-    const word = words[i] as string;
-    if (word === SEPARATOR) continue;
+    const word = words[i] as ShellWord;
+    if (word.text === SEPARATOR) continue;
     // A search path or an old directory changes what a later `cd` means; the guard cannot follow it.
-    if (/^(?:CDPATH|OLDPWD)(?:\+?=|$)/.test(word)) return true;
-    if (/^HOME(?:\+?=|$)/.test(word)) state.homeChanged = true;
-    if (mentionParts(word).some((part) => mentionEscapes(part, state, roots))) return true;
+    if (/^(?:CDPATH|OLDPWD)(?:\+?=|$)/.test(word.text)) return true;
+    if (/^HOME(?:\+?=|$)/.test(word.text)) state.homeChanged = true;
+    if (mentionParts(word.text).some((part) => mentionEscapes(part, state, roots, word.quoted))) return true;
 
-    if (word === 'cd' || word === 'pushd') {
+    if (word.text === 'cd' || word.text === 'pushd') {
       let j = i + 1;
-      while (/^-[LPe@]+$/.test(words[j] ?? '')) j++;
-      if (words[j] === '--') j++;
+      while (/^-[LPe@]+$/.test(words[j]?.text ?? '')) j++;
+      if (words[j]?.text === '--') j++;
       const operand = operandAt(j);
       let target: Place | undefined;
       if (operand === undefined) {
         target = state.homeChanged ? undefined : directoryTarget(homedir(), state, roots, false);
         if (target === undefined) return true;
-      } else if (operand === '-' && word === 'cd') {
+      } else if (operand.text === '-' && word.text === 'cd') {
         target = state.previous;
         if (target === undefined) return true;
-      } else if (word === 'pushd' && /^[+-]\d+$/.test(operand)) {
+      } else if (word.text === 'pushd' && /^[+-]\d+$/.test(operand.text)) {
         target = undefined; // a stack rotation: one of the verified entries, but not known which
       } else {
-        target = directoryTarget(operand, state, roots, true);
+        target = directoryTarget(operand.text, state, roots, true);
         if (target === undefined) return true;
       }
-      if (word === 'pushd') state.stack.push(state.cwd);
+      if (word.text === 'pushd') state.stack.push(state.cwd);
       state.previous = state.cwd;
       state.cwd = target;
       // The operand was checked against the directory it was resolved from; skip it now that
@@ -390,28 +419,60 @@ function wordsEscape(words: string[], roots: Roots): boolean {
       if (operand !== undefined) i = j;
       continue;
     }
-    if (word === 'popd') {
+    if (word.text === 'popd') {
       state.previous = state.cwd;
-      state.cwd = /^[+-]\d+$/.test(operandAt(i + 1) ?? '') ? undefined : state.stack.pop();
+      state.cwd = /^[+-]\d+$/.test(operandAt(i + 1)?.text ?? '') ? undefined : state.stack.pop();
       continue;
     }
-    const inline = /^(?:--git-dir|--work-tree|--chdir|GIT_DIR|GIT_WORK_TREE)=(.*)$/.exec(word);
+    const inline = /^(?:--git-dir|--work-tree|--chdir|GIT_DIR|GIT_WORK_TREE)=(.*)$/.exec(word.text);
     if (inline && !directoryTarget(inline[1] as string, state, roots, false)) return true;
-    if (word === '-C' || word === '--git-dir' || word === '--work-tree' || word === '--chdir') {
+    if (word.text === '-C' || word.text === '--git-dir' || word.text === '--work-tree' || word.text === '--chdir') {
       const operand = operandAt(i + 1);
-      if (operand !== undefined && !directoryTarget(operand, state, roots, false)) return true;
-    } else if (/^-C./.test(word) && !directoryTarget(word.slice(2), state, roots, false)) {
+      if (operand !== undefined && !directoryTarget(operand.text, state, roots, false)) return true;
+    } else if (/^-C./.test(word.text) && !directoryTarget(word.text.slice(2), state, roots, false)) {
       return true; // `env -Cdir`
     }
   }
   return false;
 }
 
-function bashEscapes(command: string, roots: Roots): boolean {
-  return (
-    wordsEscape(shellWords(command), roots) ||
-    wordsEscape(shellWords(command.replace(/["'`]/g, ' ')), roots)
-  );
+/** A shell that runs its `-c` operand as a script rather than passing it to a program. */
+const SHELL_INTERPRETER = /(?:^|\/)(?:sh|bash|zsh|dash|ksh|ash|mksh|fish)$/;
+/** A short-flag cluster that asks for a command string: `-c`, `-lc`, `-xc`. */
+const COMMAND_FLAG = /^-[a-z]*c[a-z]*$/;
+/** How deep a script inside a script is read before the guard gives up and refuses. Nothing
+ *  ordinary nests past two; the bound is here so a pathological command cannot turn the
+ *  recursion into a thrown error, which would be a missed block rather than a false one. */
+const MAX_SCRIPT_DEPTH = 8;
+
+/**
+ * The one place a quoted string is a COMMAND line rather than one argument: the script operand
+ * of a shell interpreter or of `eval`. Everything else quoted — a commit message, a printf
+ * argument, a pasted listing — is a word the program receives, and reading it as a command line
+ * is what made `echo "cd .."` and a pasted `..` look like directory changes.
+ */
+function scriptEscapes(words: ShellWord[], roots: Roots, depth: number): boolean {
+  for (let i = 0; i < words.length; i++) {
+    const word = words[i] as ShellWord;
+    if (word.text === SEPARATOR) continue;
+    let runsScript = word.text === 'eval';
+    if (!runsScript && !SHELL_INTERPRETER.test(word.text)) continue;
+    let j = i + 1;
+    while (words[j] !== undefined && words[j]?.text !== SEPARATOR && /^-/.test(words[j]?.text ?? '')) {
+      if (COMMAND_FLAG.test(words[j]?.text ?? '')) runsScript = true;
+      j++;
+    }
+    const operand = words[j];
+    if (!runsScript || operand === undefined || operand.text === SEPARATOR || !operand.quoted) continue;
+    if (bashEscapes(operand.text, roots, depth + 1)) return true;
+  }
+  return false;
+}
+
+function bashEscapes(command: string, roots: Roots, depth = 0): boolean {
+  if (depth > MAX_SCRIPT_DEPTH) return true;
+  const words = shellWords(command);
+  return wordsEscape(words, roots) || scriptEscapes(words, roots, depth);
 }
 
 function guardToolCall(
