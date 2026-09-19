@@ -3,7 +3,8 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mcpSocketDir } from './mcp/ipc.ts';
+import { buildChildEnv } from './core/agent-env.ts';
+import { mcpSocketDir, mcpSocketLocation } from './mcp/ipc.ts';
 import {
   agentHomePaths,
   claudeStateFilePath,
@@ -169,6 +170,33 @@ describe('the host stays the host (SP-2.3, BR-7)', () => {
     enterMode();
     expect(claudeStateFilePath(join(home, '.claude'), env)).toBe(outside);
   });
+
+  it('the env an agent, gh or git spawn is byte-identical in the mode (SP-2.3, #644 Minor 5)', () => {
+    // `gh` (server/forge/github.ts) and `git` (server/git.ts) are spawned with the INHERITED
+    // process.env — neither passes an `env` — and the mode changes no environment variable, only
+    // an in-process layout. The agent backends share the one builder that DOES construct an env
+    // (`buildChildEnv`), so pinning that plus the inherited env covers all three.
+    const source = {
+      HOME: home,
+      PATH: '/usr/bin:/bin',
+      GITHUB_TOKEN: 'gh-token',
+      ANTHROPIC_API_KEY: 'anthropic-key',
+      XEZ_ENV_PASSTHROUGH: 'MY_VAR',
+      MY_VAR: 'forwarded',
+      AWS_SECRET_ACCESS_KEY: 'must-not-leak',
+    } as NodeJS.ProcessEnv;
+    const agentEnv = buildChildEnv({ backend: 'claude', source });
+    const inherited = { ...process.env };
+    enterMode();
+    expect(buildChildEnv({ backend: 'claude', source })).toEqual(agentEnv);
+    // gh/git inherit this verbatim, so the mode must not have written a variable into it.
+    expect({ ...process.env }).toEqual(inherited);
+    // Not merely equal: the credential the handoff needs is still there, and the secret is not.
+    expect(agentEnv.GITHUB_TOKEN).toBe('gh-token');
+    expect(agentEnv.ANTHROPIC_API_KEY).toBe('anthropic-key');
+    expect(agentEnv.MY_VAR).toBe('forwarded');
+    expect(agentEnv.AWS_SECRET_ACCESS_KEY).toBeUndefined();
+  });
 });
 
 // ---- SP-2.5 (AC-8): the host-install records stay in ~/.xezar ------------------------
@@ -220,6 +248,32 @@ describe('the MCP socket directory follows the layout (BR-2)', () => {
     expect(mcpSocketDir()).toBe(join(project, '.local', 'xezar', 'ipc'));
     // A socket is a working file: it must not land in the COMMITTED state dir.
     expect(mcpSocketDir().startsWith(join(project, '.xezar'))).toBe(false);
+  });
+
+  it('a too-long socket path names the real directory, not the old wording (Nit 6, #644)', () => {
+    // The leader reads this message and needs the actual path, so the global layout keeps naming
+    // `~/.xezar/ipc` (here through the resolved `XEZ_HOME` root). This PINS that wording rather
+    // than restoring the old phrasing.
+    const longHome = join(home, 'x'.repeat(120));
+    const global = mcpSocketLocation(
+      { id: 'p', root: '/repo' },
+      { HOME: home, XEZ_HOME: longHome } as NodeJS.ProcessEnv,
+      'darwin',
+    );
+    expect(global.kind).toBe('unavailable');
+    if (global.kind !== 'unavailable') throw new Error('expected an unavailable socket');
+    expect(global.reason).toContain(join(longHome, 'ipc'));
+    expect(global.reason).toContain('point XEZ_HOME at a shorter directory');
+
+    // In the mode the folder decides where the socket lives, and the message names that folder —
+    // `point XEZ_HOME somewhere shorter` would be advice the user cannot act on.
+    const longProject = join(project, 'p'.repeat(120));
+    setActiveStateLayout(projectStateLayout(longProject));
+    const local = mcpSocketLocation({ id: 'p', root: longProject }, { HOME: home } as NodeJS.ProcessEnv, 'darwin');
+    expect(local.kind).toBe('unavailable');
+    if (local.kind !== 'unavailable') throw new Error('expected an unavailable socket');
+    expect(local.reason).toContain(join(longProject, '.local', 'xezar', 'ipc'));
+    expect(local.reason).toContain('move the project to a shorter path');
   });
 });
 

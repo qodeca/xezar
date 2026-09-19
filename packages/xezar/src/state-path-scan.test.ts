@@ -59,6 +59,48 @@ const XEZAR_PATH_LITERAL = /(['"`])\.xezar(?:[/\\][^'"`]*)?\1/;
  */
 const GLOBAL_LAYOUT_CALL = /\bglobalState(?:Layout|Root)\s*\(/;
 
+/**
+ * `homedir` imported under ANOTHER name (#644 Minor 3) — `import { homedir as __hd } from 'node:os'`.
+ *
+ * The call `__hd()` matches no rule above, so an aliased import is the one line that still
+ * spells `homedir` and the one that says the call is being renamed away from it. A plain
+ * `import { homedir } from 'node:os'` is deliberately NOT a finding: every call of it is caught
+ * by `homedir()` above, and flagging the import would add an allowance per importer for no gain.
+ */
+const HOMEDIR_ALIAS_IMPORT = /\bhomedir\s+as\s+[\w$]+/;
+
+/**
+ * The per-user home read straight out of the environment (#644 Minor 3) — `process.env.HOME`,
+ * `process.env.USERPROFILE`. It is a third spelling of the same path, and one the two rules
+ * above never see because it never mentions `homedir` or builds a `'.xezar'` literal.
+ *
+ * An injected `NodeJS.ProcessEnv` (`env.HOME`) is deliberately NOT matched: that is how
+ * `agentHomePaths` and `claudeStateFilePath` resolve the agent homes, which SP-2.3 keeps on the
+ * host, and those call sites stay allowlisted below rather than banned here.
+ */
+const PROCESS_HOME_READ = /\bprocess\.env\.(?:HOME|USERPROFILE)\b/;
+
+/**
+ * A `.xezar` path built inside a TEMPLATE literal (#644 Minor 3) — `` `${root}/.xezar/skills` ``.
+ *
+ * `XEZAR_PATH_LITERAL` only fires when `.xezar` follows an opening quote, so it misses the
+ * segment after an interpolation or after a leading separator. This rule fires on `.xezar`
+ * preceded by a path separator that either follows a `${…}` or opens the template, which is
+ * what "building a path" looks like there. It deliberately does NOT fire on prose that merely
+ * mentions `~/.xezar/config.json` inside a template — a message is not a path.
+ */
+const TEMPLATE_XEZAR_PATH = /`(?:[^`]*\$\{[^}]*\})?[\\/]\.xezar/;
+
+/**
+ * `xezarHomeDir(` invoked (#644 Minor 4) — the wrapper around `globalStateRoot()`/`homedir()`.
+ *
+ * It answers the PER-USER home on purpose (FR-8.2, SP-2.5), so the call sites below are
+ * legitimate — but a NEW caller of the wrapper is a state path just like a direct `homedir()`
+ * and now needs a written reason. The declaration itself (`export function xezarHomeDir(`) is
+ * not an invocation and is excluded by the lookbehind; an import of the name does not call it.
+ */
+const XEZAR_HOME_CALL = /(?<!function )\bxezarHomeDir\s*\(/;
+
 /** The resolver itself, where the global layout is defined and legitimately composed. */
 const RESOLVER_FILE = 'state-layout.ts';
 
@@ -182,12 +224,40 @@ const ALLOWED: readonly Allowance[] = [
       'shouldRegisterProject — the rule that $HOME itself is never registered as a project. Like isUserHome ' +
       'above it must name the real home to REFUSE it.',
   },
+  {
+    file: 'mcp/tools/project-config.ts',
+    code: 'const home = process.env.HOME;',
+    reason:
+      'scrubPaths — reads the home only to REPLACE it with `~` in error text a tool reports. A redaction, ' +
+      'not a resolution: it removes the home path from what the leader sees and derives no state from it.',
+  },
 
   // ---- 3. Host-install records: FR-8.2 keeps them on the machine (SP-2.5). ------------
   // A hosted install describes the HOST — its systemd unit, its nginx site, its launchd
   // plist, its ngrok policy. A cockpit serving a single-project root is still installed on
   // one machine, and putting a unit file inside a git repository would commit one host's
   // service definition to every clone of it.
+  {
+    file: 'paths.ts',
+    code: "return join(xezarHomeDir(), 'server-instances');",
+    reason:
+      'serverInstancesDir — the per-domain server-install records. xezarHomeDir() is the PER-USER home for ' +
+      'exactly these host-install files (FR-8.2, SP-2.5), never the project state root.',
+  },
+  {
+    file: 'paths.ts',
+    code: "if (instance === DEFAULT_SERVER_INSTANCE) return join(xezarHomeDir(), 'server.json');",
+    reason:
+      'serverStatePath\'s default instance — the legacy `~/.xezar/server.json` an existing host install ' +
+      'upgrades in place. A host-install record, so it stays on the machine (FR-8.2).',
+  },
+  {
+    file: 'paths.ts',
+    code: "if (instance === DEFAULT_SERVER_INSTANCE) return join(xezarHomeDir(), 'server.install.lock');",
+    reason:
+      'serverLockPath\'s default instance — the host installer\'s single-writer lock, per instance and on ' +
+      'the machine. A host-install record, not project state (FR-8.2).',
+  },
   {
     file: 'server-install/platforms/macosx-ngrok.ts',
     code: "const plistPath = (): string => join(homedir(), 'Library', 'LaunchAgents', `${PLIST_LABEL}.plist`);",
@@ -238,6 +308,13 @@ const ALLOWED: readonly Allowance[] = [
     file: 'project-kit-paths.ts',
     code: "export const PROJECT_KIT_DIR = '.xezar';",
     reason: 'The project kit directory: workflows, skills and the project config, repo-relative.',
+  },
+  {
+    file: 'project-kit-paths.ts',
+    code: 'if ([xezarHomeDir(), xezarHomeDir({})].some(home => resolve(home) === resolve(canonical))) {',
+    reason:
+      'projectKitDir\'s `~`-launch diversion — it names the per-user home only to COMPARE it with the repo ' +
+      'root, so a home-directory launch never turns the user\'s workspace file into a kit.',
   },
   {
     file: 'skills.ts',
@@ -309,19 +386,40 @@ function sourceFiles(dir: string): string[] {
   return found;
 }
 
+/**
+ * Run the whole rule set over one file's source text.
+ *
+ * Exported so a probe can feed a synthetic spelling through the REAL scan rather than
+ * re-testing a regex the scan might stop applying — a probe that exercises `findingsIn` fails
+ * when the rule is dropped from the scan, not merely when the regex is deleted.
+ */
+export function findingsIn(file: string, source: string): Finding[] {
+  const findings: Finding[] = [];
+  stripComments(source).split('\n').forEach((raw, index) => {
+    const code = raw.trim();
+    const kinds: string[] = [];
+    if (HOMEDIR_CALL.test(code)) kinds.push('homedir()');
+    if (HOMEDIR_ALIAS_IMPORT.test(code)) kinds.push('aliased homedir import');
+    if (PROCESS_HOME_READ.test(code)) kinds.push('process.env home');
+    if (XEZAR_PATH_LITERAL.test(code)) kinds.push("'.xezar' path");
+    if (TEMPLATE_XEZAR_PATH.test(code)) kinds.push('template .xezar path');
+    if (XEZAR_HOME_CALL.test(code)) kinds.push('xezarHomeDir()');
+    if (file !== RESOLVER_FILE && GLOBAL_LAYOUT_CALL.test(code)) kinds.push('global layout');
+    if (kinds.length > 0) findings.push({ file, line: index + 1, code, kinds: kinds.join(' + ') });
+  });
+  return findings;
+}
+
+/** The finding kinds for a synthetic source, joined so a probe can assert on a substring. */
+function kindsIn(source: string, file = 'probe.ts'): string {
+  return findingsIn(file, source).map((f) => f.kinds).join(' | ');
+}
+
 function scan(): Finding[] {
   const findings: Finding[] = [];
   for (const path of sourceFiles(SRC)) {
     const file = relative(SRC, path).split(sep).join('/');
-    const lines = stripComments(readFileSync(path, 'utf8')).split('\n');
-    lines.forEach((raw, index) => {
-      const code = raw.trim();
-      const kinds: string[] = [];
-      if (HOMEDIR_CALL.test(code)) kinds.push('homedir()');
-      if (XEZAR_PATH_LITERAL.test(code)) kinds.push("'.xezar' path");
-      if (file !== RESOLVER_FILE && GLOBAL_LAYOUT_CALL.test(code)) kinds.push('global layout');
-      if (kinds.length > 0) findings.push({ file, line: index + 1, code, kinds: kinds.join(' + ') });
-    });
+    findings.push(...findingsIn(file, readFileSync(path, 'utf8')));
   }
   return findings;
 }
@@ -398,5 +496,53 @@ describe('no state path is derived outside the resolver (#600 DC-1)', () => {
     expect(XEZAR_PATH_LITERAL.test('`and the registry live in .xezar/, working files in`')).toBe(false);
     expect(XEZAR_PATH_LITERAL.test("join(home, '.xezar', 'scratch')")).toBe(true);
     expect(XEZAR_PATH_LITERAL.test("join(home, '.xezar/skills')")).toBe(true);
+  });
+
+  // ---- The three spellings the first scan missed (Minor 3, #644). ---------------------
+  //
+  // Each probe feeds a synthetic SOURCE through `findingsIn` — the real rule set — so it fails
+  // when a rule is dropped from the scan, not merely when a regex constant changes. Each was
+  // RED before the rule below was added; the red output is recorded in the task's evidence.
+
+  it('flags a home path read from process.env (Minor 3)', () => {
+    expect(kindsIn('const home = process.env.HOME;\n')).toContain('process.env home');
+    expect(kindsIn('const home = process.env.USERPROFILE;\n')).toContain('process.env home');
+    // The `env.HOME` an injected `NodeJS.ProcessEnv` carries is NOT this: it is how the agent
+    // homes resolve on purpose (SP-2.3), and it stays allowlisted rather than banned.
+    expect(kindsIn("const home = env.HOME || env.USERPROFILE || homedir();\n")).not.toContain('process.env home');
+  });
+
+  it('flags a `homedir` import aliased to another name (Minor 3)', () => {
+    const source = [
+      "import { homedir as __hd } from 'node:os';",
+      "const cache = join(__hd(), '.cache', 'xez', 'skills');",
+    ].join('\n');
+    // `__hd()` matches no call rule — the import specifier is the only line that still spells
+    // `homedir`, and the one that says the call is being renamed away from it.
+    expect(kindsIn(source)).toContain('aliased homedir import');
+    // A plain import is not a finding: every call of it is, by `homedir()` above.
+    expect(kindsIn("import { homedir } from 'node:os';\n")).not.toContain('aliased homedir import');
+  });
+
+  it('flags a .xezar path built inside a template literal (Minor 3)', () => {
+    expect(kindsIn('const dir = `${root}/.xezar/skills`;\n')).toContain('template .xezar path');
+    // The spelling the issue names: an interpolated home AND a template-built path.
+    expect(kindsIn('const scratch = `${process.env.HOME}/.xezar/scratch`;\n')).toContain('template .xezar path');
+  });
+
+  it('still reads prose about ~/.xezar inside a template literal as prose (control)', () => {
+    // Passes both ways: this pins the behaviour the template rule must NOT change. A help line
+    // that mentions the word is not a path being built, and the scan must keep saying so.
+    expect(kindsIn('const line = `${n} projects are registered in ~/.xezar/config.json.`;\n')).toBe('');
+    expect(kindsIn('const line = `the registry lives in .xezar/, working files elsewhere`;\n')).toBe('');
+  });
+
+  it('flags xezarHomeDir( — the wrapper is a state path like any other (Minor 4)', () => {
+    expect(kindsIn("const dir = join(xezarHomeDir(), 'server.json');\n")).toContain('xezarHomeDir()');
+  });
+
+  it('does not flag the wrapper declaration or an import of it (Minor 4)', () => {
+    expect(kindsIn('export function xezarHomeDir(env: NodeJS.ProcessEnv = process.env): string {\n')).toBe('');
+    expect(kindsIn("import { xezarHomeDir } from './paths.ts';\n")).toBe('');
   });
 });
