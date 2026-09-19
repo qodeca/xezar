@@ -120,8 +120,11 @@ describe("the run's own task evidence directory (#686)", () => {
     decideOpencodePermission('external_directory', patterns, roots).reply;
 
   it('(a) grants this run its own evidence directory, under either evidence root', () => {
-    // The producer, pinned to exactly two paths — an over-wide fix (the whole
-    // `.local/xezar/tasks` tree, the state root, the project root) fails here.
+    // The frozen root is granted only while it already exists (#690), so create
+    // it: with both there, the producer is still pinned to exactly two paths —
+    // an over-wide fix (the whole `.local/xezar/tasks` tree, the state root, the
+    // project root) fails here.
+    mkdirSync(frozenOf(RUN), { recursive: true });
     expect(runEvidenceRoots(base, RUN)).toEqual([evidenceOf(RUN), frozenOf(RUN)]);
     const roots = resolveAllowedRoots([work, ...runEvidenceRoots(base, RUN)]);
     expect(ask(roots, join(evidenceOf(RUN), 'red-proofs'))).toBe('once');
@@ -156,13 +159,41 @@ describe("the run's own task evidence directory (#686)", () => {
     }
   });
 
-  it('(e) grants nothing for a missing or malformed run id — fail closed', () => {
+  // The eleven refusal cases the #688 review pinned (its G9 table), minus
+  // `undefined` (below): each is a malformed run id and must grant nothing.
+  it.each(['.', '..', '', '../../etc', '/etc', '~', '*', 'a/b', './x', 'a b'])(
+    '(e) grants nothing for the malformed run id %j — fail closed',
+    (id) => {
+      expect(runEvidenceRoots(base, id)).toEqual([]);
+    },
+  );
+
+  // The ids the broad identifier class admitted and the run-id shape does not:
+  // the run store only ever creates `randomUUID()` ids (#690).
+  it.each(['README', '..foo', 'x'])('(e) refuses %j, which the old identifier class admitted (#690)', (id) => {
+    expect(runEvidenceRoots(base, id)).toEqual([]);
+  });
+
+  it('(e) grants nothing for an absent run id, and denies a path under a malformed one', () => {
     expect(runEvidenceRoots(base, undefined)).toEqual([]);
-    expect(runEvidenceRoots(base, '')).toEqual([]);
-    expect(runEvidenceRoots(base, '..')).toEqual([]);
-    expect(runEvidenceRoots(base, '../..')).toEqual([]);
-    expect(runEvidenceRoots(base, 'a/b')).toEqual([]);
     expect(ask(resolveAllowedRoots([work, ...runEvidenceRoots(base, '..')]), join(base, '.local'))).toBe('reject');
+  });
+
+  // #690 Minor 2: the frozen root is a historical read, granted only while the
+  // directory is already there (the kit's own dual-read); the new root is where
+  // the run's evidence must be creatable, so it stays unconditional.
+  it('(f) does not grant the frozen root when the directory is absent (#690)', () => {
+    expect(runEvidenceRoots(base, RUN)).toEqual([evidenceOf(RUN)]);
+    const roots = resolveAllowedRoots([work, ...runEvidenceRoots(base, RUN)]);
+    expect(ask(roots, `${frozenOf(RUN)}/*`)).toBe('reject');
+    // …while the new root stays granted.
+    expect(ask(roots, `${evidenceOf(RUN)}/*`)).toBe('once');
+  });
+
+  it('(g) grants the frozen root when the directory already exists (#690)', () => {
+    mkdirSync(frozenOf(RUN), { recursive: true });
+    expect(runEvidenceRoots(base, RUN)).toEqual([evidenceOf(RUN), frozenOf(RUN)]);
+    expect(ask(resolveAllowedRoots([work, ...runEvidenceRoots(base, RUN)]), `${frozenOf(RUN)}/*`)).toBe('once');
   });
 });
 
