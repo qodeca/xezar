@@ -5,18 +5,20 @@
 // request (and a content conflict stops GitHub from running CI at all). A pull request now writes
 // its own fragment file, and the release role folds them. Four behaviours carry that:
 //
-//   - a direct `# Unreleased` edit is REFUSED, naming the fragment path to use;
+//   - a direct `# Unreleased` edit is REFUSED while it is still the state at HEAD, naming the
+//     fragment path to use; a branch that reverted the edit and moved the bullet into a fragment
+//     passes, because the only other way out would be rewriting history;
 //   - a valid fragment parses, an unknown heading or prose does not;
 //   - the fold produces the `# <version> (<date>)` section and deletes the fragments;
 //   - a dogfooding fragment is folded above the newest existing entry without touching it.
 //
-// Fixtures are throwaway git repositories under the system temp dir, and they drive the REAL
-// scripts — a regression fails here rather than in a release that silently lost a bullet.
+// Fixtures are throwaway git repositories under the kit's own scratch root, and they drive the
+// REAL scripts — a regression fails here rather than in a release that silently lost a bullet.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync, existsSync, cpSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const checks = dirname(fileURLToPath(import.meta.url));
@@ -29,8 +31,23 @@ test.after(() => { for (const dir of dirs) rmSync(dir, { recursive: true, force:
 
 const run = (command, args, cwd) => spawnSync(command, args, { encoding: 'utf8', cwd });
 
+// Fixture scratch, exactly where `fixture_scratch_root()` in `lib/common.sh` puts it:
+// `<primary>/.local/xezar/tests`. NOT `/tmp` — outside the repository, outside every retention
+// rule, and invisible to anyone auditing what a run did — and not this worktree's own `.local/`,
+// which retention, the boot orphan sweep and the cockpit's Delete action remove without warning.
+// `--git-common-dir` is what resolves the PRIMARY checkout from a linked worktree; the fallback
+// is for a checkout git cannot answer from at all.
+const scratchRoot = (() => {
+  const common = run('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], checks);
+  const primary = common.status === 0 && common.stdout.trim() !== ''
+    ? dirname(common.stdout.trim())
+    : resolve(checks, '..', '..');
+  return join(primary, '.local', 'xezar', 'tests');
+})();
+mkdirSync(scratchRoot, { recursive: true });
+
 function fixture() {
-  const dir = mkdtempSync(join('/tmp', 'xez-fragments-'));
+  const dir = mkdtempSync(join(scratchRoot, 'xez-fragments-'));
   dirs.push(dir);
   return dir;
 }
@@ -97,6 +114,22 @@ test('a merge that brings another branch\'s # Unreleased change is not this bran
   git('merge', '-q', '--no-ff', '--no-edit', side);
   const result = run('bash', [CHECK, '--file', join(dir, 'CHANGELOG.md'), '--diff-base', base]);
   assert.equal(result.status, 0, result.stdout + result.stderr);
+});
+
+test('a direct # Unreleased edit that was reverted and moved into a fragment passes', () => {
+  // The natural repair of the refusal above: the direct edit lands, is then undone, and the bullet
+  // moves into the fragment the refusal names. A per-commit-only rule refuses this branch for good
+  // — the only way out would be rewriting history, which the refusal never says and which a
+  // review-response round must not do. The refusal is about the state at HEAD, not about history.
+  const { dir, base, commit } = changelogRepo(BASE);
+  commit('# Unreleased\n\n## 🐛 Fixes\n\n- old bullet\n- new bullet\n\n# 0.1.0 (2026-01-01)\n\n- x\n', 'direct edit');
+  commit(BASE, 'revert the direct edit');
+  const fragments = FRAGMENT_DIR(dir);
+  writeFileSync(join(fragments, '668.md'), '## 🐛 Fixes\n\n- new bullet (#668)\n');
+  const result = run('bash', [CHECK, '--file', join(dir, 'CHANGELOG.md'), '--diff-base', base, '--fragments', fragments]);
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /the direct edit of CHANGELOG\.md was reverted/);
+  assert.match(result.stdout, /1 fragment/);
 });
 
 test('removing the # Unreleased heading — the release fold — is allowed', () => {
@@ -318,11 +351,14 @@ test('a dogfooding fragment without a dated heading is refused', () => {
   assert.match(result.stderr, /starts with "### <YYYY-MM-DD>/);
 });
 
-test('the real repository ships the fragment folders and a parseable 668 fragment', () => {
-  // The change's own pull request uses the mechanism: a fragment at the repo root and the folder
-  // that documents it. The check the gate runs is the proof, not a copy of its rules here.
+test('the real repository ships the fragment folders and a parseable changelog.d', () => {
+  // The change's own pull request uses the mechanism, but the fragment file itself is DELETED by
+  // the release fold this change adds. Asserting that `changelog.d/668.md` exists would turn the
+  // next release red for doing exactly the right thing, in the role whose repair budget is
+  // tightest. What must hold at every point of the release cycle is the two folders with their
+  // README.md, and that the check parses whatever is present — which after a fold is a
+  // README-only directory, and must still exit 0.
   const repo = join(checks, '..', '..');
-  assert.ok(existsSync(join(repo, 'changelog.d', '668.md')));
   assert.ok(existsSync(join(repo, 'changelog.d', 'README.md')));
   assert.ok(existsSync(join(repo, '.xezar', 'docs', 'dogfooding.d', 'README.md')));
   const result = run('node', [CHANGELOG, '--check', join(repo, 'changelog.d')]);
@@ -331,4 +367,11 @@ test('the real repository ships the fragment folders and a parseable 668 fragmen
   const copy = fixture();
   cpSync(join(repo, 'changelog.d'), join(copy, 'changelog.d'), { recursive: true });
   assert.equal(run('node', [CHANGELOG, '--check', join(copy, 'changelog.d')]).status, 0);
+  // The post-fold state this case has to survive: every fragment folded away, README.md kept.
+  for (const name of readdirSync(join(copy, 'changelog.d'))) {
+    if (name !== 'README.md') rmSync(join(copy, 'changelog.d', name));
+  }
+  const afterFold = run('node', [CHANGELOG, '--check', join(copy, 'changelog.d')]);
+  assert.equal(afterFold.status, 0, afterFold.stdout + afterFold.stderr);
+  assert.match(afterFold.stdout, /0 fragment/);
 });

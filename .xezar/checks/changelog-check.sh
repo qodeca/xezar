@@ -9,10 +9,12 @@
 #     the reverse-chronological order (newest first);
 #   - with --require-version <v>: any `# Unreleased` heading remains, or the count of
 #     `# <v> (` headings is not exactly one;
-#   - with --diff-base <ref|auto>: the `# Unreleased` section was edited directly and its heading
-#     is still there (issue #668). A pull request writes changelog.d/<pr-or-branch>.md instead, so
-#     two pull requests never edit the same lines; removing the heading IS the release fold and
-#     stays allowed. A diff that touches anything else is untouched by this rule.
+#   - with --diff-base <ref|auto>: the `# Unreleased` section was edited directly, its heading is
+#     still there, AND the section at HEAD still differs from the section at the diff base
+#     (issue #668). A pull request writes changelog.d/<pr-or-branch>.md instead, so two pull
+#     requests never edit the same lines; removing the heading IS the release fold and stays
+#     allowed, and so does reverting a direct edit and moving the bullet into a fragment. A diff
+#     that touches anything else is untouched by this rule.
 #   - with --fragments <dir>: a changelog fragment does not parse (see changelog-fragments.mjs).
 #
 # Only top-level `# ` headings count. `## ...` group headings and prose that mention the word
@@ -30,9 +32,9 @@ usage: changelog-check.sh [--file <path>] [--require-version <semver>]
 
   --file <path>              the changelog to check (default: CHANGELOG.md in the CWD)
   --require-version <semver> also require exactly one "# <semver> (" heading and no "# Unreleased"
-  --diff-base <ref|auto>     refuse a direct edit of the "# Unreleased" section relative to <ref>;
-                             "auto" resolves the gate base, then origin/main, then main, and says
-                             so loudly when it cannot resolve one
+  --diff-base <ref|auto>     refuse a direct edit of the "# Unreleased" section that is still in
+                             place at HEAD, relative to <ref>; "auto" resolves the gate base, then
+                             origin/main, then main, and says so loudly when it cannot resolve one
   --fragments <dir>          parse every changelog.d fragment in <dir>
 EOF
 }
@@ -76,6 +78,13 @@ say() { printf 'changelog-check: %s\n' "$1" >&2; fail=1; }
 # against HEAD. A merge that brings another branch's `# Unreleased` change into this one is not
 # this branch editing it, and flagging that would be a false red on a task that merely merged the
 # base — the exact failure mode `security-scan.sh`'s empty change set cost a re-run for.
+#
+# A PER-COMMIT EDIT IS ONLY HALF THE QUESTION (issue #668 review M2). The natural repair is to
+# revert the changelog and move the bullet into a fragment, and a per-commit-only rule refuses
+# that repair for good: the branch could only clear it by rewriting history, which the refusal
+# never says and which a review-response round must not do. So the edit must ALSO still be visible
+# at HEAD — when the `# Unreleased` region at HEAD equals the region at the diff base, the branch
+# has undone the direct edit and the change now lives in the fragment.
 unreleased_region() {
   awk '
     BEGIN { fence = 0; grab = 0 }
@@ -119,6 +128,7 @@ if [ -n "$diff_base" ]; then
     old="$(mktemp "${TMPDIR:-/tmp}/changelog-base.XXXXXX")"
     new="$(mktemp "${TMPDIR:-/tmp}/changelog-new.XXXXXX")"
     refused=0
+    edited_by=""
     commits="$(git -C "$repo_root" log --first-parent --no-merges --format=%H "$base_sha"..HEAD -- "$rel" 2>/dev/null || printf '')"
     while IFS= read -r sha; do
       [ -n "$sha" ] || continue
@@ -127,13 +137,25 @@ if [ -n "$diff_base" ]; then
       old_region="$(unreleased_region < "$old")"
       new_region="$(unreleased_region < "$new")"
       if [ -n "$new_region" ] && [ "$old_region" != "$new_region" ]; then
-        say "the '# Unreleased' section of $file was edited directly by $(git -C "$repo_root" rev-parse --short "$sha"); write changelog.d/<pr-or-branch>.md instead and let the release fold it in"
-        refused=1
+        edited_by="$sha"
         break
       fi
     done <<EOF
 $commits
 EOF
+    # ...and only when that edit is still the state at HEAD. A branch that reverted its direct
+    # edit and moved the bullet into a fragment has repaired itself; refusing it would leave the
+    # branch red for good and spend its repair budget on a change it already made correctly.
+    if [ -n "$edited_by" ]; then
+      base_region=""
+      head_region=""
+      git -C "$repo_root" show "$base_sha:$rel" > "$old" 2>/dev/null && base_region="$(unreleased_region < "$old")"
+      git -C "$repo_root" show "HEAD:$rel" > "$new" 2>/dev/null && head_region="$(unreleased_region < "$new")"
+      if [ "$base_region" != "$head_region" ]; then
+        say "the '# Unreleased' section of $file was edited directly by $(git -C "$repo_root" rev-parse --short "$edited_by") and still differs from the diff base at HEAD; write changelog.d/<pr-or-branch>.md instead and let the release fold it in"
+        refused=1
+      fi
+    fi
     # An uncommitted edit is the same act; readiness refuses a dirty tree, so this is the belt
     # to that suspenders, not the ordinary path.
     if [ "$refused" -eq 0 ]; then
@@ -145,7 +167,13 @@ EOF
         fi
       fi
     fi
-    [ "$refused" -ne 0 ] || [ "$fail" -ne 0 ] || printf 'changelog-check: diff base %s — no direct edit of %s\n' "${base_sha:0:12}" "$rel"
+    if [ "$refused" -eq 0 ] && [ "$fail" -eq 0 ]; then
+      if [ -n "$edited_by" ]; then
+        printf 'changelog-check: diff base %s — the direct edit of %s was reverted; the section at HEAD matches the base\n' "${base_sha:0:12}" "$rel"
+      else
+        printf 'changelog-check: diff base %s — no direct edit of %s\n' "${base_sha:0:12}" "$rel"
+      fi
+    fi
     rm -f "$old" "$new"
   fi
 fi
