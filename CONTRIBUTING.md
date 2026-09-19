@@ -151,7 +151,7 @@ own instruction file as a capability is allowed; asking users to adopt Xezar's k
 Commit messages and pull-request titles follow [Conventional Commits](https://www.conventionalcommits.org/):
 `feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `chore:`, `ci:`. Pull requests are squash-merged, so the title becomes the commit on `main`.
 
-A good pull-request body says what changed, why, how you verified it, and whether it is risky. The template asks for exactly that. Put `Closes #<n>` in the body when it fixes an issue. For a user-visible change you may add a line under `# Unreleased` in [CHANGELOG.md](CHANGELOG.md); a maintainer will write it otherwise.
+A good pull-request body says what changed, why, how you verified it, and whether it is risky. The template asks for exactly that. Put `Closes #<n>` in the body when it fixes an issue. For a user-visible change you may add a bullet to a file under [`changelog.d/`](changelog.d/README.md) instead of editing `CHANGELOG.md` (two pull requests editing its `# Unreleased` section conflict on every merge, and `changelog-check.sh` refuses a direct edit); a maintainer will write it otherwise.
 
 ## You do not need the kit workflows
 

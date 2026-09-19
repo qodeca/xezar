@@ -117,7 +117,8 @@ bump: patch          # or minor / major; add `dry-run: true` to stop before the 
 ```
 
 The task writes the `# <version> (<date>)` changelog section from the PRs merged into `main`
-since the last `v*` tag (no hand-written brief; every stray `# Unreleased` section is folded in),
+since the last `v*` tag (no hand-written brief; it folds every `changelog.d/` fragment and every
+stray `# Unreleased` section in, and folds `.xezar/docs/dogfooding.d/` into the dogfooding ledger),
 runs the canonical gates, merges the changelog PR, dispatches this Release workflow once for that
 bump, verifies npm / the tag / the GitHub Release, and approves and merges the bot's
 `release/v<version>` PR. All the waiting happens in the task's last step, because Xezar kills

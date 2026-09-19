@@ -5,7 +5,7 @@ description: Write the release changelog entry from merged PRs, with no hand-wri
 
 # Write the release changelog entry from merged PRs
 
-You are the `changelog` step of the `release` workflow (Worktree ON). Read docs/publishing.md and the top of CHANGELOG.md first. You derive the whole `# <version> (<date>)` section from the pull requests merged into `main` since the last release; nobody writes a brief for you. You edit exactly one file, CHANGELOG.md, and commit it. You do not push, publish, tag or touch package manifests — the last step does the pushing, and only the manually dispatched Release workflow publishes.
+You are the `changelog` step of the `release` workflow (Worktree ON). Read docs/publishing.md and the top of CHANGELOG.md first. You derive the whole `# <version> (<date>)` section from the pull requests merged into `main` since the last release; nobody writes a brief for you. You edit CHANGELOG.md, fold every `changelog.d/` fragment into it and delete those fragments, and commit — the two documents a release assembles are CHANGELOG.md and, in its own fold, `.xezar/docs/dogfooding.md`. You do not push, publish, tag or touch package manifests — the last step does the pushing, and only the manually dispatched Release workflow publishes.
 
 ## The brief
 
@@ -42,7 +42,7 @@ git log <tag>..origin/main --first-parent --format='%H %s'
 Cross-check both lists: every first-parent commit on `main` since the tag is a squash of one PR (`(#N)` at the end of the subject), and every PR the search returns must have its merge commit in that range. A PR in one list and not the other is a finding to report, not a bullet to drop silently. Then exclude:
 
 - `chore(release): v…` manifest bumps opened by the Release workflow;
-- changelog-only PRs (`docs: record … in the changelog`, or a diff touching only CHANGELOG.md);
+- changelog-only PRs (`docs: record … in the changelog`, or a diff touching only CHANGELOG.md or `changelog.d/`);
 - any PR whose number already appears in a dated section of CHANGELOG.md (a lagging tag must not double-record).
 
 If nothing remains, write `nothing to release since <tag>: <reason>` to `BLOCKED` in the evidence dir and stop. Readiness will refuse and the workflow ends before the gates.
@@ -66,20 +66,40 @@ Label to group, in this order of precedence, and exactly the headings CHANGELOG.
 
 The table is classification precedence (a `bug` PR that is also breaking goes under Breaking). Emit only the groups that have bullets, in the file's house order: `## Highlights`, `## 💥 Breaking`, `## 🔒 Security`, `## ✨ Features`, `## 🐛 Fixes`, `## 🔧 Changed`, `## 📝 Specs & Documentation`, `## 🚀 CI/CD & Infrastructure` — the order the 0.11.1 and 0.10.x sections use. Highlights is three to five lines of prose naming what a user gets from this release, written from the bullets — no marketing, no claims the PRs do not support.
 
-## 4. Fold every `# Unreleased` section
+## 4. Fold the fragments and every `# Unreleased` section
 
-Find every top-level `# Unreleased` heading in CHANGELOG.md (fix PRs add them, sometimes in the wrong place). Move each of their bullets, **verbatim**, into the matching group of the new section — re-grouped only when a bullet sits under a heading that contradicts its PR's label — and delete the `# Unreleased` heading and its now-empty groups. A bullet already present from the PR list is not duplicated: the Unreleased bullet wins and the generated one is dropped.
+Every pull request writes its own `changelog.d/<pr-or-branch>.md` instead of editing `# Unreleased`, so the fold of those fragments is part of this step, not a separate one:
 
-Place the new `# <version> (<YYYY-MM-DD>)` section directly above the newest existing top-level heading (dated release or the `# Renamed to Xezar` entry), followed by a `---` separator line, so the file stays newest-first. The date is today in the repository's timezone as `YYYY-MM-DD`. Match blank-line conventions of the sections around it.
+```sh
+node .xezar/checks/changelog-fragments.mjs --fold --version <version> --date <YYYY-MM-DD> \
+  --file CHANGELOG.md --fragments changelog.d
+```
 
-## 5. Verify, then commit
+It merges every fragment's bullets, verbatim, into the matching groups of the `# <version> (<date>)` section — creating that section directly above the newest existing top-level heading (and below `# Unreleased`) when it is not there yet, with the `---` separator the file uses — and deletes the folded fragment files. It never touches `# Unreleased`; that fold is yours:
+
+Find every top-level `# Unreleased` heading in CHANGELOG.md (a direct edit that predates the fragments rule, sometimes in the wrong place). Move each of their bullets, **verbatim**, into the matching group of the new section — re-grouped only when a bullet sits under a heading that contradicts its PR's label — and delete the `# Unreleased` heading and its now-empty groups. A bullet already present from the PR list is not duplicated: the Unreleased bullet wins and the generated one is dropped.
+
+The new section sits directly above the newest existing top-level heading (dated release or the `# Renamed to Xezar` entry), so the file stays newest-first; the date is today in the repository's timezone as `YYYY-MM-DD`. Match blank-line conventions of the sections around it.
+
+## 5. Fold the dogfooding fragments
+
+`.xezar/docs/dogfooding.md` is the other append-only document, and it has the same fragments shape:
+
+```sh
+node .xezar/checks/dogfooding-fragments.mjs --fold \
+  --file .xezar/docs/dogfooding.md --fragments .xezar/docs/dogfooding.d
+```
+
+Every writing task records its observations as `.xezar/docs/dogfooding.d/<runId8>.md`. The fold inserts each entry, newest first, above the entries already in the ledger under `## Real-task entries`, and deletes the folded files. Existing dated entries are records: the fold only inserts, and you must never rewrite, move or reformat one.
+
+## 6. Verify, then commit
 
 ```sh
 bash .xezar/checks/changelog-check.sh --require-version <version>   # zero Unreleased, exactly one target heading
-git diff --stat                                                      # CHANGELOG.md and nothing else
+git diff --stat                                                      # CHANGELOG.md, .xezar/docs/dogfooding.md and the deleted fragments, nothing else
 ```
 
-Then, for every PR number kept in step 2, `grep -c "#<n>)" CHANGELOG.md` inside the new section must be at least one. A missing number, a second changed file, or a red check is a defect to fix here, not something to hand to the gates. When it passes:
+Then, for every PR number kept in step 2, `grep -c "#<n>)" CHANGELOG.md` inside the new section must be at least one, and `ls changelog.d` must show only `README.md` — a fragment left behind is a bullet nobody folded. A missing number, a changed file outside CHANGELOG.md and the folded fragments, or a red check is a defect to fix here, not something to hand to the gates. When it passes:
 
 ```sh
 bash .xezar/checks/worktree-git.sh commit -m "docs: record <version> in the changelog"
@@ -110,6 +130,6 @@ ancestors so you never see the damage (#156: five agents lost mid-review). Kill 
 unavoidable, anchor it to this task's own worktree path, and check the match list first with `pgrep -fl`,
 which matches identically and signals nothing.
 
-Derive durable evidence with `.xezar/checks/lib/common.sh` (`resolve_task_paths`, `task_evidence_dir`): primary `.local/xezar/tasks/<runId>/`, not the task's reclaimable `.local` or engine tmp. Keep checkpoints concise. Never copy secrets, credentials, `.env`, personal agent configuration or unrelated source content. Reports distinguish observed, fixture-tested, live-verified and unknown. Record the phase facts YOUR OWN phase owns, per `.xezar/docs/phase-record.md`, with `bash .xezar/checks/phase-record.sh set <NAME>`; a phase that does not apply records that and why, and a phase you do not own is not yours to record. A gated writing role's readiness refuses without CAPABILITY, DEPTH, MATURITY, CRITERIA, PLAN, SELF_REVIEW, DOCS and COUNTERS, and CRITERIA needs its criterion IDs and an `accepted-by:` line – `phase-record.sh check` asks that question before the workflow does. Security is resolved before any quality verdict by `.xezar/checks/security-scan.sh` inside the gate run, which seals its own structured result; an unavailable or interrupted check is unknown, never a pass. Record relevant dogfooding observations using `.xezar/docs/dogfooding.md`.
+Derive durable evidence with `.xezar/checks/lib/common.sh` (`resolve_task_paths`, `task_evidence_dir`): primary `.local/xezar/tasks/<runId>/`, not the task's reclaimable `.local` or engine tmp. Keep checkpoints concise. Never copy secrets, credentials, `.env`, personal agent configuration or unrelated source content. Reports distinguish observed, fixture-tested, live-verified and unknown. Record the phase facts YOUR OWN phase owns, per `.xezar/docs/phase-record.md`, with `bash .xezar/checks/phase-record.sh set <NAME>`; a phase that does not apply records that and why, and a phase you do not own is not yours to record. A gated writing role's readiness refuses without CAPABILITY, DEPTH, MATURITY, CRITERIA, PLAN, SELF_REVIEW, DOCS and COUNTERS, and CRITERIA needs its criterion IDs and an `accepted-by:` line – `phase-record.sh check` asks that question before the workflow does. Security is resolved before any quality verdict by `.xezar/checks/security-scan.sh` inside the gate run, which seals its own structured result; an unavailable or interrupted check is unknown, never a pass. Record relevant dogfooding observations as a fragment in `.xezar/docs/dogfooding.d/<runId8>.md`; the release role folds fragments into `.xezar/docs/dogfooding.md`.
 
 Role boundaries: inputs and accepted criteria govern the output; an agent ending done does not certify the artifact. Before handoff inspect the deliverable, current head/base and all remaining stages. Recover predecessor attempt IDs and all three consumed repair budgets before a replacement; missing history is unknown, not a fresh allowance. For delivery, takeover and readiness records use .xezar/docs/ui-operations.md; for snapshot/current-policy reconciliation use .xezar/docs/recovery.md. Preserve these guarantees on standalone, fresh, Continue and restart paths.
