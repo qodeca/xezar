@@ -14,7 +14,7 @@ be included by an autosave, commit, package, or project-kit snapshot.
 | `.local/runs/`, `.local/analysis/` | New agentic run records and working analyses selected by `paths.runs` and `paths.analysis` in `.xezar/pipeline/config.json`. |
 | `.local/legacy-qa/`, `.local/legacy-agentic/` | Preserved legacy local records. These are archives, not disposable caches.  |
 | Primary checkout `.local/xezar-tasks/<runId>/` | Durable kit evidence, attempts and checkpoints, outside the task worktree that retention may remove. |
-| Primary checkout `.local/xezar-tests/`, `.local/xezar/kit/` | Kit fixtures and bootstrap snapshot bookkeeping. |
+| Primary checkout `.local/xezar/tests/`, `.local/xezar/kit/` | Kit fixtures and bootstrap snapshot bookkeeping. |
 
 The inventory covered all tracked project scripts and configuration, engine path producers,
 Git/worktree retention, QA launch/stop scripts, every browser test artifact consumer,

@@ -9,7 +9,7 @@
 //     and the `XEZ_HANDOFF_FILE` / `XEZ_TODOS_FILE` / `XEZ_TASK_ID` variables xezar sets for the
 //     agent process.
 //
-// Fixtures are throwaway git repositories under the task's own git-ignored `.local/xezar-tests/`.
+// Fixtures are throwaway git repositories under the task's own git-ignored `.local/xezar/tests/`.
 // Each copies the real hook, so a regression in its guards fails here rather than in a leader
 // session that silently loaded the wrong context (or a task session that silently loaded this one).
 import test from 'node:test';
@@ -24,7 +24,7 @@ const hook = join(checks, 'leader-context.sh');
 // The committed settings file, copied into each fixture so the command Claude Code really runs is
 // what the subdirectory case exercises — not a copy of it retyped in this test.
 const settings = join(checks, '..', '..', '.claude', 'settings.json');
-// Scratch lives in the system temp dir, NOT under this task's own `.local/xezar-tests/`.
+// Scratch lives in the system temp dir, NOT under this task's own `.local/xezar/tests/`.
 // The hook's guards are the subject here, and one of them is the path rule: anything under a
 // checkout's `.local/xezar/worktrees/` is a task worktree and gets no leader context. A fixture
 // created inside this task's worktree would therefore be silent for the path reason alone and

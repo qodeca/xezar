@@ -6,7 +6,7 @@ import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const checks = dirname(fileURLToPath(import.meta.url));
-const root = resolve(checks, '../../.local/xezar-tests');
+const root = resolve(checks, '../../.local/xezar/tests');
 mkdirSync(root, {recursive:true});
 const scheduler = join(checks, 'lib/gate-parallel.mjs');
 const library = join(checks, 'lib/gate-record.sh');
