@@ -182,7 +182,14 @@ gate_phase() {
 # Publish the attempt and end the run with its verdict. Extracted so the security stage's early
 # stop goes through the SAME completion path as a full run: an attempt is never left green and
 # never left half-written, whatever ended it.
+#
+# `expected` is the outcome THIS caller already knows the run must end with — `passed` at the end
+# of a full run, `failed` from the security stop. The completer's return code can only CONFIRM
+# that outcome: a completer that returned 0 for an attempt this caller knows was refused must not
+# print a pass or exit 0. The argument is therefore REQUIRED and has no default, so a future
+# caller that forgets it fails closed — an empty outcome never equals `passed` (#691).
 gate_finish() {
+  local expected="$1"
   printf '\n==================== SUMMARY ====================\n'
   # Publishing result.json is the completion commit point. Bash may defer a signal
   # during finalization; the trap then reports the completed record instead of denying it.
@@ -192,7 +199,7 @@ gate_finish() {
   printf 'record         %s/result.json\n' "$GATE_ATTEMPT_DIR"
   printf 'recorded       %s\n' "$result"
 
-  if [ "$complete_rc" -eq 0 ]; then
+  if [ "$complete_rc" -eq 0 ] && [ "$expected" = passed ]; then
     printf 'ALL GATES PASSED\n'
     exit 0
   fi
@@ -226,19 +233,25 @@ fi
 # worker whose result could not be collected. A security gate that RAN and refused the candidate
 # exits 1 and records `failed`, and the phase still returns 0, so this stage used to fall
 # straight through to the five quality gates (#680). The stage's own recorded outcome is the
-# boundary that was missing. `unknown` and `not-applicable` are RESOLVED outcomes —
-# `security-scan.sh` exits 0 for both — so only a status that is neither `passed` nor
-# `not-applicable` stops the run; `unknown` deliberately does not, because it is not a refusal.
+# boundary that was missing.
+#
+# This arm reads the GATE-WORKER vocabulary, which is all `workers/2.json` ever carries:
+# `gate_collect_worker` validates that file to exactly `passed` / `failed` / `not-run`, so `passed`
+# is the only value that continues and `failed` and `not-run` both stop. The security-result
+# vocabulary (`pass` / `findings` / `unknown` / `not-applicable`) lives in `security.json` and must
+# never be read here: `pass` is one letter from `passed`, so a "more accurate" re-point would stop
+# every clean run. `unknown` deliberately does not stop the run — it is a resolved security
+# outcome, not a refusal, and `security-scan.sh` exits 0 for it (#691).
 gate_phase serial 2 || exit 1
 security_status="$(node -e 'process.stdout.write(JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")).status)' "$GATE_ATTEMPT_DIR/workers/2.json" 2>/dev/null)" || security_status="unreadable"
 case "$security_status" in
-  passed | not-applicable) ;;
+  passed) ;;
   *)
     printf '\nGATES STOPPED AT THE SECURITY STAGE: the security gate recorded "%s", so no quality gate ran.\n' "$security_status"
     printf 'Security is resolved before any quality verdict, and the attempt is completed as failed.\n'
-    gate_finish
+    gate_finish failed
     ;;
 esac
 gate_phase application 3 4 5 6 7 || exit 1
 gate_phase serial 8 || exit 1
-gate_finish
+gate_finish passed
