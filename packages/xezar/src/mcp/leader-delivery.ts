@@ -146,6 +146,19 @@ const OPENCODE_BLOCKER_FIX = 'Check that `opencode serve` is running in this pro
 const OPENCODE_ATTACH_CHECK_MS = 10_000;
 
 /**
+ * The attach-time wording for an unreachable server (#651 review, Minor 2). The adapter's own
+ * message is the DELIVERY-path sentence — "xezar retries on its own" — which is true of a delivery
+ * attempt the heartbeat repeats and false here, where nothing is attached yet. Forwarding it and
+ * then appending "attach it again" contradicted itself on the cockpit surface, so this case answers
+ * with what happened and what to do about it.
+ */
+const OPENCODE_ATTACH_UNREACHABLE: McpLeaderBlocker = {
+  code: 'server-unreachable',
+  message: 'xezar could not reach the OpenCode server, so nothing was attached.',
+  fix: 'Start `opencode serve` in this project, then attach the session again.',
+};
+
+/**
  * The attach-time targeting check (#651): reuses the adapter's OWN `checkTarget`, which is the same
  * `#checkSession` the delivery path runs, so attach and delivery can never disagree about whether a
  * session is usable. `undefined` means the session exists and is this project's.
@@ -159,7 +172,12 @@ async function checkOpenCodeAttach(adapter: OpenCodeReactionAdapter): Promise<Mc
     await adapter.checkTarget(AbortSignal.timeout(OPENCODE_ATTACH_CHECK_MS));
     return undefined;
   } catch (err) {
-    if (err instanceof OpenCodeDeliveryBlocked) return { code: err.blocker.code, message: err.blocker.message, fix: OPENCODE_BLOCKER_FIX };
+    // `session-not-found` and `wrong-project` are already attach-shaped and are forwarded unchanged;
+    // the unreachable one is not, because the adapter words it for the delivery path.
+    if (err instanceof OpenCodeDeliveryBlocked) {
+      if (err.blocker.code === 'server-unreachable') return OPENCODE_ATTACH_UNREACHABLE;
+      return { code: err.blocker.code, message: err.blocker.message, fix: OPENCODE_BLOCKER_FIX };
+    }
     return {
       code: 'server-unreachable',
       message: `xezar could not check that OpenCode session before attaching it: the server did not answer (${err instanceof Error ? err.message : String(err)}). Nothing was attached.`,

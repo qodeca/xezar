@@ -697,7 +697,12 @@ describe('attaching OpenCode: the session is checked before the attachment is re
     // Port 1 is not open, so the very first request fails outright.
     const attached = await made.act({ action: 'attach', client: 'opencode', baseUrl: 'http://127.0.0.1:1', sessionId: 'ses_closed0000000000000001' });
     expect(attached.ok).toBe(false);
-    expect(attached.ok === false && attached.error).toMatch(/not reachable/);
+    // The ATTACH-time wording, never the delivery path's (#651 review, Minor 2). The delivery
+    // sentence promises "xezar retries on its own", which is false before anything is attached: the
+    // person would wait for a retry that never comes.
+    expect(attached.ok === false && attached.error).toContain('xezar could not reach the OpenCode server, so nothing was attached.');
+    expect(attached.ok === false && attached.error).toContain('Start `opencode serve` in this project, then attach the session again.');
+    expect(attached.ok === false && attached.error).not.toContain('retries on its own');
     expect(made.status()).toMatchObject({ leader: null });
   });
 
