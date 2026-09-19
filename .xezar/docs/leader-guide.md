@@ -200,13 +200,18 @@ because a head that moved since the brief makes the brief's exact-head guard sta
 
 ## Review discipline
 
-- Never let a PR spin in a review → fix → review loop (owner 2026-09-16 19:45). Before dispatching a
+- Never let a PR spin in a review → fix → review loop (owner 2026-09-16 19:45). The review-fix loop
+  should be limited, not completely abandoned: a review's findings — Minors included — MAY get ONE
+  fix round on the same PR before merge (owner 2026-09-19), replacing the earlier practice of
+  recording every Minor as a follow-up issue by default. Filing a Minor as a follow-up issue stays
+  allowed when a fix round is not worth it, but it is no longer the default. Before dispatching a
   response, sort every finding: **fix** only what breaks the issue's acceptance criteria, a test or a
   real user-facing bug; **record** minors and nits; **decline** with a reason when the reviewer asks
   for scope the issue does not own (leader memory 2026-09-16).
 - At most **two response rounds per PR**, and round 2 exists only for a blocker round 1 introduced or
-  missed. Re-reviews are scoped to the named findings and the delta, and are told not to raise new
-  non-blocking findings (leader memory 2026-09-16).
+  missed; a third hole means a superseding PR or the owner. Re-reviews are scoped to the named
+  findings and the delta, and are told not to raise new non-blocking findings (leader memory
+  2026-09-16).
 - When a REQUEST CHANGES rests only on non-blocking items, post a short `## Leader adjudication` PR
   comment listing each finding and its disposition, then proceed with the existing approvals (leader
   memory 2026-09-16).
@@ -422,7 +427,7 @@ Before a dispatch:
 
 On each verdict:
 
-- [ ] Sort every finding into fix, record or decline; no review-fix loop; two response rounds at most.
+- [ ] Sort every finding into fix, record or decline; one fix round allowed; two response rounds at most.
 - [ ] QA and design labels satisfied with evidence before the chain.
 - [ ] Dispatch the next chain step by name; never leave a PR "waiting in the queue" without a run id.
 
