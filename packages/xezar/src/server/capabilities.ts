@@ -150,9 +150,13 @@ export function isLoopbackHostHeader(host: string | null | undefined): boolean {
  *  subscription, so a connection opened while the Inbox was off gets no live inbox pushes
  *  until it reconnects — the run-level behaviour and this capability answer are both live.
  *
- *  `automations` carries the same caveat and for the same reason: the workspace scheduler is
- *  started once, on the server's `listening` event, so flipping the flag on afterwards gates
- *  the routes open without ever starting the poller. Boot-time flag, same wording. */
+ *  `automations` is live in BOTH halves since #678, and carries no such caveat. `startServer`
+ *  observes this resolve: the flag turning on starts the workspace scheduler exactly once —
+ *  whether that happens at boot or on a later flip — and the flag turning off stops it again,
+ *  which is what keeps "the routes are open" and "the poller is running" the same answer. The
+ *  one thing a flip does not do is reach back in time: the scheduler starts on the next resolve
+ *  of this capability, so a flip that nothing consults afterwards is observed when something
+ *  does (a definition saved, a project added or removed). */
 export function resolveCapabilities(
   env: NodeJS.ProcessEnv = process.env,
   bindHost?: string,

@@ -6191,7 +6191,20 @@ export function startServer(deps: ServerDeps, port: number): ServerType {
   // the UI — no scheduler, no GitHub polling, no launched runs — so every entry point into the
   // workspace scheduler below is gated on it. Read per call rather than captured, for the same
   // reason `capabilities()` is inside `createApp`: tests flip the variable between apps.
-  const automationsEnabled = () => resolveCapabilities(process.env, deps.bindHost).automations;
+  //
+  // #678: the resolve is HOT, and this is the one place it happens for the scheduler. The flag
+  // being readable per call already opened the routes on a flip after boot; the poller, started
+  // only from the boot-time `listening` gate, stayed stopped — a capability that answered
+  // "enabled" and did nothing. Observing the resolve here (rather than in every route) is what
+  // closes that: turning on starts the poller exactly once, turning off stops it again.
+  const automationsEnabled = () => {
+    const enabled = resolveCapabilities(process.env, deps.bindHost).automations;
+    if (enabled) ensureAutomationsStarted();
+    else stopAutomations();
+    return enabled;
+  };
+  let ensureAutomationsStarted = () => {};
+  let stopAutomations = () => {};
   let rescheduleAutomations = () => {};
   const app = createApp({
     ...deps,
@@ -6247,6 +6260,56 @@ export function startServer(deps: ServerDeps, port: number): ServerType {
       };
     },
   });
+  // The project list the automations warm-up and the skills-update coordinator both work from:
+  // the registry, with the boot repo prepended when it is not registered itself.
+  const automationBootProjects = async () => {
+    const projects = await listProjects();
+    return projects.some((project) => project.root === deps.repoRoot)
+      ? projects
+      : [{ id: deps.bootProjectId ?? 'default', root: deps.repoRoot, status: 'ok' as const }, ...projects];
+  };
+  // ONE start, ever, per on-transition — the property the boot-only start was load-bearing for,
+  // and the reason `automationsRunning` is set BEFORE the first await: two resolves in the same
+  // tick must not both enter and leave two pollers behind. Never throws and never rejects: this
+  // runs on the `listening` event and inside request handling, and a failure here must fail
+  // neither (AGENTS.md § Zero config — degrade, never throw).
+  //
+  // `automationsGeneration` is the second half of that: the warm-up awaits `git` per project, and
+  // a flag switched back off in the middle of it must not be undone by the late `start()` landing
+  // afterwards. Every transition bumps the generation, so a warm-up whose generation is stale
+  // finishes into nothing — the same shape `reschedule()` already uses inside the scheduler.
+  let automationsRunning = false;
+  let automationsListening = false;
+  let automationsGeneration = 0;
+  ensureAutomationsStarted = () => {
+    if (automationsRunning || !automationsListening) return;
+    automationsRunning = true;
+    const generation = ++automationsGeneration;
+    void automationBootProjects().then(async (all) => {
+      if (generation !== automationsGeneration) return;
+      await Promise.all(all.map(async (project) => {
+        const parsed = parseRemote((await getRepoInfo(project.root))?.remote ?? '');
+        if (parsed?.host === 'github.com') automationProjects.set(project.id, { root: project.root, owner: parsed.owner, repo: parsed.repo });
+        const automationStore = automationCoordinator.store(project.id, project.root);
+        const runStore = project.id === (deps.bootProjectId ?? 'default')
+          ? deps.store
+          : sharedContexts.peek(project.id)?.store;
+        if (automationStore && runStore) reconcileAutomationReceipts(automationStore, runStore);
+      }));
+      if (generation !== automationsGeneration) return;
+      await automationScheduler.start();
+    }).catch(() => undefined);
+  };
+  // The off-transition. `stop()` is the scheduler's own clean exit (it clears the timer and
+  // invalidates the generation), so a flag switched back off stops polling instead of leaving a
+  // poller behind a closed door. Releasing `automationsRunning` is what makes a later on-flip
+  // start once again rather than never.
+  stopAutomations = () => {
+    if (!automationsRunning) return;
+    automationsRunning = false;
+    automationsGeneration += 1;
+    automationScheduler.stop();
+  };
   // The scheduler is inert until `start()` anyway (it constructs `stopped`), but the gate is
   // stated here rather than inherited from that detail: a definition saved while the flag is off
   // must not even ask the coordinator to refresh.
@@ -6297,24 +6360,15 @@ export function startServer(deps: ServerDeps, port: number): ServerType {
     rescheduleAutomations();
   });
   server.once('listening', () => {
-    void listProjects().then((projects) => {
-      const all = projects.some((project) => project.root === deps.repoRoot)
-        ? projects : [{ id: deps.bootProjectId ?? 'default', root: deps.repoRoot, status: 'ok' as const }, ...projects];
-      coordinator.start(all);
-      // #801: with automations off there is nothing to warm — no remote to resolve, no receipts
-      // to reconcile, and above all no scheduler to start. The skills-update coordinator above is
-      // a separate feature and starts either way.
-      if (!automationsEnabled()) return;
-      void Promise.all(all.map(async (project) => {
-        const parsed = parseRemote((await getRepoInfo(project.root))?.remote ?? '');
-        if (parsed?.host === 'github.com') automationProjects.set(project.id, { root: project.root, owner: parsed.owner, repo: parsed.repo });
-        const automationStore = automationCoordinator.store(project.id, project.root);
-        const runStore = project.id === (deps.bootProjectId ?? 'default')
-          ? deps.store
-          : sharedContexts.peek(project.id)?.store;
-        if (automationStore && runStore) reconcileAutomationReceipts(automationStore, runStore);
-      })).then(() => automationScheduler.start()).catch(() => undefined);
-    }).catch(() => undefined);
+    // Before anything may start the poller: `ensureAutomationsStarted` refuses while this is
+    // false, so a resolve that arrives before the port is open cannot warm a half-built server.
+    automationsListening = true;
+    void automationBootProjects().then((all) => { coordinator.start(all); }).catch(() => undefined);
+    // #801: with automations off there is nothing to warm — no remote to resolve, no receipts
+    // to reconcile, and above all no scheduler to start. The skills-update coordinator above is
+    // a separate feature and starts either way. #678: this is now the FIRST resolve rather than
+    // the only one — the flag on here starts the poller once and a later resolve is a no-op.
+    automationsEnabled();
   });
   server.once('close', () => { unsubscribe(); offAutomationsDisposed(); coordinator.stop(); automationScheduler.stop(); });
   socketHub.attach(server, (req) => verifyWsUpgrade(req, deps.bindHost));
