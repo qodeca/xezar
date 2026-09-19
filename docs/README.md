@@ -14,7 +14,7 @@ project documentation. Use the table to find the part you need.
 | [testing/](testing/) | The browser suite ([agent-browser.md](testing/agent-browser.md)), where local data lives ([local-data.md](testing/local-data.md)), which suite covers which behaviour ([coverage-gaps.md](testing/coverage-gaps.md)), and the two-project registry/composition harness ([multi-project-harness.md](testing/multi-project-harness.md)). | Contributors |
 | [lessons/](lessons/changing-working-mechanisms.md) | Worked examples behind the rules in [AGENTS.md](../AGENTS.md). | Contributors and coding agents |
 | [screenshots/](screenshots/) | Images the root README shows. | — |
-| [features/](features/README.md) | The internal engineering and decision record, one directory per feature. | Engineers and reviewers |
+| [features/](features/README.md) | The internal engineering and decision record, one directory per feature plus dated requirement records. | Engineers and reviewers |
 
 ## `features/` is a record, not a manual
 

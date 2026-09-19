@@ -1,5 +1,17 @@
 # Unreleased
 
+## 🔧 Changed
+
+- 🔧 **Kit-internal: an integration task no longer spends an agent turn waiting for CI.** (#667) The
+  `integration` workflow now runs merge (agent) → `.xezar/checks/ci-watch.sh` (check) → report
+  (agent, last and interactive). The wait itself needs no judgement, so it happens with no tokens
+  and no parked agent session, and — because a check step may not carry `timeout` — the new script
+  carries its own 45-minute deadline, which the old uncapped agent wait never had. A cancelled
+  base-branch run (a later push superseded it) is recorded as cancelled, never as a failure. The
+  merge, the exact-head guard, every integration-preflight refusal and "no automatic merge on green"
+  are unchanged, and a check step still runs inside the run's own slot, so no workspace slot is
+  freed. Nothing shipped to users changes.
+
 ## 🐛 Fixes
 
 - 🐛 **Two kit-check defects: an empty security change set no longer refuses, and an interrupted infra run now terminates.** `.xezar/checks/security-scan.sh` treated a genuinely empty change set — a branch the gate reached before anything was committed — as `unknown` and refused it, a false red that cost a whole agent-step re-run; it is now `not-applicable`, while a change set the stage could not read (an unresolved base, an unreadable repository, a failed enumeration) still refuses. `.xezar/checks/infra-tests.sh`'s `trap cleanup EXIT INT TERM` cleaned up on a signal and then carried on; INT and TERM now exit with the conventional signal status, matching `repo-gates.sh`. Both are kit-internal: neither changes shipped behaviour.
@@ -38,6 +50,7 @@
 - 📝 **The project leader now carries its own contract, loaded for the leader and never for a task agent.** [.xezar/docs/leader-guide.md](.xezar/docs/leader-guide.md) collects what a leader session of this repository needs in one place: who the leader is and is not (MCP tools and `gh` only, never the cockpit or HTTP, never source diagnosis), session start and compaction recovery, this repository's single-project setup, the task lifecycle with the integration and conflict-repair recipes, review discipline and the repair counters, routing and account probing, the brief-writing rules, owner-only decisions, what to log where, and the release runbook as it is today. A committed Claude Code `SessionStart` hook (`.claude/settings.json` → `.xezar/checks/leader-context.sh`) appends the guide and the newest campaign folder's `README.md` and `decisions.md` at every start, resume, clear and compaction; the hook stays silent in a linked worktree, on a `/.local/xezar/worktrees/` path, and whenever `XEZ_HANDOFF_FILE` or `XEZ_TODOS_FILE` is set, so a xezar task agent never loads it (owner 2026-09-18).
 
 - Documented leader-context loading as a reusable standard for onboarding a project: [`.xezar/docs/leader-context-loading.md`](.xezar/docs/leader-context-loading.md) covers the committed leader guide, the `.claude/settings.json` `SessionStart` hook that reloads it, the guard that keeps it silent for task agents, the JSON output shape, the cost model, the Codex/pi fallback and a numbered install checklist; [guide 13](docs/guide/13-mcp-leader.md) gains a product-neutral section on giving a leader a guide that survives compaction. (#600)
+- 📝 **The 2026-09-19 leader rules and the configuration-parity requirement are recorded in the committed kit.** The project leader's guide gains the rules established on 2026-09-18/19 in the sections that own them: a rule lives in committed documentation and never only in memory; the owner's exact words and the leader's reading are separate, marked lines; a finding from a reading task is a claim until reproduced; a rename brief must protect dated records; every review brief names one experiment that could fail; the last step idles on CI with no timeout; readiness refuses an incomplete phase record; the append-only files make every open PR dirty on every merge; and the two-gate ceiling is a measured hand rule. `.xezar/docs/model-routing.md` § 6 gains the universal brief rules behind those, and a new dated record, [docs/features/2026-09-19-configuration-parity.md](docs/features/2026-09-19-configuration-parity.md), states the owner's requirement that every configurable value be editable through both the MCP and the cockpit without a restart wherever possible. Kit-internal: it changes no shipped behaviour.
 
 # 0.16.0 (2026-09-18)
 

@@ -9,6 +9,31 @@ Use exactly one mode from .xezar/docs/recovery.md. Mode A: validate exact PR/hea
 
 Inputs: exact named candidate/target and current authority. Output: guarded integration or fixed-target root synchronization with actual tree/CI evidence. Reconcile snapshot versus current policy, preserve history and refuse missing/ambiguous current checks. Review and active QA remain separate from hosting self-approval.
 
+## Mode A runs as three steps; read which one you are in
+
+The `integration` workflow splits mode A into `integrate` (agent), `ci-watch` (check) and `report` (agent, last and interactive). The merge, the exact-head guard and every preflight refusal are unchanged, and "no automatic merge on green" is unchanged. What changed is only WHERE the CI wait happens: it is a check step now, so it costs no tokens, holds no agent session and ends at a deadline of its own. Mode B (`root-sync`) is still one agent step and none of this applies to it.
+
+**Step `integrate`.** Establish authority, run `integration-preflight.sh`, and merge exactly as the leader's integration chain recipe says (`.xezar/docs/leader-guide.md` § The integration chain recipe: PATCH the base first, compare the file SET only after that, never `gh pr update-branch`, squash-merge, then prove the squash commit's file list and its single parent, and never put a closing verb next to an issue number). Then, and only then, two closing actions belong to this step:
+
+1. Find the base-branch CI run the merge produced — `gh run list --repo <owner/name> --branch <base> --commit <merge sha> --json databaseId,workflowName,status,createdAt --limit 5` — and record it for the next step, in the task's own evidence directory (`.xezar/checks/lib/common.sh`, `task_evidence_dir`), as `<evidence>/ci-watch/target.json`:
+
+   `{"runId":"<databaseId>","repo":"<owner/name>","base":"<base>","mergeSha":"<40 hex>","pr":<number>}`
+
+   The run can take a few seconds to appear; re-ask a small, bounded number of times. If no run appears at all, record that in `<evidence>/ci-watch/target.json`'s place as a note in your report instead of inventing a run id — `ci-watch` refuses a missing or malformed target rather than guessing, which is exactly what you want when the merge produced no CI run.
+2. Post the `## Integration` comment on the PR naming the merge SHA and the CI run id you recorded, so the fact is on GitHub before any wait begins.
+
+Do not wait for CI in this step. It is not the last step, so it gets one turn and must end with `XEZ:DONE`.
+
+**Step `ci-watch`.** Not yours to run by hand in `integrate`; the workflow runs `.xezar/checks/ci-watch.sh` for you. It watches that one run to a terminal state or to its 45-minute deadline and writes `<evidence>/ci-watch/outcome.json`. Its outcomes are `success`, `cancelled`, `failure` (all exit 0 — observed, and the judgement is yours in `report`), `target.missing` / `target.invalid` (exit 2), `unobservable` (exit 3) and `deadline` (exit 4). The last three end the run before `report`, which is correct: there is nothing to adjudicate when the observation never happened.
+
+**Step `report`.** Read `<evidence>/ci-watch/outcome.json` — it is the record, not the step transcript — and close out:
+
+- `success`: report green, name the run id and the merge SHA, and finish.
+- `cancelled`: this is NOT a failure. A later push on the base branch cancels an in-flight run through the concurrency group. Report it as "observed, superseded by `<supersededBy.headSha>`" when the record names one; when `supersededBy` is null, say plainly that it was cancelled and that nothing newer was found, and do not claim it was superseded.
+- `failure`: apply the one-rerun rule, once, and only for the two known load flakes. When `failedJobsAreKnownLoadFlakes` is true, `gh run rerun <runId> --failed` and re-dispatch the observation yourself in this turn — `bash .xezar/checks/ci-watch.sh` reads the same target and rewrites the same record. One rerun, never two. When it is false, or when the rerun is also red, the base branch is red on a real defect: say so, name the failed jobs, and ask the leader with `XEZ:ASK` whether to revert, forward-fix or hold. Never rerun a job to make a red main go away.
+
+This is the last step, so `XEZ:ASK` is live here and an unanswered question parks the run rather than losing it. Finish with `XEZ:DONE` only once the outcome is reported.
+
 ## Shared contract
 
 Before reading kit files in a standalone skill run, if `.xezar/checks/bootstrap.sh` is absent, run `bash "$(git rev-parse --path-format=absolute --git-common-dir)/../.xezar/checks/bootstrap.sh"`. If unavailable or refused, stop with that specific blocker. Never fabricate commands or copy runtime. Workflow launches already perform this step.

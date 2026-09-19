@@ -4648,6 +4648,234 @@ printf '%s' "$out" | grep -qi 'Authority is carried, never verified' \
 # 18. The skill's own refusals, as written. These are prose assertions and are labelled as such:
 #     they prove the rule is STATED, never that a run obeyed it.
 # Project guidance/BA/stage contracts are validated by xezar-contract.test.mjs.
+# --- 24b-bis. The bounded CI observation, DRIVEN against a mocked GitHub (#667) --------------------
+#
+# `ci-watch.sh` is the check step that replaced the CI wait inside the integration agent turn. Its
+# whole contract is an exit code plus one recorded outcome, and every interesting case is a REMOTE
+# state, so — like `integration-preflight.sh` above — it reaches GitHub through `$DOGFOOD_GH` and
+# nothing here opens a socket.
+#
+# The five cases the split had to get right, and why each is here rather than assumed:
+#   success            the positive control; without it every refusal below proves nothing
+#   failure            red must be OBSERVED (exit 0) and recorded, not turned into a dead run —
+#                      see the exit-code header in the script for why a red exit would silence the
+#                      report step, which is the only place XEZ:ASK is live
+#   cancelled          a later push cancelling an in-flight run is normal here; "cancelled" and
+#                      "failure" must never collapse into one answer
+#   missing/invalid id the script never guesses a run id, so an absent target is a refusal
+#   deadline           the bound lives in the script because a check step may not carry `timeout`
+printf '\n-- the bounded CI observation (mocked GitHub) --\n'
+
+CIW="$SCRIPT_DIR/ci-watch.sh"
+CIW_RUN_ID="35369683346"
+CIW_HEAD="4444444444444444444444444444444444444444"
+CIW_NEWER_HEAD="5555555555555555555555555555555555555555"
+
+# The stub. `gh run watch` sleeps for `watch.sleep` seconds and exits `watch.exit`; `gh run view`
+# and `gh run list` serve recorded bodies, and a MISSING body is an API that could not answer —
+# which the script must report as unobservable rather than as a pass.
+make_ciw_stub() {
+  local dir="$1"
+  mkdir -p "$dir/responses"
+  cat > "$dir/gh" <<'STUB'
+#!/usr/bin/env bash
+# Offline stand-in for `gh`, for the CI-observation cases only. Never opens a socket.
+dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/responses"
+printf '%s\n' "$*" >> "$dir/requests.log"
+[ "${1:-}" = "run" ] || { printf 'stub gh: only `run` is implemented, got "%s"\n' "${1:-}" >&2; exit 64; }
+case "${2:-}" in
+  watch)
+    # A one-second loop rather than one long `sleep`, so that when the script's deadline kills
+    # this stub its only surviving grandchild lives for at most a second. A `sleep 60` orphan
+    # would outlive the case that created it and hold an fd nobody is watching.
+    secs="$(cat "$dir/watch.sleep" 2>/dev/null || printf '0')"
+    end=$(( $(date +%s) + secs ))
+    while [ "$(date +%s)" -lt "$end" ]; do sleep 1; done
+    exit "$(cat "$dir/watch.exit" 2>/dev/null || printf '0')"
+    ;;
+  view)
+    [ -f "$dir/view.json" ] || { printf 'gh: could not ask GitHub\n' >&2; exit 1; }
+    cat "$dir/view.json"; exit 0 ;;
+  list)
+    [ -f "$dir/list.json" ] || { printf 'gh: could not ask GitHub\n' >&2; exit 1; }
+    cat "$dir/list.json"; exit 0 ;;
+  *) printf 'stub gh: unsupported `run %s`\n' "${2:-}" >&2; exit 64 ;;
+esac
+STUB
+  chmod +x "$dir/gh"
+}
+
+# A fixture repository with a Xezar-shaped task worktree, a stub `gh`, and a well-formed target.
+# Each case then breaks exactly ONE thing.
+#
+# It sets globals and is called PLAINLY, never as `$(ciw_fixture …)`. A command substitution runs
+# the function in a subshell, so the stub and evidence paths it assigns would be discarded and
+# every case would then drive the previous case's fixture — which is exactly what happened the
+# first time this section was written, and every case failed identically for one reason.
+CIW_WT=""
+CIW_EVIDENCE=""
+CIW_STUB=""
+ciw_fixture() {
+  local name="$1" root
+  CIW_WT="" CIW_EVIDENCE="" CIW_STUB=""
+  root="$(make_fixture "ciw-$name")" || return 1
+  CIW_WT="$(add_worktree "$root" "$RUN_A")" || return 1
+  CIW_STUB="$root/.stub"
+  make_ciw_stub "$CIW_STUB"
+  # `seed_phase_record` writes under the OLD evidence root, which is therefore what
+  # `task_evidence_dir` resolves to for this run — the dual-read window, exercised for real.
+  CIW_EVIDENCE="$root/.local/xezar-tasks/$RUN_A"
+  mkdir -p "$CIW_EVIDENCE/ci-watch"
+  printf '{"runId":"%s","repo":"qodeca/xezar","base":"main","mergeSha":"%s","pr":661}\n' \
+    "$CIW_RUN_ID" "$CIW_HEAD" > "$CIW_EVIDENCE/ci-watch/target.json"
+}
+
+ciw_view() {
+  printf '{"status":"%s","conclusion":"%s","headSha":"%s","url":"https://github.com/qodeca/xezar/actions/runs/%s","createdAt":"2026-09-19T10:00:00Z","jobs":%s}\n' \
+    "$1" "$2" "$CIW_HEAD" "$CIW_RUN_ID" "${3:-[]}" > "$CIW_STUB/responses/view.json"
+}
+
+# Run the script from the task worktree, with the fixture's stub as `gh` and a short poll so the
+# deadline case does not cost the suite a minute.
+ciw_run() {
+  ( cd "$CIW_WT" && DOGFOOD_GH="$CIW_STUB/gh" bash "$CIW" --poll 1 "$@" 2>&1 )
+}
+
+# Assert the exit code, the recorded outcome and one phrase of the verdict together. Any one of the
+# three alone can agree with a bug: an exit code says nothing about what was recorded, and a record
+# nobody exits on is not a contract.
+ciw_expect() {
+  local label="$1" want_exit="$2" want_outcome="$3" needle="$4"; shift 4
+  local out status recorded
+  out="$(ciw_run "$@")"; status=$?
+  recorded="$(node -e 'try{process.stdout.write(String(JSON.parse(require("node:fs").readFileSync(process.argv[1],"utf8")).outcome))}catch{process.stdout.write("<no record>")}' "$CIW_EVIDENCE/ci-watch/outcome.json" 2>/dev/null)"
+  if [ "$status" -ne "$want_exit" ]; then
+    bad "$label" "expected exit $want_exit, got $status"; printf '%s\n' "$out" | tail -8
+  elif [ "$recorded" != "$want_outcome" ]; then
+    bad "$label" "expected outcome \"$want_outcome\" in the record, got \"$recorded\""; printf '%s\n' "$out" | tail -8
+  elif [ -n "$needle" ] && ! printf '%s' "$out" | grep -qF "$needle"; then
+    bad "$label" "exit and record were right, but the verdict did not say: $needle"; printf '%s\n' "$out" | tail -8
+  else
+    ok "$label"
+  fi
+}
+
+# 1. THE POSITIVE CONTROL. Without it every non-zero case below could be produced by a script that
+#    refuses unconditionally.
+ciw_fixture success
+ciw_view completed success
+ciw_expect "a green base-branch CI run is observed and exits 0" 0 success "finished green"
+
+# 2. RED IS OBSERVED, NOT FATAL — and the known-load-flake question is answered in the record, so
+#    the report step applies the one-rerun rule from a fact rather than from the job list's shape.
+ciw_fixture failure-flake
+ciw_view completed failure '[{"name":"Cockpit browser e2e","conclusion":"failure"},{"name":"Typecheck, unit tests, build, and package","conclusion":"success"}]'
+printf '1\n' > "$CIW_STUB/responses/watch.exit"
+ciw_expect "a red CI run is recorded as failure and still exits 0 so the report step can adjudicate" \
+  0 failure "concluded failure"
+node -e '
+  const r = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
+  if (JSON.stringify(r.failedJobs) !== JSON.stringify(["Cockpit browser e2e"])) throw Error("failedJobs " + JSON.stringify(r.failedJobs));
+  if (r.failedJobsAreKnownLoadFlakes !== true) throw Error("flake flag " + r.failedJobsAreKnownLoadFlakes);
+' "$CIW_EVIDENCE/ci-watch/outcome.json" 2>/dev/null \
+  && ok "the record names the failed job and marks it a known load flake" \
+  || bad "the record names the failed job and marks it a known load flake" "see $CIW_EVIDENCE/ci-watch/outcome.json"
+
+# 2a. THE FAIL-OPEN CONTROL. "every failed job is a known flake" and "nothing failed" are the same
+#     branch against an empty list, and they must not read the same — a green run must never be
+#     reported as a flake nobody needs to look at.
+ciw_fixture failure-real
+ciw_view completed failure '[{"name":"Xezar infrastructure fixtures","conclusion":"failure"}]'
+ciw_expect "a red job that is not a known load flake is recorded as such" 0 failure "concluded failure"
+node -e '
+  const r = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
+  if (r.failedJobsAreKnownLoadFlakes !== false) throw Error("flake flag " + r.failedJobsAreKnownLoadFlakes);
+' "$CIW_EVIDENCE/ci-watch/outcome.json" 2>/dev/null \
+  && ok "an unknown failed job is NOT marked a known load flake" \
+  || bad "an unknown failed job is NOT marked a known load flake" "see $CIW_EVIDENCE/ci-watch/outcome.json"
+ciw_fixture success-flakeflag
+ciw_view completed success
+ciw_expect "a green run is observed" 0 success "finished green"
+node -e '
+  const r = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
+  if (r.failedJobs.length !== 0) throw Error("failedJobs " + JSON.stringify(r.failedJobs));
+  if (r.failedJobsAreKnownLoadFlakes !== false) throw Error("an EMPTY failed-job list must not read as all-flakes");
+' "$CIW_EVIDENCE/ci-watch/outcome.json" 2>/dev/null \
+  && ok "an empty failed-job list does not read as \"all failures were known flakes\"" \
+  || bad "an empty failed-job list does not read as \"all failures were known flakes\"" "see $CIW_EVIDENCE/ci-watch/outcome.json"
+
+# 3. CANCELLED-SUPERSEDED IS NOT A FAILURE, and the newer head is named.
+ciw_fixture cancelled
+ciw_view completed cancelled
+printf '1\n' > "$CIW_STUB/responses/watch.exit"
+printf '[{"databaseId":99999,"headSha":"%s","createdAt":"2026-09-19T10:30:00Z"}]\n' \
+  "$CIW_NEWER_HEAD" > "$CIW_STUB/responses/list.json"
+ciw_expect "a cancelled run superseded by a later push is observed, not failed" 0 cancelled "superseded by $CIW_NEWER_HEAD"
+
+# 3a. Cancelled with nothing newer to point at must NOT claim it was superseded. "Cancelled" and
+#     "superseded" are different facts and the record keeps them apart.
+ciw_fixture cancelled-unexplained
+ciw_view completed cancelled
+printf '[]\n' > "$CIW_STUB/responses/list.json"
+ciw_expect "a cancelled run with no newer run does not claim supersession" 0 cancelled "not proved superseded"
+node -e '
+  const r = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
+  if (r.supersededBy !== null) throw Error("supersededBy " + JSON.stringify(r.supersededBy));
+' "$CIW_EVIDENCE/ci-watch/outcome.json" 2>/dev/null \
+  && ok "the unexplained cancellation records supersededBy as null rather than guessing" \
+  || bad "the unexplained cancellation records supersededBy as null rather than guessing" "see $CIW_EVIDENCE/ci-watch/outcome.json"
+
+# 4. A MISSING RUN ID IS A REFUSAL. The script never discovers a run for itself: judging a merge by
+#    somebody else's CI run is exactly the mistake a guess would make.
+ciw_fixture no-target
+rm -f "$CIW_EVIDENCE/ci-watch/target.json"
+ciw_expect "a missing target refuses instead of guessing a run id" 2 target.missing "never guesses one"
+
+# 4a. …and so is one that is present but not a run id. Validated, never sanitised: these strings
+#     become arguments to `gh`.
+ciw_fixture bad-id
+printf '{"runId":"not-a-run","repo":"qodeca/xezar","base":"main"}\n' > "$CIW_EVIDENCE/ci-watch/target.json"
+ciw_expect "a runId that is not a GitHub run id refuses" 2 target.invalid "is not a GitHub run id"
+ciw_fixture bad-repo
+printf '{"runId":"%s","repo":"not a repo","base":"main"}\n' "$CIW_RUN_ID" > "$CIW_EVIDENCE/ci-watch/target.json"
+ciw_expect "a repo that is not owner/name refuses" 2 target.invalid "is not owner/name"
+ciw_fixture bad-json
+printf 'this is not json\n' > "$CIW_EVIDENCE/ci-watch/target.json"
+ciw_expect "a malformed target refuses" 2 target.invalid "is not a JSON object"
+
+# 5. THE BOUND. A check step may not carry `timeout` and macOS ships no `timeout(1)`, so the wall
+#    clock is the script's own. The watch is told to outlive the deadline; the deadline must win,
+#    and the result must read as bounded rather than as a red build.
+ciw_fixture deadline
+ciw_view in_progress ""
+printf '30\n' > "$CIW_STUB/responses/watch.sleep"
+ciw_expect "a watch that outlives the deadline is cut off and reported as bounded, not failed" \
+  4 deadline "observation window elapsed" --deadline 1
+
+# 6. COULD NOT ASK IS NEVER A PASS. A `gh` that cannot answer leaves no observation at all, and an
+#    absent observation must stop the chain rather than reach the report step with nothing to read.
+ciw_fixture unobservable
+rm -f "$CIW_STUB/responses/view.json"
+ciw_expect "a GitHub that cannot answer is unobservable, not green" 3 unobservable "is never a pass"
+
+# 7. The workflow wires all of this up: an agent merge, then this check, then an agent report. A
+#    check step at the END would silence XEZ:ASK for the whole run, which is what catalog-check
+#    enforces; this asserts the ORDER the split depends on.
+ciw_order="$(node -e '
+  const text = require("node:fs").readFileSync(process.argv[1], "utf8");
+  process.stdout.write([...text.matchAll(/^  - id: (\S+)$/gm)].map((m) => m[1]).join(","));
+' "$REPO_ROOT/.xezar/workflows/integration.yaml" 2>/dev/null)"
+[ "$ciw_order" = "kit,preflight,integrate,ci-watch,report" ] \
+  && ok "integration.yaml keeps merge → bounded check → report, with the agent step last" \
+  || bad "integration.yaml keeps merge → bounded check → report" "step order was: $ciw_order"
+# The anchored pattern matters: the file EXPLAINS in a comment why there is no onFail here, so an
+# unanchored grep would match the explanation and fail on the very sentence that documents the rule.
+if grep -q '^    onFail' "$REPO_ROOT/.xezar/workflows/integration.yaml"; then
+  bad "the CI check carries no onFail, which could only retry the MERGE" "an onFail key appeared in integration.yaml"
+else
+  ok "the CI check carries no onFail, which could only retry the MERGE"
+fi
+
 # --- 24c. The root-sync boundary, DRIVEN on synthetic roots ----------------------------------------
 #
 # `root-sync-preflight.sh` is the gate on the one Worktree OFF assignment in this repository, so its
