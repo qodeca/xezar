@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { projectDataDir } from '../project-data-paths.ts';
 import { RunStore } from '../runs/store.ts';
 import { connectedProviderAuth } from '../server/provider-auth.testkit.ts';
-import { ProjectContexts, type ProjectContext } from '../server/project-context.ts';
+import { ProjectContexts, type ContextDisposal, type ProjectContext } from '../server/project-context.ts';
 import { WorkspaceEventBus, createApp } from '../server/server.ts';
 import { RunManager } from '../workflows/run.ts';
 import { listProjects, registerProject } from '../workspace/projects.ts';
@@ -23,27 +23,55 @@ import { tools } from './tools/index.ts';
 
 // ---- the lifecycle, over a stand-in context map -------------------------------------------------
 
-type Ctx = { id: string };
+type Ctx = { id: string; generation: number };
 
+/**
+ * A stand-in for the real map, generations and all (#647). `build`/`dispose` keep the shape every
+ * existing case here already uses; `disposeDeferred` is the one thing the real map does that a
+ * synchronous fake cannot show — it bumps the generation and drops the context at once but
+ * notifies only after the old context's teardown has finished, which is the whole race window.
+ */
 function fakeContexts(initial: string[] = []) {
   const built = new Set<(ctx: Ctx) => void>();
-  const disposed = new Set<(id: string) => void>();
-  const live = new Map(initial.map((id) => [id, { id }]));
+  const disposed = new Set<(id: string, disposal: ContextDisposal) => void>();
+  const live = new Map(initial.map((id) => [id, { id, generation: 0 }]));
+  const generations = new Map<string, number>();
+  const generation = (id: string) => generations.get(id) ?? 0;
   const contexts: ProjectDoorContexts<Ctx> = {
     ids: () => [...live.keys()],
     peek: (id) => live.get(id),
     onContextBuilt: (l) => (built.add(l), () => built.delete(l)),
     onContextDisposed: (l) => (disposed.add(l), () => disposed.delete(l)),
   };
+  /** End the id's registration, the way `dispose()` does before it awaits anything. */
+  const endRegistration = (id: string): number => {
+    const ending = generation(id);
+    generations.set(id, ending + 1);
+    live.delete(id);
+    return ending;
+  };
+  const notifyDisposed = (id: string, ending: number): void => {
+    const published = live.get(id)?.generation;
+    const disposal: ContextDisposal = {
+      generation: ending,
+      superseded: published !== undefined && published > ending,
+    };
+    for (const l of [...disposed]) l(id, disposal);
+  };
   return {
     contexts,
     build(id: string) {
-      live.set(id, { id });
-      for (const l of [...built]) l({ id });
+      const ctx = { id, generation: generation(id) };
+      live.set(id, ctx);
+      for (const l of [...built]) l({ ...ctx });
     },
     dispose(id: string) {
-      live.delete(id);
-      for (const l of [...disposed]) l(id);
+      notifyDisposed(id, endRegistration(id));
+    },
+    /** Dispose with the notification parked; the returned function is the teardown finishing. */
+    disposeDeferred(id: string): () => void {
+      const ending = endRegistration(id);
+      return () => notifyDisposed(id, ending);
     },
     listeners: () => built.size + disposed.size,
   };
@@ -163,6 +191,46 @@ describe('followProjectDoors', () => {
     await tick();
     map.dispose('b');
     expect(o.events.at(-1)).toBe('close new b');
+  });
+
+  /**
+   * #647 (RP-2) — the reported symptom. `dispose()` ends the registration and drops the context
+   * synchronously, but notifies only once the teardown has finished, and that teardown awaits
+   * `RunManager.dispose()`. A project re-added and rebuilt inside that window already has its NEW
+   * door open when the OLD registration's dispose finally lands; keyed on the id alone, that
+   * dispose closed the live door, and `xez mcp` in the project's folder answered "xezar is not
+   * running" while the same process served its routes.
+   *
+   * The existing re-add case at :147 cannot see this: its fake notifies the dispose synchronously,
+   * so the order is never the racing one.
+   */
+  it('keeps a rebuilt project\'s door when the dispose it replaced lands after the rebuild', async () => {
+    const map = fakeContexts();
+    const o = controlledOpen();
+    followProjectDoors(map.contexts, { open: o.open });
+    map.build('b');
+    await tick();
+    o.calls[0]!.resolve(o.handle('old b'));
+    await tick();
+
+    // Removal starts: generation bumped, context dropped — teardown still running, nobody told.
+    const teardownFinished = map.disposeDeferred('b');
+    // Re-added and rebuilt inside that window: the same id, the next registration.
+    map.build('b');
+    await tick();
+    await tick();
+    // The rebuild retires the door it replaces itself, and still waits for it to settle first.
+    expect(o.events).toEqual(['open b', 'close old b', 'open b']);
+    o.calls[1]!.resolve(o.handle('new b'));
+    await tick();
+
+    // The late dispose names generation 0 — a registration this id no longer holds a door for.
+    teardownFinished();
+    expect(o.events).toEqual(['open b', 'close old b', 'open b']);
+
+    // Still the live door, and still released by its OWN dispose.
+    map.dispose('b');
+    expect(o.events).toEqual(['open b', 'close old b', 'open b', 'close new b']);
   });
 
   it('skips the open entirely when the project went away before its turn came', async () => {

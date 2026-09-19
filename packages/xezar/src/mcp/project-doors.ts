@@ -18,20 +18,28 @@
  * stays a lazy import there, so a broken MCP part can never stop the cockpit booting (N-07).
  */
 
+import type { ContextDisposal } from '../server/project-context.ts';
+
 /** What an open door gives back: the one thing needed to release it. */
 export interface ProjectDoorHandle {
   close(): void;
 }
 
 /** The two lifecycle hooks of the project-context map, plus what is already built. */
-export interface ProjectDoorContexts<C extends { readonly id: string }> {
+export interface ProjectDoorContexts<C extends DoorContext> {
   ids(): string[];
   peek(projectId: string): C | undefined;
   onContextBuilt(listener: (ctx: C) => void): () => void;
-  onContextDisposed(listener: (projectId: string) => void): () => void;
+  onContextDisposed(listener: (projectId: string, disposal: ContextDisposal) => void): () => void;
 }
 
-export interface ProjectDoorsOptions<C extends { readonly id: string }> {
+/** What a door needs of a context: which project, and which REGISTRATION of it (#647). */
+interface DoorContext {
+  readonly id: string;
+  readonly generation: number;
+}
+
+export interface ProjectDoorsOptions<C extends DoorContext> {
   /**
    * The project whose door the caller opens itself — the boot project. Never handled here, so the
    * boot door stays exactly the one `serve` opens, and a second listen on its path never happens.
@@ -49,6 +57,8 @@ export interface ProjectDoorsOptions<C extends { readonly id: string }> {
 }
 
 interface Door {
+  /** The context registration this door was opened for (#647). */
+  readonly generation: number;
   closed: boolean;
   handle?: ProjectDoorHandle;
   /** Settles once the open has finished AND, if the door closed first, its late handle is released. */
@@ -59,7 +69,7 @@ interface Door {
  * Follow `contexts` and keep one door per built non-boot project. Returns the release: it stops
  * following and closes every door, including one still opening (released when its open lands).
  */
-export function followProjectDoors<C extends { readonly id: string }>(
+export function followProjectDoors<C extends DoorContext>(
   contexts: ProjectDoorContexts<C>,
   options: ProjectDoorsOptions<C>,
 ): { close(): void } {
@@ -70,8 +80,18 @@ export function followProjectDoors<C extends { readonly id: string }>(
   let stopped = false;
 
   const opened = (ctx: C): void => {
-    if (stopped || ctx.id === options.bootProjectId || doors.has(ctx.id)) return;
-    const door: Door = { closed: false, settled: Promise.resolve() };
+    if (stopped || ctx.id === options.bootProjectId) return;
+    const held = doors.get(ctx.id);
+    if (held) {
+      // The same registration announced twice keeps ONE door — the dedupe this always had.
+      if (held.generation >= ctx.generation) return;
+      // A NEWER registration of the same id, which means the dispose of the one this door belongs
+      // to is still inside its teardown and has not been notified yet (#647). Retire it here, the
+      // way its own dispose would have: the handle is closed, the socket path freed, and the door
+      // below waits on `retiring` for the old open to settle rather than racing it.
+      retire(ctx.id, held);
+    }
+    const door: Door = { generation: ctx.generation, closed: false, settled: Promise.resolve() };
     const before = retiring.get(ctx.id) ?? Promise.resolve();
     door.settled = before
       .then(() => (door.closed ? undefined : options.open(ctx)))
@@ -91,9 +111,9 @@ export function followProjectDoors<C extends { readonly id: string }>(
     doors.set(ctx.id, door);
   };
 
-  const disposed = (projectId: string): void => {
-    const door = doors.get(projectId);
-    if (!door) return;
+  /** Release one door: close the handle, free the id, and hold the next open back until this
+   *  one's own open has settled. The one place a door is released, whichever event asked. */
+  function retire(projectId: string, door: Door): void {
     doors.delete(projectId);
     door.closed = true;
     door.handle?.close();
@@ -103,6 +123,18 @@ export function followProjectDoors<C extends { readonly id: string }>(
     void settled.then(() => {
       if (retiring.get(projectId) === settled) retiring.delete(projectId);
     });
+  }
+
+  const disposed = (projectId: string, disposal: ContextDisposal): void => {
+    const door = doors.get(projectId);
+    if (!door) return;
+    // The dispose is notified only after the old context's teardown has finished, so by now this
+    // id may already hold the door of a LATER registration — closing it would take the live
+    // project's door away and leave `xez mcp` in its folder answering "xezar is not running"
+    // (#647, the reported symptom). A generation that does not match is not this door's dispose.
+    // `!==`, never a truthiness test: a project's first removal is generation 0, a real value.
+    if (door.generation !== disposal.generation) return;
+    retire(projectId, door);
   };
 
   const offBuilt = contexts.onContextBuilt(opened);
@@ -119,7 +151,8 @@ export function followProjectDoors<C extends { readonly id: string }>(
       stopped = true;
       offBuilt();
       offDisposed();
-      for (const id of [...doors.keys()]) disposed(id);
+      // Every door, whatever generation it holds — shutdown is not a per-registration event.
+      for (const [id, door] of [...doors]) retire(id, door);
     },
   };
 }
