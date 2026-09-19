@@ -351,6 +351,27 @@ describe('mcp door', () => {
     expect(only(m.dataDir).payloadDigest).toBe(payloadDigest({ ...args, model: AUDIT_REDACTED_VALUE }));
   }, 60_000);
 
+  // NAMED BREAK (#646): make `unescapeUnicodeEscapes` a single replace again (delete the fixpoint
+  // loop in `audit-redaction.ts`). One pass leaves a nested escape still encoded, so the leaf keeps
+  // its literal `\u005cu0067…` text and this digest assertion fails.
+  it('B-REDACT-MCP-IDENTIFIER-SECRET-DOUBLE-ESCAPED: a host secret written as nested \\u escapes is still masked before hashing (#646)', async () => {
+    const m = await mcpFixture();
+    const args = { action: 'start_inbox_item', todoId: 'no-such-todo', operationId: operationId() };
+    const escaped = asUnicodeEscapes(asUnicodeEscapes(IDENTIFIER_SECRET));
+    await m.call('organise_work', { ...args, model: escaped });
+    expect(only(m.dataDir).payloadDigest).toBe(payloadDigest({ ...args, model: AUDIT_REDACTED_VALUE }));
+  }, 60_000);
+
+  // Guard, passes with and without the fixpoint loop: a value with a backslash but no `\uXXXX`
+  // escape never enters the decode path, so it must reach the digest byte-identical (fast path).
+  it('B-REDACT-MCP-IDENTIFIER-SECRET-ESCAPED guard: a plain value with no unicode escape is hashed unchanged (fast path)', async () => {
+    const m = await mcpFixture();
+    const args = { action: 'start_inbox_item', todoId: 'no-such-todo', operationId: operationId() };
+    const plain = 'literal \\x41 \\n text';
+    await m.call('organise_work', { ...args, model: plain });
+    expect(only(m.dataDir).payloadDigest).toBe(payloadDigest({ ...args, model: plain }));
+  }, 60_000);
+
   it('B-REDACT-MCP-DOOR-SPECIFIC-ESCAPED: an escaped door secret in an argument is still masked before hashing (m3)', async () => {
     const m = await mcpFixture({ ...process.env, AUDIT_SERVICE_ONLY_TOKEN: DOOR_SECRET });
     const args = { action: 'start_inbox_item', todoId: 'no-such-todo', operationId: operationId() };

@@ -222,11 +222,19 @@ const PATH_OR_URL = /^(?:\/|~[\\/]|[A-Za-z]:[\\/]|\\\\|file:)|[a-z][a-z0-9+.-]*:
  * Decode literal `\uXXXX` escapes before the secret check (#586 follow-up, m3): a secret typed or
  * copied as JS/JSON unicode escapes contains none of its own literal bytes, so the plain substring
  * match in `secret-redaction.ts` never sees it. Only engaged when the text actually contains `\u`,
- * so a value without one is byte-identical to what the seam already checked.
+ * so a value without one is byte-identical to what the seam already checked. Nested escapes
+ * (`\u005cu0067…`, a double-escaped `g`) decode one layer per pass, so the replace iterates to a
+ * fixpoint, capped at four passes (#646).
  */
 function unescapeUnicodeEscapes(text: string): string {
   if (!text.includes('\\u')) return text;
-  return text.replace(/\\u([0-9a-fA-F]{4})/g, (_match, hex: string) => String.fromCharCode(parseInt(hex, 16)));
+  let decoded = text;
+  for (let pass = 0; pass < 4; pass += 1) {
+    const next = decoded.replace(/\\u([0-9a-fA-F]{4})/g, (_match, hex: string) => String.fromCharCode(parseInt(hex, 16)));
+    if (next === decoded) break;
+    decoded = next;
+  }
+  return decoded;
 }
 
 /** The seam. Never throws. */
