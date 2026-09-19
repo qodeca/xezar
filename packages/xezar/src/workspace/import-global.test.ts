@@ -47,6 +47,10 @@ describe('import from the global setup (#600 FR-4)', () => {
   const GLOBAL_CONFIG = {
     schemaVersion: 1,
     projects: [{ id: 'elsewhere', root: '/repos/elsewhere' }],
+    // The machine-scoped GUI keys a real global file always carries: the
+    // registry AND these two are dropped from the import (#600 FR-4, #650).
+    browseRoot: '/Users/someone/source',
+    projectsDir: '/Users/someone/xezar/projects',
     resources: { maxParallel: 5, memoryLimitMb: 3072 },
     agentDefaults: { runner: 'codex' },
     futureKey: { kept: true },
@@ -118,13 +122,20 @@ describe('import from the global setup (#600 FR-4)', () => {
       );
     });
 
-    it('a yes copies the three files, without the project list or other folders\' selections', async () => {
+    it('a yes copies the three files, without the registry or the machine-scoped GUI roots', async () => {
       const before = homeBytes();
       const outcome = await runFirstRunImport(layout, async () => true, env);
 
       expect(outcome.kind).toBe('imported');
-      const { projects: _dropped, ...expectedWorkspace } = GLOBAL_CONFIG;
-      expect(json(layout.workspacePath)).toEqual(expectedWorkspace);
+      // `projects`, `browseRoot` and `projectsDir` describe THIS machine and are
+      // dead in the mode, so the import drops them (#600 FR-4, #650). Everything
+      // else is copied verbatim, unknown keys included.
+      expect(json(layout.workspacePath)).toEqual({
+        schemaVersion: 1,
+        resources: { maxParallel: 5, memoryLimitMb: 3072 },
+        agentDefaults: { runner: 'codex' },
+        futureKey: { kept: true },
+      });
       expect(json(layout.uiStatePath)).toEqual(GLOBAL_UI);
       expect(json(layout.accountsPath)).toEqual({
         accounts: [{ id: 'work', provider: 'claude', configDir: '~/.claude-work', label: 'Work account' }],

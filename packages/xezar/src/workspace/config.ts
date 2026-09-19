@@ -11,6 +11,7 @@ import { PROJECT_TAGS_MAX, PROJECT_TAG_MAX_LENGTH } from '@qodeca/xezar-contract
 import { PROVIDER_IDS, type ProviderId } from '../core/provider-auth.ts';
 import { assertXezarHomeWriteIsSandboxed, workspaceConfigPath } from '../paths.ts';
 import {
+  activeStateLayout,
   isSymbolicLink,
   projectStateDirRefusal,
   projectStateFiles,
@@ -593,6 +594,34 @@ export function atomicWriteJsonSync(path: string, value: unknown): void {
 }
 
 /**
+ * The workspace keys that describe the MACHINE's multi-project setup and are
+ * dead in single-project mode (#650): the GUI browse root, the clone
+ * destination and the project registry.
+ *
+ * Adding, cloning and browsing projects are all refused in the mode, so the
+ * first two have no consumer and default to `~/` — machine-specific paths in a
+ * file every clone of the repository reads — and the registry there is the
+ * folder itself, derived rather than stored.
+ *
+ * A plain list so the merge-write and the first-run import share ONE spelling
+ * of "which keys the mode does not carry".
+ */
+export const SINGLE_PROJECT_OMITTED_KEYS = ['browseRoot', 'projectsDir', 'projects'] as const;
+
+/**
+ * A workspace-config-shaped object without the machine-scoped keys above
+ * (#650). Pure and shallow: every other key, unknown `.passthrough()` keys
+ * included, is returned untouched, and the input is never mutated.
+ */
+export function withoutMachineScopedKeys<T extends Record<string, unknown>>(
+  value: T,
+): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...value };
+  for (const key of SINGLE_PROJECT_OMITTED_KEYS) delete next[key];
+  return next;
+}
+
+/**
  * Create single-project mode's four configuration files, for a first run with
  * `--single-project` only (#600 AC-2).
  *
@@ -647,22 +676,35 @@ export function createProjectStateFiles(layout: StateLayout): void {
  * home and the write landed in another, replacing that file's registry with a
  * config it never held. One resolution keeps a merge-write inside exactly one
  * file, whatever the environment does mid-flight.
+ *
+ * The LAYOUT is resolved in the same breath as the path, and for the same
+ * reason: in the project layout the bytes written omit the machine-scoped keys
+ * (#650 — `SINGLE_PROJECT_OMITTED_KEYS`), so a mode read live at write time
+ * could project one file and then write another. The returned value is always
+ * the full in-memory config; only the file is a projection.
  */
 export async function mergeWriteWorkspaceConfig(
   mutator: (config: WorkspaceConfig) => WorkspaceConfig | void,
 ): Promise<WorkspaceConfig> {
-  const path = workspaceConfigPath();
-  return withWorkspaceConfigLock(path, () => mergeWriteLocked(path, mutator));
+  const layout = activeStateLayout();
+  const path = layout.workspacePath;
+  return withWorkspaceConfigLock(path, () => mergeWriteLocked(path, mutator, layout.mode === 'project'));
 }
 
 /** The read-modify-write itself. Only ever called with the lock held (or knowingly without). */
 async function mergeWriteLocked(
   path: string,
   mutator: (config: WorkspaceConfig) => WorkspaceConfig | void,
+  projectLayout: boolean,
 ): Promise<WorkspaceConfig> {
   const current = await loadWorkspaceConfig(path);
   const next = mutator(current) ?? current;
-  atomicWriteJsonSync(path, next);
+  // #650: the committed single-project file omits the machine-scoped keys the
+  // shared schema would otherwise materialize as defaults. `next` keeps them —
+  // the schema is unchanged and callers still receive a full WorkspaceConfig —
+  // and only the bytes on disk are projected.
+  const onDisk = projectLayout ? withoutMachineScopedKeys(next) : next;
+  atomicWriteJsonSync(path, onDisk);
   // Refresh the snapshot after EVERY successful write, including an emptied
   // registry (#731). Skipping the empty case left a stale non-empty backup:
   // removing the last project, then losing config.json, resurrected the project
@@ -670,7 +712,7 @@ async function mergeWriteLocked(
   // load (see loadWorkspaceConfigBackup), so recovery now settles on the empty
   // registry the user intended rather than the old projects.
   try {
-    atomicWriteJsonSync(workspaceConfigBackupPath(path), next);
+    atomicWriteJsonSync(workspaceConfigBackupPath(path), onDisk);
   } catch {
     // Best-effort: the registry itself is already safely on disk, and a
     // failed snapshot must never turn a successful write into an error.

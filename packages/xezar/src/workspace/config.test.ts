@@ -1,8 +1,9 @@
-import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { workspaceConfigPath } from '../paths.ts';
+import { projectStateLayout, setActiveStateLayout } from '../state-layout.ts';
 import {
   DEFAULT_MEMORY_LIMIT_MB,
   atomicTmpPath,
@@ -14,6 +15,7 @@ import {
   workspaceConfigBackupPath,
   type WorkspaceConfig,
 } from './config.ts';
+import { registryRows } from './projects.ts';
 
 /**
  * `~/.xezar/config.json` house rules under test (spec
@@ -427,5 +429,115 @@ describe('workspace config', () => {
       expect((await loadWorkspaceConfig()).projects).toEqual([]);
       expect(warn).toHaveBeenCalledWith(expect.stringContaining('is corrupt'));
     });
+  });
+});
+
+/**
+ * #650 — the committed file must not carry the machine's multi-project keys.
+ *
+ * In single-project mode adding, cloning and browsing projects are refused, so
+ * `browseRoot` (the GUI browse root), `projectsDir` (the clone destination) and
+ * `projects` (the registry) are dead there — and the first two default to `~/`,
+ * which is machine-specific in a file every clone reads. The shared writer
+ * re-serializes the FULLY parsed config (defaults included), so the first
+ * boot's migration 001 wrote all three. The writer now omits them in the
+ * project layout; the schema and the global writer are unchanged.
+ */
+describe('single-project mode omits the machine-scoped keys (#650)', () => {
+  let project: string;
+
+  beforeEach(() => {
+    project = mkdtempSync(join(tmpdir(), 'xez-sp-keys-'));
+    setActiveStateLayout(projectStateLayout(project));
+  });
+
+  afterEach(() => {
+    setActiveStateLayout(null);
+    rmSync(project, { recursive: true, force: true });
+  });
+
+  const onDisk = (): Record<string, unknown> =>
+    JSON.parse(readFileSync(workspaceConfigPath(), 'utf8')) as Record<string, unknown>;
+
+  /** AC-1's assertion, shared so both criteria check the same three keys. */
+  const expectOmitted = (raw: Record<string, unknown>): void => {
+    for (const key of ['browseRoot', 'projectsDir', 'projects']) {
+      expect(raw, `${key} must not be written in single-project mode`).not.toHaveProperty(key);
+    }
+  };
+
+  it('AC-1: a fresh start writes none of the three keys and still materializes the rest', async () => {
+    // The boot shape: migration 001's merge-write over the `{}` a fresh
+    // `createProjectStateFiles` leaves behind.
+    const written = await mergeWriteWorkspaceConfig((config) => {
+      config.schemaVersion = 1;
+    });
+
+    expectOmitted(onDisk());
+    // The keys the mode DOES carry are still materialized...
+    expect(onDisk().schemaVersion).toBe(1);
+    expect(onDisk().resources).toMatchObject({ maxParallel: 2 });
+    // ...and the in-memory schema is unchanged: the three keys still exist with
+    // their defaults, they are simply not serialized in this layout.
+    expect(written.browseRoot).toBe('~/');
+    expect(written.projectsDir).toBe('~/xezar/projects');
+    expect(written.projects).toEqual([]);
+  });
+
+  it('AC-2: a 0.16.0 file carrying them still loads, and the three values are ignored', async () => {
+    // Written on another machine: a browse root and clone destination that do
+    // not exist here, and a registry row for a folder that is not this one.
+    mkdirSync(dirname(workspaceConfigPath()), { recursive: true });
+    writeFileSync(
+      workspaceConfigPath(),
+      JSON.stringify({
+        schemaVersion: 1,
+        browseRoot: '/Users/other/source',
+        projectsDir: '/Users/other/xezar/projects',
+        projects: [
+          { id: 'elsewhere', root: '/Users/other/repos/elsewhere', addedAt: '', lastOpenedAt: '', source: 'local' },
+        ],
+        resources: { maxParallel: 3 },
+      }),
+      'utf8',
+    );
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    // It still loads — a shape from another machine is state, not corruption.
+    const config = await loadWorkspaceConfig();
+    expect(warn).not.toHaveBeenCalled();
+    // The values the mode DOES honour are read from the same file.
+    expect(config.resources.maxParallel).toBe(3);
+    // `projects` is ignored: the mode's registry is the folder, never the
+    // foreign row the file carries (the matching-row read is SP-3.1, unchanged).
+    const rows = await registryRows();
+    expect(rows.map((row) => row.root)).toEqual([realpathSync(project)]);
+    // ...and the next write drops all three, so they never persist here.
+    await mergeWriteWorkspaceConfig(() => {});
+    expectOmitted(onDisk());
+    expect(onDisk().resources).toMatchObject({ maxParallel: 3 });
+  });
+
+  it('guard (AC-4): the GLOBAL layout still writes all three keys', async () => {
+    // The projection is the MODE's, not the schema's: a plain `xez` keeps
+    // `~/.xezar/config.json` byte-for-byte as before. This passes with and
+    // without the fix — it pins the behaviour the fix must NOT change.
+    const saved = process.env.XEZ_HOME;
+    const globalHome = mkdtempSync(join(tmpdir(), 'xez-sp-global-'));
+    process.env.XEZ_HOME = globalHome;
+    try {
+      setActiveStateLayout(null);
+      await mergeWriteWorkspaceConfig((config) => {
+        config.schemaVersion = 1;
+      });
+      const raw = JSON.parse(readFileSync(join(globalHome, 'config.json'), 'utf8')) as Record<string, unknown>;
+      expect(raw.browseRoot).toBe('~/');
+      expect(raw.projectsDir).toBe('~/xezar/projects');
+      expect(raw.projects).toEqual([]);
+    } finally {
+      if (saved === undefined) delete process.env.XEZ_HOME;
+      else process.env.XEZ_HOME = saved;
+      rmSync(globalHome, { recursive: true, force: true });
+    }
   });
 });

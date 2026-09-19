@@ -503,8 +503,15 @@ contract from this release on.
   `workspace.json` once, through migration 001, with `schemaVersion` and the materialized defaults —
   including the host-derived `resources.memoryLimitMb` (`deriveDefaultMemoryLimitMb`), which then
   becomes an explicit committed value every teammate inherits until someone edits it. That write
-  predates this repair and happens once per opt-in folder; no later launch rewrites it. The default
-  GLOBAL layout is byte-for-byte unchanged: it still writes both keys into `~/.xezar/config.json`.
+  predates this repair and happens once per opt-in folder; no later launch rewrites it. The same
+  write — and every later merge-write in the mode — OMITS the machine's multi-project keys
+  `browseRoot`, `projectsDir` and `projects` (#650): adding, cloning and browsing are refused in the
+  mode, the two roots default to this host's `~/` paths, and the registry there is the folder
+  itself, derived rather than stored. A file written by 0.16.0 that carries them still loads: the
+  dead roots have no consumer in the mode, and only a registry row whose `root` is this folder is
+  read at all (foreign rows are already ignored); the next write drops all three. The default
+  GLOBAL layout is byte-for-byte unchanged: it still writes every one of those keys into
+  `~/.xezar/config.json`.
   Breaking: a launch after the first opt-in boot writing a per-machine key into the committed file,
   or a launch that leaves `git status` dirty in the mode.
 - **Locked detection rule.** A linked git worktree is never a single-project root, the flag
@@ -582,7 +589,8 @@ contract from this release on.
   the terminal, whether to copy the global setup (`~/.xezar`, or `XEZ_HOME`) in, `[y/N]`. Only then,
   and only after an explicit yes, is the global home read — before the project files exist, and
   READ-only: nothing is ever written to it. `config.json` becomes `workspace.json` without its
-  `projects` array, `agent-accounts.json` keeps only this folder's own entry in `selections` (other
+  `projects` array or the machine-scoped `browseRoot`/`projectsDir` (#650),
+  `agent-accounts.json` keeps only this folder's own entry in `selections` (other
   folders' choices are dropped), and `ui-state.json` becomes `workspace-ui.json`. An existing project
   file is never overwritten, an unreadable global file is skipped and named, and `workspace.json` is
   written last, so an interrupted import still counts as a first run. Nothing is written through a
