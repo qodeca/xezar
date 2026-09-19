@@ -305,11 +305,16 @@ test('the fold never inserts the new section inside a fenced code block (#684)',
   );
 });
 
-test('a fence that opens and never closes is content to the end of the file (#684)', () => {
-  // The rule `changelog-check.sh` applies: a fence toggles on a line starting with ``` or ~~~, and
-  // one that is never closed swallows the rest of the file. No later `# ` line is a boundary.
+test('a file that ends inside an open fence is refused, not folded into (#684)', () => {
+  // The fence MODEL: a fence that opens and is never closed swallows the rest of the file, so no
+  // `# ` line below it is a top-level heading and the fold has no anchor. The previous name
+  // ("a fence that opens and never closes is content to the end of the file") described that model
+  // while asserting only that the section landed after the fenced text — an ordering that holds
+  // WHILE the section sits inside the open fence, which is the harm. What it pins now is the
+  // consequence: no anchor means no fold.
+  const before = '# Unreleased\n\n- pending\n\n```\n# not-a-real-heading\n';
   const dir = fixture();
-  writeFileSync(join(dir, 'CHANGELOG.md'), '# Unreleased\n\n- pending\n\n```\n# not-a-real-heading\n');
+  writeFileSync(join(dir, 'CHANGELOG.md'), before);
   const fragments = FRAGMENT_DIR(dir);
   writeFileSync(join(fragments, '900.md'), '## 🐛 Fixes\n\n- folded bullet (#900)\n');
 
@@ -317,13 +322,33 @@ test('a fence that opens and never closes is content to the end of the file (#68
     CHANGELOG, '--fold', '--version', '0.2.0', '--date', '2026-09-19',
     '--file', join(dir, 'CHANGELOG.md'), '--fragments', fragments,
   ]);
-  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.equal(result.status, 1, result.stdout + result.stderr);
+  assert.match(result.stderr, /ends inside an unclosed code fence/);
+  assert.equal(readFileSync(join(dir, 'CHANGELOG.md'), 'utf8'), before, 'a refused fold leaves the file untouched');
+});
 
+test('an unclosed fence above a dated release is refused, never appended inside (#684)', () => {
+  // The reviewer's fixture (PR #696 review, Major M1). The unclosed fence swallows `# 0.1.0`, so
+  // the fold found no anchor and appended the whole `# 0.2.0` section — heading, `## 🐛 Fixes`
+  // group and `---` separator — at end of file, INSIDE the still-open fence, and exited 0. The
+  // section must never be inserted inside a fence, and a file that cannot host it safely is not
+  // rewritten at all: the fold refuses and leaves both the changelog and the fragment as they were.
+  const before = '# Unreleased\n\n- pending\n\n```\noops unclosed\n\n# 0.1.0 (2026-01-01)\n\n- x\n';
+  const dir = fixture();
+  writeFileSync(join(dir, 'CHANGELOG.md'), before);
+  const fragments = FRAGMENT_DIR(dir);
+  writeFileSync(join(fragments, '900.md'), '## 🐛 Fixes\n\n- folded bullet (#900)\n');
+
+  const result = run('node', [
+    CHANGELOG, '--fold', '--version', '0.2.0', '--date', '2026-09-19',
+    '--file', join(dir, 'CHANGELOG.md'), '--fragments', fragments,
+  ]);
+  assert.equal(result.status, 1, result.stdout + result.stderr);
+  assert.match(result.stderr, /ends inside an unclosed code fence/);
   const after = readFileSync(join(dir, 'CHANGELOG.md'), 'utf8');
-  assert.ok(
-    after.indexOf('# not-a-real-heading') < after.indexOf('# 0.2.0 (2026-09-19)'),
-    `an unclosed fence runs to the end of the file, so the section follows it, got:\n${after}`,
-  );
+  assert.equal(after, before, 'the file is left untouched');
+  assert.ok(!after.includes('# 0.2.0'), `no new section is written anywhere, got:\n${after}`);
+  assert.ok(existsSync(join(fragments, '900.md')), 'a refused fold does not consume the fragment');
 });
 
 test('a changelog with no fence folds to exactly the same bytes as before (#684 guard)', () => {

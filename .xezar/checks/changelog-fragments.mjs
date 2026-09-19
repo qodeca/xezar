@@ -47,9 +47,14 @@ const IGNORED = new Set(['README.md']);
 const fenceMarker = (line) => /^(`{3,}|~{3,})/.exec(line)?.[1][0] ?? null;
 
 /**
- * `true` for each line that sits inside a fenced code block. A fence toggles on a line starting
- * with its own marker — a `~~~` line inside a ``` block is content, not a closer — and a fence
- * that opens and never closes runs to the end of the file, exactly as in `changelog-check.sh`.
+ * `true` for each line that sits inside a fenced code block, plus the marker still open at the end
+ * of the file (`null` when the last fence closed). A fence toggles on a line starting with its own
+ * marker — a `~~~` line inside a ``` block is content, not a closer — and a fence that opens and
+ * never closes runs to the end of the file, exactly as in `changelog-check.sh`.
+ *
+ * The open-at-EOF marker is returned rather than inferred from the last `inside` entry, because the
+ * last line may BE the opening marker (`… ``` ` with no trailing newline), where no line sits
+ * inside the fence yet the fence is still open.
  */
 function fenceLines(lines) {
   const inside = new Array(lines.length).fill(false);
@@ -62,7 +67,7 @@ function fenceLines(lines) {
     }
     inside[i] = open !== null;
   }
-  return inside;
+  return { inside, open };
 }
 
 /** A top-level `# ` heading, unless the line is content inside a fenced code block. */
@@ -236,7 +241,7 @@ export function foldChangelog({ file, dir, version, date }) {
   if (files.length === 0) return { errors: [], folded: 0 };
 
   const lines = readFileSync(file, 'utf8').split('\n');
-  const inside = fenceLines(lines);
+  const { inside, open } = fenceLines(lines);
   const heading = `# ${version} (${date})`;
   const existing = lines.findIndex((line) => line.startsWith(`# ${version} (`));
   let out;
@@ -249,7 +254,22 @@ export function foldChangelog({ file, dir, version, date }) {
     let insertAt = lines.findIndex(
       (line, i) => isTopHeading(line, inside[i]) && line.trim() !== '# Unreleased',
     );
-    if (insertAt === -1) insertAt = lines.length;
+    // No top-level heading to anchor to, so there is nothing to insert above. When the file also
+    // ENDS inside an open fence, appending would put the whole new section — heading, groups and
+    // `---` separator — inside that fence, which is the defect this fix exists to close (PR #696
+    // review, Major M1). Refuse through the module's own error channel instead: a fold that cannot
+    // place the section safely must not rewrite the file at all, so this returns before any write.
+    // The closed-fence path is unchanged — a file whose last fence closes, with no other top-level
+    // heading, still gets the section appended after its final line.
+    if (insertAt === -1) {
+      if (open !== null) {
+        return {
+          errors: ['CHANGELOG.md ends inside an unclosed code fence; the fold has no top-level heading to anchor to'],
+          folded: 0,
+        };
+      }
+      insertAt = lines.length;
+    }
     const section = newSection(heading, groups);
     if (insertAt > 0 && lines[insertAt - 1].trim() !== '') section.unshift('');
     out = lines.slice();
