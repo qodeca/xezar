@@ -646,8 +646,9 @@ GitHub automations shipped gated only by forge
 availability, so every project with a GitHub remote saw the feature and there was no way to switch
 it off. `XEZ_AUTOMATIONS=1` makes the whole surface opt-in and **off by default**. Activation is
 strict: only the exact string `1` enables it; `true`, `yes`, an empty value, and an unset variable
-all keep it off. The flag is read at boot — the workspace scheduler starts once, on `listening` —
-so set it and restart, exactly like `XEZ_FOLLOWUPS`.
+all keep it off. The flag is read live: a flip after boot starts or stops the workspace scheduler
+at the next consult of the capability, with no restart, since #678. (The 2026-08-07 record below
+says what it did before that.)
 
 This deliberately flips the *default* answers of section 2's automations routes, the same kind of
 break the "Follow-up inbox default flip (pre-rename issue 471)" entry above documents, taken on an explicit

@@ -56,7 +56,9 @@ The generic launcher prefills the composer. Skill launchers can use **One-click 
 
 ## To enable and test an automation
 
-Start xezar with automations enabled, or restart your existing server with this environment variable:
+Set this in the environment the running server reads; since 0.17.0 (#678) the flag is read live, so
+turning it on starts the poller and opens the routes at the next automations action, with no
+restart. To start a server with automations enabled from the outset:
 
 ```sh
 XEZ_AUTOMATIONS=1 xezar
