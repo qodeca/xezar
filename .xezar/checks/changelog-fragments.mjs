@@ -198,8 +198,13 @@ function mergeIntoSection(lines, headingIndex, groups, inside) {
   const preamble = [];
   const parsed = [];
   let current = null;
-  for (const line of body) {
-    if (line.startsWith('## ')) {
+  // `body` is a slice of `lines`, so `body[i]` is `lines[headingIndex + 1 + i]` — the index the
+  // fence map `inside` is keyed by. A `## ` line inside a fenced code block is sample content,
+  // not a group boundary: without this lookup the section is re-emitted around it and the fence
+  // is torn apart (#704, the group-scan sibling of #684/#696's `# ` fix).
+  for (let i = 0; i < body.length; i++) {
+    const line = body[i];
+    if (!inside[headingIndex + 1 + i] && line.startsWith('## ')) {
       current = { heading: line, lines: [] };
       parsed.push(current);
       continue;
