@@ -439,7 +439,7 @@ default accent.
 | Token and base-class discipline | Read `styles.css` against `new-designs.md` §2 | **Passed** – no token redeclared, no base class copied, no raw hex; one deliberate shared-sheet addition, §7 |
 | Repository tests | `npm test -- packages/web/src/designs-handoff.test.ts packages/web/src/design-system-drift.test.ts` | **Passed** – 34 tests |
 | Keyboard walk | – | **Not applicable to a static mockup.** §11 states what the build must hold; PR4 owns the keyboard evidence |
-| Captures | 12 full-page PNGs (six pages × two themes at 1440 px, plus `phone.html` × two themes at 375 px) | Kept as **private task evidence** in the primary checkout's `.local/xezar/tasks/<runId>/design-captures/`, not committed. This document depends on none of them; the pages themselves are the reviewable artefact, and the `design-review` run captures its own per `verification.md` § Design review screenshots |
+| Captures | 12 full-page PNGs (six pages × two themes at 1440 px, plus `phone.html` × two themes at 375 px) | Kept as **private task evidence** in the primary checkout's `.local/xezar-tasks/<runId>/design-captures/` (the frozen historical root; runs after the rename write under `.local/xezar/tasks/`), not committed. This document depends on none of them; the pages themselves are the reviewable artefact, and the `design-review` run captures its own per `verification.md` § Design review screenshots |
 
 **Known limitation of the mockup, not of the design.** Chrome blocks `file://` iframes by default,
 so the phone preview frames on `index.html`, `sidebar.html` and `states.html` render empty when the
