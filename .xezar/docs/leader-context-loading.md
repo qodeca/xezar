@@ -250,11 +250,11 @@ cron cannot reach into the session. The guide's re-create order is the only dura
   session that reads a stale rule will act on it. A decision that changes the product also belongs in
   the project's own decision log or issue — the campaign file is a coordination aid, never the only
   copy.
-- **Reconcile the older campaign path.** [campaign-notes.md](campaign-notes.md) still describes a
-  `.local/xezar-campaigns/<date-slug>/` folder; the owner rule of 2026-09-18 puts everything
-  uncommitted and xezar-related under `.local/xezar/`, and the loader reads the newest folder under
-  `.local/xezar/campaigns/<release>/`. The two paths are a recorded reconciliation, not a silent
-  override.
+- **The older campaign path is reconciled.** [campaign-notes.md](campaign-notes.md) now describes a
+  `.local/xezar/campaigns/<date-slug>/` folder, matching the owner rule of 2026-09-18 that puts
+  everything uncommitted and xezar-related under `.local/xezar/`, and the loader reads the newest
+  folder under `.local/xezar/campaigns/<release>/`. The layout and the loader agree, so no silent
+  override is left to reconcile.
 
 ## What this dogfooding proved
 
