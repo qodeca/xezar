@@ -255,7 +255,7 @@ Vendor pages fetched 2026-09-16; the dogfooding findings
 - Claude: https://platform.claude.com/docs/en/models/overview · https://code.claude.com/docs/en/model-config · https://support.claude.com/en/articles/14552983-models-usage-and-limits-in-claude-code · https://support.claude.com/en/articles/15424964-claude-fable-models-on-your-plan · https://www.anthropic.com/claude-fable-and-mythos-5-1 · https://code.claude.com/docs/en/errors
 - Codex: https://learn.chatgpt.com/docs/models · https://developers.openai.com/api/docs/models/gpt-6-astra · …/gpt-5.6-sol · …/gpt-5.6-terra · …/gpt-5.6-luna · https://developers.openai.com/api/docs/guides/latest-model
 - Local: https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash · https://recipes.vllm.ai/deepseek-ai/DeepSeek-V4-Flash-Vision-Exp · https://github.com/vllm-project/vllm/issues/43648 · https://huggingface.co/Qwen/Qwen3.8-Flash-Next · https://huggingface.co/pipenetwork/Qwen3.8-Flash-Next-MLX-mixed-4_8bit · https://github.com/sgl-project/sglang/issues/36537 · https://pi.dev/docs/latest/models
-- Leader log: run store `.local/xezar/runs.json` + campaign note `.local/xezar-campaigns/2026-09-15-release-0-15-0.md`; cited per run in § 13.
+- Leader log: run store `.local/xezar/runs.json` + campaign notes under `.local/xezar/campaigns/`; cited per run in § 13.
 - Unconfirmed: exact Claude quota multipliers per model; whether `[1m]` variants are credit-gated on a subscription; `gpt-5`, `gpt-5-mini`, `gpt-5-nano`, `gpt-5-codex`, `gpt-5.1` ids (not in the current Codex model list); coding-benchmark loss of the Qwen 4/8-bit quantisation.
 
 ## 13. Findings log

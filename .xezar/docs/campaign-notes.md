@@ -3,7 +3,7 @@
 SDLC.md § Campaign notes defines what a campaign note is and what it must record (Done, Open
 items, Owner decisions, Standing rules, Restart and re-attach) and the short single-file template
 for a small campaign. This page adds the default *layout* for a campaign that outgrows that one
-file: a folder under `.local/xezar-campaigns/<yyyy-mm-dd>-<slug>/`, still primary-checkout runtime
+file: a folder under `.local/xezar/campaigns/<yyyy-mm-dd>-<slug>/`, still primary-checkout runtime
 state, still covered by the root `/.local/` ignore rule, never committed.
 
 ## Why split

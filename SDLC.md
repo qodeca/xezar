@@ -18,7 +18,7 @@ Work enters through two paths: a free-form task brief handed to an agent, or a f
 
 ## Campaign notes
 
-A campaign is a set of related issues and PRs the project leader drives over several sessions. Keep one Markdown note per campaign in the **primary checkout** at `.local/xezar-campaigns/<yyyy-mm-dd>-<slug>.md`, so reclaiming a task worktree cannot remove it. The root `.gitignore` rule `/.local/` already ignores this runtime state; no new ignore line is needed. Xezar must still start and work without these notes – they are written during coordination, never required configuration.
+A campaign is a set of related issues and PRs the project leader drives over several sessions. Keep one Markdown note per campaign in the **primary checkout** at `.local/xezar/campaigns/<yyyy-mm-dd>-<slug>.md`, so reclaiming a task worktree cannot remove it. The root `.gitignore` rule `/.local/` already ignores this runtime state; no new ignore line is needed. Xezar must still start and work without these notes – they are written during coordination, never required configuration.
 
 Claude Code memory or Codex memory may hold a pointer to the campaign file, never its only copy: leader-tool memory is per machine and per tool. The in-session task list is the short view; the file is the full view that survives a new session or context-window compaction.
 
