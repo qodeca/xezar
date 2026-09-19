@@ -34,7 +34,7 @@ Update the note at every milestone – a merge, a review, QA or design verdict, 
 
 Reading the note is the first act of a new session and the first act after compaction, **before dispatching any task**. In its first message, the leader states which campaign file it read. Reconcile recorded heads, verdicts and running tasks with current state before acting; mark missing information as unknown rather than reconstructing it from memory.
 
-The note is a coordination aid, not evidence. Task evidence stays in the primary checkout's `.local/xezar-tasks/<runId>/`; decisions that change the product go to [the decision log](docs/design-system/decisions.md) or the issue. A checkpoint still names the run id under the [parallel-work guidance](.xezar/docs/parallel-tasks.md). Link to those records from the note; maintained documentation must not depend on a private campaign file.
+The note is a coordination aid, not evidence. Task evidence stays in the primary checkout's `.local/xezar/tasks/<runId>/`; decisions that change the product go to [the decision log](docs/design-system/decisions.md) or the issue. A checkpoint still names the run id under the [parallel-work guidance](.xezar/docs/parallel-tasks.md). Link to those records from the note; maintained documentation must not depend on a private campaign file.
 
 Use this short template, filling in the campaign's actual references and instructions:
 
@@ -81,7 +81,7 @@ Updated: <date and time>
 
 The table above says what happens to a **ticket**. This section says what happens inside one **task** — one agent run, or one person's sitting — and what that task writes down. The two describe the same work: a lifecycle stage is delivered by one or more of the phases below.
 
-This section adds no label, changes no gate exception, and adds no command to the validation gate. It names the order the existing pieces run in, and the facts each phase leaves behind so the next one does not have to guess. Where those facts are written — the primary checkout's `.local/xezar-tasks/<runId>/`, never a worktree that can be reclaimed — and the field names are in [.xezar/docs/phase-record.md](.xezar/docs/phase-record.md).
+This section adds no label, changes no gate exception, and adds no command to the validation gate. It names the order the existing pieces run in, and the facts each phase leaves behind so the next one does not have to guess. Where those facts are written — the primary checkout's `.local/xezar/tasks/<runId>/`, never a worktree that can be reclaimed — and the field names are in [.xezar/docs/phase-record.md](.xezar/docs/phase-record.md).
 
 | Phase | What it settles | What it records |
 |---|---|---|

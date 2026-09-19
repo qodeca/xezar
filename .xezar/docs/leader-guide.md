@@ -260,7 +260,7 @@ step dispatched by name (leader memory 2026-09-15).
 - Include the primary-checkout sentence verbatim: "the kit's checks read the primary checkout
   /Users/marcinobel/Projects/xezar by design – allowed; never run a git command of your own against
   that primary checkout and never write a TRACKED file there; the evidence dir
-  `.local/xezar-tasks/<your run id>/` there IS allowed." For pi or `quick-task`, add "write nothing
+  `.local/xezar/tasks/<your run id>/` there IS allowed." For pi or `quick-task`, add "write nothing
   outside your worktree, no dogfooding entry" (leader memory 2026-09-17).
 - pi is one-shot: one deliverable, "post once and stop", "run every command in your working folder,
   never cd elsewhere". Cancel a pi run after 15 silent minutes (`.xezar/docs/model-routing.md` § 6).
@@ -305,7 +305,7 @@ step dispatched by name (leader memory 2026-09-15).
   lines; move stale blocks to an `archive-*.md` file rather than trimming history silently
   (`.xezar/docs/campaign-notes.md`).
 - The note is a coordination aid, not evidence. Task evidence stays in the primary checkout's
-  `.local/xezar-tasks/<runId>/` (SDLC.md § Campaign notes).
+  `.local/xezar/tasks/<runId>/` (SDLC.md § Campaign notes).
 - Honesty rule: quote the command output, and never claim success from inference. A finished tool call
   is not approval of the result, and requesting a merge is not proof that it happened (shared
   contract; SDLC.md § Validation gate).

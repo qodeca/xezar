@@ -48,7 +48,7 @@ abs_real_dir() {
   ( cd "$1" 2>/dev/null && pwd -P ) || return 1
 }
 
-# A task id becomes a directory name under .local/xezar-tasks/. Anything that is not a
+# A task id becomes a directory name under the task evidence root. Anything that is not a
 # single safe path segment is refused outright rather than sanitised, so a crafted id
 # can never escape the evidence root.
 valid_task_id() {
@@ -163,9 +163,35 @@ xezar_base_branch() {
 # The engine also hands each run its own scratch directory at `.local/xezar/tmp/<runId>`
 # and reaps it at run end (src/runs/agent-tmpdir.ts). That is engine-owned state, not an
 # evidence location: anything that must survive the run still belongs here.
+# TWO ROOTS, AND NOTHING EVER MOVES BETWEEN THEM. `.local/xezar-tasks` is the frozen historical
+# root; `.local/xezar/tasks` is where new evidence goes. A sealed manifest stores ABSOLUTE paths
+# and gate-results.mjs asserts the manifest sits at its canonical location, so bulk-moving old
+# evidence would invalidate every historical seal — which is why this is a resolve rather than a
+# rename. A run that already has a directory under the old root keeps writing there for its whole
+# life, which is exactly what the counter and seal rules need; everything else lands in the new
+# root, including a checkout that has neither. The readers (gate-results.mjs, verify-evidence.sh,
+# phase-record.sh) accept both roots for as long as this window lasts.
 task_evidence_dir() {
   [ -n "${TASK_ID:-}" ] || return 1
-  printf '%s/.local/xezar-tasks/%s' "$MAIN_ROOT" "$TASK_ID"
+  task_evidence_dir_of "$TASK_ID"
+}
+
+# The same resolution for ANOTHER run's evidence — a predecessor's counters, an audited run. Read
+# side only: nothing this returns for a foreign id may be written to.
+task_evidence_dir_of() {
+  local id="${1:-}" new old
+  [ -n "$id" ] || return 1
+  new="$MAIN_ROOT/.local/xezar/tasks/$id"
+  old="$MAIN_ROOT/.local/xezar-tasks/$id"
+  if [ ! -d "$new" ] && [ -d "$old" ]; then printf '%s' "$old"; return; fi
+  printf '%s' "$new"
+}
+
+# Both evidence roots, new first. A reader that scans one of them and reports "nothing found"
+# while runs exist under the other is the silent half-state this window has to prevent, so every
+# scan walks this list rather than a literal.
+task_evidence_roots() {
+  printf '%s/.local/xezar/tasks\n%s/.local/xezar-tasks\n' "$MAIN_ROOT" "$MAIN_ROOT"
 }
 
 task_manifest_path() {
@@ -345,7 +371,7 @@ fixture_scratch_dir() {
 #
 # OWNERSHIP BOUNDARY. This deletes only what this suite created under
 # `<primary>/.local/xezar/tests/`. It is not a general remover, it never touches a repository, a
-# worktree registration or anything under `.local/xezar-tasks/`, and it deliberately does NOT reuse
+# worktree registration or anything under a task evidence root, and it deliberately does NOT reuse
 # `assert_isolated_fixture_root`: a scratch directory being removed need not be a git repository at
 # all, so a repository assertion would be the wrong proof for this caller.
 fixture_scratch_remove() {

@@ -50,14 +50,25 @@ for arg in "$@"; do
     --json) JSON="--json" ;;
     --require-current) REQUIRE_CURRENT="--require-current" ;;
     --list)
-      root="$MAIN_ROOT/.local/xezar-tasks"
-      [ -d "$root" ] || { printf 'no task evidence under %s\n' "$root"; exit 0; }
-      for dir in "$root"/*/; do
-        [ -f "$dir/manifest.json" ] || continue
-        id="$(basename "$dir")"
-        sealed="$(node "$SCRIPT_DIR/lib/manifest.mjs" "$dir/manifest.json" --get gateEvidence.headSha 2>/dev/null)"
-        printf '%-40s %s\n' "$id" "${sealed:-<no sealed evidence>}"
-      done
+      # BOTH evidence roots, each run labelled with the one it came from. Scanning a single root
+      # is the silent half-state of the rename: an audit that finds nothing reads exactly like an
+      # audit that found no problem, so "no task evidence" is only ever said about both at once.
+      listed=0
+      while IFS= read -r root; do
+        [ -d "$root" ] || continue
+        for dir in "$root"/*/; do
+          [ -f "$dir/manifest.json" ] || continue
+          listed=1
+          id="$(basename "$dir")"
+          sealed="$(node "$SCRIPT_DIR/lib/manifest.mjs" "$dir/manifest.json" --get gateEvidence.headSha 2>/dev/null)"
+          printf '%-40s %-20s %s\n' "$id" "${root#"$MAIN_ROOT"/}" "${sealed:-<no sealed evidence>}"
+        done
+      done <<EOF
+$(task_evidence_roots)
+EOF
+      if [ "$listed" -eq 0 ]; then
+        printf 'no task evidence under %s\n' "$(task_evidence_roots | tr '\n' ' ')"
+      fi
       exit 0
       ;;
     --*)
@@ -82,9 +93,11 @@ if ! valid_task_id "$RUN_ID"; then
   exit 2
 fi
 
-MANIFEST="$MAIN_ROOT/.local/xezar-tasks/$RUN_ID/manifest.json"
+# The run's evidence may sit under either root: old runs stay frozen where they were written and
+# new ones are created under `.local/xezar/tasks`. Nothing is moved, so the reader looks in both.
+MANIFEST="$(task_evidence_dir_of "$RUN_ID")/manifest.json"
 if [ ! -f "$MANIFEST" ]; then
-  printf 'verify-evidence: no manifest for run %s at %s\n' "$RUN_ID" "$MANIFEST" >&2
+  printf 'verify-evidence: no manifest for run %s under %s\n' "$RUN_ID" "$(task_evidence_roots | tr '\n' ' ')" >&2
   exit 3
 fi
 

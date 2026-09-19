@@ -9,7 +9,7 @@ The record is operating guidance for this repository's own kit. It ships in noth
 One directory per run, in the **primary checkout**:
 
 ```
-.local/xezar-tasks/<runId>/
+.local/xezar/tasks/<runId>/
 ```
 
 Resolve it with the shared helper rather than by hand — `.xezar/checks/lib/common.sh`, `resolve_task_paths` then `task_evidence_dir`. A task worktree's own `.local` is reclaimable and the engine's tmp directory is not durable; neither is a record. `/.local/` is already ignored at the repository root, so no new ignore line is needed and nothing here is ever committed.

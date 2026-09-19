@@ -223,6 +223,6 @@ printf '\nSETUP OK\n'
 printf '  work in       %s\n' "$TASK_CWD"
 printf '  on branch     %s (Xezar owns it — do not rename or replace it)\n' "$BRANCH"
 printf '  forked from   %s\n' "${base_ref:-$BASE_BRANCH}"
-printf '  evidence to   %s/.local/xezar-tasks/%s/\n' "$MAIN_ROOT" "${TASK_ID:-<no task id>}"
+printf '  evidence to   %s/\n' "$(task_evidence_dir 2>/dev/null || printf '%s/.local/xezar/tasks/<no task id>' "$MAIN_ROOT")"
 printf '  NOT to        %s/.local/ (destroyed with the worktree)\n' "$TASK_CWD"
 exit 0

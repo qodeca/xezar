@@ -101,7 +101,9 @@ describe('maintained Xezar project kit versus local runtime', () => {
     for (const file of maintainedLayouts) expect(ignored(file), file).toBe(false);
   });
   it('ignores local state without hiding maintained directories', () => {
-    for (const file of [...localRuntime, ...engineOnly, '.local/qa/agent-home/token', '.local/test-tmp/fixture', '.local/xezar/runs.json']) expect(ignored(file), file).toBe(true);
+    // `.local/xezar/tasks/...` is the kit's evidence root. The blanket `*` in `.local/.gitignore`
+    // already covers it at any depth; naming it here makes that explicit rather than incidental.
+    for (const file of [...localRuntime, ...engineOnly, '.local/qa/agent-home/token', '.local/test-tmp/fixture', '.local/xezar/runs.json', '.local/xezar/tasks/x/manifest.json', '.local/xezar-tasks/x/manifest.json']) expect(ignored(file), file).toBe(true);
   });
   it('startup ignores every engine-written path without touching the maintained kit', () => {
     // Execute only the actual helper body; importing the CLI would boot a real process.

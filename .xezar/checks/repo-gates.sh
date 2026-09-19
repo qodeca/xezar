@@ -17,7 +17,7 @@
 # failure, never as a pass.
 #
 # EVIDENCE. Every run records a gate attempt under the PRIMARY checkout at
-# `.local/xezar-tasks/<runId>/gates/<headSha>/<attemptId>/`: one complete log per gate plus a
+# `.local/xezar/tasks/<runId>/gates/<headSha>/<attemptId>/`: one complete log per gate plus a
 # versioned result record carrying each command's status, exit code, timing and log digest.
 # The complete output goes to those logs; only a bounded excerpt reaches stdout, so a long
 # gate can no longer push the summary out of a truncated cockpit view. The `evidence` step

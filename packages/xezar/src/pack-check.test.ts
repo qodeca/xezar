@@ -156,7 +156,8 @@ describe('release content check', () => {
     ['source path in minified JS, escaped', 'package/web/dist/assets/index-abc.js', 'var a="see packages\\/xezar\\/src\\/index.ts";', ['own-source-path']],
     ['process doc in a declaration', 'package/dist/core/x.d.ts', 'export declare const a = "follow SDLC.md";', ['own-process-doc']],
     ['kit-copy-leak (renamed file, distinctive name)', 'package/scripts/helper.mjs', "run('xezar-implementation')", ['own-kit-name']],
-    ['kit evidence path', 'package/dist/a.js', 'const p = ".local/xezar-tasks/run";', ['own-local-path']],
+    ['kit evidence path, the frozen historical root', 'package/dist/a.js', 'const p = ".local/xezar-tasks/run";', ['own-local-path']],
+    ['kit evidence path, the current root', 'package/dist/a.js', 'const p = ".local/xezar/tasks/run";', ['own-local-path']],
     ['demo project in a mock', 'package/scripts/mock-claude.mjs', 'https://github.com/qodeca/demo/pull/1', ['demo-project']],
     ['own repository as a working location', 'package/dist/a.js', 'clone qodeca/xezar and run it', ['own-repository']],
   ])('%s is reported with file, line and fragment', (_name, path, text, rules) => {
@@ -174,6 +175,10 @@ describe('release content check', () => {
       'https://raw.githubusercontent.com/qodeca/xezar/main/docs/a.png',
       "{ repo: 'qodeca/xezar-skills' }",
       'Codex reads AGENTS.md; Claude Code reads CLAUDE.md',
+      // The engine's OWN state directory in the USER's repository. `own-local-path` names the
+      // kit's evidence root (`.local/xezar/tasks`) and must not widen to `.local/xezar/`, which
+      // the published CLI writes and documents.
+      'const dir = ".local/xezar/worktrees/abc"; const tmp = ".local/xezar/tmp/abc";',
     ].join('\n');
     const { leaks } = findContentLeaks(entriesOf([...clean(), { path: 'package/dist/b.js', text }]), RULES, []);
     expect(leaks).toEqual([]);

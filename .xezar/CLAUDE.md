@@ -13,7 +13,7 @@ This is the maintained project operating kit for developing Xezar with Xezar. Re
 - `kit-manifest.json`: a frozen 2026-09-09 provenance snapshot of the source baseline, not the current inventory. Listed files may have moved or disappeared, later kit files are absent, and historical hashes need not match current content. Copied into task worktrees and fingerprinted; nothing verifies its hashes. Preserve those historical hashes.
 - `.gitignore`: only real local/runtime paths. Maintained documents, workflow/skill definitions and helper scripts are versionable by default, including future ordinary files.
 
-Local-only state includes runs/indexes, worktrees, tmp/cache, UI state, todos, automations/receipts, launch key, credentials, evidence and snapshot markers. Never commit it or copy it into another checkout. Durable task evidence belongs in primary `.local/xezar-tasks/<runId>/`, not reclaimable worktree-local scratch. Do not delete this entire directory to clean runtime; it also contains the maintained kit.
+Local-only state includes runs/indexes, worktrees, tmp/cache, UI state, todos, automations/receipts, launch key, credentials, evidence and snapshot markers. Never commit it or copy it into another checkout. Durable task evidence belongs in primary `.local/xezar/tasks/<runId>/`, not reclaimable worktree-local scratch. Do not delete this entire directory to clean runtime; it also contains the maintained kit.
 
 ## Discovery and fresh worktrees
 

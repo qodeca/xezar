@@ -105,7 +105,7 @@ test('optional config discovery and malformed supplied config have distinct outc
  const root=fixture();const wt=worktree(root);assert.equal(bootstrap(root,wt).status,0);fs.unlinkSync(path.join(wt,'.xezar/config.json'));const run=()=>spawnSync('bash',['-c','. .xezar/checks/lib/common.sh; resolve_task_paths; printf "%s" "$BASE_BRANCH"'],{cwd:wt,encoding:'utf8'});assert.equal(run().stdout,'main');fs.writeFileSync(path.join(wt,'.xezar/config.json'),'{broken');const fail=spawnSync('bash',['-c','. .xezar/checks/lib/common.sh; resolve_task_paths'],{cwd:wt,encoding:'utf8'});assert.notEqual(fail.status,0);
 });
 test('runtime remains ignored including unknown future state; all maintained roles/docs exist',()=>{
- for(const file of ['.local/xezar/launch-key','.local/xezar/runs/a.json','.local/xezar/worktrees/a/file','.local/xezar-tasks/a/result.json'])assert.equal(spawnSync('git',['check-ignore','-q','--',file],{cwd:repo}).status,0,file);
+ for(const file of ['.local/xezar/launch-key','.local/xezar/runs/a.json','.local/xezar/worktrees/a/file','.local/xezar/tasks/a/result.json','.local/xezar-tasks/a/result.json'])assert.equal(spawnSync('git',['check-ignore','-q','--',file],{cwd:repo}).status,0,file);
  assert.equal(fs.readdirSync(path.join(kit,'skills')).filter(x=>x.endsWith('.md')).length,20);
  for(const f of ['README.md','business-analysis.md','close-out.md','enhancement-ideas.md','parallel-tasks.md','recovery.md','ui-operations.md','worktrees.md','dogfooding.md'])assert.ok(fs.existsSync(path.join(kit,'docs',f)));
 });

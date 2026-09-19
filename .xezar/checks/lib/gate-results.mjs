@@ -21,12 +21,12 @@
 //
 // LAYOUT, under the PRIMARY checkout (never the worktree's own `.local/`):
 //
-//   .local/xezar-tasks/<runId>/gates/<headSha>/<attemptId>/
+//   .local/xezar/tasks/<runId>/gates/<headSha>/<attemptId>/
 //     attempt.json   the in-progress record; its presence WITHOUT result.json means the
 //                    attempt was interrupted, and that is deliberately never cleaned up
 //     result.json    published atomically (temp file + rename) once the attempt completes
 //     logs/NN-<slug>.log   complete output of one gate, header line first
-//   .local/xezar-tasks/<runId>/gates/.sequences/<n>/claim.json
+//   .local/xezar/tasks/<runId>/gates/.sequences/<n>/claim.json
 //                    the reservation that OWNS sequence <n> for this run — see below
 //
 // Attempts are never overwritten: one directory per attempt, `sequence` strictly increasing
@@ -1133,7 +1133,14 @@ function cmdVerify(args) {
   }
   // And the independently resolved canonical location has to be where the manifest actually is,
   // so a manifest smuggled in from elsewhere cannot borrow a valid-looking run id.
-  if (runDir !== resolve(repo, ".local/xezar-tasks", runIdFromPath)) {
+  //
+  // There are TWO canonical roots while the `.local/xezar-tasks` → `.local/xezar/tasks` rename
+  // window lasts, and the fence accepts EITHER — never "anywhere". Old evidence is frozen where it
+  // lies (a seal stores absolute paths, so moving it would break every historical seal) and new
+  // evidence is written to the new root, so a seal has to verify at whichever of the two it was
+  // written under.
+  const canonicalRoots = [resolve(repo, ".local/xezar/tasks"), resolve(repo, ".local/xezar-tasks")];
+  if (!canonicalRoots.some((root) => runDir === resolve(root, runIdFromPath))) {
     report.reasons.push(`the manifest is not at this repository's canonical evidence path for run "${runIdFromPath}" (${runDir})`);
   }
   if (report.reasons.length > 0) emit(EXIT_REFUSED);
