@@ -14,6 +14,8 @@ Start with ui-operations.md, worktrees.md, recovery.md and dogfooding.md. Files 
 
 model-routing.md – which model and runner the leader dispatches for each task kind, with the evidence
 
+opencode-qualification-2026-09-19.md – the 2026-09-19 OpenCode qualification: the 11 read-only runs and the writing retrial, the two defects it found (#686 fixed by #688, #692 open) and the routing verdict
+
 account-limits.md – what usage cannot be read, how the leader probes an account for its limit, and how to recover a lane once it is hit
 
 campaign-notes.md – the default folder layout for a campaign note once SDLC.md's single-file template outgrows one comfortable load
