@@ -216,16 +216,23 @@ describe('guide 02 — tasks and runs', () => {
   }, 30_000)
 
   it('the Changes, Files and Commits tabs show the task’s real worktree state', async () => {
-    browser.clickRole('link', 'Changes')
+    // All four clicks below are `TabLink`s in the ONE run-header tab strip (`Session | Changes |
+    // Commits | Files`). The tab that just became active re-renders with `font-semibold` and a
+    // `border-foreground` underline, which re-measures the row in a single synchronous frame — so
+    // the NEXT tab's own click point can already be stale when `find … click` hit-tests it, and
+    // agent-browser reports the click point covered by a sibling `<a.-mb-px.flex>` (CI run
+    // 35451994733, 2026-09-19). `clickRoleWhenStable` re-reads each tab's box before clicking and
+    // retries a covered click; a bare `clickRole` has no such guard.
+    await browser.clickRoleWhenStable('link', 'Changes')
     await browser.waitForText('notes.md')
 
-    browser.clickRole('link', 'Files')
+    await browser.clickRoleWhenStable('link', 'Files')
     await browser.waitForText('notes.md')
 
-    browser.clickRole('link', 'Commits')
+    await browser.clickRoleWhenStable('link', 'Commits')
     await browser.waitForText('xezar autosave')
 
-    browser.clickRole('link', 'Session')
+    await browser.clickRoleWhenStable('link', 'Session')
     await browser.waitForRole('region', 'Review the changes')
   }, 30_000)
 

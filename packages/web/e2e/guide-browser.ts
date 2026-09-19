@@ -40,9 +40,43 @@ function boxesEqual(a: Box, b: Box): boolean {
  * contention). The check below matches on that phrase rather than a specific JSON key for exactly
  * that reason: nothing here asserts a field name that has not actually been observed on a live
  * failure.
+ *
+ * The failure's real transport was finally observed on 2026-09-19 (CI run 35451994733 on main,
+ * 35451195569 on PR #702 and #706's neighbour, all red on guide-02's `--name Files` click and all
+ * green on re-run): agent-browser writes that same `{"success":false,…,"error":"… covered by
+ * …"}` JSON to STDOUT and exits 1, so it reaches this helper through `run()`'s `execFileSync`
+ * catch rather than its zero-exit `success:false` branch — and Node's own error message names only
+ * the command. `cliFailureDetail` below now carries the CLI's payload into that message, which is
+ * what makes this check read the phrase on BOTH failure shapes. The check still matches the
+ * human-readable phrase rather than a JSON field name.
  */
 function isCoveredClickError(cause: unknown): boolean {
   return cause instanceof Error && /covered by/i.test(cause.message)
+}
+
+/**
+ * The CLI's own error text from a failure that exited NON-ZERO, for `run()`'s catch branch.
+ *
+ * agent-browser reports its failures as `{"success":false,"data":null,"error":"…"}` on STDOUT,
+ * and it exits 1 while doing so — so that payload arrives as an `execFileSync` throw whose
+ * `.message` is only "Command failed: <cmd>" and whose stdout sits on the error object. Throwing
+ * the bare wrapper therefore LOST the CLI's own error text, which is why `isCoveredClickError`
+ * matched nothing on the one failure it exists for and `clickRoleWhenStable` rethrew a covered
+ * click instead of retrying it (guide-02's Files tab, CI run 35451994733).
+ *
+ * Returns the same `→ "<error>"` suffix the zero-exit `success:false` branch below already builds,
+ * so both failure shapes read identically to a caller that matches on the message.
+ */
+function cliFailureDetail(cause: unknown): string {
+  const stdout = (cause as { stdout?: unknown } | null | undefined)?.stdout
+  if (typeof stdout !== 'string' || stdout.trim() === '') return ''
+  try {
+    const parsed = JSON.parse(stdout) as { error?: unknown }
+    if (parsed?.error !== undefined) return ` → ${JSON.stringify(parsed.error)}`
+  } catch {
+    /* not the CLI's JSON — fall through to its raw text */
+  }
+  return ` → ${stdout.trim()}`
 }
 
 export class GuideBrowser {
@@ -59,6 +93,16 @@ export class GuideBrowser {
     return new GuideBrowser(env.browser.command, session)
   }
 
+  /**
+   * The same object `open` builds, around an explicit binary. `open` resolves its binary from the
+   * shared test-env descriptor that only `npm run test:e2e` writes; the unit test that pins
+   * `clickRoleWhenStable`'s retry against the CLI's REAL failure shape drives a fake CLI through
+   * this instead.
+   */
+  static forBinary(bin: string, session: string): GuideBrowser {
+    return new GuideBrowser(bin, session)
+  }
+
   private run(args: string[]): Record<string, unknown> {
     let stdout: string
     try {
@@ -68,7 +112,7 @@ export class GuideBrowser {
         maxBuffer: 32 * 1024 * 1024,
       })
     } catch (cause) {
-      throw new Error(`xezar e2e: agent-browser ${args.join(' ')} failed`, { cause })
+      throw new Error(`xezar e2e: agent-browser ${args.join(' ')} failed${cliFailureDetail(cause)}`, { cause })
     }
     const parsed = JSON.parse(stdout) as { success: boolean; data?: unknown; error?: unknown }
     if (!parsed.success) {
