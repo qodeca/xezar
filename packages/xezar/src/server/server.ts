@@ -6414,6 +6414,16 @@ export function startServer(deps: ServerDeps, port: number): ServerType {
       const project = projects.find((candidate) => candidate.id === id && candidate.status !== 'missing');
       // Gone from the registry after all: the removal above already is the whole answer.
       if (!project) return rescheduleAutomations();
+      // …and gone SINCE that row was read (#715). The row above is a snapshot from before this
+      // await resolved, so a `DELETE /projects/:id` landing inside the window leaves it naming a
+      // project that no longer exists — and re-adding from it put the removed project back in the
+      // skills-update coordinator (and in `automationProjects`) until restart. The registry row
+      // cannot answer this; live registration state can, and it is the same question the listener
+      // itself is keyed on: a SUPERSEDED dispose means by definition that a newer context is
+      // built or in flight, so no `peek()` and no `pending()` is "this id is not live any more".
+      // The ordinary paths are untouched — the same-root re-add and the drift rebuild both have
+      // their replacement context in hand by the time this runs.
+      if (!sharedContexts.peek(id) && !sharedContexts.pending(id)) return rescheduleAutomations();
       coordinator.add(project.id, project.root);
       const parsed = parseRemote((await getRepoInfo(project.root))?.remote ?? '');
       if (parsed?.host === 'github.com') automationProjects.set(project.id, { root: project.root, owner: parsed.owner, repo: parsed.repo });
