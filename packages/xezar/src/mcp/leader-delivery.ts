@@ -16,7 +16,7 @@ import type {
 import { projectDataDir } from '../project-data-paths.ts';
 import type { ProjectOwnership } from '../workspace/project-owner.ts';
 import { ClaudeCodeChannelAdapter } from './adapters/claude-code.ts';
-import { OpenCodeReactionAdapter } from './adapters/opencode.ts';
+import { OpenCodeDeliveryBlocked, OpenCodeReactionAdapter } from './adapters/opencode.ts';
 import { CodexAttachError, codexControlHome, connectCodexLeader, type CodexLeaderAnnouncement, type ConnectedCodexLeader } from './adapters/codex-link.ts';
 import { codexBlocker, type CodexReactionAdapter, type CodexReactionTarget, codexReactionTarget, type CodexUnreachableReason } from './adapters/codex.ts';
 import { connectPiLeaderLink, type PiLeaderDescriptor, type PiLeaderLink, readPiLeaderDescriptor } from './adapters/pi-link.ts';
@@ -129,6 +129,62 @@ export const LEADER_ROLE_INSTRUCTION = [
   'When the project uses GitHub and `gh` is available, get GitHub facts (labels, review verdicts, merge state) from `gh`, which the MCP does not carry.',
   'You do not edit files yourself; tasks do the work, each in an isolated working copy (a Git worktree) or in the project folder, as the task was started.',
 ].join('\n');
+
+/**
+ * The remedy for every OpenCode blocker. OpenCode's adapter is the one that names no `fix` of its
+ * own, so this sentence answers both a refused attach (#651) and a blocker raised later on the
+ * delivery path — one wording, so the two cannot drift apart.
+ */
+const OPENCODE_BLOCKER_FIX = 'Check that `opencode serve` is running in this project and the session id is right, then attach it again.';
+
+/**
+ * How long the attach-time check may take before the address counts as unreachable (#651). A bound
+ * is load-bearing: `POST /api/v1/mcp/leader` awaits this, so an address that accepts a connection and
+ * then never answers — a paused `opencode serve` is exactly that — would otherwise hang the person's
+ * Attach leader click with no answer at all.
+ */
+const OPENCODE_ATTACH_CHECK_MS = 10_000;
+
+/**
+ * The attach-time wording for an unreachable server (#651 review, Minor 2). The adapter's own
+ * message is the DELIVERY-path sentence — "xezar retries on its own" — which is true of a delivery
+ * attempt the heartbeat repeats and false here, where nothing is attached yet. Forwarding it and
+ * then appending "attach it again" contradicted itself on the cockpit surface, so this case answers
+ * with what happened and what to do about it.
+ */
+const OPENCODE_ATTACH_UNREACHABLE: McpLeaderBlocker = {
+  code: 'server-unreachable',
+  message: 'xezar could not reach the OpenCode server, so nothing was attached.',
+  fix: 'Start `opencode serve` in this project, then attach the session again.',
+};
+
+/**
+ * The attach-time targeting check (#651): reuses the adapter's OWN `checkTarget`, which is the same
+ * `#checkSession` the delivery path runs, so attach and delivery can never disagree about whether a
+ * session is usable. `undefined` means the session exists and is this project's.
+ *
+ * Every outcome is a recoverable blocker the person reads, never a throw: an unreachable or silent
+ * server answers `server-unreachable` rather than an AbortError, because failing closed is the point
+ * — a target xezar could not check is not a target it attaches.
+ */
+async function checkOpenCodeAttach(adapter: OpenCodeReactionAdapter): Promise<McpLeaderBlocker | undefined> {
+  try {
+    await adapter.checkTarget(AbortSignal.timeout(OPENCODE_ATTACH_CHECK_MS));
+    return undefined;
+  } catch (err) {
+    // `session-not-found` and `wrong-project` are already attach-shaped and are forwarded unchanged;
+    // the unreachable one is not, because the adapter words it for the delivery path.
+    if (err instanceof OpenCodeDeliveryBlocked) {
+      if (err.blocker.code === 'server-unreachable') return OPENCODE_ATTACH_UNREACHABLE;
+      return { code: err.blocker.code, message: err.blocker.message, fix: OPENCODE_BLOCKER_FIX };
+    }
+    return {
+      code: 'server-unreachable',
+      message: `xezar could not check that OpenCode session before attaching it: the server did not answer (${err instanceof Error ? err.message : String(err)}). Nothing was attached.`,
+      fix: OPENCODE_BLOCKER_FIX,
+    };
+  }
+}
 
 /**
  * Nothing attached. The first thing a person reads before attaching, so it says which clients only
@@ -813,19 +869,33 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
       this.#liveController()?.wake();
       return { ok: true, status: this.status() };
     }
+    // #651: the session is checked HERE, before anything is recorded. It used to be checked only on
+    // the DELIVERY path, and `#blocker()` answers `no-owner-session` before it reads the adapter, so
+    // a session belonging to another project — or one that does not exist at all — was accepted as
+    // "attached" with no error and its refusal surfaced only once an MCP session owned the project.
+    // The guide has always promised the check happens now (`docs/guide/13-mcp-leader.md`).
+    // FAIL CLOSED: a server that cannot be reached is refused too, because attaching to something
+    // xezar cannot check is the bug, not a lenience. Like pi's and Claude Code's, a refused attach
+    // changes nothing — the previous leader, if any, is still attached and still working.
+    const adapter = new OpenCodeReactionAdapter({
+      target: { baseUrl: input.baseUrl, sessionId: input.sessionId },
+      projectRoot: this.#opts.projectRoot,
+      roleInstruction: LEADER_ROLE_INSTRUCTION,
+      onReaction: (seq) => this.#recordReaction(seq),
+      ...this.#ownOperation(),
+    });
+    const refused = await checkOpenCodeAttach(adapter);
+    if (refused) {
+      adapter.close();
+      return { ok: false, error: `${refused.message} ${refused.fix}`, blocker: refused };
+    }
     // Re-attaching replaces the previous target; xezar owns no process, so nothing else changes.
     this.#detach();
     this.#refusal = undefined;
     // A new leader with no history: whatever happened before it was attached was not about it.
     this.#leader = {
       client: 'opencode',
-      adapter: new OpenCodeReactionAdapter({
-        target: { baseUrl: input.baseUrl, sessionId: input.sessionId },
-        projectRoot: this.#opts.projectRoot,
-        roleInstruction: LEADER_ROLE_INSTRUCTION,
-        onReaction: (seq) => this.#recordReaction(seq),
-        ...this.#ownOperation(),
-      }),
+      adapter,
       failingSince: null,
       settledThrough: 0,
     };
@@ -1028,7 +1098,7 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
       // The adapter's own `fix` when it has one (pi's does; `PiReactionAdapter.#block` always sets
       // one, and `piReactionTarget`'s own blocker carries `PI_EXTENSION_FIX`), otherwise the
       // OpenCode wording, which is the only adapter whose blockers name no remedy of their own.
-      const fix = blocker.fix ?? 'Check that `opencode serve` is running in this project and the session id is right, then attach it again.';
+      const fix = blocker.fix ?? OPENCODE_BLOCKER_FIX;
       return { code: blocker.code, message: blocker.message, fix };
     }
     // From FACTS observed against THIS leader, never from the controller's state machine (rounds four

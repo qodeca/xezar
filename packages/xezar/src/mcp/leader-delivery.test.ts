@@ -8,6 +8,7 @@ import { CodexAttachError } from './adapters/codex-link.ts';
 import { EchoGuard } from './echo-guard.ts';
 import { EventJournal } from './event-journal.ts';
 import { LeaderDelivery, leaderClientOf } from './leader-delivery.ts';
+import { type FakeOpenCodeSession, fakeOpenCodeSession } from './leader-delivery.testkit.ts';
 
 /**
  * #309 — the two answers `LeaderDelivery` gives about things it did not choose: a session that turns
@@ -30,11 +31,21 @@ const tmp = (): string => {
   return dir;
 };
 
-afterEach(() => {
+const servers: FakeOpenCodeSession[] = [];
+
+afterEach(async () => {
   for (const delivery of deliveries.splice(0)) delivery.close();
+  for (const server of servers.splice(0)) await server.stop();
   for (const journal of journals.splice(0)) journal.close();
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
+
+/** The shared fake `opencode serve` (#651), kept so `afterEach` closes it whatever the case did. */
+const fakeOpenCode = async (opts: { directory: string; sessionId?: string }): Promise<FakeOpenCodeSession> => {
+  const fake = await fakeOpenCodeSession(opts);
+  servers.push(fake);
+  return fake;
+};
 
 /** A journal of its own, and the owner slot answering as the case needs. */
 function delivery(owns: boolean, warnings: string[] = [], guard?: Pick<EchoGuard, 'isOwn'>) {
@@ -317,9 +328,10 @@ describe('attaching pi with no leader extension running (#330 WP2)', () => {
   });
 
   it('does not detach an OpenCode leader that is already working', async () => {
-    const { delivery: made } = delivery(true);
+    const { delivery: made, dataDir } = delivery(true);
     made.sessionOpened('session-1');
-    const attached = await made.act({ action: 'attach', client: 'opencode', baseUrl: 'http://127.0.0.1:1', sessionId: 'ses_closed0000000000000001' });
+    const oc = await fakeOpenCode({ directory: dataDir });
+    const attached = await made.act({ action: 'attach', client: 'opencode', baseUrl: oc.baseUrl, sessionId: oc.sessionId });
     expect(attached.ok).toBe(true);
 
     const refused = await made.act({ action: 'attach', client: 'pi' });
@@ -636,13 +648,99 @@ describe('attaching Claude Code: the channel push travels down the owner session
   });
 });
 
+/**
+ * #651 — the OpenCode session is checked AT ATTACH, against the address the person gave.
+ *
+ * The defect: `checkSession()` ran only on the DELIVERY path, and `#blocker()` answers
+ * `no-owner-session` before it reads the adapter at all, so a session belonging to another project —
+ * or one that does not exist — was accepted as "attached" with no error, and the refusal appeared
+ * only once an MCP session owned the project. Observed on 0.16.0 with two cockpits side by side;
+ * `docs/guide/13-mcp-leader.md` had always promised the check happens now.
+ *
+ * Each refusal below fails against the pre-fix module (the red proof is in the PR body). The last
+ * case is the GUARD: it passes both ways, and pins the default path — a session that really is this
+ * project's still attaches, with no blocker.
+ */
+describe('attaching OpenCode: the session is checked before the attachment is recorded (#651)', () => {
+  it('refuses a session id OpenCode does not know, with session-not-found and nothing attached', async () => {
+    const { delivery: made, dataDir } = delivery(true);
+    made.sessionOpened('session-1');
+    const oc = await fakeOpenCode({ directory: dataDir });
+    const attached = await made.act({ action: 'attach', client: 'opencode', baseUrl: oc.baseUrl, sessionId: 'ses_does_not_exist_at_all' });
+    // `act` answers the route, which carries strings, not the blocker object (#450). The CODE for
+    // this same refusal is pinned on the checker itself, in `adapters/opencode.test.ts`.
+    expect(attached.ok).toBe(false);
+    expect(attached.ok === false && attached.error).toContain('OpenCode has no session ses_does_not_exist_at_all');
+    expect(attached.ok === false && attached.error).toContain('opencode serve');
+    // Nothing was recorded, so the status still says there is no leader — never "attached" for a
+    // session that cannot receive anything.
+    const status = made.status();
+    expect(status.available && status.leader).toBeNull();
+    expect(status.available && status.blocker).toMatchObject({ code: 'no-leader-session' });
+  });
+
+  it('refuses a session whose directory is another project, with wrong-project naming that directory', async () => {
+    const { delivery: made } = delivery(true);
+    made.sessionOpened('session-1');
+    const elsewhere = join(tmp(), 'another-project');
+    const oc = await fakeOpenCode({ directory: elsewhere });
+    const attached = await made.act({ action: 'attach', client: 'opencode', baseUrl: oc.baseUrl, sessionId: oc.sessionId });
+    expect(attached.ok).toBe(false);
+    expect(attached.ok === false && attached.error).toContain(elsewhere);
+    expect(attached.ok === false && attached.error).toContain('not to this project');
+    expect(made.status()).toMatchObject({ leader: null });
+  });
+
+  it('refuses an address that does not answer — attaching to what it cannot check is the bug', async () => {
+    const { delivery: made } = delivery(true);
+    made.sessionOpened('session-1');
+    // Port 1 is not open, so the very first request fails outright.
+    const attached = await made.act({ action: 'attach', client: 'opencode', baseUrl: 'http://127.0.0.1:1', sessionId: 'ses_closed0000000000000001' });
+    expect(attached.ok).toBe(false);
+    // The ATTACH-time wording, never the delivery path's (#651 review, Minor 2). The delivery
+    // sentence promises "xezar retries on its own", which is false before anything is attached: the
+    // person would wait for a retry that never comes.
+    expect(attached.ok === false && attached.error).toContain('xezar could not reach the OpenCode server, so nothing was attached.');
+    expect(attached.ok === false && attached.error).toContain('Start `opencode serve` in this project, then attach the session again.');
+    expect(attached.ok === false && attached.error).not.toContain('retries on its own');
+    expect(made.status()).toMatchObject({ leader: null });
+  });
+
+  it('keeps a leader that is already working when a second attach is refused', async () => {
+    const { delivery: made, dataDir } = delivery(true);
+    made.sessionOpened('session-1');
+    const good = await fakeOpenCode({ directory: dataDir });
+    expect(await made.act({ action: 'attach', client: 'opencode', baseUrl: good.baseUrl, sessionId: good.sessionId })).toMatchObject({ ok: true });
+    const refused = await made.act({ action: 'attach', client: 'opencode', baseUrl: good.baseUrl, sessionId: 'ses_not_a_session' });
+    expect(refused.ok).toBe(false);
+    expect(made.status()).toMatchObject({ leader: { client: 'opencode', state: 'attached' } });
+  });
+
+  /**
+   * GUARD TEST: green before this change and after it, on purpose. It pins the DEFAULT path — the
+   * session a person really opened in this project — which the refusals above must not narrow.
+   */
+  it('attaches a session opened in this project, with no blocker', async () => {
+    const { delivery: made, dataDir } = delivery(true);
+    made.sessionOpened('session-1');
+    const oc = await fakeOpenCode({ directory: dataDir });
+    expect(await made.act({ action: 'attach', client: 'opencode', baseUrl: oc.baseUrl, sessionId: oc.sessionId })).toMatchObject({ ok: true });
+    const status = made.status();
+    expect(status.available && status.leader).toEqual({ client: 'opencode', state: 'attached' });
+    expect(status.available && status.blocker).toBeNull();
+  });
+});
+
 describe('an attached leader that does not answer at all', () => {
   it('is reported with the adapter’s own reason, not with a guess of xezar’s', async () => {
-    const { delivery: made, journal } = delivery(true);
+    const { delivery: made, journal, dataDir } = delivery(true);
     made.sessionOpened('session-1');
-    // Port 1 is not open, so the very first request fails outright — an error the adapter can name.
-    const attached = await made.act({ action: 'attach', client: 'opencode', baseUrl: 'http://127.0.0.1:1', sessionId: 'ses_closed0000000000000001' });
+    // Attached against a server that was answering (#651 refuses one that is not), which then goes
+    // away — the shape this case is about: a leader that stops answering AFTER it was attached.
+    const oc = await fakeOpenCode({ directory: dataDir });
+    const attached = await made.act({ action: 'attach', client: 'opencode', baseUrl: oc.baseUrl, sessionId: oc.sessionId });
     expect(attached.ok).toBe(true);
+    await oc.stop();
     row(journal);
     await until('the adapter’s reason to be reported', () => {
       const status = made.status();
@@ -1118,7 +1216,7 @@ describe('announcing status changes to the cockpit topic (round 5 on #403)', () 
       onStatusChange,
     });
     deliveries.push(made);
-    return { made, journal };
+    return { made, journal, dataDir };
   }
 
   it('announces an owner opening and closing, an announcement, a refusal, a stop and the service closing', async () => {
@@ -1143,12 +1241,15 @@ describe('announcing status changes to the cockpit topic (round 5 on #403)', () 
 
   it('announces each attempt against the attached leader (a delivery or a liveness check), so its cursors and blocker reach the topic', async () => {
     let changes = 0;
-    const { made, journal } = counted(() => {
+    const { made, journal, dataDir } = counted(() => {
       changes += 1;
     });
     made.sessionOpened('owner');
-    // An OpenCode address nothing listens on: the attempt fails, which is itself a status change.
-    await made.act({ action: 'attach', client: 'opencode', baseUrl: 'http://127.0.0.1:9', sessionId: 'ses_1' });
+    // Attached against a live server (#651 refuses an address that does not answer), which then goes
+    // away: the delivery attempt fails, which is itself a status change.
+    const oc = await fakeOpenCode({ directory: dataDir });
+    await made.act({ action: 'attach', client: 'opencode', baseUrl: oc.baseUrl, sessionId: oc.sessionId });
+    await oc.stop();
     const afterAttach = changes;
     row(journal);
     await until('the failed attempt to be announced', () => changes > afterAttach);
@@ -1232,7 +1333,7 @@ describe('the MCP leader door (#450)', () => {
       },
     });
     deliveries.push(made);
-    return { made, journal };
+    return { made, journal, dataDir };
   }
   const self = (made: LeaderDelivery, key: string) => {
     const status = mcpLeaderSelfStatusSchema.parse(made.sessionStatus(key));
@@ -1287,9 +1388,10 @@ describe('the MCP leader door (#450)', () => {
 
   it('T-7: a leader never replaces or detaches a leader of another client', async () => {
     // RED against: removing the other-client check — the model would replace the person's OpenCode leader.
-    const { made } = door();
+    const { made, dataDir } = door();
     made.sessionOpened('s1', claude());
-    expect((await made.act({ action: 'attach', client: 'opencode', baseUrl: 'http://127.0.0.1:1', sessionId: 'ses_closed0000000000000001' })).ok).toBe(true);
+    const oc = await fakeOpenCode({ directory: dataDir });
+    expect((await made.act({ action: 'attach', client: 'opencode', baseUrl: oc.baseUrl, sessionId: oc.sessionId })).ok).toBe(true);
     const attach = mcpLeaderDoorResultSchema.parse(await made.attachSession('s1'));
     expect(attach).toMatchObject({ ok: false, code: 'leader-attached-elsewhere', blocker: null });
     expect(attach.ok === false && attach.message).toBe('An OpenCode leader is already attached to this project, and xezar does not replace it from another session. Nothing was attached.');
@@ -1437,9 +1539,10 @@ describe('the MCP leader door (#450)', () => {
    * the moment their coding agent reconnects, with no attach/stop call and no blocker explaining why.
    */
   it('G4: an owner-session switch alone never detaches or replaces the attached leader, OpenCode’s person-attach included', async () => {
-    const { made } = door();
+    const { made, dataDir } = door();
     made.sessionOpened('s1', claude());
-    expect(await made.act({ action: 'attach', client: 'opencode', baseUrl: 'http://127.0.0.1:1', sessionId: 'ses_g4owner00000000000001' })).toMatchObject({ ok: true });
+    const oc = await fakeOpenCode({ directory: dataDir, sessionId: 'ses_g4owner00000000000001' });
+    expect(await made.act({ action: 'attach', client: 'opencode', baseUrl: oc.baseUrl, sessionId: oc.sessionId })).toMatchObject({ ok: true });
     expect(made.status()).toMatchObject({ leader: { client: 'opencode', state: 'attached' } });
 
     // The session that owns the project changes twice, with no attach or stop call in between.

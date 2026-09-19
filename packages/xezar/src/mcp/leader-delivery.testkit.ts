@@ -105,6 +105,51 @@ export async function deliveryHarness(client: DeliveryClient) {
   } catch (error) { await close(); throw error; }
 }
 
+/** One fake `opencode serve` session, for a test that needs an address a real adapter can check. */
+export interface FakeOpenCodeSession {
+  baseUrl: string;
+  sessionId: string;
+  stop: () => Promise<void>;
+}
+
+/**
+ * A fake `opencode serve`, small on purpose: it answers the ONE route the attach-time check reads
+ * (#651) — `GET /session/:id`, with the directory the session belongs to — plus the `/event` stream
+ * the delivery path opens afterwards. Everything else is a 404, exactly as OpenCode answers for a
+ * session it does not know. The full fake, with submissions, history and turns, is
+ * `adapters/opencode.test.ts`'s; this one exists so a `LeaderDelivery` case can attach a REAL
+ * OpenCode adapter to a real address instead of to a closed port.
+ */
+export async function fakeOpenCodeSession(opts: { directory: string; sessionId?: string }): Promise<FakeOpenCodeSession> {
+  const sessionId = opts.sessionId ?? 'ses_fixture0000000000000001';
+  const streams = new Set<ServerResponse>();
+  const server: Server = createServer((req, res) => {
+    const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+    if (url.pathname === '/event') {
+      res.writeHead(200, { 'content-type': 'text/event-stream' });
+      res.write(`data: ${JSON.stringify({ type: 'server.connected', properties: {} })}\n\n`);
+      streams.add(res);
+      res.on('close', () => streams.delete(res));
+      return;
+    }
+    const answer =
+      url.pathname === `/session/${sessionId}`
+        ? { status: 200, json: { id: sessionId, directory: opts.directory } }
+        : { status: 404, json: { name: 'NotFoundError' } };
+    res.writeHead(answer.status, { 'content-type': 'application/json' }).end(JSON.stringify(answer.json));
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  return {
+    baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+    sessionId,
+    stop: async () => {
+      for (const stream of streams) stream.destroy();
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    },
+  };
+}
+
 async function fakeOpenCode(directory: string, closers: Array<() => unknown>) {
   const submissions: Submission[] = [];
   const streams = new Set<ServerResponse>();

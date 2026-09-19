@@ -8,6 +8,7 @@ import { HEALTH_TOOL, SERVICE_DISCONNECTED_NOTICE, runBridge } from './bridge.ts
 import { EventJournal } from './event-journal.ts';
 import { LineFramer, encodeFrame } from './ipc.ts';
 import { LEADER_ROLE_INSTRUCTION, LeaderDelivery } from './leader-delivery.ts';
+import { type FakeOpenCodeSession, fakeOpenCodeSession } from './leader-delivery.testkit.ts';
 import { toolListing, type McpToolContext } from './tool.ts';
 import { tools } from './tools/index.ts';
 import { executionControlTool } from './tools/execution-control.ts';
@@ -194,6 +195,7 @@ describe('no leader-facing string names the HTTP attach route (#450, T-26)', () 
     const journal = EventJournal.open({ dataDir, projectId: 'leader', secretValues: [], warn: () => {} });
     const texts: string[] = [];
     const collect = (value: unknown): void => void texts.push(JSON.stringify(value));
+    let oc: FakeOpenCodeSession | undefined;
     const make = (over: Record<string, unknown> = {}) =>
       new LeaderDelivery({ projectId: 'leader', projectRoot: dataDir, journal, ownership: { projectId: 'leader', sessionToken: () => 'token', state: () => 'owned' }, guard: undefined, warn: () => {}, heartbeatMs: 60_000, ...over });
     try {
@@ -216,7 +218,10 @@ describe('no leader-facing string names the HTTP attach route (#450, T-26)', () 
       }
       collect(await d.attachSession('stale'));
       d.sessionOpened('owner', { push: async () => {}, clientName: 'claude-code', leaderPush: true });
-      await d.act({ action: 'attach', client: 'opencode', baseUrl: 'http://127.0.0.1:1', sessionId: 'ses_closed0000000000000001' });
+      // A live fake, because #651 refuses an OpenCode session that cannot be checked — and this
+      // sweep needs an attached OpenCode leader to reach `leader-attached-elsewhere` below.
+      oc = await fakeOpenCodeSession({ directory: dataDir });
+      await d.act({ action: 'attach', client: 'opencode', baseUrl: oc.baseUrl, sessionId: oc.sessionId });
       collect(await d.attachSession('owner'));
       collect(await d.stopSession('owner'));
       d.close();
@@ -229,6 +234,7 @@ describe('no leader-facing string names the HTTP attach route (#450, T-26)', () 
       collect(channelMeta(dispatch, []));
       collect(SERVICE_DISCONNECTED_NOTICE('leader'));
     } finally {
+      await oc?.stop();
       journal.close();
     }
     const all = texts.join('\n');
