@@ -1,6 +1,5 @@
 import { realpathSync } from 'node:fs';
 import path from 'node:path';
-import { projectDataDir } from '../project-data-paths.ts';
 
 /**
  * How the OpenCode runner answers a `permission.asked` ask (#578). Kept apart
@@ -16,7 +15,8 @@ import { projectDataDir } from '../project-data-paths.ts';
  *   Both sides are compared after resolving symlinks. Which directories those
  *   are is the caller's list; for this runner it is `spec.cwd`, the shared
  *   `spec.additionalDirectories`, the OS temp dir, and the run's own task
- *   evidence (`runEvidenceRoots`, #686).
+ *   evidence (`runEvidenceRoots`, #686/#652 — see `run-evidence-roots.ts`, the
+ *   one producer the pi worktree guard's allowed roots share).
  * - Every other permission (`doom_loop`, `webfetch`, `bash`, `read`, `edit`, a
  *   future one) → `reject`. Their patterns are URLs, commands or globs, not
  *   directories, so no directory rule can judge them.
@@ -47,43 +47,6 @@ export const MAX_REPEATED_PERMISSION_DENIAL = 3;
  *  `os.tmpdir()` is `/var/folders/…`, a link to `/private/var/folders/…`. */
 export function resolveAllowedRoots(dirs: readonly string[]): string[] {
   return [...new Set(dirs.map((dir) => realPrefix(path.resolve(dir))))];
-}
-
-/** Run ids are uuids; nothing else may become a path segment of an allowed
- *  root. `.` and `..` are refused explicitly, not as pedantry: they match the
- *  character class, and `join(root, '..')` would resolve the root to its own
- *  parent — the one input that turns a per-run grant into a grant on the tree.
- *  An absent id is refused for the same reason, so a caller that cannot name the
- *  run grants nothing instead of something wider. */
-function safeRunId(id: string | undefined): id is string {
-  return id !== undefined && id !== '.' && id !== '..' && /^[A-Za-z0-9._-]+$/.test(id);
-}
-
-/**
- * The task-evidence directories of ONE run, under the PRIMARY checkout (#686):
- * `<project>/.local/xezar/tasks/<runId>/`, where the kit writes evidence, and
- * the frozen historical root `<project>/.local/xezar-tasks/<runId>/`, which a
- * run that already has a directory there keeps writing to for its whole life
- * during the dual-read window of #665.
- *
- * The OpenCode runner is the one backend that needs this list: `external_directory`
- * asks are answered from an explicit set of roots, and the evidence directory is
- * the only path a run must reach that lies OUTSIDE its own `cwd` — every other
- * backend reaches it through the prompt's handoff contract. Both paths are built
- * from segments rather than one literal, because a packed release may not carry
- * the kit's evidence path as a shipped string (`own-local-path` in the archive
- * guard; `.local/xezar` alone is the engine's own state directory and is fine).
- *
- * Exactly one run id and only these two roots: a sibling run's evidence, the
- * rest of `.local/xezar/` (worktrees, tmp, cache, runs) and the project root
- * stay outside, so the policy's `once` is no wider than it was.
- */
-export function runEvidenceRoots(projectRoot: string, runId: string | undefined): string[] {
-  if (!safeRunId(runId)) return [];
-  return [
-    path.join(projectDataDir(projectRoot), 'tasks', runId),
-    path.join(projectRoot, '.local', 'xezar-tasks', runId),
-  ];
 }
 
 export function decideOpencodePermission(

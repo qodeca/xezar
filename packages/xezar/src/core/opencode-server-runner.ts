@@ -21,8 +21,8 @@ import {
   decideOpencodePermission,
   PermissionDenialGuard,
   resolveAllowedRoots,
-  runEvidenceRoots,
 } from './opencode-permissions.ts';
+import { runEvidenceRoots } from './run-evidence-roots.ts';
 import {
   createOpencodeUiState,
   mapOpencodeEvent,
@@ -292,15 +292,20 @@ class OpencodeSession implements AgentSession {
   ) {
     // ONE producer for this list, so no rule can be judged against a root the
     // session never got: `cwd`, the shared additional directories, the OS temp
-    // dir, and — last, and only for this backend — the run's OWN task-evidence
-    // directories in the primary checkout (#686). The evidence directory is
-    // where the kit writes the diagnosis, the red proofs and the phase record;
-    // it sits outside an isolated run's worktree, and Claude, Codex and pi reach
-    // it through the prompt's handoff contract while OpenCode needs the explicit
-    // grant. `primaryRoot` is the primary checkout `worktreeGuardRoots` already
-    // resolved for the task (absent for an in-place run, where `cwd` IS it), and
-    // `XEZ_TASK_ID` is this run's id — a spec without either grants no evidence
-    // root rather than a wider one.
+    // dir, and the run's OWN task-evidence directories in the primary checkout
+    // (#686). The evidence directory is where the kit writes the diagnosis, the
+    // red proofs and the phase record; it sits outside an isolated run's
+    // worktree, and Claude and Codex reach it through the prompt's handoff
+    // contract while pi and OpenCode each need an explicit grant — OpenCode
+    // this policy, pi the worktree guard's allowed roots, both fed by the one
+    // `runEvidenceRoots` (#652). The evidence roots arrive here twice once the
+    // caller fills `additionalDirectories` (`agentDirectories`);
+    // `resolveAllowedRoots` is a Set, and this call is what keeps the guarantee
+    // even for a spec assembled without that helper. `primaryRoot` is the
+    // primary checkout `worktreeGuardRoots` already resolved for the task
+    // (absent for an in-place run, where `cwd` IS it), and `XEZ_TASK_ID` is this
+    // run's id — a spec without either grants no evidence root rather than a
+    // wider one.
     this.allowedRoots = resolveAllowedRoots([
       spec.cwd,
       ...(spec.additionalDirectories ?? []),

@@ -8,8 +8,8 @@ import {
   MAX_REPEATED_PERMISSION_DENIAL,
   PermissionDenialGuard,
   resolveAllowedRoots,
-  runEvidenceRoots,
 } from './opencode-permissions.ts';
+import { runEvidenceRoots } from './run-evidence-roots.ts';
 
 /** #578 review: one case per branch of the fail-closed policy. */
 let base = '';
