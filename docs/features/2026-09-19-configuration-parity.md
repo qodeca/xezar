@@ -36,7 +36,7 @@ Before anything is built, inventory today's settings **by door and restart-need*
 
 Inputs already available to that inventory:
 
-- `mcp-settings-classification.md` — the MCP side, field by field, with the four product decisions D-03-1 to D-03-4 and the enforcement primitives E-BIND, E-409-LOCAL, E-409-PROFILE, E-SCOPE-USER, E-SINGLE, E-CONTRACT and E-NARROW.
+- `mcp-settings-classification.md` — the MCP side, field by field, with the product decisions D-03-1 to D-03-5 and the enforcement primitives E-BIND, E-409-LOCAL, E-409-PROFILE, E-SCOPE-USER, E-SINGLE, E-CONTRACT and E-NARROW.
 - `mcp-ui-action-inventory.md` — the cockpit action inventory the classification cites.
 - The config write surfaces: `GET`/`PUT /api/v1/p/:projectId/config` and the `setConfigInputSchema` / `setWorkspaceConfigInputSchema` shapes in `packages/contract`, plus the agent-config and workspace routes the classification lists.
 - `.xezar/docs/model-routing.md` § 5 already records one restart-shaped constraint in the opposite direction: changing a runner's default model from the cockpit writes the primary checkout's `.xezar/config.json` and breaks the kit snapshot, so the model is set per task or through a committed pin. It is an example of the kind of live-versus-restart fact the inventory must state.
