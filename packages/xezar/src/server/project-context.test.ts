@@ -598,15 +598,33 @@ describe('ProjectContexts', () => {
     };
     walk(srcRoot);
 
-    /** An inline arrow `(a, b) => …`, or an identifier naming a listener declared in the file. */
-    const CALL = /onContextDisposed\(\s*(?:\(([^)]*)\)\s*=>|([A-Za-z_$][\w$]*)\s*\))/g;
+    /**
+     * An inline arrow — `(a, b) => …`, `async (a, b) => …`, or the one-parameter `id => …` and
+     * `async id => …` spellings — or an identifier naming a listener declared in the file.
+     *
+     * #707 review round 1, Minor 2: the two `async`/bare-identifier-arrow forms used to match
+     * NEITHER branch, so a listener spelled that way was skipped silently — and a scan that skips
+     * the listener it cannot read is the fail-open helper AGENTS.md § Changing a mechanism that
+     * already works warns about. The count check below is the guarantee that does not depend on
+     * this regex being complete: every `onContextDisposed(` in the file must end up classified,
+     * so the NEXT unrecognised spelling fails this test loudly instead of passing unseen.
+     */
+    const CALL = /onContextDisposed\(\s*(?:async\s*)?(?:\(([^)]*)\)\s*=>|([A-Za-z_$][\w$]*)\s*(\)|=>))/g;
+    const ALL = /onContextDisposed\(/g;
+    /** The hook's own TYPE signature (`onContextDisposed(listener: (…) => void)`), not a call. */
+    const SIGNATURE = /onContextDisposed\(\s*[A-Za-z_$][\w$]*\s*:/g;
     const sites: Array<{ where: string; params: string }> = [];
     for (const file of files) {
       const text = readFileSync(file, 'utf8');
-      for (const match of text.matchAll(CALL)) {
-        const named = match[2];
+      const classified = [...text.matchAll(CALL)];
+      const calls = [...text.matchAll(ALL)].length - [...text.matchAll(SIGNATURE)].length;
+      expect(calls, `${file}: an onContextDisposed call this scan cannot classify`)
+        .toBe(classified.length);
+      for (const match of classified) {
+        // A bare identifier followed by `=>` is a one-parameter arrow, not a named listener.
+        const named = match[3] === '=>' ? undefined : match[2];
         if (named === undefined) {
-          sites.push({ where: `${file}: inline`, params: match[1] ?? '' });
+          sites.push({ where: `${file}: inline`, params: match[1] ?? match[2] ?? '' });
           continue;
         }
         const declaration = text.match(

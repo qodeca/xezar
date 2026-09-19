@@ -107,25 +107,63 @@ const CASES = [
     test: 'packages/xezar/src/terminal/index.test.ts',
   },
   {
-    name: 'automations-remove-ignores-superseded',
-    ac: 'AC-04 (#647, PR 2)',
-    why: 'a late dispose drops a project that was re-added and rebuilt inside the teardown window from the skills-update coordinator and the automation scheduler, with no second `project-added` to put it back',
+    name: 'sse-disposed-listener-does-nothing',
+    ac: 'AC-08 (#647, PR 2; #707 review round 1, Minor 1a)',
+    why: 'the workspace SSE stream never releases an attach entry at all, so a disposed project with no re-add keeps receiving its dead store\'s events — the review\'s probe A, which the suite used to survive',
     file: 'packages/xezar/src/server/server.ts',
-    find: `    if (disposal.superseded) return;
-`,
-    replace: '',
+    find: `        const offDisposed = contexts.onContextDisposed((disposed, disposal) => {
+          const held = attached.get(disposed);`,
+    replace: `        const offDisposed = contexts.onContextDisposed((disposed, disposal) => {
+          if (disposal.generation >= 0) return;
+          const held = attached.get(disposed);`,
+    test: 'packages/xezar/src/server/workspace-events.test.ts',
+  },
+  {
+    name: 'automations-superseded-skips-refresh',
+    ac: 'AC-04 (#647, PR 2; #707 review round 1, Major 1)',
+    why: 'a superseded dispose SKIPS the removal instead of refreshing from the registry, so a drift whose teardown overlapped a second request leaves the skills-update coordinator and the scheduler pinned to the OLD root for the rest of the session',
+    file: 'packages/xezar/src/server/server.ts',
+    find: `  const offAutomationsDisposed = sharedContexts.onContextDisposed((id, disposal) => {
+    coordinator.remove(id);`,
+    replace: `  const offAutomationsDisposed = sharedContexts.onContextDisposed((id, disposal) => {
+    if (disposal.superseded) return;
+    coordinator.remove(id);`,
     test: 'packages/xezar/src/server/automations-gate.test.ts',
+  },
+  {
+    name: 'automations-disposed-listener-does-nothing',
+    ac: 'AC-04/AC-08 (#647, PR 2; #707 review round 1, Minor 1b)',
+    why: 'the automations listener removes nothing at all, so an ordinary (non-superseded) drift leaves the stale registration in both coordinators — the review\'s probe B, which the suite used to survive',
+    file: 'packages/xezar/src/server/server.ts',
+    find: `  const offAutomationsDisposed = sharedContexts.onContextDisposed((id, disposal) => {
+    coordinator.remove(id);`,
+    replace: `  const offAutomationsDisposed = sharedContexts.onContextDisposed((id, disposal) => {
+    if (id || disposal) return;
+    coordinator.remove(id);`,
+    test: 'packages/xezar/src/server/automations-gate.test.ts -t "no overlapping request"',
   },
   {
     name: 'automations-never-built-removal',
     kind: 'guard',
     ac: 'AC-05/AC-08 (#647, PR 2)',
-    why: 'pins the case the `superseded` guard must NOT fold in: a project whose context was never built is removed through the unconditional `project-removed` branch, which the guard above never sees. Run against `automations-remove-ignores-superseded`\'s own defect, so it shows the two paths are independent',
+    why: 'pins the case the dispose listener must NOT fold in: a project whose context was never built is removed through the unconditional `project-removed` branch, which that listener never sees. Run against `automations-superseded-skips-refresh`\'s own defect, so it shows the two paths are independent',
     file: 'packages/xezar/src/server/server.ts',
-    find: `    if (disposal.superseded) return;
-`,
-    replace: '',
+    find: `  const offAutomationsDisposed = sharedContexts.onContextDisposed((id, disposal) => {
+    coordinator.remove(id);`,
+    replace: `  const offAutomationsDisposed = sharedContexts.onContextDisposed((id, disposal) => {
+    if (disposal.superseded) return;
+    coordinator.remove(id);`,
     test: 'packages/xezar/src/server/automations-gate.test.ts -t "whose context was never built"',
+  },
+  {
+    name: 'ac9-scan-blind-to-a-spelling',
+    ac: 'AC-09 (#647, PR 2; #707 review round 1, Minor 2)',
+    why: 'a listener spelled `onContextDisposed(id => …)` matches neither branch of the fan-out scan\'s regex; without the count check the scan skips it in silence, which is the fail-open helper the scan itself exists to prevent',
+    file: 'packages/xezar/src/terminal/index.ts',
+    find: `      disposeUnsubscribe = contexts.onContextDisposed((projectId, disposal) => {`,
+    replace: `      contexts.onContextDisposed(id => void id);
+      disposeUnsubscribe = contexts.onContextDisposed((projectId, disposal) => {`,
+    test: 'packages/xezar/src/server/project-context.test.ts -t "every onContextDisposed listener in the shipped source"',
   },
   {
     name: 'listener-not-migrated',
@@ -641,8 +679,14 @@ for (const c of CASES) {
     ? (check.passed && !ranTest
         ? 'NO TESTS RAN (harness failure — a zero-test run is never "as expected")'
         : check.passed ? 'STILL-GREEN (guard, as expected)' : 'RED (guard — UNEXPECTED, it was meant to pass both ways)')
+    // #707 review round 1, Nit 1: exit 0 is TWO different things here as well, and calling both
+    // STILL-GREEN says a test passed when none ran. A zero-test exit-0 run (a `-t` that matches
+    // nothing prints `Tests  24 skipped (24)` and exits 0) is a harness failure, exactly as it is
+    // on the guard branch above — never a defect this test survived.
     : (check.passed
-        ? 'STILL-GREEN (proves nothing)'
+        ? (executed === 0
+            ? 'INVALID (no test executed — a zero-test run is never "still green")'
+            : 'STILL-GREEN (proves nothing)')
         : provedRed ? 'RED' : `INVALID (${executed === 0 ? 'no test executed' : 'no test FAILED'} — the run failed without the test failing, so it proves nothing)`);
   const asExpected = guard ? (check.passed && ranTest) : provedRed;
   const counts = check.counts ? `${check.counts.passed} passed / ${check.counts.failed} failed` : 'no summary line';

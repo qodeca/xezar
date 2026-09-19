@@ -6382,16 +6382,45 @@ export function startServer(deps: ServerDeps, port: number): ServerType {
   // coordinators and `automationProjects` are keyed on the id and re-populated from the
   // `project-added` bus event, which carries no generation at all. The only question they can
   // answer is "does this id have a LIVE registration right now?", and that is exactly what
-  // `superseded` says. Without it, a project re-added and rebuilt inside the previous context's
-  // teardown window was dropped from the skills-update coordinator and the scheduler's project
-  // map by the late dispose, with no second `project-added` to put it back — its polls and
-  // audits stopped for the rest of the session.
+  // `superseded` says.
+  //
+  // What it must NOT mean is "skip" (#707 review round 1, Major 1). The removal is unconditional
+  // and a superseded dispose is followed by a REFRESH from the current registry row, because the
+  // two failures this seam sits between are both real:
+  //
+  //   - Skip the removal, and the drift shape keeps a WRONG entry: `ProjectContexts.dispose()`
+  //     deletes its map entry before awaiting the teardown, so any second request for the same
+  //     project inside that window builds at the next generation and stamps this dispose
+  //     `superseded`. Nothing re-populates the coordinators on a drift (there is no
+  //     `project-removed` and no `project-added` — only the root moved), so the stale
+  //     root/owner/repo would stay: the poller keeps polling the old repo and audits under the
+  //     old `projectDataDir` while `launch` resolves through the new context.
+  //   - Remove and stop there, and the re-added-and-rebuilt project is DROPPED with nothing to
+  //     put it back — its polls and audits stop for the rest of the session.
+  //
+  // Removing and then re-adding from `listProjects()` is the only answer that is right in both:
+  // it is idempotent for the same-root re-add (the id is registered again with the root it
+  // already had) and correct for the drift (the row names the NEW root). The refresh is async
+  // because the remote has to be resolved, and it never throws — this runs on a bus callback.
   const offAutomationsDisposed = sharedContexts.onContextDisposed((id, disposal) => {
-    if (disposal.superseded) return;
     coordinator.remove(id);
     automationCoordinator.remove(id);
     automationProjects.delete(id);
-    rescheduleAutomations();
+    if (!disposal.superseded) {
+      rescheduleAutomations();
+      return;
+    }
+    void listProjects().then(async (projects) => {
+      const project = projects.find((candidate) => candidate.id === id && candidate.status !== 'missing');
+      // Gone from the registry after all: the removal above already is the whole answer.
+      if (!project) return rescheduleAutomations();
+      coordinator.add(project.id, project.root);
+      const parsed = parseRemote((await getRepoInfo(project.root))?.remote ?? '');
+      if (parsed?.host === 'github.com') automationProjects.set(project.id, { root: project.root, owner: parsed.owner, repo: parsed.repo });
+      // `automationCoordinator` needs no explicit re-add: `reschedule()` refreshes it from the
+      // same registry, which re-seeds the root the `remove` above dropped.
+      return rescheduleAutomations();
+    }).catch(() => undefined);
   });
   server.once('listening', () => {
     // Before anything may start the poller: `ensureAutomationsStarted` refuses while this is

@@ -7,7 +7,7 @@ import { AutomationStore } from '../automations/store.ts';
 import { WorkspaceAutomationScheduler } from '../automations/scheduler.ts';
 import { RunStore } from '../runs/store.ts';
 import { SkillsUpdateCoordinator } from '../skills-update.ts';
-import { clearProjectProbeCache, listProjects, registerProject } from '../workspace/projects.ts';
+import { clearProjectProbeCache, listProjects, registerProject, removeProject } from '../workspace/projects.ts';
 import { RunManager } from '../workflows/run.ts';
 import { ProjectContexts } from './project-context.ts';
 import { createApp, startServer, type ServerDeps } from './server.ts';
@@ -477,6 +477,7 @@ describe('automations gate (#801)', () => {
 
       const contexts = new ProjectContexts({ listProjects });
       const removeSkillsSpy = vi.spyOn(SkillsUpdateCoordinator.prototype, 'remove');
+      const addSkillsSpy = vi.spyOn(SkillsUpdateCoordinator.prototype, 'add');
       const removeAutomationSpy = vi.spyOn(AutomationCoordinator.prototype, 'remove');
       const reachedGate = vi.spyOn(SkillsUpdateCoordinator.prototype, 'start');
       const started = vi.spyOn(WorkspaceAutomationScheduler.prototype, 'start');
@@ -513,6 +514,7 @@ describe('automations gate (#801)', () => {
         expect(contexts.peek(live.id)?.generation).toBe(0);
         removeSkillsSpy.mockClear();
         removeAutomationSpy.mockClear();
+        addSkillsSpy.mockClear();
 
         // The teardown window: the context is out of the map, the notification is not out yet.
         const disposing = contexts.dispose(live.id);
@@ -523,14 +525,177 @@ describe('automations gate (#801)', () => {
         release();
         await disposing;
 
-        expect(removeSkillsSpy).not.toHaveBeenCalledWith(live.id);
-        expect(removeAutomationSpy).not.toHaveBeenCalledWith(live.id);
+        // #707 review round 1, Major 1: what this pins is the NET state — the live project is
+        // still in both coordinators — not the absence of a `remove` call. A superseded dispose
+        // refreshes from the registry rather than skipping, so the removal does run and the
+        // re-add that follows names the row the registry holds NOW, which for a plain re-add is
+        // the same root it already had. (Skipping the removal instead is what left a DRIFT
+        // rebuild pinned to the OLD root forever — the test below.)
+        await vi.waitFor(() => expect(addSkillsSpy).toHaveBeenCalledWith(live.id, liveRoot));
+        expect(removeSkillsSpy).toHaveBeenCalledWith(live.id);
       } finally {
         release();
         parkedDispose.mockRestore();
         server.close();
         await contexts.disposeAll().catch(() => undefined);
         rmSync(liveRoot, { recursive: true, force: true });
+      }
+    });
+
+    /**
+     * #707 review round 1, Major 1 — the drift shape the `superseded` early return lost.
+     *
+     * The reviewer's throwaway, made permanent. `ProjectContexts.dispose()` deletes its map entry
+     * synchronously and notifies only after the teardown, so ONE overlapping request for the same
+     * project inside that window starts its own build at the next generation — and that build,
+     * in flight at notify time, is what stamps the dispose `superseded`. A cockpit project page
+     * issues several requests, so an out-of-band drift (#591) with that page open lands in this
+     * shape rather than the sequential one.
+     *
+     * Nothing else re-populates the coordinators after a drift: the only other `add`/`set` sites
+     * are `project-added` (which a drift never emits — only the root moved) and boot. So skipping
+     * the removal kept the OLD root: the skills-update coordinator would keep updating the old
+     * path and the scheduler keep polling the old `owner/repo` and auditing under the old
+     * `projectDataDir`, while `launch` resolves through the new context. Removing and re-adding
+     * from the CURRENT `listProjects()` row is the only answer that is right here and idempotent
+     * for the plain re-add above.
+     */
+    it('a drift whose teardown overlapped a second request re-registers the NEW root, not the old one', async () => {
+      process.env.XEZ_AUTOMATIONS = '1';
+      clearProjectProbeCache();
+      const base = mkdtempSync(join(tmpdir(), 'xez-automations-gate-drift-'));
+      const rootOld = join(base, 'run-1', 'shared');
+      const rootNew = join(base, 'run-2', 'shared');
+      for (const root of [rootOld, rootNew]) mkdirSync(root, { recursive: true });
+      const first = await registerProject(rootOld);
+
+      const contexts = new ProjectContexts({ listProjects });
+      const removeSkillsSpy = vi.spyOn(SkillsUpdateCoordinator.prototype, 'remove');
+      const addSkillsSpy = vi.spyOn(SkillsUpdateCoordinator.prototype, 'add');
+      const removeAutomationSpy = vi.spyOn(AutomationCoordinator.prototype, 'remove');
+      const reachedGate = vi.spyOn(SkillsUpdateCoordinator.prototype, 'start');
+      const started = vi.spyOn(WorkspaceAutomationScheduler.prototype, 'start');
+
+      let release!: () => void;
+      const parked = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const realDispose = RunManager.prototype.dispose;
+      const parkedDispose = vi
+        .spyOn(RunManager.prototype, 'dispose')
+        .mockImplementation(async function (this: RunManager) {
+          await parked;
+          await realDispose.call(this);
+        });
+
+      let app: ReturnType<typeof createApp> | undefined;
+      const server = startServer(
+        {
+          repoRoot,
+          store,
+          manager: { isActive: () => false } as unknown as RunManager,
+          version: '0.0.0-test',
+          contexts,
+          onApp: (built) => { app = built; },
+        },
+        0,
+      );
+      try {
+        await vi.waitFor(() => expect(reachedGate).toHaveBeenCalledTimes(1), { timeout: 4_000 });
+        await vi.waitFor(() => expect(started).toHaveBeenCalledTimes(1), { timeout: 4_000 });
+
+        expect((await apiRequest(app!, `/api/v1/p/${first.id}/runs`)).status).toBe(200);
+        expect(contexts.peek(first.id)?.root).toBe(rootOld);
+        removeSkillsSpy.mockClear();
+        removeAutomationSpy.mockClear();
+        addSkillsSpy.mockClear();
+
+        // The out-of-band drift (#591): the same slug re-pointed to a different root, with no bus
+        // event at all — exactly as `workspace-events.test.ts` models it.
+        await removeProject(first.id);
+        const second = await registerProject(rootNew);
+        expect(second.id).toBe(first.id);
+
+        // The rebuild disposes the stale context and parks in the teardown…
+        const drift = contexts.context(first.id);
+        await vi.waitFor(() => expect(parkedDispose).toHaveBeenCalled());
+        expect(contexts.peek(first.id)).toBeUndefined();
+        // …and the overlapping request builds at the next generation, which is what makes the
+        // dispose that follows `superseded`.
+        const concurrent = contexts.context(first.id);
+        expect(contexts.pending(first.id)).toBeDefined();
+
+        release();
+        await Promise.all([drift, concurrent]);
+        expect(contexts.peek(first.id)?.root).toBe(rootNew);
+
+        expect(removeSkillsSpy).toHaveBeenCalledWith(first.id);
+        expect(removeAutomationSpy).toHaveBeenCalledWith(first.id);
+        await vi.waitFor(() => expect(addSkillsSpy).toHaveBeenCalledWith(first.id, rootNew));
+        expect(addSkillsSpy).not.toHaveBeenCalledWith(first.id, rootOld);
+      } finally {
+        release();
+        parkedDispose.mockRestore();
+        server.close();
+        await contexts.disposeAll().catch(() => undefined);
+        rmSync(base, { recursive: true, force: true });
+      }
+    });
+
+    /**
+     * #707 review round 1, Minor 1 (b): the SEQUENTIAL drift — the same rebuild with no
+     * overlapping request, so the dispose is NOT superseded and the plain removal is the whole
+     * answer. Probe B of the review (the listener body replaced by `return;`) left the suite
+     * green, so nothing pinned that this listener removes anything at all; this does.
+     */
+    it('a drift with no overlapping request still drops the stale registration', async () => {
+      process.env.XEZ_AUTOMATIONS = '1';
+      clearProjectProbeCache();
+      const base = mkdtempSync(join(tmpdir(), 'xez-automations-gate-seq-'));
+      const rootOld = join(base, 'run-1', 'shared');
+      const rootNew = join(base, 'run-2', 'shared');
+      for (const root of [rootOld, rootNew]) mkdirSync(root, { recursive: true });
+      const first = await registerProject(rootOld);
+
+      const contexts = new ProjectContexts({ listProjects });
+      const removeSkillsSpy = vi.spyOn(SkillsUpdateCoordinator.prototype, 'remove');
+      const removeAutomationSpy = vi.spyOn(AutomationCoordinator.prototype, 'remove');
+      const reachedGate = vi.spyOn(SkillsUpdateCoordinator.prototype, 'start');
+      const started = vi.spyOn(WorkspaceAutomationScheduler.prototype, 'start');
+
+      let app: ReturnType<typeof createApp> | undefined;
+      const server = startServer(
+        {
+          repoRoot,
+          store,
+          manager: { isActive: () => false } as unknown as RunManager,
+          version: '0.0.0-test',
+          contexts,
+          onApp: (built) => { app = built; },
+        },
+        0,
+      );
+      try {
+        await vi.waitFor(() => expect(reachedGate).toHaveBeenCalledTimes(1), { timeout: 4_000 });
+        await vi.waitFor(() => expect(started).toHaveBeenCalledTimes(1), { timeout: 4_000 });
+
+        expect((await apiRequest(app!, `/api/v1/p/${first.id}/runs`)).status).toBe(200);
+        expect(contexts.peek(first.id)?.root).toBe(rootOld);
+        removeSkillsSpy.mockClear();
+        removeAutomationSpy.mockClear();
+
+        await removeProject(first.id);
+        expect((await registerProject(rootNew)).id).toBe(first.id);
+
+        await contexts.context(first.id);
+        expect(contexts.peek(first.id)?.root).toBe(rootNew);
+
+        expect(removeSkillsSpy).toHaveBeenCalledWith(first.id);
+        expect(removeAutomationSpy).toHaveBeenCalledWith(first.id);
+      } finally {
+        server.close();
+        await contexts.disposeAll().catch(() => undefined);
+        rmSync(base, { recursive: true, force: true });
       }
     });
   });

@@ -240,6 +240,40 @@ describe('GET /api/v1/workspace/events', () => {
     expect(all.filter((e) => e.project === other.id)).toHaveLength(1);
   });
 
+  /**
+   * #707 review round 1, Minor 1 (a): AC-8 for this listener — a generation-0 first dispose with
+   * NO re-add releases the attach entry — rested on reading the code. Probe A of that review
+   * replaced this listener's whole body with `return;` and left the file 11/11 green: the
+   * generation-aware `attach` repairs a missed release whenever the project is rebuilt, so every
+   * other case here passes through a re-add and cannot see the leak.
+   *
+   * This one never re-adds. The usage fan-out iterates `attached` and asks each entry's OWN store
+   * whether it owns the run, so a leaked entry is visible there and nowhere else: the disposed
+   * store still answers `getRun` for a row it created, and the project would keep receiving usage
+   * events for a context that is gone.
+   */
+  it('a disposed project with no re-add stops receiving usage — its attach entry is really released', async () => {
+    const other = await buildOtherContext();
+    const bootRunId = store.createRun({ title: 'boot', workflow: 'quick-task', task: 'b', steps: [] }).id;
+    const otherRunId = other.store.createRun({ title: 'other', workflow: 'quick-task', task: 'o', steps: [] }).id;
+
+    const ws = await openStream('/api/v1/workspace/events');
+    await ws.readUntil('event: ping');
+
+    expect(await contexts.dispose(other.id)).toBe(true);
+    expect(contexts.peek(other.id)).toBeUndefined();
+
+    // The disposed project's row goes out FIRST and the boot row second, in two snapshots: SSE
+    // writes keep their order, so by the time boot's event has arrived a leaked entry's event
+    // would already be in the body ahead of it. Boot's event is the control — it proves the
+    // fan-out ran at all, which is what makes the absence below a real absence rather than a
+    // stream that simply delivered nothing yet.
+    emitUsageForTest({ [otherRunId]: { cpuPct: 8, rssBytes: 2048, procCount: 1 } });
+    emitUsageForTest({ [bootRunId]: { cpuPct: 7, rssBytes: 1024, procCount: 1 } });
+    const body = await ws.readUntil(`"project":"${bootId}","usage"`);
+    expect(payloadsOf<{ project: string }>(body, 'usage').map((event) => event.project)).toEqual([bootId]);
+  });
+
   it("a late-built context's events appear after its first touch — and subscribing never force-instantiates", async () => {
     const other = await registerProject(otherRoot);
 
