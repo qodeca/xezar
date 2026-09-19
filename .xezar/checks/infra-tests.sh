@@ -5032,7 +5032,7 @@ git -C "$outer" branch -qf "xez/deadbeef" HEAD
        "a concurrent agent would fail this suite"
 
 # Run the maintained actual-repository checks once. They never invoke this suite.
-expect_ok "Actual repository catalog, changelog and contracts" bash "$SCRIPT_DIR/repository-checks.sh"
+expect_ok "Actual repository catalog, changelog, links and contracts" bash "$SCRIPT_DIR/repository-checks.sh"
 
 expect_ok "Parallel gate ordering, evidence and owned cancellation" node --test "$SCRIPT_DIR/gate-parallel.test.mjs"
 

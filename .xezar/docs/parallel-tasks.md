@@ -10,7 +10,7 @@ Keep that shared context across sessions and compaction using [SDLC.md – Campa
 
 ## Canonical gate scheduling
 
-Dependency installation runs alone. Then three lanes run concurrently: typecheck → build → package tests, the Vitest suite, and the node:test suite. Join all lanes before actual repository catalog, changelog and contract checks. Ordinary command failures do not skip later commands; every outcome is collected and any failure prevents a passing verdict. The five application commands and their evidence order are unchanged. Isolated infrastructure fixtures run unconditionally in the required CI job and locally for changes to kit checks or workflows.
+Dependency installation runs alone. Then three lanes run concurrently: typecheck → build → package tests, the Vitest suite, and the node:test suite. Join all lanes before actual repository catalog, changelog, link and contract checks. Ordinary command failures do not skip later commands; every outcome is collected and any failure prevents a passing verdict. The five application commands and their evidence order are unchanged. Isolated infrastructure fixtures run unconditionally in the required CI job and locally for changes to kit checks or workflows.
 
 Each worker owns its log and result; the parent alone aggregates ordered evidence and verifies the exit status against the published result. Cancellation terminates and reaps owned process groups, including descendants of an exited worker. An interrupted attempt cannot publish a completed verdict before finalization. Atomic result publication is the commit point: a signal delivered afterwards retains the completed verdict and reports that fact. POSIX process groups are required; native Windows execution is refused and remains unqualified.
 
