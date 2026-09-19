@@ -1,5 +1,7 @@
 # Learn the recommended way of working through real Xezar development
 
+New real-task entries go in `.xezar/docs/dogfooding.d/<runId8>.md`, one dated entry per file, using the same record template as the entries below. The release role folds them, newest first, above the existing entries, and deletes the fragment files. Do not append to this file: it is append-only at the top, so every pull request editing it conflicts with every other open pull request.
+
 Every future authorized feature/bug/docs task is also an opportunity to assess the workflow, skill and effective settings it actually uses. Do not launch an extra goal merely to fill this ledger. The leader preserves the feature's AC and records concise operational observations alongside its delivery evidence.
 
 Four evidence levels, never conflated: **adapted** (installed and statically checked), **fixture-tested** (named isolated case passed on identified kit bytes), **real-task verified** (observed in an actual authorized task, with runtime/kit/result evidence), **recommended** (reviewed guidance justified by real-task results and known limits). Copying or a green fixture is insufficient for a recommendation.

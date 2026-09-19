@@ -5,7 +5,14 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd -P)"
 node "$SCRIPT_DIR/catalog-check.mjs" "$REPO_ROOT"
-bash "$SCRIPT_DIR/changelog-check.sh" --file "$REPO_ROOT/CHANGELOG.md"
+# `--diff-base auto` refuses a direct `# Unreleased` edit (issue #668): inside the gate run it
+# resolves the attempt's own base; run bare it falls back to origin/main then main, and says so
+# when neither exists. `--fragments` parses the per-pull-request changelog.d files.
+bash "$SCRIPT_DIR/changelog-check.sh" --file "$REPO_ROOT/CHANGELOG.md" --diff-base auto \
+  --fragments "$REPO_ROOT/changelog.d"
+# The dogfooding ledger has the same fragment shape, and a malformed entry would only surface at
+# the next release fold. Catch it here.
+node "$SCRIPT_DIR/dogfooding-fragments.mjs" --check "$REPO_ROOT/.xezar/docs/dogfooding.d"
 # #663: offline relative-link and anchor check over docs/, README.md, .xezar/docs/ and
 # designs/**/README.md. No network, no build, ~50 ms. It resolves the repository root from its
 # own location, so it always checks THIS checkout whichever directory the gate started in.

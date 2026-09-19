@@ -368,7 +368,8 @@ because a head that moved since the brief makes the brief's exact-head guard sta
 - Reports distinguish observed, fixture-tested, live-verified and unknown, and never copy a secret
   into evidence (shared contract).
 - File an issue for a dogfooding finding rather than fixing it in passing, and record observations
-  from real work per `.xezar/docs/dogfooding.md` (shared contract).
+  from real work as a fragment in `.xezar/docs/dogfooding.d/<runId8>.md` (shared contract;
+  `.xezar/docs/dogfooding.md` is the ledger the release role folds them into).
 
 ## The release runbook today
 
@@ -378,7 +379,8 @@ because a head that moved since the brief makes the brief's exact-head guard sta
   `minor` / `major`, optionally `version:` and `dry-run: true`. No changelog brief is needed
   (`.xezar/CLAUDE.md`; `.xezar/docs/README.md`).
 - The role derives the changelog entry from the PRs merged since the last `v*` tag, folds every
-  `# Unreleased` section into it, runs the normal readiness → gates → evidence spine, merges the
+  `changelog.d/` fragment and every `# Unreleased` section into it, folds `.xezar/docs/dogfooding.d/`
+  fragments into the dogfooding ledger, runs the normal readiness → gates → evidence spine, merges the
   changelog PR, dispatches the Release workflow once for that bump, verifies npm and the tag, and
   merges the bot's bump PR. Every remote wait lives in the last interactive step, which is the only
   step that can still ask a question (`.xezar/CLAUDE.md`).
