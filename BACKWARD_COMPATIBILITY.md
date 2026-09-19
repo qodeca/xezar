@@ -671,8 +671,13 @@ instruction rather than silently.
   bounded filters and the polling caps are all unchanged — the flag wraps the feature, it does not
   reshape it.
 - **Non-destructive rollback**: the gate never deletes, rewrites, or migrates automation
-  definitions, receipts, or frozen high-watermarks. Set `XEZ_AUTOMATIONS=1` and restart to get the
-  feature back exactly as it was; no manual repair or state migration is required.
+  definitions, receipts, or frozen high-watermarks. Set `XEZ_AUTOMATIONS=1` to get the feature back
+  exactly as it was; no manual repair or state migration is required. As recorded here in 2026-08-07
+  that needed a restart, because the scheduler was started once from the boot-time `listening`
+  event; since #678 the flag is read live in both halves — turning it on starts the poller as well
+  as opening the routes, turning it off stops it again, each observed at the next resolve of the
+  capability. That is strictly more behaviour than the restart-only answer promised, so nothing a
+  caller could depend on is broken by it.
 - **No deprecation alias**: the flag *is* the migration path — one env var restores the previous
   behavior wholesale, which is what the "keep the old spelling for a minor release" rule exists to
   provide.
