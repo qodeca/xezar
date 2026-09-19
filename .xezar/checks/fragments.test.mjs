@@ -415,6 +415,48 @@ test('the fold merges into a section the release role already created', () => {
   assert.match(after, /Prose highlight\./);
 });
 
+// --- The fold's group scan is fence-aware too (issue #704) ---------------------------------------
+// #684/#696 made the top-level `# ` walk fence-aware but left `mergeIntoSection`'s GROUP scan
+// reading `line.startsWith('## ')`, so an unindented `## ` line inside a fenced code block was
+// taken for a group boundary. The section was then re-emitted around it: the sample line became a
+// group heading and the closing fence was stranded above it — corruption of a file the release
+// role authored. A `## ` line inside a fence is sample content and stays exactly where it was.
+test('a `## ` line inside a fence is sample content, not a group heading (#704)', () => {
+  const dir = fixture();
+  const before =
+    '# Unreleased\n\n---\n\n# 0.16.0 (2026-09-01)\n\n## Highlights\n\n- a highlight\n\n'
+      + 'A sample of the config:\n\n```\n## My Custom Group\n- not a real heading\n```\n\n'
+      + '## 🐛 Fixes\n\n- an old fix\n\n---\n';
+  writeFileSync(join(dir, 'CHANGELOG.md'), before);
+  const fragments = FRAGMENT_DIR(dir);
+  writeFileSync(join(fragments, '704.md'), '## 🐛 Fixes\n\n- a folded fix (#704)\n');
+
+  const result = run('node', [
+    CHANGELOG, '--fold', '--version', '0.16.0', '--date', '2026-09-20',
+    '--file', join(dir, 'CHANGELOG.md'), '--fragments', fragments,
+  ]);
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+
+  const after = readFileSync(join(dir, 'CHANGELOG.md'), 'utf8');
+  // The fenced sample is byte-identical, closing fence included: the `## ` line never left it.
+  const fence = '```\n## My Custom Group\n- not a real heading\n```\n';
+  assert.ok(after.includes(fence), `the fenced sample must survive intact, got:\n${after}`);
+  // No group was hoisted: once the fenced sample is removed, the section's remaining `## ` lines
+  // are exactly the group headings the role wrote — the fenced line never left the fence.
+  const section = after.slice(after.indexOf('# 0.16.0'), after.lastIndexOf('---'));
+  assert.deepEqual(
+    section.replace(fence, '').split('\n').filter((line) => line.startsWith('## ')),
+    ['## Highlights', '## 🐛 Fixes'],
+    `no fenced line may become a group heading, got:\n${after}`,
+  );
+  // And the whole file is the input with the one folded bullet added — nothing else moved.
+  assert.equal(
+    after,
+    before.replace('- an old fix\n', '- an old fix\n- a folded fix (#704)\n'),
+    `only the folded bullet may change, got:\n${after}`,
+  );
+});
+
 // --- An unknown group heading is never sorted above a known one (issue #685) --------------------
 // `mergeIntoSection` re-emits the target section and sorts its groups. The sort key used to be
 // `HOUSE_HEADINGS.indexOf(heading)`, which answers -1 for a heading outside the house set — and
