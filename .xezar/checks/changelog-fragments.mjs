@@ -38,7 +38,35 @@ export const HOUSE_HEADINGS = [
 ];
 
 const IGNORED = new Set(['README.md']);
-const isTopHeading = (line) => /^# /.test(line);
+
+/**
+ * The fence marker (``` or ~~~) a line opens or closes a fenced code block with, or `null`.
+ * `changelog-check.sh` walks the same file with this rule, so the check and the fold cannot
+ * disagree about which `# ` lines are section boundaries (issue #684).
+ */
+const fenceMarker = (line) => /^(`{3,}|~{3,})/.exec(line)?.[1][0] ?? null;
+
+/**
+ * `true` for each line that sits inside a fenced code block. A fence toggles on a line starting
+ * with its own marker — a `~~~` line inside a ``` block is content, not a closer — and a fence
+ * that opens and never closes runs to the end of the file, exactly as in `changelog-check.sh`.
+ */
+function fenceLines(lines) {
+  const inside = new Array(lines.length).fill(false);
+  let open = null;
+  for (let i = 0; i < lines.length; i++) {
+    const marker = fenceMarker(lines[i]);
+    if (marker !== null && (open === null || open === marker)) {
+      open = open === null ? marker : null;
+      continue;
+    }
+    inside[i] = open !== null;
+  }
+  return inside;
+}
+
+/** A top-level `# ` heading, unless the line is content inside a fenced code block. */
+const isTopHeading = (line, inFence) => !inFence && /^# /.test(line);
 
 /**
  * Every fragment file in `dir`, sorted by name so the fold is deterministic.
@@ -123,9 +151,9 @@ export function readFragments(dir) {
 }
 
 /** Index of the next top-level heading after `headingIndex`, or the line count. */
-function sectionEnd(lines, headingIndex) {
+function sectionEnd(lines, headingIndex, inside) {
   for (let i = headingIndex + 1; i < lines.length; i++) {
-    if (isTopHeading(lines[i])) return i;
+    if (isTopHeading(lines[i], inside[i])) return i;
   }
   return lines.length;
 }
@@ -143,8 +171,8 @@ function separatorIndex(lines, start, end) {
  * order. Bullets are appended to the end of their group, verbatim, and the section is re-emitted
  * with one blank line between groups so a wrapped bullet never touches the next heading.
  */
-function mergeIntoSection(lines, headingIndex, groups) {
-  const end = sectionEnd(lines, headingIndex);
+function mergeIntoSection(lines, headingIndex, groups, inside) {
+  const end = sectionEnd(lines, headingIndex, inside);
   const sep = separatorIndex(lines, headingIndex, end);
   const body = lines.slice(headingIndex + 1, sep);
   const trailing = lines.slice(sep, end);
@@ -208,16 +236,19 @@ export function foldChangelog({ file, dir, version, date }) {
   if (files.length === 0) return { errors: [], folded: 0 };
 
   const lines = readFileSync(file, 'utf8').split('\n');
+  const inside = fenceLines(lines);
   const heading = `# ${version} (${date})`;
   const existing = lines.findIndex((line) => line.startsWith(`# ${version} (`));
   let out;
   if (existing !== -1) {
-    out = mergeIntoSection(lines, existing, groups);
+    out = mergeIntoSection(lines, existing, groups, inside);
   } else {
     // Directly above the newest existing top-level heading, below `# Unreleased` when it is
     // there — the check requires Unreleased to stay the first section. A file with no
     // `# Unreleased` (a release already folded it) gets the new section at the very top.
-    let insertAt = lines.findIndex((line) => isTopHeading(line) && line.trim() !== '# Unreleased');
+    let insertAt = lines.findIndex(
+      (line, i) => isTopHeading(line, inside[i]) && line.trim() !== '# Unreleased',
+    );
     if (insertAt === -1) insertAt = lines.length;
     const section = newSection(heading, groups);
     if (insertAt > 0 && lines[insertAt - 1].trim() !== '') section.unshift('');
