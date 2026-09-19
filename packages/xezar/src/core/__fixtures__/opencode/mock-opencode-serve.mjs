@@ -73,6 +73,16 @@
 //                                    (default `["/etc/xezar-test-outside/secret"]`).
 //   MOCK_OPENCODE_PERMISSION_REPLY_LOG=<path>  append `<requestId> <body>`
 //                                    for every permission reply received.
+//   MOCK_OPENCODE_SILENT_AFTER_REPLY=idle|hang  the #692 shape: answer the
+//                                    permission reply and then say nothing the
+//                                    session could adapt to, ever. `idle` ends
+//                                    the turn first (the blocking response plus
+//                                    `session.idle`, with NO text part) — the
+//                                    verified shape, where the turn completes
+//                                    and the session then produces nothing;
+//                                    `hang` never answers the held response and
+//                                    never goes idle. Both leave the run waiting
+//                                    on something that never comes.
 //   MOCK_OPENCODE_SIGNAL_LOG=<path>  append every stop signal actually
 //                                    received, one per line — SIGKILL cannot
 //                                    be caught, so an escalation shows up as
@@ -117,6 +127,7 @@ const asyncPrompt = process.env.MOCK_OPENCODE_ASYNC_PROMPT === '1';
 const neverAnswerPrompt = process.env.MOCK_OPENCODE_NEVER_ANSWER_PROMPT === '1';
 const permissionAsk = process.env.MOCK_OPENCODE_PERMISSION_ASK === '1';
 const permissionReplyLog = process.env.MOCK_OPENCODE_PERMISSION_REPLY_LOG;
+const silentAfterReply = process.env.MOCK_OPENCODE_SILENT_AFTER_REPLY || '';
 const permissionKind = process.env.MOCK_OPENCODE_PERMISSION_KIND || 'external_directory';
 const permissionPatterns = process.env.MOCK_OPENCODE_PERMISSION_PATTERNS
   ? JSON.parse(process.env.MOCK_OPENCODE_PERMISSION_PATTERNS)
@@ -490,6 +501,57 @@ const server = createServer((req, res) => {
       res.end('true');
       const held = pendingPermissionRes;
       pendingPermissionRes = null;
+      if (silentAfterReply) {
+        // #692: the reply is accepted and the session then produces nothing the
+        // client could adapt to. `idle` still ENDS the turn — that is the shape
+        // read off the real transcripts, where `turn.completed` was the last
+        // event ever recorded — while `hang` leaves even the turn unfinished.
+        if (silentAfterReply === 'idle') {
+          held.writeHead(200, { 'content-type': 'application/json' });
+          held.end(JSON.stringify({ info: info({}), parts: [] }));
+          // Wire-faithful, and this is the part the first version of the mock
+          // left out (PR #695 review): OpenCode 1.18.31 closes the round trip
+          // the refused tool call belonged to by writing a `step-finish` part
+          // with a FRESH ascending id plus the `message.updated` snapshot,
+          // 40–110ms after the denial and BEFORE `session.idle`. All 14 denial
+          // samples in this machine's run store carry it (as the
+          // `usage.updated` the v2 mapper emits from `mapStepFinish`). Omitting
+          // it made a watchdog that disarmed on ANY unseen part look fixed.
+          setTimeout(
+            () =>
+              send({
+                type: 'message.part.updated',
+                properties: {
+                  part: {
+                    id: 'prt_mock_stepfinish_1',
+                    messageID: MESSAGE_ID,
+                    sessionID: SESSION_ID,
+                    type: 'step-finish',
+                    reason: 'stop',
+                    cost: 0.0007,
+                    tokens: { input: 42, output: 7, reasoning: 0, cache: { read: 0, write: 0 } },
+                  },
+                },
+              }),
+            5,
+          );
+          setTimeout(
+            () =>
+              send({
+                type: 'message.updated',
+                properties: {
+                  info: info({
+                    cost: 0.0007,
+                    tokens: { input: 42, output: 7, reasoning: 0, cache: { read: 0, write: 0 } },
+                  }),
+                },
+              }),
+            8,
+          );
+          setTimeout(() => send({ type: 'session.idle', properties: { sessionID: SESSION_ID } }), 20);
+        }
+        return;
+      }
       send({
         type: 'message.part.updated',
         properties: {

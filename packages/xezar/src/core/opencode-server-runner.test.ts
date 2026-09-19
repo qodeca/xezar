@@ -8,7 +8,13 @@ import { fileURLToPath } from 'node:url';
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { AgentEvent, AgentSession } from './agent-runner.ts';
 import type { UiEvent } from './ui-events.ts';
-import { describeFetchFailure, KILL_GRACE_MS, OpencodeServerRunner } from './opencode-server-runner.ts';
+import { DEFAULT_RUN_TIMEOUT_MS } from './claude-cli-runner.ts';
+import {
+  describeFetchFailure,
+  KILL_GRACE_MS,
+  OpencodeServerRunner,
+  REJECT_SILENCE_MS,
+} from './opencode-server-runner.ts';
 
 /**
  * #55 — this suite used to `vi.mock('node:child_process')` and hand the runner
@@ -744,6 +750,126 @@ describe('a permission ask (#578)', () => {
     });
     expect(text).toContain('Permission answered: reject.');
   }, 30_000);
+});
+
+/**
+ * #692 — a `reject` is a correct answer, but in four observed runs the session
+ * produced NOTHING after it: no further output, no new turn, no error. On a
+ * non-final step that ran out the 30-minute wall clock with no named cause; on
+ * the last, uncapped step it ran until a person killed it, which is what took
+ * the OpenCode runner out of the rotation.
+ *
+ * The verified shape is `silent-idle`: the turn ENDS right after the refusal
+ * (`turn.completed` was the last event recorded in the real transcript) and the
+ * open session then says nothing — so on an interactive step the run parks on a
+ * human who has been given nothing to answer. `hang` is the second shape the
+ * issue describes, where even the turn never finishes.
+ *
+ * The mock's `idle` mode is wire-faithful down to the `step-finish` part the
+ * real server writes for the round trip that just ended (PR #695 review): that
+ * part is the reason "any unseen part is a sign of life" was inert on the real
+ * server, so leaving it out of the fixture would make every case below prove
+ * less than it appears to.
+ *
+ * Both sessions here are INTERACTIVE (`autoEnd: false`, no wall clock) because
+ * that is the case with no other way out. `rejectSilenceMs` is the same
+ * mechanism at 300ms rather than five minutes — nothing about the arming or the
+ * disarming changes with the number.
+ */
+describe('a session that goes silent after a rejected ask (#692)', () => {
+  /** The watchdog at test speed; the shipped value is asserted separately. */
+  const WATCH_MS = 300;
+
+  function silentSession(mode: 'idle' | 'hang'): Started {
+    return start({
+      env: {
+        MOCK_OPENCODE_PERMISSION_ASK: '1',
+        MOCK_OPENCODE_SILENT_AFTER_REPLY: mode,
+      },
+      runner: new OpencodeServerRunner({ bin: mockBin, timeoutMs: 0, rejectSilenceMs: WATCH_MS }),
+    });
+  }
+
+  it('ends the step with a cause that names the refused path, instead of a silent stall', async () => {
+    const { session, pid, v1 } = silentSession('idle');
+    try {
+      // The turn really does end — this is not "the session never went idle".
+      await until(() => v1.some((e) => e.type === 'turn-end'), 'the turn to end');
+      const result = await session.result;
+      expect(isAlive(pid)).toBe(false);
+
+      const error = errorAbout(v1, 'went silent');
+      expect(error).toContain("denied permission 'external_directory'");
+      expect(error).toContain('/etc/xezar-test-outside/secret');
+      expect(error).toContain('#692');
+      // A named cause, never the bare wall-clock line.
+      expect(v1.some((e) => e.type === 'error' && e.message.includes('timed out after'))).toBe(false);
+      expect(result.sessionId).toBe('ses_mock_1');
+    } finally {
+      session.interrupt();
+    }
+  }, 30_000);
+
+  it("is not disarmed by the server's own step-finish part for the round trip that ended", async () => {
+    // The reviewer's probe for PR #695, made permanent. Real OpenCode 1.18.31
+    // writes a `step-finish` part with a FRESH id (and its `message.updated`
+    // snapshot) 40–110ms after a denial and BEFORE `session.idle` — all 14
+    // denial samples in this machine's run store carry it. The first watchdog
+    // counted any unseen part as a sign of life, so on the real server it
+    // disarmed on that part and the run parked forever while this suite stayed
+    // green, because the mock omitted it. The mock emits it now, and this case
+    // pins BOTH halves: the part really arrives, and the watchdog still fires.
+    const { session, v1, v2 } = silentSession('idle');
+    try {
+      await until(() => v1.some((e) => e.type === 'turn-end'), 'the turn to end');
+      // The fixture really did write the part — `usage.updated` is what the v2
+      // mapper emits from `mapStepFinish`, so it cannot be dropped unnoticed.
+      // Waited for rather than asserted on the spot: the frame order around the
+      // released prompt response is the server's business, not this case's.
+      await until(() => v2.some((e) => e.type === 'usage.updated'), "the server's step-finish part");
+      await session.result;
+      expect(errorAbout(v1, 'went silent')).toContain("denied permission 'external_directory'");
+    } finally {
+      session.interrupt();
+    }
+  }, 30_000);
+
+  it('also ends a session whose turn never finished after the reject', async () => {
+    const { session, pid, v1 } = silentSession('hang');
+    try {
+      await session.result;
+      expect(isAlive(pid)).toBe(false);
+      expect(errorAbout(v1, 'went silent')).toContain('/etc/xezar-test-outside/secret');
+    } finally {
+      session.interrupt();
+    }
+  }, 30_000);
+
+  it('does NOT trip when the session carries on after the reject', async () => {
+    // The guard: the default mock answers the reject and then streams a new
+    // text part, which is exactly what a healthy session does (0.1–0.3s in
+    // every real transcript). This case must pass with and without the fix.
+    const { session, pid, v1 } = start({
+      env: { MOCK_OPENCODE_PERMISSION_ASK: '1' },
+      runner: new OpencodeServerRunner({ bin: mockBin, timeoutMs: 0, rejectSilenceMs: WATCH_MS }),
+    });
+    try {
+      await until(() => v1.some((e) => e.type === 'turn-end'), 'the turn to end');
+      // Well past the watchdog: a disarmed timer cannot fire late either.
+      await sleep(WATCH_MS * 4);
+      expect(v1.filter((e) => e.type === 'error')).toEqual([]);
+      expect(isAlive(pid)).toBe(true);
+      session.end();
+      await session.result;
+    } finally {
+      session.interrupt();
+    }
+  }, 30_000);
+
+  it('ships five minutes — inside the 30-minute step wall clock, above every healthy gap', () => {
+    expect(REJECT_SILENCE_MS).toBe(5 * 60_000);
+    expect(REJECT_SILENCE_MS).toBeLessThan(DEFAULT_RUN_TIMEOUT_MS);
+  });
 });
 
 /**
