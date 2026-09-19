@@ -1,5 +1,17 @@
 # Unreleased
 
+## 🔧 Changed
+
+- 🔧 **Kit-internal: an integration task no longer spends an agent turn waiting for CI.** (#667) The
+  `integration` workflow now runs merge (agent) → `.xezar/checks/ci-watch.sh` (check) → report
+  (agent, last and interactive). The wait itself needs no judgement, so it happens with no tokens
+  and no parked agent session, and — because a check step may not carry `timeout` — the new script
+  carries its own 45-minute deadline, which the old uncapped agent wait never had. A cancelled
+  base-branch run (a later push superseded it) is recorded as cancelled, never as a failure. The
+  merge, the exact-head guard, every integration-preflight refusal and "no automatic merge on green"
+  are unchanged, and a check step still runs inside the run's own slot, so no workspace slot is
+  freed. Nothing shipped to users changes.
+
 ## 🐛 Fixes
 
 - 🐛 **Two kit-check defects: an empty security change set no longer refuses, and an interrupted infra run now terminates.** `.xezar/checks/security-scan.sh` treated a genuinely empty change set — a branch the gate reached before anything was committed — as `unknown` and refused it, a false red that cost a whole agent-step re-run; it is now `not-applicable`, while a change set the stage could not read (an unresolved base, an unreadable repository, a failed enumeration) still refuses. `.xezar/checks/infra-tests.sh`'s `trap cleanup EXIT INT TERM` cleaned up on a signal and then carried on; INT and TERM now exit with the conventional signal status, matching `repo-gates.sh`. Both are kit-internal: neither changes shipped behaviour.
