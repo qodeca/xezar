@@ -515,6 +515,9 @@ describe('pi linked-worktree tool guard (#537)', () => {
 
     it('RED: the producer grants this run its evidence directory and the guard allows the kit’s write', () => {
       const f = fixture();
+      // The frozen root is granted only while it already exists (#690), so
+      // create it: with both there, the producer is pinned to both roots.
+      mkdirSync(frozenOf(f, RUN), { recursive: true });
       const allowed = produced(f, { XEZ_TASK_ID: RUN });
       expect(allowed).toEqual(rootsFor(f, RUN));
       // Fail closed on a run that cannot name itself — part of the same producer.
