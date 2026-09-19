@@ -155,6 +155,17 @@ export function readFragments(dir) {
   return { errors, groups: merged, files };
 }
 
+/**
+ * Sort key for a group heading inside a release section. A heading the house list does not know
+ * keeps its position relative to the other unknown headings and sorts AFTER every known one:
+ * `indexOf` answers -1 for it, and -1 as a raw sort key put the unknown group above
+ * `## Highlights`, so a fold reordered prose the release role had just authored (#685).
+ */
+const houseRank = (heading) => {
+  const at = HOUSE_HEADINGS.indexOf(heading);
+  return at === -1 ? HOUSE_HEADINGS.length : at;
+};
+
 /** Index of the next top-level heading after `headingIndex`, or the line count. */
 function sectionEnd(lines, headingIndex, inside) {
   for (let i = headingIndex + 1; i < lines.length; i++) {
@@ -173,7 +184,9 @@ function separatorIndex(lines, start, end) {
 /**
  * Merge fragment groups into the `# <version> (` section starting at `headingIndex`.
  * Existing groups keep their position; a group the section does not have yet is added in house
- * order. Bullets are appended to the end of their group, verbatim, and the section is re-emitted
+ * order. A heading outside the house set is left where the section put it, after every known
+ * heading and in the order the section has it — the fold never moves one above `## Highlights`
+ * (#685). Bullets are appended to the end of their group, verbatim, and the section is re-emitted
  * with one blank line between groups so a wrapped bullet never touches the next heading.
  */
 function mergeIntoSection(lines, headingIndex, groups, inside) {
@@ -205,7 +218,9 @@ function mergeIntoSection(lines, headingIndex, groups, inside) {
     while (group.lines.length > 0 && group.lines[group.lines.length - 1].trim() === '') group.lines.pop();
     group.lines.push(...groups.get(heading));
   }
-  parsed.sort((a, b) => HOUSE_HEADINGS.indexOf(a.heading) - HOUSE_HEADINGS.indexOf(b.heading));
+  // `Array.prototype.sort` is stable (ES2019), so two groups with the same rank keep the order
+  // the section already had them in — which is the whole point for an unknown heading.
+  parsed.sort((a, b) => houseRank(a.heading) - houseRank(b.heading));
 
   const out = lines.slice(0, headingIndex + 1);
   const preambleLines = preamble.filter((line) => line.trim() !== '');

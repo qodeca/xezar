@@ -415,6 +415,109 @@ test('the fold merges into a section the release role already created', () => {
   assert.match(after, /Prose highlight\./);
 });
 
+// --- An unknown group heading is never sorted above a known one (issue #685) --------------------
+// `mergeIntoSection` re-emits the target section and sorts its groups. The sort key used to be
+// `HOUSE_HEADINGS.indexOf(heading)`, which answers -1 for a heading outside the house set — and
+// -1 sorts above `## Highlights` at index 0. The merge path is the NORMAL release path (the
+// release role writes the section, then folds the fragments into it), so the fold rewrote prose
+// the role had just authored. An unknown heading now keeps its relative order and goes after
+// every known heading; a known heading keeps its house order.
+test('an unknown group heading is not sorted above Highlights (#685)', () => {
+  // The issue's exact reproduction: a section the release role already wrote, reading
+  // Highlights → 🧪 Experimental → 🐛 Fixes, plus one fragment holding 🔧 Changed.
+  // `## 🧪 Experimental` is NOT in HOUSE_HEADINGS (read the list at the top of the module), so it
+  // is the unknown heading here: it does not keep its third position, it lands after every known
+  // one. That is why the expected order is Highlights, Fixes, Changed, Experimental.
+  const dir = fixture();
+  writeFileSync(
+    join(dir, 'CHANGELOG.md'),
+    '# Unreleased\n\n# 0.2.0 (2026-09-19)\n\n## Highlights\n\n- highlight prose\n\n'
+      + '## 🧪 Experimental\n\n- experimental prose\n\n## 🐛 Fixes\n\n- fix prose\n\n'
+      + '---\n\n# 0.1.0 (2026-01-01)\n\n- x\n',
+  );
+  const fragments = FRAGMENT_DIR(dir);
+  writeFileSync(join(fragments, '901.md'), '## 🔧 Changed\n\n- folded change\n');
+
+  const result = run('node', [
+    CHANGELOG, '--fold', '--version', '0.2.0', '--date', '2026-09-19',
+    '--file', join(dir, 'CHANGELOG.md'), '--fragments', fragments,
+  ]);
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+
+  const after = readFileSync(join(dir, 'CHANGELOG.md'), 'utf8');
+  assert.equal(
+    after,
+    '# Unreleased\n\n# 0.2.0 (2026-09-19)\n\n## Highlights\n\n- highlight prose\n\n'
+      + '## 🐛 Fixes\n\n- fix prose\n\n## 🔧 Changed\n\n- folded change\n\n'
+      + '## 🧪 Experimental\n\n- experimental prose\n\n---\n\n# 0.1.0 (2026-01-01)\n\n- x\n',
+    'the unknown heading keeps its prose and lands after every known one',
+  );
+  // Named separately from the byte comparison above, because this is the harm the issue reports:
+  // the fold moved the group the release role had already placed.
+  const section = after.slice(after.indexOf('# 0.2.0'), after.indexOf('# 0.1.0'));
+  assert.ok(
+    section.indexOf('## Highlights') < section.indexOf('## 🧪 Experimental'),
+    `an unknown heading must never sort above Highlights, got:\n${section}`,
+  );
+});
+
+test('two unknown group headings keep their relative order (#685)', () => {
+  // The stable-sort half of the decision: both unknowns rank the same, so the order the section
+  // already had them in is the order they come out in — and both stay below every known heading.
+  const dir = fixture();
+  writeFileSync(
+    join(dir, 'CHANGELOG.md'),
+    '# Unreleased\n\n# 0.2.0 (2026-09-19)\n\n## Highlights\n\n- highlight prose\n\n'
+      + '## 🧪 Experimental\n\n- experimental prose\n\n## 🧭 Notes\n\n- note prose\n\n'
+      + '---\n\n# 0.1.0 (2026-01-01)\n\n- x\n',
+  );
+  const fragments = FRAGMENT_DIR(dir);
+  writeFileSync(join(fragments, '901.md'), '## 🐛 Fixes\n\n- folded fix (#901)\n');
+
+  const result = run('node', [
+    CHANGELOG, '--fold', '--version', '0.2.0', '--date', '2026-09-19',
+    '--file', join(dir, 'CHANGELOG.md'), '--fragments', fragments,
+  ]);
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+
+  const after = readFileSync(join(dir, 'CHANGELOG.md'), 'utf8');
+  assert.equal(
+    after,
+    '# Unreleased\n\n# 0.2.0 (2026-09-19)\n\n## Highlights\n\n- highlight prose\n\n'
+      + '## 🐛 Fixes\n\n- folded fix (#901)\n\n## 🧪 Experimental\n\n- experimental prose\n\n'
+      + '## 🧭 Notes\n\n- note prose\n\n---\n\n# 0.1.0 (2026-01-01)\n\n- x\n',
+    'both unknowns keep the order the section had them in, after the known headings',
+  );
+});
+
+test('a section of only house headings folds to the same bytes as before (#685 guard)', () => {
+  // This case is green with and without the fix on purpose: it pins the behaviour the fix must NOT
+  // change. A section whose headings are all known — and already in house order, which is what the
+  // release role writes — folds byte-for-byte as it did before, house order preserved.
+  const dir = fixture();
+  writeFileSync(
+    join(dir, 'CHANGELOG.md'),
+    '# Unreleased\n\n# 0.2.0 (2026-09-19)\n\n## Highlights\n\nProse highlight.\n\n'
+      + '## 🐛 Fixes\n\n- generated bullet\n\n## 📝 Specs & Documentation\n\n- docs\n\n'
+      + '---\n\n# 0.1.0 (2026-01-01)\n\n- x\n',
+  );
+  const fragments = FRAGMENT_DIR(dir);
+  writeFileSync(join(fragments, '901.md'), '## 🐛 Fixes\n\n- folded fix (#901)\n');
+
+  const result = run('node', [
+    CHANGELOG, '--fold', '--version', '0.2.0', '--date', '2026-09-19',
+    '--file', join(dir, 'CHANGELOG.md'), '--fragments', fragments,
+  ]);
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+
+  assert.equal(
+    readFileSync(join(dir, 'CHANGELOG.md'), 'utf8'),
+    '# Unreleased\n\n# 0.2.0 (2026-09-19)\n\n## Highlights\n\nProse highlight.\n\n'
+      + '## 🐛 Fixes\n\n- generated bullet\n- folded fix (#901)\n\n'
+      + '## 📝 Specs & Documentation\n\n- docs\n\n---\n\n# 0.1.0 (2026-01-01)\n\n- x\n',
+  );
+});
+
 // --- Dogfooding ----------------------------------------------------------------------------------
 test('a dogfooding fragment folds above the newest existing entry without touching it', () => {
   const dir = fixture();
