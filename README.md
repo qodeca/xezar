@@ -144,7 +144,7 @@ setup. See [single-project mode](docs/guide/09-projects.md#to-keep-a-projects-xe
 | `XEZ_AGENT_MODELS_LOCKED=1` | Lock models to native agent settings. Exact `1` also delegates provider checks to agents. Restart required. Stored `modelsLocked: true` locks models only. |
 | `XEZ_APPROVAL_GATE=1` | Opt into Claude's interactive approval UI; by default, unapproved tools are denied without interrupting the run. |
 | `XEZ_FOLLOWUPS=1` | Enable the follow-up Inbox (default off). Settings → Resources overrides this without restart; task Notes work either way. |
-| `XEZ_AUTOMATIONS=1` | Enable scheduled GitHub automations (default off, exact `1`, restart required). Definitions survive disabling it. |
+| `XEZ_AUTOMATIONS=1` | Enable scheduled GitHub automations (default off, exact `1`). Read live, no restart: turning it on starts the poller and opens the routes, turning it off stops the poller and closes them, each observed the next time xezar consults the flag. Definitions survive disabling it. |
 | `XEZ_AUTOSAVE=1` | Enable periodic 90-second worktree commits (default off). Turn-end and pre-PR flushes always run. |
 | `XEZ_CLAUDE_BIN=/path/to/claude` | Override which `claude` binary is used. |
 | `XEZ_CODEX_BIN=/path/to/codex` | Override which `codex` binary is used. |

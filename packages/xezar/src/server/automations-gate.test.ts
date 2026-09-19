@@ -236,6 +236,165 @@ describe('automations gate (#801)', () => {
     });
 
     /**
+     * #678, the defect this group's hot-capability cases exist for.
+     *
+     * `XEZ_AUTOMATIONS` is resolved per call, so flipping it to `1` on a server that is already
+     * listening opened every automations route — a definition could be created and saved — while
+     * `WorkspaceAutomationScheduler.start()` had already been skipped at boot and was never called
+     * again. `rescheduleAutomations()` forwards to `reschedule()`, which returns immediately while
+     * the scheduler is `stopped`, so the feature answered "enabled" and polled nothing, with no
+     * error anywhere.
+     *
+     * The proof is the poller, not the routes: `start()` called exactly once after the flip.
+     * Against the pre-fix `server.ts` this waits out its timeout at zero calls.
+     */
+    it('a flip to on after boot starts the poller, not only the routes (#678)', async () => {
+      delete process.env.XEZ_AUTOMATIONS;
+      const reachedGate = vi.spyOn(SkillsUpdateCoordinator.prototype, 'start');
+      const started = vi.spyOn(WorkspaceAutomationScheduler.prototype, 'start');
+      let app: ReturnType<typeof createApp> | undefined;
+      const server = startServer(
+        {
+          repoRoot,
+          store,
+          manager: { isActive: () => false } as unknown as RunManager,
+          version: '0.0.0-test',
+          onApp: (built) => { app = built; },
+        },
+        0,
+      );
+      try {
+        await vi.waitFor(() => expect(reachedGate).toHaveBeenCalledTimes(1), { timeout: 4_000 });
+        expect(started).toHaveBeenCalledTimes(0);
+
+        // The user's step 2: the flag turns on in the environment the running process reads.
+        process.env.XEZ_AUTOMATIONS = '1';
+
+        // Step 3: the routes are open and a definition is accepted — the half that already worked.
+        const res = await apiRequest(app!, '/api/v1/automations', json(DEFINITION));
+        expect(res.status).toBe(201);
+
+        // Step 4, the half that did not: the poller is running, exactly once.
+        await vi.waitFor(() => expect(started).toHaveBeenCalledTimes(1), { timeout: 4_000 });
+      } finally {
+        server.close();
+      }
+      expect(started).toHaveBeenCalledTimes(1);
+    });
+
+    /**
+     * Guard, passing both ways: the property the boot-only start was load-bearing FOR — ONE start,
+     * so never a second poller — survives the resolve becoming hot. Every later resolve (each
+     * saved definition consults the flag through `rescheduleAutomations`) must be a no-op.
+     */
+    it('a flag already on at boot is not double-started by later resolves (#678)', async () => {
+      process.env.XEZ_AUTOMATIONS = '1';
+      const started = vi.spyOn(WorkspaceAutomationScheduler.prototype, 'start');
+      let app: ReturnType<typeof createApp> | undefined;
+      const server = startServer(
+        {
+          repoRoot,
+          store,
+          manager: { isActive: () => false } as unknown as RunManager,
+          version: '0.0.0-test',
+          onApp: (built) => { app = built; },
+        },
+        0,
+      );
+      try {
+        await vi.waitFor(() => expect(started).toHaveBeenCalledTimes(1), { timeout: 4_000 });
+        for (const name of ['one', 'two', 'three']) {
+          const res = await apiRequest(app!, '/api/v1/automations', json({ ...DEFINITION, name }));
+          expect(res.status).toBe(201);
+        }
+        expect(started).toHaveBeenCalledTimes(1);
+      } finally {
+        server.close();
+      }
+      expect(started).toHaveBeenCalledTimes(1);
+    });
+
+    /**
+     * Guard, passing both ways: the DEFAULT path. With the flag never set, no resolve may start
+     * the poller and the routes stay closed — the hot capability must not become a door of its own.
+     */
+    it('the flag never set still starts nothing and refuses the routes (#678)', async () => {
+      delete process.env.XEZ_AUTOMATIONS;
+      const reachedGate = vi.spyOn(SkillsUpdateCoordinator.prototype, 'start');
+      const started = vi.spyOn(WorkspaceAutomationScheduler.prototype, 'start');
+      let app: ReturnType<typeof createApp> | undefined;
+      const server = startServer(
+        {
+          repoRoot,
+          store,
+          manager: { isActive: () => false } as unknown as RunManager,
+          version: '0.0.0-test',
+          onApp: (built) => { app = built; },
+        },
+        0,
+      );
+      try {
+        await vi.waitFor(() => expect(reachedGate).toHaveBeenCalledTimes(1), { timeout: 4_000 });
+        const res = await apiRequest(app!, '/api/v1/automations', json(DEFINITION));
+        expect(res.status).toBe(409);
+        expect(started).toHaveBeenCalledTimes(0);
+      } finally {
+        server.close();
+      }
+      expect(started).toHaveBeenCalledTimes(0);
+    });
+
+    /**
+     * The off-transition (#678). `stop()` is the scheduler's own clean exit, so a flag switched
+     * back off stops polling instead of leaving a poller behind a closed door — and releasing the
+     * started-once latch is what makes a flip back on start it again rather than never.
+     *
+     * The consult is deliberately a project REMOVAL and not an automations route: with the flag
+     * off those routes answer 409 ahead of any handler, so they never reach the one place the
+     * scheduler's flag is resolved. That is the honest shape of the hot capability — the change
+     * is observed at the next consult, not at the instant the variable changes — and it is what
+     * the README and `.env.example` now say.
+     */
+    it('a flip back to off stops the poller, and on again restarts it (#678)', async () => {
+      process.env.XEZ_AUTOMATIONS = '1';
+      clearProjectProbeCache();
+      const otherRoot = mkdtempSync(join(tmpdir(), 'xez-automations-gate-hot-'));
+      const other = await registerProject(otherRoot);
+      const started = vi.spyOn(WorkspaceAutomationScheduler.prototype, 'start');
+      const stopped = vi.spyOn(WorkspaceAutomationScheduler.prototype, 'stop');
+      let app: ReturnType<typeof createApp> | undefined;
+      const server = startServer(
+        {
+          repoRoot,
+          store,
+          manager: { isActive: () => false } as unknown as RunManager,
+          version: '0.0.0-test',
+          onApp: (built) => { app = built; },
+        },
+        0,
+      );
+      try {
+        await vi.waitFor(() => expect(started).toHaveBeenCalledTimes(1), { timeout: 4_000 });
+        expect(stopped).toHaveBeenCalledTimes(0);
+
+        // Off, then a consult: removing a project emits `project-removed` unconditionally and
+        // that handler is one of the callers that resolves the flag.
+        delete process.env.XEZ_AUTOMATIONS;
+        expect((await apiRequest(app!, `/api/v1/projects/${other.id}`, { method: 'DELETE' })).status)
+          .toBe(200);
+        await vi.waitFor(() => expect(stopped).toHaveBeenCalledTimes(1), { timeout: 4_000 });
+
+        // On again: the routes reopen AND the poller comes back, exactly once more.
+        process.env.XEZ_AUTOMATIONS = '1';
+        expect((await apiRequest(app!, '/api/v1/automations', json(DEFINITION))).status).toBe(201);
+        await vi.waitFor(() => expect(started).toHaveBeenCalledTimes(2), { timeout: 4_000 });
+      } finally {
+        server.close();
+        rmSync(otherRoot, { recursive: true, force: true });
+      }
+    });
+
+    /**
      * #592 review round 2, Major 1: round 1 moved the skills-update/automation cleanup onto
      * `ProjectContexts.onContextDisposed`, but `dispose()` only notifies that hook when the id
      * had a built or in-flight context (`project-context.test.ts`, "dispose() of a never-built
