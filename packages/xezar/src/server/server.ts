@@ -5165,9 +5165,21 @@ export function createApp(deps: ServerDeps) {
       return streamSSENoBuffer(c, async (stream) => {
         // One detach bundle per attached project — the id guard makes a double
         // attach (connect-time snapshot vs. the built hook) impossible.
-        const attached = new Map<string, { store: RunStore; detach: () => void }>();
-        const attach = (project: string, ctx: Pick<ProjectContext, 'store' | 'dataDir'>): void => {
-          if (attached.has(project)) return;
+        //
+        // Tagged with the REGISTRATION it was attached for (#647): this map is keyed on the id,
+        // and an id is not enough inside a teardown window. A project re-added and REBUILT while
+        // the previous context's teardown is still running publishes a new store through the
+        // built hook while the entry for the dead registration is still here, and the late
+        // dispose that follows names the dead one.
+        const attached = new Map<string, { store: RunStore; generation: number; detach: () => void }>();
+        const attach = (project: string, ctx: Pick<ProjectContext, 'store' | 'dataDir' | 'generation'>): void => {
+          const held = attached.get(project);
+          // The id guard, now a GENERATION guard: the same registration announced twice is still
+          // ignored (the unchanged default path — connect-time snapshot vs. the built hook), but a
+          // strictly NEWER registration replaces the entry instead of being dropped on the floor.
+          // Only a winning build reaches `onContextBuilt`, so what arrives here is monotonic.
+          if (held && ctx.generation <= held.generation) return;
+          held?.detach();
           const { store, dataDir } = ctx;
           const onRun = (run: RunRecord) =>
             void stream.writeSSE({
@@ -5193,6 +5205,7 @@ export function createApp(deps: ServerDeps) {
           store.on('deleted', onDeleted);
           attached.set(project, {
             store,
+            generation: ctx.generation,
             detach: () => {
               store.off('run', onRun);
               store.off('deleted', onDeleted);
@@ -5247,11 +5260,20 @@ export function createApp(deps: ServerDeps) {
         // that (#592 review round 1, Major 1) — it fires for BOTH the removal route AND
         // `ProjectContexts.context()`'s own out-of-band drift rebuild (#591), which never emits
         // `project-removed` because nothing removed the project; only its root moved.
-        const offDisposed = contexts.onContextDisposed((disposed) => {
-          if (attached.has(disposed)) {
-            attached.get(disposed)?.detach();
-            attached.delete(disposed);
-          }
+        //
+        // WHICH registration went away is what the payload names (#647), and it has to be
+        // consulted: this notification fires only after the teardown has finished, so it can
+        // arrive after the same project was re-added and rebuilt and this entry already replaced.
+        // Releasing on the id alone then detaches the LIVE store, and nothing re-attaches it —
+        // the built hook has already fired for that generation — so the stream silently loses the
+        // project until the browser reconnects, which is the very bug this listener exists to
+        // prevent. An equality test is the whole guard: `generation: 0` is a real registration
+        // (a project's FIRST dispose carries it), never an absent one.
+        const offDisposed = contexts.onContextDisposed((disposed, disposal) => {
+          const held = attached.get(disposed);
+          if (!held || held.generation !== disposal.generation) return;
+          held.detach();
+          attached.delete(disposed);
         });
 
         stream.onAbort(() => {
@@ -6290,7 +6312,19 @@ export function startServer(deps: ServerDeps, port: number): ServerType {
   // stale entry `automationProjects` held from before the drift. This does not cover every removal
   // (see the `project-removed` branch above): `dispose()` only notifies here when the id had a
   // built or in-flight context.
-  const offAutomationsDisposed = sharedContexts.onContextDisposed((id) => {
+  //
+  // `superseded` — not the generation — is what this one reads (#647), and the difference is the
+  // point. The two listeners above keep per-registration state they can compare against, so they
+  // ask "is this dispose about the thing I hold?". These three hold nothing of the kind: the
+  // coordinators and `automationProjects` are keyed on the id and re-populated from the
+  // `project-added` bus event, which carries no generation at all. The only question they can
+  // answer is "does this id have a LIVE registration right now?", and that is exactly what
+  // `superseded` says. Without it, a project re-added and rebuilt inside the previous context's
+  // teardown window was dropped from the skills-update coordinator and the scheduler's project
+  // map by the late dispose, with no second `project-added` to put it back — its polls and
+  // audits stopped for the rest of the session.
+  const offAutomationsDisposed = sharedContexts.onContextDisposed((id, disposal) => {
+    if (disposal.superseded) return;
     coordinator.remove(id);
     automationCoordinator.remove(id);
     automationProjects.delete(id);

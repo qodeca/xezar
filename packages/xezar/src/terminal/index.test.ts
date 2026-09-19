@@ -21,7 +21,7 @@ import { UTF8_GLYPHS } from './format.ts';
 import { entry } from './renderer.ts';
 
 import type { ResolvedCliSettings } from '../cli-settings.ts';
-import type { ProjectContexts, ProjectContext } from '../server/project-context.ts';
+import type { ContextDisposal, ProjectContexts, ProjectContext } from '../server/project-context.ts';
 import type { RunRecord, RunStore } from '../runs/store.ts';
 import type { RenderStream } from './renderer.ts';
 
@@ -318,9 +318,13 @@ class FakeContexts extends EventEmitter {
   existing = new Map<string, ProjectContext>();
   ids() { return [...this.existing.keys()]; }
   peek(id: string) { return this.existing.get(id); }
-  onStoreCreated(fn: (store: RunStore, id: string) => void) { this.on('store', fn); return () => this.off('store', fn); }
+  // The REAL hook signatures (#647), not a convenient subset: this fake is handed over as
+  // `as unknown as ProjectContexts`, so it compiles however wrong it is, and a fake that does not
+  // publish the generation and the disposal payload would let the terminal's guards be tested
+  // against a contract nothing else speaks.
+  onStoreCreated(fn: (store: RunStore, id: string, generation: number) => void) { this.on('store', fn); return () => this.off('store', fn); }
   onContextBuilt(fn: (ctx: ProjectContext) => void) { this.on('built', fn); return () => this.off('built', fn); }
-  onContextDisposed(fn: (id: string) => void) { this.on('disposed', fn); return () => this.off('disposed', fn); }
+  onContextDisposed(fn: (id: string, disposal: ContextDisposal) => void) { this.on('disposed', fn); return () => this.off('disposed', fn); }
 }
 function liveRecord(): RunRecord {
   return { id: 'recovered', title: 'A task', status: 'running', createdAt: new Date().toISOString(), tokensUsed: 0, steps: [] } as unknown as RunRecord;
@@ -334,13 +338,13 @@ it('recovery-replayed-for-later-projects: suppresses recovery until that context
   const store = new FakeStore();
   const run = liveRecord();
   store.records = [run];
-  contexts.emit('store', store.asStore, 'later');
+  contexts.emit('store', store.asStore, 'later', 0);
   store.emit('run', { ...run, status: 'failed', error: 'interrupted' });
   store.emit('run', run);
   expect(stream.text).not.toContain('task.failed');
   expect(stream.text).not.toContain('reason=interrupted');
   expect(terminal.renderer.failedCount).toBe(0);
-  contexts.emit('built', { id: 'later', store: store.asStore });
+  contexts.emit('built', { id: 'later', store: store.asStore, generation: 0 });
   store.emit('run', { ...run, status: 'failed', error: 'real failure' });
   const failure = stream.lines().find((line) => line.includes('event=task.failed'));
   expect(failure).toContain('project=later');
@@ -357,13 +361,85 @@ it('attaches to contexts already published before the callback', () => {
   const contexts = new FakeContexts();
   const store = new FakeStore();
   store.records = [liveRecord()];
-  contexts.existing.set('existing', { id: 'existing', store: store.asStore } as ProjectContext);
+  contexts.existing.set('existing', { id: 'existing', store: store.asStore, generation: 0 } as ProjectContext);
   terminal.onContexts(contexts as unknown as ProjectContexts);
   expect(terminal.renderer.activeRows).toHaveLength(1);
   store.emit('run', { ...liveRecord(), status: 'failed' });
   expect(terminal.renderer.failedCount).toBe(1);
   terminal.stop();
 });
+/**
+ * RP-4 (#647), first case — `terminal-delete-on-stale-generation`.
+ *
+ * `dispose()` drops the context from the map synchronously but notifies only after the teardown
+ * has finished, so the same project can be re-added and REBUILT before the notification lands.
+ * Keyed on the id alone, the terminal then released the LIVE project's source on behalf of the
+ * dead registration, and nothing re-attached it: its rows vanished for the rest of the session.
+ *
+ * The first dispose in this test is the AC-8 half, and it is not decoration: a project's FIRST
+ * removal carries `generation: 0`, a real registration and not an absent one, and a guard that
+ * read it as "no generation" would make every first removal a no-op.
+ */
+it('keeps a rebuilt project\'s source when the dispose names the registration it replaced', () => {
+  const stream = new FakeStream();
+  const terminal = start(stream);
+  const contexts = new FakeContexts();
+  terminal.onContexts(contexts as unknown as ProjectContexts);
+  terminal.endRecovery();
+
+  const first = new FakeStore();
+  contexts.emit('store', first.asStore, 'later', 0);
+  expect(first.listenerCount('run')).toBe(1);
+
+  // A FIRST dispose, generation 0 with no prior entry in `generations` — it must still release.
+  contexts.emit('disposed', 'later', { generation: 0, superseded: false });
+  expect(first.listenerCount('run')).toBe(0);
+
+  // The re-added project's own build opens its store and publishes.
+  const rebuilt = new FakeStore();
+  contexts.emit('store', rebuilt.asStore, 'later', 1);
+  contexts.emit('built', { id: 'later', store: rebuilt.asStore, generation: 1 });
+
+  // The late dispose of generation 0, arriving after all of that: it names a registration this
+  // source does not belong to, so it must change nothing.
+  contexts.emit('disposed', 'later', { generation: 0, superseded: true });
+
+  expect(rebuilt.listenerCount('run')).toBe(1);
+  rebuilt.emit('run', { ...liveRecord(), status: 'failed', error: 'after the late dispose' });
+  expect(terminal.renderer.failedCount).toBe(1);
+  expect(stream.text).toContain('project=later');
+  terminal.stop();
+});
+
+/**
+ * RP-4 (#647), second case — `terminal-attach-accepts-older-generation`.
+ *
+ * The pre-existing clobber on the BUILD side, older than the dispose payload: `onStoreCreated`
+ * fires as a store opens, which is before its build knows whether it won, so a superseded build
+ * can announce its store after the build that replaced it has already published. Replacing
+ * unconditionally handed the live project's rows to a store that is about to be torn down.
+ */
+it('refuses a store announced by a build an earlier registration already lost', () => {
+  const stream = new FakeStream();
+  const terminal = start(stream);
+  const contexts = new FakeContexts();
+  terminal.onContexts(contexts as unknown as ProjectContexts);
+  terminal.endRecovery();
+
+  const winner = new FakeStore();
+  contexts.emit('store', winner.asStore, 'later', 1);
+  contexts.emit('built', { id: 'later', store: winner.asStore, generation: 1 });
+
+  const loser = new FakeStore();
+  contexts.emit('store', loser.asStore, 'later', 0);
+
+  expect(loser.listenerCount('run')).toBe(0);
+  expect(winner.listenerCount('run')).toBe(1);
+  winner.emit('run', { ...liveRecord(), status: 'failed', error: 'still the live source' });
+  expect(terminal.renderer.failedCount).toBe(1);
+  terminal.stop();
+});
+
 it('quiet never creates a live region, including after resize and seeded rows', () => {
   const stream = new FakeStream({ columns: 80 });
   const terminal = start(stream, { quiet: true, effectiveLogLevel: 'warn' });

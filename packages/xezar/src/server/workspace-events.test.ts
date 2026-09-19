@@ -2,11 +2,11 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Hono } from 'hono';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProviderAuthService } from '../core/provider-auth.ts';
 import { emitUsageForTest, type ProcessUsage } from '../core/process-usage.ts';
 import { RunStore } from '../runs/store.ts';
-import type { RunManager } from '../workflows/run.ts';
+import { RunManager } from '../workflows/run.ts';
 import { clearProjectProbeCache, listProjects, registerProject, removeProject } from '../workspace/projects.ts';
 import { ProjectContexts } from './project-context.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
@@ -446,6 +446,78 @@ describe('GET /api/v1/workspace/events', () => {
     ]);
 
     rmSync(base, { recursive: true, force: true });
+  });
+
+  /**
+   * RP-3 (#647): the sibling of the two tests above, for the window they both step around.
+   *
+   * Each of them lets the dispose FINISH before the project comes back — the first waits for
+   * `project-removed`, the second re-registers between two awaited route calls — so the attach
+   * entry is already gone by the time the rebuilt context is published. The window this covers is
+   * the one where it is not: `dispose()` drops the context and bumps the registration
+   * synchronously but notifies only after `teardown` has finished, and that teardown can outlive
+   * a re-add and a rebuild of the same slug (which is exactly why `DELETE /projects/:id` bounds
+   * its own wait on that teardown and answers anyway rather than hanging on it).
+   *
+   * Keyed on the id alone, the stream then did BOTH halves wrong: the attach guard dropped the
+   * rebuilt context's store on the floor, and the late dispose deleted the entry for a
+   * registration that had already been replaced — so the project's events were silently lost
+   * until the browser reconnected.
+   *
+   * The teardown is parked at `RunManager.dispose()`, the one await inside `teardown`, rather
+   * than driven through the route, so the test never waits on that real bound.
+   */
+  it('a project rebuilt inside the previous context\'s teardown window keeps flowing on an already-open stream', async () => {
+    const other = await buildOtherContext();
+    expect(contexts.peek(other.id)?.generation).toBe(0);
+
+    const ws = await openStream('/api/v1/workspace/events');
+    await ws.readUntil('event: ping');
+
+    let release!: () => void;
+    const parked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const realDispose = RunManager.prototype.dispose;
+    const parkedDispose = vi
+      .spyOn(RunManager.prototype, 'dispose')
+      .mockImplementation(async function (this: RunManager) {
+        await parked;
+        await realDispose.call(this);
+      });
+
+    try {
+      // Not awaited: this is the teardown window, and the whole point is that it is still open.
+      const disposing = contexts.dispose(other.id);
+      await vi.waitFor(() => expect(parkedDispose).toHaveBeenCalled());
+      expect(contexts.peek(other.id)).toBeUndefined();
+
+      // The same slug, still registered, touched again: a fresh build publishes generation 1
+      // while generation 0's teardown is parked.
+      expect((await apiRequest(app, `/api/v1/p/${other.id}/runs`)).status).toBe(200);
+      const rebuilt = contexts.peek(other.id);
+      expect(rebuilt?.generation).toBe(1);
+      expect(rebuilt?.store).not.toBe(other.store);
+
+      // Now let generation 0's dispose land — after the rebuild, naming a registration this
+      // stream no longer holds.
+      release();
+      await disposing;
+
+      const run = (rebuilt as { store: RunStore }).store.createRun({
+        title: 'rebuilt-inside-the-window',
+        workflow: 'quick-task',
+        task: 'w',
+        steps: [],
+      });
+      const body = await ws.readUntil(`"id":"${run.id}"`);
+      expect(payloadsOf<{ id: string; project: string }>(body, 'run')).toEqual([
+        { ...JSON.parse(JSON.stringify(run)), project: other.id },
+      ]);
+    } finally {
+      release();
+      parkedDispose.mockRestore();
+    }
   });
 
   it('relays workspace-level bus events under their own names (projects, checkout, provider status)', async () => {
