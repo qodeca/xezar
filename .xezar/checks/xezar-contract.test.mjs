@@ -10,7 +10,7 @@ const kit=path.dirname(checks);
 const repo=path.resolve(kit,'..');
 const exec=(cmd,args,cwd=repo)=>execFileSync(cmd,args,{cwd,encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
 const main=path.dirname(exec('git',['rev-parse','--path-format=absolute','--git-common-dir']));
-const scratch=path.join(main,'.local/xezar-tests');fs.mkdirSync(scratch,{recursive:true});
+const scratch=path.join(main,'.local/xezar/tests');fs.mkdirSync(scratch,{recursive:true});
 const owned=fs.mkdtempSync(path.join(scratch,'dogfood-'));
 const git=(cwd,...args)=>exec('git',args,cwd);
 const roots=[];

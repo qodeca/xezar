@@ -310,7 +310,7 @@ merge_intent_path() {
 # an interrupted run's leftover rather than an unexplained directory nobody dares delete. Nothing
 # here promises cleanup after SIGKILL, and no sweep deletes these automatically.
 fixture_scratch_root() {
-  printf '%s/.local/xezar-tests' "$MAIN_ROOT"
+  printf '%s/.local/xezar/tests' "$MAIN_ROOT"
 }
 
 # Claim one fixture directory, named by an id the caller owns. The id is validated as a single
@@ -344,7 +344,7 @@ fixture_scratch_dir() {
 # any parent of the checkout is a symlink, which on macOS is routine.
 #
 # OWNERSHIP BOUNDARY. This deletes only what this suite created under
-# `<primary>/.local/xezar-tests/`. It is not a general remover, it never touches a repository, a
+# `<primary>/.local/xezar/tests/`. It is not a general remover, it never touches a repository, a
 # worktree registration or anything under `.local/xezar-tasks/`, and it deliberately does NOT reuse
 # `assert_isolated_fixture_root`: a scratch directory being removed need not be a git repository at
 # all, so a repository assertion would be the wrong proof for this caller.

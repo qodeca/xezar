@@ -2,7 +2,7 @@
 # Behaviour tests for this repository's Xezar worktree machinery.
 #
 # These test what the checks DO, not that they exist. Every case builds a throwaway git
-# repository under the PRIMARY checkout's git-ignored `.local/xezar-tests/` (removed on
+# repository under the PRIMARY checkout's git-ignored `.local/xezar/tests/` (removed on
 # exit) and drives the real scripts against it, so a regression in the isolation rules
 # fails here rather than in production on someone's working tree.
 #
@@ -38,7 +38,7 @@ WORK="$(fixture_scratch_dir "infra-$$" "infra-tests.sh")" || exit 1
 # CLEANUP IS BEST EFFORT. This trap runs on a normal exit, on INT and on TERM. It does NOT run on
 # SIGKILL, on a power loss, or when the process is killed by the OOM killer — no trap does — so
 # this suite makes no promise that its scratch is always gone. What it promises instead is that a
-# leftover is IDENTIFIABLE: it is under the primary checkout's .local/xezar-tests/, it is named
+# leftover is IDENTIFIABLE: it is under the primary checkout's .local/xezar/tests/, it is named
 # after the pid that made it, and it carries an OWNER file saying so.
 cleanup() {
   local fixture
@@ -3575,14 +3575,14 @@ expect_ok "a skill named by no workflow is accepted, as the comment now says" \
 printf '\n-- fixture scratch --\n'
 
 # The routing rule itself, exercised through the shared helper rather than restated here.
-expect_ok "a fixture directory lands under the primary .local/xezar-tests/" \
+expect_ok "a fixture directory lands under the primary .local/xezar/tests/" \
   bash -c '
     set -uo pipefail
     . "$1/lib/common.sh"
     MAIN_ROOT="$2"
     dir="$(fixture_scratch_dir "probe-$$" "infra-tests self check")" || exit 1
     case "$dir" in
-      "$MAIN_ROOT"/.local/xezar-tests/probe-*) ;;
+      "$MAIN_ROOT"/.local/xezar/tests/probe-*) ;;
       *) echo "landed at $dir"; exit 1 ;;
     esac
     [ -f "$dir/OWNER" ] || { echo "no OWNER marker"; exit 1; }
@@ -3608,16 +3608,16 @@ expect_fail "a traversing fixture id is refused, not cleaned up into a safe-look
 # comment promised a refusal. Every case below runs inside a synthetic tree built for it; no real
 # path is ever passed to a destructive call.
 syn="$WORK/cleanup-safety"
-mkdir -p "$syn/.local/xezar-tests/owned" "$syn/VICTIM"
+mkdir -p "$syn/.local/xezar/tests/owned" "$syn/VICTIM"
 printf 'do not delete me\n' > "$syn/VICTIM/keep.txt"
-printf 'owned\n' > "$syn/.local/xezar-tests/owned/file.txt"
-ln -s "$syn/VICTIM" "$syn/.local/xezar-tests/link-out" 2>/dev/null
+printf 'owned\n' > "$syn/.local/xezar/tests/owned/file.txt"
+ln -s "$syn/VICTIM" "$syn/.local/xezar/tests/link-out" 2>/dev/null
 
 # The probe's entry code, written ONCE so the assertion below observes the same lines the
 # destructive call runs. Anything else would be asserting a copy.
 #
 # THE DEFECT THIS CLOSES. The subprocess used to inherit the suite's working directory — the real
-# checkout — and only its ARGUMENTS were synthetic. A relative target such as `xezar-tests/owned`
+# checkout — and only its ARGUMENTS were synthetic. A relative target such as `xezar/tests/owned`
 # therefore resolved against the real repository. It happened to be harmless because no such path
 # exists there, and "the name is absent from the real checkout" is not containment: it is luck that
 # changes the moment a directory with that name appears. Containment has to be a property of where
@@ -3640,16 +3640,16 @@ cleanup_probe_pwd() {
 }
 
 expect_fail "traversal out of the scratch root is refused BEFORE the removal" \
-  "is not under" cleanup_probe "$syn/.local/xezar-tests/../../VICTIM"
+  "is not under" cleanup_probe "$syn/.local/xezar/tests/../../VICTIM"
 [ -f "$syn/VICTIM/keep.txt" ] && ok "and the synthetic victim still exists" \
   || bad "and the synthetic victim still exists" "the traversal deleted it"
 
 expect_fail "an EMPTY path is refused" "refusing an EMPTY path" cleanup_probe ""
-expect_fail "a RELATIVE path is refused" "refusing a RELATIVE path" cleanup_probe "xezar-tests/owned"
+expect_fail "a RELATIVE path is refused" "refusing a RELATIVE path" cleanup_probe "xezar/tests/owned"
 expect_fail "the scratch ROOT itself is refused — it is shared by every run" \
-  "the scratch ROOT itself" cleanup_probe "$syn/.local/xezar-tests"
+  "the scratch ROOT itself" cleanup_probe "$syn/.local/xezar/tests"
 expect_fail "a symlink escaping the root is refused without following it" \
-  "it is a symlink" cleanup_probe "$syn/.local/xezar-tests/link-out"
+  "it is a symlink" cleanup_probe "$syn/.local/xezar/tests/link-out"
 [ -f "$syn/VICTIM/keep.txt" ] && ok "and the symlink's target was not removed" \
   || bad "and the symlink's target was not removed" "the target was deleted through the link"
 
@@ -3657,17 +3657,17 @@ expect_fail "a symlink escaping the root is refused without following it" \
 # reads as "inside the root" while pointing at its parent. `rm` refuses these itself; refusing them
 # here means the one helper that deletes does not lean on an external tool's behaviour.
 expect_fail "a final \".\" segment is refused before anything is removed" \
-  "names a directory rather than a target" cleanup_probe "$syn/.local/xezar-tests/owned/."
+  "names a directory rather than a target" cleanup_probe "$syn/.local/xezar/tests/owned/."
 expect_fail "a final \"..\" segment is refused before anything is removed" \
-  "names a directory rather than a target" cleanup_probe "$syn/.local/xezar-tests/owned/.."
-[ -d "$syn/.local/xezar-tests/owned" ] && ok "and the owned directory was not touched by either" \
+  "names a directory rather than a target" cleanup_probe "$syn/.local/xezar/tests/owned/.."
+[ -d "$syn/.local/xezar/tests/owned" ] && ok "and the owned directory was not touched by either" \
   || bad "and the owned directory was not touched by either" "it was removed"
 
-expect_ok "an owned directory inside the root IS removed" cleanup_probe "$syn/.local/xezar-tests/owned"
-[ ! -d "$syn/.local/xezar-tests/owned" ] && ok "and it is really gone" \
+expect_ok "an owned directory inside the root IS removed" cleanup_probe "$syn/.local/xezar/tests/owned"
+[ ! -d "$syn/.local/xezar/tests/owned" ] && ok "and it is really gone" \
   || bad "and it is really gone" "the directory survived"
 expect_ok "removing it again succeeds — cleanup is idempotent, as a trap handler needs" \
-  cleanup_probe "$syn/.local/xezar-tests/owned"
+  cleanup_probe "$syn/.local/xezar/tests/owned"
 
 # A sibling of the scratch root — the shape a miscomputed caller path actually takes.
 #
@@ -5073,7 +5073,7 @@ kill -INT "$sig_pid" 2>/dev/null
 # A handler that does not terminate would block this suite for the whole nested run. The watchdog
 # kills it after 10s, and a killed run (137) is a failure, not a pass. SIGKILL skips the nested
 # run's own EXIT trap, so if the watchdog is what ends it, that nested run's scratch under the
-# primary checkout's .local/xezar-tests/ survives — identifiable by pid and OWNER file per this
+# primary checkout's .local/xezar/tests/ survives — identifiable by pid and OWNER file per this
 # file's header, but not removed.
 perl -e 'select undef,undef,undef,$ARGV[1]; kill 9, $ARGV[0]' "$sig_pid" 10 &
 sig_watchdog=$!
