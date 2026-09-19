@@ -190,8 +190,13 @@ Notable fields (full doc-comments in the source):
   (`opencode-permissions.ts`): `once` only for an `external_directory` ask
   whose every pattern is an absolute path — at most one trailing `/*` or
   `/**` segment, no other wildcard, no `..` — that resolves, symlinks
-  included, inside `spec.cwd`, `spec.additionalDirectories` or the OS temp
-  dir; `reject` for every other ask and every other permission (`webfetch`,
+  included, inside `spec.cwd`, `spec.additionalDirectories`, the OS temp
+  dir, or the run's own task-evidence directories in the primary checkout
+  (`.local/xezar/tasks/<runId>/` and the frozen `.local/xezar-tasks/<runId>/`
+  of the #665 dual-read window, resolved from `spec.primaryRoot`/`spec.cwd`
+  and `XEZ_TASK_ID`, #686 — the only path a run must reach outside its own
+  `cwd` that the other backends already reach through the prompt's handoff
+  contract); `reject` for every other ask and every other permission (`webfetch`,
   `bash`, `doom_loop`, `read`, `edit`, …), never `always`. A denial is a v1
   `note` plus a v2 non-fatal `session.error`, which does not mark the turn
   errored. The session fails with a named error (not the generic timeout)

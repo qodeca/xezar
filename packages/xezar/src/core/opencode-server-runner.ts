@@ -21,6 +21,7 @@ import {
   decideOpencodePermission,
   PermissionDenialGuard,
   resolveAllowedRoots,
+  runEvidenceRoots,
 } from './opencode-permissions.ts';
 import {
   createOpencodeUiState,
@@ -184,7 +185,8 @@ class OpencodeSession implements AgentSession {
   private signalled = false;
   /** Directories an `external_directory` ask may be answered `once` for —
    *  `cwd`, whatever `spec.additionalDirectories` already grants the other
-   *  runners (the run's NDJSON dir, `$TMPDIR`), and the OS temp dir, all with
+   *  runners (the run's NDJSON dir, `$TMPDIR`), the OS temp dir, and this run's
+   *  own task-evidence directories in the primary checkout (#686) — all with
    *  symlinks resolved. See `opencode-permissions.ts` for the whole policy. */
   private readonly allowedRoots: string[];
   /** The loop bounds on denied asks — see `handlePermissionAsked`. */
@@ -205,7 +207,23 @@ class OpencodeSession implements AgentSession {
     private readonly onEvent: ((event: AgentEvent) => void) | undefined,
     private readonly opts: SessionOptions,
   ) {
-    this.allowedRoots = resolveAllowedRoots([spec.cwd, ...(spec.additionalDirectories ?? []), os.tmpdir()]);
+    // ONE producer for this list, so no rule can be judged against a root the
+    // session never got: `cwd`, the shared additional directories, the OS temp
+    // dir, and — last, and only for this backend — the run's OWN task-evidence
+    // directories in the primary checkout (#686). The evidence directory is
+    // where the kit writes the diagnosis, the red proofs and the phase record;
+    // it sits outside an isolated run's worktree, and Claude, Codex and pi reach
+    // it through the prompt's handoff contract while OpenCode needs the explicit
+    // grant. `primaryRoot` is the primary checkout `worktreeGuardRoots` already
+    // resolved for the task (absent for an in-place run, where `cwd` IS it), and
+    // `XEZ_TASK_ID` is this run's id — a spec without either grants no evidence
+    // root rather than a wider one.
+    this.allowedRoots = resolveAllowedRoots([
+      spec.cwd,
+      ...(spec.additionalDirectories ?? []),
+      os.tmpdir(),
+      ...runEvidenceRoots(spec.primaryRoot ?? spec.cwd, spec.env?.XEZ_TASK_ID),
+    ]);
     // `--port 0` is written out rather than left to the default, because it is
     // a decision: opencode's own `serve` handles the collision, and does it in
     // the only place that can — the process holding the socket. It prefers its
