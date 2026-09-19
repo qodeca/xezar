@@ -38,9 +38,38 @@ export interface OpencodeRunnerOptions {
   bin?: string;
   /** Wall-clock timeout for a run (ms); per-spec `timeoutMs` still wins. */
   timeoutMs?: number;
+  /**
+   * Override `REJECT_SILENCE_MS` for a test that must observe the watchdog
+   * without waiting out five real minutes. Deliberately NOT a config key or an
+   * env var (#692): it is read here and nowhere else, so no user-facing setting
+   * exists and `createRunner` never passes it.
+   */
+  rejectSilenceMs?: number;
 }
 
 const SERVER_START_TIMEOUT_MS = 30_000;
+
+/**
+ * How long an OpenCode session may produce NOTHING after xezar has answered a
+ * permission ask with `reject` before the step ends with a named cause (#692).
+ *
+ * Five minutes, and each bound below is a real one:
+ *
+ * - **Far above every healthy gap.** In all 28 run transcripts on this machine
+ *   that carry a denial, the session resumed within 0.1–0.3s of the reject —
+ *   a new tool call, a text part, or its own `session.idle`. Five minutes is
+ *   three orders of magnitude above that, so a slow model that is merely
+ *   thinking is never cut off.
+ * - **Inside the step's wall clock.** A non-final agent step's default is 30
+ *   minutes (`DEFAULT_RUN_TIMEOUT_MS`), so the NAMED error always wins over the
+ *   bare "timed out after 30m" — which is the whole point. The last,
+ *   interactive step is uncapped, and that is the case that otherwise runs
+ *   until a human notices.
+ * - **Below the 15-minute idle close**, which would otherwise end such a step
+ *   as an unexplained success, and below the 15-minute "cancel a silent
+ *   OpenCode task" rule a person has been applying by hand.
+ */
+export const REJECT_SILENCE_MS = 5 * 60_000;
 
 /** Grace between the teardown SIGTERM and the SIGKILL that follows it. */
 export const KILL_GRACE_MS = 4_000;
@@ -72,11 +101,13 @@ export class OpencodeServerRunner implements AgentRunner {
 
   private readonly bin: string;
   private readonly timeoutMs: number;
+  private readonly rejectSilenceMs: number;
   private lastSession: OpencodeSession | null = null;
 
   constructor(opts: OpencodeRunnerOptions = {}) {
     this.bin = opts.bin ?? process.env.XEZ_OPENCODE_BIN ?? 'opencode';
     this.timeoutMs = opts.timeoutMs ?? DEFAULT_RUN_TIMEOUT_MS;
+    this.rejectSilenceMs = opts.rejectSilenceMs ?? REJECT_SILENCE_MS;
   }
 
   /** What a spec with no `timeoutMs` falls through to here (#460) — the same field the session
@@ -98,7 +129,7 @@ export class OpencodeServerRunner implements AgentRunner {
     onEvent?: (event: AgentEvent) => void,
     opts: SessionOptions = {},
   ): AgentSession {
-    const session = new OpencodeSession(this.bin, this.timeoutMs, spec, onEvent, opts);
+    const session = new OpencodeSession(this.bin, this.timeoutMs, spec, onEvent, opts, this.rejectSilenceMs);
     this.lastSession = session;
     return session;
   }
@@ -195,6 +226,25 @@ class OpencodeSession implements AgentSession {
    *  loop — read by `result`'s error path instead of the generic timeout
    *  message. */
   private permissionFailure: string | null = null;
+  /**
+   * The post-reject silence watchdog (#692), armed only once xezar has answered
+   * an ask with `reject` and disarmed by the session's next sign of life.
+   *
+   * `parts` is `newParts` as it stood at the reject, so "a sign of life" is a
+   * part the session had NOT started yet — never the rejected tool call's own
+   * `completed` update, which arrives from the call the ask was guarding and
+   * says nothing about whether the session carried on.
+   */
+  private rejectWatch: { parts: number; timer: NodeJS.Timeout } | undefined;
+  /**
+   * Assistant parts this session has ever started, and the count of them. A
+   * `session.idle` is deliberately NOT one: the verified #692 shape is a turn
+   * that ENDS right after the refusal without a word, which on the last
+   * (interactive) step leaves the run parked on a human who has been given
+   * nothing to answer.
+   */
+  private readonly partsSeen = new Set<string>();
+  private newParts = 0;
   /** This run's wall clock in ms, `0` when the run is deliberately uncapped
    *  (the last, interactive workflow step). It is also the ONLY bound on a
    *  blocking prompt request — see `request()`. */
@@ -206,6 +256,7 @@ class OpencodeSession implements AgentSession {
     private readonly spec: AgentRunSpec,
     private readonly onEvent: ((event: AgentEvent) => void) | undefined,
     private readonly opts: SessionOptions,
+    private readonly rejectSilenceMs: number = REJECT_SILENCE_MS,
   ) {
     // ONE producer for this list, so no rule can be judged against a root the
     // session never got: `cwd`, the shared additional directories, the OS temp
@@ -297,6 +348,7 @@ class OpencodeSession implements AgentSession {
       } finally {
         if (deadline) clearTimeout(deadline);
         if (this.autoEndTimer) clearTimeout(this.autoEndTimer);
+        this.clearRejectWatch();
         this.sse.abort();
         this.serverOpen = false;
         this.terminate();
@@ -355,12 +407,14 @@ class OpencodeSession implements AgentSession {
   end(): void {
     if (!this.serverOpen) return;
     this.serverOpen = false;
+    this.clearRejectWatch();
     this.sse.abort();
     this.terminate();
   }
 
   interrupt(): void {
     this.serverOpen = false;
+    this.clearRejectWatch();
     if (this.baseUrl && this.sessionId) {
       void this.http('POST', `/session/${this.sessionId}/abort`, undefined).catch(() => undefined);
     }
@@ -503,6 +557,9 @@ class OpencodeSession implements AgentSession {
 
   private async prompt(text: string): Promise<void> {
     if (!this.sessionId) return;
+    // A new prompt IS the continuation the watchdog was waiting for — an
+    // autonomous nudge, a user's answer, or the next step's opening message.
+    this.clearRejectWatch();
     this.turnInFlight = true;
     // Turn boundary — the prompt POST is the turn start (§7.1); the end comes
     // from the SSE `session.idle` (see `submitPrompt`), and only falls back to
@@ -666,6 +723,9 @@ class OpencodeSession implements AgentSession {
     }
     this.emitUi((state) => mapOpencodeEvent(evt, state));
     this.handleEvent(evt);
+    // One place, after the frame has been accounted for: a session that started
+    // a part it had not started before is working again, whatever the frame was.
+    if (this.rejectWatch && this.newParts > this.rejectWatch.parts) this.clearRejectWatch();
   }
 
   private handleEvent(evt: OpencodeEvent): void {
@@ -728,8 +788,51 @@ class OpencodeSession implements AgentSession {
       },
     );
 
+    if (decision.reply === 'reject') this.armRejectWatch(permission, patterns);
+
     const loop = this.permissionDenials.record(permission, patterns, decision);
     if (loop !== null) this.failOnPermission(loop);
+  }
+
+  /**
+   * Arm the post-reject silence watchdog (#692).
+   *
+   * **What "wait for the session's next event" was load-bearing FOR**, and is
+   * still: a tool call or a model that takes minutes; a turn the agent ends with
+   * a question the user answers whenever they get to it; a `XEZ:MONITORING`
+   * park; the run layer's own 15-minute idle close. This touches exactly one of
+   * those and only in one state — a refusal xezar itself issued, followed by a
+   * session that produces no new part of any kind. Nothing is armed on a run
+   * that has no rejected ask, so the DEFAULT path is byte-identical.
+   *
+   * What it replaces is not a mechanism but a person: after a `reject` the
+   * observed sessions either carried on within a fraction of a second or said
+   * nothing ever again, and the second case reached a terminal state only when
+   * somebody killed it (#692, four reproductions). The step now ends with a
+   * cause that names the refused path instead.
+   */
+  private armRejectWatch(permission: string, patterns: readonly string[]): void {
+    this.clearRejectWatch();
+    if (this.rejectSilenceMs <= 0 || !this.serverOpen) return;
+    const patternText = patterns.length > 0 ? patterns.join(', ') : '(no pattern given)';
+    const minutes = Math.round((this.rejectSilenceMs / 60_000) * 10) / 10;
+    const timer = setTimeout(() => {
+      this.rejectWatch = undefined;
+      if (!this.serverOpen) return;
+      this.failOnPermission(
+        `opencode went silent after xezar denied permission '${permission}' for ${patternText}: ` +
+          `no further output and no new turn for ${minutes}m, so the step was stopped instead of ` +
+          `waiting out its wall clock — the denial itself is the boundary and is not the defect (#692)`,
+      );
+    }, this.rejectSilenceMs);
+    timer.unref?.();
+    this.rejectWatch = { parts: this.newParts, timer };
+  }
+
+  private clearRejectWatch(): void {
+    if (!this.rejectWatch) return;
+    clearTimeout(this.rejectWatch.timer);
+    this.rejectWatch = undefined;
   }
 
   /** Record the named cause once (first failure wins — a reply-failure and a
@@ -749,6 +852,14 @@ class OpencodeSession implements AgentSession {
     if (messageID && this.msgRole.get(messageID) !== 'assistant') return;
     const kind = stringField(part, 'type');
     const id = stringField(part, 'id') ?? messageID ?? '';
+    // The session's own sign of life, counted once per part (#692): an update to
+    // a part it had already started — the rejected tool call's `completed`, a
+    // text delta — is not a new one.
+    const partKey = `${kind ?? '?'}:${id}`;
+    if (!this.partsSeen.has(partKey)) {
+      this.partsSeen.add(partKey);
+      this.newParts += 1;
+    }
     if (kind === 'text') {
       const full = stringField(part, 'text') ?? '';
       const seen = this.textSeen.get(id) ?? 0;

@@ -915,6 +915,31 @@ off". The run, and its last step, settled `done` with no deliverable and no erro
   agent error, a real crash) settles exactly as before. No event or workflow schema changes; no new
   `RunStatus` value is added.
 
+## An OpenCode step that stays silent after a refused permission ends `failed` (#692) — deliberate, 0.17.0
+
+The OpenCode runner answers a `permission.asked` ask it cannot approve with `reject`, and that
+boundary (#578, #686) is unchanged. What the session did AFTER the refusal had no bound of its own:
+in four observed runs it emitted nothing further — no output, no new turn, no error — so a non-final
+agent step ran out its 30-minute wall clock and reported the bare `opencode timed out after 30m`,
+while the last, interactive step (uncapped by design) parked with nothing for the user to answer and
+kept its slot until a person killed it. `REJECT_SILENCE_MS` (five minutes) now bounds exactly that
+state.
+
+- **Broken**: an OpenCode step in which xezar refused a permission ask and the session then started
+  no further part for five minutes now ends `status: 'failed'` with an `error` naming the permission
+  and the refused pattern. Before, the same step ended on the wall-clock timeout (`failed`, with the
+  generic message) or — on the last step — did not end at all until the idle close, a cancel or a
+  kill. A consumer that recognised the stall by the timeout text must read the new message; a
+  consumer that treated the uncapped last step's silence as "still working" now sees a terminal run.
+- **Not broken**: the reject policy, the allowed roots and the denial-loop bounds
+  (`MAX_PERMISSION_DENIALS`, `MAX_REPEATED_PERMISSION_DENIAL`). No event `type` is added — the cause
+  rides the existing v1 `error` and v2 `session.ended`, exactly like the permission failures that
+  already used `failOnPermission`. No `RunStatus` value is added, no config key and no env var. A run
+  in which xezar refused nothing arms nothing and is unchanged, as are the other three backends.
+- **Not covered, and deliberately so**: the interactive park itself (section 8). A turn that ends
+  after a refusal having SAID something — a question, an explanation, `XEZ:MONITORING` — still parks
+  at `waiting` for as long as the user needs, because there the person has something to answer.
+
 ## The sidebar is navigation-only; Active/Archived, the recent list and search moved to the Tasks pages — deliberate, 0.16.0 (#546)
 
 PR #559 removed the sidebar's `taskQuickList` slot on desktop and in the phone drawer. No route,

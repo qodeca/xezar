@@ -203,7 +203,14 @@ Notable fields (full doc-comments in the source):
   when a reply cannot be sent, when the same ask is denied
   `MAX_REPEATED_PERMISSION_DENIAL` (3) times consecutively — an allowed ask
   or a different denial resets that count — or after
-  `MAX_PERMISSION_DENIALS` (20) denials in total.
+  `MAX_PERMISSION_DENIALS` (20) denials in total. Since #692 it also fails with
+  a named error when the session produces nothing at all for
+  `REJECT_SILENCE_MS` (5 minutes) after a `reject` — the observed shape where a
+  correct refusal was followed by no output and no new turn, which a non-final
+  step could only leave through the 30-minute wall clock and the last,
+  uncapped step could not leave at all. Any new assistant part disarms it;
+  a `session.idle` deliberately does not, because the turn ending in silence is
+  the failure. Nothing is armed on a run with no denied ask.
   Configurable restrictive modes are
   specified by `2026-07-17-permission-modes` (pre-rename issue 475).
 - **Codex MCP isolation (#324):** before `thread/start` / `thread/resume` the
