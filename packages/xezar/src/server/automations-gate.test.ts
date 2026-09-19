@@ -8,7 +8,7 @@ import { WorkspaceAutomationScheduler } from '../automations/scheduler.ts';
 import { RunStore } from '../runs/store.ts';
 import { SkillsUpdateCoordinator } from '../skills-update.ts';
 import { clearProjectProbeCache, listProjects, registerProject } from '../workspace/projects.ts';
-import type { RunManager } from '../workflows/run.ts';
+import { RunManager } from '../workflows/run.ts';
 import { ProjectContexts } from './project-context.ts';
 import { createApp, startServer, type ServerDeps } from './server.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
@@ -447,6 +447,90 @@ describe('automations gate (#801)', () => {
       } finally {
         server.close();
         rmSync(untouchedRoot, { recursive: true, force: true });
+      }
+    });
+
+    /**
+     * RP-5 (#647), the other side of the test above.
+     *
+     * That one is about a dispose that never fires; this one is about a dispose that fires too
+     * LATE. `ProjectContexts.dispose()` drops the context and ends the registration
+     * synchronously, but notifies only once `teardown` has finished — and that teardown can
+     * outlive a re-add and a rebuild of the same project. Keyed on the id alone, this listener
+     * then dropped the LIVE project from the skills-update coordinator and the automation
+     * scheduler's project map on behalf of the dead registration, and nothing put it back: the
+     * `project-added` re-registration had already been and gone, so its polls and audits stopped
+     * for the rest of the session.
+     *
+     * Modelled on the out-of-band drift rebuild (#591), which is the shape that needs no
+     * `project-removed` at all: the registry still names the project, so touching a scoped route
+     * inside the window rebuilds it at the next generation. The late dispose then arrives
+     * `superseded`, which is the one question this listener can answer — it holds no
+     * per-registration state of its own to compare against, because the bus event that
+     * re-populates it carries no generation.
+     */
+    it('a project rebuilt inside its previous context\'s teardown window stays in both coordinators', async () => {
+      process.env.XEZ_AUTOMATIONS = '1';
+      clearProjectProbeCache();
+      const liveRoot = mkdtempSync(join(tmpdir(), 'xez-automations-gate-live-'));
+      const live = await registerProject(liveRoot);
+
+      const contexts = new ProjectContexts({ listProjects });
+      const removeSkillsSpy = vi.spyOn(SkillsUpdateCoordinator.prototype, 'remove');
+      const removeAutomationSpy = vi.spyOn(AutomationCoordinator.prototype, 'remove');
+      const reachedGate = vi.spyOn(SkillsUpdateCoordinator.prototype, 'start');
+      const started = vi.spyOn(WorkspaceAutomationScheduler.prototype, 'start');
+
+      let release!: () => void;
+      const parked = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const realDispose = RunManager.prototype.dispose;
+      const parkedDispose = vi
+        .spyOn(RunManager.prototype, 'dispose')
+        .mockImplementation(async function (this: RunManager) {
+          await parked;
+          await realDispose.call(this);
+        });
+
+      let app: ReturnType<typeof createApp> | undefined;
+      const server = startServer(
+        {
+          repoRoot,
+          store,
+          manager: { isActive: () => false } as unknown as RunManager,
+          version: '0.0.0-test',
+          contexts,
+          onApp: (built) => { app = built; },
+        },
+        0,
+      );
+      try {
+        await vi.waitFor(() => expect(reachedGate).toHaveBeenCalledTimes(1), { timeout: 4_000 });
+        await vi.waitFor(() => expect(started).toHaveBeenCalledTimes(1), { timeout: 4_000 });
+
+        expect((await apiRequest(app!, `/api/v1/p/${live.id}/runs`)).status).toBe(200);
+        expect(contexts.peek(live.id)?.generation).toBe(0);
+        removeSkillsSpy.mockClear();
+        removeAutomationSpy.mockClear();
+
+        // The teardown window: the context is out of the map, the notification is not out yet.
+        const disposing = contexts.dispose(live.id);
+        await vi.waitFor(() => expect(parkedDispose).toHaveBeenCalled());
+        expect((await apiRequest(app!, `/api/v1/p/${live.id}/runs`)).status).toBe(200);
+        expect(contexts.peek(live.id)?.generation).toBe(1);
+
+        release();
+        await disposing;
+
+        expect(removeSkillsSpy).not.toHaveBeenCalledWith(live.id);
+        expect(removeAutomationSpy).not.toHaveBeenCalledWith(live.id);
+      } finally {
+        release();
+        parkedDispose.mockRestore();
+        server.close();
+        await contexts.disposeAll().catch(() => undefined);
+        rmSync(liveRoot, { recursive: true, force: true });
       }
     });
   });

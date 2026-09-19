@@ -74,6 +74,69 @@ const CASES = [
     replace: '',
     test: 'packages/xezar/src/mcp/project-doors.test.ts -t "opens a re-added project only after"',
   },
+  {
+    name: 'sse-detach-on-stale-generation',
+    ac: 'AC-02 (#647, PR 2)',
+    why: 'the workspace SSE stream releases its attach entry on the id alone again, so the late dispose of a replaced registration detaches the LIVE store and the rebuilt project\'s events are lost until reconnect',
+    file: 'packages/xezar/src/server/server.ts',
+    find: `          const held = attached.get(disposed);
+          if (!held || held.generation !== disposal.generation) return;`,
+    replace: `          const held = attached.get(disposed);
+          if (!held) return;`,
+    test: 'packages/xezar/src/server/workspace-events.test.ts',
+  },
+  {
+    name: 'terminal-delete-on-stale-generation',
+    ac: 'AC-03 (#647, PR 2)',
+    why: 'the terminal releases a project\'s activity source on the id alone again, so a dispose whose teardown outlived a rebuild takes the live project\'s rows off the screen for the rest of the session',
+    file: 'packages/xezar/src/terminal/index.ts',
+    find: `        const held = sources.get(projectId);
+        if (!held || held.generation !== disposal.generation) return;`,
+    replace: `        const held = sources.get(projectId);
+        if (!held) return;`,
+    test: 'packages/xezar/src/terminal/index.test.ts',
+  },
+  {
+    name: 'terminal-attach-accepts-older-generation',
+    ac: 'AC-03 (#647, PR 2)',
+    why: 'the pre-existing clobber on the BUILD side: a losing build\'s store, announced after the build that replaced it published, takes the live project\'s rows over',
+    file: 'packages/xezar/src/terminal/index.ts',
+    find: `        if (held && generation < held.generation) return undefined;
+`,
+    replace: '',
+    test: 'packages/xezar/src/terminal/index.test.ts',
+  },
+  {
+    name: 'automations-remove-ignores-superseded',
+    ac: 'AC-04 (#647, PR 2)',
+    why: 'a late dispose drops a project that was re-added and rebuilt inside the teardown window from the skills-update coordinator and the automation scheduler, with no second `project-added` to put it back',
+    file: 'packages/xezar/src/server/server.ts',
+    find: `    if (disposal.superseded) return;
+`,
+    replace: '',
+    test: 'packages/xezar/src/server/automations-gate.test.ts',
+  },
+  {
+    name: 'automations-never-built-removal',
+    kind: 'guard',
+    ac: 'AC-05/AC-08 (#647, PR 2)',
+    why: 'pins the case the `superseded` guard must NOT fold in: a project whose context was never built is removed through the unconditional `project-removed` branch, which the guard above never sees. Run against `automations-remove-ignores-superseded`\'s own defect, so it shows the two paths are independent',
+    file: 'packages/xezar/src/server/server.ts',
+    find: `    if (disposal.superseded) return;
+`,
+    replace: '',
+    test: 'packages/xezar/src/server/automations-gate.test.ts -t "whose context was never built"',
+  },
+  {
+    name: 'listener-not-migrated',
+    ac: 'AC-09 (#647, PR 2)',
+    why: 'one listener of the four keeps the old one-argument signature — it still compiles, still fires, and still has the bug, which is the whole reason the fan-out guard reads the source text',
+    file: 'packages/xezar/src/terminal/index.ts',
+    find: `      disposeUnsubscribe = contexts.onContextDisposed((projectId, disposal) => {`,
+    replace: `      disposeUnsubscribe = contexts.onContextDisposed((projectId) => {
+        const disposal = { generation: 0, superseded: false };`,
+    test: 'packages/xezar/src/server/project-context.test.ts -t "every onContextDisposed listener in the shipped source"',
+  },
 {
     "name": "recovery-replayed-for-later-projects",
     "ac": "AC-06",
@@ -566,12 +629,22 @@ for (const c of CASES) {
   // as green is the fail-open helper AGENTS.md warns about. A run with no passing test — or no
   // summary line at all — is a harness failure, never a guard that held.
   const ranTest = (check.counts?.passed ?? 0) > 0;
+  // …and a RED PROOF is only a proof when its test actually ran and actually FAILED (#699 review,
+  // O-1). The guard branch above already refused to read "zero tests" as green; the same hole is
+  // open in the other direction and is worse, because it manufactures evidence rather than losing
+  // it: a mistyped file filter, a renamed test name, a vitest that cannot even load the file all
+  // exit non-zero with nothing executed, and calling that RED claims a regression test that was
+  // never run proved something. An executed FAILING test is the only thing that does.
+  const executed = (check.counts?.passed ?? 0) + (check.counts?.failed ?? 0);
+  const provedRed = !check.passed && (check.counts?.failed ?? 0) > 0;
   const outcome = guard
     ? (check.passed && !ranTest
         ? 'NO TESTS RAN (harness failure — a zero-test run is never "as expected")'
         : check.passed ? 'STILL-GREEN (guard, as expected)' : 'RED (guard — UNEXPECTED, it was meant to pass both ways)')
-    : (check.passed ? 'STILL-GREEN (proves nothing)' : 'RED');
-  const asExpected = guard ? (check.passed && ranTest) : !check.passed;
+    : (check.passed
+        ? 'STILL-GREEN (proves nothing)'
+        : provedRed ? 'RED' : `INVALID (${executed === 0 ? 'no test executed' : 'no test FAILED'} — the run failed without the test failing, so it proves nothing)`);
+  const asExpected = guard ? (check.passed && ranTest) : provedRed;
   const counts = check.counts ? `${check.counts.passed} passed / ${check.counts.failed} failed` : 'no summary line';
   results.push({ ...c, outcome, asExpected });
   console.log(`${asExpected ? '✓ ' : '⚠ '}${c.name} (${c.ac}) — ${outcome} [${counts}]`);
