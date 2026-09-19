@@ -167,9 +167,9 @@ const OPENCODE_ATTACH_UNREACHABLE: McpLeaderBlocker = {
  * server answers `server-unreachable` rather than an AbortError, because failing closed is the point
  * — a target xezar could not check is not a target it attaches.
  */
-async function checkOpenCodeAttach(adapter: OpenCodeReactionAdapter): Promise<McpLeaderBlocker | undefined> {
+async function checkOpenCodeAttach(adapter: OpenCodeReactionAdapter, timeoutMs: number): Promise<McpLeaderBlocker | undefined> {
   try {
-    await adapter.checkTarget(AbortSignal.timeout(OPENCODE_ATTACH_CHECK_MS));
+    await adapter.checkTarget(AbortSignal.timeout(timeoutMs));
     return undefined;
   } catch (err) {
     // `session-not-found` and `wrong-project` are already attach-shaped and are forwarded unchanged;
@@ -414,6 +414,12 @@ export interface LeaderDeliveryOptions {
   readonly warn: (message: string) => void;
   /** Test seam. Production uses the controller's 30 s. */
   readonly heartbeatMs?: number;
+  /**
+   * Test seam for the attach-time OpenCode check (#703). Production uses the 10 s
+   * `OPENCODE_ATTACH_CHECK_MS` bound above; a case that needs a server which accepts a connection and
+   * never answers injects a small one here instead of waiting out the shipped default.
+   */
+  readonly opencodeAttachCheckMs?: number;
   /**
    * Where this project's state lives, for the pi leader descriptor (`adapters/pi-link.ts`). Absent
    * it is DERIVED from `projectRoot`, which is what the service already does, so nothing upstream
@@ -884,7 +890,7 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
       onReaction: (seq) => this.#recordReaction(seq),
       ...this.#ownOperation(),
     });
-    const refused = await checkOpenCodeAttach(adapter);
+    const refused = await checkOpenCodeAttach(adapter, this.#opts.opencodeAttachCheckMs ?? OPENCODE_ATTACH_CHECK_MS);
     if (refused) {
       adapter.close();
       return { ok: false, error: `${refused.message} ${refused.fix}`, blocker: refused };
