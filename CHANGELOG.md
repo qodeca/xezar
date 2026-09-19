@@ -238,6 +238,13 @@ The sidebar is navigation-only, and more of the cockpit is keyboard- and phone-a
 
 ## 🐛 Fixes
 
+- 🐛 **The MCP per-file coverage suite no longer flakes on worker teardown.** (#631)
+  `stale-write.test.ts` left the run store's 300 ms debounced `runs.json` save timer pending after
+  its tests ended. The `afterEach` removed the temporary data directory without flushing the store,
+  so the pending timer later fired, `saveNow()` hit ENOENT and logged `console.error('[xez] failed
+  to save runs.json: …')` during worker teardown — surfacing as `EnvironmentTeardownError: Closing
+  rpc while "onUserConsoleLog" was pending`. The test now flushes the store before removing the
+  directory, so no log can escape after the last test.
 - 🐛 **The Tasks page header no longer scrolls sideways in a narrow desktop window.** (#625, #447, #424)
   Below about 896 px at comfortable density (`known-gaps.md` G-48; density-dependent, from 958 px
   roomy to 835 px ultra), with “Mark all read” and “Archive finished” both shown, the one-row header

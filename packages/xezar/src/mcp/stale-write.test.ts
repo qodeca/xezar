@@ -36,6 +36,14 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // A decision-UNCHANGING mutation (telemetry `updateRun`, `setRead`) or `deleteRun` schedules the
+  // store's 300 ms debounced `runs.json` save (`scheduleSave`). If that timer is still pending when
+  // the test ends, it fires after this `afterEach` has removed `dataDir`, `saveNow()` hits ENOENT
+  // and logs `console.error('[xez] failed to save runs.json: …')` — a late log during worker
+  // teardown that surfaced as `EnvironmentTeardownError: Closing rpc while "onUserConsoleLog" was
+  // pending` (#631). Flush first so the pending timer is cleared (and the write lands) while
+  // `dataDir` still exists, then remove it.
+  store.flush();
   rmSync(dataDir, { recursive: true, force: true });
 });
 
