@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import extension, { __internals } from '../../scripts/pi-worktree-guard.ts';
+import { agentDirectories } from '../workflows/run.ts';
 
 const roots: string[] = [];
 const originalHome = process.env.HOME;
@@ -323,6 +324,100 @@ describe('pi linked-worktree tool guard (#537)', () => {
     });
   });
 
+  describe('Major 2, round 4: a quoted word is one argument, not a command line (#652)', () => {
+    it.each([
+      ['RED: a bare quoted .. (a printf argument, a pasted listing token)', () => "printf '%s\\n' '..'"],
+      ['RED: an inline-quoted cd fragment in a commit message', () => 'git commit -m "cd .."'],
+      ['RED: a quoted .. among other arguments', () => "printf '%s\\n' a '..' b"],
+      ['RED: a quoted listing line', () => 'git log --format=".."'],
+      ['GUARD: the required control echo "cd /elsewhere"', () => 'echo "cd /elsewhere"'],
+      ['GUARD: a quoted pattern that merely looks like a glob', () => "grep -rn 'cd /elsewhere' packages"],
+      ['GUARD: a quoted script for a program that is not a shell', () => "awk '{print $1}' x.txt"],
+    ])('allows %s', (_name, command) => {
+      expect(guard(fixture(), bash(command()))).toBeUndefined();
+    });
+
+    it.each([
+      ['GUARD: a real cd .. out of the worktree', () => 'cd ..'],
+      ['GUARD: a command-substituted cd out of the worktree', () => 'cd "$(git rev-parse --show-toplevel)/.."'],
+      ['GUARD: a ;-chained real cd into the primary', (f: Fixture) => `echo hi; cd ${f.primary} && git status`],
+      ['GUARD: an &&-chained real cd into the primary', (f: Fixture) => `true && cd ${f.primary} && git status`],
+      ['GUARD: a |-chained real cd into the primary', (f: Fixture) => `echo hi | cd ${f.primary}`],
+      ['GUARD: an unquoted .. argument (a deletion target)', () => 'rm -rf ..'],
+      ['GUARD: a quoted .. as a directory-change operand', () => "cd '..'"],
+      ['GUARD: a quoted .. as a git -C operand', () => "git -C '..' status"],
+      ['GUARD: a quoted shell script', (f: Fixture) => `sh -c "cd ${f.primary} && git status"`],
+      ['GUARD: a quoted shell script through a combined flag', (f: Fixture) => `bash -lc "cd ${f.primary} && git status"`],
+      ['GUARD: a quoted single-quoted shell script', (f: Fixture) => `sh -c 'cd ${f.primary} && git status'`],
+      ['GUARD: a quoted fish script', (f: Fixture) => `fish -c "cd ${f.primary} && git status"`],
+      ['GUARD: an eval argument', (f: Fixture) => `eval "cd ${f.primary}"`],
+      ['GUARD: a quoted redirect target', (f: Fixture) => `echo x > "${f.primary}/tracked.md"`],
+    ])('still refuses %s', (_name, command) => {
+      const f = fixture();
+      expect(guard(f, bash(command(f)))).toMatchObject(BLOCK);
+    });
+
+    it('GUARD: a script nested deeper than the guard will follow is refused, never thrown', () => {
+      const f = fixture();
+      let command = `echo x > ${f.primary}/tracked.md`;
+      for (let i = 0; i < 12; i++) command = `sh -c ${JSON.stringify(command)}`;
+      expect(guard(f, bash(command))).toMatchObject(BLOCK);
+    });
+
+    it('GUARD: the chained cd refusal does not depend on the quote of the cd itself', () => {
+      const f = fixture();
+      for (const command of [`cd ${f.primary}`, `cd '${f.primary}'`, `cd "${f.primary}"`]) {
+        expect(guard(f, bash(command))).toMatchObject(BLOCK);
+      }
+    });
+  });
+
+  describe('Round 1 review: a shell flag\u2019s separate argument, and the quoted-.. exemption (#652)', () => {
+    it.each([
+      ['RED: -o takes a separate argument before -c', (f: Fixture) => `bash -o pipefail -c 'cd ${f.primary} && rm -rf x'`],
+      ['RED: -euo takes a separate argument before -c', (f: Fixture) => `bash -euo pipefail -c 'cd ${f.primary}'`],
+      ['RED: a long option takes a separate argument before -c', (f: Fixture) => `bash --rcfile /dev/null -c 'cd ${f.primary}'`],
+      ['RED: sh -o errexit -c', (f: Fixture) => `sh -o errexit -c 'cd ${f.primary}'`],
+      ['RED: zsh -o pipefail -c', (f: Fixture) => `zsh -o pipefail -c 'cd ${f.primary}'`],
+      ['RED: a -c whose script is not quoted at all fails closed', () => 'bash -c ls'],
+      ['RED: an interpreter word with no operand at all fails closed', () => 'sh -c'],
+      ['GUARD: a quoted script behind only dash-prefixed flags', (f: Fixture) => `bash --noprofile --norc -c 'cd ${f.primary}'`],
+      ['GUARD: a quoted script behind a combined flag', (f: Fixture) => `bash -lc 'cd ${f.primary}'`],
+      ['GUARD: a quoted script behind a bare -c', (f: Fixture) => `bash -c 'cd ${f.primary}'`],
+      ['GUARD: a quoted script through a path-spelled interpreter', (f: Fixture) => `env sh -c 'cd ${f.primary}'`],
+    ])('still refuses %s', (_name, command) => {
+      const f = fixture();
+      expect(guard(f, bash(command(f)))).toMatchObject(BLOCK);
+    });
+
+    it.each([
+      ['RED: a quoted .. handed to rm', () => "rm -rf '..'"],
+      ['RED: a double-quoted .. handed to rm', () => 'rm -rf ".."'],
+      ['RED: a quoted .. as mv\u2019s destination', () => "mv notes.md '..'"],
+      ['RED: a quoted ../.. as cp\u2019s destination', () => "cp -r . '../..'"],
+      ['RED: a quoted ../ as rsync\u2019s destination', () => "rsync -a . '../'"],
+      ['RED: a quoted .. as find\u2019s search root', () => "find '..' -delete"],
+      ['RED: a quoted .. as chmod\u2019s target', () => "chmod -R 777 '..'"],
+      ['RED: a quoted .. with a trailing slash', () => "rm -rf '../'"],
+      ['GUARD: an unquoted .. deletion target', () => 'rm -rf ..'],
+      ['GUARD: a quoted .. as a directory-change operand', () => "cd '..'"],
+      ['GUARD: a quoted .. as a git -C operand', () => "git -C '..'"],
+      ['GUARD: a quoted .. as a tar -C operand', () => "tar -C '..'"],
+      ['GUARD: a quoted .. as a redirect target', () => "echo hi > '../out.txt'"],
+    ])('still refuses %s', (_name, command) => {
+      expect(guard(fixture(), bash(command()))).toMatchObject(BLOCK);
+    });
+
+    it.each([
+      ['GUARD: printf prints a quoted .. (AC-2)', () => "printf '%s\\n' '..'"],
+      ['GUARD: echo prints a quoted .. (AC-2)', () => "echo '..'"],
+      ['GUARD: a quoted .. among a printf\u2019s other arguments', () => "printf '%s\\n' a '..' b"],
+      ['GUARD: a quoted .. as an option VALUE is a string, not an operand', () => 'git log --format=".."'],
+    ])('allows %s', (_name, command) => {
+      expect(guard(fixture(), bash(command()))).toBeUndefined();
+    });
+  });
+
   describe('Major 3: the primary checkout comes from Xezar, not from the .git marker', () => {
     it.each([
       ['a worktree of a bare repository', 'proj.git'],
@@ -350,6 +445,53 @@ describe('pi linked-worktree tool guard (#537)', () => {
       expect(guard(f, write(join(f.runs, 'task.handoff.md')), [f.runs, tmp])).toBeUndefined();
       expect(guard(f, bash(`echo done >> ${join(f.runs, 'task.handoff.md')} && cd ${tmp} && ls`), [f.runs, tmp])).toBeUndefined();
       expect(guard(f, write(join(f.runs, 'task.handoff.md')))).toMatchObject(BLOCK);
+    });
+  });
+
+  describe('the run’s own task evidence directory (#652)', () => {
+    const RUN = '3d0348dc-815b-4e47-ad89-ef537ca4a2f0';
+    const OTHER_RUN = '00000000-1111-4222-8333-444444444444';
+    /** The convention under test, spelled ONCE here: the evidence root the kit
+     *  writes today and the frozen historical root of the #665 dual-read window. */
+    const evidenceOf = (f: Fixture, runId: string) => join(f.primary, '.local', 'xezar', 'tasks', runId);
+    const frozenOf = (f: Fixture, runId: string) => join(f.primary, '.local', 'xezar-tasks', runId);
+    /** The roots the fix must produce for ONE run, built HERE so the GUARD cases below run on
+     *  BOTH sides of the fix — they are controls, not the regression. The RED case additionally
+     *  pins the production producer to exactly this list: `agentDirectories` is what fills
+     *  `additionalDirectories`, which the pi runner passes as `--xezar-allowed-roots`. */
+    const rootsFor = (f: Fixture, runId: string) => [f.runs, evidenceOf(f, runId), frozenOf(f, runId)];
+    const produced = (f: Fixture, env: Record<string, string>) =>
+      agentDirectories(f.primary, join(f.primary, '.local', 'xezar'), env);
+
+    it('RED: the producer grants this run its evidence directory and the guard allows the kit’s write', () => {
+      const f = fixture();
+      const allowed = produced(f, { XEZ_TASK_ID: RUN });
+      expect(allowed).toEqual(rootsFor(f, RUN));
+      // Fail closed on a run that cannot name itself — part of the same producer.
+      expect(produced(f, {})).toEqual([f.runs]);
+      expect(produced(f, { XEZ_TASK_ID: '..' })).toEqual([f.runs]);
+      const redProofs = join(evidenceOf(f, RUN), 'red-proofs');
+      expect(guard(f, bash(`mkdir -p ${redProofs} && echo x > ${redProofs}/x.txt`), allowed)).toBeUndefined();
+      expect(guard(f, write(join(redProofs, 'x.txt')), allowed)).toBeUndefined();
+      expect(guard(f, write(join(frozenOf(f, RUN), 'notes.md')), allowed)).toBeUndefined();
+    });
+
+    it('GUARD: the same path for ANOTHER run id stays refused, under either evidence root', () => {
+      const f = fixture();
+      const allowed = rootsFor(f, RUN);
+      expect(guard(f, bash(`echo x > ${join(evidenceOf(f, OTHER_RUN), 'red-proofs', 'x.txt')}`), allowed)).toMatchObject(BLOCK);
+      expect(guard(f, write(join(evidenceOf(f, OTHER_RUN), 'red-proofs', 'x.txt')), allowed)).toMatchObject(BLOCK);
+      expect(guard(f, write(join(frozenOf(f, OTHER_RUN), 'x.txt')), allowed)).toMatchObject(BLOCK);
+    });
+
+    it('GUARD: the evidence grant does not widen to the project root, a tracked file or git -C', () => {
+      const f = fixture();
+      const allowed = rootsFor(f, RUN);
+      expect(guard(f, write(join(f.primary, 'tracked.md')), allowed)).toMatchObject(BLOCK);
+      expect(guard(f, write(join(f.primary, '.local', 'xezar', 'tasks', OTHER_RUN, 'x.md')), allowed)).toMatchObject(BLOCK);
+      expect(guard(f, bash(`echo x >> ${f.primary}/tracked.md`), allowed)).toMatchObject(BLOCK);
+      expect(guard(f, bash(`git -C ${f.primary} commit -am x`), allowed)).toMatchObject(BLOCK);
+      expect(guard(f, write('notes.md'), allowed)).toBeUndefined();
     });
   });
 
