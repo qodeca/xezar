@@ -552,6 +552,37 @@ describe('recoverable blockers — targeting is proven, never guessed', () => {
     expect(healthy.status().route).toBe('prompt_async');
   });
 
+  /**
+   * #651 — `checkTarget` is the SAME check, offered to a caller that has not delivered anything: the
+   * attach path uses it so a session that could never receive an event is refused at attach instead
+   * of being accepted and refused later. It is one checker, so the two paths cannot disagree; these
+   * cases pin the codes the attach refusal is built on, and that it starts no turn.
+   */
+  it('checkTarget names session-not-found, wrong-project and an unreachable server, and submits nothing', async () => {
+    const { adapter } = adapterFor();
+    await adapter.checkTarget(live());
+    expect(adapter.status().route).toBe('prompt_async');
+
+    oc.sessionExists = false;
+    const missing = await adapter.checkTarget(live()).catch((e: unknown) => e);
+    expect((missing as OpenCodeDeliveryBlocked).blocker.code).toBe('session-not-found');
+
+    oc.sessionExists = true;
+    oc.directory = '/work/another-project';
+    const { adapter: elsewhere } = adapterFor();
+    const wrong = await elsewhere.checkTarget(live()).catch((e: unknown) => e);
+    expect((wrong as OpenCodeDeliveryBlocked).blocker.code).toBe('wrong-project');
+    // The directory is NAMED, so a person with two projects open knows which session they pasted.
+    expect((wrong as OpenCodeDeliveryBlocked).blocker.message).toContain('/work/another-project');
+
+    const { adapter: dead } = adapterFor({ target: { baseUrl: 'http://127.0.0.1:1', sessionId: SESSION } });
+    const unreachable = await dead.checkTarget(live()).catch((e: unknown) => e);
+    expect((unreachable as OpenCodeDeliveryBlocked).blocker.code).toBe('server-unreachable');
+
+    expect(oc.submissions).toHaveLength(0);
+    expect(oc.requests.filter((r) => r.startsWith('POST'))).toEqual([]);
+  });
+
   it('the heartbeat is non-model: it reads the session and never submits', async () => {
     const { adapter } = adapterFor();
     await adapter.heartbeat(live());

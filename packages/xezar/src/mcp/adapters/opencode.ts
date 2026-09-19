@@ -250,10 +250,21 @@ export class OpenCodeReactionAdapter implements ReactionAdapter {
     throw new Error(`OpenCode refused the event submission (HTTP ${res.status})`);
   }
 
-  /** Non-model liveness: the session still exists on a reachable server. Starts no turn. */
-  async heartbeat(signal: AbortSignal): Promise<void> {
+  /**
+   * The targeting check on its own, for a caller that has not delivered anything yet (#651): the
+   * named session exists on a reachable server and belongs to the bound project. It is the SAME
+   * check the delivery path runs — one checker, so attach and delivery can never disagree — and it
+   * throws `OpenCodeDeliveryBlocked` with `session-not-found`, `wrong-project` or
+   * `server-unreachable`. Starts no turn and reads no history.
+   */
+  async checkTarget(signal: AbortSignal): Promise<void> {
     const target = this.#requireTarget();
     await this.#checkSession(target, signal);
+  }
+
+  /** Non-model liveness: the session still exists on a reachable server. Starts no turn. */
+  async heartbeat(signal: AbortSignal): Promise<void> {
+    await this.checkTarget(signal);
   }
 
   /** Stop reading OpenCode's stream. Changes nothing in OpenCode. */
@@ -303,10 +314,13 @@ export class OpenCodeReactionAdapter implements ReactionAdapter {
     const session = (await res.json().catch(() => undefined)) as { directory?: unknown } | undefined;
     const directory = typeof session?.directory === 'string' ? session.directory : undefined;
     if (directory === undefined || samePath(directory, this.#opts.projectRoot) === false) {
-      throw this.#block(
-        'wrong-project',
-        `OpenCode session ${target.sessionId} belongs to another directory, not this project. Give xezar a session opened in this project.`,
-      );
+      // The directory is NAMED when OpenCode reported one (#651): "another directory" alone leaves a
+      // person with two cockpits open guessing which of the two sessions they pasted.
+      const whose =
+        directory === undefined
+          ? `names no directory of its own, so xezar cannot tell it belongs to this project (${this.#opts.projectRoot})`
+          : `belongs to ${directory}, not to this project (${this.#opts.projectRoot})`;
+      throw this.#block('wrong-project', `OpenCode session ${target.sessionId} ${whose}. Give xezar a session opened in this project.`);
     }
     this.#directory = directory;
     if (this.#blocker && this.#blocker.code !== 'no-target') this.#blocker = undefined;
