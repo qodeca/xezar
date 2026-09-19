@@ -6,7 +6,7 @@
 # them, and nothing noticed when a phase left none. A disposition nobody wrote is
 # indistinguishable from a phase nobody ran, which is the `phase-hole` failure this closes.
 #
-# Everything lives in the PRIMARY checkout's `.local/xezar-tasks/<runId>/`, resolved through
+# Everything lives in the PRIMARY checkout's `.local/xezar/tasks/<runId>/`, resolved through
 # `lib/common.sh` — never the task worktree's own `.local/`, which retention reclaims.
 #
 # Usage:
@@ -249,7 +249,10 @@ case "$cmd" in
         --predecessor)
           prev="${2:-}"
           valid_task_id "$prev" || die "--predecessor needs the predecessor's run id"
-          prev_file="$MAIN_ROOT/.local/xezar-tasks/$prev/COUNTERS"
+          # Both evidence roots: a predecessor that ran before the rename window keeps its
+          # evidence where it wrote it. Missing history blocks a legitimate repair, so looking in
+          # one root only would turn a merely older predecessor into "unknown".
+          prev_file="$(task_evidence_dir_of "$prev")/COUNTERS"
           [ -f "$prev_file" ] || refuse "the predecessor run $prev has no COUNTERS record, so its history is unknown. Unknown is not zero: reconcile it with a person before another repair."
           {
             printf '# Repair counters for run %s. One line per consumed round, appended BEFORE the round.\n' "$TASK_ID"

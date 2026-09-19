@@ -153,6 +153,10 @@ make_fixture() {
 # starts: with the dispositions already written. Readiness refuses without them (§7g), so a fixture
 # that omitted them would be testing the phase-record refusal in every unrelated case instead of
 # the one it is about. The cases that DO test it delete one of these on purpose.
+# It seeds under the OLD root ON PURPOSE. During the dual-read window that makes every fixture
+# below a run whose evidence predates the rename — the case the window exists for — so the suite
+# keeps exercising the old root for real rather than by assertion. § 24d drives the new root, both
+# roots at once, and the resolver's four states.
 seed_phase_record() {
   local dir="$1/.local/xezar-tasks/$2"
   mkdir -p "$dir" || return 1
@@ -3430,7 +3434,7 @@ rc=$?
 printf '%s' "$out" | grep -q "NOT guessed from the checkout" \
   && ok "and it says explicitly that a directory is not derived from the root basename" \
   || bad "and it says explicitly that a directory is not derived from the root basename" "$out"
-[ ! -d "$root/.local/xezar-tasks/$(basename "$root")" ] \
+[ ! -d "$root/.local/xezar/tasks/$(basename "$root")" ] && [ ! -d "$root/.local/xezar-tasks/$(basename "$root")" ] \
   && ok "no directory named after the checkout was created" \
   || bad "no directory named after the checkout was created" "a basename-derived directory exists"
 
@@ -3439,7 +3443,8 @@ out="$(cd "$root" && env XEZ_TASK_ID="$RUN_B" "$SETUP" --readonly-init 2>&1)"
 rc=$?
 [ "$rc" -eq 0 ] && ok "read-only init succeeds when the run id is known" \
   || bad "read-only init succeeds when the run id is known" "exit $rc: $out"
-[ -f "$root/.local/xezar-tasks/$RUN_B/manifest.json" ] \
+# A run with no prior evidence under either root lands in the current root.
+[ -f "$root/.local/xezar/tasks/$RUN_B/manifest.json" ] \
   && ok "read-only init writes the manifest in the primary checkout" \
   || bad "read-only init writes the manifest in the primary checkout" "no manifest"
 [ ! -d "$root/node_modules" ] && ok "read-only init installs no dependencies" \
@@ -4869,6 +4874,152 @@ rootsync_run "$root" >/dev/null 2>&1
 #     establish. That ordering is unlaunchable: it refuses every time for a prerequisite that cannot
 #     be met before it runs. This is the pre-agent-manifest trap, asserted so it cannot come back.
 # Root workflow shape and local guidance are validated by the real project loader tests.
+# --- 24d. Task evidence lives under two roots, and nothing moves between them --------------------
+#
+# Stage 3 of the `.local/xezar-*` rename. `.local/xezar-tasks` is FROZEN history: a sealed manifest
+# stores ABSOLUTE paths and `gate-results.mjs` asserts the manifest sits at its canonical location,
+# so bulk-moving old evidence would invalidate every historical seal on the machine. New evidence
+# goes to `.local/xezar/tasks`; the readers accept both for the length of the window.
+#
+# Named breaks: `writer-only-rename` (the writer moves and a reader does not, so a run fails at its
+# last gate having done all the work) and `single-root-audit` (a reader scans one root and reports
+# "no task evidence" while runs exist under the other — an audit that finds nothing reads exactly
+# like an audit that found no problem).
+printf '\n-- task evidence: the two roots --\n'
+
+# The resolver, asked in the four states it can be in. Sourced from the FIXTURE's own copy of the
+# library, which is the copy the fixture's checks use.
+evidence_dir_in() { ( cd "$1" && . "$2/.xezar/checks/lib/common.sh" && resolve_task_paths && task_evidence_dir ); }
+expect_path() {
+  local label="$1" got="$2" want="$3"
+  [ "$got" = "$want" ] && ok "$label" || bad "$label" "got '$got', wanted '$want'"
+}
+
+root="$(make_fixture evidence-roots)"
+wt="$(add_worktree "$root" "$RUN_A")"
+OLD_EV="$root/.local/xezar-tasks/$RUN_A"
+NEW_EV="$root/.local/xezar/tasks/$RUN_A"
+
+# `add_worktree` seeds the phase record under the old root, so this fixture starts in the
+# "only the old root has this run" state — a run that began before the window.
+expect_path "a run whose evidence is only under the old root keeps writing there" \
+  "$(evidence_dir_in "$wt" "$root")" "$OLD_EV"
+
+# Neither root: a clean checkout, which is the ordinary case from here on.
+mv "$OLD_EV" "$WORK/parked-$RUN_A"
+expect_path "a run with evidence under neither root resolves to the new root" \
+  "$(evidence_dir_in "$wt" "$root")" "$NEW_EV"
+
+# Only the new root.
+mkdir -p "$(dirname "$NEW_EV")"
+cp -R "$WORK/parked-$RUN_A" "$NEW_EV"
+expect_path "a run whose evidence is only under the new root resolves there" \
+  "$(evidence_dir_in "$wt" "$root")" "$NEW_EV"
+
+# Both roots, which is what a reverted-and-reapplied window looks like: the new one wins, and the
+# old one is still on disk, untouched.
+mkdir -p "$root/.local/xezar-tasks"
+cp -R "$WORK/parked-$RUN_A" "$OLD_EV"
+expect_path "with both roots present the new one wins" \
+  "$(evidence_dir_in "$wt" "$root")" "$NEW_EV"
+[ -d "$OLD_EV" ] && ok "resolving never removes the old root's copy" \
+  || bad "resolving never removes the old root's copy" "$OLD_EV is gone"
+
+# A whole green run sealed under the NEW root: the write side, the canonical-location fence in
+# gate-results.mjs and the cross-task auditor all have to agree about where this run lives.
+root="$(make_fixture evidence-new-root)"
+wt="$(add_worktree_with_work "$root" "$RUN_A")"
+CHECKS="$root/.xezar/checks"
+mkdir -p "$root/.local/xezar/tasks"
+mv "$root/.local/xezar-tasks/$RUN_A" "$root/.local/xezar/tasks/$RUN_A"
+rmdir "$root/.local/xezar-tasks"
+drive "$wt" "$CHECKS" "$LIST_ID" "$REQUIRED_ALL" "${ALL_PASS[@]}" > /dev/null
+expect_ok "a green run seals under the new root" \
+  run_in "$wt" "$CHECKS/worktree-preflight.sh" --record-gate-evidence
+[ -f "$root/.local/xezar/tasks/$RUN_A/manifest.json" ] \
+  && ok "the seal is written under the new root" \
+  || bad "the seal is written under the new root" "no manifest at $root/.local/xezar/tasks/$RUN_A"
+[ ! -d "$root/.local/xezar-tasks" ] \
+  && ok "and the old root is not re-created by a run that never used it" \
+  || bad "and the old root is not re-created by a run that never used it" "$root/.local/xezar-tasks exists"
+expect_ok "a seal under the new root passes the canonical-location fence" \
+  run_in "$wt" "$CHECKS/worktree-preflight.sh" --verify-gate-evidence
+expect_ok "and the cross-task auditor verifies it from the primary checkout" \
+  run_in "$root" "$CHECKS/verify-evidence.sh" "$RUN_A"
+
+# The same run, sealed under the OLD root. This is the frozen history the window exists for: it
+# must keep verifying with the new code, at the path it was written to, with nothing moved.
+root="$(make_fixture evidence-old-root)"
+wt="$(add_worktree_with_work "$root" "$RUN_A")"
+CHECKS="$root/.xezar/checks"
+drive "$wt" "$CHECKS" "$LIST_ID" "$REQUIRED_ALL" "${ALL_PASS[@]}" > /dev/null
+expect_ok "a green run still seals under the old root when that is where it lives" \
+  run_in "$wt" "$CHECKS/worktree-preflight.sh" --record-gate-evidence
+[ -f "$root/.local/xezar-tasks/$RUN_A/manifest.json" ] \
+  && ok "the seal stays under the old root" \
+  || bad "the seal stays under the old root" "no manifest at $root/.local/xezar-tasks/$RUN_A"
+[ ! -d "$root/.local/xezar/tasks/$RUN_A" ] \
+  && ok "and no copy of it appears under the new root" \
+  || bad "and no copy of it appears under the new root" "the run was duplicated"
+expect_ok "a seal under the old root still passes the canonical-location fence" \
+  run_in "$wt" "$CHECKS/worktree-preflight.sh" --verify-gate-evidence
+expect_ok "and the cross-task auditor still verifies it" \
+  run_in "$root" "$CHECKS/verify-evidence.sh" "$RUN_A"
+
+# `single-root-audit`: --list has to see both roots and say which is which.
+mkdir -p "$root/.local/xezar/tasks/$RUN_B"
+node "$SCRIPT_DIR/lib/manifest.mjs" "$root/.local/xezar/tasks/$RUN_B/manifest.json" --init "runId=$RUN_B"
+list_out="$(run_in "$root" "$CHECKS/verify-evidence.sh" --list 2>&1)"
+printf '%s\n' "$list_out" | grep -q "^$RUN_A .*\.local/xezar-tasks" \
+  && ok "--list reports a run from the old root and names that root" \
+  || bad "--list reports a run from the old root and names that root" "$list_out"
+printf '%s\n' "$list_out" | grep -q "^$RUN_B .*\.local/xezar/tasks" \
+  && ok "--list reports a run from the new root and names that root" \
+  || bad "--list reports a run from the new root and names that root" "$list_out"
+printf '%s\n' "$list_out" | grep -q 'no task evidence' \
+  && bad "--list never claims emptiness while runs exist" "$list_out" \
+  || ok "--list never claims emptiness while runs exist"
+
+# And on a checkout with neither root, "no task evidence" names both, so the reader can tell it
+# was a complete answer rather than a look in one place.
+empty_root="$(make_fixture evidence-none)"
+empty_out="$(run_in "$empty_root" "$empty_root/.xezar/checks/verify-evidence.sh" --list 2>&1)"
+case "$empty_out" in
+  *".local/xezar/tasks"*".local/xezar-tasks"*) ok "with neither root present --list names both" ;;
+  *) bad "with neither root present --list names both" "$empty_out" ;;
+esac
+
+# Counters across the roots: a predecessor that ran before the window keeps its COUNTERS where it
+# wrote them, and a replacement run has to find them. Missing history reads as UNKNOWN and blocks a
+# legitimate repair, so a reader that looks in one root turns "older" into "unreconcilable".
+root="$(make_fixture evidence-counters)"
+wt_b="$(add_worktree_with_work "$root" "$RUN_B")"
+PR_SH="$root/.xezar/checks/phase-record.sh"
+mkdir -p "$root/.local/xezar-tasks/$RUN_A"
+printf '# counters for %s\nhistory: complete — no predecessor\ncounter=self-review round=1 at=x trigger=a\ncounter=self-review round=2 at=x trigger=b\n' \
+  "$RUN_A" > "$root/.local/xezar-tasks/$RUN_A/COUNTERS"
+expect_ok "a predecessor's counters under the old root are found by a replacement run" \
+  run_in "$wt_b" "$PR_SH" counters init --predecessor "$RUN_A"
+expect_fail "and the spent budget is carried forward across the roots" \
+  "EXHAUSTED" run_in "$wt_b" "$PR_SH" counter self-review --trigger "starting over"
+
+# The mirror: a predecessor under the NEW root.
+root="$(make_fixture evidence-counters-new)"
+wt_b="$(add_worktree_with_work "$root" "$RUN_B")"
+PR_SH="$root/.xezar/checks/phase-record.sh"
+mkdir -p "$root/.local/xezar/tasks/$RUN_A"
+printf '# counters for %s\nhistory: complete — no predecessor\ncounter=gate-return round=1 at=x trigger=a\ncounter=gate-return round=2 at=x trigger=b\n' \
+  "$RUN_A" > "$root/.local/xezar/tasks/$RUN_A/COUNTERS"
+expect_ok "a predecessor's counters under the new root are found too" \
+  run_in "$wt_b" "$PR_SH" counters init --predecessor "$RUN_A"
+expect_fail "and that spent budget is carried forward as well" \
+  "EXHAUSTED" run_in "$wt_b" "$PR_SH" counter gate-return --trigger "starting over"
+
+# A predecessor under NEITHER root is still unknown history, not zero. The dual read widens where
+# the check looks; it does not weaken what it concludes when it finds nothing.
+expect_fail "a predecessor with no COUNTERS under either root is still unknown" \
+  "unknown" run_in "$wt_b" "$PR_SH" counters init --predecessor "aaaaaaaa-0000-4000-8000-00000000dead"
+
 # --- 25. The suite did not touch the real repository --------------------------------------------------
 #
 # THE BACKSTOP. Every case above builds its own throwaway repository, and the whole point is that

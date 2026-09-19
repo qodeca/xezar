@@ -89,7 +89,12 @@ export function releaseArchiveRules(repoRoot: string): ContentRule[] {
   return [
     ...PROJECT_SPECIFIC_RULES,
     { id: 'own-kit-name', pattern: new RegExp(`(?<![\\w-])(?:${names.map(escape).join('|')})(?![\\w-])`), reason: "a workflow, skill or check of xezar's own dogfooding kit" },
-    { id: 'own-local-path', pattern: /\.local\/(?:xezar-(?:tasks|kit|campaigns)|erfana|qa\/|coverage\/|plans\/)/, reason: "a scratch or evidence path of xezar's own repository" },
+    // Both spellings of the kit's evidence root. `.local/xezar-tasks` is frozen history and
+    // `.local/xezar/tasks` is where new evidence goes; during that window either string in a
+    // packed file is the same leak, and matching only one would let the other ship unnoticed.
+    // Narrow on purpose: `.local/xezar/` alone is the SHIPPED engine's own state directory
+    // (worktrees, tmp, cache), which the published CLI names legitimately.
+    { id: 'own-local-path', pattern: /\.local\/(?:xezar-(?:tasks|kit|campaigns)|xezar\/tasks|erfana|qa\/|coverage\/|plans\/)/, reason: "a scratch or evidence path of xezar's own repository" },
   ];
 }
 

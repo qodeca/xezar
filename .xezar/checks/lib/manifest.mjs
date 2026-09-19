@@ -1,7 +1,7 @@
 // Minimal task-manifest reader/writer for the Xezar worktree checks.
 //
 // The manifest is the ONLY channel that survives a worktree being reclaimed, deleted or
-// resumed, because it lives in the primary checkout's ignored `.local/xezar-tasks/<taskId>/`
+// resumed, because it lives in the primary checkout's ignored `.local/xezar/tasks/<taskId>/`
 // rather than inside the task tree. It is deliberately small: identity, where the work
 // happened, what it forked from, what the checks concluded, and the pull request. It is
 // not a log.
