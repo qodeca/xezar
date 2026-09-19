@@ -225,7 +225,10 @@ describe('workspace config lock', () => {
     // forget it. Pinned because "add a second writer that does its own atomic write" is the
     // shape of the regression.
     const source = readFileSync(fileURLToPath(new URL('./config.ts', import.meta.url)), 'utf8');
-    expect(source).toContain('withWorkspaceConfigLock(path, () => mergeWriteLocked(path, mutator))');
+    // The exact arguments are not pinned (the project layout adds one — #650); what is pinned is
+    // that the lock still wraps `mergeWriteLocked`, so a writer that bypasses it fails here. The
+    // trailing `[),]` accepts both shapes, so this guard passes with and without #650.
+    expect(source).toMatch(/withWorkspaceConfigLock\(\s*path,\s*\(\)\s*=>\s*mergeWriteLocked\(path, mutator[),]/);
     expect(await loadWorkspaceConfig()).toBeTruthy();
   });
 });

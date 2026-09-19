@@ -87,7 +87,7 @@ The folder you start in (its repository root, inside Git) owns its xezar setup: 
   single-project mode — settings in <project>/.xezar, working files in <project>/.local/xezar
 ```
 
-On the first run in a folder without `.xezar/workspace.json`, xezar asks once, in the terminal, whether to copy your global setup (`~/.xezar`, or `XEZ_HOME`) into the project, answered with `[y/N]`. Settings, agent accounts and GUI preferences are copied; your project list is not, and nothing is kept in sync afterwards. When standard input or output is not a terminal, for example in a script or CI, nothing is imported and one line says so:
+On the first run in a folder without `.xezar/workspace.json`, xezar asks once, in the terminal, whether to copy your global setup (`~/.xezar`, or `XEZ_HOME`) into the project, answered with `[y/N]`. Settings, agent accounts and GUI preferences are copied; your project list and the machine-scoped `browseRoot`/`projectsDir` roots are not, and nothing is kept in sync afterwards. When standard input or output is not a terminal, for example in a script or CI, nothing is imported and one line says so:
 
 ```text
   not a terminal, so nothing was imported from your global setup — starting <project>/.xezar with defaults

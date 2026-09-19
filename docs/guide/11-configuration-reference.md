@@ -30,7 +30,7 @@ The first single-project start in a folder without `.xezar/workspace.json` asks 
 
 | Global file | Copied to | What is left out |
 | --- | --- | --- |
-| `config.json` | `.xezar/workspace.json` | The `projects` list. |
+| `config.json` | `.xezar/workspace.json` | The `projects` list, and the machine-scoped `browseRoot` and `projectsDir`. |
 | `agent-accounts.json` | `.xezar/agent-accounts.json` | Account choices saved for other folders; this folder's own choice is kept. |
 | `ui-state.json` | `.xezar/workspace-ui.json` | Nothing. |
 
@@ -94,7 +94,7 @@ Use global Settings for the exposed controls. This file also holds the project r
 | `memoryLimitMb` | When absent, `floor(host RAM in MiB × 0.6 / 2)`, clamped to 1024–8192 MiB. Integer 0–1,048,576 or `null`; zero and `null` mean no workspace memory ceiling. The divisor is 2, independent of your chosen parallel cap. |
 | `worktreeRetentionDefault` | 10; integer 0–1000. Used where the project has no retention override; zero disables automatic reclamation. |
 
-`browseRoot` and `projectsDir` are special: startup registration/migration writes the resolved defaults into the workspace file. Once saved, changing the environment and restarting does not replace them. Change the stored settings in global **Settings → Projects**.
+`browseRoot` and `projectsDir` are special: startup registration/migration writes the resolved defaults into the workspace file. Once saved, changing the environment and restarting does not replace them. Change the stored settings in global **Settings → Projects**. In the single-project layout the writer omits `browseRoot`, `projectsDir` and `projects` — adding, cloning and browsing projects are refused there — so a committed `.xezar/workspace.json` carries none of the three; a file written before 0.17.0 that holds them still loads, and the next write drops them.
 
 ## To manage `agent-accounts.json`
 

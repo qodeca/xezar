@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { createInterface } from 'node:readline/promises';
 import { globalStateLayout, isSymbolicLink, projectStateDirRefusal, type StateLayout } from '../state-layout.ts';
-import { atomicWriteJsonSync } from './config.ts';
+import { atomicWriteJsonSync, withoutMachineScopedKeys } from './config.ts';
 
 /**
  * Single-project mode, piece (d): import from the global setup (#600 FR-4, AC-4).
@@ -31,16 +31,19 @@ import { atomicWriteJsonSync } from './config.ts';
  *
  * | Global file (`~/.xezar/…`) | Project file (`<project>/.xezar/…`) | Filtered |
  * | --- | --- | --- |
- * | `config.json` | `workspace.json` | the project registry (`projects`) is dropped |
+ * | `config.json` | `workspace.json` | the project registry (`projects`) and the machine-scoped `browseRoot`/`projectsDir` are dropped (#650) |
  * | `agent-accounts.json` | `agent-accounts.json` | per-repo `selections` other than this folder's are dropped |
  * | `ui-state.json` | `workspace-ui.json` | nothing |
  *
  * The registry is dropped because it is a list of THIS machine's folders: committed into a
  * repository it would hand every clone a set of paths that do not exist there, and the mode's
  * registry is exactly one project — the folder itself — which the boot registers on its own. The
- * per-repo account selections are dropped for the same reason: they are keyed by an absolute path
- * on this machine. Everything else is copied verbatim, unknown keys included, because the loaders
- * already keep what they do not understand (`.passthrough()` at every level).
+ * machine-scoped GUI roots are dropped for the same reason and in the same breath (#650):
+ * `browseRoot` and `projectsDir` are this host's defaults (often `~/`), and adding, cloning and
+ * browsing are refused in the mode, so neither has a consumer there. The per-repo account
+ * selections are dropped for the same reason: they are keyed by an absolute path on this machine.
+ * Everything else is copied verbatim, unknown keys included, because the loaders already keep what
+ * they do not understand (`.passthrough()` at every level).
  *
  * A project file that already exists is never overwritten, and a global file that cannot be read
  * or is not a JSON object is skipped and named rather than copied: importing a corrupt workspace
@@ -133,7 +136,7 @@ export function importGlobalSetup(layout: StateLayout, env: NodeJS.ProcessEnv = 
   const plan: Array<{ from: string; to: string; transform: (value: Record<string, unknown>) => Record<string, unknown> }> = [
     { from: global.accountsPath, to: layout.accountsPath, transform: (value) => accountsForProject(value, projectRoot) },
     { from: global.uiStatePath, to: layout.uiStatePath, transform: (value) => value },
-    { from: global.workspacePath, to: layout.workspacePath, transform: withoutRegistry },
+    { from: global.workspacePath, to: layout.workspacePath, transform: withoutMachineScopedKeys },
   ];
   const dirRefused = projectStateDirRefusal(layout) !== null;
   return plan.map(({ from, to, transform }) => {
@@ -153,12 +156,6 @@ export function importGlobalSetup(layout: StateLayout, env: NodeJS.ProcessEnv = 
  */
 function globalSetup(env: NodeJS.ProcessEnv): StateLayout {
   return globalStateLayout(env);
-}
-
-/** The workspace config without this machine's project registry. */
-function withoutRegistry(config: Record<string, unknown>): Record<string, unknown> {
-  const { projects: _projects, ...rest } = config;
-  return rest;
 }
 
 /**

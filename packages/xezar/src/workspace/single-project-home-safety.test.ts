@@ -109,13 +109,15 @@ describe('single-project mode never opens the real xezar home (AC-11)', () => {
 
     // Everything landed in the project...
     const stateDir = join(project, '.xezar');
-    expect(JSON.parse(readFileSync(join(stateDir, 'workspace.json'), 'utf8'))).toMatchObject({
-      resources: { maxParallel: 7 },
-      // No per-machine row is written into the committed file (#600 defect A):
-      // the mode's one row is DERIVED from the folder, and this boot's
-      // per-machine stamp went to the working file below.
-      projects: [],
-    });
+    const committed = JSON.parse(readFileSync(join(stateDir, 'workspace.json'), 'utf8')) as Record<string, unknown>;
+    expect(committed).toMatchObject({ resources: { maxParallel: 7 } });
+    // The committed file carries neither a per-machine row (#600 defect A) nor
+    // the machine's multi-project keys (#650): the mode's one row is DERIVED
+    // from the folder, and this boot's per-machine stamp went to the working
+    // file below.
+    for (const key of ['browseRoot', 'projectsDir', 'projects']) {
+      expect(committed, `${key} must not be written into the committed file`).not.toHaveProperty(key);
+    }
     // The boot's registration is still visible as the project's own row, without
     // a committed write, and its stamp lives under `.local/xezar`.
     expect((await listProjects()).map((entry) => entry.root)).toEqual([realpathSync(project)]);
@@ -207,12 +209,16 @@ describe('single-project mode never opens the real xezar home (AC-11)', () => {
     expect(added.status).toBe(1);
     expect(added.stderr).toContain('this project owns its xezar state; adding projects is disabled');
     // The boot landed in the project, and wrote no per-machine row into the
-    // committed file (#600 defect A). Without either half this case is also
-    // satisfied by a boot that TRIED the read-only home, failed and degraded
-    // quietly — which is the leak, not the fix.
-    expect(JSON.parse(readFileSync(join(project, '.xezar', 'workspace.json'), 'utf8'))).toMatchObject({
-      projects: [],
-    });
+    // committed file (#600 defect A) and none of the machine's multi-project
+    // keys (#650). Without either half this case is also satisfied by a boot
+    // that TRIED the read-only home, failed and degraded quietly — which is the
+    // leak, not the fix.
+    const committed = JSON.parse(
+      readFileSync(join(project, '.xezar', 'workspace.json'), 'utf8'),
+    ) as Record<string, unknown>;
+    for (const key of ['browseRoot', 'projectsDir', 'projects']) {
+      expect(committed, `${key} must not be written into the committed file`).not.toHaveProperty(key);
+    }
     const machineState = JSON.parse(
       readFileSync(join(project, '.local', 'xezar', 'machine-state.json'), 'utf8'),
     ) as { lastOpenedAt?: unknown };
