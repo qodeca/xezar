@@ -6417,15 +6417,25 @@ export function startServer(deps: ServerDeps, port: number): ServerType {
       // …and gone SINCE that row was read (#715). The row above is a snapshot from before this
       // await resolved, so a `DELETE /projects/:id` landing inside the window leaves it naming a
       // project that no longer exists — and re-adding from it put the removed project back in the
-      // skills-update coordinator (and in `automationProjects`) until restart. The registry row
-      // cannot answer this; live registration state can, and it is the same question the listener
-      // itself is keyed on: a SUPERSEDED dispose means by definition that a newer context is
-      // built or in flight, so no `peek()` and no `pending()` is "this id is not live any more".
-      // The ordinary paths are untouched — the same-root re-add and the drift rebuild both have
-      // their replacement context in hand by the time this runs.
+      // skills-update coordinator and in `automationProjects` until restart. The registry row
+      // cannot answer this; live registration state can. What the test below means is exactly
+      // what it says AFTER the await: no `peek()` and no `pending()` is "this id has no live
+      // registration to re-register", whatever produced that state. The ordinary paths are
+      // untouched — the same-root re-add and the drift rebuild both have their replacement
+      // context in hand by the time this runs. One state reads "not live" without any removal: a
+      // superseding build that REJECTED leaves both empty for an id that is still registered, and
+      // the refresh then skips. That is precisely the outcome `main` already accepts for every
+      // plain drift with no overlapping request, so nothing this seam held is lost by it (#717
+      // review round 1, Nit 1).
       if (!sharedContexts.peek(id) && !sharedContexts.pending(id)) return rescheduleAutomations();
       coordinator.add(project.id, project.root);
       const parsed = parseRemote((await getRepoInfo(project.root))?.remote ?? '');
+      // The SAME question again, because that was a second await and a wider window than the
+      // registry read — `getRepoInfo` spawns `git` (#717 review round 1, Minor 1). Only
+      // `automationProjects` needs it: a removal landing here has already driven the listener's
+      // own `coordinator.remove(id)` over the add above, while `automationProjects.set()` is
+      // still ahead of us and nothing would take it back out.
+      if (!sharedContexts.peek(id) && !sharedContexts.pending(id)) return rescheduleAutomations();
       if (parsed?.host === 'github.com') automationProjects.set(project.id, { root: project.root, owner: parsed.owner, repo: parsed.repo });
       // `automationCoordinator` needs no explicit re-add: `reschedule()` refreshes it from the
       // same registry, which re-seeds the root the `remove` above dropped.

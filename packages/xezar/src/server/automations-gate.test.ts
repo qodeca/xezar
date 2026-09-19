@@ -50,6 +50,46 @@ vi.mock('../workspace/projects.ts', async (importOriginal) => {
 });
 
 /**
+ * The same instrument for the refresh's SECOND await (#717 review round 1, Minor 1). The guard
+ * above closes the `listProjects()` window; `getRepoInfo()` spawns `git`, which is a longer one,
+ * and `automationProjects.set()` sits behind it.
+ *
+ * Two jobs, both needed by the one test that arms it: park the server's own call, and answer a
+ * GitHub remote for a temp directory that has no remote at all — without one `parseRemote` never
+ * matches and the `set()` this is about never runs, so the probe would pass vacuously.
+ *
+ * DISARMED by default in the same two senses: `gitGate.park` is false and `fakeRemoteFor` is
+ * empty, so every other case in this file sees the real `getRepoInfo`. `project-context.ts` is
+ * excluded from the stack test for the reason the gate above is: it calls the same function
+ * during the rebuild this test needs, and parking that would deadlock the test against itself.
+ */
+const gitGate = vi.hoisted(() => ({
+  park: false,
+  parked: Promise.resolve<void>(undefined),
+  release: () => {},
+  hits: 0,
+  resumed: 0,
+  fakeRemoteFor: new Set<string>(),
+}));
+vi.mock('./git.ts', async (importOriginal) => {
+  const original = await importOriginal<typeof import('./git.ts')>();
+  return {
+    ...original,
+    getRepoInfo: async (...args: Parameters<typeof original.getRepoInfo>) => {
+      const stack = new Error().stack ?? '';
+      const fromServer = stack.includes('/server/server.ts') && !stack.includes('/server/project-context.ts');
+      if (!fromServer || !gitGate.fakeRemoteFor.has(args[0])) return original.getRepoInfo(...args);
+      if (gitGate.park) {
+        gitGate.hits += 1;
+        await gitGate.parked;
+        gitGate.resumed += 1;
+      }
+      return { ...(await original.getRepoInfo(...args)), remote: 'https://github.com/acme/demo.git' } as Awaited<ReturnType<typeof original.getRepoInfo>>;
+    },
+  };
+});
+
+/**
  * GitHub automations are opt-in (#801): `XEZ_AUTOMATIONS=1` turns them on, off is the default.
  * Off, every route of the family answers `409` naming the flag — defense in depth behind the
  * cockpit's nav gate, so a bookmarked deep link or a script cannot drive a feature the operator
@@ -836,6 +876,12 @@ describe('automations gate (#801)', () => {
         const concurrent = contexts.context(first.id);
 
         // …and the refresh parks between its `listProjects()` and its `coordinator.add()`.
+        // Zeroed at the arming, not merely at module load (#717 review round 1, Nit 2): both
+        // counters are file-scoped, so on a second attempt of this test in the same module
+        // `hits > 0` would already be true, `waitFor` would return before the refresh ever
+        // reached the park, and the case would go green with or without the guard.
+        gate.hits = 0;
+        gate.resumed = 0;
         gate.parked = new Promise<void>((resolve) => { gate.release = resolve; });
         gate.park = true;
         release();
@@ -866,6 +912,130 @@ describe('automations gate (#801)', () => {
       } finally {
         gate.park = false;
         gate.release();
+        release();
+        parkedDispose.mockRestore();
+        server.close();
+        await contexts.disposeAll().catch(() => undefined);
+        rmSync(base, { recursive: true, force: true });
+      }
+    });
+
+    /**
+     * #717 review round 1, Minor 1 — the same removal, one await later.
+     *
+     * The test above closes the `listProjects()` window. The refresh has a SECOND await after it,
+     * `getRepoInfo()`, which spawns `git` and is therefore the wider of the two, and
+     * `automationProjects.set()` sits behind that one. A removal landing there used to put the id
+     * back into the automation project map — not into the skills-update coordinator, because the
+     * removal's own listener pass runs `coordinator.remove(id)` AFTER the re-add above it, and
+     * not into the automation coordinator, which `reschedule()` re-seeds from the registry. The
+     * map is the one holder with neither a later remove nor a poller to put it right.
+     *
+     * Inert while the id stays gone — the scheduler asks `handle()` only for ids the automation
+     * coordinator lists — and wrong the moment the same id is registered again against a
+     * NON-GitHub remote, which `project-added` does not overwrite: `handle()` would then resolve
+     * the old owner/repo and poll a repository this project is not.
+     *
+     * The map is closure-private, so it is read the way production reads it: the scheduler's own
+     * `handle(projectId, store)`, taken off the instance the server built. `handle` returning a
+     * handle before the removal is this case's populated-input guarantee — without it, "returns
+     * undefined" would also be what a map that was never populated at all looks like.
+     */
+    it('a project removed for real inside the refresh’s second await is not re-added to the automation map', async () => {
+      process.env.XEZ_AUTOMATIONS = '1';
+      clearProjectProbeCache();
+      const base = mkdtempSync(join(tmpdir(), 'xez-automations-gate-zombie-map-'));
+      const rootOld = join(base, 'run-1', 'shared');
+      const rootNew = join(base, 'run-2', 'shared');
+      for (const root of [rootOld, rootNew]) mkdirSync(root, { recursive: true });
+      // Both roots answer a GitHub remote: the old one so that BOOT populates the map (this
+      // case's control), the new one so that the refresh reaches the `set()` under test at all.
+      for (const root of [rootOld, rootNew]) gitGate.fakeRemoteFor.add(root);
+      const first = await registerProject(rootOld);
+
+      const contexts = new ProjectContexts({ listProjects });
+      const addSkillsSpy = vi.spyOn(SkillsUpdateCoordinator.prototype, 'add');
+      const reachedGate = vi.spyOn(SkillsUpdateCoordinator.prototype, 'start');
+      const started = vi.spyOn(WorkspaceAutomationScheduler.prototype, 'start');
+
+      let release!: () => void;
+      const parked = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const realDispose = RunManager.prototype.dispose;
+      const parkedDispose = vi
+        .spyOn(RunManager.prototype, 'dispose')
+        .mockImplementation(async function (this: RunManager) {
+          await parked;
+          await realDispose.call(this);
+        });
+
+      let app: ReturnType<typeof createApp> | undefined;
+      const server = startServer(
+        {
+          repoRoot,
+          store,
+          manager: { isActive: () => false } as unknown as RunManager,
+          version: '0.0.0-test',
+          contexts,
+          onApp: (built) => { app = built; },
+        },
+        0,
+      );
+      try {
+        await vi.waitFor(() => expect(reachedGate).toHaveBeenCalledTimes(1), { timeout: 4_000 });
+        await vi.waitFor(() => expect(started).toHaveBeenCalledTimes(1), { timeout: 4_000 });
+        expect((await apiRequest(app!, `/api/v1/p/${first.id}/runs`)).status).toBe(200);
+
+        // The server's own `automationProjects`, read through the accessor production uses.
+        const scheduler = started.mock.contexts[0] as unknown as {
+          options: { handle: (projectId: string, store: AutomationStore) => unknown };
+        };
+        const automationHandle = () => scheduler.options.handle(first.id, {} as AutomationStore);
+        // The control: boot resolved the faked remote for the old root, so the map holds the id
+        // and the assertions at the end are about a map that demonstrably CAN hold it. Without
+        // this, "returns undefined" is also what a map nothing ever populated looks like.
+        await vi.waitFor(() => expect(automationHandle()).toBeDefined(), { timeout: 4_000 });
+
+        // The drift + overlapping request of the two cases above, so the dispose that follows is
+        // `superseded` and takes the refresh branch. (`registerProject` emits no bus event — the
+        // route does — so nothing but the refresh can re-populate the map from here on.)
+        await removeProject(first.id);
+        expect((await registerProject(rootNew)).id).toBe(first.id);
+        const drift = contexts.context(first.id);
+        await vi.waitFor(() => expect(parkedDispose).toHaveBeenCalled());
+        const concurrent = contexts.context(first.id);
+
+        // This time the park is on the SECOND await, so the refresh gets past the first guard
+        // (its rebuild is live), re-adds the skills coordinator, and stops at `getRepoInfo()`.
+        gitGate.hits = 0;
+        gitGate.resumed = 0;
+        gitGate.parked = new Promise<void>((resolve) => { gitGate.release = resolve; });
+        gitGate.park = true;
+        release();
+        await Promise.all([drift, concurrent]);
+        await vi.waitFor(() => expect(gitGate.hits).toBeGreaterThan(0), { timeout: 4_000 });
+        expect(addSkillsSpy).toHaveBeenCalledWith(first.id, rootNew);
+        gitGate.park = false;
+
+        // The user removes the project for real, inside that window.
+        await removeProject(first.id);
+        expect(await contexts.dispose(first.id)).toBe(true);
+        expect(contexts.peek(first.id)).toBeUndefined();
+        expect(contexts.pending(first.id)).toBeUndefined();
+        expect(automationHandle()).toBeUndefined();
+
+        // Same question-free wait as the case above: resume, then one macrotask, because
+        // everything between the resume and `automationProjects.set()` is microtasks.
+        gitGate.release();
+        await vi.waitFor(() => expect(gitGate.resumed).toBe(gitGate.hits), { timeout: 4_000 });
+        await new Promise((resolve) => { setImmediate(resolve); });
+
+        expect(automationHandle()).toBeUndefined();
+      } finally {
+        gitGate.park = false;
+        gitGate.release();
+        gitGate.fakeRemoteFor.clear();
         release();
         parkedDispose.mockRestore();
         server.close();
