@@ -43,6 +43,14 @@ export function catalogStateLabel(entry: SkillsCatalogVersion): string {
     case 'never-checked':
       return 'Not checked yet'
     default:
+      // #772, NB-2: the badge and the sentence beside it answer the same input the same way.
+      // `catalogExplanation` already reads two identical commits with no successful check as
+      // "not checked yet" whatever state the server sent; a badge still saying the COMPARISON is
+      // unknown would contradict the sentence printed under it. Unreachable today — `compareState`
+      // answers `never-checked` for that input — and kept as the same belt-and-braces.
+      if (entry.installed && entry.available && entry.installed.commit === entry.available.commit) {
+        return 'Not checked yet'
+      }
       return entry.installed || entry.available ? 'Comparison unknown' : 'Version unknown'
   }
 }
