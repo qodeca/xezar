@@ -182,7 +182,9 @@ describe('the composed MCP service, through the real bridge and socket', () => {
     const reads = await client.call('discover_project', {});
     expect(reads.isError).toBeFalsy();
     const entries = auditLines(c.dataDir);
-    expect(entries).toHaveLength(2); // the start and its replay; the read is not an operation
+    // One row for one operation: the start. The replay above ran no effect, so it settles nothing
+    // and adds nothing (#743); the read is not an operation at all.
+    expect(entries).toHaveLength(1);
     expect(entries[0]).toMatchObject({
       v: 2,
       seq: 1,
@@ -196,7 +198,6 @@ describe('the composed MCP service, through the real bridge and socket', () => {
       resource: { kind: 'run', id: runId },
       operationKey: `${c.id}/op-compose-0001`,
     });
-    expect(entries[1]).toMatchObject({ seq: 2, outcome: { status: 'applied' } });
     // #306: no opt-in flag, the new file name, owner-only, and nothing under the legacy name.
     expect(statSync(join(c.dataDir, 'audit.ndjson')).mode & 0o777).toBe(0o600);
     expect(existsSync(join(c.dataDir, 'mcp-audit.ndjson'))).toBe(false);

@@ -9,7 +9,9 @@
   restart", and it answers in the same words `get_limits` answers in. These settings apply to
   every project on the machine, which is why the change is deliberate rather than incidental: it
   reverses a documented "never from MCP" decision on the owner's rule of 2026-09-20. The two
-  workspace folder paths (`browseRoot`, `projectsDir`) are still not accepted. (#677)
+  workspace folder paths (`browseRoot`, `projectsDir`) are still not accepted. `discover_project`
+  says so too: its `workspace_limits` capability is `available` now, where it used to be
+  `read-only` with the reason that only a person can change those settings in the cockpit. (#677)
 
 ## 🐛 Fixes
 

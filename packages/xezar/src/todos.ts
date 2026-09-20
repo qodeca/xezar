@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
-import { mkdirSync, watch, type FSWatcher, type WatchListener } from 'node:fs';
+import { mkdirSync, watch, type FSWatcher } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
 
@@ -175,72 +175,53 @@ interface TodosWatch {
   timer: NodeJS.Timeout | undefined;
 }
 
-type WatchDirectory = (dataDir: string, listener: WatchListener<string>) => FSWatcher;
+const watches = new Map<string, TodosWatch>();
 
-/**
- * Own the per-directory watcher map behind one injected boundary. Production
- * uses `fs.watch`; tests can deliver the same callback deterministically.
- */
-export function createTodosWatchRegistry(watchDirectory: WatchDirectory = watch) {
-  const watches = new Map<string, TodosWatch>();
-
-  /** Start watching `dataDir` for todos.json changes (agents write it from
-   *  another process). Degrades to a watcher-less entry on error. */
-  function startWatch(dataDir: string): TodosWatch {
-    const emitter = new EventEmitter();
-    emitter.setMaxListeners(100);
-    const entry: TodosWatch = { emitter, watcher: undefined, timer: undefined };
-    try {
-      mkdirSync(dataDir, { recursive: true });
-      const watcher = watchDirectory(dataDir, (_event, filename) => {
-        if (filename && filename !== 'todos.json') return;
-        if (entry.timer) clearTimeout(entry.timer);
-        entry.timer = setTimeout(() => emitter.emit('changed'), 300);
-        entry.timer.unref?.();
-      });
-      watcher.on('error', () => undefined); // a dying watcher must not kill the server
-      watcher.unref?.();
-      entry.watcher = watcher;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.warn(`[xez] todos watch unavailable — the Inbox updates on refresh only (${message})`);
-    }
-    watches.set(dataDir, entry);
-    return entry;
+/** Start watching `dataDir` for todos.json changes (agents write it from
+ *  another process). Degrades to a watcher-less entry on error. */
+function startWatch(dataDir: string): TodosWatch {
+  const emitter = new EventEmitter();
+  emitter.setMaxListeners(100);
+  const entry: TodosWatch = { emitter, watcher: undefined, timer: undefined };
+  try {
+    mkdirSync(dataDir, { recursive: true });
+    const watcher = watch(dataDir, (_event, filename) => {
+      if (filename && filename !== 'todos.json') return;
+      if (entry.timer) clearTimeout(entry.timer);
+      entry.timer = setTimeout(() => emitter.emit('changed'), 300);
+      entry.timer.unref?.();
+    });
+    watcher.on('error', () => undefined); // a dying watcher must not kill the server
+    watcher.unref?.();
+    entry.watcher = watcher;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(`[xez] todos watch unavailable — the Inbox updates on refresh only (${message})`);
   }
-
-  return {
-    onChanged(dataDir: string, cb: () => void): () => void {
-      const entry = watches.get(dataDir) ?? startWatch(dataDir);
-      entry.emitter.on('changed', cb);
-      let unsubscribed = false;
-      return () => {
-        if (unsubscribed) return;
-        unsubscribed = true;
-        entry.emitter.off('changed', cb);
-        if (entry.emitter.listenerCount('changed') > 0) return;
-        if (entry.timer) clearTimeout(entry.timer);
-        entry.watcher?.close();
-        watches.delete(dataDir);
-      };
-    },
-    active(dataDir: string): boolean {
-      return watches.has(dataDir);
-    },
-  };
+  watches.set(dataDir, entry);
+  return entry;
 }
-
-const watchRegistry = createTodosWatchRegistry();
 
 /** Subscribe to `dataDir`'s inbox changes; the watch is created on the first
  *  subscription and torn down when the last subscriber leaves. Returns the
  *  unsubscribe function (idempotent — a stale double call can never tear down
  *  a watch that later subscribers re-created). */
 export function onTodosChanged(dataDir: string, cb: () => void): () => void {
-  return watchRegistry.onChanged(dataDir, cb);
+  const entry = watches.get(dataDir) ?? startWatch(dataDir);
+  entry.emitter.on('changed', cb);
+  let unsubscribed = false;
+  return () => {
+    if (unsubscribed) return;
+    unsubscribed = true;
+    entry.emitter.off('changed', cb);
+    if (entry.emitter.listenerCount('changed') > 0) return;
+    if (entry.timer) clearTimeout(entry.timer);
+    entry.watcher?.close();
+    watches.delete(dataDir);
+  };
 }
 
 /** Test hook: is a live watch registered for `dataDir`? */
 export function todosWatchActive(dataDir: string): boolean {
-  return watchRegistry.active(dataDir);
+  return watches.has(dataDir);
 }
