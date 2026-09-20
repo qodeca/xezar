@@ -73,6 +73,16 @@ describe('per-dataDir todos watch (step 2.3)', () => {
     // registry's routing — the behaviour under test — and never on host scheduling or retries.
     await signal(dirA);
     expect(a).toBe(1);
+    await signal(dirB);
+    expect(b).toBe(1);
+
+    // Preserve #769's useful precondition: both watchers have demonstrably delivered before
+    // isolation is measured. Unlike that repair, these deliveries are controlled callback
+    // inputs, so no FSEvent wait, rewrite, retry, sleep or host scheduling remains.
+    a = 0;
+    b = 0;
+    await signal(dirA);
+    expect(a).toBe(1);
     expect(b).toBe(0);
   });
 
