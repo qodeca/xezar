@@ -58,6 +58,14 @@ vi.mock('../workspace/projects.ts', async (importOriginal) => {
  * GitHub remote for a temp directory that has no remote at all — without one `parseRemote` never
  * matches and the `set()` this is about never runs, so the probe would pass vacuously.
  *
+ * The real `getRepoInfo` is read BEFORE the park, never after the resume (#720). That call spawns
+ * `git`, and this test's whole wait strategy is "resume, then one macrotask, because everything
+ * between the resume and `automationProjects.set()` is microtasks". A `git` subprocess awaited
+ * after the resume put a real I/O wait inside that window, so on a loaded machine the refresh
+ * finished after the single macrotask and the case passed with the guard removed. Read it first
+ * and the only thing left behind the resume is the merge and the return, exactly like the
+ * `listProjects` gate above.
+ *
  * DISARMED by default in the same two senses: `gitGate.park` is false and `fakeRemoteFor` is
  * empty, so every other case in this file sees the real `getRepoInfo`. `project-context.ts` is
  * excluded from the stack test for the reason the gate above is: it calls the same function
@@ -79,12 +87,15 @@ vi.mock('./git.ts', async (importOriginal) => {
       const stack = new Error().stack ?? '';
       const fromServer = stack.includes('/server/server.ts') && !stack.includes('/server/project-context.ts');
       if (!fromServer || !gitGate.fakeRemoteFor.has(args[0])) return original.getRepoInfo(...args);
+      // Before the park, not after the resume (#720): this is the `git` subprocess the test's
+      // one-macrotask wait must not have to cover. See the mock's own comment above.
+      const real = await original.getRepoInfo(...args);
       if (gitGate.park) {
         gitGate.hits += 1;
         await gitGate.parked;
         gitGate.resumed += 1;
       }
-      return { ...(await original.getRepoInfo(...args)), remote: 'https://github.com/acme/demo.git' } as Awaited<ReturnType<typeof original.getRepoInfo>>;
+      return { ...real, remote: 'https://github.com/acme/demo.git' } as Awaited<ReturnType<typeof original.getRepoInfo>>;
     },
   };
 });
@@ -1026,7 +1037,10 @@ describe('automations gate (#801)', () => {
         expect(automationHandle()).toBeUndefined();
 
         // Same question-free wait as the case above: resume, then one macrotask, because
-        // everything between the resume and `automationProjects.set()` is microtasks.
+        // everything between the resume and `automationProjects.set()` is microtasks. True of
+        // this gate only because its real `getRepoInfo` — the `git` subprocess — is read BEFORE
+        // the park (#720); a slow `git` awaited after the resume is what used to make this wait
+        // too short and the case falsely green.
         gitGate.release();
         await vi.waitFor(() => expect(gitGate.resumed).toBe(gitGate.hits), { timeout: 4_000 });
         await new Promise((resolve) => { setImmediate(resolve); });
