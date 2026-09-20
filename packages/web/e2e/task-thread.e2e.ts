@@ -329,7 +329,24 @@ describe('task thread', () => {
     // git-status card by its persisted tool id, not whichever execute card is first.
     const bash = '[data-slot="tool-card"][data-tool-id="toolu_mock_1"]'
     expect(browser.count(`${bash} [data-slot="tool-output"]`)).toBe(0)
-    browser.click(`${bash} [data-slot="collapsible-trigger"]`)
+    // Open the card through the trigger THIS card owns, and wait on the card's OWN expanded
+    // state (#671 F-08). A bare `browser.click(selector)` reads a live box and then hit-tests
+    // it, so a click issued while the transcript is still replaying cards — or while the thread
+    // follows its tail — can land on whichever card moved under that point: three CI runs left
+    // this card `data-state="closed"` with the only `tool-output` in the document belonging to
+    // a neighbour, and no wait budget can recover from a click that went elsewhere.
+    // `trigger.click()` here is dispatched from the same page task that read this card, so
+    // there is no stale point to lose, and the wait succeeds only once this card reports
+    // itself open; a click that still missed is retried by the next poll.
+    browser.waitForFunction(`(() => {
+      const card = document.querySelector('${bash}')
+      if (!card) return false
+      if (card.dataset.state === 'open') return true
+      const trigger = card.querySelector('[data-slot="collapsible-trigger"]')
+      if (!trigger) return false
+      trigger.click()
+      return card.dataset.state === 'open'
+    })()`)
     browser.waitForFunction(`document.querySelector('${bash} [data-slot="tool-output"] pre') !== null`)
     expect(browser.evaluate(`document.querySelector('${bash} [data-slot="tool-output"] pre').textContent`)).toBe(
       ' M src/example.ts',

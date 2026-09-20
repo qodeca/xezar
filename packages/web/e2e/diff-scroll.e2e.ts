@@ -45,6 +45,11 @@ const FIXTURE_FILES = 120
 const LINES_PER_FILE = 8
 
 const MAIN = `document.querySelector('[data-slot="main"]')`
+/** How far past the fold a card's BODY must reach for the sticky check to mean anything: the
+ *  header parks at the fold, so the card has to be genuinely cut for the assertion to observe a
+ *  pinned header rather than a card that merely starts near the top. Shared by the aim below and
+ *  by the assertion it establishes, so the two cannot drift apart. */
+const STRADDLE_PX = 40
 const domSize = () => Number(browser.evaluate(`document.querySelectorAll('*').length`))
 const lineCount = () => browser.count('[data-slot="diff-line"]')
 
@@ -194,30 +199,37 @@ describe(`diff virtualization on a generated ${FIXTURE_FILES}-file changeset`, (
 
   it('keeps the per-file header sticky while virtualized — the layout hazard virtua poses', () => {
     openChanges('virtual')
-    browser.waitForFunction(`(() => { ${MAIN}.scrollTop = 900; return true })()`)
-    // Then AIM the fold at the middle of a card, instead of trusting 900 to land inside one.
+    // Own the precondition: the fold has to cut through a card before the assertions below can
+    // say anything, and where this page load left the scroller is not this case's business (the
+    // two cases above share it). The old body set a FIXED 900 px and then aimed once, which made
+    // the case a hostage of every card height in the fixture — #467 added five lines to
+    // `.xez-home/config.json`, grew card one from 626 px to 728 px and moved its bottom edge from
+    // 101 px ABOVE the fold to 1 px below it, so the fold simply stopped cutting a card, the
+    // `straddling` guard below reported "the sticky check did not run", and the job went red on a
+    // branch that never touched the cockpit. A one-shot aim can also be clamped away entirely,
+    // leaving the fold in the gap between two cards — the state #671 F-09 reports as "the scroll
+    // settles where no card straddles the fold".
     //
-    // A fixed offset makes this test a hostage of every card height in the fixture, and the
-    // first two cards are xezar's OWN state (`XEZ_HOME` is pinned inside the fixture repo, so
-    // `.xez-home/config.json` and its `.bak` lead the changeset and are hundreds of pixels
-    // tall). #467 added five lines to that file — `serve` now remembers `lastListen` — which
-    // grew card one from 626 px to 728 px and moved its bottom edge from 101 px ABOVE the
-    // fold to 1 px below it. Nothing about sticky changed; the fold simply stopped cutting a
-    // card, the `straddling` guard below reported "the sticky check did not run", and the job
-    // went red on a branch that never touched the cockpit. Derive the scroll from real layout
-    // and the guard measures sticky again, on any fixture and any card height.
+    // Each poll aims the fold at the CENTRE of the card nearest it, from MEASURED geometry, and
+    // returns only once a card really straddles the fold — the exact condition the assertions
+    // read. The card must be reachable (one below the fold at the end of the list is one the
+    // scroller cannot bring up) and tall enough that its centre past the fold satisfies the
+    // guard, so the aim cannot settle on a state the guard would then reject.
     browser.waitForFunction(`(() => {
       const scroller = ${MAIN}
       const fold = scroller.getBoundingClientRect().top
-      const boxes = [...document.querySelectorAll('[data-slot="diff-file"]')]
-        .map((card) => card.getBoundingClientRect())
-        .sort((a, b) => a.top - b.top)
-      // The first card that reaches past the fold: the one the fold can be moved INTO without
-      // leaving the window virtua has mounted.
-      const target = boxes.find((box) => box.bottom > fold)
-      if (!target) return false
-      scroller.scrollTop += Math.round(target.top - fold + target.height / 2)
-      return true
+      const cards = [...document.querySelectorAll('[data-slot="diff-file"]')].map((card) => card.getBoundingClientRect())
+      if (cards.some((box) => box.top < fold && box.bottom > fold + ${STRADDLE_PX})) return true
+      if (cards.length === 0) return false
+      const max = scroller.scrollHeight - scroller.clientHeight
+      const options = cards
+        .filter((box) => box.height / 2 > ${STRADDLE_PX})
+        .map((box) => ({ centre: box.top + box.height / 2, want: scroller.scrollTop + box.top + box.height / 2 - fold }))
+        .filter((option) => option.want >= 0 && option.want <= max)
+        .sort((a, b) => Math.abs(a.centre - fold) - Math.abs(b.centre - fold))
+      if (options.length === 0) return false
+      scroller.scrollTop = Math.round(options[0].want)
+      return false
     })()`)
 
     // A header whose card still covers the viewport top must be pinned AT that top edge, not
@@ -230,7 +242,7 @@ describe(`diff virtualization on a generated ${FIXTURE_FILES}-file changeset`, (
         const box = card.getBoundingClientRect()
         const header = card.querySelector('[data-slot="diff-file-header"]')
         if (!header) continue
-        if (box.top < top && box.bottom > top + 40) {
+        if (box.top < top && box.bottom > top + ${STRADDLE_PX}) {
           return { straddling: true, headerTop: Math.round(header.getBoundingClientRect().top - top), cardTop: Math.round(box.top - top) }
         }
       }
