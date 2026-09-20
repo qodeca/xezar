@@ -1002,8 +1002,12 @@ as before.
   is the failing output alone — prefixed by one fixed sentence saying it is a repair turn — with no
   `{{task}}` text, no chain-boundary note and no attachment paths, because the session it is
   resuming already holds them. A retry target that depends on re-reading its brief in the return's
-  first message must now read it from its own conversation. Two new `note` events are emitted on
-  this path (the repair turn itself, and an unavailable resume).
+  first message must now read it from its own conversation. Two new `note` kinds are emitted on
+  this path — the repair turn itself ("repair turn — resuming…") and an unavailable resume
+  ("repair turn unavailable (…)"). In the "resumed, then unavailable" case BOTH appear, in that
+  order and on the same step: the resume was announced before it was attempted, and the fall-back
+  is announced when the attempt comes to nothing. That is deliberate — a reader must be able to
+  see that the resume was tried, not only that a fresh session was started.
 - **Not broken, and §4 does not change**: no YAML key is added, renamed or tightened; `{{task}}`
   substitution is untouched; `onFail`'s retry target and `max` default of 2 are untouched; a run
   that exhausts them still fails with the byte-identical `check "<id>" failed after 3 attempts`.
@@ -1019,10 +1023,17 @@ as before.
   them this same exit: no recorded session id; a recorded backend that differs from the one now
   resolved; a different agent account (`profileId`); a backend whose runner cannot resume at all
   (OpenCode always opens a new conversation, so a recorded id there is never treated as
-  resumable); and a resume the backend refuses at RUNTIME — a `startSession` throw, or a session
-  error before the model produced any text or tool call, such as a conversation the backend has
-  forgotten. A resumed turn that DID work and then failed is a failed step exactly as before, and
-  is never silently re-run. No contract schema, route, config key or env var changes, and
+  resumable); and a resumed turn that ended at RUNTIME before the model produced anything — a
+  `startSession` throw, or a session error or clean close before any text or tool call, such as a
+  conversation the backend has forgotten, a usage limit, or a turn that simply said nothing. The
+  note names what was observed and quotes the reason rather than calling every one of those a
+  refusal (#732). A resumed turn that DID work and then failed is a failed step exactly as before,
+  and is never silently re-run. The fall-back execution is bounded by what is LEFT of the step's
+  wall clock, so one return can never spend `timeout` twice, and `progress.deadlineAt` is the
+  instant that one budget runs out for either execution; when nothing is left the return ends on
+  the failure it has and says so, instead of starting a second execution already past its
+  deadline. §4's protected default is untouched: an absent step `timeout` still resolves to the
+  runner's 30-minute default for the step, and the last (interactive) step stays uncapped. No contract schema, route, config key or env var changes, and
   `xezar run` headless takes the same path.
 - **Not broken, token accounting**: a step's recorded `tokensUsed` still totals the whole step. On
   a backend that reports the session's cumulative figure rather than this execution's own (Codex),

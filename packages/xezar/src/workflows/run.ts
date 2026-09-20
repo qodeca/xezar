@@ -92,10 +92,20 @@ const REPAIR_TURN_PREFIX =
  * or adopts `spec.sessionId`. A repair turn on such a backend must therefore take the fresh spawn
  * with the whole brief, loudly — "not resumed at all" must never read as "resumed fine".
  *
- * Kept as a list HERE, beside the rest of the resume policy, rather than as a runner flag: this is
+ * Kept HERE, beside the rest of the resume policy, rather than as a runner flag: this is
  * the one place that decides cheap-vs-fresh, and a runner that learns to resume is one line here.
+ *
+ * A total `Record<RunnerId, boolean>` rather than a deny-LIST (#732 Minor C, the `runner-label.ts`
+ * trick): an unlisted fifth runner would otherwise default to "can resume", which is Major 1's
+ * shape again — a brand-new conversation told its brief is already in it. Every backend must
+ * answer, so adding one to `RUNNER_IDS` is a compile error here until somebody has decided.
  */
-const BACKENDS_WITHOUT_RESUME: readonly RunnerId[] = ['opencode'];
+const BACKENDS_WITHOUT_RESUME: Record<RunnerId, boolean> = {
+  claude: false,
+  codex: false,
+  opencode: true,
+  pi: false,
+};
 /**
  * Backends whose `token-usage` figure is the SESSION's cumulative total rather than this
  * execution's own (#676, review round 1 Minor 1). Codex reports
@@ -104,8 +114,17 @@ const BACKENDS_WITHOUT_RESUME: readonly RunnerId[] = ['opencode'];
  * figure itself, never `startTokens + it`. Every other runner accumulates from zero per session
  * object (`claude-cli-runner.ts:276`, `pi-runner.ts:697`, `opencode-server-runner.ts:949`), which
  * is what the addition is for.
+ *
+ * Total, for the same reason as `BACKENDS_WITHOUT_RESUME` above (#732 Minor C): an unlisted
+ * backend would default to "per-execution", and a cumulative one billed that way double-counts
+ * every pre-resume execution on the step's record.
  */
-const BACKENDS_WITH_CUMULATIVE_TOKENS: readonly RunnerId[] = ['codex'];
+const BACKENDS_WITH_CUMULATIVE_TOKENS: Record<RunnerId, boolean> = {
+  claude: false,
+  codex: true,
+  opencode: false,
+  pi: false,
+};
 /** How rarely a check step's output chunks report liveness (#460 § 2). One per second is far
  *  finer than the 5-minute quiet window it feeds, and keeps a megabyte of output from becoming
  *  a megabyte of in-process notifications. */
@@ -3896,7 +3915,7 @@ export class RunManager {
     // Eligibility is decided from what the runner can ACTUALLY do, never from the fact that a
     // session id was recorded. A backend that mints an id and then ignores `spec.resume` would
     // otherwise read as "resumed fine" while handing the model an empty conversation.
-    if (BACKENDS_WITHOUT_RESUME.includes(backendNow)) {
+    if (BACKENDS_WITHOUT_RESUME[backendNow]) {
       say(`the ${backendNow} runner cannot resume a recorded session — it always starts a new one`);
       return null;
     }
@@ -4029,7 +4048,7 @@ export class RunManager {
      * under-reports on a resume can never make a step's recorded total go backwards.
      */
     const stepTokenTotal = (reported: number) =>
-      resumedSessionId !== undefined && BACKENDS_WITH_CUMULATIVE_TOKENS.includes(backend)
+      resumedSessionId !== undefined && BACKENDS_WITH_CUMULATIVE_TOKENS[backend]
         ? Math.max(startTokens, reported)
         : startTokens + reported;
     let stepCost = stepRecord?.costUsd ?? 0;
@@ -4245,10 +4264,16 @@ export class RunManager {
     );
     /**
      * One execution of this step against the backend. Called twice at most, and only ever when
-     * the first call was a REFUSED resume (#676, review round 1 Major 2): the second call is the
-     * fresh spawn that the return would have made anyway, inside the same return.
+     * the first call's resume never got going (#676, review round 1 Major 2): the second call is
+     * the fresh spawn that the return would have made anyway, inside the same return.
+     *
+     * `timeoutMs` is what this execution asks the runner for. The first call passes the step's
+     * own configured value, byte for byte as before; the fall-back passes what is LEFT of the
+     * step's wall clock, so one return can never spend it twice (#732 Minor B). `deadlineAt`
+     * stays `startedAt + effectiveTimeoutMs` — with the fall-back bounded by the remainder that
+     * instant is exactly when the budget runs out, for either execution.
      */
-    const execute = async (): Promise<string | null> => {
+    const execute = async (timeoutMs: number | undefined): Promise<string | null> => {
       this.store.updateStep(runId, step.id, {
         profileId: stepProfile.profileId,
         progress: {
@@ -4297,8 +4322,9 @@ export class RunManager {
             // this is byte-for-byte the pre-#22 `interactive ? 0 : undefined`.
             // A repair turn (#676) is an execution of THIS step, so it takes this same value —
             // never the Continue path's `timeoutMs: 0`, which would uncap a step whose workflow
-            // deliberately left `timeout` absent (`release.yaml`'s author; BC §4).
-            timeoutMs: stepTimeoutMs(step, interactive),
+            // deliberately left `timeout` absent (`release.yaml`'s author; BC §4). The fall-back
+            // execution passes the REMAINDER of that same clock rather than a second full one.
+            timeoutMs,
           },
           onEvent,
           {
@@ -4355,8 +4381,8 @@ export class RunManager {
       }
     };
 
-    const outcome = await execute();
-    // A resume the backend refuses at RUNTIME (#676, review round 1 Major 2). `claude -p --resume
+    const outcome = await execute(configuredTimeoutMs);
+    // A resume that never got going at RUNTIME (#676, review round 1 Major 2). `claude -p --resume
     // <forgotten id>` prints "No conversation found with session ID: …" and exits 1; Codex answers
     // a `thread/resume` for an evicted thread with an error. Either arrives here as a session
     // `error` or a `startSession` throw BEFORE the model says a word — the same environment fact
@@ -4366,20 +4392,47 @@ export class RunManager {
     //
     // Deliberately narrow. `sawActivity` is what keeps a turn that resumed fine, worked, and then
     // failed from being silently re-run with the whole brief; a cancel and a memory-limit pause
-    // are xezar's own decisions and are never retried behind them.
-    const refusedResume =
-      outcome !== null && resumedSessionId !== undefined && !sawActivity && !state.cancelled && !memoryPaused;
-    if (!refusedResume) return outcome;
+    // are xezar's own decisions and are never retried behind them. `memoryLimitPause` is read
+    // beside the local flag (#732 Nit 1): `memoryPaused` is only set when no `sessionError`
+    // arrived first, so a pause whose CLI teardown surfaces as an error would otherwise read as
+    // a failed resume and be re-run behind a decision xezar itself made.
+    const deadResume =
+      outcome !== null && resumedSessionId !== undefined && !sawActivity && !state.cancelled
+      && !memoryPaused && state.memoryLimitPause === undefined;
+    if (!deadResume) return outcome;
+    // What is LEFT of this step's wall clock (#732 Minor B). The whole return — the resumed turn
+    // and the fall-back together — is one step execution and gets ONE budget: a resumed turn that
+    // hangs until its own deadline used to hand the fresh spawn a second full `stepTimeoutMs`,
+    // doubling the step's wall clock, while `deadlineAt` still pointed at the first budget's end.
+    // An uncapped step (interactive, or `timeout: none`) has nothing to subtract and is unchanged.
+    const remainingMs =
+      effectiveTimeoutMs !== null && Number.isFinite(startedMs)
+        ? effectiveTimeoutMs - (Date.now() - startedMs)
+        : null;
+    // The budget is spent. A fresh execution would be past its deadline before it said a word, so
+    // the return ends on the failure it already has rather than on a second one just like it.
+    if (remainingMs !== null && remainingMs <= 0) {
+      emit({
+        type: 'note',
+        stepId: step.id,
+        message: `repair turn unavailable (the resumed turn ended before the model produced anything: ${outcome}) `
+          + '— and no time is left on this step\'s wall clock, so no fresh session is started',
+      });
+      return outcome;
+    }
+    // Says what was OBSERVED, never a cause it cannot know (#732 Minor A): this same branch takes
+    // a conversation the backend has forgotten, a usage limit, a transient API error, a silent
+    // timeout and a turn that simply ended having said nothing. Only the first is a refusal.
     emit({
       type: 'note',
       stepId: step.id,
-      message: `repair turn unavailable (the ${backend} backend refused the recorded session: ${outcome}) `
+      message: `repair turn unavailable (the resumed turn ended before the model produced anything: ${outcome}) `
         + '— starting a fresh session with the whole brief; this does not cost an extra attempt',
     });
     resumedSessionId = undefined;
     sessionId = freshSessionId;
     this.store.updateStep(runId, step.id, { sessionId, backend });
-    // Whatever the refused attempt managed to bill is already on the record; the fresh execution
+    // Whatever the dead attempt managed to bill is already on the record; the fresh execution
     // adds to it rather than replacing it.
     startTokens = this.store.getRun(runId)?.steps.find((s) => s.id === step.id)?.tokensUsed ?? startTokens;
     sessionError = undefined;
@@ -4387,7 +4440,7 @@ export class RunManager {
     lastTurnText = null;
     sawActivity = false;
     sink = this.makeUiSink(runId, step.id);
-    return await execute();
+    return await execute(remainingMs ?? configuredTimeoutMs);
   }
 
   /**
