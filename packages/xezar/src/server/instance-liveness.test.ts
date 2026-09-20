@@ -1,14 +1,18 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer, type RequestListener, type Server } from 'node:http';
 import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { foreignWriterClaimIsLive } from '../runs/project-writer.ts';
 import {
+  fetchHealth,
   InstanceLiveness,
+  instanceOrigin,
   instanceStateOf,
   instanceUrl,
   parseInstanceAddress,
   type HealthProbe,
+  type InstanceAddress,
   type ProbeAnswer,
 } from './instance-liveness.ts';
 
@@ -104,6 +108,18 @@ describe('instance liveness: the five states (#467, PR 3)', () => {
         expect(parseInstanceAddress({ port: 4400, host })).toEqual({ host: '127.0.0.1', port: 4400 });
       }
       expect(parseInstanceAddress({ port: 4400, host: 'my-host.local' })?.host).toBe('my-host.local');
+    });
+
+    it('named behaviour `non-loopback-host-asked-as-written`: the recorded bind address is the address asked', () => {
+      // The probe is NOT loopback-restricted and must not become so (#766, review finding 2): a
+      // sibling started with `--bind-host 192.168.1.10` records that host, and refusing it would
+      // stop linking a legitimate cockpit. `~/.xezar/config.json` is hand-editable, so a host put
+      // there by hand is asked as written too — that is the documented reach, pinned here so a
+      // later "tighten it to loopback" has to change this case and say why.
+      for (const host of ['192.168.1.10', '10.1.2.3', 'evil.example.com', '169.254.169.254']) {
+        expect(parseInstanceAddress({ port: 8080, host })).toEqual({ host, port: 8080 });
+        expect(instanceOrigin({ host, port: 8080 })).toBe(`http://${host}:8080`);
+      }
     });
 
     it('a wildcard bind is never a url a browser follows; an IPv6 literal is bracketed', () => {
@@ -211,6 +227,45 @@ describe('instance liveness: the five states (#467, PR 3)', () => {
       expect(liveness.answer(beta, 'alpha')).toEqual({ state: 'stopped' });
     });
 
+    it('a project the registry no longer carries keeps no cached answer', async () => {
+      // #766, review nit 4. The key carries the address, so an unevicted cache keeps one row per
+      // project per port it was ever seen at, for the life of the process.
+      const probe = vi.fn<HealthProbe>(async () => named('beta'));
+      const liveness = make({ probe });
+
+      liveness.answer(beta, 'alpha');
+      await liveness.settled();
+      expect(liveness.answer(beta, 'alpha').state).toBe('running');
+      expect(probe).toHaveBeenCalledTimes(1);
+
+      // beta is still answered: its row survives.
+      liveness.retainOnly(['alpha', 'beta']);
+      expect(liveness.answer(beta, 'alpha').state).toBe('running');
+      expect(probe).toHaveBeenCalledTimes(1);
+
+      // beta is removed from the registry: the row goes, and the question is new again.
+      liveness.retainOnly(['alpha']);
+      expect(liveness.answer(beta, 'alpha')).toEqual({ state: 'checking' });
+      await liveness.settled();
+      expect(probe).toHaveBeenCalledTimes(2);
+    });
+
+    it('eviction is by project, so every address a removed project was seen at goes with it', async () => {
+      const liveness = make({ probe: async () => named('beta') });
+      const moved = { ...beta, lastListen: { port: 4999, host: '127.0.0.1' } };
+
+      liveness.answer(beta, 'alpha');
+      liveness.answer(moved, 'alpha');
+      await liveness.settled();
+      expect(liveness.answer(beta, 'alpha').state).toBe('running');
+      expect(liveness.answer(moved, 'alpha').state).toBe('running');
+
+      liveness.retainOnly(['alpha']);
+      expect(liveness.answer(beta, 'alpha')).toEqual({ state: 'checking' });
+      expect(liveness.answer(moved, 'alpha')).toEqual({ state: 'checking' });
+      await liveness.settled();
+    });
+
     it('a claim reader that throws is no live claim, not a failed request', async () => {
       const liveness = make({
         claimLive: () => {
@@ -222,6 +277,137 @@ describe('instance liveness: the five states (#467, PR 3)', () => {
         state: 'stopped',
       });
     });
+  });
+});
+
+/**
+ * The REAL probe, against real listeners (#766, review finding 3).
+ *
+ * Every other case in this file injects `probe`, so the one function here that touches the network
+ * had nothing holding it: its four failure branches and its redirect behaviour could each be
+ * reintroduced with a green suite. One `node:http` listener per branch, each answering on loopback
+ * on a port the OS picks, and the whole suite stays around a second because the only slow cases are
+ * the two bounded by the 300 ms abort.
+ */
+describe('fetchHealth: the real probe against a real listener (#467, PR 3)', () => {
+  const servers: Server[] = [];
+
+  afterEach(async () => {
+    // By its saved handle, never by a command-line pattern. `closeAllConnections` matters for the
+    // never-answers case, whose socket is still held open when the probe gives up.
+    for (const server of servers.splice(0)) {
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  const listen = async (handler: RequestListener): Promise<InstanceAddress> => {
+    const server = createServer(handler);
+    servers.push(server);
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const bound = server.address();
+    if (bound === null || typeof bound === 'string') throw new Error('no port');
+    return { host: '127.0.0.1', port: bound.port };
+  };
+
+  const json = (body: unknown): RequestListener => (_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify(body));
+  };
+
+  it('a real cockpit answering health names its project', async () => {
+    const address = await listen(json({ bootProject: 'beta', status: 'ok' }));
+
+    await expect(fetchHealth(address)).resolves.toEqual({ kind: 'named', bootProject: 'beta' });
+  });
+
+  it('nothing listening on the remembered port is no answer', async () => {
+    // Bind, read the port, close it: a port nobody holds, without guessing one.
+    const address = await listen(json({ bootProject: 'beta' }));
+    const server = servers.pop();
+    await new Promise<void>((resolve) => server?.close(() => resolve()));
+
+    await expect(fetchHealth(address)).resolves.toEqual({ kind: 'no-answer' });
+  });
+
+  it('a listener that accepts and never answers is bounded by the 300 ms abort', async () => {
+    const address = await listen(() => {
+      // deliberately no response: the socket is accepted and then held
+    });
+
+    const started = Date.now();
+    await expect(fetchHealth(address)).resolves.toEqual({ kind: 'no-answer' });
+    expect(Date.now() - started).toBeLessThan(2_000);
+  });
+
+  it('a responder slower than the bound is no answer — the list render does not wait for it', async () => {
+    const address = await listen((_req, res) => {
+      const slow = setTimeout(() => {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ bootProject: 'beta' }));
+      }, 900);
+      // The handle is saved and cleared with the response, never left to hold the suite open.
+      res.on('close', () => clearTimeout(slow));
+    });
+
+    await expect(fetchHealth(address)).resolves.toEqual({ kind: 'no-answer' });
+  });
+
+  it('a non-ok status is no answer, whatever the body says', async () => {
+    const address = await listen((_req, res) => {
+      res.writeHead(500, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ bootProject: 'beta' }));
+    });
+
+    await expect(fetchHealth(address)).resolves.toEqual({ kind: 'no-answer' });
+  });
+
+  it('a body that is not JSON is no answer — an unrelated web server on the port proves nothing', async () => {
+    const address = await listen((_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/html' });
+      res.end('<!doctype html><title>some other service</title>');
+    });
+
+    await expect(fetchHealth(address)).resolves.toEqual({ kind: 'no-answer' });
+  });
+
+  it('JSON without a string `bootProject` is no answer', async () => {
+    for (const body of [{}, { bootProject: 42 }, { bootProject: null }, []]) {
+      const address = await listen(json(body));
+      await expect(fetchHealth(address)).resolves.toEqual({ kind: 'no-answer' });
+    }
+  });
+
+  it('named break `BREAK-467-3-REDIRECT-FOLLOWED`: a 3xx is refused, not followed', async () => {
+    // The whole point: the second server answers health perfectly, naming beta. With the default
+    // `redirect: 'follow'` the probe reads THAT answer and the row renders `running` with a link
+    // back to the first address — so the identity check would be satisfied by a server that is not
+    // at the address the row points to, and this server's one outbound request would be aimed
+    // wherever the remembered port's holder says (#766, review finding 1).
+    const elsewhere = await listen(json({ bootProject: 'beta' }));
+    const redirector = await listen((_req, res) => {
+      res.writeHead(302, { location: `${instanceOrigin(elsewhere)}/api/v1/health` });
+      res.end();
+    });
+
+    await expect(fetchHealth(redirector)).resolves.toEqual({ kind: 'no-answer' });
+    // The control: the redirect target itself answers, so the case fails for the redirect and not
+    // because the second listener was unreachable.
+    await expect(fetchHealth(elsewhere)).resolves.toEqual({ kind: 'named', bootProject: 'beta' });
+  });
+
+  it('the probe carries no credential and no project id — only what it needs to read health', async () => {
+    let seen: Record<string, string | string[] | undefined> = {};
+    const address = await listen((req, res) => {
+      seen = req.headers;
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ bootProject: 'beta' }));
+    });
+
+    await fetchHealth(address);
+    expect(seen.accept).toBe('application/json');
+    expect(seen.cookie).toBeUndefined();
+    expect(seen.authorization).toBeUndefined();
   });
 });
 

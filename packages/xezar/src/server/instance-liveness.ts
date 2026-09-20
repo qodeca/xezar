@@ -38,6 +38,15 @@ import type { ProjectInstance } from '@qodeca/xezar-contract';
  * It never runs in hosted mode at all. That guard lives at the route, because the decision is
  * "may this server reach out to another port on this machine" and the route is where
  * `capabilities()` is known; this module is then simply never consulted and the field is absent.
+ *
+ * **Where the probe may reach.** It asks the bind address that project RECORDED, not loopback by
+ * definition: `lastListen.host` is written as the `--bind-host` the operator chose, so a sibling
+ * cockpit on `192.168.x.y` is a legitimate answer and is asked at that address. `~/.xezar/config.json`
+ * is hand-editable, so a host put there by hand — `10.1.2.3`, `evil.example.com` — is likewise asked
+ * as written; `HOST_SHAPE` below narrows only the SHAPE of the value, never its range (#766, review
+ * finding 2). Two things bound that reach and both are load-bearing: the request is a plain GET
+ * carrying nothing but `accept: application/json` — no credential, no cookie, no project id — and it
+ * refuses redirects (`redirect: 'error'`), so the one address asked is the only address reached.
  */
 
 /** The bound on one probe. A cockpit answering health on loopback answers in single-digit
@@ -147,12 +156,21 @@ export function instanceStateOf(input: {
 
 /** `GET /api/v1/health` at one address, bounded. Everything that is not a JSON body carrying a
  *  string `bootProject` is `no-answer`: this is a probe of an unknown listener, so it trusts the
- *  shape only far enough to read the one field the identity check needs. */
-const fetchHealth: HealthProbe = async (address) => {
+ *  shape only far enough to read the one field the identity check needs.
+ *
+ *  `redirect: 'error'` is pinned by the named break `BREAK-467-3-REDIRECT-FOLLOWED` — remove it and
+ *  that case goes red (#766, review finding 1).
+ *  `fetch` defaults to `follow`, and following would mean the answer that proves "it is that
+ *  project" can come from a server that is NOT at the address the row then links to — whatever
+ *  holds the remembered port could steer this server's one outbound request at an arbitrary URL,
+ *  off-machine included. A 3xx therefore throws here and lands in the catch below as `no-answer`,
+ *  exactly like a refused connection. Exported for its own tests; the class injects it by default. */
+export const fetchHealth: HealthProbe = async (address) => {
   try {
     const response = await fetch(`${instanceOrigin(address)}/api/v1/health`, {
       signal: AbortSignal.timeout(HEALTH_PROBE_TIMEOUT_MS),
       headers: { accept: 'application/json' },
+      redirect: 'error',
     });
     if (!response.ok) return { kind: 'no-answer' };
     const body: unknown = await response.json();
@@ -185,7 +203,7 @@ export class InstanceLiveness {
   readonly #claimLive: ClaimCheck;
   readonly #now: () => number;
   readonly #cacheMs: number;
-  readonly #cache = new Map<string, { at: number; value: ProjectInstance }>();
+  readonly #cache = new Map<string, { at: number; value: ProjectInstance; projectId: string }>();
   readonly #inFlight = new Map<string, Promise<void>>();
 
   constructor(deps: {
@@ -221,11 +239,28 @@ export class InstanceLiveness {
         answer: null,
         claimLive: this.#safeClaim(project.root),
       });
-      this.#cache.set(key, { at: this.#now(), value });
+      this.#cache.set(key, { at: this.#now(), value, projectId: project.id });
       return value;
     }
     this.#refresh(key, project, address);
     return cached?.value ?? { state: 'checking' };
+  }
+
+  /**
+   * Drop every cached answer for a project that is no longer in the registry (#766, review nit 4).
+   *
+   * Called by the route in the same pass that fills the cache, with the ids it just answered.
+   * Keys are `<projectId>@<host>:<port>` on purpose — a project that moved port must be a new
+   * question — so without this every address a project was ever seen at, and every project since
+   * removed from the registry, would keep a row for the life of the process. A project still
+   * registered keeps its other-address rows: they age out of the window on their own, and their
+   * question can come back when it moves back.
+   */
+  retainOnly(projectIds: Iterable<string>): void {
+    const live = new Set(projectIds);
+    for (const [key, entry] of this.#cache) {
+      if (!live.has(entry.projectId)) this.#cache.delete(key);
+    }
   }
 
   /** Every probe started so far has finished. For tests and for nothing else: production reads
@@ -246,7 +281,7 @@ export class InstanceLiveness {
         answer,
         claimLive: this.#safeClaim(project.root),
       });
-      this.#cache.set(key, { at: this.#now(), value });
+      this.#cache.set(key, { at: this.#now(), value, projectId: project.id });
     })().finally(() => {
       this.#inFlight.delete(key);
     });

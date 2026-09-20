@@ -287,9 +287,11 @@ export interface ServerDeps {
    * derived `instance?` field on `GET /api/v1/projects`.
    *
    * Injectable so a test can drive the five states with its own probe and claim readers instead
-   * of a real socket and a real claim file; absent builds the real one, which probes health over
-   * loopback and reads the claim from disk. The route consults it ONLY in local mode, so a
-   * hosted server makes no outbound request whether one is passed or not.
+   * of a real socket and a real claim file; absent builds the real one, which probes health at the
+   * bind address that project RECORDED (`lastListen`, a `--bind-host` sibling included, and a
+   * hand-edited host as written — `instance-liveness.ts` says what bounds that reach) and reads the
+   * claim from disk. The route consults it ONLY in local mode, so a hosted server makes no outbound
+   * request whether one is passed or not.
    */
   instanceLiveness?: InstanceLiveness;
   /** Per-project context map (multi-project spec, step 2.2). Non-boot
@@ -2544,18 +2546,28 @@ export function createApp(deps: ServerDeps) {
     if (!capabilities().localHandoff) return projects;
     let hints = new Map<string, WorkspaceProject['lastListen']>();
     try {
+      // The second registry read of this request, and deliberate: `toProjectListEntry` strips
+      // `lastListen` a moment earlier, and that strip is what keeps the hint off the wire — so the
+      // address is re-read here rather than carried out of the first pass (#766, review nit 5).
       hints = new Map((await registryRows()).map((row) => [row.id, row.lastListen]));
     } catch {
       // unreadable registry — every row keeps its claim-only answer, which is the same
       // fail-open direction the list itself takes above
     }
-    return projects.map((project) => ({
+    const answered = projects.map((project) => ({
       ...project,
       instance: instanceLiveness.answer(
         { id: project.id, root: project.root, lastListen: hints.get(project.id) },
         bootProject,
       ),
     }));
+    // Same pass: a project the registry no longer carries keeps no cached answer (#766, nit 4).
+    // The ids just answered are the whole live set, which is why this is safe where the set is
+    // narrow — single-project mode lists one project and probes no other, and the unreadable-
+    // registry path above lists none. Dropping a row a later request wants back costs exactly one
+    // `checking` and a fresh probe, which is what an expired row costs anyway.
+    instanceLiveness.retainOnly(answered.map((project) => project.id));
+    return answered;
   };
 
   // ---- chained family: project registry (workspace-level) ----

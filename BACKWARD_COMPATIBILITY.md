@@ -516,6 +516,15 @@ opt-in mode and NOT a changed default, and no minor-version deprecation path is 
   server did not look, which is exactly hosted mode (`capabilities.localHandoff: false`), where
   no outbound probe is made at all. The stored `cli.port` and `lastListen` themselves stay off
   the wire.
+- **Where that probe may reach, and how far.** It asks the bind address that project RECORDED —
+  loopback for an ordinary cockpit, and a `--bind-host 192.168.x.y` sibling at that host, which is
+  why it is deliberately NOT restricted to loopback; `~/.xezar/config.json` is hand-editable, so a
+  host written there by hand is asked as written too. Two properties bound it and both are
+  promises: the request carries nothing but `accept: application/json` — no credential, no cookie,
+  no project id — and it **refuses redirects** (`redirect: 'error'`, so a 3xx reads as no answer).
+  Following one would let whatever holds a remembered port aim this server's single outbound
+  request at an arbitrary URL, and let an answer from one server satisfy the identity check for an
+  address the row then links to.
 - **It is a BOOT decision and cannot be re-taken live.** The MCP socket, the bind and every built
   project context were settled under it. Changing the stored key applies at the next start.
 - **It is not an MCP locator and not a port.** `xezar mcp --instance project` is accepted and
@@ -527,7 +536,8 @@ Breaking: changing the default away from `workspace`; sending `instanceMode` in 
 `narrowed` mode; hiding a project or refusing project management in `project` mode; letting
 `--instance workspace` re-widen either narrowing; taking a writer claim for a project this
 process refuses to serve; rendering `running` from `lastListen` without a liveness check, sending
-`instance` as `null` instead of omitting it, or probing another port in hosted mode.
+`instance` as `null` instead of omitting it, probing another port in hosted mode, following a
+redirect out of the health probe, or carrying anything beyond `accept` on it.
 
 ## Single-project ROOT mode — the folder owns the state, 0.16.0 (#600)
 
