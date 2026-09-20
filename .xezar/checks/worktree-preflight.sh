@@ -520,8 +520,11 @@ fi
 # It now SEALS what `repo-gates.sh` recorded. The judgement lives in `lib/gate-results.mjs`,
 # which refuses a missing, interrupted, failed, malformed, stale or superseded attempt, and
 # refuses an older passing attempt whenever a newer one for the same head failed or never
-# finished — at seal time AND, through `--verify-gate-evidence` below, at handoff time. This
-# step can no longer produce a pass; it can only accept or refuse one.
+# finished — at seal time AND, through `--verify-gate-evidence` below, at handoff time. It also
+# refuses an attempt whose recorded producer is the AUTHOR: the workflow's `gates` step passes
+# `--producer gates` and is the only run that certifies the tree (#676 PR 2), so an author-side
+# attempt at the same head can no longer prove it to itself. This step can no longer produce a
+# pass; it can only accept or refuse one.
 if [ ${#failures[@]} -eq 0 ] && [ "$MODE" = "record-gate-evidence" ]; then
   # Sourced for `_gate_json`, so the expectations below are built by the same code that built
   # the record they are compared against. It defines functions only; nothing runs on source.
@@ -584,7 +587,7 @@ if [ ${#failures[@]} -eq 0 ] && [ "$MODE" = "record-gate-evidence" ]; then
     # needed it: a malformed newest attempt whose order could not be recovered could not be
     # superseded by any number of fresh runs, so an agent following the message looped for ever.
     # The sealer knows which case it is in and prints the action that actually applies.
-    fail evidence.sealable "the recorded gate evidence could not be sealed. Each reason above says what would change it; a re-run is not always the answer."
+    fail evidence.sealable "the recorded gate evidence could not be sealed. Each reason above says what would change it; a re-run is not always the answer. A reason naming the author means this attempt came from an author-side run: the workflow's gates step is the canonical run, and it declares itself with --producer gates."
   fi
 fi
 

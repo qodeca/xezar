@@ -33,6 +33,31 @@ test('canonical gates match the five actual validation commands in exact order',
  for(const c of agreed){const name=c==='npm test'?'test':c.slice('npm run '.length);assert.ok(scripts[name]);}
 });
 
+// #676 PR 2: only the workflow's own `gates` step may certify the tree, so it declares itself
+// with `--producer gates`; an attempt recorded without the flag is the author's and the seal
+// refuses it. The flag must never reach the command-list id — the id names the LIST of gates,
+// and who invoked it is not a gate — or every sealed attempt would be back-dated onto a
+// different list and no two machines could agree they ran the same one.
+test('the ten writing workflows declare their gates step as the producer, and the flag never moves the command-list id',()=>{
+ const declared=[];
+ for(const f of fs.readdirSync(path.join(kit,'workflows'))){
+  const text=fs.readFileSync(path.join(kit,'workflows',f),'utf8');
+  const flow=parseYaml(text);
+  const gates=(flow.steps??[]).find((s)=>s.id==='gates');
+  if(gates?.command?.includes('repo-gates.sh'))declared.push([f,gates.command]);
+  if(f!=='bug-fix.yaml'&&f!=='address-review-findings.yaml'&&f!=='dependency-maintenance.yaml'&&f!=='design.yaml'&&f!=='docs-maintenance.yaml'&&f!=='feature-implementation.yaml'&&f!=='plan-and-spec.yaml'&&f!=='release-prep.yaml'&&f!=='release.yaml'&&f!=='testing-and-verification.yaml')assert.doesNotMatch(text,/--producer/,f);
+ }
+ assert.equal(declared.length,10);
+ for(const [f,command] of declared)assert.equal(command,'.xezar/checks/repo-gates.sh --fast --producer gates',f);
+ const plain=exec('bash',[path.join(checks,'repo-gates.sh'),'--list']);
+ const flagged=exec('bash',[path.join(checks,'repo-gates.sh'),'--list','--producer','gates']);
+ assert.equal(flagged,plain);
+ const plainJson=JSON.parse(exec('bash',[path.join(checks,'repo-gates.sh'),'--list','--json']));
+ const flaggedJson=JSON.parse(exec('bash',[path.join(checks,'repo-gates.sh'),'--list','--json','--producer','gates']));
+ assert.equal(flaggedJson.commandListId,plainJson.commandListId);
+ assert.deepEqual(flaggedJson.gates,plainJson.gates);
+});
+
 // #469 P2. Security is resolved BEFORE any quality verdict, and that is a position in the list the
 // runner executes — not a sentence someone has to remember. Gate 1 installs, gate 2 is the security
 // stage, and every gate that produces a quality signal comes after it. The lane schedule in

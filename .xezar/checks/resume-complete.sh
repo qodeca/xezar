@@ -251,7 +251,9 @@ if [ "$NEED_GATES" -eq 1 ]; then
     exit 1
   fi
   printf '\n--- running the gates ---\n'
-  if ! "$SCRIPT_DIR/repo-gates.sh"; then
+  # This is the run's canonical gate run on the resumed path — it replaces the workflow's own
+  # `gates` step — so it declares the producer the seal requires (#676 PR 2).
+  if ! "$SCRIPT_DIR/repo-gates.sh" --producer gates; then
     printf '\nRESUME INCOMPLETE: the gates failed. The failure is recorded as an attempt under\n' >&2
     printf '%s/gates/ and it stays there. Fix the cause and run this again;\n' "$EVIDENCE_DIR" >&2
     printf 'do not seal an older passing attempt in its place.\n' >&2

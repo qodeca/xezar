@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 # Xezar project gates: the AGENTS/SDLC/.xezar/pipeline/config.json sequence,
 # with dependency freshness and actual repository checks. UI smoke is separate.
-# Usage:  .xezar/checks/repo-gates.sh [--fast] [--list]
+# Usage:  .xezar/checks/repo-gates.sh [--fast] [--list] [--producer <author|gates>]
+#   --producer <author|gates>
+#           WHO ran the gates. The workflow's own `gates` step passes `gates`; an invocation
+#           without the flag is the AUTHOR's, and `lib/gate-results.mjs` refuses to seal an
+#           author's attempt. It is deliberately NOT part of the command-list id: the id names
+#           the LIST of gates, and who invoked it is not a gate.
 #   --fast  skip `npm ci` ONLY when the installed dependencies
 #           still match the manifests. `--fast` is a request, not a promise: freshness is
 #           verified against a fingerprint of package-lock.json, npm-shrinkwrap.json, root/workspace package.json,
@@ -87,17 +92,31 @@ gate_list_id() {
 FAST=0
 LIST=0
 AS_JSON=0
-for arg in "$@"; do
-  case "$arg" in
+PRODUCER=""
+while [ $# -gt 0 ]; do
+  case "$1" in
     --fast) FAST=1 ;;
     --list) LIST=1 ;;
     --json) AS_JSON=1 ;;
+    --producer)
+      shift
+      [ $# -gt 0 ] || { printf 'repo-gates: --producer needs a value (author or gates)\n' >&2; exit 2; }
+      PRODUCER="$1"
+      ;;
     *)
-      printf 'repo-gates: unknown argument "%s"\n' "$arg" >&2
+      printf 'repo-gates: unknown argument "%s"\n' "$1" >&2
       exit 2
       ;;
   esac
+  shift
 done
+case "$PRODUCER" in
+  "" | author | gates) ;;
+  *)
+    printf 'repo-gates: --producer must be "author" or "gates", got "%s"\n' "$PRODUCER" >&2
+    exit 2
+    ;;
+esac
 
 if [ "$LIST" -eq 1 ]; then
   if [ "$AS_JSON" -eq 1 ]; then
@@ -118,6 +137,13 @@ fi
 resolve_task_paths || exit 1
 cd "$TASK_CWD" || exit 1
 
+# Who produced this attempt (#676 PR 2). The flag is the workflow's own declaration; without it
+# the producer is the AUTHOR, and `lib/gate-results.mjs` refuses to seal an author's attempt.
+# `gate_resolve_producer` (lib/gate-record.sh) owns the resolution, including the one-release
+# migration for a run whose persisted definition predates the flag.
+GATE_PRODUCER="$(gate_resolve_producer "$PRODUCER")"
+export GATE_PRODUCER
+
 if [ "$FAST" -eq 1 ] && ! deps_are_fresh; then
   printf '=== --fast declined ===\n'
   printf 'The installed dependencies do not match package-lock.json / the workspace package.json files.\n'
@@ -132,6 +158,7 @@ GATE_BASE_SHA="$(git merge-base HEAD "$GATE_BASE_REF" 2>/dev/null || printf '')"
 export GATE_BASE_REF GATE_BASE_SHA
 
 printf '=== repo gates ===\n'
+printf 'producer       %s\n' "$GATE_PRODUCER"
 if ! gate_attempt_begin "$(gate_names_json)" "$(gate_list_id)"; then
   printf '\nGATES ABORTED: the attempt could not be recorded, so nothing here could become evidence.\n' >&2
   exit 1

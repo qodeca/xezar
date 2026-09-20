@@ -27,6 +27,8 @@
 #
 # API:
 #   gate_attempt_begin <requiredNamesJson> <commandListId>
+#     Records `producer` from `GATE_PRODUCER` (set by `repo-gates.sh --producer`), defaulting to
+#     `author`. An author-produced attempt is refused at sealing (#676 PR 2).
 #   gate_run <name> <command> [args…]
 #   gate_note_skip <name> <reason>
 #   gate_attempt_complete            # prints "passed" or "failed", exits non-zero on failed
@@ -54,6 +56,51 @@ _gate_json() {
     }
     process.stdout.write(JSON.stringify(out));
   ' "$@"
+}
+
+# --- who produced an attempt (#676 PR 2) ---------------------------------------------------
+#
+# An attempt records WHO ran the gates, because only the workflow's own `gates` step may
+# certify the tree: an author's attempt is the same tree proved to itself, and
+# `lib/gate-results.mjs` refuses to seal one. `repo-gates.sh --producer gates` is that
+# declaration; without it the producer is the AUTHOR.
+#
+# ONE migration exception, for the release that introduces the flag. A run created before this
+# change holds the OLD `gates` command in its PERSISTED workflow definition — the engine freezes
+# that definition at run creation — so its gates step cannot declare itself and would be refused
+# as an author run. The engine's runs index names the definition and its workflow; when that
+# definition does NOT declare the flag and the workflow FILE does, this producer-less invocation
+# from a workflow CHECK step (an agent step carries XEZ_TASK_ID; a check step never does —
+# lib/common.sh) is that frozen gates step. Every absent or unreadable input is the AUTHOR, so
+# the exception fails closed, and it disappears one release after the flag ships.
+#
+# `$1` is the value of `repo-gates.sh --producer`, or empty when the flag was absent.
+gate_resolve_producer() {
+  local requested="${1:-}" probe workflow command file
+  [ -n "$requested" ] && { printf '%s' "$requested"; return 0; }
+  [ -n "${XEZ_TASK_ID:-}" ] && { printf 'author'; return 0; }
+  probe="$(node -e '
+    const fs = require("node:fs");
+    const [index, id] = process.argv.slice(1);
+    try {
+      const raw = JSON.parse(fs.readFileSync(index, "utf8"));
+      const runs = Array.isArray(raw) ? raw : (raw.runs ?? []);
+      const run = runs.find((r) => r.id === id);
+      const gates = (run?.workflowDef?.steps ?? []).find((s) => s.id === "gates");
+      process.stdout.write(`${run?.workflow ?? ""}\t${gates?.command ?? ""}`);
+    } catch {}
+  ' "${MAIN_ROOT:-}/.local/xezar/runs.json" "${TASK_ID:-}" 2>/dev/null)" || probe=""
+  workflow="${probe%%$'\t'*}"
+  command="${probe#*$'\t'}"
+  if [ -n "$workflow" ] && [ -n "$command" ]; then
+    case "$command" in
+      *"--producer gates"*) printf 'author'; return 0 ;;
+    esac
+    file="${TASK_CWD:-.}/.xezar/workflows/$workflow.yaml"
+    [ -f "$file" ] || file="${TASK_CWD:-.}/.xezar/workflows/$workflow.yml"
+    [ -f "$file" ] && grep -q -- '--producer gates' "$file" && { printf 'gates'; return 0; }
+  fi
+  printf 'author'
 }
 
 # Start an attempt. Fails closed: without a run id there is no evidence directory to write to,
@@ -107,6 +154,7 @@ gate_attempt_begin() {
     "runId=$TASK_ID" \
     "runIdSource=${TASK_ID_SOURCE:-}" \
     "workflow=$GATE_WORKFLOW" \
+    "producer=${GATE_PRODUCER:-author}" \
     "cwd=$TASK_CWD" \
     "isWorktree:n=$IS_WORKTREE" \
     "branch=$BRANCH" \

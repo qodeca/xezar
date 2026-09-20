@@ -481,6 +481,32 @@ export function attemptFailures(record) {
 }
 
 /**
+ * PROVENANCE. Why an attempt's recorded producer forbids SEALING it, or null (#676 PR 2).
+ *
+ * An attempt records WHO ran the gates: the workflow's own `gates` step declares itself with
+ * `--producer gates`, and every other invocation is the author's. An author's attempt never
+ * certifies the tree — it is the same tree proved to itself — and the workflow's gates step is
+ * the run's canonical run.
+ *
+ * ABSENCE AND A POPULATED WRONG VALUE ARE DIFFERENT BRANCHES, never the same one. A record with
+ * NO `producer` field at all was written before this contract existed: it is a legacy record and
+ * it still seals, so an in-flight run and every attempt already on disk are not stranded.
+ * `author` is a declaration and is refused. Collapsing the two — in either direction — is
+ * exactly the fail-open AGENTS.md's "a fail-open helper needs a populated-input guarantee"
+ * warns about, and the two branches are pinned separately.
+ */
+export function producerRefusal(record) {
+  if (record?.producer === "author") {
+    return (
+      'the recorded producer is "author": the author\'s own gate run never certifies the tree. ' +
+      "The workflow's gates step is the canonical run and declares itself with `--producer gates`; " +
+      "re-run it as `.xezar/checks/repo-gates.sh --fast --producer gates`."
+    );
+  }
+  return null;
+}
+
+/**
  * The security stage's own structured result, read from the attempt it belongs to.
  *
  * Returned as `{ ok, reason, result }` rather than thrown, because every refusal here has to be
@@ -793,6 +819,8 @@ function cmdSeal(args) {
   const record = latest?.record;
   if (refusals.length === 0) {
     refusals.push(...attemptFailures(record));
+    const provenance = producerRefusal(record);
+    if (provenance) refusals.push(provenance);
 
     // Identity: the attempt must be about exactly this revision, this branch and this list of
     // gates. Anything else is a stale result wearing the right head SHA.

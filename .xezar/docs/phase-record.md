@@ -108,6 +108,18 @@ One suppression exists and it is per LINE: a source line carrying `security-scan
 
 Anything the command cannot answer still belongs in a written `SECURITY` record beside it — a specialist's reading of a changed trust boundary, or a check that this project has not automated.
 
+## Who produced the gate attempt
+
+A gate attempt records **who ran the gates**, because only the workflow's own `gates` step may certify the tree. That step declares itself with `--producer gates` (`repo-gates.sh`), and the declaration is written into the attempt by `gate_attempt_begin`. An attempt recorded without the flag is the **author's** — the author's own run of the canonical list, which proves the same tree to itself — and `worktree-preflight.sh --record-gate-evidence` refuses to seal it, naming the author in the reason. The refusal is in `lib/gate-results.mjs` (`producerRefusal`).
+
+Absence and a populated wrong value are different branches, and they stay different:
+
+- **No `producer` field at all** is a legacy record written before this contract existed. It still seals, so an attempt already on disk and an in-flight run are not stranded. This is revisited one release later; do not widen it before then.
+- **`author`** is a declaration and is refused. It is the author's attempt, however complete and passing it looks.
+- **`gates`** seals. The workflow's `gates` step is the run's one canonical gate run.
+
+The flag is deliberately **not** part of the command-list id. The id names the LIST of gates; who invoked it is not a gate, and folding the producer into the id would back-date every sealed attempt onto a different list.
+
 ## What does not go in the pipeline config
 
 Depth, maturity, capability inventory and the counters are facts about **one task**. `.xezar/pipeline/config.json` describes the pipeline — the base branch, the validation commands, the label taxonomy, the QA gate — and travels to every checkout, so a per-task value there would be a false promise, the same reason `maxParallel` and `memoryLimitMb` are refused in the committed project config. Keep them in the run's own record.
