@@ -21,12 +21,14 @@
 #   2. Re-derive the checkout the preflight just judged and perform the write with
 #      `git -C "$TASK_CWD"`, so the write cannot drift to a different directory even if the
 #      caller's CWD is not what it seemed.
-#   3. Push a NAMED branch ref, never a bare `HEAD`. `HEAD` means "whatever branch this
-#      directory is on"; the branch name means "this run's branch, or nothing".
+#   3. Push a NAMED branch ref, never a bare `HEAD`. With no target argument the branch name
+#      means "this run's branch, or nothing". A review response may name the one destination
+#      authorized by this run's DELIVERED record, with its expected remote tip pinned there.
 #
 # Usage:
 #   worktree-git.sh commit [args for `git commit`...]   e.g. -m "fix: ..."
 #   worktree-git.sh push                                takes no arguments
+#   worktree-git.sh push <delivered-branch>             only the DELIVERED-record target
 #
 # Exit 0 only when the preflight passed AND the git write succeeded.
 set -uo pipefail
@@ -38,6 +40,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 usage() {
   printf 'usage: worktree-git.sh commit [git commit args...]\n'
   printf '       worktree-git.sh push\n'
+  printf '       worktree-git.sh push <delivered-branch>\n'
   printf '       worktree-git.sh --help\n\n'
   printf 'Exactly two verbs. Every other git subcommand is refused: an escape hatch that forwarded\n'
   printf 'arbitrary arguments would re-open the hole this closes.\n\n'
@@ -105,6 +108,56 @@ case "$BRANCH" in
 esac
 
 printf 'worktree-git: %s in %s on %s\n' "$VERB" "$TASK_CWD" "$BRANCH"
+
+# The one cross-branch form is intercepted before the original zero-argument push path. Keeping
+# that case below byte-for-byte unchanged is deliberate: adding review delivery must not alter the
+# established task-branch command, flags, upstream behavior or refusal for every other argument.
+if [ "$VERB" = "push" ] && [ "$#" -eq 1 ]; then
+  target_branch="$1"
+  delivery_record="$(task_evidence_dir)/DELIVERED"
+  if [ ! -f "$delivery_record" ]; then
+    printf 'worktree-git: refusing delivery push to "%s": this run has no DELIVERED record.\n' "$target_branch" >&2
+    exit 1
+  fi
+  delivered_branch="$(sed -n 's/^branch:[[:space:]]*\(.*[^[:space:]]\)[[:space:]]*$/\1/p' "$delivery_record" | head -n 1)"
+  delivered_head="$(sed -n 's/^head:[[:space:]]*\([0-9a-fA-F]\{40\}\)[[:space:]]*$/\1/p' "$delivery_record" | head -n 1)"
+  delivered_base="$(sed -n 's/^base:[[:space:]]*\([0-9a-fA-F]\{40\}\)[[:space:]]*$/\1/p' "$delivery_record" | head -n 1)"
+  if [ -z "$delivered_branch" ] || [ -z "$delivered_head" ] || [ -z "$delivered_base" ]; then
+    printf 'worktree-git: refusing delivery push: %s must contain branch, head and base.\n' "$delivery_record" >&2
+    exit 1
+  fi
+  if [ "$target_branch" != "$delivered_branch" ]; then
+    printf 'worktree-git: refusing unauthorized delivery target "%s"; this run records only "%s".\n' "$target_branch" "$delivered_branch" >&2
+    exit 1
+  fi
+  if ! git -C "$TASK_CWD" check-ref-format --branch "$target_branch" >/dev/null 2>&1; then
+    printf 'worktree-git: refusing invalid delivery branch name "%s".\n' "$target_branch" >&2
+    exit 1
+  fi
+  if [ "$delivered_head" != "$HEAD_SHA" ]; then
+    printf 'worktree-git: refusing delivery head %s: this task is checked out at %s.\n' "$delivered_head" "$HEAD_SHA" >&2
+    exit 1
+  fi
+  if ! git -C "$TASK_CWD" merge-base --is-ancestor "$delivered_base" "$delivered_head" 2>/dev/null; then
+    printf 'worktree-git: refusing delivery: head %s is not descended from recorded base %s.\n' "$delivered_head" "$delivered_base" >&2
+    exit 1
+  fi
+  remote_tip="$(git -C "$TASK_CWD" ls-remote origin "refs/heads/$target_branch" 2>/dev/null | awk '{print $1}' | head -n 1)"
+  if [ -z "$remote_tip" ]; then
+    printf 'worktree-git: refusing delivery: origin/%s has no readable current tip.\n' "$target_branch" >&2
+    exit 1
+  fi
+  if [ "$remote_tip" != "$delivered_base" ]; then
+    printf 'worktree-git: refusing delivery: origin/%s is at %s, not recorded base %s; it advanced concurrently.\n' "$target_branch" "$remote_tip" "$delivered_base" >&2
+    exit 1
+  fi
+
+  # No force option and no caller-supplied refspec reaches git. The source and destination are
+  # the validated record values; an advancement after the check also makes this normal
+  # fast-forward-only push fail.
+  git -C "$TASK_CWD" push origin "$delivered_head:refs/heads/$target_branch"
+  exit $?
+fi
 
 # --- 3. The write ---------------------------------------------------------------------------
 case "$VERB" in

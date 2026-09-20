@@ -125,6 +125,79 @@ info "BRANCH        $BRANCH"
 info "BASE_BRANCH   $BASE_BRANCH"
 info "TASK_ID       ${TASK_ID:-<undetermined>} (${TASK_ID_SOURCE:-none})"
 
+# A DELIVERED disposition is durable task evidence, not an optional hint. Once present, every
+# readiness/evidence mode validates the complete record against the live destination even when
+# this task branch has commits of its own. Plain strict mode is the deliberate exception: the
+# guarded push runs strict preflight while the destination is still at `base`, before delivery.
+delivery_record=""
+delivery_record_present=0
+delivery_record_valid=0
+delivered_branch=""
+delivered_head=""
+delivered_base=""
+delivery_remote_tip=""
+if [ -n "${TASK_ID:-}" ]; then
+  delivery_record="$(task_evidence_dir)/DELIVERED"
+fi
+if [ -n "$delivery_record" ] && [ -f "$delivery_record" ]; then
+  delivery_record_present=1
+fi
+
+validate_delivered_record() {
+  delivered_branch="$(sed -n 's/^branch:[[:space:]]*\(.*[^[:space:]]\)[[:space:]]*$/\1/p' "$delivery_record" | head -n 1)"
+  delivered_head="$(sed -n 's/^head:[[:space:]]*\([0-9a-fA-F]\{40\}\)[[:space:]]*$/\1/p' "$delivery_record" | head -n 1)"
+  delivered_base="$(sed -n 's/^base:[[:space:]]*\([0-9a-fA-F]\{40\}\)[[:space:]]*$/\1/p' "$delivery_record" | head -n 1)"
+  local valid=1
+  if [ -z "$delivered_branch" ]; then
+    fail scope.delivery-record "the present DELIVERED record ($delivery_record) has no \"branch: <name>\" line naming its authorized target."
+    valid=0
+  elif ! git -C "$TASK_CWD" check-ref-format --branch "$delivered_branch" >/dev/null 2>&1; then
+    fail scope.delivery-record "the present DELIVERED record names invalid branch \"$delivered_branch\"."
+    valid=0
+  fi
+  if [ -z "$delivered_head" ]; then
+    fail scope.delivery-record "the present DELIVERED record ($delivery_record) has no \"head: <full 40-character commit sha>\" line."
+    valid=0
+  elif ! git -C "$TASK_CWD" cat-file -e "$delivered_head^{commit}" 2>/dev/null; then
+    fail scope.delivery-record "the present DELIVERED record names head $delivered_head, which is not a commit in this repository."
+    valid=0
+  fi
+  if [ -z "$delivered_base" ]; then
+    fail scope.delivery-record "the present DELIVERED record ($delivery_record) has no \"base: <full 40-character commit sha>\" line."
+    valid=0
+  elif ! git -C "$TASK_CWD" cat-file -e "$delivered_base^{commit}" 2>/dev/null; then
+    fail scope.delivery-record "the present DELIVERED record names base $delivered_base, which is not a commit in this repository."
+    valid=0
+  fi
+  if [ "$valid" -eq 0 ]; then
+    return
+  fi
+  if [ "$delivered_head" = "$delivered_base" ]; then
+    fail scope.delivery-record "the present DELIVERED record's head and base are the same commit ($delivered_head) — no new commits were delivered."
+    return
+  fi
+  if ! git -C "$TASK_CWD" merge-base --is-ancestor "$delivered_base" "$delivered_head" 2>/dev/null; then
+    fail scope.delivery-record "the present DELIVERED record's head $delivered_head is not a descendant of base $delivered_base."
+    return
+  fi
+  delivery_remote_tip="$(git -C "$TASK_CWD" ls-remote origin "refs/heads/$delivered_branch" 2>/dev/null | awk '{print $1}' | head -n 1)"
+  if [ -z "$delivery_remote_tip" ]; then
+    fail scope.delivery-live-tip "the present DELIVERED record names origin/$delivered_branch, but its live tip could not be read."
+    return
+  fi
+  if [ "$delivery_remote_tip" != "$delivered_head" ]; then
+    fail scope.delivery-live-tip "the delivered target origin/$delivered_branch is live at $delivery_remote_tip, not recorded head $delivered_head; the delivery was stale or superseded."
+    return
+  fi
+  delivery_record_valid=1
+}
+
+case "$MODE" in
+  readiness | record-gate-evidence | verify-gate-evidence)
+    [ "$delivery_record_present" -eq 1 ] && validate_delivered_record
+    ;;
+esac
+
 # The environment may not carry an id at all in a check step; when it does, it must agree
 # with the worktree the run is actually in.
 if [ -n "${TASK_ID_CONFLICT:-}" ]; then
@@ -423,6 +496,7 @@ if [ "$MODE" = "readiness" ] || [ "$MODE" = "record-gate-evidence" ] || [ "$MODE
   # head really descends from that base — a record naming an unrelated pair of shas proves nothing.
   empty_base=""
   checked_bases=0
+  has_own_commits=0
   if [ -z "${HEAD_SHA:-}" ]; then
     fail branch.has-own-commits "HEAD could not be resolved, so whether this branch carries any work cannot be evaluated"
   else
@@ -432,7 +506,10 @@ if [ "$MODE" = "readiness" ] || [ "$MODE" = "record-gate-evidence" ] || [ "$MODE
       git -C "$TASK_CWD" merge-base --is-ancestor "$HEAD_SHA" "$base_ref" >/dev/null 2>&1
       case $? in
         0) empty_base="$base_ref" ;;
-        1) info "own commits   $(git -C "$TASK_CWD" rev-list --count "$base_ref..$HEAD_SHA" 2>/dev/null) over $base_ref" ;;
+        1)
+          has_own_commits=1
+          info "own commits   $(git -C "$TASK_CWD" rev-list --count "$base_ref..$HEAD_SHA" 2>/dev/null) over $base_ref"
+          ;;
         *) fail branch.has-own-commits "could not compare HEAD with $base_ref, so whether this branch carries any work cannot be evaluated" ;;
       esac
     done
@@ -456,43 +533,17 @@ if [ "$MODE" = "readiness" ] || [ "$MODE" = "record-gate-evidence" ] || [ "$MODE
           info "findings      $verified_findings"
         fi
       elif [ -n "$delivery_record" ] && [ -f "$delivery_record" ]; then
-        delivered_branch="$(sed -n 's/^branch:[[:space:]]*\(.*[^[:space:]]\)[[:space:]]*$/\1/p' "$delivery_record" | head -n 1)"
-        delivered_head="$(sed -n 's/^head:[[:space:]]*\([0-9a-fA-F]\{40\}\)[[:space:]]*$/\1/p' "$delivery_record" | head -n 1)"
-        delivered_base="$(sed -n 's/^base:[[:space:]]*\([0-9a-fA-F]\{40\}\)[[:space:]]*$/\1/p' "$delivery_record" | head -n 1)"
-        if [ -z "$delivered_branch" ]; then
-          fail scope.delivery-record "branch \"$BRANCH\" has no commits over its base, and its DELIVERED record ($delivery_record) has no \"branch: <name>\" line naming the branch the fix was pushed to."
-        elif [ -z "$delivered_head" ]; then
-          fail scope.delivery-record "branch \"$BRANCH\" has no commits over its base, and its DELIVERED record ($delivery_record) has no \"head: <full 40-character commit sha>\" line."
-        elif [ -z "$delivered_base" ]; then
-          fail scope.delivery-record "branch \"$BRANCH\" has no commits over its base, and its DELIVERED record ($delivery_record) has no \"base: <full 40-character commit sha>\" line."
-        elif ! git -C "$TASK_CWD" cat-file -e "$delivered_head^{commit}" 2>/dev/null; then
-          fail scope.delivery-record "branch \"$BRANCH\" has no commits over its base, and its DELIVERED record names head $delivered_head, which is not a commit in this repository. Fetch the revision you pushed, or correct the record."
-        elif ! git -C "$TASK_CWD" cat-file -e "$delivered_base^{commit}" 2>/dev/null; then
-          fail scope.delivery-record "branch \"$BRANCH\" has no commits over its base, and its DELIVERED record names base $delivered_base, which is not a commit in this repository."
-        else
-          # `refs/heads/$delivered_branch` and `refs/remotes/origin/$delivered_branch` are both
-          # writable by the very agent this check exists to hold accountable: `git commit-tree`
-          # plus `git update-ref` manufactures either one without a single byte reaching the
-          # network (#416 review). Only a LIVE query against the remote proves a push happened, so
-          # the local and remote-tracking refs are no longer consulted at all — a stale or absent
-          # remote branch now refuses exactly like a missing record would.
-          remote_tip="$(git -C "$TASK_CWD" ls-remote origin "refs/heads/$delivered_branch" 2>/dev/null | awk '{print $1}' | head -n 1)"
-          if [ -z "$remote_tip" ]; then
-            fail scope.delivery-record "branch \"$BRANCH\" has no commits over its base, and its DELIVERED record names branch \"$delivered_branch\", but a live \"git ls-remote origin refs/heads/$delivered_branch\" returned nothing — the branch does not exist on the remote, or the remote could not be reached. A local branch or remote-tracking ref is never accepted as proof of a push; push the branch, then correct or re-check the record."
-          elif [ "$remote_tip" != "$delivered_head" ]; then
-            fail scope.delivery-record "branch \"$BRANCH\" has no commits over its base, and its DELIVERED record names head $delivered_head on branch \"$delivered_branch\", but origin's LIVE tip for refs/heads/$delivered_branch is $remote_tip right now. The recorded head was never actually pushed there, or has since been superseded — fetch is not proof either, since a fetch only updates a ref this agent already controls."
-          elif [ "$delivered_head" = "$delivered_base" ]; then
-            fail scope.delivery-record "branch \"$BRANCH\" has no commits over its base, and its DELIVERED record's head and base are the same commit ($delivered_head) — no new commits were delivered."
-          elif ! git -C "$TASK_CWD" merge-base --is-ancestor "$delivered_base" "$delivered_head" 2>/dev/null; then
-            fail scope.delivery-record "branch \"$BRANCH\" has no commits over its base, and its DELIVERED record's head $delivered_head is not a descendant of its recorded base $delivered_base — that is not a fix delivered over the reviewed head."
-          else
-            info "own commits   none — delivered to origin/$delivered_branch instead, by its DELIVERED record"
-            info "delivered     $delivered_head (over $delivered_base), verified live against origin"
-          fi
+        if [ "$delivery_record_valid" -eq 1 ]; then
+          info "own commits   none — delivered to origin/$delivered_branch instead, by its DELIVERED record"
+          info "delivered     $delivered_head (over $delivered_base), verified live against origin"
         fi
       else
         fail branch.has-own-commits "branch \"$BRANCH\" has no commits over its base — HEAD ${HEAD_SHA:0:12} is already contained in $empty_base. There is no work here to gate, seal or hand off. If the author step stopped for a decision, it must write the task's BLOCKED file. If this run only verifies a revision that already exists and was never asked to change source (QA of another branch, an acceptance re-run), record that in ${evidence_dir:-the task evidence directory}/VERIFICATION with a \"verified: <commit sha>\" line and a \"findings: <where the result is posted>\" line. If this run's fix correctly landed on a different branch than this one (address-review-findings pushing to the PR's own branch), record that in ${evidence_dir:-the task evidence directory}/DELIVERED with a \"branch: <name>\" line, a \"head: <commit sha now at that branch's tip>\" line and a \"base: <commit sha it was at before this run>\" line. A run that was asked to change source on its own branch must not write either record."
       fi
+    fi
+    if [ "$delivery_record_present" -eq 1 ] && [ "$delivery_record_valid" -eq 1 ] &&
+       [ "$has_own_commits" -eq 1 ] && [ "$HEAD_SHA" != "$delivered_head" ]; then
+      fail scope.delivery-current-round "this task is at $HEAD_SHA, but its present DELIVERED record names $delivered_head. The record belongs to a superseded response round and cannot authorize or seal this one."
     fi
   fi
 fi
@@ -596,14 +647,12 @@ if [ ${#failures[@]} -eq 0 ] && [ "$MODE" = "verify-gate-evidence" ]; then
   schema="$(node "$SCRIPT_DIR/lib/manifest.mjs" "$manifest" --get gateEvidence.schemaVersion 2>/dev/null)"
   recorded="$(node "$SCRIPT_DIR/lib/manifest.mjs" "$manifest" --get gateEvidence.fingerprint 2>/dev/null)"
   sealed_head="$(node "$SCRIPT_DIR/lib/manifest.mjs" "$manifest" --get gateEvidence.headSha 2>/dev/null)"
-  delivery_record="$(task_evidence_dir)/DELIVERED"
-  if [ -f "$delivery_record" ]; then
-    pushed_head="$(sed -n 's/^head:[[:space:]]*\([0-9a-fA-F]\{40\}\)[[:space:]]*$/\1/p' "$delivery_record" | head -n 1)"
-    if [ -n "$sealed_head" ] && [ -n "$pushed_head" ] && [ "$sealed_head" != "$pushed_head" ]; then
+  if [ "$delivery_record_present" -eq 1 ] && [ "$delivery_record_valid" -eq 1 ]; then
+    if [ -n "$sealed_head" ] && [ "$sealed_head" != "$delivered_head" ]; then
       # #756: the historical review-response path reset this task branch after pushing the fix.
       # Its canonical attempt then certified the task's base instead of the response commit. A
       # complete seal for another head remains valid history, but it cannot certify this handoff.
-      fail evidence.delivery-head-match "the seal head $sealed_head does not match the pushed head $pushed_head recorded in $delivery_record. The review-response gates must run at the exact response commit pushed to the PR branch."
+      fail evidence.delivery-head-match "the seal head $sealed_head does not match the pushed head $delivered_head recorded in $delivery_record. The review-response gates must run at the exact response commit pushed to the PR branch."
     fi
   fi
   if [ -z "$recorded" ]; then

@@ -318,6 +318,23 @@ printf '\n-- catalog --\n'
 expect_ok "the repo's own workflow/skill/config catalog is valid" \
   node "$SCRIPT_DIR/catalog-check.mjs" "$REPO_ROOT"
 
+# Review-response handoff has two distinct dispositions. Delivered commits require exact PR/seal
+# head equality; verification-only prose pushes nothing and reports both the verified revision and
+# the narrower scope of its own task seal. An unconditional equality rule dead-ends the latter.
+expect_ok "BREAK-756-PROSE-ONLY: handoff distinguishes delivered and verification-only responses" \
+  node -e '
+    const fs = require("node:fs");
+    const text = fs.readFileSync(process.argv[1], "utf8");
+    if (!/When a review response delivered commits/.test(text) ||
+        !/same full commit SHA/.test(text)) {
+      throw new Error("delivered responses do not require exact PR/seal head equality");
+    }
+    if (!/verification-only review response/.test(text) ||
+        !/does not certify the verified PR revision/.test(text)) {
+      throw new Error("verification-only responses do not state the limited seal scope");
+    }
+  ' "$REPO_ROOT/.xezar/skills/xezar-handoff-draft-pr.md"
+
 # --- 1a. Marked fenced quotes (#674) -------------------------------------------------------------
 printf '\n-- marked fenced quotes --\n'
 FQ="$SCRIPT_DIR/fenced-quotes.mjs"
@@ -1177,6 +1194,38 @@ expect_ok "a guarded push from the run's own worktree succeeds" run_in "$wt" "$W
   && ok "the successful push did not move origin/main" \
   || bad "the successful push did not move origin/main" "origin/main is now $(origin_ref main)"
 
+# A review-response run may push the SAME checked-out commit to exactly one other branch, but
+# only when its own DELIVERED record names that destination and the remote is still at the
+# reviewed base. No arbitrary refspec reaches git, and the normal own-branch call above is the
+# unchanged zero-argument path.
+delivery_target="xez/review-target"
+delivery_head="$(git -C "$wt" rev-parse HEAD)"
+git -C "$root" push -q origin "$develop_at_origin:refs/heads/$delivery_target"
+ev="$root/.local/xezar-tasks/$RUN_A"
+printf 'branch: %s\nhead: %s\nbase: %s\n' "$delivery_target" "$delivery_head" "$develop_at_origin" > "$ev/DELIVERED"
+
+expect_fail "an unrecorded cross-branch push target is refused" \
+  "unauthorized delivery target" run_in "$wt" "$WG" push xez/not-recorded
+[ -z "$(origin_ref xez/not-recorded)" ] \
+  && ok "the unauthorized target was never created" \
+  || bad "the unauthorized target was never created" "origin has $(origin_ref xez/not-recorded)"
+
+concurrent_head="$(git -C "$root" -c user.email=t@t -c user.name=t commit-tree 'HEAD^{tree}' -p "$develop_at_origin" -m "concurrent response")"
+git -C "$root" push -q origin "$concurrent_head:refs/heads/$delivery_target"
+expect_fail "a delivery push refuses a target that advanced after the recorded base" \
+  "advanced concurrently" run_in "$wt" "$WG" push "$delivery_target"
+[ "$(origin_ref "$delivery_target")" = "$concurrent_head" ] \
+  && ok "the concurrent target was not overwritten" \
+  || bad "the concurrent target was not overwritten" "origin has $(origin_ref "$delivery_target")"
+
+git -C "$root" push -q --force origin "$develop_at_origin:refs/heads/$delivery_target"
+expect_ok "BREAK-756-UNAUTHORIZED-PUSH: the one DELIVERED-record target succeeds" \
+  run_in "$wt" "$WG" push "$delivery_target"
+[ "$(origin_ref "$delivery_target")" = "$delivery_head" ] \
+  && ok "the authorized delivery pushed the checked-out full SHA" \
+  || bad "the authorized delivery pushed the checked-out full SHA" "origin has $(origin_ref "$delivery_target")"
+rm -f "$ev/DELIVERED"
+
 # --- a stale CWD in ANOTHER run's worktree ---------------------------------------------------
 # This is the case `preflight && git push` in one command does NOT catch on its own: the other
 # tree is a perfectly valid Xezar worktree. The identity assertion is what catches it, so the
@@ -1197,7 +1246,7 @@ expect_fail "a guarded push from ANOTHER run's worktree is refused on identity" 
 expect_fail "an unguarded git subcommand is refused (this is not a git wrapper)" \
   "not a git wrapper" run_in "$wt" "$WG" reset --hard
 expect_fail "no verb at all is refused" "" run_in "$wt" "$WG"
-expect_fail "push takes no arguments, so no caller-supplied refspec can redirect it" \
+expect_fail "push refuses multiple arguments, so no caller-supplied refspec can redirect it" \
   "takes no arguments" run_in "$wt" "$WG" push origin main
 
 # Handoff guidance is checked by the project contract suite.
@@ -2283,7 +2332,7 @@ printf 'branch: xez/939d7d68\nhead: %s\nbase: %s\n' "$delivered_head" "$base_sha
   && ok "setup: the fabricated branch was never pushed to origin" \
   || bad "setup: the fabricated branch was never pushed to origin" "origin already has it"
 expect_fail "a DELIVERED record naming a real LOCAL ref that was never pushed is refused" \
-  "scope.delivery-record" run_in "$wt" "$PF" --readiness
+  "scope.delivery-live-tip" run_in "$wt" "$PF" --readiness
 
 # The fix, actually pushed: the same record now passes, because origin's LIVE tip matches.
 git -C "$root" push -q origin refs/heads/xez/939d7d68:refs/heads/xez/939d7d68
@@ -2316,7 +2365,7 @@ git -C "$root" push -q origin "$superseding_head:refs/heads/xez/939d7d68"
   && ok "setup: origin's real tip has moved past the recorded head" \
   || bad "setup: origin's real tip has moved past the recorded head" "origin has $(origin_ref_at xez/939d7d68)"
 expect_fail "a record whose local ref matches but whose LIVE origin tip does not is refused" \
-  "scope.delivery-record" run_in "$wt" "$PF" --readiness
+  "scope.delivery-live-tip" run_in "$wt" "$PF" --readiness
 # Return origin to the state the rest of this section assumes.
 git -C "$root" push -q -f origin "$delivered_head:refs/heads/xez/939d7d68"
 
@@ -2324,7 +2373,7 @@ git -C "$root" push -q -f origin "$delivered_head:refs/heads/xez/939d7d68"
 # fabricated pair of shas from being accepted as proof.
 printf 'branch: xez/no-such-branch\nhead: %s\nbase: %s\n' "$delivered_head" "$base_sha" > "$ev/DELIVERED"
 expect_fail "a record naming a branch the remote never carried is refused" \
-  "scope.delivery-record" run_in "$wt" "$PF" --readiness
+  "scope.delivery-live-tip" run_in "$wt" "$PF" --readiness
 
 # A record whose head and base are the same commit claims no new work.
 printf 'branch: xez/939d7d68\nhead: %s\nbase: %s\n' "$base_sha" "$base_sha" > "$ev/DELIVERED"
@@ -2349,6 +2398,46 @@ expect_fail "a record with no base line is refused" \
   "scope.delivery-record" run_in "$wt" "$PF" --readiness
 
 rm -f "$ev/DELIVERED"
+
+# A present delivery disposition is validated even when the task retained its response commit.
+# That is the ordinary #756 shape: the old empty-branch-only validation otherwise let stale,
+# incomplete and prior-round records bypass the seal binding.
+root="$(make_fixture delivered-current-round)"
+wt="$(add_worktree_with_work "$root" "$RUN_A")"
+CHECKS="$root/.xezar/checks"
+PF="$CHECKS/worktree-preflight.sh"
+ev="$root/.local/xezar-tasks/$RUN_A"
+git init -q --bare "$WORK/delivered-current-round-origin.git"
+git -C "$root" remote add origin "$WORK/delivered-current-round-origin.git"
+git -C "$root" push -q -u origin main
+base_sha="$(git -C "$root" rev-parse main)"
+delivered_head="$(git -C "$wt" rev-parse HEAD)"
+delivery_target="xez/current-response"
+git -C "$root" push -q origin "$base_sha:refs/heads/$delivery_target"
+printf 'branch: %s\nhead: %s\nbase: %s\n' "$delivery_target" "$delivered_head" "$base_sha" > "$ev/DELIVERED"
+git -C "$root" push -q origin "$delivered_head:refs/heads/$delivery_target"
+
+expect_ok "a complete current-round DELIVERED record passes with retained own commits" \
+  run_in "$wt" "$PF" --readiness
+drive "$wt" "$CHECKS" "$LIST_ID" "$REQUIRED_ALL" "${ALL_PASS[@]}" > /dev/null
+expect_ok "the current delivered head can be sealed" run_in "$wt" "$PF" --record-gate-evidence
+
+superseding_head="$(git -C "$root" -c user.email=t@t -c user.name=t commit-tree 'HEAD^{tree}' -p "$delivered_head" -m "remote advanced after seal")"
+git -C "$root" push -q origin "$superseding_head:refs/heads/$delivery_target"
+expect_fail "BREAK-756-STALE-DELIVERY: a live target advanced after the seal is refused" \
+  "scope.delivery-live-tip" run_in "$wt" "$PF" --verify-gate-evidence
+
+printf 'branch: %s\nbase: %s\n' "$delivery_target" "$base_sha" > "$ev/DELIVERED"
+expect_fail "a present DELIVERED record missing head is refused even with own commits" \
+  "scope.delivery-record" run_in "$wt" "$PF" --readiness
+
+git -C "$root" push -q --force origin "$delivered_head:refs/heads/$delivery_target"
+printf 'branch: %s\nhead: %s\nbase: %s\n' "$delivery_target" "$delivered_head" "$base_sha" > "$ev/DELIVERED"
+printf 'export const nextRound = true;\n' > "$wt/next-round.ts"
+git -C "$wt" -c user.email=t@t -c user.name=t add next-round.ts
+git -C "$wt" -c user.email=t@t -c user.name=t commit -q -m "a later response round"
+expect_fail "a superseded-round DELIVERED record cannot authorize a newer task head" \
+  "scope.delivery-current-round" run_in "$wt" "$PF" --readiness
 
 # --- 7g. The phase record, and the accepted-criteria input (#469) ---------------------------------
 #
