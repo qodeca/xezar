@@ -80,13 +80,14 @@ describe('per-dataDir todos watch (step 2.3)', () => {
     let b = 0;
     await fs.mkdir(dirA, { recursive: true });
     await fs.mkdir(dirB, { recursive: true });
-    await fs.writeFile(todosPath(dirA), '[]');
-    await fs.writeFile(todosPath(dirB), '[]');
     subscribe(dirA, () => a++);
     subscribe(dirB, () => b++);
 
-    // macOS FSEvents can deliver the just-created files as backlog after watch() returns. Let
-    // that registration noise clear before measuring the write whose project scope matters.
+    // Prove each macOS watcher is live before measuring isolation. Creating the files before
+    // watch() and sleeping for one debounce window is not sufficient: FSEvents can deliver that
+    // creation as registration backlog much later when the machine is busy.
+    await writeUntilDelivered(todosPath(dirA), '[]', () => a > 0);
+    await writeUntilDelivered(todosPath(dirB), '[]', () => b > 0);
     await new Promise((resolve) => setTimeout(resolve, 400));
     a = 0;
     b = 0;
