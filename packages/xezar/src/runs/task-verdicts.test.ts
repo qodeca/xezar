@@ -4,6 +4,12 @@ import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
+  TASK_VERDICT_FINDINGS_MAX,
+  TASK_VERDICT_FINDINGS_MAX_BYTES,
+  TASK_VERDICT_FINDING_BODY_MAX,
+  TASK_VERDICT_FINDING_FILE_MAX,
+  TASK_VERDICT_FINDING_ID_MAX,
+  TASK_VERDICT_FINDING_TITLE_MAX,
   TASK_VERDICT_MAX_BYTES,
   isApprovingTaskVerdict,
 } from '@qodeca/xezar-contract';
@@ -588,5 +594,219 @@ describe('T-6 — the record is durable before the packet is gone (break: drop t
       expect(issuesOf(run.id)[0]?.reason).toContain('could not be looked up');
     }
     expect(verdictsOf(run.id)).toEqual([]);
+  });
+});
+
+// ---- T-7 (#673) -----------------------------------------------------------------------------
+
+describe('T-7 — findings reach the record whole or not at all (break: drop R1/R2/R3, or record a truncated list silently)', () => {
+  function finding(over: Record<string, unknown> = {}): Record<string, unknown> {
+    return { id: 'f1', severity: 'major', title: 'the cap is gone', ...over };
+  }
+
+  /** Twenty maximal findings: every field at its bound, so the COUNT is legal and the bytes are not. */
+  function maximalFindings(): Record<string, unknown>[] {
+    return Array.from({ length: TASK_VERDICT_FINDINGS_MAX }, (_unused, index) =>
+      finding({
+        id: `f${index}`.padEnd(TASK_VERDICT_FINDING_ID_MAX, 'i'),
+        file: 'p'.repeat(TASK_VERDICT_FINDING_FILE_MAX),
+        title: 'T'.repeat(TASK_VERDICT_FINDING_TITLE_MAX),
+        body: 'B'.repeat(TASK_VERDICT_FINDING_BODY_MAX),
+        fingerprint: 'g'.repeat(TASK_VERDICT_FINDING_ID_MAX),
+      }),
+    );
+  }
+
+  // AC-01 — the additive claim, against a packet frozen in the shape that shipped before #673.
+  it('records a packet written before findings existed, and puts no findings key on it', () => {
+    const run = startedRun();
+    writePacket(run.id, {
+      id: 'report-1',
+      taskId: run.id,
+      stepId: 'review',
+      role: 'code-review',
+      verdict: 'APPROVE',
+      reviewedHeadSha: SHA_A,
+      summary: 'no blocking findings',
+      recordedAt: '2026-09-16T00:00:00.000Z',
+      labels: { requestedAdd: [], requestedRemove: [], observed: [], state: 'verified' },
+    });
+
+    expect(ingestTaskVerdict(store, dataDir, run.id, 'review')?.outcome).toBe('recorded');
+
+    const [recorded] = verdictsOf(run.id);
+    expect(recorded?.verdict).toBe('APPROVE');
+    // Absent, not `[]`: "reported none in this form" must stay distinguishable from "there were none".
+    expect(recorded && 'findings' in recorded).toBe(false);
+    expect(recorded?.findingsOmitted).toBeUndefined();
+  });
+
+  // AC-02
+  it('records a complete findings list and its zero counter on the run', () => {
+    const run = startedRun();
+    writePacket(
+      run.id,
+      packetFor(run.id, {
+        verdict: 'REQUEST CHANGES',
+        summary: 'one blocker, one nit',
+        findings: [
+          finding({ id: 'f1', severity: 'blocker', file: 'packages/xezar/src/runs/store.ts', line: 412, body: 'the cap is never applied' }),
+          finding({ id: 'f2', severity: 'nit', title: 'a stale comment', fingerprint: 'abc123' }),
+        ],
+        findingsOmitted: 0,
+      }),
+    );
+
+    expect(ingestTaskVerdict(store, dataDir, run.id, 'review')?.outcome).toBe('recorded');
+
+    const [recorded] = verdictsOf(run.id);
+    expect(recorded?.findings).toEqual([
+      { id: 'f1', severity: 'blocker', file: 'packages/xezar/src/runs/store.ts', line: 412, title: 'the cap is gone', body: 'the cap is never applied' },
+      { id: 'f2', severity: 'nit', title: 'a stale comment', fingerprint: 'abc123' },
+    ]);
+    expect(recorded?.findingsOmitted).toBe(0);
+  });
+
+  it('records a truncated list as truncated, and it survives a restart that way', () => {
+    const run = startedRun();
+    writePacket(run.id, packetFor(run.id, { findings: [finding()], findingsOmitted: 7 }));
+    ingestTaskVerdict(store, dataDir, run.id, 'review');
+    store.flush();
+
+    const reopened = RunStore.open(dataDir);
+
+    expect(reopened.getRun(run.id)?.verdicts?.[0]?.findingsOmitted).toBe(7);
+  });
+
+  // AC-03
+  it('refuses a findings list with no omitted count, and records no verdict at all', () => {
+    const run = startedRun();
+    writePacket(run.id, packetFor(run.id, { findings: [finding()] }));
+
+    expect(ingestTaskVerdict(store, dataDir, run.id, 'review')?.outcome).toBe('refused');
+    expect(verdictsOf(run.id)).toEqual([]);
+    expect(issuesOf(run.id)[0]?.reason).toContain('findingsOmitted');
+  });
+
+  // AC-04
+  it('refuses a findings array over the byte bound, naming the field and quoting no value', () => {
+    const run = startedRun();
+    const findings = maximalFindings();
+    expect(JSON.stringify(findings).length).toBeGreaterThan(TASK_VERDICT_FINDINGS_MAX_BYTES);
+    writePacket(run.id, packetFor(run.id, { findings, findingsOmitted: 0 }));
+
+    expect(ingestTaskVerdict(store, dataDir, run.id, 'review')?.outcome).toBe('refused');
+    expect(verdictsOf(run.id)).toEqual([]);
+    const reason = issuesOf(run.id)[0]?.reason ?? '';
+    expect(reason).toContain('findings');
+    // The packet is untrusted text: the refusal names the failing field, never its content.
+    expect(reason).not.toContain('T'.repeat(20));
+    expect(reason).not.toContain('B'.repeat(20));
+  });
+
+  // AC-05
+  it('refuses one finding over the count bound rather than keeping the first twenty', () => {
+    const run = startedRun();
+    const findings = Array.from({ length: TASK_VERDICT_FINDINGS_MAX + 1 }, (_unused, index) =>
+      finding({ id: `f${index}` }),
+    );
+    writePacket(run.id, packetFor(run.id, { findings, findingsOmitted: 0 }));
+
+    expect(ingestTaskVerdict(store, dataDir, run.id, 'review')?.outcome).toBe('refused');
+    // Not "the first 20 recorded": a silent drop is exactly what `findingsOmitted` exists against.
+    expect(verdictsOf(run.id)).toEqual([]);
+  });
+
+  it('refuses two findings wearing one id', () => {
+    const run = startedRun();
+    writePacket(
+      run.id,
+      packetFor(run.id, {
+        findings: [finding({ id: 'f1' }), finding({ id: 'f1', title: 'another thing' })],
+        findingsOmitted: 0,
+      }),
+    );
+
+    expect(ingestTaskVerdict(store, dataDir, run.id, 'review')?.outcome).toBe('refused');
+    expect(verdictsOf(run.id)).toEqual([]);
+  });
+
+  // AC-06 — the claim the spec says to PROVE rather than assume: `redactDeep` already recurses.
+  it('scrubs a secret a reviewer echoed into a finding body', () => {
+    const savedToken = process.env.GITHUB_TOKEN;
+    process.env.GITHUB_TOKEN = 'ghp_asecretinsideafinding0000000000000';
+    try {
+      const run = startedRun();
+      writePacket(
+        run.id,
+        packetFor(run.id, {
+          findings: [
+            finding({ body: 'the log printed ghp_asecretinsideafinding0000000000000 verbatim' }),
+          ],
+          findingsOmitted: 0,
+        }),
+      );
+
+      ingestTaskVerdict(store, dataDir, run.id, 'review');
+
+      const body = verdictsOf(run.id)[0]?.findings?.[0]?.body ?? '';
+      expect(body).not.toContain('ghp_asecretinsideafinding0000000000000');
+      expect(body).toContain('[REDACTED]');
+    } finally {
+      if (savedToken === undefined) delete process.env.GITHUB_TOKEN;
+      else process.env.GITHUB_TOKEN = savedToken;
+    }
+  });
+
+  // AC-08 — the 40 KB file bound is the backstop and is untouched by the findings bound.
+  it('still refuses an oversized packet file whose findings are well under their own bound', () => {
+    const run = startedRun();
+    const padded = packetFor(run.id, { findings: [finding()], findingsOmitted: 0 });
+    padded.summary = 'x'.repeat(TASK_VERDICT_MAX_BYTES + 1_000);
+    expect(JSON.stringify([finding()]).length).toBeLessThan(TASK_VERDICT_FINDINGS_MAX_BYTES);
+    writePacket(run.id, padded);
+
+    expect(ingestTaskVerdict(store, dataDir, run.id, 'review')?.outcome).toBe('refused');
+    expect(verdictsOf(run.id)).toEqual([]);
+    expect(issuesOf(run.id)[0]?.reason).toContain('larger than');
+  });
+
+  // AC-10
+  it('records an APPROVE that carries an empty list and a zero counter', () => {
+    const run = startedRun();
+    writePacket(run.id, packetFor(run.id, { verdict: 'APPROVE', findings: [], findingsOmitted: 0 }));
+
+    expect(ingestTaskVerdict(store, dataDir, run.id, 'review')?.outcome).toBe('recorded');
+
+    const [recorded] = verdictsOf(run.id);
+    expect(recorded?.findings).toEqual([]);
+    expect(recorded && isApprovingTaskVerdict(recorded)).toBe(true);
+  });
+
+  // AC-11 — the existing same-report comparison still sees the new keys.
+  it('refuses a re-report that changed only a finding body', () => {
+    const run = startedRun();
+    writePacket(run.id, packetFor(run.id, { findings: [finding({ body: 'as written' })], findingsOmitted: 0 }));
+    ingestTaskVerdict(store, dataDir, run.id, 'review');
+
+    writePacket(run.id, packetFor(run.id, { findings: [finding({ body: 'as re-written' })], findingsOmitted: 0 }));
+    const second = ingestTaskVerdict(store, dataDir, run.id, 'review');
+
+    expect(second?.outcome).toBe('refused');
+    expect(verdictsOf(run.id)).toHaveLength(1);
+    expect(verdictsOf(run.id)[0]?.findings?.[0]?.body).toBe('as written');
+    expect(issuesOf(run.id)[0]?.reason).toContain('report id');
+  });
+
+  it('re-reporting an identical findings list is still one report', () => {
+    const run = startedRun();
+    const same = { findings: [finding({ body: 'as written' })], findingsOmitted: 0 };
+    writePacket(run.id, packetFor(run.id, same));
+    ingestTaskVerdict(store, dataDir, run.id, 'review');
+
+    writePacket(run.id, packetFor(run.id, same));
+
+    expect(ingestTaskVerdict(store, dataDir, run.id, 'review')?.outcome).toBe('unchanged');
+    expect(verdictsOf(run.id)).toHaveLength(1);
   });
 });

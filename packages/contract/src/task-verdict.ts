@@ -25,6 +25,10 @@ import { z } from 'zod';
  *    labels and there were none" (`verified` with an empty `observed`) from "we could not read
  *    them" (`unavailable`, which may carry no `observed` list at all). Those are the same array
  *    against a fail-open reader, and they must not be the same value.
+ *  - **A bounded report is counted, never silently short.** `findings` is the machine-readable half
+ *    of the review and it is optional; whenever it is present `findingsOmitted` is present too, so
+ *    a truncated list says so. Absent `findings` means the reviewer reported none IN THIS FORM —
+ *    the same distinction `labels.state` draws, and not an approval (#673).
  *
  * SOURCE. `source` is always `task-reported`: the packet reaches the engine from the task's own
  * work, and it is evidence of what the reviewer SAID, never cryptographic proof of what a forge
@@ -51,6 +55,24 @@ export const TASK_VERDICT_MAX_ISSUES = 10;
 /** Characters of one ingestion problem's reason. */
 export const TASK_VERDICT_ISSUE_REASON_MAX = 300;
 
+// ---- findings bounds (#673) -------------------------------------------------------------------
+
+/** Findings one report may carry. A reviewer with more than this has a comment, not a packet. */
+export const TASK_VERDICT_FINDINGS_MAX = 20;
+/** Bytes of the serialized `findings` array. The packet's own 40 KB is the file's; this is the
+ *  array's, so a long findings list can never crowd out `summary` or the label evidence. It is the
+ *  only bound in this file measured in BYTES rather than characters, deliberately: every character
+ *  bound here is worth up to four bytes in UTF-8, and the file bound is the backstop for the rest. */
+export const TASK_VERDICT_FINDINGS_MAX_BYTES = 16 * 1024;
+/** Characters of one finding's stable id, and of its cross-report fingerprint. */
+export const TASK_VERDICT_FINDING_ID_MAX = 64;
+/** Characters of one finding's file path. */
+export const TASK_VERDICT_FINDING_FILE_MAX = 260;
+/** Characters of one finding's headline. */
+export const TASK_VERDICT_FINDING_TITLE_MAX = 160;
+/** Characters of one finding's body — the pointer's one sentence, never the argument. */
+export const TASK_VERDICT_FINDING_BODY_MAX = 300;
+
 // ---- roles and their vocabularies ------------------------------------------------------------
 
 export const TASK_VERDICT_ROLES = ['code-review', 'design-review', 'qa'] as const;
@@ -75,6 +97,23 @@ export const TASK_VERDICT_APPROVING: Readonly<Record<TaskVerdictRole, readonly s
   'design-review': ['PASS', 'PASS WITH FOLLOW-UPS'],
   qa: ['PASS'],
 };
+
+// ---- finding severity (#673) --------------------------------------------------------------------
+
+/**
+ * Each role's own severity words, declared the way `TASK_VERDICT_VOCABULARY` declares verdicts.
+ * They are identical today. The per-role SHAPE is the point: a role that later needs its own word
+ * is then additive, where a single shared enum would make it a break — the same reason the verdict
+ * enum is per role and never translated.
+ */
+export const TASK_VERDICT_FINDING_SEVERITY = {
+  'code-review': ['blocker', 'major', 'minor', 'nit'],
+  'design-review': ['blocker', 'major', 'minor', 'nit'],
+  qa: ['blocker', 'major', 'minor', 'nit'],
+} as const satisfies Record<TaskVerdictRole, readonly [string, ...string[]]>;
+
+/** Most-serious first. The one derived reading this file offers, so no consumer re-invents it. */
+export const TASK_VERDICT_SEVERITY_ORDER: readonly string[] = ['blocker', 'major', 'minor', 'nit'];
 
 // ---- label evidence ---------------------------------------------------------------------------
 
@@ -124,9 +163,122 @@ export const taskVerdictLabelsSchema = z
   });
 export type TaskVerdictLabels = z.infer<typeof taskVerdictLabelsSchema>;
 
+// ---- one finding (#673) -------------------------------------------------------------------------
+
+/**
+ * ONE FINDING, as the reviewer that wrote the review reports it.
+ *
+ * A finding is a POINTER plus a headline, never the finding's full argument. The argument stays in
+ * the posted review, which `evidenceUrl` already addresses — the same rule `summary` follows. That
+ * is what keeps this array bounded and what keeps the packet from becoming a second copy of the
+ * comment, which would then have to be kept in step with it.
+ *
+ * Absent optional fields mean the producer offered nothing, never a value: an absent `file` is a
+ * finding that is not anchored to one, never "the repository root", and an absent `fingerprint` is
+ * "this producer offers no cross-report identity", never "a new defect".
+ */
+function findingSchema<R extends TaskVerdictRole>(role: R) {
+  return z
+    .strictObject({
+      /** Addressable within THIS report. Unique across the packet's own findings. */
+      id: z.string().min(1).max(TASK_VERDICT_FINDING_ID_MAX),
+      severity: z.enum(TASK_VERDICT_FINDING_SEVERITY[role]),
+      /** Repo-relative path. Absent means the finding is not anchored to a file — never "root". */
+      file: z.string().min(1).max(TASK_VERDICT_FINDING_FILE_MAX).optional(),
+      /** 1-indexed. Only meaningful with `file`; refused without one. */
+      line: z.number().int().min(1).max(2_000_000).optional(),
+      title: z.string().min(1).max(TASK_VERDICT_FINDING_TITLE_MAX),
+      /** One sentence of what is wrong. The argument stays where the review was posted. */
+      body: z.string().min(1).max(TASK_VERDICT_FINDING_BODY_MAX).optional(),
+      /** Stable ACROSS reports for the same defect, so a re-check can say "this one again".
+       *  Line-independent by design: a re-check runs against a changed tree, and a line-anchored
+       *  identity would report every carried-over finding as new. */
+      fingerprint: z.string().min(1).max(TASK_VERDICT_FINDING_ID_MAX).optional(),
+    })
+    .superRefine((finding, ctx) => {
+      if (finding.line !== undefined && finding.file === undefined) {
+        ctx.addIssue({ code: 'custom', path: ['line'], message: 'a line number names no file' });
+      }
+    });
+}
+
+/** One finding as any role reports it. The severity words are per role; the shape is not. */
+export type TaskVerdictFinding = z.infer<ReturnType<typeof findingSchema<TaskVerdictRole>>>;
+
+/**
+ * Bytes of a string as UTF-8, counted rather than encoded. Not `Buffer.byteLength`: this package
+ * is Node-free by construction (`types: []`), so a `node:*` import is a compile error. Not
+ * `TextEncoder` either — it is a host global this package's `lib` does not declare, and the one
+ * thing needed from it is a count. `for…of` walks CODE POINTS, so a surrogate pair is one
+ * four-byte character rather than two three-byte ones.
+ */
+function byteLength(text: string): number {
+  let bytes = 0;
+  for (const character of text) {
+    const code = character.codePointAt(0) ?? 0;
+    bytes += code < 0x80 ? 1 : code < 0x800 ? 2 : code < 0x10000 ? 3 : 4;
+  }
+  return bytes;
+}
+
+/**
+ * The three rules that span a whole packet rather than one finding. Applied to BOTH unions through
+ * one helper, because a rule enforced on the reported packet and not on the recorded one is a rule
+ * that holds until the first consumer builds a record some other way.
+ *
+ *   R1  `findings` present  <=>  `findingsOmitted` present
+ *   R2  the serialized `findings` array is at most `TASK_VERDICT_FINDINGS_MAX_BYTES`
+ *   R3  finding ids are unique within one packet
+ *
+ * Every one of them REFUSES the whole packet. That is the sharp edge and it is deliberate: a packet
+ * recorded with half its findings is exactly the "some of it arrived" state the label block's
+ * `state` field exists to prevent, and the producer can retry. A message never quotes a value.
+ */
+function checkFindingRules(
+  packet: { findings?: readonly { id: string }[]; findingsOmitted?: number },
+  ctx: z.RefinementCtx,
+): void {
+  const { findings, findingsOmitted } = packet;
+  if (findings !== undefined && findingsOmitted === undefined) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['findingsOmitted'],
+      message: 'a findings list names how many findings it left out — a missing count would read as complete',
+    });
+  }
+  if (findings === undefined && findingsOmitted !== undefined) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['findings'],
+      message: 'an omitted-findings count without a findings list reports nothing',
+    });
+  }
+  if (findings === undefined) return;
+  if (byteLength(JSON.stringify(findings)) > TASK_VERDICT_FINDINGS_MAX_BYTES) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['findings'],
+      message: `the findings are larger than ${TASK_VERDICT_FINDINGS_MAX_BYTES} bytes`,
+    });
+  }
+  const ids = new Set<string>();
+  for (const finding of findings) {
+    if (ids.has(finding.id)) {
+      ctx.addIssue({ code: 'custom', path: ['findings'], message: 'two findings carry one finding id' });
+      break;
+    }
+    ids.add(finding.id);
+  }
+}
+
 // ---- the packet -------------------------------------------------------------------------------
 
-const packetBase = {
+/**
+ * The fields every arm of both unions carries. A FUNCTION of the role rather than a constant, so a
+ * per-role field — `findings`, and whatever comes after it — is added in one place and reaches all
+ * six arms. Adding a key to six arms by hand is the half-a-fix this shape exists to rule out.
+ */
+const packetBase = <R extends TaskVerdictRole>(role: R) => ({
   /** Stable report id. Re-reporting it with the same content is a no-op; with different content
    *  it is refused, so one report can never become two, and two can never wear one id. */
   id: z.string().min(1).max(TASK_VERDICT_ID_MAX),
@@ -144,29 +296,39 @@ const packetBase = {
   /** Where the full review can be read, when it was posted somewhere. */
   evidenceUrl: z.string().max(2_000).optional(),
   labels: taskVerdictLabelsSchema,
-};
+  /** The reviewer's own findings, machine-readable (#673). ABSENT means the reviewer reported none
+   *  IN THIS FORM — never "there were none", and never an approval. The posted review stays the
+   *  record; this is the half a program can read. */
+  findings: z.array(findingSchema(role)).max(TASK_VERDICT_FINDINGS_MAX).optional(),
+  /** How many findings did NOT fit. REQUIRED whenever `findings` is present, `0` when the list is
+   *  complete. A missing counter beside a present list would read as "complete" on a truncated
+   *  report, which is the one failure this field exists to prevent. */
+  findingsOmitted: z.number().int().min(0).optional(),
+});
 
 /**
  * The packet as a task reports it. A discriminated union on `role`, so each role's verdict enum
  * is the only one it can carry.
  */
-export const taskVerdictPacketSchema = z.discriminatedUnion('role', [
-  z.object({
-    role: z.literal('code-review'),
-    verdict: z.enum(TASK_VERDICT_VOCABULARY['code-review']),
-    ...packetBase,
-  }),
-  z.object({
-    role: z.literal('design-review'),
-    verdict: z.enum(TASK_VERDICT_VOCABULARY['design-review']),
-    ...packetBase,
-  }),
-  z.object({
-    role: z.literal('qa'),
-    verdict: z.enum(TASK_VERDICT_VOCABULARY.qa),
-    ...packetBase,
-  }),
-]);
+export const taskVerdictPacketSchema = z
+  .discriminatedUnion('role', [
+    z.object({
+      role: z.literal('code-review'),
+      verdict: z.enum(TASK_VERDICT_VOCABULARY['code-review']),
+      ...packetBase('code-review'),
+    }),
+    z.object({
+      role: z.literal('design-review'),
+      verdict: z.enum(TASK_VERDICT_VOCABULARY['design-review']),
+      ...packetBase('design-review'),
+    }),
+    z.object({
+      role: z.literal('qa'),
+      verdict: z.enum(TASK_VERDICT_VOCABULARY.qa),
+      ...packetBase('qa'),
+    }),
+  ])
+  .superRefine(checkFindingRules);
 export type TaskVerdictPacket = z.infer<typeof taskVerdictPacketSchema>;
 
 /** The role of the step's own product — what a leader reads to route the verdict. */
@@ -203,26 +365,28 @@ const recordedExtras = {
  * route type, the parity check and hono's own walk over the response shape — and each of them
  * flattens it differently. Three arms cost three lines and infer as one plain discriminated union.
  */
-export const taskVerdictSchema = z.discriminatedUnion('role', [
-  z.object({
-    role: z.literal('code-review'),
-    verdict: z.enum(TASK_VERDICT_VOCABULARY['code-review']),
-    ...packetBase,
-    ...recordedExtras,
-  }),
-  z.object({
-    role: z.literal('design-review'),
-    verdict: z.enum(TASK_VERDICT_VOCABULARY['design-review']),
-    ...packetBase,
-    ...recordedExtras,
-  }),
-  z.object({
-    role: z.literal('qa'),
-    verdict: z.enum(TASK_VERDICT_VOCABULARY.qa),
-    ...packetBase,
-    ...recordedExtras,
-  }),
-]);
+export const taskVerdictSchema = z
+  .discriminatedUnion('role', [
+    z.object({
+      role: z.literal('code-review'),
+      verdict: z.enum(TASK_VERDICT_VOCABULARY['code-review']),
+      ...packetBase('code-review'),
+      ...recordedExtras,
+    }),
+    z.object({
+      role: z.literal('design-review'),
+      verdict: z.enum(TASK_VERDICT_VOCABULARY['design-review']),
+      ...packetBase('design-review'),
+      ...recordedExtras,
+    }),
+    z.object({
+      role: z.literal('qa'),
+      verdict: z.enum(TASK_VERDICT_VOCABULARY.qa),
+      ...packetBase('qa'),
+      ...recordedExtras,
+    }),
+  ])
+  .superRefine(checkFindingRules);
 export type TaskVerdict = z.infer<typeof taskVerdictSchema>;
 
 /**
