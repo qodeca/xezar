@@ -3,7 +3,16 @@ import { acquireHistoryView } from './event-corrections.ts';
 import { ensureProjectDataIgnored } from '../project-data-paths.ts';
 import { EventEmitter } from 'node:events';
 import { createHash, randomUUID } from 'node:crypto';
-import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
 // The reviewer-report shapes (#460) come from the contract package, not from a second copy here:
@@ -688,11 +697,37 @@ export function reconcileLoadedRun(run: RunRecord, opts?: { keepLive?: boolean }
  * pattern from @xezar/core's IssueStore) plus one append-only NDJSON event
  * file per run. Also the in-process event bus the SSE endpoints subscribe to:
  * emits `('run', RunRecord)` and `('event', { runId, event: RunEvent })`.
+ *
+ * ## What a vanished data directory does, in PRODUCT and not only in a fixture (#631, #671
+ * F-26/F-29; review of PR #765, Major 1)
+ *
+ * The directory a live server writes into can disappear under it — a `rm -rf .local`, a cleanup
+ * script, an unmounted volume — and it can come back, because anything that `mkdir -p`s under
+ * `.local/xezar` recreates it (worktree creation does). The decision, taken on purpose:
+ *
+ * - **A save that fails with `ENOENT` while the directory really is gone is skipped, silently.**
+ *   The user's action is never failed over it (§ Zero config: degrade, never break), and it is
+ *   never logged, because the single commonest occurrence of this state is a test fixture
+ *   removing its own temporary directory during teardown, where the log itself is the defect.
+ * - **It is NOT a shutdown.** The store keeps every record in memory and keeps accepting writes,
+ *   so a directory that comes back is written again by the next save — one `console.warn` then
+ *   says the index was stale for that gap. Only `close()` ends the write lifecycle.
+ * - **Every other failure is still loud**, including `EACCES` on an ancestor, which is why
+ *   `dataDirVanished` reads the error code and a `statSync` rather than `existsSync`.
+ *
+ * The residue the owner should know about: while the directory is gone the index on disk is
+ * stale and nothing says so until it returns. That is deliberate — a log line every 300 ms in a
+ * state the process cannot fix is worse than a stale file it repairs by itself.
  */
 export class RunStore extends EventEmitter {
   private runs = new Map<string, RunRecord>();
   private decisionProjections = new Map<string, string>();
   private saveTimer: NodeJS.Timeout | null = null;
+  /** Set by `close()` only: this store no longer writes, and that is not an error. */
+  private closed = false;
+  /** A save found its own data directory gone and skipped itself. Not a lifecycle state — it
+   *  only decides whether the NEXT successful save says the gap has closed. */
+  private dataDirMissing = false;
   /** The repository this project IS (#945), armed after `open()` by `setRepoHandle`. Undefined
    *  until it arrives and `null` when it cannot be known — both mean "unscoped", which is
    *  exactly the pre-#945 behavior. */
@@ -1382,13 +1417,43 @@ export class RunStore extends EventEmitter {
     return existed;
   }
 
-  /** Write the index out now (used on shutdown). */
+  /** Write the index out now (used on shutdown). Cancels the pending debounce first, so the
+   *  timer can never fire after the caller believes the index is on disk. */
   flush(): void {
-    if (this.saveTimer) {
-      clearTimeout(this.saveTimer);
-      this.saveTimer = null;
-    }
+    this.cancelScheduledSave();
     this.saveNow();
+  }
+
+  /**
+   * End this store's write lifecycle: flush what is still pending, cancel the debounce, and
+   * refuse every later write. Deliberately idempotent and safe to call on a store whose data
+   * directory has already been removed.
+   *
+   * `flush()` alone was not enough, and that gap is the defect behind #631 and #671 rows F-26 and
+   * F-29: a caller that flushed and then removed the directory could still be `touch()`ed by a
+   * writer that had not finished letting go — a late agent event, a retention sweep — which
+   * re-armed the 300 ms debounce against a directory that no longer existed. The timer then fired
+   * with nobody watching and `console.error`'d an `ENOENT` on `runs.json.tmp`, which vitest
+   * surfaces as `EnvironmentTeardownError: Closing rpc while "onUserConsoleLog" was pending` and
+   * a gate reads as a timeout in whichever test happened to be running.
+   *
+   * What the debounce is load-bearing FOR is unchanged on the live path: an OPEN store still
+   * coalesces token-usage updates into one `runs.json` write every 300 ms, still writes through
+   * the atomic tmp+rename, and still saves decision changes immediately. Only a store that has
+   * been closed stops writing for good; a vanished directory skips the write it could not do and
+   * is retried by the next one (`saveNow`).
+   */
+  close(): void {
+    if (this.closed) return;
+    this.cancelScheduledSave();
+    this.saveNow();
+    this.closed = true;
+  }
+
+  /** Whether this store has ended its write lifecycle. Only `close()` sets it: a vanished data
+   *  directory skips writes while it is gone, it does not end the lifecycle. */
+  get isClosed(): boolean {
+    return this.closed;
   }
 
   // ---- internals -----------------------------------------------------------
@@ -1469,7 +1534,7 @@ export class RunStore extends EventEmitter {
 
   /** Debounced so token-usage updates don't rewrite the index per event. */
   private scheduleSave(): void {
-    if (this.saveTimer) return;
+    if (this.closed || this.saveTimer) return;
     this.saveTimer = setTimeout(() => {
       this.saveTimer = null;
       this.saveNow();
@@ -1478,14 +1543,59 @@ export class RunStore extends EventEmitter {
   }
 
   private saveNow(): void {
+    if (this.closed) return;
     const indexPath = join(this.dataDir, 'runs.json');
     const tmpPath = `${indexPath}.tmp`;
     try {
       writeFileSync(tmpPath, JSON.stringify(this.listRuns(), null, 2), 'utf8');
       renameSync(tmpPath, indexPath);
+      if (this.dataDirMissing) {
+        // Recovery is the one moment this story is worth a line: the index on disk was stale
+        // for as long as the directory was gone, and the line says so once, after the gap has
+        // closed. It cannot be a late `console.*` in a teardown, because a teardown's directory
+        // never comes back — see `dataDirVanished` for why the vanish itself stays silent.
+        this.dataDirMissing = false;
+        console.warn(`[xez] runs.json is being written again: ${this.dataDir} is back`);
+      }
     } catch (err) {
+      if (this.dataDirVanished(err)) {
+        // The directory this store writes into is gone. Drop the pending timer and skip THIS
+        // write; do not end the lifecycle. A teardown never comes back, so this is silent and
+        // final in practice; a live directory that is recreated (anything that `mkdir -p`s
+        // under `.local/xezar` — worktree creation does) is written again by the next save,
+        // which then says so once. Latching here is what made a recreated directory leave every
+        // run in memory only (#631, #671 F-26/F-29; review of PR #765, Major 1).
+        this.dataDirMissing = true;
+        this.cancelScheduledSave();
+        return;
+      }
       const message = err instanceof Error ? err.message : String(err);
       console.error(`[xez] failed to save runs.json: ${message}`);
     }
+  }
+
+  /**
+   * Is this failure "the directory I write into is gone", and nothing else?
+   *
+   * Both halves are load-bearing. The ERROR must be `ENOENT`: any other code — `EACCES`,
+   * `EROFS`, `ENOSPC` — is a real disk or permission failure and stays loud. And the directory
+   * must be missing by a `statSync` that itself fails with `ENOENT`: `existsSync` answers false
+   * for an `EACCES` on an ancestor too, which is how the first version of this branch swallowed
+   * a permission failure that used to be logged on every attempt.
+   */
+  private dataDirVanished(err: unknown): boolean {
+    if ((err as NodeJS.ErrnoException | null)?.code !== 'ENOENT') return false;
+    try {
+      statSync(this.dataDir);
+      return false;
+    } catch (statErr) {
+      return (statErr as NodeJS.ErrnoException | null)?.code === 'ENOENT';
+    }
+  }
+
+  private cancelScheduledSave(): void {
+    if (!this.saveTimer) return;
+    clearTimeout(this.saveTimer);
+    this.saveTimer = null;
   }
 }

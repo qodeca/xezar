@@ -1,9 +1,10 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { RunStore } from '../runs/store.ts';
+import { closeStoreAndRemove } from '../runs/store.testkit.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { createApp } from './server.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
@@ -16,6 +17,7 @@ import { apiRequest } from './loopback-request.testkit.ts';
  */
 describe('PUT /api/v1/ui-state — promptTemplates', () => {
   let repoRoot: string;
+  let store: RunStore;
   let app: Hono;
 
   const put = (body: unknown) =>
@@ -35,15 +37,16 @@ describe('PUT /api/v1/ui-state — promptTemplates', () => {
   beforeEach(() => {
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-ui-state-'));
     const dataDir = join(repoRoot, '.local/xezar');
+    store = RunStore.open(dataDir);
     app = createApp({
       repoRoot,
-      store: RunStore.open(dataDir),
+      store,
       manager: {} as unknown as RunManager,
       version: '0.0.0-test',
     });
   });
 
-  afterEach(() => rmSync(repoRoot, { recursive: true, force: true }));
+  afterEach(() => closeStoreAndRemove(store, repoRoot));
 
   it('accepts a template with assigned skills and round-trips them', async () => {
     const templates = [template({ skills: ['xez-fix', 'xez-review'] })];

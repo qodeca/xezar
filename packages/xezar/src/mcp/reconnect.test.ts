@@ -43,6 +43,7 @@ const DAY = 24 * 60 * 60 * 1_000;
 
 let dataDir: string;
 const journals: EventJournal[] = [];
+const stores: RunStore[] = [];
 
 beforeEach(() => {
   dataDir = mkdtempSync(join(tmpdir(), 'xez-reconnect-'));
@@ -51,8 +52,16 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   for (const journal of journals.splice(0)) journal.close();
+  for (const store of stores.splice(0)) store.close();
   rmSync(dataDir, { recursive: true, force: true });
 });
+
+/** The store a case reads and writes, closed in teardown before `dataDir` goes. */
+function openStore(): RunStore {
+  const store = RunStore.open(dataDir);
+  stores.push(store);
+  return store;
+}
 
 function openJournal(now?: () => number): EventJournal {
   const journal = EventJournal.open({ dataDir, projectId: PROJECT, secretValues: [], warn: () => {}, ...(now ? { now } : {}) });
@@ -116,7 +125,7 @@ function ok<T extends { status: string }>(answer: T): Extract<T, { status: 'ok' 
 
 describe('acceptance 1 — a task completes while the leader is disconnected (A-15, F-21, N-05)', () => {
   it('the task survives, and the reconnect delivers the outstanding event and the current state', async () => {
-    const store = RunStore.open(dataDir);
+    const store = openStore();
     let journal = openJournal();
     attachTerminalEmitter(store, () => journal);
     const statuses: string[] = [];
@@ -338,7 +347,7 @@ describe('acceptance 3 — a cursor older than retention (A-21, D-09 B-19)', () 
 
 describe('acceptance 4 — a completion arrives after a human cancellation', () => {
   it('orders by journal, lets the current state decide, and refuses a mutation built on the late completion', async () => {
-    const store = RunStore.open(dataDir);
+    const store = openStore();
     const journal = openJournal();
     const emitter = attachTerminalEmitter(store, () => journal);
     const cursors = openCursors(journal);
@@ -484,7 +493,7 @@ describe('persistent acknowledgement (D-05 § 6.6)', () => {
 
 describe('the current-state snapshot', () => {
   it('names the rows’ tasks first, then every task in flight, bounded by B-02', () => {
-    const store = RunStore.open(dataDir);
+    const store = openStore();
     const journal = openJournal();
     const finished = createTask(store, 'finished');
     store.updateRun(finished.id, { status: 'done' });

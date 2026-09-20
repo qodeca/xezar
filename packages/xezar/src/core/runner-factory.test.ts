@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -11,6 +11,7 @@ import { OpencodeServerRunner } from './opencode-server-runner.ts';
 import { PiRunner } from './pi-runner.ts';
 import { createRunner } from './runner-factory.ts';
 import { RunStore } from '../runs/store.ts';
+import { closeStoreAndRemove } from '../runs/store.testkit.ts';
 
 /**
  * #54 (gap R15) — `createRunner` is the dispatch at the seam AGENTS.md names:
@@ -111,13 +112,15 @@ describe('createRunner — the unmatched input (pinned, not designed)', () => {
 
 describe('createRunner — the legacy `claude-cli` id (BACKWARD_COMPATIBILITY.md §3)', () => {
   let dataDir: string;
+  let store: RunStore | undefined;
 
   beforeEach(() => {
     dataDir = mkdtempSync(join(tmpdir(), 'xez-runner-factory-'));
+    store = undefined;
   });
 
   afterEach(() => {
-    rmSync(dataDir, { recursive: true, force: true });
+    closeStoreAndRemove(store, dataDir);
   });
 
   it('runs an old `claude-cli` record on the Claude runner, through the real store fold', () => {
@@ -143,7 +146,8 @@ describe('createRunner — the legacy `claude-cli` id (BACKWARD_COMPATIBILITY.md
       'utf8',
     );
 
-    const stored = RunStore.open(dataDir).getRun('legacy-1')?.runner;
+    store = RunStore.open(dataDir);
+    const stored = store.getRun('legacy-1')?.runner;
     expect(stored).toBe('claude'); // folded on the way in, before the factory sees it
 
     const runner = createRunner(stored);

@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { z } from 'zod';
 import type { retryProviderInputSchema, setConfigInputSchema, setProviderEnabledInputSchema, setWorkspaceConfigInputSchema } from '@qodeca/xezar-contract';
 import { RunStore } from '../runs/store.ts';
+import { closeStoreAndRemove } from '../runs/store.testkit.ts';
 import { WorkspaceSemaphore } from '../workspace/semaphore.ts';
 import type { RunManager } from '../workflows/run.ts';
 import type { AppType } from './app-type.ts';
@@ -65,6 +66,7 @@ describe('the settings routes validate with the CONTRACT request schemas', () =>
   const savedHome = process.env.XEZ_HOME;
   let home: string;
   let repoRoot: string;
+  let store: RunStore;
   let app: Hono;
 
   beforeEach(() => {
@@ -72,9 +74,10 @@ describe('the settings routes validate with the CONTRACT request schemas', () =>
     process.env.XEZ_HOME = home; // paths.ts sends every workspace path here
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-request-parity-repo-'));
     mkdirSync(join(repoRoot, '.local/xezar'), { recursive: true });
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     app = createApp({
       repoRoot,
-      store: RunStore.open(join(repoRoot, '.local/xezar')),
+      store,
       manager: {} as RunManager,
       version: '0.0.0-test',
       semaphore: new WorkspaceSemaphore(),
@@ -85,7 +88,7 @@ describe('the settings routes validate with the CONTRACT request schemas', () =>
     if (savedHome === undefined) delete process.env.XEZ_HOME;
     else process.env.XEZ_HOME = savedHome;
     rmSync(home, { recursive: true, force: true });
-    rmSync(repoRoot, { recursive: true, force: true });
+    closeStoreAndRemove(store, repoRoot);
   });
 
   const put = (path: string, body: unknown) =>

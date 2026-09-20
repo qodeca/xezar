@@ -1,9 +1,10 @@
-import { mkdtempSync, mkdirSync, rmSync } from 'node:fs'
+import { mkdtempSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ProviderAuthService } from '../core/provider-auth.ts'
 import { RunStore } from '../runs/store.ts'
+import { closeStoreAndRemove } from '../runs/store.testkit.ts'
 import type { RunManager } from '../workflows/run.ts'
 import { createApp } from './server.ts'
 import { apiRequest } from './loopback-request.testkit.ts'
@@ -21,12 +22,14 @@ import { apiRequest } from './loopback-request.testkit.ts'
  */
 describe('a repeated query key stays 200 (c.req.query took the first value)', () => {
   let repoRoot: string
+  let store: RunStore
   let app: ReturnType<typeof createApp>
   beforeEach(() => {
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-rq-'))
     mkdirSync(join(repoRoot, '.local/xezar'), { recursive: true })
+    store = RunStore.open(join(repoRoot, '.local/xezar'))
     app = createApp({
-      repoRoot, store: RunStore.open(join(repoRoot, '.local/xezar')),
+      repoRoot, store,
       manager: {} as RunManager, version: '0.0.0-test',
       // Query normalization needs neither installed CLIs nor personal auth state (#362).
       // Keep the real service and HTTP middleware; only its command boundary is a fixture.
@@ -37,7 +40,7 @@ describe('a repeated query key stays 200 (c.req.query took the first value)', ()
       }),
     })
   })
-  afterEach(() => rmSync(repoRoot, { recursive: true, force: true }))
+  afterEach(() => closeStoreAndRemove(store, repoRoot))
 
   it.each([
     ['/api/v1/models?runner=codex&runner=codex'],

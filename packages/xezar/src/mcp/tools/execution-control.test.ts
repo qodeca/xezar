@@ -42,6 +42,13 @@ interface Workspace {
 }
 
 const tempDirs: string[] = [];
+/** Every store a fixture opens, closed in teardown BEFORE its directory goes. */
+const stores: RunStore[] = [];
+const openStore = (dataDir: string): RunStore => {
+  const store = RunStore.open(dataDir, { keepLive: true });
+  stores.push(store);
+  return store;
+};
 const makeDir = (prefix: string): string => {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), prefix)));
   tempDirs.push(dir);
@@ -80,7 +87,7 @@ function setup(maxParallel = 2): Workspace {
   const contexts = new ProjectContexts({ listProjects: async () => projects, semaphore });
   const app = createApp({
     repoRoot: boot,
-    store: RunStore.open(join(boot, '.local/xezar'), { keepLive: true }),
+    store: openStore(join(boot, '.local/xezar')),
     manager: { isActive: () => false } as unknown as RunManager,
     version: '0.0.0-test',
     bootProjectId: 'boot',
@@ -182,6 +189,7 @@ afterEach(async () => {
     }
     ws.contexts.disposeAll();
   }
+  for (const store of stores.splice(0)) store.close();
   for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
   if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN;
   else process.env.XEZ_DRY_RUN = savedDryRun;

@@ -8,7 +8,7 @@
  *  - equivalence: the state a live consumer holds (snapshots + coalesced
  *    deltas) equals the state replayed from the persisted snapshots.
  */
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,6 +17,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { UiEvent, UiItem, UiToolItem } from '../core/ui-events.ts';
 import { createCodexUiState, mapCodexNotification } from '../core/codex-ui-mapper.ts';
 import { RunStore } from './store.ts';
+import { closeStoreAndRemove } from './store.testkit.ts';
 import { DELTA_FLUSH_MS, UiEventSink, isV2WireEventType } from './ui-event-sink.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -220,8 +221,10 @@ describe('snapshot persistence policy', () => {
 describe('golden-fixture replay through a real RunStore', () => {
   it('NDJSON gets seq/ts-stamped snapshots in order and zero item.delta lines; deltas ride the bus only', () => {
     const dir = mkdtempSync(join(tmpdir(), 'xez-sink-'));
+    let opened: RunStore | undefined;
     try {
       const store = RunStore.open(dir);
+      opened = store;
       const run = store.createRun({
         title: 't',
         workflow: 'w',
@@ -261,7 +264,7 @@ describe('golden-fixture replay through a real RunStore', () => {
       // v2 lines route to the `ui-event` SSE name, v1 lines to `run-event`.
       expect(lines.every((l) => isV2WireEventType(l.type))).toBe(true);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      closeStoreAndRemove(opened, dir);
     }
   });
 });

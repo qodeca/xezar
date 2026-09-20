@@ -240,9 +240,11 @@ async function harness(): Promise<Harness> {
   });
   const contexts = new ProjectContexts({ listProjects: async () => projects, semaphore });
   const bus = new WorkspaceEventBus();
+  const bootStore = RunStore.open(join(boot, '.local/xezar'), { keepLive: true });
+  closers.push(() => bootStore.close());
   const app = createApp({
     repoRoot: boot,
-    store: RunStore.open(join(boot, '.local/xezar'), { keepLive: true }),
+    store: bootStore,
     manager: { isActive: () => false } as unknown as RunManager,
     version: '0.0.0-test',
     bootProjectId: 'boot',

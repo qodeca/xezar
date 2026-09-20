@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -10,6 +10,7 @@ import {
 } from '@qodeca/xezar-contract';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RunStore, type RunRecord } from '../runs/store.ts';
+import { closeStoreAndRemove } from '../runs/store.testkit.ts';
 import {
   canonicalJson,
   guardedMutation,
@@ -41,10 +42,12 @@ afterEach(() => {
   // the test ends, it fires after this `afterEach` has removed `dataDir`, `saveNow()` hits ENOENT
   // and logs `console.error('[xez] failed to save runs.json: …')` — a late log during worker
   // teardown that surfaced as `EnvironmentTeardownError: Closing rpc while "onUserConsoleLog" was
-  // pending` (#631). Flush first so the pending timer is cleared (and the write lands) while
-  // `dataDir` still exists, then remove it.
-  store.flush();
-  rmSync(dataDir, { recursive: true, force: true });
+  // pending` (#631). Close first so the pending timer is cleared (and the write lands) while
+  // `dataDir` still exists, then remove it — through the shared helper, because every fixture that
+  // opens a store over a temporary directory owns this same race (#671 rows F-26 and F-29). A
+  // flush alone left the store armed for a writer that had not finished letting go; `close()` ends
+  // the write lifecycle, and `RunStore` now treats a vanished data directory as a shutdown anyway.
+  closeStoreAndRemove(store, dataDir);
 });
 
 function createRun(title = 'fix the login bug'): RunRecord {

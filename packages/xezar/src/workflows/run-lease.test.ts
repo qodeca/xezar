@@ -1,9 +1,10 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { RunStore } from '../runs/store.ts';
+import { closeStoreAndRemove } from '../runs/store.testkit.ts';
 import { RunManager } from './run.ts';
 import type { WorkflowDef } from './types.ts';
 
@@ -172,7 +173,7 @@ afterEach(async () => {
     // Reached only once nothing is still writing into the fixture. A failed
     // drain therefore leaks a temp directory, which is strictly better than
     // deleting one out from under a live run — the failure this file is fixing.
-    rmSync(fixture.root, { recursive: true, force: true });
+    closeStoreAndRemove(fixture.store, fixture.root);
   }
 }, TEST_TIMEOUT_MS);
 

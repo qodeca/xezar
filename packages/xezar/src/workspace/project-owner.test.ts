@@ -494,6 +494,7 @@ describe('ProjectOwnership — one owner per project (#99)', () => {
         // Never delete the fixture under a run that is still writing its closing events.
         await waitFor(() => !runId || ['done', 'failed', 'cancelled', 'review'].includes(store.getRun(runId)?.status ?? ''), 'the task to settle').catch(() => {});
         manager.dispose();
+        store.close(); // stop writing before the fixture directory goes
       }
     }, 30_000);
 

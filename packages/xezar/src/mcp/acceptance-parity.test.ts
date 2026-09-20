@@ -97,15 +97,10 @@ function blocked(id: string, acceptance: readonly string[], records: readonly st
 const A_API = `/api/v1/p/${PROJECT_A}`;
 const OK_COMMAND = `node -e "process.stdout.write('ok')"`;
 const HOLD_COMMAND = `node -e "setTimeout(() => {}, 30000)"`;
-/**
- * How long a four-variant group may take to finish. Every variant creates its own worktree and
- * child process, and a loaded machine (several gate runs at once, all sharing one `.git`) makes
- * that far slower than the helper's 30s default: gate attempt 0002 timed out here on a head that
- * had passed the identical suite earlier, and this case alone takes ~2s unloaded. The case's own
- * budget is 90s, so this still leaves room for the case to fail on its own terms instead of being
- * cut off by the wait helper. Test-only; no production code changed (same remedy as #630).
- */
-const VARIANTS_DONE_BUDGET_MS = 75_000;
+// A four-variant group used to carry its own 75 s budget here, because every variant creates a
+// worktree and a child process and a loaded machine made that slower than the wait helper's 30 s
+// default (#630). Both budgets are gone: `until` awaits the store's change signal now, so no inner
+// clock can pre-empt the case's own (#671 row F-26).
 const AGENT_STEPS = [{ id: 'task', name: 'Task', prompt: '{{task}}' }];
 const DRY_HEAD = '0123456789abcdef0123456789abcdef01234567';
 const GITHUB_REMOTE = 'https://github.com/acme/demo.git';
@@ -211,13 +206,57 @@ async function ui(w: AbWorld, path: string, method = 'GET', payload?: unknown): 
   return { status: res.status, body: parsed };
 }
 
-async function until(predicate: () => boolean, what: string, timeoutMs = 30_000): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (!predicate()) {
-    if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
+/**
+ * Await the world's OWN change signal instead of a fixed budget (#671 row F-26; the pattern #749
+ * set for `engine-leader-incidents.test.ts`).
+ *
+ * Every condition these cases wait for is a fact about A's run store, and `RunStore` extends
+ * `EventEmitter`: it emits `run` on every record mutation and `event` on every appended event. So
+ * the chain these waits were guessing at — cockpit or MCP call → run manager → agent session →
+ * events → run record — ends on a signal, and a 30 s inner deadline was only ever a guess at when
+ * it had finished. Under gate load that guess was the flake: P-14 died at 30 468 ms inside a case
+ * whose OWN budget is 90 s (gate attempt `f33a31c7`, run `44cca504`), and P-15 died the same way.
+ * The case's `it(…, timeout)` is the only clock now — not widened, just no longer pre-empted by a
+ * smaller one.
+ *
+ * `predicate` must be a function of the store's state (a status, a record field, a path the store
+ * stamped before it published the record), because a signal is what re-reads it. A wait that never
+ * resolves fails as the case's own timeout; the `afterEach` below then names `what`, so the
+ * failure still says which condition was outstanding.
+ */
+async function until(w: AbWorld, predicate: () => boolean, what: string): Promise<void> {
+  if (predicate()) return;
+  const store = w.a.store;
+  await new Promise<void>((resolve) => {
+    const check = (): void => {
+      if (!predicate()) return;
+      release();
+      resolve();
+    };
+    const release = (): void => {
+      store.off('run', check);
+      store.off('event', check);
+      parked = null;
+    };
+    parked = { what, release };
+    store.on('run', check);
+    store.on('event', check);
+  });
 }
+
+/** The wait a case is currently parked on, so a case that ends while parked can name it. */
+let parked: { what: string; release: () => void } | null = null;
+
+// A case can only end with a wait still parked by running out of its own time, and vitest's
+// `Test timed out in 90000ms` does not say WHAT it was waiting for. This says it, and detaches
+// the store listeners the abandoned wait left behind (review of PR #765, Minor 4). No clock: the
+// case's own timeout is still the only one.
+afterEach(() => {
+  const abandoned = parked;
+  if (!abandoned) return;
+  abandoned.release();
+  expect.fail(`the case ended while still waiting for ${abandoned.what}`);
+});
 
 const run = (w: AbWorld, id: string): RunRecord | undefined => w.a.store.getRun(id);
 
@@ -234,14 +273,14 @@ async function holdBothSlots(w: AbWorld): Promise<string[]> {
     ...(await uiStart(w, { task: 'hold one', steps: [{ id: 'hold', name: 'Hold', command: HOLD_COMMAND }] })),
     ...(await uiStart(w, { task: 'hold two', steps: [{ id: 'hold', name: 'Hold', command: HOLD_COMMAND }] })),
   ];
-  await until(() => ids.every((id) => run(w, id)?.status === 'running'), 'both holds to take the two slots');
+  await until(w, () => ids.every((id) => run(w, id)?.status === 'running'), 'both holds to take the two slots');
   return ids;
 }
 
 /** A finished task with its own worktree and branch, started the way the cockpit starts one. */
 async function finishedWithWorktree(w: AbWorld, task: string): Promise<RunRecord> {
   const [id] = await uiStart(w, { task, steps: [{ id: 'ok', name: 'Ok', command: OK_COMMAND }] });
-  await until(() => run(w, id!)?.status === 'done' && Boolean(run(w, id!)?.worktreePath && existsSync(run(w, id!)!.worktreePath!)), `${task} to finish`);
+  await until(w, () => run(w, id!)?.status === 'done' && Boolean(run(w, id!)?.worktreePath && existsSync(run(w, id!)!.worktreePath!)), `${task} to finish`);
   return run(w, id!)!;
 }
 
@@ -483,7 +522,7 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
       expect(groupOf(uiIds).size).toBe(1);
       // Both groups run isolated: every member gets its own worktree.
       const all = [...mcpGroup.map((r) => r.id), ...uiIds];
-      await until(() => all.every((id) => run(w, id)?.status === 'done'), 'all variants to finish', VARIANTS_DONE_BUDGET_MS);
+      await until(w, () => all.every((id) => run(w, id)?.status === 'done'), 'all variants to finish');
       for (const id of all) expect(run(w, id)?.worktreePath && existsSync(run(w, id)!.worktreePath!)).toBeTruthy();
       // The availability condition is reported, not discovered by failure.
       const discovery = await mcp(w, 'discover_project');
@@ -579,18 +618,18 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
       const w = world();
       const hold = [{ id: 'hold', name: 'Hold', command: HOLD_COMMAND }];
       const [early1, early2] = await uiStart(w, { task: 'still running', steps: hold, variants: 2 });
-      await until(() => [early1, early2].every((id) => run(w, id!)?.status === 'running'), 'both variants to run');
+      await until(w, () => [early1, early2].every((id) => run(w, id!)?.status === 'running'), 'both variants to run');
       const earlyGroup = run(w, early1!)!.groupId!;
       // Refused while any variant is active — the cockpit disables Pick until all are terminal.
       expect(await mcp(w, 'organise_work', { action: 'pick_variant', groupId: earlyGroup, runId: early1 })).toMatchObject({ status: 'conflict' });
       expect(run(w, early2!)?.status).toBe('running');
       for (const id of [early1, early2]) await ui(w, `/runs/${id}/cancel`, 'POST');
-      await until(() => [early1, early2].every((id) => run(w, id!)?.status === 'cancelled'), 'the early variants to stop');
+      await until(w, () => [early1, early2].every((id) => run(w, id!)?.status === 'cancelled'), 'the early variants to stop');
 
       const ok = [{ id: 'ok', name: 'Ok', command: OK_COMMAND }];
       const mcpGroup = await uiStart(w, { task: 'pick via mcp', steps: ok, variants: 2 });
       const uiGroup = await uiStart(w, { task: 'pick via ui', steps: ok, variants: 2 });
-      await until(() => [...mcpGroup, ...uiGroup].every((id) => run(w, id)?.status === 'done' && existsSync(run(w, id)!.worktreePath ?? '/nowhere')), 'all four variants to finish', VARIANTS_DONE_BUDGET_MS);
+      await until(w, () => [...mcpGroup, ...uiGroup].every((id) => run(w, id)?.status === 'done' && existsSync(run(w, id)!.worktreePath ?? '/nowhere')), 'all four variants to finish');
       const before = (id: string) => ({ tree: run(w, id)!.worktreePath!, branch: run(w, id)!.branch! });
       const m = { winner: before(mcpGroup[0]!), loser: before(mcpGroup[1]!) };
       const u = { winner: before(uiGroup[0]!), loser: before(uiGroup[1]!) };
@@ -689,7 +728,7 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
           expect(answer).toMatchObject({ status: 'conflict', applied: false });
           answer = await mcp(w, 'execution_control', { action: 'cancel', runId: one });
         }
-        await until(() => run(w, one!)?.status === 'cancelled', 'the MCP-cancelled task to stop');
+        await until(w, () => run(w, one!)?.status === 'cancelled', 'the MCP-cancelled task to stop');
         return answer;
       });
       assertIsolated(w, seen);
@@ -698,7 +737,7 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
       expect(run(w, two!)?.status).toBe('running');
       expect(w.contextA.manager.isActive(two!)).toBe(true);
       expect((await ui(w, `/runs/${two}/cancel`, 'POST')).status).toBe(200);
-      await until(() => run(w, two!)?.status === 'cancelled', 'the cockpit-cancelled task to stop');
+      await until(w, () => run(w, two!)?.status === 'cancelled', 'the cockpit-cancelled task to stop');
       for (const id of [one!, two!]) expect(existsSync(run(w, id)!.worktreePath!)).toBe(true);
 
       // No tool takes a process id, a signal, a command or a host path (F-08, M-04).
@@ -721,19 +760,19 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
     parity('P-14', ['A-07', 'A-05'], ['I-034', 'I-038', 'I-039', 'I-032'], 'messages, finish and continue follow the session state through either door, and an invalid transition changes nothing', async () => {
       const w = world();
       const [t1, t2] = [...(await uiStart(w, { task: 'say hello', steps: AGENT_STEPS })), ...(await uiStart(w, { task: 'say hello', steps: AGENT_STEPS }))];
-      await until(() => run(w, t1!)?.status === 'waiting' && run(w, t2!)?.status === 'waiting', 'both sessions to wait for a reply');
+      await until(w, () => run(w, t1!)?.status === 'waiting' && run(w, t2!)?.status === 'waiting', 'both sessions to wait for a reply');
 
       // I-034 on an open session: delivered live, recorded as the same user message.
       expect(await mcp(w, 'execution_control', { action: 'send_message', runId: t1, text: 'and goodbye' })).toMatchObject({ accepted: true, delivery: 'live' });
       expect((await ui(w, `/runs/${t2}/messages`, 'POST', { text: 'and goodbye' })).status).toBeLessThan(300);
-      await until(() => run(w, t1!)?.status === 'waiting' && run(w, t2!)?.status === 'waiting', 'both replies to settle');
+      await until(w, () => run(w, t1!)?.status === 'waiting' && run(w, t2!)?.status === 'waiting', 'both replies to settle');
       expect(userMessages(w, t1!)).toEqual(userMessages(w, t2!));
 
       // I-032: the resolve-conflicts button sends a fixed instruction; the leader sends the same text.
       const resolve = 'Resolve the merge conflicts on PR #128 and push the result.';
       expect(await mcp(w, 'execution_control', { action: 'send_message', runId: t1, text: resolve })).toMatchObject({ accepted: true });
       expect(userMessages(w, t1!).at(-1)).toBe(resolve);
-      await until(() => run(w, t1!)?.status === 'waiting', 'the instruction to settle');
+      await until(w, () => run(w, t1!)?.status === 'waiting', 'the instruction to settle');
 
       // Invalid transition: finish with the review meaning on a waiting task is refused, unchanged.
       const frozen = JSON.stringify({ r: run(w, t1!), n: w.a.store.readEvents(t1!).length });
@@ -743,14 +782,14 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
       // I-038: finish closes the session through either door.
       expect(await mcp(w, 'execution_control', { action: 'finish', runId: t1, finishAs: 'close_session' })).toMatchObject({ accepted: true });
       expect((await ui(w, `/runs/${t2}/finish`, 'POST')).status).toBe(200);
-      await until(() => run(w, t1!)?.status === 'done' && run(w, t2!)?.status === 'done', 'both sessions to close');
+      await until(w, () => run(w, t1!)?.status === 'done' && run(w, t2!)?.status === 'done', 'both sessions to close');
       const closed = (id: string) => w.a.store.readEvents(id).some((e) => e.type === 'lifecycle' && (e as { message?: string }).message === 'session closed by user');
       expect([closed(t1!), closed(t2!)]).toEqual([true, true]);
 
       // I-039: a closed session continues with accompanying text through either door.
       expect(await mcp(w, 'execution_control', { action: 'continue', runId: t1, text: 'one more thing' })).toMatchObject({ accepted: true, delivery: 'continued' });
       expect((await ui(w, `/runs/${t2}/continue`, 'POST', { text: 'one more thing' })).status).toBeLessThan(300);
-      await until(() => run(w, t1!)?.status === 'waiting' && run(w, t2!)?.status === 'waiting', 'both sessions to reopen');
+      await until(w, () => run(w, t1!)?.status === 'waiting' && run(w, t2!)?.status === 'waiting', 'both sessions to reopen');
       expect(userMessages(w, t1!).at(-1)).toBe('one more thing');
       expect(userMessages(w, t2!).at(-1)).toBe('one more thing');
 
@@ -766,7 +805,7 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
     parity('P-15', ['A-07', 'A-05'], ['I-036'], 'an answer reaches the question it names and is delivered as the ask card delivers it', async () => {
       const w = world();
       const [t1, t2] = [...(await uiStart(w, { task: 'mock:ask which library?', steps: AGENT_STEPS })), ...(await uiStart(w, { task: 'mock:ask which library?', steps: AGENT_STEPS }))];
-      await until(() => run(w, t1!)?.status === 'waiting' && run(w, t2!)?.status === 'waiting', 'both tasks to park at their questions');
+      await until(w, () => run(w, t1!)?.status === 'waiting' && run(w, t2!)?.status === 'waiting', 'both tasks to park at their questions');
       const q1 = String((asks(w, t1!)[0] as { requestId?: unknown }).requestId);
       const q2 = String((asks(w, t2!)[0] as { requestId?: unknown }).requestId);
       // The other task's question, named against this task, is refused: nothing is sent.
@@ -796,9 +835,9 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
     parity('P-17', ['A-07', 'A-10', 'A-05'], ['I-051'], 'at review, accept and send back behave as the review panel’s buttons', async () => {
       const w = world();
       const [t1, t2] = [...(await uiStart(w, { task: 'say hello', steps: AGENT_STEPS })), ...(await uiStart(w, { task: 'say hello', steps: AGENT_STEPS }))];
-      await until(() => run(w, t1!)?.status === 'waiting' && run(w, t2!)?.status === 'waiting', 'both sessions to wait');
+      await until(w, () => run(w, t1!)?.status === 'waiting' && run(w, t2!)?.status === 'waiting', 'both sessions to wait');
       for (const id of [t1!, t2!]) await ui(w, `/runs/${id}/finish`, 'POST');
-      await until(() => run(w, t1!)?.status === 'done' && run(w, t2!)?.status === 'done', 'both sessions to close');
+      await until(w, () => run(w, t1!)?.status === 'done' && run(w, t2!)?.status === 'done', 'both sessions to close');
       for (const id of [t1!, t2!]) w.a.store.updateRun(id, { status: 'review' });
 
       // Send back: the notes travel with the panel's prefix, through either door.
@@ -806,9 +845,9 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
       expect((await ui(w, `/runs/${t2}/continue`, 'POST', { text: 'Review feedback:\ntighten the wording' })).status).toBeLessThan(300);
       expect(userMessages(w, t1!).at(-1)).toBe('Review feedback:\ntighten the wording');
       expect(userMessages(w, t1!).at(-1)).toBe(userMessages(w, t2!).at(-1));
-      await until(() => run(w, t1!)?.status === 'waiting' && run(w, t2!)?.status === 'waiting', 'both sent-back sessions to reply');
+      await until(w, () => run(w, t1!)?.status === 'waiting' && run(w, t2!)?.status === 'waiting', 'both sent-back sessions to reply');
       for (const id of [t1!, t2!]) await ui(w, `/runs/${id}/finish`, 'POST');
-      await until(() => run(w, t1!)?.status === 'done' && run(w, t2!)?.status === 'done', 'both sessions to close again');
+      await until(w, () => run(w, t1!)?.status === 'done' && run(w, t2!)?.status === 'done', 'both sessions to close again');
       for (const id of [t1!, t2!]) w.a.store.updateRun(id, { status: 'review' });
 
       // Accept without a PR: the same terminal state and the same journal line.
@@ -861,7 +900,7 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
     parity('P-19', ['A-08', 'A-05'], ['I-033', 'I-140'], 'the leader reads the human’s task, history and handoff as the cockpit does, and the human’s bus carries the leader’s change', async () => {
       const w = world();
       const [human] = await uiStart(w, { task: 'say hello', steps: AGENT_STEPS });
-      await until(() => run(w, human!)?.status === 'waiting', 'the human’s task to wait');
+      await until(w, () => run(w, human!)?.status === 'waiting', 'the human’s task to wait');
 
       const listed = await mcp(w, 'task_read', { view: 'list' });
       expect((listed.tasks as Array<{ id: string }>).map((t) => t.id)).toContain(human);
@@ -889,15 +928,15 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
       const w = world();
       const started = await mcp(w, 'task_create', { operationId: op(), prompt: 'say hello', steps: AGENT_STEPS });
       const leaderTask = started.subject.id as string;
-      await until(() => run(w, leaderTask)?.status === 'waiting', 'the leader’s task to wait');
+      await until(w, () => run(w, leaderTask)?.status === 'waiting', 'the leader’s task to wait');
       // The human takes over the leader's task: a message, then a close.
       expect((await ui(w, `/runs/${leaderTask}/messages`, 'POST', { text: 'human here' })).status).toBeLessThan(300);
-      await until(() => run(w, leaderTask)?.status === 'waiting', 'the human’s message to settle');
+      await until(w, () => run(w, leaderTask)?.status === 'waiting', 'the human’s message to settle');
       expect((await ui(w, `/runs/${leaderTask}/finish`, 'POST')).status).toBe(200);
-      await until(() => run(w, leaderTask)?.status === 'done', 'the human to close it');
+      await until(w, () => run(w, leaderTask)?.status === 'done', 'the human to close it');
       // The leader takes it back: continue the session the human closed.
       expect(await mcp(w, 'execution_control', { action: 'continue', runId: leaderTask, text: 'leader again' })).toMatchObject({ accepted: true, delivery: 'continued' });
-      await until(() => run(w, leaderTask)?.status === 'waiting', 'the reopened session to reply');
+      await until(w, () => run(w, leaderTask)?.status === 'waiting', 'the reopened session to reply');
       expect(userMessages(w, leaderTask).slice(-2)).toEqual(['human here', 'leader again']);
       // The leader's read of it shows the human's message — no separate MCP transcript exists.
       const history = await mcp(w, 'task_read', { view: 'history', taskId: leaderTask });
@@ -936,13 +975,13 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
         let id: string;
         if (door === 'mcp') {
           id = (await mcp(w, 'task_create', { operationId: op(), prompt: 'same work', steps })).subject.id;
-          await until(() => run(w, id)?.status === 'done', 'the task to finish');
+          await until(w, () => run(w, id)?.status === 'done', 'the task to finish');
           await mcp(w, 'organise_work', { action: 'set_title', runId: id, title: 'same title' });
           await mcp(w, 'project_config', { action: 'set_config', config: { baseBranch: 'main' } });
           await mcp(w, 'project_config', { action: 'set_prompt_templates', promptTemplates: templates });
         } else {
           [id] = (await uiStart(w, { task: 'same work', steps })) as [string];
-          await until(() => run(w, id)?.status === 'done', 'the task to finish');
+          await until(w, () => run(w, id)?.status === 'done', 'the task to finish');
           expect((await ui(w, `/runs/${id}`, 'PATCH', { title: 'same title' })).status).toBe(200);
           expect((await ui(w, '/config', 'PUT', { baseBranch: 'main' })).status).toBe(200);
           expect((await ui(w, '/ui-state', 'PUT', { promptTemplates: templates })).status).toBe(200);
@@ -996,7 +1035,7 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
         const seen = await w.observe(async () => {
           expect((await ui(w, '/config', 'PUT', { baseBranch: 'develop' })).status).toBe(200);
           const [id] = await uiStart(w, { task: 'human work', steps: [{ id: 'ok', name: 'Ok', command: OK_COMMAND }] });
-          await until(() => run(w, id!)?.status === 'done', 'the human’s task to finish');
+          await until(w, () => run(w, id!)?.status === 'done', 'the human’s task to finish');
           return id!;
         });
         const humanTask = seen.response;

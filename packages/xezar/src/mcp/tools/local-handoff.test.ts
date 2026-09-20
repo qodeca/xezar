@@ -42,6 +42,13 @@ vi.mock('../../core/backend-detect.ts', async (importOriginal) => ({
 
 const PROJECT = 'proj-a';
 const tempDirs: string[] = [];
+/** Every store a fixture opens, closed in teardown BEFORE its directory goes. */
+const stores: RunStore[] = [];
+const openStore = (dataDir: string): RunStore => {
+  const store = RunStore.open(dataDir, { keepLive: true });
+  stores.push(store);
+  return store;
+};
 const makeDir = (prefix: string): string => {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), prefix)));
   tempDirs.push(dir);
@@ -70,6 +77,7 @@ afterEach(() => {
   restore('XEZ_HOME', saved.home);
   restore('XEZ_DRY_RUN', saved.dry);
   delete process.env.XEZ_TEST_HANDOFF_TOKEN;
+  for (const store of stores.splice(0)) store.close();
   for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -85,7 +93,7 @@ function realService(): { service: ServiceDispatch; seen: string[]; root: string
   });
   const app = createApp({
     repoRoot: boot,
-    store: RunStore.open(join(boot, '.local/xezar'), { keepLive: true }),
+    store: openStore(join(boot, '.local/xezar')),
     manager: { isActive: () => false } as unknown as RunManager,
     version: '0.0.0-test',
     bootProjectId: 'boot',
