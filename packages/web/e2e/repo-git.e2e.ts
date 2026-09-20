@@ -1,15 +1,22 @@
 import { resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { AgentBrowser, bootProjectId, readTestEnv } from './agent-browser'
+import { AgentBrowser } from './agent-browser'
+import { bootFixtureServer, type FixtureServer } from './fixture-server'
 
 /**
- * The repo view (R5 Step 1.7) end-to-end against the shared dry-run environment — which
- * serves THIS repository, so every assertion is against real git state, read at test time
- * rather than assumed: the working tree may be clean or dirty (both are honest states the
- * view must render), the log is whatever this checkout's history is, and the branch list is
- * live. Strictly READ-ONLY: no branch creation, no switching, no commits — the mutation
- * flows (switch/create incl. 409 reasons, base-branch picker) are pinned in
+ * The repo view (R5 Step 1.7) end-to-end against a spec-owned fixture repository: the spec boots
+ * its own xezar over a `createFixtureRepo` checkout, so the working tree, the log and the branch
+ * list are state this spec owns and reads back from the API at test time — never the refs of the
+ * checkout the suite happens to run in.
+ *
+ * That distinction is the whole of #671 F-05. `getBranches` (`src/server/git.ts`) filters every
+ * `xez/*` name out, so on a task branch — the branch CI checks out — the endpoint honestly
+ * answers `[]`, and the old assertion on the shared env's refs was `expected 0 to be greater
+ * than 0` in eleven runs. The fixture's own `main` is a branch this spec owns.
+ *
+ * Strictly READ-ONLY against the fixture: no branch creation, no switching, no commits — the
+ * mutation flows (switch/create incl. 409 reasons, base-branch picker) are pinned in
  * `src/routes/repo-git/repo-git.test.tsx` against fixtures.
  */
 
@@ -22,6 +29,7 @@ const IPHONE = { width: 390, height: 844 }
 let browser: AgentBrowser
 let baseUrl: string
 let bootProject: string
+let fixture: FixtureServer
 
 /** A flat route target under this server's own project prefix (multi-project spec, step 3.2):
  *  every cockpit link is scoped, and every legacy flat URL redirects onto its scoped twin. */
@@ -40,25 +48,27 @@ interface RepoPayload {
 }
 
 beforeAll(async () => {
-  baseUrl = readTestEnv().baseUrl
-  bootProject = await bootProjectId(baseUrl)
+  fixture = await bootFixtureServer()
+  baseUrl = fixture.baseUrl
+  bootProject = fixture.projectId
   browser = AgentBrowser.open(sessionId)
   browser.setViewport(DESKTOP.width, DESKTOP.height)
 })
 
-afterAll(() => {
+afterAll(async () => {
   browser?.close()
+  await fixture?.stop()
 })
 
-describe('the repo view against the live dry-run server', () => {
-  it('/git renders the header from live git state and an honest Changes segment', async () => {
+describe('the repo view against a spec-owned fixture server', () => {
+  it('/git renders the header from the fixture’s git state and an honest Changes segment', async () => {
     const repo = await api<RepoPayload>('/api/v1/repo')
     expect(repo.info).not.toBeNull()
 
     browser.goto(`${baseUrl}${scoped('/git')}`)
     browser.waitForFunction(`document.querySelector('[data-slot="repo-header"]') !== null`)
 
-    // The branch chip carries the REAL current branch, not a fixture.
+    // The branch chip carries the fixture's REAL current branch, read from the API, not a stub.
     browser.waitForFunction(`document.querySelector('[data-slot="branch-chip"]') !== null`)
     expect(browser.text('[data-slot="branch-chip"]')).toContain(repo.info?.branch ?? '')
 
@@ -70,7 +80,8 @@ describe('the repo view against the live dry-run server', () => {
       ),
     ).toBe(scoped('/git'))
 
-    // The working tree may be clean or dirty — assert the view tells the same story the API does.
+    // The fixture's tree is clean by construction; either way the view must tell the same story
+    // the API does, so the assertion follows the payload rather than assuming a state.
     const changes = await api<{ files: unknown[] }>('/api/v1/repo/changes')
     if (changes.files.length === 0) {
       browser.waitForFunction(
@@ -122,7 +133,7 @@ describe('the repo view against the live dry-run server', () => {
     browser.screenshot(`${artifactsDir}/repo-git-desktop.png`)
   })
 
-  it('/git/commits lists this repository’s real commits', async () => {
+  it('/git/commits lists the fixture’s real commits', async () => {
     const repo = await api<RepoPayload>('/api/v1/repo')
     expect(repo.log.length).toBeGreaterThan(0)
 
@@ -195,25 +206,27 @@ describe('the repo view against the live dry-run server', () => {
     browser.screenshot(`${artifactsDir}/repo-git-commit.png`)
   })
 
-  it('/git/branches renders the live branch list with the checkout marked current', async () => {
+  it('/git/branches renders the branch list the fixture owns, with its checkout marked current', async () => {
     const repo = await api<RepoPayload>('/api/v1/repo')
-    expect(repo.branches.length).toBeGreaterThan(0)
+    // The fixture's own branch, and the reason this case is no longer a coin flip: the endpoint
+    // drops `xez/*` names, so a checkout whose only ref is a task branch answers `[]` and any
+    // assertion on the shared env's refs is a statement about CI's branch name (#671 F-05).
+    expect(repo.branches).toContain('main')
 
     browser.goto(`${baseUrl}${scoped('/git/branches')}`)
     browser.waitForFunction(`document.querySelector('[data-slot="repo-branch-list"]') !== null`)
 
     expect(browser.count('[data-slot="branch-row"]')).toBe(repo.branches.length)
-    // An attached checkout marks exactly its current branch. CI may run this suite from a
-    // detached task worktree; then git honestly reports no branch and no row may be marked.
+    // The fixture is an attached checkout on `main`, so exactly one row is marked current and it
+    // is that row. This is the fixture guard: it holds only while the boot leaves HEAD attached.
     const expectedCurrent = repo.info?.branch && repo.branches.includes(repo.info.branch) ? 1 : 0
+    expect(expectedCurrent).toBe(1)
     expect(browser.count('[data-slot="branch-current"]')).toBe(expectedCurrent)
-    if (expectedCurrent === 1 && repo.info) {
-      expect(
-        browser.evaluate(
-          `document.querySelector('[data-slot="branch-current"]').closest('[data-slot="branch-row"]').dataset.branch`,
-        ),
-      ).toBe(repo.info.branch)
-    }
+    expect(
+      browser.evaluate(
+        `document.querySelector('[data-slot="branch-current"]').closest('[data-slot="branch-row"]').dataset.branch`,
+      ),
+    ).toBe(repo.info?.branch)
     // The base-branch picker exists — /api/v1/repo carries baseBranch, so the control is honest.
     expect(browser.count('[data-slot="base-branch-picker"]')).toBe(1)
   })
