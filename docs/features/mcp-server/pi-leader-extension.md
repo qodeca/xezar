@@ -1,5 +1,7 @@
 # The pi leader extension
 
+> **Status update — 2026-09-20:** Implemented and shipped in 0.14.0 — the extension at `packages/xezar/scripts/pi-leader-extension.ts` (#330 WP2), opt-in, with a pi leader attaching over MCP (#450).
+
 **What it is for.** xezar can push a significant project event to a leader and have that leader
 *react* — a real model turn, carrying the event, with nobody typing anything. For an OpenCode leader
 that works because `opencode serve` has an address you can give xezar. pi has none: its RPC speaks

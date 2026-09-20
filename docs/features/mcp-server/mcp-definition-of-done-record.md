@@ -1,5 +1,7 @@
 # MCP project leader — whole-feature Definition of Done record
 
+> **Status update — 2026-09-20:** Record of the 2026-09-15 whole-feature assessment: all eight clauses held then — seven on evidence, clause 2 by the owner's acceptance — and the feature shipped in 0.14.0.
+
 > **Operating rule since 2026-09-15 ([#439](https://github.com/qodeca/xezar/issues/439)).** A project leader works through the xezar MCP tools only – no cockpit UI, no HTTP API – and is attached so events are pushed to it (`<channel source="xezar">` for Claude Code, a started turn for Codex, OpenCode and pi). `leader_events` is the fallback for a leader that is not attached, and `gh` reads GitHub facts. This record is kept as written; where it treats pulling as the leader's normal path or the cockpit as the leader's surface, the rule supersedes it. See [the leader findings, § 11](leader-dogfooding-2026-09-13.md#11-every-time-the-leader-left-the-mcp-channel-consolidated-2105).
 
 Issue: [#119](https://github.com/qodeca/xezar/issues/119). Phase 8 ([#75](https://github.com/qodeca/xezar/issues/75))

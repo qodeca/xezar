@@ -1,5 +1,7 @@
 # Issue creation skill contract
 
+> **Status update — 2026-09-20:** Merged consumer-boundary note (#473). The local kit wrapper it specifies shipped on 2026-09-16 (`.xezar/skills/xezar-issue-create.md`, #468 PR 2) and the New-issue launcher with its MCP `task_create` path followed; the wrapper is adapted and fixture-tested, not yet real-task verified.
+
 Related work: [#468](https://github.com/qodeca/xezar/issues/468).
 Canonical reusable content: `xez-issue-create` in
 [qodeca/xezar-skills](https://github.com/qodeca/xezar-skills), under

@@ -701,8 +701,9 @@ have shipped a leak or an ownership pass in 0.14.0 are #337, closed here.
 direct tests took a median 6.9 s end to end, a survivor needed a full MCP scope run of a median 38 s
 to be sure, and the 158 mutants took 68 minutes over three parallel copies. The sample's *inferred*
 "5 000–8 000 mutants" for a real StrykerJS run was **too low**: Stryker generates **12 530** on this
-scope. The real run, its cost and its score are in 10.8 – it was adopted as a release gate on the
-sample's recommendation, that step was removed on 2026-09-12, and nightly GitHub Actions runs were scheduled by #433 on 2026-09-15, and the per-PR form stays the named break SDLC.md requires.
+scope. The real run, its cost and its score are in 10.8. It was adopted as a release gate on the
+sample's recommendation; that step was removed on 2026-09-12; nightly GitHub Actions runs were
+scheduled by #433 on 2026-09-15. The per-PR form stays the named break SDLC.md requires.
 
 ### 10.4 Held by a suite v8 cannot see
 
@@ -859,7 +860,10 @@ release path. From 2026-09-12 until #433 it ran nowhere automatically. Before th
 **release** gate – the `release` and `release-prep` workflows ran it as their first check step,
 before anything was authored – and that step was removed (#378). The first manual run on
 2026-09-15 was red on a missing-shard failure (#443); no scheduled run had occurred at the
-2026-09-15 observation. See 10.11 for the run IDs and limits.
+2026-09-15 observation. That dated state was later overtaken: the first complete six-of-six nightly
+on `main` ran at `fe33541`, recorded as the starting list in § 10.8 (run
+[34999068325](https://github.com/qodeca/xezar/actions/runs/34999068325)). See 10.11 for the run
+IDs and limits.
 
 Four things made the release path the wrong position, and none of them is about the gate's
 quality:
