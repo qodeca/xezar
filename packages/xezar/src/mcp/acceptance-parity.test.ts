@@ -1314,7 +1314,8 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
         // NAMED BREAK 5 OF THE SPEC. A root that does not exist is refused by the ROUTE's own write
         // probe — not by a bound, not by a second check at the MCP door — and the probe runs BEFORE
         // `mergeWriteWorkspaceConfig`, so the `resources` key travelling in the same body does not
-        // half-apply. Remove the probe and this case passes while a broken browse root is stored.
+        // half-apply. Remove the probe and this case goes RED; without it a broken browse root is
+        // stored silently.
         const missingRoot = join(w.home, 'b2-does-not-exist');
         const badRoots = await w.call('a', 'project_config', {
           action: 'set_workspace_config',
@@ -1338,6 +1339,102 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
         // tools directly, and the operation receipt belongs to the generic door. It is pinned
         // where the door really runs — `composition.test.ts`, "a workspace write replayed under
         // the same operation key" (review M2).
+      },
+    );
+
+    parity(
+      'P-46',
+      ['A-09', 'A-08', 'A-05'],
+      ['I-024', 'I-092', 'I-132'],
+      'the shared presentation preferences — appearance, notifications, folded columns and the curated skills list — are read and written through either door with the same effect, the route’s own bound on a bad value, and an answer that carries no incident id; an object-valued preference is sent whole, after the read, the way the panes send it',
+      async () => {
+        const w = world();
+        // Something of the person's already in the bag, including the two LEGACY keys the leader
+        // may not write: what survives the leader's write is the point.
+        expect(
+          (await ui(w, '/api/v1/workspace/ui-state', 'PUT', {
+            sidebar: { collapsed: { group: true } },
+            lastLocation: { projectId: 'proj-a', pathname: '/p/proj-a/tasks' },
+            importedSkills: ['the-person-picked-this'],
+          })).status,
+        ).toBe(200);
+
+        const change = {
+          appearance: { accent: 'violet', density: 'compact', width: 'wide' },
+          notifications: { enabled: false },
+          taskTable: { expandedColumns: { title: true, runner: false } },
+          importedSkills: ['review', 'qa'],
+          dismissedProviderAuthFailures: { claude: 'incident-9f3a-SECRET-ID' },
+        } as const;
+        const seen = await w.observe(() => mcp(w, 'project_config', { action: 'set_workspace_ui_state', uiState: change }));
+        // NOT `assertIsolated`: this bag is workspace-wide BY DESIGN, so its one dispatch is
+        // deliberately outside A's scope. The rest of N-01 still holds — the cockpit's own route,
+        // once; project B's recorded state byte-identical; nothing of B and no secret on the
+        // leader-visible surface.
+        expect(seen.dispatched).toEqual(['PUT /api/v1/workspace/ui-state']);
+        expect(seen.after, 'B unchanged').toBe(seen.before);
+        const surface = JSON.stringify({ response: seen.response, leaderLog: seen.leaderLog, journalA: seen.journal.a, log: seen.log });
+        expect(leaked(surface, w.b.names), 'nothing of B').toEqual([]);
+        expect(leaked(surface, w.secrets), 'no secret').toEqual([]);
+
+        // The answer is narrowed: no incident ID (F-03 withholds one from get_capabilities, and a
+        // write is no reason to hand one back), and neither legacy window key.
+        const written = (seen.response.result as { uiState: Record<string, any> }).uiState;
+        expect(written.appearance).toEqual({ accent: 'violet', density: 'compact', width: 'wide' });
+        expect(written.notifications).toEqual({ enabled: false });
+        expect(written.taskTable.expandedColumns).toEqual({ title: true, runner: false });
+        expect(written.importedSkills).toEqual(['review', 'qa']);
+        expect(written.dismissedProviderAuthFailures, 'the provider NAME, not the incident').toEqual(['claude']);
+        expect(JSON.stringify(written)).not.toMatch(/incident-9f3a-SECRET-ID|sidebar|lastLocation/);
+
+        // The cockpit's own pane sees exactly the leader's values — and the person's two legacy
+        // keys are still there, because the route merges shallowly and the leader sent neither.
+        const cockpit = (await ui(w, '/api/v1/workspace/ui-state')).body;
+        expect(cockpit).toMatchObject({ ...change, sidebar: { collapsed: { group: true } } });
+        expect(cockpit.lastLocation.pathname).toBe('/p/proj-a/tasks');
+
+        // The human changes the accent back in the cockpit; the leader's next write of ANOTHER key
+        // leaves it alone.
+        expect((await ui(w, '/api/v1/workspace/ui-state', 'PUT', { appearance: { accent: 'lime' } })).status).toBe(200);
+        const afterImport = (await mcp(w, 'project_config', { action: 'import_skills', importedSkills: [] })).result.uiState;
+        expect(afterImport.importedSkills, 'a curated EMPTY list, not "never curated"').toEqual([]);
+        expect(afterImport.appearance.accent, 'the human’s accent survived').toBe('lime');
+
+        // The READ half, and the recipe it exists for (#753 review, Major 1). The route replaces
+        // an object-valued key whole, so the leader reads the bag through its own door, spreads
+        // the object and writes it back — and the person's density and width survive an accent
+        // change. Drop `get_workspace_ui_state` and this block goes RED at the read.
+        expect((await ui(w, '/api/v1/workspace/ui-state', 'PUT', { appearance: { accent: 'lime', density: 'compact', width: 'wide' } })).status).toBe(200);
+        const readBack = await w.observe(() => mcp(w, 'project_config', { action: 'get_workspace_ui_state' }));
+        expect(readBack.dispatched, 'the cockpit’s own route, read side').toEqual(['GET /api/v1/workspace/ui-state']);
+        const bag = (readBack.response.result as { uiState: Record<string, any> }).uiState;
+        expect(bag.appearance).toEqual({ accent: 'lime', density: 'compact', width: 'wide' });
+        expect(JSON.stringify(bag), 'the read is narrowed exactly like the write’s answer').not.toMatch(/incident-9f3a-SECRET-ID|sidebar|lastLocation/);
+        const spread = await mcp(w, 'project_config', {
+          action: 'set_workspace_ui_state',
+          uiState: { appearance: { ...bag.appearance, accent: 'violet' } },
+        });
+        expect(spread.result.uiState.appearance).toEqual({ accent: 'violet', density: 'compact', width: 'wide' });
+        expect((await ui(w, '/api/v1/workspace/ui-state')).body.appearance).toEqual({ accent: 'violet', density: 'compact', width: 'wide' });
+
+        // A value the ROUTE refuses: 201 skill names, one past the contract's bound. The door
+        // dispatches — it holds no second opinion about a value — and the route answers 400 with
+        // its own reason, through both doors, writing nothing.
+        const tooMany = Array.from({ length: 201 }, (_, i) => `skill-${i}`);
+        const badUi = await ui(w, '/api/v1/workspace/ui-state', 'PUT', { importedSkills: tooMany });
+        expect(badUi.status).toBe(400);
+        const badMcp = await w.observe(() => w.call('a', 'project_config', { action: 'import_skills', operationId: op(), importedSkills: tooMany }));
+        expect(badMcp.response.isError).toBe(true);
+        expect(badMcp.dispatched, 'it really was the route that refused').toEqual(['PUT /api/v1/workspace/ui-state']);
+        expect((await ui(w, '/api/v1/workspace/ui-state')).body.importedSkills, 'nothing was written').toEqual([]);
+
+        // The THEME is not a key of this write and never will be: the browser stores it, so there
+        // is no route to dispatch (spec § 4 Q1, owner 2026-09-20 07:41). An argument refusal,
+        // before any dispatch — not a boundary refusal, because there is no setting to refuse.
+        const theme = await w.observe(() => w.call('a', 'project_config', { action: 'set_workspace_ui_state', operationId: op(), uiState: { theme: 'dark' } }));
+        expect(theme.response.isError).toBe(true);
+        expect(resultText(theme.response)).toMatch(/Invalid arguments for project_config: .*Unrecognized key/);
+        expect(theme.dispatched).toEqual([]);
       },
     );
 
@@ -1408,14 +1505,15 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
       // is no longer a refusal and the two folder paths are keys of it, both proved by P-45. What
       // is still here is every boundary the owner's rule did NOT name — the home files, the
       // accounts, the project registry and the host filesystem.
-      ['I-012', 'I-024', 'I-092', 'I-093', 'I-112', 'I-115', 'I-122', 'I-123', 'I-124', 'I-125', 'I-126', 'I-130', 'I-131', 'I-132'],
-      'every global-source, home-file, shared-account and workspace-root write is refused with its boundary, dispatches nothing, and no approval parameter changes that',
+      // I-024, I-092 and I-132 left with #677 B3, under the same rule plus the owner's 07:41
+      // exclusions: the shared PRESENTATION bag is a write now, which P-46 proves.
+      ['I-012', 'I-093', 'I-112', 'I-115', 'I-122', 'I-123', 'I-124', 'I-125', 'I-126', 'I-130', 'I-131'],
+      'every global-source, home-file, shared-account and host-folder write is refused with its boundary, dispatches nothing, and no approval parameter changes that',
       async () => {
         const w = world();
         const workspaceFile = join(w.home, 'config.json');
         const workspaceBefore = readFileSync(workspaceFile, 'utf8');
         const refusals = [
-          'set_workspace_ui_state',
           'select_account',
           'create_account',
           'update_account',
@@ -1427,7 +1525,6 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
           'connect_provider',
           'retry_provider',
           'apply_skill_updates',
-          'import_skills',
           'browse_folders',
           'add_project',
           'clone_project',
@@ -1443,7 +1540,7 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
           }
           // No approval, confirmation or override parameter exists to turn a refusal into a write.
           for (const extra of [{ approvedBy: 'the human' }, { humanApproval: true }, { confirm: true }, { override: true }]) {
-            answers.push([`approval ${JSON.stringify(extra)}`, await w.call('a', 'project_config', { action: 'set_workspace_ui_state', ...extra })]);
+            answers.push([`approval ${JSON.stringify(extra)}`, await w.call('a', 'project_config', { action: 'set_provider_enabled', ...extra })]);
           }
           return answers;
         });
@@ -1465,7 +1562,7 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
             expect(resultText(result), what).not.toMatch(/approv/i);
           }
         }
-        expect(resultText(seen.response.find(([what]) => what === 'set_workspace_ui_state')![1])).toMatch(/workspace-wide setting|shared by every project/);
+        expect(resultText(seen.response.find(([what]) => what === 'set_provider_enabled')![1])).toMatch(/workspace-wide setting|every project/);
         expect(resultText(seen.response.find(([what]) => what === 'get_account_details')![1])).toMatch(/account identity/);
         expect(readFileSync(workspaceFile, 'utf8')).toBe(workspaceBefore);
         expect(existsSync(join(w.home, 'agent-accounts.json'))).toBe(false);
@@ -2055,12 +2152,13 @@ describe('A-05 — the coverage matrix against the closed inventory', () => {
     if (blockedCases.length > 0) console.info(`[#116] blocked parity cases (not passing): ${blockedCases.join(', ')}`);
   });
 
-  it('the inventory is the closed 147-record one, with 102 covered records', () => {
+  it('the inventory is the closed 147-record one, with 105 covered records', () => {
     const inventory = readInventory();
     expect(inventory.size).toBe(147);
-    // 96 until #677 B1 moved the five workspace-settings rows (I-117 … I-121) from `global`, and
-    // 101 until B2 moved the two workspace folder paths (I-127) under the same owner rule.
-    expect([...inventory.values()].filter((s) => s === 'covered')).toHaveLength(102);
+    // 96 until #677 B1 moved the five workspace-settings rows (I-117 … I-121) from `global`, 101
+    // until B2 moved the two workspace folder paths (I-127) and 102 until B3 moved the three
+    // shared-preference rows (I-024, I-092, I-132), all under the same owner rule.
+    expect([...inventory.values()].filter((s) => s === 'covered')).toHaveLength(105);
   });
 
   it('every covered record maps to at least one case, and every case names inventory records', () => {

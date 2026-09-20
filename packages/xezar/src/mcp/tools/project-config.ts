@@ -18,6 +18,7 @@ import {
   updateAutomationInputSchema,
   updateProjectInputSchema,
   workflowStepDefSchema,
+  workspaceUiStateSchema,
   type AgentConfigFileContent,
   type AgentConfigListing,
   type AgentProfilesResponse,
@@ -34,6 +35,7 @@ import {
   type UpdateProjectResponse,
   type WorkflowsResponse,
   type WorkspaceConfigResponse,
+  type WorkspaceUiState,
 } from '@qodeca/xezar-contract';
 import { hc } from 'hono/client';
 import { parse as parseToml } from 'smol-toml';
@@ -60,10 +62,14 @@ import { defineTool, errorResult, textResult, type McpToolContext, type McpToolR
  * effective capability or limit the classification names, with what it withholds withheld.
  * Everything the classification marks `excluded` is an explicit action here that answers a
  * refusal naming its boundary and dispatches NOTHING — so a leader asking for it learns why, and
- * no argument can route around it. ONE of those exclusions has been reversed by the owner's rule
- * of 2026-09-20 (#677): the workspace SETTINGS write is `set_workspace_config`, a real write
+ * no argument can route around it. SOME of those exclusions have been reversed by the owner's
+ * rule of 2026-09-20 (#677): the workspace SETTINGS write is `set_workspace_config`, a real write
  * through the cockpit's own route, and since slice B2 that includes the two workspace folder
- * paths — the route's own write probe is what keeps them honest, not a second check here.
+ * paths — the route's own write probe is what keeps them honest, not a second check here. Slice
+ * B3 adds the shared PRESENTATION preferences, `set_workspace_ui_state` and `import_skills`,
+ * through `PUT /workspace/ui-state`, with `get_workspace_ui_state` as their read half; the colour
+ * theme is not among them, because it is not a stored setting at all (the browser keeps it)
+ * rather than because it is refused.
  * There is no project id argument anywhere: the project is the connection's (D-01 § 1.5), and a
  * call that names one is refused rather than silently redirected.
  *
@@ -122,6 +128,8 @@ export const PROJECT_CONFIG_ACTIONS = [
   'set_prompt_templates',
   'get_limits',
   'set_workspace_config',
+  'get_workspace_ui_state',
+  'set_workspace_ui_state',
   'get_capabilities',
   'get_account',
   'list_agent_config',
@@ -134,6 +142,7 @@ export const PROJECT_CONFIG_ACTIONS = [
   'list_skills',
   'get_skill',
   'list_importable_skills',
+  'import_skills',
   'refresh_skills',
   'check_skill_updates',
   'list_automations',
@@ -232,10 +241,6 @@ export const REFUSED_ACTIONS = {
     boundary: 'host-process',
     reason: 'opening an account folder launches an application on the host machine.',
   },
-  set_workspace_ui_state: {
-    boundary: 'workspace-settings',
-    reason: 'the workspace preference bag describes the person at the keyboard and is shared by every project.',
-  },
   browse_folders: {
     boundary: 'host-filesystem',
     reason: 'browsing folders lists host directories outside this project.',
@@ -257,10 +262,6 @@ export const REFUSED_ACTIONS = {
     reason:
       'applying skill updates rewrites globally installed skills every project reads. check_skill_updates reports what is available.',
   },
-  import_skills: {
-    boundary: 'workspace-settings',
-    reason: 'the imported-skills list is a workspace-wide preference. list_skills shows this project’s effective catalog.',
-  },
   get_launch_key: {
     boundary: 'secret',
     reason: 'the launch key is a credential and never enters a tool response.',
@@ -276,6 +277,8 @@ const REFUSED_ACTION_NAMES = Object.keys(REFUSED_ACTIONS) as [RefusedAction, ...
 type Field =
   | 'config'
   | 'workspaceConfig'
+  | 'uiState'
+  | 'importedSkills'
   | 'project'
   | 'promptTemplates'
   | 'fileId'
@@ -301,6 +304,8 @@ type Field =
 const FIELDS: readonly Field[] = [
   'config',
   'workspaceConfig',
+  'uiState',
+  'importedSkills',
   'project',
   'promptTemplates',
   'fileId',
@@ -352,6 +357,8 @@ export const ACTION_FIELDS: Record<ProjectConfigAction, { required: readonly Fie
   set_prompt_templates: { required: ['promptTemplates', 'operationId'], optional: [] },
   get_limits: none,
   set_workspace_config: { required: ['workspaceConfig', 'operationId'], optional: [] },
+  get_workspace_ui_state: none,
+  set_workspace_ui_state: { required: ['uiState', 'operationId'], optional: [] },
   get_capabilities: { required: [], optional: ['refresh'] },
   get_account: none,
   list_agent_config: none,
@@ -365,6 +372,7 @@ export const ACTION_FIELDS: Record<ProjectConfigAction, { required: readonly Fie
   list_skills: { required: [], optional: ['wait'] },
   get_skill: { required: ['name'], optional: ['wait'] },
   list_importable_skills: { required: [], optional: ['wait'] },
+  import_skills: { required: ['importedSkills', 'operationId'], optional: [] },
   refresh_skills: { required: ['operationId'], optional: [] },
   check_skill_updates: none,
   list_automations: none,
@@ -458,6 +466,49 @@ const projectConfigWriteSchema = setConfigInputSchema.omit({ maxParallel: true }
  * it states must not depend on a schema somewhere else keeping a modifier.
  */
 const workspaceConfigWriteSchema = setWorkspaceConfigInputSchema.strict();
+
+/**
+ * The workspace PREFERENCE-BAG write (#677 wave 2, slice B3). The same owner rule of 2026-09-20
+ * ("every key") reverses the refusal that used to answer `set_workspace_ui_state`, with two
+ * exclusions the owner named at 07:41 the same day: the THEME, which is not a stored setting at
+ * all (it lives in the browser's own `localStorage`, `packages/web/src/lib/theme.ts`, and has no
+ * server route to dispatch), and the per-repo composer memory, which is machine memory rather
+ * than a setting and is not a key of this bag anyway.
+ *
+ * THE DOOR DECIDES THE KEY SET; THE ROUTE DECIDES THE VALUES. The five keys below are exactly
+ * what the owner opened, and the strict object is what keeps the two LEGACY keys of the same bag
+ * out of a leader's reach: `sidebar` (which groups are folded) and `lastLocation` (where the last
+ * browser navigated) describe one person's WINDOW, and the current cockpit keeps both in
+ * `localStorage` — a leader writing them would move a screen for whoever opens an older cockpit
+ * against this home. Each value schema is the contract's own (`workspaceUiStateSchema.shape`),
+ * never a hand-written copy: the bounds (`importedSkills` at most 200 names,
+ * `taskTable.expandedColumns` at most 50 columns, an incident id at most 128 characters) and the
+ * 128 KiB body cap belong to `PUT /workspace/ui-state`, which this dispatches, so a body the
+ * cockpit's own route refuses is refused here by that route and with its reason — one opinion
+ * about a VALUE, not two.
+ *
+ * AT EVERY LEVEL IT NAMES, though (#753 review, Major 2). The contract's read-side shapes are
+ * tolerant by design — `appearance` and `dismissedProviderAuthFailures` STRIP an unknown key,
+ * `notifications` and `taskTable` KEEP one — and a door that inherited that tolerance was strict
+ * at the top level only: `{appearance: {theme: 'dark'}}` became `{appearance: {}}` and erased the
+ * person's whole appearance under an `ok`, `{dismissedProviderAuthFailures: {gemini: 'x'}}` wiped
+ * every dismissal the cockpit's own route refuses that body with a 400, and
+ * `{notifications: {lastTask: …}}` stored unreviewed keys in the person's file. So the SHAPES
+ * stay the contract's and the key SET is closed one level down too: `z.strictObject(<shape>)`,
+ * which turns all three into argument refusals that dispatch nothing.
+ */
+const workspaceUiStateWriteSchema = z
+  .strictObject({
+    appearance: z.strictObject(workspaceUiStateSchema.shape.appearance.unwrap().shape).optional(),
+    notifications: z.strictObject(workspaceUiStateSchema.shape.notifications.unwrap().shape).optional(),
+    taskTable: z.strictObject(workspaceUiStateSchema.shape.taskTable.unwrap().shape).optional(),
+    importedSkills: workspaceUiStateSchema.shape.importedSkills,
+    dismissedProviderAuthFailures: z
+      .strictObject(workspaceUiStateSchema.shape.dismissedProviderAuthFailures.unwrap().shape)
+      .optional(),
+  })
+  .refine((bag) => Object.keys(bag).length > 0, { message: 'send at least one preference to change' });
+
 const projectRegistryWriteSchema = z.strictObject(updateProjectInputSchema.shape);
 const promptTemplatesSchema = uiStateSchema.shape.promptTemplates.unwrap();
 
@@ -506,7 +557,7 @@ export const projectConfigInputSchema = z
     action: z
       .enum([...PROJECT_CONFIG_ACTIONS, ...REFUSED_ACTION_NAMES])
       .describe(
-        'What to do in the project this connection is bound to, plus the shared settings set_workspace_config changes for every project on this machine. Actions outside that boundary (accounts, the project registry, host folders) are answered with a refusal that names the boundary.',
+        'What to do in the project this connection is bound to, plus the shared settings set_workspace_config changes and the shared presentation preferences set_workspace_ui_state and import_skills change, for every project on this machine. Actions outside that boundary (accounts, the project registry, host folders) are answered with a refusal that names the boundary.',
       ),
     projectId: z
       .unknown()
@@ -519,6 +570,15 @@ export const projectConfigInputSchema = z
       .optional()
       .describe(
         'set_workspace_config: the workspace-wide settings to change — they apply to every project on this machine. Only the keys you send are touched; null clears a key back to its default. The two workspace folder paths are included: the folder the file picker may browse, and the folder new checkouts land in. Both are checked for real: a path that is not absolute, is not a folder, or cannot be written to is answered with the reason and nothing is saved, the other keys in the same call included.',
+      ),
+    uiState: workspaceUiStateWriteSchema
+      .optional()
+      .describe(
+        'set_workspace_ui_state: the shared presentation preferences to change — they apply to every project on this machine. The keys are appearance (accent, density, width), notifications.enabled, taskTable.expandedColumns, importedSkills (the whole curated list) and dismissedProviderAuthFailures. A key you do not send is left alone, but a key you DO send is replaced WHOLE: appearance, taskTable and dismissedProviderAuthFailures are objects, and sending {appearance: {accent}} alone clears the person’s density and width. Read the bag with get_workspace_ui_state first and send the whole object back with your change in it — read, spread, write, exactly as the cockpit’s own panes do. The colour theme is not here: it is stored by the browser itself, not by the server.',
+      ),
+    importedSkills: workspaceUiStateSchema.shape.importedSkills
+      .describe(
+        'import_skills: the WHOLE curated list of default skill names to show, replacing the previous one; [] shows none of them. Read the names with list_importable_skills — a name that matches nothing is stored as written and hides every default skill, because a present list that matches nothing is a curated empty catalog.',
       ),
     project: projectRegistryWriteSchema
       .optional()
@@ -941,6 +1001,38 @@ function workspaceLimits(w: WorkspaceConfigResponse) {
   };
 }
 
+/**
+ * The answer BOTH preference writes give back (#677 B3) — `set_workspace_ui_state` and
+ * `import_skills` — so a leader reads either write in one vocabulary, the way
+ * `set_workspace_config` answers in `get_limits`'s words.
+ *
+ * NARROWED, like every other answer here, and the narrowing is not cosmetic:
+ *   - `sidebar` and `lastLocation` are in the same file and are not part of the answer. They are
+ *     one person's window state, and this bag is not the leader's to read either.
+ *   - a DISMISSED incident is reported as the provider's NAME, never the incident id the cockpit
+ *     stores. An incident id is exactly what `get_capabilities` withholds (F-03), and a write is
+ *     no reason to hand one back.
+ *   - `importedSkills` keeps its tri-state honestly: `null` is "never curated, every default
+ *     skill shows", and `[]` is the real, curated empty list.
+ * Unknown keys a newer cockpit stored round-trip in the FILE untouched (the bag is open by
+ * design); they are simply not part of what a leader is told.
+ */
+function workspacePreferences(state: WorkspaceUiState) {
+  return {
+    appearance: {
+      accent: state.appearance?.accent ?? null,
+      density: state.appearance?.density ?? null,
+      width: state.appearance?.width ?? null,
+    },
+    notifications: { enabled: state.notifications?.enabled ?? null },
+    taskTable: { expandedColumns: state.taskTable?.expandedColumns ?? {} },
+    importedSkills: state.importedSkills ?? null,
+    dismissedProviderAuthFailures: Object.entries(state.dismissedProviderAuthFailures ?? {})
+      .filter(([, incident]) => incident !== undefined)
+      .map(([provider]) => provider),
+  };
+}
+
 /** An account label is user text; one that looks like an email is an identity and is withheld. */
 const looksLikeIdentity = (label: string): boolean => label.includes('@');
 
@@ -1023,6 +1115,26 @@ async function run(args: ProjectConfigInput & { action: ProjectConfigAction }, s
         [200],
       );
       return answer.ok ? ok(action, { workspace: workspaceLimits(answer.value) }) : fail(answer);
+    }
+    case 'get_workspace_ui_state': {
+      // The READ half of the write below (#753 review, Major 1), and the reason the write can
+      // honestly say "send the whole object". `PUT /workspace/ui-state` merges shallowly at the
+      // TOP level only, so a partial `appearance` replaces the person's whole `appearance` — the
+      // cockpit's own panes avoid that by reading the bag first and sending `{...appearance,
+      // accent}` (`packages/web/src/components/appearance-provider.tsx`). Without a read at this
+      // door a leader could not do that at all; with it, the recipe is read, spread, write.
+      // Narrowed exactly like the write's answer: no legacy window key, no incident id.
+      const answer = await settle<WorkspaceUiState>(s.api.workspace['ui-state'].$get(), [200]);
+      return answer.ok ? ok(action, { uiState: workspacePreferences(answer.value) }) : fail(answer);
+    }
+    case 'set_workspace_ui_state': {
+      // The cockpit's own route again: its schema bounds, its 128 KiB body cap, its shallow
+      // merge over `~/.xezar/ui-state.json`. Shallow at the TOP LEVEL: a key not sent is left
+      // alone (changing the accent does not touch the imported-skills list), but a key that IS
+      // sent replaces its whole value — so the three object-valued keys travel WHOLE, after a
+      // `get_workspace_ui_state`, exactly as the cockpit's own panes send them.
+      const answer = await settle<WorkspaceUiState>(s.api.workspace['ui-state'].$put({ json: args.uiState! }), [200]);
+      return answer.ok ? ok(action, { uiState: workspacePreferences(answer.value) }) : fail(answer);
     }
 
     case 'get_capabilities': {
@@ -1225,6 +1337,17 @@ async function run(args: ProjectConfigInput & { action: ProjectConfigAction }, s
       const answer = await settle<unknown>(s.api.p[':projectId'].skills.importable.$get({ param: scope, query }), [200]);
       return answer.ok ? ok(action, { skills: answer.value }) : fail(answer);
     }
+    case 'import_skills': {
+      // The Import-skills panel's own write (I-092), which is one key of the workspace
+      // preference bag — so it is the same route and the same answer as the write above, not a
+      // second path to the same file. Whole-list replace, exactly as the panel does it: the
+      // route merges shallowly at the top level, so the list sent IS the list.
+      const answer = await settle<WorkspaceUiState>(
+        s.api.workspace['ui-state'].$put({ json: { importedSkills: args.importedSkills! } }),
+        [200],
+      );
+      return answer.ok ? ok(action, { uiState: workspacePreferences(answer.value) }) : fail(answer);
+    }
     case 'check_skill_updates': {
       // The family is workspace-level and takes a project id in the body: the BOUND id is
       // substituted (E-BIND), and the answer is narrowed to this project's scope plus the
@@ -1423,7 +1546,7 @@ export const projectConfigTool = defineTool({
   name: 'project_config',
   title: 'Project configuration',
   description:
-    "Read and change THIS project's own configuration: its settings (agent, models, system prompt, review gate, base branch, worktree retention, memory limit), its registry entry (concurrency cap and tags), prompt templates, in-repo agent config files, workflows, skills, GitHub automations and worktrees. It also reads the shared settings as effective limits and capabilities (get_limits, get_capabilities, get_account) and CHANGES them with set_workspace_config — the shared limits, composer defaults, follow-up inbox and environment passthrough, skills auto-update and the machine-wide agent defaults, which apply to every project on this machine, and the two workspace folder paths — the folder the file picker may browse and the folder new checkouts land in, each checked for real before anything is saved. Agent accounts, account identity, home files, the project registry and host folders are outside this boundary and are refused with the reason.",
+    "Read and change THIS project's own configuration: its settings (agent, models, system prompt, review gate, base branch, worktree retention, memory limit), its registry entry (concurrency cap and tags), prompt templates, in-repo agent config files, workflows, skills, GitHub automations and worktrees. It also reads the shared settings as effective limits and capabilities (get_limits, get_capabilities, get_account) and CHANGES them with set_workspace_config — the shared limits, composer defaults, follow-up inbox and environment passthrough, skills auto-update and the machine-wide agent defaults, which apply to every project on this machine, and the two workspace folder paths — the folder the file picker may browse and the folder new checkouts land in, each checked for real before anything is saved. The shared presentation preferences are read with get_workspace_ui_state and changed with set_workspace_ui_state (appearance, notifications, task-table columns, dismissed provider incidents) and import_skills (the curated list of default skills); an object-valued preference is replaced whole, so read it before you change one key of it. The colour theme is not among them — the browser stores that itself. Agent accounts, account identity, home files, the project registry and host folders are outside this boundary and are refused with the reason.",
   inputSchema: projectConfigInputSchema,
   annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
   async call(args, ctx: ProjectConfigContext) {

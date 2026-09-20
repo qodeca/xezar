@@ -126,7 +126,9 @@ export const TOOL_ACTION_COVERAGE: Readonly<Record<string, ActionCoverage>> = {
   'project_config:delete_workflow': { serves: ['I-088'] },
   'project_config:list_skills': { serves: ['I-090'] },
   'project_config:get_skill': { serves: ['I-090'] },
-  'project_config:list_importable_skills': { reads: ['I-092'] },
+  // I-092 was a `reads` while the imported-skills list was global-read-only. #677 B3 made the
+  // list writable, so the record is `covered` and this read is one of the two actions serving it.
+  'project_config:list_importable_skills': { serves: ['I-092'] },
   'project_config:refresh_skills': { serves: ['I-091'] },
   'project_config:check_skill_updates': { reads: ['I-093'] },
   'project_config:list_automations': { serves: ['I-096'] },
@@ -158,13 +160,21 @@ export const TOOL_ACTION_COVERAGE: Readonly<Record<string, ActionCoverage>> = {
   // them writable, and this action is the only one that serves them — `get_limits` still withholds
   // the paths themselves, so the record is served by its WRITE alone.
   'project_config:set_workspace_config': { serves: ['I-117', 'I-118', 'I-119', 'I-120', 'I-121', 'I-127'] },
-  'project_config:set_workspace_ui_state': { refuses: ['I-024', 'I-092', 'I-132'] },
+  // #677 B3: the shared preference bag is a write now. I-132 is served for its ACCENT, DENSITY,
+  // WIDTH and notification half; its `theme` half is served by nobody and never will be — the
+  // browser stores the theme itself (`packages/web/src/lib/theme.ts`), so there is no route to
+  // dispatch, which is a fact about the cockpit rather than a boundary (spec § 4 Q1).
+  // The read half the three records need as much as the write (#753 review, Major 1): the route
+  // merges shallowly at the top level, so `set_workspace_ui_state` can only change one key of an
+  // object-valued preference after this read has handed the leader the rest of it.
+  'project_config:get_workspace_ui_state': { serves: ['I-024', 'I-092', 'I-132'] },
+  'project_config:set_workspace_ui_state': { serves: ['I-024', 'I-092', 'I-132'] },
   'project_config:browse_folders': { refuses: ['I-126'] },
   'project_config:add_project': { refuses: ['I-131'] },
   'project_config:clone_project': { refuses: ['I-131'] },
   'project_config:remove_project': { refuses: ['I-130'] },
   'project_config:apply_skill_updates': { refuses: ['I-093'] },
-  'project_config:import_skills': { refuses: ['I-092'] },
+  'project_config:import_skills': { serves: ['I-092'] },
   'project_config:get_launch_key': { refuses: ['I-014', 'I-095'] },
   // Opening the project folder is served by `local_handoff:open_project_in_app`; this refusal only
   // keeps project_config from being a second, host-launching door.

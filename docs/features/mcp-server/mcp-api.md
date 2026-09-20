@@ -290,13 +290,13 @@ Unknown arguments are rejected.
 
 ### `project_config`
 
-> Read and change THIS project's own configuration: its settings (agent, models, system prompt, review gate, base branch, worktree retention, memory limit), its registry entry (concurrency cap and tags), prompt templates, in-repo agent config files, workflows, skills, GitHub automations and worktrees. It also reads the shared settings as effective limits and capabilities (get_limits, get_capabilities, get_account) and CHANGES them with set_workspace_config — the shared limits, composer defaults, follow-up inbox and environment passthrough, skills auto-update and the machine-wide agent defaults, which apply to every project on this machine, and the two workspace folder paths — the folder the file picker may browse and the folder new checkouts land in, each checked for real before anything is saved. Agent accounts, account identity, home files, the project registry and host folders are outside this boundary and are refused with the reason.
+> Read and change THIS project's own configuration: its settings (agent, models, system prompt, review gate, base branch, worktree retention, memory limit), its registry entry (concurrency cap and tags), prompt templates, in-repo agent config files, workflows, skills, GitHub automations and worktrees. It also reads the shared settings as effective limits and capabilities (get_limits, get_capabilities, get_account) and CHANGES them with set_workspace_config — the shared limits, composer defaults, follow-up inbox and environment passthrough, skills auto-update and the machine-wide agent defaults, which apply to every project on this machine, and the two workspace folder paths — the folder the file picker may browse and the folder new checkouts land in, each checked for real before anything is saved. The shared presentation preferences are read with get_workspace_ui_state and changed with set_workspace_ui_state (appearance, notifications, task-table columns, dismissed provider incidents) and import_skills (the curated list of default skills); an object-valued preference is replaced whole, so read it before you change one key of it. The colour theme is not among them — the browser stores that itself. Agent accounts, account identity, home files, the project registry and host folders are outside this boundary and are refused with the reason.
 
 Unknown arguments are rejected.
 
 | Argument | Type | Required | Limits | Description (verbatim from the schema) |
 | --- | --- | --- | --- | --- |
-| `action` | `get_config` \| `set_config` \| `get_project` \| `set_project` \| `get_prompt_templates` \| `set_prompt_templates` \| `get_limits` \| `set_workspace_config` \| `get_capabilities` \| `get_account` \| `list_agent_config` \| `read_agent_config` \| `write_agent_config` \| `list_workflows` \| `parse_workflow` \| `save_workflow` \| `delete_workflow` \| `list_skills` \| `get_skill` \| `list_importable_skills` \| `refresh_skills` \| `check_skill_updates` \| `list_automations` \| `get_automation` \| `create_automation` \| `update_automation` \| `delete_automation` \| `enable_automation` \| `pause_automation` \| `check_automation` \| `get_automation_check` \| `get_automation_log` \| `retry_automation_receipt` \| `list_worktrees` \| `reclaim_worktrees` \| `remove_worktree` \| `dismiss_onboarding_offer` \| `set_provider_enabled` \| `connect_provider` \| `retry_provider` \| `create_account` \| `update_account` \| `remove_account` \| `select_account` \| `check_account_status` \| `get_account_details` \| `open_account_file` \| `set_workspace_ui_state` \| `browse_folders` \| `add_project` \| `clone_project` \| `remove_project` \| `apply_skill_updates` \| `import_skills` \| `get_launch_key` \| `open_in_app` | yes |  | What to do in the project this connection is bound to, plus the shared settings set_workspace_config changes for every project on this machine. Actions outside that boundary (accounts, the project registry, host folders) are answered with a refusal that names the boundary. |
+| `action` | `get_config` \| `set_config` \| `get_project` \| `set_project` \| `get_prompt_templates` \| `set_prompt_templates` \| `get_limits` \| `set_workspace_config` \| `get_workspace_ui_state` \| `set_workspace_ui_state` \| `get_capabilities` \| `get_account` \| `list_agent_config` \| `read_agent_config` \| `write_agent_config` \| `list_workflows` \| `parse_workflow` \| `save_workflow` \| `delete_workflow` \| `list_skills` \| `get_skill` \| `list_importable_skills` \| `import_skills` \| `refresh_skills` \| `check_skill_updates` \| `list_automations` \| `get_automation` \| `create_automation` \| `update_automation` \| `delete_automation` \| `enable_automation` \| `pause_automation` \| `check_automation` \| `get_automation_check` \| `get_automation_log` \| `retry_automation_receipt` \| `list_worktrees` \| `reclaim_worktrees` \| `remove_worktree` \| `dismiss_onboarding_offer` \| `set_provider_enabled` \| `connect_provider` \| `retry_provider` \| `create_account` \| `update_account` \| `remove_account` \| `select_account` \| `check_account_status` \| `get_account_details` \| `open_account_file` \| `browse_folders` \| `add_project` \| `clone_project` \| `remove_project` \| `apply_skill_updates` \| `get_launch_key` \| `open_in_app` | yes |  | What to do in the project this connection is bound to, plus the shared settings set_workspace_config changes and the shared presentation preferences set_workspace_ui_state and import_skills change, for every project on this machine. Actions outside that boundary (accounts, the project registry, host folders) are answered with a refusal that names the boundary. |
 | `projectId` | any | no |  | Never accepted: the project is the one this connection is bound to, and a call that names one is refused. |
 | `config` | object | no |  | set_config: the project's own settings to change. null clears a key back to its default. |
 | `config.baseBranch` | string or null | no | min length 1, max length 200 |  |
@@ -340,6 +340,22 @@ Unknown arguments are rejected.
 | `workspaceConfig.agentDefaults.models.codex` | string or null | no | min length 1, max length 200 |  |
 | `workspaceConfig.agentDefaults.models.opencode` | string or null | no | min length 1, max length 200 |  |
 | `workspaceConfig.agentDefaults.models.pi` | string or null | no | min length 1, max length 200 |  |
+| `uiState` | object | no |  | set_workspace_ui_state: the shared presentation preferences to change — they apply to every project on this machine. The keys are appearance (accent, density, width), notifications.enabled, taskTable.expandedColumns, importedSkills (the whole curated list) and dismissedProviderAuthFailures. A key you do not send is left alone, but a key you DO send is replaced WHOLE: appearance, taskTable and dismissedProviderAuthFailures are objects, and sending {appearance: {accent}} alone clears the person’s density and width. Read the bag with get_workspace_ui_state first and send the whole object back with your change in it — read, spread, write, exactly as the cockpit’s own panes do. The colour theme is not here: it is stored by the browser itself, not by the server. |
+| `uiState.appearance` | object | no |  |  |
+| `uiState.appearance.accent` | `lime` \| `violet` | no |  |  |
+| `uiState.appearance.density` | `roomy` \| `comfortable` \| `compact` \| `ultra` | no |  |  |
+| `uiState.appearance.width` | `narrow` \| `wide` | no |  |  |
+| `uiState.notifications` | object | no |  |  |
+| `uiState.notifications.enabled` | boolean | no |  |  |
+| `uiState.taskTable` | object | no |  |  |
+| `uiState.taskTable.expandedColumns` | object | no |  |  |
+| `uiState.importedSkills` | array of string | no |  |  |
+| `uiState.dismissedProviderAuthFailures` | object | no |  |  |
+| `uiState.dismissedProviderAuthFailures.claude` | string | no |  |  |
+| `uiState.dismissedProviderAuthFailures.codex` | string | no |  |  |
+| `uiState.dismissedProviderAuthFailures.opencode` | string | no |  |  |
+| `uiState.dismissedProviderAuthFailures.pi` | string | no |  |  |
+| `importedSkills` | array of string | no |  | import_skills: the WHOLE curated list of default skill names to show, replacing the previous one; [] shows none of them. Read the names with list_importable_skills — a name that matches nothing is stored as written and hides every default skill, because a present list that matches nothing is a curated empty catalog. |
 | `project` | object | no |  | set_project: this project's concurrency cap (maxParallel, null inherits the workspace cap) and/or its tags (whole list). |
 | `project.maxParallel` | integer or null | no | min 1, max 16 |  |
 | `project.tags` | array of string or null | no | max items 20 |  |
@@ -841,6 +857,7 @@ business outcome as the cockpit is the separate [parity coverage map](mcp-parity
 | I-019 | Pin and unpin a task | `organise_work:pin`, `organise_work:unpin` |
 | I-020 | Archive and restore a single task | `organise_work:archive`, `organise_work:restore` |
 | I-021 | Delete a task autonomously. | `organise_work:delete` |
+| I-024 | Decided 2026-09-20 (D-677-B3, owner rule "every key", exclusions of 07:41). | `project_config:get_workspace_ui_state`, `project_config:set_workspace_ui_state` |
 | I-025 | Read the project's Inbox items, and report the capability being off as an understandable reason (F-03) | `task_read:inbox` |
 | I-026 | Start a task from an Inbox item with the same, narrower option set | `organise_work:start_inbox_item`, `task_create:start_from_inbox` |
 | I-027 | Remove an Inbox item | `organise_work:remove_inbox_item` |
@@ -890,6 +907,7 @@ business outcome as the cockpit is the separate [parity coverage map](mcp-parity
 | I-088 | Delete a project workflow, preserving the built-in protection | `project_config:delete_workflow` |
 | I-090 | Read the skill catalog and any skill's body. | `project_config:list_skills`, `project_config:get_skill` |
 | I-091 | Refresh the team-skill catalog | `project_config:refresh_skills` |
+| I-092 | Decided 2026-09-20 (D-677-B3, owner rule "every key"). | `project_config:list_importable_skills`, `project_config:get_workspace_ui_state`, `project_config:set_workspace_ui_state`, `project_config:import_skills` |
 | I-094 | A specialisation of I-001; no separate tool needed | `task_create:start` |
 | I-096 | Read the project's automations and report the capability being off as an understandable reason (F-03) | `project_config:list_automations`, `project_config:get_automation` |
 | I-097 | Decided 2026-09-10 (D-97). | `project_config:create_automation` |
@@ -923,6 +941,7 @@ business outcome as the cockpit is the separate [parity coverage map](mcp-parity
 | I-127 | Decided 2026-09-20 (D-677-B2, owner rule "every key" on #677). | `project_config:set_workspace_config` |
 | I-128 | Decided 2026-09-10 (D-128). | `project_config:get_project`, `project_config:set_project`, `project_config:get_limits` |
 | I-129 | Decided 2026-09-10 (D-129). | `project_config:get_project`, `project_config:set_project` |
+| I-132 | Decided 2026-09-20 (D-677-B3, owner rule "every key", exclusions of 07:41). | `project_config:get_workspace_ui_state`, `project_config:set_workspace_ui_state` |
 | I-133 | The capability set itself is the requirement, not the nav. | `discover_project`, `project_config:get_capabilities` |
 | I-136 | Same read as I-133 (`checks`) | `discover_project` |
 | I-138 | This is the state source F-13 and section 8 require MCP to reuse after project filtering, and the unfiltered workspace stream is prohibited. | `leader_events:read` |
@@ -1022,7 +1041,7 @@ Roles:
 | `project_config:delete_workflow` | I-088 |  |  |  |
 | `project_config:list_skills` | I-090 |  |  |  |
 | `project_config:get_skill` | I-090 |  |  |  |
-| `project_config:list_importable_skills` |  | I-092 |  |  |
+| `project_config:list_importable_skills` | I-092 |  |  |  |
 | `project_config:refresh_skills` | I-091 |  |  |  |
 | `project_config:check_skill_updates` |  | I-093 |  |  |
 | `project_config:list_automations` | I-096 |  |  |  |
@@ -1051,13 +1070,14 @@ Roles:
 | `project_config:get_account_details` |  |  | I-124 |  |
 | `project_config:open_account_file` |  |  | I-125 |  |
 | `project_config:set_workspace_config` | I-117, I-118, I-119, I-120, I-121, I-127 |  |  |  |
-| `project_config:set_workspace_ui_state` |  |  | I-024, I-092, I-132 |  |
+| `project_config:get_workspace_ui_state` | I-024, I-092, I-132 |  |  |  |
+| `project_config:set_workspace_ui_state` | I-024, I-092, I-132 |  |  |  |
 | `project_config:browse_folders` |  |  | I-126 |  |
 | `project_config:add_project` |  |  | I-131 |  |
 | `project_config:clone_project` |  |  | I-131 |  |
 | `project_config:remove_project` |  |  | I-130 |  |
 | `project_config:apply_skill_updates` |  |  | I-093 |  |
-| `project_config:import_skills` |  |  | I-092 |  |
+| `project_config:import_skills` | I-092 |  |  |  |
 | `project_config:get_launch_key` |  |  | I-014, I-095 |  |
 | `project_config:open_in_app` |  |  | I-114 |  |
 | `local_handoff:list_apps` | I-044, I-114 |  |  |  |

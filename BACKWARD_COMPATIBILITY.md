@@ -1092,7 +1092,7 @@ Participant `user-message` input also advances the decision revision; it is stee
 
 Pending question replacement also advances the decision revision (#534), including changed content under the same question ID. The optional additive `decisionQuestion` record field stores only the ID and a content digest; legacy records remain readable, and the next question event initializes it. Clearing the question with participant input remains one decision revision. Clients must re-read after a replacement. Known structured `applied:false` refusals now settle and replay as `rejected` (#536); existing durable receipts are not rewritten, and ambiguous throws/lost responses remain `unverified`. The run response gains the same optional metadata; MCP action and receipt response schemas are unchanged.
 
-## The MCP `project_config` tool writes the workspace settings (#677 wave 2 B1 and B2) — deliberate, 0.17.0
+## The MCP `project_config` tool writes the workspace settings and the shared preferences (#677 wave 2 B1, B2 and B3) — deliberate, 0.17.0
 
 A documented product boundary is reversed here, by the owner's rule of 2026-09-20 on #677 ("every
 key"). Until 0.17.0 the `project_config` action `set_workspace_config` existed only to REFUSE: it
@@ -1118,10 +1118,39 @@ every workspace limit as a safe effective read a leader could see and never chan
   still does not half-apply. Two consequences a reader should know: a settings write can CREATE a
   directory anywhere the user can write (the checkout root's probe), and moving `browseRoot` widens
   what a PERSON at the cockpit may then browse — the leader itself gains no listing, because
-  `browse_folders` and the clone stay refused. The paths are written and not read back: the answer
-  is the narrowed `get_limits` vocabulary, which carries no folder path.
-- **What a reader could notice**: the audit trail can now hold `workspace.config.set` rows with
-  origin `mcp`. That row already existed in the inventory for the cockpit door; what is new is
+  `browse_folders` and the clone stay refused. A third consequence was named by the independent
+  review of #748 and is recorded rather than answered: **because the probe REFUSES with its
+  reason, the write is also a stat oracle over any absolute host path** — "does not exist", "is
+  not a directory" and "not writable: EACCES …" are answers about the host filesystem that persist
+  nothing, so a leader can learn whether a path exists, whether it is a file or a folder, and
+  whether this user may write it. `fs-browse.ts` keeps that oracle shut for the BROWSE route on
+  purpose, so the `mkdir` half of this bullet is true and incomplete on its own. It stays inside
+  the accepted threat model — a leader can already start a task, which is code execution as the
+  user — which is why no second check was added at the MCP door. The paths are written and not
+  read back: the answer is the narrowed `get_limits` vocabulary, which carries no folder path.
+- **The shared PRESENTATION preferences followed in slice B3, under the same owner rule plus the
+  exclusions the owner named at 07:41 on 2026-09-20.** `set_workspace_ui_state` and `import_skills`
+  stopped being refusals and are real writes through `PUT /api/v1/workspace/ui-state`, the
+  cockpit's own route — its schema bounds, its 128 KiB body cap and its shallow merge, so a key
+  that is not sent is left alone. `get_workspace_ui_state` reads the same bag back, in the same
+  narrowed vocabulary. The leader's argument names exactly five keys: `appearance.{accent,
+  density,width}`, `notifications.enabled`, `taskTable.expandedColumns`, `importedSkills` and
+  `dismissedProviderAuthFailures`, and the argument is strict at EVERY level it names — an unknown
+  key inside one of the four nested objects is an argument refusal that dispatches nothing. The
+  merge is shallow at the TOP level only, so the three object-valued keys (`appearance`,
+  `taskTable`, `dismissedProviderAuthFailures`) are sent WHOLE and a partial one clears the rest
+  of its own object: the supported recipe is read, spread, write, exactly as the cockpit's panes
+  do it, and `get_workspace_ui_state` is what makes it possible from this door. Three exclusions are part of the decision and none of them is a
+  new refusal: the colour THEME is not a stored setting at all (the browser keeps it in
+  `localStorage`, with no server route to dispatch), the per-repo composer-memory keys are one
+  browser's preselection memory, and the two LEGACY keys of the same file, `sidebar` and
+  `lastLocation`, describe one person's window and are not keys of the argument. The answer is
+  narrowed like every other: `sidebar` and `lastLocation` are not in it, and a dismissed provider
+  incident is reported as the provider's NAME rather than the incident id `get_capabilities`
+  withholds. Hosted mode is unchanged here too — the ui-state route carries no `localHandoff`
+  guard, none was added, and a test pins that it is ALLOWED.
+- **What a reader could notice**: the audit trail can now hold `workspace.config.set` and (since
+  B3) `workspace.uiState.set` rows with origin `mcp`. That row already existed in the inventory for the cockpit door; what is new is
   that the MCP door produces it. The MCP record carries the action id, the operation key and a
   payload DIGEST — never the field values, and (unlike the cockpit door's record) not the field
   names either.
