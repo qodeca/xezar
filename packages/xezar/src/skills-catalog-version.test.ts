@@ -156,7 +156,12 @@ describe('skillsCatalogVersions', () => {
     const [entry] = await skillsCatalogVersions(project);
     expect(entry?.fetchedAt).toBeNull();
     expect(entry?.state).not.toBe('up-to-date');
-    expect(entry?.state).toBe('unknown');
+    // `never-checked`, not `unknown` (#752, code review M1 / design review B-1): both commits are
+    // known and identical, so the only thing missing is the check. BREAK-752-SAME-COMMIT-NO-FETCH:
+    // return `unknown` here and the cockpit tells the reader that this commit shares no history
+    // with itself — the rendered proof of that is in `skills-section.test.tsx`.
+    expect(entry?.state).toBe('never-checked');
+    expect(entry?.installed?.commit).toBe(entry?.available?.commit);
     expect(existsSync(lastFetchMarkerFor(bare))).toBe(false);
   });
 

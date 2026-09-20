@@ -746,9 +746,17 @@ async function catalogVersionOf(repoRoot: string, src: SkillsRepoSource): Promis
  * (#744, OQ-1).
  *
  * That case reads `stale-check`, not `unknown` (#747, design review B-1): both commits ARE known
- * and are shown, and it is the check that has aged. `unknown` stays for what is genuinely not
- * known — no clone, an unresolvable ref, a never-fetched clone, or two commits with no shared
- * history. The six-hour window lives here and nowhere else, so no surface re-derives it.
+ * and are shown, and it is the check that has aged. The clone with NO successful check on record
+ * at all reads `never-checked` for the same reason (#752, code review M1 / design review B-1):
+ * both commits are known, identical, and what is missing is the check. It used to read `unknown`,
+ * and every surface then had to guess the cause from `fetchedAt` plus two shas — which is how the
+ * cockpit came to tell a reader that one commit "shares no history" with itself. `unknown` now
+ * stays for what genuinely cannot be compared: no clone, an unresolvable ref, git unavailable,
+ * one side unreadable, or two commits with no shared history. The six-hour window lives here and
+ * nowhere else, so no surface re-derives it — and neither does the cause.
+ *
+ * `never-checked` is reachable exactly as often as L-2 made it reachable: every cache cloned
+ * before the `.last-fetch` marker existed reads it until its next SUCCESSFUL fetch.
  */
 async function compareState(
   bareDir: string,
@@ -764,8 +772,10 @@ async function compareState(
     );
     return ancestor.ok ? 'update-available' : 'unknown';
   }
-  if (fetchedAt === null) return 'unknown';
+  // Same commit, no readable record of a successful check: the CHECK is what is missing, not the
+  // comparison — an unreadable timestamp is no more of a check than an absent one.
+  if (fetchedAt === null) return 'never-checked';
   const age = Date.now() - new Date(fetchedAt).getTime();
-  if (!Number.isFinite(age)) return 'unknown';
+  if (!Number.isFinite(age)) return 'never-checked';
   return age <= PASSIVE_FETCH_TTL_MS ? 'up-to-date' : 'stale-check';
 }

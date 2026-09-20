@@ -123,10 +123,25 @@ Form dialogs use a plain phrase, no question mark: "Commit changes", "Add agent 
   "Checks failing", "Ready to merge", "Merged", "Closed", "Merge conflicts" with lower-case hints
   ("CI is red on the latest commit"); connection states "Ready to connect", "Connected",
   "Disconnected — reconnecting"; the skill catalog's "Up to date", "Update available", "Check is
-  stale", "Comparison unknown" and "Version unknown" (`routes/settings/skills-section.tsx`,
-  `catalogStateLabel`). Those last two are deliberately different words for different facts: a
-  badge never says "Version unknown" over two printed versions, so "Version unknown" belongs to
-  the no-local-copy case alone and "Check is stale" names the CHECK, not the version.
+  stale", "Not checked yet", "Comparison unknown" and "Version unknown"
+  (`routes/settings/skills-section.tsx`, `catalogStateLabel`). Those are deliberately different
+  words for different facts: a badge never says "Version unknown" over two printed versions, so
+  "Version unknown" belongs to the no-local-copy case alone, while "Check is stale" and "Not
+  checked yet" name the CHECK, not the version, and "Comparison unknown" is kept for two versions
+  that really cannot be lined up (#752).
+- The same block's sentences, quoted with their source (`routes/settings/skills-section.tsx`,
+  `catalogExplanation`) — each states the fact, then names the next step in the same form:
+  - "Tracking <repo> <ref> — last checked 2h ago. Use Refresh on the Skills page to start serving
+    the newer version." (`Update available`)
+  - "Tracking <repo> <ref> — the last upstream check is older than six hours (13h ago), so the
+    versions above are as of then. Use Refresh on the Skills page to re-check upstream."
+    (`Check is stale`)
+  - "Tracking <repo> <ref> — this machine has not checked upstream yet, so it cannot say whether
+    these versions are current. Use Refresh on the Skills page to check." (`Not checked yet`)
+  - "Tracking <repo> <ref> — last checked 4m ago, and these two versions share no history, so they
+    cannot be compared." (`Comparison unknown`) — never said of two IDENTICAL commits, which is
+    the defect #752 fixed: different facts get different words, and "share no history" is a fact
+    about two different commits.
 - Product names come from `lib/runner-label.ts`: "Claude Code", "Codex", "OpenCode", "pi" (lower case).
   Multi-backend runs read "Claude Code +1".
 

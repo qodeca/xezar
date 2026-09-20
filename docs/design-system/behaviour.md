@@ -46,7 +46,11 @@ Focus rules:
   re-announces the whole sentence on every tick — the skill-catalog block announced itself once a
   minute for the life of the page (#752, L-1) — so the age stays on screen, outside the region, and
   a short `sr-only` announcer carries the state word.
-- `role="status"`: 27 sites (toasts, the running spinner, monitoring schedule lines, the provider status
+- An `sr-only` announcer is `role="status" aria-live="polite" aria-atomic="true"` — the shape
+  `components/app-shell.tsx` already uses. `aria-atomic` matters most where the region is ONE text
+  node covering several things (the skill-catalog announcer joins one sentence per source): without
+  it, what a reader announces on a partial change is undefined.
+- `role="status"`: 29 sites (toasts, the running spinner, monitoring schedule lines, the provider status
   banner, the dictation bar). `role="alert"`: 22 sites (inline errors, the provider auth banner, the route
   error boundary and the MCP leader refusal line).
 - `aria-busy`: the thread history boundary and the "Plan first" radio while planning.
