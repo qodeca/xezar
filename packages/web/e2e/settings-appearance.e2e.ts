@@ -26,6 +26,44 @@ const DESKTOP = { width: 1440, height: 900 }
 const xezHomeDir = resolve(import.meta.dirname, '../../../.local/qa/xez-home')
 const uiStateFile = resolve(xezHomeDir, 'ui-state.json')
 
+/** The density option the segmented control currently shows as selected. */
+const selectedDensity = `[...document.querySelectorAll('[data-slot="appearance-density"] [role="radio"]')].find((radio) => radio.getAttribute('aria-checked') === 'true')?.dataset.value ?? ''`
+
+/**
+ * Select a density through the segmented control, clicking only once the option's own box has
+ * read the same value twice in a row.
+ *
+ * Selecting a density changes the spacing token the page header is sized by, so the click that
+ * changes it is dispatched into a layout that is still moving: the box agent-browser computes
+ * the click point from is stale by the time the click lands, and the click goes nowhere — the
+ * DOM stamp then never appears inside the whole wait budget (run 35032942241). Two halves, the
+ * same shape `clickStepControl` (plan-mode.e2e.ts) and `clickRoleWhenStable` (guide-browser.ts)
+ * already use: the box check is the "stop clicking a moving target" half, and the click is
+ * retried only while the control's own selected state is provably UNCHANGED — a click that
+ * landed nowhere is safe to repeat, while one that selected the WRONG option still fails loudly.
+ * No timeout is widened: the wait below is on the control's own state, which the provider's
+ * layout effect stamps in the same commit.
+ */
+async function selectDensity(value: string): Promise<void> {
+  const option = `[data-slot="appearance-density"] [data-value="${value}"]`
+  const box = `(() => { const r = document.querySelector(${JSON.stringify(option)})?.getBoundingClientRect(); return r ? [r.x, r.y, r.width, r.height].join(',') : '' })()`
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    let previous = ''
+    for (let poll = 0; poll < 20; poll += 1) {
+      const now = String(browser.evaluate(box))
+      if (now !== '' && now === previous) break
+      previous = now
+      await new Promise((resolveWait) => setTimeout(resolveWait, 50))
+    }
+    browser.click(option)
+    for (let poll = 0; poll < 20; poll += 1) {
+      await new Promise((resolveWait) => setTimeout(resolveWait, 100))
+      if (browser.evaluate(selectedDensity) === value) return
+    }
+  }
+  throw new Error(`xezar e2e: the density control never selected "${value}"`)
+}
+
 let browser: AgentBrowser
 let baseUrl: string
 let previousUiState: string | null = null
@@ -153,7 +191,7 @@ describe('settings → appearance against the live dry-run server', () => {
     browser.waitForFunction(`document.documentElement.dataset.density === undefined`)
     await waitForServerAppearance((a) => a.density === 'comfortable')
 
-    browser.click(`${density} [data-value="roomy"]`)
+    await selectDensity('roomy')
     browser.waitForFunction(`document.documentElement.dataset.density === 'roomy'`)
     await waitForServerAppearance((a) => a.density === 'roomy')
     expect(browser.evaluate(`localStorage.getItem('xez-density')`)).toBe('roomy')

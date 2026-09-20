@@ -127,6 +127,53 @@ const MAX_ARRIVAL_FRAMES = 900
 const NEAR_TAIL_PX = 80
 
 /**
+ * How many times to re-press ⌘K when the press was lost before the palette ever opened. Three,
+ * the same bounded interaction retry `clickStepControl` and `clickRoleWhenStable` keep.
+ */
+const PALETTE_PRESS_ATTEMPTS = 3
+/** How long one press is given to mount the palette, in the page's own clock. */
+const PALETTE_PRESS_WINDOW_MS = 1500
+
+/**
+ * Open the ⌘K palette and land focus in its input.
+ *
+ * The single press this used to fire was UNRECOVERABLE when it was lost: the only wait was
+ * `document.activeElement?.hasAttribute('cmdk-input')`, which spends its whole 25 s budget on a
+ * palette that never opened, and nothing ever pressed again (2 CI runs: 35325364095 attempt 1,
+ * 35411288411). So the press is repeated until the palette ROOT exists — a real state change —
+ * and only then does the focus wait run, at full budget. That split matters: a palette that IS
+ * up and does not take the keyboard is a real defect and must still fail, not be pressed away.
+ *
+ * "Did the press land" is a yes/no question `waitForFunction` cannot ask (it throws instead of
+ * answering "not yet"), so the page arms its own short window and one wait covers both answers.
+ */
+async function openCommandPalette(): Promise<void> {
+  for (let attempt = 0; attempt < PALETTE_PRESS_ATTEMPTS; attempt += 1) {
+    // Focus is parked on <body> first so the palette's focus return on close cannot scroll the
+    // destination transcript (unchanged from the single press this replaces). The window is
+    // armed in the same call: `setTimeout`, not `requestAnimationFrame`, because a throttled
+    // frame callback in a backgrounded tab would never close it.
+    browser.evaluate(`(() => {
+      document.activeElement?.blur?.()
+      window.__xezPalettePressWindowClosed = false
+      setTimeout(() => { window.__xezPalettePressWindowClosed = true }, ${PALETTE_PRESS_WINDOW_MS})
+      return true
+    })()`)
+    browser.press('Control+k')
+    browser.waitForFunction(
+      `document.querySelector('[cmdk-root]') !== null || window.__xezPalettePressWindowClosed === true`,
+    )
+    if (browser.evaluate(`document.querySelector('[cmdk-root]') !== null`) === true) {
+      browser.waitForFunction(`document.activeElement?.hasAttribute('cmdk-input') === true`)
+      return
+    }
+  }
+  throw new Error(
+    `xezar e2e: the command palette never opened after ${PALETTE_PRESS_ATTEMPTS} Ctrl+K presses`,
+  )
+}
+
+/**
  * Capture every destination-transcript animation frame around a client-side task switch, and
  * keep sampling until the scroller has SETTLED — the same position and the same content height
  * for {@link STILL_FRAMES} frames in a row.
@@ -139,16 +186,13 @@ const NEAR_TAIL_PX = 80
  * takes is a fact about the machine, which is exactly what a pixel budget over frame 0 ends up
  * measuring.
  */
-function navigateAndSampleArrival(runId: string): Arrival {
+async function navigateAndSampleArrival(runId: string): Promise<Arrival> {
   // A client-side task-to-task switch the way a person makes one from a thread: the ⌘K palette.
   // The sidebar task row this used to click is gone (#546), and a switch through the Tasks page
   // would be a thread → table → thread journey rather than the one #761 measures. The palette
   // filters on the run id (its items carry it for exactly that), so the one selected row is the
-  // destination; focus is parked on <body> first so the palette's focus return on close cannot
-  // scroll the destination transcript.
-  browser.evaluate(`(() => { document.activeElement?.blur?.(); return true })()`)
-  browser.press('Control+k')
-  browser.waitForFunction(`document.activeElement?.hasAttribute('cmdk-input') === true`)
+  // destination.
+  await openCommandPalette()
   browser.fill('[cmdk-input]', runId)
   browser.waitForFunction(
     `document.querySelector('[cmdk-item][aria-selected="true"]')?.getAttribute('data-run-id') === ${JSON.stringify(runId)}`,
@@ -363,7 +407,7 @@ describe('progressive long-session history', () => {
     )
   })
 
-  it('switches between cached and live-tail threads without a near-zero destination frame', () => {
+  it('switches between cached and live-tail threads without a near-zero destination frame', async () => {
     // The preceding paging case deliberately visited the archive boundary. Establish the first
     // run's departure state as an explicit live-tail cache entry before warming the second run.
     browser.evaluate(`(() => {
@@ -394,7 +438,7 @@ describe('progressive long-session history', () => {
         return originalFetch(...args)
       }
     })()`)
-    const firstTailArrival = navigateAndSampleArrival(RUN_B_ID)
+    const firstTailArrival = await navigateAndSampleArrival(RUN_B_ID)
     expect(firstTailArrival.settled.maxTop - firstTailArrival.settled.top).toBeLessThan(NEAR_TAIL_PX)
     const departure = parkCurrentThread()
     const parked = departure.top
@@ -408,11 +452,11 @@ describe('progressive long-session history', () => {
     // assertions above, read the other way round.
     expect(departure.maxTop - departure.top).toBeGreaterThan(NEAR_TAIL_PX)
 
-    const liveTailArrival = navigateAndSampleArrival(RUN_ID)
+    const liveTailArrival = await navigateAndSampleArrival(RUN_ID)
     expect(Math.min(...liveTailArrival.samples.map(({ top }) => top))).toBeGreaterThan(40)
     expect(liveTailArrival.settled.maxTop - liveTailArrival.settled.top).toBeLessThan(NEAR_TAIL_PX)
 
-    const cachedArrival = navigateAndSampleArrival(RUN_B_ID)
+    const cachedArrival = await navigateAndSampleArrival(RUN_B_ID)
     // The regression this case is named for: no frame of the destination transcript is drawn at
     // the top of the session. Every captured frame, so a flash that lasts one frame still fails.
     expect(Math.min(...cachedArrival.samples.map(({ top }) => top))).toBeGreaterThan(40)
@@ -431,7 +475,7 @@ describe('progressive long-session history', () => {
     browser.screenshot(join(artifactsDir, 'progressive-history-thread-switch.png'), { viewport: true })
 
     browser.setViewport(390, 844)
-    const mobileTailArrival = navigateAndSampleArrival(RUN_ID)
+    const mobileTailArrival = await navigateAndSampleArrival(RUN_ID)
     expect(Math.min(...mobileTailArrival.samples.map(({ top }) => top))).toBeGreaterThan(40)
     expect(mobileTailArrival.settled.maxTop - mobileTailArrival.settled.top).toBeLessThan(NEAR_TAIL_PX)
     browser.screenshot(join(artifactsDir, 'progressive-history-thread-switch-mobile.png'), {

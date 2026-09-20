@@ -15,6 +15,23 @@ const runId = `e2e-palette-${process.pid}`
 const ROOT = '[cmdk-root]'
 const INPUT = '[cmdk-input]'
 
+/** Open means a dialog whose accessible name is "Command palette" is in the document. */
+const paletteOpen = `[...document.querySelectorAll('[role="dialog"]')].some((dialog) => document.getElementById(dialog.getAttribute('aria-labelledby') ?? '')?.textContent === 'Command palette')`
+
+/**
+ * The palette is closed, asserted through the same facts the waits read.
+ *
+ * Both halves are waited for before either is read: the dialog's own absence (the closed state
+ * this file names) AND the root's absence. A bare `count('[cmdk-root]')` with no wait of its own
+ * is how a mid-unmount read becomes a failure — `expected 1 to be +0` (run 35203051673) — and
+ * the root lives inside the dialog, so waiting for the dialog first is what makes the read safe.
+ */
+function expectPaletteClosed(): void {
+  browser.waitForFunction(`!(${paletteOpen}) && document.querySelector('${ROOT}') === null`)
+  expect(browser.evaluate(paletteOpen)).toBe(false)
+  expect(browser.count(ROOT)).toBe(0)
+}
+
 let browser: AgentBrowser
 let baseUrl: string
 let bootProject: string
@@ -52,9 +69,8 @@ describe('command palette', () => {
 
     browser.press('Enter')
     browser.waitForFunction(`location.pathname === '/p/${bootProject}/workflows'`)
-    browser.waitForFunction(`document.querySelector('${ROOT}') === null`)
     expect(browser.url()).toContain('/workflows')
-    expect(browser.count(ROOT)).toBe(0)
+    expectPaletteClosed()
   })
 
   // #546: the sidebar's clickable `Search…` launcher is gone, so the keyboard is the only way in —
@@ -67,8 +83,6 @@ describe('command palette', () => {
   it('has no sidebar launcher, closes on Escape and returns focus to where it was', () => {
     const sidebar = `document.querySelector('nav[aria-label="Main"]')?.closest('aside')`
     const gitLink = `${sidebar}?.querySelector('nav[aria-label="Main"] a[href$="/git"]')`
-    // Open means a dialog whose accessible name is "Command palette" is in the document.
-    const paletteOpen = `[...document.querySelectorAll('[role="dialog"]')].some((d) => document.getElementById(d.getAttribute('aria-labelledby') ?? '')?.textContent === 'Command palette')`
 
     browser.goto(`${baseUrl}/p/${bootProject}/`)
     browser.waitForFunction(`${gitLink} != null`)
@@ -84,8 +98,7 @@ describe('command palette', () => {
     browser.waitForFunction(`document.activeElement?.getAttribute('role') === 'combobox'`)
 
     browser.press('Escape')
-    browser.waitForFunction(`!(${paletteOpen})`)
-    expect(browser.evaluate(paletteOpen)).toBe(false)
+    expectPaletteClosed()
     browser.waitForFunction(`document.activeElement === ${gitLink}`)
   })
 
@@ -96,8 +109,15 @@ describe('command palette', () => {
       `(() => { const field = document.createElement('input'); field.id = 'e2e-probe-input'; document.body.appendChild(field); field.focus(); return true })()`,
     )
     browser.press('Control+k')
-    // Deterministic absence: the keydown already dispatched synchronously; the palette either
-    // opened or it never will.
+    // Absence needs a positive signal first. The guard is target-based, so the honest proof is
+    // that focus STAYED on the probe input — a palette that opened would have taken it — read
+    // together with the closed-state expression every other case in this file reads. A bare
+    // `count(ROOT)` with no wait cannot tell "the guard held" from "the commit has not landed"
+    // and can pass for the wrong reason.
+    browser.waitForFunction(
+      `document.activeElement?.id === 'e2e-probe-input' && !(${paletteOpen})`,
+    )
+    expect(browser.evaluate(paletteOpen)).toBe(false)
     expect(browser.count(ROOT)).toBe(0)
     browser.evaluate(`document.getElementById('e2e-probe-input')?.remove()`)
   })

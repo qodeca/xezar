@@ -160,10 +160,11 @@ step dispatched by name (leader memory 2026-09-15).
 4. Squash-merge, then verify the squash commit with
    `git diff-tree --no-commit-id -r --name-only <sha>`: the expected file list, exactly one parent,
    and the named issue still open.
-5. Watch CI with a bounded `gh run watch`. Known flakes are rerun once: `repo-git.e2e.ts`,
-   `settings-agents.e2e.ts` and `progressive-history.e2e.ts`. A `workflow_dispatch` run has an empty
-   git branch list, so its red browser job is not evidence for any of those three (leader memory
-   2026-09-16).
+5. Watch CI with a bounded `gh run watch`. Known flakes are rerun once: `repo-git.e2e.ts` and
+   `settings-agents.e2e.ts`. A `workflow_dispatch` run has an empty
+   git branch list, so its red browser job is not evidence for either of those two (leader memory
+   2026-09-16). `progressive-history.e2e.ts` left this list with #671 PR A: its Cmd-K focus wait
+   is rebuilt, so a red browser job that names it is evidence again.
 6. Issues stay open. Never put a closing verb next to an issue number, not even to negate it: GitHub's
    scanner ignores the negation. After every merge, check the named issues and reopen anything closed
    in error (leader memory 2026-09-16).
