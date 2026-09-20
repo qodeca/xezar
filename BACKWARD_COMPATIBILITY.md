@@ -932,6 +932,37 @@ off". The run, and its last step, settled `done` with no deliverable and no erro
   agent error, a real crash) settles exactly as before. No event or workflow schema changes; no new
   `RunStatus` value is added.
 
+## The first automatic return after a red check resumes the author's session (#676) — deliberate, 0.17.0
+
+A check step with `onFail` has always re-entered its retry target as a brand-new backend session
+carrying the whole `{{task}}` brief plus the capped failing output, twice, before the run failed.
+The first of those two returns now resumes the retry target's OWN recorded session instead, and
+sends it only the failing output. Nothing about the allowance moved: the return is counted exactly
+as before.
+
+- **Broken**: a custom workflow whose `onFail` retry target is an agent step sees its FIRST return
+  spawn with `resume: true` on that step's recorded `sessionId`, and receives a `userPrompt` that
+  is the failing output alone — prefixed by one fixed sentence saying it is a repair turn — with no
+  `{{task}}` text, no chain-boundary note and no attachment paths, because the session it is
+  resuming already holds them. A retry target that depends on re-reading its brief in the return's
+  first message must now read it from its own conversation. Two new `note` events are emitted on
+  this path (the repair turn itself, and an unavailable resume).
+- **Not broken, and §4 does not change**: no YAML key is added, renamed or tightened; `{{task}}`
+  substitution is untouched; `onFail`'s retry target and `max` default of 2 are untouched; a run
+  that exhausts them still fails with the byte-identical `check "<id>" failed after 3 attempts`.
+  The SECOND return is byte-for-byte the fresh session it has always been, whole brief included.
+  **§8 does not change** either: a repair turn is a non-final agent step, so #317 judges it the
+  same way — it is `done` only when its turn ends with `XEZ:DONE`, and the last (interactive)
+  step's rules and the marker vocabulary are untouched. The repair turn takes its own step's
+  `timeout` through `stepTimeoutMs`, so an absent `timeout` still resolves to the runner's
+  30-minute default (§4's protected surface) rather than the Continue path's uncapped `0`.
+- **Not covered**: a return whose resume is unavailable — no recorded session id, a recorded
+  backend that differs from the one now resolved, or a different agent account (`profileId`) —
+  falls back to today's fresh spawn INSIDE the same return, announced by a `note` and without
+  consuming a second attempt. An unreachable session is an environment fact, not a repair round.
+  No contract schema, route, config key or env var changes, and `xezar run` headless takes the
+  same path.
+
 ## An OpenCode step that stays silent after a refused permission ends `failed` (#692) — deliberate, 0.17.0
 
 The OpenCode runner answers a `permission.asked` ask it cannot approve with `reject`, and that
