@@ -677,6 +677,18 @@ expect_fail "an Unreleased heading below a dated release is refused" \
 printf '# Unreleased\n\n- a\n\n```\n# Unreleased\n```\n\n# 0.1.0 (2026-01-01)\n' > "$cl/fence.md"
 expect_ok "a heading inside a fenced code block is not counted" "$CLC" --file "$cl/fence.md"
 
+# The fence rule is the one in changelog-fragments.mjs `fenceMarker` (issue #698): a tilde fence
+# toggles exactly like a backtick fence, and a marker toggles only when it matches the OPEN fence,
+# so a nested fence of the other kind is content rather than a closer. Both cases below are red
+# against the pre-#698 script (a second Unreleased heading; a file swallowed by the nested
+# backtick fence, so the required version heading is never counted) and green against it.
+printf '# Unreleased\n\n- a\n\n~~~\n# Unreleased\n~~~\n\n---\n\n# 0.1.0 (2026-01-01)\n\n- b\n' > "$cl/fence-tilde.md"
+expect_ok "a heading inside a tilde-fenced code block is not counted (#698)" "$CLC" --file "$cl/fence-tilde.md"
+
+printf '# 0.1.0 (2026-01-01)\n\n- a\n\n~~~\n```\n# 0.2.0 (2026-02-01)\n~~~\n\n---\n\n# 0.2.0 (2026-02-01)\n\n- b\n' > "$cl/fence-tilde-nested.md"
+expect_ok "a backtick fence nested inside a tilde block does not swallow the rest of the file (#698)" \
+  "$CLC" --file "$cl/fence-tilde-nested.md" --require-version 0.2.0
+
 printf '## Unreleased\n\n- not top level\n\n# 0.1.0 (2026-01-01)\n' > "$cl/h2.md"
 expect_ok "a second-level Unreleased heading is not a section and is ignored" "$CLC" --file "$cl/h2.md"
 

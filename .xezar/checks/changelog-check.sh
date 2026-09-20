@@ -19,6 +19,7 @@
 #
 # Only top-level `# ` headings count. `## ...` group headings and prose that mention the word
 # are ignored, and a fenced code block never contains a heading this check would read as one.
+# Both fence markers are honoured — ``` and ~~~, matching changelog-fragments.mjs (issue #698).
 #
 # Read-only. Exit 0 on pass, 1 on a structural failure, 2 on bad usage or a missing file.
 set -euo pipefail
@@ -85,14 +86,25 @@ say() { printf 'changelog-check: %s\n' "$1" >&2; fail=1; }
 # never says and which a review-response round must not do. So the edit must ALSO still be visible
 # at HEAD — when the `# Unreleased` region at HEAD equals the region at the diff base, the branch
 # has undone the direct edit and the change now lives in the fragment.
+# A fence toggles on its OWN marker, and the open marker is what the walk remembers: a ~~~ line
+# inside a ``` block (and a ``` line inside a ~~~ block) is content, not a closer. This is the
+# same rule as `fenceMarker` in changelog-fragments.mjs (issue #698), so the direct-edit rule and
+# the release fold cannot disagree about which lines sit inside a code block.
 unreleased_region() {
   awk '
-    BEGIN { fence = 0; grab = 0 }
-    /^```/ { if (grab) print; if (fence) fence = 0; else fence = 1; next }
-    fence { if (grab) print; next }
-    /^# Unreleased[[:space:]]*$/ { grab = 1; print; next }
-    grab && /^# / { grab = 0 }
-    grab { print }
+    BEGIN { fence = ""; grab = 0 }
+    {
+      marker = ($0 ~ /^`{3,}/) ? "`" : ($0 ~ /^~{3,}/ ? "~" : "")
+      if (marker != "" && (fence == "" || fence == marker)) {
+        if (grab) print
+        fence = (fence == "") ? marker : ""
+        next
+      }
+      if (fence != "") { if (grab) print; next }
+      if ($0 ~ /^# Unreleased[[:space:]]*$/) { grab = 1; print; next }
+      if (grab && $0 ~ /^# /) grab = 0
+      if (grab) print
+    }
   '
 }
 
@@ -189,16 +201,25 @@ fi
 
 # Walk the top-level headings in file order, ignoring fenced code blocks. Every dated release
 # heading raises `seen_dated`; an Unreleased heading after that point is out of order.
+# The fence rule is the one in changelog-fragments.mjs `fenceMarker` (issue #698): a line opening
+# with three or more backticks or tildes toggles the fence only when no fence is open or the open
+# fence carries the SAME marker, so a ``` line inside a ~~~ block stays content.
 unreleased=0
-in_fence=0
+fence=""
 seen_dated=0
 misplaced=0
 version_count=0
 while IFS= read -r line || [ -n "$line" ]; do
+  marker=""
   case "$line" in
-    '```'*) if [ "$in_fence" -eq 0 ]; then in_fence=1; else in_fence=0; fi; continue ;;
+    '```'*) marker='`' ;;
+    '~~~'*) marker='~' ;;
   esac
-  [ "$in_fence" -eq 0 ] || continue
+  if [ -n "$marker" ] && { [ -z "$fence" ] || [ "$fence" = "$marker" ]; }; then
+    if [ -z "$fence" ]; then fence="$marker"; else fence=""; fi
+    continue
+  fi
+  [ -z "$fence" ] || continue
   case "$line" in
     '# '*) ;;
     *) continue ;;
