@@ -103,7 +103,11 @@ which serves all three records as well. That merge is shallow at the TOP LEVEL, 
 object-valued preference (`appearance`, `taskTable`, `dismissedProviderAuthFailures`) is sent
 WHOLE: the leader reads the bag, spreads it and writes it back, exactly as the cockpit's own panes
 do. Without the read a leader changing one accent would have cleared the person's density and
-width, which is why the read is part of these rows and not a convenience. **Two halves of these rows are deliberately NOT served, and neither is a
+width, which is why the read is part of these rows and not a convenience. **One key is the
+exception, and it is stated rather than hidden** (#753 re-check, Minor 1): read, spread, write
+cannot reach `dismissedProviderAuthFailures`, because the read reports the provider NAMES and
+withholds the incident ids a write needs — so a write of that key replaces every dismissal there
+is, `{}` clears them all, and leaving the key out keeps them. **Two halves of these rows are deliberately NOT served, and neither is a
 refusal.** The colour THEME of I-132 is not a stored setting at all: the browser keeps it in its
 own `localStorage` (`packages/web/src/lib/theme.ts`) and no server route exists to dispatch, so
 making it leader-writable would be a new feature rather than parity (spec § 4 Q1, owner 07:41).
@@ -112,6 +116,24 @@ bag. The two LEGACY keys of the same file — `sidebar` and `lastLocation` — s
 reach because they describe one person's window and the current cockpit keeps both in
 `localStorage`. **Superseded, never deleted:** each row keeps its 2026-09-10 “None” ruling beside
 the new one. Covered 105, global 11, total 147.
+
+After #677 wave 2 slice B4 (2026-09-20): no record is added or removed, and one changes status.
+The same owner rule of 2026-09-20, scoped by the owner at 07:41 to "on/off and retry only",
+makes the provider SWITCH writable, so I-115 moves `global` → `covered`. It is served by
+`project_config set_provider_enabled` and `retry_provider`, which dispatch
+`PUT /providers/:provider/enabled` and `POST /providers/:provider/retry`, the cockpit's own two
+routes — the same param and body validators, the same workspace merge-write, the same
+`provider-status` event, so a provider the leader switches off stops being offered for the next
+task at once, and the same 409 when the authentication incident changed between the read and the
+retry. `get_capabilities` serves the record's read half. **One half of this row is still a
+refusal, and it is not the setting:** Connect (`POST /providers/connect`) opens a LOGIN TERMINAL
+on the person's machine, which the owner kept person-only — boundary `host-process`, not
+`workspace-settings`. Two consequences belong on the row rather than in a footnote: turning a
+provider off is machine-wide, so it denies the person's OTHER projects a backend, and turning one
+on re-enables a backend they deliberately disabled. A leader also never learns an incident id: the
+retry reads the current one inside the tool, from the status route, and no answer carries it.
+**Superseded, never deleted:** the row keeps its 2026-09-10 ruling beside the new one.
+Covered 106, global 10, total 147.
 
 **Hosted mode does not narrow these five rows** (owner decision, 2026-09-20, raised by independent
 QA as case G on #734 and filed as #735). Workspace-config writes are permitted in hosted mode
@@ -170,7 +192,12 @@ repeats it, and Phase 3 reads this document as its enforcement input.
    (`agentHomePaths()`) and any future vendor path change, while `scope` is the catalog's own answer.
    The six entries are `claude.user.settings`, `claude.user.memory`, `codex.user.config`,
    `codex.user.memory`, `opencode.user.config`, `opencode.user.memory`, all `tracked: 'outside-repo'`.
-2. **Provider enable/disable (I-115) is global — safe effective read only.** `disabledProviders` is
+2. **Provider enable/disable (I-115) is global — safe effective read only.**
+   **SUPERSEDED, 2026-09-20 (#677 wave 2 slice B4, owner rule "every key", scoped at 07:41 to
+   "on/off and retry only").** The switch and the retry are leader writes now, through the
+   cockpit's own routes; Connect stays refused for its own boundary, the host process. The ruling
+   below is kept verbatim as a dated record of what was true then.
+   `disabledProviders` is
    workspace-wide, so the leader may learn that a provider is usable and no more (F-03, F-12).
 3. **Agent-account selection (I-122) is global — effective read without identity.** Per D-122.
 4. **Per-project `maxParallel` and tags (I-128, I-129) are project writes bound to this project.**
@@ -363,7 +390,7 @@ Project-scope sections: `agents`, `agent-config`, `worktrees`, `bookmarklets`, `
 | I-112 | Same editor, the six `scope:'user'` catalog entries in `packages/xezar/src/agent-config/catalog.ts` (`tracked: 'outside-repo'`): `claude.user.settings`, `claude.user.memory`, `codex.user.config`, `codex.user.memory`, `opencode.user.config`, `opencode.user.memory` | reachable **through a project-scoped route** | file content → `~/.claude/…`, `~/.codex/…`, `~/.config/opencode/…` — one file shared by every project on the machine | same as I-111 | **AGENT-HOME-FILE / effectively GLOBAL** | **None.** M-16 is explicit: "Home/global file administration excluded even behind a project route; safe effective limits only." F-12: global home files cannot be administered. This is the clearest project-route/global-effect mismatch in the cockpit | global |
 | I-113 | `agent-config-section.tsx` MCP-carrying catalog entries. The catalog field that identifies them is **`holdsMcp: true`** (`packages/contract/src/agent-config.ts:37`), not `kind` — only `claude.project.mcp` carries `kind:'mcp'` (`agentConfigKindSchema`, `agent-config.ts:16`). Project-scope set: `claude.project.mcp`, `codex.project.config`, `opencode.project.config` (`packages/xezar/src/agent-config/catalog.ts:146`, `:218`, `:265`) | project scope, `localHandoff` required | free-text file content | same as I-111 | project file, **can carry API keys and credentials** | **Decided 2026-09-10 (D-113) — ASYMMETRIC. Write:** full file content through the existing `PUT /agent-config/:id`, which **keeps its 409 when `capabilities().localHandoff` is false** — that 409 closes a hooks-based remote-code-execution path and must not be weakened or routed around. **Read:** structure only — server names, transport kind, argument shape — with every value elided. **Never return file content for a `holdsMcp` file.** These files are exactly where an API key lives and F-15 forbids a secret entering a tool response; a redacted content read is rejected because heuristic redaction cannot guarantee F-15 | covered |
 | I-114 | `packages/web/src/routes/settings/project-location.tsx` `ProjectFolderField`, `OpenWithMenu` → `POST /open-in` (`openTargetsRoutes`, `openProjectInSchema`); `GET /open-targets`; Copy path | hosted mode returns no targets | target id → the project root opened locally | — | project + **the xezar host machine** | Same rule as I-044: report the missing desktop capability explicitly; never promise a launch on the client's machine (M-19) | covered |
-| I-115 | `packages/web/src/routes/settings/provider-settings.tsx` `ProviderSettings` "Connect" → `POST /providers/connect`; "Check again" → `GET /providers/status?refresh=1`; "Try again" → `POST /providers/:provider/retry`; "Copy command" | rendered **inside the project-scoped Agents section**, but every route is workspace-level | provider id, `authFailureId` → local login terminal spawned, status re-probed | Connect writes the vendor CLI's own credential store, entirely outside xezar | **GLOBAL / local machine** | **None for the writes.** F-12: global accounts cannot be administered. **Safe effective read only** — the leader may learn that a provider is usable, and no more (F-03) | global |
+| I-115 | `packages/web/src/routes/settings/provider-settings.tsx` `ProviderSettings` "Connect" → `POST /providers/connect`; "Check again" → `GET /providers/status?refresh=1`; "Try again" → `POST /providers/:provider/retry`; "Copy command" | rendered **inside the project-scoped Agents section**, but every route is workspace-level | provider id, `authFailureId` → local login terminal spawned, status re-probed | Connect writes the vendor CLI's own credential store, entirely outside xezar | **GLOBAL / local machine** | **Decided 2026-09-20 (D-677-B4, owner rule "every key", scoped at 07:41 to "on/off and retry only").** Turning a provider off and on is `set_provider_enabled` and clearing an authentication incident is `retry_provider`, through `PUT /providers/:provider/enabled` and `POST /providers/:provider/retry`, the cockpit's own routes — machine-wide, so a leader's switch denies or re-enables a backend for every other project, and live at once for the next task. `get_capabilities` is the read half. **Connect is NOT part of it and stays refused:** it opens a login terminal on the host, boundary `host-process` rather than `workspace-settings`. The `authFailureId` is never served to a leader; the retry reads the current one from the status route inside the tool. Supersedes the "None for the writes. F-12: global accounts cannot be administered. Safe effective read only — the leader may learn that a provider is usable, and no more (F-03)" ruling recorded here on 2026-09-10 | covered |
 | I-116 | `packages/web/src/routes/settings/bookmarklets-section.tsx` auto-start checkbox and filter box | always | component-local `useState`, never persisted | — | browser-local, ephemeral | None | presentation |
 | I-141 | `packages/web/src/routes/settings/mcp-leader-control.tsx` connection status ← `GET /api/v1/mcp/leader` and the `mcp-leader` topic | while Settings → MCP connection is open | none → owner, leader, delivery, blocker | `localHandoff` for the topic | project | Read who owns the project, whether a leader is attached, the delivery cursors and what blocks delivery; for a leader, whether its own session is attached and can receive pushes. Added 2026-09-15 (#450) | covered |
 | I-142 | `mcp-leader-control.tsx` "Attach leader" → `POST /api/v1/mcp/leader` | a person attaches a leader | client (+ OpenCode address) → status or 409 reason | hosted mode 409 | project | Attach the project leader so events are pushed to it. Added 2026-09-15 (#450). The person may attach any client; a leader attaches only its own session | covered |

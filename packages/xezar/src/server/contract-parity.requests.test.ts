@@ -6,7 +6,7 @@ import type { InferRequestType } from 'hono/client';
 import { hc } from 'hono/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { z } from 'zod';
-import type { setConfigInputSchema, setWorkspaceConfigInputSchema } from '@qodeca/xezar-contract';
+import type { retryProviderInputSchema, setConfigInputSchema, setProviderEnabledInputSchema, setWorkspaceConfigInputSchema } from '@qodeca/xezar-contract';
 import { RunStore } from '../runs/store.ts';
 import { WorkspaceSemaphore } from '../workspace/semaphore.ts';
 import type { RunManager } from '../workflows/run.ts';
@@ -50,6 +50,17 @@ describe('the settings routes validate with the CONTRACT request schemas', () =>
   type SetWorkspaceConfigBody = InferRequestType<typeof client.api.v1.workspace.config.$put>['json'];
   type SetWorkspaceConfigSchema = z.input<typeof setWorkspaceConfigInputSchema>;
   type _SetWorkspaceConfigExact = Assert<Mutual<SetWorkspaceConfigSchema, SetWorkspaceConfigBody>>;
+
+  // ---- PUT /api/v1/providers/:provider/enabled and POST …/retry (#677 B4) -------------------
+  // Both moved out of `server.ts` when the MCP door started writing them: the door takes its key
+  // set from the contract schema, and a hand-written twin at either end is what this pins shut.
+  type SetProviderEnabledBody = InferRequestType<(typeof client.api.v1.providers)[':provider']['enabled']['$put']>['json'];
+  type SetProviderEnabledSchema = z.input<typeof setProviderEnabledInputSchema>;
+  type _SetProviderEnabledExact = Assert<Mutual<SetProviderEnabledSchema, SetProviderEnabledBody>>;
+
+  type RetryProviderBody = InferRequestType<(typeof client.api.v1.providers)[':provider']['retry']['$post']>['json'];
+  type RetryProviderSchema = z.input<typeof retryProviderInputSchema>;
+  type _RetryProviderExact = Assert<Mutual<RetryProviderSchema, RetryProviderBody>>;
 
   const savedHome = process.env.XEZ_HOME;
   let home: string;

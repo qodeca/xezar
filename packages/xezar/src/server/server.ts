@@ -51,7 +51,9 @@ import {
   MODEL_DISCOVERY_RUNNERS,
   modelDiscoveryRunnerSchema,
   openProjectInSchema,
+  retryProviderInputSchema,
   setConfigInputSchema,
+  setProviderEnabledInputSchema,
   setWorkspaceConfigInputSchema,
   updateProjectInputSchema,
   type WorkspaceConfigResponse,
@@ -423,10 +425,6 @@ function allocateAgentProfileId(source: string, taken: Iterable<string>): string
 }
 
 const providerParamSchema = z.enum(PROVIDER_IDS);
-const providerEnabledSchema = z.object({ enabled: z.boolean() }).strict();
-const providerRetrySchema = z.object({
-  authFailureId: z.string().min(1).max(128),
-}).strict();
 
 const automationEditableSchema = z
   .object({
@@ -1848,8 +1846,11 @@ export function createApp(deps: ServerDeps) {
     .put(
       '/providers/:provider/enabled',
       paramZodValidator(z.object({ provider: providerParamSchema }), { message: 'provider and enabled boolean are required' }),
-      jsonZodValidator(providerEnabledSchema, { message: 'provider and enabled boolean are required' }),
-      ui.route('provider.setEnabled', { resource: { kind: 'provider', param: 'provider' } }),
+      jsonZodValidator(setProviderEnabledInputSchema, { message: 'provider and enabled boolean are required' }),
+      // `fieldNames: true` like every other settings write of this door (#677 B4): the cockpit
+      // record carries the body's key NAMES and never a value, so a trail reader sees that the
+      // switch was written without learning which way.
+      ui.route('provider.setEnabled', { resource: { kind: 'provider', param: 'provider' }, fieldNames: true }),
       async (c) => {
         const provider = { data: c.req.valid('param').provider };
         const body = { data: c.req.valid('json') };
@@ -1877,8 +1878,10 @@ export function createApp(deps: ServerDeps) {
     .post(
       '/providers/:provider/retry',
       paramZodValidator(z.object({ provider: providerParamSchema }), { message: 'provider and current authFailureId are required' }),
-      jsonZodValidator(providerRetrySchema, { message: 'provider and current authFailureId are required' }),
-      ui.route('provider.retry', { resource: { kind: 'provider', param: 'provider' } }),
+      jsonZodValidator(retryProviderInputSchema, { message: 'provider and current authFailureId are required' }),
+      // The field NAME only — `authFailureId` is an incident id, and the record carries names, so
+      // the id itself never reaches the trail.
+      ui.route('provider.retry', { resource: { kind: 'provider', param: 'provider' }, fieldNames: true }),
       async (c) => {
         const provider = { data: c.req.valid('param').provider };
         const body = { data: c.req.valid('json') };

@@ -115,7 +115,10 @@ export const TOOL_ACTION_COVERAGE: Readonly<Record<string, ActionCoverage>> = {
   // The owner's 2026-09-20 rule made them writable (#677 B1), so the records are `covered` and the
   // pair of actions that serves them is this read plus `set_workspace_config`.
   'project_config:get_limits': { serves: ['I-009', 'I-117', 'I-118', 'I-119', 'I-120', 'I-121', 'I-128'] },
-  'project_config:get_capabilities': { serves: ['I-133'], reads: ['I-115'] },
+  // I-115 was this action's `reads` while the provider switch was global-read-only. #677 B4 made
+  // the switch and the retry real writes, so the record is `covered` and the status read serves it
+  // beside them — the same move I-117 … I-121 made in B1.
+  'project_config:get_capabilities': { serves: ['I-115', 'I-133'] },
   'project_config:get_account': { serves: ['I-042'], reads: ['I-122'] },
   'project_config:list_agent_config': { serves: ['I-111', 'I-113'] },
   'project_config:read_agent_config': { serves: ['I-111', 'I-113'] },
@@ -146,9 +149,12 @@ export const TOOL_ACTION_COVERAGE: Readonly<Record<string, ActionCoverage>> = {
   'project_config:reclaim_worktrees': { serves: ['I-068'] },
   'project_config:dismiss_onboarding_offer': { serves: ['I-145'] },
   'project_config:remove_worktree': { serves: ['I-068'] },
-  'project_config:set_provider_enabled': { refuses: ['I-115'] },
+  'project_config:set_provider_enabled': { serves: ['I-115'] },
+  'project_config:retry_provider': { serves: ['I-115'] },
+  // The half of I-115 that is still a refusal, and it is not the setting: Connect opens a login
+  // terminal on the host (boundary `host-process`), which the owner kept person-only at 07:41 on
+  // 2026-09-20. I-123 is its account half and stays refused with the rest of slice B5.
   'project_config:connect_provider': { refuses: ['I-115', 'I-123'] },
-  'project_config:retry_provider': { refuses: ['I-115'] },
   'project_config:create_account': { refuses: ['I-123'] },
   'project_config:update_account': { refuses: ['I-123'] },
   'project_config:remove_account': { refuses: ['I-123'] },

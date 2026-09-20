@@ -9,10 +9,12 @@ import {
   onboardingIdentitySchema,
   onboardingStatusSchema,
   operationIdSchema,
+  providerIdSchema,
   runIdParamSchema,
   saveWorkflowInputSchema,
   setAgentConfigInputSchema,
   setConfigInputSchema,
+  setProviderEnabledInputSchema,
   setWorkspaceConfigInputSchema,
   uiStateSchema,
   updateAutomationInputSchema,
@@ -69,7 +71,10 @@ import { defineTool, errorResult, textResult, type McpToolContext, type McpToolR
  * B3 adds the shared PRESENTATION preferences, `set_workspace_ui_state` and `import_skills`,
  * through `PUT /workspace/ui-state`, with `get_workspace_ui_state` as their read half; the colour
  * theme is not among them, because it is not a stored setting at all (the browser keeps it)
- * rather than because it is refused.
+ * rather than because it is refused. Slice B4 adds the provider SWITCH — `set_provider_enabled`
+ * and `retry_provider`, through `PUT /providers/:provider/enabled` and
+ * `POST /providers/:provider/retry` — while `connect_provider` stays refused, because opening a
+ * login terminal on the host is a different decision from editing a workspace key (spec § 4 Q2).
  * There is no project id argument anywhere: the project is the connection's (D-01 § 1.5), and a
  * call that names one is refused rather than silently redirected.
  *
@@ -131,6 +136,8 @@ export const PROJECT_CONFIG_ACTIONS = [
   'get_workspace_ui_state',
   'set_workspace_ui_state',
   'get_capabilities',
+  'set_provider_enabled',
+  'retry_provider',
   'get_account',
   'list_agent_config',
   'read_agent_config',
@@ -198,19 +205,12 @@ const BOUNDARY_LABEL: Record<ConfigBoundary, string> = {
  * enum) so the answer is an understandable reason, not a schema error.
  */
 export const REFUSED_ACTIONS = {
-  set_provider_enabled: {
-    boundary: 'workspace-settings',
-    reason:
-      'turning a provider on or off changes it for every project on this machine. Read provider status with get_capabilities; a person changes it in the cockpit.',
-  },
+  // `set_provider_enabled` and `retry_provider` left this table with #677 B4 (they are writes
+  // now). `connect_provider` did NOT, and the difference is the boundary rather than the setting:
+  // the other two write a workspace KEY, this one starts a process on the person's machine.
   connect_provider: {
     boundary: 'host-process',
     reason: 'connecting a provider opens a login terminal on the host machine. A person does this in the cockpit.',
-  },
-  retry_provider: {
-    boundary: 'workspace-settings',
-    reason:
-      'clearing a provider authentication incident clears it for every project. Report the blocker instead; a person clears it in the cockpit.',
   },
   create_account: {
     boundary: 'agent-accounts',
@@ -293,6 +293,8 @@ type Field =
   | 'automation'
   | 'update'
   | 'mode'
+  | 'provider'
+  | 'enabled'
   | 'checkId'
   | 'receiptId'
   | 'logQuery'
@@ -320,6 +322,8 @@ const FIELDS: readonly Field[] = [
   'automation',
   'update',
   'mode',
+  'provider',
+  'enabled',
   'checkId',
   'receiptId',
   'logQuery',
@@ -360,6 +364,12 @@ export const ACTION_FIELDS: Record<ProjectConfigAction, { required: readonly Fie
   get_workspace_ui_state: none,
   set_workspace_ui_state: { required: ['uiState', 'operationId'], optional: [] },
   get_capabilities: { required: [], optional: ['refresh'] },
+  set_provider_enabled: { required: ['provider', 'enabled', 'operationId'], optional: [] },
+  // No `authFailureId` argument, on purpose: the incident id is what `get_capabilities` withholds
+  // (F-03), so a leader cannot name one. The handler reads the CURRENT id from the same
+  // `GET /providers/status` the cockpit reads and hands it to the route, which still refuses a
+  // stale one with its own 409.
+  retry_provider: { required: ['provider', 'operationId'], optional: [] },
   get_account: none,
   list_agent_config: none,
   read_agent_config: { required: ['fileId'], optional: [] },
@@ -557,7 +567,7 @@ export const projectConfigInputSchema = z
     action: z
       .enum([...PROJECT_CONFIG_ACTIONS, ...REFUSED_ACTION_NAMES])
       .describe(
-        'What to do in the project this connection is bound to, plus the shared settings set_workspace_config changes and the shared presentation preferences set_workspace_ui_state and import_skills change, for every project on this machine. Actions outside that boundary (accounts, the project registry, host folders) are answered with a refusal that names the boundary.',
+        'What to do in the project this connection is bound to, plus the shared settings set_workspace_config changes, the shared presentation preferences set_workspace_ui_state and import_skills change and the provider switch set_provider_enabled and retry_provider change, for every project on this machine. Actions outside that boundary (accounts, the project registry, host folders, host processes such as connecting a provider) are answered with a refusal that names the boundary.',
       ),
     projectId: z
       .unknown()
@@ -574,7 +584,7 @@ export const projectConfigInputSchema = z
     uiState: workspaceUiStateWriteSchema
       .optional()
       .describe(
-        'set_workspace_ui_state: the shared presentation preferences to change — they apply to every project on this machine. The keys are appearance (accent, density, width), notifications.enabled, taskTable.expandedColumns, importedSkills (the whole curated list) and dismissedProviderAuthFailures. A key you do not send is left alone, but a key you DO send is replaced WHOLE: appearance, taskTable and dismissedProviderAuthFailures are objects, and sending {appearance: {accent}} alone clears the person’s density and width. Read the bag with get_workspace_ui_state first and send the whole object back with your change in it — read, spread, write, exactly as the cockpit’s own panes do. The colour theme is not here: it is stored by the browser itself, not by the server.',
+        'set_workspace_ui_state: the shared presentation preferences to change — they apply to every project on this machine. The keys are appearance (accent, density, width), notifications.enabled, taskTable.expandedColumns, importedSkills (the whole curated list) and dismissedProviderAuthFailures. A key you do not send is left alone, but a key you DO send is replaced WHOLE: appearance, taskTable and dismissedProviderAuthFailures are objects, and sending {appearance: {accent}} alone clears the person’s density and width. Read the bag with get_workspace_ui_state first and send the whole object back with your change in it — read, spread, write, exactly as the cockpit’s own panes do. That recipe does NOT reach dismissedProviderAuthFailures: the read reports the provider NAMES of the dismissed incidents and never the incident ids, which are the values a write needs, so any write of that key replaces every dismissal there is — send {} to clear them all, and leave the key out to keep them. The colour theme is not here: it is stored by the browser itself, not by the server.',
       ),
     importedSkills: workspaceUiStateSchema.shape.importedSkills
       .describe(
@@ -600,6 +610,19 @@ export const projectConfigInputSchema = z
     name: z.string().min(1).max(200).optional().describe('delete_workflow / get_skill: the workflow or skill name.'),
     wait: z.boolean().optional().describe('Skill reads: wait for a cold team-skill cache to load first.'),
     refresh: z.boolean().optional().describe('get_capabilities: probe provider status now instead of serving the cached answer.'),
+    // `providerIdSchema` IS the runner enum (`packages/contract/src/health.ts`), which is what the
+    // route's own `z.enum(PROVIDER_IDS)` param validator lists — one alias, never a second enum,
+    // so a backend the route knows and this door does not cannot happen silently.
+    provider: providerIdSchema
+      .optional()
+      .describe(
+        'set_provider_enabled / retry_provider: which agent backend. Both apply to EVERY project on this machine, not only this one: turning a provider off stops it being offered for new tasks everywhere, and clearing an authentication incident clears the warning every project sees. Read the current state with get_capabilities first.',
+      ),
+    enabled: setProviderEnabledInputSchema.shape.enabled
+      .optional()
+      .describe(
+        'set_provider_enabled: true offers the provider for new tasks again, false stops it being offered. It takes effect at once, with no restart — and it is a machine-wide switch, so turning one off is a denial of service for the person’s other projects and turning one on re-enables a backend they deliberately disabled.',
+      ),
     automationId: z.string().min(1).max(128).optional(),
     automation: automationCreateFormSchema
       .optional()
@@ -1011,7 +1034,10 @@ function workspaceLimits(w: WorkspaceConfigResponse) {
  *     one person's window state, and this bag is not the leader's to read either.
  *   - a DISMISSED incident is reported as the provider's NAME, never the incident id the cockpit
  *     stores. An incident id is exactly what `get_capabilities` withholds (F-03), and a write is
- *     no reason to hand one back.
+ *     no reason to hand one back. One consequence is stated in the argument text rather than
+ *     hidden here (#753 re-check, Minor 1): the read, spread, write recipe cannot reach this key,
+ *     because the ids a write needs are the thing the read withholds — so a write of it replaces
+ *     every dismissal, and `{}` is how a leader clears them all.
  *   - `importedSkills` keeps its tri-state honestly: `null` is "never curated, every default
  *     skill shows", and `[]` is the real, curated empty list.
  * Unknown keys a newer cockpit stored round-trip in the FILE untouched (the bag is open by
@@ -1031,6 +1057,25 @@ function workspacePreferences(state: WorkspaceUiState) {
       .filter(([, incident]) => incident !== undefined)
       .map(([provider]) => provider),
   };
+}
+
+/**
+ * The provider rows, narrowed — the answer of `get_capabilities` and of BOTH provider writes
+ * (#677 B4), so a leader reads its own switch in the words it read the status in.
+ *
+ * Coarse state, the understandable reason and whether the provider is offered at all (F-03).
+ * Never a credential, an account, a login command, a `profileId` — and never the `authFailureId`:
+ * an incident id is the cockpit's own handle on a rejection, and a leader that could read one
+ * could clear an incident it never observed. `retry_provider` reads the current id INSIDE this
+ * module for exactly that reason and does not hand it back.
+ */
+function providerRows(response: ProviderStatusResponse) {
+  return response.providers.map((row) => ({
+    provider: row.provider,
+    status: row.status,
+    ...(row.enabled !== undefined ? { enabled: row.enabled } : {}),
+    ...(row.hint !== undefined ? { hint: row.hint } : {}),
+  }));
 }
 
 /** An account label is user text; one that looks like an email is an identity and is withheld. */
@@ -1157,13 +1202,57 @@ async function run(args: ProjectConfigInput & { action: ProjectConfigAction }, s
         })),
         // Coarse state and the understandable reason (F-03); never a credential, an account, a
         // login command or an incident id.
-        providers: providers.value.providers.map((row) => ({
-          provider: row.provider,
-          status: row.status,
-          ...(row.enabled !== undefined ? { enabled: row.enabled } : {}),
-          ...(row.hint !== undefined ? { hint: row.hint } : {}),
-        })),
+        providers: providerRows(providers.value),
       });
+    }
+
+    /**
+     * THE PROVIDER SWITCH (#677 wave 2 B4). The owner's rule of 2026-09-20 ("every key", with
+     * providers scoped to "on/off and retry only" at 07:41) reverses D-03-2: a leader turns a
+     * provider on or off through `PUT /providers/:provider/enabled`, the cockpit's own route, with
+     * its own param and body validators, its own `mergeWrite` into `~/.xezar/config.json` and its
+     * own `provider-status` event — so the change is live for the next task with no restart,
+     * exactly as a person's click is.
+     *
+     * Machine-wide, and the argument description says so: `disabledProviders` is one workspace
+     * key, so this leader's switch is every project's switch.
+     */
+    case 'set_provider_enabled': {
+      const answer = await settle<ProviderStatusResponse>(
+        s.api.providers[':provider'].enabled.$put({ param: { provider: args.provider! }, json: { enabled: args.enabled! } }),
+        [200],
+      );
+      return answer.ok ? ok(action, { providers: providerRows(answer.value) }) : fail(answer);
+    }
+
+    /**
+     * CLEARING AN AUTHENTICATION INCIDENT (#677 wave 2 B4), and the one place this door supplies a
+     * value rather than passing the leader's through.
+     *
+     * `POST /providers/:provider/retry` requires the `authFailureId` of the incident the caller
+     * OBSERVED — `clearRuntimeAuthFailure` refuses any other, so a stale retry cannot erase a
+     * rejection that arrived after recovery began. A leader cannot observe one: F-03 keeps the
+     * incident id out of every answer this module gives, and handing it out to take it back would
+     * be that boundary lost for a round trip. So the CURRENT id is read here, from the same
+     * `GET /providers/status` the cockpit's own card reads, and dispatched immediately. The
+     * route's guard survives intact: a rejection arriving between the read and the write is a
+     * different id, and the route answers its own 409.
+     *
+     * No incident is not an error of the leader's making, so it is an argument-level refusal that
+     * dispatches no write: retrying nothing would report a change that never happened.
+     */
+    case 'retry_provider': {
+      const status = await settle<ProviderStatusResponse>(s.api.providers.status.$get({ query: {} }), [200]);
+      if (!status.ok) return fail(status);
+      const incident = status.value.providers.find((row) => row.provider === args.provider)?.authFailureId;
+      if (incident === undefined) {
+        return invalid(action, `${args.provider} has no authentication incident to clear`);
+      }
+      const answer = await settle<ProviderStatusResponse>(
+        s.api.providers[':provider'].retry.$post({ param: { provider: args.provider! }, json: { authFailureId: incident } }),
+        [200],
+      );
+      return answer.ok ? ok(action, { providers: providerRows(answer.value) }) : fail(answer);
     }
 
     case 'get_account': {
@@ -1546,7 +1635,7 @@ export const projectConfigTool = defineTool({
   name: 'project_config',
   title: 'Project configuration',
   description:
-    "Read and change THIS project's own configuration: its settings (agent, models, system prompt, review gate, base branch, worktree retention, memory limit), its registry entry (concurrency cap and tags), prompt templates, in-repo agent config files, workflows, skills, GitHub automations and worktrees. It also reads the shared settings as effective limits and capabilities (get_limits, get_capabilities, get_account) and CHANGES them with set_workspace_config — the shared limits, composer defaults, follow-up inbox and environment passthrough, skills auto-update and the machine-wide agent defaults, which apply to every project on this machine, and the two workspace folder paths — the folder the file picker may browse and the folder new checkouts land in, each checked for real before anything is saved. The shared presentation preferences are read with get_workspace_ui_state and changed with set_workspace_ui_state (appearance, notifications, task-table columns, dismissed provider incidents) and import_skills (the curated list of default skills); an object-valued preference is replaced whole, so read it before you change one key of it. The colour theme is not among them — the browser stores that itself. Agent accounts, account identity, home files, the project registry and host folders are outside this boundary and are refused with the reason.",
+    "Read and change THIS project's own configuration: its settings (agent, models, system prompt, review gate, base branch, worktree retention, memory limit), its registry entry (concurrency cap and tags), prompt templates, in-repo agent config files, workflows, skills, GitHub automations and worktrees. It also reads the shared settings as effective limits and capabilities (get_limits, get_capabilities, get_account) and CHANGES them with set_workspace_config — the shared limits, composer defaults, follow-up inbox and environment passthrough, skills auto-update and the machine-wide agent defaults, which apply to every project on this machine, and the two workspace folder paths — the folder the file picker may browse and the folder new checkouts land in, each checked for real before anything is saved. The shared presentation preferences are read with get_workspace_ui_state and changed with set_workspace_ui_state (appearance, notifications, task-table columns, dismissed provider incidents) and import_skills (the curated list of default skills); an object-valued preference is replaced whole, so read it before you change one key of it. The colour theme is not among them — the browser stores that itself. The agent backends can be switched off and on for the whole machine with set_provider_enabled and their authentication incidents cleared with retry_provider. Connecting a provider, agent accounts, account identity, home files, the project registry and host folders are outside this boundary and are refused with the reason.",
   inputSchema: projectConfigInputSchema,
   annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
   async call(args, ctx: ProjectConfigContext) {
