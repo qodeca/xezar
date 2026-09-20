@@ -852,7 +852,7 @@
   {
     "name": "project_config",
     "title": "Project configuration",
-    "description": "Read and change THIS project's own configuration: its settings (agent, models, system prompt, review gate, base branch, worktree retention, memory limit), its registry entry (concurrency cap and tags), prompt templates, in-repo agent config files, workflows, skills, GitHub automations and worktrees. It also reads the shared settings as effective limits and capabilities (get_limits, get_capabilities, get_account) and CHANGES them with set_workspace_config — the shared limits, composer defaults, follow-up inbox and environment passthrough, skills auto-update and the machine-wide agent defaults, which apply to every project on this machine, and the two workspace folder paths — the folder the file picker may browse and the folder new checkouts land in, each checked for real before anything is saved. The shared presentation preferences are read with get_workspace_ui_state and changed with set_workspace_ui_state (appearance, notifications, task-table columns, dismissed provider incidents) and import_skills (the curated list of default skills); an object-valued preference is replaced whole, so read it before you change one key of it. The colour theme is not among them — the browser stores that itself. Agent accounts, account identity, home files, the project registry and host folders are outside this boundary and are refused with the reason.",
+    "description": "Read and change THIS project's own configuration: its settings (agent, models, system prompt, review gate, base branch, worktree retention, memory limit), its registry entry (concurrency cap and tags), prompt templates, in-repo agent config files, workflows, skills, GitHub automations and worktrees. It also reads the shared settings as effective limits and capabilities (get_limits, get_capabilities, get_account) and CHANGES them with set_workspace_config — the shared limits, composer defaults, follow-up inbox and environment passthrough, skills auto-update and the machine-wide agent defaults, which apply to every project on this machine, and the two workspace folder paths — the folder the file picker may browse and the folder new checkouts land in, each checked for real before anything is saved. The shared presentation preferences are read with get_workspace_ui_state and changed with set_workspace_ui_state (appearance, notifications, task-table columns, dismissed provider incidents) and import_skills (the curated list of default skills); an object-valued preference is replaced whole, so read it before you change one key of it. The colour theme is not among them — the browser stores that itself. The agent backends can be switched off and on for the whole machine with set_provider_enabled and their authentication incidents cleared with retry_provider. Connecting a provider, agent accounts, account identity, home files, the project registry and host folders are outside this boundary and are refused with the reason.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -870,6 +870,8 @@
             "get_workspace_ui_state",
             "set_workspace_ui_state",
             "get_capabilities",
+            "set_provider_enabled",
+            "retry_provider",
             "get_account",
             "list_agent_config",
             "read_agent_config",
@@ -899,9 +901,7 @@
             "reclaim_worktrees",
             "remove_worktree",
             "dismiss_onboarding_offer",
-            "set_provider_enabled",
             "connect_provider",
-            "retry_provider",
             "create_account",
             "update_account",
             "remove_account",
@@ -917,7 +917,7 @@
             "get_launch_key",
             "open_in_app"
           ],
-          "description": "What to do in the project this connection is bound to, plus the shared settings set_workspace_config changes and the shared presentation preferences set_workspace_ui_state and import_skills change, for every project on this machine. Actions outside that boundary (accounts, the project registry, host folders) are answered with a refusal that names the boundary."
+          "description": "What to do in the project this connection is bound to, plus the shared settings set_workspace_config changes, the shared presentation preferences set_workspace_ui_state and import_skills change and the provider switch set_provider_enabled and retry_provider change, for every project on this machine. Actions outside that boundary (accounts, the project registry, host folders, host processes such as connecting a provider) are answered with a refusal that names the boundary."
         },
         "projectId": {
           "description": "Never accepted: the project is the one this connection is bound to, and a call that names one is refused."
@@ -1323,7 +1323,7 @@
           "additionalProperties": false
         },
         "uiState": {
-          "description": "set_workspace_ui_state: the shared presentation preferences to change — they apply to every project on this machine. The keys are appearance (accent, density, width), notifications.enabled, taskTable.expandedColumns, importedSkills (the whole curated list) and dismissedProviderAuthFailures. A key you do not send is left alone, but a key you DO send is replaced WHOLE: appearance, taskTable and dismissedProviderAuthFailures are objects, and sending {appearance: {accent}} alone clears the person’s density and width. Read the bag with get_workspace_ui_state first and send the whole object back with your change in it — read, spread, write, exactly as the cockpit’s own panes do. The colour theme is not here: it is stored by the browser itself, not by the server.",
+          "description": "set_workspace_ui_state: the shared presentation preferences to change — they apply to every project on this machine. The keys are appearance (accent, density, width), notifications.enabled, taskTable.expandedColumns, importedSkills (the whole curated list) and dismissedProviderAuthFailures. A key you do not send is left alone, but a key you DO send is replaced WHOLE: appearance, taskTable and dismissedProviderAuthFailures are objects, and sending {appearance: {accent}} alone clears the person’s density and width. Read the bag with get_workspace_ui_state first and send the whole object back with your change in it — read, spread, write, exactly as the cockpit’s own panes do. That recipe does NOT reach dismissedProviderAuthFailures: the read reports the provider NAMES of the dismissed incidents and never the incident ids, which are the values a write needs, so any write of that key replaces every dismissal there is — send {} to clear them all, and leave the key out to keep them. The colour theme is not here: it is stored by the browser itself, not by the server.",
           "type": "object",
           "properties": {
             "appearance": {
@@ -1602,6 +1602,20 @@
         },
         "refresh": {
           "description": "get_capabilities: probe provider status now instead of serving the cached answer.",
+          "type": "boolean"
+        },
+        "provider": {
+          "description": "set_provider_enabled / retry_provider: which agent backend. Both apply to EVERY project on this machine, not only this one: turning a provider off stops it being offered for new tasks everywhere, and clearing an authentication incident clears the warning every project sees. Read the current state with get_capabilities first.",
+          "type": "string",
+          "enum": [
+            "claude",
+            "codex",
+            "opencode",
+            "pi"
+          ]
+        },
+        "enabled": {
+          "description": "set_provider_enabled: true offers the provider for new tasks again, false stops it being offered. It takes effect at once, with no restart — and it is a machine-wide switch, so turning one off is a denial of service for the person’s other projects and turning one on re-enables a backend they deliberately disabled.",
           "type": "boolean"
         },
         "automationId": {

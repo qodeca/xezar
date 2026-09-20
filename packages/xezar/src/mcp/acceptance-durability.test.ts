@@ -876,7 +876,8 @@ describe('A-22 — global administration and weakening gates, including by an ap
   // in B2: the owner's 2026-09-20 rule made the whole workspace SETTINGS write a leader write, and
   // `acceptance-parity.test.ts` P-45 holds it to the cockpit's own route, probe included.
   // `set_workspace_ui_state` and `import_skills` followed in B3, so the shared PREFERENCE bag is a
-  // leader write too; P-46 holds that one to the same route.
+  // leader write too; P-46 holds that one to the same route. `set_provider_enabled` and
+  // `retry_provider` followed in B4.
   const GLOBAL_ADMIN = [
     'create_account',
     'select_account',
@@ -884,7 +885,10 @@ describe('A-22 — global administration and weakening gates, including by an ap
     'apply_skill_updates',
     'add_project',
     'remove_project',
-    'retry_provider',
+    // `retry_provider` left this list with #677 B4 — clearing an authentication incident is a
+    // workspace write the owner opened. `connect_provider` takes its place: it is the provider
+    // action that still refuses, and for a different boundary (a login terminal on the host).
+    'connect_provider',
     'get_launch_key',
   ] as const;
 
@@ -922,6 +926,14 @@ describe('A-22 — global administration and weakening gates, including by an ap
     );
     expect(prefs.response.isError ?? false, 'workspace preferences').toBe(false);
     expect(prefs.dispatched, 'workspace preferences go through the cockpit’s own route').toEqual(['PUT /api/v1/workspace/ui-state']);
+    // And the PROVIDER SWITCH left it with #677 B4, with the same invariant again: one dispatch of
+    // the cockpit's own route, never a merge-write of `disabledProviders` at this door that would
+    // skip the route's validator, its `provider-status` event and its audit row.
+    const provider = await w.observe(() =>
+      w.call('a', 'project_config', { action: 'set_provider_enabled', operationId: 'op-a22-provider-0001', provider: 'claude', enabled: false }),
+    );
+    expect(provider.response.isError ?? false, 'provider switch').toBe(false);
+    expect(provider.dispatched, 'the provider switch goes through the cockpit’s own route').toEqual(['PUT /api/v1/providers/claude/enabled']);
     // The only change in A is the door's own audit record of each refused call (D-06 § 10).
     expect(snapshotChanges(beforeA, w.snapshot('a')).filter((line) => !line.includes('/audit.ndjson') && line !== '~ audit')).toEqual([]);
   });

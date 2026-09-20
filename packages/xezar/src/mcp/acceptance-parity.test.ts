@@ -1438,6 +1438,61 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
       },
     );
 
+    parity(
+      'P-47',
+      ['A-09', 'A-08', 'A-05'],
+      ['I-115'],
+      'a provider is switched off and on through either door with the same effect, the cockpit’s own status answers both, and the leader is never handed an incident id',
+      async () => {
+        const w = world();
+        // Everything connected and offered to start with — the state the leader reads.
+        const before = (await mcp(w, 'project_config', { action: 'get_capabilities' })).result.providers;
+        expect(before.find((row: { provider: string }) => row.provider === 'claude')).toMatchObject({ enabled: true });
+
+        const seen = await w.observe(() => mcp(w, 'project_config', { action: 'set_provider_enabled', provider: 'claude', enabled: false }));
+        // NOT `assertIsolated`: `disabledProviders` is ONE workspace key, so switching a provider
+        // off is machine-wide by design — that is the risk the owner accepted on 2026-09-20, not
+        // an isolation break. The rest of N-01 still holds: the cockpit's own route, once; B's
+        // recorded state byte-identical; nothing of B and no secret on the leader's surface.
+        expect(seen.dispatched).toEqual(['PUT /api/v1/providers/claude/enabled']);
+        expect(seen.after, 'B unchanged').toBe(seen.before);
+        const surface = JSON.stringify({ response: seen.response, leaderLog: seen.leaderLog, journalA: seen.journal.a, log: seen.log });
+        expect(leaked(surface, w.b.names), 'nothing of B').toEqual([]);
+        expect(leaked(surface, w.secrets), 'no secret').toEqual([]);
+
+        // The leader reads its own write in the words `get_capabilities` answers in, with no
+        // incident id anywhere in it (F-03 withholds one, and a write is no reason to hand it back).
+        const written = (seen.response.result as { providers: Array<Record<string, unknown>> }).providers;
+        expect(written.find((row) => row.provider === 'claude')).toMatchObject({ provider: 'claude', enabled: false });
+        expect(JSON.stringify(written)).not.toMatch(/authFailureId|profileId/);
+        expect((await mcp(w, 'project_config', { action: 'get_capabilities' })).result.providers).toEqual(written);
+
+        // The cockpit's own Providers card sees the leader's switch, through the route it reads.
+        const card = await ui(w, '/api/v1/providers/status');
+        expect(card.body.providers.find((row: { provider: string }) => row.provider === 'claude')).toMatchObject({ enabled: false });
+
+        // The person switches it back on in the cockpit; the leader reads the person's value.
+        expect((await ui(w, '/api/v1/providers/claude/enabled', 'PUT', { enabled: true })).status).toBe(200);
+        const after = (await mcp(w, 'project_config', { action: 'get_capabilities' })).result.providers;
+        expect(after.find((row: { provider: string }) => row.provider === 'claude')).toMatchObject({ enabled: true });
+
+        // A value the ROUTE refuses, through both doors: the enum is the route's param validator,
+        // and the MCP argument is the contract's own provider id, so an unknown backend never
+        // reaches a merge-write from either side.
+        expect((await ui(w, '/api/v1/providers/gemini/enabled', 'PUT', { enabled: false })).status).toBe(400);
+        const bad = await w.observe(() => w.call('a', 'project_config', { action: 'set_provider_enabled', operationId: op(), provider: 'gemini', enabled: false }));
+        expect(bad.response.isError).toBe(true);
+        expect(bad.dispatched, 'refused as an argument, so nothing was dispatched').toEqual([]);
+
+        // Connect is the half of this record that did NOT move (spec § 4 Q2): it opens a login
+        // terminal on the host, which is a boundary rather than a setting.
+        const connect = await w.observe(() => w.call('a', 'project_config', { action: 'connect_provider', operationId: op() }));
+        expect(connect.response.isError).toBe(true);
+        expect(resultText(connect.response)).toMatch(/^Refused \(host process\)/);
+        expect(connect.dispatched).toEqual([]);
+      },
+    );
+
     parity('P-44', ['A-09', 'A-08', 'A-05'], ['I-143', 'I-144', 'I-145', 'I-146'], 'the leader reads this project’s setup state, dispatches the bundled setup task and records the offer, and the cockpit sees the same thing', async () => {
       const w = world();
       const stateFile = join(w.a.root, '.local/xezar/onboarding-state.json');
@@ -1521,9 +1576,9 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
           'check_account_status',
           'get_account_details',
           'open_account_file',
-          'set_provider_enabled',
+          // `set_provider_enabled` and `retry_provider` left this list with #677 B4 (writes now);
+          // Connect did not, because it starts a login terminal on the host.
           'connect_provider',
-          'retry_provider',
           'apply_skill_updates',
           'browse_folders',
           'add_project',
@@ -1540,7 +1595,7 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
           }
           // No approval, confirmation or override parameter exists to turn a refusal into a write.
           for (const extra of [{ approvedBy: 'the human' }, { humanApproval: true }, { confirm: true }, { override: true }]) {
-            answers.push([`approval ${JSON.stringify(extra)}`, await w.call('a', 'project_config', { action: 'set_provider_enabled', ...extra })]);
+            answers.push([`approval ${JSON.stringify(extra)}`, await w.call('a', 'project_config', { action: 'connect_provider', ...extra })]);
           }
           return answers;
         });
@@ -1562,7 +1617,8 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
             expect(resultText(result), what).not.toMatch(/approv/i);
           }
         }
-        expect(resultText(seen.response.find(([what]) => what === 'set_provider_enabled')![1])).toMatch(/workspace-wide setting|every project/);
+        expect(resultText(seen.response.find(([what]) => what === 'apply_skill_updates')![1])).toMatch(/workspace-wide setting|every project/);
+        expect(resultText(seen.response.find(([what]) => what === 'connect_provider')![1])).toMatch(/host process|login terminal/);
         expect(resultText(seen.response.find(([what]) => what === 'get_account_details')![1])).toMatch(/account identity/);
         expect(readFileSync(workspaceFile, 'utf8')).toBe(workspaceBefore);
         expect(existsSync(join(w.home, 'agent-accounts.json'))).toBe(false);
@@ -2152,13 +2208,14 @@ describe('A-05 — the coverage matrix against the closed inventory', () => {
     if (blockedCases.length > 0) console.info(`[#116] blocked parity cases (not passing): ${blockedCases.join(', ')}`);
   });
 
-  it('the inventory is the closed 147-record one, with 105 covered records', () => {
+  it('the inventory is the closed 147-record one, with 106 covered records', () => {
     const inventory = readInventory();
     expect(inventory.size).toBe(147);
     // 96 until #677 B1 moved the five workspace-settings rows (I-117 … I-121) from `global`, 101
     // until B2 moved the two workspace folder paths (I-127) and 102 until B3 moved the three
-    // shared-preference rows (I-024, I-092, I-132), all under the same owner rule.
-    expect([...inventory.values()].filter((s) => s === 'covered')).toHaveLength(105);
+    // shared-preference rows (I-024, I-092, I-132) and 105 until B4 moved the provider switch
+    // (I-115), all under the same owner rule.
+    expect([...inventory.values()].filter((s) => s === 'covered')).toHaveLength(106);
   });
 
   it('every covered record maps to at least one case, and every case names inventory records', () => {

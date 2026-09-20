@@ -117,6 +117,13 @@ run.
   colour theme has no server route at all (the browser stores it), so there is nothing for either
   door to dispatch. That is recorded on the inventory row rather than as a coverage gap, because a
   gap names a covered outcome nothing serves — this is an outcome the product does not store.
+- **The provider switch.** P-47 proves the on/off half of I-115 (#677 B4) through both doors. It
+  does NOT exercise the RETRY half: this world's provider auth is stubbed as connected, so no
+  runtime authentication incident exists to clear. The per-tool suite
+  (`tools/project-config.test.ts`, "the provider switch") drives that half against a provider auth
+  that carries one — the incident cleared is the one the status route reported, a stale one is
+  answered by the route's own 409, and no answer carries the incident id. The other half of the
+  record that P-47 does not serve is Connect, which stays refused (P-29) for its own boundary.
 - **Hosted mode** is switched with `XEZ_REMOTE=1` in-process (P-27); a non-loopback bind is not
   exercised here.
 
@@ -213,7 +220,7 @@ run.
 | I-112 | global | P-29 |
 | I-113 | covered | P-26, P-27 |
 | I-114 | covered | P-18 |
-| I-115 | global | P-29 |
+| I-115 | covered | P-47, P-29 |
 | I-141 | covered | P-43 |
 | I-142 | covered | P-43 |
 | I-143 | covered | P-44 |
@@ -279,6 +286,7 @@ run.
 | P-28 | A-09, A-08, A-05 | I-128, I-129 | the bound project’s own cap and tags are written to its registry entry only, and each door sees the other’s |
 | P-45 | A-09, A-08, A-05 | I-117, I-118, I-119, I-120, I-121, I-127 | the workspace limits, composer defaults, skills auto-update, agent defaults and the two workspace folder paths are written through either door with the same effect, the same bound on a bad value and the same narrowed answer |
 | P-46 | A-09, A-08, A-05 | I-024, I-092, I-132 | the shared presentation preferences — appearance, notifications, folded columns and the curated skills list — are read and written through either door with the same effect, the route’s own bound on a bad value, and an answer that carries no incident id; an object-valued preference is sent whole, after the read, the way the panes send it |
+| P-47 | A-09, A-08, A-05 | I-115 | a provider is switched off and on through either door with the same effect, the cockpit’s own status answers both, and the leader is never handed an incident id |
 | P-44 | A-09, A-08, A-05 | I-143, I-144, I-145, I-146 | the leader reads this project’s setup state, dispatches the bundled setup task and records the offer, and the cockpit sees the same thing |
 | P-29 | A-09, A-11 | I-012, I-093, I-112, I-115, I-122, I-123, I-124, I-125, I-126, I-130, I-131 | every global-source, home-file, shared-account and host-folder write is refused with its boundary, dispatches nothing, and no approval parameter changes that |
 | P-30 | A-10, A-05 | I-033, I-041, I-045, I-049, I-052, I-053, I-054 | a result, its files, diff, commits and handoff read the same as the cockpit’s, with references and origin as fields, and `done` is not proof |

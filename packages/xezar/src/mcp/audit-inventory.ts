@@ -159,6 +159,10 @@ export const AUDIT_ACTIONS: readonly AuditActionRow[] = [
     ui: [put('/workspace/ui-state')],
   },
   { id: 'skills.applyUpdates', family: 'F10', mcp: ['project_config:apply_skill_updates'], ui: [post('/workspace/skills-update/apply')] },
+  // The provider switch followed with #677 B4: both MCP keys are real writes now, through the two
+  // routes below. Like the two rows above, the records needed no change — each already named both
+  // doors, and neither action was ever in `AUDIT_MCP_READS`, so a leader's switch and a person's
+  // click land on one action id. `provider.connect` below is the one that did NOT move.
   { id: 'provider.setEnabled', family: 'F10', mcp: ['project_config:set_provider_enabled'], ui: [put('/providers/:provider/enabled')] },
   { id: 'provider.retry', family: 'F10', mcp: ['project_config:retry_provider'], ui: [post('/providers/:provider/retry')] },
   { id: 'provider.connect', family: 'F10', mcp: ['project_config:connect_provider'], ui: [post('/providers/connect')] },

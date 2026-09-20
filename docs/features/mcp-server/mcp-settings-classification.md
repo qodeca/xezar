@@ -97,6 +97,20 @@ path or content: `modelsLocked` on `GET /api/v1/p/:projectId/config`
 
 ### D-03-2 — Provider enable/disable → `safe-effective-read` only
 
+> **SUPERSEDED, 2026-09-20 (#677 wave 2 slice B4).** The owner's rule of 2026-09-20 — *"Every
+> key"* — scoped by the owner at 07:41 the same day to *"On/off and retry only"*, reverses this
+> decision's write half: `project_config` `set_provider_enabled` toggles `enabled` and
+> `retry_provider` clears an authentication incident, both through the cockpit's own routes
+> (`PUT /providers/:provider/enabled`, `POST /providers/:provider/retry`), so the effect, the
+> validators and the refusals are the pane's. **Connect is NOT reversed and keeps its own row
+> below:** it opens a login terminal on the host, which is the `host-process` boundary rather than
+> a workspace setting, and the owner kept it person-only. The READ half of this decision is
+> untouched and is what makes the reversal safe to read: no answer carries a credential, an
+> account, a login command or an `authFailureId` — the retry reads the current incident id from
+> the status route inside the tool rather than accepting one. The decision below is kept verbatim
+> as the dated record of what was true on 2026-09-10; the full re-scope of this document is slice
+> B6.
+
 **Decision.** The leader reads which providers are usable and the understandable reason one is not
 (F-03). It may not toggle `enabled`.
 
@@ -232,9 +246,9 @@ and merged into that repo's own `.xezar/config.json` (`server.ts`).
 | `baseBranch` | project-write | This repo's branch base; `null` restores "follow checked-out branch". | E-BIND, E-CONTRACT (`workspace.ts:380`) | — |
 | Default agent picker — ACCOUNT half (`useSelectAgentProfile` → `PUT /workspace/agent-profiles/selection`) | safe-effective-read | **D-03-3.** Writes a global personal file and names an account identity. | E-409-PROFILE, E-BIND, E-NARROW; read through `selectionFor` (`agent-accounts.ts:280`) | Email/login/credential, `configDir`/`path`, other projects' selections, the machine-wide `defaults` map. |
 | Providers card — `status` and `hint` per provider (`GET /providers/status`) | safe-effective-read | F-03: the leader must know which dependencies are usable and why one is not. Coarse states only: `connected` / `disconnected` / `not-installed` / `unknown`. | `providerConnectionStateSchema` (`workspace.ts:465`); `ProviderAuth.status()` | Credentials, account identity, raw CLI output (the schema's own stated boundary), `profileId`, and the login `command` string. |
-| Providers card — `enabled` toggle (`PUT /providers/:provider/enabled`) | safe-effective-read | **D-03-2.** `disabledProviders` is workspace-wide. The leader reads `enabled`; it never writes it. | Workspace merge-write at `server.ts`; no MCP write path | The other projects that the same key governs — expressed as: the leader is told a provider is off, not offered the switch. |
+| Providers card — `enabled` toggle (`PUT /providers/:provider/enabled`) | safe-effective-read | **SUPERSEDED — the write half is reversed, 2026-09-20 (#677 B4); the status word stays until B6 re-scopes this document's vocabulary.** `disabledProviders` is still workspace-wide — that is now a stated risk rather than a refusal: the leader's switch denies its OTHER projects a backend, or re-enables one they disabled. The write is the cockpit's own route, and the gate that decides whether a new task may start reads the same key, so it is live with no restart. | `set_provider_enabled` → `PUT /providers/:provider/enabled`; workspace merge-write + `providerStatus` at `server.ts` | The `authFailureId`, the `profileId`, the login command, credentials, account identity and raw CLI output — the answer is the `get_capabilities` vocabulary. |
 | Providers card — Connect (`POST /providers/connect`) | excluded | Opens a **terminal on the host machine** (`openTerminal`, `server.ts`) and, with a `profileId`, names an account's absolute path. Section 3 excludes arbitrary operating-system processes; M-22 excludes global login sessions. | E-409-PROFILE for the named-account spelling (`server.ts`); no MCP path for either | Everything: the command, the path, and the terminal. |
-| Providers card — Try again (`POST /providers/:provider/retry`) | excluded | `clearRuntimeAuthFailure` clears a workspace-wide provider incident (`server.ts`), so project A's leader would clear project B's warning. The leader reports the blocker instead (F-09, F-22). | No MCP write path | — |
+| Providers card — Try again (`POST /providers/:provider/retry`) | excluded | **SUPERSEDED — reversed 2026-09-20 (#677 B4); the status word stays until B6 re-scopes this document's vocabulary**, under the same owner rule: `clearRuntimeAuthFailure` still clears a workspace-wide incident, and the leader may now clear it. It cannot clear an incident it never observed: the route accepts only the CURRENT `authFailureId`, which the tool reads from `GET /providers/status` inside the handler because F-03 keeps that id out of every leader-facing answer — so a rejection that arrives in between is answered by the route's own 409. | `retry_provider` → `POST /providers/:provider/retry`; `ProviderAuthService.clearRuntimeAuthFailure` | The `authFailureId` itself, in both directions: it is never served and never accepted as an argument. |
 | Providers card — Check again (refresh) | safe-effective-read | A refresh of the same coarse status; it spawns a probe, so MCP serves the cached answer and refreshes only on explicit demand, as `GET /workspace/agent-profiles` already does for its own listing (`server.ts`). | `GET /providers/status?refresh=1` (`server.ts`) | Same as the `status` row. |
 | `dismissedProviderAuthFailures` (workspace ui-state) | excluded | Workspace-wide record of which incident a BROWSER dismissed (presentation). Nothing about execution depends on it. | `workspaceUiStateSchema.dismissedProviderAuthFailures` (`workspace.ts:241`) | — |
 
@@ -470,7 +484,11 @@ this list names the keys the schemas name, never the keys they permit.
 > - **A dismissed incident is answered as a provider NAME, never its id.** The write's answer is
 >   narrowed the same way every other answer here is: the incident id `dismissedProviderAuthFailures`
 >   stores is what F-03 withholds from `get_capabilities`, and a write is no reason to hand one
->   back. `sidebar` and `lastLocation` are not part of the answer either.
+>   back. `sidebar` and `lastLocation` are not part of the answer either. **One consequence, stated
+>   here because the recipe above does not hold for this one key** (#753 re-check, Minor 1): read,
+>   spread, write cannot reach `dismissedProviderAuthFailures`, because the ids a write needs are
+>   exactly what the read withholds. A write of that key therefore replaces EVERY dismissal there
+>   is — `{}` clears them all, and leaving the key out is how they are kept.
 >
 > The bounds and the 128 KiB body cap are the ROUTE's, inherited rather than copied: a list of more
 > than 200 skill names, more than 50 folded columns or an over-sized body is refused by

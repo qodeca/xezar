@@ -590,6 +590,25 @@ export const providerStatusResponseSchema = z.object({
 });
 export type ProviderStatusResponse = z.infer<typeof providerStatusResponseSchema>;
 
+/**
+ * `PUT /api/v1/providers/:provider/enabled` body (#677 wave 2 B4). One definition, validated by
+ * the route as middleware and re-used by the MCP door's `set_provider_enabled` for its key set —
+ * the two used to be a schema in `server.ts` and a hand-written twin would have been the second
+ * copy AGENTS.md § The HTTP API forbids. Strict: an unknown key is a 400, not a silently dropped
+ * field, because "the provider is off now" must never be answered for a body that said something
+ * else.
+ */
+export const setProviderEnabledInputSchema = z.strictObject({ enabled: z.boolean() });
+export type SetProviderEnabledInput = z.infer<typeof setProviderEnabledInputSchema>;
+
+/**
+ * `POST /api/v1/providers/:provider/retry` body (#677 wave 2 B4). `authFailureId` names the
+ * incident the caller actually observed, so a stale retry cannot erase a rejection that arrived
+ * after recovery began (`ProviderAuthService.clearRuntimeAuthFailure`).
+ */
+export const retryProviderInputSchema = z.strictObject({ authFailureId: z.string().min(1).max(128) });
+export type RetryProviderInput = z.infer<typeof retryProviderInputSchema>;
+
 /** `POST /api/v1/providers/connect` — either a terminal was handed the login command, or the
  *  provider turned out to be connected already. Every other outcome is a 409/500 carrying the
  *  same `command` for the clipboard fallback. */

@@ -348,17 +348,24 @@ describe('the saved four-door audit harness (#306 part 2)', () => {
     expect(otherRecords[0]).toMatchObject({ origin: 'ui', action: 'project.registry.add', outcome: { status: 'applied' } });
     matrix.push({ door: 'ui', family: 'F9', action: 'project.registry.add', outcome: 'applied' });
 
-    // F10 — workspace: MCP refuses the provider switch, and APPLIES both writes the owner's
-    // 2026-09-20 rule opened — the settings (#677 B1/B2) and the shared preference bag (B3).
-    // Both outcomes, through the same audit action ids the cockpit door uses.
-    await once('mcp', { family: 'F10', action: 'provider.setEnabled', outcome: 'refused', reason: 'workspace_settings' }, () =>
-      mcp('project_config', { action: 'set_provider_enabled', operationId: operationId() }));
+    // F10 — workspace: MCP refuses the global skills-update apply, and APPLIES every write the
+    // owner's 2026-09-20 rule opened — the settings (#677 B1/B2), the shared preference bag (B3)
+    // and the provider switch (B4). Both outcomes, through the same audit action ids the cockpit
+    // door uses.
+    await once('mcp', { family: 'F10', action: 'skills.applyUpdates', outcome: 'refused', reason: 'workspace_settings' }, () =>
+      mcp('project_config', { action: 'apply_skill_updates', operationId: operationId() }));
+    await once('mcp', { family: 'F10', action: 'provider.setEnabled', outcome: 'applied' }, () =>
+      mcp('project_config', { action: 'set_provider_enabled', operationId: operationId(), provider: 'claude', enabled: false }));
     await once('mcp', { family: 'F10', action: 'workspace.uiState.set', outcome: 'applied' }, () =>
       mcp('project_config', { action: 'set_workspace_ui_state', operationId: operationId(), uiState: { appearance: { accent: 'violet' } } }));
     // A REAL host path through the leader's door, so the next assertion has a needle to look for
-    // (independent review of #748, Minor 4): the browse root is this cockpit's own folder, which
-    // exists and is writable, so the route's probe accepts it.
-    const auditedBrowseRoot = c.root;
+    // (independent review of #748, Minor 4): a folder inside this cockpit's own, which exists and
+    // is writable, so the route's probe accepts it. Its own named segment rather than `c.root`
+    // itself (#677 B4): the project ID is a SLUG of the root's basename, so whenever `mkdtemp`
+    // happened to draw an all-lowercase suffix the two were equal and the "nor its last segment"
+    // assertion failed on every record's `projectId` — a real flake, roughly one run in thirty.
+    const auditedBrowseRoot = join(c.root, 'AuditedBrowseRoot');
+    mkdirSync(auditedBrowseRoot, { recursive: true });
     await once('mcp', { family: 'F10', action: 'workspace.config.set', outcome: 'applied' }, () =>
       mcp('project_config', {
         action: 'set_workspace_config',
@@ -386,6 +393,18 @@ describe('the saved four-door audit harness (#306 part 2)', () => {
     // The control: the path really was written, so the assertion above is about a record that has
     // something to hide rather than about a write that never happened.
     expect(JSON.parse((await http('GET', '/workspace/config')).body).browseRoot).toBe(auditedBrowseRoot);
+    // The same action through the COCKPIT door, and the one difference between the two records
+    // (#677 B4): the route carries `fieldNames: true`, so the cockpit's row names the body's keys
+    // and still never a value, while the MCP row above carries neither. Drop that option from
+    // `ui.route('provider.setEnabled', …)` and the `fieldNames` assertion goes red.
+    await once('ui', { family: 'F10', action: 'provider.setEnabled', outcome: 'applied' }, () =>
+      http('PUT', '/providers/claude/enabled', { enabled: true }));
+    const setEnabled = records(c.dataDir).filter((row) => row.action === 'provider.setEnabled');
+    expect(setEnabled.map((row) => row.origin)).toEqual(['mcp', 'ui']);
+    expect(setEnabled[1]!.fieldNames, 'the cockpit door names the fields').toEqual(['enabled']);
+    expect(setEnabled[1]!.payloadDigest, 'the value itself is a digest').toMatch(/^[0-9a-f]{64}$/);
+    expect(setEnabled[1], 'and never the value').not.toHaveProperty('payload');
+    expect(setEnabled[0], 'the MCP door records no field names').not.toHaveProperty('fieldNames');
     await once('ui', { family: 'F10', action: 'workspace.uiState.set', outcome: 'applied' }, () => http('PUT', '/workspace/ui-state', {}));
     await once('ui', { family: 'F10', action: 'account.update', outcome: 'refused', reason: 'http_404' }, () =>
       http('PATCH', '/workspace/agent-profiles/no-such-account', { label: 'x' }));

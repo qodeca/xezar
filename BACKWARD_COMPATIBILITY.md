@@ -1140,7 +1140,11 @@ every workspace limit as a safe effective read a leader could see and never chan
   merge is shallow at the TOP level only, so the three object-valued keys (`appearance`,
   `taskTable`, `dismissedProviderAuthFailures`) are sent WHOLE and a partial one clears the rest
   of its own object: the supported recipe is read, spread, write, exactly as the cockpit's panes
-  do it, and `get_workspace_ui_state` is what makes it possible from this door. Three exclusions are part of the decision and none of them is a
+  do it, and `get_workspace_ui_state` is what makes it possible from this door. **That recipe does
+  not reach `dismissedProviderAuthFailures`, and the argument text now says so** (#753 re-check,
+  Minor 1): the read reports the provider NAMES of the dismissed incidents and withholds the
+  incident ids a write needs, so any write of that key replaces every dismissal there is — `{}`
+  clears them all, and leaving the key out keeps them. Three exclusions are part of the decision and none of them is a
   new refusal: the colour THEME is not a stored setting at all (the browser keeps it in
   `localStorage`, with no server route to dispatch), the per-repo composer-memory keys are one
   browser's preselection memory, and the two LEGACY keys of the same file, `sidebar` and
@@ -1180,3 +1184,47 @@ every workspace limit as a safe effective read a leader could see and never chan
   agent-config write still 409s on the same hosted app — so adding a 409 here later is a visible,
   named break rather than a silent change of mind, and it would be a change for both doors at
   once with its own entry here.
+
+## The MCP `project_config` tool turns agent backends off and on (#677 wave 2 B4) — deliberate, 0.17.0
+
+The second documented product boundary of this wave is reversed here, by the same owner rule of
+2026-09-20 on #677 ("every key"), scoped by the owner at 07:41 the same day to "on/off and retry
+only". Until 0.17.0 the actions `set_provider_enabled` and `retry_provider` existed only to
+REFUSE: both answered `Refused (workspace-wide setting)` and dispatched nothing.
+
+- **Changed**: both are real writes. `set_provider_enabled` takes `provider` and `enabled` and
+  dispatches `PUT /api/v1/providers/:provider/enabled`; `retry_provider` takes `provider` and
+  dispatches `POST /api/v1/providers/:provider/retry`. Both are the cockpit's own routes, with
+  their own param and body validators, the same `mergeWrite` of `disabledProviders` into
+  `~/.xezar/config.json`, the same `provider-status` event and the same refusals. The switch is
+  **machine-wide and takes effect with no restart**: the gate that decides whether a new task may
+  start reads the same key, so a provider a leader turns off stops being offered for the next task
+  at once — in EVERY project on that machine. Turning one on re-enables a backend the person
+  deliberately disabled. That exposure is the decision, not an oversight.
+- **Unchanged**: nothing is removed, and a leader that never calls either action behaves exactly
+  as before. `connect_provider` is still refused and its boundary is unchanged — `host-process`,
+  because it opens a login terminal on the person's machine (owner, 2026-09-20 07:41). The refusal
+  vocabulary, the boundary ids and `get_capabilities` are untouched.
+- **The incident id is withheld in BOTH directions.** `retry_provider` takes no `authFailureId`
+  argument: F-03 keeps that id out of every answer a leader gets, so it could never name one. The
+  tool reads the CURRENT id from `GET /api/v1/providers/status` inside the handler and hands it to
+  the route, which still accepts only the incident the caller observed — a rejection arriving
+  between the read and the write is answered with the route's own 409, unrewritten. No answer of
+  either action, or of `get_capabilities`, carries an `authFailureId` or a `profileId`.
+- **What a reader could notice**: the audit trail can now hold `provider.setEnabled` and
+  `provider.retry` rows with origin `mcp`. Both rows already existed for the cockpit door. The MCP
+  record carries the action id, the operation key and a payload DIGEST — never the field values,
+  and not the field names either. The cockpit door's record for those two routes now carries the
+  body's field NAMES as well (`fieldNames: true`, as every other settings write of that door
+  already did): names only, never a value, so the trail says the switch was written without saying
+  which way.
+- **Two request schemas moved to `packages/contract`** with no change of shape:
+  `setProviderEnabledInputSchema` and `retryProviderInputSchema` replace the copies that were
+  declared in `server.ts`, so the route and the MCP door validate against one definition
+  (AGENTS.md § The HTTP API). The wire contract, the bounds and the 400 messages are identical.
+- **Hosted mode permits both writes, through BOTH doors**, for the reason recorded above for the
+  workspace-settings write: neither provider route is a `localHandoffRoute`, none was added, and a
+  test pins the ALLOWED behaviour so a later 409 would be a visible, named break.
+- **The record of the old decision is kept, not deleted**: D-03-2 and the I-115 ruling stay in
+  `docs/features/mcp-server/mcp-settings-classification.md` and
+  `docs/features/mcp-server/mcp-ui-action-inventory.md` verbatim, beside the new one, dated.

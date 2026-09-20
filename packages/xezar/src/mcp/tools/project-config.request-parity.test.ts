@@ -135,6 +135,10 @@ describe('every MCP write action accepts what its route accepts', () => {
    * Every one of them is a candidate for a later wave; none may sit here without a sentence.
    */
   const UNPAIRED: Record<string, string> = {
+    set_provider_enabled:
+      'its body IS the contract schema (`setProviderEnabledInputSchema`, which this PR moved out of `server.ts` for exactly that reason), but it is not a keyed request OBJECT on the tool: the one key travels as the flat `enabled` argument beside the provider id, so there is no shape to compare key-for-key. The route and the door read the same schema, so there are no two copies to drift.',
+    retry_provider:
+      'takes a provider id and no body of its own: the route’s `authFailureId` is read from `GET /providers/status` inside the handler, because F-03 keeps an incident id out of every answer a leader gets and therefore out of its arguments too.',
     import_skills:
       'sends one KEY of the workspace ui-state body (`importedSkills`), not a keyed request object of its own; the schema it reuses IS the contract one (`workspaceUiStateSchema.shape.importedSkills`), and the full bag is paired above as `set_workspace_ui_state`.',
     set_prompt_templates:

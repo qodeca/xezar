@@ -325,9 +325,10 @@ describe('the composed MCP service, through the real bridge and socket', () => {
     const client = agent(c.root);
 
     // Refused before any effect, and the tool says so in its structured answer (spec § 6.2).
-    // `set_workspace_ui_state` left this case with #677 B3 (it is a write now); the provider
-    // switch is the `workspace-settings` boundary that is still refused.
-    const boundary = await client.call('project_config', { action: 'set_provider_enabled', operationId: 'op-compose-0031' });
+    // `set_workspace_ui_state` left this case with #677 B3 and the provider switch with B4 (both
+    // are writes now); applying globally installed skill updates is the `workspace-settings`
+    // boundary that is still refused.
+    const boundary = await client.call('project_config', { action: 'apply_skill_updates', operationId: 'op-compose-0031' });
     expect(boundary.isError, JSON.stringify(boundary)).toBe(true);
     expect(boundary.structuredContent, JSON.stringify(boundary)).toBeDefined();
     expect(boundary.structuredContent).toMatchObject({ refused: true, boundary: 'workspace-settings' });
@@ -345,7 +346,7 @@ describe('the composed MCP service, through the real bridge and socket', () => {
     expect(failed.isError, JSON.stringify(failed)).toBe(true);
 
     expect(auditLines(c.dataDir).map((entry) => [entry.seq, entry.action, entry.outcome])).toEqual([
-      [1, 'provider.setEnabled', { status: 'refused', reason: 'workspace_settings' }],
+      [1, 'skills.applyUpdates', { status: 'refused', reason: 'workspace_settings' }],
       [2, 'run.cancel', { status: 'refused', reason: 'not_found' }],
       [3, 'run.start', { status: 'applied' }],
     ]);
