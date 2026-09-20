@@ -39,11 +39,33 @@ const STORE_OPEN = /\b(?:RunStore\.open|new RunStore)\s*\(\s*(?:join\s*\(\s*)?([
 const DIR_REMOVAL = /\brm(?:Sync|dirSync)\s*\(\s*(?:join\s*\(\s*)?([A-Za-z_$][\w$]*)/;
 
 /**
- * The file tells the store to stop writing. Either spelling counts: the shared helper, or a
- * direct `close()`. `flush()` deliberately does NOT — it writes the index out and leaves the
- * store armed for the next `touch()`, which is exactly the gap `close()` exists to fill.
+ * The variable a `RunStore` open bound: the assignment target of `RunStore.open(dir)` or
+ * `new RunStore(dir)`, so `const store = …`, `let store = …` and a bare `store = …` all count. A
+ * call with no binding (`RunStore.open(dir).getRun(…)`) binds nothing and contributes none.
  */
-const LETS_GO = /closeStoreAndRemove|\.close\(\)/;
+const STORE_BINDING = /(?:(?:const|let|var)\s+)?([A-Za-z_$][\w$]*)\s*=\s*(?:RunStore\.open|new RunStore)\s*\(/g;
+
+/** A regex-safe copy of a source identifier (identifiers are `\w`, but `$` is not). */
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * The file tells THAT store to stop writing — `store.close()`, or `closeStoreAndRemove(store, …)`
+ * on the same variable the open bound. `flush()` deliberately does NOT: it writes the index out
+ * and leaves the store armed for the next `touch()`, which is exactly the gap `close()` exists to
+ * fill.
+ *
+ * A `.close()` on ANYTHING ELSE — an http server, a watcher, a service handle — is not the store
+ * letting go. The original rule cleared a file on any `.close()` at all, which is how seven
+ * fixtures with a genuinely unclosed store stayed invisible to this scan (#765 re-check, Minor 2),
+ * so the exemption is scoped to the store's own variable rather than to the file.
+ */
+function letsGo(source: string, storeVars: readonly string[]): boolean {
+  return storeVars.some((name) =>
+    new RegExp(`\\b${escapeRegExp(name)}\\.close\\s*\\(`).test(source)
+    || new RegExp(`closeStoreAndRemove\\s*\\(\\s*${escapeRegExp(name)}\\b`).test(source));
+}
 
 /** This file: every `RunStore.open(` and `rmSync(` below is a synthetic probe, not a fixture. */
 const SELF = 'src/runs/store-fixture-scan.test.ts';
@@ -61,7 +83,12 @@ export function findingsIn(file: string, source: string): Finding[] {
   const dirs = new Set<string>();
   STORE_OPEN.lastIndex = 0;
   for (let m = STORE_OPEN.exec(source); m; m = STORE_OPEN.exec(source)) dirs.add(m[1]!);
-  if (dirs.size === 0 || LETS_GO.test(source)) return [];
+  if (dirs.size === 0) return [];
+
+  const storeVars = new Set<string>();
+  STORE_BINDING.lastIndex = 0;
+  for (let m = STORE_BINDING.exec(source); m; m = STORE_BINDING.exec(source)) storeVars.add(m[1]!);
+  if (letsGo(source, [...storeVars])) return [];
 
   const findings: Finding[] = [];
   source.split('\n').forEach((raw, index) => {
@@ -145,6 +172,31 @@ const GRANDFATHERED = [
   'src/workflows/workspace-semaphore.test.ts',
 ];
 
+/**
+ * Pre-existing fixtures the ORIGINAL rule hid behind an unrelated `.close()`.
+ *
+ * `LETS_GO` used to clear a file on ANY `.close()` — an http server, a watcher, a service handle —
+ * so a fixture whose store was never closed still read as clean because it closed something else
+ * (#765 re-check, Minor 2). Scoping the exemption to the store variable surfaced these seven. They
+ * carry exactly the shape the 69 above carry — a store opened over a directory the fixture removes,
+ * never closed — and the same store-side vanished-directory branch covers them. They are listed
+ * rather than routed for the same reason the 69 are: routing is a mechanical change across whole
+ * suites, and it is optional. Like the list above, this one only shrinks: an entry that stops
+ * matching must be deleted.
+ */
+const SURFACED_BY_SCOPING = [
+  'src/mcp/acceptance-durability.test.ts',
+  'src/mcp/event-catalog.test.ts',
+  'src/mcp/leader-delivery-regressions.test.ts',
+  'src/mcp/leader-delivery.testkit.ts',
+  'src/mcp/tools/task-reads.test.ts',
+  'src/server/mcp-leader-topic.test.ts',
+  'test/unit/mcp-durability.test.ts',
+];
+
+/** Every known fixture of the shape: the original 69 plus the seven the scoped exemption surfaced. */
+const KNOWN = [...GRANDFATHERED, ...SURFACED_BY_SCOPING];
+
 function sourceFiles(dir: string, found: string[] = []): string[] {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const path = join(dir, entry.name);
@@ -170,13 +222,14 @@ function scan(): { scanned: number; findings: Finding[] } {
 
 describe('no NEW fixture removes a run store’s directory without letting the store go', () => {
   it('finds nothing the grandfather list does not already carry', () => {
-    const known = new Set(GRANDFATHERED);
+    const known = new Set(KNOWN);
     const fresh = scan().findings.filter((f) => !known.has(f.file));
     expect(
       fresh.map((f) => `packages/xezar/${f.file}:${f.line}  ${f.code}`),
       'This fixture opens a RunStore over a directory it then removes, without closing the store ' +
         'first. Use closeStoreAndRemove(store, dir) from runs/store.testkit.ts — it closes, then ' +
-        'removes. Do not add an entry to GRANDFATHERED: that list only shrinks.',
+        'removes. Do not add an entry to GRANDFATHERED or SURFACED_BY_SCOPING: those lists hold ' +
+        'pre-existing fixtures and only shrink.',
     ).toEqual([]);
   });
 
@@ -193,7 +246,7 @@ describe('no NEW fixture removes a run store’s directory without letting the s
   it('has no stale grandfather entry', () => {
     const matched = new Set(scan().findings.map((f) => f.file));
     expect(
-      GRANDFATHERED.filter((file) => !matched.has(file)),
+      KNOWN.filter((file) => !matched.has(file)),
       'A grandfathered fixture no longer matches — it was routed or deleted. Remove its entry.',
     ).toEqual([]);
   });
@@ -206,12 +259,28 @@ describe('no NEW fixture removes a run store’s directory without letting the s
     expect(findingsIn('probe.test.ts', source)).toEqual([]);
   });
 
-  it('a direct close() clears a file, and flush() does not', () => {
+  it('a direct close() of the store clears a file, and flush() does not', () => {
     const closed = ['const store = RunStore.open(dataDir);', 'store.close();', 'rmSync(dataDir, { recursive: true });'].join('\n');
     expect(findingsIn('probe.test.ts', closed)).toEqual([]);
 
+    // The variable the open bound, not the literal name `store`: this is the same fact.
+    const named = ['const opened = RunStore.open(dataDir);', 'opened.close();', 'rmSync(dataDir, { recursive: true });'].join('\n');
+    expect(findingsIn('probe.test.ts', named)).toEqual([]);
+
     const flushed = ['const store = RunStore.open(dataDir);', 'store.flush();', 'rmSync(dataDir, { recursive: true });'].join('\n');
     expect(findingsIn('probe.test.ts', flushed).map((f) => f.line)).toEqual([3]);
+  });
+
+  // BREAK-671-SCAN-ANY-CLOSE. Before the exemption was scoped, this probe was GREEN: `srv.close()`
+  // matched the old `LETS_GO` and the scan stopped looking, so a fixture that never closed its
+  // store read as clean. An unrelated handle closing is not the store letting go.
+  it('an unrelated close() does not clear a file — only the store’s own close does', () => {
+    const unrelated = ['const store = RunStore.open(dataDir);', 'srv.close();', 'rmSync(dataDir, { recursive: true });'].join('\n');
+    expect(findingsIn('probe.test.ts', unrelated).map((f) => f.line)).toEqual([3]);
+
+    // The helper on a DIFFERENT variable is not this store letting go either.
+    const otherStore = ['const store = RunStore.open(dataDir);', 'closeStoreAndRemove(other, dataDir);', 'rmSync(dataDir, { recursive: true });'].join('\n');
+    expect(findingsIn('probe.test.ts', otherStore).map((f) => f.line)).toEqual([3]);
   });
 
   it('flags the shape the flake came from, and only that shape', () => {

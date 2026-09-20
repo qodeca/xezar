@@ -135,20 +135,56 @@ const PALETTE_PRESS_ATTEMPTS = 3
 const PALETTE_PRESS_WINDOW_MS = 1500
 
 /**
- * Open the ⌘K palette and land focus in its input.
+ * The palette dialogs, found by ROLE and accessible name rather than a markup hook — the same
+ * fact `command-palette.e2e.ts` reads, and the one Radix keeps in sync with its own open state.
+ * A bare `[cmdk-root]` presence check cannot tell an OPEN palette from one still mounted for its
+ * exit animation, and that distinction is the whole defect below.
+ */
+const paletteDialogs = `[...document.querySelectorAll('[role="dialog"]')].filter((dialog) => document.getElementById(dialog.getAttribute('aria-labelledby') ?? '')?.textContent === 'Command palette')`
+/** The palette is in the document — open, or mid-exit. */
+const paletteMounted = `(${paletteDialogs}.length > 0)`
+/** The palette is mid-exit: the node is still there, but a press would reopen it, not remount it. */
+const paletteClosing = `(${paletteDialogs}.some((dialog) => dialog.getAttribute('data-state') === 'closed'))`
+
+/**
+ * Open the ⌘K palette and land focus in its combobox.
  *
- * The single press this used to fire was UNRECOVERABLE when it was lost: the only wait was
- * `document.activeElement?.hasAttribute('cmdk-input')`, which spends its whole 25 s budget on a
- * palette that never opened, and nothing ever pressed again (2 CI runs: 35325364095 attempt 1,
- * 35411288411). So the press is repeated until the palette ROOT exists — a real state change —
- * and only then does the focus wait run, at full budget. That split matters: a palette that IS
- * up and does not take the keyboard is a real defect and must still fail, not be pressed away.
+ * Two properties, both earned from a real failure rather than added defensively.
  *
- * "Did the press land" is a yes/no question `waitForFunction` cannot ask (it throws instead of
- * answering "not yet"), so the page arms its own short window and one wait covers both answers.
+ * **A press never lands while the palette is closing.** Radix keeps a dialog mounted through its
+ * exit animation and unmounts it only at the end; a ⌘K that arrives in that window flips the SAME
+ * node back to open, and its focus-on-open — which is what puts focus in the input — never runs
+ * again because the node never unmounted. The palette then sits open with `document.activeElement`
+ * on `BODY` for the whole 25 s wait. That is #671: CI run 35526301088 failed at
+ * `progressive-history.e2e.ts:459` with the diagnostics showing `dialog-content`, `command-input`
+ * and `palette-task` present, and the reproduction here captures
+ * `REDPROOF activeElement was: "BODY slot="` with the palette open. Waiting for the palette's own
+ * CLOSED state before pressing makes the next open a genuine mount, which is what focuses the
+ * input.
+ *
+ * **Focus is asserted through the input's role**, `combobox`, not a `cmdk-input` attribute on
+ * `document.activeElement`. A palette that IS up and still does not take the keyboard is a real
+ * defect and must fail — the role wait keeps that; it just reads the fact the accessibility tree
+ * exposes instead of a cmdk implementation hook.
+ *
+ * The press can still be lost to the browser's own Ctrl+K accelerator (2 CI runs: 35325364095
+ * attempt 1, 35411288411), so it stays bounded and repeated — but only ever from a state where the
+ * palette is genuinely gone. "Did the press land" is a yes/no question `waitForFunction` cannot
+ * ask (it throws instead of answering "not yet"), so the page arms its own short window and one
+ * wait covers both answers.
  */
 async function openCommandPalette(): Promise<void> {
   for (let attempt = 0; attempt < PALETTE_PRESS_ATTEMPTS; attempt += 1) {
+    // Wait out an exit animation first. This is the page's own ready signal: the palette is not
+    // ready to be opened until the previous one is gone, and pressing earlier is what left focus
+    // on BODY.
+    browser.waitForFunction(`!(${paletteClosing})`)
+    // A press from the previous attempt that landed late (after the window closed) leaves the
+    // palette up here; take its focus rather than pressing again and toggling it shut.
+    if (browser.evaluate(paletteMounted) === true) {
+      browser.waitForFunction(`document.activeElement?.getAttribute('role') === 'combobox'`)
+      return
+    }
     // Focus is parked on <body> first so the palette's focus return on close cannot scroll the
     // destination transcript (unchanged from the single press this replaces). The window is
     // armed in the same call: `setTimeout`, not `requestAnimationFrame`, because a throttled
@@ -161,10 +197,10 @@ async function openCommandPalette(): Promise<void> {
     })()`)
     browser.press('Control+k')
     browser.waitForFunction(
-      `document.querySelector('[cmdk-root]') !== null || window.__xezPalettePressWindowClosed === true`,
+      `(${paletteMounted}) || window.__xezPalettePressWindowClosed === true`,
     )
-    if (browser.evaluate(`document.querySelector('[cmdk-root]') !== null`) === true) {
-      browser.waitForFunction(`document.activeElement?.hasAttribute('cmdk-input') === true`)
+    if (browser.evaluate(paletteMounted) === true) {
+      browser.waitForFunction(`document.activeElement?.getAttribute('role') === 'combobox'`)
       return
     }
   }
