@@ -14,12 +14,13 @@ function tableRows(source: string, firstCell: RegExp): string[] {
 describe('browser dry-run documentation register', () => {
   it('cites only lower-level tests that exist on disk', () => {
     const register = readFileSync(registerPath, 'utf8')
-    const testPaths = [...register.matchAll(/`(packages\/[^`\s]+\.test\.(?:ts|tsx))`/g)].map((match) => match[1])
+    const testPaths = [...register.matchAll(/`(packages\/[^`\s]+\.test\.(?:ts|tsx))`/g)]
+      .map((match) => match[1])
+      .filter((path): path is string => path !== undefined)
 
     expect(testPaths.length).toBeGreaterThan(0)
     for (const testPath of testPaths) {
-      expect(testPath, `register cites ${testPath}`).toBeDefined()
-      expect(existsSync(join(repoRoot, testPath!)), `register cites ${testPath}`).toBe(true)
+      expect(existsSync(join(repoRoot, testPath)), `register cites ${testPath}`).toBe(true)
     }
   })
 
