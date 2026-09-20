@@ -956,12 +956,22 @@ as before.
   step's rules and the marker vocabulary are untouched. The repair turn takes its own step's
   `timeout` through `stepTimeoutMs`, so an absent `timeout` still resolves to the runner's
   30-minute default (§4's protected surface) rather than the Continue path's uncapped `0`.
-- **Not covered**: a return whose resume is unavailable — no recorded session id, a recorded
-  backend that differs from the one now resolved, or a different agent account (`profileId`) —
-  falls back to today's fresh spawn INSIDE the same return, announced by a `note` and without
-  consuming a second attempt. An unreachable session is an environment fact, not a repair round.
-  No contract schema, route, config key or env var changes, and `xezar run` headless takes the
-  same path.
+- **Not covered**: a return whose resume is unavailable falls back to today's fresh spawn INSIDE
+  the same return, with the whole brief, announced by a `note` and without consuming a second
+  attempt. An unreachable session is an environment fact, not a repair round. Five cases, all of
+  them this same exit: no recorded session id; a recorded backend that differs from the one now
+  resolved; a different agent account (`profileId`); a backend whose runner cannot resume at all
+  (OpenCode always opens a new conversation, so a recorded id there is never treated as
+  resumable); and a resume the backend refuses at RUNTIME — a `startSession` throw, or a session
+  error before the model produced any text or tool call, such as a conversation the backend has
+  forgotten. A resumed turn that DID work and then failed is a failed step exactly as before, and
+  is never silently re-run. No contract schema, route, config key or env var changes, and
+  `xezar run` headless takes the same path.
+- **Not broken, token accounting**: a step's recorded `tokensUsed` still totals the whole step. On
+  a backend that reports the session's cumulative figure rather than this execution's own (Codex),
+  a resumed repair turn records that figure as the total instead of adding it to what the step had
+  already spent — the same number a fresh return would have produced, not twice the first
+  execution.
 
 ## An OpenCode step that stays silent after a refused permission ends `failed` (#692) — deliberate, 0.17.0
 

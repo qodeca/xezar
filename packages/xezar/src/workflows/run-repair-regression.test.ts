@@ -6,8 +6,8 @@ import type { AgentRunResult, AgentRunSpec } from '../core/agent-runner.ts';
 import * as factory from '../core/runner-factory.ts';
 import { RunStore, type RunRecord } from '../runs/store.ts';
 import { RunManager } from './run.ts';
-import { scriptedRunner } from './engine-incidents.testkit.ts';
-import type { WorkflowDef } from './types.ts';
+import { scriptedRunner, type ScriptedTurn } from './engine-incidents.testkit.ts';
+import type { WorkflowDef, WorkflowStepDef } from './types.ts';
 
 const roots: string[] = [];
 const managers: RunManager[] = [];
@@ -173,8 +173,18 @@ if (name === 'readiness' && !fs.existsSync('ready')) process.exit(1);`);
 describe('the cheap return after a red check (#676)', () => {
   const TASK = 'repair-the-gate-brief';
 
-  /** author agent + a `gates` check that exits non-zero its first `failures` times. */
-  function cheapFixture(failures: number, turns = 3) {
+  /**
+   * author agent + a `gates` check that exits non-zero its first `failures` times.
+   * `script` replaces the default "every turn says XEZ:DONE" tape — one entry per spawn, so a
+   * turn can be made to fail the way a real backend fails. `authorStep` merges into the author
+   * step definition (a per-step `runner`, for the backends that cannot resume at all).
+   */
+  function cheapFixture(
+    failures: number,
+    turns = 3,
+    script?: ScriptedTurn[],
+    authorStep: Partial<WorkflowStepDef> = {},
+  ) {
     const root = mkdtempSync(join(tmpdir(), 'xez-676-'));
     roots.push(root);
     writeFileSync(join(root, 'check.cjs'), `const fs = require('node:fs');
@@ -186,10 +196,10 @@ if (n <= ${failures}) { console.log('GATE-RED-' + n + ' the failing gate output'
     stores.push(store);
     const manager = new RunManager(store, root);
     managers.push(manager);
-    const runner = scriptedRunner(Array.from({ length: turns }, () => ({})));
+    const runner = scriptedRunner(script ?? Array.from({ length: turns }, () => ({})));
     const workflow: WorkflowDef = {
       name: 'cheap-return', source: 'file', steps: [
-        { id: 'author', prompt: '{{task}}' },
+        { id: 'author', prompt: '{{task}}', ...authorStep },
         { id: 'gates', command: 'node check.cjs', onFail: { retry: 'author', max: 2 } },
       ],
     };
@@ -254,6 +264,11 @@ if (n <= ${failures}) { console.log('GATE-RED-' + n + ' the failing gate output'
   it.each([
     { name: 'no recorded session', patch: { sessionId: undefined }, note: 'no session was recorded' },
     { name: 'the session belongs to another backend', patch: { backend: 'pi' as const }, note: 'recorded session belongs to pi' },
+    // Review round 1, Major 3: the condition the spec called "the one most likely to be skipped,
+    // and the one whose failure is silent" — `sessionId` and `profileId` are a pair, and a resume
+    // that reads another account's config dir finds no session and starts fresh WITHOUT saying so.
+    // It is the only one of the three resolved inside `runAgentStep`, after the account is known.
+    { name: 'the session belongs to another agent account', patch: { profileId: 'someone-else' }, note: 'agent account someone-else' },
   ])('falls back to a fresh spawn without consuming a return: $name', async ({ patch, note }) => {
     const { store, manager, runner, workflow } = cheapFixture(2);
     const notes: string[] = [];
@@ -280,6 +295,112 @@ if (n <= ${failures}) { console.log('GATE-RED-' + n + ' the failing gate output'
       expect(runner.specs.map(s => s.resume === true)).toEqual([false, false, false]);
       expect(runner.specs[1]?.userPrompt).toContain(TASK);
       expect(notes.some(message => message.includes(note))).toBe(true);
+    } finally {
+      runner.restore();
+    }
+  }, 30_000);
+
+  /**
+   * Review round 1, Major 1. A recorded session id proves nothing about a backend whose runner
+   * ignores `spec.resume`: `opencode-server-runner.ts` `bootstrap()` always `POST /session`s and
+   * never adopts `spec.sessionId`, so a "resumed" repair turn there would be a brand-new
+   * conversation told that its brief "is earlier in this conversation". Eligibility is decided
+   * from what the runner can do, so the whole brief goes out and the note names the backend.
+   */
+  it('a backend whose runner cannot resume takes the fresh spawn, and says which backend', async () => {
+    const { store, manager, runner, workflow } = cheapFixture(2, 3, undefined, { runner: 'opencode' });
+    const notes: string[] = [];
+    try {
+      const run = manager.startRun(workflow, { task: TASK, worktree: false });
+      await settled(store, run.id);
+      for (const event of store.readEvents(run.id)) {
+        if ((event as { type?: string }).type === 'note') notes.push(String((event as { message?: string }).message ?? ''));
+      }
+      expect(store.getRun(run.id)?.status).toBe('done');
+      // The step DID record a session id — that is exactly what must not be mistaken for "resumable".
+      expect(store.getRun(run.id)?.steps.find(s => s.id === 'author')?.sessionId).toBeTruthy();
+      expect(runner.specs).toHaveLength(3);
+      expect(runner.specs.map(s => s.resume === true)).toEqual([false, false, false]);
+      // Return #1 carries the whole brief, exactly as it did before #676.
+      expect(runner.specs[1]?.userPrompt).toContain(TASK);
+      expect(runner.specs[1]?.userPrompt).toContain('GATE-RED-1 the failing gate output');
+      expect(notes.some(message => message.includes('the opencode runner cannot resume'))).toBe(true);
+      // And never the sentence that tells the model its brief is already in the conversation.
+      expect(notes.some(message => message.includes('repair turn — resuming'))).toBe(false);
+    } finally {
+      runner.restore();
+    }
+  }, 30_000);
+
+  /**
+   * Review round 1, Major 2. The reviewer's probe: the resumed turn comes back with the message a
+   * real `claude -p --resume <forgotten id>` prints. Before the fix the run ended `failed` with 2
+   * spawns; the accepted spec, the PR body, the BC entry and the changelog all promised the fresh
+   * spawn instead. It happens inside the SAME return, so there are still exactly two returns.
+   */
+  it('a resume the backend refuses at runtime falls back to the fresh spawn in the same return', async () => {
+    const { store, manager, runner, workflow } = cheapFixture(1, 3, [
+      {},
+      { error: 'No conversation found with session ID: gone' },
+      {},
+    ]);
+    const notes: string[] = [];
+    try {
+      const run = manager.startRun(workflow, { task: TASK, worktree: false });
+      await settled(store, run.id);
+      for (const event of store.readEvents(run.id)) {
+        if ((event as { type?: string }).type === 'note') notes.push(String((event as { message?: string }).message ?? ''));
+      }
+      // The run reaches its normal terminal path instead of dying on an environment fact.
+      expect(store.getRun(run.id)?.status).toBe('done');
+      expect(store.getRun(run.id)?.error).toBeUndefined();
+      expect(runner.specs).toHaveLength(3);
+      expect(runner.specs.map(s => s.resume === true)).toEqual([false, true, false]);
+      // The third spawn is the fresh one this return owed: whole brief plus the failing output.
+      expect(runner.specs[2]?.resume).toBeFalsy();
+      expect(runner.specs[2]?.sessionId).not.toBe(runner.specs[1]?.sessionId);
+      expect(runner.specs[2]?.userPrompt).toContain(TASK);
+      expect(runner.specs[2]?.userPrompt).toContain('GATE-RED-1 the failing gate output');
+      expect(notes.some(message =>
+        message.includes('refused the recorded session') && message.includes('No conversation found'))).toBe(true);
+      // The fall-back is a second backend SESSION, and `UiEventSink` latches `ended` — reusing one
+      // sink for both would drop the fresh execution's whole v2 stream, its own close included.
+      // Three closes on the author step is what proves the second sink exists: the original
+      // execution, then the refused resume's error, then the fresh turn's clean end. With one
+      // shared sink the last of those never reaches the NDJSON.
+      const closes = store.readEvents(run.id).filter(event =>
+        (event as { type?: string; stepId?: string }).type === 'session.ended'
+        && (event as { stepId?: string }).stepId === 'author');
+      expect(closes.map(event => (event as { reason?: string }).reason)).toEqual(['end_turn', 'error', 'end_turn']);
+    } finally {
+      runner.restore();
+    }
+  }, 30_000);
+
+  /**
+   * Review round 1, Minor 1 — VERIFIED by reading, then pinned here. Codex reports
+   * `thread/tokenUsage/updated` → `tokenUsage.total.totalTokens`, the THREAD's cumulative figure
+   * (`codex-app-server-runner.ts:527-531`, `tokenTotal` at `:674-678`). A `thread/resume` keeps
+   * counting on the same thread, so the figure the resumed repair turn reports already contains
+   * everything the first execution spent: adding the step's stored total to it, the way every
+   * other runner's per-execution figure must be added, bills the first execution twice.
+   */
+  it('a resumed repair turn on a cumulative-reporting backend does not double count its tokens', async () => {
+    const { store, manager, runner, workflow } = cheapFixture(
+      1,
+      2,
+      // Execution 1 spends 1 000. The resumed turn spends 500 more and reports the thread total.
+      [{ tokensUsed: 1_000 }, { tokensUsed: 1_500 }],
+      { runner: 'codex' },
+    );
+    try {
+      const run = manager.startRun(workflow, { task: TASK, worktree: false });
+      await settled(store, run.id);
+      expect(store.getRun(run.id)?.status).toBe('done');
+      expect(runner.specs).toHaveLength(2);
+      expect(runner.specs[1]?.resume).toBe(true);
+      // 1 500, the thread's own total — never 1 000 + 1 500.
+      expect(store.getRun(run.id)?.steps.find(s => s.id === 'author')?.tokensUsed).toBe(1_500);
     } finally {
       runner.restore();
     }

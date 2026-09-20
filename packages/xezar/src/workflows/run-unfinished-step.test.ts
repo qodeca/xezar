@@ -164,6 +164,13 @@ process.exit(1);
       expect(invocations.length).toBeGreaterThanOrEqual(2);
       expect(invocations[0]).not.toContain('--resume');
       expect(invocations[1]).toContain('--resume');
+      // The flag alone would also be satisfied by a resume of some OTHER conversation. The id is
+      // the assertion: `--session-id <x>` pins the first invocation's conversation, `--resume <x>`
+      // reopens that same one.
+      const pinned = invocations[0]?.[(invocations[0]?.indexOf('--session-id') ?? -1) + 1];
+      const reopened = invocations[1]?.[(invocations[1]?.indexOf('--resume') ?? -1) + 1];
+      expect(pinned).toMatch(/^[0-9a-f-]{36}$/);
+      expect(reopened).toBe(pinned);
     } finally {
       if (saved === undefined) delete process.env.XEZ_MOCK_ARGS_FILE;
       else process.env.XEZ_MOCK_ARGS_FILE = saved;
