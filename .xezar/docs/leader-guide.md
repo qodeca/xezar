@@ -221,7 +221,24 @@ because a head that moved since the brief makes the brief's exact-head guard sta
   memory 2026-09-16).
 - A model never reviews its own work. For `risk-high` work the reviewer runs on a different account,
   and on a different vendor when one has quota. The verdict names the author model and the reviewer
-  model (`.xezar/docs/model-routing.md` § 3).
+  model (`.xezar/docs/model-routing.md` § 3). A brief built with `fromFindings` (below) names the
+  reviewer's model for you, and the tool refuses a fix task — or any agent step of one — that would
+  run on that same backend-and-model pair. That refusal states the rule; it does not replace it. It
+  is a NAME check, so a tier alias and the dated id it resolves to are not collapsed: name a
+  different backend when independence has to be certain rather than merely stated.
+- **Build a response or re-check brief from the reviewer's own findings, not by hand.** The three
+  reviewing roles record their findings machine-readably on the task record, so read them with
+  `task_read view=task` rather than from a transcript, and pass the ones the task is to address to
+  `task_create` action `start` as `fromFindings: {runId, ids, role?}` — `runId` is the reviewing
+  task, `ids` are its finding ids, and `role` is needed only when two reports of that task use one
+  id. The rendered text carries the role, the reviewed commit, the reviewer's model, the link to the
+  full review and the findings themselves; your own `prompt` is appended whole after them, so your
+  adjudication never reads as one more finding. It refuses rather than approximates: an id the task
+  does not record refuses the whole call listing what was missing, and an unreadable, absent or
+  archived reviewing task is a named refusal, never an empty brief. `fromFindings` chooses WHICH
+  findings a task addresses; it does not dispose of them — the per-finding fix / record / decline
+  discipline above is unchanged. A report that left findings out says so in the brief; read the full
+  review before closing anything out.
 - Every Major or Blocker claim from a weaker model is verified by Opus before it reaches the owner. A
   merge-blocking claim is re-proven on `main` with a throwaway test; a claim that already carries its
   own red proof needs a careful read, not a second proof (`.xezar/docs/model-routing.md` § 7).

@@ -65,7 +65,18 @@ Order matters: post the comment, then attempt the labels, then write the packet.
   "summary": "<one or two sentences, at most 2000 characters>",
   "recordedAt": "<ISO-8601, now>",
   "evidenceUrl": "<optional: the URL of the comment you posted>",
-  "labels": { "requestedAdd": [], "requestedRemove": [], "observed": [], "state": "verified" }
+  "labels": { "requestedAdd": [], "requestedRemove": [], "observed": [], "state": "verified" },
+  "findings": [
+    {
+      "id": "B-1",
+      "severity": "major",
+      "file": "packages/web/src/routes/settings/agents-section.tsx",
+      "title": "the destructive action has no confirmation step",
+      "body": "Removing an account applies on the first click, with no undo and no confirm."
+    },
+    { "id": "NB-1", "severity": "minor", "title": "the dark theme drops the card border at the narrow width" }
+  ],
+  "findingsOmitted": 0
 }
 ```
 
@@ -82,6 +93,23 @@ Order matters: post the comment, then attempt the labels, then write the packet.
 A failed label operation never changes your verdict. A posted `FAIL` stays `FAIL` with `unavailable` label evidence.
 
 Bounds the engine enforces: at most 40 KB, a regular file and never a symlink, and `taskId`/`stepId` must be this task and this step. A packet failing any of them records a refusal on the task and yields no verdict at all — the leader then sees "refused", which is what it should see.
+
+#### The findings
+
+`findings` is the machine-readable half of the findings your `## Design review` comment already carries. Write it from the SAME working list you wrote the comment from — never by parsing your own comment back, and never into a second file. The comment's `B-n` and `NB-n` numbering IS the `id`, so a person can match the two without a tool.
+
+- `severity` is lower-case `blocker`, `major`, `minor` or `nit`. A blocking `B-n` is `blocker` or `major`; a non-blocking `NB-n` is `minor` or `nit`.
+- `file` is the mockup or view the finding is about (`designs/<feature>/…`, `packages/web/src/routes/…`), absent for a whole-flow finding. A theme or width finding names the view and omits `line`; a `line` without a `file` is refused.
+- `title` is one headline. `body` is ONE sentence — the rule it breaks, the state and the capture stay in the comment, which `evidenceUrl` addresses.
+- `fingerprint` is optional and is stable ACROSS reports for the same defect: derive it from `file`, `severity` and `title`, never from the line.
+- `findings` and `findingsOmitted` are a PAIR — write both or neither. Absent `findings` means you reported none IN THIS FORM; it is not "there were none" and it is not a pass.
+- **`PASS WITH FOLLOW-UPS` is the verdict whose findings must survive.** Its follow-ups go in `findings` as `minor`, or `major` when they gate anything, and the verdict is still never written as `PASS`.
+
+**A bounded list is counted, never silently short.** At most 20 findings, and at most 16 KB of serialized `findings`; a packet over either bound is refused whole and costs you the report. When you have more than fits, order by severity (`blocker`, `major`, `minor`, `nit`) and then by the order they appear in the comment, so a blocking finding is never what gets dropped; include what fits; set `findingsOmitted` to the number left out; and add this sentence to the posted comment:
+
+`N findings are in this comment and not in the machine-readable packet`
+
+The comment always carries EVERY finding. `findingsOmitted` is `0` when the list is complete, and is never left out.
 
 ## Shared contract
 

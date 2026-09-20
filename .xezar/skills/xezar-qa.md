@@ -36,7 +36,19 @@ Order matters: post the comment, then attempt the labels, then write the packet.
   "summary": "<one or two sentences, at most 2000 characters>",
   "recordedAt": "<ISO-8601, now>",
   "evidenceUrl": "<optional: the URL of the comment you posted>",
-  "labels": { "requestedAdd": ["qa-approved"], "requestedRemove": ["needs-qa"], "observed": ["qa-approved"], "state": "verified" }
+  "labels": { "requestedAdd": ["qa-approved"], "requestedRemove": ["needs-qa"], "observed": ["qa-approved"], "state": "verified" },
+  "findings": [
+    {
+      "id": "f1",
+      "severity": "minor",
+      "file": "src/routes/settings.tsx",
+      "line": 88,
+      "title": "the saved toast stays up after the panel closes",
+      "body": "It survives a navigation away and has to be dismissed by hand."
+    },
+    { "id": "f2", "severity": "nit", "title": "the empty list reads as a loading state" }
+  ],
+  "findingsOmitted": 0
 }
 ```
 
@@ -53,6 +65,23 @@ Order matters: post the comment, then attempt the labels, then write the packet.
 A failed label operation never changes your verdict. A posted `FAIL` stays `FAIL` with `unavailable` label evidence — the hard block does not weaken because `gh` did.
 
 Bounds the engine enforces: at most 40 KB, a regular file and never a symlink, and `taskId`/`stepId` must be this task and this step. A packet failing any of them records a refusal on the task and yields no verdict at all — the leader then sees "refused", which is what it should see.
+
+### The findings
+
+`findings` is the machine-readable half of the findings your `## QA` comment already carries. Write it from the SAME working list you wrote the comment from — never by parsing your own comment back, and never into a second file. Finding *n* of the comment's list is `"id": "f<n>"` here, in the same order with the same severities, so a person can match the two without a tool.
+
+- `severity` is lower-case `blocker`, `major`, `minor` or `nit`.
+- `file` is repo-relative and `line` is the first line of the finding's location. Omit both when the finding is about a flow rather than a place in the tree; a `line` without a `file` is refused.
+- `title` is one headline. `body` is ONE sentence — the steps, the output and the evidence stay in the comment, which `evidenceUrl` addresses.
+- **The disposition is not a packet field.** *confirmed fixed*, *filed as #n* and *accepted, because …* belong in the comment, which is where the leader reads them. The packet carries the finding, not its fate.
+- `fingerprint` is optional and is stable ACROSS reports for the same defect: derive it from `file`, `severity` and `title`, never from the line, so a re-run against a changed tree does not report a carried-over finding as new.
+- `findings` and `findingsOmitted` are a PAIR — write both or neither. Absent `findings` means you reported none IN THIS FORM; it is not "there were none" and it is not a pass. A `PASS` with outstanding low-severity findings writes them (`minor` / `nit`), exactly as the comment already must; a `PASS` with `findings` absent is silence, not cleanliness.
+
+**A bounded list is counted, never silently short.** At most 20 findings, and at most 16 KB of serialized `findings`; a packet over either bound is refused whole and costs you the report. When you have more than fits, order by severity (`blocker`, `major`, `minor`, `nit`) and then by the order they appear in the comment, so a blocker is never what gets dropped; include what fits; set `findingsOmitted` to the number left out; and add this sentence to the posted comment:
+
+`N findings are in this comment and not in the machine-readable packet`
+
+The comment always carries EVERY finding. `findingsOmitted` is `0` when the list is complete, and is never left out.
 
 ## Shared contract
 

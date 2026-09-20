@@ -566,15 +566,18 @@ interface FindingsRefusal {
 /**
  * A backend and the model resolved for it. `''` is the runner's own settings deciding.
  *
- * `identity` is the record's own canonical `provider/model` (`RunRecord.modelIdentity`, #405 —
- * what ACTUALLY served the turn) when the side carrying this pair recorded one. It is the
- * COMPARISON key and never the display text: `model` stays the string a person named, so the brief
- * says `codex/gpt-5.6-sol` rather than `codex/openai/gpt-5.6-sol`.
+ * There is deliberately NO recorded-identity field here. `RunRecord.modelIdentity` (#405) looks
+ * like the right comparison key — it is what ACTUALLY served a turn — but the engine re-writes it
+ * on EVERY agent spawn (`workflows/run.ts`, "re-write it here, from the resolved step identity"),
+ * so on a chain it describes whichever step ran LAST, not the step whose verdict is being read.
+ * Preferring it made the guard accept a fix on the reviewing step's own engine while the brief
+ * printed that very engine, and refuse a genuinely independent one with a self-contradicting
+ * sentence. The step's stamped backend plus the canonical mapper over the named model is the pair
+ * that belongs to the report, and it is the only one compared.
  */
 interface EnginePair {
   readonly runner: Runner;
   readonly model: string;
-  readonly identity?: string;
 }
 
 function pairText(pair: EnginePair): string {
@@ -585,8 +588,9 @@ function pairText(pair: EnginePair): string {
  * The one string the independence guard compares per side. A raw string compare made
  * `anthropic/opus` and `opus ` two different models from `opus`, so the engine's single canonical
  * mapper (`model-identity.ts`, #405) resolves both sides instead — the same parser every runner
- * splits with, so the guard cannot grow a second opinion about who serves a model. A recorded
- * `modelIdentity` wins over the named string, because it is what ran.
+ * splits with, so the guard cannot grow a second opinion about who serves a model. Both sides are
+ * keyed the same way: the model as it was NAMED, canonicalised. See {@link EnginePair} for why the
+ * record's own `modelIdentity` is not consulted.
  *
  * WHAT THIS DOES NOT COLLAPSE, and cannot: a tier alias and the dated id it currently resolves to
  * (`opus` vs `claude-opus-5`), and a context-window variant (`opus[1m]`). Those are different
@@ -601,15 +605,14 @@ function pairText(pair: EnginePair): string {
  * naming question into a start failure.
  */
 function modelKey(pair: EnginePair): string {
-  const recorded = pair.identity?.trim();
-  if (recorded) return recorded.toLowerCase();
   const raw = pair.model.trim();
   if (raw === '') return '';
   try {
     const resolved = resolveModelIdentity(pair.runner, raw);
     return resolved === undefined ? '' : formatModelIdentity(resolved).toLowerCase();
   } catch {
-    return raw;
+    // The fallback is keyed like every other branch: `Opus ` and `opus` are one name, not two.
+    return raw.toLowerCase();
   }
 }
 
@@ -655,12 +658,11 @@ function reviewerPair(
     }
   }
   const runner = recorded ?? defaultRunner ?? 'claude';
-  // A step's pinned model is this step's own, so the task-level `modelIdentity` does not describe
-  // it and is deliberately not carried alongside it.
+  // The model is the one this step was NAMED with — its own pin first, then the task's. The
+  // record's `modelIdentity` is NOT consulted: it is the last spawned step's identity, not this
+  // step's (see {@link EnginePair}), so on a chain it describes a step that is not this report's.
   if (pinned?.model !== undefined) return { runner, model: pinned.model };
-  if (record.model !== undefined) {
-    return { runner, model: record.model, ...(record.modelIdentity === undefined ? {} : { identity: record.modelIdentity }) };
-  }
+  if (record.model !== undefined) return { runner, model: record.model };
   return { runner, model: defaultModel(runner, defaults) };
 }
 
@@ -794,7 +796,7 @@ function renderFindings(input: {
     // as the whole review would close the task with the rest of the findings still open.
     const omitted =
       verdict.findingsOmitted !== undefined && verdict.findingsOmitted > 0
-        ? `\n\nthe reviewer left ${verdict.findingsOmitted} findings out of this list – read the full review`
+        ? `\n\nthe reviewer left ${verdict.findingsOmitted} finding${verdict.findingsOmitted === 1 ? '' : 's'} out of this list – read the full review`
         : '';
     blocks.push(`${header}\n\n${findings.map(findingLine).join('\n')}${omitted}`);
   }
@@ -815,24 +817,42 @@ function renderFindings(input: {
  * indented to the item's continuation column AND quoted. A list marker, a heading or a blank line
  * inside a quote block stays inside it: the body can style itself however it likes and still cannot
  * become a sibling item, a section heading or an unattributed paragraph.
+ *
+ * `file` is folded on exactly the same terms. The contract bounds it and refuses an empty one, but
+ * it does not refuse a line break inside it — so a `file` of `src/x.ts\n2. [blocker] …` forged the
+ * very item `title` and `body` no longer can. Every free-text field of a finding leaves this
+ * function on one line, or inside a quote block, and there is no third kind.
  */
 function findingLine(finding: TaskVerdictFinding, index: number): string {
   const line = finding.line === undefined ? '' : `:${finding.line}`;
-  const where = finding.file === undefined ? '' : `${finding.file}${line} — `;
+  const where = finding.file === undefined ? '' : `${oneLine(finding.file)}${line} — `;
   const head = `${index + 1}. [${finding.severity}] ${where}${oneLine(finding.title)}`;
   return finding.body === undefined ? head : `${head}\n${quoted(finding.body)}`;
 }
 
-/** Free text as a single line: every run of whitespace containing a newline becomes one space. */
+/**
+ * What the two functions below both count as ending a line, declared once so they cannot disagree.
+ *
+ * `\n` and `\r` are the obvious pair. U+2028 (line separator) and U+2029 (paragraph separator) are
+ * the ones that get forgotten: a Markdown renderer and a reading agent may both break on them, so
+ * a fold that handles only `\n` leaves the forged-item hole open through a rarer glyph. `\r\n` is
+ * listed first where it matters, so one Windows line ending is one break rather than two.
+ */
+const LINE_BREAK = '[\\n\\r\\u2028\\u2029]';
+const FOLDABLE = new RegExp(`\\s*${LINE_BREAK}\\s*`, 'g');
+// No `g` flag: `split` ignores it, and a shared global regex carries `lastIndex` between calls.
+const SPLIT_LINES = new RegExp(`\\r\\n|${LINE_BREAK}`);
+
+/** Free text as a single line: every run of whitespace containing a line break becomes one space. */
 function oneLine(text: string): string {
-  return text.replace(/\s*\n\s*/g, ' ').trim();
+  return text.replace(FOLDABLE, ' ').trim();
 }
 
 /** Free text as an indented quote block under a numbered item — one `> ` line per line, blanks kept
  *  as a bare `>` so the block stays contiguous and no empty line can end the item. */
 function quoted(text: string): string {
   return text
-    .split(/\r\n|\r|\n/)
+    .split(SPLIT_LINES)
     .map((line) => `${CONTINUATION}>${line === '' ? '' : ` ${line}`}`)
     .join('\n');
 }
