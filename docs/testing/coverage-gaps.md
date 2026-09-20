@@ -44,7 +44,7 @@ File counts re-counted on `bb271fc`, 2026-09-15 (source inventory, not a new ful
 | Contract unit | `npm test` (project `contract`) | vitest, node env | yes | 4 files |
 | node:test core | `npm run test:unit` | node:test | yes | 14 files, `packages/xezar/test/unit/` |
 | Packaged CLI e2e | `npm run test:package` | node:test | yes | 5 files, `packages/xezar/test/e2e/` |
-| Browser e2e | `npm run test:e2e` | vitest + agent-browser + real Chrome | yes – its own `ui-e2e` job (#128) | 39 files, `packages/web/e2e/` |
+| Browser e2e | `npm run test:e2e` | vitest + agent-browser + real Chrome | yes – its own `ui-e2e` job (#128) | 66 files, `packages/web/e2e/` (re-counted 2026-09-20) |
 | Manual QA | `needs-qa` label | human | n/a | `SDLC.md` § The QA gate |
 | Design review | `needs-design` label + `## Design review` comment | design reviewer (human or `design-review` workflow) | n/a | `SDLC.md` § The design gate |
 

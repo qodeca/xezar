@@ -275,6 +275,47 @@ to know the other seeds the same file — but a THIRD spec doing the same must s
 registry it found, not the single-project default, or it silently undoes whichever of the two
 ran first.
 
+### Runtime ceilings
+
+The suite's two runtime ceilings are anchored to one measured run and rounded up from it, not to a
+target. Both use the same run: CI run 35512713688 (head `ce02630c`, 2026-09-20), the whole suite at
+**66 `*.e2e.ts` files**, reporting `Test Files 66 passed (66)`,
+`Tests 453 passed | 6 skipped (459)` and `Duration 996.22s` — 17 min 26 s of its job's 30-minute
+budget.
+
+- **Whole suite: 1 200 s.** 996.22 s measured on the GitHub-hosted x64 runner times 1.2 —
+  996.22 × 1.2 = 1 195.5, rounded up to 1 200. The 20 % is a chosen margin, not a measured spread:
+  the second recorded whole-suite measurement, 433.71 s at 53 files locally on Apple silicon, is
+  context for the 2.3× local-versus-CI gap, not the derivation, and it is exactly why this number
+  must never be read as a runner-speed allowance. It is headroom for a slower runner, never a
+  target. `npm run test:e2e` is the command it bounds.
+- **Any single `*.e2e.ts` file: 60 s.** Roughly 2× the worst real file, `screenshot-states.e2e.ts`
+  at 30.9 s (the worst guide file is `guide-02-running-a-task.e2e.ts` at 14.0 s). It coincides
+  with the per-test `testTimeout: 60_000` in `packages/web/e2e/vitest.config.ts`, which bounds one
+  test and one hook — never a whole file, which is why the per-file ceiling is stated separately.
+- **The CI job: 30 min, unchanged.** `.github/workflows/ci.yml`'s `ui-e2e` job
+  (`timeout-minutes: 30`) is a ceiling rather than a target: a suite that needs more is a
+  regression worth failing on.
+
+**The suite's stability rule (AC-5 of #549, as amended 2026-09-20).** A flaky browser spec is
+**rebuilt**, never quarantined: rebuild the wait on real state. Never a retry, a `.retry`, a
+sleep, a widened timeout, or a register. A red `ui-e2e` job that names a spec is evidence rather
+than noise — two reds a re-run appeared to clear in this suite turned out to be deterministic
+failures.
+
+One pre-existing exception predates this rule and the rule does not reach it: `guide-browser.ts`'s
+`clickRoleWhenStable` (`packages/web/e2e/guide-browser.ts:279`) retries a covered click in a loop
+(40 attempts, 250 ms apart, default) as a bounded stability poll on real geometry — not a re-run of
+a failed test — and `packages/web/src/e2e-guide-browser-retry.test.ts` pins that retry. It is named
+here rather than changed: this rule governs the waits the suite adds, and that helper is older than
+it.
+
+`packages/web/src/e2e-runtime-ceiling.test.ts` holds both ceiling lines and every documented
+`*.e2e.ts` file count to the directory: it goes red when a ceiling line disappears, and when any
+document that states the count disagrees with `readdirSync` over `packages/web/e2e/`. It fails on
+an empty directory rather than passing vacuously, so a glob that stops matching is a failure and
+not a silent green.
+
 ### The user-guide flow package
 
 `packages/web/e2e/guide-*.e2e.ts` — one file per `docs/guide/` part, plus the shared
@@ -295,6 +336,27 @@ honestly cross a real boundary in dry-run and the lower-level or manual evidence
 instead. `guide-browser.ts` wraps `agent-browser find <locator> <value> [action]` — the CLI's own
 semantic-locator command — rather than the CSS-selector methods on `AgentBrowser`; it is the one
 new interaction helper this package adds, and existing specs are not retrofitted to it.
+
+**The locator rule has a guard.** `packages/web/src/e2e-locator-rule.test.ts` reads the source of
+every file in this package — the 15 `guide-*.e2e.ts` files and `screenshot-states.e2e.ts` — and
+fails on `querySelector`, `getElementById`, `data-testid` or a `data-slot` string outside a
+comment, plus a CSS-selector-shaped string (`#id`, `.class`, `[aria-label=…]`, `[data-state=…]`,
+`:nth-child(…)`) handed to one of `AgentBrowser`'s selector methods (`click`, `fill`, `hover`,
+`text`, `isVisible`, `count`) — the four tokens alone would let every one of those through. It
+distinguishes a comment from code with a small scanner that blanks `//` and `/* … */` comments
+while keeping string literals (a CSS selector is usually a string) and template-literal `${…}`
+interpolation, so the four prose mentions of `data-slot` in the package's own headers stay legal
+while a `click('[data-slot="…"]')` does not; it pins the empty-input branch, so a glob that
+matches no files fails the test rather than passing vacuously. What it still cannot see: a locator
+assembled at runtime from pieces no single source line contains; a `data-slot` reached through an
+imported helper; a selector passed to a method it does not know (`evaluate`, a helper); and a
+regex literal whose trailing `//` blinds the rest of its own line. `capture/scenario-state.ts`'s
+61 `data-slot` occurrences are disclosed at `screenshot-states.e2e.ts:26-29` as DOM-ready steps
+relocated from the 0.15.0 capture plan rather than new locators, and the guard records that file
+as an explicit exclusion with its reason and an upper bound on its `data-slot` count, so a new
+locator there goes red instead of hiding behind the exclusion — an auditable exclusion list, never
+a silent skip. The 50 pre-existing specs outside this package predate the rule and are out of its
+scope, which is why the guard scans the package's 16 files and not every `*.e2e.ts`.
 
 ### Iterating on one spec
 
