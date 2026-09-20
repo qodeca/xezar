@@ -66,6 +66,28 @@ function until(expression: string) {
 function settle() {
   browser.waitForFunction(`document.getAnimations().every(a => a.playState !== 'running' || a.effect?.getTiming().iterations === Infinity)`)
 }
+/** The app-shell scroller's content height unchanged for ten consecutive animation frames. The
+ *  task thread above a diff keeps filling in from its own queries AND re-sticks its scroll
+ *  position after the diff has mounted, so a position measured before it stops is a guess. */
+function contentStill(frames = 10) {
+  browser.waitForFunction(`(() => {
+    const main = document.querySelector('[data-slot="main"]');
+    if (!main) return false;
+    if (!window.__b6still) {
+      window.__b6still = { height: -1, frames: 0 };
+      const tick = () => {
+        const box = document.querySelector('[data-slot="main"]');
+        const height = box ? box.scrollHeight : -1;
+        if (height === window.__b6still.height) window.__b6still.frames += 1;
+        else { window.__b6still.height = height; window.__b6still.frames = 0 }
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+      return false;
+    }
+    return window.__b6still.frames >= ${frames};
+  })()`)
+}
 function visit(path: string, ready: string, width = 375) {
   browser.setViewport(width, 812)
   // Global settings live outside the project scope; every other page is scoped.
@@ -270,18 +292,42 @@ describe('AC-6 the review gate diff is the one engine', () => {
 // A guard, not a red proof: this fixture's thread is short and settles before the diff mounts, so
 // it passes with or without the scroller-resize re-measure in `diff-view.tsx` (checked). It pins
 // that the forced virtual tier works at all inside the review gate.
+//
+// Every wait here is on a real state change, never on a step count. The case used to scroll the
+// app-shell scroller 40 times by one viewport and then assert, which made the result depend on
+// where the thread had left the scroller: `big.txt` is the FIRST file of this diff, so virtua
+// mounts its rows only while the scroller sits near the START of the list, and a loop that only
+// ever moves DOWN cannot recover once its first check misses. Measured in a real browser (#723,
+// 11 red CI runs): from the bottom of the page all 40 steps return false — exactly the reported
+// `expected false to be true` — while parking the scroller at the list's own start mounts the card
+// every time. The inventory's inferred mechanism (a stale `startMargin`) was not what fired.
 describe('AC-6 a virtualized review diff under the thread still reaches its last line', () => {
-  it('?diff=virtual: scrolling to the end of the page renders line 420 of big.txt', () => {
+  it('?diff=virtual: the virtual list mounts big.txt with line 420, and its far end renders', () => {
     browser.setViewport(1280, 812)
     browser.goto(`${url}/p/${project}/tasks/${runId}?diff=virtual`)
-    until(`${REVIEW}.querySelector('[data-slot="diff-files"][data-virtualized="true"]')`)
+    until(`${REVIEW}.querySelector('[data-slot="diff-files"][data-virtualized="true"] [data-slot="diff-file"]')`)
     settle()
-    // Scroll the one scroller to the bottom in steps, letting virtua mount what comes into view.
-    for (let n = 0; n < 40 && !read<boolean>(`[...${REVIEW}.querySelectorAll('[data-slot="diff-line"]')].some(el => /line ${LONG_LINES}$/.test(el.textContent.trim()))`); n++) {
-      read(`(() => { const main = find('main'); main.scrollTop = main.scrollTop + main.clientHeight; return true })()`)
-      settle()
-    }
+    contentStill()
+    // Park the scroller at the virtual list's OWN start, measured from the rendered box — so
+    // whatever the thread above added before this point is already inside the number.
+    const listTop = read<number>(`(() => {
+      const main = find('main'), list = ${REVIEW}.querySelector('[data-slot="diff-files"]');
+      return Math.round(list.getBoundingClientRect().top - main.getBoundingClientRect().top + main.scrollTop);
+    })()`)
+    read(`(() => { find('main').scrollTop = ${listTop}; return true })()`)
+    until(`[...${REVIEW}.querySelectorAll('[data-slot="diff-file"]')].some(el => el.dataset.path === 'big.txt')`)
+    // The card is mounted, so every one of its rows is in the DOM — including the last.
     expect(read<boolean>(`[...${REVIEW}.querySelectorAll('[data-slot="diff-line"]')].some(el => /line ${LONG_LINES}$/.test(el.textContent.trim()))`)).toBe(true)
+
+    // …and the far end of the list renders as well: at the bottom of the scroller a mounted card
+    // is genuinely inside the viewport, not a blank tail below the last thing virtua placed.
+    const inView = `(() => {
+      const view = find('main').getBoundingClientRect();
+      return [...${REVIEW}.querySelectorAll('[data-slot="diff-file"]')].some(el => { const box = el.getBoundingClientRect(); return box.bottom > view.top && box.top < view.bottom });
+    })()`
+    read(`(() => { const main = find('main'); main.scrollTop = main.scrollHeight; return true })()`)
+    until(inView)
+    expect(read<boolean>(inView), 'a mounted card at the bottom of the scroller').toBe(true)
   }, 120_000)
 })
 
