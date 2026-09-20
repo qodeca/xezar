@@ -263,79 +263,164 @@ describe('a run stopped by a usage limit resumes itself', () => {
     // REBUILT (F-20 of the #671 flake inventory, `expected [...] to have a length of 4 but got 5`,
     // CI run 35110511675). The old shape drove the REAL mock CLI and read the queue length after a
     // fixed 250 ms sleep, so "the fifth never started" was a claim about how fast the machine
-    // settled rather than about the fixture: the count was a snapshot of an in-flight process, and
-    // the case never asked whether the auto-resume deadline the hold rests on was still in the
-    // future. It is now a fact about the fixture. The limit turn is scripted and the window is a
-    // value on the case's OWN clock, every count is read after awaiting the store's change signal
-    // (no `expect.poll`, no sleep), and the last phase removes the hold and watches the fifth run
-    // start — so the negative half cannot pass against a queue that simply drained or a fixture
-    // that never had a fifth task.
+    // settled rather than about the fixture. It is now a fact about the fixture: the limit turn is
+    // scripted and the window is a value on the case's OWN clock, every count is read after
+    // awaiting the store's own change signal (no `expect.poll`, no sleep), and the last phase
+    // removes the hold and watches the fifth run start.
+    //
+    // REBUILT AGAIN (review round 1): those counts were still not evidence about the GATE. With
+    // `maxParallel: 2` the first pair's failure frees both slots, so "the other three never
+    // started" was equally explained by ordinary slot cycling — forcing either gate site
+    // (`pump()`'s FIFO check, or `requeueWhileHeld`) to never hold left this case green while it
+    // reddened a sibling. Both gate sites now have their own phase here, and each phase asserts
+    // the hold itself rather than only its consequence: the account must be REPORTED held, the
+    // free capacity that would otherwise start the queue is asserted directly
+    // (`semaphore.busy()`), and the phase that exercises the spawn-time gate needs runs that are
+    // already past the dequeue-time gate when the account closes.
     const clock = providerClock();
     const reset = clock.reset(3_600);
     const deadline = reset * 1_000 + AUTO_RESUME_GRACE_MS;
-    // One turn per run that ever reaches an agent: two in each held pair, then the fifth once the
-    // hold is gone. A turn past this list throws `unscripted agent invocation`, so the list is also
-    // a cap on how many runs may spawn — the same count the assertions below make.
+    // One turn per run that ever reaches an agent. A turn past this list throws `unscripted agent
+    // invocation`, so the list is also a cap on how many runs may spawn — the same count the
+    // assertions below make. Eight runs reach an agent when both gates hold (a holder, a control,
+    // the five, and one in-place run); the budget is generous so that a broken gate fails an
+    // assertion rather than the turn list.
     const runner = scriptedRunner(
-      Array.from({ length: 6 }, () => ({ error: `Claude AI usage limit reached|${reset}` })),
+      Array.from({ length: 16 }, () => ({ error: `Claude AI usage limit reached|${reset}` })),
     );
     const semaphore = new WorkspaceSemaphore({ initial: { maxParallel: 2 } });
     try {
       manager = new RunManager(store, repoRoot, { semaphore, autoResumeTimer: clock.timer });
-      // Isolated worktrees — the default, and the shape that matters here: an in-place run parks
-      // on the repo-root lease (#438) instead of holding a slot, which is a different queue rule
-      // altogether and would mask what this test is about.
-      const runs = [1, 2, 3, 4, 5].map((n) =>
-        manager!.startRun(workflow, { task: `mock:limit task ${n}` }),
-      );
-      const scheduled = () =>
-        runs.filter((r) => store.getRun(r.id)?.autoResumeAt !== undefined).length;
-      const started = () => runs.filter((r) => store.getRun(r.id)?.startedAt !== undefined).length;
-      const queued = () => runs.filter((r) => store.getRun(r.id)?.status === 'queued').length;
       /** Pump every path that can start a run, and await it, so the next count is a fact. */
       const flush = async () => {
         await semaphore.release();
         await manager!.rescueStalledQueue();
       };
+      type Runs = Array<{ id: string }>;
+      const scheduledIn = (runs: Runs) =>
+        runs.filter((r) => store.getRun(r.id)?.autoResumeAt !== undefined).length;
+      const startedIn = (runs: Runs) =>
+        runs.filter((r) => store.getRun(r.id)?.startedAt !== undefined).length;
+      const queuedIn = (runs: Runs) =>
+        runs.filter((r) => store.getRun(r.id)?.status === 'queued').length;
+      /** Runs handed back by the SPAWN-time gate — the note `requeueWhileHeld` appends when it
+       *  refuses one. A run the dequeue-time gate never released cannot have one, so a broken FIFO
+       *  check shows up here as churn even though the run it let through is handed straight back. */
+      const handedBack = (runs: Runs) =>
+        runs.filter((r) =>
+          store
+            .readEvents(r.id)
+            .some((event) => String(event.message ?? '').includes('held in the queue')),
+        ).length;
 
-      // Two schedules is the whole story: exactly the two that had slots ever ran.
-      await whenTrue(() => scheduled() === 2);
-      await flush();
-      expect(started()).toBe(2);
-      expect(queued()).toBe(3);
+      // ---- the DEQUEUE-time gate: worktree tasks, still queued when the account closes --------
+      // A holder is already waiting out the limit before any of the five is even queued, so the
+      // hold is a fact the first sweep cannot race. That ordering is what makes the FIFO check
+      // inside `pump()` the only thing that can explain a queue that does not move: the holder is
+      // FAILED (it holds no slot), both slots are free, and the five are worktree runs — dequeued
+      // and spawning within a tick, so nothing else stands between them and a start.
+      const holder = manager!.startRun(workflow, { task: 'mock:limit holder' });
+      await whenTrue(() => store.getRun(holder.id)?.autoResumeAt !== undefined);
+      expect([...manager!.accountHolds().deadline]).toContain('claude:default');
+
+      const queued = [1, 2, 3, 4, 5].map((n) =>
+        manager!.startRun(workflow, { task: `mock:limit task ${n}` }),
+      );
+      const scheduled = () => scheduledIn(queued);
+      const started = () => startedIn(queued);
+      const waiting = () => queuedIn(queued);
+      // A run on a SECOND account, queued behind the five and not held. Its start is the barrier
+      // this phase needs: it proves a sweep ran and a slot was free, so "the five are still queued"
+      // is the hold rather than a sweep that has not happened yet. `maxParallel` is 2, so its one
+      // slot still leaves capacity — and the run that needs it is on another account entirely.
+      const control = manager!.startRun(workflow, {
+        task: 'mock:limit control',
+        agentProfile: 'second',
+      });
+      await whenTrue(() => store.getRun(control.id)?.startedAt !== undefined);
+      expect(started()).toBe(0);
+      // …and let it finish before the hold is released below, so its slot is free and the two the
+      // queue hands out are both from the five. (Left running it would hold one of the two slots,
+      // only ONE of the five would start, and that one would re-establish the hold before its
+      // partner could — a different case, and a hang for this one.)
+      await whenTrue(() => store.getRun(control.id)?.status === 'failed');
+      expect(waiting()).toBe(5);
+      expect(semaphore.busy()).toBeLessThan(semaphore.maxParallel());
+      expect([...manager!.accountHolds().deadline]).toContain('claude:default');
+      // The five were never RELEASED, only held: the FIFO check leaves them in `queue` until the
+      // hold lifts, so none of them ever reaches the spawn-time gate. A broken FIFO check dequeues
+      // them on every sweep, and `requeueWhileHeld` hands each one straight back — identical counts,
+      // a different mechanism — and that hand-back is the note counted here. This is what separates
+      // a working dequeue-time gate from a spawn-time gate cleaning up after it.
+      expect(handedBack(queued)).toBe(0);
       // …and the window is a value on this case's clock, not the wall: it cannot have reopened on
       // its own, which is what makes the hold below a fact about the fixture. `armAutoResume`
       // writes the reset instant the scripted turn reported plus the grace, verbatim.
-      expect(store.getRun(runs[0]!.id)?.autoResumeAt).toBe(new Date(deadline).toISOString());
+      expect(store.getRun(holder.id)?.autoResumeAt).toBe(new Date(deadline).toISOString());
 
-      // …and the hold is exactly as wide as the limit, with no restart and no timer needed:
-      // cancelling both schedules releases the queue, the next pair takes their slots — and then
-      // promptly holds it again by hitting the same limit, which is the mechanism working rather
-      // than failing. One task never runs at all, which is the entire point.
-      for (const run of runs.slice(0, 2)) manager.cancelAutoResume(run.id);
+      // The hold is exactly as wide as the limit: releasing the HOLDER is the only change — same
+      // records, same two slots — and the queue moves. Two take the slots, meet the same limit and
+      // hold the queue again by scheduling their own resumes, which is the mechanism working
+      // rather than failing.
+      manager!.cancelAutoResume(holder.id);
+      await whenTrue(() => started() === 2);
+      await whenTrue(() => scheduled() === 2);
+      await flush();
+      expect(started()).toBe(2);
+      expect(waiting()).toBe(3);
+
+      // …and the negative half is worth nothing unless the rest CAN start: a queue that had
+      // quietly drained, or a fixture with no fifth task at all, reads exactly the same as a hold
+      // that works. Cancelling the pair that just started is the only change.
+      for (const run of queued.slice(0, 2)) manager!.cancelAutoResume(run.id);
       await whenTrue(() => started() === 4);
-      // The mirror of the guard above, and this case's headline rests on it: the wait for the
-      // FOURTH `startedAt` can return before a fifth dequeue, so the hold has to be asserted
-      // again. It is a signal here rather than a bare sleep — the two tasks that just started
-      // meet the same limit and schedule their own resumes, and `scheduleAutoResumeIfLimited`
-      // publishes that deadline BEFORE releasing the slot (deliberately — a pump reads the hold
-      // off the records). Two fresh deadlines therefore means the second stampede has run its
-      // course, and no amount of machine load can fake it.
       await whenTrue(() => scheduled() === 2);
       await flush();
       expect(started()).toBe(4);
-      expect(queued()).toBe(1);
+      expect(waiting()).toBe(1);
+      expect(handedBack(queued)).toBe(0);
 
-      // The negative half is worth nothing unless the fifth CAN start: a queue that had quietly
-      // drained, or a fixture with no fifth task at all, reads exactly the same as a hold that
-      // works. Releasing the account is the only change — same five records, same two slots — and
-      // the fifth task runs. (In the pre-fix case this is where the count could read 5 while the
-      // assertion said 4: the old shape never controlled whether the deadline had passed.)
-      for (const run of runs.slice(2, 4)) manager.cancelAutoResume(run.id);
+      for (const run of queued.slice(2, 4)) manager!.cancelAutoResume(run.id);
       await whenTrue(() => started() === 5);
+      await whenTrue(() => scheduled() === 1);
       await flush();
       expect(started()).toBe(5);
-      expect(queued()).toBe(0);
+      expect(waiting()).toBe(0);
+      expect(handedBack(queued)).toBe(0);
+      // Retire that last hold too: the second phase needs its runs DEQUEUED before the account
+      // closes, which is the opposite order.
+      for (const run of queued) manager!.cancelAutoResume(run.id);
+      // The control's own hold stays on the second account — only THIS account has to be clean for
+      // the second phase.
+      await whenTrue(() => !manager!.accountHolds().deadline.has('claude:default'));
+
+      // ---- the SPAWN-time gate: runs already past the queue when the account closes -----------
+      // The FIFO check above only decides about runs still IN the queue. A run can also be past
+      // that gate when the account closes, and then `requeueWhileHeld` is the only thing that can
+      // refuse it. The measured shape is an IN-PLACE run: it parks on the exclusive repo-root
+      // lease (#438) holding no slot (#347), so the queue advances past it long before it spawns.
+      // Five of them, one lease: exactly one gets as far as the limit, and the four parked behind
+      // it are handed back — not walked into the same wall. Measured before that gate existed:
+      // four of five started.
+      const inPlace = [1, 2, 3, 4, 5].map((n) =>
+        manager!.startRun(workflow, { task: `mock:limit in-place ${n}`, worktree: false }),
+      );
+      const inPlaceQueued = () => queuedIn(inPlace);
+      const inPlaceScheduled = () => scheduledIn(inPlace);
+      // The wait is TWO facts, and the order matters. First the one that can only happen with the
+      // gate: the run that owns the lease meets the limit and schedules its own resume. Before
+      // that, a parked run is `running` on its record, so no count of `queued` can be trusted.
+      await whenTrue(() => inPlaceScheduled() === 1);
+      // Then the four parked behind it, each handed back as plain `queued` as the lease passes to
+      // it. A parked run's record is `running` (only its SLOT is given back, #347), so a count of
+      // four `queued` is exactly "all four were handed back" — the fact a gate that never holds
+      // cannot produce. That impossibility is why the second disjunct is here: without the gate
+      // those four spawn and meet the limit themselves, and the assertion below fails on a real
+      // count instead of the case hanging.
+      await whenTrue(() => inPlaceQueued() === 4 || inPlaceScheduled() > 1);
+      expect(inPlaceScheduled()).toBe(1);
+      expect(inPlaceQueued()).toBe(4);
+      expect([...manager.accountHolds().deadline]).toContain('claude:default');
     } finally {
       // The scripted backend and the frozen clock belong to this case; the shared `store` and
       // `repoRoot` are the hook's. Quiesce before restoring the runner so no run that has not
