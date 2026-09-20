@@ -30,7 +30,20 @@ Order matters: post the comment, then attempt the labels, then write the packet.
   "summary": "<one or two sentences, at most 2000 characters>",
   "recordedAt": "<ISO-8601, now>",
   "evidenceUrl": "<optional: the URL of the comment you posted>",
-  "labels": { "requestedAdd": [], "requestedRemove": [], "observed": [], "state": "verified" }
+  "labels": { "requestedAdd": [], "requestedRemove": [], "observed": [], "state": "verified" },
+  "findings": [
+    {
+      "id": "f1",
+      "severity": "major",
+      "file": "src/store/write.ts",
+      "line": 412,
+      "title": "a concurrent write can lose the newer record",
+      "body": "Two callers read the same file and the second write overwrites the first.",
+      "fingerprint": "a3f1c0de9b7248517c0a"
+    },
+    { "id": "f2", "severity": "nit", "title": "the refusal message names no field" }
+  ],
+  "findingsOmitted": 0
 }
 ```
 
@@ -47,6 +60,24 @@ Order matters: post the comment, then attempt the labels, then write the packet.
 A failed label operation never changes your verdict — a posted `REQUEST CHANGES` stays `REQUEST CHANGES` with `unavailable` label evidence.
 
 Bounds the engine enforces: at most 40 KB, a regular file and never a symlink, and `taskId`/`stepId` must be this task and this step. A packet failing any of them records a refusal on the task and yields no verdict at all — the leader then sees "refused", which is what it should see.
+
+### The findings
+
+`findings` is the machine-readable half of the findings your comment already carries. Write it from the SAME working list you wrote the comment from — never by parsing your own comment back, and never into a second file. Finding *n* of the comment's numbered list is `"id": "f<n>"` here, in the same order with the same severities, so a person can match the two without a tool.
+
+- `severity` is lower-case `blocker`, `major`, `minor` or `nit`, one-to-one with `CODE_REVIEW.md` § Severity guidance. The comment keeps its own capitalisation.
+- `file` is repo-relative and `line` is the first line of the finding's location. Omit both when the finding is about the diff as a whole; a `line` without a `file` is refused, because a line number names no file.
+- `title` is one headline. `body` is ONE sentence of what is wrong — the argument, the fragment and the correction stay in the comment, which `evidenceUrl` addresses.
+- `fingerprint` is optional and is stable ACROSS reports for the same defect: derive it from `file`, `severity` and `title`, never from the line, so a re-check against a changed tree does not report a carried-over finding as new. Absent means you offer no cross-report identity, never "a new defect".
+- `findings` and `findingsOmitted` are a PAIR — write both or neither. Absent `findings` means you reported none IN THIS FORM; it is not "there were none" and it is not an approval.
+
+**A bounded list is counted, never silently short.** At most 20 findings, and at most 16 KB of serialized `findings`; a packet over either bound is refused whole and costs you the report. When you have more than fits, order by severity (`blocker`, `major`, `minor`, `nit`) and then by the order they appear in the comment, so a blocker is never what gets dropped; include what fits; set `findingsOmitted` to the number left out; and add this sentence to the posted comment:
+
+`N findings are in this comment and not in the machine-readable packet`
+
+The comment always carries EVERY finding. `findingsOmitted` is `0` when the list is complete, and is never left out.
+
+An `APPROVE` may carry findings — minors and nits usually survive one. A `REQUEST CHANGES` with `"findings": []` and `"findingsOmitted": 0` is a real "I request changes on the grounds stated in the summary", not an error.
 
 ## Shared contract
 
