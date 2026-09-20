@@ -6,7 +6,7 @@ xezar keeps a per-project audit trail of who changed run state or configuration,
 
 Each project keeps its own trail at `<project>/.local/xezar/audit.ndjson` — the same working-files location in both layouts described in [Configuration reference](11-configuration-reference.md#to-find-where-the-files-live-in-each-layout). It is a plain NDJSON file, one JSON record per line, oldest first. There is no cockpit page or API route that displays it: read it from a shell on the machine running xezar, for example with `tail -f` or `jq`.
 
-An older `mcp-audit.ndjson` file, written by xezar 0.13.0–0.15.0, is read-only from 0.16.0 on: xezar reads it only while `audit.ndjson` does not exist, prints one line the first time it does —
+An older `mcp-audit.ndjson` file, written by xezar 0.14.0–0.15.0, is read-only from 0.16.0 on: xezar reads it only while `audit.ndjson` does not exist, prints one line the first time it does —
 
 ```text
 xezar: mcp-audit.ndjson is deprecated; reading it read-only (removal not before 0.18.0)

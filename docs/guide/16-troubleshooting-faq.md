@@ -43,7 +43,7 @@ Global **Settings → Resources → Auto-resume after a usage limit** controls `
 
 ### The browser shows a missing-cockpit hint
 
-When the built cockpit is absent, the server logs ``xezar: web/dist is missing — run `npm run build:web` to build the cockpit`` and serves a hint page. From a source checkout, build the web assets:
+When the built cockpit is absent, the server logs ``xezar: the cockpit files (web/dist) are missing — reinstall xezar, or build the web interface when running from source`` and serves a hint page. From a source checkout, build the web assets:
 
 ```sh
 npm run build:web

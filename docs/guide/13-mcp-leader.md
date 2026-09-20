@@ -352,7 +352,7 @@ task's own model still sees those tools. Two details differ per client:
 
 - **Claude Code.** A task now sees only the MCP servers your project's own `.mcp.json` declares.
   Servers you added for yourself in `~/.claude.json` no longer load inside a task — the same rule
-  Codex tasks have followed since 0.13.0. Declare a server in the project file to use it in tasks.
+  Codex tasks have followed since 0.15.0. Declare a server in the project file to use it in tasks.
 - **pi and OpenCode.** A server named `xezar` is always switched off in a task, even if the entry
   lives in a file xezar does not read, so it may appear as "disabled" in that client's server list
   during a task. Give an unrelated server a different name if you want it in tasks.
