@@ -17,8 +17,10 @@ import { SettingsField } from './settings-field'
  *  - a usable project function (`available`);
  *  - an unavailable dependency, always with a named reason AND the next legitimate action
  *    (UX-M05) — a person-facing sentence, never raw CLI output, which can name an account;
- *  - a read-only shared constraint: the workspace `resources.*` the semaphore enforces for every
- *    project, and the `composerDefaults` that apply when the leader omits a field.
+ *  - a shared constraint: the workspace `resources.*` the semaphore enforces for every project,
+ *    and the `composerDefaults` that apply when the leader omits a field. Read-only until #677 B1
+ *    gave the leader `project_config set_workspace_config`; the pane still reports them, and the
+ *    hint no longer says only a person can change them.
  *
  * The facts are the ones the leader's own `discover_project` tool (#90,
  * `packages/xezar/src/mcp/tools/discovery.ts`) reads — `/health` capabilities, the repository,
@@ -30,8 +32,9 @@ import { SettingsField } from './settings-field'
  *  - AUTHORITY IS NOT CONFIGURABLE HERE. Full project authority includes delete and merge; there
  *    is no role toggle, no permission checklist, and no control of any kind on a capability row.
  *    The only interactive elements in this view are links that open a task with a failing check.
- *  - No global edit control: the shared limits are text, never a link or a field. Changing them
- *    is a person's job in Global settings, and the copy says exactly that.
+ *  - No global edit control HERE: the shared limits are text, never a link or a field. A person
+ *    changes them in Global settings, and the copy says exactly that — and, since #677 B1, that
+ *    the leader can change them too, because a pane that says otherwise would be wrong.
  *  - A failing quality check stays visible and has no dismiss, accept-exception or override
  *    affordance. Mandatory checks are never weakened, including by approval.
  *  - Only safe effective values: no secret, no account identity (email, organisation, plan), no
@@ -45,7 +48,7 @@ export type McpCapability =
   | { id: string; label: string; status: 'unavailable'; reason: string; next: string }
   | { id: string; label: string; status: 'read-only'; reason: string; next: string }
 
-/** One read-only shared constraint and its effective value. */
+/** One shared constraint and its effective value. */
 export interface SharedConstraint {
   id: string
   label: string
@@ -203,8 +206,8 @@ function onOff(value: boolean): string {
 }
 
 /**
- * The read-only shared constraints: the workspace limits the semaphore enforces, and the composer
- * defaults applied when the leader omits a field. `projectMaxParallel` / `projectMemoryLimitMb`
+ * The shared constraints: the workspace limits the semaphore enforces, and the composer defaults
+ * applied when the leader omits a field. `projectMaxParallel` / `projectMemoryLimitMb`
  * are THIS project's own overrides (more specific wins, like the semaphore); no other project's
  * value is ever read.
  */
@@ -354,7 +357,7 @@ export function McpCapabilitiesView({ capabilities, constraints, failingChecks, 
 
       <SettingsField
         title="Shared limits"
-        hint="Read-only. These are shared with every project on this machine. The leader works inside them and cannot change them; a person changes them in Global settings."
+        hint="These are shared with every project on this machine. The leader works inside them and can also change them over MCP. You change them in Global settings."
       >
         {errors.constraints ? (
           <ReadableError>{errors.constraints}</ReadableError>
