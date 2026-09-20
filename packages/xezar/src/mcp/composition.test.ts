@@ -325,7 +325,7 @@ describe('the composed MCP service, through the real bridge and socket', () => {
     const client = agent(c.root);
 
     // Refused before any effect, and the tool says so in its structured answer (spec § 6.2).
-    const boundary = await client.call('project_config', { action: 'set_workspace_config', operationId: 'op-compose-0031' });
+    const boundary = await client.call('project_config', { action: 'set_workspace_ui_state', operationId: 'op-compose-0031' });
     expect(boundary.isError, JSON.stringify(boundary)).toBe(true);
     expect(boundary.structuredContent, JSON.stringify(boundary)).toBeDefined();
     expect(boundary.structuredContent).toMatchObject({ refused: true, boundary: 'workspace-settings' });
@@ -343,7 +343,7 @@ describe('the composed MCP service, through the real bridge and socket', () => {
     expect(failed.isError, JSON.stringify(failed)).toBe(true);
 
     expect(auditLines(c.dataDir).map((entry) => [entry.seq, entry.action, entry.outcome])).toEqual([
-      [1, 'workspace.config.set', { status: 'refused', reason: 'workspace_settings' }],
+      [1, 'workspace.uiState.set', { status: 'refused', reason: 'workspace_settings' }],
       [2, 'run.cancel', { status: 'refused', reason: 'not_found' }],
       [3, 'run.start', { status: 'applied' }],
     ]);

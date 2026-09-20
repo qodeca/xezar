@@ -834,6 +834,7 @@
             "get_prompt_templates",
             "set_prompt_templates",
             "get_limits",
+            "set_workspace_config",
             "get_capabilities",
             "get_account",
             "list_agent_config",
@@ -873,7 +874,6 @@
             "check_account_status",
             "get_account_details",
             "open_account_file",
-            "set_workspace_config",
             "set_workspace_ui_state",
             "browse_folders",
             "add_project",
@@ -1070,6 +1070,207 @@
                   "type": "null"
                 }
               ]
+            }
+          },
+          "additionalProperties": false
+        },
+        "workspaceConfig": {
+          "description": "set_workspace_config: the workspace-wide settings to change — they apply to every project on this machine. Only the keys you send are touched; null clears a key back to its default. The two workspace folder paths are not accepted here.",
+          "type": "object",
+          "properties": {
+            "skillsAutoUpdate": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "followups": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "agentEnvPassthrough": {
+              "anyOf": [
+                {
+                  "maxItems": 64,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "composerDefaults": {
+              "type": "object",
+              "properties": {
+                "autonomous": {
+                  "anyOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "worktree": {
+                  "anyOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            },
+            "resources": {
+              "type": "object",
+              "properties": {
+                "maxParallel": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 16
+                },
+                "maxMonitoringSessions": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 16
+                },
+                "monitoringWakeIntervalMinutes": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 60
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "autoResumeOnUsageLimit": {
+                  "type": "boolean"
+                },
+                "idleTimeoutMinutes": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 1440
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "memoryLimitMb": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 1048576
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "worktreeRetentionDefault": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 1000
+                }
+              }
+            },
+            "agentDefaults": {
+              "type": "object",
+              "properties": {
+                "runner": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "claude",
+                        "codex",
+                        "opencode",
+                        "pi"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "models": {
+                  "type": "object",
+                  "properties": {
+                    "claude": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "codex": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "opencode": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "pi": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
             }
           },
           "additionalProperties": false

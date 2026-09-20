@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os';
 import { basename, join, relative } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { CONFIG_FILES } from '../../agent-config/catalog.ts';
+import { loadConfig, resolveWorktreeRetention } from '../../config.ts';
 import { BUNDLED_TEMPLATES_DIGEST } from '../../onboarding/status.ts';
 import { RunStore } from '../../runs/store.ts';
 import { ProjectContexts, type ProjectContextSource } from '../../server/project-context.ts';
@@ -432,6 +433,157 @@ describe('project_config: project writes (acceptance)', () => {
   });
 });
 
+// ---- the workspace-settings write ----------------------------------------------------------------
+
+/**
+ * #677 wave 2 slice B1 — `set_workspace_config`.
+ *
+ * The owner's rule of 2026-09-20 ("every key") reverses D-03 § 4.9's "never from MCP" for the
+ * workspace SETTINGS. What this block proves is that the reversal is a DISPATCH and not a second
+ * write path: the same route, the same validator, the same 400, the same `semaphore.refresh()`.
+ * The two workspace folder paths are still not keys of it (slice B2), and an unknown key is
+ * refused rather than dropped — a dropped key would answer 200 for a change that never happened.
+ *
+ * The hot-apply cases use their OWN app over the same sandboxed `XEZ_HOME`, because the shared
+ * fixture pins the semaphore's loader at a constant. Here the semaphore loads for real, so
+ * "applies without a restart" is observed rather than asserted.
+ */
+describe('project_config: the workspace-settings write (#677 B1)', () => {
+  /** A second cockpit over the same workspace home, with a semaphore that really loads. */
+  function hotCockpit(): { app: ReturnType<typeof createApp>; semaphore: WorkspaceSemaphore } {
+    const semaphore = new WorkspaceSemaphore();
+    const projects: ProjectContextSource[] = [
+      { id: 'proj-a', root: ws.roots.a, status: 'ok' },
+      { id: 'proj-b', root: ws.roots.b, status: 'ok' },
+    ];
+    const app = createApp({
+      repoRoot: ws.roots.a,
+      store: RunStore.open(join(ws.roots.a, '.local/xezar'), { keepLive: true }),
+      manager: { isActive: () => false } as unknown as RunManager,
+      version: '0.0.0-test',
+      bootProjectId: 'proj-a',
+      contexts: new ProjectContexts({ listProjects: async () => projects, semaphore }),
+      semaphore,
+      providerAuth: connectedProviderAuth(),
+    });
+    return { app, semaphore };
+  }
+
+  it('writes every key it accepts and answers in the get_limits vocabulary', async () => {
+    const change = {
+      resources: { maxParallel: 5, maxMonitoringSessions: 3, monitoringWakeIntervalMinutes: null, autoResumeOnUsageLimit: false, idleTimeoutMinutes: 30, memoryLimitMb: 4096, worktreeRetentionDefault: 7 },
+      followups: false,
+      agentEnvPassthrough: ['CI'],
+      composerDefaults: { autonomous: true, worktree: false },
+      skillsAutoUpdate: false,
+      agentDefaults: { runner: 'codex', models: { codex: 'gpt-5.6-sol' } },
+    };
+    const written = value(await invoke({ action: 'set_workspace_config', workspaceConfig: change }));
+    const limits = value(await invoke({ action: 'get_limits' }));
+    // One vocabulary in both directions: what the write answers is what the read answers.
+    expect(written.workspace).toEqual(limits.workspace);
+    expect(written.workspace.resources).toMatchObject(change.resources);
+    expect(written.workspace.followups).toEqual({ effective: false, inherited: false });
+    expect(written.workspace.agentEnvPassthrough.effectiveNames).toContain('CI');
+    expect(written.workspace.composerDefaults).toMatchObject({ autonomous: true, worktree: false });
+    expect(written.workspace.skillsAutoUpdate).toEqual({ effective: false, inherited: false });
+    // The cockpit's own pane sees the leader's values, the agent defaults included.
+    expect((await cockpit('/api/v1/workspace/config')).body).toMatchObject({
+      resources: { maxParallel: 5, memoryLimitMb: 4096 },
+      followups: false,
+      skillsAutoUpdate: false,
+      agentDefaults: { runner: 'codex', models: { codex: 'gpt-5.6-sol' } },
+    });
+    // § 4.9's narrowing survives the reversal: the ANSWER still carries no folder path and no
+    // machine-wide agent default, even though the write accepted the defaults.
+    expect(JSON.stringify(written)).not.toMatch(/browseRoot|projectsDir|agentDefaults/);
+  });
+
+  it('dispatches the cockpit’s own route, once, and nothing else', async () => {
+    const spy = spyService();
+    const called = await invoke({ action: 'set_workspace_config', workspaceConfig: { followups: true } }, { service: spy });
+    expect(called.result.isError, called.text).toBeFalsy();
+    expect(spy.requests).toEqual(['PUT /api/v1/workspace/config']);
+  });
+
+  /**
+   * Out of range is refused by the SAME BOUND, not by the same 400 STRING. Both doors validate
+   * with `setWorkspaceConfigInputSchema`, so the value never reaches two different opinions — but
+   * the MCP's copy runs as tool-argument validation, before the dispatch, so the leader reads a
+   * zod issue naming the argument path and the cockpit reads the route's `{ error }` line. There
+   * is no B1 body the route rejects and the tool accepts: the route validates with the same
+   * schema the tool narrows, which is what wave 1 (#729) put in the contract.
+   */
+  it('is refused by the same bound as the cockpit, before any dispatch, and writes nothing', async () => {
+    const before = (await cockpit('/api/v1/workspace/config')).body;
+    const viaUi = await cockpit('/api/v1/workspace/config', 'PUT', { resources: { maxParallel: 99 } });
+    expect(viaUi.status).toBe(400);
+    expect(viaUi.body.error).toContain('<=16');
+    const spy = spyService();
+    const called = await invoke({ action: 'set_workspace_config', workspaceConfig: { resources: { maxParallel: 99 } } }, { service: spy });
+    expect(called.result.isError).toBe(true);
+    expect(called.text).toContain('<=16');
+    expect(called.text).toContain('maxParallel');
+    expect(spy.requests).toEqual([]);
+    expect((await cockpit('/api/v1/workspace/config')).body).toEqual(before);
+  });
+
+  it('does not accept the two workspace folder paths, and an unknown key is refused rather than dropped', async () => {
+    const spy = spyService();
+    for (const bad of [{ browseRoot: '/tmp' }, { projectsDir: '/tmp' }, { resources: { maxParallel: 3 }, browseRoot: '/tmp' }, { notASetting: true }]) {
+      const called = await invoke({ action: 'set_workspace_config', workspaceConfig: bad }, { service: spy });
+      expect(called.result.isError, JSON.stringify(bad)).toBe(true);
+    }
+    // Refused as arguments: nothing reached the route, so the partial body did not half-apply.
+    expect(spy.requests).toEqual([]);
+    expect((await cockpit('/api/v1/workspace/config')).body.resources.maxParallel).toBe(2);
+  });
+
+  it('needs an operation key, and repeating one changes nothing twice', async () => {
+    const missing = await invoke({ action: 'set_workspace_config', workspaceConfig: { resources: { maxParallel: 4 } }, operationId: undefined });
+    expect(missing.result.isError).toBe(true);
+    expect(missing.text).toMatch(/set_workspace_config needs operationId/);
+  });
+
+  it('applies to the shared semaphore without a restart (the refreshed-snapshot class)', async () => {
+    const { app, semaphore } = hotCockpit();
+    expect(semaphore.maxParallel()).toBe(2);
+    expect(semaphore.followupsEnabled({})).toBe(false);
+    const called = await invoke(
+      { action: 'set_workspace_config', workspaceConfig: { resources: { maxParallel: 6, memoryLimitMb: 2048 }, followups: true, agentEnvPassthrough: ['CI', 'TZ'] } },
+      { service: app },
+    );
+    expect(called.result.isError, called.text).toBeFalsy();
+    // No restart, no second call: the route's own `semaphore.refresh()` hook did it.
+    expect(semaphore.maxParallel()).toBe(6);
+    expect(semaphore.memoryLimitMb()).toBe(2048);
+    expect(semaphore.followupsEnabled({})).toBe(true);
+    expect(semaphore.agentEnvPassthrough({})).toEqual(['CI', 'TZ']);
+  });
+
+  it('applies to the next loadConfig merge without a restart (the merged-defaults class)', async () => {
+    expect((await loadConfig(ws.roots.a)).defaultRunner).not.toBe('codex');
+    value(await invoke({ action: 'set_workspace_config', workspaceConfig: { agentDefaults: { runner: 'codex', models: { codex: 'gpt-5.6-sol' } } } }));
+    const merged = await loadConfig(ws.roots.a);
+    expect(merged.defaultRunner).toBe('codex');
+    expect(merged.defaultModels?.codex).toBe('gpt-5.6-sol');
+  });
+
+  it('applies to an ALREADY-RUNNING cockpit’s next read without a restart (the per-call class)', async () => {
+    // Built before the write, and never told about it: these keys are read per call, so the
+    // second cockpit answers the new values rather than a boot snapshot.
+    const { app } = hotCockpit();
+    value(await invoke({ action: 'set_workspace_config', workspaceConfig: { composerDefaults: { autonomous: true }, skillsAutoUpdate: false, resources: { worktreeRetentionDefault: 3 } } }));
+    const res = await app.request('/api/v1/workspace/config', { headers: { host: COCKPIT_HOST } });
+    expect(await res.json()).toMatchObject({
+      composerDefaults: { autonomous: true },
+      skillsAutoUpdate: false,
+      resources: { worktreeRetentionDefault: 3 },
+    });
+    expect(await resolveWorktreeRetention(ws.roots.b)).toBe(3);
+  });
+});
+
 // ---- the refusals --------------------------------------------------------------------------------
 
 describe('project_config: refusals', () => {
@@ -452,7 +604,7 @@ describe('project_config: refusals', () => {
     ['a scope:user agent-config write', { action: 'write_agent_config', fileId: 'claude.user.settings', content: '{}', version: null }, 'home file shared by every project'],
     ['a provider enable', { action: 'set_provider_enabled' }, 'workspace-wide setting'],
     ['an account create', { action: 'create_account' }, 'global agent accounts'],
-    ['a workspace-config write', { action: 'set_workspace_config' }, 'workspace-wide setting'],
+    ['a workspace preference-bag write', { action: 'set_workspace_ui_state' }, 'workspace-wide setting'],
     ['an fs/browse call', { action: 'browse_folders' }, 'host filesystem'],
     ['an account-details read', { action: 'get_account_details' }, 'account identity'],
   ])('%s fails with a reason naming the boundary', async (_label, args, boundary) => {
