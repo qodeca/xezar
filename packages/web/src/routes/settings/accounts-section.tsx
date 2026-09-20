@@ -115,7 +115,7 @@ export function AccountsSection() {
 
   if (profiles.isPending) {
     return (
-      <p data-slot="accounts-loading" className="p-4 text-[13px] text-soft-foreground md:p-6">
+      <p data-slot="accounts-loading" className="mx-auto w-full max-w-2xl p-list text-[13px] text-soft-foreground md:p-group">
         Loading agent accounts…
       </p>
     )

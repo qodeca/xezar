@@ -68,7 +68,7 @@ export function AgentsSection() {
 
   if (config.isPending) {
     return (
-      <p data-slot="agents-loading" className="p-4 text-[13px] text-soft-foreground md:p-6">
+      <p data-slot="agents-loading" className="mx-auto w-full max-w-2xl p-list text-[13px] text-soft-foreground md:p-group">
         Loading agent settings…
       </p>
     )
