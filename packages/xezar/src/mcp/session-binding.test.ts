@@ -4,7 +4,7 @@ import { join, relative } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProjectWriterError } from '../runs/project-writer.ts';
 import { RunStore } from '../runs/store.ts';
-import { ProjectContexts, type ProjectContext, type ProjectContextSource } from '../server/project-context.ts';
+import { ProjectContextError, ProjectContexts, type ProjectContext, type ProjectContextSource } from '../server/project-context.ts';
 import { bindMcpSession, McpScopeError, McpSessionBinding, type McpProjectContextSource } from './session-binding.ts';
 
 /**
@@ -329,6 +329,26 @@ describe('binding refuses an untrusted or ambiguous source', () => {
       // The original is kept for the service's own log.
       expect(err.cause).toBe(failure);
     }
+  });
+
+  it('turns the instance-mode refusal into `unavailable`, keeping its folder server-side', async () => {
+    // #467 PR 2 added `other-instance`, whose sentence names the other project's FOLDER (it is
+    // written for a same-origin HTTP route). It is the one `ProjectContextError` reason that
+    // does NOT translate — no path may reach an MCP client (N-01) — so it degrades like a
+    // writer failure instead of being passed through as a new client-visible reason.
+    const failure = new ProjectContextError(
+      'other-instance',
+      A,
+      `${A} has its own cockpit — this cockpit serves ${BOOT} only; start xezar in ${fx.rootA} to open ${A}`,
+    );
+    const failing: McpProjectContextSource = { context: () => Promise.reject(failure) };
+
+    const err = await refusal(bindMcpSession(failing, A));
+
+    expect(err.reason).toBe('unavailable');
+    expect(err.projectId).toBe(A);
+    expect(err.message).not.toContain(fx.rootA);
+    expect(err.cause).toBe(failure);
   });
 });
 

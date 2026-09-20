@@ -40,10 +40,16 @@ import {
   type GroupResponse,
   type GroupVariant,
   type PickVariantResponse,
+  type ProjectsResponse,
   type RunIndexEntry,
   type RunsIndexResponse,
 } from '@qodeca/xezar-contract';
 export { isSafeSessionId, resumeCommand };
+// Re-exported rather than re-declared (#467, PR 3): the shape lives in `packages/contract` and
+// nothing in this file may hand-write an API type (AGENTS.md § The HTTP API). The two test files
+// that import it from here keep working, and the route annotation cannot drift from the schema
+// `contract-parity.projects.test.ts` checks, because it IS the schema's inferred type.
+export type { ProjectsResponse };
 // A contract VALUE, like `workspaceUiStateSchema` in workspace/migrations.ts — the request
 // schema this route validates with is the same one the client compiles against.
 import {
@@ -216,6 +222,7 @@ import {
 import { WorkspaceSemaphore } from '../workspace/semaphore.ts';
 import { mergeWriteWorkspaceUiState, readWorkspaceUiState } from '../workspace/ui-state.ts';
 import { checkoutRepo, type CloneRunner } from './checkout.ts';
+import { InstanceLiveness } from './instance-liveness.ts';
 import { ProjectContextError, ProjectContexts, type ProjectContext } from './project-context.ts';
 import { ProjectWriterError } from '../runs/project-writer.ts';
 import { reviewGateEnabled } from '../runs/review-gate.ts';
@@ -275,6 +282,16 @@ export interface ServerDeps {
    * app without one gets today's behaviour unchanged, down to the bytes of `/api/v1/health`.
    */
   instanceMode?: InstanceModeInForce;
+  /**
+   * Which registered projects another xezar serves right now (#467, PR 3) — the source of the
+   * derived `instance?` field on `GET /api/v1/projects`.
+   *
+   * Injectable so a test can drive the five states with its own probe and claim readers instead
+   * of a real socket and a real claim file; absent builds the real one, which probes health over
+   * loopback and reads the claim from disk. The route consults it ONLY in local mode, so a
+   * hosted server makes no outbound request whether one is passed or not.
+   */
+  instanceLiveness?: InstanceLiveness;
   /** Per-project context map (multi-project spec, step 2.2). Non-boot
    *  `/api/p/:projectId/*` requests resolve their `{store, manager, …}` here,
    *  built lazily on first touch. Optional so legacy callers change nothing —
@@ -583,15 +600,8 @@ async function withinTeardownBound(work: Promise<unknown>): Promise<void> {
 
 /** One column of `GET /api/groups/:groupId`. NOTE: `diffStat` here is the raw
  *  `git diff --stat` text (worktreeDiffStat), NOT the numeric `RunRecord.diffStat`. */
-/** `GET /api/projects` (multi-project spec) — the workspace registry with
- *  per-root status probes. Absolute `root`s belong HERE (same-origin, behind
- *  the cockpit) and are deliberately never mirrored into the CORS-open
- *  `/api/health` payload (#431 — see the health route). Never 404s. */
-export interface ProjectsResponse {
-  projects: ProjectListEntry[];
-  bootProject: string;
-  projectsDir: string;
-}
+// `ProjectsResponse` used to be declared here as an interface; it is the contract's
+// `projectsResponseSchema` type now and is re-exported at the top of this file (#467, PR 3).
 
 /** `POST /api/projects` (multi-project spec, step 4.2) — the folder-browser
  *  dialog's commit step. The entry carries the same `status`/`branch` probe
@@ -2508,6 +2518,46 @@ export function createApp(deps: ServerDeps) {
     }
   };
 
+  /**
+   * The liveness checker behind the derived `instance?` field (#467, PR 3). One per app, because
+   * its ten-second cache is only worth having if consecutive renders share it.
+   */
+  const instanceLiveness = deps.instanceLiveness ?? new InstanceLiveness();
+
+  /**
+   * Attach `instance?` to each registry row — or to none of them (#467, PR 3, AC-3.3).
+   *
+   * **Hosted mode returns the rows untouched and makes no outbound request at all.** The field
+   * would be a lie there and the probe would be a real cost: a hosted server sees no writer
+   * claims (they live on the machine each cockpit runs on) and the ports it could reach are its
+   * OWN host's, not the person's. Absent is the honest answer, and `instance` is optional
+   * precisely so "this server did not look" has a spelling (`multi-instance.md` § 6).
+   *
+   * The address hints come from the raw registry rows, because `toProjectListEntry` strips
+   * `lastListen` before this shape exists — deliberately, since the hint never goes on the wire;
+   * only the CHECKED answer does.
+   */
+  const withInstanceState = async (
+    projects: ProjectListEntry[],
+    bootProject: string,
+  ): Promise<ProjectListEntry[]> => {
+    if (!capabilities().localHandoff) return projects;
+    let hints = new Map<string, WorkspaceProject['lastListen']>();
+    try {
+      hints = new Map((await registryRows()).map((row) => [row.id, row.lastListen]));
+    } catch {
+      // unreadable registry — every row keeps its claim-only answer, which is the same
+      // fail-open direction the list itself takes above
+    }
+    return projects.map((project) => ({
+      ...project,
+      instance: instanceLiveness.answer(
+        { id: project.id, root: project.root, lastListen: hints.get(project.id) },
+        bootProject,
+      ),
+    }));
+  };
+
   // ---- chained family: project registry (workspace-level) ----
   const projectsRoutes = new Hono<ProjectApiEnv>()
     .get('/projects', async (c) => {
@@ -2522,9 +2572,10 @@ export function createApp(deps: ServerDeps) {
       } catch {
         // unreadable workspace — degrade to the empty registry + defaults
       }
+      const bootProject = await resolveBootProject(projects);
       const body: ProjectsResponse = {
-        projects,
-        bootProject: await resolveBootProject(projects),
+        projects: await withInstanceState(projects, bootProject),
+        bootProject,
         projectsDir,
       };
       return c.json(body);
