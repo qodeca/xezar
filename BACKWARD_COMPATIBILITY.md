@@ -1244,7 +1244,9 @@ every workspace limit as a safe effective read a leader could see and never chan
   B3) `workspace.uiState.set` rows with origin `mcp`. That row already existed in the inventory for the cockpit door; what is new is
   that the MCP door produces it. The MCP record carries the action id, the operation key and a
   payload DIGEST — never the field values, and (unlike the cockpit door's record) not the field
-  names either.
+  names either. `discover_project` answers differently about the same capability: its
+  `workspace_limits` row went from `status: 'read-only'`, with the reason "only a person can change
+  them in the cockpit's global settings", to `status: 'available'` with no reason (#743).
 - **The record of the old decision is kept, not deleted**: the superseded rulings stay in
   `docs/features/mcp-server/mcp-ui-action-inventory.md` verbatim, beside the new one, dated.
 - **An unknown key is refused at EVERY level, through both doors** (added in the review round —
@@ -1267,7 +1269,10 @@ every workspace limit as a safe effective read a leader could see and never chan
   server admin may change limits remotely.** This is the opposite of the rule for agent-config
   writes (`PUT /api/v1/agent-config/:id`) and every agent-profile route, which 409 in hosted mode
   because they can define hooks and commands or name an account identity; workspace limits are
-  neither. The behaviour is pinned by a test that asserts it is ALLOWED — and asserts an
+  neither. One writable key is not a limit and has an exposure shape of its own —
+  `agentEnvPassthrough` decides which of the server's own environment variables the agent processes
+  receive — and the decision covers it too (#743): it stays writable in hosted mode, unargued here.
+  The behaviour is pinned by a test that asserts it is ALLOWED — and asserts an
   agent-config write still 409s on the same hosted app — so adding a 409 here later is a visible,
   named break rather than a silent change of mind, and it would be a change for both doors at
   once with its own entry here.
