@@ -477,9 +477,63 @@ export const skillsUpdateScopeStateSchema = z.object({
 });
 export type SkillsUpdateScopeState = z.infer<typeof skillsUpdateScopeStateSchema>;
 
+/**
+ * The team-skills CATALOG version (#744) — a different mechanism from the `npx skills` state
+ * above, and deliberately a separate block rather than a field on it. `up-to-date` and
+ * `update-available` compare two commits of the same bare clone; `unknown` covers every
+ * degraded case (no clone yet, an unresolvable ref, git unavailable) and is the zero-config
+ * default on a cold machine, never an error.
+ */
+/**
+ * `stale-check` is its own word rather than a shade of `unknown` (#747, design review B-1): the two
+ * commits ARE known and identical, and what has aged past the passive-fetch window is the CHECK. A
+ * reader told "version unknown" under two printed versions reads a contradiction, so the six-hour
+ * policy stays in one place — `compareState` — and the surface gets a state it can name.
+ */
+export const skillsCatalogStateSchema = z.enum([
+  'up-to-date',
+  'update-available',
+  'stale-check',
+  'unknown',
+]);
+export type SkillsCatalogState = z.infer<typeof skillsCatalogStateSchema>;
+
+/** One commit of a skills catalog, ready to render as `<tag> (<shortCommit>, <date>)`.
+ *  `tag` is absent — not null — when no tag is reachable, so `JSON.stringify` drops the key. */
+export const skillsCatalogCommitSchema = z.object({
+  commit: z.string(),
+  shortCommit: z.string(),
+  /** The commit date as `YYYY-MM-DD` (from git's `%cI`). */
+  date: z.string(),
+  /** The nearest reachable tag NAME — never `git describe`'s `v1.1.0-1-g769ebc7` form (#747,
+   *  design review NB-1), which repeats the hash and only a git user can read. */
+  tag: z.string().optional(),
+  /** How many commits this one is after `tag`, so a surface can say it in words ("1 commit after
+   *  v1.1.0"). Absent — not 0 — when the tag is exact, so `JSON.stringify` drops the key. */
+  commitsSinceTag: z.number().int().optional(),
+});
+export type SkillsCatalogCommit = z.infer<typeof skillsCatalogCommitSchema>;
+
+/**
+ * One configured skills source and the two commits that answer "which catalog am I serving?".
+ * `installed` is the commit the served catalog was listed at; `available` is the same clone's
+ * head as of the last successful fetch — i.e. upstream as THIS MACHINE last saw it, never a
+ * live upstream read (no new network path). `fetchedAt` is when that last fetch succeeded.
+ */
+export const skillsCatalogVersionSchema = z.object({
+  repo: z.string(),
+  ref: z.string(),
+  state: skillsCatalogStateSchema,
+  installed: skillsCatalogCommitSchema.optional(),
+  available: skillsCatalogCommitSchema.optional(),
+  fetchedAt: z.string().nullable(),
+});
+export type SkillsCatalogVersion = z.infer<typeof skillsCatalogVersionSchema>;
+
 /** `GET /api/v1/workspace/skills-update` (and the check/apply POSTs) — the merged project+global
  *  skills-update state. `autoUpdateEnabled`/`inherited` are re-stamped from the workspace config
- *  on the way out (`skillsUpdateResponse`, src/server/server.ts:1818). */
+ *  on the way out (`skillsUpdateResponse`, src/server/server.ts:1818), and `catalog` is read
+ *  there too (#744) — the service below knows nothing about the team-skills clone. */
 export const skillsUpdateStateSchema = z.object({
   status: skillsUpdateStatusSchema,
   available: z.boolean(),
@@ -489,6 +543,7 @@ export const skillsUpdateStateSchema = z.object({
   updatedAt: z.string().nullable(),
   scopes: z.array(skillsUpdateScopeStateSchema),
   needsUpgradeNotes: z.boolean(),
+  catalog: z.array(skillsCatalogVersionSchema),
 });
 export type SkillsUpdateState = z.infer<typeof skillsUpdateStateSchema>;
 

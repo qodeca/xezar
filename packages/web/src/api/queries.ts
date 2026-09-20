@@ -109,6 +109,7 @@ import type {
   RunRecord,
   SelectAgentProfileInput,
   SetAgentConfigInput,
+  SkillsUpdateState,
   UpdateAgentProfileInput,
   UpdateProjectInput,
 } from '@qodeca/xezar-api-client'
@@ -1342,6 +1343,33 @@ export function useAgentProfiles() {
   })
 }
 
+/**
+ * How many answers the catalog block may keep the one-minute cadence alive on its own (#747,
+ * design review NB-7). The cold-boot race it exists for resolves in the first answer or two; a
+ * source that can never resolve would otherwise poll for as long as the page is open.
+ */
+export const CATALOG_POLL_ATTEMPTS = 4
+
+/**
+ * The skills-update cadence, as a pure function so its BOUND is testable (#747, NB-7).
+ *
+ * The status half is unchanged: a transient `idle`/`checking`/`updating` snapshot keeps polling
+ * until it converges. The catalog half (#744, OQ-2) now polls only while a source has read no
+ * `installed` version at all — the cold-boot case it was added for — and only for the first few
+ * answers, so an unreachable source settles into a quiet page instead of a permanent timer.
+ */
+export function skillsUpdateRefetchMs(
+  state: SkillsUpdateState | undefined,
+  dataUpdateCount: number,
+): number | false {
+  const status = state?.status
+  const statusTransient =
+    status === undefined || status === 'idle' || status === 'checking' || status === 'updating'
+  const catalogCold = state?.catalog?.some((entry) => !entry.installed) ?? false
+  const catalogWaiting = catalogCold && dataUpdateCount < CATALOG_POLL_ATTEMPTS
+  return statusTransient || catalogWaiting ? 60_000 : false
+}
+
 export function useSkillsUpdate(projectId: string, enabled = true) {
   return useQuery({
     queryKey: workspaceQueryKeys.skillsUpdate(projectId),
@@ -1352,12 +1380,10 @@ export function useSkillsUpdate(projectId: string, enabled = true) {
     // response converges. Checks may legitimately take tens of seconds, so a one-minute cadence
     // avoids repeatedly challenging authenticated remote sessions while still converging after
     // a long-running operation. The initial mount remains the session's one automatic check.
-    refetchInterval: (query) => {
-      const status = query.state.data?.status
-      return status === undefined || status === 'idle' || status === 'checking' || status === 'updating'
-        ? 60_000
-        : false
-    },
+    // The catalog block (#744, OQ-2) rides the same cadence while a source has no version at all:
+    // on a cold boot the bare clone races the first page load. `skillsUpdateRefetchMs` owns that
+    // rule, and its bound (#747, NB-7) is why an unreachable source does not poll forever.
+    refetchInterval: (query) => skillsUpdateRefetchMs(query.state.data, query.state.dataUpdateCount),
   })
 }
 

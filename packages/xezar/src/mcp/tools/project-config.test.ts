@@ -1245,6 +1245,26 @@ describe('project_config: skills', () => {
     expect(checked.global).toEqual({ available: true, reason: 'checked global install' });
     expect(JSON.stringify(checked)).not.toContain('global-only-skill');
   });
+
+  it('check_skill_updates carries the same skill catalog version the cockpit route serves (#744)', async () => {
+    // A configured source that was never cloned: deterministically `unknown`, and non-EMPTY on
+    // purpose — against an empty array "the config was read" and "there is no source" are the
+    // same assertion, which is the fail-open shape AGENTS.md warns about.
+    writeFileSync(
+      join(ws.roots.a, '.xezar', 'config.json'),
+      JSON.stringify({ skillsRepos: [{ repo: 'fixture-owner/fixture-skills', ref: 'trunk' }] }),
+      'utf8',
+    );
+    const expected = [{ repo: 'fixture-owner/fixture-skills', ref: 'trunk', state: 'unknown', fetchedAt: null }];
+    const checked = value(await invoke({ action: 'check_skill_updates' }));
+    expect(checked.catalog).toEqual(expected);
+    // UI ↔ MCP parity: the leader's door and the cockpit's answer the same two facts.
+    const route = await cockpit('/api/v1/workspace/skills-update/check', 'POST', { projectId: 'proj-a' });
+    expect(route.body.catalog).toEqual(checked.catalog);
+    // No host path travels: the cache directory is never named, only the repo id.
+    expect(JSON.stringify(checked.catalog)).not.toContain(ws.roots.a);
+    expect(JSON.stringify(checked.catalog)).not.toContain(ws.home);
+  });
 });
 
 describe('project_config: automations', () => {

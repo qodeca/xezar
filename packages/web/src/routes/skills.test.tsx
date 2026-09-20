@@ -132,7 +132,7 @@ function renderAt(entry: string) {
 
 const UPDATE_CURRENT: SkillsUpdateState = {
   status: 'current', available: false, autoUpdateEnabled: true, inherited: true,
-  checkedAt: '2026-07-22T12:00:00.000Z', updatedAt: null, needsUpgradeNotes: false,
+  checkedAt: '2026-07-22T12:00:00.000Z', updatedAt: null, needsUpgradeNotes: false, catalog: [],
   scopes: [{ scope: 'project', status: 'current', available: false, skills: ['xez-fix'], checkedAt: '2026-07-22T12:00:00.000Z', updatedAt: null }],
 }
 

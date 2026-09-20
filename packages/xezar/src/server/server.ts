@@ -91,7 +91,7 @@ import {
 import { planChain, slugify } from '../planner.ts';
 import { discoverSkills } from '../skills.ts';
 import { SkillsUpdateConflictError, SkillsUpdateCoordinator, SkillsUpdateService, type SkillsUpdateState } from '../skills-update.ts';
-import { getTeamSkillsCached, refreshTeamSkills, waitForTeamSkills } from '../skills-remote.ts';
+import { getTeamSkillsCached, refreshTeamSkills, skillsCatalogVersions, waitForTeamSkills } from '../skills-remote.ts';
 import { appendHandoffHeartbeat, handoffProgressExcerpt, readHandoff } from '../handoff.ts';
 import { markStarted, onTodosChanged, readTodos, removeTodo, todoTaskText, type TodoItem } from '../todos.ts';
 import type { RunEvent, RunRecord, RunStatus, RunStore } from '../runs/store.ts';
@@ -105,7 +105,7 @@ import {
 } from '../runs/event-history.ts';
 import { readRunIndexFromDisk } from '../runs/run-index.ts';
 import { isV2WireEventType } from '../runs/ui-event-sink.ts';
-import type { McpApiReference } from '@qodeca/xezar-contract';
+import type { McpApiReference, SkillsCatalogVersion } from '@qodeca/xezar-contract';
 import { mcpLeaderActionInputSchema, type McpLeaderStatus } from '@qodeca/xezar-contract';
 import { onboardingOfferedInputSchema, type OnboardingStatus } from '@qodeca/xezar-contract';
 import {
@@ -2903,9 +2903,21 @@ export function createApp(deps: ServerDeps) {
     return { root: project.root };
   };
 
-  const skillsUpdateResponse = async (state: SkillsUpdateState): Promise<SkillsUpdateState> => {
+  // The `npx skills` state plus the team-skills CATALOG version (#744). The catalog half is read
+  // here, not in `SkillsUpdateService`: it is a different mechanism (a bare clone under the cache
+  // root) and the service must keep knowing nothing about it. The read is local-only and never
+  // throws, so a cold or unreadable cache still answers 200 with `state: 'unknown'`.
+  const skillsUpdateResponse = async (
+    state: SkillsUpdateState,
+    root: string,
+  ): Promise<SkillsUpdateState & { catalog: SkillsCatalogVersion[] }> => {
     const config = await loadWorkspaceConfig();
-    return { ...state, autoUpdateEnabled: effectiveSkillsAutoUpdate(config), inherited: config.skillsAutoUpdate === undefined };
+    return {
+      ...state,
+      autoUpdateEnabled: effectiveSkillsAutoUpdate(config),
+      inherited: config.skillsAutoUpdate === undefined,
+      catalog: await skillsCatalogVersions(root),
+    };
   };
 
   // ---- chained family: skills updates (workspace-level) ----
@@ -2916,14 +2928,14 @@ export function createApp(deps: ServerDeps) {
       if ('error' in resolved) return c.json({ error: resolved.error }, resolved.status);
       const state: SkillsUpdateState = skillsUpdate.snapshot(resolved.root);
       void skillsUpdate.check(resolved.root).catch(() => {});
-      return c.json(await skillsUpdateResponse(state));
+      return c.json(await skillsUpdateResponse(state, resolved.root));
     })
 
     .post('/workspace/skills-update/check', jsonZodValidator(skillsUpdateInputSchema, { message: 'body must contain only projectId' }), async (c) => {
       const parsed = { data: c.req.valid('json') };
       const resolved = await resolveSkillsUpdateRoot(parsed.data.projectId);
       if ('error' in resolved) return c.json({ error: resolved.error }, resolved.status);
-      return c.json(await skillsUpdateResponse(await skillsUpdate.check(resolved.root, true)));
+      return c.json(await skillsUpdateResponse(await skillsUpdate.check(resolved.root, true), resolved.root));
     })
 
     .post('/workspace/skills-update/apply', jsonZodValidator(skillsUpdateInputSchema, { message: 'body must contain only projectId' }), ui.route('skills.applyUpdates', { project: { body: 'projectId' } }), async (c) => {
@@ -2931,10 +2943,10 @@ export function createApp(deps: ServerDeps) {
       const resolved = await resolveSkillsUpdateRoot(parsed.data.projectId);
       if ('error' in resolved) return c.json({ error: resolved.error }, resolved.status);
       try {
-        return c.json(await skillsUpdateResponse(await skillsUpdate.update(resolved.root, true)));
+        return c.json(await skillsUpdateResponse(await skillsUpdate.update(resolved.root, true), resolved.root));
       } catch (error) {
         if (error instanceof SkillsUpdateConflictError) {
-          return c.json({ error: 'another skills update operation is running', state: await skillsUpdateResponse(skillsUpdate.snapshot(resolved.root)) }, 409);
+          return c.json({ error: 'another skills update operation is running', state: await skillsUpdateResponse(skillsUpdate.snapshot(resolved.root), resolved.root) }, 409);
         }
         throw error;
       }

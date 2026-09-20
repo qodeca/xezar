@@ -1243,6 +1243,10 @@ async function run(args: ProjectConfigInput & { action: ProjectConfigAction }, s
         autoUpdateEnabled: state.autoUpdateEnabled,
         autoUpdateInherited: state.inherited,
         checkedAt: state.checkedAt,
+        // The team-skills CATALOG version, verbatim from the route (#744): the leader reads the
+        // same two facts the cockpit shows (UI ↔ MCP parity). Repo id, ref, sha, date and tag
+        // only — the cache PATH never travels, so there is nothing here to scrub.
+        catalog: state.catalog,
         ...(project
           ? {
               project: {

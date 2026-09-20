@@ -147,6 +147,7 @@ describe('repoChipOf', () => {
 const UPDATE: SkillsUpdateState = {
   status: 'available', available: true, autoUpdateEnabled: true, inherited: true,
   checkedAt: '2026-07-22T00:00:00.000Z', updatedAt: null, scopes: [], needsUpgradeNotes: false,
+  catalog: [],
 }
 
 describe('skillsUpdateMarkerOf', () => {

@@ -3,14 +3,162 @@ import { PackageCheckIcon } from 'lucide-react'
 
 import { putWorkspaceConfig } from '@/api/client'
 import { useProjects, useSkillsUpdate, useWorkspaceConfig, workspaceQueryKeys } from '@/api/queries'
-import type { SetWorkspaceConfigInput, WorkspaceConfigResponse } from '@qodeca/xezar-api-client'
+import type {
+  SetWorkspaceConfigInput,
+  SkillsCatalogCommit,
+  SkillsCatalogVersion,
+  WorkspaceConfigResponse,
+} from '@qodeca/xezar-api-client'
 import { CenteredState } from '@/components/centered-state'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { toast } from '@/components/ui/toaster'
+import { shortAge } from '@/lib/format'
+import { useNow } from '@/lib/use-now'
+import { SettingsField } from './settings-field'
 
 /** The updater's reason for a missing lock file (`skills-update.ts`, `checkScope`). */
 const NOT_TRACKED = 'installation is not tracked'
+
+/**
+ * One word per state, and "Version unknown" belongs to ONE of them (#747, design review B-1):
+ * the case where there is no local copy and therefore no version to print. When the two versions
+ * ARE printed, the badge never contradicts them — a stale check says so about the CHECK, and two
+ * versions that cannot be lined up say so about the COMPARISON.
+ */
+export function catalogStateLabel(entry: SkillsCatalogVersion): string {
+  switch (entry.state) {
+    case 'up-to-date':
+      return 'Up to date'
+    case 'update-available':
+      return 'Update available'
+    case 'stale-check':
+      return 'Check is stale'
+    default:
+      return entry.installed || entry.available ? 'Comparison unknown' : 'Version unknown'
+  }
+}
+
+/** `Sep 20, 2026` — a date a reader reads, in their own locale (`writing.md` §12). */
+function catalogDateText(date: string): string {
+  const at = new Date(`${date}T00:00:00`)
+  if (Number.isNaN(at.getTime())) return date
+  return at.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+}
+
+/**
+ * `v1.1.0 (de525c6, Sep 20, 2026)`, the distance in words when the tag is not exact
+ * (`1 commit after v1.1.0 (…)`), or the short sha alone when no tag is reachable.
+ *
+ * Never `git describe`'s own `v1.1.0-1-g769ebc7` (#747, design review NB-1): it prints the hash
+ * twice and its `-1-g` suffix is git's notation, not the page's.
+ */
+export function catalogVersionText(commit: SkillsCatalogCommit | undefined): string {
+  if (!commit) return '—'
+  const when = catalogDateText(commit.date)
+  if (!commit.tag) return `${commit.shortCommit} (${when})`
+  const after = commit.commitsSinceTag ?? 0
+  const version = after > 0 ? `${after} commit${after === 1 ? '' : 's'} after ${commit.tag}` : commit.tag
+  return `${version} (${commit.shortCommit}, ${when})`
+}
+
+/**
+ * One sentence PER STATE (#747, design review B-1 and B-2): what is tracked, how fresh the answer
+ * is, and — where there is one — what to do next. "Available" is upstream as THIS MACHINE last saw
+ * it: there is no live upstream read (#744), so the copy says "last checked", never anything that
+ * claims to know upstream right now.
+ */
+export function catalogExplanation(entry: SkillsCatalogVersion, now = Date.now()): string {
+  if (!entry.installed && !entry.available) {
+    // No promise the page cannot keep (#747, NB-4): a source this machine can never reach stays
+    // exactly here, and the sentence says so rather than announcing an arrival.
+    return `xezar has not read ${entry.repo} yet, so there is no version to show — it fills in the first time these skills load, and stays here while the source cannot be reached.`
+  }
+  const tracking = `Tracking ${entry.repo} ${entry.ref}`
+  const age = entry.fetchedAt ? `${shortAge(entry.fetchedAt, now)} ago` : ''
+  if (entry.state === 'stale-check') {
+    return `${tracking} — the last upstream check is older than six hours${age ? ` (${age})` : ''}, so the versions above are as of then.`
+  }
+  const checked = age ? `last checked ${age}` : 'this machine has not checked upstream yet'
+  if (entry.state === 'update-available') {
+    return `${tracking} — ${checked}. Use Refresh on the Skills page to start serving the newer version.`
+  }
+  if (entry.state === 'unknown') {
+    // Two ways to have a version and still no comparison, and they are not the same sentence:
+    // one side could not be read at all, or both were read and share no history.
+    return !entry.installed || !entry.available
+      ? `${tracking} — ${checked}, and only one of the two versions could be read, so there is nothing to compare.`
+      : `${tracking} — ${checked}, and these two versions share no history, so they cannot be compared.`
+  }
+  return `${tracking} — ${checked}.`
+}
+
+/**
+ * The block keeps its place on the page from the first paint (#747, design review NB-5): the
+ * heading and hint render while the request is in flight and when it fails, so nothing below it
+ * moves under the pointer. Its body is a polite live region (NB-6) because a cold boot turns
+ * "Version unknown" into a real state on its own, with no interaction to announce it.
+ */
+function CatalogFields({
+  catalog,
+  error,
+}: {
+  catalog: SkillsCatalogVersion[] | undefined
+  error: Error | null
+}) {
+  const now = useNow(30_000)
+  return (
+    <SettingsField
+      title="Skill catalog"
+      hint="The team skills this cockpit serves, and the version it last saw upstream — the automatic-update switch below does not apply to it."
+    >
+      <div data-slot="skills-catalog-version" className="flex flex-col gap-stack" aria-live="polite">
+        {/* A failed BACKGROUND refetch keeps the last good answer on screen: the error body is for
+            the case where there is nothing else to show, not for every error the hook has held. */}
+        {error && !catalog ? (
+          <p data-slot="skills-catalog-error" className="text-[13px] text-soft-foreground">
+            The skill catalog version is unavailable right now.
+          </p>
+        ) : !catalog ? (
+          <p data-slot="skills-catalog-pending" className="text-[13px] text-soft-foreground">
+            Checking…
+          </p>
+        ) : catalog.length === 0 ? (
+          <p data-slot="skills-catalog-empty" className="text-[13px] text-soft-foreground">
+            No team skill source is configured.
+          </p>
+        ) : (
+          catalog.map((entry) => (
+            <div
+              key={`${entry.repo}@${entry.ref}`}
+              data-slot="skills-catalog-source"
+              className="flex flex-col gap-2 rounded-md border border-border bg-muted/30 px-3 py-2"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-mono text-xs font-medium text-foreground">{entry.repo}</span>
+                <Badge variant="outline" data-slot="skills-catalog-state">
+                  {catalogStateLabel(entry)}
+                </Badge>
+              </div>
+              <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                <dt>Installed</dt>
+                <dd data-slot="skills-catalog-installed" className="font-mono">
+                  {catalogVersionText(entry.installed)}
+                </dd>
+                <dt>Available</dt>
+                <dd data-slot="skills-catalog-available" className="font-mono">
+                  {catalogVersionText(entry.available)}
+                </dd>
+              </dl>
+              <p className="text-[11px] text-soft-foreground">{catalogExplanation(entry, now)}</p>
+            </div>
+          ))
+        )}
+      </div>
+    </SettingsField>
+  )
+}
 
 export function SkillsSection() {
   const config = useWorkspaceConfig()
@@ -79,6 +227,7 @@ function SkillsForm({
       data-slot="skills-settings-section"
       className="mx-auto flex w-full max-w-2xl flex-col gap-4 p-list pb-[calc(90px+env(safe-area-inset-bottom))] md:p-group md:pb-group"
     >
+      <CatalogFields catalog={update?.catalog} error={updateError} />
       <section className="flex flex-col gap-3">
         <div className="flex items-start justify-between gap-4">
           <div>

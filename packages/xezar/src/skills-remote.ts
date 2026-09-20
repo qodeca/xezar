@@ -1,7 +1,8 @@
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
+import type { SkillsCatalogCommit, SkillsCatalogVersion } from '@qodeca/xezar-contract';
 import { loadConfig, type SkillsRepoSource } from './config.ts';
 import { expandTilde, xezCacheDir } from './paths.ts';
 import { parseFrontmatter, type Skill } from './skills.ts';
@@ -583,4 +584,155 @@ async function loadTeamSkills(repoRoot: string, refresh: boolean): Promise<Skill
   }
   teamSkillsByRoot.set(repoRoot, out);
   return out;
+}
+
+// ---- catalog version (#744) ----------------------------------------------------
+
+/**
+ * The commit the catalog this process is SERVING was listed at, or null when this process has
+ * not listed the source yet. `listRemoteSkills` stamps every skill it returns with the one
+ * commit it read them at, so the served version is already recorded — it is not re-derived.
+ */
+function servedCommitOf(repoRoot: string, repo: string): string | null {
+  for (const skill of teamSkillsByRoot.get(repoRoot) ?? []) {
+    if (skill.team?.repo === repo && skill.team.commit) return skill.team.commit;
+  }
+  return null;
+}
+
+/** `<commit>` → the renderable triple, or null when git cannot describe it. Local reads only. */
+async function describeCommit(bareDir: string, commit: string): Promise<SkillsCatalogCommit | null> {
+  const log = await git(['log', '-1', '--format=%cI', commit], LIST_TIMEOUT_MS, bareDir);
+  const date = log.ok ? /^\d{4}-\d{2}-\d{2}/.exec(log.stdout.trim())?.[0] : undefined;
+  if (!date) return null;
+  // `describe --tags` rather than `tag --points-at` (#744, OQ-3): `fetchAll`'s
+  // `+refs/heads/*` refspec never refreshes tags, so a long-lived clone's tag set goes stale.
+  // `--points-at` then answers nothing at all, while `describe` degrades to the nearest tag it
+  // does know — still a truthful answer to "which catalog is this?".
+  //
+  // `--long` (#747, design review NB-1) so the shape is ALWAYS `<tag>-<n>-g<hash>` and the parse
+  // below is unambiguous even for an exact tag (`-0-g…`) or a tag whose own name has dashes. The
+  // raw string never leaves this function: the contract carries the tag NAME and the distance, so
+  // no surface has to print `v1.1.0-1-g769ebc7` and repeat the hash it already shows.
+  const described = await git(['describe', '--tags', '--long', commit], LIST_TIMEOUT_MS, bareDir);
+  const parsed = described.ok ? /^(.+)-(\d+)-g[0-9a-f]+$/.exec(described.stdout.trim()) : null;
+  const tag = parsed?.[1] ?? '';
+  const commitsSinceTag = parsed ? Number(parsed[2]) : 0;
+  // Spread, never `tag: maybeUndefined`: a key `JSON.stringify` drops must not be typed
+  // as always-present (AGENTS.md § The HTTP API, the recurring contract-parity break).
+  return {
+    commit,
+    shortCommit: commit.slice(0, 7),
+    date,
+    ...(tag ? { tag } : {}),
+    ...(tag && commitsSinceTag > 0 ? { commitsSinceTag } : {}),
+  };
+}
+
+/**
+ * When this clone last learned anything from upstream, as an ISO string, or null.
+ *
+ * The in-process `lastFetchByRepo` is preferred because it records a fetch that actually
+ * SUCCEEDED. `FETCH_HEAD`'s mtime is the durable fallback across a restart, and it is only a
+ * proxy — git rewrites it on some failed fetches too, which is why it is second. `HEAD` is the
+ * floor: a bare clone writes it and never touches it again, and the clone itself is the first
+ * successful fetch, so a just-cloned cache reads as fresh instead of as "never checked".
+ */
+async function lastUpstreamContact(bareDir: string, repo: string): Promise<string | null> {
+  const inProcess = lastFetchByRepo.get(repo);
+  if (inProcess !== undefined) return new Date(inProcess).toISOString();
+  let newest = 0;
+  for (const name of ['FETCH_HEAD', 'HEAD']) {
+    try {
+      const info = await stat(join(bareDir, name));
+      newest = Math.max(newest, info.mtimeMs);
+    } catch {
+      // absent — a clone writes no FETCH_HEAD until its first fetch
+    }
+  }
+  return newest > 0 ? new Date(newest).toISOString() : null;
+}
+
+/**
+ * Which team-skills catalog is this project serving, and has upstream moved (#744)?
+ *
+ * INSTALLED is the commit the served list was read at; AVAILABLE is the clone's head now,
+ * which — because `fetchAll` writes local heads directly — is upstream as of the last fetch
+ * and is what the NEXT catalog load will serve. There is deliberately no new network path
+ * (issue #744, OQ-1), so "available" means "as this machine last saw it" and the freshness of
+ * that claim travels with it in `fetchedAt`.
+ *
+ * Never throws and never fetches: every failure — no clone, an unresolvable ref, a git that is
+ * not installed — degrades to `state: 'unknown'`, because this runs on a settings page that
+ * must render on a cold, offline machine (AGENTS.md § Zero config).
+ */
+export async function skillsCatalogVersions(repoRoot: string): Promise<SkillsCatalogVersion[]> {
+  let config;
+  try {
+    config = await loadConfig(repoRoot);
+  } catch {
+    return [];
+  }
+  const out: SkillsCatalogVersion[] = [];
+  for (const src of config.skillsRepos) {
+    out.push(await catalogVersionOf(repoRoot, src));
+  }
+  return out;
+}
+
+async function catalogVersionOf(repoRoot: string, src: SkillsRepoSource): Promise<SkillsCatalogVersion> {
+  const unknown: SkillsCatalogVersion = {
+    repo: src.repo,
+    ref: src.ref,
+    state: 'unknown',
+    fetchedAt: null,
+  };
+  try {
+    const bareDir = bareDirFor(src.repo);
+    if (!existsSync(join(bareDir, 'HEAD'))) return unknown;
+    const head = await resolveRef(bareDir, src.ref);
+    if (head === null) return unknown;
+    const fetchedAt = await lastUpstreamContact(bareDir, src.repo);
+    const available = await describeCommit(bareDir, head);
+    if (!available) return { ...unknown, fetchedAt };
+    // Nothing listed yet in this process: the head IS what the next read serves, so it is
+    // honestly both halves rather than an absent "installed".
+    const servedSha = servedCommitOf(repoRoot, src.repo);
+    const installed = servedSha && servedSha !== head ? await describeCommit(bareDir, servedSha) : available;
+    if (!installed) return { ...unknown, fetchedAt, available };
+    return { repo: src.repo, ref: src.ref, state: await compareState(bareDir, installed.commit, available.commit, fetchedAt), installed, available, fetchedAt };
+  } catch {
+    return unknown;
+  }
+}
+
+/**
+ * Up to date only when the two commits are the same object AND the machine has heard from
+ * upstream inside the passive-fetch window. Without a recent fetch xezar genuinely does not
+ * know whether upstream moved, and saying "up to date" there would claim more than it can see
+ * (#744, OQ-1).
+ *
+ * That case reads `stale-check`, not `unknown` (#747, design review B-1): both commits ARE known
+ * and are shown, and it is the check that has aged. `unknown` stays for what is genuinely not
+ * known — no clone, an unresolvable ref, a never-fetched clone, or two commits with no shared
+ * history. The six-hour window lives here and nowhere else, so no surface re-derives it.
+ */
+async function compareState(
+  bareDir: string,
+  installed: string,
+  available: string,
+  fetchedAt: string | null,
+): Promise<SkillsCatalogVersion['state']> {
+  if (installed !== available) {
+    const ancestor = await git(
+      ['merge-base', '--is-ancestor', installed, available],
+      LIST_TIMEOUT_MS,
+      bareDir,
+    );
+    return ancestor.ok ? 'update-available' : 'unknown';
+  }
+  if (fetchedAt === null) return 'unknown';
+  const age = Date.now() - new Date(fetchedAt).getTime();
+  if (!Number.isFinite(age)) return 'unknown';
+  return age <= PASSIVE_FETCH_TTL_MS ? 'up-to-date' : 'stale-check';
 }
