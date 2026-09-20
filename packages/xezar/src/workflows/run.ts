@@ -76,6 +76,36 @@ import {
 } from './types.ts';
 
 const CHECK_OUTPUT_CAP = 20_000;
+/**
+ * The one fixed sentence a cheap repair turn opens with (#676). The FIRST automatic return
+ * after a red check resumes the author's own backend session, so the brief it already read is
+ * deliberately NOT repeated — this line is what tells the model which turn it is in.
+ */
+const REPAIR_TURN_PREFIX =
+  'This is a repair turn on the work you already did in this same session — your original brief is '
+  + 'not repeated here. It is earlier in this conversation; if the backend has since compacted it '
+  + 'away, re-read the task from the handoff file rather than guessing.';
+/**
+ * Backends whose runner IGNORES `spec.resume` and always opens a new conversation (#676,
+ * review round 1 Major 1). A recorded session id proves nothing about them: `opencode-server-runner.ts`
+ * mints an id in `bootstrap()` with an unconditional `POST /session` and never reads `spec.resume`
+ * or adopts `spec.sessionId`. A repair turn on such a backend must therefore take the fresh spawn
+ * with the whole brief, loudly — "not resumed at all" must never read as "resumed fine".
+ *
+ * Kept as a list HERE, beside the rest of the resume policy, rather than as a runner flag: this is
+ * the one place that decides cheap-vs-fresh, and a runner that learns to resume is one line here.
+ */
+const BACKENDS_WITHOUT_RESUME: readonly RunnerId[] = ['opencode'];
+/**
+ * Backends whose `token-usage` figure is the SESSION's cumulative total rather than this
+ * execution's own (#676, review round 1 Minor 1). Codex reports
+ * `thread/tokenUsage/updated` → `tokenUsage.total.totalTokens`, which on a `thread/resume`
+ * already contains everything the pre-resume executions spent — so the step's total is that
+ * figure itself, never `startTokens + it`. Every other runner accumulates from zero per session
+ * object (`claude-cli-runner.ts:276`, `pi-runner.ts:697`, `opencode-server-runner.ts:949`), which
+ * is what the addition is for.
+ */
+const BACKENDS_WITH_CUMULATIVE_TOKENS: readonly RunnerId[] = ['codex'];
 /** How rarely a check step's output chunks report liveness (#460 § 2). One per second is far
  *  finer than the 5-minute quiet window it feeds, and keeps a megabyte of output from becoming
  *  a megabyte of in-process notifications. */
@@ -350,6 +380,12 @@ function autoContinueCap(state: ActiveRun): number {
 }
 /** What the turn that just ended did, as far as the nudge bounds care (#613). */
 interface TurnActivity { toolCalls: number; nudged: boolean }
+/**
+ * The session a cheap repair turn resumes (#676) — the retry target's own, as the run recorded
+ * it when it last ran. `profileId` rides along because a resume that reads the wrong account's
+ * config dir finds no session and silently starts fresh; the pair is checked, never assumed.
+ */
+interface RepairResume { stepId: string; sessionId: string; profileId: string | undefined }
 /** Read and reset the per-turn activity. BOTH turn-end handlers call it at every turn end — also
  *  a DONE or monitoring one — so a count never leaks into the next turn. */
 function takeTurnActivity(state: ActiveRun): TurnActivity {
@@ -1226,8 +1262,12 @@ export class RunManager {
    * Claude account says nothing about which Codex account a codex step should use. Resolution
    * order, most specific first:
    *
-   *   1. the step's ALREADY-RECORDED `profileId` — a resume or Continue must reattach to the
-   *      account that created the session, whatever the project has since been switched to;
+   *   1. the step's ALREADY-RECORDED `profileId` — a Continue must reattach to the account that
+   *      created the session, whatever the project has since been switched to. The #676 repair
+   *      turn deliberately does NOT pass it: an automatic return is not a user asking to reopen
+   *      one conversation, so it resolves the account the step would run under now and, when that
+   *      is a different one, falls back to a fresh session with the whole brief rather than
+   *      reattaching to an account the project has moved off;
    *   2. the run's composer override, but only for steps on the run's own runner;
    *   3. the project's stored selection, and failing that the discovered default.
    *
@@ -3701,6 +3741,9 @@ export class RunManager {
       Math.max(0, (this.store.getRun(runId)?.steps.find(s => s.id === step.id)?.iterations ?? 0) - 1),
     ]));
     let checkFailure: string | null = null;
+    /** The session the NEXT agent step may resume instead of spawning fresh (#676), or null for
+     *  today's fresh spawn. Set only alongside `checkFailure`, and cleared with it. */
+    let repairResume: RepairResume | null = null;
     let runError: string | null = null;
     const lastAgentIdx = findLastAgentStepIndex(workflow);
 
@@ -3739,10 +3782,12 @@ export class RunManager {
           extraSystemPrompt,
           chainStepNote(workflow.steps, i),
           startAttachments,
+          repairResume,
         );
         startImages = undefined;
         startAttachments = [];
         checkFailure = null;
+        repairResume = null;
         if (state.cancelled) break;
         if (failure) {
           this.finishStep(runId, step.id, 'failed', failure, emit);
@@ -3778,6 +3823,14 @@ export class RunManager {
         for (const s of workflow.steps.slice(retryIdx, i + 1)) {
           this.store.updateStep(runId, s.id, { status: 'pending' });
         }
+        // #676: the FIRST return is cheap — it resumes the retry target's own session and sends
+        // it only the failing output. Every later return is byte-for-byte today's fresh spawn.
+        // The return itself is counted either way (`retriesUsed` above, `onFail.max` untouched).
+        // Decided AFTER the note above so a transcript reads the return before any reason the
+        // return could not be the cheap one.
+        repairResume = used === 0
+          ? this.repairResumeTarget(runId, workflow, retryIdx, taskBackend, emit)
+          : null;
         i = retryIdx;
         continue;
       }
@@ -3810,6 +3863,56 @@ export class RunManager {
     this.clearIdleTimer(state);
   }
 
+  /**
+   * Can the first automatic return after a red check (#676) resume the retry target's own
+   * session instead of spawning a fresh one with the whole brief?
+   *
+   * Every condition is checked HERE, in one place, except the profile pair — `agentEnvForStep`
+   * resolves that inside `runAgentStep`, so the last condition is re-checked there against the
+   * recorded `profileId` and falls back inside the SAME return. A return whose resume is
+   * unavailable is an environment fact, not a repair round: it never costs an extra attempt,
+   * and it is always announced (a silent fall-back to a fresh session is the failure this
+   * whole path has to avoid).
+   */
+  private repairResumeTarget(
+    runId: string,
+    workflow: WorkflowDef,
+    retryIdx: number,
+    taskBackend: RunnerId,
+    emit: (event: { type: string; stepId?: string; [k: string]: unknown }) => void,
+  ): RepairResume | null {
+    const target = workflow.steps[retryIdx] as WorkflowStepDef | undefined;
+    // A check step has no session to resume; it just re-runs, exactly as today.
+    if (!target || stepKind(target) !== 'agent') return null;
+    const record = this.store.getRun(runId)?.steps.find((s) => s.id === target.id);
+    const sessionId = record?.sessionId;
+    const backendNow = target.runner ?? taskBackend;
+    const say = (why: string) =>
+      emit({
+        type: 'note',
+        stepId: target.id,
+        message: `repair turn unavailable (${why}) — starting a fresh session with the whole brief; this does not cost an extra attempt`,
+      });
+    // Eligibility is decided from what the runner can ACTUALLY do, never from the fact that a
+    // session id was recorded. A backend that mints an id and then ignores `spec.resume` would
+    // otherwise read as "resumed fine" while handing the model an empty conversation.
+    if (BACKENDS_WITHOUT_RESUME.includes(backendNow)) {
+      say(`the ${backendNow} runner cannot resume a recorded session — it always starts a new one`);
+      return null;
+    }
+    if (sessionId === undefined) {
+      say('no session was recorded for this step');
+      return null;
+    }
+    // Absence is NOT a match: a record that never said which backend owns the session cannot
+    // prove the session is reachable from the one about to spawn, so it spawns fresh.
+    if (record?.backend !== backendNow) {
+      say(`the recorded session belongs to ${record?.backend ?? 'an unrecorded backend'}, this step now runs on ${backendNow}`);
+      return null;
+    }
+    return { stepId: target.id, sessionId, profileId: record?.profileId };
+  }
+
   /** Returns an error message, or null on success. */
   private async runAgentStep(
     runId: string,
@@ -3830,6 +3933,9 @@ export class RunManager {
      *  paths are appended to `userPrompt` so the agent can operate on the
      *  real files, not just view the inline image blocks. */
     attachments: PersistedAttachment[] = [],
+    /** The session this execution may resume instead of spawning fresh (#676), decided by
+     *  `repairResumeTarget`. Null on a first execution and on every return after the first. */
+    repair: RepairResume | null = null,
   ): Promise<string | null> {
     let systemPrompt: string | undefined;
     if (step.skill) {
@@ -3891,19 +3997,62 @@ export class RunManager {
     // location of.
     if (attachments.length) userPrompt += `\n\n${pastedAttachmentsText(attachments)}`;
 
-    const sessionId = randomUUID();
+    // The cheap return's whole prompt (#676): the same capped failing output the fresh return
+    // appends, and nothing else — no `{{task}}`, no chain note, no attachments. The session
+    // being resumed already holds all of that.
+    const repairPrompt = checkFailure === null
+      ? null
+      : `${REPAIR_TURN_PREFIX}\n\nA verification command failed after the previous attempt. `
+        + `Fix the cause. Failing output:\n\n${checkFailure}`;
+
+    const freshSessionId = randomUUID();
     const backend = step.runner ?? taskBackend;
+    // `repair.stepId` is belt and braces: the descriptor is built for ONE step, and a retry
+    // target that is not the step now executing must never inherit another step's session.
+    let resumedSessionId = repair !== null && repairPrompt !== null && repair.stepId === step.id
+      ? repair.sessionId
+      : undefined;
+    let sessionId = resumedSessionId ?? freshSessionId;
     this.store.updateStep(runId, step.id, { sessionId, backend });
 
     const stepRecord = this.store.getRun(runId)?.steps.find((s) => s.id === step.id);
-    const startTokens = stepRecord?.tokensUsed ?? 0;
+    // What this step had already spent before THIS execution. Re-read between the two executions
+    // of a repair turn that falls back (#676), so the fresh spawn does not drop what the refused
+    // resume attempt cost.
+    let startTokens = stepRecord?.tokensUsed ?? 0;
+    /**
+     * The step's total after a runner reports `reported` for the CURRENT execution. Every runner
+     * but one accumulates from zero per session object, so the step's total is what it had plus
+     * what this execution reports; Codex reports the resumed thread's cumulative total, which
+     * already contains `startTokens` and must not be added to it (see
+     * `BACKENDS_WITH_CUMULATIVE_TOKENS`). `max` rather than a bare pass-through so a backend that
+     * under-reports on a resume can never make a step's recorded total go backwards.
+     */
+    const stepTokenTotal = (reported: number) =>
+      resumedSessionId !== undefined && BACKENDS_WITH_CUMULATIVE_TOKENS.includes(backend)
+        ? Math.max(startTokens, reported)
+        : startTokens + reported;
     let stepCost = stepRecord?.costUsd ?? 0;
     let turnText = '';
     // The text of the step's last FINISHED turn — what `unfinishedStepReason` judges a non-final
     // step by (#317). Null until a turn ends, so a session that closed mid-turn is not done either.
     let lastTurnText: string | null = null;
     let sessionError: string | undefined;
-    const sink = this.makeUiSink(runId, step.id);
+    /**
+     * Did this execution get anywhere at all? A resumed repair turn that errors before it says a
+     * word or calls a tool is a backend refusing the resume (#676, review round 1 Major 2) and
+     * falls back to the fresh spawn inside the same return; one that worked and THEN failed is a
+     * failed step, exactly as before, and is never re-run behind the user's back.
+     */
+    let sawActivity = false;
+    /** xezar's own memory-guard pause (#603/#703) — a decision, never a resume the backend refused. */
+    let memoryPaused = false;
+    // One sink per backend SESSION, not per step: `UiEventSink` latches `ended` and then drops
+    // every later event, including its own `session.ended` — so the fall-back execution (#676,
+    // review round 1 Major 2) gets a new one, or its whole v2 stream would vanish from the NDJSON
+    // and the cockpit behind the refused resume's error. `onEvent` and the `onUiEvent` callback
+    // both read this binding rather than capturing a value, so the swap reaches them.
+    let sink = this.makeUiSink(runId, step.id);
     const onEvent = (event: AgentEvent) => {
       if (event.type === 'image') {
         const saved = this.persistAttachment(runId, event.mediaType, event.data);
@@ -3911,13 +4060,17 @@ export class RunManager {
         return;
       }
       if (event.type === 'text') {
+        sawActivity = true;
         turnText = appendTurnText(turnText, event.text);
         const text = stripAskMarker(stripTaskMarkers(stripMonitoringMarker(stripDoneMarker(event.text))));
         if (text) emit({ type: 'text', text, stepId: step.id });
         return;
       }
       emit({ ...event, stepId: step.id });
-      if (event.type === 'tool-call') state.turnToolCalls = (state.turnToolCalls ?? 0) + 1;
+      if (event.type === 'tool-call') {
+        sawActivity = true;
+        state.turnToolCalls = (state.turnToolCalls ?? 0) + 1;
+      }
       if (event.type === 'error') {
         sessionError ??= event.message;
         state.session?.interrupt();
@@ -3929,7 +4082,7 @@ export class RunManager {
         this.store.updateStep(runId, step.id, { sessionId: event.sessionId, backend });
       }
       if (event.type === 'token-usage') {
-        this.store.updateStep(runId, step.id, { tokensUsed: startTokens + event.tokensUsed });
+        this.store.updateStep(runId, step.id, { tokensUsed: stepTokenTotal(event.tokensUsed) });
       }
       if (event.type === 'cost') {
         stepCost += event.usd;
@@ -4054,6 +4207,29 @@ export class RunManager {
       if (err instanceof AgentTempDirError || err instanceof AgentAccountUnavailableError) return err.message;
       throw err;
     }
+    // The last eligibility condition of the cheap return (#676), and the one that could only be
+    // checked here: `sessionId` and `profileId` are a pair (see the comment just above), so a
+    // resume under a different account would find no session and silently start fresh. Fall back
+    // inside the SAME return — loudly, and without consuming a second attempt.
+    if (resumedSessionId !== undefined && repair?.profileId !== stepProfile.profileId) {
+      emit({
+        type: 'note',
+        stepId: step.id,
+        message: `repair turn unavailable (the session belongs to agent account ${repair?.profileId ?? 'unknown'}, `
+          + `this step now runs under ${stepProfile.profileId}) — starting a fresh session with the whole brief; `
+          + 'this does not cost an extra attempt',
+      });
+      resumedSessionId = undefined;
+      sessionId = freshSessionId;
+      this.store.updateStep(runId, step.id, { sessionId, backend });
+    }
+    if (resumedSessionId !== undefined) {
+      emit({
+        type: 'note',
+        stepId: step.id,
+        message: 'repair turn — resuming this step\'s own session with the failing output only; the brief is not repeated',
+      });
+    }
     const runner = createRunner(stepBackend);
     // Advisory liveness (#460 § 2): record the wall clock this step is ACTUALLY spawning with,
     // once, here — the one place that knows both the step's own `timeout` and which backend is
@@ -4067,104 +4243,151 @@ export class RunManager {
     const startedMs = Date.parse(
       this.store.getRun(runId)?.steps.find((candidate) => candidate.id === step.id)?.startedAt ?? '',
     );
-    this.store.updateStep(runId, step.id, {
-      profileId: stepProfile.profileId,
-      progress: {
-        // A fresh execution episode has shown nothing yet, and that is UNKNOWN rather than now:
-        // stamping the start here would make a step that never speaks look freshly active.
-        lastActivityAt: null,
-        effectiveTimeoutMs,
-        deadlineAt:
-          effectiveTimeoutMs !== null && Number.isFinite(startedMs)
-            ? new Date(startedMs + effectiveTimeoutMs).toISOString()
-            : null,
-      },
+    /**
+     * One execution of this step against the backend. Called twice at most, and only ever when
+     * the first call was a REFUSED resume (#676, review round 1 Major 2): the second call is the
+     * fresh spawn that the return would have made anyway, inside the same return.
+     */
+    const execute = async (): Promise<string | null> => {
+      this.store.updateStep(runId, step.id, {
+        profileId: stepProfile.profileId,
+        progress: {
+          // A fresh execution episode has shown nothing yet, and that is UNKNOWN rather than now:
+          // stamping the start here would make a step that never speaks look freshly active.
+          lastActivityAt: null,
+          effectiveTimeoutMs,
+          deadlineAt:
+            effectiveTimeoutMs !== null && Number.isFinite(startedMs)
+              ? new Date(startedMs + effectiveTimeoutMs).toISOString()
+              : null,
+        },
+      });
+
+      let session: AgentSession;
+      state.currentStepId = step.id;
+      this.beginUsageInvocation(runId, state, step.id);
+      try {
+        session = runner.startSession(
+          {
+            // Skill body, then the run's extra prompt (POST override or config
+            // default), then the handoff/todos contract — every agent step.
+            systemPrompt: composeSystemPrompt(
+              systemPrompt,
+              extraSystemPrompt,
+              quickTaskWorktreeInstructions(this.store.getRun(runId)?.workflow, state.cwd, this.repoRoot),
+              this.semaphore.followupsEnabled() && input.generateFollowups !== false
+                ? HANDOFF_INSTRUCTIONS
+                : HANDOFF_ONLY_INSTRUCTIONS,
+            ),
+            userPrompt: resumedSessionId !== undefined && repairPrompt !== null ? repairPrompt : userPrompt,
+            // A resumed session already saw them; re-sending would re-bill the same blocks.
+            images: resumedSessionId === undefined ? images : undefined,
+            cwd: state.cwd,
+            ...worktreeGuardRoots(state.cwd, this.repoRoot),
+            allowedTools: step.allowedTools ?? DEFAULT_ALLOWED_TOOLS,
+            bashAllowlist: step.bashAllowlist,
+            // The handoff file and this run's evidence directory live outside the worktree — grant access.
+            additionalDirectories: agentDirectories(this.repoRoot, this.dataDir, stepProfile.env),
+            env: stepProfile.env,
+            model: backendModel,
+            sessionId,
+            resume: resumedSessionId !== undefined,
+            // Interactive sessions have no wall clock — the idle timer rules. A
+            // step's own `timeout` (#22) outranks that; with the field absent
+            // this is byte-for-byte the pre-#22 `interactive ? 0 : undefined`.
+            // A repair turn (#676) is an execution of THIS step, so it takes this same value —
+            // never the Continue path's `timeoutMs: 0`, which would uncap a step whose workflow
+            // deliberately left `timeout` absent (`release.yaml`'s author; BC §4).
+            timeoutMs: stepTimeoutMs(step, interactive),
+          },
+          onEvent,
+          {
+            autoEndAfterFirstTurn: !interactive,
+            onUiEvent: (event) => this.handleRunnerUiEvent(runId, state, sink, event),
+            // A backend's native question (a pi extension dialog, #369) is refused at once in
+            // an autonomous run — the same "never park at `waiting`" rule the turn-end nudge keeps.
+            autonomous: state.autonomous === true,
+          },
+        );
+      } catch (err) {
+        state.currentStepId = undefined;
+        return err instanceof Error ? err.message : String(err);
+      }
+      this.publishSession(runId, state, step.id, session);
+
+      try {
+        const result = await session.result;
+        if (sessionError) {
+          sink.sessionEnded('error', sessionError);
+          return sessionError;
+        }
+        // A close xezar itself forced for the memory guard settles the CLI teardown on the same
+        // "our own signal coming back" path a legitimate `XEZ:DONE` close does (#703), so without
+        // this check the step below reads it as a finished turn instead of the pause it is (#603).
+        if (state.memoryLimitPause) {
+          const reason = state.memoryLimitPause;
+          state.memoryLimitPause = undefined;
+          memoryPaused = true;
+          sink.sessionEnded('error', reason);
+          return reason;
+        }
+        // v2 counterpart of v1's `done` (spec: the mappers leave session-close
+        // events to the RunManager — only it knows how the session settled).
+        sink.sessionEnded(state.cancelled ? 'cancelled' : 'end_turn');
+        this.store.updateStep(runId, step.id, { tokensUsed: stepTokenTotal(result.tokensUsed) });
+        // A session that ended cleanly is not a finished step (#317). The last step keeps its own
+        // rules — it is interactive, parks at `waiting` and closes on `XEZ:DONE` or idle.
+        if (!interactive && !state.cancelled) return unfinishedStepReason(lastTurnText);
+        return null;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        sink.sessionEnded('error', message); // alongside v1's fatal `error`
+        return message;
+      } finally {
+        this.recordUsagePeaks(runId);
+        this.clearIdleTimer(state);
+        this.monitoring.delete(runId);
+        this.waiting.delete(runId);
+        this.clearMonitoringWakeTimer(state, runId);
+        state.session = undefined;
+        state.currentStepId = undefined;
+        state.interrupt = () => undefined;
+      }
+    };
+
+    const outcome = await execute();
+    // A resume the backend refuses at RUNTIME (#676, review round 1 Major 2). `claude -p --resume
+    // <forgotten id>` prints "No conversation found with session ID: …" and exits 1; Codex answers
+    // a `thread/resume` for an evicted thread with an error. Either arrives here as a session
+    // `error` or a `startSession` throw BEFORE the model says a word — the same environment fact
+    // the three statically checkable conditions already fall back on, only later. So it takes the
+    // same exit: the fresh spawn with the whole brief, inside this same return, announced. It
+    // never costs an extra attempt, because the return was already counted once by the caller.
+    //
+    // Deliberately narrow. `sawActivity` is what keeps a turn that resumed fine, worked, and then
+    // failed from being silently re-run with the whole brief; a cancel and a memory-limit pause
+    // are xezar's own decisions and are never retried behind them.
+    const refusedResume =
+      outcome !== null && resumedSessionId !== undefined && !sawActivity && !state.cancelled && !memoryPaused;
+    if (!refusedResume) return outcome;
+    emit({
+      type: 'note',
+      stepId: step.id,
+      message: `repair turn unavailable (the ${backend} backend refused the recorded session: ${outcome}) `
+        + '— starting a fresh session with the whole brief; this does not cost an extra attempt',
     });
-
-    let session: AgentSession;
-    state.currentStepId = step.id;
-    this.beginUsageInvocation(runId, state, step.id);
-    try {
-      session = runner.startSession(
-        {
-          // Skill body, then the run's extra prompt (POST override or config
-          // default), then the handoff/todos contract — every agent step.
-          systemPrompt: composeSystemPrompt(
-            systemPrompt,
-            extraSystemPrompt,
-            quickTaskWorktreeInstructions(this.store.getRun(runId)?.workflow, state.cwd, this.repoRoot),
-            this.semaphore.followupsEnabled() && input.generateFollowups !== false
-              ? HANDOFF_INSTRUCTIONS
-              : HANDOFF_ONLY_INSTRUCTIONS,
-          ),
-          userPrompt,
-          images,
-          cwd: state.cwd,
-          ...worktreeGuardRoots(state.cwd, this.repoRoot),
-          allowedTools: step.allowedTools ?? DEFAULT_ALLOWED_TOOLS,
-          bashAllowlist: step.bashAllowlist,
-          // The handoff file and this run's evidence directory live outside the worktree — grant access.
-          additionalDirectories: agentDirectories(this.repoRoot, this.dataDir, stepProfile.env),
-          env: stepProfile.env,
-          model: backendModel,
-          sessionId,
-          // Interactive sessions have no wall clock — the idle timer rules. A
-          // step's own `timeout` (#22) outranks that; with the field absent
-          // this is byte-for-byte the pre-#22 `interactive ? 0 : undefined`.
-          timeoutMs: stepTimeoutMs(step, interactive),
-        },
-        onEvent,
-        {
-          autoEndAfterFirstTurn: !interactive,
-          onUiEvent: (event) => this.handleRunnerUiEvent(runId, state, sink, event),
-          // A backend's native question (a pi extension dialog, #369) is refused at once in
-          // an autonomous run — the same "never park at `waiting`" rule the turn-end nudge keeps.
-          autonomous: state.autonomous === true,
-        },
-      );
-    } catch (err) {
-      state.currentStepId = undefined;
-      return err instanceof Error ? err.message : String(err);
-    }
-    this.publishSession(runId, state, step.id, session);
-
-    try {
-      const result = await session.result;
-      if (sessionError) {
-        sink.sessionEnded('error', sessionError);
-        return sessionError;
-      }
-      // A close xezar itself forced for the memory guard settles the CLI teardown on the same
-      // "our own signal coming back" path a legitimate `XEZ:DONE` close does (#703), so without
-      // this check the step below reads it as a finished turn instead of the pause it is (#603).
-      if (state.memoryLimitPause) {
-        const reason = state.memoryLimitPause;
-        state.memoryLimitPause = undefined;
-        sink.sessionEnded('error', reason);
-        return reason;
-      }
-      // v2 counterpart of v1's `done` (spec: the mappers leave session-close
-      // events to the RunManager — only it knows how the session settled).
-      sink.sessionEnded(state.cancelled ? 'cancelled' : 'end_turn');
-      this.store.updateStep(runId, step.id, { tokensUsed: startTokens + result.tokensUsed });
-      // A session that ended cleanly is not a finished step (#317). The last step keeps its own
-      // rules — it is interactive, parks at `waiting` and closes on `XEZ:DONE` or idle.
-      if (!interactive && !state.cancelled) return unfinishedStepReason(lastTurnText);
-      return null;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      sink.sessionEnded('error', message); // alongside v1's fatal `error`
-      return message;
-    } finally {
-      this.recordUsagePeaks(runId);
-      this.clearIdleTimer(state);
-      this.monitoring.delete(runId);
-      this.waiting.delete(runId);
-      this.clearMonitoringWakeTimer(state, runId);
-      state.session = undefined;
-      state.currentStepId = undefined;
-      state.interrupt = () => undefined;
-    }
+    resumedSessionId = undefined;
+    sessionId = freshSessionId;
+    this.store.updateStep(runId, step.id, { sessionId, backend });
+    // Whatever the refused attempt managed to bill is already on the record; the fresh execution
+    // adds to it rather than replacing it.
+    startTokens = this.store.getRun(runId)?.steps.find((s) => s.id === step.id)?.tokensUsed ?? startTokens;
+    sessionError = undefined;
+    turnText = '';
+    lastTurnText = null;
+    sawActivity = false;
+    sink = this.makeUiSink(runId, step.id);
+    return await execute();
   }
 
   /**

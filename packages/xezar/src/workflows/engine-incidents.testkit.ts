@@ -14,7 +14,17 @@ export const COMPLETION_VARIANTS = [
   { name: 'split chunks', streamed: true, chunks: ['XEZ:', 'DO', 'NE\nCheckpoint: review posted.'] },
   { name: 'v2 final with v1 compatibility text', chunks: [INCIDENT_FINAL], v2: true },
 ] as const;
-export interface ScriptedTurn { chunks?: readonly string[]; v2?: boolean; streamed?: boolean; error?: string; before?: (spec: AgentRunSpec) => void }
+export interface ScriptedTurn {
+  chunks?: readonly string[];
+  v2?: boolean;
+  streamed?: boolean;
+  error?: string;
+  /** What this turn reports as `token-usage`, and as the run result's `tokensUsed`. Whether that
+   *  figure is this execution's own or the session's cumulative total is the RUNNER's convention —
+   *  which is the thing `run.ts` has to get right on a resumed turn (#676). */
+  tokensUsed?: number;
+  before?: (spec: AgentRunSpec) => void;
+}
 
 /** Only the agent process is replaced. A rejected nudge is recorded, never allowed to spin 40 turns. */
 export function scriptedRunner(turns: ScriptedTurn[]) {
@@ -32,11 +42,12 @@ export function scriptedRunner(turns: ScriptedTurn[]) {
       let finish!: (result: AgentRunResult) => void;
       const text = (turn.chunks ?? ['XEZ:DONE']).join('');
       const result = new Promise<AgentRunResult>(resolve => { finish = resolve; });
-      const end = () => { open = false; finish({ text, tokensUsed: 0, toolCalls: [] }); };
+      const end = () => { open = false; finish({ text, tokensUsed: turn.tokensUsed ?? 0, toolCalls: [] }); };
       queueMicrotask(() => {
         turn.before?.(spec);
         emit({ type: 'session', sessionId: spec.sessionId ?? 'scripted-session' });
         if (turn.error) { emit({ type: 'error', message: turn.error }); end(); return; }
+        if (turn.tokensUsed !== undefined) emit({ type: 'token-usage', tokensUsed: turn.tokensUsed });
         if (turn.streamed) {
           // Runners emit whole v1 blocks, never deltas. Exercise the actual production coalescer.
           const coalescer = new V1TextCoalescer(value => emit({ type: 'text', text: value }));
