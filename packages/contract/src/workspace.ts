@@ -489,11 +489,21 @@ export type SkillsUpdateScopeState = z.infer<typeof skillsUpdateScopeStateSchema
  * commits ARE known and identical, and what has aged past the passive-fetch window is the CHECK. A
  * reader told "version unknown" under two printed versions reads a contradiction, so the six-hour
  * policy stays in one place — `compareState` — and the surface gets a state it can name.
+ *
+ * `never-checked` is the same argument one step further (#752, code review M1 / design review B-1):
+ * the two commits are known and identical, and this machine has NO successful upstream check on
+ * record at all (`fetchedAt === null`, or a timestamp that cannot be read). Folding it into
+ * `unknown` is what made a surface say "these two versions share no history" about one commit
+ * compared with itself — `unknown` means the comparison genuinely could not be made (no clone, an
+ * unresolvable ref, git unavailable, one side unreadable, two commits with no shared history), and
+ * a state the server can name is what keeps the cockpit and the MCP `check_skill_updates` answer on
+ * one source of truth instead of each re-deriving the cause from `fetchedAt` plus two shas.
  */
 export const skillsCatalogStateSchema = z.enum([
   'up-to-date',
   'update-available',
   'stale-check',
+  'never-checked',
   'unknown',
 ]);
 export type SkillsCatalogState = z.infer<typeof skillsCatalogStateSchema>;

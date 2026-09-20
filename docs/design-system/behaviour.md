@@ -37,11 +37,20 @@ Focus rules:
 
 ## 2. Announcements
 
-- Polite live regions: 12 – 11 literal `aria-live="polite"` attributes plus the conditional
-  `aria-live` in `mcp-connection-section.tsx`; none assertive. Examples: the composer dictation transcript,
+- Polite live regions: 13 – 12 literal `aria-live="polite"` attributes plus the conditional
+  `aria-live` in `mcp-connection-section.tsx`; none assertive (re-counted 2026-09-20, #752 L-4).
+  Examples: the composer dictation transcript,
   the thread history loader (`sr-only`), the MCP connection status and operations, the skills update card,
-  the GitHub merge box.
-- `role="status"`: 27 sites (toasts, the running spinner, monitoring schedule lines, the provider status
+  the skill-catalog announcer (`sr-only`, `settings/skills-section.tsx`), the GitHub merge box.
+- A live region carries the STATE, never a ticking relative age. A region that holds an age
+  re-announces the whole sentence on every tick — the skill-catalog block announced itself once a
+  minute for the life of the page (#752, L-1) — so the age stays on screen, outside the region, and
+  a short `sr-only` announcer carries the state word.
+- An `sr-only` announcer is `role="status" aria-live="polite" aria-atomic="true"` — the shape
+  `components/app-shell.tsx` already uses. `aria-atomic` matters most where the region is ONE text
+  node covering several things (the skill-catalog announcer joins one sentence per source): without
+  it, what a reader announces on a partial change is undefined.
+- `role="status"`: 29 sites (toasts, the running spinner, monitoring schedule lines, the provider status
   banner, the dictation bar). `role="alert"`: 22 sites (inline errors, the provider auth banner, the route
   error boundary and the MCP leader refusal line).
 - `aria-busy`: the thread history boundary and the "Plan first" radio while planning.

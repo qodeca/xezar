@@ -1,3 +1,7 @@
+import { execFileSync } from 'node:child_process'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
@@ -12,6 +16,32 @@ import {
 import { createQueryClient } from '@/api/query-client'
 import type { SkillsUpdateState, WorkspaceConfigResponse } from '@qodeca/xezar-api-client'
 import { AppRoutes } from '@/routes'
+import { catalogAnnouncement } from './skills-section'
+// A test-only reach into the service, the same one `lib/github-task.test.ts` makes for
+// `runs/task-refs` (AGENTS.md § Repository layout). One case below renders the entry the REAL
+// producer builds for a cache with no successful fetch on record, because a hand-written fixture
+// of that shape is what let #752's M1 through: it can only be written by someone who already
+// believes what the server sends.
+import { bareDirFor, skillsCatalogVersions } from '../../../../xezar/src/skills-remote'
+import { projectStateLayout, setActiveStateLayout } from '../../../../xezar/src/state-layout'
+
+/** Fixture git, never the developer's own config: `tag.gpgSign` and friends turn a plain `git tag`
+ *  into a signed one and the fixture then fails on one machine and not another. */
+function gitFixture(args: string[], cwd: string): void {
+  execFileSync('git', args, {
+    cwd,
+    stdio: 'ignore',
+    env: {
+      ...process.env,
+      GIT_CONFIG_GLOBAL: '/dev/null',
+      GIT_CONFIG_SYSTEM: '/dev/null',
+      GIT_AUTHOR_NAME: 'Fixture',
+      GIT_AUTHOR_EMAIL: 'fixture@example.test',
+      GIT_COMMITTER_NAME: 'Fixture',
+      GIT_COMMITTER_EMAIL: 'fixture@example.test',
+    },
+  })
+}
 
 let requests: Array<{ method: string; url: string; body?: unknown }> = []
 
@@ -249,7 +279,7 @@ describe('Global settings → Skills', () => {
     expect(screen.queryByText('Version unknown')).toBeNull()
     expect(
       screen.getByText(
-        'Tracking qodeca/xezar-skills main — the last upstream check is older than six hours (13h ago), so the versions above are as of then.',
+        'Tracking qodeca/xezar-skills main — the last upstream check is older than six hours (13h ago), so the versions above are as of then. Use Refresh on the Skills page to re-check upstream.',
       ),
     ).toBeTruthy()
     expect(screen.getAllByText(`v1.1.0 (de525c6, ${readable('2026-09-20')})`).length).toBe(2)
@@ -275,6 +305,76 @@ describe('Global settings → Skills', () => {
     expect(await screen.findByText('Comparison unknown')).toBeTruthy()
     expect(screen.queryByText('Version unknown')).toBeNull()
     expect(screen.getByText(/share no history, so they cannot be compared/)).toBeTruthy()
+  })
+
+  /**
+   * #752, code review M1 / design review B-1 — the REAL shape, not a hand-picked fixture.
+   *
+   * The fixture above is two genuinely different commits, which is the case "share no history"
+   * was written for. The case this PR made reachable is the opposite one: an existing, healthy
+   * clone whose head resolves, with NO successful fetch on record — every cache cloned before
+   * `.last-fetch` existed, and any cache whose origin is unreachable after a restart. Both halves
+   * are then populated and IDENTICAL, and the old `unknown` branch told the reader that a commit
+   * shares no history with itself.
+   *
+   * So the entry rendered here is the one `skillsCatalogVersions` really produces for that
+   * scenario, built from a real bare clone of a real origin — a synthetic fixture is exactly what
+   * let the defect through, because it could only be written by someone who already believed the
+   * shape. BREAK-752-SAME-COMMIT-NO-FETCH: return `unknown` from `compareState` for this case, or
+   * drop the same-commit split in `catalogExplanation`, and this test reads the false sentence.
+   */
+  it('never claims one commit shares no history with itself, on the shape the server really sends (#752, M1/B-1)', async () => {
+    const project = mkdtempSync(join(tmpdir(), 'xez-catalog-web-project-'))
+    const origin = mkdtempSync(join(tmpdir(), 'xez-catalog-web-origin-'))
+    try {
+      // A real origin, a real bare clone, and deliberately NO `.last-fetch` marker beside it.
+      mkdirSync(join(origin, 'demo'), { recursive: true })
+      gitFixture(['init', '-b', 'main'], origin)
+      writeFileSync(join(origin, 'demo', 'SKILL.md'), '# demo\n', 'utf8')
+      gitFixture(['add', '-A'], origin)
+      gitFixture(['commit', '-m', 'fixture'], origin)
+      gitFixture(['tag', 'v1.0.0'], origin)
+      setActiveStateLayout(projectStateLayout(project))
+      mkdirSync(join(project, '.xezar'), { recursive: true })
+      writeFileSync(
+        join(project, '.xezar', 'config.json'),
+        JSON.stringify({ skillsRepos: [{ repo: origin, ref: 'main' }] }),
+        'utf8',
+      )
+      const bare = bareDirFor(origin)
+      mkdirSync(dirname(bare), { recursive: true })
+      gitFixture(['clone', '--bare', origin, bare], tmpdir())
+
+      const catalog = await skillsCatalogVersions(project)
+      // The shape itself, asserted before it is rendered: this is what makes the render below a
+      // proof about the product rather than about a fixture someone wrote by hand.
+      expect(catalog[0]?.fetchedAt).toBeNull()
+      expect(catalog[0]?.installed?.commit).toBe(catalog[0]?.available?.commit)
+
+      serve({}, { catalog })
+      renderSkills()
+
+      expect(await screen.findByText('Not checked yet')).toBeTruthy()
+      expect(
+        screen.getByText(
+          `Tracking ${origin} main — this machine has not checked upstream yet, so it cannot say whether these versions are current. Use Refresh on the Skills page to check.`,
+        ),
+      ).toBeTruthy()
+      // The three sentences and badges this case must never render.
+      expect(screen.queryByText(/share no history/)).toBeNull()
+      expect(screen.queryByText(/only one of the two versions could be read/)).toBeNull()
+      expect(screen.queryByText('Comparison unknown')).toBeNull()
+      expect(screen.queryByText('Version unknown')).toBeNull()
+      // Both versions ARE printed, which is why neither badge above may say otherwise.
+      expect(screen.getAllByText(new RegExp(`^v1\\.0\\.0 \\(`)).length).toBe(2)
+      // Last, so the break above is proven on the RENDERED text first: the state is the mechanism,
+      // the sentence is the defect.
+      expect(catalog[0]?.state).toBe('never-checked')
+    } finally {
+      setActiveStateLayout(null)
+      rmSync(project, { recursive: true, force: true })
+      rmSync(origin, { recursive: true, force: true })
+    }
   })
 
   it('does not claim two versions share no history when only one of them was read', async () => {
@@ -342,8 +442,19 @@ describe('Global settings → Skills', () => {
     renderSkills()
     expect(await screen.findByText('Skill catalog')).toBeTruthy()
     expect(screen.getByText('Checking…')).toBeTruthy()
-    const live = document.querySelector('[data-slot="skills-catalog-version"]') as HTMLElement
+    // #752, L-1: the polite region is the sr-only announcer, not the whole body.
+    const live = document.querySelector('[data-slot="skills-catalog-announcement"]') as HTMLElement
     expect(live.getAttribute('aria-live')).toBe('polite')
+    expect(
+      (document.querySelector('[data-slot="skills-catalog-version"]') as HTMLElement).getAttribute(
+        'aria-live',
+      ),
+    ).toBeNull()
+    // #752, L-3: the pending body reserves about one card's height, on the spacing scale, so the
+    // automatic-update switch below it does not jump when the answer lands.
+    expect(
+      (document.querySelector('[data-slot="skills-catalog-pending"]') as HTMLElement).className,
+    ).toContain('min-h-28')
     cleanup()
 
     serve({}, {}, 'error')
@@ -407,6 +518,59 @@ describe('Global settings → Skills', () => {
     expect(screen.queryByText('Could not load skill settings')).toBeNull()
     // Guard (passes with and without the change): the existing line keeps its exact words.
     expect(screen.getByText('No tracked xezar-skills installation found.')).toBeTruthy()
+  })
+
+  it('announces the state word only — never the ticking age (#752, L-1)', async () => {
+    serve(
+      {},
+      {
+        catalog: [
+          {
+            repo: 'qodeca/xezar-skills',
+            ref: 'main',
+            state: 'up-to-date',
+            installed: INSTALLED,
+            available: INSTALLED,
+            fetchedAt: new Date(Date.now() - 61 * 60 * 1000).toISOString(),
+          },
+        ],
+      },
+    )
+    renderSkills()
+    await screen.findByText('Up to date')
+    const live = document.querySelector('[data-slot="skills-catalog-announcement"]') as HTMLElement
+    expect(live.getAttribute('aria-live')).toBe('polite')
+    expect(live.className).toContain('sr-only')
+    expect(live.textContent).toBe('qodeca/xezar-skills: Up to date.')
+    // The defect: the sentence `useNow` re-renders every 30 s used to live inside the region, so
+    // a screen reader re-read "last checked 1h ago" once a minute. It is still on screen…
+    expect(screen.getByText(/last checked 1h ago/)).toBeTruthy()
+    // …and no longer inside anything polite.
+    expect(live.textContent).not.toMatch(/ago/)
+    expect(
+      document.querySelector('[data-slot="skills-catalog-version"] [aria-live]:not([data-slot="skills-catalog-announcement"])'),
+    ).toBeNull()
+  })
+
+  it('keeps every announcement free of an age, in every state (#752, L-1)', () => {
+    const fresh = { repo: 'a/b', ref: 'main', fetchedAt: new Date().toISOString() } as const
+    const announcements = [
+      catalogAnnouncement(undefined, null),
+      catalogAnnouncement(undefined, new Error('nope')),
+      catalogAnnouncement([], null),
+      catalogAnnouncement([{ ...fresh, state: 'up-to-date', installed: INSTALLED, available: INSTALLED }], null),
+      catalogAnnouncement([{ ...fresh, state: 'stale-check', installed: INSTALLED, available: INSTALLED }], null),
+      catalogAnnouncement([{ ...fresh, state: 'unknown', fetchedAt: null }], null),
+    ]
+    // No age, no clock, in any of them: the region's text changes only when a STATE does.
+    for (const text of announcements) expect(text).not.toMatch(/\bago\b|\d+[smhd]\b/)
+    expect(announcements[3]).toBe('a/b: Up to date.')
+    expect(announcements[4]).toBe('a/b: Check is stale.')
+    expect(announcements[5]).toBe('a/b: Version unknown.')
+    // A failed background refetch that still has an answer keeps announcing the answer.
+    expect(
+      catalogAnnouncement([{ ...fresh, state: 'up-to-date', installed: INSTALLED, available: INSTALLED }], new Error('nope')),
+    ).toBe('a/b: Up to date.')
   })
 
   it('says so when no team skill source is configured', async () => {

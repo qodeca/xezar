@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import type { SkillsCatalogCommit, SkillsCatalogVersion } from '@qodeca/xezar-contract';
 import { loadConfig, type SkillsRepoSource } from './config.ts';
@@ -268,6 +268,8 @@ export async function ensureBareClone(repo: string): Promise<{ bareDir: string; 
     network: true,
   });
   if (!res.ok) throw new Error(`git clone --bare ${remote} failed: ${res.stderr.trim()}`);
+  // The clone IS this machine's first successful contact with upstream (#752, L-2).
+  await recordUpstreamContact(bareDir);
   return { bareDir, created: true };
 }
 
@@ -280,6 +282,32 @@ export async function fetchAll(bareDir: string): Promise<void> {
     { network: true },
   );
   if (!res.ok) throw new Error(`git fetch failed: ${res.stderr.trim() || res.stdout.trim()}`);
+  // Only here, past the `ok` check: a fetch that failed never moves "last checked" (#752, L-2).
+  await recordUpstreamContact(bareDir);
+}
+
+/**
+ * Where the time of the last SUCCESSFUL fetch of this clone is kept: a one-line ISO marker
+ * beside the bare clone, under the same cache root (`xezCacheDir()`, resolved through the state
+ * layout — never `homedir()`). A sibling rather than a file inside the bare dir, so nothing in
+ * it can ever be mistaken for git's own state.
+ */
+export function lastFetchMarkerFor(bareDir: string): string {
+  return `${bareDir}.last-fetch`;
+}
+
+/**
+ * Stamp "upstream answered, just now" durably (#752, L-2). Best-effort: a read-only or full
+ * cache costs the page its age line (it reads "not checked yet"), never a failed clone or fetch
+ * — the same zero-config degradation as everything else in this module.
+ */
+async function recordUpstreamContact(bareDir: string): Promise<void> {
+  try {
+    await mkdir(dirname(bareDir), { recursive: true });
+    await writeFile(lastFetchMarkerFor(bareDir), `${new Date().toISOString()}\n`, 'utf8');
+  } catch {
+    // unwritable cache — the in-process record still serves this process
+  }
 }
 
 /**
@@ -630,25 +658,30 @@ async function describeCommit(bareDir: string, commit: string): Promise<SkillsCa
 }
 
 /**
- * When this clone last learned anything from upstream, as an ISO string, or null.
+ * When this clone last SUCCEEDED in learning something from upstream, as an ISO string, or null.
  *
- * The in-process `lastFetchByRepo` is preferred because it records a fetch that actually
- * SUCCEEDED. `FETCH_HEAD`'s mtime is the durable fallback across a restart, and it is only a
- * proxy — git rewrites it on some failed fetches too, which is why it is second. `HEAD` is the
- * floor: a bare clone writes it and never touches it again, and the clone itself is the first
- * successful fetch, so a just-cloned cache reads as fresh instead of as "never checked".
+ * Two records, both written only past a successful clone or fetch, and the newer wins: the
+ * in-process `lastFetchByRepo`, and the durable marker `recordUpstreamContact` writes beside the
+ * bare clone. Git's own mtimes are deliberately NOT consulted (#752, L-2): git rewrites
+ * `FETCH_HEAD` — as a 0-byte file — on some FAILED fetches, so the old `FETCH_HEAD`/`HEAD`
+ * fallback made an unreachable origin read "Up to date — last checked 0s ago" after a restart,
+ * which is a check that did not happen. A cache cloned before this marker existed reads null
+ * until its next successful fetch, which is the honest answer rather than a guessed one.
+ *
+ * This is the one source of truth behind `fetchedAt` for BOTH doors, and deliberately so (UI ↔
+ * MCP parity): the cockpit's Settings → Skills block and the MCP `check_skill_updates` answer
+ * both read `catalog` off the same route (`/api/v1/workspace/skills-update`, which calls
+ * `skillsCatalogVersions` → here), so a leader and a person cannot be told different things about
+ * when this machine last heard from upstream. `list_skills` serves the catalog CONTENT from the
+ * same clone and carries no freshness claim of its own, which is the other half of not disagreeing.
  */
 async function lastUpstreamContact(bareDir: string, repo: string): Promise<string | null> {
-  const inProcess = lastFetchByRepo.get(repo);
-  if (inProcess !== undefined) return new Date(inProcess).toISOString();
-  let newest = 0;
-  for (const name of ['FETCH_HEAD', 'HEAD']) {
-    try {
-      const info = await stat(join(bareDir, name));
-      newest = Math.max(newest, info.mtimeMs);
-    } catch {
-      // absent — a clone writes no FETCH_HEAD until its first fetch
-    }
+  let newest = lastFetchByRepo.get(repo) ?? 0;
+  try {
+    const marked = Date.parse((await readFile(lastFetchMarkerFor(bareDir), 'utf8')).trim());
+    if (Number.isFinite(marked)) newest = Math.max(newest, marked);
+  } catch {
+    // absent or unreadable — no successful fetch has been recorded durably yet
   }
   return newest > 0 ? new Date(newest).toISOString() : null;
 }
@@ -713,9 +746,17 @@ async function catalogVersionOf(repoRoot: string, src: SkillsRepoSource): Promis
  * (#744, OQ-1).
  *
  * That case reads `stale-check`, not `unknown` (#747, design review B-1): both commits ARE known
- * and are shown, and it is the check that has aged. `unknown` stays for what is genuinely not
- * known — no clone, an unresolvable ref, a never-fetched clone, or two commits with no shared
- * history. The six-hour window lives here and nowhere else, so no surface re-derives it.
+ * and are shown, and it is the check that has aged. The clone with NO successful check on record
+ * at all reads `never-checked` for the same reason (#752, code review M1 / design review B-1):
+ * both commits are known, identical, and what is missing is the check. It used to read `unknown`,
+ * and every surface then had to guess the cause from `fetchedAt` plus two shas — which is how the
+ * cockpit came to tell a reader that one commit "shares no history" with itself. `unknown` now
+ * stays for what genuinely cannot be compared: no clone, an unresolvable ref, git unavailable,
+ * one side unreadable, or two commits with no shared history. The six-hour window lives here and
+ * nowhere else, so no surface re-derives it — and neither does the cause.
+ *
+ * `never-checked` is reachable exactly as often as L-2 made it reachable: every cache cloned
+ * before the `.last-fetch` marker existed reads it until its next SUCCESSFUL fetch.
  */
 async function compareState(
   bareDir: string,
@@ -731,8 +772,10 @@ async function compareState(
     );
     return ancestor.ok ? 'update-available' : 'unknown';
   }
-  if (fetchedAt === null) return 'unknown';
+  // Same commit, no readable record of a successful check: the CHECK is what is missing, not the
+  // comparison — an unreadable timestamp is no more of a check than an absent one.
+  if (fetchedAt === null) return 'never-checked';
   const age = Date.now() - new Date(fetchedAt).getTime();
-  if (!Number.isFinite(age)) return 'unknown';
+  if (!Number.isFinite(age)) return 'never-checked';
   return age <= PASSIVE_FETCH_TTL_MS ? 'up-to-date' : 'stale-check';
 }

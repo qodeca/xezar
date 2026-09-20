@@ -26,6 +26,11 @@ const NOT_TRACKED = 'installation is not tracked'
  * the case where there is no local copy and therefore no version to print. When the two versions
  * ARE printed, the badge never contradicts them — a stale check says so about the CHECK, and two
  * versions that cannot be lined up say so about the COMPARISON.
+ *
+ * "Not checked yet" is the same rule applied to `never-checked` (#752, code review M1 / design
+ * review B-1): the two printed versions are known and identical, so a badge saying the COMPARISON
+ * is unknown contradicts them just as "Version unknown" would. What is missing is the check, and
+ * the badge says that — the author's call the design review left open, recorded in the PR body.
  */
 export function catalogStateLabel(entry: SkillsCatalogVersion): string {
   switch (entry.state) {
@@ -35,6 +40,8 @@ export function catalogStateLabel(entry: SkillsCatalogVersion): string {
       return 'Update available'
     case 'stale-check':
       return 'Check is stale'
+    case 'never-checked':
+      return 'Not checked yet'
     default:
       return entry.installed || entry.available ? 'Comparison unknown' : 'Version unknown'
   }
@@ -78,11 +85,28 @@ export function catalogExplanation(entry: SkillsCatalogVersion, now = Date.now()
   const tracking = `Tracking ${entry.repo} ${entry.ref}`
   const age = entry.fetchedAt ? `${shortAge(entry.fetchedAt, now)} ago` : ''
   if (entry.state === 'stale-check') {
-    return `${tracking} — the last upstream check is older than six hours${age ? ` (${age})` : ''}, so the versions above are as of then.`
+    // #752, L-5: the state names its next step, the way "Update available" does — the same
+    // Refresh re-checks upstream, and a sentence that stops at the problem leaves the reader
+    // looking for the button (`writing.md`).
+    return `${tracking} — the last upstream check is older than six hours${age ? ` (${age})` : ''}, so the versions above are as of then. Use Refresh on the Skills page to re-check upstream.`
   }
   const checked = age ? `last checked ${age}` : 'this machine has not checked upstream yet'
   if (entry.state === 'update-available') {
     return `${tracking} — ${checked}. Use Refresh on the Skills page to start serving the newer version.`
+  }
+  // #752, code review M1 / design review B-1: no successful check on record, and the two commits
+  // this machine CAN read are the same one. The old sentence told the reader that a commit shares
+  // no history with itself. The commit test is deliberately here as well as in `compareState`:
+  // "share no history" must be unreachable for one commit compared with itself, whatever state a
+  // future server sends. It names the same next step the other sentences do (L-5).
+  if (
+    entry.state === 'never-checked' ||
+    (entry.state === 'unknown' &&
+      entry.installed &&
+      entry.available &&
+      entry.installed.commit === entry.available.commit)
+  ) {
+    return `${tracking} — this machine has not checked upstream yet, so it cannot say whether these versions are current. Use Refresh on the Skills page to check.`
   }
   if (entry.state === 'unknown') {
     // Two ways to have a version and still no comparison, and they are not the same sentence:
@@ -95,10 +119,35 @@ export function catalogExplanation(entry: SkillsCatalogVersion, now = Date.now()
 }
 
 /**
+ * What a screen reader hears when this block changes, and nothing else (#752, L-1).
+ *
+ * The announcement is the STATE, never the age: the visible sentence carries a "last checked 1m
+ * ago" that `useNow` re-renders every 30 s, and while that text sat inside the live region a
+ * screen reader re-read the whole sentence once a minute for as long as the page was open.
+ * `behaviour.md` §2 keeps polite announcements for a changed count or a background completion,
+ * which is exactly the cold-boot transition this region exists for (#747, NB-6).
+ */
+export function catalogAnnouncement(
+  catalog: SkillsCatalogVersion[] | undefined,
+  error: Error | null,
+): string {
+  // Never word for word what is already on screen: the announcer is a second copy of the same
+  // fact, and two identical texts read twice to anyone browsing the region rather than hearing it.
+  if (error && !catalog) return 'Skill catalog: the version is unavailable right now.'
+  if (!catalog) return 'Skill catalog: checking the version…'
+  if (catalog.length === 0) return 'Skill catalog: no team skill source is configured.'
+  return catalog.map((entry) => `${entry.repo}: ${catalogStateLabel(entry)}.`).join(' ')
+}
+
+/**
  * The block keeps its place on the page from the first paint (#747, design review NB-5): the
  * heading and hint render while the request is in flight and when it fails, so nothing below it
- * moves under the pointer. Its body is a polite live region (NB-6) because a cold boot turns
- * "Version unknown" into a real state on its own, with no interaction to announce it.
+ * moves under the pointer, and the pending body reserves about one card's height (#752, L-3) so
+ * the automatic-update switch below does not jump when the catalog answer lands.
+ *
+ * The polite live region is the `sr-only` announcer alone (#752, L-1) — a cold boot turns
+ * "Version unknown" into a real state with no interaction to announce it (#747, NB-6), and the
+ * announcer says which state that is without carrying the ticking age into the announcement.
  */
 function CatalogFields({
   catalog,
@@ -113,7 +162,22 @@ function CatalogFields({
       title="Skill catalog"
       hint="The team skills this cockpit serves, and the version it last saw upstream — the automatic-update switch below does not apply to it."
     >
-      <div data-slot="skills-catalog-version" className="flex flex-col gap-stack" aria-live="polite">
+      <div data-slot="skills-catalog-version" className="flex flex-col gap-stack">
+        {/* Two hardenings, both #752 design review NB-3. `aria-atomic` so the behaviour is defined
+            rather than left to the reader: with more than one source this is ONE text node, and a
+            partial-node announcement of a multi-source change is not something screen readers
+            agree on. `role="status"` gives the region a defined role to go with it, so a reader
+            browsing line by line meets a status message rather than an unexplained second copy of
+            the card's own words — the duplicate reading the review recorded as acceptable. */}
+        <span
+          data-slot="skills-catalog-announcement"
+          className="sr-only"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          {catalogAnnouncement(catalog, error)}
+        </span>
         {/* A failed BACKGROUND refetch keeps the last good answer on screen: the error body is for
             the case where there is nothing else to show, not for every error the hook has held. */}
         {error && !catalog ? (
@@ -121,7 +185,9 @@ function CatalogFields({
             The skill catalog version is unavailable right now.
           </p>
         ) : !catalog ? (
-          <p data-slot="skills-catalog-pending" className="text-[13px] text-soft-foreground">
+          // One card's height, on the numeric spacing scale so the density lever still moves it:
+          // the switch below must not shift when the answer lands (#752, L-3).
+          <p data-slot="skills-catalog-pending" className="min-h-28 text-[13px] text-soft-foreground">
             Checking…
           </p>
         ) : catalog.length === 0 ? (
