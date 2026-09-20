@@ -462,6 +462,19 @@ describe('the saved four-door audit harness (#306 part 2)', () => {
     expect(createdAccounts[1]!.fieldNames, 'the cockpit door names the fields').toEqual(['configDir', 'provider']);
     expect(createdAccounts[0], 'the MCP door records no field names').not.toHaveProperty('fieldNames');
     for (const row of createdAccounts) expect(row.payloadDigest, 'the body is a digest').toMatch(/^[0-9a-f]{64}$/);
+    // `account.select` carries the same new `fieldNames: true` and had no pin of its own (#764
+    // review, Minor 3): which account a project runs under is a choice about whose quota is spent,
+    // so the cockpit's row names the body's keys and never the account id itself. Drop
+    // `fieldNames: true` from `ui.route('account.select', …)` and the first assertion goes red.
+    const selectedAccounts = records(c.dataDir).filter((row) => row.action === 'account.select');
+    expect(selectedAccounts.map((row) => row.origin)).toEqual(['mcp', 'ui']);
+    expect(selectedAccounts[1]!.fieldNames, 'the cockpit door names the fields').toEqual(['profileId', 'projectId', 'provider']);
+    expect(selectedAccounts[0], 'the MCP door records no field names').not.toHaveProperty('fieldNames');
+    for (const row of selectedAccounts) {
+      expect(row.payloadDigest, 'the body is a digest').toMatch(/^[0-9a-f]{64}$/);
+      for (const id of [leaderAccount, personAccount]) expect(JSON.stringify(row), 'and the account id is never in the record').not.toContain(id);
+    }
+
     const accountTrail = readFileSync(join(c.dataDir, AUDIT_TRAIL_FILE), 'utf8');
     for (const dir of [leaderAccountDir, personAccountDir]) {
       expect(accountTrail, 'an account folder’s VALUE is never in the audit trail').not.toContain(dir);

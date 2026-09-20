@@ -1253,17 +1253,23 @@ existed only to REFUSE (`Refused (global agent accounts)`), and dispatched nothi
   no project id argument anywhere (D-01 § 1.5), so the bound project's id is supplied and the
   machine-wide default stays person-only. The answer is narrowed to this project's own selection
   for the same reason — the route's `selections` map is keyed by every repo root on the machine.
-  The account row a write echoes back is narrowed too: no expanded `path`, no `files`, no `status`.
+  The account row a write echoes back is narrowed too: no expanded `path`, no `files`, no `status`,
+  and `configDir` only when THAT call sent one — a `create_account`, or an `update_account` that
+  repoints the folder. A rename answers no folder at all, because the stored one is an absolute
+  host path the leader never supplied (#764 review, Minor 2).
 - **Unchanged**: nothing is removed, and a leader that never calls these actions behaves exactly as
   before. `open_account_file` is still refused, with boundary `host-process` — it hands a path to
   an application on the person's desktop — and so is `connect_provider`. `get_account` is
   unchanged, including its rule that a label which looks like an email is withheld.
 - **Hosted mode refuses ALL of it, through both doors.** Every mutating verb of the agent-profiles
-  family, and both of its per-account GETs, sit behind `localHandoffRoute` and answer 409 when
-  `capabilities().localHandoff` is false. That is the opposite of the workspace-settings and
-  provider writes above, and deliberately: this family names host paths and account identity. A
-  test pins the 409 for each of the five writes and both reads, so removing one would be a
-  visible, named break.
+  family, and both of its per-account GETs, answer 409 when `capabilities().localHandoff` is
+  false, and each HANDLER carries that check itself — the refusal is per route, not one guard over
+  the family. (The `localHandoffRoute` those routes also carry is registration metadata for
+  `localHandoffRouteManifest`, which is what lets the inventory list the local-only routes;
+  removing it changes the manifest and refuses nothing — #764 review, Minor 4.) That is the
+  opposite of the workspace-settings and provider writes above, and deliberately: this family
+  names host paths and account identity. A test pins the 409 for each of the five writes and both
+  reads, so taking the check out of any one handler is a visible, named break.
 - **What a reader could notice**: the audit trail can now hold `account.create`, `account.update`,
   `account.remove` and `account.select` rows with origin `mcp`. All four rows already existed for
   the cockpit door. The MCP record carries the action id, the operation key and a payload DIGEST —
@@ -1298,14 +1304,24 @@ accounts are "**Writes and identity read**".
   `available`, its `reason` when false, and the labelled `fields` the agent's own auth file carries
   (email, organisation, plan, depending on the agent). Nothing is added, joined, logged or
   persisted, and a leader must name one account to get one answer.
-- **Unchanged, and still pinned**: identity reaches NO other answer of this tool. `get_account`
-  still withholds a label that looks like an email, the row a write echoes back is narrowed, and
-  `get_capabilities` and `check_account_status` carry neither an identity nor a `profileId` nor an
-  `authFailureId`. The tests that asserted "never served" were rewritten to the new contract
-  rather than deleted: they now assert that this action serves it and that every other action
-  still does not.
-- **Hosted mode refuses it**, like the rest of the family: the details route is a
-  `localHandoffRoute` and answers 409 when `capabilities().localHandoff` is false.
+- **Unchanged, and still pinned**: identity reaches NO other answer of this tool, successful or
+  failed. `get_account` still withholds a label that looks like an email, the row a write echoes
+  back is narrowed, and `get_capabilities` and `check_account_status` carry neither an identity nor
+  a `profileId` nor an `authFailureId`. The tests that asserted "never served" were rewritten to
+  the new contract rather than deleted: they now assert that this action serves it and that every
+  other action still does not.
+- **The ERROR path is covered too, which it was not when this entry was first written** (#764
+  review, Major 1). The accounts family's duplicate-folder 409 names the conflicting account by its
+  LABEL, and a person may have labelled their own account with their email in the cockpit: a leader
+  naming the same folder would have read it. Route error text forwarded by this tool is now
+  redacted at the door the same way a label is — a double-QUOTED run carrying an email shape
+  becomes `(a label that looks like an identity, withheld)`, and the status and the rest of the
+  route's own words are unchanged. The quotes are the scope on purpose: what the service quotes
+  back is what a person typed, while a bare email shape also matches an scp-style git remote that
+  an unrelated error is entitled to name. **The cockpit's own 409 text is NOT changed**: the person
+  who typed the label is who it is for.
+- **Hosted mode refuses it**, like the rest of the family: the details handler carries its own
+  `capabilities().localHandoff` check and answers 409 when it is false.
 - **The boundary identifier `account-identity` is gone from the refusal vocabulary**, together
   with `agent-accounts`, because no refusal names either any more. Both are recorded in the
   generated `docs/features/mcp-server/mcp-api.md` as boundaries that left the list, with the date

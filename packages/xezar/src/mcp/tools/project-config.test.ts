@@ -1401,7 +1401,8 @@ describe('project_config: the provider switch (#677 B4)', () => {
  *
  * The division of labour is B1–B4's: the DOOR decides the key set and narrows the answer, the ROUTE
  * decides everything else — its validators, its duplicate-folder 409, its 404, its atomic write of
- * `~/.xezar/agent-accounts.json`, its reference scrub on delete, and its `localHandoffRoute`.
+ * `~/.xezar/agent-accounts.json`, its reference scrub on delete, and each handler's own hosted-mode
+ * `capabilities().localHandoff` refusal.
  */
 describe('project_config: the agent accounts (#677 B5)', () => {
   const accountsFile = (): string => join(process.env.XEZ_HOME!, 'agent-accounts.json');
@@ -1473,6 +1474,42 @@ describe('project_config: the agent accounts (#677 B5)', () => {
     expect(first.account.id).toBeTruthy();
   });
 
+  /**
+   * THE IDENTITY IN AN ERROR (named break `BREAK-B5-IDENTITY-IN-ERROR`; #764 review, Major 1).
+   *
+   * The case above pins that the route's own 409 reaches the leader unsoftened. This one pins the
+   * one word of it that must not: the 409 names the CONFLICTING account by its label, and a person
+   * who labelled their own account with their email in the cockpit put an identity into a sentence
+   * this door forwards. Every successful answer withholds exactly that label; the error path had
+   * no such rule, and before this slice no leader call could reach that 409 at all.
+   *
+   * Drop `scrubIdentity` from `failed()` and this goes red on the first assertion.
+   */
+  it('withholds an identity-looking label from the route’s own refusal, keeping the rest of its words', async () => {
+    const dir = accountDir('identity-labelled-folder');
+    // The PERSON's own account, labelled with their email in the cockpit — not the leader's doing.
+    const person = await cockpit('/api/v1/workspace/agent-profiles', 'POST', { provider: 'claude', configDir: dir, label: EMAIL_LABEL });
+    expect(person.status).toBeLessThan(300);
+    // The cockpit's own 409 is untouched: the person who typed the label is who it is for.
+    const viaUi = await cockpit('/api/v1/workspace/agent-profiles', 'POST', { provider: 'claude', configDir: dir });
+    expect(viaUi.status).toBe(409);
+    expect(viaUi.body.error, 'the route really does quote the label back').toContain(EMAIL_LABEL);
+
+    const duplicate = await invoke({ action: 'create_account', account: { provider: 'claude', configDir: dir } });
+    expect(duplicate.json, 'the leader’s answer carries no identity').not.toContain(EMAIL_LABEL);
+    expect(duplicate.json, 'nor any other email-shaped text').not.toMatch(EMAIL_RE);
+    // Everything else the route said is still there: the status, and the sentence around the word.
+    expect(duplicate.structured.status, 'the route’s own 409').toBe(409);
+    expect(duplicate.text).toContain('that folder is already used by');
+    expect(duplicate.text).toContain('withheld');
+    // The same 409 through `update_account`, which repoints a folder onto an existing one.
+    const other = value(await invoke({ action: 'create_account', account: { provider: 'claude', configDir: accountDir('repointed') } })).account;
+    const repointed = await invoke({ action: 'update_account', accountId: other.id, accountUpdate: { configDir: dir } });
+    expect(repointed.structured.status).toBe(409);
+    expect(repointed.json).not.toContain(EMAIL_LABEL);
+    expect(repointed.json).not.toMatch(EMAIL_RE);
+  });
+
   it('edits and removes one, and the route’s own reference scrub goes with the removal', async () => {
     const dir = accountDir('renamed');
     const created = value(await invoke({ action: 'create_account', account: { provider: 'claude', configDir: dir } })).account;
@@ -1481,7 +1518,17 @@ describe('project_config: the agent accounts (#677 B5)', () => {
     const spy = spyService();
     const edited = value(await invoke({ action: 'update_account', accountId: created.id, accountUpdate: { label: 'Renamed' } }, { service: spy }));
     expect(spy.requests).toEqual([`PATCH /api/v1/workspace/agent-profiles/${created.id}`]);
-    expect(edited.account).toMatchObject({ id: created.id, label: 'Renamed', configDir: dir });
+    expect(edited.account).toMatchObject({ id: created.id, label: 'Renamed' });
+    // THE ECHO RULE (named break `BREAK-B5-ROW-ECHOES-STORED-DIR`; #764 review, Minor 2, leader
+    // adjudication). `configDir` is here because the call sent it, never because the account has
+    // one: a rename that answered the stored folder would hand back an absolute host path the
+    // leader never sent. Answer `profile.configDir` unconditionally and this goes red.
+    expect(edited.account, 'a rename sent no folder, so none comes back').not.toHaveProperty('configDir');
+    expect(JSON.stringify(edited)).not.toContain(dir);
+    // An update that DOES repoint the folder echoes it, exactly as `create_account` does.
+    const moved = accountDir('moved');
+    const repointed = value(await invoke({ action: 'update_account', accountId: created.id, accountUpdate: { configDir: moved } }));
+    expect(repointed.account).toMatchObject({ id: created.id, configDir: moved });
 
     const removed = value(await invoke({ action: 'remove_account', accountId: created.id }));
     expect(removed).toEqual({ removed: true, id: created.id });
@@ -1568,6 +1615,23 @@ describe('project_config: the agent accounts (#677 B5)', () => {
   });
 
   /**
+   * THE PROVIDER IN THE ANSWER IS THE ACCOUNT'S (named break `BREAK-B5-STATUS-ECHOES-CALLER`;
+   * #764 review, Nit 6). A stored account is addressed by its ID alone, so a call naming the wrong
+   * backend used to probe the right account and label the answer with the caller's word. Echo
+   * `args.provider` back and the refusal below stops happening.
+   */
+  it('answers about the account the id names, and refuses a call that claims the wrong backend', async () => {
+    const created = value(await invoke({ action: 'create_account', account: { provider: 'claude', configDir: accountDir('whose-backend') } })).account;
+    const right = value(await invoke({ action: 'check_account_status', provider: 'claude', accountId: created.id }));
+    expect(right.account).toEqual({ provider: 'claude', accountId: created.id });
+
+    const wrong = await invoke({ action: 'check_account_status', provider: 'codex', accountId: created.id });
+    expect(wrong.text, 'it never answers `codex` for a Claude account').not.toContain('"provider": "codex"');
+    expect(wrong.result.isError).toBe(true);
+    expect(wrong.text).toContain('is a claude account, not a codex one');
+  });
+
+  /**
    * THE IDENTITY READ, AND THE NEGATIVE REQUIREMENT IT REPLACES.
    *
    * Until #677 B5 this suite pinned the opposite: `get_account_details` was refused and no answer
@@ -1637,10 +1701,17 @@ describe('project_config: the agent accounts (#677 B5)', () => {
    * HOSTED MODE REFUSES ALL OF IT, THROUGH EITHER DOOR (named break `BREAK-B5-HOSTED-WRITE`).
    *
    * Unlike the settings and preference writes, which the owner permits in hosted mode, every
-   * mutating verb of the accounts family sits behind `localHandoffRoute` and so does each of its
-   * two GETs. That is the mitigation the spec's § 3 names for `configDir`: a hosted server cannot
-   * be talked into choosing which file tree runs code on the machine that owns the checkout.
-   * Nothing here re-checks it — take the guard off one route and this case goes red.
+   * mutating verb of the accounts family refuses, and so does each of its two GETs. That is the
+   * mitigation the spec's § 3 names for `configDir`: a hosted server cannot be talked into
+   * choosing which file tree runs code on the machine that owns the checkout.
+   *
+   * WHAT REFUSES IS EACH HANDLER'S OWN `if (!capabilities().localHandoff) … 409` (#764 review,
+   * Minor 4), which is why this case walks all six routes rather than one: the guard is per
+   * route, so take the check out of ONE handler and only that row goes red — `create 201≠409`,
+   * `update 404≠409`, `remove 404≠409`, `select 200≠409`, `status 200≠409`, `details 200≠409`.
+   * The `localHandoffRoute` middleware these routes also carry is registration metadata for
+   * `localHandoffRouteManifest`; removing it changes the manifest and refuses nothing, and this
+   * case stays green — which is exactly the mistake the earlier wording invited.
    */
   it('is refused in hosted mode for every write and both reads, through the leader’s door and the cockpit’s alike', async () => {
     const { app } = hotCockpit('0.0.0.0');

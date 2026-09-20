@@ -22,4 +22,7 @@
   decided otherwise: a leader that names one account gets the same email, organisation and plan the
   person sees behind "Show details", and nothing more. Identity still appears in no other answer —
   the account list, the capability read and the sign-in check carry none of it, and an account
-  whose name looks like an email still has that name withheld. (#677)
+  whose name looks like an email still has that name withheld — including in a refusal. Asking for
+  a folder another account already uses says so, but no longer repeats that account's name when the
+  name is an email address; the same message in the cockpit is unchanged, because there it is the
+  person's own name they are reading. (#677)

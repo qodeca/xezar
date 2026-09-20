@@ -137,9 +137,13 @@ import { defineTool, errorResult, textResult, type McpToolContext, type McpToolR
  * absolute path outside the project. Paths inside the project are reported relative to its root.
  * Account identity (email, organisation, plan) used to head that list under F-12 and N-01; since
  * #677 B5 it is served by `get_account_details` ALONE, on the owner's decision of 2026-09-20
- * 07:41, and only when a leader asks for one named account. It still arrives in no other answer:
- * `get_account` withholds a label that looks like an email, and `create_account` /
- * `update_account` narrow the row they echo back.
+ * 07:41, and only when a leader asks for one named account. It arrives in no other answer,
+ * SUCCESSFUL OR FAILED — the second half of that was missing until #764's review found it
+ * (Major 1): `get_account` withholds a label that looks like an email, `create_account` /
+ * `update_account` narrow the row they echo back, and every route ERROR this door forwards is
+ * redacted the same way (`scrubIdentity`), because the accounts family's duplicate-folder 409
+ * quotes a conflicting account's label back and a person may have labelled it with their email.
+ * The row a write echoes back carries `configDir` only when that same call sent one.
  *
  * WHERE THE SERVICE COMES FROM. `McpToolContext` does not carry the service's in-process entry
  * yet (#86 shipped it without one). Like the sibling tools, this one reads it from an optional
@@ -654,7 +658,7 @@ export const projectConfigInputSchema = z
     provider: providerIdSchema
       .optional()
       .describe(
-        'set_provider_enabled / retry_provider / select_account / check_account_status / get_account_details: which agent backend. The two provider actions apply to EVERY project on this machine, not only this one: turning a provider off stops it being offered for new tasks everywhere, and clearing an authentication incident clears the warning every project sees. Read the current state with get_capabilities first. For the account actions it names which backend the account signs in to, and it is required beside accountId because every account xezar discovered by itself is called default.',
+        'set_provider_enabled / retry_provider / select_account / check_account_status / get_account_details: which agent backend. The two provider actions apply to EVERY project on this machine, not only this one: turning a provider off stops it being offered for new tasks everywhere, and clearing an authentication incident clears the warning every project sees. Read the current state with get_capabilities first. For the account actions it names which backend the account signs in to, and it is required beside accountId because every account xezar discovered by itself is called default. On check_account_status it must be the account’s OWN backend: naming a different one is refused rather than answered, so the answer always says which login was really read.',
       ),
     enabled: setProviderEnabledInputSchema.shape.enabled
       .optional()
@@ -674,7 +678,7 @@ export const projectConfigInputSchema = z
     accountUpdate: updateAgentProfileInputSchema
       .optional()
       .describe(
-        'update_account: a new label and/or a new configDir for an existing account. Send at least one; an absent key is left alone. Repointing configDir moves which folder that login runs from — the same care as create_account.',
+        'update_account: a new label and/or a new configDir for an existing account. Send at least one; an absent key is left alone. Repointing configDir moves which folder that login runs from — the same care as create_account. The answer echoes configDir only when this call sent one: a rename answers no folder, because the stored one is a path on the person’s machine you did not supply.',
       ),
     accountId: z
       .string()
@@ -780,7 +784,7 @@ function failed(action: string, answer: Extract<Answer<unknown>, { ok: false }>,
     const payload = { action, origin: MCP_ORIGIN, ...stale };
     return textResult(JSON.stringify(payload, null, 2), payload);
   }
-  const error = scrubPaths(answer.error, root);
+  const error = scrubIdentity(scrubPaths(answer.error, root));
   const exists = answer.body && typeof answer.body === 'object' && (answer.body as { exists?: unknown }).exists === true;
   return errorResult(`${action} was refused by xezar (${answer.status}): ${error}`, {
     action,
@@ -899,6 +903,44 @@ function scrubPaths(text: string, root: string): string {
   const home = process.env.HOME;
   if (home && home.length > 1) out = out.split(home).join('~');
   return out;
+}
+
+/**
+ * A DOUBLE-QUOTED run of error text that carries an email shape — the way the service quotes a
+ * user's own words back, and the shape {@link looksLikeIdentity} judges one FIELD by.
+ *
+ * The quotes are load-bearing, not decoration. An email shape ALONE also matches an scp-style git
+ * remote (`git@github.com:org/repo.git`), and an unrelated error that named one would come back to
+ * the leader mangled — a redaction that damages honest text is its own defect. What the service
+ * quotes is what a person typed; that is the disclosure, and nothing else in these messages is
+ * quoted that way.
+ */
+const QUOTED_IDENTITY = /"[^"]*[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+[^"]*"/g;
+
+/** What replaces one, quotes and all. The sentence still reads, and it says WHY the word is
+ *  missing rather than leaving a hole a leader would read as the route mangling its own message. */
+const IDENTITY_WITHHELD = '(a label that looks like an identity, withheld)';
+
+/**
+ * Error text is the service's own words, and the service quotes USER text back (#764 review,
+ * Major 1).
+ *
+ * The accounts family's duplicate-folder 409 names the conflicting account by its LABEL —
+ * `that folder is already used by "<label>"` — and a person who labelled their own account with
+ * their email in the cockpit has put an identity in a sentence this door forwards. Every
+ * successful answer withholds exactly that label (`looksLikeIdentity`, in `get_account` and in
+ * `accountRow`); an ERROR is the one path that had no such rule, and before this slice no leader
+ * call could reach that 409 at all.
+ *
+ * So it is redacted HERE, at the door, for every action rather than for the two that can reach
+ * this 409 today: the rule is about what the leader may read, not about which route produced the
+ * sentence, and a later route that quotes a label back would otherwise re-open it silently. The
+ * WHOLE quoted run goes, not the address inside it, because `"Boss <boss@example.com>"` is an
+ * identity in both halves. The cockpit's own 409 text is untouched — the person who typed the
+ * label is who it is for.
+ */
+function scrubIdentity(text: string): string {
+  return text.replace(QUOTED_IDENTITY, IDENTITY_WITHHELD);
 }
 
 /**
@@ -1151,17 +1193,26 @@ const looksLikeIdentity = (label: string): boolean => label.includes('@');
  * What the route carries and this does not: `path` (the EXPANDED absolute home, which is the
  * username's disclosure), `files` (absolute paths inside it) and `status` (absent until a probe
  * has warmed, and read on purpose through `check_account_status` instead of arriving half-known
- * in a write's answer). `configDir` IS here, as written, and that is the accepted exposure the
- * owner's decision buys: it is the folder the leader itself just sent, and a write that could not
- * be read back would be a change a leader cannot confirm. The label keeps the listing's rule — a
- * label that looks like an email is an identity and is withheld even though `get_account_details`
- * is served now, because an identity that arrives unasked is not the read the owner opened.
+ * in a write's answer).
+ *
+ * `configDir` IS an ECHO and nothing more (#764 review, Minor 2, adjudicated by the leader): it
+ * is here when THIS call carried it, and withheld otherwise. The reasoning that admits it — "the
+ * folder the leader itself just sent, and a write that could not be read back would be a change a
+ * leader cannot confirm" — holds for `create_account` and for an update that repoints the folder.
+ * It does not hold for a RENAME: a label-only `update_account` that answered the stored
+ * `configDir` would hand back an absolute host path the leader never sent, which is the one thing
+ * this module's own rule (above, "never … an absolute path outside the project") forbids. The
+ * owner's 2026-09-20 07:41 decision opened identity; it did not open the person's file tree.
+ *
+ * The label keeps the listing's rule — a label that looks like an email is an identity and is
+ * withheld even though `get_account_details` is served now, because an identity that arrives
+ * unasked is not the read the owner opened.
  */
-function accountRow(profile: AgentProfile) {
+function accountRow(profile: AgentProfile, echoConfigDir: boolean) {
   return {
     id: profile.id,
     provider: profile.provider,
-    configDir: profile.configDir,
+    ...(echoConfigDir ? { configDir: profile.configDir } : {}),
     exists: profile.exists,
     looksValid: profile.looksValid,
     isDefault: profile.isDefault,
@@ -1186,6 +1237,44 @@ function accountRow(profile: AgentProfile) {
  */
 const accountRouteId = (provider: string, accountId: string): string =>
   agentAccountRouteId({ id: accountId, provider: provider as AgentProfile['provider'], isDefault: accountId === DEFAULT_AGENT_ACCOUNT_ID });
+
+/**
+ * WHOSE account this id really is (#764 review, Nit 6).
+ *
+ * A DISCOVERED account is addressed as `default:<provider>`, so the provider the caller sent IS
+ * the account and there is nothing to reconcile — and, usefully, nothing to look up either, which
+ * is what keeps the common read at one request. A STORED account is addressed by its id alone:
+ * the route resolves it whatever provider the caller claimed, so the two can disagree, and an
+ * answer labelled with the caller's word would be a wrong fact about which login was read.
+ *
+ * A disagreement is REFUSED rather than silently corrected. A leader that asked about a Codex
+ * account and got a Claude one back would act on the wrong login next; there is no reading of
+ * that call which the right answer satisfies.
+ *
+ * CALL THIS AFTER THE ROUTE, never before. The listing is empty in hosted mode, so a lookup first
+ * would answer "no such account" where the family's own 409 belongs — the same reason
+ * {@link accountRouteId} looks nothing up. A listing that cannot be read, or that does not carry
+ * the id, leaves the caller's word alone: this reconciles a fact, it does not add a second 404.
+ */
+async function storedAccountProvider(
+  action: string,
+  s: Session,
+  accountId: string,
+  claimed: AgentProfile['provider'],
+): Promise<{ ok: true; provider: AgentProfile['provider'] } | { ok: false; result: Result }> {
+  if (accountId === DEFAULT_AGENT_ACCOUNT_ID) return { ok: true, provider: claimed };
+  const answer = await settle<AgentProfilesResponse>(s.api.workspace['agent-profiles'].$get(), [200]);
+  if (!answer.ok) return { ok: true, provider: claimed };
+  const stored = answer.value.profiles.find((row) => !row.isDefault && row.id === accountId);
+  if (!stored) return { ok: true, provider: claimed };
+  if (stored.provider !== claimed) {
+    return {
+      ok: false,
+      result: invalid(action, `account ${JSON.stringify(accountId)} is a ${stored.provider} account, not a ${claimed} one`),
+    };
+  }
+  return { ok: true, provider: stored.provider };
+}
 
 /**
  * The account id an action is about to put in a URL PATH, checked the way every other id that
@@ -1413,9 +1502,14 @@ async function run(args: ProjectConfigInput & { action: ProjectConfigAction }, s
      *
      * TWO THINGS ARE INHERITED RATHER THAN RE-IMPLEMENTED, and both are the point of dispatching
      * through the route:
-     *   - HOSTED MODE. Every mutating verb of that family sits behind `localHandoffRoute`, so a
-     *     hosted cockpit answers 409 to a leader exactly as it does to a person. Nothing here
-     *     re-checks `capabilities()`; the route's refusal is the refusal.
+     *   - HOSTED MODE. Every handler of that family opens with its OWN
+     *     `if (!capabilities().localHandoff) return … 409`, so a hosted cockpit answers 409 to a
+     *     leader exactly as it does to a person. Nothing here re-checks it; the route's refusal is
+     *     the refusal, and it is per route — take the check out of one handler and only that verb
+     *     stops refusing. The `localHandoffRoute` middleware those routes also carry is
+     *     REGISTRATION METADATA, not the guard: it is what puts the route into
+     *     `localHandoffRouteManifest` so the inventory can list what is local-only. Removing the
+     *     marker changes the manifest and refuses nothing (#764 review, Minor 4).
      *   - THE FOLDER. Nothing validates that a `configDir` is a sane agent home — not the route,
      *     and deliberately not this door either (spec § 3). An agent home can carry settings and
      *     hooks that run when the next task starts that agent, so this is real exposure, recorded
@@ -1427,7 +1521,8 @@ async function run(args: ProjectConfigInput & { action: ProjectConfigAction }, s
         s.api.workspace['agent-profiles'].$post({ json: args.account! }),
         [201],
       );
-      return answer.ok ? ok(action, { account: accountRow(answer.value.profile) }) : fail(answer);
+      // `configDir` is required on create, so the echo is always the folder this call carried.
+      return answer.ok ? ok(action, { account: accountRow(answer.value.profile, true) }) : fail(answer);
     }
     case 'update_account': {
       const id = accountPathId(action, args.accountId ?? null);
@@ -1436,7 +1531,11 @@ async function run(args: ProjectConfigInput & { action: ProjectConfigAction }, s
         s.api.workspace['agent-profiles'][':id'].$patch({ param: { id: id.id }, json: args.accountUpdate! }),
         [200],
       );
-      return answer.ok ? ok(action, { account: accountRow(answer.value.profile) }) : fail(answer);
+      // A rename carries no folder, so none is echoed: the stored one is a host path this call
+      // never sent (#764 review, Minor 2).
+      return answer.ok
+        ? ok(action, { account: accountRow(answer.value.profile, args.accountUpdate!.configDir !== undefined) })
+        : fail(answer);
     }
     case 'remove_account': {
       // Deregistration only: the folder on disk is never touched, and every project that pointed
@@ -1482,6 +1581,13 @@ async function run(args: ProjectConfigInput & { action: ProjectConfigAction }, s
      * ONE ACCOUNT'S AUTHENTICATION STATE, probed for real — the account half of
      * `get_capabilities`'s provider rows, and narrowed in the same words (F-03): the coarse state
      * and its understandable hint, never an incident id, never a credential.
+     *
+     * The `provider` the answer carries is the ACCOUNT's, not the caller's (#764 review, Nit 6).
+     * A STORED account is addressed by its id alone, so `{ provider: 'codex', accountId: <a
+     * claude account> }` used to probe the Claude account and label the answer `codex` — no
+     * disclosure, simply a wrong fact about which login was read. The two are reconciled AFTER
+     * the probe, never before: a lookup first would read the listing, which hosted mode serves
+     * empty, and a hosted 409 would come back as "no such account" instead.
      */
     case 'check_account_status': {
       const id = accountPathId(action, args.accountId ?? null);
@@ -1494,9 +1600,11 @@ async function run(args: ProjectConfigInput & { action: ProjectConfigAction }, s
         [200],
       );
       if (!answer.ok) return fail(answer);
+      const owner = await storedAccountProvider(action, s, id.id, args.provider!);
+      if (!owner.ok) return owner.result;
       const row = answer.value.status;
       return ok(action, {
-        account: { provider: args.provider!, accountId: args.accountId! },
+        account: { provider: owner.provider, accountId: args.accountId! },
         status: row.status,
         ...(row.hint !== undefined ? { hint: row.hint } : {}),
       });

@@ -1605,7 +1605,7 @@
           "type": "boolean"
         },
         "provider": {
-          "description": "set_provider_enabled / retry_provider / select_account / check_account_status / get_account_details: which agent backend. The two provider actions apply to EVERY project on this machine, not only this one: turning a provider off stops it being offered for new tasks everywhere, and clearing an authentication incident clears the warning every project sees. Read the current state with get_capabilities first. For the account actions it names which backend the account signs in to, and it is required beside accountId because every account xezar discovered by itself is called default.",
+          "description": "set_provider_enabled / retry_provider / select_account / check_account_status / get_account_details: which agent backend. The two provider actions apply to EVERY project on this machine, not only this one: turning a provider off stops it being offered for new tasks everywhere, and clearing an authentication incident clears the warning every project sees. Read the current state with get_capabilities first. For the account actions it names which backend the account signs in to, and it is required beside accountId because every account xezar discovered by itself is called default. On check_account_status it must be the account’s OWN backend: naming a different one is refused rather than answered, so the answer always says which login was really read.",
           "type": "string",
           "enum": [
             "claude",
@@ -1648,7 +1648,7 @@
           "additionalProperties": false
         },
         "accountUpdate": {
-          "description": "update_account: a new label and/or a new configDir for an existing account. Send at least one; an absent key is left alone. Repointing configDir moves which folder that login runs from — the same care as create_account.",
+          "description": "update_account: a new label and/or a new configDir for an existing account. Send at least one; an absent key is left alone. Repointing configDir moves which folder that login runs from — the same care as create_account. The answer echoes configDir only when this call sent one: a rename answers no folder, because the stored one is a path on the person’s machine you did not supply.",
           "type": "object",
           "properties": {
             "label": {
