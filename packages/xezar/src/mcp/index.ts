@@ -490,24 +490,48 @@ async function idempotent(
   });
   if (fresh !== undefined) return { result: fresh, attempt: { kind: 'ran' } };
   if (threw) return { result: answerResult(answer), attempt: { kind: 'failed' } };
-  const reason = receiptRefusalOf(answer);
-  const attempt: DoorAttempt = reason === undefined ? { kind: 'replayed' } : { kind: 'refused', reason };
-  return { result: answerResult(answer), attempt };
+  return { result: answerResult(answer), attempt: receiptAttemptOf(answer) };
 }
 
 /**
- * The bounded audit reason for a receipt-layer answer that refused a FIRST attempt before any
- * effect, or `undefined` when the answer is one of the already-accounted ones (#743, review of the
- * first fix). The two `error` shapes are the whole set: `OperationAnswer`'s other three carry a
- * `status`, and each of those means some earlier call owns the row.
+ * Classify every receipt-layer answer that did not run an effect in this call. The settled
+ * answers are row-free only when they are genuine replays; a live duplicate and uncertain
+ * history are row-free because another call owns the effect (or nobody can honestly settle it).
+ * Every remaining answer is a pre-effect refusal owned by this call.
  *
  * The reasons are the receipt layer's own words, narrowed to `auditReasonSchema`'s shape and
  * prefixed so a reader can tell WHICH layer refused — a `journal_unwritable` in the trail would
- * otherwise read as the audit trail's own journal rather than the operation journal.
+ * otherwise read as the audit trail's own journal rather than the operation journal. Both
+ * switches deliberately end in `never`: extending `OperationAnswer` must fail compilation until
+ * the new answer is explicitly classified, rather than silently becoming a row-free replay.
  */
-function receiptRefusalOf(answer: OperationAnswer): string | undefined {
-  if (!('error' in answer)) return undefined;
-  return answer.error === 'operation_receipt_unavailable' ? `receipt_${answer.reason}` : 'receipt_key_conflict';
+function receiptAttemptOf(answer: OperationAnswer): DoorAttempt {
+  if ('error' in answer) {
+    switch (answer.error) {
+      case 'operation_receipt_unavailable':
+        return { kind: 'refused', reason: `receipt_${answer.reason}` };
+      case 'operation_key_conflict':
+        return { kind: 'refused', reason: 'receipt_key_conflict' };
+      default: {
+        const unlisted: never = answer;
+        return unlisted;
+      }
+    }
+  }
+
+  switch (answer.status) {
+    case 'ok':
+    case 'rejected':
+    case 'not-applied':
+      return answer.replayed ? { kind: 'replayed' } : { kind: 'refused', reason: 'receipt_unexpected_answer' };
+    case 'in-progress':
+    case 'unverified':
+      return { kind: 'replayed' };
+    default: {
+      const unlisted: never = answer;
+      return unlisted;
+    }
+  }
 }
 
 function answerResult(answer: OperationAnswer): McpToolResult {
