@@ -131,7 +131,13 @@ function markerRefusal(value) {
 }
 
 function documentedObjects(file) {
-  const text = readFileSync(path.join(repositoryRoot, file), 'utf8');
+  let text;
+  try {
+    text = readFileSync(path.join(repositoryRoot, file), 'utf8');
+  } catch (error) {
+    failures.push(`${file}: cannot be read: ${error.message}`);
+    return [];
+  }
   const lines = text.match(/.*(?:\n|$)/g).filter(Boolean);
   const found = [];
   let ordinaryFence = null;

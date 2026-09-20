@@ -42,6 +42,7 @@ never run in the primary checkout or in the document's directory.
 The check asks Git for committed `*.md` files. It explicitly excludes any tracked Markdown under
 `.local/`, `node_modules/`, or `changelog.d/`; untracked Markdown is outside this committed-document
 check. Markers inside ordinary fenced examples and markers indented four or more spaces are inert,
+as are marker lookalikes with text after the closing `-->` or with the comment split across lines,
 so the example above is a deliberate silent no-op. That is the bounded no-op: a recognized marker
 with nothing after it is a failure, never a skip, and a marker followed by anything other than a
 JSON fence also fails.

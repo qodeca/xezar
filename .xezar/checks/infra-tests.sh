@@ -430,6 +430,11 @@ git -C "$do_root" -c user.email=t@t -c user.name=t commit -q -m "document output
 expect_ok "an allowlisted script's documented JSON keys match its isolated fixture output" \
   node "$DO" "$do_root"
 
+mv "$do_root/docs/output.md" "$do_root/output.backup"
+expect_fail "a tracked Markdown file missing from the working tree fails with a named reason" \
+  "docs/output.md: cannot be read:" node "$DO" "$do_root"
+mv "$do_root/output.backup" "$do_root/docs/output.md"
+
 cat > "$do_root/docs/output.md" <<'EOF'
 <!-- documented-output:unlisted -->
 ```json
@@ -438,17 +443,18 @@ cat > "$do_root/docs/output.md" <<'EOF'
 EOF
 cat > "$do_root/.xezar/checks/unlisted.sh" <<'EOF'
 #!/usr/bin/env bash
-touch "$PWD/unlisted-ran"
+touch "${DO_UNLISTED_SENTINEL:?}"
 printf '{"anything":true}\n'
 EOF
+export DO_UNLISTED_SENTINEL="$do_root/unlisted-ran"
 expect_fail "an unknown script id fails without executing an unlisted script" \
   "unknown script id: unlisted" node "$DO" "$do_root"
-if [ ! -e "$do_root/unlisted-ran" ]; then
+if [ ! -e "$DO_UNLISTED_SENTINEL" ]; then
   ok "BREAK-DO-UNLISTED-RUNS: unknown marker text is never executed"
 else
   bad "BREAK-DO-UNLISTED-RUNS: unknown marker text is never executed" \
     "the unlisted script created its sentinel"
-  rm -f "$do_root/unlisted-ran"
+  rm -f "$DO_UNLISTED_SENTINEL"
 fi
 
 cat > "$do_root/docs/output.md" <<'EOF'
@@ -480,6 +486,14 @@ cat > "$do_root/docs/output.md" <<'EOF'
 EOF
 expect_fail "a documented-output marker with nothing after it fails instead of skipping" \
   "marker must be immediately followed by a JSON fence" node "$DO" "$do_root"
+
+cat > "$do_root/docs/output.md" <<'EOF'
+<!-- documented-output:unlisted --> trailing text is inert
+<!-- documented-output:unlisted
+-->
+EOF
+expect_ok "documented-output marker lookalikes with trailing text or a line break are inert" \
+  node "$DO" "$do_root"
 
 cat > "$do_root/docs/output.md" <<'EOF'
 <!-- documented-output:leader-context -->
@@ -2579,6 +2593,17 @@ expect_ok "a changed trust boundary resolves the stage" scan_json "$sw" "$WORK/s
   || bad "and does not turn the sealed headline into unknown" "status=$(scan_status "$WORK/scan-trust.json" status)"
 [ "$(scan_status "$WORK/scan-trust.json" reviewerRequired)" = "true" ] && ok "and still records that a reviewer is required" \
   || bad "and still records that a reviewer is required" "reviewerRequired=$(scan_status "$WORK/scan-trust.json" reviewerRequired)"
+
+# Adding an allowlist row authorizes another executable inside repository gate 8. That exact file
+# is therefore a named trust boundary, not merely code-shaped input to the generic classification.
+sw="$(scan_fixture scan-documented-output-allowlist .xezar/checks/documented-output.allowlist.json \
+  '[{"id":"fixture","script":".xezar/checks/fixture.sh","fixture":"fixture","expectedOutputProducer":"fixture"}]')"
+expect_ok "a documented-output allowlist change resolves the security stage" \
+  scan_json "$sw" "$WORK/scan-documented-output-allowlist.json"
+[ "$(scan_status "$WORK/scan-documented-output-allowlist.json" reviewerRequired)" = "true" ] \
+  && ok "and the documented-output allowlist requires a reviewer" \
+  || bad "and the documented-output allowlist requires a reviewer" \
+    "reviewerRequired=$(scan_status "$WORK/scan-documented-output-allowlist.json" reviewerRequired)"
 
 # The #156 rule as a check rather than a paragraph: a kill by command-line pattern in an
 # executable file is a finding, and the same text in a comment is not.

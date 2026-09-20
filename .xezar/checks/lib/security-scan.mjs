@@ -87,6 +87,7 @@ const DEPENDENCY_INPUTS = [
 // change here does not fail the gate — it RECORDS that a human or a security reviewer is
 // required, which the seal carries and the reviewer reads.
 const TRUST_BOUNDARIES = [
+  { pattern: /^\.xezar\/checks\/documented-output\.allowlist\.json$/, why: "the executables authorized for documented-output verification" },
   { pattern: /^packages\/xezar\/src\/server\//, why: "the HTTP surface, its origin guard and its bind host" },
   { pattern: /^packages\/xezar\/src\/agent-config\//, why: "reads and writes the coding agents' own config files" },
   { pattern: /^packages\/xezar\/src\/mcp\//, why: "the tools a project leader calls" },
