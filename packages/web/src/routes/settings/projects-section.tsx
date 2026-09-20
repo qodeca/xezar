@@ -82,7 +82,7 @@ export function ProjectsSection() {
 
   if (config.isPending || projects.isPending) {
     return (
-      <p data-slot="projects-loading" className="p-4 text-[13px] text-soft-foreground md:p-6">
+      <p data-slot="projects-loading" className="mx-auto w-full max-w-4xl p-list text-[13px] text-soft-foreground md:p-group">
         Loading projects…
       </p>
     )
