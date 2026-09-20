@@ -112,6 +112,11 @@ run.
   semaphore is built with a fixed limit loader. The per-tool suite
   (`tools/project-config.test.ts`, "the workspace-settings write") observes the refreshed
   snapshot, the `loadConfig` merge and the per-call read against a semaphore that really loads.
+- **The shared preference bag.** P-46 proves the presentation write (#677 B3) through both doors.
+  It does NOT show the cockpit rendering the result, and one half of I-132 is served by nobody: the
+  colour theme has no server route at all (the browser stores it), so there is nothing for either
+  door to dispatch. That is recorded on the inventory row rather than as a coverage gap, because a
+  gap names a covered outcome nothing serves — this is an outcome the product does not store.
 - **Hosted mode** is switched with `XEZ_REMOTE=1` in-process (P-27); a non-loopback bind is not
   exercised here.
 
@@ -136,7 +141,7 @@ run.
 | I-019 | covered | P-07, B-03 |
 | I-020 | covered | P-07 |
 | I-021 | covered | P-09 |
-| I-024 | global | P-29 |
+| I-024 | covered | P-46 |
 | I-025 | covered | P-37 |
 | I-026 | covered | P-37 |
 | I-027 | covered | P-37 |
@@ -186,7 +191,7 @@ run.
 | I-088 | covered | P-39 |
 | I-090 | covered | P-40 |
 | I-091 | covered | P-40 |
-| I-092 | global | P-29 |
+| I-092 | covered | P-46 |
 | I-093 | global | P-29 |
 | I-094 | covered | P-02 |
 | I-096 | covered | P-41 |
@@ -230,7 +235,7 @@ run.
 | I-129 | covered | P-28 |
 | I-130 | global | P-29 |
 | I-131 | global | P-29 |
-| I-132 | global | P-29 |
+| I-132 | covered | P-46 |
 | I-133 | covered | P-42 |
 | I-136 | covered | P-42 |
 | I-138 | covered | P-22 |
@@ -273,8 +278,9 @@ run.
 | P-27 | A-09, A-11 | I-111, I-113 | in hosted mode an agent config write is refused with the cockpit’s own 409, through MCP too |
 | P-28 | A-09, A-08, A-05 | I-128, I-129 | the bound project’s own cap and tags are written to its registry entry only, and each door sees the other’s |
 | P-45 | A-09, A-08, A-05 | I-117, I-118, I-119, I-120, I-121, I-127 | the workspace limits, composer defaults, skills auto-update, agent defaults and the two workspace folder paths are written through either door with the same effect, the same bound on a bad value and the same narrowed answer |
+| P-46 | A-09, A-08, A-05 | I-024, I-092, I-132 | the shared presentation preferences — appearance, notifications, folded columns and the curated skills list — are written through either door with the same effect, the route’s own bound on a bad value, and an answer that carries no incident id |
 | P-44 | A-09, A-08, A-05 | I-143, I-144, I-145, I-146 | the leader reads this project’s setup state, dispatches the bundled setup task and records the offer, and the cockpit sees the same thing |
-| P-29 | A-09, A-11 | I-012, I-024, I-092, I-093, I-112, I-115, I-122, I-123, I-124, I-125, I-126, I-130, I-131, I-132 | every global-source, home-file, shared-account and workspace-root write is refused with its boundary, dispatches nothing, and no approval parameter changes that |
+| P-29 | A-09, A-11 | I-012, I-093, I-112, I-115, I-122, I-123, I-124, I-125, I-126, I-130, I-131 | every global-source, home-file, shared-account and host-folder write is refused with its boundary, dispatches nothing, and no approval parameter changes that |
 | P-30 | A-10, A-05 | I-033, I-041, I-045, I-049, I-052, I-053, I-054 | a result, its files, diff, commits and handoff read the same as the cockpit’s, with references and origin as fields, and `done` is not proof |
 | P-31 | A-10, A-05 | I-055, I-054, I-052 | after a commit moves the SHA, earlier evidence reads as stale, and the commit is the one the cockpit makes |
 | P-32 | A-10, A-11, A-05 | I-068, I-052, I-053 | with the working tree gone, evidence reads as unavailable rather than empty, and worktree clean-up matches the cockpit’s |

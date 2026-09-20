@@ -149,6 +149,9 @@ export const AUDIT_ACTIONS: readonly AuditActionRow[] = [
   // Its record needed no change — the row already named both doors, and the action was never in
   // `AUDIT_MCP_READS` — which is why a reversal here is one row of code and no new record shape.
   { id: 'workspace.config.set', family: 'F10', mcp: ['project_config:set_workspace_config'], ui: [put('/workspace/config')] },
+  // The preference bag followed with #677 B3: both MCP keys below are real writes now, through
+  // the same `PUT /workspace/ui-state`. Like the settings row above, the record needed no change
+  // — it already named both doors and both actions, and neither was ever in `AUDIT_MCP_READS`.
   {
     id: 'workspace.uiState.set',
     family: 'F10',

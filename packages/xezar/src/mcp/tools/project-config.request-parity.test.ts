@@ -5,7 +5,12 @@ import type { Hono } from 'hono';
 import type { InferRequestType } from 'hono/client';
 import { hc } from 'hono/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { setConfigInputSchema, setWorkspaceConfigInputSchema, updateProjectInputSchema } from '@qodeca/xezar-contract';
+import {
+  setConfigInputSchema,
+  setWorkspaceConfigInputSchema,
+  setWorkspaceUiStateInputSchema,
+  updateProjectInputSchema,
+} from '@qodeca/xezar-contract';
 import type { AppType } from '../../server/app-type.ts';
 import { apiRequest } from '../../server/loopback-request.testkit.ts';
 import { createApp } from '../../server/server.ts';
@@ -35,7 +40,7 @@ import { ACTION_FIELDS, PROJECT_CONFIG_ACTIONS, projectConfigInputSchema } from 
  */
 describe('every MCP write action accepts what its route accepts', () => {
   /** A `z.optional(z.object(…))` argument of the tool's input schema, as its object shape. */
-  const mcpArgumentKeys = (field: 'config' | 'project' | 'workspaceConfig'): string[] =>
+  const mcpArgumentKeys = (field: 'config' | 'project' | 'workspaceConfig' | 'uiState'): string[] =>
     Object.keys(projectConfigInputSchema.shape[field].unwrap().shape).sort();
 
   /**
@@ -91,6 +96,31 @@ describe('every MCP write action accepts what its route accepts', () => {
       omittedFromMcp: {},
     },
     {
+      action: 'set_workspace_ui_state',
+      argument: 'uiState',
+      route: 'PUT /api/v1/workspace/ui-state',
+      schema: setWorkspaceUiStateInputSchema,
+      routeKeys: [
+        'appearance',
+        'dismissedProviderAuthFailures',
+        'importedSkills',
+        'lastLocation',
+        'notifications',
+        'sidebar',
+        'taskTable',
+      ],
+      // TWO keys are omitted on purpose, and this is where the owner's exclusions of 2026-09-20
+      // 07:41 are DATA rather than prose (#677 B3). Both are legacy keys of the same file that
+      // the current cockpit keeps in each browser's `localStorage`, so a leader writing one would
+      // move a screen for whoever opens an older cockpit against this home.
+      omittedFromMcp: {
+        sidebar:
+          'LEGACY window state: which sidebar groups are folded describes one browser, not the workspace, and the current cockpit keeps it in `localStorage` (`packages/web/src/lib/sidebar-collapse.ts`). Still accepted by the route so an older cockpit round-trips.',
+        lastLocation:
+          'LEGACY window state: where the last browser navigated, kept in `localStorage` today (`packages/web/src/lib/last-location.ts`) precisely because one shared answer decided every other client’s next launch.',
+      },
+    },
+    {
       action: 'set_project',
       argument: 'project',
       route: 'PATCH /api/v1/projects/:projectId',
@@ -105,6 +135,8 @@ describe('every MCP write action accepts what its route accepts', () => {
    * Every one of them is a candidate for a later wave; none may sit here without a sentence.
    */
   const UNPAIRED: Record<string, string> = {
+    import_skills:
+      'sends one KEY of the workspace ui-state body (`importedSkills`), not a keyed request object of its own; the schema it reuses IS the contract one (`workspaceUiStateSchema.shape.importedSkills`), and the full bag is paired above as `set_workspace_ui_state`.',
     set_prompt_templates:
       'sends one KEY of the ui-state body (`promptTemplates`), not a keyed request object of its own; the schema it reuses IS the contract one (`uiStateSchema.shape.promptTemplates`), so there are no two copies to drift.',
     write_agent_config:

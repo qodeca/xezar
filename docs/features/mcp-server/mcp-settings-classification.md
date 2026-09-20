@@ -293,12 +293,20 @@ Rows are by catalog entry (`packages/xezar/src/agent-config/catalog.ts` `CONFIG_
 
 ### 4.7 Global → Appearance — `appearance.tsx`
 
+> **Accent, density and reading width are SUPERSEDED, 2026-09-20 (#677 wave 2 slice B3)** — see
+> the entry at the head of § 4.13, which carries the decision and its four exclusions. The Theme
+> row is NOT superseded: the browser stores the theme, so there is no setting to write.
+
 | Field / action | Status | Reason | Enforcing code path | Withheld |
 | --- | --- | --- | --- | --- |
 | Theme | excluded | `localStorage` (`xez-theme`), per browser, never on the server *(presentation)*. | `packages/web/src/lib/theme.ts` | — |
 | Accent, density, reading width | excluded | Workspace-wide personal presentation in `~/.xezar/ui-state.json` — M-21 excludes global settings, and these describe the person at the keyboard *(presentation)*. | `workspaceUiStateSchema.appearance` (`workspace.ts:251`); written by `appearance-provider.tsx` through `PUT /workspace/ui-state` | — |
 
 ### 4.8 Global → Notifications — `notifications-section.tsx`
+
+> **SUPERSEDED, 2026-09-20 (#677 wave 2 slice B3)** — see the entry at the head of § 4.13.
+> `notifications.enabled` is a key of the leader's write now; the browser PERMISSION prompt the
+> pane also triggers stays unreachable from a server, which no decision can change.
 
 | Field / action | Status | Reason | Enforcing code path | Withheld |
 | --- | --- | --- | --- | --- |
@@ -392,9 +400,18 @@ Every key here is enforced workspace-wide by `WorkspaceSemaphore`
 >   `PUT /workspace/config` requires an absolute path, requires an existing directory for the browse
 >   root and runs `mkdir -p` for the checkout root, answering 400 with its reason BEFORE
 >   `mergeWriteWorkspaceConfig` — so a `resources` key sent in the same body does not half-apply.
->   The MCP door adds no second opinion about the filesystem. The accepted exposure this leaves,
->   recorded rather than mitigated: the probe's `mkdir -p` means a settings write can CREATE a
->   directory anywhere the user can write.
+>   The MCP door adds no second opinion about the filesystem. The accepted exposure this leaves is
+>   recorded rather than mitigated, and it is TWO things, not one: the probe's `mkdir -p` means a
+>   settings write can CREATE a directory anywhere the user can write, **and the probe's own
+>   refusals make the write a stat oracle over any absolute host path** — a refused call answers
+>   "does not exist", "is not a directory" or "not writable: EACCES …" and persists nothing, so a
+>   leader can learn whether an arbitrary path exists, whether it is a file or a folder, and
+>   whether this user may write it, without changing any state. `packages/xezar/src/server/fs-browse.ts`
+>   is written specifically to keep that oracle shut for the BROWSE route, and `browse_folders`
+>   stays refused, so "the leader gains no listing of its own" is true and incomplete on its own.
+>   Both consequences sit inside the spec's threat model — a leader can already start a task, which
+>   is code execution as the user — which is why this is recorded and not answered with a second
+>   check at the MCP door (independent review of PR #748, Minor 1, 2026-09-20).
 >
 > Hosted mode is unchanged by B2 and stays as § 4.9 records it: the write is ALLOWED through both
 > doors when `capabilities.localHandoff` is false, by the owner's decision of 2026-09-20.
@@ -419,6 +436,39 @@ Per-repo `.local/xezar/ui-state.json` (`GET/PUT /p/:projectId/ui-state`, `uiStat
 workspace `~/.xezar/ui-state.json` (`GET/PUT /workspace/ui-state`, `workspaceUiStateSchema`). Both
 are deliberately open bags (BACKWARD_COMPATIBILITY.md §3): unknown keys round-trip untouched, so
 this list names the keys the schemas name, never the keys they permit.
+
+> **SUPERSEDED, 2026-09-20 (#677 wave 2 slice B3) — five WORKSPACE-bag rows, and § 4.7 and § 4.8
+> with them.** The owner's rule of 2026-09-20 on #677 — *"Every key"* — with the exclusions the
+> owner named at 07:41 the same day, makes the shared PRESENTATION preferences writable by the
+> leader: `appearance.{accent,density,width}`, `notifications.enabled`,
+> `taskTable.expandedColumns`, `importedSkills` and `dismissedProviderAuthFailures`, through
+> `project_config` `set_workspace_ui_state` and `import_skills`, which dispatch the same
+> `PUT /workspace/ui-state` the panes use. The `excluded` rows below, and the two in § 4.7 and
+> § 4.8, are kept unchanged as the dated record of what was decided on 2026-09-10.
+>
+> Four things the reversal does NOT change:
+>
+> - **The THEME is still not writable, and that is not a refusal.** It is not a stored setting at
+>   all: the browser keeps it in its own `localStorage` (`xez-theme`,
+>   `packages/web/src/lib/theme.ts`) and there is no server route to dispatch, so making it
+>   leader-writable would mean inventing a server-side theme key and a cockpit that reads it — a
+>   feature, not parity (spec § 4 Q1; owner, 07:41). § 4.7's Theme row keeps its status.
+> - **The per-repo composer-memory keys stay `excluded`** for the reason already recorded: they
+>   are one browser's preselection memory, and writing them would move a person's form under their
+>   hands while they type.
+> - **The two LEGACY workspace keys, `sidebar` and `lastLocation`, stay `excluded`** and are not
+>   keys of the leader's argument at all. They describe one person's window, and the current
+>   cockpit keeps both in `localStorage`.
+> - **A dismissed incident is answered as a provider NAME, never its id.** The write's answer is
+>   narrowed the same way every other answer here is: the incident id `dismissedProviderAuthFailures`
+>   stores is what F-03 withholds from `get_capabilities`, and a write is no reason to hand one
+>   back. `sidebar` and `lastLocation` are not part of the answer either.
+>
+> The bounds and the 128 KiB body cap are the ROUTE's, inherited rather than copied: a list of more
+> than 200 skill names, more than 50 folded columns or an over-sized body is refused by
+> `PUT /workspace/ui-state` with its own reason, and nothing is written. Hosted mode is unchanged:
+> the route carries no `localHandoff` guard and none was added, for the reason § 4.9 records —
+> presentation is neither a hook, a command nor an account identity.
 
 | Key | Bag | Status | Reason | Enforcing code path |
 | --- | --- | --- | --- | --- |

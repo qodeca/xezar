@@ -359,13 +359,15 @@ describe('project_config: registration', () => {
     for (const action of [...PROJECT_CONFIG_ACTIONS, ...Object.keys(REFUSED_ACTIONS)]) expect(actions).toContain(action);
   });
 
-  it('F-05: offers no skill create, edit or delete — only the reads, the team refresh and the update check', () => {
+  it('F-05: offers no skill create, edit or delete — only the reads, the team refresh, the update check and the import list', () => {
     const skillActions = PROJECT_CONFIG_ACTIONS.filter((a) => a.includes('skill'));
+    // `import_skills` joined the offered half with #677 B3: it CURATES which default skills are
+    // shown, which is a workspace preference the owner opened, and is still not a skill editor.
     expect([...skillActions].sort()).toEqual(
-      ['check_skill_updates', 'get_skill', 'list_importable_skills', 'list_skills', 'refresh_skills'].sort(),
+      ['check_skill_updates', 'get_skill', 'import_skills', 'list_importable_skills', 'list_skills', 'refresh_skills'].sort(),
     );
-    // The workspace-global import list is refused, not offered.
-    expect(REFUSED_ACTIONS.import_skills.boundary).toBe('workspace-settings');
+    // Applying globally installed skill UPDATES is a different thing and is still refused.
+    expect(REFUSED_ACTIONS.apply_skill_updates.boundary).toBe('workspace-settings');
   });
 
   it('answers an honest error when the service has no in-process entry for it', async () => {
@@ -463,6 +465,28 @@ describe('project_config: project writes (acceptance)', () => {
   });
 });
 
+/** A second cockpit over the same workspace home, with a semaphore that really loads.
+ *  `bindHost: '0.0.0.0'` builds the same cockpit in HOSTED mode (`localHandoff: false`). */
+function hotCockpit(bindHost?: string): { app: ReturnType<typeof createApp>; semaphore: WorkspaceSemaphore } {
+  const semaphore = new WorkspaceSemaphore();
+  const projects: ProjectContextSource[] = [
+    { id: 'proj-a', root: ws.roots.a, status: 'ok' },
+    { id: 'proj-b', root: ws.roots.b, status: 'ok' },
+  ];
+  const app = createApp({
+    repoRoot: ws.roots.a,
+    store: RunStore.open(join(ws.roots.a, '.local/xezar'), { keepLive: true }),
+    manager: { isActive: () => false } as unknown as RunManager,
+    version: '0.0.0-test',
+    bootProjectId: 'proj-a',
+    contexts: new ProjectContexts({ listProjects: async () => projects, semaphore }),
+    semaphore,
+    providerAuth: connectedProviderAuth(),
+    ...(bindHost === undefined ? {} : { bindHost }),
+  });
+  return { app, semaphore };
+}
+
 // ---- the workspace-settings write ----------------------------------------------------------------
 
 /**
@@ -486,27 +510,6 @@ describe('project_config: the workspace-settings write (#677 B1)', () => {
     return file;
   }
 
-  /** A second cockpit over the same workspace home, with a semaphore that really loads.
-   *  `bindHost: '0.0.0.0'` builds the same cockpit in HOSTED mode (`localHandoff: false`). */
-  function hotCockpit(bindHost?: string): { app: ReturnType<typeof createApp>; semaphore: WorkspaceSemaphore } {
-    const semaphore = new WorkspaceSemaphore();
-    const projects: ProjectContextSource[] = [
-      { id: 'proj-a', root: ws.roots.a, status: 'ok' },
-      { id: 'proj-b', root: ws.roots.b, status: 'ok' },
-    ];
-    const app = createApp({
-      repoRoot: ws.roots.a,
-      store: RunStore.open(join(ws.roots.a, '.local/xezar'), { keepLive: true }),
-      manager: { isActive: () => false } as unknown as RunManager,
-      version: '0.0.0-test',
-      bootProjectId: 'proj-a',
-      contexts: new ProjectContexts({ listProjects: async () => projects, semaphore }),
-      semaphore,
-      providerAuth: connectedProviderAuth(),
-      ...(bindHost === undefined ? {} : { bindHost }),
-    });
-    return { app, semaphore };
-  }
 
   it('writes every key it accepts and answers in the get_limits vocabulary', async () => {
     const change = {
@@ -611,7 +614,7 @@ describe('project_config: the workspace-settings write (#677 B1)', () => {
    * `mergeWriteWorkspaceConfig` runs, so a `resources` key travelling in the same body does not
    * half-apply. The tool must SHOW that guard firing rather than assume it: a bad root and a good
    * limit in one call, then the limit read back through the route, not off the file. Remove the
-   * probe from the handler and this case goes green while a broken browse root is stored.
+   * probe and this case goes RED; without this case a broken browse root is stored silently.
    */
   it('passes the route’s write probe through: a bad root refuses the whole body, resources included', async () => {
     const before = (await cockpit('/api/v1/workspace/config')).body;
@@ -796,6 +799,208 @@ describe('project_config: the workspace-settings write (#677 B1)', () => {
   });
 });
 
+// ---- the shared preference write -----------------------------------------------------------------
+
+/**
+ * #677 wave 2 slice B3 — `set_workspace_ui_state` and `import_skills`.
+ *
+ * The same owner rule of 2026-09-20 ("every key"), with the exclusions the owner named at 07:41,
+ * makes the shared PRESENTATION bag a leader write. The division of labour is the point of this
+ * block: the DOOR decides the key set — the five keys the owner opened, and no more — while the
+ * ROUTE decides every value, because a second opinion about a value at the other door is how two
+ * doors drift (the lesson of B2's folder paths).
+ */
+describe('project_config: the shared preference write (#677 B3)', () => {
+  /** The workspace bag itself: `<XEZ_HOME>/ui-state.json`, the file the cockpit's own route writes. */
+  const uiStateFile = (): string => join(process.env.XEZ_HOME!, 'ui-state.json');
+
+  it('writes every key it accepts, in one narrowed vocabulary, without disturbing the rest of the bag', async () => {
+    // The person's own bag first, including the two LEGACY keys the leader may not write.
+    expect(
+      (await cockpit('/api/v1/workspace/ui-state', 'PUT', {
+        sidebar: { collapsed: { group: true } },
+        lastLocation: { projectId: 'proj-a', pathname: '/p/proj-a/tasks' },
+      })).status,
+    ).toBe(200);
+
+    const change = {
+      appearance: { accent: 'violet', density: 'compact', width: 'wide' },
+      notifications: { enabled: false },
+      taskTable: { expandedColumns: { title: true, runner: false } },
+      importedSkills: ['review', 'qa'],
+      dismissedProviderAuthFailures: { claude: 'incident-9f3a-SECRET-ID' },
+    };
+    const written = value(await invoke({ action: 'set_workspace_ui_state', uiState: change })).uiState;
+    expect(written.appearance).toEqual(change.appearance);
+    expect(written.notifications).toEqual({ enabled: false });
+    expect(written.taskTable.expandedColumns).toEqual({ title: true, runner: false });
+    expect(written.importedSkills).toEqual(['review', 'qa']);
+    // A dismissed incident is answered as the PROVIDER's name. The id is what `get_capabilities`
+    // withholds (F-03), and writing one is no reason to hand it back.
+    expect(written.dismissedProviderAuthFailures).toEqual(['claude']);
+    expect(JSON.stringify(written)).not.toContain('incident-9f3a-SECRET-ID');
+    // Nor the two legacy window keys, which are in the file and are not the leader's to read.
+    expect(JSON.stringify(written)).not.toMatch(/sidebar|lastLocation/);
+
+    // The cockpit's own pane sees the leader's values, and the person's keys are untouched: the
+    // route merges shallowly, so only the keys sent were written.
+    const bag = (await cockpit('/api/v1/workspace/ui-state')).body;
+    expect(bag).toMatchObject(change);
+    expect(bag.sidebar).toEqual({ collapsed: { group: true } });
+    expect(bag.lastLocation.pathname).toBe('/p/proj-a/tasks');
+    // And it really is the workspace file, not some copy of it.
+    expect(JSON.parse(readFileSync(uiStateFile(), 'utf8'))).toMatchObject({ appearance: change.appearance });
+  });
+
+  it('dispatches the cockpit’s own route, once, and nothing else — through either action', async () => {
+    const spy = spyService();
+    const prefs = await invoke({ action: 'set_workspace_ui_state', uiState: { notifications: { enabled: true } } }, { service: spy });
+    expect(prefs.result.isError, prefs.text).toBeFalsy();
+    const imported = await invoke({ action: 'import_skills', importedSkills: ['review'] }, { service: spy });
+    expect(imported.result.isError, imported.text).toBeFalsy();
+    expect(spy.requests).toEqual(['PUT /api/v1/workspace/ui-state', 'PUT /api/v1/workspace/ui-state']);
+  });
+
+  /**
+   * THE ROUTE'S OWN BOUND, FIRING THROUGH THE LEADER'S DOOR.
+   *
+   * `importedSkills` is at most 200 names and `taskTable.expandedColumns` at most 50 columns, and
+   * those bounds live in the contract schema `PUT /workspace/ui-state` validates with — not here.
+   * So a body one past either bound PASSES the door, is dispatched, and comes back as the
+   * cockpit's own 400 with nothing written. Dispatch the write anywhere but that route — straight
+   * at `mergeWriteWorkspaceUiState`, say — and this case goes RED with an over-long list stored;
+   * without it, the door would be free to grow the person's file past the bound the pane obeys.
+   */
+  it('passes the route’s own bounds through: an over-long list is the cockpit’s 400, and nothing is written', async () => {
+    const before = (await cockpit('/api/v1/workspace/ui-state')).body;
+    const tooMany = Array.from({ length: 201 }, (_, i) => `skill-${i}`);
+    const viaUi = await cockpit('/api/v1/workspace/ui-state', 'PUT', { importedSkills: tooMany });
+    expect(viaUi.status).toBe(400);
+
+    const spy = spyService();
+    const called = await invoke({ action: 'import_skills', importedSkills: tooMany }, { service: spy });
+    expect(called.result.isError).toBe(true);
+    expect(called.structured.status, 'the route’s own 400, not an argument refusal').toBe(400);
+    // It really was the ROUTE that refused: the dispatch happened, and it was the only one.
+    expect(spy.requests).toEqual(['PUT /api/v1/workspace/ui-state']);
+    expect((await cockpit('/api/v1/workspace/ui-state')).body).toEqual(before);
+
+    // The same for the other bounded key, through the bag action.
+    const columns = Object.fromEntries(Array.from({ length: 51 }, (_, i) => [`col-${i}`, true]));
+    const bag = await invoke({ action: 'set_workspace_ui_state', uiState: { taskTable: { expandedColumns: columns } } });
+    expect(bag.result.isError).toBe(true);
+    expect(bag.structured.status).toBe(400);
+    expect((await cockpit('/api/v1/workspace/ui-state')).body).toEqual(before);
+  });
+
+  /**
+   * THE ROUTE'S OWN BODY CAP, likewise inherited rather than copied. `PUT /workspace/ui-state`
+   * carries a 128 KiB `bodyLimit` (`UI_STATE_BODY_LIMIT`) precisely because this bag is small GUI
+   * preferences; a leader is no more entitled to a huge body than a browser is. Remove that
+   * `use(…bodyLimit…)` from the route and this case goes RED: the body is accepted and a
+   * multi-megabyte preference file is written.
+   */
+  it('passes the route’s 128 KiB body cap through: an over-sized body is refused and nothing is written', async () => {
+    const before = (await cockpit('/api/v1/workspace/ui-state')).body;
+    const huge = Array.from({ length: 200 }, (_, i) => `${String(i).padStart(4, '0')}-${'s'.repeat(1000)}`);
+    expect(JSON.stringify({ importedSkills: huge }).length, 'the body really is over the cap').toBeGreaterThan(128 * 1024);
+    const spy = spyService();
+    const called = await invoke({ action: 'import_skills', importedSkills: huge }, { service: spy });
+    expect(called.result.isError).toBe(true);
+    // 413, not 400: the CAP refused it, before the schema had an opinion. Pinning the status is
+    // what makes this case notice the cap's removal — the over-sized body would then reach the
+    // validator and be refused as a bad value instead, an error either way.
+    expect(called.structured.status, 'refused by the body cap, not by a bound').toBe(413);
+    expect(spy.requests, 'the route was reached — it is the route that refuses').toEqual(['PUT /api/v1/workspace/ui-state']);
+    expect((await cockpit('/api/v1/workspace/ui-state')).body).toEqual(before);
+  });
+
+  it('needs an operation key, through either action', async () => {
+    const bag = await invoke({ action: 'set_workspace_ui_state', uiState: { notifications: { enabled: true } }, operationId: undefined });
+    expect(bag.result.isError).toBe(true);
+    expect(bag.text).toMatch(/set_workspace_ui_state needs operationId/);
+    const imported = await invoke({ action: 'import_skills', importedSkills: [], operationId: undefined });
+    expect(imported.result.isError).toBe(true);
+    expect(imported.text).toMatch(/import_skills needs operationId/);
+  });
+
+  /**
+   * THE OWNER'S EXCLUSIONS, as behaviour. `theme` is not refused because it is forbidden — it is
+   * refused because there is no such setting: the browser stores it in its own `localStorage` and
+   * no server route carries it (spec § 4 Q1). `sidebar` and `lastLocation` are real keys of the
+   * file that stay out of the leader's reach because they describe one person's window.
+   */
+  it('accepts exactly the five keys the owner opened: theme, the two legacy window keys and an unknown key are argument refusals', async () => {
+    const before = (await cockpit('/api/v1/workspace/ui-state')).body;
+    const spy = spyService();
+    for (const bad of [
+      { theme: 'dark' },
+      { sidebar: { collapsed: { group: true } } },
+      { lastLocation: { projectId: 'proj-a', pathname: '/p/proj-a/tasks' } },
+      { notASetting: true },
+      { appearance: { accent: 'violet' }, theme: 'dark' },
+    ]) {
+      const called = await invoke({ action: 'set_workspace_ui_state', uiState: bad }, { service: spy });
+      expect(called.result.isError, JSON.stringify(bad)).toBe(true);
+      expect(called.text, JSON.stringify(bad)).toMatch(/Unrecognized key/);
+    }
+    // And an EMPTY bag is refused rather than dispatched as a no-op write: the route would
+    // answer 200 for a change nobody asked for, which reads like a change that happened.
+    const empty = await invoke({ action: 'set_workspace_ui_state', uiState: {} }, { service: spy });
+    expect(empty.result.isError).toBe(true);
+    expect(empty.text).toContain('send at least one preference to change');
+    // Refused as arguments: nothing reached the route, so the valid key travelling beside a
+    // rejected one did not half-apply either.
+    expect(spy.requests).toEqual([]);
+    expect((await cockpit('/api/v1/workspace/ui-state')).body).toEqual(before);
+  });
+
+  it('import_skills replaces the whole curated list and leaves every other preference alone', async () => {
+    value(await invoke({ action: 'set_workspace_ui_state', uiState: { appearance: { accent: 'violet' }, importedSkills: ['review', 'qa'] } }));
+    // A curated EMPTY list is a real answer, and is not "never curated".
+    const emptied = value(await invoke({ action: 'import_skills', importedSkills: [] })).uiState;
+    expect(emptied.importedSkills).toEqual([]);
+    expect(emptied.appearance.accent).toBe('violet');
+    const refilled = value(await invoke({ action: 'import_skills', importedSkills: ['docs'] })).uiState;
+    expect(refilled.importedSkills, 'the WHOLE list, never appended to').toEqual(['docs']);
+  });
+
+  it('answers null for a preference the person has never set, rather than inventing a default', async () => {
+    // A fresh bag: only the key just written is present, and the rest are honestly absent.
+    const answer = value(await invoke({ action: 'import_skills', importedSkills: ['review'] })).uiState;
+    expect(answer.appearance).toEqual({ accent: null, density: null, width: null });
+    expect(answer.notifications).toEqual({ enabled: null });
+    expect(answer.taskTable.expandedColumns).toEqual({});
+    expect(answer.dismissedProviderAuthFailures).toEqual([]);
+  });
+
+  /**
+   * HOSTED MODE ALLOWS THIS WRITE TOO, by the same owner decision of 2026-09-20 recorded for the
+   * settings write: `PUT /workspace/ui-state` carries no `localHandoffRoute`, and none was added.
+   * Pinned as ALLOWED so a later 409 is a visible break rather than a silent change of mind; the
+   * agent-config contrast on the same app proves hosted mode really is on.
+   */
+  it('is ALLOWED in hosted mode through both doors, while a local-handoff route on the same app still refuses', async () => {
+    const { app } = hotCockpit('0.0.0.0');
+    const hosted = async (path: string, method = 'GET', body?: unknown): Promise<Response> =>
+      app.request(path, {
+        method,
+        headers: { host: COCKPIT_HOST, origin: `http://${COCKPIT_HOST}`, ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      });
+    const health = (await (await hosted('/api/v1/health')).json()) as { capabilities: { localHandoff: boolean } };
+    expect(health.capabilities.localHandoff, 'the fixture really is hosted').toBe(false);
+
+    expect((await hosted('/api/v1/workspace/ui-state', 'PUT', { notifications: { enabled: false } })).status).toBe(200);
+    const called = await invoke({ action: 'set_workspace_ui_state', uiState: { appearance: { accent: 'violet' } } }, { service: app });
+    expect(called.result.isError, called.text).toBeFalsy();
+    expect(value(called).uiState.appearance.accent).toBe('violet');
+
+    const agentConfig = await hosted(`/api/v1/agent-config/${CONFIG_FILES[0]!.id}`, 'PUT', { content: '{}', version: null });
+    expect(agentConfig.status).toBe(409);
+  });
+});
+
 // ---- the refusals --------------------------------------------------------------------------------
 
 describe('project_config: refusals', () => {
@@ -816,7 +1021,9 @@ describe('project_config: refusals', () => {
     ['a scope:user agent-config write', { action: 'write_agent_config', fileId: 'claude.user.settings', content: '{}', version: null }, 'home file shared by every project'],
     ['a provider enable', { action: 'set_provider_enabled' }, 'workspace-wide setting'],
     ['an account create', { action: 'create_account' }, 'global agent accounts'],
-    ['a workspace preference-bag write', { action: 'set_workspace_ui_state' }, 'workspace-wide setting'],
+    // The preference bag left this table with #677 B3; applying globally installed skill UPDATES
+    // is the workspace-wide write that is still refused, and it keeps the boundary covered here.
+    ['a global skills-update apply', { action: 'apply_skill_updates' }, 'workspace-wide setting'],
     ['an fs/browse call', { action: 'browse_folders' }, 'host filesystem'],
     ['an account-details read', { action: 'get_account_details' }, 'account identity'],
   ])('%s fails with a reason naming the boundary', async (_label, args, boundary) => {

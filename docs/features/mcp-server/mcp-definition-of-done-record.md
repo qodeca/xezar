@@ -335,8 +335,9 @@ schema.
 Negative isolation tests cover about two dozen resource families, and the three clause 5 names by
 hand are each covered: **accounts** (all seven account actions refused with a named boundary,
 dispatching nothing, and `~/.xezar/agent-accounts.json` never created — `acceptance-parity.test.ts`
-P-29), **skills** (`apply_skill_updates` and `import_skills` refused; A's leader reads A's skills and
-never B's — `project-config.test.ts:854`), and **files** (user-scope catalog files refused by catalog
+P-29), **skills** (`apply_skill_updates` refused — `import_skills` was refused with it when this record
+was written on 2026-09-11 and became a write on 2026-09-20 under the owner's "every key" rule,
+#677 B3; A's leader reads A's skills and never B's — `project-config.test.ts`), and **files** (user-scope catalog files refused by catalog
 *scope* rather than by path, so a relocated agent home does not defeat it; absolute, `..` and symlink
 paths refused before anything is read). Families are exercised with far more than a wrong
 `projectId`: foreign resource ids, ids spelled as paths, URLs and percent-encodings, foreign cursors,

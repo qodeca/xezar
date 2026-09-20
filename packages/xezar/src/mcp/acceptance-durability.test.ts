@@ -875,8 +875,9 @@ describe('A-22 — global administration and weakening gates, including by an ap
   // `set_workspace_config` left this list with #677 B1 and the two workspace folder paths followed
   // in B2: the owner's 2026-09-20 rule made the whole workspace SETTINGS write a leader write, and
   // `acceptance-parity.test.ts` P-45 holds it to the cockpit's own route, probe included.
+  // `set_workspace_ui_state` and `import_skills` followed in B3, so the shared PREFERENCE bag is a
+  // leader write too; P-46 holds that one to the same route.
   const GLOBAL_ADMIN = [
-    'set_workspace_ui_state',
     'create_account',
     'select_account',
     'get_account_details',
@@ -912,6 +913,15 @@ describe('A-22 — global administration and weakening gates, including by an ap
     );
     expect(roots.response.isError ?? false, 'workspace roots').toBe(false);
     expect(roots.dispatched, 'workspace roots go through the cockpit’s own route').toEqual(['PUT /api/v1/workspace/config']);
+    // The shared PREFERENCE bag left this list with #677 B3, and the same invariant is what
+    // survives: one dispatch of the cockpit's own ui-state route, never a direct write to the
+    // workspace file that would skip its validator, its body cap and its audit row. P-46 is where
+    // the values are proved.
+    const prefs = await w.observe(() =>
+      w.call('a', 'project_config', { action: 'set_workspace_ui_state', operationId: 'op-a22-prefs-0001', uiState: { appearance: { accent: 'violet' } } }),
+    );
+    expect(prefs.response.isError ?? false, 'workspace preferences').toBe(false);
+    expect(prefs.dispatched, 'workspace preferences go through the cockpit’s own route').toEqual(['PUT /api/v1/workspace/ui-state']);
     // The only change in A is the door's own audit record of each refused call (D-06 § 10).
     expect(snapshotChanges(beforeA, w.snapshot('a')).filter((line) => !line.includes('/audit.ndjson') && line !== '~ audit')).toEqual([]);
   });

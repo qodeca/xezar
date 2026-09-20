@@ -852,7 +852,7 @@
   {
     "name": "project_config",
     "title": "Project configuration",
-    "description": "Read and change THIS project's own configuration: its settings (agent, models, system prompt, review gate, base branch, worktree retention, memory limit), its registry entry (concurrency cap and tags), prompt templates, in-repo agent config files, workflows, skills, GitHub automations and worktrees. It also reads the shared settings as effective limits and capabilities (get_limits, get_capabilities, get_account) and CHANGES them with set_workspace_config — the shared limits, composer defaults, follow-up inbox and environment passthrough, skills auto-update and the machine-wide agent defaults, which apply to every project on this machine, and the two workspace folder paths — the folder the file picker may browse and the folder new checkouts land in, each checked for real before anything is saved. Agent accounts, account identity, home files, the project registry and host folders are outside this boundary and are refused with the reason.",
+    "description": "Read and change THIS project's own configuration: its settings (agent, models, system prompt, review gate, base branch, worktree retention, memory limit), its registry entry (concurrency cap and tags), prompt templates, in-repo agent config files, workflows, skills, GitHub automations and worktrees. It also reads the shared settings as effective limits and capabilities (get_limits, get_capabilities, get_account) and CHANGES them with set_workspace_config — the shared limits, composer defaults, follow-up inbox and environment passthrough, skills auto-update and the machine-wide agent defaults, which apply to every project on this machine, and the two workspace folder paths — the folder the file picker may browse and the folder new checkouts land in, each checked for real before anything is saved. The shared presentation preferences change too: set_workspace_ui_state (appearance, notifications, task-table columns, dismissed provider incidents) and import_skills (the curated list of default skills). The colour theme is not among them — the browser stores that itself. Agent accounts, account identity, home files, the project registry and host folders are outside this boundary and are refused with the reason.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -867,6 +867,7 @@
             "set_prompt_templates",
             "get_limits",
             "set_workspace_config",
+            "set_workspace_ui_state",
             "get_capabilities",
             "get_account",
             "list_agent_config",
@@ -879,6 +880,7 @@
             "list_skills",
             "get_skill",
             "list_importable_skills",
+            "import_skills",
             "refresh_skills",
             "check_skill_updates",
             "list_automations",
@@ -906,17 +908,15 @@
             "check_account_status",
             "get_account_details",
             "open_account_file",
-            "set_workspace_ui_state",
             "browse_folders",
             "add_project",
             "clone_project",
             "remove_project",
             "apply_skill_updates",
-            "import_skills",
             "get_launch_key",
             "open_in_app"
           ],
-          "description": "What to do in the project this connection is bound to, plus the shared settings set_workspace_config changes for every project on this machine. Actions outside that boundary (accounts, the project registry, host folders) are answered with a refusal that names the boundary."
+          "description": "What to do in the project this connection is bound to, plus the shared settings set_workspace_config changes and the shared presentation preferences set_workspace_ui_state and import_skills change, for every project on this machine. Actions outside that boundary (accounts, the project registry, host folders) are answered with a refusal that names the boundary."
         },
         "projectId": {
           "description": "Never accepted: the project is the one this connection is bound to, and a call that names one is refused."
@@ -1320,6 +1320,95 @@
             }
           },
           "additionalProperties": false
+        },
+        "uiState": {
+          "description": "set_workspace_ui_state: the shared presentation preferences to change — they apply to every project on this machine. Only the keys you send are touched: appearance (accent, density, width), notifications.enabled, taskTable.expandedColumns, importedSkills (the whole curated list) and dismissedProviderAuthFailures. The colour theme is not here: it is stored by the browser itself, not by the server.",
+          "type": "object",
+          "properties": {
+            "appearance": {
+              "type": "object",
+              "properties": {
+                "accent": {
+                  "type": "string",
+                  "enum": [
+                    "lime",
+                    "violet"
+                  ]
+                },
+                "density": {
+                  "type": "string",
+                  "enum": [
+                    "roomy",
+                    "comfortable",
+                    "compact",
+                    "ultra"
+                  ]
+                },
+                "width": {
+                  "type": "string",
+                  "enum": [
+                    "narrow",
+                    "wide"
+                  ]
+                }
+              }
+            },
+            "notifications": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                }
+              },
+              "additionalProperties": {}
+            },
+            "taskTable": {
+              "type": "object",
+              "properties": {
+                "expandedColumns": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {
+                    "type": "boolean"
+                  }
+                }
+              },
+              "additionalProperties": {}
+            },
+            "importedSkills": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "dismissedProviderAuthFailures": {
+              "type": "object",
+              "properties": {
+                "claude": {
+                  "type": "string"
+                },
+                "codex": {
+                  "type": "string"
+                },
+                "opencode": {
+                  "type": "string"
+                },
+                "pi": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "importedSkills": {
+          "description": "import_skills: the WHOLE curated list of default skill names to show, replacing the previous one; [] shows none of them. Read the names with list_importable_skills.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         },
         "project": {
           "description": "set_project: this project's concurrency cap (maxParallel, null inherits the workspace cap) and/or its tags (whole list).",
