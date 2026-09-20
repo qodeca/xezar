@@ -693,6 +693,9 @@ export class RunStore extends EventEmitter {
   private runs = new Map<string, RunRecord>();
   private decisionProjections = new Map<string, string>();
   private saveTimer: NodeJS.Timeout | null = null;
+  /** Set by `close()` and by a save that finds its own data directory gone. Both mean the same
+   *  thing — this store no longer writes — and neither is an error. */
+  private closed = false;
   /** The repository this project IS (#945), armed after `open()` by `setRepoHandle`. Undefined
    *  until it arrives and `null` when it cannot be known — both mean "unscoped", which is
    *  exactly the pre-#945 behavior. */
@@ -1382,13 +1385,41 @@ export class RunStore extends EventEmitter {
     return existed;
   }
 
-  /** Write the index out now (used on shutdown). */
+  /** Write the index out now (used on shutdown). Cancels the pending debounce first, so the
+   *  timer can never fire after the caller believes the index is on disk. */
   flush(): void {
-    if (this.saveTimer) {
-      clearTimeout(this.saveTimer);
-      this.saveTimer = null;
-    }
+    this.cancelScheduledSave();
     this.saveNow();
+  }
+
+  /**
+   * End this store's write lifecycle: flush what is still pending, cancel the debounce, and
+   * refuse every later write. Deliberately idempotent and safe to call on a store whose data
+   * directory has already been removed.
+   *
+   * `flush()` alone was not enough, and that gap is the defect behind #631 and #671 rows F-26 and
+   * F-29: a caller that flushed and then removed the directory could still be `touch()`ed by a
+   * writer that had not finished letting go — a late agent event, a retention sweep — which
+   * re-armed the 300 ms debounce against a directory that no longer existed. The timer then fired
+   * with nobody watching and `console.error`'d an `ENOENT` on `runs.json.tmp`, which vitest
+   * surfaces as `EnvironmentTeardownError: Closing rpc while "onUserConsoleLog" was pending` and
+   * a gate reads as a timeout in whichever test happened to be running.
+   *
+   * What the debounce is load-bearing FOR is unchanged on the live path: an OPEN store still
+   * coalesces token-usage updates into one `runs.json` write every 300 ms, still writes through
+   * the atomic tmp+rename, and still saves decision changes immediately. Only a store that has
+   * been closed — or whose directory has gone — stops writing.
+   */
+  close(): void {
+    if (this.closed) return;
+    this.cancelScheduledSave();
+    this.saveNow();
+    this.closed = true;
+  }
+
+  /** Whether this store has ended its write lifecycle (`close()`, or a vanished data dir). */
+  get isClosed(): boolean {
+    return this.closed;
   }
 
   // ---- internals -----------------------------------------------------------
@@ -1469,7 +1500,7 @@ export class RunStore extends EventEmitter {
 
   /** Debounced so token-usage updates don't rewrite the index per event. */
   private scheduleSave(): void {
-    if (this.saveTimer) return;
+    if (this.closed || this.saveTimer) return;
     this.saveTimer = setTimeout(() => {
       this.saveTimer = null;
       this.saveNow();
@@ -1478,14 +1509,34 @@ export class RunStore extends EventEmitter {
   }
 
   private saveNow(): void {
+    if (this.closed) return;
     const indexPath = join(this.dataDir, 'runs.json');
     const tmpPath = `${indexPath}.tmp`;
     try {
       writeFileSync(tmpPath, JSON.stringify(this.listRuns(), null, 2), 'utf8');
       renameSync(tmpPath, indexPath);
     } catch (err) {
+      if (this.dataDirVanished()) {
+        // The project's data directory is gone: the store has outlived what it writes to, so
+        // this is a shutdown, not a failure. Anything that arrives after this is a shutdown
+        // too — see `close()` for why the log itself was the defect (#631, #671 F-26/F-29).
+        this.closed = true;
+        this.cancelScheduledSave();
+        return;
+      }
       const message = err instanceof Error ? err.message : String(err);
       console.error(`[xez] failed to save runs.json: ${message}`);
     }
+  }
+
+  /** A write failed AND the directory it writes into no longer exists — not a disk error. */
+  private dataDirVanished(): boolean {
+    return !existsSync(this.dataDir);
+  }
+
+  private cancelScheduledSave(): void {
+    if (!this.saveTimer) return;
+    clearTimeout(this.saveTimer);
+    this.saveTimer = null;
   }
 }

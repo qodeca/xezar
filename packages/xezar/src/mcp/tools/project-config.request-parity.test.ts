@@ -15,6 +15,7 @@ import type { AppType } from '../../server/app-type.ts';
 import { apiRequest } from '../../server/loopback-request.testkit.ts';
 import { createApp } from '../../server/server.ts';
 import { RunStore } from '../../runs/store.ts';
+import { closeStoreAndRemove } from '../../runs/store.testkit.ts';
 import { WorkspaceSemaphore } from '../../workspace/semaphore.ts';
 import type { RunManager } from '../../workflows/run.ts';
 import { ACTION_FIELDS, PROJECT_CONFIG_ACTIONS, projectConfigInputSchema } from './project-config.ts';
@@ -220,6 +221,7 @@ describe('every MCP write action accepts what its route accepts', () => {
     const savedHome = process.env.XEZ_HOME;
     let home: string;
     let repoRoot: string;
+    let store: RunStore;
     let app: Hono;
 
     beforeEach(() => {
@@ -227,9 +229,10 @@ describe('every MCP write action accepts what its route accepts', () => {
       process.env.XEZ_HOME = home;
       repoRoot = mkdtempSync(join(tmpdir(), 'xez-mcp-parity-repo-'));
       mkdirSync(join(repoRoot, '.local/xezar'), { recursive: true });
+      store = RunStore.open(join(repoRoot, '.local/xezar'));
       app = createApp({
         repoRoot,
-        store: RunStore.open(join(repoRoot, '.local/xezar')),
+        store,
         manager: {} as RunManager,
         version: '0.0.0-test',
         semaphore: new WorkspaceSemaphore(),
@@ -240,7 +243,7 @@ describe('every MCP write action accepts what its route accepts', () => {
       if (savedHome === undefined) delete process.env.XEZ_HOME;
       else process.env.XEZ_HOME = savedHome;
       rmSync(home, { recursive: true, force: true });
-      rmSync(repoRoot, { recursive: true, force: true });
+      closeStoreAndRemove(store, repoRoot);
     });
 
     it('applies maxParallel on PUT /config, the key set_config declares as omitted', async () => {

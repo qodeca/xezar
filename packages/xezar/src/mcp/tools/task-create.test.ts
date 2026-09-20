@@ -145,6 +145,13 @@ interface Fixture {
 const PROJECT = 'proj-a';
 const COCKPIT_HOST = '127.0.0.1:4321';
 const tempDirs: string[] = [];
+/** Every store a fixture opens, closed in teardown BEFORE its directory goes. */
+const stores: RunStore[] = [];
+const openStore = (dataDir: string): RunStore => {
+  const store = RunStore.open(dataDir, { keepLive: true });
+  stores.push(store);
+  return store;
+};
 let fixture: Fixture | undefined;
 // Every variable the fixture pins, restored after each case. The three agent homes and
 // ANTHROPIC_MODEL keep the developer's own agent settings out of `/config`'s `defaultModels`.
@@ -221,7 +228,7 @@ function setup(options: SetupOptions = {}, stubStart = true): Fixture {
   const boot = makeDir('xez-task-create-boot-');
   const app = createApp({
     repoRoot: boot,
-    store: RunStore.open(join(boot, '.local/xezar'), { keepLive: true }),
+    store: openStore(join(boot, '.local/xezar')),
     manager: { isActive: () => false } as unknown as RunManager,
     version: '0.0.0-test',
     bootProjectId: 'boot',
@@ -452,6 +459,7 @@ afterEach(async () => {
     }
     f.contexts.disposeAll();
   }
+  for (const store of stores.splice(0)) store.close();
   for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
   for (const key of PINNED) {
     const value = saved[key];

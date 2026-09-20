@@ -674,6 +674,10 @@ export class ProjectContexts {
  *  store, because that promise is the only signal that its background writes are finished. */
 async function teardown(ctx: { store: RunStore; manager: RunManager }): Promise<void> {
   await ctx.manager.dispose();
-  ctx.store.flush();
+  // `close()` rather than `flush()`: flushing writes the index but leaves the store armed, so a
+  // writer that had not finished letting go could re-arm the 300 ms debounce against a data
+  // directory this teardown is about to outlive (#631, #671 F-26/F-29). Closing ends the write
+  // lifecycle, which is what this function already claims to do.
+  ctx.store.close();
   ctx.store.removeAllListeners();
 }

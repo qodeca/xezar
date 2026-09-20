@@ -18,6 +18,14 @@ import { RunManager } from './run.ts';
 
 const GIT_ID = ['-c', 'user.name=test', '-c', 'user.email=test@local'];
 const roots: string[] = [];
+const stores: RunStore[] = [];
+
+/** Every store a case opens, so teardown closes it before its root is removed. */
+function openStore(root: string): RunStore {
+  const store = RunStore.open(join(root, '.local/xezar'));
+  stores.push(store);
+  return store;
+}
 
 function fixtureRepo(): string {
   const root = mkdtempSync(join(tmpdir(), 'xez-root-isolation-'));
@@ -48,13 +56,14 @@ async function waitFor(predicate: () => boolean, what: string): Promise<void> {
 }
 
 afterEach(() => {
+  for (const store of stores.splice(0)) store.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
 describe('RunManager repository-root isolation', () => {
   it('fails closed without executing a workflow step when worktree creation fails', async () => {
     const root = fixtureRepo();
-    const store = RunStore.open(join(root, '.local/xezar'));
+    const store = openStore(root);
     const manager = new RunManager(store, root);
     const workflow: WorkflowDef = {
       name: 'must-not-run-in-root',
@@ -77,7 +86,7 @@ describe('RunManager repository-root isolation', () => {
 
   it('serializes parallel runs that explicitly opt out of worktrees', async () => {
     const root = fixtureRepo();
-    const store = RunStore.open(join(root, '.local/xezar'));
+    const store = openStore(root);
     const manager = new RunManager(store, root);
     const workflow: WorkflowDef = {
       name: 'root-lock-check',
@@ -109,7 +118,7 @@ describe('RunManager repository-root isolation', () => {
     process.env.XEZ_DISABLE_REPO_LOCK = '1';
     try {
       const root = fixtureRepo();
-      const store = RunStore.open(join(root, '.local/xezar'));
+      const store = openStore(root);
       const manager = new RunManager(store, root);
       const workflow: WorkflowDef = {
         name: 'root-lock-bypass-check',

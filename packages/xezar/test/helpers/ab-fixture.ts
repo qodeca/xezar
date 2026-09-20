@@ -34,6 +34,7 @@ import { tools as registry } from '../../src/mcp/tools/index.ts';
 import { withOperationId } from '../../src/mcp/tools/operation-id.testkit.ts';
 import { projectDataDir } from '../../src/project-data-paths.ts';
 import { RunStore, type RunRecord } from '../../src/runs/store.ts';
+import { closeStoreAndRemove } from '../../src/runs/store.testkit.ts';
 import { ProjectContexts, type ProjectContext, type ProjectContextSource } from '../../src/server/project-context.ts';
 import { connectedProviderAuth } from '../../src/server/provider-auth.testkit.ts';
 import { createApp } from '../../src/server/server.ts';
@@ -858,11 +859,17 @@ export async function createAbWorld(options: AbWorldOptions = {}): Promise<AbWor
       }
       await ctx.manager.dispose();
     }
-    contexts.disposeAll();
+    await contexts.disposeAll();
     journalA.close();
     journalB.close();
-    storeB.flush();
-    rmSync(base, { recursive: true, force: true });
+    // CLOSE, not flush, and before the directories go: a flushed store is still armed, so a
+    // writer that had not finished letting go could re-arm the 300 ms debounce against a data
+    // directory this dispose is about to remove. The timer then fired into nothing and logged an
+    // `ENOENT` on `runs.json.tmp` — a late `console.*` that vitest reports as
+    // `EnvironmentTeardownError` and a gate reads as a timeout in whatever test was running when
+    // it landed (#631, #671 rows F-26 and F-29). `contexts.disposeAll()` closes A's store the
+    // same way; B has no context, so it is closed here.
+    closeStoreAndRemove(storeB, base);
     rmSync(home, { recursive: true, force: true });
     for (const [key, value] of [
       ['XEZ_HOME', saved.home],

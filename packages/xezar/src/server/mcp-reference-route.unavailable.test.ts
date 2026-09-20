@@ -1,8 +1,9 @@
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RunStore } from '../runs/store.ts';
+import { closeStoreAndRemove } from '../runs/store.testkit.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { createApp } from './server.ts';
@@ -18,19 +19,21 @@ vi.mock('../mcp/api-reference.ts', () => {
 
 describe('GET /api/v1/mcp/reference when the MCP module cannot load', () => {
   let repoRoot: string;
+  let store: RunStore;
   let app: ReturnType<typeof createApp>;
 
   beforeEach(() => {
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-mcp-ref-broken-'));
     mkdirSync(join(repoRoot, '.local/xezar'), { recursive: true });
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     app = createApp({
       repoRoot,
-      store: RunStore.open(join(repoRoot, '.local/xezar')),
+      store,
       manager: {} as RunManager,
       version: '0.0.0-test',
     });
   });
-  afterEach(() => rmSync(repoRoot, { recursive: true, force: true }));
+  afterEach(() => closeStoreAndRemove(store, repoRoot));
 
   it('answers 200 {available: false, reason} with one warning, and the cockpit keeps working', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});

@@ -58,6 +58,7 @@ describe.skipIf(isWindows)('handoff_git — commit, push, draft PR, merge and br
   let roots: { cockpit: string; leader: string; plain: string; boot: string };
   let bare: string;
   let contexts: ProjectContexts;
+  let bootStore: RunStore;
   let app: ReturnType<typeof createApp>;
   let sockets: McpServiceHandle[];
   let socketPath: Record<'leader' | 'plain', string>;
@@ -135,9 +136,10 @@ describe.skipIf(isWindows)('handoff_git — commit, push, draft PR, merge and br
       load: async () => ({ maxParallel: 2, memoryLimitMb: null }),
     });
     contexts = new ProjectContexts({ listProjects: async () => projects, semaphore });
+    bootStore = RunStore.open(join(roots.boot, '.local/xezar'), { keepLive: true });
     app = createApp({
       repoRoot: roots.boot,
-      store: RunStore.open(join(roots.boot, '.local/xezar'), { keepLive: true }),
+      store: bootStore,
       manager: { isActive: () => false } as unknown as RunManager,
       version: '0.0.0-test',
       bootProjectId: 'boot',
@@ -179,6 +181,7 @@ describe.skipIf(isWindows)('handoff_git — commit, push, draft PR, merge and br
   afterEach(() => {
     for (const socket of sockets) socket.close();
     contexts.disposeAll();
+    bootStore.close();
     for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
     for (const key of ENV_KEYS) {
       if (savedEnv[key] === undefined) delete process.env[key];
