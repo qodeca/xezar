@@ -96,16 +96,18 @@ export type WorkspaceConfigResponse = z.infer<typeof workspaceConfigResponseSche
  * bad fields answers one `{ error }` string built by joining the zod issues in shape order, so
  * `resources` stays ahead of `agentDefaults` exactly as the deleted server copy had it.
  *
- * EVERY NESTED OBJECT IS STRICT (#677 wave 2 B1 review, m1). The outer object is narrowed with
- * `.strict()` at both doors — the MCP tool's argument schema and, since this change, nothing else
- * needed — but `resources`, `composerDefaults`, `agentDefaults` and `agentDefaults.models` were
- * plain `z.object`, so a nested typo (`{ resources: { maxParalel: 9 } }`) was stripped and
- * answered 200 for a change that never happened. A misspelt limit is a caller's mistake, and a
- * partial patch has no other way to tell them: the key they meant is simply absent. Both doors
- * now refuse it, because both validate with THIS schema. No cockpit body carries an extra nested
- * key — every `putWorkspaceConfig` call site sends a `SetWorkspaceConfigInput` literal.
+ * THE SHAPE IS STRICT AT EVERY LEVEL (#677 wave 2 B1 — review m1 and QA case H). It used to be a
+ * plain `z.object` throughout, and only the MCP tool narrowed its own copy with `.strict()`. Two
+ * asymmetries followed, and both answered 200 for a change that never happened: the route
+ * accepted an unknown TOP-LEVEL key (`{ nonsenseKey: 123 }`) that the MCP door refused, and BOTH
+ * doors accepted a misspelt NESTED key (`{ resources: { maxParalel: 9 } }`). A misspelt limit is
+ * a caller's mistake, and a partial patch has no other way to tell them: the key they meant is
+ * simply absent. Strictness belongs HERE rather than at either door, because this is the one
+ * schema both of them validate with — which is what makes the two answers identical instead of
+ * merely similar. No cockpit body carries an extra key at any level: every `putWorkspaceConfig`
+ * call site sends a `SetWorkspaceConfigInput` literal.
  */
-export const setWorkspaceConfigInputSchema = z.object({
+export const setWorkspaceConfigInputSchema = z.strictObject({
   browseRoot: z.string().trim().min(1).max(4096).optional(),
   projectsDir: z.string().trim().min(1).max(4096).optional(),
   skillsAutoUpdate: z.boolean().nullable().optional(),

@@ -319,6 +319,14 @@ Every key here is enforced workspace-wide by `WorkspaceSemaphore`
 > — what the answer withholds — is still in force. The two workspace folder paths (§ 4.12's
 > `browseRoot` and `projectsDir`) are NOT part of the reversal in B1 and are decided on their own
 > in slice B2. The full re-scope of this document is slice B6.
+>
+> **Hosted mode does not narrow the write** (owner decision, 2026-09-20; raised by independent QA
+> as case G on #734 and filed as #735). Workspace-config writes are permitted through both doors
+> when `capabilities.localHandoff` is false, unlike agent-config writes and the agent-profile
+> routes, which answer 409 there. The owner's reason: *a server admin may change limits remotely*.
+> A workspace limit is neither a hook, a command nor an account identity, which is what that
+> boundary exists to keep off a shared box. A test pins the ALLOWED behaviour, so a later 409
+> would be a visible break.
 
 | Field | Status | Reason | Enforcing code path | Withheld |
 | --- | --- | --- | --- | --- |

@@ -81,6 +81,15 @@ then, and the rows keep it beside the new decision. I-127 (the two workspace fol
 `global` — those keys are filesystem boundaries rather than limits and are decided on their own in
 slice B2. Covered 101, global 15, total 147.
 
+**Hosted mode does not narrow these five rows** (owner decision, 2026-09-20, raised by independent
+QA as case G on #734 and filed as #735). Workspace-config writes are permitted in hosted mode
+through **both** doors — the cockpit's `PUT /workspace/config` and the leader's
+`set_workspace_config` — unlike agent-config writes and every agent-profile route, which answer
+409 when `capabilities.localHandoff` is false. The reason is the owner's: *a server admin may
+change limits remotely*. A workspace limit is neither a hook, a command nor an account identity,
+which is what that boundary exists to keep off a shared box. The behaviour is pinned by a test
+asserting it is ALLOWED, so a later 409 is a visible break rather than a silent change of mind.
+
 ## Resolved open decisions (2026-09-10)
 
 The twelve rows that stood open are decided by the project leader. Each entry gives the decision, the

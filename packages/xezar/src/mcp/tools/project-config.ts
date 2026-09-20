@@ -441,11 +441,13 @@ const projectConfigWriteSchema = setConfigInputSchema.omit({ maxParallel: true }
  * TWO KEYS ARE STILL NOT ACCEPTED, and the omission is the whole of the narrowing: `browseRoot`
  * and `projectsDir` are the cockpit folder browser's confinement root and the directory a GUI
  * clone lands in — filesystem boundaries rather than limits, reviewed on their own in slice B2.
- * `.strict()` on top so an unknown TOP-LEVEL key is refused rather than silently dropped; a
- * dropped key would answer 200 for a change that never happened. The NESTED objects are strict in
- * the contract itself (`packages/contract/src/workspace.ts`, review m1), so a misspelt limit
- * (`{ resources: { maxParalel: 9 } }`) is refused identically at both doors rather than here
- * alone — the route validates with the same schema this one narrows.
+ * An unknown key is refused rather than silently dropped, at EVERY level, and that strictness
+ * lives in the contract (`packages/contract/src/workspace.ts`) rather than here — the route
+ * validates with the same schema this one narrows, so both doors refuse the same body with the
+ * same reason. It used to live only here, and the asymmetry was the bug: the route answered 200
+ * for `{ nonsenseKey: 123 }` (QA case H) and both doors answered 200 for a misspelt nested key
+ * (review m1) — success for a change that never happened. The `.strict()` below is kept because
+ * `.omit()` returns a new shape and the narrowing must be explicit at the door a leader reads.
  */
 const workspaceConfigWriteSchema = setWorkspaceConfigInputSchema.omit({ browseRoot: true, projectsDir: true }).strict();
 const projectRegistryWriteSchema = z.strictObject(updateProjectInputSchema.shape);

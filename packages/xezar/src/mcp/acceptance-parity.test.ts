@@ -1281,15 +1281,18 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
         expect(resultText(badMcp)).toContain('<=16');
         expect((await mcp(w, 'project_config', { action: 'get_limits' })).result.workspace.resources.maxParallel).toBe(2);
 
-        // A MISSPELT NESTED KEY is refused by both doors too (review m1). It used to be stripped
-        // and answered 200 — success for a change that never happened — because `.strict()` sat
-        // on the outer object alone. The nested objects are strict in the contract now, and the
-        // contract is what BOTH doors validate with.
-        const typo = { resources: { maxParalel: 9 } };
-        const typoUi = await ui(w, '/api/v1/workspace/config', 'PUT', typo);
-        expect(typoUi.status).toBe(400);
-        const typoMcp = await w.call('a', 'project_config', { action: 'set_workspace_config', operationId: op(), workspaceConfig: typo });
-        expect(typoMcp.isError).toBe(true);
+        // AN UNKNOWN KEY, AT EITHER LEVEL, is refused by both doors (review m1 and QA case H on
+        // #735). Each used to be answered 200 — success for a change that never happened: the
+        // top-level one by the route alone, because only the tool's copy carried `.strict()`;
+        // the nested one by both, because `.strict()` narrows one object and says nothing about
+        // the ones inside it. The whole shape is strict in the contract now, and the contract is
+        // what BOTH doors validate with, so the two answers are identical rather than similar.
+        for (const typo of [{ resources: { maxParalel: 9 } }, { nonsenseKey: 123 }]) {
+          const typoUi = await ui(w, '/api/v1/workspace/config', 'PUT', typo);
+          expect(typoUi.status, JSON.stringify(typo)).toBe(400);
+          const typoMcp = await w.call('a', 'project_config', { action: 'set_workspace_config', operationId: op(), workspaceConfig: typo });
+          expect(typoMcp.isError, JSON.stringify(typo)).toBe(true);
+        }
         expect((await mcp(w, 'project_config', { action: 'get_limits' })).result.workspace.resources.maxParallel).toBe(2);
 
         // "Repeating one key changes nothing twice" is NOT assertable here: this world wires the

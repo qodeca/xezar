@@ -1117,12 +1117,27 @@ every workspace limit as a safe effective read a leader could see and never chan
   names either.
 - **The record of the old decision is kept, not deleted**: the superseded rulings stay in
   `docs/features/mcp-server/mcp-ui-action-inventory.md` verbatim, beside the new one, dated.
-- **An unknown key is refused at EVERY level, through both doors** (added in the review round). An
-  unknown TOP-LEVEL key was already refused as a tool argument. A misspelt NESTED key
-  (`{ resources: { maxParalel: 9 } }`, `{ agentDefaults: { models: { gemini: 'x' } } }`) used to be
-  stripped by the schema and answered 200 / `applied` for a change that never happened. The nested
-  objects of `setWorkspaceConfigInputSchema` are strict now, so **`PUT /api/v1/workspace/config`
-  answers 400 for a body it used to accept**, and the MCP door refuses it as an argument. This is
-  the intended narrowing and it applies to both doors at once, because both validate with that one
-  contract schema. No cockpit call site sends such a key; a client that did was silently losing
-  the setting it meant to change.
+- **An unknown key is refused at EVERY level, through both doors** (added in the review round —
+  review m1 and QA case H, #735). Two bodies used to be answered 200 / `applied` for a change that
+  never happened: an unknown TOP-LEVEL key (`{ nonsenseKey: 123 }`) by the ROUTE, which the MCP
+  door already refused, and a misspelt NESTED key (`{ resources: { maxParalel: 9 } }`,
+  `{ agentDefaults: { models: { gemini: 'x' } } }`) by BOTH doors.
+  `setWorkspaceConfigInputSchema` is strict at every level now, so **`PUT /api/v1/workspace/config`
+  answers 400 for bodies it used to accept**, and the MCP door refuses them as arguments with the
+  same reason. The narrowing is deliberate and lands on both doors at once, because both validate
+  with that one contract schema — which is the point: the two answers are identical rather than
+  similar. No cockpit call site sends such a key; a client that did was silently losing the
+  setting it meant to change.
+- **Hosted mode permits workspace-config writes, through BOTH doors — a decision, not an
+  oversight.** `PUT /api/v1/workspace/config` is not a `localHandoffRoute` and never has been, and
+  `set_workspace_config` inherits that: on a server bound to a non-loopback host
+  (`capabilities.localHandoff: false`) both doors answer normally instead of 409. Independent QA
+  raised this as a blocker (QA case G on #734, filed as #735) and asked for either the 409 or an
+  explicit decision. **Owner decision, 2026-09-20: the write stays allowed in hosted mode — a
+  server admin may change limits remotely.** This is the opposite of the rule for agent-config
+  writes (`PUT /api/v1/agent-config/:id`) and every agent-profile route, which 409 in hosted mode
+  because they can define hooks and commands or name an account identity; workspace limits are
+  neither. The behaviour is pinned by a test that asserts it is ALLOWED — and asserts an
+  agent-config write still 409s on the same hosted app — so adding a 409 here later is a visible,
+  named break rather than a silent change of mind, and it would be a change for both doors at
+  once with its own entry here.

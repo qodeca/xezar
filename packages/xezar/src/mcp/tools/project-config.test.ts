@@ -479,8 +479,9 @@ describe('project_config: project writes (acceptance)', () => {
  * "applies without a restart" is observed rather than asserted.
  */
 describe('project_config: the workspace-settings write (#677 B1)', () => {
-  /** A second cockpit over the same workspace home, with a semaphore that really loads. */
-  function hotCockpit(): { app: ReturnType<typeof createApp>; semaphore: WorkspaceSemaphore } {
+  /** A second cockpit over the same workspace home, with a semaphore that really loads.
+   *  `bindHost: '0.0.0.0'` builds the same cockpit in HOSTED mode (`localHandoff: false`). */
+  function hotCockpit(bindHost?: string): { app: ReturnType<typeof createApp>; semaphore: WorkspaceSemaphore } {
     const semaphore = new WorkspaceSemaphore();
     const projects: ProjectContextSource[] = [
       { id: 'proj-a', root: ws.roots.a, status: 'ok' },
@@ -495,6 +496,7 @@ describe('project_config: the workspace-settings write (#677 B1)', () => {
       contexts: new ProjectContexts({ listProjects: async () => projects, semaphore }),
       semaphore,
       providerAuth: connectedProviderAuth(),
+      ...(bindHost === undefined ? {} : { bindHost }),
     });
     return { app, semaphore };
   }
@@ -570,22 +572,31 @@ describe('project_config: the workspace-settings write (#677 B1)', () => {
   });
 
   /**
-   * Review m1: `.strict()` on the outer object alone let a misspelt NESTED limit through — the
-   * route stripped it and answered 200 for a change that never happened. The nested objects are
-   * strict in the CONTRACT now, so the refusal is the same at both doors; a fix in the tool alone
-   * would have left the cockpit's own PUT silently dropping the typo.
+   * An unknown key is refused by BOTH doors, at every level — review m1 and QA case H together.
+   *
+   * Two asymmetries used to live here, and both answered success for a change that never
+   * happened. QA case H: an unknown TOP-LEVEL key (`{ nonsenseKey: 123 }`) was refused as a tool
+   * argument and accepted by the route as a no-op 200, because only the tool's copy carried
+   * `.strict()`. Review m1: a misspelt NESTED key was stripped by BOTH doors, because `.strict()`
+   * narrows one object and says nothing about the ones inside it. The whole shape is strict in
+   * the CONTRACT now — the one schema both doors validate with — so a fix at either door alone
+   * would have been half a fix, and this case asserts the pair together.
    */
-  it('refuses a misspelt NESTED key too, at both doors, and writes nothing', async () => {
+  it('refuses an unknown key at every level, at BOTH doors, and writes nothing', async () => {
     const before = (await cockpit('/api/v1/workspace/config')).body;
     const spy = spyService();
-    const nested = [
+    const bodies = [
+      // QA case H — the top level, the direction the route used to accept.
+      { nonsenseKey: 123 },
+      { resources: { maxParallel: 4 }, nonsenseKey: 123 },
+      // Review m1 — nested, the direction both doors used to accept.
       { resources: { maxParalel: 9 } },
       { resources: { browseRoot: '/tmp' } },
       { composerDefaults: { autonomus: true } },
       { agentDefaults: { models: { gemini: 'x' } } },
       { agentDefaults: { runer: 'codex' } },
     ];
-    for (const bad of nested) {
+    for (const bad of bodies) {
       const called = await invoke({ action: 'set_workspace_config', workspaceConfig: bad }, { service: spy });
       expect(called.result.isError, JSON.stringify(bad)).toBe(true);
       // The cockpit's own door answers 400 for the same body — one schema, one opinion.
@@ -594,6 +605,46 @@ describe('project_config: the workspace-settings write (#677 B1)', () => {
     }
     expect(spy.requests).toEqual([]);
     expect((await cockpit('/api/v1/workspace/config')).body).toEqual(before);
+  });
+
+  /**
+   * HOSTED MODE ALLOWS THIS WRITE, BY DECISION (QA case G on #734, issue #735; owner decision
+   * 2026-09-20: "a server admin may change limits remotely").
+   *
+   * Independent QA found that neither door refuses in hosted mode and asked for either a
+   * `localHandoff` 409 or an explicit recorded decision. The decision is the second: the write
+   * stays allowed. So this case pins the ALLOWED behaviour rather than leaving it to silence —
+   * adding the 409 later becomes a visible break with a named test, instead of an undocumented
+   * change of mind. The contrast is asserted in the same breath: on the SAME hosted app an
+   * agent-config write still 409s, so hosted gating demonstrably works here and its absence on
+   * this route is a choice rather than an oversight.
+   */
+  it('is ALLOWED in hosted mode through both doors, while a local-handoff route on the same app still refuses', async () => {
+    const { app } = hotCockpit('0.0.0.0');
+    const hosted = async (path: string, method = 'GET', body?: unknown): Promise<Response> =>
+      app.request(path, {
+        method,
+        headers: { host: COCKPIT_HOST, origin: `http://${COCKPIT_HOST}`, ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      });
+
+    const health = (await (await hosted('/api/v1/health')).json()) as { capabilities: { localHandoff: boolean } };
+    expect(health.capabilities.localHandoff, 'the fixture really is hosted').toBe(false);
+
+    // The cockpit's own door: no `localHandoffRoute` on this route, deliberately.
+    expect((await hosted('/api/v1/workspace/config', 'PUT', { resources: { maxParallel: 7 } })).status).toBe(200);
+    // The leader's door, dispatching into that same hosted service.
+    const called = await invoke({ action: 'set_workspace_config', workspaceConfig: { resources: { maxParallel: 5 } } }, { service: app });
+    expect(called.result.isError, called.text).toBeFalsy();
+    expect(value(called).workspace.resources.maxParallel).toBe(5);
+    const stored = (await (await hosted('/api/v1/workspace/config')).json()) as { resources: { maxParallel: number } };
+    expect(stored.resources.maxParallel).toBe(5);
+
+    // The boundary that IS a local-machine capability still holds on the same app, so this case
+    // cannot pass because hosted mode was never really on.
+    const agentConfig = await hosted(`/api/v1/agent-config/${CONFIG_FILES[0]!.id}`, 'PUT', { content: '{}', version: null });
+    expect(agentConfig.status).toBe(409);
+    expect(((await agentConfig.json()) as { error: string }).error).toContain('hosted mode');
   });
 
   /**
