@@ -19,6 +19,12 @@ import { describe, expect, it } from 'vitest';
  * assertion can only observe the fixtures a test happens to drive, and the fixture that matters
  * is the one nobody has written yet.
  *
+ * The scan intentionally recognizes only a direct identifier binding. Aliasing that identifier
+ * (`const alias = store; alias.close()`) and destructuring an expression that contains an open
+ * store are unsupported: both remain findings even when the alias/destructured name is closed.
+ * The boundary probes below pin those conservative answers so a later syntax expansion is an
+ * explicit rule change, never a silent exemption.
+ *
  * ## The grandfather list, and why it is not an allowlist
  *
  * 69 existing files already carry this shape and are NOT routed through the helper. Routing them
@@ -43,7 +49,7 @@ const DIR_REMOVAL = /\brm(?:Sync|dirSync)\s*\(\s*(?:join\s*\(\s*)?([A-Za-z_$][\w
  * `new RunStore(dir)`, so `const store = …`, `let store = …` and a bare `store = …` all count. A
  * call with no binding (`RunStore.open(dir).getRun(…)`) binds nothing and contributes none.
  */
-const STORE_BINDING = /(?:(?:const|let|var)\s+)?([A-Za-z_$][\w$]*)\s*=\s*(?:RunStore\.open|new RunStore)\s*\(/g;
+const STORE_BINDING = /(?:(?:const|let|var)\s+)?([A-Za-z_$][\w$]*)\s*=\s*(?:RunStore\.open|new RunStore)\s*\(\s*(?:join\s*\(\s*)?([A-Za-z_$][\w$]*)/g;
 
 /** A regex-safe copy of a source identifier (identifiers are `\w`, but `$` is not). */
 function escapeRegExp(value: string): string {
@@ -85,17 +91,22 @@ export function findingsIn(file: string, source: string): Finding[] {
   for (let m = STORE_OPEN.exec(source); m; m = STORE_OPEN.exec(source)) dirs.add(m[1]!);
   if (dirs.size === 0) return [];
 
-  const storeVars = new Set<string>();
+  const storeVarsByDir = new Map<string, Set<string>>();
   STORE_BINDING.lastIndex = 0;
-  for (let m = STORE_BINDING.exec(source); m; m = STORE_BINDING.exec(source)) storeVars.add(m[1]!);
-  if (letsGo(source, [...storeVars])) return [];
+  for (let m = STORE_BINDING.exec(source); m; m = STORE_BINDING.exec(source)) {
+    const names = storeVarsByDir.get(m[2]!) ?? new Set<string>();
+    names.add(m[1]!);
+    storeVarsByDir.set(m[2]!, names);
+  }
 
   const findings: Finding[] = [];
   source.split('\n').forEach((raw, index) => {
     const code = raw.trim();
     if (code.startsWith('//') || code.startsWith('*')) return;
     const removal = code.match(DIR_REMOVAL);
-    if (removal && dirs.has(removal[1]!)) findings.push({ file, line: index + 1, code });
+    if (!removal || !dirs.has(removal[1]!)) return;
+    const matchingStores = [...(storeVarsByDir.get(removal[1]!) ?? [])];
+    if (!letsGo(source, matchingStores)) findings.push({ file, line: index + 1, code });
   });
   return findings;
 }
@@ -281,6 +292,34 @@ describe('no NEW fixture removes a run store’s directory without letting the s
     // The helper on a DIFFERENT variable is not this store letting go either.
     const otherStore = ['const store = RunStore.open(dataDir);', 'closeStoreAndRemove(other, dataDir);', 'rmSync(dataDir, { recursive: true });'].join('\n');
     expect(findingsIn('probe.test.ts', otherStore).map((f) => f.line)).toEqual([3]);
+  });
+
+  it('a closed store exempts only removal of its own directory', () => {
+    const twoStores = [
+      'const a = RunStore.open(dirA);',
+      'const b = new RunStore(dirB);',
+      'b.close();',
+      'rmSync(dirA, { recursive: true });',
+      'rmSync(dirB, { recursive: true });',
+    ].join('\n');
+    expect(findingsIn('probe.test.ts', twoStores).map((f) => f.line)).toEqual([4]);
+  });
+
+  it('keeps alias and destructuring cleanup outside the supported exemption syntax', () => {
+    const alias = [
+      'const store = RunStore.open(dataDir);',
+      'const s = store;',
+      's.close();',
+      'rmSync(dataDir, { recursive: true });',
+    ].join('\n');
+    expect(findingsIn('probe.test.ts', alias).map((f) => f.line)).toEqual([4]);
+
+    const destructured = [
+      'const { store } = { store: RunStore.open(dataDir) };',
+      'store.close();',
+      'rmSync(dataDir, { recursive: true });',
+    ].join('\n');
+    expect(findingsIn('probe.test.ts', destructured).map((f) => f.line)).toEqual([3]);
   });
 
   it('flags the shape the flake came from, and only that shape', () => {
