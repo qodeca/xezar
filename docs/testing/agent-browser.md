@@ -316,6 +316,47 @@ document that states the count disagrees with `readdirSync` over `packages/web/e
 an empty directory rather than passing vacuously, so a glob that stops matching is a failure and
 not a silent green.
 
+### Recorded runs
+
+AC-5 of #549 (as amended 2026-09-20, see the ceiling paragraph above) asks for three green local
+runs plus the CI run. The table below is the honest result of the PR-549-D re-measurement at one
+head, run one after another on the same machine, `npm run test:e2e` never invoked twice at once
+and the harness stopped with `scripts/test-env-down.sh` between runs: **two of the three default-order
+runs came back red**, on two different files, neither of them repeated verbatim — the three-green
+criterion is not met by this measurement. Both red files are pre-existing, order-independent specs
+outside the guide-flow package (`skills-update.e2e.ts`, `guide-03-worktrees-and-git.e2e.ts`); per the
+owner's 2026-09-20 21:02 rule, a red file that names itself is evidence for #671 and is neither
+retried nor fixed here.
+
+| Head SHA | Date | Order / seed | Files | Tests passed / skipped / failed | Seconds | Marker |
+| --- | --- | --- | --- | --- | --- | --- |
+| `fee89d0c` | 2026-09-20 | default | 66 (1 failed) | 452 / 6 / 1 | 637.79 | `TEST_E2E_STATUS=failed` |
+| `fee89d0c` | 2026-09-20 | default | 66 (2 failed) | 451 / 6 / 2 | 634.79 | `TEST_E2E_STATUS=failed` |
+| `fee89d0c` | 2026-09-20 | default | 66 (0 failed) | 453 / 6 / 0 | 603.43 | `TEST_E2E_STATUS=passed` |
+| `fee89d0c` | 2026-09-20 | shuffled, seed `482917365` | 66 (23 failed) | 407 / 6 / 46 | 938.97 | n/a — direct `vitest run --sequence.shuffle`, not through `scripts/e2e.sh`, so no `TEST_E2E_STATUS` marker |
+
+All four runs are well inside the 1 200 s whole-suite ceiling above. The two default-order failures:
+run 1 failed only `skills-update.e2e.ts` ("shows the inherited global preference and persists an
+explicit override"); run 2 failed the same test at a different assertion line plus
+`guide-03-worktrees-and-git.e2e.ts` ("Settings → Worktrees starts empty and Reclaim now opens the
+AlertDialog confirm") — the same spec failing at two different points across two runs is itself
+evidence of a race rather than a deterministic break, consistent with #671's own framing. The
+shuffled run's 23 failing files and their first failing assertions are recorded in
+`docs/testing/coverage-gaps.md` row P, which this measurement also updates; they are pre-existing
+files outside the guide-flow package's authority, evidence for #671, not retried or fixed here.
+
+One default-order attempt at this same head is deliberately not a row above: it was contaminated
+by an unrelated `npm test` invocation sharing this task's `$TMPDIR` while the browser suite was
+mid-run, which deleted a live SSR transform-cache directory out from under the running suite and
+produced 62 spurious file failures with only 99 of the expected ~459 tests even collected. That is
+measurement contamination, not suite evidence, so it is recorded as a dogfooding observation
+instead of a table row, and the affected run was discarded and re-run cleanly.
+
+**Adding the next row:** run `npm run test:e2e` (or the shuffled invocation above) to completion,
+record the head SHA, the file/test counts and `Duration` from vitest's own summary, and the
+`TEST_E2E_STATUS` marker (or `n/a` for a direct `vitest` invocation), then append — never edit —
+a new row with that data.
+
 ### The user-guide flow package
 
 `packages/web/e2e/guide-*.e2e.ts` — one file per `docs/guide/` part, plus the shared
