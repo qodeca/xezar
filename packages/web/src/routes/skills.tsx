@@ -15,7 +15,7 @@ import { SkillDetailBody, SkillSourceTag } from '@/components/skill-detail'
 import { SkillEmptyHint } from '@/components/skill-empty-hint'
 import { Input } from '@/components/ui/input'
 import { toast } from '@/components/ui/toaster'
-import { filterSkills, isProjectSkill, orderSkills, skillUsedBy } from '@/lib/skills'
+import { filterSkills, isProjectSkill, orderSkills, refreshOutcome, skillUsedBy } from '@/lib/skills'
 import { cn } from '@/lib/utils'
 import { BookmarkletPanel } from './settings/bookmarklets-section'
 
@@ -67,10 +67,13 @@ function SkillsCatalog() {
 
   const refresh = useMutation({
     mutationFn: () => refreshSkills(),
-    onSuccess: (catalog) => {
+    onSuccess: (result) => {
       // The POST answers the merged catalog — seed the shared query instead of refetching.
-      queryClient.setQueryData(queryKeys.skills, catalog)
-      toast('Team skills refreshed')
+      queryClient.setQueryData(queryKeys.skills, result.skills)
+      // What it says is what happened, per source — success, a failure in the server's own
+      // words, or an explicit partial (#771).
+      const outcome = refreshOutcome(result.sources)
+      toast(outcome.message, { tone: outcome.tone })
     },
     onError: (error) => toast(error.message, { tone: 'danger' }),
   })

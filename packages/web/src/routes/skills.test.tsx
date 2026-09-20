@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { queryKeys, workspaceQueryKeys } from '@/api/queries'
 import { createQueryClient } from '@/api/query-client'
-import type { Skill, SkillsUpdateState, WorkflowsResponse } from '@qodeca/xezar-api-client'
+import type { Skill, SkillsRefreshSource, SkillsUpdateState, WorkflowsResponse } from '@qodeca/xezar-api-client'
 import { Toaster, resetToasts } from '@/components/ui/toaster'
 import { AppRoutes } from '@/routes'
 
@@ -52,6 +52,7 @@ let requests: Array<{ method: string; url: string; body?: unknown }> = []
 function serve({
   skills = SKILLS,
   refreshed = SKILLS,
+  refreshSources = [],
   importable = [],
   workspaceUiState = {},
   skillsUpdate,
@@ -59,6 +60,8 @@ function serve({
 }: {
   skills?: Skill[]
   refreshed?: Skill[]
+  /** What the refresh managed, per configured team source (#771) — empty means none configured. */
+  refreshSources?: SkillsRefreshSource[]
   importable?: { name: string; description?: string }[]
   workspaceUiState?: Record<string, unknown>
   skillsUpdate?: SkillsUpdateState
@@ -79,7 +82,7 @@ function serve({
       const body = init?.body ? JSON.parse(String(init.body)) : undefined
       requests.push({ method, url, body })
       if (url === '/api/v1/skills' && method === 'GET') return json(skills)
-      if (url === '/api/v1/skills/refresh' && method === 'POST') return json(refreshed)
+      if (url === '/api/v1/skills/refresh' && method === 'POST') return json({ skills: refreshed, sources: refreshSources })
       // Both the fast read and the ?wait=1 convergence read hit this endpoint.
       if (url.startsWith('/api/v1/skills/importable')) return json(importable)
       if (url === '/api/v1/workflows') return json(WORKFLOWS)
@@ -270,6 +273,52 @@ describe('refresh (#384: selection and scroll survive)', () => {
 
     fireEvent.click(document.querySelector('[data-slot="skills-refresh"]')!)
     await waitFor(() => expect(detail()?.querySelector('h2')?.textContent).toBe('xez-fix'))
+  })
+})
+
+/**
+ * #771: the button used to toast "Team skills refreshed" whatever the server managed, so an
+ * unreachable origin read exactly like an up-to-date one — and the catalog block below it,
+ * which sends the reader to this very button, still said the check was stale. The toast now
+ * reports what happened, in the server's own words, with `tone: 'danger'` on a failure
+ * (`docs/design-system/writing.md` § 7 and § 13).
+ */
+describe('refresh reports what actually happened (#771)', () => {
+  const toastLine = () => document.querySelector('[data-slot="toast"]')
+
+  async function refreshWith(sources: SkillsRefreshSource[]) {
+    serve({ refreshSources: sources })
+    renderAt('/skills')
+    await waitFor(() => expect(rowNames()).toHaveLength(3))
+    fireEvent.click(document.querySelector('[data-slot="skills-refresh"]')!)
+    await waitFor(() => expect(toastLine()).not.toBeNull())
+    return toastLine()!
+  }
+
+  it('says it refreshed when every configured source did', async () => {
+    const line = await refreshWith([{ repo: 'acme/team-skills', ok: true }])
+    expect(line.textContent).toBe('Team skills refreshed')
+    expect(line.getAttribute('data-tone')).toBe('default')
+  })
+
+  it('the unreachable origin: the server\u2019s reason, in the danger tone, never \u201crefreshed\u201d', async () => {
+    const line = await refreshWith([
+      { repo: 'acme/team-skills', ok: false, reason: 'git clone --bare https://github.com/acme/team-skills.git failed: Could not resolve host' },
+    ])
+    expect(line.getAttribute('data-tone')).toBe('danger')
+    expect(line.textContent).toContain('Could not resolve host')
+    expect(line.textContent).toContain('acme/team-skills')
+    expect(line.textContent).not.toContain('Team skills refreshed')
+  })
+
+  it('a partial result says so rather than rounding to either side', async () => {
+    const line = await refreshWith([
+      { repo: 'acme/team-skills', ok: true },
+      { repo: 'acme/more-skills', ok: false, reason: 'git fetch failed: Could not resolve host' },
+    ])
+    expect(line.getAttribute('data-tone')).toBe('danger')
+    expect(line.textContent).toContain('Refreshed 1 of 2 team skills sources')
+    expect(line.textContent).toContain('acme/more-skills: git fetch failed: Could not resolve host')
   })
 })
 

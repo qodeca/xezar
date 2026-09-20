@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
-import type { SkillsCatalogCommit, SkillsCatalogVersion } from '@qodeca/xezar-contract';
+import type { SkillsCatalogCommit, SkillsCatalogVersion, SkillsRefreshSource } from '@qodeca/xezar-contract';
 import { loadConfig, type SkillsRepoSource } from './config.ts';
 import { expandTilde, xezCacheDir } from './paths.ts';
 import { parseFrontmatter, type Skill } from './skills.ts';
@@ -539,7 +539,9 @@ const firstLoadByRoot = new Map<string, Promise<Skill[]>>();
 function initialTeamSkillsLoad(repoRoot: string): Promise<Skill[]> {
   const existing = firstLoadByRoot.get(repoRoot);
   if (existing) return existing;
-  const load = loadTeamSkills(repoRoot, false).catch(() => teamSkillsByRoot.get(repoRoot) ?? []);
+  const load = loadTeamSkills(repoRoot, false)
+    .then((result) => result.skills)
+    .catch(() => teamSkillsByRoot.get(repoRoot) ?? []);
   firstLoadByRoot.set(repoRoot, load);
   return load;
 }
@@ -564,18 +566,42 @@ export function waitForTeamSkills(repoRoot: string): Promise<Skill[]> {
   return initialTeamSkillsLoad(repoRoot);
 }
 
-/** Refresh: clone missing sources, `git fetch` existing ones, reload the list. */
-export async function refreshTeamSkills(repoRoot: string): Promise<Skill[]> {
-  const load = loadTeamSkills(repoRoot, true).catch(() => teamSkillsByRoot.get(repoRoot) ?? []);
-  firstLoadByRoot.set(repoRoot, load);
-  return load;
+/** What one refresh managed, per configured source — the catalog plus the truth about it (#771). */
+export interface TeamSkillsRefresh {
+  skills: Skill[];
+  sources: SkillsRefreshSource[];
 }
 
-async function loadTeamSkills(repoRoot: string, refresh: boolean): Promise<Skill[]> {
+/**
+ * A git failure carries the command's whole stderr, which is several lines and is not a toast.
+ * The first non-empty line is the sentence git actually wrote; the rest is its advice.
+ */
+function refreshReason(error: unknown): string {
+  const raw = error instanceof Error ? error.message : String(error);
+  const line = raw.split('\n').map((part) => part.trim()).find((part) => part.length > 0) ?? 'the refresh failed';
+  return line.length > 200 ? `${line.slice(0, 199)}…` : line;
+}
+
+/** Refresh: clone missing sources, `git fetch` existing ones, reload the list. */
+export async function refreshTeamSkills(repoRoot: string): Promise<TeamSkillsRefresh> {
+  const load = loadTeamSkills(repoRoot, true);
+  firstLoadByRoot.set(repoRoot, load.then((result) => result.skills).catch(() => teamSkillsByRoot.get(repoRoot) ?? []));
+  try {
+    return await load;
+  } catch {
+    // `loadConfig` degrades rather than throwing, so this is the defensive tail only: nothing
+    // was reached, and the cached catalog keeps being served.
+    return { skills: teamSkillsByRoot.get(repoRoot) ?? [], sources: [] };
+  }
+}
+
+async function loadTeamSkills(repoRoot: string, refresh: boolean): Promise<TeamSkillsRefresh> {
   const config = await loadConfig(repoRoot);
   const out: Skill[] = [];
+  const sources: SkillsRefreshSource[] = [];
   const seen = new Set<string>();
   for (const src of config.skillsRepos) {
+    let failure: string | null = null;
     try {
       if (refresh) {
         const { bareDir, created } = await ensureBareClone(src.repo);
@@ -597,8 +623,10 @@ async function loadTeamSkills(repoRoot: string, refresh: boolean): Promise<Skill
         if (!created) await fetchAll(bareDir);
         lastFetchByRepo.set(src.repo, Date.now());
       }
-    } catch {
-      // offline / no access — list whatever an older clone has (or nothing)
+    } catch (error) {
+      // offline / no access — list whatever an older clone has (or nothing). Degrading is
+      // right; reporting it as a completed refresh is not (#771), so the reason is kept.
+      failure = refreshReason(error);
     }
     try {
       for (const skill of await listRemoteSkills(src)) {
@@ -606,12 +634,20 @@ async function loadTeamSkills(repoRoot: string, refresh: boolean): Promise<Skill
         seen.add(skill.name);
         out.push(skill);
       }
-    } catch {
-      // degrade: this source contributes nothing
+    } catch (error) {
+      // degrade: this source contributes nothing. The fetch's own reason wins when there is
+      // one — it is the cause, and the failed listing is its consequence.
+      failure ??= refreshReason(error);
+    }
+    // Only a REFRESH answers for its sources. The passive load may legitimately fetch nothing
+    // (inside the TTL), so recording `ok: true` there would be the same untrue "it refreshed"
+    // one layer down.
+    if (refresh) {
+      sources.push(failure === null ? { repo: src.repo, ok: true } : { repo: src.repo, ok: false, reason: failure });
     }
   }
   teamSkillsByRoot.set(repoRoot, out);
-  return out;
+  return { skills: out, sources };
 }
 
 // ---- catalog version (#744) ----------------------------------------------------

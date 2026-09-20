@@ -42,6 +42,7 @@ import {
   type ProviderStatusResponse,
   type RemoveAgentProfileResponse,
   type Skill,
+  type SkillsRefreshResponse,
   type SkillsUpdateState,
   type UiState,
   type UpdateProjectResponse,
@@ -1769,14 +1770,20 @@ async function run(args: ProjectConfigInput & { action: ProjectConfigAction }, s
       return ok(action, { deleted: true, name, path: projectRelative(s.root, answer.value.path) ?? null });
     }
 
-    case 'list_skills':
-    case 'get_skill':
     case 'refresh_skills': {
+      // The refresh answers `{skills, sources}` (#771): a source it could not reach is reported
+      // rather than rounded to success, so a leader reads the same truth the cockpit toasts.
+      const answer = await settle<SkillsRefreshResponse>(s.api.p[':projectId'].skills.refresh.$post({ param: scope }), [200]);
+      if (!answer.ok) return fail(answer);
+      return ok(action, {
+        skills: answer.value.skills.map((skill) => skillEntry(s.root, skill, false)),
+        sources: answer.value.sources,
+      });
+    }
+    case 'list_skills':
+    case 'get_skill': {
       const query = args.wait ? { wait: '1' } : {};
-      const answer =
-        action === 'refresh_skills'
-          ? await settle<Skill[]>(s.api.p[':projectId'].skills.refresh.$post({ param: scope }), [200])
-          : await settle<Skill[]>(s.api.p[':projectId'].skills.$get({ param: scope, query }), [200]);
+      const answer = await settle<Skill[]>(s.api.p[':projectId'].skills.$get({ param: scope, query }), [200]);
       if (!answer.ok) return fail(answer);
       if (action === 'get_skill') {
         const skill = answer.value.find((entry) => entry.name === args.name);

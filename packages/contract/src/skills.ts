@@ -37,6 +37,36 @@ export const skillSchema = z.object({
 export type Skill = z.infer<typeof skillSchema>;
 
 /**
+ * What `POST /skills/refresh` actually managed to do for ONE configured team-skills source.
+ *
+ * `ok: false` carries the server's own one-line `reason` — the refresh degrades (the catalog is
+ * still served from whatever clone exists) but nothing was fetched, and a surface that reports
+ * success there is reporting something that did not happen (#771). `reason` is absent on `ok`,
+ * so `JSON.stringify` drops the key.
+ */
+export const skillsRefreshSourceSchema = z.object({
+  repo: z.string(),
+  ok: z.boolean(),
+  reason: z.string().optional(),
+});
+export type SkillsRefreshSource = z.infer<typeof skillsRefreshSourceSchema>;
+
+/**
+ * `POST /skills/refresh` — the merged catalog PLUS what the refresh managed (#771).
+ *
+ * The route used to answer the bare `Skill[]`, which could not distinguish "upstream has not
+ * moved" from "this machine could not reach upstream" — a breaking shape change, recorded in
+ * `BACKWARD_COMPATIBILITY.md` § 2. `sources` is one entry per configured team-skills source, in
+ * configuration order, and is empty when the project configures none (nothing to reach, so the
+ * refresh trivially succeeded).
+ */
+export const skillsRefreshResponseSchema = z.object({
+  skills: z.array(skillSchema),
+  sources: z.array(skillsRefreshSourceSchema),
+});
+export type SkillsRefreshResponse = z.infer<typeof skillsRefreshResponseSchema>;
+
+/**
  * One row in the "Manage skills" panel — a skill a default (vendor) repo offers, from
  * `GET /skills/importable`, independent of whether it is currently kept.
  *

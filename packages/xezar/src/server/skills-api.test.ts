@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { importableSkillSchema, skillSchema } from '@qodeca/xezar-contract';
+import { importableSkillSchema, skillSchema, skillsRefreshResponseSchema } from '@qodeca/xezar-contract';
 import type { Hono } from 'hono';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SKILLS_REPOS } from '../config.ts';
@@ -199,7 +199,10 @@ describe('the skills catalog API', () => {
 
     const response = await apiRequest(app, '/api/v1/skills/refresh', { method: 'POST' });
     expect(response.status).toBe(200);
-    const refreshed = skillSchema.array().parse(await response.json());
+    const answer = skillsRefreshResponseSchema.parse(await response.json());
+    const refreshed = answer.skills;
+    // It says what it managed, per source — here: everything (#771).
+    expect(answer.sources).toEqual([{ repo: DEFAULT_SKILLS_REPOS[0]!.repo, ok: true }]);
 
     // What it refreshed: the new team skill, read at a resolved commit.
     const late = refreshed.find((skill) => skill.name === 'late-skill');
@@ -238,9 +241,62 @@ describe('the skills catalog API', () => {
       headers: { origin: 'http://127.0.0.1:4321' },
     });
     expect(allowed.status).toBe(200);
-    expect(skillSchema.array().parse(await allowed.json()).map((s) => s.name)).toContain(
+    expect(skillsRefreshResponseSchema.parse(await allowed.json()).skills.map((s) => s.name)).toContain(
       'late-skill',
     );
+  });
+});
+
+/**
+ * The partial case of #771: one configured source refreshes and another cannot be reached.
+ * Rounding that to either "refreshed" or "failed" is what the route must not do. The reachable
+ * source is the local bare clone `makeTeamRepo` leaves behind, so nothing here touches the
+ * network either.
+ */
+describe('a refresh that reaches one source and not the other', () => {
+  let repoRoot: string;
+  let source: string;
+  let bareDir: string;
+  let store: RunStore;
+  let app: Hono;
+  let missing: string;
+
+  beforeEach(() => {
+    mkdirSync(fixedHome.home, { recursive: true });
+    ({ source, bareDir } = makeTeamRepo());
+    repoRoot = scratch('xez-skills-api-partial-');
+    mkdirSync(join(repoRoot, '.local/xezar'), { recursive: true });
+    mkdirSync(join(repoRoot, '.xezar'), { recursive: true });
+    missing = join(repoRoot, 'no-such-repo');
+    writeFileSync(
+      join(repoRoot, '.xezar/config.json'),
+      `${JSON.stringify({
+        skillsRepos: [
+          { repo: DEFAULT_SKILLS_REPOS[0]!.repo, ref: DEFAULT_SKILLS_REPOS[0]!.ref },
+          { repo: missing, ref: 'main' },
+        ],
+      })}\n`,
+      'utf8',
+    );
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
+    app = createApp({ repoRoot, store, manager: {} as RunManager, version: '0.0.0-test' });
+  });
+
+  afterEach(() => {
+    store.flush();
+    for (const dir of [repoRoot, source, bareDir]) rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('reports each source separately, in configuration order', async () => {
+    const response = await apiRequest(app, '/api/v1/skills/refresh', { method: 'POST' });
+    expect(response.status).toBe(200);
+    const answer = skillsRefreshResponseSchema.parse(await response.json());
+
+    // The reachable source really did contribute — otherwise "partial" would be untestable.
+    expect(answer.skills.map((skill) => skill.name)).toContain('team-only');
+    expect(answer.sources[0]).toEqual({ repo: DEFAULT_SKILLS_REPOS[0]!.repo, ok: true });
+    expect(answer.sources[1]).toMatchObject({ repo: missing, ok: false });
+    expect(answer.sources[1]?.reason).toContain('failed');
   });
 });
 
@@ -277,10 +333,20 @@ describe('the skills catalog API with an unreachable team repo', () => {
   it('answers a refresh it cannot complete, and keeps serving the catalog', async () => {
     const response = await apiRequest(app, '/api/v1/skills/refresh', { method: 'POST' });
     expect(response.status).toBe(200);
-    const skills = skillSchema.array().parse(await response.json());
+    const answer = skillsRefreshResponseSchema.parse(await response.json());
+    const skills = answer.skills;
     // Degraded, not failed: local skills keep working, team entries stay absent.
     expect(skills.map((skill) => skill.name)).toEqual(['local-only']);
     expect(skills.every((skill) => skill.source !== 'team')).toBe(true);
+
+    // The regression this route answers for (#771): degrading is right, reporting it as a
+    // completed refresh is not. The unreachable source is named, with git's own first line,
+    // and the reason is ONE line — a toast is not a place for git's whole advice block.
+    expect(answer.sources).toHaveLength(1);
+    const [source] = answer.sources;
+    expect(source).toMatchObject({ repo: join(repoRoot, 'no-such-repo'), ok: false });
+    expect(source!.reason).toMatch(/git clone --bare .* failed/);
+    expect(source!.reason).not.toContain('\n');
 
     // Still answering afterwards — a failed refresh poisons nothing.
     expect((await readSkills(app, '/api/v1/skills?wait=1')).map((s) => s.name)).toEqual([
