@@ -40,6 +40,7 @@ bash .xezar/checks/phase-record.sh check                        # what readiness
 | Discovery and plan | `PLAN` | Files and contracts in scope, how each criterion will be proven, and the plan-review outcome |
 | Author | `SELF_REVIEW` | Each self-review round: what triggered it, what changed, and the running count |
 | Author | `DOCS` | The documentation applicability decision, and which documents changed |
+| Refresh (a merge-only round) | `REFRESH` | A round whose only job is to merge the base into a pull request and refresh the seal: `refresh: <what was refreshed>`, `base: <full 40-character sha of the merged base>` and `evidence: <the evidence it refreshed>` — and no content claim |
 | Readiness | `BLOCKED` | Present only when something blocks: the missing decision with its options, the unavailable check, or the exhausted counter |
 | Canonical checks | gate logs + `SECURITY` | Complete hashed logs and real outcomes; the security stage's own structured result, separate from the quality verdict |
 | Seal | the seal | The head SHA the evidence belongs to, hashed |
@@ -57,11 +58,14 @@ The read-only roles — code review, design review, QA, business analysis, resea
 
 `CRITERIA` is validated rather than counted, because it is the **AC input** and an empty rung of the maturity ladder is the failure this closes. It needs at least one `<ID>: <what a reader can check>` line and an `accepted-by: <authority and when>` line. A file that exists, a shipped template and a mutable label are not acceptance.
 
+One round legitimately has no content claim: a round whose only job is to merge the base into a pull request and refresh the seal. It declares that in `REFRESH` instead of dressing itself up as work it did not do. The declaration names the refresh, the merged base sha and the evidence it refreshed, and it stands in for the content claim only while it carries none — a `REFRESH` record that carries a content claim is refused, and a round with no `REFRESH` record is judged by `CRITERIA` exactly as before. `REFRESH` is never a way to claim content without the `accepted-by:` line that claim requires, and it never substitutes for the other records: a refresh round still writes `CAPABILITY`, `DEPTH`, `MATURITY`, `CRITERIA`, `PLAN`, `SELF_REVIEW`, `DOCS` and `COUNTERS`, with `CRITERIA` saying not applicable and why.
+
 `SECURITY` and `AC_VERIFICATION` are not on that list, for opposite reasons: the security result is produced by the gate run itself (below), and AC verification happens at the current head, after the candidate exists.
 
-### The four records that carry their own rules
+### The five records that carry their own rules
 
 - `BLOCKED` stops readiness before anyone pays for a gate run, and it outranks every other record.
+- `REFRESH` is the merge-only round's declaration, and the one case where an absent content claim is correct. Three lines — `refresh`, `base`, `evidence` — and no criterion. It is refused when it carries a content claim, so it never stands in for the `accepted-by:` line a content claim needs, and a round without it is still judged by `CRITERIA`.
 - `DELIVERED` is the review-response case only — a fix pushed to the PR's own branch, leaving this task's branch empty. Three lines: `branch`, `head`, `base`, checked live against the remote.
 - `VERIFICATION` is the verify-only case only — this run verified an existing revision and was never asked to change source. It is `verified:` plus `findings:`, and it is why readiness accepts an empty branch. It is **not** the acceptance-criteria mapping; that is `AC_VERIFICATION`, above, and the two are different questions.
 - `COUNTERS` is written by `phase-record.sh counters`, never by hand — see below.

@@ -165,7 +165,7 @@ case "$cmd" in
       if [ -s "$DIR/$name" ]; then printf '  %-14s present\n' "$name"; found=$((found + 1))
       else printf '  %-14s ABSENT\n' "$name"; fi
     done
-    for name in BLOCKED VERIFICATION DELIVERED AC_VERIFICATION; do
+    for name in BLOCKED VERIFICATION DELIVERED REFRESH AC_VERIFICATION; do
       [ -s "$DIR/$name" ] && printf '  %-14s present\n' "$name"
     done
     printf '  %d of %d records required at readiness are present\n' "$found" "${#REQUIRED_AT_READINESS[@]}"
@@ -191,23 +191,65 @@ case "$cmd" in
       fi
     done
 
-    # CRITERIA is the AC INPUT, and an empty ladder rung is the `template-is-acceptance` failure:
-    # a file that exists but names no criterion and no accepting authority is not acceptance.
-    if [ -s "$DIR/CRITERIA" ]; then
-      if ! grep -Eq '^[[:space:]]*(AC-|DP-)[A-Za-z0-9._-]+:' "$DIR/CRITERIA"; then
+    # A declared REFRESH round (#670). A round whose only job is to merge the base into a pull
+    # request and refresh the seal makes no content claim of its own, so it has no criterion to put
+    # in CRITERIA. Before this it had no shape readiness would accept, and the round either failed
+    # (`phase.criteria`) or dressed itself up as work it did not do. REFRESH is that shape: it names
+    # the refresh, the merged base sha and the evidence it refreshed, and it stands in for the
+    # content claim ONLY when it carries none of its own. It is not a generic bypass — a REFRESH
+    # record that carries a content claim is refused, and a round with no REFRESH is judged by
+    # CRITERIA exactly as before. The predicate stays `phase.criteria` because the refusal is about
+    # the accepted-criteria INPUT, of which REFRESH is the refresh-round spelling.
+    refresh_declared=0
+    if [ -s "$DIR/REFRESH" ]; then
+      refresh_name="$(sed -n 's/^refresh:[[:space:]]*\(.*[^[:space:]]\)[[:space:]]*$/\1/p' "$DIR/REFRESH" | head -n 1)"
+      refresh_base="$(sed -n 's/^base:[[:space:]]*\([0-9a-fA-F]\{40\}\)[[:space:]]*$/\1/p' "$DIR/REFRESH" | head -n 1)"
+      refresh_evidence="$(sed -n 's/^evidence:[[:space:]]*\(.*[^[:space:]]\)[[:space:]]*$/\1/p' "$DIR/REFRESH" | head -n 1)"
+      refresh_claim="$(grep -E '^[[:space:]]*(AC-|DP-)[A-Za-z0-9._-]+:' "$DIR/REFRESH" | head -n 1)"
+      if [ -n "$refresh_claim" ]; then
         missing=$((missing + 1))
         if [ "$predicates" -eq 1 ]; then
-          printf 'phase.criteria|the CRITERIA record names no acceptance criterion. Each accepted criterion needs its own "<ID>: <what a reader can check>" line — a file that exists is not acceptance.\n'
+          printf 'phase.criteria|the REFRESH record carries a content claim ("%s"). A refresh round makes no content claim: a criterion belongs in CRITERIA with its accepted-by line. Readiness refuses a REFRESH record that claims content.\n' "$refresh_claim"
         else
-          printf 'INVALID CRITERIA      no "<ID>: <criterion>" line\n'
+          printf 'INVALID REFRESH       carries a content claim ("%s")\n' "$refresh_claim"
         fi
-      fi
-      if ! grep -Eq '^[[:space:]]*accepted-by:[[:space:]]*[^[:space:]]' "$DIR/CRITERIA"; then
+      elif [ -z "$refresh_name" ] || [ -z "$refresh_base" ] || [ -z "$refresh_evidence" ]; then
         missing=$((missing + 1))
         if [ "$predicates" -eq 1 ]; then
-          printf 'phase.criteria|the CRITERIA record has no "accepted-by: <authority and when>" line, so nothing says who accepted these criteria. A shipped template or a mutable label is not an acceptance.\n'
+          printf 'phase.criteria|the REFRESH record does not name all three things a refresh round must: "refresh: <what was refreshed>", "base: <full 40-character sha of the merged base>" and "evidence: <the evidence it refreshed>". A declaration that names none of them does not stand in for a content claim.\n'
         else
-          printf 'INVALID CRITERIA      no "accepted-by:" line\n'
+          printf 'INVALID REFRESH       missing a refresh:, base: or evidence: line\n'
+        fi
+      else
+        refresh_declared=1
+      fi
+    fi
+
+    # CRITERIA is the AC INPUT, and an empty ladder rung is the `template-is-acceptance` failure:
+    # a file that exists but names no criterion and no accepting authority is not acceptance. A
+    # declared REFRESH round is the one case where an absent content claim is correct: the round
+    # claims no content, and the declaration above says what it did instead. When it DOES carry a
+    # content claim, the claim is judged by the normal rule even alongside a REFRESH declaration —
+    # otherwise a REFRESH record plus a bare criterion would skip the accepted-by line.
+    if [ -s "$DIR/CRITERIA" ]; then
+      if [ "$refresh_declared" -eq 1 ] && ! grep -Eq '^[[:space:]]*(AC-|DP-)[A-Za-z0-9._-]+:' "$DIR/CRITERIA"; then
+        : # a declared refresh round makes no content claim; REFRESH stands in for it
+      else
+        if ! grep -Eq '^[[:space:]]*(AC-|DP-)[A-Za-z0-9._-]+:' "$DIR/CRITERIA"; then
+          missing=$((missing + 1))
+          if [ "$predicates" -eq 1 ]; then
+            printf 'phase.criteria|the CRITERIA record names no acceptance criterion. Each accepted criterion needs its own "<ID>: <what a reader can check>" line — a file that exists is not acceptance. A round that makes no content claim (a merge-only refresh) declares that in REFRESH instead.\n'
+          else
+            printf 'INVALID CRITERIA      no "<ID>: <criterion>" line\n'
+          fi
+        fi
+        if ! grep -Eq '^[[:space:]]*accepted-by:[[:space:]]*[^[:space:]]' "$DIR/CRITERIA"; then
+          missing=$((missing + 1))
+          if [ "$predicates" -eq 1 ]; then
+            printf 'phase.criteria|the CRITERIA record has no "accepted-by: <authority and when>" line, so nothing says who accepted these criteria. A shipped template or a mutable label is not an acceptance.\n'
+          else
+            printf 'INVALID CRITERIA      no "accepted-by:" line\n'
+          fi
         fi
       fi
     fi
