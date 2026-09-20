@@ -1186,6 +1186,16 @@ key"). Until 0.17.0 the `project_config` action `set_workspace_config` existed o
 answered `Refused (workspace-wide setting)`, dispatched nothing, and the classification recorded
 every workspace limit as a safe effective read a leader could see and never change.
 
+**Documentation reconciliation, 2026-09-20 (#677 wave 2 B6).** The reversal now has one current
+classification across the field matrix and UI inventory: PR #734 covers the workspace setting
+keys (after PR #729 put the request schema in the contract), PR #748 the two workspace paths,
+PR #753 the shared UI preferences, PR #760 provider on/off and retry, and PR #764 account writes
+plus the identity read. The previous D-03 and inventory sentences are retained under “Previously”
+where they were superseded; they are history, not current refusal behavior. The owner separately
+said “Allow it in hosted mode” for workspace configuration. Hosted permission is a property of
+each route's handler; the presence or absence of `localHandoffRoute` registration metadata is a
+no-op for that decision.
+
 - **Changed**: `set_workspace_config` is a real write. It takes `workspaceConfig` plus the usual
   `operationId` and dispatches `PUT /api/v1/workspace/config` — the cockpit's own route, its own
   validator, its own 400s, its own `mergeWriteWorkspaceConfig` and its own `semaphore.refresh()`.
@@ -1238,8 +1248,8 @@ every workspace limit as a safe effective read a leader could see and never chan
   `lastLocation`, describe one person's window and are not keys of the argument. The answer is
   narrowed like every other: `sidebar` and `lastLocation` are not in it, and a dismissed provider
   incident is reported as the provider's NAME rather than the incident id `get_capabilities`
-  withholds. Hosted mode is unchanged here too — the ui-state route carries no `localHandoff`
-  guard, none was added, and a test pins that it is ALLOWED.
+  withholds. Hosted mode is unchanged here too — this route is permitted there, and a test pins
+  that it is ALLOWED. `localHandoffRoute` registration metadata is not the source of that permission.
 - **What a reader could notice**: the audit trail can now hold `workspace.config.set` and (since
   B3) `workspace.uiState.set` rows with origin `mcp`. That row already existed in the inventory for the cockpit door; what is new is
   that the MCP door produces it. The MCP record carries the action id, the operation key and a
@@ -1261,12 +1271,13 @@ every workspace limit as a safe effective read a leader could see and never chan
   similar. No cockpit call site sends such a key; a client that did was silently losing the
   setting it meant to change.
 - **Hosted mode permits workspace-config writes, through BOTH doors — a decision, not an
-  oversight.** `PUT /api/v1/workspace/config` is not a `localHandoffRoute` and never has been, and
-  `set_workspace_config` inherits that: on a server bound to a non-loopback host
-  (`capabilities.localHandoff: false`) both doors answer normally instead of 409. Independent QA
+  oversight.** The workspace-config route handler permits the write when the server is bound to a
+  non-loopback host, and `set_workspace_config` dispatches through that same route: with
+  `capabilities.localHandoff: false`, both doors answer normally instead of 409. Independent QA
   raised this as a blocker (QA case G on #734, filed as #735) and asked for either the 409 or an
   explicit decision. **Owner decision, 2026-09-20: the write stays allowed in hosted mode — a
-  server admin may change limits remotely.** This is the opposite of the rule for agent-config
+  server admin may change limits remotely.** `localHandoffRoute` registration metadata does not
+  grant or refuse that permission. This is the opposite of the rule for agent-config
   writes (`PUT /api/v1/agent-config/:id`) and every agent-profile route, which 409 in hosted mode
   because they can define hooks and commands or name an account identity; workspace limits are
   neither. One writable key is not a limit and has an exposure shape of its own —
@@ -1316,8 +1327,9 @@ REFUSE: both answered `Refused (workspace-wide setting)` and dispatched nothing.
   declared in `server.ts`, so the route and the MCP door validate against one definition
   (AGENTS.md § The HTTP API). The wire contract, the bounds and the 400 messages are identical.
 - **Hosted mode permits both writes, through BOTH doors**, for the reason recorded above for the
-  workspace-settings write: neither provider route is a `localHandoffRoute`, none was added, and a
-  test pins the ALLOWED behaviour so a later 409 would be a visible, named break.
+  workspace-settings write: each provider route is permitted there, and a test pins the ALLOWED
+  behaviour so a later 409 would be a visible, named break. `localHandoffRoute` registration
+  metadata is not the source of that permission.
 - **The record of the old decision is kept, not deleted**: D-03-2 and the I-115 ruling stay in
   `docs/features/mcp-server/mcp-settings-classification.md` and
   `docs/features/mcp-server/mcp-ui-action-inventory.md` verbatim, beside the new one, dated.
@@ -1349,6 +1361,12 @@ existed only to REFUSE (`Refused (global agent accounts)`), and dispatched nothi
   and `configDir` only when THAT call sent one — a `create_account`, or an `update_account` that
   repoints the folder. A rename answers no folder at all, because the stored one is an absolute
   host path the leader never supplied (#764 review, Minor 2).
+- **A new account's id is never allocated from an identity-shaped label** (#764 QA F1, completed
+  in B6). The label remains stored for the person's pane, but when it contains `@` the route uses
+  an opaque `account-<random>` source for the new slug. This is allocation-time only: every id already
+  stored in `agent-accounts.json` remains byte-for-byte unchanged and is never re-keyed, so saved
+  selections and callers holding the old handle keep working. Successful rows and duplicate-folder
+  refusals use the same `@` predicate; `boss@corp` and `@marcin` are withheld in both paths.
 - **Unchanged**: nothing is removed, and a leader that never calls these actions behaves exactly as
   before. `open_account_file` is still refused, with boundary `host-process` — it hands a path to
   an application on the person's desktop — and so is `connect_provider`. `get_account` is
