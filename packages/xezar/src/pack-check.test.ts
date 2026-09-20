@@ -158,6 +158,9 @@ describe('release content check', () => {
     ['kit-copy-leak (renamed file, distinctive name)', 'package/scripts/helper.mjs', "run('xezar-implementation')", ['own-kit-name']],
     ['kit evidence path, the frozen historical root', 'package/dist/a.js', 'const p = ".local/xezar-tasks/run";', ['own-local-path']],
     ['kit evidence path, the current root', 'package/dist/a.js', 'const p = ".local/xezar/tasks/run";', ['own-local-path']],
+    ['kit snapshot path, the current root (#660)', 'package/dist/a.js', 'const p = ".local/xezar/kit/snapshot.json";', ['own-local-path']],
+    ['campaign notes path, the current root (#661)', 'package/dist/a.js', 'const p = ".local/xezar/campaigns/release-0.17.0/README.md";', ['own-local-path']],
+    ['campaign notes path, the frozen historical root', 'package/dist/a.js', 'const p = ".local/xezar-campaign/run";', ['own-local-path']],
     ['demo project in a mock', 'package/scripts/mock-claude.mjs', 'https://github.com/qodeca/demo/pull/1', ['demo-project']],
     ['own repository as a working location', 'package/dist/a.js', 'clone qodeca/xezar and run it', ['own-repository']],
   ])('%s is reported with file, line and fragment', (_name, path, text, rules) => {
@@ -166,6 +169,15 @@ describe('release content check', () => {
     expect(leaks.map((l) => l.rule).sort()).toEqual([...rules].sort());
     expect(leaks[0]).toMatchObject({ file: path.replace(/^package\//, ''), line: 2 });
     expect(leaks[0]!.fragment.length).toBeGreaterThan(0);
+  });
+
+  it("leaves the engine's own .local/xezar/ state directories alone", () => {
+    // The published CLI writes and documents these itself (`.local/xezar/worktrees`, `.local/xezar/tmp`),
+    // so widening `own-local-path` to `.local/xezar/` would fail every release. A guard that passes
+    // with and without the fix — it pins the boundary the rule must NOT cross.
+    const text = 'const dir = ".local/xezar/worktrees/abc"; const tmp = ".local/xezar/tmp/abc";';
+    const { leaks } = findContentLeaks(entriesOf([...clean(), { path: 'package/dist/b.js', text }]), RULES, []);
+    expect(leaks.filter((l) => l.rule === 'own-local-path')).toEqual([]);
   });
 
   it('allows the package identity, support URLs and the default skills provider', () => {

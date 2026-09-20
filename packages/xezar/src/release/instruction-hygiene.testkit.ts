@@ -89,12 +89,19 @@ export function releaseArchiveRules(repoRoot: string): ContentRule[] {
   return [
     ...PROJECT_SPECIFIC_RULES,
     { id: 'own-kit-name', pattern: new RegExp(`(?<![\\w-])(?:${names.map(escape).join('|')})(?![\\w-])`), reason: "a workflow, skill or check of xezar's own dogfooding kit" },
-    // Both spellings of the kit's evidence root. `.local/xezar-tasks` is frozen history and
-    // `.local/xezar/tasks` is where new evidence goes; during that window either string in a
-    // packed file is the same leak, and matching only one would let the other ship unnoticed.
+    // Every spelling of the kit's evidence, snapshot and campaign-note roots. `.local/xezar-tasks`
+    // is frozen history and `.local/xezar/tasks` is where new evidence goes; during that window
+    // either string in a packed file is the same leak, and matching only one would let the other
+    // ship unnoticed. The same frozen/current pair applies to the snapshot root (#660) and the
+    // campaign notes (#661), and the historical `xezar-` spellings also match the singular
+    // `.local/xezar-campaign`.
     // Narrow on purpose: `.local/xezar/` alone is the SHIPPED engine's own state directory
-    // (worktrees, tmp, cache), which the published CLI names legitimately.
-    { id: 'own-local-path', pattern: /\.local\/(?:xezar-(?:tasks|kit|campaigns)|xezar\/tasks|erfana|qa\/|coverage\/|plans\/)/, reason: "a scratch or evidence path of xezar's own repository" },
+    // (worktrees, tmp, cache), which the published CLI names legitimately — and so is the BARE
+    // `.local/xezar/kit`, which `project-kit-paths.ts` returns as the home-directory collision
+    // guard and which therefore reaches `dist/project-kit-paths.js`. The kit's snapshot root is
+    // pinned as the directory path it is (`xezar\/kit\/`), so an instruction naming it is caught
+    // without banning a string the engine itself must ship.
+    { id: 'own-local-path', pattern: /\.local\/(?:xezar-(?:tasks|kit|campaigns?)|xezar\/(?:tasks|kit\/|campaigns?)|erfana|qa\/|coverage\/|plans\/)/, reason: "a scratch or evidence path of xezar's own repository" },
   ];
 }
 
