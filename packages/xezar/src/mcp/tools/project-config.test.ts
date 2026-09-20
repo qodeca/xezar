@@ -1482,6 +1482,26 @@ describe('project_config: the agent accounts (#677 B5)', () => {
     expect(first.account.id).toBeTruthy();
   });
 
+  it('scrubs identity-looking quoted runs only for account actions', async () => {
+    const rejecting = (error: string): ServiceDispatch => ({
+      request: () => Promise.resolve(new Response(JSON.stringify({ error }), {
+        status: 400,
+        headers: { 'content-type': 'application/json' },
+      })),
+    });
+
+    const workflow = await invoke({ action: 'list_workflows' }, { service: rejecting('unknown workflow "deploy@prod"') });
+    expect(workflow.structured.error).toBe('unknown workflow "deploy@prod"');
+    expect(workflow.text).not.toContain('label that looks like an identity');
+
+    const account = await invoke(
+      { action: 'create_account', account: { provider: 'claude', configDir: accountDir('rejected') } },
+      { service: rejecting('step "build" failed for "boss@corp"') },
+    );
+    expect(account.structured.error).toBe('step "build" failed for (a label that looks like an identity, withheld)');
+    expect(account.json).not.toContain('boss@corp');
+  });
+
   /**
    * THE IDENTITY IN AN ERROR (named breaks `BREAK-B5-IDENTITY-IN-ERROR` and
    * `BREAK-677-IDENTITY-TWO-DEFS`; #764 review, Major 1 and re-check N1).
@@ -1535,9 +1555,9 @@ describe('project_config: the agent accounts (#677 B5)', () => {
    * account route and this returns `someone-private-example-invalid`, leaking the supplied email
    * as both the create answer's id and the selected account's handle.
    */
-  it('allocates a new identity-labelled account id from a non-identity source', async () => {
+  it('BREAK-677-FOLDER-IDENTITY: allocates a new identity-shaped account id from an opaque source', async () => {
     const label = 'someone.private@example.invalid';
-    // The folder basename is identity-shaped too, so neither possible user string is a safe source.
+    // Both resolved sources are identity-shaped; either one independently requires an opaque id.
     const dir = accountDir('folder@example.invalid');
     const created = value(await invoke({ action: 'create_account', account: { provider: 'claude', label, configDir: dir } })).account;
     expect(created.id).not.toContain('someone-private-example-invalid');
@@ -1552,6 +1572,33 @@ describe('project_config: the agent accounts (#677 B5)', () => {
     const effective = value(await invoke({ action: 'get_account' })).accounts.find((row: { provider: string }) => row.provider === 'claude');
     expect(effective.handle).toBe(created.id);
     expect(JSON.stringify(effective)).not.toContain('someone-private-example-invalid');
+
+    // E1 / `BREAK-677-FOLDER-IDENTITY`: with no label, allocation resolves from the folder
+    // basename. It must become opaque before slugging removes the `@` that marks it as identity.
+    const folderOnlyDir = accountDir('boss@corp.example.invalid');
+    const folderOnly = value(await invoke({
+      action: 'create_account',
+      account: { provider: 'claude', configDir: folderOnlyDir },
+    })).account;
+    expect(folderOnly.id).toMatch(/^account-[a-f0-9]{8}$/);
+    expect(folderOnly.id).not.toContain('boss-corp-example-invalid');
+    const folderOnlyStored = JSON.parse(readFileSync(accountsFile(), 'utf8')).accounts.find(
+      (row: { id: string }) => row.id === folderOnly.id,
+    );
+    expect(folderOnlyStored).toMatchObject({ id: folderOnly.id, label: folderOnly.id, configDir: folderOnlyDir });
+    const folderOnlyDuplicate = await invoke({
+      action: 'create_account',
+      account: { provider: 'claude', configDir: folderOnlyDir },
+    });
+    expect(folderOnlyDuplicate.structured.status).toBe(409);
+    expect(folderOnlyDuplicate.text).toContain('that folder is already used by');
+    expect(folderOnlyDuplicate.json).not.toContain('boss-corp-example-invalid');
+    value(await invoke({ action: 'select_account', provider: 'claude', accountId: folderOnly.id }));
+    const folderOnlyEffective = value(await invoke({ action: 'get_account' })).accounts.find(
+      (row: { provider: string }) => row.provider === 'claude',
+    );
+    expect(folderOnlyEffective).toEqual({ provider: 'claude', handle: folderOnly.id, label: folderOnly.id });
+    expect(JSON.stringify(folderOnlyEffective)).not.toContain('boss-corp-example-invalid');
   });
 
   it('edits and removes one, and the route’s own reference scrub goes with the removal', async () => {

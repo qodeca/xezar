@@ -140,9 +140,10 @@ import { defineTool, errorResult, textResult, type McpToolContext, type McpToolR
  * 07:41, and only when a leader asks for one named account. It arrives in no other answer,
  * SUCCESSFUL OR FAILED — the second half of that was missing until #764's review found it
  * (Major 1): `get_account` withholds a label that looks like an email, `create_account` /
- * `update_account` narrow the row they echo back, and every route ERROR this door forwards is
- * redacted the same way (`scrubIdentity`), because the accounts family's duplicate-folder 409
- * quotes a conflicting account's label back and a person may have labelled it with their email.
+ * `update_account` narrow the row they echo back, and every ACCOUNT-ACTION error this door
+ * forwards is redacted the same way (`scrubIdentity`), because the accounts family's
+ * duplicate-folder 409 quotes a conflicting account's label back and a person may have labelled
+ * it with their email. Errors from unrelated actions keep their own quoted vocabulary intact.
  * The row a write echoes back carries `configDir` only when that same call sent one.
  *
  * WHERE THE SERVICE COMES FROM. `McpToolContext` does not carry the service's in-process entry
@@ -784,7 +785,8 @@ function failed(action: string, answer: Extract<Answer<unknown>, { ok: false }>,
     const payload = { action, origin: MCP_ORIGIN, ...stale };
     return textResult(JSON.stringify(payload, null, 2), payload);
   }
-  const error = scrubIdentity(scrubPaths(answer.error, root));
+  const scrubbed = scrubPaths(answer.error, root);
+  const error = ACCOUNT_ACTIONS.has(action) ? scrubIdentity(scrubbed) : scrubbed;
   const exists = answer.body && typeof answer.body === 'object' && (answer.body as { exists?: unknown }).exists === true;
   return errorResult(`${action} was refused by xezar (${answer.status}): ${error}`, {
     action,
@@ -925,6 +927,18 @@ const looksLikeIdentity = (label: string): boolean => label.includes('@');
  *  missing rather than leaving a hole a leader would read as the route mangling its own message. */
 const IDENTITY_WITHHELD = '(a label that looks like an identity, withheld)';
 
+/** Only account routes can quote an account label. Applying their wording to every tool error
+ * would turn e.g. a workflow named `deploy@prod` into a claim about an account label. */
+const ACCOUNT_ACTIONS: ReadonlySet<string> = new Set([
+  'get_account',
+  'create_account',
+  'update_account',
+  'remove_account',
+  'select_account',
+  'check_account_status',
+  'get_account_details',
+]);
+
 /**
  * Error text is the service's own words, and the service quotes USER text back (#764 review,
  * Major 1).
@@ -936,12 +950,10 @@ const IDENTITY_WITHHELD = '(a label that looks like an identity, withheld)';
  * `accountRow`); an ERROR is the one path that had no such rule, and before this slice no leader
  * call could reach that 409 at all.
  *
- * So it is redacted HERE, at the door, for every action rather than for the two that can reach
- * this 409 today: the rule is about what the leader may read, not about which route produced the
- * sentence, and a later route that quotes a label back would otherwise re-open it silently. The
- * WHOLE quoted run goes, not the address inside it, because `"Boss <boss@example.com>"` is an
- * identity in both halves. The cockpit's own 409 text is untouched — the person who typed the
- * label is who it is for.
+ * So it is redacted HERE, at the door, for the account actions. The WHOLE quoted run goes, not the
+ * address inside it, because `"Boss <boss@example.com>"` is an identity in both halves. Other
+ * action families keep quoted strings such as workflow names unchanged. The cockpit's own 409
+ * text is untouched — the person who typed the label is who it is for.
  */
 function scrubIdentity(text: string): string {
   return text.replace(QUOTED_RUN, (quoted) => (looksLikeIdentity(quoted.slice(1, -1)) ? IDENTITY_WITHHELD : quoted));
