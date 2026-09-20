@@ -1,3 +1,6 @@
+// FIRST import on purpose: the home pin is a module-load side effect and must run before anything
+// that reaches `skills.ts` (#671) — this file reads the catalog through the issue-filing check.
+import './mcp-test-home.testkit.ts';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';

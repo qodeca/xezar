@@ -1,3 +1,6 @@
+// FIRST import on purpose: the home pin is a module-load side effect and must run before anything
+// that reaches `skills.ts` (#671).
+import './tools/mcp-test-home.testkit.ts';
 import { appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
