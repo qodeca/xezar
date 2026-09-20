@@ -210,6 +210,7 @@ import {
   singleProjectRefusalText,
   singleProjectRegistry,
   toProjectListEntry,
+  type InstanceModeInForce,
   type ProjectListEntry,
 } from '../workspace/projects.ts';
 import { WorkspaceSemaphore } from '../workspace/semaphore.ts';
@@ -265,6 +266,15 @@ export interface ServerDeps {
    *  from `initWorkspace` in src/index.ts. Optional: legacy callers/tests get
    *  a lazy registry lookup by `repoRoot`, falling back to the repo's slug. */
   bootProjectId?: string;
+  /**
+   * What the instance mode IS for this process (#467, PR 2) — `instanceModeInForce`'s answer,
+   * resolved once at boot and threaded in rather than re-derived here, for the reason
+   * `followupsOverride` is threaded in: two spellings of the same question eventually disagree.
+   *
+   * Optional, and absent reads as `workspace`: every legacy caller and every test that builds an
+   * app without one gets today's behaviour unchanged, down to the bytes of `/api/v1/health`.
+   */
+  instanceMode?: InstanceModeInForce;
   /** Per-project context map (multi-project spec, step 2.2). Non-boot
    *  `/api/p/:projectId/*` requests resolve their `{store, manager, …}` here,
    *  built lazily on first touch. Optional so legacy callers change nothing —
@@ -1201,7 +1211,22 @@ export function createApp(deps: ServerDeps) {
   // one. Read through the shared semaphore's cache so it is live: `refresh()` re-reads it on
   // every workspace-config PUT, which is the one reload hook this file already fires.
   const capabilities = () =>
-    resolveCapabilities(process.env, bindHost, deps.semaphore?.storedFollowups());
+    resolveCapabilities(process.env, bindHost, deps.semaphore?.storedFollowups(), deps.instanceMode);
+  /**
+   * Does this process serve exactly ONE project's data (#467, PR 2)?
+   *
+   * Three inputs, one answer, and they are deliberately OR'd rather than collapsed: the two
+   * registry narrowings are read live from the environment and the layout (so a test flipping
+   * `XEZ_SINGLE_PROJECT` between requests keeps working exactly as it did), while `project` mode
+   * is a boot decision that cannot be re-taken mid-process — the MCP socket, the port and every
+   * built context were all settled before a later flip could be seen.
+   *
+   * The two are not the same mode and this predicate does not pretend they are: it answers only
+   * the question a reader of it asks — "may a cross-project answer carry another project's
+   * rows?" — and nothing here hides a project or refuses project management (AC-2.3).
+   */
+  const servesOneProject = (): boolean =>
+    singleProjectRegistry() || deps.instanceMode === 'project';
   // Either narrowing refuses (#600 SP-3.2, SP-3.3): today's `XEZ_SINGLE_PROJECT=1`, or a folder
   // that owns its own xezar state. The CONDITION widens, the EFFECT does not — with the env flag
   // set these routes answer the same 409 and the same sentence they always have, and the layout
@@ -1261,6 +1286,11 @@ export function createApp(deps: ServerDeps) {
       return listProjects(selector);
     },
     semaphore: deps.semaphore,
+    // #467, PR 2: in `project` mode a non-boot project is refused BEFORE its writer claim. The
+    // boot id comes from the one resolver this file already has, which falls back to the boot
+    // root's would-be slug and so keeps answering when the registry cannot be read.
+    instanceMode: () => deps.instanceMode ?? 'workspace',
+    bootProjectId: resolveBootProject,
   });
   // Workspace-level SSE bus (step 2.8) — the registry mutators and the
   // checkout flow (Phase 4) emit here; /api/workspace/events relays.
@@ -1455,6 +1485,11 @@ export function createApp(deps: ServerDeps) {
     } catch (err) {
       if (err instanceof ProjectWriterError) return c.json({ error: err.message }, 409);
       if (err instanceof ProjectContextError) {
+        // `other-instance` (#467, PR 2) is a 409 like `missing-root` — the project exists and is
+        // registered, this process is simply not the one that serves it — and it carries its own
+        // message, because the sentence names the other project's folder and this layer would
+        // have to re-read the registry to rebuild it.
+        if (err.reason === 'other-instance') return c.json({ error: err.message }, 409);
         return err.reason === 'missing-root'
           ? c.json({ error: `project folder not found: ${err.projectId}` }, 409)
           : c.json({ error: err.message }, 404);
@@ -6008,7 +6043,12 @@ export function createApp(deps: ServerDeps) {
     .get('/workspace/runs-index', async (c) => {
       let projects: ProjectListEntry[] = [];
       try {
-        const selector = singleProjectRegistry()
+        // In `project` mode this answers for THIS project only (#467, spec Q-7 option A): the
+        // rows exist to be opened, and a row this process refuses to build a context for would
+        // be a search result that cannot be followed. It is a NARROWING of a cross-project
+        // answer and BACKWARD_COMPATIBILITY.md § 2 names it as one. The cockpit reaches the
+        // other projects through their own cockpits instead (PR 4).
+        const selector = servesOneProject()
           ? { projectId: await resolveBootProject() }
           : undefined;
         projects = await listProjects(selector);
@@ -6141,6 +6181,13 @@ export function startServer(deps: ServerDeps, port: number): ServerType {
     listProjects,
     semaphore: deps.semaphore,
     automationStore: (projectId, root) => automationCoordinator.store(projectId, root)!,
+    // The SECOND construction site of this map, and it gets the same two deps as the one inside
+    // `createApp` — a guard installed at one site only is half a guard (AGENTS.md § *Find every
+    // construction site of a shared in-memory object*). `deps.bootProjectId`, NOT the `'default'`
+    // alias above it: an absent boot id must read as "not learned" and serve, never as "not the
+    // boot project" and refuse.
+    instanceMode: () => deps.instanceMode ?? 'workspace',
+    bootProjectId: () => deps.bootProjectId,
   });
   // #801: GitHub automations are opt-in. Off, the flag must remove the BEHAVIOR and not merely
   // the UI — no scheduler, no GitHub polling, no launched runs — so every entry point into the

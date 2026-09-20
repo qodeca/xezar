@@ -135,6 +135,16 @@ export interface ResolvedCliSettings {
   /** The instance mode this invocation REQUESTED. What is in force also depends on the two
    *  registry narrowings — ask `instanceModeInForce` for that (#467, spec § 2.3–2.4). */
   instance: InstanceMode;
+  /**
+   * Did anyone actually ASK for that mode — a flag, a stored key that parsed, or the variable —
+   * or is it simply the default?
+   *
+   * The boot line is the only reader and it needs the difference (#467, spec § 2.5): a narrowed
+   * cockpit says nothing about the DEFAULT `workspace`, because nobody asked for anything, and
+   * says one line about an explicit one, because that is a request it is not honouring. A
+   * STORED value that degraded is not explicit — it is absent by then, with its own warning.
+   */
+  instanceExplicit: boolean;
   /** One line per degraded stored value (`error-cases.txt` A10). Never a refusal. */
   warnings: string[];
 }
@@ -336,8 +346,8 @@ export function resolveCliSettings(
 
   const output = invocation.flagOutput ?? storedOutput ?? invocation.envOutput ?? 'auto';
   const logLevel = invocation.flagLogLevel ?? storedLevel ?? invocation.envLogLevel ?? 'info';
-  const instance =
-    invocation.flagInstance ?? storedInstance ?? invocation.envInstance ?? 'workspace';
+  const requestedInstance = invocation.flagInstance ?? storedInstance ?? invocation.envInstance;
+  const instance = requestedInstance ?? 'workspace';
   // NO_COLOR sits ABOVE the stored keys and below `--color`: it is an accessibility override
   // a person sets for the whole machine, not another preference to be overruled by a file.
   const color =
@@ -353,6 +363,7 @@ export function resolveCliSettings(
     quiet,
     effectiveLogLevel: quiet ? moreRestrictive(logLevel, 'warn') : logLevel,
     instance,
+    instanceExplicit: requestedInstance !== undefined,
     warnings,
   };
 }

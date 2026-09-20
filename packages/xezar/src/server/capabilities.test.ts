@@ -317,3 +317,76 @@ describe('resolveCapabilities — singleProject and singleProjectRoot are indepe
     expect(JSON.stringify(resolveCapabilities({}))).not.toContain('singleProjectRoot');
   });
 });
+
+/**
+ * `instanceMode` (#467, PR 2) against the two narrowings — the same cross-product discipline the
+ * block above follows, and for the same reason: the regression that matters is one narrowing
+ * quietly implying another, which no test that varies a single input can see.
+ *
+ * The load-bearing half is what is NOT sent. `workspace` is the default and every xezar so far
+ * has done it, so a `workspace` payload must be the same bytes as one from a server that never
+ * heard of this key (AC-2.1) — and a `narrowed` cockpit says what it is through `singleProject`
+ * / `singleProjectRoot` already, so a third spelling of the same fact never reaches the wire.
+ */
+describe('resolveCapabilities — instanceMode is sent only for project (#467)', () => {
+  let project: string;
+
+  beforeEach(() => {
+    project = mkdtempSync(join(realpathSync(tmpdir()), 'xez-cap-instance-'));
+  });
+
+  afterEach(() => {
+    setActiveStateLayout(null);
+    rmSync(project, { recursive: true, force: true });
+  });
+
+  const enterMode = (): void => {
+    setActiveStateLayout(resolveStateLayout(project, ['--single-project'], {}));
+  };
+
+  it('named break `capability-sent-in-workspace-mode`: workspace omits the key entirely', () => {
+    // Not `instanceMode: 'workspace'`: `JSON.stringify` keeps a present key, so sending it
+    // unconditionally changes the default payload for every consumer that diffs it.
+    expect('instanceMode' in resolveCapabilities({}, undefined, undefined, 'workspace')).toBe(false);
+    expect(JSON.stringify(resolveCapabilities({}, undefined, undefined, 'workspace'))).not.toContain(
+      'instanceMode',
+    );
+  });
+
+  it('an absent argument is the same payload as an explicit workspace — legacy callers unchanged', () => {
+    expect(JSON.stringify(resolveCapabilities({}))).toBe(
+      JSON.stringify(resolveCapabilities({}, undefined, undefined, 'workspace')),
+    );
+  });
+
+  it('project sends it, and sends the literal `project`', () => {
+    expect(resolveCapabilities({}, undefined, undefined, 'project')).toMatchObject({
+      instanceMode: 'project',
+    });
+  });
+
+  it('narrowed omits it — the narrowing already speaks through its own two keys', () => {
+    expect(resolveCapabilities({}, undefined, undefined, 'narrowed').instanceMode).toBeUndefined();
+  });
+
+  it('project mode does NOT imply either narrowing', () => {
+    const caps = resolveCapabilities({}, undefined, undefined, 'project');
+    expect(caps.singleProject).toBe(false);
+    expect(caps.singleProjectRoot).toBeUndefined();
+  });
+
+  it('the env narrowing keeps its exact answer whatever the instance argument says', () => {
+    for (const mode of ['workspace', 'project', 'narrowed'] as const) {
+      expect(resolveCapabilities({ XEZ_SINGLE_PROJECT: '1' }, undefined, undefined, mode)).toMatchObject({
+        singleProject: true,
+      });
+    }
+  });
+
+  it('the project-root layout keeps its own key, and a narrowed process sends no instanceMode', () => {
+    enterMode();
+    const caps = resolveCapabilities({ XEZ_SINGLE_PROJECT: '1' }, undefined, undefined, 'narrowed');
+    expect(caps).toMatchObject({ singleProject: true, singleProjectRoot: true });
+    expect(caps.instanceMode).toBeUndefined();
+  });
+});
