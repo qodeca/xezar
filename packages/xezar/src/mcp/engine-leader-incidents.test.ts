@@ -3,7 +3,8 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { RunManager, AUTO_RESUME_GRACE_MS } from '../workflows/run.ts';
 import { WorkspaceSemaphore } from '../workspace/semaphore.ts';
-import { COMPLETION_VARIANTS, checkFailureWorkflow, order, providerClock, repair, scriptedRunner, SINGLE_STEP, terminal } from '../workflows/engine-incidents.testkit.ts';
+import { COMPLETION_VARIANTS, checkFailureWorkflow, order, providerClock, repair, scriptedRunner, SINGLE_STEP } from '../workflows/engine-incidents.testkit.ts';
+import type { RunStore } from '../runs/store.ts';
 import { createApp } from '../server/server.ts';
 import { connectedProviderAuth } from '../server/provider-auth.testkit.ts';
 import { DELIVERY_CLIENTS, deliveryHarness } from './leader-delivery.testkit.ts';
@@ -57,18 +58,50 @@ async function receipt(h: Harness, row: McpJournalRow) {
   expect(status.available && status.delivery?.ackedSeq).toBe(0);
 }
 
+const TERMINAL_STATUSES = new Set(['done', 'failed', 'review', 'cancelled']);
+
+function runSettled(store: RunStore, id: string): boolean {
+  return TERMINAL_STATUSES.has(String(store.getRun(id)?.status));
+}
+
+/**
+ * Await the run store's OWN change signal rather than a poll budget. `RunStore` emits `run` on
+ * every record mutation and `event` on every appended event, and that is where the completion
+ * chain ends (`agent turn -> events -> journal -> store`) — so the chain IS awaitable, and an
+ * `expect.poll` budget was only ever a guess at when it had finished. Under v8 coverage and gate
+ * load that guess was the flake (#603, #630, #658): the wait is now a fact about the store, not a
+ * clock. `predicate` is re-read on every signal, and a false one keeps the subscription alive.
+ */
+async function untilStoreChanges(store: RunStore, predicate: () => boolean): Promise<void> {
+  if (predicate()) return;
+  await new Promise<void>((resolve) => {
+    const check = (): void => {
+      if (!predicate()) return;
+      store.off('run', check);
+      store.off('event', check);
+      resolve();
+    };
+    store.on('run', check);
+    store.on('event', check);
+  });
+}
+
+/** Wait for the run's terminal status through the store's change signal. */
+async function settle(store: RunStore, id: string): Promise<void> {
+  await untilStoreChanges(store, () => runSettled(store, id));
+}
+
 for (const client of DELIVERY_CLIENTS) describe(`engine incidents → ${client}`, () => {
   it.each([false, true])('G7 last-line control streamed=%s delivers one completion without a second turn', async streamed => {
     const h = await deliveryHarness(client); cleanup.push(h.close);
     const runner = scriptedRunner([streamed ? { streamed: true, chunks: ['XEZ:', 'DO', 'NE'] } : {}]); cleanup.push(runner.restore);
     const manager = new RunManager(h.store, h.root); cleanup.push(() => manager.quiesce());
     const run = manager.startRun(SINGLE_STEP, { task: 'review', worktree: false, autonomous: true });
-    // Same race as the G7 completion-variant case below: keep its tight poll INTERVAL. The
-    // budget itself is the suite-wide one in vitest.config.ts now, not a per-call patch (#644).
-    await expect.poll(() => runner.messages.length > 0 || h.store.getRun(run.id)?.status === 'done',
-      { interval: 10 }).toBe(true);
+    // The completion chain ends on the run store's own change signal; await it instead of a poll
+    // budget (#603, #630, #658). A nudge, if one is sent, is recorded before the store settles
+    // (#524), so waiting on the store cannot miss it.
+    await settle(h.store, run.id);
     expect(runner.messages).toEqual([]);
-    await terminal(h.store, run.id);
     expect(runner.specs).toHaveLength(1);
     expect(rows(h).map(row => row.kind)).toEqual(['task.done']);
     await receipt(h, rows(h)[0]!);
@@ -81,19 +114,18 @@ for (const client of DELIVERY_CLIENTS) describe(`engine incidents → ${client}`
     const manager = new RunManager(h.store, h.root); cleanup.push(() => manager.quiesce());
     const run = manager.startRun(SINGLE_STEP, { task: 'review', worktree: false, autonomous: true });
     if (variant.continued) {
-      await terminal(h.store, run.id); await h.settle();
+      await settle(h.store, run.id); await h.settle();
       const tool = calls(h, manager);
       expect(await tool.continue(run.id, await tool.version(run.id), 'complete-review')).not.toHaveProperty('error');
     }
-    // Races an unwanted nudge against the real completion chain (agent turn -> events ->
-    // journal -> run store), which is not a single awaitable promise; vitest's own poll default
-    // of one second was too tight under coverage instrumentation (#603). The suite-wide budget
-    // in vitest.config.ts covers that now (#644); only the tight interval stays per call.
-    await expect.poll(() => runner.messages.length > 0 ||
-      (runner.specs.length === (variant.continued ? 2 : 1) && h.store.getRun(run.id)?.status === 'done'),
-      { interval: 10 }).toBe(true);
+    // The completion chain (agent turn -> events -> journal -> run store) IS awaitable: it ends
+    // on the run store's own change signal. Await that instead of a poll budget (#603, #630,
+    // #658). The expected session count is part of the condition, so the FIRST completion of a
+    // continued run (one session, already `done`) cannot satisfy it — a nudge is recorded before
+    // the store settles (#524), so the assertion below cannot miss it.
+    await untilStoreChanges(h.store, () => runner.specs.length === (variant.continued ? 2 : 1)
+      && runSettled(h.store, run.id));
     expect(runner.messages, '#524: completion must precede nudge').toHaveLength(0);
-    await terminal(h.store, run.id);
     expect(rows(h).map(row => row.kind)).toEqual(variant.continued ? ['task.done', 'task.done'] : ['task.done']);
     expect(runner.specs).toHaveLength(variant.continued ? 2 : 1);
     await receipt(h, rows(h).at(-1)!);
@@ -105,16 +137,17 @@ for (const client of DELIVERY_CLIENTS) describe(`engine incidents → ${client}`
       : spec => appendFileSync(join(spec.cwd, 'order.txt'), 'repair\n') }]); cleanup.push(runner.restore);
     const manager = new RunManager(h.store, h.root); cleanup.push(() => manager.quiesce());
     const run = manager.startRun(checkFailureWorkflow(h.root), { task: 'repair', worktree: false });
-    await terminal(h.store, run.id);
+    await settle(h.store, run.id);
     const failure = rows(h).find(row => row.kind === 'task.failed')!;
     expect(failure).toMatchObject({ origin: 'system', causedBy: null, category: 'E-01' });
     await receipt(h, failure);
     const tool = calls(h, manager);
     expect(await tool.continue(run.id, await tool.version(run.id), 'repair-check')).not.toHaveProperty('error');
-    // Same completion-chain race: it flaked under load on vitest's one-second poll default, which
-    // the suite-wide budget in vitest.config.ts replaces (#644). The tight interval stays.
-    await expect.poll(() => runner.specs.length, { interval: 10 }).toBe(2);
-    await terminal(h.store, run.id);
+    // The repair session is a fact the store reports: await its change signal until the second
+    // agent session is up. No poll budget (#603, #630, #658).
+    await untilStoreChanges(h.store, () => runner.specs.length === 2);
+    expect(runner.specs).toHaveLength(2);
+    await settle(h.store, run.id);
     await h.settle();
     expect(order(h.root), '#520: required check must rerun after repair').toEqual(mode === 'repair succeeds'
       ? ['readiness', 'repair', 'readiness', 'gates', 'evidence', 'handoff'] : ['readiness', 'repair', 'readiness']);
@@ -131,7 +164,7 @@ for (const client of DELIVERY_CLIENTS) describe(`engine incidents → ${client}`
       mode === 'repeat limit' ? { error: `Claude AI usage limit reached|${clock.reset(180)}` } : {}]); cleanup.push(runner.restore);
     const manager = new RunManager(h.store, h.root, { autoResumeTimer: clock.timer, semaphore: new WorkspaceSemaphore({ initial: { autoResumeOnUsageLimit: mode !== 'disabled' } }) }); cleanup.push(() => manager.quiesce());
     const run = manager.startRun(SINGLE_STEP, { task: 'quota', worktree: false });
-    await terminal(h.store, run.id);
+    await settle(h.store, run.id);
     expect(h.store.getRun(run.id)?.status).toBe('failed');
     expect(h.store.getRun(run.id)?.autoResumeAt).toBe(mode === 'disabled' ? undefined : new Date(reset * 1000 + AUTO_RESUME_GRACE_MS).toISOString());
     const failed = rows(h).find(row => row.kind === 'task.failed')!;
@@ -150,10 +183,11 @@ for (const client of DELIVERY_CLIENTS) describe(`engine incidents → ${client}`
       await receipt(h, failed);
       return;
     }
-    // Same completion-chain race: it flaked under load on vitest's one-second poll default, which
-    // the suite-wide budget in vitest.config.ts replaces (#644). The tight interval stays.
-    await expect.poll(() => runner.specs.length, { interval: 10 }).toBe(2);
-    await terminal(h.store, run.id);
+    // The auto-resume session is a fact the store reports: await its change signal until the
+    // second agent session is up. No poll budget (#603, #630, #658).
+    await untilStoreChanges(h.store, () => runner.specs.length === 2);
+    expect(runner.specs).toHaveLength(2);
+    await settle(h.store, run.id);
     expect(h.store.getRun(run.id)?.status).toBe(mode === 'repeat limit' ? 'failed' : 'done');
     if (mode === 'repeat limit') expect(h.store.getRun(run.id)?.autoResumeAt).toBe(new Date((reset + 120) * 1000 + AUTO_RESUME_GRACE_MS).toISOString());
     const events = rows(h);
