@@ -1271,12 +1271,13 @@ no-op for that decision.
   similar. No cockpit call site sends such a key; a client that did was silently losing the
   setting it meant to change.
 - **Hosted mode permits workspace-config writes, through BOTH doors — a decision, not an
-  oversight.** `PUT /api/v1/workspace/config` is not a `localHandoffRoute` and never has been, and
-  `set_workspace_config` inherits that: on a server bound to a non-loopback host
-  (`capabilities.localHandoff: false`) both doors answer normally instead of 409. Independent QA
+  oversight.** The workspace-config route handler permits the write when the server is bound to a
+  non-loopback host, and `set_workspace_config` dispatches through that same route: with
+  `capabilities.localHandoff: false`, both doors answer normally instead of 409. Independent QA
   raised this as a blocker (QA case G on #734, filed as #735) and asked for either the 409 or an
   explicit decision. **Owner decision, 2026-09-20: the write stays allowed in hosted mode — a
-  server admin may change limits remotely.** This is the opposite of the rule for agent-config
+  server admin may change limits remotely.** `localHandoffRoute` registration metadata does not
+  grant or refuse that permission. This is the opposite of the rule for agent-config
   writes (`PUT /api/v1/agent-config/:id`) and every agent-profile route, which 409 in hosted mode
   because they can define hooks and commands or name an account identity; workspace limits are
   neither. One writable key is not a limit and has an exposure shape of its own —

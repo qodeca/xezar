@@ -538,8 +538,9 @@ this list names the keys the schemas name, never the keys they permit.
 > The bounds and the 128 KiB body cap are the ROUTE's, inherited rather than copied: a list of more
 > than 200 skill names, more than 50 folded columns or an over-sized body is refused by
 > `PUT /workspace/ui-state` with its own reason, and nothing is written. Hosted mode is unchanged:
-> the route carries no `localHandoff` guard and none was added, for the reason § 4.9 records —
-> presentation is neither a hook, a command nor an account identity.
+> the route handler permits the write there, for the reason § 4.9 records — presentation is
+> neither a hook, a command nor an account identity. Registration metadata is not what grants the
+> permission.
 
 | Key | Bag | Status | Reason | Enforcing code path |
 | --- | --- | --- | --- | --- |
