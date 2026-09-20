@@ -67,12 +67,28 @@ function request(path, { direct = false, authorization = auth, headers = {}, met
   });
 }
 
-async function freePort() {
-  const probe = http.createServer();
-  await new Promise((done) => probe.listen(0, '127.0.0.1', done));
-  const port = probe.address().port;
-  await new Promise((done) => probe.close(done));
-  return port;
+/**
+ * Two DISTINCT ephemeral ports, with both probe listeners held open until both numbers are
+ * known.
+ *
+ * Two sequential `freePort()` calls cannot promise that: each closes its listener before
+ * returning, so the OS may hand the same ephemeral port out twice. A-PORT-01 distinguishes the
+ * two precedence sources by comparing their numbers, so equal numbers would let a resolver that
+ * wrongly lets XEZ_PORT outrank `--port` bind the expected port and pass vacuously. Overlapping
+ * the two listeners makes the ports distinct by construction — a port that is bound cannot be
+ * handed to the other probe — and the assertion below fails loudly rather than letting a
+ * collision reach either CLI launch.
+ */
+async function twoDistinctFreePorts() {
+  const probes = [http.createServer(), http.createServer()];
+  try {
+    await Promise.all(probes.map((probe) => new Promise((done) => probe.listen(0, '127.0.0.1', done))));
+    const [first, second] = probes.map((probe) => probe.address().port);
+    assert.notEqual(first, second, 'A-PORT-01 could not allocate two distinct ephemeral ports');
+    return [first, second];
+  } finally {
+    await Promise.all(probes.map((probe) => new Promise((done) => probe.close(done))));
+  }
 }
 
 async function stopChild(proc) {
@@ -176,9 +192,10 @@ try {
 
   // A-PORT-01: the guide's documented port precedence is a property of the built CLI, not
   // only of the helper that resolves it. A fresh XEZ_HOME has no saved project port, so
-  // XEZ_PORT is the next layer; an explicit --port still outranks it.
-  const envPort = await freePort();
-  const flagPort = await freePort();
+  // XEZ_PORT is the next layer; an explicit --port still outranks it. The two ports are
+  // distinct by construction (see `twoDistinctFreePorts`), so a wrong precedence cannot
+  // satisfy both assertions with one number.
+  const [envPort, flagPort] = await twoDistinctFreePorts();
   const bootCliPort = async (args, extraEnv) => {
     const proc = spawn(process.execPath, [cli, 'serve', '--repo', repo, '--no-open', '--output', 'lines', '--color', 'never', ...args], { cwd: repo, env: { ...env, ...extraEnv }, stdio: ['ignore', 'pipe', 'pipe'] });
     extraChildren.add(proc);
