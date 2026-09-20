@@ -325,7 +325,7 @@ describe('the composed MCP service, through the real bridge and socket', () => {
     const client = agent(c.root);
 
     // Refused before any effect, and the tool says so in its structured answer (spec § 6.2).
-    const boundary = await client.call('project_config', { action: 'set_workspace_config', operationId: 'op-compose-0031' });
+    const boundary = await client.call('project_config', { action: 'set_workspace_ui_state', operationId: 'op-compose-0031' });
     expect(boundary.isError, JSON.stringify(boundary)).toBe(true);
     expect(boundary.structuredContent, JSON.stringify(boundary)).toBeDefined();
     expect(boundary.structuredContent).toMatchObject({ refused: true, boundary: 'workspace-settings' });
@@ -343,7 +343,7 @@ describe('the composed MCP service, through the real bridge and socket', () => {
     expect(failed.isError, JSON.stringify(failed)).toBe(true);
 
     expect(auditLines(c.dataDir).map((entry) => [entry.seq, entry.action, entry.outcome])).toEqual([
-      [1, 'workspace.config.set', { status: 'refused', reason: 'workspace_settings' }],
+      [1, 'workspace.uiState.set', { status: 'refused', reason: 'workspace_settings' }],
       [2, 'run.cancel', { status: 'refused', reason: 'not_found' }],
       [3, 'run.start', { status: 'applied' }],
     ]);
@@ -352,6 +352,52 @@ describe('the composed MCP service, through the real bridge and socket', () => {
     expect(auditWarnings).toEqual(['xezar: audit trail write failed (tool_error); the action continued without an audit record.']);
     // The legacy file is read-only: same bytes, and still where 0.15.0 left it.
     expect(readFileSync(legacy).equals(legacyBytes)).toBe(true);
+  });
+
+  /**
+   * #677 wave 2 B1: the workspace write is an ordinary mutation of the generic door, so it takes
+   * an operation key and REPLAYS under it. The tool's own suite cannot show this — it calls the
+   * tool directly, and the receipt belongs to the door — so the assertion lives here, where the
+   * real bridge, the real receipt store and the real route are all in play (review M2).
+   */
+  it('a workspace write replayed under the same operation key re-answers and does not re-apply', async () => {
+    const c = await cockpit();
+    const handle = await startMcpService({ projectId: c.id, version: VERSION, service: c.app, store: c.store });
+    closers.push(() => handle.close());
+    const client = agent(c.root);
+    const limit = async (): Promise<number> => {
+      const read = await client.call('project_config', { action: 'get_limits' });
+      return (read.structuredContent as { result: { workspace: { resources: { maxParallel: number } } } }).result.workspace.resources.maxParallel;
+    };
+
+    const body = { action: 'set_workspace_config', operationId: 'op-compose-0061', workspaceConfig: { resources: { maxParallel: 6 } } };
+    const first = await client.call('project_config', body);
+    expect(first.isError, JSON.stringify(first)).toBeFalsy();
+    expect(await limit()).toBe(6);
+
+    // A person moves the same limit in the cockpit, between the two calls.
+    const byHand = await c.app.request('/api/v1/workspace/config', {
+      method: 'PUT',
+      headers: { host: '127.0.0.1:4321', origin: 'http://127.0.0.1:4321', 'content-type': 'application/json' },
+      body: JSON.stringify({ resources: { maxParallel: 3 } }),
+    });
+    expect(byHand.status).toBe(200);
+
+    const replay = await client.call('project_config', body);
+    expect(replay.isError, JSON.stringify(replay)).toBeFalsy();
+    expect(replay.structuredContent).toMatchObject({ status: 'ok', replayed: true });
+    // The person's 3 stands: the replay re-answered, it did not write the leader's 6 a second time.
+    expect(await limit()).toBe(3);
+
+    // The same key with a DIFFERENT body is a conflict, and writes nothing either.
+    const conflict = await client.call('project_config', {
+      action: 'set_workspace_config',
+      operationId: 'op-compose-0061',
+      workspaceConfig: { resources: { maxParallel: 5 } },
+    });
+    expect(conflict.isError, JSON.stringify(conflict)).toBe(true);
+    expect(JSON.stringify(conflict)).toContain('operation_key_conflict');
+    expect(await limit()).toBe(3);
   });
 
   it('F-15: no secret from the host environment enters a journal row', async () => {

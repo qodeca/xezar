@@ -20,7 +20,8 @@ import { McpConnectionSection } from './mcp-connection-section'
  * Issue #114 (Phase 7 of epic #67): what the MCP leader can and cannot do in this project.
  *
  * U-M06 (required): every capability renders as a usable project function, an unavailable
- * dependency WITH A NAMED REASON, or a read-only shared constraint — and authority is not
+ * dependency WITH A NAMED REASON, or a shared constraint this pane does not edit — and authority
+ * is not
  * configurable: full project authority includes delete and merge, with no role toggle and no
  * permission checklist. F-22 / UX-M05: a failing quality check stays visible, with a reason and
  * the next legitimate action, and nothing that dismisses, accepts or overrides it.
@@ -210,7 +211,7 @@ describe('deriveProjectCapabilities (U-M06)', () => {
   })
 })
 
-describe('deriveSharedConstraints (read-only shared limits)', () => {
+describe('deriveSharedConstraints (the shared limits)', () => {
   it('reports the effective workspace limits and the composer defaults, in words', () => {
     const values = Object.fromEntries(deriveSharedConstraints(WORKSPACE).map((c) => [c.id, c.value]))
     expect(values.max_parallel).toBe('4 across all projects')
@@ -260,7 +261,10 @@ describe('McpCapabilitiesView — three forms, no toggles (U-M06)', () => {
 
     const constraints = container.querySelectorAll('[data-slot="mcp-constraint"]')
     expect(constraints.length).toBe(8)
-    for (const constraint of constraints) expect(constraint.textContent).toContain('Read-only')
+    // The shared limits say "Not editable here", not "Read-only": since #677 B1 the leader can
+    // change them over MCP, and the hint one line up says so. This pane still has no control.
+    for (const constraint of constraints) expect(constraint.textContent).toContain('Not editable here')
+    for (const constraint of constraints) expect(constraint.textContent).not.toContain('Read-only')
 
     // No toggle, switch, checkbox, field or button exists for any capability or limit.
     expect(container.querySelectorAll(INTERACTIVE).length).toBe(0)

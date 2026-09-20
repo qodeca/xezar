@@ -13,6 +13,7 @@ import {
   saveWorkflowInputSchema,
   setAgentConfigInputSchema,
   setConfigInputSchema,
+  setWorkspaceConfigInputSchema,
   uiStateSchema,
   updateAutomationInputSchema,
   updateProjectInputSchema,
@@ -59,9 +60,11 @@ import { defineTool, errorResult, textResult, type McpToolContext, type McpToolR
  * effective capability or limit the classification names, with what it withholds withheld.
  * Everything the classification marks `excluded` is an explicit action here that answers a
  * refusal naming its boundary and dispatches NOTHING — so a leader asking for it learns why, and
- * no argument can route around it. There is no project id argument anywhere: the project is the
- * connection's (D-01 § 1.5), and a call that names one is refused rather than silently
- * redirected.
+ * no argument can route around it. ONE of those exclusions has been reversed by the owner's rule
+ * of 2026-09-20 (#677): the workspace SETTINGS write is `set_workspace_config`, a real write
+ * through the cockpit's own route, and only the two workspace folder paths stay out of it.
+ * There is no project id argument anywhere: the project is the connection's (D-01 § 1.5), and a
+ * call that names one is refused rather than silently redirected.
  *
  * THE SAME RULES AS THE COCKPIT. Every effect is one of the cockpit's own routes, dispatched
  * in-process under `/api/v1/p/<bound project>/…` through the same validators, 400/404/409
@@ -117,6 +120,7 @@ export const PROJECT_CONFIG_ACTIONS = [
   'get_prompt_templates',
   'set_prompt_templates',
   'get_limits',
+  'set_workspace_config',
   'get_capabilities',
   'get_account',
   'list_agent_config',
@@ -227,11 +231,6 @@ export const REFUSED_ACTIONS = {
     boundary: 'host-process',
     reason: 'opening an account folder launches an application on the host machine.',
   },
-  set_workspace_config: {
-    boundary: 'workspace-settings',
-    reason:
-      'workspace settings and limits apply to every project. Read the effective limits with get_limits; this project’s own settings are set_config and set_project.',
-  },
   set_workspace_ui_state: {
     boundary: 'workspace-settings',
     reason: 'the workspace preference bag describes the person at the keyboard and is shared by every project.',
@@ -275,6 +274,7 @@ const REFUSED_ACTION_NAMES = Object.keys(REFUSED_ACTIONS) as [RefusedAction, ...
 
 type Field =
   | 'config'
+  | 'workspaceConfig'
   | 'project'
   | 'promptTemplates'
   | 'fileId'
@@ -299,6 +299,7 @@ type Field =
 
 const FIELDS: readonly Field[] = [
   'config',
+  'workspaceConfig',
   'project',
   'promptTemplates',
   'fileId',
@@ -349,6 +350,7 @@ export const ACTION_FIELDS: Record<ProjectConfigAction, { required: readonly Fie
   get_prompt_templates: none,
   set_prompt_templates: { required: ['promptTemplates', 'operationId'], optional: [] },
   get_limits: none,
+  set_workspace_config: { required: ['workspaceConfig', 'operationId'], optional: [] },
   get_capabilities: { required: [], optional: ['refresh'] },
   get_account: none,
   list_agent_config: none,
@@ -430,6 +432,24 @@ const validPathId = (id: string): boolean => id !== '.' && id !== '..' && PATH_I
 // The repo config's own `maxParallel` is INERT (§ 4.14): the scheduler reads the registry entry,
 // which is `set_project`. Accepting it here would report a change that never happens.
 const projectConfigWriteSchema = setConfigInputSchema.omit({ maxParallel: true }).strict();
+
+/**
+ * The workspace-settings write (#677 wave 2, slice B1). Owner rule 2026-09-20 ("every key")
+ * reverses the D-03 § 4.9 boundary that made this a refusal: a leader now writes the same
+ * workspace keys the cockpit's own Settings panes write, through the same route.
+ *
+ * TWO KEYS ARE STILL NOT ACCEPTED, and the omission is the whole of the narrowing: `browseRoot`
+ * and `projectsDir` are the cockpit folder browser's confinement root and the directory a GUI
+ * clone lands in — filesystem boundaries rather than limits, reviewed on their own in slice B2.
+ * An unknown key is refused rather than silently dropped, at EVERY level, and that strictness
+ * lives in the contract (`packages/contract/src/workspace.ts`) rather than here — the route
+ * validates with the same schema this one narrows, so both doors refuse the same body with the
+ * same reason. It used to live only here, and the asymmetry was the bug: the route answered 200
+ * for `{ nonsenseKey: 123 }` (QA case H) and both doors answered 200 for a misspelt nested key
+ * (review m1) — success for a change that never happened. The `.strict()` below is kept because
+ * `.omit()` returns a new shape and the narrowing must be explicit at the door a leader reads.
+ */
+const workspaceConfigWriteSchema = setWorkspaceConfigInputSchema.omit({ browseRoot: true, projectsDir: true }).strict();
 const projectRegistryWriteSchema = z.strictObject(updateProjectInputSchema.shape);
 const promptTemplatesSchema = uiStateSchema.shape.promptTemplates.unwrap();
 
@@ -478,7 +498,7 @@ export const projectConfigInputSchema = z
     action: z
       .enum([...PROJECT_CONFIG_ACTIONS, ...REFUSED_ACTION_NAMES])
       .describe(
-        'What to do in the project this connection is bound to. Actions outside the project boundary (workspace settings, accounts, the project registry, host folders) are answered with a refusal that names the boundary.',
+        'What to do in the project this connection is bound to, plus the shared settings set_workspace_config changes for every project on this machine. Actions outside that boundary (the two workspace folder paths, accounts, the project registry, host folders) are answered with a refusal that names the boundary.',
       ),
     projectId: z
       .unknown()
@@ -487,6 +507,11 @@ export const projectConfigInputSchema = z
     config: projectConfigWriteSchema
       .optional()
       .describe("set_config: the project's own settings to change. null clears a key back to its default."),
+    workspaceConfig: workspaceConfigWriteSchema
+      .optional()
+      .describe(
+        'set_workspace_config: the workspace-wide settings to change — they apply to every project on this machine. Only the keys you send are touched; null clears a key back to its default. The two workspace folder paths are not accepted here.',
+      ),
     project: projectRegistryWriteSchema
       .optional()
       .describe("set_project: this project's concurrency cap (maxParallel, null inherits the workspace cap) and/or its tags (whole list)."),
@@ -884,6 +909,29 @@ function skillEntry(root: string, skill: Skill, withBody: boolean) {
   };
 }
 
+/**
+ * The workspace half of `get_limits`, and the answer `set_workspace_config` gives back (#677 B1):
+ * ONE vocabulary in both directions, so a leader reads its own write in the words it read the
+ * settings in. § 4.9's narrowing survives the reversal — the two workspace folder paths and the
+ * machine-wide agent defaults stay out of the answer even though the write now accepts the
+ * defaults, because what may be CHANGED and what may be READ were decided separately (I-121's
+ * read is still the cockpit's).
+ */
+function workspaceLimits(w: WorkspaceConfigResponse) {
+  return {
+    resources: { ...w.resources },
+    followups: { effective: w.effectiveFollowups, inherited: w.followups === null },
+    agentEnvPassthrough: { effectiveNames: w.effectiveAgentEnvPassthrough, inherited: w.agentEnvPassthrough === null },
+    composerDefaults: {
+      autonomous: w.composerDefaults.autonomous ?? w.composerDefaults.inheritedAutonomous,
+      autonomousInherited: w.composerDefaults.autonomous === null,
+      worktree: w.composerDefaults.worktree ?? w.composerDefaults.inheritedWorktree,
+      worktreeInherited: w.composerDefaults.worktree === null,
+    },
+    skillsAutoUpdate: { effective: w.effectiveSkillsAutoUpdate, inherited: w.skillsAutoUpdate === null },
+  };
+}
+
 /** An account label is user text; one that looks like an email is an identity and is withheld. */
 const looksLikeIdentity = (label: string): boolean => label.includes('@');
 
@@ -945,22 +993,10 @@ async function run(args: ProjectConfigInput & { action: ProjectConfigAction }, s
       if (!workspace.ok) return fail(workspace);
       if (!entry.ok) return fail(entry);
       if (!config.ok) return fail(config);
-      const w = workspace.value;
-      // § 4.9: every workspace key is a READ, and nothing about another project, the host's
-      // environment, its folders or its machine-wide agent defaults is part of it.
+      // Nothing about another project, the host's environment, its folders or its machine-wide
+      // agent defaults is part of the answer.
       return ok(action, {
-        workspace: {
-          resources: { ...w.resources },
-          followups: { effective: w.effectiveFollowups, inherited: w.followups === null },
-          agentEnvPassthrough: { effectiveNames: w.effectiveAgentEnvPassthrough, inherited: w.agentEnvPassthrough === null },
-          composerDefaults: {
-            autonomous: w.composerDefaults.autonomous ?? w.composerDefaults.inheritedAutonomous,
-            autonomousInherited: w.composerDefaults.autonomous === null,
-            worktree: w.composerDefaults.worktree ?? w.composerDefaults.inheritedWorktree,
-            worktreeInherited: w.composerDefaults.worktree === null,
-          },
-          skillsAutoUpdate: { effective: w.effectiveSkillsAutoUpdate, inherited: w.skillsAutoUpdate === null },
-        },
+        workspace: workspaceLimits(workspace.value),
         project: {
           /** null = this project inherits the workspace cap. */
           maxParallel: entry.value?.maxParallel ?? null,
@@ -968,6 +1004,16 @@ async function run(args: ProjectConfigInput & { action: ProjectConfigAction }, s
           worktreeRetention: config.value.worktreeRetention,
         },
       });
+    }
+    case 'set_workspace_config': {
+      // The cockpit's own route: its validator, its 400s, its `mergeWriteWorkspaceConfig` and its
+      // `semaphore.refresh()`, so a leader's change takes effect without a restart exactly as a
+      // person's does. The answer is the `get_limits` vocabulary, never the raw route body.
+      const answer = await settle<WorkspaceConfigResponse>(
+        s.api.workspace.config.$put({ json: args.workspaceConfig! }),
+        [200],
+      );
+      return answer.ok ? ok(action, { workspace: workspaceLimits(answer.value) }) : fail(answer);
     }
 
     case 'get_capabilities': {
@@ -1364,7 +1410,7 @@ export const projectConfigTool = defineTool({
   name: 'project_config',
   title: 'Project configuration',
   description:
-    "Read and change THIS project's own configuration: its settings (agent, models, system prompt, review gate, base branch, worktree retention, memory limit), its registry entry (concurrency cap and tags), prompt templates, in-repo agent config files, workflows, skills, GitHub automations and worktrees. Shared settings are readable only as effective limits and capabilities (get_limits, get_capabilities, get_account). Workspace-wide settings, agent accounts, account identity, home files, the project registry and host folders are outside this boundary and are refused with the reason.",
+    "Read and change THIS project's own configuration: its settings (agent, models, system prompt, review gate, base branch, worktree retention, memory limit), its registry entry (concurrency cap and tags), prompt templates, in-repo agent config files, workflows, skills, GitHub automations and worktrees. It also reads the shared settings as effective limits and capabilities (get_limits, get_capabilities, get_account) and CHANGES them with set_workspace_config — the shared limits, composer defaults, follow-up inbox and environment passthrough, skills auto-update and the machine-wide agent defaults, which apply to every project on this machine. The two workspace folder paths, agent accounts, account identity, home files, the project registry and host folders are outside this boundary and are refused with the reason.",
   inputSchema: projectConfigInputSchema,
   annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
   async call(args, ctx: ProjectConfigContext) {

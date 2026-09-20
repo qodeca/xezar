@@ -309,6 +309,25 @@ Rows are by catalog entry (`packages/xezar/src/agent-config/catalog.ts` `CONFIG_
 Every key here is enforced workspace-wide by `WorkspaceSemaphore`
 (`packages/xezar/src/workspace/semaphore.ts` `loadResourceLimits`, `:160`), so every row is a read.
 
+> **SUPERSEDED, 2026-09-20 (#677 wave 2 slice B1).** The owner's rule of 2026-09-20 on #677 —
+> "every key" — reverses the "never from MCP" half of every `safe-effective-read` row in this
+> section, of the `skillsAutoUpdate` row in § 4.10 and of the "Defaults for new projects"
+> (`agentDefaults.runner`, `agentDefaults.models.*`) row in § 4.11. Those keys
+> are now WRITABLE by the leader through `project_config set_workspace_config`, which dispatches
+> the same `PUT /workspace/config` the pane uses. The rows below are kept exactly as they were
+> decided on 2026-09-10: they are a dated record of what was true then, and the READ half of each
+> — what the answer withholds — is still in force. The two workspace folder paths (§ 4.12's
+> `browseRoot` and `projectsDir`) are NOT part of the reversal in B1 and are decided on their own
+> in slice B2. The full re-scope of this document is slice B6.
+>
+> **Hosted mode does not narrow the write** (owner decision, 2026-09-20; raised by independent QA
+> as case G on #734 and filed as #735). Workspace-config writes are permitted through both doors
+> when `capabilities.localHandoff` is false, unlike agent-config writes and the agent-profile
+> routes, which answer 409 there. The owner's reason: *a server admin may change limits remotely*.
+> A workspace limit is neither a hook, a command nor an account identity, which is what that
+> boundary exists to keep off a shared box. A test pins the ALLOWED behaviour, so a later 409
+> would be a visible break.
+
 | Field | Status | Reason | Enforcing code path | Withheld |
 | --- | --- | --- | --- | --- |
 | `resources.maxParallel` | safe-effective-read | The workspace ceiling every project shares; a write changes every project's throughput. The leader needs the number to plan (F-03). | `semaphore.ts:181`, `:395`; write bounded by `setWorkspaceConfigInputSchema.resources` (`workspace.ts:126`) — never from MCP | The per-project overrides of OTHER projects (`projectLimits`, `semaphore.ts:163`). The leader reads the workspace cap and its own project's cap, nothing else. |

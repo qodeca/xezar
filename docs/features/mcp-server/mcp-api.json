@@ -820,7 +820,7 @@
   {
     "name": "project_config",
     "title": "Project configuration",
-    "description": "Read and change THIS project's own configuration: its settings (agent, models, system prompt, review gate, base branch, worktree retention, memory limit), its registry entry (concurrency cap and tags), prompt templates, in-repo agent config files, workflows, skills, GitHub automations and worktrees. Shared settings are readable only as effective limits and capabilities (get_limits, get_capabilities, get_account). Workspace-wide settings, agent accounts, account identity, home files, the project registry and host folders are outside this boundary and are refused with the reason.",
+    "description": "Read and change THIS project's own configuration: its settings (agent, models, system prompt, review gate, base branch, worktree retention, memory limit), its registry entry (concurrency cap and tags), prompt templates, in-repo agent config files, workflows, skills, GitHub automations and worktrees. It also reads the shared settings as effective limits and capabilities (get_limits, get_capabilities, get_account) and CHANGES them with set_workspace_config — the shared limits, composer defaults, follow-up inbox and environment passthrough, skills auto-update and the machine-wide agent defaults, which apply to every project on this machine. The two workspace folder paths, agent accounts, account identity, home files, the project registry and host folders are outside this boundary and are refused with the reason.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -834,6 +834,7 @@
             "get_prompt_templates",
             "set_prompt_templates",
             "get_limits",
+            "set_workspace_config",
             "get_capabilities",
             "get_account",
             "list_agent_config",
@@ -873,7 +874,6 @@
             "check_account_status",
             "get_account_details",
             "open_account_file",
-            "set_workspace_config",
             "set_workspace_ui_state",
             "browse_folders",
             "add_project",
@@ -884,7 +884,7 @@
             "get_launch_key",
             "open_in_app"
           ],
-          "description": "What to do in the project this connection is bound to. Actions outside the project boundary (workspace settings, accounts, the project registry, host folders) are answered with a refusal that names the boundary."
+          "description": "What to do in the project this connection is bound to, plus the shared settings set_workspace_config changes for every project on this machine. Actions outside that boundary (the two workspace folder paths, accounts, the project registry, host folders) are answered with a refusal that names the boundary."
         },
         "projectId": {
           "description": "Never accepted: the project is the one this connection is bound to, and a call that names one is refused."
@@ -1070,6 +1070,211 @@
                   "type": "null"
                 }
               ]
+            }
+          },
+          "additionalProperties": false
+        },
+        "workspaceConfig": {
+          "description": "set_workspace_config: the workspace-wide settings to change — they apply to every project on this machine. Only the keys you send are touched; null clears a key back to its default. The two workspace folder paths are not accepted here.",
+          "type": "object",
+          "properties": {
+            "skillsAutoUpdate": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "followups": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "agentEnvPassthrough": {
+              "anyOf": [
+                {
+                  "maxItems": 64,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "composerDefaults": {
+              "type": "object",
+              "properties": {
+                "autonomous": {
+                  "anyOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "worktree": {
+                  "anyOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false
+            },
+            "resources": {
+              "type": "object",
+              "properties": {
+                "maxParallel": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 16
+                },
+                "maxMonitoringSessions": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 16
+                },
+                "monitoringWakeIntervalMinutes": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 60
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "autoResumeOnUsageLimit": {
+                  "type": "boolean"
+                },
+                "idleTimeoutMinutes": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 1440
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "memoryLimitMb": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 1048576
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "worktreeRetentionDefault": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 1000
+                }
+              },
+              "additionalProperties": false
+            },
+            "agentDefaults": {
+              "type": "object",
+              "properties": {
+                "runner": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "claude",
+                        "codex",
+                        "opencode",
+                        "pi"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "models": {
+                  "type": "object",
+                  "properties": {
+                    "claude": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "codex": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "opencode": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "pi": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false
             }
           },
           "additionalProperties": false

@@ -95,8 +95,19 @@ export type WorkspaceConfigResponse = z.infer<typeof workspaceConfigResponseSche
  * declares no copy. The key ORDER is part of the wire behaviour and not cosmetic: a body with two
  * bad fields answers one `{ error }` string built by joining the zod issues in shape order, so
  * `resources` stays ahead of `agentDefaults` exactly as the deleted server copy had it.
+ *
+ * THE SHAPE IS STRICT AT EVERY LEVEL (#677 wave 2 B1 — review m1 and QA case H). It used to be a
+ * plain `z.object` throughout, and only the MCP tool narrowed its own copy with `.strict()`. Two
+ * asymmetries followed, and both answered 200 for a change that never happened: the route
+ * accepted an unknown TOP-LEVEL key (`{ nonsenseKey: 123 }`) that the MCP door refused, and BOTH
+ * doors accepted a misspelt NESTED key (`{ resources: { maxParalel: 9 } }`). A misspelt limit is
+ * a caller's mistake, and a partial patch has no other way to tell them: the key they meant is
+ * simply absent. Strictness belongs HERE rather than at either door, because this is the one
+ * schema both of them validate with — which is what makes the two answers identical instead of
+ * merely similar. No cockpit body carries an extra key at any level: every `putWorkspaceConfig`
+ * call site sends a `SetWorkspaceConfigInput` literal.
  */
-export const setWorkspaceConfigInputSchema = z.object({
+export const setWorkspaceConfigInputSchema = z.strictObject({
   browseRoot: z.string().trim().min(1).max(4096).optional(),
   projectsDir: z.string().trim().min(1).max(4096).optional(),
   skillsAutoUpdate: z.boolean().nullable().optional(),
@@ -106,13 +117,13 @@ export const setWorkspaceConfigInputSchema = z.object({
    *  `XEZ_ENV_PASSTHROUGH` default; `[]` stores a real "forward nothing". */
   agentEnvPassthrough: z.array(z.string().trim().min(1).max(200)).max(64).nullable().optional(),
   composerDefaults: z
-    .object({
+    .strictObject({
       autonomous: z.boolean().nullable().optional(),
       worktree: z.boolean().nullable().optional(),
     })
     .optional(),
   resources: z
-    .object({
+    .strictObject({
       maxParallel: z.number().int().min(1).max(16).optional(),
       maxMonitoringSessions: z.number().int().min(0).max(16).optional(),
       monitoringWakeIntervalMinutes: z.number().int().min(1).max(60).nullable().optional(),
@@ -126,10 +137,10 @@ export const setWorkspaceConfigInputSchema = z.object({
   /** Machine-wide agent defaults. `null` on a key CLEARS it back to "no opinion", which a bare
    *  absent key cannot say in a partial patch. */
   agentDefaults: z
-    .object({
+    .strictObject({
       runner: runnerSchema.nullable().optional(),
       models: z
-        .object({
+        .strictObject({
           claude: z.string().trim().min(1).max(200).nullable().optional(),
           codex: z.string().trim().min(1).max(200).nullable().optional(),
           opencode: z.string().trim().min(1).max(200).nullable().optional(),

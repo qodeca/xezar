@@ -44,7 +44,7 @@ Inputs already available to that inventory:
 ## 5. What the inventory must answer
 
 - Which values have no MCP path, which have no cockpit path, and which have neither.
-- Which values are workspace-wide and therefore deliberately not writable from a project-bound leader (the classification's `safe-effective-read` and `excluded` rows) — parity is required for values, not a widening of the project-scope boundary that the classification settled.
+- Which values are workspace-wide and therefore deliberately not writable from a project-bound leader (the classification's `safe-effective-read` and `excluded` rows) — parity is required for values, not a widening of the project-scope boundary that the classification settled. **Superseded in part, 2026-09-20 (#677 B1):** the owner's "every key" rule made the workspace SETTINGS writable from a project-bound leader, so this bullet now reads as "which values stay workspace-read-only", and today that is the two workspace folder paths, the accounts and the provider switches. The sentence above is kept as the record of what this document asked for on 2026-09-19.
 - Which changes are live and which need a restart, with the reason for each restart.
 - Which values already have a derived default and which would need one before they could be made editable.
 

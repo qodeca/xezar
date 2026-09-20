@@ -112,11 +112,10 @@ export function buildDiscovery(facts: DiscoveryFacts): McpDiscovery {
       "Edit the coding agents' config files",
       caps.localHandoff ? null : `${HOSTED_REASON} Agent config files can define hooks and commands, so they are never written remotely.`,
     ),
-    readOnly(
-      'workspace_limits',
-      'Change workspace-wide limits',
-      "Workspace limits are shared with every project. The leader can read them; only a person can change them in the cockpit's global settings.",
-    ),
+    // #677 wave 2 slice B1: the owner's 2026-09-20 rule made these writable, so the row is
+    // AVAILABLE. A `read-only` status here would be the same false "cannot" the tool description
+    // used to carry, on the surface a leader reads first.
+    action('workspace_limits', 'Change workspace-wide limits', null),
   ];
 
   return mcpDiscoverySchema.parse({

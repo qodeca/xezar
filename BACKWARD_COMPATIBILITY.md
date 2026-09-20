@@ -1091,3 +1091,56 @@ Only accepted effects reserve their specific delayed transition. Accepted cancel
 Participant `user-message` input also advances the decision revision; it is steering, not agent telemetry.
 
 Pending question replacement also advances the decision revision (#534), including changed content under the same question ID. The optional additive `decisionQuestion` record field stores only the ID and a content digest; legacy records remain readable, and the next question event initializes it. Clearing the question with participant input remains one decision revision. Clients must re-read after a replacement. Known structured `applied:false` refusals now settle and replay as `rejected` (#536); existing durable receipts are not rewritten, and ambiguous throws/lost responses remain `unverified`. The run response gains the same optional metadata; MCP action and receipt response schemas are unchanged.
+
+## The MCP `project_config` tool writes the workspace settings (#677 wave 2 B1) — deliberate, 0.17.0
+
+A documented product boundary is reversed here, by the owner's rule of 2026-09-20 on #677 ("every
+key"). Until 0.17.0 the `project_config` action `set_workspace_config` existed only to REFUSE: it
+answered `Refused (workspace-wide setting)`, dispatched nothing, and the classification recorded
+every workspace limit as a safe effective read a leader could see and never change.
+
+- **Changed**: `set_workspace_config` is a real write. It takes `workspaceConfig` plus the usual
+  `operationId` and dispatches `PUT /api/v1/workspace/config` — the cockpit's own route, its own
+  validator, its own 400s, its own `mergeWriteWorkspaceConfig` and its own `semaphore.refresh()`.
+  A leader may now change the seven `resources.*` keys, `followups`, `agentEnvPassthrough`,
+  `composerDefaults.*`, `skillsAutoUpdate` and `agentDefaults.{runner,models.*}` — settings that
+  apply to **every project on the machine**, not only the bound one.
+- **Unchanged**: nothing is removed. A leader that never calls the action behaves exactly as
+  before; an older leader simply does not know the argument exists. The refusal vocabulary, the
+  boundary ids, every other refused action and the `get_limits` answer shape are untouched, and
+  the write answers in that same `get_limits` vocabulary rather than the raw route body.
+- **Still refused**: `browseRoot` and `projectsDir`, the two workspace folder paths, are not keys
+  of the action — they are filesystem boundaries rather than limits and are decided on their own
+  (#677 slice B2). A body naming one is refused as an argument and nothing is dispatched, so a
+  `resources` key sent in the same body does not half-apply.
+- **What a reader could notice**: the audit trail can now hold `workspace.config.set` rows with
+  origin `mcp`. That row already existed in the inventory for the cockpit door; what is new is
+  that the MCP door produces it. The MCP record carries the action id, the operation key and a
+  payload DIGEST — never the field values, and (unlike the cockpit door's record) not the field
+  names either.
+- **The record of the old decision is kept, not deleted**: the superseded rulings stay in
+  `docs/features/mcp-server/mcp-ui-action-inventory.md` verbatim, beside the new one, dated.
+- **An unknown key is refused at EVERY level, through both doors** (added in the review round —
+  review m1 and QA case H, #735). Two bodies used to be answered 200 / `applied` for a change that
+  never happened: an unknown TOP-LEVEL key (`{ nonsenseKey: 123 }`) by the ROUTE, which the MCP
+  door already refused, and a misspelt NESTED key (`{ resources: { maxParalel: 9 } }`,
+  `{ agentDefaults: { models: { gemini: 'x' } } }`) by BOTH doors.
+  `setWorkspaceConfigInputSchema` is strict at every level now, so **`PUT /api/v1/workspace/config`
+  answers 400 for bodies it used to accept**, and the MCP door refuses them as arguments with the
+  same reason. The narrowing is deliberate and lands on both doors at once, because both validate
+  with that one contract schema — which is the point: the two answers are identical rather than
+  similar. No cockpit call site sends such a key; a client that did was silently losing the
+  setting it meant to change.
+- **Hosted mode permits workspace-config writes, through BOTH doors — a decision, not an
+  oversight.** `PUT /api/v1/workspace/config` is not a `localHandoffRoute` and never has been, and
+  `set_workspace_config` inherits that: on a server bound to a non-loopback host
+  (`capabilities.localHandoff: false`) both doors answer normally instead of 409. Independent QA
+  raised this as a blocker (QA case G on #734, filed as #735) and asked for either the 409 or an
+  explicit decision. **Owner decision, 2026-09-20: the write stays allowed in hosted mode — a
+  server admin may change limits remotely.** This is the opposite of the rule for agent-config
+  writes (`PUT /api/v1/agent-config/:id`) and every agent-profile route, which 409 in hosted mode
+  because they can define hooks and commands or name an account identity; workspace limits are
+  neither. The behaviour is pinned by a test that asserts it is ALLOWED — and asserts an
+  agent-config write still 409s on the same hosted app — so adding a 409 here later is a visible,
+  named break rather than a silent change of mind, and it would be a change for both doors at
+  once with its own entry here.

@@ -872,8 +872,10 @@ describe('A-21 — reconnect with a valid or an old cursor (F-21, N-10)', () => 
 // ---- A-22 ----------------------------------------------------------------------------------------
 
 describe('A-22 — global administration and weakening gates, including by an approval request (F-12, F-22)', () => {
+  // `set_workspace_config` left this list with #677 B1: the owner's 2026-09-20 rule made the
+  // workspace SETTINGS a leader write, and `acceptance-parity.test.ts` P-45 holds it to the
+  // cockpit's own route. The two workspace folder paths it still refuses are checked in the case.
   const GLOBAL_ADMIN = [
-    'set_workspace_config',
     'set_workspace_ui_state',
     'create_account',
     'select_account',
@@ -898,6 +900,13 @@ describe('A-22 — global administration and weakening gates, including by an ap
       expect(seen.dispatched, `${action} dispatched nothing`).toEqual([]);
       assertIsolated(w, seen, { echoes: [action] });
     }
+    // The settings write exists now, and the two workspace folder paths are still not keys of it:
+    // refused as arguments, before anything is dispatched, with the workspace file untouched.
+    const roots = await w.observe(() =>
+      w.call('a', 'project_config', { action: 'set_workspace_config', operationId: 'op-a22-roots-0001', workspaceConfig: { browseRoot: '/tmp', projectsDir: '/tmp' } }),
+    );
+    expect(roots.response.isError, 'workspace roots').toBe(true);
+    expect(roots.dispatched, 'workspace roots dispatched nothing').toEqual([]);
     expect(await (await w.cockpit('/api/v1/workspace/config')).text()).toBe(workspaceBefore);
     // The only change in A is the door's own audit record of each refused call (D-06 § 10).
     expect(snapshotChanges(beforeA, w.snapshot('a')).filter((line) => !line.includes('/audit.ndjson') && line !== '~ audit')).toEqual([]);

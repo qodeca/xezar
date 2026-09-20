@@ -143,7 +143,10 @@ export const AUDIT_ACTIONS: readonly AuditActionRow[] = [
   { id: 'project.registry.add', family: 'F9', mcp: ['project_config:add_project'], ui: [post('/projects')] },
   { id: 'project.registry.clone', family: 'F9', mcp: ['project_config:clone_project'], ui: [post('/projects/checkout')] },
   { id: 'project.registry.remove', family: 'F9', mcp: ['project_config:remove_project'], ui: [del('/projects/:projectId')] },
-  // F10 workspace — MCP can only refuse these (§ 6.2)
+  // F10 workspace — MCP refuses these (§ 6.2), except the settings write: the owner's rule of
+  // 2026-09-20 (#677 B1) made `workspace.config.set` a real MCP mutation through the same route.
+  // Its record needed no change — the row already named both doors, and the action was never in
+  // `AUDIT_MCP_READS` — which is why a reversal here is one row of code and no new record shape.
   { id: 'workspace.config.set', family: 'F10', mcp: ['project_config:set_workspace_config'], ui: [put('/workspace/config')] },
   {
     id: 'workspace.uiState.set',

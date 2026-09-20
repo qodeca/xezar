@@ -5,7 +5,7 @@ import type { Hono } from 'hono';
 import type { InferRequestType } from 'hono/client';
 import { hc } from 'hono/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { setConfigInputSchema, updateProjectInputSchema } from '@qodeca/xezar-contract';
+import { setConfigInputSchema, setWorkspaceConfigInputSchema, updateProjectInputSchema } from '@qodeca/xezar-contract';
 import type { AppType } from '../../server/app-type.ts';
 import { apiRequest } from '../../server/loopback-request.testkit.ts';
 import { createApp } from '../../server/server.ts';
@@ -35,7 +35,7 @@ import { ACTION_FIELDS, PROJECT_CONFIG_ACTIONS, projectConfigInputSchema } from 
  */
 describe('every MCP write action accepts what its route accepts', () => {
   /** A `z.optional(z.object(…))` argument of the tool's input schema, as its object shape. */
-  const mcpArgumentKeys = (field: 'config' | 'project'): string[] =>
+  const mcpArgumentKeys = (field: 'config' | 'project' | 'workspaceConfig'): string[] =>
     Object.keys(projectConfigInputSchema.shape[field].unwrap().shape).sort();
 
   /**
@@ -67,6 +67,28 @@ describe('every MCP write action accepts what its route accepts', () => {
       omittedFromMcp: {
         maxParallel:
           "inert in the repo config (§ 4.14): the scheduler reads the registry entry, which is `set_project`. Accepting it here would report a change that never happens.",
+      },
+    },
+    {
+      action: 'set_workspace_config',
+      argument: 'workspaceConfig',
+      route: 'PUT /api/v1/workspace/config',
+      schema: setWorkspaceConfigInputSchema,
+      routeKeys: [
+        'agentDefaults',
+        'agentEnvPassthrough',
+        'browseRoot',
+        'composerDefaults',
+        'followups',
+        'projectsDir',
+        'resources',
+        'skillsAutoUpdate',
+      ],
+      omittedFromMcp: {
+        browseRoot:
+          'the confinement root of the cockpit’s own folder browser: a filesystem boundary the person at the keyboard set, not a limit. Slice B2 (#677) decides it on its own review.',
+        projectsDir:
+          'where a GUI clone lands, and the route’s writability probe `mkdir -p`s it, so writing it creates a directory. Slice B2 (#677) decides it on its own review.',
       },
     },
     {
@@ -196,6 +218,19 @@ describe('every MCP write action accepts what its route accepts', () => {
 
       const answer = (await (await apiRequest(app, '/api/v1/config')).json()) as { maxParallel: number };
       expect(answer.maxParallel).toBe(4);
+    });
+
+    it('applies browseRoot and projectsDir on PUT /workspace/config, the keys set_workspace_config declares as omitted', async () => {
+      const put = await apiRequest(app, '/api/v1/workspace/config', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ browseRoot: repoRoot, projectsDir: join(repoRoot, 'checkouts') }),
+      });
+      expect(put.status, await put.clone().text()).toBe(200);
+
+      const answer = (await (await apiRequest(app, '/api/v1/workspace/config')).json()) as { browseRoot: string; projectsDir: string };
+      expect(answer.browseRoot).toBe(repoRoot);
+      expect(answer.projectsDir).toBe(join(repoRoot, 'checkouts'));
     });
   });
 });
