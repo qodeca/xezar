@@ -91,7 +91,7 @@ More → [Worktrees and git](docs/guide/03-worktrees-and-git.md)
 - [Tasks and runs](docs/guide/02-tasks-and-runs.md) – composer, queue, variants and review.
 - [Worktrees and git](docs/guide/03-worktrees-and-git.md) – branches, retention and diffs.
 
-[Read the complete 16-part user guide](docs/guide/README.md) for backends, workflows, settings, configuration, hosting and troubleshooting.
+[Read the complete 17-part user guide](docs/guide/README.md) for backends, workflows, settings, configuration, hosting and troubleshooting.
 
 ## Quick start
 
@@ -118,7 +118,7 @@ More → [Getting started](docs/guide/01-getting-started.md)
 | **Claude Code** (default) | Headless `stream-json` mode | `allowedTools` (`bashAllowlist` scopes `Bash`); unapproved tools denied without prompting; the default list includes unrestricted `Bash` |
 | **Codex** | `codex app-server`, JSON-RPC over stdio | Ignores `allowedTools`; `danger-full-access` with no approvals (`XEZ_CODEX_NETWORK=0` for the network-blocked sandbox) |
 | **OpenCode** _(experimental)_ | `opencode serve`, HTTP + SSE | Ignores `allowedTools`; permission asks are answered fail-closed: a directory ask inside the run's own directories is allowed once, every other ask is denied |
-| **pi** _(experimental)_ | `--mode rpc` over JSONL | `allowedTools` mapped onto pi's `--tools`; a `bashAllowlist` disables `Bash` |
+| **pi** | `--mode rpc` over JSONL | `allowedTools` mapped onto pi's `--tools`; a `bashAllowlist` disables `Bash` |
 
 Backends are detected locally, with Claude offered when none is found. Model choices come from
 local discovery and configuration, with fallback choices when discovery is unavailable.
@@ -181,7 +181,6 @@ setup. See [single-project mode](docs/guide/09-projects.md#to-keep-a-projects-xe
 | `XEZ_QUIET=1` | Warnings and errors only (exact `1`; `--quiet` is the flag). The cockpit URL, each task's final status and every bind or exposure failure are still printed — quiet can never hide a failure. It raises the threshold but never lowers one you set higher. |
 | `VITE_XEZ_API_BASE=http://localhost:4321` | Build-time API origin for a separately hosted cockpit; default is same-origin. A served `xez-api-base` meta tag overrides it. |
 | `XEZ_REMOTE=1` | Hide conveniences that open files or applications on the host machine. Off by default. |
-| `XEZ_API_PORT=4321` | Pin the API port used by the development launcher; otherwise it discovers a free port. |
 | `XEZ_CODEX_NETWORK=0` | Use Codex's network-blocked workspace-write sandbox; default is full access. |
 | `XEZ_HOME=/path/to/state` | Move global state and the project registry from `~/.xezar`; empty uses the default. |
 
