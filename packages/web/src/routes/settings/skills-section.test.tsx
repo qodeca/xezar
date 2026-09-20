@@ -51,6 +51,7 @@ function serve(
     checkedAt: null,
     updatedAt: null,
     needsUpgradeNotes: false,
+    catalog: [],
     scopes: [
       {
         scope: 'project',
@@ -164,6 +165,86 @@ describe('Global settings → Skills', () => {
     await waitFor(() => expect((reset as HTMLButtonElement).disabled).toBe(false))
     fireEvent.click(reset)
     await waitFor(() => expect(puts().at(-1)?.body).toEqual({ skillsAutoUpdate: null }))
+  })
+
+  // ---- the skill catalog version block (#744) ----
+
+  const INSTALLED = { commit: 'c'.repeat(40), shortCommit: 'c30432d', date: '2026-09-19', tag: 'v1.0.0' }
+  const AVAILABLE = { commit: 'd'.repeat(40), shortCommit: 'de525c6', date: '2026-09-20', tag: 'v1.1.0' }
+
+  it('shows the served catalog version, the version last seen upstream and the state', async () => {
+    serve(
+      {},
+      {
+        catalog: [
+          {
+            repo: 'qodeca/xezar-skills',
+            ref: 'main',
+            state: 'update-available',
+            installed: INSTALLED,
+            available: AVAILABLE,
+            fetchedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+          },
+        ],
+      },
+    )
+    renderSkills()
+    expect(await screen.findByText('Skill catalog')).toBeTruthy()
+    expect(screen.getByText('v1.0.0 (c30432d, 2026-09-19)')).toBeTruthy()
+    expect(screen.getByText('v1.1.0 (de525c6, 2026-09-20)')).toBeTruthy()
+    expect(screen.getByText('Update available')).toBeTruthy()
+    expect(screen.getByText('Tracking qodeca/xezar-skills main — last checked 2h ago.')).toBeTruthy()
+  })
+
+  it('reads up to date when both halves name the same commit, and drops an absent tag', async () => {
+    const untagged = { commit: 'e'.repeat(40), shortCommit: 'e1e1e1e', date: '2026-09-20' }
+    serve(
+      {},
+      {
+        catalog: [
+          {
+            repo: 'qodeca/xezar-skills',
+            ref: 'main',
+            state: 'up-to-date',
+            installed: untagged,
+            available: untagged,
+            fetchedAt: new Date(Date.now() - 4 * 60 * 1000).toISOString(),
+          },
+        ],
+      },
+    )
+    renderSkills()
+    expect(await screen.findByText('Up to date')).toBeTruthy()
+    // No tag: the sha carries the version on its own, never an empty pair of brackets.
+    expect(screen.getAllByText('e1e1e1e (2026-09-20)').length).toBe(2)
+  })
+
+  it('renders the cold-cache unknown state quietly, and leaves the npx status line untouched', async () => {
+    serve(
+      {},
+      {
+        catalog: [{ repo: 'qodeca/xezar-skills', ref: 'main', state: 'unknown', fetchedAt: null }],
+      },
+    )
+    renderSkills()
+    expect(await screen.findByText('Version unknown')).toBeTruthy()
+    expect(
+      screen.getByText(
+        'xezar has not read this catalog clone yet — it appears once the skills are first loaded.',
+      ),
+    ).toBeTruthy()
+    // Both missing halves read as an em dash, never as "undefined".
+    expect(screen.getAllByText('—').length).toBe(2)
+    // Not an error: the danger empty state belongs to a failed config load only.
+    expect(screen.queryByText('Could not load skill settings')).toBeNull()
+    // Guard (passes with and without the change): the existing line keeps its exact words.
+    expect(screen.getByText('No tracked xezar-skills installation found.')).toBeTruthy()
+  })
+
+  it('says so when no team skill source is configured', async () => {
+    serve()
+    renderSkills()
+    expect(await screen.findByText('No team skill source is configured.')).toBeTruthy()
   })
 
   it('degrades to an unavailable status without disabling the preference', async () => {

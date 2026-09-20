@@ -1352,9 +1352,15 @@ export function useSkillsUpdate(projectId: string, enabled = true) {
     // response converges. Checks may legitimately take tens of seconds, so a one-minute cadence
     // avoids repeatedly challenging authenticated remote sessions while still converging after
     // a long-running operation. The initial mount remains the session's one automatic check.
+    // The catalog block (#744, OQ-2) rides the same cadence while — and only while — a source
+    // still reads `unknown`: on a cold boot the bare clone races the first page load, so the
+    // first answer is `unknown` and would otherwise sit there until a manual reload. It is one
+    // predicate on an existing hook, and it stops as soon as a version is known.
     refetchInterval: (query) => {
-      const status = query.state.data?.status
-      return status === undefined || status === 'idle' || status === 'checking' || status === 'updating'
+      const state = query.state.data
+      const status = state?.status
+      const catalogUnknown = state?.catalog?.some((entry) => entry.state === 'unknown') ?? false
+      return status === undefined || status === 'idle' || status === 'checking' || status === 'updating' || catalogUnknown
         ? 60_000
         : false
     },

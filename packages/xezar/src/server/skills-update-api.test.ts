@@ -1,10 +1,13 @@
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RunStore } from '../runs/store.ts';
+import { ensureBareClone } from '../skills-remote.ts';
 import { SkillsUpdateConflictError, SkillsUpdateService } from '../skills-update.ts';
+import { projectStateLayout, setActiveStateLayout } from '../state-layout.ts';
 import { mergeWriteWorkspaceConfig } from '../workspace/config.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
@@ -26,6 +29,10 @@ describe('workspace skills update API', () => {
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-skills-update-repo-'));
     missingRoot = join(home, 'gone');
     mkdirSync(join(repoRoot, '.local/xezar'), { recursive: true });
+    // No team-skills source: the catalog block (#744) is empty here, and no case in this block
+    // reads the machine's shared skills cache.
+    mkdirSync(join(repoRoot, '.xezar'), { recursive: true });
+    writeFileSync(join(repoRoot, '.xezar', 'config.json'), JSON.stringify({ skillsRepos: [] }), 'utf8');
     store = RunStore.open(join(repoRoot, '.local/xezar'));
     await mergeWriteWorkspaceConfig((config) => {
       config.projects = [
@@ -122,9 +129,88 @@ describe('workspace skills update API', () => {
     expect(await response.json()).toMatchObject({ autoUpdateEnabled: false, inherited: false });
   });
 
+  it('carries an empty catalog when the project configures no team skills source', async () => {
+    const response = await apiRequest(app, '/api/v1/workspace/skills-update?projectId=repo');
+    expect(await response.json()).toMatchObject({ status: 'idle', catalog: [] });
+  });
+
   it('keeps apply behind the origin/CSRF guard', async () => {
     const update = vi.spyOn(service, 'update');
     const response = await app.request('/api/v1/workspace/skills-update/apply', { method: 'POST', headers: { host: '127.0.0.1:4321', origin: 'https://evil.test', 'content-type': 'application/json' }, body: JSON.stringify({ projectId: 'repo' }) });
     expect(response.status).toBe(403); expect(update).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The skill-catalog version on the wire (#744). Its own block because it pins the SINGLE-PROJECT
+ * state layout: that is what puts the bare clone inside a temp folder instead of the machine's
+ * shared `~/.cache/xez`, and it is also AC-13 — the mode reads the project-local cache.
+ */
+describe('workspace skills update API — skill catalog version', () => {
+  const REAL_GIT = execFileSync('which', ['git'], { encoding: 'utf8' }).trim();
+  const GIT_ENV = {
+    ...process.env,
+    GIT_CONFIG_GLOBAL: '/dev/null',
+    GIT_CONFIG_SYSTEM: '/dev/null',
+    GIT_AUTHOR_NAME: 'Fixture',
+    GIT_AUTHOR_EMAIL: 'fixture@example.test',
+    GIT_COMMITTER_NAME: 'Fixture',
+    GIT_COMMITTER_EMAIL: 'fixture@example.test',
+    GIT_AUTHOR_DATE: '2026-01-02T10:00:00+01:00',
+    GIT_COMMITTER_DATE: '2026-01-02T10:00:00+01:00',
+  };
+  let project: string;
+  let origin: string;
+  let store: RunStore;
+  let app: Hono;
+
+  beforeEach(() => {
+    project = mkdtempSync(join(tmpdir(), 'xez-catalog-route-project-'));
+    origin = mkdtempSync(join(tmpdir(), 'xez-catalog-route-origin-'));
+    setActiveStateLayout(projectStateLayout(project));
+    mkdirSync(join(project, '.local/xezar'), { recursive: true });
+    mkdirSync(join(project, '.xezar'), { recursive: true });
+    writeFileSync(
+      join(project, '.xezar', 'config.json'),
+      JSON.stringify({ skillsRepos: [{ repo: origin, ref: 'main' }] }),
+      'utf8',
+    );
+    mkdirSync(join(origin, 'demo'), { recursive: true });
+    writeFileSync(join(origin, 'demo', 'SKILL.md'), '# demo\n', 'utf8');
+    for (const args of [['init', '-b', 'main'], ['add', '-A'], ['commit', '-m', 'fixture'], ['tag', 'v1.2.3']]) {
+      execFileSync(REAL_GIT, args, { cwd: origin, stdio: 'ignore', env: GIT_ENV });
+    }
+    store = RunStore.open(join(project, '.local/xezar'));
+    app = createApp({ repoRoot: project, bootProjectId: 'repo', store, manager: {} as RunManager,
+      version: 'test', skillsUpdate: new SkillsUpdateService({ homeDir: project, resolveNpx: async () => null }) });
+  });
+
+  afterEach(() => {
+    setActiveStateLayout(null);
+    store.flush();
+    rmSync(project, { recursive: true, force: true });
+    rmSync(origin, { recursive: true, force: true });
+  });
+
+  it('answers 200 with an unknown catalog on a cold cache, and the rest of the payload intact (AC-05)', async () => {
+    const response = await apiRequest(app, '/api/v1/workspace/skills-update?projectId=default');
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(body.catalog).toEqual([{ repo: origin, ref: 'main', state: 'unknown', fetchedAt: null }]);
+    // Not a replacement for the existing payload — the `npx skills` half is untouched.
+    expect(body).toMatchObject({ status: 'idle', autoUpdateEnabled: true, inherited: true });
+    expect(Array.isArray(body.scopes)).toBe(true);
+  });
+
+  it('serves the installed and available version of the project-local clone (AC-01, AC-13)', async () => {
+    await ensureBareClone(origin);
+    const response = await apiRequest(app, '/api/v1/workspace/skills-update?projectId=default');
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { catalog: Array<Record<string, { tag?: string; date?: string }>> };
+    expect(body.catalog[0]).toMatchObject({
+      state: 'up-to-date',
+      installed: { tag: 'v1.2.3', date: '2026-01-02' },
+      available: { tag: 'v1.2.3', date: '2026-01-02' },
+    });
   });
 });
