@@ -6,7 +6,16 @@ import type { InferRequestType } from 'hono/client';
 import { hc } from 'hono/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { z } from 'zod';
-import type { retryProviderInputSchema, setConfigInputSchema, setProviderEnabledInputSchema, setWorkspaceConfigInputSchema } from '@qodeca/xezar-contract';
+import type {
+  createAgentProfileInputSchema,
+  openAgentAccountFileInputSchema,
+  retryProviderInputSchema,
+  selectAgentProfileInputSchema,
+  setConfigInputSchema,
+  setProviderEnabledInputSchema,
+  setWorkspaceConfigInputSchema,
+  updateAgentProfileInputSchema,
+} from '@qodeca/xezar-contract';
 import { RunStore } from '../runs/store.ts';
 import { WorkspaceSemaphore } from '../workspace/semaphore.ts';
 import type { RunManager } from '../workflows/run.ts';
@@ -61,6 +70,27 @@ describe('the settings routes validate with the CONTRACT request schemas', () =>
   type RetryProviderBody = InferRequestType<(typeof client.api.v1.providers)[':provider']['retry']['$post']>['json'];
   type RetryProviderSchema = z.input<typeof retryProviderInputSchema>;
   type _RetryProviderExact = Assert<Mutual<RetryProviderSchema, RetryProviderBody>>;
+
+  // ---- the four agent-account bodies (#677 B5) -----------------------------------------------
+  // All four moved out of `server.ts` when the MCP door started writing this family. `create` and
+  // `update` are the two a leader sends key-for-key, `selection` is the one whose `projectId` the
+  // door supplies, and `open` is here even though the MCP still refuses it: its route is the same
+  // family, and a schema left behind in `server.ts` is the second copy this file exists to stop.
+  type CreateAgentProfileBody = InferRequestType<typeof client.api.v1.workspace['agent-profiles']['$post']>['json'];
+  type CreateAgentProfileSchema = z.input<typeof createAgentProfileInputSchema>;
+  type _CreateAgentProfileExact = Assert<Mutual<CreateAgentProfileSchema, CreateAgentProfileBody>>;
+
+  type UpdateAgentProfileBody = InferRequestType<(typeof client.api.v1.workspace['agent-profiles'])[':id']['$patch']>['json'];
+  type UpdateAgentProfileSchema = z.input<typeof updateAgentProfileInputSchema>;
+  type _UpdateAgentProfileExact = Assert<Mutual<UpdateAgentProfileSchema, UpdateAgentProfileBody>>;
+
+  type SelectAgentProfileBody = InferRequestType<typeof client.api.v1.workspace['agent-profiles']['selection']['$put']>['json'];
+  type SelectAgentProfileSchema = z.input<typeof selectAgentProfileInputSchema>;
+  type _SelectAgentProfileExact = Assert<Mutual<SelectAgentProfileSchema, SelectAgentProfileBody>>;
+
+  type OpenAgentAccountFileBody = InferRequestType<(typeof client.api.v1.workspace['agent-profiles'])[':id']['open']['$post']>['json'];
+  type OpenAgentAccountFileSchema = z.input<typeof openAgentAccountFileInputSchema>;
+  type _OpenAgentAccountFileExact = Assert<Mutual<OpenAgentAccountFileSchema, OpenAgentAccountFileBody>>;
 
   const savedHome = process.env.XEZ_HOME;
   let home: string;

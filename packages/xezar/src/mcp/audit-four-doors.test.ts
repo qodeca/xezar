@@ -409,6 +409,65 @@ describe('the saved four-door audit harness (#306 part 2)', () => {
     await once('ui', { family: 'F10', action: 'account.update', outcome: 'refused', reason: 'http_404' }, () =>
       http('PATCH', '/workspace/agent-profiles/no-such-account', { label: 'x' }));
 
+    // `provider.retry` was the one F10 row no case reached through EITHER door (#760 review,
+    // Minor 1). Both doors now: the cockpit's is an incident id the service does not hold, which
+    // `clearRuntimeAuthFailure` refuses with the route's own 409, and the leader's is the
+    // argument-level refusal it answers when there is no incident to clear at all — it never
+    // names one, because F-03 keeps an incident id out of every answer it gets.
+    await once('ui', { family: 'F10', action: 'provider.retry', outcome: 'refused', reason: 'http_409' }, () =>
+      http('POST', '/providers/claude/retry', { authFailureId: 'incident-the-card-remembered' }));
+    const retried = records(c.dataDir).filter((row) => row.action === 'provider.retry');
+    expect(retried[0]!.fieldNames, 'the cockpit door names the field').toEqual(['authFailureId']);
+    expect(JSON.stringify(retried[0]), 'and never the incident id itself').not.toContain('incident-the-card-remembered');
+    await once('mcp', { family: 'F10', action: 'provider.retry', outcome: 'refused', reason: 'http_400' }, () =>
+      mcp('project_config', { action: 'retry_provider', operationId: operationId(), provider: 'claude' }));
+
+    // THE AGENT ACCOUNTS (#677 B5), every row through BOTH doors. The leader adds, selects,
+    // renames and removes an account through the cockpit's own routes; the person does the same
+    // through the routes themselves; one action id each, from the same inventory row.
+    const leaderAccountDir = join(c.root, 'LeaderAccountHome');
+    await once('mcp', { family: 'F10', action: 'account.create', outcome: 'applied' }, () =>
+      mcp('project_config', { action: 'create_account', operationId: operationId(), account: { provider: 'claude', configDir: leaderAccountDir } }));
+    // Read back through the listing — a GET, so it adds no record and the "exactly one" rule above
+    // still means what it says.
+    const storedAccountId = async (): Promise<string> => {
+      const listing = JSON.parse((await http('GET', '/workspace/agent-profiles')).body) as { profiles: Array<{ id: string; isDefault: boolean }> };
+      const stored = listing.profiles.filter((row) => !row.isDefault);
+      expect(stored, 'exactly one stored account at a time in this case').toHaveLength(1);
+      return stored[0]!.id;
+    };
+    const leaderAccount = await storedAccountId();
+    await once('mcp', { family: 'F10', action: 'account.select', outcome: 'applied' }, () =>
+      mcp('project_config', { action: 'select_account', operationId: operationId(), provider: 'claude', accountId: leaderAccount }));
+    await once('mcp', { family: 'F10', action: 'account.update', outcome: 'applied' }, () =>
+      mcp('project_config', { action: 'update_account', operationId: operationId(), accountId: leaderAccount, accountUpdate: { label: 'Renamed by the leader' } }));
+    await once('mcp', { family: 'F10', action: 'account.remove', outcome: 'applied' }, () =>
+      mcp('project_config', { action: 'remove_account', operationId: operationId(), accountId: leaderAccount }));
+
+    const personAccountDir = join(c.root, 'PersonAccountHome');
+    await once('ui', { family: 'F10', action: 'account.create', outcome: 'applied' }, () =>
+      http('POST', '/workspace/agent-profiles', { provider: 'claude', configDir: personAccountDir }));
+    const personAccount = await storedAccountId();
+    await once('ui', { family: 'F10', action: 'account.select', outcome: 'applied' }, () =>
+      http('PUT', '/workspace/agent-profiles/selection', { projectId: c.id, provider: 'claude', profileId: personAccount }));
+    await once('ui', { family: 'F10', action: 'account.remove', outcome: 'applied' }, () =>
+      http('DELETE', `/workspace/agent-profiles/${personAccount}`));
+
+    // The same difference between the doors as `provider.setEnabled` above, on a body whose value
+    // is a HOST PATH: the cockpit's row names `configDir` and the MCP's row names nothing, and
+    // neither carries the path. Drop `fieldNames: true` from `ui.route('account.create', …)` and
+    // the first assertion goes red; let either door record its params and the last one does.
+    const createdAccounts = records(c.dataDir).filter((row) => row.action === 'account.create');
+    expect(createdAccounts.map((row) => row.origin)).toEqual(['mcp', 'ui']);
+    expect(createdAccounts[1]!.fieldNames, 'the cockpit door names the fields').toEqual(['configDir', 'provider']);
+    expect(createdAccounts[0], 'the MCP door records no field names').not.toHaveProperty('fieldNames');
+    for (const row of createdAccounts) expect(row.payloadDigest, 'the body is a digest').toMatch(/^[0-9a-f]{64}$/);
+    const accountTrail = readFileSync(join(c.dataDir, AUDIT_TRAIL_FILE), 'utf8');
+    for (const dir of [leaderAccountDir, personAccountDir]) {
+      expect(accountTrail, 'an account folder’s VALUE is never in the audit trail').not.toContain(dir);
+      expect(accountTrail, 'nor its last segment').not.toContain(basename(dir));
+    }
+
     // The matrix itself — every family, both doors, both outcomes where the door can produce them.
     const families: AuditFamily[] = ['F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10'];
     for (const family of families) {

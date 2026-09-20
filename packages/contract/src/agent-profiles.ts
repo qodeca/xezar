@@ -161,7 +161,7 @@ export type AgentProfilesResponse = z.infer<typeof agentProfilesResponseSchema>;
  * as absence. An id that does not exist, or belongs to another provider, is a 400 — never silently
  * degraded, because a typo the route accepted would quietly run the project on the wrong account.
  */
-export const selectAgentProfileInputSchema = z.object({
+export const selectAgentProfileInputSchema = z.strictObject({
   /**
    * Registry slug, or the reserved `default` boot alias. Resolved to a root server-side.
    *
@@ -221,7 +221,7 @@ export type AgentAccountDetailsResponse = z.infer<typeof agentAccountDetailsResp
  * FILE (it would `cd` into it) and any `cli:<runner>` handoff (it would start an agent session
  * inside the config folder). An unknown/undetected target is a 400 too.
  */
-export const openAgentAccountFileInputSchema = z.object({
+export const openAgentAccountFileInputSchema = z.strictObject({
   file: z.string().min(1).max(200),
   target: z.string().min(1).max(64).optional(),
 });
@@ -234,8 +234,16 @@ export const openAgentAccountFileResponseSchema = z.object({
 });
 export type OpenAgentAccountFileResponse = z.infer<typeof openAgentAccountFileResponseSchema>;
 
-/** `POST /api/v1/workspace/agent-profiles` — the id is allocated server-side from the label. */
-export const createAgentProfileInputSchema = z.object({
+/**
+ * `POST /api/v1/workspace/agent-profiles` — the id is allocated server-side from the label.
+ *
+ * STRICT, and validated by the route as middleware since #677 B5: this schema and the twin the
+ * route used to declare in `server.ts` are one definition now, so the MCP door's `create_account`
+ * takes its key set from the same place the route validates against rather than from a hand-copied
+ * list. The bounds mirror `agentProfileSchema` in `src/workspace/config.ts` exactly, so a value
+ * this accepts can never be degraded away by the next load's `.catch`.
+ */
+export const createAgentProfileInputSchema = z.strictObject({
   provider: providerIdSchema,
   label: z.string().trim().max(200).optional(),
   /** Stored as written; validated absolute after `~` expansion, server-side. */
@@ -253,11 +261,20 @@ export type CreateAgentProfileInput = z.infer<typeof createAgentProfileInputSche
 export const agentProfileResponseSchema = z.object({ profile: agentProfileSchema });
 export type AgentProfileResponse = z.infer<typeof agentProfileResponseSchema>;
 
-/** `PATCH /api/v1/workspace/agent-profiles/:id` — partial; absent keys stay untouched. */
-export const updateAgentProfileInputSchema = z.object({
-  label: z.string().trim().max(200).optional(),
-  configDir: z.string().trim().min(1).max(4096).optional(),
-});
+/**
+ * `PATCH /api/v1/workspace/agent-profiles/:id` — partial; absent keys stay untouched.
+ *
+ * The refinement travelled WITH the schema when #677 B5 moved it out of `server.ts`: an empty body
+ * is a 400 (`send label or configDir`) rather than a 200 for a change that never happened, and it
+ * is behaviour a TYPE cannot carry, so it lives here beside the keys it guards. `.shape` survives
+ * a zod 4 refinement, which is what lets the request-parity guard still read the key set.
+ */
+export const updateAgentProfileInputSchema = z
+  .strictObject({
+    label: z.string().trim().max(200).optional(),
+    configDir: z.string().trim().min(1).max(4096).optional(),
+  })
+  .refine((value) => value.label !== undefined || value.configDir !== undefined, 'send label or configDir');
 export type UpdateAgentProfileInput = z.infer<typeof updateAgentProfileInputSchema>;
 
 /** `DELETE /api/v1/workspace/agent-profiles/:id` — deregistration only; the directory is never

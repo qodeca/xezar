@@ -48,13 +48,17 @@ export { isSafeSessionId, resumeCommand };
 // schema this route validates with is the same one the client compiles against.
 import {
   attachmentInputSchema,
+  createAgentProfileInputSchema,
   MODEL_DISCOVERY_RUNNERS,
   modelDiscoveryRunnerSchema,
+  openAgentAccountFileInputSchema,
   openProjectInSchema,
   retryProviderInputSchema,
+  selectAgentProfileInputSchema,
   setConfigInputSchema,
   setProviderEnabledInputSchema,
   setWorkspaceConfigInputSchema,
+  updateAgentProfileInputSchema,
   updateProjectInputSchema,
   type WorkspaceConfigResponse,
 } from '@qodeca/xezar-contract';
@@ -374,37 +378,16 @@ const providerConnectSchema = z.object({
   profileId: z.string().max(64).optional(),
 }).strict();
 
-/** Agent-account bodies (spec 2026-07-29-agent-profiles). Bounds mirror `agentProfileSchema` in
- *  src/workspace/config.ts exactly, so a value these accept can never be degraded away by the
- *  next load's `.catch`. The id is allocated server-side and is never a request field. */
-const createAgentProfileSchema = z.object({
-  provider: z.enum(PROVIDER_IDS),
-  label: z.string().trim().max(200).optional(),
-  configDir: z.string().trim().min(1).max(4096),
-}).strict();
-
-/** `POST …/agent-profiles/:id/open` — a catalog id (or `folder`) plus an optional open target. */
-const openAgentAccountFileSchema = z.object({
-  file: z.string().min(1).max(200),
-  target: z.string().min(1).max(64).optional(),
-}).strict();
-
-const updateAgentProfileSchema = z.object({
-  label: z.string().trim().max(200).optional(),
-  configDir: z.string().trim().min(1).max(4096).optional(),
-}).strict().refine(
-  (value) => value.label !== undefined || value.configDir !== undefined,
-  'send label or configDir',
-);
-
-/** `PUT …/agent-profiles/selection` — which account a project uses for one provider. `null`
- *  clears it back to the discovered account. */
-const selectAgentProfileSchema = z.object({
-  /** `null` targets the machine-wide default rather than one repo. */
-  projectId: z.string().min(1).max(64).nullable(),
-  provider: z.enum(PROVIDER_IDS),
-  profileId: z.string().max(64).nullable(),
-}).strict();
+/**
+ * Agent-account bodies (spec 2026-07-29-agent-profiles) — declared ONCE, in
+ * `packages/contract/src/agent-profiles.ts`, since #677 B5 made this family's writes an MCP door
+ * too. The four schemas used to be declared here as strict twins of the contract's own; the twins
+ * are gone rather than edited, because the MCP door reads the contract schema for its key set and
+ * a second copy is what AGENTS.md § The HTTP API forbids. Bounds and the `update` refinement
+ * travelled unchanged; `contract-parity.requests.test.ts` pins each route against its schema in
+ * both directions. The routes below validate with the contract names themselves — there is no
+ * local alias to drift.
+ */
 
 /** The hosted-mode refusal, worded like the agent-config one it mirrors. */
 const hostedProfileRefusal = {
@@ -2120,7 +2103,11 @@ export function createApp(deps: ServerDeps) {
       });
     })
 
-    .post('/workspace/agent-profiles', localHandoffRoute, jsonZodValidator(() => createAgentProfileSchema), ui.route('account.create'), async (c) => {
+    .post('/workspace/agent-profiles', localHandoffRoute, jsonZodValidator(() => createAgentProfileInputSchema),
+      // `fieldNames: true` like every other body-carrying write of this door (#677 B5): the
+      // cockpit record names the body's keys — `configDir` the key, never the path it holds.
+      ui.route('account.create', { fieldNames: true }),
+      async (c) => {
       if (!capabilities().localHandoff) return c.json(hostedProfileRefusal, 409);
       const { provider, configDir, label } = c.req.valid('json');
       if (!supportsProfiles(provider)) {
@@ -2176,7 +2163,7 @@ export function createApp(deps: ServerDeps) {
       '/workspace/agent-profiles/:id',
       localHandoffRoute,
       paramZodValidator(z.object({ id: z.string() })),
-      jsonZodValidator(() => updateAgentProfileSchema),
+      jsonZodValidator(() => updateAgentProfileInputSchema),
       ui.route('account.update', { resource: { kind: 'account', param: 'id' }, fieldNames: true }),
       async (c) => {
         if (!capabilities().localHandoff) return c.json(hostedProfileRefusal, 409);
@@ -2302,7 +2289,7 @@ export function createApp(deps: ServerDeps) {
       '/workspace/agent-profiles/:id/open',
       localHandoffRoute,
       paramZodValidator(z.object({ id: z.string() })),
-      jsonZodValidator(() => openAgentAccountFileSchema),
+      jsonZodValidator(() => openAgentAccountFileInputSchema),
       ui.route('account.openFile', { resource: { kind: 'account', param: 'id' } }),
       async (c) => {
         if (!capabilities().localHandoff) return c.json(hostedProfileRefusal, 409);
@@ -2355,8 +2342,10 @@ export function createApp(deps: ServerDeps) {
     .put(
       '/workspace/agent-profiles/selection',
       localHandoffRoute,
-      jsonZodValidator(() => selectAgentProfileSchema),
-      ui.route('account.select'),
+      jsonZodValidator(() => selectAgentProfileInputSchema),
+      // The field NAMES only (#677 B5): which account a project runs under is a choice about
+      // whose quota is spent, and the record says a selection was written without naming the id.
+      ui.route('account.select', { fieldNames: true }),
       async (c) => {
         if (!capabilities().localHandoff) return c.json(hostedProfileRefusal, 409);
         const { projectId, provider, profileId } = c.req.valid('json');

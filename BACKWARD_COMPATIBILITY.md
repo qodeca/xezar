@@ -1208,8 +1208,9 @@ REFUSE: both answered `Refused (workspace-wide setting)` and dispatched nothing.
 - **The incident id is withheld in BOTH directions.** `retry_provider` takes no `authFailureId`
   argument: F-03 keeps that id out of every answer a leader gets, so it could never name one. The
   tool reads the CURRENT id from `GET /api/v1/providers/status` inside the handler and hands it to
-  the route, which still accepts only the incident the caller observed — a rejection arriving
-  between the read and the write is answered with the route's own 409, unrewritten. No answer of
+  the route. That does mean a leader can clear an incident it never saw (#760 review, Minor 2);
+  what the route's guard still protects is a rejection arriving BETWEEN the read and the write,
+  which is a different id and is answered with the route's own 409, unrewritten. No answer of
   either action, or of `get_capabilities`, carries an `authFailureId` or a `profileId`.
 - **What a reader could notice**: the audit trail can now hold `provider.setEnabled` and
   `provider.retry` rows with origin `mcp`. Both rows already existed for the cockpit door. The MCP
@@ -1228,3 +1229,85 @@ REFUSE: both answered `Refused (workspace-wide setting)` and dispatched nothing.
 - **The record of the old decision is kept, not deleted**: D-03-2 and the I-115 ruling stay in
   `docs/features/mcp-server/mcp-settings-classification.md` and
   `docs/features/mcp-server/mcp-ui-action-inventory.md` verbatim, beside the new one, dated.
+
+## The MCP `project_config` tool administers agent accounts (#677 wave 2 B5) — deliberate, 0.17.0
+
+The third documented product boundary of this wave, reversed by the owner's decision of 2026-09-20
+07:41 on #677: agent accounts are "**Writes and identity read**". Until 0.17.0 the actions
+`create_account`, `update_account`, `remove_account`, `select_account` and `check_account_status`
+existed only to REFUSE (`Refused (global agent accounts)`), and dispatched nothing.
+
+- **Changed**: all five are real now, through the cockpit's own `workspace/agent-profiles` family
+  and nothing else — `POST`, `PATCH …/:id`, `DELETE …/:id`, `PUT …/selection` and
+  `GET …/:id/status`. Each keeps the route's own validators, its duplicate-folder 409, its 404 for
+  an unknown id, its atomic write of `~/.xezar/agent-accounts.json` and its reference scrub on
+  delete. The accounts file is **machine-wide**: an account a leader adds is an account every
+  project on that machine can be pointed at. That exposure is the decision, not an oversight.
+- **`configDir` is accepted with the route's existing bounds and no new validation.** An account's
+  folder becomes an agent CLI's whole home, and a home can hold settings and hooks that run when
+  the next task starts that agent — so writing one is, in effect, choosing which file tree gets to
+  run code. Nothing validates that a folder is a sane agent home (the route never did, and this
+  door deliberately adds no second opinion). The mitigation that DOES exist is hosted mode, below.
+- **Narrowed at the leader's door, on purpose**: `select_account` writes THIS project's selection
+  only. The route takes a `projectId` whose `null` writes the machine-wide default; a leader has
+  no project id argument anywhere (D-01 § 1.5), so the bound project's id is supplied and the
+  machine-wide default stays person-only. The answer is narrowed to this project's own selection
+  for the same reason — the route's `selections` map is keyed by every repo root on the machine.
+  The account row a write echoes back is narrowed too: no expanded `path`, no `files`, no `status`.
+- **Unchanged**: nothing is removed, and a leader that never calls these actions behaves exactly as
+  before. `open_account_file` is still refused, with boundary `host-process` — it hands a path to
+  an application on the person's desktop — and so is `connect_provider`. `get_account` is
+  unchanged, including its rule that a label which looks like an email is withheld.
+- **Hosted mode refuses ALL of it, through both doors.** Every mutating verb of the agent-profiles
+  family, and both of its per-account GETs, sit behind `localHandoffRoute` and answer 409 when
+  `capabilities().localHandoff` is false. That is the opposite of the workspace-settings and
+  provider writes above, and deliberately: this family names host paths and account identity. A
+  test pins the 409 for each of the five writes and both reads, so removing one would be a
+  visible, named break.
+- **What a reader could notice**: the audit trail can now hold `account.create`, `account.update`,
+  `account.remove` and `account.select` rows with origin `mcp`. All four rows already existed for
+  the cockpit door. The MCP record carries the action id, the operation key and a payload DIGEST —
+  never a value, and not the field names either. The cockpit door's records for `POST` and
+  `PUT …/selection` now carry the body's field NAMES as well (`fieldNames: true`, as `PATCH`
+  already did): names only, so `configDir` appears as a key and never as a path.
+- **Four request schemas moved to `packages/contract`** with no change of shape:
+  `createAgentProfileInputSchema`, `updateAgentProfileInputSchema` (refinement included),
+  `selectAgentProfileInputSchema` and `openAgentAccountFileInputSchema` replace the strict twins
+  that were declared in `server.ts`, so each route and the MCP door validate against one
+  definition (AGENTS.md § The HTTP API). The wire contract, the bounds and the 400 messages are
+  identical, and `contract-parity.requests.test.ts` pins all four in both directions.
+- **The record of the old decision is kept, not deleted**: D-122 and the I-122/I-123 rulings stay
+  in `docs/features/mcp-server/mcp-settings-classification.md` and
+  `docs/features/mcp-server/mcp-ui-action-inventory.md` verbatim, beside the new one, dated.
+
+## The MCP `project_config` tool serves account identity (#677 wave 2 B5) — deliberate, 0.17.0
+
+**This entry is separate from the one above because it deletes a NEGATIVE requirement rather than
+widening a positive one**, and because the decision to do so is the owner's alone.
+
+Until 0.17.0, `get_account_details` existed only to refuse, with its own boundary
+(`account-identity`) and its own sentence: *"account identity is never served to a project
+leader."* Requirements F-03 and F-12 said the same, the inventory recorded I-124 as "None, and it
+is a negative requirement", and a test asserted the read was never served. The spec for this
+programme recommended keeping it refused (§ 4 Q3: "it deletes a negative requirement rather than
+widening a positive one"). The owner decided otherwise, in these words, on 2026-09-20 07:41:
+accounts are "**Writes and identity read**".
+
+- **Changed**: `get_account_details` takes `provider` and `accountId` and dispatches
+  `GET /api/v1/workspace/agent-profiles/:id/details`, returning exactly what that route returns —
+  `available`, its `reason` when false, and the labelled `fields` the agent's own auth file carries
+  (email, organisation, plan, depending on the agent). Nothing is added, joined, logged or
+  persisted, and a leader must name one account to get one answer.
+- **Unchanged, and still pinned**: identity reaches NO other answer of this tool. `get_account`
+  still withholds a label that looks like an email, the row a write echoes back is narrowed, and
+  `get_capabilities` and `check_account_status` carry neither an identity nor a `profileId` nor an
+  `authFailureId`. The tests that asserted "never served" were rewritten to the new contract
+  rather than deleted: they now assert that this action serves it and that every other action
+  still does not.
+- **Hosted mode refuses it**, like the rest of the family: the details route is a
+  `localHandoffRoute` and answers 409 when `capabilities().localHandoff` is false.
+- **The boundary identifier `account-identity` is gone from the refusal vocabulary**, together
+  with `agent-accounts`, because no refusal names either any more. Both are recorded in the
+  generated `docs/features/mcp-server/mcp-api.md` as boundaries that left the list, with the date
+  and the reason. A client that matched on either string now sees no refusal carrying it; the
+  shape of a refusal is unchanged.

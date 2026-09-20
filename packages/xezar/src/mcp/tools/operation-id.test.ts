@@ -68,6 +68,10 @@ const NO_OPERATION_ID: Readonly<Record<string, string>> = {
   'project_config:get_capabilities':
     'reads capabilities and provider status. `refresh: true` is not free — `startFreshProbe` (`core/provider-auth.ts`) spawns the vendor CLI probes and replaces `completed`, the process-wide provider-status cache every other reader consults — but it refreshes a CACHE of an external fact, so a repeat re-reads the world rather than doing anything a second time. A receipt is the wrong tool here twice over: it would serve the replay a stale snapshot, which is the one thing `refresh` exists to avoid',
   'project_config:get_account': 'reads the effective account selection',
+  'project_config:check_account_status':
+    'reads ONE account’s sign-in state, and is the account-scoped twin of `get_capabilities` above in every way that matters here (#677 B5): `refresh: true` drops that account’s cached answer and spawns the vendor CLI probe again, which re-reads the world rather than doing anything a second time, and a receipt would serve the replay the stale snapshot `refresh` exists to avoid. The cockpit’s own counterpart is a GET that records no audit row either',
+  'project_config:get_account_details':
+    'reads who one account is signed in as — the identity read the owner opened on 2026-09-20 (#677 B5). It reads the agent’s own auth file through the cockpit’s own route, persists nothing and logs nothing, so a repeat is the same read of the same file',
   'project_config:list_agent_config': 'lists the agent config files',
   'project_config:read_agent_config': 'reads one agent config file',
   'project_config:list_workflows': 'lists the project workflows',

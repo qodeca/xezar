@@ -878,10 +878,13 @@ describe('A-22 — global administration and weakening gates, including by an ap
   // `set_workspace_ui_state` and `import_skills` followed in B3, so the shared PREFERENCE bag is a
   // leader write too; P-46 holds that one to the same route. `set_provider_enabled` and
   // `retry_provider` followed in B4.
+  // The whole ACCOUNT family followed in B5 — the four writes and the identity read — on the
+  // owner's decision of 2026-09-20 07:41 ("Writes and identity read"), which is the one place
+  // this programme deleted a negative requirement rather than widening a positive one.
+  // `open_account_file` takes their place below: it is the account action that still refuses, and
+  // for the same boundary as Connect (an application started on the person's machine).
   const GLOBAL_ADMIN = [
-    'create_account',
-    'select_account',
-    'get_account_details',
+    'open_account_file',
     'apply_skill_updates',
     'add_project',
     'remove_project',

@@ -6,9 +6,11 @@ import type { InferRequestType } from 'hono/client';
 import { hc } from 'hono/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  createAgentProfileInputSchema,
   setConfigInputSchema,
   setWorkspaceConfigInputSchema,
   setWorkspaceUiStateInputSchema,
+  updateAgentProfileInputSchema,
   updateProjectInputSchema,
 } from '@qodeca/xezar-contract';
 import type { AppType } from '../../server/app-type.ts';
@@ -40,7 +42,7 @@ import { ACTION_FIELDS, PROJECT_CONFIG_ACTIONS, projectConfigInputSchema } from 
  */
 describe('every MCP write action accepts what its route accepts', () => {
   /** A `z.optional(z.object(…))` argument of the tool's input schema, as its object shape. */
-  const mcpArgumentKeys = (field: 'config' | 'project' | 'workspaceConfig' | 'uiState'): string[] =>
+  const mcpArgumentKeys = (field: 'config' | 'project' | 'workspaceConfig' | 'uiState' | 'account' | 'accountUpdate'): string[] =>
     Object.keys(projectConfigInputSchema.shape[field].unwrap().shape).sort();
 
   /**
@@ -128,6 +130,27 @@ describe('every MCP write action accepts what its route accepts', () => {
       routeKeys: ['maxParallel', 'tags'],
       omittedFromMcp: {},
     },
+    // The two account bodies (#677 B5). Both routes used to declare a strict twin of the contract
+    // schema in `server.ts`; the twins are gone, so these pairs compare the door against the
+    // schema the route really validates with. Nothing is omitted from either: the owner's
+    // decision of 2026-09-20 07:41 opened the account WRITES whole, `configDir` included, and a
+    // key held back here would be a narrowing nobody asked for.
+    {
+      action: 'create_account',
+      argument: 'account',
+      route: 'POST /api/v1/workspace/agent-profiles',
+      schema: createAgentProfileInputSchema,
+      routeKeys: ['configDir', 'label', 'provider'],
+      omittedFromMcp: {},
+    },
+    {
+      action: 'update_account',
+      argument: 'accountUpdate',
+      route: 'PATCH /api/v1/workspace/agent-profiles/:id',
+      schema: updateAgentProfileInputSchema,
+      routeKeys: ['configDir', 'label'],
+      omittedFromMcp: {},
+    },
   ] as const;
 
   /**
@@ -135,6 +158,10 @@ describe('every MCP write action accepts what its route accepts', () => {
    * Every one of them is a candidate for a later wave; none may sit here without a sentence.
    */
   const UNPAIRED: Record<string, string> = {
+    remove_account:
+      'takes an account id and no body at all: the route is a `DELETE`, and deregistering an account is the whole request. What it writes BESIDES the row — every project selection that pointed at it — is the route’s own atomic scrub, not a key either door sends.',
+    select_account:
+      'sends the route’s body with one key SUPPLIED rather than accepted: `projectId` is the bound project’s (a leader has no project id argument, D-01 § 1.5), so the door’s arguments are the provider and the account id alone and there is no shape to compare key-for-key. The route’s own `selectAgentProfileInputSchema` is what validates the body that reaches it.',
     set_provider_enabled:
       'its body IS the contract schema (`setProviderEnabledInputSchema`, which this PR moved out of `server.ts` for exactly that reason), but it is not a keyed request OBJECT on the tool: the one key travels as the flat `enabled` argument beside the provider id, so there is no shape to compare key-for-key. The route and the door read the same schema, so there are no two copies to drift.',
     retry_provider:

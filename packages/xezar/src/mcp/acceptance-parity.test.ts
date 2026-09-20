@@ -1493,6 +1493,94 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
       },
     );
 
+    parity(
+      'P-48',
+      ['A-09', 'A-08', 'A-05'],
+      ['I-122', 'I-123', 'I-124'],
+      'an agent account is added, selected, probed, read, edited and removed through the cockpit’s own routes, the accounts pane sees every one of them, and the leader’s answer names no other checkout',
+      async () => {
+        const w = world();
+        const accountDir = join(w.a.root, 'second-claude-home');
+        const pane = async () => (await ui(w, '/api/v1/workspace/agent-profiles')).body;
+        expect((await pane()).profiles.filter((row: { isDefault: boolean }) => !row.isDefault), 'no stored account yet').toEqual([]);
+
+        // ---- add, through the route and nothing else -------------------------------------------
+        const added = await w.observe(() =>
+          w.call('a', 'project_config', { action: 'create_account', operationId: op(), account: { provider: 'claude', label: 'Second Claude', configDir: accountDir } }),
+        );
+        // NOT `assertIsolated`: the accounts file is ONE machine-wide file, which is the exposure
+        // the owner accepted on 2026-09-20. The rest of N-01 still holds, and is checked here.
+        expect(added.dispatched).toEqual(['POST /api/v1/workspace/agent-profiles']);
+        expect(added.after, 'B unchanged').toBe(added.before);
+        const account = ok(added.response).result.account as Record<string, unknown>;
+        const surface = JSON.stringify({ response: added.response, leaderLog: added.leaderLog, journalA: added.journal.a, log: added.log });
+        expect(leaked(surface, w.b.names), 'nothing of B').toEqual([]);
+        expect(leaked(surface, w.secrets), 'no secret').toEqual([]);
+        // The row is narrowed: the folder the leader itself sent comes back, the EXPANDED absolute
+        // home and the file paths inside it do not. Return the route's `profile` unchanged and
+        // this goes red (`BREAK-B5-ROW-WIDE`).
+        expect(account).toMatchObject({ provider: 'claude', configDir: accountDir, isDefault: false });
+        expect(account).not.toHaveProperty('path');
+        expect(account).not.toHaveProperty('files');
+        // The person's pane sees the leader's account, by the id the leader was handed.
+        const paneRow = (await pane()).profiles.find((row: { id: string }) => row.id === account.id);
+        expect(paneRow).toMatchObject({ provider: 'claude', configDir: accountDir });
+
+        // ---- select it for THIS project, and only this project ---------------------------------
+        const selected = await w.observe(() =>
+          w.call('a', 'project_config', { action: 'select_account', operationId: op(), provider: 'claude', accountId: account.id as string }),
+        );
+        expect(selected.dispatched).toEqual(['PUT /api/v1/workspace/agent-profiles/selection']);
+        expect(ok(selected.response).result.selection).toEqual({ provider: 'claude', accountId: account.id });
+        // The route answers `selections` keyed by every repo root on the machine; the door answers
+        // this project's own. Hand the route's body back unnarrowed and the leader learns where B
+        // lives (`BREAK-B5-SELECTIONS-WIDE`).
+        expect(leaked(JSON.stringify(selected.response), w.b.names), 'the other checkout is not in the answer').toEqual([]);
+        expect(ok(await w.call('a', 'project_config', { action: 'get_account' })).result.accounts).toContainEqual(
+          expect.objectContaining({ provider: 'claude', handle: account.id }),
+        );
+        // The cockpit reads the same selection, keyed by A's own root.
+        expect((await pane()).selections[w.a.root]).toMatchObject({ claude: account.id });
+
+        // ---- the two reads ---------------------------------------------------------------------
+        const status = await mcp(w, 'project_config', { action: 'check_account_status', provider: 'claude', accountId: account.id as string });
+        expect(status.result).toMatchObject({ account: { provider: 'claude', accountId: account.id } });
+        expect(typeof status.result.status).toBe('string');
+        // F-03 holds for an ACCOUNT row exactly as it does for a provider row.
+        expect(JSON.stringify(status)).not.toMatch(/authFailureId|profileId/);
+        // The identity read the owner opened on 2026-09-20, and the whole claim about it: it is the
+        // cockpit's own answer, not a second one assembled here.
+        const details = await mcp(w, 'project_config', { action: 'get_account_details', provider: 'claude', accountId: account.id as string });
+        const paneDetails = (await ui(w, `/api/v1/workspace/agent-profiles/${account.id as string}/details`)).body;
+        expect(details.result).toEqual(paneDetails);
+
+        // ---- edit and remove -------------------------------------------------------------------
+        const edited = await w.observe(() =>
+          w.call('a', 'project_config', { action: 'update_account', operationId: op(), accountId: account.id as string, accountUpdate: { label: 'Renamed' } }),
+        );
+        expect(edited.dispatched).toEqual([`PATCH /api/v1/workspace/agent-profiles/${account.id as string}`]);
+        expect(ok(edited.response).result.account).toMatchObject({ id: account.id, label: 'Renamed' });
+        const removed = await w.observe(() =>
+          w.call('a', 'project_config', { action: 'remove_account', operationId: op(), accountId: account.id as string }),
+        );
+        expect(removed.dispatched).toEqual([`DELETE /api/v1/workspace/agent-profiles/${account.id as string}`]);
+        expect(ok(removed.response).result).toEqual({ removed: true, id: account.id });
+        // Deregistered, and the selection that named it scrubbed in the same write — the route's
+        // own atomic behaviour, inherited rather than repeated at this door.
+        expect((await pane()).profiles.filter((row: { isDefault: boolean }) => !row.isDefault)).toEqual([]);
+        expect((await pane()).selections[w.a.root]?.claude).toBeUndefined();
+
+        // ---- the one that did NOT move ---------------------------------------------------------
+        // Opening an account's folder starts an application on the person's machine, which is the
+        // boundary Connect names too (spec § 4 Q3; owner 2026-09-20 07:41). Let it reach a route
+        // and this goes red (`BREAK-B5-OPEN-FILE-LEAKS`).
+        const open = await w.observe(() => w.call('a', 'project_config', { action: 'open_account_file', operationId: op() }));
+        expect(open.response.isError).toBe(true);
+        expect(resultText(open.response)).toMatch(/^Refused \(host process\)/);
+        expect(open.dispatched).toEqual([]);
+      },
+    );
+
     parity('P-44', ['A-09', 'A-08', 'A-05'], ['I-143', 'I-144', 'I-145', 'I-146'], 'the leader reads this project’s setup state, dispatches the bundled setup task and records the offer, and the cockpit sees the same thing', async () => {
       const w = world();
       const stateFile = join(w.a.root, '.local/xezar/onboarding-state.json');
@@ -1562,19 +1650,20 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
       // accounts, the project registry and the host filesystem.
       // I-024, I-092 and I-132 left with #677 B3, under the same rule plus the owner's 07:41
       // exclusions: the shared PRESENTATION bag is a write now, which P-46 proves.
-      ['I-012', 'I-093', 'I-112', 'I-115', 'I-122', 'I-123', 'I-124', 'I-125', 'I-126', 'I-130', 'I-131'],
+      // I-122, I-123 and I-124 left with B5 — the account writes and the identity read — which
+      // P-48 proves the same way. I-125 stays: opening an account's folder in an application is
+      // the host process, not the account.
+      ['I-012', 'I-093', 'I-112', 'I-115', 'I-125', 'I-126', 'I-130', 'I-131'],
       'every global-source, home-file, shared-account and host-folder write is refused with its boundary, dispatches nothing, and no approval parameter changes that',
       async () => {
         const w = world();
         const workspaceFile = join(w.home, 'config.json');
         const workspaceBefore = readFileSync(workspaceFile, 'utf8');
         const refusals = [
-          'select_account',
-          'create_account',
-          'update_account',
-          'remove_account',
-          'check_account_status',
-          'get_account_details',
+          // The account WRITES and both account reads left this list with #677 B5, under the
+          // owner's decision of 2026-09-20 07:41 ("Writes and identity read"); P-48 proves them
+          // against the cockpit's own routes. `open_account_file` did not: it starts an
+          // application on the person's machine, the boundary Connect names too.
           'open_account_file',
           // `set_provider_enabled` and `retry_provider` left this list with #677 B4 (writes now);
           // Connect did not, because it starts a login terminal on the host.
@@ -1619,7 +1708,7 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
         }
         expect(resultText(seen.response.find(([what]) => what === 'apply_skill_updates')![1])).toMatch(/workspace-wide setting|every project/);
         expect(resultText(seen.response.find(([what]) => what === 'connect_provider')![1])).toMatch(/host process|login terminal/);
-        expect(resultText(seen.response.find(([what]) => what === 'get_account_details')![1])).toMatch(/account identity/);
+        expect(resultText(seen.response.find(([what]) => what === 'open_account_file')![1])).toMatch(/host process|application on the host/);
         expect(readFileSync(workspaceFile, 'utf8')).toBe(workspaceBefore);
         expect(existsSync(join(w.home, 'agent-accounts.json'))).toBe(false);
         // The safe effective READS those rows allow are served (D-03).
@@ -2208,14 +2297,15 @@ describe('A-05 — the coverage matrix against the closed inventory', () => {
     if (blockedCases.length > 0) console.info(`[#116] blocked parity cases (not passing): ${blockedCases.join(', ')}`);
   });
 
-  it('the inventory is the closed 147-record one, with 106 covered records', () => {
+  it('the inventory is the closed 147-record one, with 109 covered records', () => {
     const inventory = readInventory();
     expect(inventory.size).toBe(147);
     // 96 until #677 B1 moved the five workspace-settings rows (I-117 … I-121) from `global`, 101
     // until B2 moved the two workspace folder paths (I-127) and 102 until B3 moved the three
-    // shared-preference rows (I-024, I-092, I-132) and 105 until B4 moved the provider switch
-    // (I-115), all under the same owner rule.
-    expect([...inventory.values()].filter((s) => s === 'covered')).toHaveLength(106);
+    // shared-preference rows (I-024, I-092, I-132), 105 until B4 moved the provider switch
+    // (I-115) and 106 until B5 moved the accounts (I-122, I-123, I-124), all under the same
+    // owner rule.
+    expect([...inventory.values()].filter((s) => s === 'covered')).toHaveLength(109);
   });
 
   it('every covered record maps to at least one case, and every case names inventory records', () => {
