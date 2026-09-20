@@ -16,6 +16,7 @@ import { AUDIT_TRAIL_FILE } from './audit-trail.ts';
 import { runBridge } from './bridge.ts';
 import { resolveMcpTarget, startMcpService } from './index.ts';
 import { LineFramer, encodeFrame, type McpToolResult } from './ipc.ts';
+import { RECEIPT_JOURNAL_FILE } from './operation-receipts.ts';
 import type { ServiceDispatch } from './service-adapter.ts';
 import { tools } from './tools/index.ts';
 
@@ -456,5 +457,165 @@ describe('#743 — a replayed operation writes no second audit row', () => {
       ['run.pin', 'applied'],
       ['run.unpin', 'applied'],
     ]);
+  });
+
+  /**
+   * `BREAK-743-REFUSAL-AS-REPLAY` is the break the review of the first fix found: that fix read
+   * every non-throwing receipt-layer answer as a replay, and a replay writes no row. But the
+   * receipt layer also refuses a FIRST attempt before any effect — here by being unable to append
+   * its intent to an unwritable operation journal (D-06 § 7.5). Nothing ran, no earlier call
+   * recorded anything, and the pre-fix door at least warned `tool_error`; the first fix left the
+   * call silent AND unrecorded. v2's `refused` is exactly "the door rejected it before any effect"
+   * (spec § 3.2), so the refusal is this call's own row.
+   *
+   * Red on a scratch copy of the pre-fix `index.ts`: zero rows where this asks for one.
+   */
+  it('BREAK-743-REFUSAL-AS-REPLAY: a first attempt the receipt journal refuses writes exactly one refused row', async () => {
+    const c = await cockpit();
+    const rec = recording(c.app);
+    const warnings: string[] = [];
+    const handle = await startMcpService({
+      projectId: c.id,
+      version: VERSION,
+      service: rec.service,
+      store: c.store,
+      warn: (message) => warnings.push(message),
+    });
+    closers.push(() => handle.close());
+    // Only the OPERATION journal is unwritable — a directory where the file goes, made after the
+    // store opened it with an empty history. The audit destination beside it stays writable, so
+    // the refusal is recordable and "no row" can only mean the door chose not to record one.
+    rmSync(join(c.dataDir, RECEIPT_JOURNAL_FILE), { force: true });
+    mkdirSync(join(c.dataDir, RECEIPT_JOURNAL_FILE), { recursive: true });
+    const client = agent(c.root);
+
+    const before = auditRecords(c.dataDir).length;
+    const answer = await client.call('project_config', {
+      action: 'save_workflow',
+      workflow: { name: 'refused-by-journal', steps: [{ id: 'work', prompt: '{{task}}' }] },
+      operationId: 'op-refusal-audit-0001',
+    });
+
+    // The refusal is the receipt layer's, before any effect: the save route was never reached.
+    expect(answer.structuredContent).toMatchObject({ error: 'operation_receipt_unavailable', reason: 'journal_unwritable' });
+    expect(rec.seen.filter((entry) => entry === `POST /api/v1/p/${c.id}/workflows`)).toHaveLength(0);
+
+    const added = auditRecords(c.dataDir).slice(before);
+    expect(added.map((record) => [record.action, record.outcome.status, record.outcome.status === 'refused' ? record.outcome.reason : undefined])).toEqual([
+      ['workflow.save', 'refused', 'receipt_journal_unwritable'],
+    ]);
+    // The refusal reached the trail, so the door has nothing to warn about it.
+    expect(warnings.filter((line) => line.includes('audit'))).toEqual([]);
+  });
+
+  it('a changed payload under an existing operation key writes one receipt_key_conflict refusal', async () => {
+    const c = await cockpit();
+    const rec = recording(c.app);
+    const handle = await startMcpService({ projectId: c.id, version: VERSION, service: rec.service, store: c.store });
+    closers.push(() => handle.close());
+    const client = agent(c.root);
+
+    const before = auditRecords(c.dataDir).length;
+    const operationId = 'op-refusal-conflict-0001';
+    const first = await client.call('project_config', {
+      action: 'save_workflow',
+      workflow: { name: 'first-payload', steps: [{ id: 'work', prompt: '{{task}}' }] },
+      operationId,
+    });
+    expect(first.isError, JSON.stringify(first)).toBeFalsy();
+
+    const conflict = await client.call('project_config', {
+      action: 'save_workflow',
+      workflow: { name: 'changed-payload', steps: [{ id: 'work', prompt: '{{task}}' }] },
+      operationId,
+    });
+    expect(conflict.structuredContent).toMatchObject({ error: 'operation_key_conflict' });
+    // Only the first payload reached the route; the receipt layer rejected the changed one.
+    expect(rec.seen.filter((entry) => entry === `POST /api/v1/p/${c.id}/workflows`)).toHaveLength(1);
+
+    const added = auditRecords(c.dataDir).slice(before);
+    expect(added.map((record) => [record.action, record.outcome.status, record.outcome.status === 'refused' ? record.outcome.reason : undefined])).toEqual([
+      ['workflow.save', 'applied', undefined],
+      ['workflow.save', 'refused', 'receipt_key_conflict'],
+    ]);
+  });
+
+  it('a refusal the trail cannot record either is the audit-gap warning, not silence', async () => {
+    const c = await cockpit();
+    const rec = recording(c.app);
+    const warnings: string[] = [];
+    const handle = await startMcpService({
+      projectId: c.id,
+      version: VERSION,
+      service: rec.service,
+      store: c.store,
+      warn: (message) => warnings.push(message),
+    });
+    closers.push(() => handle.close());
+    // Both destinations blocked: the operation journal refuses the call, and the trail cannot
+    // record the refusal. Best-effort recording then owes the reader its one warning.
+    rmSync(join(c.dataDir, RECEIPT_JOURNAL_FILE), { force: true });
+    mkdirSync(join(c.dataDir, RECEIPT_JOURNAL_FILE), { recursive: true });
+    mkdirSync(join(c.dataDir, AUDIT_TRAIL_FILE), { recursive: true });
+    const client = agent(c.root);
+
+    const answer = await client.call('project_config', {
+      action: 'save_workflow',
+      workflow: { name: 'refused-and-unrecordable', steps: [{ id: 'work', prompt: '{{task}}' }] },
+      operationId: 'op-refusal-gap-0001',
+    });
+
+    expect(answer.structuredContent).toMatchObject({ error: 'operation_receipt_unavailable' });
+    expect(warnings.filter((line) => line.includes('audit trail'))).not.toEqual([]);
+  });
+
+  /**
+   * Fault injection, not a naturally occurring failure: the review of the first fix injected a
+   * throwing handler behind the real bridge and door, and this retains that probe for the branch
+   * it exercised. The receipt layer swallows the throw into an `unverified` answer, so the door
+   * cannot tell it from a replay without `DoorAttempt`. Before #743 it recorded `applied` for an
+   * effect that threw — a record of work that may never have happened; now it records nothing and
+   * warns `effect_failed`, and the retries under the same key run nothing at all.
+   */
+  it('fault injection: an effect that throws under the receipt layer records nothing and warns effect_failed', async () => {
+    const c = await cockpit();
+    const rec = recording(c.app);
+    let calls = 0;
+    const throwing: ServiceDispatch = {
+      request: (input, init) => {
+        const url = new URL(typeof input === 'string' ? input : String(input));
+        if ((init?.method ?? 'GET') === 'POST' && url.pathname.endsWith('/workflows')) {
+          calls += 1;
+          return Promise.reject(new Error('injected: the save handler threw part-way'));
+        }
+        return rec.service.request(input, init);
+      },
+    };
+    const warnings: string[] = [];
+    const handle = await startMcpService({
+      projectId: c.id,
+      version: VERSION,
+      service: throwing,
+      store: c.store,
+      warn: (message) => warnings.push(message),
+    });
+    closers.push(() => handle.close());
+    const client = agent(c.root);
+
+    const before = auditRecords(c.dataDir).length;
+    const args = {
+      action: 'save_workflow',
+      workflow: { name: 'thrown-part-way', steps: [{ id: 'work', prompt: '{{task}}' }] },
+      operationId: 'op-thrown-effect-0001',
+    };
+    await threeTimes(client, 'project_config', args);
+
+    // The injected handler ran once: the two retries were answered from the dangling intent and
+    // never reached it again — the receipt layer reconciles, it never repeats (D-06 § 9).
+    expect(calls).toBe(1);
+    // No `applied` row for an effect nobody can say happened, and no row at all: v2 has no honest
+    // outcome for it (spec § 3.2).
+    expect(auditRecords(c.dataDir).slice(before)).toEqual([]);
+    expect(warnings.filter((line) => line.includes('effect_failed'))).not.toEqual([]);
   });
 });

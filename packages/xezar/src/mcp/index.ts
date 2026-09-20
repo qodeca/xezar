@@ -230,11 +230,20 @@ interface DoorInput {
  */
 /**
  * What one call through the door actually did (#743): `ran` the tool, ran it and it `failed` under
- * this call, or was answered from the operation receipt and `replayed` — running nothing. Only
- * `ran` settles the audit trail; `failed` has no honest v2 outcome (spec § 3.2) and `replayed` was
- * already settled by the call that ran it.
+ * this call, was `refused` by the receipt layer before any effect, or was answered from an existing
+ * operation receipt and `replayed` — running nothing.
+ *
+ * Only `ran` settles the trail with the tool's own outcome. `failed` has no honest v2 outcome (spec
+ * § 3.2). `replayed` was already settled by the call that ran the effect, so a second row would
+ * over-report one operation. `refused` is the one the first version of this fix got wrong: the
+ * receipt layer also answers a FIRST attempt it would not let start — an unwritable operation
+ * journal, or the same key reused for different work — and that attempt is unaudited by anyone,
+ * so it is the door's to record, as v2's `refused` (spec § 3.2).
+ *
+ * `refused` carries its own bounded reason rather than leaving it in a second variable beside it:
+ * a refusal without a reason is not a state this door can be in, and the one shape says so.
  */
-type DoorAttempt = 'ran' | 'failed' | 'replayed';
+type DoorAttempt = { kind: 'ran' | 'failed' | 'replayed' } | { kind: 'refused'; reason: string };
 
 function composeDoor(input: DoorInput): {
   door: McpDoor;
@@ -334,7 +343,7 @@ function composeDoor(input: DoorInput): {
     let result: McpToolResult;
     // What THIS call was: did it run the tool, did the tool throw under it, or did the receipt
     // layer answer it without running anything (#743)? Only the first settles the trail.
-    let attempt: DoorAttempt = 'ran';
+    let attempt: DoorAttempt = { kind: 'ran' };
     try {
       if (operationId !== undefined && receipts) {
         const run = await idempotent(receipts, { projectId, operationId, action, args, toolName: tool.name, issued, warn });
@@ -351,8 +360,19 @@ function composeDoor(input: DoorInput): {
     if (audited.kind !== 'mutation' || !auditFor) return result;
     // The same rule as the `catch` above, for a throw the receipt layer swallowed into an
     // `unverified` answer: the effect may have started, so there is no honest outcome (spec § 3.2).
-    if (attempt === 'failed') {
+    if (attempt.kind === 'failed') {
       auditFor.skip('effect_failed');
+      return result;
+    }
+    // A first attempt the receipt layer refused BEFORE any effect: the journal could not take its
+    // intent (D-06 § 7.5), or the key was reused for different work (§ 6). Nothing ran and no
+    // earlier call recorded this one, so it is neither a replay nor unrecordable — it is exactly
+    // what v2's `refused` is for, "the door rejected it before any effect" (spec § 3.2). Recording
+    // it is also what keeps the audit-gap warning: `record` warns on its own when even this row
+    // cannot be written, where `return result` here would leave the whole call unaccounted for and
+    // silent. `resolve(undefined)` on purpose — the answer is the receipt layer's, not the tool's.
+    if (attempt.kind === 'refused') {
+      await auditFor.record({ ...op, action: audited.resolve(undefined) }, { outcome: 'refused', reason: attempt.reason });
       return result;
     }
     // A replay, a duplicate still in flight and an unverified crash leftover are answered from the
@@ -360,7 +380,7 @@ function composeDoor(input: DoorInput): {
     // that settles the trail, so recording here would put a second `applied` row in the trail for
     // one operation and over-report what happened (#743). It is not `skip` either: nothing is
     // unrecordable, so the trail's one warning would be a lie.
-    if (attempt === 'replayed') return result;
+    if (attempt.kind === 'replayed') return result;
     const recorded = { ...op, action: audited.resolve(result) };
     // v2 has two outcomes, `applied` and `refused`, and `refused` promises nothing happened. So an
     // error result is recorded only when the tool itself says, in its structured answer, that it
@@ -422,6 +442,15 @@ function composeDoor(input: DoorInput): {
  * `attempt` says which of those this call was, because the audit trail records the call that ran
  * the effect and nothing else (#743). `failed` is the effect that threw: the receipt layer swallows
  * that throw into an `unverified` answer, so without this the door could not tell it from a replay.
+ * `refused` is the other answer that is not a replay: the two `error` shapes of `OperationAnswer`
+ * are pre-effect refusals of a FIRST attempt (`operation_receipt_unavailable` when the intent
+ * cannot be appended, `operation_key_conflict` when the key was reused for different work), and
+ * no earlier call recorded them. Calling either a replay drops them out of the trail entirely,
+ * which is what the review of #743's first fix found.
+ *
+ * The three answers that stay row-free are the genuinely already-accounted ones: a settled receipt
+ * replayed, a duplicate `in-progress` behind a live first attempt, and an `unverified` uncertain
+ * history — none of which is this call's to record.
  */
 async function idempotent(
   receipts: OperationReceiptStore,
@@ -459,8 +488,26 @@ async function idempotent(
       return { outcome: 'ok', resultRef: ref ? { kind: ref.kind, id: ref.id } : { kind: 'operation', id: call.operationId } };
     },
   });
-  if (fresh !== undefined) return { result: fresh, attempt: 'ran' };
-  return { result: answerResult(answer), attempt: threw ? 'failed' : 'replayed' };
+  if (fresh !== undefined) return { result: fresh, attempt: { kind: 'ran' } };
+  if (threw) return { result: answerResult(answer), attempt: { kind: 'failed' } };
+  const reason = receiptRefusalOf(answer);
+  const attempt: DoorAttempt = reason === undefined ? { kind: 'replayed' } : { kind: 'refused', reason };
+  return { result: answerResult(answer), attempt };
+}
+
+/**
+ * The bounded audit reason for a receipt-layer answer that refused a FIRST attempt before any
+ * effect, or `undefined` when the answer is one of the already-accounted ones (#743, review of the
+ * first fix). The two `error` shapes are the whole set: `OperationAnswer`'s other three carry a
+ * `status`, and each of those means some earlier call owns the row.
+ *
+ * The reasons are the receipt layer's own words, narrowed to `auditReasonSchema`'s shape and
+ * prefixed so a reader can tell WHICH layer refused — a `journal_unwritable` in the trail would
+ * otherwise read as the audit trail's own journal rather than the operation journal.
+ */
+function receiptRefusalOf(answer: OperationAnswer): string | undefined {
+  if (!('error' in answer)) return undefined;
+  return answer.error === 'operation_receipt_unavailable' ? `receipt_${answer.reason}` : 'receipt_key_conflict';
 }
 
 function answerResult(answer: OperationAnswer): McpToolResult {
