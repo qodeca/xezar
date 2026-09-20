@@ -69,7 +69,7 @@ export const SHOT_STATES: readonly ShotState[] = [
   // compare against.
   {
     name: 'settings-projects',
-    shows: 'Global Settings → Projects: the registered-projects table, and how it folds on a phone',
+    shows: 'Global Settings → Projects: the registered-projects table; at 375 px, columns extend beyond the right edge (known gap G-30)',
     variants: [['dark', 1280], ['light', 1280], ['dark', 375]],
   },
 ]

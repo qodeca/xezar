@@ -87,7 +87,7 @@ agent-browser) and then its own fixture server. It is not part of `npm run test:
 | [`settings-resources-dark-1280.png`](settings-resources-dark-1280.png) | Global Settings → Resources: parallel tasks, monitoring sessions and limits | dark | 1280 × 800 |
 | [`settings-mcp-connection-dark-1280.png`](settings-mcp-connection-dark-1280.png) | Project Settings → MCP connection with the leader status | dark | 1280 × 800 |
 | [`command-palette-dark-1280.png`](command-palette-dark-1280.png) | The ⌘K command palette open | dark | 1280 × 800 |
-| [`settings-projects-dark-1280.png`](settings-projects-dark-1280.png) | Global Settings → Projects: the registered-projects table, and how it folds on a phone | dark | 1280 × 800 |
-| [`settings-projects-light-1280.png`](settings-projects-light-1280.png) | Global Settings → Projects: the registered-projects table, and how it folds on a phone | light | 1280 × 800 |
-| [`settings-projects-dark-375.png`](settings-projects-dark-375.png) | Global Settings → Projects: the registered-projects table, and how it folds on a phone | dark | 375 × 812 |
+| [`settings-projects-dark-1280.png`](settings-projects-dark-1280.png) | Global Settings → Projects: the registered-projects table; at 375 px, columns extend beyond the right edge (known gap G-30) | dark | 1280 × 800 |
+| [`settings-projects-light-1280.png`](settings-projects-light-1280.png) | Global Settings → Projects: the registered-projects table; at 375 px, columns extend beyond the right edge (known gap G-30) | light | 1280 × 800 |
+| [`settings-projects-dark-375.png`](settings-projects-dark-375.png) | Global Settings → Projects: the registered-projects table; at 375 px, columns extend beyond the right edge (known gap G-30) | dark | 375 × 812 |
 | [`tour.gif`](tour.gif) | A tour: the task list, a new task typed and started, the running thread, review, a draft PR, and the list again | dark | 1280 × 800 |
