@@ -10,7 +10,10 @@ is printed and verified**, and you choose to run it via `sudo` or paste it into 
 root shell yourself; `macosx-ngrok` needs no root at all. It's idempotent and
 resumable, and it ends with a verification step. On `ubuntu-vps` that is a real
 **authenticated end-to-end check** — anonymous is challenged, authenticated
-reaches xezar — so "complete" means the cockpit works behind its login. On
+reaches xezar — so "complete" means the cockpit works behind its login. The
+`test:server-mode` harness asserts the same anonymous-challenged /
+authenticated-reaches contract against a throwaway Basic-Auth proxy; only a real
+install validates nginx (harness case `A-AUTH`). On
 `macosx-ngrok` it confirms the tunnel came up; the basic-auth gate is enforced by
 ngrok itself and is not probed.
 

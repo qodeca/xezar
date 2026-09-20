@@ -16,6 +16,7 @@ const cli = join(root, 'packages/xezar/dist/index.js');
 const started = performance.now();
 let child, proxy, fixture, backend, authority;
 let childExited = false;
+const extraChildren = new Set();
 let forwarded = 0;
 let lastForwardedHost;
 let bootOutput = '';
@@ -66,6 +67,43 @@ function request(path, { direct = false, authorization = auth, headers = {}, met
   });
 }
 
+/**
+ * Two DISTINCT ephemeral ports, with both probe listeners held open until both numbers are
+ * known.
+ *
+ * Two sequential `freePort()` calls cannot promise that: each closes its listener before
+ * returning, so the OS may hand the same ephemeral port out twice. A-PORT-01 distinguishes the
+ * two precedence sources by comparing their numbers, so equal numbers would let a resolver that
+ * wrongly lets XEZ_PORT outrank `--port` bind the expected port and pass vacuously. Overlapping
+ * the two listeners makes the ports distinct by construction — a port that is bound cannot be
+ * handed to the other probe — and the assertion below fails loudly rather than letting a
+ * collision reach either CLI launch.
+ */
+async function twoDistinctFreePorts() {
+  const probes = [http.createServer(), http.createServer()];
+  try {
+    await Promise.all(probes.map((probe) => new Promise((done) => probe.listen(0, '127.0.0.1', done))));
+    const [first, second] = probes.map((probe) => probe.address().port);
+    assert.notEqual(first, second, 'A-PORT-01 could not allocate two distinct ephemeral ports');
+    return [first, second];
+  } finally {
+    await Promise.all(probes.map((probe) => new Promise((done) => probe.close(done))));
+  }
+}
+
+async function stopChild(proc) {
+  if (proc.exitCode !== null || proc.signalCode !== null) { extraChildren.delete(proc); return; }
+  proc.kill('SIGTERM'); // exact saved ChildProcess PID, never a process-name search
+  const end = Date.now() + 5000;
+  while (proc.exitCode === null && proc.signalCode === null && Date.now() < end) await sleep(25);
+  if (proc.exitCode === null && proc.signalCode === null) {
+    proc.kill('SIGKILL');
+    await Promise.race([once(proc, 'exit'), sleep(2000)]);
+  }
+  extraChildren.delete(proc);
+  assert.ok(proc.exitCode !== null || proc.signalCode !== null, 'A-PORT-01 auxiliary CLI survived teardown');
+}
+
 function deny(req, res) {
   if (req.headers.host !== authority) { res.writeHead(421); res.end(); return true; }
   if (req.headers.authorization !== auth) {
@@ -105,6 +143,13 @@ async function cleanup() {
   clearTimeout(deadline);
   for (const request of upstreams) request.destroy();
   for (const socket of sockets) socket.destroy();
+  for (const proc of [...extraChildren]) {
+    if (proc.exitCode !== null || proc.signalCode !== null) { extraChildren.delete(proc); continue; }
+    proc.kill('SIGTERM'); // exact saved ChildProcess PID, never a process-name search
+    await Promise.race([once(proc, 'exit'), sleep(1000)]);
+    if (proc.exitCode === null && proc.signalCode === null) proc.kill('SIGKILL');
+    extraChildren.delete(proc);
+  }
   if (proxy?.listening) await new Promise((done) => proxy.close(done));
   if (child && !childExited) {
     child.kill('SIGTERM'); // exact saved ChildProcess PID, never a process-name search
@@ -144,6 +189,35 @@ try {
   await writeFile(join(repo, '.gitignore'), '.local/\n');
   execFileSync('git', ['add', '.gitignore'], { cwd: repo, env, timeout: 5000 });
   execFileSync('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-m', 'fixture'], { cwd: repo, env, stdio: 'ignore', timeout: 5000 });
+
+  // A-PORT-01: the guide's documented port precedence is a property of the built CLI, not
+  // only of the helper that resolves it. A fresh XEZ_HOME has no saved project port, so
+  // XEZ_PORT is the next layer; an explicit --port still outranks it. The two ports are
+  // distinct by construction (see `twoDistinctFreePorts`), so a wrong precedence cannot
+  // satisfy both assertions with one number.
+  const [envPort, flagPort] = await twoDistinctFreePorts();
+  const bootCliPort = async (args, extraEnv) => {
+    const proc = spawn(process.execPath, [cli, 'serve', '--repo', repo, '--no-open', '--output', 'lines', '--color', 'never', ...args], { cwd: repo, env: { ...env, ...extraEnv }, stdio: ['ignore', 'pipe', 'pipe'] });
+    extraChildren.add(proc);
+    let output = '';
+    let exited = false;
+    proc.once('exit', () => { exited = true; });
+    proc.once('error', (error) => abort.abort(error));
+    for (const pipe of [proc.stdout, proc.stderr]) pipe.on('data', (chunk) => { output = (output + chunk).slice(-16_384); });
+    await until(() => {
+      assert.equal(exited, false, 'A-PORT-01 auxiliary CLI exited before reporting its bound URL');
+      return Number(/http:\/\/(?:localhost|127\.0\.0\.1):(\d+)/.exec(output)?.[1]) > 0;
+    }, 'A-PORT-01 auxiliary CLI did not report its bound port');
+    return { proc, port: Number(/http:\/\/(?:localhost|127\.0\.0\.1):(\d+)/.exec(output)[1]) };
+  };
+  const flagged = await bootCliPort(['--port', String(flagPort)], { XEZ_PORT: String(envPort) });
+  assert.equal(flagged.port, flagPort, 'A-PORT-01 an explicit --port must beat XEZ_PORT');
+  await stopChild(flagged.proc);
+  const envOnly = await bootCliPort([], { XEZ_PORT: String(envPort) });
+  assert.equal(envOnly.port, envPort, 'A-PORT-01 XEZ_PORT must decide when no --port is given');
+  await stopChild(envOnly.proc);
+  console.log('PASS A-PORT-01 documented port precedence through the built CLI (--port beats XEZ_PORT)');
+
   child = spawn(process.execPath, [cli, 'serve', '--repo', repo, '--port', '0', '--bind-host', '127.0.0.1', '--no-open', '--output', 'lines', '--color', 'never'], { cwd: repo, env, stdio: ['ignore', 'pipe', 'pipe'] });
   child.once('exit', () => { childExited = true; });
   child.once('error', (error) => abort.abort(error));

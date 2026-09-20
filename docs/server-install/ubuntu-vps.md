@@ -60,7 +60,7 @@ node packages/xezar/dist/index.js server-install --platform ubuntu-vps
 | **Reverse proxy** | Installs **nginx**, writes an `auth_basic` + SSE-safe proxy vhost, creates the **htpasswd** identity file, and — if `ufw` is active — allows `Nginx Full` (ports 80/443). |
 | **Domain + SSL** *(optional)* | Points the vhost's `server_name` at your domain, then runs `certbot --nginx` for a Let's Encrypt certificate with auto-redirect. Skippable — you can add it later. |
 | **Service** | Installs a **systemd** unit (rootless `--user` + linger where possible, else a system unit), **starts xezar now**, enables it on boot, and waits for it to answer on the loopback port. |
-| **Verify** | Confirms an anonymous request is challenged (401) **and** that an authenticated request actually reaches xezar (2xx/3xx) — a real end-to-end check, not just "nginx is up". |
+| **Verify** | Confirms an anonymous request is challenged (401) **and** that an authenticated request actually reaches xezar (2xx/3xx) — a real end-to-end check, not just "nginx is up". The `test:server-mode` harness asserts the same contract against a throwaway Basic-Auth proxy (harness case `A-AUTH`); only a real install validates nginx. |
 
 ### Setting the cockpit login
 
