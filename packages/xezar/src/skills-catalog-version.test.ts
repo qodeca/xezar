@@ -1,9 +1,16 @@
 import { execFileSync } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { bareDirFor, ensureBareClone, fetchAll, skillsCatalogVersions, waitForTeamSkills } from './skills-remote.ts';
+import {
+  bareDirFor,
+  ensureBareClone,
+  fetchAll,
+  lastFetchMarkerFor,
+  skillsCatalogVersions,
+  waitForTeamSkills,
+} from './skills-remote.ts';
 import { projectStateLayout, setActiveStateLayout } from './state-layout.ts';
 
 /**
@@ -110,18 +117,66 @@ describe('skillsCatalogVersions', () => {
   it('reads stale-check, not unknown, when the commits match but the check aged out (#747, B-1)', async () => {
     makeOrigin(origin, '# demo\n', '2026-01-02T10:00:00+01:00', 'v1.0.0');
     // Cloned directly rather than through `ensureBareClone`, so no in-process fetch timestamp
-    // shadows the clone's own mtime — this is what a cockpit opened after an idle night sees.
+    // shadows the durable marker — this is what a cockpit opened after an idle night sees. The
+    // marker is written by hand at an old time: the last SUCCESSFUL fetch was thirteen hours ago.
     const bare = bareDirFor(origin);
     mkdirSync(dirname(bare), { recursive: true });
     execFileSync(REAL_GIT, ['clone', '--bare', origin, bare], { stdio: 'ignore', env: GIT_ENV });
     const aged = new Date(Date.now() - 13 * 60 * 60 * 1_000);
-    utimesSync(join(bare, 'HEAD'), aged, aged);
+    writeFileSync(lastFetchMarkerFor(bare), `${aged.toISOString()}\n`, 'utf8');
 
     const [entry] = await skillsCatalogVersions(project);
     expect(entry?.state).toBe('stale-check');
     // Both versions ARE known: what aged is the check, which is why this is not `unknown`.
     expect(entry?.installed?.commit).toBe(entry?.available?.commit);
     expect(entry?.fetchedAt).not.toBeNull();
+  });
+
+  /**
+   * #752, L-2 — data honesty. Git rewrites `FETCH_HEAD`, often as a 0-byte file, on a fetch that
+   * FAILED, so trusting its mtime made an unreachable origin read "Up to date — last checked 0s
+   * ago" after a restart. BREAK-752-FAILED-FETCH-COUNTED: restore that mtime fallback in
+   * `lastUpstreamContact` and this case reads `up-to-date` with a fresh `fetchedAt`.
+   */
+  it('does not count a FAILED fetch as a check, after a restart (#752, L-2)', async () => {
+    makeOrigin(origin, '# demo\n', '2026-01-02T10:00:00+01:00', 'v1.0.0');
+    // A clone left by an earlier process: no in-process timestamp, no marker — exactly the
+    // "server restarted" shape. The origin is then made unreachable and a fetch is attempted.
+    const bare = bareDirFor(origin);
+    mkdirSync(dirname(bare), { recursive: true });
+    execFileSync(REAL_GIT, ['clone', '--bare', origin, bare], { stdio: 'ignore', env: GIT_ENV });
+    rmSync(origin, { recursive: true, force: true });
+    await expect(fetchAll(bare)).rejects.toThrow(/git fetch failed/);
+    // Whatever git left behind, the failed attempt is fresh on disk: that is the trap.
+    writeFileSync(join(bare, 'FETCH_HEAD'), '', 'utf8');
+    const now = new Date();
+    utimesSync(join(bare, 'FETCH_HEAD'), now, now);
+    utimesSync(join(bare, 'HEAD'), now, now);
+
+    const [entry] = await skillsCatalogVersions(project);
+    expect(entry?.fetchedAt).toBeNull();
+    expect(entry?.state).not.toBe('up-to-date');
+    expect(entry?.state).toBe('unknown');
+    expect(existsSync(lastFetchMarkerFor(bare))).toBe(false);
+  });
+
+  it('records the last SUCCESSFUL fetch durably, so a restart keeps it (#752, L-2)', async () => {
+    makeOrigin(origin, '# demo\n', '2026-01-02T10:00:00+01:00', 'v1.0.0');
+    const bare = bareDirFor(origin);
+    mkdirSync(dirname(bare), { recursive: true });
+    execFileSync(REAL_GIT, ['clone', '--bare', origin, bare], { stdio: 'ignore', env: GIT_ENV });
+    expect(existsSync(lastFetchMarkerFor(bare))).toBe(false);
+
+    await fetchAll(bare);
+
+    // The marker is the durable record — no in-process map is involved on this path, which is
+    // what makes the answer survive a restart.
+    const marked = Date.parse(readFileSync(lastFetchMarkerFor(bare), 'utf8').trim());
+    expect(Number.isFinite(marked)).toBe(true);
+    expect(Date.now() - marked).toBeLessThan(60_000);
+    const [entry] = await skillsCatalogVersions(project);
+    expect(entry?.state).toBe('up-to-date');
+    expect(entry?.fetchedAt).toBe(new Date(marked).toISOString());
   });
 
   it('omits the tag KEY entirely when no tag is reachable (AC-02)', async () => {

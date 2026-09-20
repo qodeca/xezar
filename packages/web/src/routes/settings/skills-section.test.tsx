@@ -12,6 +12,7 @@ import {
 import { createQueryClient } from '@/api/query-client'
 import type { SkillsUpdateState, WorkspaceConfigResponse } from '@qodeca/xezar-api-client'
 import { AppRoutes } from '@/routes'
+import { catalogAnnouncement } from './skills-section'
 
 let requests: Array<{ method: string; url: string; body?: unknown }> = []
 
@@ -249,7 +250,7 @@ describe('Global settings → Skills', () => {
     expect(screen.queryByText('Version unknown')).toBeNull()
     expect(
       screen.getByText(
-        'Tracking qodeca/xezar-skills main — the last upstream check is older than six hours (13h ago), so the versions above are as of then.',
+        'Tracking qodeca/xezar-skills main — the last upstream check is older than six hours (13h ago), so the versions above are as of then. Use Refresh on the Skills page to re-check upstream.',
       ),
     ).toBeTruthy()
     expect(screen.getAllByText(`v1.1.0 (de525c6, ${readable('2026-09-20')})`).length).toBe(2)
@@ -342,8 +343,19 @@ describe('Global settings → Skills', () => {
     renderSkills()
     expect(await screen.findByText('Skill catalog')).toBeTruthy()
     expect(screen.getByText('Checking…')).toBeTruthy()
-    const live = document.querySelector('[data-slot="skills-catalog-version"]') as HTMLElement
+    // #752, L-1: the polite region is the sr-only announcer, not the whole body.
+    const live = document.querySelector('[data-slot="skills-catalog-announcement"]') as HTMLElement
     expect(live.getAttribute('aria-live')).toBe('polite')
+    expect(
+      (document.querySelector('[data-slot="skills-catalog-version"]') as HTMLElement).getAttribute(
+        'aria-live',
+      ),
+    ).toBeNull()
+    // #752, L-3: the pending body reserves about one card's height, on the spacing scale, so the
+    // automatic-update switch below it does not jump when the answer lands.
+    expect(
+      (document.querySelector('[data-slot="skills-catalog-pending"]') as HTMLElement).className,
+    ).toContain('min-h-28')
     cleanup()
 
     serve({}, {}, 'error')
@@ -407,6 +419,59 @@ describe('Global settings → Skills', () => {
     expect(screen.queryByText('Could not load skill settings')).toBeNull()
     // Guard (passes with and without the change): the existing line keeps its exact words.
     expect(screen.getByText('No tracked xezar-skills installation found.')).toBeTruthy()
+  })
+
+  it('announces the state word only — never the ticking age (#752, L-1)', async () => {
+    serve(
+      {},
+      {
+        catalog: [
+          {
+            repo: 'qodeca/xezar-skills',
+            ref: 'main',
+            state: 'up-to-date',
+            installed: INSTALLED,
+            available: INSTALLED,
+            fetchedAt: new Date(Date.now() - 61 * 60 * 1000).toISOString(),
+          },
+        ],
+      },
+    )
+    renderSkills()
+    await screen.findByText('Up to date')
+    const live = document.querySelector('[data-slot="skills-catalog-announcement"]') as HTMLElement
+    expect(live.getAttribute('aria-live')).toBe('polite')
+    expect(live.className).toContain('sr-only')
+    expect(live.textContent).toBe('qodeca/xezar-skills: Up to date.')
+    // The defect: the sentence `useNow` re-renders every 30 s used to live inside the region, so
+    // a screen reader re-read "last checked 1h ago" once a minute. It is still on screen…
+    expect(screen.getByText(/last checked 1h ago/)).toBeTruthy()
+    // …and no longer inside anything polite.
+    expect(live.textContent).not.toMatch(/ago/)
+    expect(
+      document.querySelector('[data-slot="skills-catalog-version"] [aria-live]:not([data-slot="skills-catalog-announcement"])'),
+    ).toBeNull()
+  })
+
+  it('keeps every announcement free of an age, in every state (#752, L-1)', () => {
+    const fresh = { repo: 'a/b', ref: 'main', fetchedAt: new Date().toISOString() } as const
+    const announcements = [
+      catalogAnnouncement(undefined, null),
+      catalogAnnouncement(undefined, new Error('nope')),
+      catalogAnnouncement([], null),
+      catalogAnnouncement([{ ...fresh, state: 'up-to-date', installed: INSTALLED, available: INSTALLED }], null),
+      catalogAnnouncement([{ ...fresh, state: 'stale-check', installed: INSTALLED, available: INSTALLED }], null),
+      catalogAnnouncement([{ ...fresh, state: 'unknown', fetchedAt: null }], null),
+    ]
+    // No age, no clock, in any of them: the region's text changes only when a STATE does.
+    for (const text of announcements) expect(text).not.toMatch(/\bago\b|\d+[smhd]\b/)
+    expect(announcements[3]).toBe('a/b: Up to date.')
+    expect(announcements[4]).toBe('a/b: Check is stale.')
+    expect(announcements[5]).toBe('a/b: Version unknown.')
+    // A failed background refetch that still has an answer keeps announcing the answer.
+    expect(
+      catalogAnnouncement([{ ...fresh, state: 'up-to-date', installed: INSTALLED, available: INSTALLED }], new Error('nope')),
+    ).toBe('a/b: Up to date.')
   })
 
   it('says so when no team skill source is configured', async () => {
