@@ -19,7 +19,7 @@ import { GuideBrowser } from './guide-browser'
  * drives: the New-issue draft dialog's own submit-readiness gate. `settings-bookmarklets.e2e.ts`
  * covers the bookmarklet launcher separately.
  *
- * Dry-run exception register (browser-test-spec.md § Dry-run exception register, row "07"): real
+ * Dry-run exception register (`docs/testing/browser-dry-run-exceptions.md`, row "07"): real
  * GitHub authentication, remote issue/PR mutation and bookmarklet execution on github.com are out
  * of scope — `packages/xezar/src/server/forge/github.test.ts` covers the request seam this file's
  * fixture reuses (the bundled dry-run mock issues/PRs). This file starts no draft and creates no
