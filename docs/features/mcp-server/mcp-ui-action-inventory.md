@@ -141,7 +141,10 @@ through **both** doors — the cockpit's `PUT /workspace/config` and the leader'
 `set_workspace_config` — unlike agent-config writes and every agent-profile route, which answer
 409 when `capabilities.localHandoff` is false. The reason is the owner's: *a server admin may
 change limits remotely*. A workspace limit is neither a hook, a command nor an account identity,
-which is what that boundary exists to keep off a shared box. The behaviour is pinned by a test
+which is what that boundary exists to keep off a shared box. One writable key is not a limit and
+is named here so the decision and the exposure are read together (#743): `agentEnvPassthrough`
+decides which of the server's own environment variables the agent processes receive, and the same
+decision covers it — unargued, not overlooked. The behaviour is pinned by a test
 asserting it is ALLOWED, so a later 409 is a visible break rather than a silent change of mind.
 The same holds for the preference writes of slice B3 (`PUT /workspace/ui-state`,
 `set_workspace_ui_state`, `import_skills`): the route carries no `localHandoff` guard and none was

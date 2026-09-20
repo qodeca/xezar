@@ -219,12 +219,23 @@ interface DoorInput {
  *
  * Read-only tools pass straight through: a read has no effect to deduplicate, attribute or audit.
  *
+ * The audit trail counts OPERATIONS, not calls, so what the door records depends on which of the
+ * three `DoorAttempt` shapes this call was (#743).
+ *
  * Two more parts face outward rather than wrapping a call:
  * - the catalog is registered as the project's E-05 reporter (#252), so the cockpit's own config,
  *   workflow and agent-config write routes can report a human change to it;
  * - the leader's persisted cursors (#105) and the `leader_events` port over them (#251), handed to
  *   the tools as context — the leader's pull read of its journal on reconnect.
  */
+/**
+ * What one call through the door actually did (#743): `ran` the tool, ran it and it `failed` under
+ * this call, or was answered from the operation receipt and `replayed` — running nothing. Only
+ * `ran` settles the audit trail; `failed` has no honest v2 outcome (spec § 3.2) and `replayed` was
+ * already settled by the call that ran it.
+ */
+type DoorAttempt = 'ran' | 'failed' | 'replayed';
+
 function composeDoor(input: DoorInput): {
   door: McpDoor;
   leaderEvents: LeaderEventsPort | undefined;
@@ -321,17 +332,35 @@ function composeDoor(input: DoorInput): {
       ...(typeof args.expectedVersion === 'string' ? { expectedVersion: args.expectedVersion } : {}),
     };
     let result: McpToolResult;
+    // What THIS call was: did it run the tool, did the tool throw under it, or did the receipt
+    // layer answer it without running anything (#743)? Only the first settles the trail.
+    let attempt: DoorAttempt = 'ran';
     try {
-      result =
-        operationId !== undefined && receipts
-          ? await idempotent(receipts, { projectId, operationId, action, args, toolName: tool.name, issued, warn })
-          : await issued();
+      if (operationId !== undefined && receipts) {
+        const run = await idempotent(receipts, { projectId, operationId, action, args, toolName: tool.name, issued, warn });
+        result = run.result;
+        attempt = run.attempt;
+      } else {
+        result = await issued();
+      }
     } catch (err) {
       // The effect may have started: v2 has no honest outcome for that, so no record (spec § 3.2).
       auditFor?.skip('effect_failed');
       throw err;
     }
     if (audited.kind !== 'mutation' || !auditFor) return result;
+    // The same rule as the `catch` above, for a throw the receipt layer swallowed into an
+    // `unverified` answer: the effect may have started, so there is no honest outcome (spec § 3.2).
+    if (attempt === 'failed') {
+      auditFor.skip('effect_failed');
+      return result;
+    }
+    // A replay, a duplicate still in flight and an unverified crash leftover are answered from the
+    // receipt without re-running the effect (D-06 § 6). The call that DID run the effect is the one
+    // that settles the trail, so recording here would put a second `applied` row in the trail for
+    // one operation and over-report what happened (#743). It is not `skip` either: nothing is
+    // unrecordable, so the trail's one warning would be a lie.
+    if (attempt === 'replayed') return result;
     const recorded = { ...op, action: audited.resolve(result) };
     // v2 has two outcomes, `applied` and `refused`, and `refused` promises nothing happened. So an
     // error result is recorded only when the tool itself says, in its structured answer, that it
@@ -389,6 +418,10 @@ function composeDoor(input: DoorInput): {
  * Run one call under its operation key (D-06 § 6). The call that runs the tool answers with the
  * tool's own result, unchanged; every other answer — a replay, a duplicate still in flight, an
  * unverified crash leftover, a key reused for different work — is the receipt layer's own shape.
+ *
+ * `attempt` says which of those this call was, because the audit trail records the call that ran
+ * the effect and nothing else (#743). `failed` is the effect that threw: the receipt layer swallows
+ * that throw into an `unverified` answer, so without this the door could not tell it from a replay.
  */
 async function idempotent(
   receipts: OperationReceiptStore,
@@ -401,8 +434,9 @@ async function idempotent(
     issued: () => Promise<McpToolResult>;
     warn: (message: string) => void;
   },
-): Promise<McpToolResult> {
+): Promise<{ result: McpToolResult; attempt: DoorAttempt }> {
   let fresh: McpToolResult | undefined;
+  let threw = false;
   const answer = await receipts.execute({
     projectId: call.projectId,
     operationId: call.operationId,
@@ -415,6 +449,7 @@ async function idempotent(
       } catch (err) {
         // The receipt layer answers `unverified` and swallows the throw, so the log line the
         // service would have written for it is written here (the text never reaches the client).
+        threw = true;
         call.warn(`[xez] MCP tool ${call.toolName} failed: ${err instanceof Error ? err.message : String(err)}`);
         throw err;
       }
@@ -424,8 +459,8 @@ async function idempotent(
       return { outcome: 'ok', resultRef: ref ? { kind: ref.kind, id: ref.id } : { kind: 'operation', id: call.operationId } };
     },
   });
-  if (fresh !== undefined) return fresh;
-  return answerResult(answer);
+  if (fresh !== undefined) return { result: fresh, attempt: 'ran' };
+  return { result: answerResult(answer), attempt: threw ? 'failed' : 'replayed' };
 }
 
 function answerResult(answer: OperationAnswer): McpToolResult {

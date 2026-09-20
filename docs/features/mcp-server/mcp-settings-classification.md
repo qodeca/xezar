@@ -348,7 +348,10 @@ Every key here is enforced workspace-wide by `WorkspaceSemaphore`
 > when `capabilities.localHandoff` is false, unlike agent-config writes and the agent-profile
 > routes, which answer 409 there. The owner's reason: *a server admin may change limits remotely*.
 > A workspace limit is neither a hook, a command nor an account identity, which is what that
-> boundary exists to keep off a shared box. A test pins the ALLOWED behaviour, so a later 409
+> boundary exists to keep off a shared box. One writable key is not a limit and is named here so
+> the decision and the exposure are read together (#743): `agentEnvPassthrough` decides which of
+> the server's own environment variables the agent processes receive, and the same decision covers
+> it — unargued, not overlooked. A test pins the ALLOWED behaviour, so a later 409
 > would be a visible break.
 
 | Field | Status | Reason | Enforcing code path | Withheld |

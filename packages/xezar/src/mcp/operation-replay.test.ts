@@ -1,7 +1,8 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
+import { auditActionRecordSchema, type AuditActionRecord } from '@qodeca/xezar-contract';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { projectDataDir } from '../project-data-paths.ts';
 import { RunStore } from '../runs/store.ts';
@@ -11,6 +12,7 @@ import { WorkspaceEventBus, createApp } from '../server/server.ts';
 import { RunManager } from '../workflows/run.ts';
 import { registerProject } from '../workspace/projects.ts';
 import { WorkspaceSemaphore } from '../workspace/semaphore.ts';
+import { AUDIT_TRAIL_FILE } from './audit-trail.ts';
 import { runBridge } from './bridge.ts';
 import { resolveMcpTarget, startMcpService } from './index.ts';
 import { LineFramer, encodeFrame, type McpToolResult } from './ipc.ts';
@@ -380,4 +382,79 @@ describe('#532 structured stale refusal through the composed MCP door', () => {
       expect(answer.structuredContent).toMatchObject({ status: 'rejected', replayed: true });
     });
   }
+});
+
+/**
+ * #743 — ONE OPERATION, ONE `applied` AUDIT ROW.
+ *
+ * The audit trail answers "what was done to this project, and by whom" (#306 part 2), so it counts
+ * operations, not calls. A replay under the same `operationId` is answered from the receipt and
+ * repeats no effect — but the door used to record its audit row AFTER `idempotent(...)` returned,
+ * without asking which of the two it had just been, so a leader that resent a call it had lost the
+ * answer to put a second `applied` row in the trail for one operation. A reader then saw two pins,
+ * two writes, two hand-offs.
+ *
+ * `BREAK-743-REPLAY-DOUBLE-AUDIT` is the break: with the pre-fix door in place the replay case
+ * below reads three `run.pin` rows where it asks for one. The control beside it passes both ways —
+ * it pins the behaviour the fix must NOT change, that a call which really runs the effect still
+ * writes its one row.
+ */
+describe('#743 — a replayed operation writes no second audit row', () => {
+  const auditRecords = (dataDir: string): AuditActionRecord[] => {
+    const path = join(dataDir, AUDIT_TRAIL_FILE);
+    if (!existsSync(path)) return [];
+    return readFileSync(path, 'utf8')
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => auditActionRecordSchema.parse(JSON.parse(line)));
+  };
+
+  it('BREAK-743-REPLAY-DOUBLE-AUDIT: three calls under one operationId leave exactly one applied row', async () => {
+    const c = await cockpit();
+    const rec = recording(c.app);
+    const handle = await startMcpService({ projectId: c.id, version: VERSION, service: rec.service, store: c.store });
+    closers.push(() => handle.close());
+    const client = agent(c.root);
+    const runId = await queuedTask(client, 'op-replay-audit-task');
+
+    const before = auditRecords(c.dataDir).length;
+    const args = { action: 'pin', runId, expectedVersion: await versionOf(client, runId), operationId: 'op-replay-audit-0001' };
+    const answers = await threeTimes(client, 'organise_work', args);
+
+    // The effect itself happened once — the property #264 already pins, restated here so a failure
+    // says which half broke.
+    expect(rec.seen.filter((entry) => entry.startsWith('POST') && entry.endsWith('/pin'))).toHaveLength(1);
+    expectReplay(answers, { action: 'organiseWork.pin', resultRef: { kind: 'operation', id: 'op-replay-audit-0001' } });
+
+    const added = auditRecords(c.dataDir).slice(before);
+    expect(added.map((record) => [record.action, record.outcome.status])).toEqual([['run.pin', 'applied']]);
+  });
+
+  it('control: a call that really runs the effect still writes its one applied row', async () => {
+    const c = await cockpit();
+    const rec = recording(c.app);
+    const handle = await startMcpService({ projectId: c.id, version: VERSION, service: rec.service, store: c.store });
+    closers.push(() => handle.close());
+    const client = agent(c.root);
+    const runId = await queuedTask(client, 'op-replay-audit-control-task');
+
+    const before = auditRecords(c.dataDir).length;
+    // Two DIFFERENT operations on the same task: two effects, two rows. This passes with and
+    // without the fix — it is the behaviour the fix must leave alone.
+    for (const [index, action] of (['pin', 'unpin'] as const).entries()) {
+      const answer = await client.call('organise_work', {
+        action,
+        runId,
+        expectedVersion: await versionOf(client, runId),
+        operationId: `op-replay-audit-control-000${index + 1}`,
+      });
+      expect(answer.isError, JSON.stringify(answer)).toBeFalsy();
+    }
+
+    const added = auditRecords(c.dataDir).slice(before);
+    expect(added.map((record) => [record.action, record.outcome.status])).toEqual([
+      ['run.pin', 'applied'],
+      ['run.unpin', 'applied'],
+    ]);
+  });
 });
