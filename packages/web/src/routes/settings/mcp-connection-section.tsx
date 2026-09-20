@@ -498,7 +498,8 @@ export function McpConnectionSurface({
         </SettingsField>
       ) : null}
 
-      {/* #114: usable functions, unavailable dependencies, read-only shared limits, quality checks.
+      {/* #114: usable functions, unavailable dependencies, the shared limits (which the leader
+          can change over MCP since #677 B1, though not from here), quality checks.
           It is the one capability section: the three limitation bullets that sat above it restated
           it and Local-only scope (C8). */}
       <McpCapabilities />

@@ -441,8 +441,11 @@ const projectConfigWriteSchema = setConfigInputSchema.omit({ maxParallel: true }
  * TWO KEYS ARE STILL NOT ACCEPTED, and the omission is the whole of the narrowing: `browseRoot`
  * and `projectsDir` are the cockpit folder browser's confinement root and the directory a GUI
  * clone lands in — filesystem boundaries rather than limits, reviewed on their own in slice B2.
- * `.strict()` on top so an unknown key is refused rather than silently dropped; the route's own
- * schema would strip it and answer 200 for a change that never happened.
+ * `.strict()` on top so an unknown TOP-LEVEL key is refused rather than silently dropped; a
+ * dropped key would answer 200 for a change that never happened. The NESTED objects are strict in
+ * the contract itself (`packages/contract/src/workspace.ts`, review m1), so a misspelt limit
+ * (`{ resources: { maxParalel: 9 } }`) is refused identically at both doors rather than here
+ * alone — the route validates with the same schema this one narrows.
  */
 const workspaceConfigWriteSchema = setWorkspaceConfigInputSchema.omit({ browseRoot: true, projectsDir: true }).strict();
 const projectRegistryWriteSchema = z.strictObject(updateProjectInputSchema.shape);
@@ -493,7 +496,7 @@ export const projectConfigInputSchema = z
     action: z
       .enum([...PROJECT_CONFIG_ACTIONS, ...REFUSED_ACTION_NAMES])
       .describe(
-        'What to do in the project this connection is bound to. Actions outside the project boundary (workspace settings, accounts, the project registry, host folders) are answered with a refusal that names the boundary.',
+        'What to do in the project this connection is bound to, plus the shared settings set_workspace_config changes for every project on this machine. Actions outside that boundary (the two workspace folder paths, accounts, the project registry, host folders) are answered with a refusal that names the boundary.',
       ),
     projectId: z
       .unknown()
@@ -1405,7 +1408,7 @@ export const projectConfigTool = defineTool({
   name: 'project_config',
   title: 'Project configuration',
   description:
-    "Read and change THIS project's own configuration: its settings (agent, models, system prompt, review gate, base branch, worktree retention, memory limit), its registry entry (concurrency cap and tags), prompt templates, in-repo agent config files, workflows, skills, GitHub automations and worktrees. Shared settings are readable only as effective limits and capabilities (get_limits, get_capabilities, get_account). Workspace-wide settings, agent accounts, account identity, home files, the project registry and host folders are outside this boundary and are refused with the reason.",
+    "Read and change THIS project's own configuration: its settings (agent, models, system prompt, review gate, base branch, worktree retention, memory limit), its registry entry (concurrency cap and tags), prompt templates, in-repo agent config files, workflows, skills, GitHub automations and worktrees. It also reads the shared settings as effective limits and capabilities (get_limits, get_capabilities, get_account) and CHANGES them with set_workspace_config — the shared limits, composer defaults, follow-up inbox and environment passthrough, skills auto-update and the machine-wide agent defaults, which apply to every project on this machine. The two workspace folder paths, agent accounts, account identity, home files, the project registry and host folders are outside this boundary and are refused with the reason.",
   inputSchema: projectConfigInputSchema,
   annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
   async call(args, ctx: ProjectConfigContext) {

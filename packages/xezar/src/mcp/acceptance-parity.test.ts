@@ -1280,6 +1280,22 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
         expect(badMcp.isError).toBe(true);
         expect(resultText(badMcp)).toContain('<=16');
         expect((await mcp(w, 'project_config', { action: 'get_limits' })).result.workspace.resources.maxParallel).toBe(2);
+
+        // A MISSPELT NESTED KEY is refused by both doors too (review m1). It used to be stripped
+        // and answered 200 — success for a change that never happened — because `.strict()` sat
+        // on the outer object alone. The nested objects are strict in the contract now, and the
+        // contract is what BOTH doors validate with.
+        const typo = { resources: { maxParalel: 9 } };
+        const typoUi = await ui(w, '/api/v1/workspace/config', 'PUT', typo);
+        expect(typoUi.status).toBe(400);
+        const typoMcp = await w.call('a', 'project_config', { action: 'set_workspace_config', operationId: op(), workspaceConfig: typo });
+        expect(typoMcp.isError).toBe(true);
+        expect((await mcp(w, 'project_config', { action: 'get_limits' })).result.workspace.resources.maxParallel).toBe(2);
+
+        // "Repeating one key changes nothing twice" is NOT assertable here: this world wires the
+        // tools directly, and the operation receipt belongs to the generic door. It is pinned
+        // where the door really runs — `composition.test.ts`, "a workspace write replayed under
+        // the same operation key" (review M2).
       },
     );
 
@@ -1914,7 +1930,13 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
         if (action.status !== 'available') expect(action.reason).toBeTruthy();
       }
       expect(discovery.actions.find((a: { id: string }) => a.id === 'inbox').reason).toMatch(/XEZ_FOLLOWUPS/);
-      expect(discovery.actions.find((a: { id: string }) => a.id === 'workspace_limits')).toMatchObject({ status: 'read-only' });
+      // B1 (#677 wave 2): the shared limits became writable, so the row is available and carries
+      // no reason. It was `read-only` with "only a person can change them" until 2026-09-20.
+      expect(discovery.actions.find((a: { id: string }) => a.id === 'workspace_limits')).toEqual({
+        id: 'workspace_limits',
+        label: 'Change workspace-wide limits',
+        status: 'available',
+      });
       // The health read is FILTERED: the project list and the boot project never reach the leader.
       expect(JSON.stringify(discovery)).not.toMatch(/"projects"|"bootProject"/);
       expect(leaked(JSON.stringify(discovery), w.b.names)).toEqual([]);

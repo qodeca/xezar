@@ -820,7 +820,7 @@
   {
     "name": "project_config",
     "title": "Project configuration",
-    "description": "Read and change THIS project's own configuration: its settings (agent, models, system prompt, review gate, base branch, worktree retention, memory limit), its registry entry (concurrency cap and tags), prompt templates, in-repo agent config files, workflows, skills, GitHub automations and worktrees. Shared settings are readable only as effective limits and capabilities (get_limits, get_capabilities, get_account). Workspace-wide settings, agent accounts, account identity, home files, the project registry and host folders are outside this boundary and are refused with the reason.",
+    "description": "Read and change THIS project's own configuration: its settings (agent, models, system prompt, review gate, base branch, worktree retention, memory limit), its registry entry (concurrency cap and tags), prompt templates, in-repo agent config files, workflows, skills, GitHub automations and worktrees. It also reads the shared settings as effective limits and capabilities (get_limits, get_capabilities, get_account) and CHANGES them with set_workspace_config — the shared limits, composer defaults, follow-up inbox and environment passthrough, skills auto-update and the machine-wide agent defaults, which apply to every project on this machine. The two workspace folder paths, agent accounts, account identity, home files, the project registry and host folders are outside this boundary and are refused with the reason.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -884,7 +884,7 @@
             "get_launch_key",
             "open_in_app"
           ],
-          "description": "What to do in the project this connection is bound to. Actions outside the project boundary (workspace settings, accounts, the project registry, host folders) are answered with a refusal that names the boundary."
+          "description": "What to do in the project this connection is bound to, plus the shared settings set_workspace_config changes for every project on this machine. Actions outside that boundary (the two workspace folder paths, accounts, the project registry, host folders) are answered with a refusal that names the boundary."
         },
         "projectId": {
           "description": "Never accepted: the project is the one this connection is bound to, and a call that names one is refused."
@@ -1137,7 +1137,8 @@
                     }
                   ]
                 }
-              }
+              },
+              "additionalProperties": false
             },
             "resources": {
               "type": "object",
@@ -1196,7 +1197,8 @@
                   "minimum": 0,
                   "maximum": 1000
                 }
-              }
+              },
+              "additionalProperties": false
             },
             "agentDefaults": {
               "type": "object",
@@ -1268,9 +1270,11 @@
                         }
                       ]
                     }
-                  }
+                  },
+                  "additionalProperties": false
                 }
-              }
+              },
+              "additionalProperties": false
             }
           },
           "additionalProperties": false

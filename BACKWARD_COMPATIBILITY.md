@@ -1116,4 +1116,13 @@ every workspace limit as a safe effective read a leader could see and never chan
   payload DIGEST — never the field values, and (unlike the cockpit door's record) not the field
   names either.
 - **The record of the old decision is kept, not deleted**: the superseded rulings stay in
-  `docs/features/mcp-server/mcp-ui-action-inventory.md` beside the new one, dated.
+  `docs/features/mcp-server/mcp-ui-action-inventory.md` verbatim, beside the new one, dated.
+- **An unknown key is refused at EVERY level, through both doors** (added in the review round). An
+  unknown TOP-LEVEL key was already refused as a tool argument. A misspelt NESTED key
+  (`{ resources: { maxParalel: 9 } }`, `{ agentDefaults: { models: { gemini: 'x' } } }`) used to be
+  stripped by the schema and answered 200 / `applied` for a change that never happened. The nested
+  objects of `setWorkspaceConfigInputSchema` are strict now, so **`PUT /api/v1/workspace/config`
+  answers 400 for a body it used to accept**, and the MCP door refuses it as an argument. This is
+  the intended narrowing and it applies to both doors at once, because both validate with that one
+  contract schema. No cockpit call site sends such a key; a client that did was silently losing
+  the setting it meant to change.

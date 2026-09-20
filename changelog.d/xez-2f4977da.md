@@ -10,3 +10,10 @@
   every project on the machine, which is why the change is deliberate rather than incidental: it
   reverses a documented "never from MCP" decision on the owner's rule of 2026-09-20. The two
   workspace folder paths (`browseRoot`, `projectsDir`) are still not accepted. (#677)
+
+## 🐛 Fixes
+
+- 🐛 **A misspelt workspace setting is refused instead of quietly dropped.** A body with a typo
+  inside `resources`, `composerDefaults` or `agentDefaults` — `{ resources: { maxParalel: 9 } }` —
+  used to be accepted with a success answer while the setting never changed. Both the Settings
+  panes' own route and the MCP write now answer with an error naming the key. (#677)

@@ -313,9 +313,16 @@ describe('discover_project — unavailable actions carry a reason', () => {
     expect(ready.agents.find((a) => a.runner === 'claude')).toMatchObject({ usable: true, installed: true, version: '2.1.0 (Claude Code)' });
   });
 
-  it('workspace limits are reported as a read-only shared constraint, with this project’s own values', () => {
+  // #677 wave 2 slice B1: the row was `read-only` until the owner's 2026-09-20 rule made the
+  // workspace settings writable through `project_config set_workspace_config`. A leader reads
+  // this answer first, so a stale `read-only` here is a false "you cannot".
+  it('workspace limits are reported as an available action, with this project’s own values', () => {
     const discovery = buildDiscovery(facts());
-    expect(actionOf(discovery, 'workspace_limits').status).toBe('read-only');
+    expect(actionOf(discovery, 'workspace_limits')).toEqual({
+      id: 'workspace_limits',
+      label: 'Change workspace-wide limits',
+      status: 'available',
+    });
     expect(discovery.limits.maxParallel).toEqual({ effective: 3, project: 3, workspace: 2 });
   });
 });

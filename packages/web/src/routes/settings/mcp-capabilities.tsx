@@ -375,7 +375,11 @@ export function McpCapabilitiesView({ capabilities, constraints, failingChecks, 
                 <dt className="flex min-w-0 items-center gap-2 text-[13px] text-foreground">
                   <LockIcon aria-hidden="true" className="size-3.5 shrink-0 text-soft-foreground" />
                   <span className="break-words">{constraint.label}</span>
-                  <StatusText>Read-only</StatusText>
+                  {/* Copy, not structure (review m2): the row said "Read-only" one line under a
+                      hint that says the leader can change these over MCP. The lock and the badge
+                      are about THIS pane, which has no edit control — so they say that instead of
+                      a "cannot" that is no longer true. */}
+                  <StatusText>Not editable here</StatusText>
                 </dt>
                 <dd className="min-w-0 text-[13px] font-medium break-words text-foreground">{constraint.value}</dd>
               </div>

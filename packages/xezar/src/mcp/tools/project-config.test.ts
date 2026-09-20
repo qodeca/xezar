@@ -29,6 +29,7 @@ import type { ServiceDispatch } from '../service-adapter.ts';
 import { toolListing, type McpToolResult } from '../tool.ts';
 import { tools } from './index.ts';
 import { withOperationId } from './operation-id.testkit.ts';
+import { taskCreateTool, type TaskCreateContext } from './task-create.ts';
 import { versionForTest } from './version.testkit.ts';
 import {
   PROJECT_CONFIG_ACTIONS,
@@ -302,6 +303,35 @@ const value = (called: Called) => {
   return called.structured.result;
 };
 
+/**
+ * `task_create` against the ALREADY-RUNNING fixture service, with `POST /runs` captured instead of
+ * served: the body is what the composer's own run-mode resolution decided, and no run is started.
+ * This is how the workspace `composerDefaults` are observed through their consumer (review m4).
+ */
+async function startViaTaskCreate(operationId: string, prompt: string): Promise<{ result: McpToolResult; text: string; body: any }> {
+  let body: unknown;
+  const service: ServiceDispatch = {
+    request(url: string, init?: RequestInit) {
+      const path = new URL(url).pathname;
+      if ((init?.method ?? 'GET') === 'POST' && path.endsWith('/runs')) {
+        body = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined;
+        return Promise.resolve(
+          new Response(JSON.stringify({ id: 'stubbed-run', status: 'queued' }), { status: 201, headers: { 'content-type': 'application/json' } }),
+        );
+      }
+      return ws.app.request(url, init);
+    },
+  };
+  const parsed = taskCreateTool.inputSchema.safeParse({ action: 'start', operationId, prompt });
+  if (!parsed.success) throw new Error(`task_create arguments rejected: ${parsed.error.message}`);
+  const result: McpToolResult = await taskCreateTool.call(parsed.data, {
+    project: { id: 'proj-a', name: 'Project A', root: ws.roots.a },
+    xezarVersion: '0.0.0-test',
+    service,
+  } as TaskCreateContext);
+  return { result, text: result.content.map((c) => ('text' in c ? c.text : '')).join('\n'), body };
+}
+
 /** Every file under `dir` (runtime state and git excluded), relative, with a content hash. */
 function snapshot(dir: string): Record<string, string> {
   const files: Record<string, string> = {};
@@ -539,7 +569,41 @@ describe('project_config: the workspace-settings write (#677 B1)', () => {
     expect((await cockpit('/api/v1/workspace/config')).body.resources.maxParallel).toBe(2);
   });
 
-  it('needs an operation key, and repeating one changes nothing twice', async () => {
+  /**
+   * Review m1: `.strict()` on the outer object alone let a misspelt NESTED limit through — the
+   * route stripped it and answered 200 for a change that never happened. The nested objects are
+   * strict in the CONTRACT now, so the refusal is the same at both doors; a fix in the tool alone
+   * would have left the cockpit's own PUT silently dropping the typo.
+   */
+  it('refuses a misspelt NESTED key too, at both doors, and writes nothing', async () => {
+    const before = (await cockpit('/api/v1/workspace/config')).body;
+    const spy = spyService();
+    const nested = [
+      { resources: { maxParalel: 9 } },
+      { resources: { browseRoot: '/tmp' } },
+      { composerDefaults: { autonomus: true } },
+      { agentDefaults: { models: { gemini: 'x' } } },
+      { agentDefaults: { runer: 'codex' } },
+    ];
+    for (const bad of nested) {
+      const called = await invoke({ action: 'set_workspace_config', workspaceConfig: bad }, { service: spy });
+      expect(called.result.isError, JSON.stringify(bad)).toBe(true);
+      // The cockpit's own door answers 400 for the same body — one schema, one opinion.
+      const viaUi = await cockpit('/api/v1/workspace/config', 'PUT', bad);
+      expect(viaUi.status, JSON.stringify(bad)).toBe(400);
+    }
+    expect(spy.requests).toEqual([]);
+    expect((await cockpit('/api/v1/workspace/config')).body).toEqual(before);
+  });
+
+  /**
+   * The key is REQUIRED — that is all this case can say. Replaying one is the generic door's
+   * job (`mcp/index.ts`), which `invoke` deliberately bypasses by calling the tool directly, so
+   * "repeating one changes nothing twice" is pinned where it actually happens: through the real
+   * bridge, in `acceptance-parity.test.ts` P-45. The title said it here and proved it nowhere
+   * (review M2).
+   */
+  it('needs an operation key', async () => {
     const missing = await invoke({ action: 'set_workspace_config', workspaceConfig: { resources: { maxParallel: 4 } }, operationId: undefined });
     expect(missing.result.isError).toBe(true);
     expect(missing.text).toMatch(/set_workspace_config needs operationId/);
@@ -569,17 +633,44 @@ describe('project_config: the workspace-settings write (#677 B1)', () => {
     expect(merged.defaultModels?.codex).toBe('gpt-5.6-sol');
   });
 
-  it('applies to an ALREADY-RUNNING cockpit’s next read without a restart (the per-call class)', async () => {
+  /**
+   * The per-call class, observed THROUGH ITS CONSUMERS (review m4). A second `GET
+   * /workspace/config` only proves the answer is re-read; what matters is that the thing each key
+   * decides decides it differently now, on a service that was already running when the leader
+   * wrote. So each of the three keys is read where it is USED:
+   *   - `composerDefaults` → `task_create`'s run mode, the composer's own resolution, with the
+   *     `POST /runs` body captured on its way in (no run is started);
+   *   - `skillsAutoUpdate` → the updater's next check (`GET /workspace/skills-update`, whose
+   *     `autoUpdateEnabled` is `effectiveSkillsAutoUpdate` of the config as it is NOW);
+   *   - `worktreeRetentionDefault` → `resolveWorktreeRetention`.
+   * The already-booted cockpit's own `/workspace/config` answer is kept as the fourth reader.
+   */
+  it('applies to an ALREADY-RUNNING cockpit’s next read and to the consumers themselves (the per-call class)', async () => {
     // Built before the write, and never told about it: these keys are read per call, so the
     // second cockpit answers the new values rather than a boot snapshot.
     const { app } = hotCockpit();
-    value(await invoke({ action: 'set_workspace_config', workspaceConfig: { composerDefaults: { autonomous: true }, skillsAutoUpdate: false, resources: { worktreeRetentionDefault: 3 } } }));
+    // What the consumers say BEFORE, so the assertions below cannot pass on a default.
+    expect((await cockpit('/api/v1/workspace/skills-update?projectId=proj-a')).body).toMatchObject({ autoUpdateEnabled: true, inherited: true });
+    expect(await resolveWorktreeRetention(ws.roots.b)).not.toBe(3);
+
+    value(await invoke({ action: 'set_workspace_config', workspaceConfig: { composerDefaults: { autonomous: true, worktree: false }, skillsAutoUpdate: false, resources: { worktreeRetentionDefault: 3 } } }));
+
     const res = await app.request('/api/v1/workspace/config', { headers: { host: COCKPIT_HOST } });
     expect(await res.json()).toMatchObject({
-      composerDefaults: { autonomous: true },
+      composerDefaults: { autonomous: true, worktree: false },
       skillsAutoUpdate: false,
       resources: { worktreeRetentionDefault: 3 },
     });
+
+    // The composer defaults reach the run `task_create` would create — the same resolution the
+    // New task form applies — on the service that was already running.
+    const started = await startViaTaskCreate('op-b1-composer-0001', 'use the new defaults');
+    expect(started.result.isError, started.text).toBeFalsy();
+    expect(started.body).toMatchObject({ autonomous: true, worktree: false });
+
+    // The updater's next check answers the leader's preference, and says it is no longer inherited.
+    expect((await cockpit('/api/v1/workspace/skills-update?projectId=proj-a')).body).toMatchObject({ autoUpdateEnabled: false, inherited: false });
+
     expect(await resolveWorktreeRetention(ws.roots.b)).toBe(3);
   });
 });
