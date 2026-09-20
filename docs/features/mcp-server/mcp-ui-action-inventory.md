@@ -442,6 +442,15 @@ Project-scope sections: `agents`, `agent-config`, `worktrees`, `bookmarklets`, `
 
 Global-scope sections in `registry.tsx`: `appearance`, `notifications`, `resources`, `skills`, `accounts`, `projects`, and `keyboard` (`hidden: true`, rendered only via `comingSoon()` — **no route mounts it**, so `/settings/global/keyboard` 404s today; there is no keyboard-shortcut editor). All rows are `global` unless noted.
 
+**Coverage reconciliation — 2026-09-20 (#677 wave 2 B6).** The owner's “Every key” decision
+supersedes the earlier assumption that a `GLOBAL` effect necessarily stays outside a project-bound
+leader. The current `covered` rows and the merged implementation that covers them are: I-117–I-121
+by PR #734; I-127 by PR #748; I-024, I-092 and I-132 by PR #753; I-115 by PR #760; and I-122–I-124
+by PR #764. Each action name was verified in `project-config.ts`; the earlier ruling remains in its
+row as historical text. I-125 and I-126 deliberately remain `global`, not `covered`: the merged
+tool still refuses `open_account_file` (`host-process`) and `browse_folders` (host filesystem), so
+flipping either would make this inventory claim an implementation that does not exist.
+
 | ID | UI source and symbol | Availability | Inputs → outputs | Validation / quality rules | Effect scope | Required MCP equivalent (outcome) | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | I-117 | `packages/web/src/routes/settings/resources-section.tsx` `ResourcesForm` `select[data-slot="resources-max-parallel"]` → `PUT /workspace/config` (`workspaceConfigUpdateSchema`) | always | `resources.maxParallel`, int 1–16 | enforced by `WorkspaceSemaphore` (`packages/xezar/src/workspace/semaphore.ts`) | GLOBAL | **Decided 2026-09-20 (D-677-B1, owner rule "every key" on #677).** A workspace write through `PUT /workspace/config`, the cockpit's own route — the leader may change the cap that limits its own parallelism, and the change applies to every project on the machine.<br>**Kept, superseded — the 2026-09-10 ruling, verbatim:** “Safe effective read only. The leader may learn the cap that limits its own parallelism; it may not change a workspace-wide limit (F-12).” | covered |

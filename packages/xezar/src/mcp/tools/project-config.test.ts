@@ -754,7 +754,7 @@ describe('project_config: the workspace-settings write (#677 B1)', () => {
     const health = (await (await hosted('/api/v1/health')).json()) as { capabilities: { localHandoff: boolean } };
     expect(health.capabilities.localHandoff, 'the fixture really is hosted').toBe(false);
 
-    // The cockpit's own door: no `localHandoffRoute` on this route, deliberately.
+    // The cockpit's own door: this route is permitted in hosted mode, deliberately.
     expect((await hosted('/api/v1/workspace/config', 'PUT', { resources: { maxParallel: 7 } })).status).toBe(200);
     // The leader's door, dispatching into that same hosted service.
     const called = await invoke({ action: 'set_workspace_config', workspaceConfig: { resources: { maxParallel: 5 } } }, { service: app });
@@ -1128,7 +1128,7 @@ describe('project_config: the shared preference write (#677 B3)', () => {
 
   /**
    * HOSTED MODE ALLOWS THIS WRITE TOO, by the same owner decision of 2026-09-20 recorded for the
-   * settings write: `PUT /workspace/ui-state` carries no `localHandoffRoute`, and none was added.
+   * settings write: `PUT /workspace/ui-state` is permitted in hosted mode.
    * Pinned as ALLOWED so a later 409 is a visible break rather than a silent change of mind; the
    * agent-config contrast on the same app proves hosted mode really is on.
    */
@@ -1367,8 +1367,8 @@ describe('project_config: the provider switch (#677 B4)', () => {
 
   /**
    * HOSTED MODE ALLOWS BOTH WRITES, by the same owner decision of 2026-09-20 recorded for the
-   * settings and preference writes: neither provider route carries a `localHandoffRoute`, and
-   * none was added. Pinned as ALLOWED so a later 409 is a visible break; the agent-config
+   * settings and preference writes: both provider routes are permitted in hosted mode. Pinned as
+   * ALLOWED so a later 409 is a visible break; the agent-config
    * contrast on the same app proves hosted mode really is on.
    */
   it('is ALLOWED in hosted mode through both doors, while a local-handoff route on the same app still refuses', async () => {
@@ -1483,7 +1483,8 @@ describe('project_config: the agent accounts (#677 B5)', () => {
   });
 
   /**
-   * THE IDENTITY IN AN ERROR (named break `BREAK-B5-IDENTITY-IN-ERROR`; #764 review, Major 1).
+   * THE IDENTITY IN AN ERROR (named breaks `BREAK-B5-IDENTITY-IN-ERROR` and
+   * `BREAK-677-IDENTITY-TWO-DEFS`; #764 review, Major 1 and re-check N1).
    *
    * The case above pins that the route's own 409 reaches the leader unsoftened. This one pins the
    * one word of it that must not: the 409 names the CONFLICTING account by its label, and a person
@@ -1516,6 +1517,41 @@ describe('project_config: the agent accounts (#677 B5)', () => {
     expect(repointed.structured.status).toBe(409);
     expect(repointed.json).not.toContain(EMAIL_LABEL);
     expect(repointed.json).not.toMatch(EMAIL_RE);
+
+    // The success and 409 paths deliberately share `looksLikeIdentity`. Restore the old dotted-
+    // domain-only error regex and these two cases disclose the exact label in the refusal.
+    for (const [index, label] of ['boss@corp', '@marcin'].entries()) {
+      const shortDir = accountDir(`short-identity-${index}`);
+      expect((await cockpit('/api/v1/workspace/agent-profiles', 'POST', { provider: 'claude', configDir: shortDir, label })).status).toBe(201);
+      const refused = await invoke({ action: 'create_account', account: { provider: 'claude', configDir: shortDir } });
+      expect(refused.structured.status).toBe(409);
+      expect(refused.json, label).not.toContain(label);
+      expect(refused.text, label).toContain('withheld');
+    }
+  });
+
+  /**
+   * `BREAK-677-ID-FROM-EMAIL`: restore `allocateAgentProfileId(label ?? configDir, …)` in the
+   * account route and this returns `someone-private-example-invalid`, leaking the supplied email
+   * as both the create answer's id and the selected account's handle.
+   */
+  it('allocates a new identity-labelled account id from a non-identity source', async () => {
+    const label = 'someone.private@example.invalid';
+    // The folder basename is identity-shaped too, so neither possible user string is a safe source.
+    const dir = accountDir('folder@example.invalid');
+    const created = value(await invoke({ action: 'create_account', account: { provider: 'claude', label, configDir: dir } })).account;
+    expect(created.id).not.toContain('someone-private-example-invalid');
+    expect(created.id).not.toContain('someone');
+    expect(created.id).not.toContain('folder-example-invalid');
+    expect(created.id).toMatch(/^account-[a-f0-9]{8}$/);
+    expect(created).not.toHaveProperty('label');
+
+    const stored = JSON.parse(readFileSync(accountsFile(), 'utf8')).accounts.find((row: { id: string }) => row.id === created.id);
+    expect(stored).toMatchObject({ id: created.id, label, configDir: dir });
+    value(await invoke({ action: 'select_account', provider: 'claude', accountId: created.id }));
+    const effective = value(await invoke({ action: 'get_account' })).accounts.find((row: { provider: string }) => row.provider === 'claude');
+    expect(effective.handle).toBe(created.id);
+    expect(JSON.stringify(effective)).not.toContain('someone-private-example-invalid');
   });
 
   it('edits and removes one, and the route’s own reference scrub goes with the removal', async () => {
@@ -1637,6 +1673,34 @@ describe('project_config: the agent accounts (#677 B5)', () => {
     expect(wrong.text, 'it never answers `codex` for a Claude account').not.toContain('"provider": "codex"');
     expect(wrong.result.isError).toBe(true);
     expect(wrong.text).toContain('is a claude account, not a codex one');
+  });
+
+  it('keeps the claimed provider when the stored-account listing fails open', async () => {
+    const created = value(await invoke({ action: 'create_account', account: { provider: 'claude', configDir: accountDir('listing-fails') } })).account;
+    const service: ServiceDispatch = {
+      request(url, init) {
+        const path = new URL(typeof url === 'string' ? url : String(url)).pathname;
+        if (path.endsWith('/workspace/agent-profiles')) return Promise.resolve(new Response(JSON.stringify({ error: 'unavailable' }), { status: 503 }));
+        return ws.app.request(url, init);
+      },
+    };
+    const called = value(await invoke({ action: 'check_account_status', provider: 'codex', accountId: created.id }, { service }));
+    expect(called.account).toEqual({ provider: 'codex', accountId: created.id });
+  });
+
+  it('keeps the claimed provider when the stored-account listing has no matching row', async () => {
+    const created = value(await invoke({ action: 'create_account', account: { provider: 'claude', configDir: accountDir('listing-misses') } })).account;
+    const service: ServiceDispatch = {
+      request(url, init) {
+        const path = new URL(typeof url === 'string' ? url : String(url)).pathname;
+        if (path.endsWith('/workspace/agent-profiles')) {
+          return Promise.resolve(new Response(JSON.stringify({ editable: true, profiles: [], profileCapableProviders: [], selections: {}, defaults: {} }), { status: 200 }));
+        }
+        return ws.app.request(url, init);
+      },
+    };
+    const called = value(await invoke({ action: 'check_account_status', provider: 'codex', accountId: created.id }, { service }));
+    expect(called.account).toEqual({ provider: 'codex', accountId: created.id });
   });
 
   /**

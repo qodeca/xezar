@@ -2,8 +2,8 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
-import { auditActionRecordSchema, type AuditActionRecord } from '@qodeca/xezar-contract';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { auditActionRecordSchema, type AuditActionRecord, type OperationAnswer } from '@qodeca/xezar-contract';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { projectDataDir } from '../project-data-paths.ts';
 import { RunStore } from '../runs/store.ts';
 import { ProjectContexts } from '../server/project-context.ts';
@@ -16,7 +16,7 @@ import { AUDIT_TRAIL_FILE } from './audit-trail.ts';
 import { runBridge } from './bridge.ts';
 import { resolveMcpTarget, startMcpService } from './index.ts';
 import { LineFramer, encodeFrame, type McpToolResult } from './ipc.ts';
-import { RECEIPT_JOURNAL_FILE } from './operation-receipts.ts';
+import { OperationReceiptStore, RECEIPT_JOURNAL_FILE } from './operation-receipts.ts';
 import type { ServiceDispatch } from './service-adapter.ts';
 import { tools } from './tools/index.ts';
 
@@ -65,6 +65,7 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   for (const close of closers.splice(0).reverse()) await Promise.resolve(close()).catch(() => undefined);
   for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
   for (const [key, value] of [['XEZ_HOME', saved.home], ['XEZ_DRY_RUN', saved.dryRun]] as const) {
@@ -568,6 +569,48 @@ describe('#743 — a replayed operation writes no second audit row', () => {
     expect(answer.structuredContent).toMatchObject({ error: 'operation_receipt_unavailable' });
     expect(warnings.filter((line) => line.includes('audit trail'))).not.toEqual([]);
   });
+
+  /**
+   * `BREAK-743-FALLBACK-AS-REPLAY`: change the `replayed: false` fallback in `receiptAttemptOf`
+   * to `{ kind: 'replayed' }` and every row below disappears. These answers are injected at the
+   * receipt seam because today's composed MCP wrapper supplies no precheck that naturally returns
+   * them; the rest is the real bridge, composed door, audit trail and service boundary.
+   */
+  it.each(['ok', 'rejected', 'not-applied'] as const)(
+    'BREAK-743-FALLBACK-AS-REPLAY: %s with replayed false records one refusal and dispatches no effect',
+    async (status) => {
+      const c = await cockpit();
+      const rec = recording(c.app);
+      const answer: OperationAnswer = {
+        status,
+        operationId: `op-unexpected-${status}`,
+        action: 'projectConfig.saveWorkflow',
+        replayed: false,
+        ...(status === 'ok'
+          ? { resultRef: { kind: 'operation', id: `op-unexpected-${status}` } }
+          : { errorCode: 'injected pre-effect answer' }),
+      };
+      const execute = vi.spyOn(OperationReceiptStore.prototype, 'execute').mockResolvedValueOnce(answer);
+      const handle = await startMcpService({ projectId: c.id, version: VERSION, service: rec.service, store: c.store });
+      closers.push(() => handle.close());
+      const client = agent(c.root);
+
+      const before = auditRecords(c.dataDir).length;
+      await client.call('project_config', {
+        action: 'save_workflow',
+        workflow: { name: `unexpected-${status}`, steps: [{ id: 'work', prompt: '{{task}}' }] },
+        operationId: `op-unexpected-${status}`,
+      });
+
+      expect(execute).toHaveBeenCalledOnce();
+      expect(rec.seen.filter((entry) => entry === `POST /api/v1/p/${c.id}/workflows`)).toHaveLength(0);
+      const added = auditRecords(c.dataDir).slice(before);
+      expect(added.map((record) => [record.action, record.outcome.status, record.outcome.status === 'refused' ? record.outcome.reason : undefined])).toEqual([
+        ['workflow.save', 'refused', 'receipt_unexpected_answer'],
+      ]);
+      execute.mockRestore();
+    },
+  );
 
   /**
    * Fault injection, not a naturally occurring failure: the review of the first fix injected a

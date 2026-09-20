@@ -906,8 +906,9 @@ function scrubPaths(text: string, root: string): string {
 }
 
 /**
- * A DOUBLE-QUOTED run of error text that carries an email shape — the way the service quotes a
- * user's own words back, and the shape {@link looksLikeIdentity} judges one FIELD by.
+ * A DOUBLE-QUOTED run of error text — the way the service quotes a user's own words back. Whether
+ * it carries an identity is decided by the SAME helper as a successful account row (#677 B6), so
+ * `boss@corp` and `@marcin` cannot be withheld on success and disclosed by a 409.
  *
  * The quotes are load-bearing, not decoration. An email shape ALONE also matches an scp-style git
  * remote (`git@github.com:org/repo.git`), and an unrelated error that named one would come back to
@@ -915,7 +916,10 @@ function scrubPaths(text: string, root: string): string {
  * quotes is what a person typed; that is the disclosure, and nothing else in these messages is
  * quoted that way.
  */
-const QUOTED_IDENTITY = /"[^"]*[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+[^"]*"/g;
+const QUOTED_RUN = /"[^"]*"/g;
+
+/** An account label containing `@` can be an email, login or handle and is identity-bearing. */
+const looksLikeIdentity = (label: string): boolean => label.includes('@');
 
 /** What replaces one, quotes and all. The sentence still reads, and it says WHY the word is
  *  missing rather than leaving a hole a leader would read as the route mangling its own message. */
@@ -940,7 +944,7 @@ const IDENTITY_WITHHELD = '(a label that looks like an identity, withheld)';
  * label is who it is for.
  */
 function scrubIdentity(text: string): string {
-  return text.replace(QUOTED_IDENTITY, IDENTITY_WITHHELD);
+  return text.replace(QUOTED_RUN, (quoted) => (looksLikeIdentity(quoted.slice(1, -1)) ? IDENTITY_WITHHELD : quoted));
 }
 
 /**
@@ -1183,9 +1187,6 @@ function providerRows(response: ProviderStatusResponse) {
     ...(row.hint !== undefined ? { hint: row.hint } : {}),
   }));
 }
-
-/** An account label is user text; one that looks like an email is an identity and is withheld. */
-const looksLikeIdentity = (label: string): boolean => label.includes('@');
 
 /**
  * ONE account row, narrowed — the answer of `create_account` and `update_account` (#677 B5).

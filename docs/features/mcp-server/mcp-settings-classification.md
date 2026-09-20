@@ -31,6 +31,8 @@ read and its write have different answers, they are two rows. Every row carries 
 | --- | --- |
 | **project-write** | In scope for the leader, bound to THIS project. Reads and writes alike: the effect stays inside the bound project's own state, and nothing about another project, another account, or the machine changes. |
 | **safe-effective-read** | The value lives in shared (workspace, machine or home) state. The leader may READ an effective capability or limit derived from it, and may never write it. Every such row states what is deliberately withheld. |
+| **workspace-write** | The value lives in shared state and the leader may write the bounded cockpit route named by the row. This is the dated 2026-09-20 exception created by the owner's “Every key” decision; the row must state its machine-wide effect and what remains withheld. |
+| **identity-read** | The owner explicitly allowed one named account-identity read on 2026-09-20 (“Writes and identity read”). It is neither a general account listing nor permission for identity to appear in another answer. |
 | **excluded** | The leader must not touch it at all — no read, no write. Global administration, another project's data, an account identity, a secret, a host process, or pure presentation with no business effect. |
 
 Two rules bind every row:
@@ -40,6 +42,33 @@ Two rules bind every row:
 - **`excluded` for presentation is not a demotion.** Section 3 already settles it: *pure
   presentation actions, such as scrolling, need no separate tool when equivalent information or
   operations are available*. Those rows say `(presentation)` in the reason.
+
+### Superseding classification — 2026-09-20 (#677 wave 2 B6)
+
+The owner's 2026-09-20 decision was **“Every key”**. At 07:41 it was made precise for providers
+and accounts: **“On/off and retry only”** and **“Writes and identity read”**. The workspace-config
+write was later kept available in hosted mode: **“Allow it in hosted mode.”** Those decisions
+supersede the former rule that shared state was necessarily read-only. They do not erase it: the
+older D-03 decisions and field rows below remain the dated record of what was true on 2026-09-10.
+
+Current classifications, verified against the named cases in
+`packages/xezar/src/mcp/tools/project-config.ts`, are:
+
+| Surface formerly classified `safe-effective-read` or `excluded` | Current classification | Implemented by | Previously |
+| --- | --- | --- | --- |
+| § 4.9 workspace resources, follow-ups, environment-name passthrough and composer defaults; § 4.10 `skillsAutoUpdate`; § 4.11 machine-wide agent/model defaults | workspace-write | `set_workspace_config` via `PUT /workspace/config` — PR #734 (the contract-first route preparation was PR #729) | Previously: the leader could read an effective value but could never write the shared setting. |
+| § 4.12 `browseRoot` and `projectsDir` | workspace-write | `set_workspace_config` via the same route and its path probes — PR #748 | Previously: the two paths were excluded because they parameterise global filesystem actions and disclose host paths. |
+| § 4.7 accent, density and width; § 4.8 notifications; § 4.13 workspace appearance, notifications, task-table columns, curated skills and dismissed incidents | workspace-write | `set_workspace_ui_state` and `import_skills` via `PUT /workspace/ui-state` — PR #753 | Previously: workspace-wide personal presentation was excluded. |
+| § 4.1 provider enabled and retry controls | workspace-write | `set_provider_enabled` and `retry_provider` — PR #760 | Previously: provider administration was a safe effective read only; provider writes were excluded. |
+| § 4.1 bound-project account selection; § 4.11 selection, add, update and remove | workspace-write | `select_account`, `create_account`, `update_account` and `remove_account` — PR #764 | Previously: account writes were excluded because they touch a global personal file and name an account identity. |
+| § 4.11 account status | safe-effective-read | `check_account_status` — PR #764 | Previously: probing a named account was excluded. |
+| § 4.11 account details | identity-read | `get_account_details` — PR #764 | Previously: account identity was a negative requirement and was never served to a project leader. |
+
+Two adjacent global actions did not become settings and remain excluded: opening an account file
+launches a host application (`open_account_file`), and browsing folders enumerates the host
+filesystem (`browse_folders`). Likewise, Connect still launches a login terminal. The owner scoped
+the provider decision to on/off and retry only, so “Every key” is not permission to invent a stored
+key or turn a host process into a setting.
 
 ---
 
@@ -343,7 +372,7 @@ Rows are by catalog entry (`packages/xezar/src/agent-config/catalog.ts` `CONFIG_
 Every key here is enforced workspace-wide by `WorkspaceSemaphore`
 (`packages/xezar/src/workspace/semaphore.ts` `loadResourceLimits`, `:160`), so every row is a read.
 
-> **SUPERSEDED, 2026-09-20 (#677 wave 2 slice B1).** The owner's rule of 2026-09-20 on #677 —
+> **SUPERSEDED AND RE-SCOPED, 2026-09-20 (#677 wave 2 B6; implemented by PR #734).** The owner's rule of 2026-09-20 on #677 —
 > "every key" — reverses the "never from MCP" half of every `safe-effective-read` row in this
 > section, of the `skillsAutoUpdate` row in § 4.10 and of the "Defaults for new projects"
 > (`agentDefaults.runner`, `agentDefaults.models.*`) row in § 4.11. Those keys
@@ -353,7 +382,8 @@ Every key here is enforced workspace-wide by `WorkspaceSemaphore`
 > — what the answer withholds — is still in force. The two workspace folder paths (§ 4.12's
 > `browseRoot` and `projectsDir`) are NOT part of the reversal in B1 and are decided on their own
 > in slice B2 — **which has since decided them the same way; see the superseding entry at the head
-> of § 4.12.** The full re-scope of this document is slice B6.
+> of § 4.12.** The current `workspace-write` classification is in the superseding table above;
+> the matrix below remains the previous dated classification verbatim.
 >
 > **Hosted mode does not narrow the write** (owner decision, 2026-09-20; raised by independent QA
 > as case G on #734 and filed as #735). Workspace-config writes are permitted through both doors
