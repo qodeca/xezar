@@ -114,6 +114,40 @@ jobs:
       - run: npm ci
       - run: npm run test:server-mode
 
+  # The saved two-project harness (docs/testing/multi-project-harness.md, #548). It was committed
+  # and deterministic long before it had a job, so its production-wiring coverage — registry,
+  # lazy contexts, route aliases, the shared workspace cap, the cross-project runs index, SSE
+  # stamping, disposal/re-add and per-project MCP doors — could regress into `main` behind a
+  # fully green run.
+  #
+  # Modelled on `server-mode` above. The harness is measured at 1 m 44 s (104 s) on an
+  # Apple-silicon laptop (2026-09-20) and its own runtime ceiling is 5 minutes
+  # (docs/testing/multi-project-harness.md § Runtime and ceiling). Twelve minutes is that
+  # harness-to-job ratio scaled the way `server-mode` scales it (45 s harness under a 5-minute
+  # job) and covers a cold `npm ci` plus `npm run build:server` on a materially slower x64
+  # runner. The harness exits 1 on FAILED and 2 on BLOCKED, so a missing build fails the job
+  # instead of reading green.
+  multi-project:
+    name: Two-project product harness
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      # The scratch home's MCP socket must fit the 104-byte local-socket limit, and the default
+      # temporary directory on some runners is deep enough to exceed it
+      # (docs/testing/multi-project-harness.md § Run it).
+      TMPDIR: /tmp
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: lts/*
+          cache: npm
+      - run: npm ci
+      # `test:multi-project` has no `pretest` build hook, so the job must produce the built CLI
+      # itself; without it the harness reports BLOCKED.
+      - run: npm run build:server
+      - run: npm run test:multi-project
+
   # The cockpit's browser suite: 35 `*.e2e.ts` specs that boot the real app and drive it in a
   # real Chrome through the agent-browser provider (docs/testing/agent-browser.md). Until this
   # job existed, CI never ran them, so every cockpit journey whose only coverage is a browser
