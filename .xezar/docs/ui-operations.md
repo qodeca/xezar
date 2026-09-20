@@ -6,6 +6,8 @@ The terminal agent step must remain last so XEZ:ASK can present options. The que
 
 Complete all source/tests/docs/release metadata and focused commits in development. Handoff verifies unchanged evidence and writes no new content/commit. Missing content returns to the author stage. Publish only within actual assignment authority; draft is not completion. Follow SDLC QA/labels, current CI and actual hosting policy.
 
+For `address-review-findings`, development retains the response commit on its own task branch and pushes that identical commit to the existing PR branch. The gates step certifies the checked-out response commit. Handoff re-reads the PR head and refuses unless it equals the sealed `gateEvidence.headSha`; the legacy empty-branch `DELIVERED` path is not authority to substitute a seal from the task base.
+
 Checkpoint: goal/DoD, stable AC and accepted content, plan/tasks/dependencies, decisions/questions, current head/base, evidence/remaining stages, blockers and next action. Handoff: task/phase/outcome, judged/current revision, passed/failed/not-run, PR/CI identity, unmet AC and actionable follow-ups. Decision: accountable delegated authority, question/answer, exact content path/revision/digest or immutable criteria snapshot and conditions. Current checkpoint and late steering must be consumed before resume/final handoff.
 
 ## Filing an issue versus triaging one

@@ -595,6 +595,17 @@ if [ ${#failures[@]} -eq 0 ] && [ "$MODE" = "verify-gate-evidence" ]; then
   manifest="$(task_manifest_path)"
   schema="$(node "$SCRIPT_DIR/lib/manifest.mjs" "$manifest" --get gateEvidence.schemaVersion 2>/dev/null)"
   recorded="$(node "$SCRIPT_DIR/lib/manifest.mjs" "$manifest" --get gateEvidence.fingerprint 2>/dev/null)"
+  sealed_head="$(node "$SCRIPT_DIR/lib/manifest.mjs" "$manifest" --get gateEvidence.headSha 2>/dev/null)"
+  delivery_record="$(task_evidence_dir)/DELIVERED"
+  if [ -f "$delivery_record" ]; then
+    pushed_head="$(sed -n 's/^head:[[:space:]]*\([0-9a-fA-F]\{40\}\)[[:space:]]*$/\1/p' "$delivery_record" | head -n 1)"
+    if [ -n "$sealed_head" ] && [ -n "$pushed_head" ] && [ "$sealed_head" != "$pushed_head" ]; then
+      # #756: the historical review-response path reset this task branch after pushing the fix.
+      # Its canonical attempt then certified the task's base instead of the response commit. A
+      # complete seal for another head remains valid history, but it cannot certify this handoff.
+      fail evidence.delivery-head-match "the seal head $sealed_head does not match the pushed head $pushed_head recorded in $delivery_record. The review-response gates must run at the exact response commit pushed to the PR branch."
+    fi
+  fi
   if [ -z "$recorded" ]; then
     fail evidence.present "no post-gate evidence recorded for this task — the gates were never verified as green"
   elif [ -z "$schema" ]; then

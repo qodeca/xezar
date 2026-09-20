@@ -2221,7 +2221,7 @@ fi
 # right — `xezar-review-response` must not adopt or rename a task branch — and the workflow's
 # readiness step is checking the wrong branch for what this role delivers.
 #
-# THE FIX (#402): the skill declares the branch it delivered to and what changed, in a `DELIVERED`
+# THE FIX (#402): the skill declared the branch it delivered to and what changed, in a `DELIVERED`
 # record in the task's own evidence directory (same directory §7d's VERIFICATION already uses) —
 # `branch: <name>`, `head: <sha now at that branch's tip>`, `base: <sha it was at before this run>`
 # — and readiness accepts an empty task branch when that record names a branch really carrying
@@ -2229,10 +2229,13 @@ fi
 # established for VERIFICATION, extended to "delivered elsewhere" instead of "verified elsewhere",
 # so it is the smaller of the two options the issue considered — the other being to check the PR
 # branch out into the task's own worktree, which reopens `branch.owned-by-run` (see #356 above) for
-# every one of these runs instead of adding one more escape hatch next to an existing one. The
-# `gates` step that follows readiness still runs against this task's own (unchanged) tree — a no-op
-# confirmation, not a re-gate of the pushed content; that scope is a documented, leader-approved
-# tradeoff (see the PR), not something this check can express.
+# every one of these runs instead of adding one more escape hatch next to an existing one.
+#
+# THE REPAIR (#756): that escape hatch was only safe for readiness. Runs 47f44478 and abb932ef
+# reset this task branch after pushing the response, so the following gates step certified the
+# unchanged base. New review-response work retains the SAME response commit on its task branch and
+# pushes it to the PR branch, as run cb744a26 did. The compatibility record stays readable, but a
+# seal at any head other than its delivered `head` is refused at handoff below.
 #
 # THE HOLE (#416 review). The first cut of "really carrying `head`" checked
 # `refs/heads/$delivered_branch` and `refs/remotes/origin/$delivered_branch` — both refs the same
@@ -2288,6 +2291,17 @@ git -C "$root" push -q origin refs/heads/xez/939d7d68:refs/heads/xez/939d7d68
   && ok "setup: the fix reached origin for real" \
   || bad "setup: the fix reached origin for real" "origin has $(origin_ref_at xez/939d7d68)"
 expect_ok "a well-formed DELIVERED record, actually pushed, passes readiness" run_in "$wt" "$PF" --readiness
+
+# BREAK-756-SEAL-HEAD-MISMATCH. The historical #402 escape hatch let this empty task branch
+# proceed, so its gates step certified `base_sha` even though the response commit at the LIVE PR
+# branch tip was `delivered_head`. Handoff must refuse that seal: a complete green attempt on the
+# wrong head is still evidence for the wrong candidate. The author-produced-attempt and changed-
+# tree controls in §6d and §6c remain separate guards that pass with or without this repair.
+CHECKS="$root/.xezar/checks"
+drive "$wt" "$CHECKS" "$LIST_ID" "$REQUIRED_ALL" "${ALL_PASS[@]}" > /dev/null
+run_in "$wt" "$PF" --record-gate-evidence > /dev/null
+expect_fail "BREAK-756-SEAL-HEAD-MISMATCH: handoff refuses a seal for the task base when the pushed response head differs" \
+  "does not match the pushed head" run_in "$wt" "$PF" --verify-gate-evidence
 
 # THE NEGATIVE FIXTURE THE REVIEW ASKED FOR: the local ref still matches the recorded head — nothing
 # below undoes that — but origin's branch has since moved on WITHOUT the recorded head, as a later

@@ -23,7 +23,7 @@ steps:
     command: ".xezar/checks/worktree-preflight.sh --readiness"
     resultScope: stage
   - id: gates
-    name: Quality gates
+    name: Quality gates at the pushed response commit
     command: ".xezar/checks/repo-gates.sh --fast --producer gates"
     resultScope: stage
     onFail:

@@ -7,6 +7,8 @@ description: Evidence-bound handoff
 
 Consume current checkpoint/late steering, then verify current evidence with worktree-preflight.sh --verify-gate-evidence. No source edit or new commit in handoff: return missing content to development/gates. Use worktree-git.sh push for a named task ref, and existing authorized gh draft PR flow targeting main; re-read existing PR first, no duplicates. Respect SDLC labels/QA. Report head, gate outcomes, actual CI head/pending, unmet AC and next action. Append CI observations without rewriting the seal. Draft PR is not business completion.
 
+For a review-response handoff, read the existing PR's live `headRefOid` and the sealed `gateEvidence.headSha` before posting or updating anything. They must be the same full commit SHA; otherwise refuse the handoff and return the response to development/gates. A `DELIVERED` record does not waive this check.
+
 Inputs: sealed complete committed candidate and current steering. Output: one evidence-bound draft PR/handoff naming current head/base, CI identity and remaining work. No late source changes or duplicate PR; route repairs back to author and revalidation. When UI or `designs/` is in scope, apply `needs-design` and link the design folder or the review comment in the PR body.
 
 A verification-only run – no commits over the base, passed by the evidence directory's `VERIFICATION` record – has no branch to push and no pull request to open. Push nothing and open nothing; report the verified revision, where the findings are posted, and the gate outcomes on this head.
