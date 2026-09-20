@@ -12,20 +12,6 @@ import { onTodosChanged, todosPath, todosWatchActive } from './todos.ts';
  * projects open, A's todos.json writes fire A's subscribers only.
  */
 
-/** Poll until the assertion holds (the watch debounce is 300 ms). */
-async function waitFor(assertion: () => void, timeoutMs = 4000, intervalMs = 25): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  for (;;) {
-    try {
-      assertion();
-      return;
-    } catch (err) {
-      if (Date.now() >= deadline) throw err;
-      await new Promise((r) => setTimeout(r, intervalMs));
-    }
-  }
-}
-
 /**
  * Write `file` until `delivered()` holds. A write that lands while macOS is still registering a
  * fresh watch is DROPPED, not delayed — a probe for #204 lost 9 of 15 such writes outright, and a
@@ -85,13 +71,37 @@ describe('per-dataDir todos watch (step 2.3)', () => {
     subscribe(dirA, () => a++);
     subscribe(dirB, () => b++);
 
-    // macOS FSEvents can deliver the just-created files as backlog after watch() returns. Let
-    // that registration noise clear before measuring the write whose project scope matters.
+    // BREAK-671-TODOS-DROPPED-WRITE. A write that lands while macOS is still registering a fresh
+    // watch is DROPPED, not delayed (#204), and nothing reports when registration is done. The
+    // fixed 400 ms settle this test used was a guess: under the full-suite load registration
+    // outlived it, the one measured write vanished, and `waitFor(a > 0)` timed out — the canonical
+    // gate run failed here (`expected 0 to be greater than 0`, line 94) on 2026-09-20. Prove BOTH
+    // watches live with a delivered event first; a delivered event is the only proof registration
+    // is done, and proving B also drains the just-created files' FSEvents backlog.
+    await writeUntilDelivered(
+      todosPath(dirA),
+      JSON.stringify([{ id: 'probe-a', summary: 'probe' }]),
+      () => a > 0,
+    );
+    await writeUntilDelivered(
+      todosPath(dirB),
+      JSON.stringify([{ id: 'probe-b', summary: 'probe' }]),
+      () => b > 0,
+    );
+
+    // Both watches have delivered. Let any trailing debounce from the probes fire and clear, then
+    // measure from zero — registration noise is gone by construction, not by waiting.
     await new Promise((resolve) => setTimeout(resolve, 400));
     a = 0;
     b = 0;
-    await fs.writeFile(todosPath(dirA), JSON.stringify([{ id: 't1', summary: 'from A' }]));
-    await waitFor(() => expect(a).toBeGreaterThan(0));
+
+    // Rewrite only A until one lands: a dropped write is retried, and B is never written to, so
+    // `b` staying 0 is still the whole claim.
+    await writeUntilDelivered(
+      todosPath(dirA),
+      JSON.stringify([{ id: 't1', summary: 'from A' }]),
+      () => a > 0,
+    );
     // A full debounce window past A's delivery — a late cross-fire would land here.
     await new Promise((r) => setTimeout(r, 400));
     expect(b).toBe(0);
