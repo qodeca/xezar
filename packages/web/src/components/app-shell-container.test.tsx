@@ -543,6 +543,150 @@ describe('sidebar wiring', () => {
   })
 })
 
+/**
+ * `--instance project` (#467, PR 4): the other registered projects are LINKS to their own
+ * cockpits, and the default `workspace` sidebar does not move.
+ *
+ * Three named breaks live here. `BREAK-467-PROJECTSLOCKED-WIDENED` — folding the mode into
+ * `projectsLocked` — takes out the Add project control and the other rows. `BREAK-467-LINKS-OPEN-
+ * IN-PLACE` — pointing a row at `/p/<id>/` on this origin — takes out the absolute-address
+ * assertion. `BREAK-467-DEFAULT-SIDEBAR-MOVED` — any edit to the workspace-mode markup — takes out
+ * the two snapshots below, which is exactly what they are for: they fail when one class moves.
+ */
+describe('instance mode: links out to the other cockpits (#467, PR 4)', () => {
+  const OTHERS = [
+    PROJECT,
+    { ...PROJECT, id: 'shop', name: 'shop', root: '/home/me/Projects/shop', lastOpenedAt: '2026-07-19T00:00:00.000Z' },
+    { ...PROJECT, id: 'blog', name: 'blog', root: '/home/me/Projects/blog', lastOpenedAt: '2026-07-18T00:00:00.000Z' },
+  ]
+  const registry = (projects: unknown[]) => ({
+    projects,
+    bootProject: 'xezar',
+    projectsDir: '/home/me/xezar/projects',
+  })
+  /** Health in `project` mode. `instanceMode` is sent ONLY for `project` — see the contract. */
+  const PROJECT_MODE = {
+    ...HEALTH,
+    bootProject: 'xezar',
+    capabilities: { ...HEALTH.capabilities, instanceMode: 'project' as const },
+  }
+  const sidebar = () => document.querySelector('[data-slot="sidebar"]') as HTMLElement
+  const otherRow = (id: string) =>
+    document.querySelector(`[data-slot="sidebar"] [data-slot="other-project"][data-project-id="${id}"]`)
+
+  function instanced(id: string, instance: unknown) {
+    return OTHERS.map((project) => (project.id === id ? { ...project, instance } : project))
+  }
+
+  // AC-4.2. Both workspace-mode shapes, rendered from the same fixtures as before this PR: the
+  // flat single-project sidebar and the grouped multi-project one. A snapshot rather than a set
+  // of assertions because the claim is about the WHOLE markup, and an assertion list only pins
+  // what someone thought to name.
+  it('leaves the default workspace sidebar byte-for-byte unchanged — flat', async () => {
+    serve({ '/api/v1/health': HEALTH, '/api/v1/todos': [], '/api/v1/runs': [] })
+    renderShell()
+
+    await waitFor(() => expect(versionChip()).not.toBeNull())
+    expect(document.querySelector('[data-slot="other-projects"]')).toBeNull()
+    expect(sidebar().outerHTML).toMatchSnapshot()
+  })
+
+  it('leaves the default workspace sidebar byte-for-byte unchanged — project groups', async () => {
+    serve({
+      '/api/v1/health': { ...HEALTH, bootProject: 'xezar' },
+      '/api/v1/todos': [],
+      '/api/v1/projects': registry(OTHERS),
+      '/api/v1/runs': [],
+      '/api/v1/p/shop/runs': [],
+      '/api/v1/p/blog/runs': [],
+    })
+    renderShell('/p/xezar/')
+
+    await waitFor(() =>
+      expect(document.querySelectorAll('[data-slot="project-group"]')).toHaveLength(3),
+    )
+    expect(document.querySelector('[data-slot="other-projects"]')).toBeNull()
+    expect(sidebar().outerHTML).toMatchSnapshot()
+  })
+
+  // AC-4.1, and the `projectsLocked`-widened break: everything stays listed and manageable.
+  it('keeps every registered project visible, and keeps Add project', async () => {
+    serve({
+      '/api/v1/health': PROJECT_MODE,
+      '/api/v1/todos': [],
+      '/api/v1/projects': registry(
+        instanced('shop', { state: 'running', url: 'http://localhost:4401/p/shop/' }),
+      ),
+      '/api/v1/runs': [],
+    })
+    renderShell()
+
+    await waitFor(() => expect(otherRow('shop')).not.toBeNull())
+    expect(otherRow('blog')).not.toBeNull()
+    // The boot project is the flat nav above the group, not a row inside it.
+    expect(otherRow('xezar')).toBeNull()
+    expect(screen.getByRole('navigation', { name: 'Main' })).toBeTruthy()
+    // Not `XEZ_SINGLE_PROJECT`: project management is untouched.
+    expect(screen.getByRole('button', { name: 'Add project' })).toBeTruthy()
+    // And no group whose every scoped route this process answers 409 for.
+    expect(document.querySelectorAll('[data-slot="project-group"]')).toHaveLength(0)
+  })
+
+  // The `links-open-in-place` break.
+  it('links a running project to its OWN cockpit, never to /p/<id>/ on this origin', async () => {
+    serve({
+      '/api/v1/health': PROJECT_MODE,
+      '/api/v1/todos': [],
+      '/api/v1/projects': registry(
+        instanced('shop', { state: 'running', url: 'http://localhost:4401/p/shop/' }),
+      ),
+      '/api/v1/runs': [],
+    })
+    renderShell()
+
+    const link = await waitFor(() => {
+      // `?? null`, because `undefined` (no row yet) passes `not.toBeNull()` and would resolve
+      // this wait on the first tick with nothing to assert against.
+      const found = otherRow('shop')?.querySelector('a') ?? null
+      expect(found).not.toBeNull()
+      return found as HTMLAnchorElement
+    })
+    expect(link.getAttribute('href')).toBe('http://localhost:4401/p/shop/')
+    expect(link.getAttribute('href')).not.toBe('/p/shop/')
+  })
+
+  // AC-4.3.
+  it('offers Copy command for a stopped project, and nothing in hosted mode', async () => {
+    serve({
+      '/api/v1/health': PROJECT_MODE,
+      '/api/v1/todos': [],
+      '/api/v1/projects': registry(instanced('shop', { state: 'stopped' })),
+      '/api/v1/runs': [],
+    })
+    renderShell()
+
+    await waitFor(() => expect(otherRow('shop')).not.toBeNull())
+    expect(otherRow('shop')?.querySelector('[data-action="other-project-copy-command"]')).not.toBeNull()
+
+    cleanup()
+    serve({
+      '/api/v1/health': {
+        ...PROJECT_MODE,
+        capabilities: { ...PROJECT_MODE.capabilities, localHandoff: false },
+      },
+      '/api/v1/todos': [],
+      // Hosted mode sends no `instance` at all: it never probes another port.
+      '/api/v1/projects': registry(OTHERS),
+      '/api/v1/runs': [],
+    })
+    renderShell()
+
+    await waitFor(() => expect(otherRow('shop')).not.toBeNull())
+    expect(otherRow('shop')?.querySelector('[data-action="other-project-copy-command"]')).toBeNull()
+    expect(otherRow('shop')?.querySelector('[data-slot="other-project-state"]')).toBeNull()
+  })
+})
+
 describe('document title wiring', () => {
   const REGISTRY = {
     projects: [PROJECT],

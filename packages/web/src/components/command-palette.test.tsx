@@ -99,7 +99,12 @@ function project(overrides: Partial<ProjectListEntry> & { id: string }): Project
 }
 
 /** Health with/without a working forge — what gates the Views group's GitHub row (R6 1.1). */
-function health(forgeAvailable: boolean, automations = false, singleProjectRoot = false): HealthResponse {
+function health(
+  forgeAvailable: boolean,
+  automations = false,
+  singleProjectRoot = false,
+  instanceMode?: 'project',
+): HealthResponse {
   return {
     version: '0.0.0-test',
     channel: 'release',
@@ -120,6 +125,9 @@ function health(forgeAvailable: boolean, automations = false, singleProjectRoot 
       automations,
       // Only sent when true, exactly as the server does (#600): a 0.15.0 server never sends it.
       ...(singleProjectRoot ? { singleProjectRoot: true } : {}),
+      // Same rule (#467, PR 4): sent ONLY for `project`, so a workspace cockpit is byte-identical
+      // to one that never heard of the key.
+      ...(instanceMode ? { instanceMode } : {}),
     },
   }
 }
@@ -151,6 +159,7 @@ function renderPalette({
   forge = true,
   automations = false,
   singleProjectRoot = false,
+  instanceMode,
   uiState = {} as Record<string, unknown>,
   entry = '/',
 }: {
@@ -166,6 +175,8 @@ function renderPalette({
   automations?: boolean
   /** `capabilities.singleProjectRoot` (#600) — absent by default, exactly as a default server. */
   singleProjectRoot?: boolean
+  /** `capabilities.instanceMode` (#467, PR 4) — absent by default, exactly as a default server. */
+  instanceMode?: 'project'
   uiState?: Record<string, unknown>
   /** The URL to mount at. `/p/<id>/…` is what gives the palette an ACTIVE project. */
   entry?: string
@@ -174,7 +185,7 @@ function renderPalette({
   serve({
     '/api/v1/runs': runs,
     '/api/v1/skills': skills,
-    '/api/v1/health': health(forge, automations, singleProjectRoot),
+    '/api/v1/health': health(forge, automations, singleProjectRoot, instanceMode),
     '/api/v1/ui-state': uiState,
     '/api/v1/projects': { projects, bootProject: projects[0]?.id ?? 'default', projectsDir: '/repos' },
     '/api/v1/workspace/runs-index': { runs: indexed, perProjectLimit: 200, truncated },
@@ -474,6 +485,101 @@ describe('Projects group', () => {
 
     expect(location()).toBe('/p/xezar/')
     expect(dialog()).not.toBeNull()
+  })
+})
+
+/**
+ * `--instance project` (#467, PR 4): the Projects group keeps every row and the rows that name a
+ * project this process does not serve LINK OUT to that project's own cockpit.
+ *
+ * The break is `BREAK-467-LINKS-OPEN-IN-PLACE`: a row that still calls `goProject` and navigates
+ * to `/p/<id>/` on this origin. The first test below asserts the location did NOT change and the
+ * absolute address was opened instead, so an in-place row fails it twice.
+ */
+describe('Projects group in --instance project (#467, PR 4)', () => {
+  const REGISTRY = [
+    project({ id: 'xezar', name: 'xezar', lastOpenedAt: '2026-07-14T00:00:00Z' }),
+    project({
+      id: 'shop',
+      name: 'shop',
+      lastOpenedAt: '2026-07-13T00:00:00Z',
+      instance: { state: 'running', url: 'http://localhost:4401/p/shop/' },
+    }),
+    project({ id: 'docs', name: 'docs', lastOpenedAt: '2026-07-12T00:00:00Z', instance: { state: 'stopped' } }),
+  ]
+  const paletteRow = (id: string) =>
+    document.querySelector(`[data-slot="palette-project"][data-project-id="${id}"]`) as HTMLElement | null
+
+  it('opens a running project in ITS cockpit, and never navigates this one to /p/<id>/', async () => {
+    const assign = vi.fn()
+    // jsdom refuses a real navigation; the stub is what makes the intent observable at all.
+    vi.stubGlobal('location', { href: 'http://localhost:4321/p/xezar/', assign })
+    renderPalette({ projects: REGISTRY, instanceMode: 'project', entry: '/p/xezar/' })
+    openWith({ metaKey: true })
+    await screen.findByText('shop')
+
+    const row = paletteRow('shop')
+    expect(row?.getAttribute('data-cockpit-url')).toBe('http://localhost:4401/p/shop/')
+    expect(row?.textContent).toContain('running')
+
+    fireEvent.click(row as HTMLElement)
+
+    expect(assign).toHaveBeenCalledWith('http://localhost:4401/p/shop/')
+    // The router stayed where it was: this cockpit cannot serve that project.
+    expect(location()).toBe('/p/xezar/')
+  })
+
+  it('lists a stopped project, says so, and refuses to navigate into it', async () => {
+    renderPalette({ projects: REGISTRY, instanceMode: 'project', entry: '/p/xezar/' })
+    openWith({ metaKey: true })
+    await screen.findByText('docs')
+
+    const row = paletteRow('docs')
+    expect(row?.textContent).toContain('not running')
+    expect(row?.getAttribute('data-cockpit-url')).toBeNull()
+
+    fireEvent.click(row as HTMLElement)
+
+    expect(location()).toBe('/p/xezar/')
+    expect(dialog()).not.toBeNull()
+  })
+
+  it('leaves the row for the project this cockpit serves exactly as it was', async () => {
+    renderPalette({ projects: REGISTRY, instanceMode: 'project', entry: '/p/shop/' })
+    openWith({ metaKey: true })
+    await screen.findByText('shop')
+
+    // `bootProject` is the first registry entry in this harness — the one this process serves.
+    const row = paletteRow('xezar')
+    expect(row?.getAttribute('data-cockpit-url')).toBeNull()
+
+    fireEvent.click(row as HTMLElement)
+
+    expect(location()).toBe('/p/xezar/')
+  })
+
+  // AC-4.1, through the palette: the group is still there and still lists everything.
+  it('keeps every registered project listed', async () => {
+    renderPalette({ projects: REGISTRY, instanceMode: 'project', entry: '/p/xezar/' })
+    openWith({ metaKey: true })
+    await screen.findByText('shop')
+
+    expect([...document.querySelectorAll('[data-slot="palette-project"]')]).toHaveLength(3)
+  })
+
+  // The default mode is untouched: no state word, no absolute address, in-place navigation.
+  it('is unchanged in the default workspace mode', async () => {
+    renderPalette({ projects: REGISTRY, entry: '/p/xezar/' })
+    openWith({ metaKey: true })
+    await screen.findByText('shop')
+
+    const row = paletteRow('shop')
+    expect(row?.getAttribute('data-cockpit-url')).toBeNull()
+    expect(row?.textContent).not.toContain('running')
+
+    fireEvent.click(row as HTMLElement)
+
+    expect(location()).toBe('/p/shop/')
   })
 })
 

@@ -142,6 +142,15 @@ Form dialogs use a plain phrase, no question mark: "Commit changes", "Add agent 
     cannot be compared." (`Comparison unknown`) — never said of two IDENTICAL commits, which is
     the defect #752 fixed: different facts get different words, and "share no history" is a fact
     about two different commits.
+- Another cockpit's state (`components/other-projects.tsx`, `--instance project`, #467) is lower
+  case for the same reason run status is — the row is the emphasis: "running",
+  "running — address not known", "not running", "checking…", "current". Each is a fact this server
+  CHECKED; when it did not look (hosted mode) the row carries no state word at all, because "not
+  running" would be a claim nobody made. The hint under an unaddressable row is a full sentence,
+  "Find the terminal that runs it.", and the action beside a stopped one is "Copy command"
+  (`xez --repo <folder>`), with "Command copied" or the command itself in the toast when the
+  clipboard refused. The global Tasks page names the narrowing in one line: "This list is {project}
+  only — your other projects run in their own cockpits." (`routes/global-tasks.tsx`).
 - Product names come from `lib/runner-label.ts`: "Claude Code", "Codex", "OpenCode", "pi" (lower case).
   Multi-backend runs read "Claude Code +1".
 

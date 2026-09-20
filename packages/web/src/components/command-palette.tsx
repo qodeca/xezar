@@ -33,7 +33,8 @@ import { isUnread } from '@/lib/read-state'
 import { orderSkillsByUsage } from '@/lib/skills'
 import { runTitle } from '@/lib/task-groups'
 import { useCommandShortcut, useKeyShortcut } from '@/lib/use-command-shortcut'
-import { projectsLocked } from '@/lib/project-mode'
+import { linksOutToOtherProjects, projectsLocked } from '@/lib/project-mode'
+import { otherProjectRow } from '@/components/other-projects'
 
 /**
  * The ⌘K command palette (spec, "Cross-cutting"): projects, tasks, views, actions, skills —
@@ -343,6 +344,12 @@ function PaletteContent({ close }: { close: () => void }) {
   const registry = projects.data
   const locked = projectsLocked(health.data?.capabilities)
   const multiProject = !locked && registry !== undefined && registry.projects.length > 1
+  // `--instance project` (#467, PR 4): the Projects group keeps every row, and a row for a project
+  // this process does not serve links OUT to that project's own cockpit instead of navigating to
+  // a `/p/<id>/` this origin answers 409 for. The sidebar's Other projects group makes the same
+  // rows from the same helper, so the two cannot drift.
+  const linksOut = linksOutToOtherProjects(health.data?.capabilities)
+  const localHandoff = health.data?.capabilities.localHandoff !== false
   // The cross-project index answers "which project is this task in", so it is only worth asking
   // when that question has more than one answer. A single-project cockpit issues no request.
   const runsIndex = useRunsIndex(multiProject)
@@ -391,6 +398,12 @@ function PaletteContent({ close }: { close: () => void }) {
   const goProject = (projectId: string) => {
     close()
     navigate(scopeTo(projectId, '/'))
+  }
+  /** Another cockpit, on another origin. A full document load, never the router: the port in the
+   *  url is a different xezar process, and a router navigation would stay here. */
+  const goCockpit = (url: string) => {
+    close()
+    window.location.assign(url)
   }
   /** A task thread in its OWN project — the one navigation that must ignore the active scope.
    *  A row with no project id belongs to wherever we already are, which is exactly what an
@@ -497,6 +510,17 @@ function PaletteContent({ close }: { close: () => void }) {
               // owns removing it) but cannot be picked, rather than navigating into a project
               // whose every request 4xxs — the same rule the composer's project pill applies.
               const missing = project.status === 'missing'
+              // In `project` mode every registry row but this process's own boot project is a
+              // link out. `null` everywhere else, which keeps the default row exactly what it was.
+              const other =
+                linksOut && project.id !== registry?.bootProject
+                  ? otherProjectRow(project, { localHandoff })
+                  : null
+              // A row that cannot be reached from here is listed and inert rather than dropped:
+              // the same rule `missing` follows, and it is how a person learns their other
+              // cockpit is down instead of wondering where the project went.
+              const unreachable = other !== null && other.href === null
+              const href = other?.href ?? null
               return (
                 <CommandItem
                   key={project.id}
@@ -508,12 +532,25 @@ function PaletteContent({ close }: { close: () => void }) {
                   keywords={[project.root]}
                   data-slot="palette-project"
                   data-project-id={project.id}
-                  disabled={missing}
-                  className={missing ? 'data-[disabled=true]:opacity-100' : undefined}
-                  onSelect={() => goProject(project.id)}
+                  disabled={missing || unreachable}
+                  data-cockpit-url={href ?? undefined}
+                  className={
+                    missing || unreachable ? 'data-[disabled=true]:opacity-100' : undefined
+                  }
+                  onSelect={() => (href === null ? goProject(project.id) : goCockpit(href))}
                 >
                   <FolderOpenIcon aria-hidden="true" />
                   <span className="min-w-0 flex-1 truncate">{project.name}</span>
+                  {/* The missing badge below already says it, in the spelling every other
+                      surface uses — two sentences for one fact would read as two facts. */}
+                  {other !== null && other.label !== null && !missing ? (
+                    <span
+                      data-slot="palette-project-state"
+                      className="shrink-0 text-[11px] text-soft-foreground"
+                    >
+                      {other.label}
+                    </span>
+                  ) : null}
                   {missing ? (
                     <MissingProjectBadge />
                   ) : project.branch !== undefined ? (

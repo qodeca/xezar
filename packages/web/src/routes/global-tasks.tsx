@@ -70,6 +70,7 @@ import {
   type GlobalTasksUrlState,
   type GroupBy,
 } from '@/lib/global-tasks'
+import { linksOutToOtherProjects } from '@/lib/project-mode'
 import { scopeTo } from '@/lib/project-router'
 import { allProjectTags } from '@/lib/project-tags'
 import { canBeUnread, isReadDoneItem, isUnread } from '@/lib/read-state'
@@ -238,7 +239,12 @@ export function GlobalTasksRoute() {
   const projects = useProjects()
   // The same host gate the per-project table honours: `XEZ_HIDE_COST` and friends turn these
   // columns off everywhere, and a cross-project view is not an exception.
-  const metrics = usageMetricVisibility(useHealth().data)
+  const health = useHealth().data
+  const metrics = usageMetricVisibility(health)
+  // `--instance project` (#467, PR 4): the index this page reads is narrowed to the project this
+  // cockpit serves, so the page says which project that is rather than letting the title imply
+  // every one of them.
+  const linksOut = linksOutToOtherProjects(health?.capabilities)
   // Always enabled here — unlike the ⌘K palette, which parks it in a single-project workspace:
   // this page IS the index, so there is nothing else for it to fall back to. The interval is this
   // page's alone (see `useRunsIndex`), and it is now a BACKSTOP rather than the mechanism: any
@@ -320,6 +326,12 @@ export function GlobalTasksRoute() {
     if (indexedStatuses) rememberReferenceStatuses(indexedStatuses)
   }, [indexedStatuses])
   const registry = React.useMemo(() => projects.data?.projects ?? [], [projects.data])
+  // The boot project's own name, so the note names a project rather than saying "this one". The
+  // id is the honest fallback while the registry is still loading.
+  const bootProjectName =
+    registry.find((project) => project.id === projects.data?.bootProject)?.name ??
+    projects.data?.bootProject ??
+    'this project'
   const tasks = React.useMemo(
     () => toGlobalTasks(index.data?.runs ?? [], registry),
     [index.data, registry],
@@ -425,6 +437,16 @@ export function GlobalTasksRoute() {
           tasks={tasks}
           view={view}
         />
+
+        {/* `--instance project` (#467, PR 4, spec Q-7): this page is the cross-project index, and
+            in this mode the index covers ONE project — `GET /api/v1/workspace/runs-index` answers
+            for the project this cockpit serves (PR 2). Saying so is the whole fix: without the
+            line the page reads as "every project, and the others have no tasks". */}
+        {linksOut ? (
+          <p data-slot="global-tasks-project-only" className="text-[11.5px] text-soft-foreground">
+            This list is {bootProjectName} only — your other projects run in their own cockpits.
+          </p>
+        ) : null}
 
         {truncated.length > 0 ? (
           <p data-slot="global-tasks-truncated" className="text-[11.5px] text-soft-foreground">
