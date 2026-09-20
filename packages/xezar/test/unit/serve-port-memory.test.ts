@@ -27,6 +27,7 @@ const packageRoot = resolve(import.meta.dirname, '../..');
 const entry = join(packageRoot, 'src', 'index.ts');
 const tsxLoader = import.meta.resolve('tsx');
 const COCKPIT_LINE = /cockpit → http:\/\/localhost:(\d+)/;
+const START_PORT = /event=xezar\.ready[^\n]*\bstart=(\d+)/;
 
 // `/tmp` explicitly, not `tmpdir()`: a task worktree's own TMPDIR sits INSIDE the repository,
 // and `shouldRegisterProject` refuses to register anything under `.local/xezar/worktrees/`,
@@ -40,6 +41,8 @@ interface Boot {
   output: string;
   /** The port the cockpit line named, or undefined when no cockpit line was printed. */
   port: number | undefined;
+  /** The resolved port request printed by the boot record, before bind-time fallback. */
+  startPort: number | undefined;
   exitCode: number | null | undefined;
 }
 
@@ -84,7 +87,13 @@ async function bootServe(
     // moment it needs, so a read below sees what a real next start would see.
     if (COCKPIT_LINE.test(output)) await sleep(750);
     const printed = COCKPIT_LINE.exec(output);
-    return { output, port: printed ? Number(printed[1]) : undefined, exitCode };
+    const started = START_PORT.exec(output);
+    return {
+      output,
+      port: printed ? Number(printed[1]) : undefined,
+      startPort: started ? Number(started[1]) : undefined,
+      exitCode,
+    };
   } finally {
     if (exitCode === undefined) {
       child.kill('SIGTERM');
@@ -134,6 +143,10 @@ async function freePort(span = 1): Promise<number> {
   }
 }
 
+// BREAK-671-SERVE-PORT applies to the precedence cases below too: `freePort` supplies a request,
+// never ownership. The case holds that request with `squat`, reads `start` for precedence, and
+// reads the cockpit URL / lastListen for the actual bind; none asserts a released probe stayed free.
+
 /** Hold a port for the length of one boot, then give it back. */
 async function squat(port: number): Promise<Server> {
   const server = createServer();
@@ -151,18 +164,23 @@ test('a start remembers the port it really bound, and the next start comes back 
   const { repo, home } = await fixture('reuse');
   const wanted = await freePort();
 
-  const first = await bootServe(repo, home, ['--port', String(wanted)]);
-  assert.equal(first.port, wanted, `the first start must bind the port it asked for. Output:\n${first.output}`);
+  // Keep the requested port occupied. The boot's `start` field then records the resolved request,
+  // while its URL records the fallback it actually owns; neither assertion races a released probe.
+  const firstSquatter = await squat(wanted);
+  const first = await bootServe(repo, home, ['--port', String(wanted)]).finally(() => release(firstSquatter));
+  assert.equal(first.startPort, wanted, `the explicit port must be the resolved request. Output:\n${first.output}`);
+  assert.ok(first.port, `serve must report the port it actually bound. Output:\n${first.output}`);
   const [row] = await readRegistry(home);
-  assert.equal(row?.lastListen?.port, wanted, `the bound port must be remembered. Registry: ${JSON.stringify(row)}`);
+  assert.equal(row?.lastListen?.port, first.port, `the bound port must be remembered. Registry: ${JSON.stringify(row)}`);
   assert.equal(row?.lastListen?.host, '127.0.0.1');
   assert.ok(row?.lastListen?.observedAt, 'the hint must carry when it was observed');
   // A hint, not a claim: no pid, no lease, no socket path (analysis § 6(e)).
   assert.deepEqual(Object.keys(row?.lastListen ?? {}).sort(), ['host', 'observedAt', 'port']);
 
   // Nothing asked for this time. Without memory this would start at 4321.
-  const second = await bootServe(repo, home);
-  assert.equal(second.port, wanted, `the second start must reuse the remembered port. Output:\n${second.output}`);
+  const secondSquatter = await squat(first.port);
+  const second = await bootServe(repo, home).finally(() => release(secondSquatter));
+  assert.equal(second.startPort, first.port, `the second start must request the remembered port. Output:\n${second.output}`);
 });
 
 test('named break `remember-before-listen`/`false-ready`: a busy remembered port is replaced by the port really bound', { timeout: 180_000 }, async () => {
@@ -170,14 +188,15 @@ test('named break `remember-before-listen`/`false-ready`: a busy remembered port
   const wanted = await freePort(2);
 
   const first = await bootServe(repo, home, ['--port', String(wanted)]);
-  assert.equal(first.port, wanted);
+  assert.ok(first.port);
 
   // Someone else now holds the remembered port.
-  const squatter = await squat(wanted);
+  const squatter = await squat(first.port);
   try {
     const second = await bootServe(repo, home);
-    assert.notEqual(second.port, wanted, `a busy remembered port must not be the port serve reports. Output:\n${second.output}`);
-    assert.match(second.output, new RegExp(`port ${wanted} was busy — using ${second.port}`));
+    assert.equal(second.startPort, first.port, `the remembered port must be the resolved request. Output:\n${second.output}`);
+    assert.notEqual(second.port, first.port, `a busy remembered port must not be the port serve reports. Output:\n${second.output}`);
+    assert.match(second.output, new RegExp(`port ${first.port} was busy — using ${second.port}`));
     const [row] = await readRegistry(home);
     // The defect this names: remembering the port that was REQUESTED rather than the one the
     // listener reported. It survives a restart, so a wrong value here poisons every later start.
@@ -197,11 +216,13 @@ test('named break `memory-over-flag`: an explicit --port beats the remembered po
   await bootServe(repo, home, ['--port', String(remembered)]);
 
   const asked = await freePort();
-  const boot = await bootServe(repo, home, ['--port', String(asked)]);
+  const squatter = await squat(asked);
+  const boot = await bootServe(repo, home, ['--port', String(asked)]).finally(() => release(squatter));
 
-  assert.equal(boot.port, asked, `--port must win over memory. Output:\n${boot.output}`);
+  assert.equal(boot.startPort, asked, `--port must be the resolved request over memory. Output:\n${boot.output}`);
+  assert.ok(boot.port);
   const [row] = await readRegistry(home);
-  assert.equal(row?.lastListen?.port, asked, 'the newly bound port becomes the memory');
+  assert.equal(row?.lastListen?.port, boot.port, 'the newly bound port becomes the memory');
 });
 
 test('named break `env-over-stored`: a project port beats XEZ_PORT', { timeout: 180_000 }, async () => {
@@ -219,9 +240,11 @@ test('named break `env-over-stored`: a project port beats XEZ_PORT', { timeout: 
   config.projects[0]!.cli = { port: chosen };
   await writeFile(configPath, JSON.stringify(config, null, 2), 'utf8');
 
-  const boot = await bootServe(repo, home, [], { XEZ_PORT: String(envPort) });
+  const squatter = await squat(chosen);
+  const boot = await bootServe(repo, home, [], { XEZ_PORT: String(envPort) }).finally(() => release(squatter));
 
-  assert.equal(boot.port, chosen, `projects[].cli.port must beat XEZ_PORT. Output:\n${boot.output}`);
+  assert.equal(boot.startPort, chosen, `projects[].cli.port must be the resolved request over XEZ_PORT. Output:\n${boot.output}`);
+  assert.ok(boot.port, `serve must report the port it actually bound. Output:\n${boot.output}`);
 });
 
 test('--port 0 binds an OS port and is never remembered', { timeout: 180_000 }, async () => {
@@ -268,10 +291,11 @@ test('named break `memory-required`: a mangled stored port warns once and the co
   (config.projects[0] as Record<string, unknown>).cli = { port: 'abc' };
   await writeFile(configPath, JSON.stringify(config, null, 2), 'utf8');
 
-  const boot = await bootServe(repo, home);
+  const squatter = await squat(seed);
+  const boot = await bootServe(repo, home).finally(() => release(squatter));
 
   assert.ok(boot.port, `a mangled stored value must never stop the cockpit. Output:\n${boot.output}`);
   assert.match(boot.output, /projects\[\]\.cli\.port is “abc” — ignored/);
   // Degraded to absent, so the remembered port took over.
-  assert.equal(boot.port, seed, `the remembered port must take over. Output:\n${boot.output}`);
+  assert.equal(boot.startPort, seed, `the remembered port must become the resolved request. Output:\n${boot.output}`);
 });

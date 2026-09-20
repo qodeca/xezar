@@ -97,7 +97,12 @@ const serve = () => {
     console.error(err);
     process.exit(1);
   });
-  server.once('listening', () => { console.log('  cockpit → http://localhost:' + port); });
+  server.once('listening', () => {
+    console.log('  cockpit → http://localhost:' + port);
+    // Real startup prints later product copy containing "cockpit" but no URL. The launcher must
+    // read the boot URL itself, not whichever line happened to use that word last.
+    console.log('  reusable skills for your cockpit');
+  });
   server.listen(port, '127.0.0.1');
 };
 setTimeout(() => {
@@ -293,6 +298,8 @@ test('never reuses an instance across a change in the repository single-project 
  * descriptor must name THAT port and it must answer.
  */
 test('reports the port the app really holds when the probed port is taken at bind time', { timeout: 60_000 }, async () => {
+  // BREAK-671-ENV-PORT. The app's emitted boot URL is the deterministic signal; neither a
+  // released availability probe nor the last unrelated log line containing “cockpit” owns it.
   const fixture = makeFixture(hasSetsid);
   // A port this test knows is free, so the case does not depend on 4321 being free on the
   // machine (a developer's cockpit, a peer run's instance). The launcher requests it, the stub

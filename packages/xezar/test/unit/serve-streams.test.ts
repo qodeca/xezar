@@ -3,7 +3,7 @@ import { execFileSync, spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { realpathSync } from 'node:fs';
-import { createServer } from 'node:net';
+import { createServer, type Server } from 'node:net';
 import { join, resolve } from 'node:path';
 import { after, test } from 'node:test';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -59,20 +59,13 @@ interface Boot {
   port: number | undefined;
 }
 
-/**
- * A port the OS has just confirmed is free.
- *
- * Only the `--log-level debug` case needs one: `--port 0` means "any free port", and #467
- * deliberately does NOT remember that, so the routine `registry.port` debug line never happens
- * on an ephemeral start. Every other case takes `--port 0` and cares only about the streams.
- */
-async function freePort(): Promise<number> {
+/** Hold an OS-assigned port until the caller releases it. */
+async function heldPort(): Promise<{ port: number; server: Server }> {
   const server = createServer();
   await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
   const address = server.address();
   const port = typeof address === 'object' && address ? address.port : 0;
-  await new Promise<void>((done) => server.close(() => done()));
-  return port;
+  return { port, server };
 }
 
 /** Boot `serve` with the two streams kept APART, wait for the cockpit line, stop it. */
@@ -173,10 +166,19 @@ test('--quiet keeps the cockpit line and drops the rest of the banner', async ()
 test('--log-level debug adds the routine diagnostics, still only on stderr', async () => {
   const repo = await makeRepo('streams-debug');
   const home = join(fixtureRoot, 'home-debug');
-  const port = String(await freePort());
-  const boot = await bootServe(repo, home, ['--log-level', 'debug'], port);
+  // BREAK-671-SERVE-PORT. The old test released a probed port, asked serve for it, then asserted
+  // equality. A peer could take it first, and serve correctly fell back. Keep an OS-assigned
+  // sentinel port occupied instead: fallback is now guaranteed, and the boot record is the source
+  // of truth for what the app bound.
+  const held = await heldPort();
+  let boot: Boot;
+  try {
+    boot = await bootServe(repo, home, ['--log-level', 'debug'], String(held.port));
+  } finally {
+    await new Promise<void>((done) => held.server.close(() => done()));
+  }
 
-  assert.equal(boot.port, Number(port), 'the requested port is the bound port');
+  assert.ok(boot.port && boot.port !== held.port, 'serve must report its fallback, not the occupied request');
   // Remembering this project's port is routine bookkeeping, so it is a debug line — visible
   // here and silent at the default level.
   assert.match(boot.stderr, /level=debug .* event=registry\.port/, `no debug line:\n${boot.stderr}`);
@@ -186,10 +188,15 @@ test('--log-level debug adds the routine diagnostics, still only on stderr', asy
 test('the default level hides the routine diagnostics that debug shows', async () => {
   const repo = await makeRepo('streams-default-level');
   const home = join(fixtureRoot, 'home-default-level');
-  const port = String(await freePort());
-  const boot = await bootServe(repo, home, [], port);
+  const held = await heldPort();
+  let boot: Boot;
+  try {
+    boot = await bootServe(repo, home, [], String(held.port));
+  } finally {
+    await new Promise<void>((done) => held.server.close(() => done()));
+  }
 
-  assert.equal(boot.port, Number(port));
+  assert.ok(boot.port && boot.port !== held.port, 'serve must report its fallback, not the occupied request');
   assert.ok(!boot.stderr.includes('level=debug'), `default level printed a debug line:\n${boot.stderr}`);
 });
 

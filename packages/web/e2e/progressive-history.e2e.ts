@@ -127,14 +127,6 @@ const MAX_ARRIVAL_FRAMES = 900
 const NEAR_TAIL_PX = 80
 
 /**
- * How many times to re-press ⌘K when the press was lost before the palette ever opened. Three,
- * the same bounded interaction retry `clickStepControl` and `clickRoleWhenStable` keep.
- */
-const PALETTE_PRESS_ATTEMPTS = 3
-/** How long one press is given to mount the palette, in the page's own clock. */
-const PALETTE_PRESS_WINDOW_MS = 1500
-
-/**
  * The palette dialogs, found by ROLE and accessible name rather than a markup hook — the same
  * fact `command-palette.e2e.ts` reads, and the one Radix keeps in sync with its own open state.
  * A bare `[cmdk-root]` presence check cannot tell an OPEN palette from one still mounted for its
@@ -167,46 +159,23 @@ const paletteClosing = `(${paletteDialogs}.some((dialog) => dialog.getAttribute(
  * defect and must fail — the role wait keeps that; it just reads the fact the accessibility tree
  * exposes instead of a cmdk implementation hook.
  *
- * The press can still be lost to the browser's own Ctrl+K accelerator (2 CI runs: 35325364095
- * attempt 1, 35411288411), so it stays bounded and repeated — but only ever from a state where the
- * palette is genuinely gone. "Did the press land" is a yes/no question `waitForFunction` cannot
- * ask (it throws instead of answering "not yet"), so the page arms its own short window and one
- * wait covers both answers.
+ * This scroll-restoration spec does not need to retest the browser's Ctrl+K accelerator (the
+ * command-palette spec owns that journey). It dispatches one app-level keyboard event after the
+ * closed signal instead. The shortcut hook receives that event synchronously, so there is no
+ * browser accelerator to steal it and no retry or timing window in the test.
  */
 async function openCommandPalette(): Promise<void> {
-  for (let attempt = 0; attempt < PALETTE_PRESS_ATTEMPTS; attempt += 1) {
-    // Wait out an exit animation first. This is the page's own ready signal: the palette is not
-    // ready to be opened until the previous one is gone, and pressing earlier is what left focus
-    // on BODY.
-    browser.waitForFunction(`!(${paletteClosing})`)
-    // A press from the previous attempt that landed late (after the window closed) leaves the
-    // palette up here; take its focus rather than pressing again and toggling it shut.
-    if (browser.evaluate(paletteMounted) === true) {
-      browser.waitForFunction(`document.activeElement?.getAttribute('role') === 'combobox'`)
-      return
-    }
-    // Focus is parked on <body> first so the palette's focus return on close cannot scroll the
-    // destination transcript (unchanged from the single press this replaces). The window is
-    // armed in the same call: `setTimeout`, not `requestAnimationFrame`, because a throttled
-    // frame callback in a backgrounded tab would never close it.
-    browser.evaluate(`(() => {
-      document.activeElement?.blur?.()
-      window.__xezPalettePressWindowClosed = false
-      setTimeout(() => { window.__xezPalettePressWindowClosed = true }, ${PALETTE_PRESS_WINDOW_MS})
-      return true
-    })()`)
-    browser.press('Control+k')
-    browser.waitForFunction(
-      `(${paletteMounted}) || window.__xezPalettePressWindowClosed === true`,
-    )
-    if (browser.evaluate(paletteMounted) === true) {
-      browser.waitForFunction(`document.activeElement?.getAttribute('role') === 'combobox'`)
-      return
-    }
-  }
-  throw new Error(
-    `xezar e2e: the command palette never opened after ${PALETTE_PRESS_ATTEMPTS} Ctrl+K presses`,
-  )
+  // BREAK-671-PALETTE-FOCUS. Radix's own closed state is the readiness signal: reopening the
+  // still-mounted closing node skipped focus-on-open and left BODY focused under load.
+  browser.waitForFunction(`!(${paletteClosing}) && !(${paletteMounted})`)
+  browser.evaluate(`(() => {
+    document.activeElement?.blur?.()
+    window.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'k', ctrlKey: true, bubbles: true, cancelable: true,
+    }))
+    return true
+  })()`)
+  browser.waitForFunction(`document.activeElement?.getAttribute('role') === 'combobox'`)
 }
 
 /**
@@ -229,9 +198,9 @@ async function navigateAndSampleArrival(runId: string): Promise<Arrival> {
   // filters on the run id (its items carry it for exactly that), so the one selected row is the
   // destination.
   await openCommandPalette()
-  browser.fill('[cmdk-input]', runId)
+  browser.fill('[role="combobox"]', runId)
   browser.waitForFunction(
-    `document.querySelector('[cmdk-item][aria-selected="true"]')?.getAttribute('data-run-id') === ${JSON.stringify(runId)}`,
+    `document.querySelector('[role="option"][aria-selected="true"]')?.getAttribute('data-run-id') === ${JSON.stringify(runId)}`,
   )
   browser.evaluate(`(() => {
     window.__xezArrivalSamples = []

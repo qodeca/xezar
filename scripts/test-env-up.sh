@@ -438,9 +438,9 @@ ensure_browser() {
 # port it really holds, and this reads that line. No port is probed and released here.
 app_port_from_log() {
   [ -f "$APP_LOG" ] || return 1
-  line=$(grep 'cockpit' "$APP_LOG" 2>/dev/null | tail -1 || true)
-  [ -n "$line" ] || return 1
-  url=$(printf '%s\n' "$line" | grep -o 'http://localhost:[0-9][0-9]*' | tail -1 || true)
+  # Match the boot record itself. Later product copy may also say "cockpit" without carrying a
+  # URL; choosing the last line with that word made a healthy boot invisible to this launcher.
+  url=$(grep -o 'http://localhost:[0-9][0-9]*' "$APP_LOG" 2>/dev/null | tail -1 || true)
   [ -n "$url" ] || return 1
   printf '%s\n' "${url##*:}"
 }
