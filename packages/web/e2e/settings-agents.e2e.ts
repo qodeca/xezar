@@ -1,18 +1,25 @@
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { AgentBrowser, readTestEnv } from './agent-browser'
+import { AgentBrowser } from './agent-browser'
+import { bootFixtureServer, type FixtureServer } from './fixture-server'
 
 /**
- * Settings → Agents (R6 Step 1.5) end-to-end against the shared dry-run environment: edit each
- * knob through the real form and read the write back from `GET /api/v1/config` — the server's
- * truth, not the query cache — then prove a cold load renders the persisted values.
+ * Settings → Agents (R6 Step 1.5) end-to-end against a spec-owned fixture server: edit each knob
+ * through the real form and read the write back from `GET /api/v1/config` — the server's truth,
+ * not the query cache — then prove a cold load renders the persisted values.
  *
- * Reachability: fully reachable — the section needs no forge and no agent CLI; the base-branch
- * picker only needs the dry-run repo to be a git checkout (asserted, not assumed). The suite
- * mutates exactly one store, `.xezar/config.json`, saved in beforeAll and restored byte-for-
- * byte in afterAll (`loadConfig` reads on demand and never caches, so the restore is complete).
+ * The fixture is booted by `bootFixtureServer` (the one shared helper, also used by
+ * `repo-git.e2e.ts`) over a `createFixtureRepo` checkout, so the base-branch picker has a real
+ * non-`xez/*` branch to offer. That is the #671 F-05 fix: `getBranches` (`src/server/git.ts`)
+ * filters `xez/*` names out, so a spec attached to the shared env — which serves the checkout the
+ * suite runs in, and CI checks out a task branch — waited 25 s for a second option that could
+ * never arrive.
+ *
+ * Reachability: fully reachable — the section needs no forge and no agent CLI; the fixture is a
+ * git checkout, asserted rather than assumed. The suite mutates exactly one store, the FIXTURE's
+ * `.xezar/config.json`, which `stop()` deletes with the rest of its data root: unlike the shared
+ * env it never writes this repository's own kit config.
  */
 
 const artifactsDir = resolve(import.meta.dirname, '../../../.local/qa/artifacts_e2e')
@@ -20,26 +27,20 @@ const sessionId = `e2e-settings-agents-${process.pid}`
 
 const DESKTOP = { width: 1440, height: 900 }
 
-// Where `src/index.ts` puts the data dir, for the server booted from this worktree.
-const kitDir = resolve(import.meta.dirname, '../../../.xezar')
-const configFile = resolve(kitDir, 'config.json')
-
 let browser: AgentBrowser
 let baseUrl: string
-let previousConfig: string | null = null
+let fixture: FixtureServer
 
-beforeAll(() => {
-  baseUrl = readTestEnv().baseUrl
-  previousConfig = existsSync(configFile) ? readFileSync(configFile, 'utf8') : null
+beforeAll(async () => {
+  fixture = await bootFixtureServer()
+  baseUrl = fixture.baseUrl
   browser = AgentBrowser.open(sessionId)
   browser.setViewport(DESKTOP.width, DESKTOP.height)
 })
 
-afterAll(() => {
-  // Never leave a developer's cockpit running with this test's agent settings.
-  if (previousConfig === null) rmSync(configFile, { force: true })
-  else writeFileSync(configFile, previousConfig, 'utf8')
+afterAll(async () => {
   browser?.close()
+  await fixture?.stop()
 })
 
 interface ConfigAnswer {
@@ -99,7 +100,7 @@ const gotoAgents = () => {
   )
 }
 
-describe('settings → agents against the live dry-run server', () => {
+describe('settings → agents against a spec-owned fixture server', () => {
   it('renders every knob, agent-agnostically named', () => {
     gotoAgents()
     browser.waitForFunction(`document.querySelector('[data-slot="agents-base-branch"]') !== null`)
@@ -108,7 +109,7 @@ describe('settings → agents against the live dry-run server', () => {
     // One model preset per runner, `pi` included.
     expect(browser.count('[data-slot="agents-model"]')).toBe(4)
     expect(browser.count('[data-slot="agents-system-prompt"]')).toBe(1)
-    // The dry-run repo is a git checkout, so the base-branch picker is the real control.
+    // The dry-run fixture is a git checkout, so the base-branch picker is the real control.
     expect(browser.count('[data-slot="agents-base-branch"]')).toBe(1)
   })
 
@@ -141,19 +142,20 @@ describe('settings → agents against the live dry-run server', () => {
   })
 
   it('base branch: picking a real branch persists; clearing goes back to the checkout', async () => {
-    // Whatever branch the dry-run repo actually has, first option after "follow checked-out branch".
-    // `useRepo` is the one query on this screen that really is late for a control: the select is
-    // rendered only once `repo.data?.info` exists and its options come from `repo.data.branches`
+    // The fixture's own branch is the first option after "follow checked-out branch". `useRepo`
+    // is the one query on this screen that really is late for a control: the select is rendered
+    // only once `repo.data?.info` exists and its options come from `repo.data.branches`
     // (agents-section.tsx:483-497), so wait for a branch option to exist before reading it. The
-    // read below cannot tell "this checkout has no branches" from "the list has not arrived yet",
-    // and both answer `''` (#183).
+    // read cannot tell "this checkout has no branches" from "the list has not arrived yet", and
+    // both answer `''` (#183) — which is exactly why the fixture must own a real branch (#671
+    // F-05): the endpoint drops `xez/*` names, so a task-branch checkout offers no second option.
     browser.waitForFunction(
       `(document.querySelector('[data-slot="agents-base-branch"]')?.options.length ?? 0) > 1`,
     )
     const branch = String(
       browser.evaluate(`document.querySelector('[data-slot="agents-base-branch"]').options[1]?.value ?? ''`),
     )
-    expect(branch).not.toBe('')
+    expect(branch).toBe('main')
     setSelect('[data-slot="agents-base-branch"]', branch)
     await waitForConfig((c) => c.baseBranch === branch)
 
@@ -185,7 +187,7 @@ describe('settings → agents against the live dry-run server', () => {
     ).toBe('Always add tests. (e2e)')
     browser.screenshot(`${artifactsDir}/settings-agents.png`)
 
-    // Neutralize for the suites that follow (afterAll restores the file itself too).
+    // Neutralize for the suites that follow — the fixture's config is discarded by `stop()`.
     browser.click('[data-slot="agents-runner"] [data-value="claude"]')
     await waitForConfig((c) => c.defaultRunner === 'claude')
   })
