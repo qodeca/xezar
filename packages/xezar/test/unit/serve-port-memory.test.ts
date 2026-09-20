@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { once } from 'node:events';
+import { EventEmitter, once } from 'node:events';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:net';
 import { realpathSync } from 'node:fs';
@@ -97,9 +97,9 @@ function streamCompleted(stream: NodeJS.ReadableStream): Promise<void> {
   });
 }
 
-/** Resolve from the child output event that carries readiness; the timer is only a failure bound. */
+/** Resolve when the inspected delivered buffer changes; the timer is only a failure bound. */
 function waitForOutput(
-  streams: NodeJS.ReadableStream[],
+  changes: EventEmitter,
   read: () => string,
   pattern: RegExp,
   description: string,
@@ -127,9 +127,9 @@ function waitForOutput(
   }, 60_000);
   const cleanup = () => {
     clearTimeout(deadline);
-    for (const stream of streams) stream.off('data', inspect);
+    changes.off('change', inspect);
   };
-  for (const stream of streams) stream.on('data', inspect);
+  changes.on('change', inspect);
   inspect();
   return {
     promise,
@@ -147,8 +147,8 @@ function waitForOutput(
  * cross-pipe delivery order is deliberately adversarial.
  */
 function collectWithFragmentedReadyRecord(
-  stdout: NodeJS.ReadableStream,
-  stderr: NodeJS.ReadableStream,
+  stdout: EventEmitter,
+  stderr: EventEmitter,
   appendStdout: (chunk: string) => void,
   appendStderr: (chunk: string) => void,
 ): { finish(): FragmentationAudit } {
@@ -206,12 +206,13 @@ function collectWithFragmentedReadyRecord(
       deliverStderr(chunk);
       return;
     }
-    const match = /event=xezar\.ready[^\n]*\bstart=/.exec(chunk);
+    const match = /event=xezar\.ready[^\n]*\bstart=/.exec(originalStderr);
     if (!match) {
       deliverStderr(chunk);
       return;
     }
-    const cut = match.index + match[0].length;
+    const chunkStart = originalStderr.length - chunk.length;
+    const cut = match.index + match[0].length - chunkStart;
     deliverStderr(chunk.slice(0, cut));
     stderrSuffix = chunk.slice(cut);
     holdingStdout = false;
@@ -232,6 +233,59 @@ function collectWithFragmentedReadyRecord(
     },
   };
 }
+
+test('fragmentation readiness follows delivered buffers for both pipe orders and a split marker', async () => {
+  const cases = [
+    ['stdout-first', ['stdout', 'ready']],
+    ['stderr-first', ['ready', 'stdout']],
+    ['split-marker', ['stdout', 'ready-prefix', 'ready-suffix']],
+  ] as const;
+
+  for (const [name, order] of cases) {
+    const stdoutStream = new EventEmitter();
+    const stderrStream = new EventEmitter();
+    const stdoutChanges = new EventEmitter();
+    const stderrChanges = new EventEmitter();
+    let stdout = '';
+    let stderr = '';
+    const fragmentation = collectWithFragmentedReadyRecord(
+      stdoutStream,
+      stderrStream,
+      (chunk) => {
+        stdout += chunk;
+        stdoutChanges.emit('change');
+      },
+      (chunk) => {
+        stderr += chunk;
+        stderrChanges.emit('change');
+      },
+    );
+    const cockpitReady = waitForOutput(stdoutChanges, () => stdout, COCKPIT_LINE, `${name} cockpit`);
+    const startReady = waitForOutput(stderrChanges, () => stderr, START_PORT, `${name} start`);
+
+    try {
+      for (const event of order) {
+        if (event === 'stdout') stdoutStream.emit('data', 'cockpit → http://localhost:12345\n');
+        if (event === 'ready') stderrStream.emit('data', 'event=xezar.ready start=12345\n');
+        if (event === 'ready-prefix') stderrStream.emit('data', 'event=xezar.');
+        if (event === 'ready-suffix') stderrStream.emit('data', 'ready start=12345\n');
+      }
+
+      const [cockpit, start] = await Promise.all([cockpitReady.promise, startReady.promise]);
+      assert.equal(cockpit[1], '12345', `${name} must wake from delivered stdout`);
+      assert.equal(start[1], '12345', `${name} must wake from delivered stderr`);
+      assert.deepEqual(fragmentation.finish(), {
+        split: true,
+        stdoutInterleaved: true,
+        stdoutPreserved: true,
+        stderrPreserved: true,
+      });
+    } finally {
+      cockpitReady.cancel();
+      startReady.cancel();
+    }
+  }
+});
 
 /** Boot `serve` in `repo` with `home` as its registry, wait for the cockpit line, stop it. */
 async function bootServe(
@@ -264,10 +318,18 @@ async function bootServe(
   );
   let stdout = '';
   let stderr = '';
+  const stdoutChanges = new EventEmitter();
+  const stderrChanges = new EventEmitter();
   child.stdout.setEncoding('utf8');
   child.stderr.setEncoding('utf8');
-  const appendStdout = (chunk: string) => { stdout += chunk; };
-  const appendStderr = (chunk: string) => { stderr += chunk; };
+  const appendStdout = (chunk: string) => {
+    stdout += chunk;
+    stdoutChanges.emit('change');
+  };
+  const appendStderr = (chunk: string) => {
+    stderr += chunk;
+    stderrChanges.emit('change');
+  };
   const fragmentation = fragmentReadyRecord
     ? collectWithFragmentedReadyRecord(child.stdout, child.stderr, appendStdout, appendStderr)
     : undefined;
@@ -280,14 +342,14 @@ async function bootServe(
   const stdoutCompleted = streamCompleted(child.stdout);
   const stderrCompleted = streamCompleted(child.stderr);
   const cockpitReady = waitForOutput(
-    [child.stdout],
+    stdoutChanges,
     () => stdout,
     COCKPIT_LINE,
     'serve cockpit readiness line',
   );
   const startReady = waitForStartPort
     ? waitForOutput(
-        [child.stderr],
+        stderrChanges,
         () => stderr,
         START_PORT,
         'serve resolved start-port record',
