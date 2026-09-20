@@ -17,7 +17,7 @@ import { GuideBrowser } from './guide-browser'
  * Dry-run exception register: a real reverse proxy, TLS, non-loopback bind, service-manager
  * install/redeploy/uninstall and the request-origin guard's DNS-rebinding/CSRF checks are covered
  * by `packages/xezar/src/server/host-guard.test.ts`, `origin-guard.test.ts` and the
- * `server-install/platforms/*.test.ts` suite (browser-test-spec.md's guide-14 row); a real hosted
+ * `server-install/platforms/*.test.ts` suite (`docs/testing/browser-dry-run-exceptions.md`, guide-14 row); a real hosted
  * installation lifecycle is manual with a dated record. This file asserts only the one
  * capability-driven UI difference a dry-run browser can honestly show.
  */

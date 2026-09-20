@@ -11,7 +11,7 @@ import { GuideBrowser } from './guide-browser'
  * Dry-run exception register: writing `.xezar/workflows/fix-and-verify.yaml` and
  * `.xezar/skills/project-conventions.md`, and the collision guard when the kit path would be the
  * workspace home, are covered by `packages/xezar/src/init-kit.test.ts:12-52` and
- * `packages/xezar/src/project-kit-cli.test.ts:8-29` (browser-test-spec.md's guide-15 row); running
+ * `packages/xezar/src/project-kit-cli.test.ts:8-29` (`docs/testing/browser-dry-run-exceptions.md`, guide-15 row); running
  * the actual `xez-onboard` guided-setup skill end to end is manual with a dated record, since it
  * depends on a real team-skills network fetch this dry-run fixture does not perform.
  */

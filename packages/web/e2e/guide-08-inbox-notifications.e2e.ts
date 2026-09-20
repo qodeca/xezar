@@ -18,7 +18,7 @@ import { GuideBrowser } from './guide-browser'
  * This file boots its own always-on fixture instead, so both the disabled and the enabled states
  * run unconditionally, through role/label/text locators only.
  *
- * Dry-run exception register (browser-test-spec.md § Dry-run exception register, row "08"):
+ * Dry-run exception register (`docs/testing/browser-dry-run-exceptions.md`, row "08"):
  * browser/OS notification permission and delivery are manual with a dated record, paired with
  * `packages/web/src/components/run-notifications.test.tsx` and
  * `packages/web/src/lib/notifications.test.ts`. This file never requests real notification

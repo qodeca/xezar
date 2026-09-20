@@ -8,7 +8,7 @@ import { GuideBrowser } from './guide-browser'
  * follows: choosing a backend in the new-task composer, seeing its own model list, and reading
  * the backend switches and default-runner choice in Settings → Agents.
  *
- * Dry-run exception register (browser-test-spec.md § Dry-run exception register, row "04"):
+ * Dry-run exception register (`docs/testing/browser-dry-run-exceptions.md`, row "04"):
  * installed-provider DETECTION is covered by `packages/xezar/src/core/backend-detect.test.ts`;
  * real account login is manual with a dated record, paired with
  * `packages/xezar/src/core/provider-auth.test.ts`. Real provider execution, Codex MCP isolation,

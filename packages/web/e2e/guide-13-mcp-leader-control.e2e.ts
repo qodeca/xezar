@@ -22,7 +22,7 @@ import { GuideBrowser } from './guide-browser'
  * alphabetical one.
  *
  * Dry-run exception register: an actual client attaching, receiving a push and acknowledging it is
- * manual with a dated record (browser-test-spec.md's guide-13 row); this file asserts only the
+ * manual with a dated record (`docs/testing/browser-dry-run-exceptions.md`, guide-13 row); this file asserts only the
  * page's own unattached-state text and the setup commands it prints for every client.
  */
 
