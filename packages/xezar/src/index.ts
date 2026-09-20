@@ -155,6 +155,11 @@ async function main(): Promise<void> {
       color: { type: 'string' },
       'log-level': { type: 'string' },
       quiet: { type: 'boolean', short: 'q', default: false },
+      // Registered globally, like `--single-project`, because `parseArgs` is strict: a
+      // subcommand that does not use the setting — `xez mcp` — must still ACCEPT the flag
+      // rather than die on an unknown option (#467, spec § 3.3). PR 1 only resolves the
+      // value; nothing reads it yet, and the help text lands with the behaviour in PR 2.
+      instance: { type: 'string' },
       repo: { type: 'string' },
       workflow: { type: 'string' },
       model: { type: 'string' },
@@ -213,6 +218,7 @@ async function main(): Promise<void> {
         ...(values.output !== undefined ? { output: values.output } : {}),
         ...(values.color !== undefined ? { color: values.color } : {}),
         ...(values['log-level'] !== undefined ? { logLevel: values['log-level'] } : {}),
+        ...(values.instance !== undefined ? { instance: values.instance } : {}),
         quiet: Boolean(values.quiet),
       },
       process.env,
