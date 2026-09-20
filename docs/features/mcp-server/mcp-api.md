@@ -239,7 +239,7 @@ Unknown arguments are rejected.
 | `autonomous` | boolean | no |  | true never pauses for the user (start). Omit for the workspace default. |
 | `generateFollowups` | boolean | no |  | false stops follow-up inbox entries (start). Omit for on. |
 | `todoId` | string | no | min length 1, max length 200 | The Inbox entry: the one to start (start_from_inbox), or the one this task came from (start). |
-| `fromFindings` | object | no |  | Build the task text from findings a reviewer recorded on another task (start). `runId` is that reviewing task and `ids` are its finding ids — read both with task_read view=task; `role` picks one reviewer when the task carries more than one. The text names the reviewer's model, and a task that would run on that same backend and model is refused. |
+| `fromFindings` | object | no |  | Build the task text from findings a reviewer recorded on another task (start). `runId` is that reviewing task and `ids` are its finding ids — read both with task_read view=task; `role` picks one reviewer when the task carries more than one. The text names the engine each reviewing STEP ran on, and a task — or any step of it — that would run on that same backend and model is refused. That refusal compares model NAMES: a tier alias and the pinned id it resolves to (`opus` and `claude-opus-5`), or a context-window variant (`opus[1m]`), are different names and pass, so name a different backend when you want certainty. |
 | `fromFindings.runId` | string | yes | min length 1 |  |
 | `fromFindings.ids` | array of string | yes | min items 1, max items 20 |  |
 | `fromFindings.role` | `code-review` \| `design-review` \| `qa` | no |  |  |
