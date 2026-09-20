@@ -1043,7 +1043,13 @@ gate_attempt_complete
 DRIVER
 chmod +x "$WORK/drive-gates.sh"
 
-drive() { local wt="$1"; shift; ( cd "$wt" && env -u XEZ_TASK_ID -u DOGFOOD_ALLOW_ROOT_BOOTSTRAP "$WORK/drive-gates.sh" "$@" ); }
+# The driver models the WORKFLOW's `gates` step, which declares `--producer gates`, so its
+# synthetic attempts stand in for the run's canonical gate run and the sealing fixtures below
+# can keep testing the seal's other rules. A fixture that is ABOUT the author's attempt passes
+# `GATE_PRODUCER=author` explicitly, and `drive_default` drives the product default (no
+# declaration at all) where that is the subject.
+drive() { local wt="$1"; shift; ( cd "$wt" && env -u XEZ_TASK_ID -u DOGFOOD_ALLOW_ROOT_BOOTSTRAP GATE_PRODUCER="${GATE_PRODUCER:-gates}" "$WORK/drive-gates.sh" "$@" ); }
+drive_default() { local wt="$1"; shift; ( cd "$wt" && env -u XEZ_TASK_ID -u DOGFOOD_ALLOW_ROOT_BOOTSTRAP -u GATE_PRODUCER "$WORK/drive-gates.sh" "$@" ); }
 attempt_dir_of() { printf '%s' "$1" | sed -n 's/^ATTEMPT_DIR=//p' | head -1; }
 record_field() { node -e '
   const r = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
@@ -2525,6 +2531,92 @@ sec_index="$(printf '%s' "$LIST_JSON" | node -e '
 [ "$sec_index" = "2" ] && ok "the security stage is gate 2, before every quality gate" \
   || bad "the security stage is gate 2, before every quality gate" "it is gate $sec_index"
 
+# --- 6d. Producer provenance (#676 PR 2) ------------------------------------------------------
+#
+# An attempt records WHO ran the gates. The workflow's `gates` step declares itself with
+# `--producer gates`; anything else is the AUTHOR's, and an author's attempt never certifies the
+# tree — it is the same tree proved to itself. The seal refuses it. ABSENCE IS A THIRD BRANCH:
+# a record written before this contract carries no `producer` field at all and still seals, and
+# collapsing absence onto `author` (or `author` onto absence) is the fail-open this pins.
+printf '\n-- gate evidence: producer provenance --\n'
+root="$(make_fixture producer)"
+wt="$(add_worktree_with_work "$root" "$RUN_A")"
+CHECKS="$root/.xezar/checks"
+PF="$CHECKS/worktree-preflight.sh"
+
+# B9 in miniature: an attempt recorded with no producer declaration is the AUTHOR's, and the
+# seal refuses it even though it is complete and passing.
+out="$(drive_default "$wt" "$CHECKS" "$LIST_ID" "$REQUIRED_ALL" "${ALL_PASS[@]}")"
+att="$(attempt_dir_of "$out")"
+[ "$(record_field "$att" producer)" = "author" ] \
+  && ok "an attempt that declares no producer records the author" \
+  || bad "an attempt that declares no producer records the author" "producer=$(record_field "$att" producer)"
+expect_fail "an author-produced attempt cannot be sealed" \
+  'producer is "author"' run_in "$wt" "$PF" --record-gate-evidence
+
+# The workflow's gates step declares itself, and that attempt seals.
+out="$(GATE_PRODUCER=author drive "$wt" "$CHECKS" "$LIST_ID" "$REQUIRED_ALL" "${ALL_PASS[@]}")"
+att="$(attempt_dir_of "$out")"
+[ "$(record_field "$att" producer)" = "author" ] \
+  && ok "an explicit author declaration is recorded" \
+  || bad "an explicit author declaration is recorded" "producer=$(record_field "$att" producer)"
+expect_fail "an explicitly author-produced attempt cannot be sealed" \
+  'producer is "author"' run_in "$wt" "$PF" --record-gate-evidence
+out="$(drive "$wt" "$CHECKS" "$LIST_ID" "$REQUIRED_ALL" "${ALL_PASS[@]}")"
+att="$(attempt_dir_of "$out")"
+[ "$(record_field "$att" producer)" = "gates" ] \
+  && ok "the gates step's declaration is recorded" \
+  || bad "the gates step's declaration is recorded" "producer=$(record_field "$att" producer)"
+expect_ok "a gates-produced attempt seals" run_in "$wt" "$PF" --record-gate-evidence
+
+# B10: absence is NOT "author". A legacy record has no `producer` field at all, and refusing it
+# would strand every attempt already on disk and every in-flight run.
+out="$(drive_default "$wt" "$CHECKS" "$LIST_ID" "$REQUIRED_ALL" "${ALL_PASS[@]}")"
+att="$(attempt_dir_of "$out")"
+node -e 'const fs=require("node:fs");const p=process.argv[1];const r=JSON.parse(fs.readFileSync(p,"utf8"));delete r.producer;fs.writeFileSync(p,JSON.stringify(r,null,2));' "$att/result.json"
+expect_ok "a legacy attempt with no producer field still seals" run_in "$wt" "$PF" --record-gate-evidence
+
+# The resolution itself, including the one-release migration for a run whose PERSISTED workflow
+# definition predates the flag (the engine freezes that definition at run creation). A workflow
+# CHECK step carries no XEZ_TASK_ID; an agent step does. Every absent input is the author.
+resolve_producer() {
+  local wt="$1" arg="$2"; shift 2
+  run_in "$wt" env "$@" bash -c '
+    . .xezar/checks/lib/common.sh; resolve_task_paths >/dev/null || exit 1
+    . .xezar/checks/lib/gate-record.sh
+    gate_resolve_producer "$1"' _ "$arg"
+}
+mkdir -p "$wt/.xezar/workflows" "$root/.local/xezar"
+printf 'name: producer-fixture\nsteps:\n  - id: gates\n    command: ".xezar/checks/repo-gates.sh --fast --producer gates"\n' > "$wt/.xezar/workflows/producer-fixture.yaml"
+printf '[{"id":"%s","workflow":"producer-fixture","workflowDef":{"steps":[{"id":"gates","command":".xezar/checks/repo-gates.sh --fast"}]}}]\n' "$RUN_A" > "$root/.local/xezar/runs.json"
+[ "$(resolve_producer "$wt" "" XEZ_TASK_ID="$RUN_A")" = "author" ] \
+  && ok "an agent step with no flag is the author" \
+  || bad "an agent step with no flag is the author" "$(resolve_producer "$wt" "" XEZ_TASK_ID="$RUN_A")"
+[ "$(resolve_producer "$wt" "")" = "gates" ] \
+  && ok "a check step on a run whose frozen definition predates the flag is that run's gates step" \
+  || bad "a check step on a run whose frozen definition predates the flag is that run's gates step" "$(resolve_producer "$wt" "")"
+[ "$(resolve_producer "$wt" author)" = "author" ] \
+  && ok "an explicit producer wins over the migration" \
+  || bad "an explicit producer wins over the migration" "$(resolve_producer "$wt" author)"
+printf 'name: producer-fixture\nsteps:\n  - id: gates\n    command: ".xezar/checks/repo-gates.sh --fast"\n' > "$wt/.xezar/workflows/producer-fixture.yaml"
+[ "$(resolve_producer "$wt" "")" = "author" ] \
+  && ok "a workflow that does not declare the flag never infers gates (B9)" \
+  || bad "a workflow that does not declare the flag never infers gates (B9)" "$(resolve_producer "$wt" "")"
+printf 'name: producer-fixture\nsteps:\n  - id: gates\n    command: ".xezar/checks/repo-gates.sh --fast --producer gates"\n' > "$wt/.xezar/workflows/producer-fixture.yaml"
+printf '[{"id":"%s","workflow":"producer-fixture","workflowDef":{"steps":[{"id":"gates","command":".xezar/checks/repo-gates.sh --fast --producer gates"}]}}]\n' "$RUN_A" > "$root/.local/xezar/runs.json"
+[ "$(resolve_producer "$wt" "")" = "author" ] \
+  && ok "a run whose definition already declares the flag never infers gates" \
+  || bad "a run whose definition already declares the flag never infers gates" "$(resolve_producer "$wt" "")"
+rm -f "$root/.local/xezar/runs.json"
+[ "$(resolve_producer "$wt" "")" = "author" ] \
+  && ok "an unreadable run record fails closed to the author" \
+  || bad "an unreadable run record fails closed to the author" "$(resolve_producer "$wt" "")"
+
+# The flag itself is validated, and `--list` still answers: the flag names a producer, never a
+# gate, so it must not reach the command-list id (pinned in xezar-contract.test.mjs).
+expect_fail "an unknown --producer value is refused" '"author" or "gates"' \
+  run_in "$wt" "$CHECKS/repo-gates.sh" --producer bogus --list
+
 # The two silent fail-opens (#503 review N2). Both had the same shape as the Major: an error
 # stream discarded, so "we looked and there is nothing" and "we could not look" arrived as the
 # same empty answer — and the empty answer switched a requirement OFF.
@@ -3356,15 +3448,19 @@ GATE_NAMES=("mini gate")
 GATE_COMMANDS=("true")
 gate_list_json() { printf '[{"name":"mini gate","command":"true"}]'; }
 gate_list_id() { gate_list_json | shasum -a 256 | cut -d' ' -f1; }
-LIST=0; AS_JSON=0
-for arg in "$@"; do
-  case "$arg" in
+LIST=0; AS_JSON=0; PRODUCER=""
+while [ $# -gt 0 ]; do
+  case "$1" in
     --list) LIST=1 ;;
     --json) AS_JSON=1 ;;
     --fast) ;;
-    *) printf 'mini-gates: unknown argument "%s"\n' "$arg" >&2; exit 2 ;;
+    --producer) shift; PRODUCER="${1:-}" ;;
+    *) printf 'mini-gates: unknown argument "%s"\n' "$1" >&2; exit 2 ;;
   esac
+  shift
 done
+GATE_PRODUCER="${PRODUCER:-author}"
+export GATE_PRODUCER
 if [ "$LIST" -eq 1 ]; then
   if [ "$AS_JSON" -eq 1 ]; then
     printf '{"commandListId":"%s","gates":%s}\n' "$(gate_list_id)" "$(gate_list_json)"

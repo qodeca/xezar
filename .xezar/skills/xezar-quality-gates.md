@@ -5,7 +5,7 @@ description: Canonical quality evidence
 
 # Canonical quality evidence
 
-Run repo-gates.sh --fast, inspect complete durable logs through bounded excerpts, repair the solution within stage authority at most two times for the same failure, then report hypothesis/attempts/command/revision/blocker. Never suppress failures, lower thresholds or mark missing/skipped checks passed. Seal only with worktree-preflight.sh --record-gate-evidence on unchanged committed content; verify independently before delivery. This standalone skill is legitimate without direct YAML reachability.
+Run `.xezar/checks/repo-gates.sh --fast --producer gates` — this role IS the run's canonical gate run, so it declares the producer the seal requires — inspect complete durable logs through bounded excerpts, repair the solution within stage authority at most two times for the same failure, then report hypothesis/attempts/command/revision/blocker. Never suppress failures, lower thresholds or mark missing/skipped checks passed. Seal only with worktree-preflight.sh --record-gate-evidence on unchanged committed content; verify independently before delivery. This standalone skill is legitimate without direct YAML reachability.
 
 Inputs: current candidate, dependency state and predecessor failure ledger. Output: complete attempts/logs and an eligible seal only after all required results. Standalone invocation is supported; failed/missing evidence stops certification and switching executor does not reset either budget.
 

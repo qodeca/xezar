@@ -29,7 +29,7 @@ steps:
     resultScope: stage
   - id: gates
     name: Quality gates
-    command: ".xezar/checks/repo-gates.sh --fast"
+    command: ".xezar/checks/repo-gates.sh --fast --producer gates"
     resultScope: stage
     onFail:
       retry: design
