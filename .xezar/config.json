@@ -1,7 +1,7 @@
 {
   "baseBranch": "main",
   "reviewGate": false,
-  "systemPrompt": "Read .xezar/docs/README.md and the skill for this task. This is Xezar dogfooding: preserve AGENTS.md, SDLC.md, CODE_REVIEW.md and BACKWARD_COMPATIBILITY.md. Own only this task worktree. Follow stage ownership, immutable evidence, two local repair limits, current-context reconciliation and actual project authority. No weakened quality or fabricated validation. Record observations from real work as a fragment in .xezar/docs/dogfooding.d/<runId8>.md; the release role folds fragments into .xezar/docs/dogfooding.md. Release only through the existing manually dispatched Release workflow when authorized; never publish from ordinary CI.",
+  "systemPrompt": "Read .xezar/docs/README.md and the skill for this task. This is Xezar dogfooding: preserve AGENTS.md, SDLC.md, CODE_REVIEW.md and BACKWARD_COMPATIBILITY.md. Own only this task worktree. Follow stage ownership, immutable evidence, two local repair limits, current-context reconciliation and actual project authority. No weakened quality or fabricated validation. Record observations from real work as a fragment in .xezar/docs/dogfooding.d/<runId8>.md when your workflow has a handoff step that commits; otherwise write them to your evidence dir .local/xezar/tasks/<runId>/dogfooding.md, never a repository path. The release role folds fragments into .xezar/docs/dogfooding.md. Release only through the existing manually dispatched Release workflow when authorized; never publish from ordinary CI.",
   "defaultModels": {
     "opencode": "mac-m4/qwen38-flash-next-mlx-mixed-4-8bit"
   }

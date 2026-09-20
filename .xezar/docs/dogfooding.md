@@ -1,6 +1,6 @@
 # Learn the recommended way of working through real Xezar development
 
-New real-task entries go in `.xezar/docs/dogfooding.d/<runId8>.md`, one dated entry per file, using the same record template as the entries below. The release role folds them, newest first, above the existing entries, and deletes the fragment files. Do not append to this file: it is append-only at the top, so every pull request editing it conflicts with every other open pull request.
+New real-task entries go in `.xezar/docs/dogfooding.d/<runId8>.md`, one dated entry per file, using the same record template as the entries below. The release role folds them, newest first, above the existing entries, and deletes the fragment files. **A read-only or merge-only run has no step that commits a fragment, so it never writes here or to any other repository path**: `integration`, `code-review`, `qa`, `design-review`, `research`, `business-analysis`, `issue-triage` and a `quick-task` skill write their observation to their evidence dir `.local/xezar/tasks/<runId>/dogfooding.md` instead, and the leader folds it later. Do not append to this file: it is append-only at the top, so every pull request editing it conflicts with every other open pull request.
 
 Every future authorized feature/bug/docs task is also an opportunity to assess the workflow, skill and effective settings it actually uses. Do not launch an extra goal merely to fill this ledger. The leader preserves the feature's AC and records concise operational observations alongside its delivery evidence.
 
