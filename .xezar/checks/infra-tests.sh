@@ -318,6 +318,37 @@ printf '\n-- catalog --\n'
 expect_ok "the repo's own workflow/skill/config catalog is valid" \
   node "$SCRIPT_DIR/catalog-check.mjs" "$REPO_ROOT"
 
+# --- 1a. Marked fenced quotes (#674) -------------------------------------------------------------
+printf '\n-- marked fenced quotes --\n'
+FQ="$SCRIPT_DIR/fenced-quotes.mjs"
+fq_root="$(make_fixture fenced-quotes)"
+mkdir -p "$fq_root/docs" "$fq_root/.xezar/docs" "$fq_root/designs/example"
+printf 'alpha\nbeta\n' > "$fq_root/source.txt"
+
+printf '<!-- from: source.txt -->\n````text\nalpha\nbeta\n````\n' > "$fq_root/docs/matching.md"
+expect_ok "a marked block whose bytes match its source passes" node "$FQ" "$fq_root"
+
+printf '<!-- from: source.txt#L2-L2 -->\n```text\nbeta\n```\n' > "$fq_root/docs/range.md"
+expect_ok "a marked line range compares only its inclusive source lines" node "$FQ" "$fq_root"
+
+printf '<!-- from: source.txt -->\n~~~text\nalpha\nDIFFERENT\n~~~\n' > "$fq_root/.xezar/docs/differing.md"
+expect_fail "a marked block whose bytes differ fails" \
+  "fenced quote differs from source.txt" node "$FQ" "$fq_root"
+rm "$fq_root/.xezar/docs/differing.md"
+
+printf '<!-- from: absent.txt -->\n```\nanything\n```\n' > "$fq_root/designs/example/README.md"
+expect_fail "a marked block whose source path is missing fails, never skips" \
+  "source absent.txt does not exist" node "$FQ" "$fq_root"
+rm "$fq_root/designs/example/README.md"
+
+printf '<!-- from: ../outside.txt -->\n```\nanything\n```\n' > "$fq_root/ESCAPE.md"
+expect_fail "a marked block whose path escapes the repository fails" \
+  "source path escapes repository" node "$FQ" "$fq_root"
+rm "$fq_root/ESCAPE.md"
+
+printf '````text\n<!-- from: absent-inside-example.txt -->\n```\nnot source bytes\n```\n````\n' > "$fq_root/docs/unmarked.md"
+expect_ok "an unmarked fenced block, including marker-like example text, is ignored" node "$FQ" "$fq_root"
+
 # Each of these breaks the catalog in one specific way that Xezar itself would NOT report,
 # because its step schema strips unknown keys instead of rejecting them.
 catalog_fixture() {

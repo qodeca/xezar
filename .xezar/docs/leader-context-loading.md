@@ -100,6 +100,7 @@ block heading is the literal relative path; each campaign block heading is the f
 which is also how a truncated note names itself (see the cost model below). The hook is
 registered in `.claude/settings.json` with the four matchers a leader has to survive:
 
+<!-- from: .claude/settings.json -->
 ```json
 {
   "hooks": {
