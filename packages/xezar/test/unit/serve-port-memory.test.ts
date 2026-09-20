@@ -66,6 +66,14 @@ interface Boot {
   /** The resolved port request printed by the boot record, before bind-time fallback. */
   startPort: number | undefined;
   exitCode: number | null | undefined;
+  fragmentation?: FragmentationAudit;
+}
+
+interface FragmentationAudit {
+  split: boolean;
+  stdoutInterleaved: boolean;
+  stdoutPreserved: boolean;
+  stderrPreserved: boolean;
 }
 
 interface OutputWait {
@@ -133,6 +141,98 @@ function waitForOutput(
   };
 }
 
+/**
+ * Deliver the real ready record in two stderr fragments with a real stdout chunk between them.
+ * This is the review regression probe: each pipe keeps its own bytes and order, while their
+ * cross-pipe delivery order is deliberately adversarial.
+ */
+function collectWithFragmentedReadyRecord(
+  stdout: NodeJS.ReadableStream,
+  stderr: NodeJS.ReadableStream,
+  appendStdout: (chunk: string) => void,
+  appendStderr: (chunk: string) => void,
+): { finish(): FragmentationAudit } {
+  let holdingStdout = true;
+  let stderrSuffix: string | undefined;
+  let split = false;
+  let stdoutInterleaved = false;
+  let originalStdout = '';
+  let originalStderr = '';
+  let deliveredStdout = '';
+  let deliveredStderr = '';
+  const pendingStdout: string[] = [];
+  const pendingStderr: string[] = [];
+
+  const deliverStdout = (chunk: string) => {
+    deliveredStdout += chunk;
+    appendStdout(chunk);
+  };
+  const deliverStderr = (chunk: string) => {
+    deliveredStderr += chunk;
+    appendStderr(chunk);
+  };
+  const flushStderr = () => {
+    if (stderrSuffix === undefined) return;
+    deliverStderr(stderrSuffix);
+    stderrSuffix = undefined;
+    for (const chunk of pendingStderr.splice(0)) deliverStderr(chunk);
+  };
+  const flushStdoutBetweenFragments = () => {
+    if (stderrSuffix === undefined || pendingStdout.length === 0) return;
+    for (const chunk of pendingStdout.splice(0)) deliverStdout(chunk);
+    stdoutInterleaved = true;
+    flushStderr();
+  };
+
+  stdout.on('data', (chunk: string) => {
+    originalStdout += chunk;
+    if (holdingStdout) {
+      pendingStdout.push(chunk);
+      return;
+    }
+    deliverStdout(chunk);
+    if (stderrSuffix !== undefined) {
+      stdoutInterleaved = true;
+      flushStderr();
+    }
+  });
+  stderr.on('data', (chunk: string) => {
+    originalStderr += chunk;
+    if (stderrSuffix !== undefined) {
+      pendingStderr.push(chunk);
+      return;
+    }
+    if (!holdingStdout) {
+      deliverStderr(chunk);
+      return;
+    }
+    const match = /event=xezar\.ready[^\n]*\bstart=/.exec(chunk);
+    if (!match) {
+      deliverStderr(chunk);
+      return;
+    }
+    const cut = match.index + match[0].length;
+    deliverStderr(chunk.slice(0, cut));
+    stderrSuffix = chunk.slice(cut);
+    holdingStdout = false;
+    split = true;
+    flushStdoutBetweenFragments();
+  });
+
+  return {
+    finish() {
+      for (const chunk of pendingStdout.splice(0)) deliverStdout(chunk);
+      flushStderr();
+      return {
+        split,
+        stdoutInterleaved,
+        stdoutPreserved: originalStdout === deliveredStdout,
+        stderrPreserved: originalStderr === deliveredStderr,
+      };
+    },
+  };
+}
+
 /** Boot `serve` in `repo` with `home` as its registry, wait for the cockpit line, stop it. */
 async function bootServe(
   repo: string,
@@ -140,6 +240,7 @@ async function bootServe(
   args: string[] = [],
   env: NodeJS.ProcessEnv = {},
   waitForStartPort = true,
+  fragmentReadyRecord = false,
 ): Promise<Boot> {
   const child = spawn(
     process.execPath,
@@ -161,25 +262,33 @@ async function bootServe(
       stdio: ['ignore', 'pipe', 'pipe'],
     },
   );
-  let output = '';
+  let stdout = '';
+  let stderr = '';
   child.stdout.setEncoding('utf8');
-  child.stdout.on('data', (chunk: string) => { output += chunk; });
   child.stderr.setEncoding('utf8');
-  child.stderr.on('data', (chunk: string) => { output += chunk; });
+  const appendStdout = (chunk: string) => { stdout += chunk; };
+  const appendStderr = (chunk: string) => { stderr += chunk; };
+  const fragmentation = fragmentReadyRecord
+    ? collectWithFragmentedReadyRecord(child.stdout, child.stderr, appendStdout, appendStderr)
+    : undefined;
+  if (!fragmentation) {
+    child.stdout.on('data', appendStdout);
+    child.stderr.on('data', appendStderr);
+  }
   // Register both drain signals before readiness. stdout and stderr are independent pipes, so a
   // cockpit line can never be treated as evidence that the stderr boot record was collected.
   const stdoutCompleted = streamCompleted(child.stdout);
   const stderrCompleted = streamCompleted(child.stderr);
   const cockpitReady = waitForOutput(
     [child.stdout],
-    () => output,
+    () => stdout,
     COCKPIT_LINE,
     'serve cockpit readiness line',
   );
   const startReady = waitForStartPort
     ? waitForOutput(
         [child.stderr],
-        () => output,
+        () => stderr,
         START_PORT,
         'serve resolved start-port record',
       )
@@ -209,13 +318,18 @@ async function bootServe(
     await Promise.all([stdoutCompleted, stderrCompleted]);
     process.off('exit', reap);
   }
-  const printed = COCKPIT_LINE.exec(output);
-  const started = START_PORT.exec(output);
+  const fragmentationAudit = fragmentation?.finish();
+  const printed = COCKPIT_LINE.exec(stdout);
+  const started = START_PORT.exec(stderr);
+  // Cross-stream concatenation has no record-order semantics. Use it only after both streams
+  // have drained, as human-readable diagnostics for assertion failures below.
+  const output = stdout + stderr;
   return {
     output,
     port: printed ? Number(printed[1]) : undefined,
     startPort: started ? Number(started[1]) : undefined,
     exitCode,
+    ...(fragmentationAudit ? { fragmentation: fragmentationAudit } : {}),
   };
 }
 
@@ -275,6 +389,28 @@ test('a start remembers the port it really bound, and the next start comes back 
   // Nothing asked for this time. Without memory this would start at 4321.
   const second = await bootServe(repo, home, [], { XEZ_TEST_BUSY_AT_BIND: String(first.port) });
   assert.equal(second.startPort, first.port, `the second start must request the remembered port. Output:\n${second.output}`);
+});
+
+test('fragmented stderr readiness ignores an interleaved stdout chunk', { timeout: 180_000 }, async () => {
+  const { repo, home } = await fixture('fragmented-ready');
+  const wanted = await sentinel();
+
+  const boot = await bootServe(
+    repo,
+    home,
+    ['--port', String(wanted.port)],
+    {},
+    true,
+    true,
+  ).finally(() => release(wanted.server));
+
+  assert.equal(boot.startPort, wanted.port, `stderr must retain the whole ready record. Output:\n${boot.output}`);
+  assert.deepEqual(boot.fragmentation, {
+    split: true,
+    stdoutInterleaved: true,
+    stdoutPreserved: true,
+    stderrPreserved: true,
+  });
 });
 
 test('named break `remember-before-listen`/`false-ready`: a busy remembered port is replaced by the port really bound', { timeout: 180_000 }, async () => {
