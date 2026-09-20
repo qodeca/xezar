@@ -220,9 +220,9 @@ async function ui(w: AbWorld, path: string, method = 'GET', payload?: unknown): 
  * smaller one.
  *
  * `predicate` must be a function of the store's state (a status, a record field, a path the store
- * stamped before it published the record), because a signal is what re-reads it. `what` is kept at
- * every call site as the reader's label for the condition; a wait that never resolves now fails as
- * the case's own timeout rather than as this helper's message.
+ * stamped before it published the record), because a signal is what re-reads it. A wait that never
+ * resolves fails as the case's own timeout; the `afterEach` below then names `what`, so the
+ * failure still says which condition was outstanding.
  */
 async function until(w: AbWorld, predicate: () => boolean, what: string): Promise<void> {
   if (predicate()) return;
@@ -230,14 +230,33 @@ async function until(w: AbWorld, predicate: () => boolean, what: string): Promis
   await new Promise<void>((resolve) => {
     const check = (): void => {
       if (!predicate()) return;
-      store.off('run', check);
-      store.off('event', check);
+      release();
       resolve();
     };
+    const release = (): void => {
+      store.off('run', check);
+      store.off('event', check);
+      parked = null;
+    };
+    parked = { what, release };
     store.on('run', check);
     store.on('event', check);
   });
 }
+
+/** The wait a case is currently parked on, so a case that ends while parked can name it. */
+let parked: { what: string; release: () => void } | null = null;
+
+// A case can only end with a wait still parked by running out of its own time, and vitest's
+// `Test timed out in 90000ms` does not say WHAT it was waiting for. This says it, and detaches
+// the store listeners the abandoned wait left behind (review of PR #765, Minor 4). No clock: the
+// case's own timeout is still the only one.
+afterEach(() => {
+  const abandoned = parked;
+  if (!abandoned) return;
+  abandoned.release();
+  expect.fail(`the case ended while still waiting for ${abandoned.what}`);
+});
 
 const run = (w: AbWorld, id: string): RunRecord | undefined => w.a.store.getRun(id);
 

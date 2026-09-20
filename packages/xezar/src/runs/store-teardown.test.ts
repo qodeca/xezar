@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -23,9 +23,10 @@ type StoredRun = { id: string; steps: Array<{ outputTokens?: number }> };
  * `store.test.ts` is what that file does to avoid this race, so it cannot be what proves the race
  * is gone. The debounce itself is unchanged on the live path, and the last two cases pin that.
  */
-describe('RunStore — a vanished data directory is a shutdown, not an error', () => {
+describe('RunStore — a vanished data directory is a skipped write, not an error', () => {
   let dataDir: string;
   let errors: string[];
+  let warnings: string[];
 
   const metered = (store: RunStore): string => {
     const run = store.createRun({
@@ -47,8 +48,12 @@ describe('RunStore — a vanished data directory is a shutdown, not an error', (
   beforeEach(() => {
     dataDir = mkdtempSync(join(tmpdir(), 'xez-store-teardown-'));
     errors = [];
+    warnings = [];
     vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
       errors.push(args.map(String).join(' '));
+    });
+    vi.spyOn(console, 'warn').mockImplementation((...args: unknown[]) => {
+      warnings.push(args.map(String).join(' '));
     });
   });
 
@@ -66,12 +71,14 @@ describe('RunStore — a vanished data directory is a shutdown, not an error', (
     await afterTheDebounce();
 
     expect(errors).toEqual([]);
-    expect(store.isClosed).toBe(true);
-    // The records are still readable in memory: a shutdown, not a corrupted store.
+    // Skipped, not closed: the lifecycle is `close()`'s to end, so a directory that comes back
+    // is written again (the recreate case below).
+    expect(store.isClosed).toBe(false);
+    // The records are still readable in memory: a skipped write, not a corrupted store.
     expect(store.getRun(id)?.steps[0]?.outputTokens).toBe(30);
   });
 
-  it('a write that arrives after the directory is gone is silent too, and schedules nothing', async () => {
+  it('a write that arrives after the directory is gone is silent too, however many arrive', async () => {
     const store = RunStore.open(dataDir);
     const id = metered(store);
     rmSync(dataDir, { recursive: true, force: true });
@@ -127,6 +134,52 @@ describe('RunStore — a vanished data directory is a shutdown, not an error', (
     meter(store, id, 110);
     await afterTheDebounce();
     expect(errors).toEqual([]);
+  });
+
+  it('a directory that comes back is written again, and one line says the index was stale', async () => {
+    const store = RunStore.open(dataDir);
+    const id = metered(store);
+
+    rmSync(dataDir, { recursive: true, force: true });
+    meter(store, id, 200);
+    await afterTheDebounce(); // the write that could not happen — skipped, silent
+    expect(existsSync(join(dataDir, 'runs.json'))).toBe(false);
+
+    // Anything that `mkdir -p`s under the data directory brings it back; worktree creation does.
+    mkdirSync(dataDir, { recursive: true });
+    meter(store, id, 210);
+    await afterTheDebounce();
+
+    const onDisk = JSON.parse(readFileSync(join(dataDir, 'runs.json'), 'utf8')) as StoredRun[];
+    expect(onDisk.find((r) => r.id === id)?.steps[0]?.outputTokens).toBe(210);
+    expect(errors).toEqual([]);
+    expect(warnings.join('\n')).toContain('runs.json is being written again');
+    expect(store.isClosed).toBe(false);
+    store.close();
+  });
+
+  it('GUARD: EACCES on an ANCESTOR of the data directory is still logged', () => {
+    // The directory is present, so this is a permission failure and must stay loud — but
+    // `existsSync(dataDir)` answers FALSE here, because the ancestor cannot be traversed. That
+    // is the whole difference between "the directory is gone" and "I cannot reach it".
+    if (process.getuid?.() === 0) return; // root ignores the mode bits, so there is nothing to test
+    const parent = mkdtempSync(join(tmpdir(), 'xez-store-teardown-parent-'));
+    const child = join(parent, 'data');
+    mkdirSync(child);
+    const store = RunStore.open(child);
+    const id = metered(store);
+    chmodSync(parent, 0o000);
+    try {
+      expect(existsSync(child)).toBe(false); // the trap the first version of this branch fell into
+      meter(store, id, 120);
+      store.flush();
+      expect(errors.join('\n')).toContain('failed to save runs.json');
+      expect(errors.join('\n')).toContain('EACCES');
+      expect(store.isClosed).toBe(false);
+    } finally {
+      chmodSync(parent, 0o700);
+      rmSync(parent, { recursive: true, force: true });
+    }
   });
 
   // ---- the controls: what must NOT have changed -------------------------------------------

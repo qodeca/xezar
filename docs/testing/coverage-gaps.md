@@ -317,11 +317,16 @@ moved 0→1, 0→2, 6→10 and 8→1.
   all 2 267 tests passing) or a gate reads as a timeout in whichever case was running when it
   landed (`acceptance-parity.test.ts` P-14/P-15, #671 row F-26). The coverage was real and the
   behaviour was untested: every one of those 312 sites executed the happy `saveNow()`, none of them
-  asked what the failing branch said. `runs/store-teardown.test.ts` now pins both directions on
-  REAL timers — a vanished data directory is a silent shutdown (`close()`, `isClosed`), a write
-  failure with the directory still present is still logged, and an open store still debounces and
+  asked what the failing branch said. `runs/store-teardown.test.ts` now pins every direction on
+  REAL timers — a vanished data directory is a silent SKIPPED write that a recreated directory
+  recovers from, `close()` is the only thing that ends the write lifecycle (`isClosed`), a write
+  failure with the directory still present is still logged, `EACCES` on one of its PARENTS is
+  still logged although `existsSync` answers false for it, and an open store still debounces and
   still writes through tmp+rename. `store.test.ts` cannot be that proof: its own `beforeEach` uses
-  fake timers precisely to dodge this race.
+  fake timers precisely to dodge this race. Its structural sibling `runs/store-fixture-scan.test.ts`
+  covers what no runtime assertion can: it reads the suite's own source and fails for a NEW fixture
+  that opens a store over a directory it then removes without closing it, with the 69 pre-existing
+  files listed as a grandfather set that only shrinks.
 
 ### Where the opposite is true – low coverage, well-guarded behaviour
 
