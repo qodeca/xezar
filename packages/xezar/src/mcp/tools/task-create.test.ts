@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { CreateRunInput, ProviderStatusResponse, Runner, WorkflowStepDef } from '@qodeca/xezar-contract';
+import type { CreateRunInput, ProviderStatusResponse, Runner, TaskVerdict, WorkflowStepDef } from '@qodeca/xezar-contract';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { AGENT_MODELS_LOCKED_ERROR } from '../../core/agent-model-policy.ts';
 import { ProviderAuthService, PROVIDER_IDS } from '../../core/provider-auth.ts';
@@ -12,6 +12,8 @@ import { ProjectContexts, type ProjectContextSource } from '../../server/project
 import { createApp } from '../../server/server.ts';
 import type { RunManager } from '../../workflows/run.ts';
 import { WorkspaceSemaphore } from '../../workspace/semaphore.ts';
+import { EventCatalog } from '../event-catalog.ts';
+import { EventJournal } from '../event-journal.ts';
 import type { ServiceDispatch } from '../service-adapter.ts';
 import type { McpToolResult } from '../tool.ts';
 import { tools } from './index.ts';
@@ -970,5 +972,329 @@ describe('task_create as the New issue control’s MCP counterpart (#468, I-147)
     const result = await callTool(f, { operationId: 'op-issue-0003', prompt: BRIEF, autonomous: false });
     expect(json(result)).toMatchObject({ accepted: true });
     expect(startBodies(f)).toEqual([await dialogBody(f)]);
+  });
+});
+
+// ---- `fromFindings`: a task built from another task's recorded findings (#673) --------------------
+
+/**
+ * #673 PR 2, AC-12–AC-22. The reviewing task is seeded into the PROJECT's own store, so the tool
+ * reads it through the same `GET /runs/:id` a leader's `task_read` does, and the assertions are on
+ * what reached the wire (`POST /runs`'s `task`) rather than on a helper's return value.
+ *
+ * Two fixture facts the independence cases rest on: every provider is connected and the project
+ * pins neither `defaultRunner` nor `defaultModels`, so a task with no engine named resolves to
+ * `claude` with the model left to the runner's own settings — `claude/auto` in the tool's wording.
+ * A reviewing run seeded with that same pair is therefore the equal-pair case, and one seeded on
+ * `codex` is the ordinary one.
+ */
+describe('task_create start fromFindings', () => {
+  const SHA = 'a'.repeat(40);
+  const T1 = 'the cap is read before the list is loaded';
+  const B1 = 'an empty list and a miss take the same branch here';
+  const T2 = 'the counter is written after the throw';
+  const B2 = 'a failure leaves the count one short';
+  const T3 = 'spelling in the refusal';
+
+  const CODE_REVIEW: TaskVerdict = {
+    id: 'report-code-1',
+    taskId: 'the-reviewed-task',
+    stepId: 'review',
+    role: 'code-review',
+    verdict: 'REQUEST CHANGES',
+    reviewedHeadSha: SHA,
+    summary: 'three findings, one of them a blocker',
+    recordedAt: '2026-09-20T09:00:00.000Z',
+    evidenceUrl: 'https://example.invalid/r/1#issuecomment-1',
+    labels: { requestedAdd: [], requestedRemove: [], observed: [], state: 'verified' },
+    findings: [
+      { id: 'f1', severity: 'major', file: 'src/store.ts', line: 412, title: T1, body: B1 },
+      { id: 'f2', severity: 'minor', title: T2, body: B2 },
+      { id: 'f3', severity: 'nit', file: 'src/refuse.ts', title: T3 },
+    ],
+    findingsOmitted: 0,
+    source: 'task-reported',
+    ingestedAt: '2026-09-20T09:00:01.000Z',
+    publication: 'announced',
+  };
+  const QA: TaskVerdict = {
+    ...CODE_REVIEW,
+    id: 'report-qa-1',
+    role: 'qa',
+    verdict: 'FAIL',
+    summary: 'one step could not be completed',
+    // Deliberately the SAME id as the code review's first finding: this is what `role` is for.
+    findings: [{ id: 'f1', severity: 'blocker', title: 'the second step never starts', body: 'nothing happens on the click' }],
+    findingsOmitted: 0,
+  };
+
+  /** A finished reviewing task in the project's own store, with whatever it recorded. */
+  async function seedReview(
+    f: Fixture,
+    over: { runner?: Runner; model?: string; verdicts?: TaskVerdict[]; archived?: boolean } = {},
+  ): Promise<string> {
+    const ctx = await f.contexts.context(PROJECT);
+    const run = ctx.store.createRun({
+      title: 'review the work',
+      workflow: 'quick-task',
+      task: 'review the work',
+      ...(over.runner ? { runner: over.runner } : {}),
+      ...(over.model === undefined ? {} : { model: over.model }),
+      steps: [{ id: 'review', name: 'Review', kind: 'agent' }],
+    });
+    ctx.store.updateRun(run.id, { status: 'done', verdicts: over.verdicts ?? [CODE_REVIEW] });
+    if (over.archived) ctx.store.setArchived(run.id, true);
+    return run.id;
+  }
+
+  /** The `task` the tool sent to `POST /runs` — the one place a finding's own words may appear. */
+  const sentTask = (f: Fixture): string => ((startBodies(f)[0] ?? {}) as { task?: string }).task ?? '';
+
+  it('renders the reviewer, the commit, the review link and the findings, and starts the task (RP-2.3)', async () => {
+    const f = setup();
+    const runId = await seedReview(f, { runner: 'codex', model: 'gpt-5.6-sol' });
+    const result = await callTool(f, {
+      operationId: 'op-findings-001',
+      fromFindings: { runId, ids: ['f1', 'f2', 'f3'] },
+    });
+
+    expect(json(result)).toMatchObject({ accepted: true });
+    expect(sentTask(f)).toBe(
+      [
+        `Address the findings a code-review recorded on task ${runId}, reviewed at ${SHA}.`,
+        'Reviewer model: codex/gpt-5.6-sol. The full review: https://example.invalid/r/1#issuecomment-1',
+        '',
+        `1. [major] src/store.ts:412 — ${T1}`,
+        `   ${B1}`,
+        `2. [minor] ${T2}`,
+        `   ${B2}`,
+        `3. [nit] src/refuse.ts — ${T3}`,
+      ].join('\n'),
+    );
+  });
+
+  it('names the reviewer as auto when the reviewing task recorded no model (AC-15)', async () => {
+    const f = setup();
+    const runId = await seedReview(f, { runner: 'codex' });
+    await callTool(f, { operationId: 'op-findings-002', fromFindings: { runId, ids: ['f2'] } });
+    expect(sentTask(f)).toContain('Reviewer model: codex/auto.');
+  });
+
+  it('reads the backend from the last step that stamped one when the record names none (AC-15)', async () => {
+    const f = setup();
+    const runId = await seedReview(f, { model: 'some-model' });
+    const ctx = await f.contexts.context(PROJECT);
+    ctx.store.updateStep(runId, 'review', { backend: 'pi' });
+    await callTool(f, { operationId: 'op-findings-003', fromFindings: { runId, ids: ['f2'] } });
+    expect(sentTask(f)).toContain('Reviewer model: pi/some-model.');
+  });
+
+  it('appends the leader’s own text after the list, verbatim and whole (AC-18, RP-2.4)', async () => {
+    const f = setup();
+    const runId = await seedReview(f, { runner: 'codex', model: 'gpt-5.6-sol' });
+    const adjudication = 'Fix 1. Decline 2 with a reason in the response.\n\nLeave the nit.';
+    await callTool(f, { operationId: 'op-findings-004', prompt: adjudication, fromFindings: { runId, ids: ['f1', 'f2'] } });
+
+    const task = sentTask(f);
+    expect(task.endsWith(`\n\n${adjudication}`)).toBe(true);
+    // Not interleaved: everything before it is the header and the numbered list, in that order.
+    expect(task.slice(0, task.length - adjudication.length - 2)).toBe(
+      [
+        `Address the findings a code-review recorded on task ${runId}, reviewed at ${SHA}.`,
+        'Reviewer model: codex/gpt-5.6-sol. The full review: https://example.invalid/r/1#issuecomment-1',
+        '',
+        `1. [major] src/store.ts:412 — ${T1}`,
+        `   ${B1}`,
+        `2. [minor] ${T2}`,
+        `   ${B2}`,
+      ].join('\n'),
+    );
+  });
+
+  it('refuses a task that would run on the reviewer’s own backend and model, naming both (AC-14, RP-2.1)', async () => {
+    const f = setup();
+    // The fixture's own default: claude with the model left to the runner's settings.
+    const runId = await seedReview(f, { runner: 'claude' });
+    const result = await callTool(f, { operationId: 'op-findings-005', fromFindings: { runId, ids: ['f1'] } });
+
+    expect(result.isError).toBe(true);
+    const refusal = message(result);
+    expect(refusal).toContain('a reviewer does not fix its own findings');
+    expect(refusal).toContain('reviewed on claude/auto');
+    expect(refusal).toContain('would run on claude/auto');
+    expect(startBodies(f)).toEqual([]);
+  });
+
+  it('refuses the equal pair when the model is named on both sides, and accepts a different model (AC-14)', async () => {
+    const f = setup();
+    const runId = await seedReview(f, { runner: 'codex', model: 'gpt-5.6-sol' });
+    const same = await callTool(f, {
+      operationId: 'op-findings-006',
+      runner: 'codex',
+      model: 'gpt-5.6-sol',
+      fromFindings: { runId, ids: ['f1'] },
+    });
+    expect(same.isError).toBe(true);
+    expect(message(same)).toContain('codex/gpt-5.6-sol');
+    expect(startBodies(f)).toEqual([]);
+
+    const other = await callTool(f, {
+      operationId: 'op-findings-007',
+      runner: 'codex',
+      model: 'gpt-5.6-terra',
+      fromFindings: { runId, ids: ['f1'] },
+    });
+    expect(json(other)).toMatchObject({ accepted: true });
+  });
+
+  it('refuses every requested id when one of them is not recorded, listing the missing ones (AC-17, RP-2.2)', async () => {
+    const f = setup();
+    const runId = await seedReview(f, { runner: 'codex', model: 'gpt-5.6-sol' });
+    const result = await callTool(f, { operationId: 'op-findings-008', fromFindings: { runId, ids: ['f1', 'f9', 'f8'] } });
+
+    expect(result.isError).toBe(true);
+    expect(message(result)).toBe(`task ${runId} records no finding with the id: f9, f8`);
+    // A shorter brief would have started a task; a refusal starts none.
+    expect(startBodies(f)).toEqual([]);
+  });
+
+  it('refuses a task with no recorded report rather than starting on an empty list (AC-13)', async () => {
+    const f = setup();
+    const ctx = await f.contexts.context(PROJECT);
+    const run = ctx.store.createRun({ title: 'no review', workflow: 'quick-task', task: 'x', runner: 'codex', steps: [] });
+    ctx.store.updateRun(run.id, { status: 'done' });
+
+    const result = await callTool(f, { operationId: 'op-findings-009', fromFindings: { runId: run.id, ids: ['f1'] } });
+    expect(result.isError).toBe(true);
+    expect(message(result)).toBe(`task ${run.id} records no reviewer report, so it carries no findings`);
+    expect(startBodies(f)).toEqual([]);
+  });
+
+  it('refuses a role the task did not report, naming that role (AC-13)', async () => {
+    const f = setup();
+    const runId = await seedReview(f, { runner: 'codex' });
+    const result = await callTool(f, {
+      operationId: 'op-findings-010',
+      fromFindings: { runId, ids: ['f1'], role: 'design-review' },
+    });
+    expect(result.isError).toBe(true);
+    expect(message(result)).toBe(`task ${runId} records no design-review report, so it carries no findings of that kind`);
+  });
+
+  it('refuses an id two reviewers share, and `role` is what resolves it (AC-17)', async () => {
+    const f = setup();
+    const runId = await seedReview(f, { runner: 'codex', verdicts: [CODE_REVIEW, QA] });
+
+    const ambiguous = await callTool(f, { operationId: 'op-findings-011', fromFindings: { runId, ids: ['f1'] } });
+    expect(ambiguous.isError).toBe(true);
+    expect(message(ambiguous)).toBe(`more than one reviewer of task ${runId} records the finding id: f1 — name the role`);
+    expect(startBodies(f)).toEqual([]);
+
+    const named = await callTool(f, { operationId: 'op-findings-012', fromFindings: { runId, ids: ['f1'], role: 'qa' } });
+    expect(json(named)).toMatchObject({ accepted: true });
+    expect(sentTask(f)).toContain(`Address the findings a qa recorded on task ${runId}`);
+    expect(sentTask(f)).toContain('1. [blocker] the second step never starts');
+  });
+
+  it('renders one block per reporting reviewer when the ids span two of them', async () => {
+    const f = setup();
+    const runId = await seedReview(f, { runner: 'codex', verdicts: [{ ...CODE_REVIEW, findings: [CODE_REVIEW.findings![1]!] }, QA] });
+    await callTool(f, { operationId: 'op-findings-013', fromFindings: { runId, ids: ['f1', 'f2'] } });
+
+    const task = sentTask(f);
+    expect(task.indexOf('a code-review recorded')).toBeGreaterThanOrEqual(0);
+    expect(task.indexOf('a qa recorded')).toBeGreaterThan(task.indexOf('a code-review recorded'));
+    expect(task).toContain(`1. [minor] ${T2}`);
+    expect(task).toContain('1. [blocker] the second step never starts');
+  });
+
+  it('refuses an archived reviewing task by name, and one that is gone with no crash (AC-22)', async () => {
+    const f = setup();
+    const archived = await seedReview(f, { runner: 'codex', archived: true });
+    const gone = await callTool(f, {
+      operationId: 'op-findings-014',
+      fromFindings: { runId: '11111111-2222-3333-4444-555555555555', ids: ['f1'] },
+    });
+    expect(gone.isError).toBe(true);
+    expect(message(gone)).toContain('no task 11111111-2222-3333-4444-555555555555 in this project');
+    expect(message(gone)).toContain('carries no findings to build from');
+
+    const result = await callTool(f, { operationId: 'op-findings-015', fromFindings: { runId: archived, ids: ['f1'] } });
+    expect(result.isError).toBe(true);
+    expect(message(result)).toContain(`task ${archived} is archived`);
+    expect(startBodies(f)).toEqual([]);
+  });
+
+  it('refuses a runId the service will not look up, saying the findings could not be read (AC-22)', async () => {
+    const f = setup();
+    // A path segment the adapter refuses before anything is dispatched: not a 404, so the answer
+    // must not claim the task is absent — "we could not look" and "there is nothing" differ.
+    const result = await callTool(f, { operationId: 'op-findings-018', fromFindings: { runId: '..', ids: ['f1'] } });
+    expect(result.isError).toBe(true);
+    expect(message(result)).toContain('the findings of task .. could not be read');
+    expect(message(result)).not.toContain('carries no findings to build from');
+    expect(startBodies(f)).toEqual([]);
+  });
+
+  it('refuses `fromFindings` on every action but start, by name (AC-12)', async () => {
+    const f = setup({ followups: true, todos: [{ id: 'todo-1', summary: 'x' }] });
+    const runId = await seedReview(f, { runner: 'codex' });
+    for (const [action, extra] of [
+      ['plan', {}],
+      ['start_from_inbox', { todoId: 'todo-1' }],
+      ['save_plan', { name: 'w', steps: STEPS }],
+    ] as const) {
+      const result = await callTool(f, {
+        action,
+        operationId: `op-findings-${action}`,
+        fromFindings: { runId, ids: ['f1'] },
+        ...extra,
+      });
+      expect(result.isError, action).toBe(true);
+      expect(text(result)).toContain(`action "${action}" does not take: fromFindings`);
+    }
+  });
+
+  it('carries no finding title or body into the tool’s answer or the event journal (AC-16, RP-2.5)', async () => {
+    // A task that fails closed on its worktree reaches a terminal state at once, so every journal
+    // row this call can produce is written before the assertion runs.
+    const f = setup({ git: 'blocked-worktrees' }, false);
+    const runId = await seedReview(f, { runner: 'codex', model: 'gpt-5.6-sol' });
+    const ctx = await f.contexts.context(PROJECT);
+    const journal = EventJournal.open({ dataDir: ctx.dataDir, projectId: PROJECT, secretValues: [] });
+    const rows: string[] = [];
+    journal.subscribe((row) => rows.push(JSON.stringify(row)));
+    const catalog = EventCatalog.attach({ journal, store: ctx.store });
+    try {
+      const result = await callTool(f, { operationId: 'op-findings-016', fromFindings: { runId, ids: ['f1', 'f2', 'f3'] } });
+      const started = (json(result).subject as { id: string }).id;
+      await waitFor(() => ctx.store.getRun(started)?.status === 'failed', 'the started task to settle');
+
+      const secretToTheRecord = [T1, B1, T2, B2, T3];
+      for (const words of secretToTheRecord) {
+        expect(text(result), `answer carries ${words}`).not.toContain(words);
+        expect(rows.join('\n'), `a journal row carries ${words}`).not.toContain(words);
+      }
+      // The journal did run: the rows exist, they just say nothing about the findings.
+      expect(rows.length).toBeGreaterThan(0);
+      // And the findings did reach the one place they belong — the task's own text.
+      expect(ctx.store.getRun(started)?.task).toContain(T1);
+    } finally {
+      catalog.detach();
+      journal.close();
+    }
+  });
+
+  it('is replay-safe the way every other start is: the tool itself deduplicates nothing (AC-19)', async () => {
+    const f = setup();
+    const runId = await seedReview(f, { runner: 'codex', model: 'gpt-5.6-sol' });
+    const args = { operationId: 'op-findings-017', fromFindings: { runId, ids: ['f1'] } };
+    const first = json(await callTool(f, args));
+    const second = json(await callTool(f, args));
+    // Identical answers from identical arguments, and both starts went to the service — the
+    // operation key is honoured one layer up, exactly as it is for a start with a plain prompt.
+    expect(second).toEqual(first);
+    expect(startBodies(f)).toHaveLength(2);
+    expect(startBodies(f)[0]).toEqual(startBodies(f)[1]);
   });
 });
