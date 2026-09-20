@@ -12,20 +12,6 @@ import { onTodosChanged, todosPath, todosWatchActive } from './todos.ts';
  * projects open, A's todos.json writes fire A's subscribers only.
  */
 
-/** Poll until the assertion holds (the watch debounce is 300 ms). */
-async function waitFor(assertion: () => void, timeoutMs = 4000, intervalMs = 25): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  for (;;) {
-    try {
-      assertion();
-      return;
-    } catch (err) {
-      if (Date.now() >= deadline) throw err;
-      await new Promise((r) => setTimeout(r, intervalMs));
-    }
-  }
-}
-
 /**
  * Write `file` until `delivered()` holds. A write that lands while macOS is still registering a
  * fresh watch is DROPPED, not delayed — a probe for #204 lost 9 of 15 such writes outright, and a
@@ -85,16 +71,34 @@ describe('per-dataDir todos watch (step 2.3)', () => {
     subscribe(dirA, () => a++);
     subscribe(dirB, () => b++);
 
-    // macOS FSEvents can deliver the just-created files as backlog after watch() returns. Let
-    // that registration noise clear before measuring the write whose project scope matters.
-    await new Promise((resolve) => setTimeout(resolve, 400));
-    a = 0;
-    b = 0;
-    await fs.writeFile(todosPath(dirA), JSON.stringify([{ id: 't1', summary: 'from A' }]));
-    await waitFor(() => expect(a).toBeGreaterThan(0));
-    // A full debounce window past A's delivery — a late cross-fire would land here.
-    await new Promise((r) => setTimeout(r, 400));
-    expect(b).toBe(0);
+    // Warm both watches first: a watch that is not registered yet is silent for the same
+    // reason a correctly scoped one is, so "B never fired" only means something once B has
+    // delivered an event of its own. Each warm-up writes ONLY its own file (#204's lesson).
+    await writeUntilDelivered(todosPath(dirA), JSON.stringify([{ id: 'warm-a' }]), () => a > 0);
+    await writeUntilDelivered(todosPath(dirB), JSON.stringify([{ id: 'warm-b' }]), () => b > 0);
+
+    // One quiet window is not a claim this test can make on macOS: under load FSEvents delivers
+    // a spurious event to an unrelated watched directory, and a probe containing no xezar code
+    // saw B's watcher fire about a second after a write that only ever touched A — 3 rounds in
+    // 30, with the two projects under one tmp parent and under separate ones alike. todos.ts
+    // cannot filter what the OS invents. The SCOPING is what is ours, and it fails differently:
+    // one shared emitter fires B on EVERY A delivery, so no attempt is ever quiet, while that
+    // noise is independent per attempt. So require one attempt where A was delivered and B
+    // stayed silent — unreachable for a shared emitter, reached in the first attempt or two here.
+    let scoped = false;
+    for (let attempt = 1; attempt <= 5 && !scoped; attempt++) {
+      a = 0;
+      b = 0;
+      await writeUntilDelivered(
+        todosPath(dirA),
+        JSON.stringify([{ id: `t${attempt}`, summary: 'from A' }]),
+        () => a > 0,
+      );
+      // A full debounce window past A's delivery — a cross-fire would land here.
+      await new Promise((r) => setTimeout(r, 400));
+      scoped = b === 0;
+    }
+    expect(scoped).toBe(true);
   });
 
   it('unsubscribe stops delivery to that callback while others keep receiving', async () => {
