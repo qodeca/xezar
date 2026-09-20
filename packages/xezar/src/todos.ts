@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
-import { mkdirSync, watch, type FSWatcher } from 'node:fs';
+import { mkdirSync, watch } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
 
@@ -170,12 +170,42 @@ interface TodosWatch {
   emitter: EventEmitter;
   /** Undefined when `fs.watch` degraded — subscribers exist but never fire
    *  (the Inbox updates on refresh only). */
-  watcher: FSWatcher | undefined;
+  watcher: TodosWatcher | undefined;
   /** Per-dataDir debounce for bursty writes (tmp + rename is two events). */
   timer: NodeJS.Timeout | undefined;
 }
 
 const watches = new Map<string, TodosWatch>();
+
+/** The `fs.watch` seam. Only the parts `startWatch` uses, so a stand-in is three methods. */
+export interface TodosWatcher {
+  on(event: 'error', listener: (err: unknown) => void): unknown;
+  close(): void;
+  unref?(): void;
+}
+
+/** Creates the watcher for one `dataDir`, calling `onChange(filename)` per raw fs event. */
+export type TodosWatchFactory = (
+  dataDir: string,
+  onChange: (filename: string | null) => void,
+) => TodosWatcher;
+
+const nodeWatchFactory: TodosWatchFactory = (dataDir, onChange) =>
+  watch(dataDir, (_event, filename) => onChange(typeof filename === 'string' ? filename : null));
+
+let watchFactory: TodosWatchFactory = nodeWatchFactory;
+
+/**
+ * Test seam: replace the watcher this module creates, so a test can deliver the raw fs event
+ * itself instead of writing a file and hoping the OS reports it. It exists because there is no
+ * other deterministic signal here — `fs.watch` reports nothing when it is armed, and a write that
+ * lands during macOS registration is DROPPED rather than delayed (#204), so a test that awaits an
+ * OS delivery is awaiting an event that may never come and can only fail on a deadline (#671).
+ * Pass `undefined` to restore `fs.watch`. Never call this from product code.
+ */
+export function setTodosWatchFactory(factory: TodosWatchFactory | undefined): void {
+  watchFactory = factory ?? nodeWatchFactory;
+}
 
 /** Start watching `dataDir` for todos.json changes (agents write it from
  *  another process). Degrades to a watcher-less entry on error. */
@@ -185,7 +215,7 @@ function startWatch(dataDir: string): TodosWatch {
   const entry: TodosWatch = { emitter, watcher: undefined, timer: undefined };
   try {
     mkdirSync(dataDir, { recursive: true });
-    const watcher = watch(dataDir, (_event, filename) => {
+    const watcher = watchFactory(dataDir, (filename) => {
       if (filename && filename !== 'todos.json') return;
       if (entry.timer) clearTimeout(entry.timer);
       entry.timer = setTimeout(() => emitter.emit('changed'), 300);
