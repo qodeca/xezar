@@ -120,6 +120,8 @@ Absence and a populated wrong value are different branches, and they stay differ
 
 The flag is deliberately **not** part of the command-list id. The id names the LIST of gates; who invoked it is not a gate, and folding the producer into the id would back-date every sealed attempt onto a different list.
 
+One **migration exception** ships with the flag, and it is one release wide. The engine freezes a run's workflow definition at creation, so a run created before the flag existed still holds the old `gates` command and its gates step cannot declare itself. `gate_resolve_producer` (`lib/gate-record.sh`) recognizes exactly that run — its persisted definition does not declare the flag, the workflow file does, and the invocation is a workflow check step rather than an agent one — and records `gates`; every absent or unreadable input is the author, so the exception fails closed. Remove it one release after the flag ships.
+
 ## What does not go in the pipeline config
 
 Depth, maturity, capability inventory and the counters are facts about **one task**. `.xezar/pipeline/config.json` describes the pipeline — the base branch, the validation commands, the label taxonomy, the QA gate — and travels to every checkout, so a per-task value there would be a false promise, the same reason `maxParallel` and `memoryLimitMb` are refused in the committed project config. Keep them in the run's own record.
