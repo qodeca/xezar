@@ -266,6 +266,25 @@ Every v1 event stays **derivable** from the v2 stream, so a consumer can migrate
 one panel at a time. New work should read v2; v1 exists for the console renderer
 and old recordings.
 
+### `token-usage` accounting semantics
+
+`tokensUsed` is the figure the runner reports; the run manager turns it into the
+step total. `BACKENDS_WITH_CUMULATIVE_TOKENS` in
+`packages/xezar/src/workflows/run.ts` is the single source for which interpretation
+applies:
+
+- **Codex** reports the thread's cumulative total from
+  `thread/tokenUsage/updated` → `tokenUsage.total.totalTokens`. After a
+  `thread/resume`, that total already includes the pre-resume executions, so the
+  resumed step total is Codex's reported figure itself (and must not add
+  `startTokens` again).
+- **Claude, pi, and OpenCode** each begin accumulating tokens at zero in their
+  session object. Their reported figure is therefore this execution's accumulated
+  spend, and the step total is `startTokens + reported`.
+
+The classification is accounting behavior, not a display preference: classifying a
+cumulative runner as per-execution double-counts pre-resume tokens on the step.
+
 ### Xezar-owned run metadata events
 
 `provider-auth-required` is not emitted by a backend runner. The server derives it
@@ -441,6 +460,16 @@ runs all four.
 | subagent nesting (`parentItemId`) | `parent_tool_use_id` | collaboration receiver thread id (review mode remains childless) | child-session parts under a `subtask` |
 | `usage.updated` | `result.usage` + `total_cost_usd` | `thread/tokenUsage/updated` (no USD) | `message.updated` tokens/cost + `step-finish` |
 
+`token-usage` has a separate step-accounting mapping, because the number a runner
+emits is not uniformly scoped:
+
+| backend | reported `token-usage` figure | resumed step total |
+|---|---|---|
+| claude | Accumulated from zero by the session object; this execution's spend. | `startTokens + reported` |
+| codex | The thread's cumulative `thread/tokenUsage/updated` → `tokenUsage.total.totalTokens`; after `thread/resume`, it includes pre-resume executions. | Codex's reported figure itself; do not add `startTokens`. |
+| opencode | Accumulated from zero by the session object; this execution's spend. | `startTokens + reported` |
+| pi | Accumulated from zero by the session object; this execution's spend. | `startTokens + reported` |
+
 **Mapper robustness contract.** Inputs come off the wire and may be `null`,
 partial or malformed. A mapper **must never throw**: unparseable NDJSON lines are
 skipped (`packages/xezar/src/core/ndjson.ts` + the mapper), unknown message/content types
@@ -588,7 +617,9 @@ To be first-class:
    rather than a default (#676, #732): `BACKENDS_WITHOUT_RESUME` — does the runner actually
    honour `spec.resume`, or does it always open a new conversation? — and
    `BACKENDS_WITH_CUMULATIVE_TOKENS` — is the `token-usage` figure this EXECUTION's own, or the
-   session's running total? Answering the second one wrong double-bills a resumed step.
+   session's running total? A new runner author MUST answer that question in this map;
+   answering it wrong double-bills a resumed step. See §2's `token-usage` accounting
+   semantics.
 9. **Model selection** — accept `provider/model` where relevant, and never silently
    drop or substitute a model. A backend with no default provider gets no
    `defaultProvider` in `BACKEND_MODEL_MAP` (`model-identity.ts`), so a bare id
