@@ -84,9 +84,10 @@ session as well — it fails only when it has *neither* an OIDC endpoint nor a t
    unchanged 80 % floor:
    [coverage-gaps.md § 10.8](testing/coverage-gaps.md#108-the-nightly-gate-stryker-over-the-mcp-code).
    The generic-instructions guard (`packages/xezar/src/release/generic-instructions.test.ts`)
-   and `check:pack` packed-archive scan that [PR #481](https://github.com/qodeca/xezar/pull/481)
-   adds must both be green on the release candidate; include their results, the candidate SHA
-   and the fresh archive scan evidence in the release PR.
+   and the `check:pack` packed-archive scan — the last leg of `npm run build`, added by
+   [PR #481](https://github.com/qodeca/xezar/pull/481) and merged 2026-09-16 — must both be green
+   on the release candidate; include their results, the candidate SHA and the fresh archive scan
+   evidence in the release PR.
 2. Go to **Actions → Release → Run workflow**, pick the branch (`main`, or a `release/*`
    maintenance branch) and the bump:
 
@@ -121,9 +122,10 @@ since the last `v*` tag (no hand-written brief; it folds every `changelog.d/` fr
 stray `# Unreleased` section in, and folds `.xezar/docs/dogfooding.d/` into the dogfooding ledger),
 runs the canonical gates, merges the changelog PR, dispatches this Release workflow once for that
 bump, verifies npm / the tag / the GitHub Release, and approves and merges the bot's
-`release/v<version>` PR. All the waiting happens in the task's last step, because Xezar kills
-every non-final agent step at 30 minutes (#22). Nothing publishes outside the dispatched Release
-run, and the task never pushes to `main` or touches your primary checkout.
+`release/v<version>` PR. All the waiting happens in the task's last step, because a non-final
+agent step with no `timeout` of its own falls through to the runner's 30-minute default (#22); an
+explicit `timeout` overrides it. Nothing publishes outside the dispatched Release run, and the
+task never pushes to `main` or touches your primary checkout.
 
 Two things stay with you afterwards: run the `root-sync` workflow (Worktree **OFF**) with the
 bump merge commit as its target so your checkout matches the trunk, and `npm install -g
@@ -187,7 +189,7 @@ Then:
 | Published, but no tag / no GitHub Release | Do **not** re-run the workflow — it would try to publish the same version again. Create the Release by hand at the released commit: `gh release create v<version> --target <sha> --title "v<version>" --notes "..."`. |
 | Published, but `latest` points at the wrong version | `npm dist-tag add @qodeca/xezar@<good-version> latest`. Moving a tag is safe; deleting a version is not. |
 | Published a broken build | Publish the FIX as a new patch version and move `latest` to it. Optionally `npm deprecate @qodeca/xezar@<bad> "broken; use <good>"`. |
-| The version-bump PR was not opened | Bump `version` in `packages/contract`, `packages/api-client` and `packages/xezar` by hand on a branch, and open the PR yourself. |
+| The version-bump PR was not opened | Bump `version` in `packages/contract`, `packages/api-client`, `packages/web` and `packages/xezar` by hand on a branch — the four manifests `scripts/release.mjs` and `.github/workflows/release.yml` stamp — and open the PR yourself. |
 
 Whatever the state, inspect the registry **before** re-dispatching. The workflow does not check
 whether a version already exists; npm will reject the duplicate with `E403`, but only after the
