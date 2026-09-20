@@ -99,6 +99,13 @@ const stepOrder = () => browser.evaluate(`${stepIdsJs}.join()`) as string
  * point against a mid-reflow layout (observed after viewport flips — the pointerdown landed on
  * the list's gap, the click on body), and a click that landed nowhere is safe to repeat. A
  * click that changed the order to anything but `expected` still fails loudly.
+ *
+ * An EMPTY order is "the list is not painted", never an order. The reorder itself is what opens
+ * that window: React re-renders the chain, and a poll landing between the unmount and the mount
+ * reads `''` — which differs from `before`, so the old comparison asserted `''` against the
+ * expected order and failed on a read that carried no information at all (`expected '' to be
+ * 'implement,review'`, run 35435750147). Treat it as the same not-yet-settled state as
+ * `before` and keep polling; only two NON-EMPTY orders are ever compared.
  */
 async function clickStepControl(selector: string, expected: string): Promise<void> {
   for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -107,10 +114,9 @@ async function clickStepControl(selector: string, expected: string): Promise<voi
     for (let poll = 0; poll < 20; poll += 1) {
       await new Promise((r) => setTimeout(r, 100))
       const now = stepOrder()
-      if (now !== before) {
-        expect(now).toBe(expected)
-        return
-      }
+      if (now === '' || now === before) continue
+      expect(now).toBe(expected)
+      return
     }
   }
   throw new Error(`xezar e2e: ${selector} never changed the step order`)

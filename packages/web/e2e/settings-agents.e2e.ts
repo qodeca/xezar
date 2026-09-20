@@ -162,18 +162,20 @@ describe('settings → agents against the live dry-run server', () => {
   })
 
   it('a cold load renders the persisted knobs — the form is a view of config.json', async () => {
-    // No second wait here on purpose. `gotoAgents()` already returns on the new document with
-    // `useConfig()` resolved, and all three values below are set in the very commit that first
-    // renders the section: the checked runner is `config.defaultRunner` (default-agent-picker
-    // .tsx:104 — while `useAgentProfiles` is pending every row carries `account: null` and
-    // `accountFor` answers null, so the comparison reduces to the runner id), the model select's
-    // `value` is `config.defaultModels.claude` with `modelsForRunner`'s `customIds` guaranteeing
-    // the matching <option> exists whether or not the catalog has arrived, and the textarea is
-    // `useState(config.systemPrompt ?? '')`. Repeating the three as a wait would only make the
-    // three `expect`s below unfailable — a wrong persisted value could then surface as nothing
-    // but a wait timeout, and the diagnostics do not print `.value` or `aria-checked`.
-    // (`useRepo` IS genuinely late, but it gates only `agents-base-branch`, asserted elsewhere.)
+    // `gotoAgents()` returns on the NEW document with the section mounted, and that is a weaker
+    // fact than "the picker has rendered": the count below reads `aria-checked`, and a read that
+    // lands before the picker's rows have painted answers 0 without any wrong value existing
+    // (`expected +0 to be 1`, run 35091385012). So wait for the ROW SET to be rendered — four
+    // rows, each carrying its own checked state — and keep the three value assertions exactly as
+    // they are. This is a structural signal on purpose: it looks at no value at all, so a wrong
+    // persisted runner still renders four rows, still passes the wait, and still fails the
+    // assertion below with the value it really shows. Repeating the three assertions as a wait
+    // would be the version that masks a wrong value, which is what this case must not become.
     gotoAgents()
+    browser.waitForFunction(`(() => {
+      const rows = [...document.querySelectorAll('[data-slot="agents-runner"] [role="radio"]')]
+      return rows.length === 4 && rows.every((row) => row.hasAttribute('aria-checked'))
+    })()`)
     expect(browser.count('[data-slot="agents-runner"] [data-value="codex"][aria-checked="true"]')).toBe(1)
     expect(
       String(browser.evaluate(`document.querySelector('[data-slot="agents-model"][data-runner="claude"]').value`)),
