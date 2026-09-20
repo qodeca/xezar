@@ -1,4 +1,14 @@
-import { createRunInputBaseSchema, operationIdSchema, type CreateRunInput, type RunRecord, type Runner } from '@qodeca/xezar-contract';
+import {
+  createRunInputBaseSchema,
+  operationIdSchema,
+  taskVerdictRoleSchema,
+  TASK_VERDICT_FINDINGS_MAX,
+  type CreateRunInput,
+  type RunRecord,
+  type Runner,
+  type TaskVerdict,
+  type TaskVerdictFinding,
+} from '@qodeca/xezar-contract';
 import { hc } from 'hono/client';
 import { z } from 'zod';
 import { modelConflictsWithRunner } from '../../core/model-presets.ts';
@@ -75,6 +85,19 @@ export const taskCreateInputSchema = z.strictObject({
   autonomous: run.autonomous.describe('true never pauses for the user (start). Omit for the workspace default.'),
   generateFollowups: run.generateFollowups.describe('false stops follow-up inbox entries (start). Omit for on.'),
   todoId: run.todoId.describe('The Inbox entry: the one to start (start_from_inbox), or the one this task came from (start).'),
+  // An ARGUMENT of `start` rather than an action of its own: the creation path, its defaults, its
+  // provider gate and its refusal table stay exactly one, and the audit inventory keeps recording
+  // one `task_create:start`. What it changes is only where the task TEXT comes from.
+  fromFindings: z
+    .strictObject({
+      runId: z.string().min(1),
+      ids: z.array(z.string().min(1)).min(1).max(TASK_VERDICT_FINDINGS_MAX),
+      role: taskVerdictRoleSchema.optional(),
+    })
+    .optional()
+    .describe(
+      "Build the task text from findings a reviewer recorded on another task (start). `runId` is that reviewing task and `ids` are its finding ids — read both with task_read view=task; `role` picks one reviewer when the task carries more than one. The text names the reviewer's model, and a task that would run on that same backend and model is refused.",
+    ),
   name: z.string().optional().describe('Workflow name (save_plan, up to 80 chars).'),
   description: z.string().optional().describe('Workflow description (save_plan).'),
   overwrite: z.boolean().optional().describe('save_plan: replace an existing workflow of that name. Ask the user first.'),
@@ -85,7 +108,7 @@ type ArgKey = Exclude<keyof TaskCreateArgs, 'action' | 'operationId'>;
 /** Which options each action takes. The Inbox start is NARROWER than the composer (I-026): runner,
  *  model and instructions, and no agent account. */
 const ACTION_FIELDS: Record<Action, readonly ArgKey[]> = {
-  start: ['prompt', 'images', 'source', 'steps', 'model', 'runner', 'agentProfile', 'variants', 'worktree', 'autonomous', 'generateFollowups', 'todoId'],
+  start: ['prompt', 'images', 'source', 'steps', 'model', 'runner', 'agentProfile', 'variants', 'worktree', 'autonomous', 'generateFollowups', 'todoId', 'fromFindings'],
   plan: ['prompt'],
   start_from_inbox: ['todoId', 'prompt', 'runner', 'model'],
   save_plan: ['name', 'description', 'steps', 'overwrite'],
@@ -437,8 +460,26 @@ async function startTask(args: TaskCreateArgs, api: Api, adapter: McpServiceAdap
   if (args.worktree === true && !hasGit) notes.push('no git repository: the task runs in place');
   if (args.generateFollowups === true && !followupsOn) notes.push('the follow-up inbox is off on this xezar: the task runs without follow-ups');
 
+  // The task TEXT, before anything is sent: a findings brief is rendered here so every refusal it
+  // can raise happens before a run exists, exactly like the refusals above it.
+  let task = args.prompt ?? '';
+  if (args.fromFindings !== undefined) {
+    const brief = await findingsBrief({
+      from: args.fromFindings,
+      prompt: args.prompt,
+      requested: { runner, model },
+      adapter,
+      defaultRunner,
+      defaultModels: config.defaultModels,
+    });
+    if (typeof brief !== 'string') {
+      return errorResult(JSON.stringify({ accepted: false, operationId, error: brief.refusal }));
+    }
+    task = brief;
+  }
+
   const common = {
-    task: args.prompt ?? '',
+    task,
     model,
     modelsLocked: modelsLocked && !sendModel,
     runner,
@@ -490,6 +531,166 @@ async function startTask(args: TaskCreateArgs, api: Api, adapter: McpServiceAdap
 
 function runsOf(value: StartRunValue): RunRecord[] {
   return ('runs' in value ? value.runs : [value]) as RunRecord[];
+}
+
+// ---- a task built from another task's recorded findings (#673) -----------------------------------
+
+/**
+ * `fromFindings` turns findings a reviewer RECORDED on another task into this task's text, so the
+ * same list is never retyped from a review comment into a brief and again into a re-check brief.
+ *
+ * Three rules shape everything below, and each is a thing that has to stay true:
+ *
+ *  - **A reviewer never reviews its own fix.** The requested backend and model are compared with
+ *    the reviewing task's own, resolved by the SAME rules, and an equal pair is refused by name.
+ *    This tool's standing rule is that it refuses where the form is silent rather than substituting
+ *    quietly, and quietly accepting here is the one substitution that cannot be noticed later.
+ *  - **A shorter brief is never the answer to a wrong id.** An id the reviewing task does not carry
+ *    refuses the whole call and lists what was missing: "the id was wrong" and "the task is smaller
+ *    than I asked for" lead to opposite next actions, and a filter makes them look the same.
+ *  - **The findings themselves go into the task's own text and nowhere else.** No title and no body
+ *    reaches the tool's answer or any journal summary; what comes back is the run id, as always.
+ */
+interface FromFindings {
+  readonly runId: string;
+  readonly ids: readonly string[];
+  readonly role?: TaskVerdict['role'];
+}
+
+/** A refusal carries the sentence the caller reads, and never a finding's own words. */
+interface FindingsRefusal {
+  readonly refusal: string;
+}
+
+/** A backend and the model resolved for it. `''` is the runner's own settings deciding. */
+interface EnginePair {
+  readonly runner: Runner;
+  readonly model: string;
+}
+
+function pairText(pair: EnginePair): string {
+  return `${pair.runner}/${pair.model === '' ? 'auto' : pair.model}`;
+}
+
+/**
+ * What the reviewing task RAN as, in the order the cockpit's own `taskRunner` reads it: the record's
+ * resolved backend, else the last step that stamped one, else the project's current default. The
+ * model falls through to the same per-runner default a new task would take, so "neither side
+ * recorded a model" resolves to one value on both sides rather than to two unknowns that compare
+ * unequal — which would fail the independence guard open.
+ */
+function reviewerPair(record: RunRecord, defaultRunner: Runner | undefined, defaults: Partial<Record<Runner, string>> | undefined): EnginePair {
+  let recorded = record.runner;
+  if (recorded === undefined) {
+    for (let index = record.steps.length - 1; index >= 0 && recorded === undefined; index -= 1) {
+      recorded = record.steps[index]?.backend;
+    }
+  }
+  const runner = recorded ?? defaultRunner ?? 'claude';
+  return { runner, model: record.model ?? defaultModel(runner, defaults) };
+}
+
+async function findingsBrief(input: {
+  from: FromFindings;
+  prompt: string | undefined;
+  requested: EnginePair;
+  adapter: McpServiceAdapter;
+  defaultRunner: Runner | undefined;
+  defaultModels: Partial<Record<Runner, string>> | undefined;
+}): Promise<string | FindingsRefusal> {
+  const { from, requested } = input;
+  const got = await input.adapter.getRun(from.runId);
+  if (!got.ok) {
+    // A pruned task and one that never existed answer the same 404, and neither is a crash: the
+    // findings cannot be read, which is a refusal and never an empty brief.
+    return {
+      refusal:
+        got.status === 404
+          ? `no task ${from.runId} in this project: a task that was removed or never existed carries no findings to build from`
+          : `the findings of task ${from.runId} could not be read: ${got.error}`,
+    };
+  }
+  const record = got.value as RunRecord;
+  if (record.archived) {
+    return { refusal: `task ${from.runId} is archived, so its findings are not built from; restore it first if this is the task you meant` };
+  }
+
+  const recorded = record.verdicts ?? [];
+  const selected = from.role === undefined ? recorded : recorded.filter((verdict) => verdict.role === from.role);
+  if (selected.length === 0) {
+    return {
+      refusal:
+        from.role === undefined
+          ? `task ${from.runId} records no reviewer report, so it carries no findings`
+          : `task ${from.runId} records no ${from.role} report, so it carries no findings of that kind`,
+    };
+  }
+
+  const reviewer = reviewerPair(record, input.defaultRunner, input.defaultModels);
+  if (reviewer.runner === requested.runner && reviewer.model === requested.model) {
+    return {
+      refusal: `a reviewer does not fix its own findings: task ${from.runId} was reviewed on ${pairText(reviewer)} and this task would run on ${pairText(requested)} — name another backend or model`,
+    };
+  }
+
+  // Ids are unique inside one report, so a collision here is always two reports using one id —
+  // which `role` is what disambiguates.
+  const byId = new Map<string, { verdict: TaskVerdict; finding: TaskVerdictFinding }>();
+  const shared = new Set<string>();
+  for (const verdict of selected) {
+    for (const finding of verdict.findings ?? []) {
+      if (byId.has(finding.id)) shared.add(finding.id);
+      else byId.set(finding.id, { verdict, finding });
+    }
+  }
+  const ambiguous = from.ids.filter((id) => shared.has(id));
+  if (ambiguous.length > 0) {
+    return { refusal: `more than one reviewer of task ${from.runId} records the finding id: ${ambiguous.join(', ')} — name the role` };
+  }
+  const missing = from.ids.filter((id) => !byId.has(id));
+  if (missing.length > 0) {
+    return { refusal: `task ${from.runId} records no finding with the id: ${missing.join(', ')}` };
+  }
+
+  return renderFindings({ runId: from.runId, ids: from.ids, byId, order: selected, reviewer, prompt: input.prompt });
+}
+
+/**
+ * The brief itself: one block per reporting reviewer, each naming the role, the commit it was
+ * reviewed at, the reviewer's own backend and model and where the full review can be read, then the
+ * findings as a numbered list. The leader's own text is APPENDED whole — its adjudication is its own
+ * paragraph and must never look like one more finding.
+ */
+function renderFindings(input: {
+  runId: string;
+  ids: readonly string[];
+  byId: ReadonlyMap<string, { verdict: TaskVerdict; finding: TaskVerdictFinding }>;
+  order: readonly TaskVerdict[];
+  reviewer: EnginePair;
+  prompt: string | undefined;
+}): string {
+  const blocks: string[] = [];
+  for (const verdict of input.order) {
+    const findings = input.ids
+      .map((id) => input.byId.get(id))
+      .filter((entry): entry is { verdict: TaskVerdict; finding: TaskVerdictFinding } => entry?.verdict === verdict)
+      .map((entry) => entry.finding);
+    if (findings.length === 0) continue;
+    const header = [
+      `Address the findings a ${verdict.role} recorded on task ${input.runId}, reviewed at ${verdict.reviewedHeadSha}.`,
+      `Reviewer model: ${pairText(input.reviewer)}.${verdict.evidenceUrl === undefined ? '' : ` The full review: ${verdict.evidenceUrl}`}`,
+    ].join('\n');
+    blocks.push(`${header}\n\n${findings.map(findingLine).join('\n')}`);
+  }
+  const list = blocks.join('\n\n');
+  return input.prompt === undefined || input.prompt === '' ? list : `${list}\n\n${input.prompt}`;
+}
+
+function findingLine(finding: TaskVerdictFinding, index: number): string {
+  const line = finding.line === undefined ? '' : `:${finding.line}`;
+  const where = finding.file === undefined ? '' : `${finding.file}${line} — `;
+  const head = `${index + 1}. [${finding.severity}] ${where}${finding.title}`;
+  return finding.body === undefined ? head : `${head}\n   ${finding.body}`;
 }
 
 async function planTask(args: TaskCreateArgs, api: Api): Promise<McpToolResult> {

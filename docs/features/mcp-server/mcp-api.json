@@ -581,6 +581,38 @@
           "minLength": 1,
           "maxLength": 200
         },
+        "fromFindings": {
+          "description": "Build the task text from findings a reviewer recorded on another task (start). `runId` is that reviewing task and `ids` are its finding ids — read both with task_read view=task; `role` picks one reviewer when the task carries more than one. The text names the reviewer's model, and a task that would run on that same backend and model is refused.",
+          "type": "object",
+          "properties": {
+            "runId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "ids": {
+              "minItems": 1,
+              "maxItems": 20,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "role": {
+              "type": "string",
+              "enum": [
+                "code-review",
+                "design-review",
+                "qa"
+              ]
+            }
+          },
+          "required": [
+            "runId",
+            "ids"
+          ],
+          "additionalProperties": false
+        },
         "name": {
           "description": "Workflow name (save_plan, up to 80 chars).",
           "type": "string"
