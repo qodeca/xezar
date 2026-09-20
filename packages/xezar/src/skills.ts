@@ -3,7 +3,12 @@ import { homedir } from 'node:os';
 import { join, resolve, basename, dirname, extname } from 'node:path';
 import { projectKitDir } from './project-kit-paths.ts';
 import { gatedSkillsRepos } from './config.ts';
-import { getTeamSkillsCached } from './skills-remote.ts';
+import {
+  awaitFirstTeamSkills,
+  getTeamSkillsCached,
+  teamCatalogStateOf,
+  type TeamCatalogState,
+} from './skills-remote.ts';
 import { readWorkspaceUiState } from './workspace/ui-state.ts';
 
 /**
@@ -115,6 +120,89 @@ export async function discoverSkills(repoRoot: string): Promise<Skill[]> {
   }
   merged.sort((a, b) => a.name.localeCompare(b.name));
   return merged;
+}
+
+/**
+ * How long ONE run's first resolution of a skill it was explicitly asked for may wait for the
+ * background team-skills load that is already in flight (#777).
+ *
+ * 20 s, chosen as a third of `CLONE_TIMEOUT_MS` (60 s, `skills-remote.ts`): a cold bare clone of
+ * a small skills repo on a home connection lands in seconds — the reported incident's clone had
+ * landed by the time the log line was written — so 20 s covers the normal case with room to
+ * spare, while a network that is merely slow costs a third of what the clone itself would before
+ * the run falls through and starts anyway. It is paid at most once per run, and only when a
+ * named skill was NOT found locally, so a project whose skills are all local never waits at all.
+ * A constant rather than a setting, on purpose: § Zero config — never trade a working default
+ * for a knob.
+ */
+export const FIRST_TEAM_CATALOG_WAIT_MS = 20_000;
+
+/** What `lookupRunSkill` found, and what the catalog could say for itself (#777). */
+export interface RunSkillLookup {
+  /** The resolved skill, or undefined — then `catalog` says whether the catalog was even known. */
+  skill?: Skill;
+  /** The catalog to keep using (re-discovered when the wait actually ran). */
+  skills: Skill[];
+  catalog: TeamCatalogState;
+}
+
+/**
+ * Resolve the skill a run asked for BY NAME, giving the background team-skills load a bounded
+ * chance to land first (#777).
+ *
+ * The bug this exists for: on a brand-new project the very first task resolved its skill against
+ * a catalog whose first fetch had not completed — `getTeamSkillsCached` starts that fetch and
+ * returns what it has, which on a cold machine is nothing — so a task asking for `xez-onboard`
+ * ran the plain prompt while the fetch succeeded moments later. Only this call waits; the catalog
+ * read every other consumer makes is untouched and still returns immediately.
+ *
+ * Falls through to today's behaviour on a fetch that times out or fails — the caller can tell
+ * the two misses apart through `catalog`, which is the other half of the fix: a fall-through must
+ * not read like "this skill does not exist anywhere".
+ */
+export async function lookupRunSkill(
+  repoRoot: string,
+  name: string,
+  skills: Skill[],
+  timeoutMs = FIRST_TEAM_CATALOG_WAIT_MS,
+): Promise<RunSkillLookup> {
+  const local = skills.find((skill) => skill.name === name);
+  // Found already — the catalog's state is irrelevant to this run and is reported as it stands.
+  if (local) return { skill: local, skills, catalog: teamCatalogStateOf(repoRoot) };
+  const catalog = await awaitFirstTeamSkills(repoRoot, timeoutMs);
+  if (catalog !== 'ready') return { skills, catalog };
+  // The wait may have been a no-op (the load was already complete before this call), in which
+  // case re-discovery is a cheap local re-read and finds exactly the same miss.
+  const refreshed = await discoverSkills(repoRoot).catch(() => skills);
+  return { skill: refreshed.find((skill) => skill.name === name), skills: refreshed, catalog };
+}
+
+/**
+ * The note a step emits when the skill it named could not be resolved (#777).
+ *
+ * Three different facts, three different sentences. The `ready` wording is the historical one
+ * and stays byte-for-byte, because there it is true: the catalog was read and the skill is not
+ * in it. The other two exist because the old line was indistinguishable from that — a reader
+ * watching a fresh project's first task was told the skill does not exist while the fetch that
+ * would have found it was still running. Each one says what is missing and what to do next.
+ */
+export function skillMissingNote(name: string, catalog: TeamCatalogState): string {
+  if (catalog === 'pending') {
+    return (
+      `skill "${name}" not found — the team skills catalog was not ready yet (its first fetch ` +
+      `had not finished), so this is not "no such skill" — running with the plain prompt. ` +
+      `Retry the task once the fetch lands, or refresh the catalog in Settings → Skills.`
+    );
+  }
+  if (catalog === 'unavailable') {
+    return (
+      `skill "${name}" not found — the team skills catalog is empty because no configured ` +
+      `skills repo could be read (offline, or no access), so this is not "no such skill" — ` +
+      `running with the plain prompt. Retry after refreshing the catalog in Settings → Skills, ` +
+      `or check "skillsRepos" in the project's configuration.`
+    );
+  }
+  return `skill "${name}" not found in .xezar/skills, .ai/skills or the team skills repo — running with the plain prompt`;
 }
 
 /**

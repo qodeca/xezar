@@ -535,6 +535,9 @@ export function shouldPassiveFetch(opts: {
 // project's team-skill list must never be served under another project's scope.
 const teamSkillsByRoot = new Map<string, Skill[]>();
 const firstLoadByRoot = new Map<string, Promise<Skill[]>>();
+/** How many sources the COMPLETED load for this root had configured (#777) — the difference
+ *  between "this project asks for no team skills" and "it asked and got nothing back". */
+const teamSourceCountByRoot = new Map<string, number>();
 
 function initialTeamSkillsLoad(repoRoot: string): Promise<Skill[]> {
   const existing = firstLoadByRoot.get(repoRoot);
@@ -562,6 +565,65 @@ export function getTeamSkillsCached(repoRoot: string): Skill[] {
  */
 export function waitForTeamSkills(repoRoot: string): Promise<Skill[]> {
   return initialTeamSkillsLoad(repoRoot);
+}
+
+/**
+ * What this process can currently say about the team-skills catalog for one project (#777).
+ *  - `ready`       — the first load COMPLETED and produced skills, or the project configures no
+ *                    source at all, so there is nothing to wait for.
+ *  - `pending`     — no load has completed yet: the catalog is genuinely not known.
+ *  - `unavailable` — a load completed and every configured source contributed nothing (offline,
+ *                    no access, an unresolvable ref). Distinct from `ready` because the catalog
+ *                    a reader would be told about is empty for a reason that is not "no source".
+ */
+export type TeamCatalogState = 'ready' | 'pending' | 'unavailable';
+
+/** The state above, read from memory only — never fetches, never throws. */
+export function teamCatalogStateOf(repoRoot: string): TeamCatalogState {
+  const loaded = teamSkillsByRoot.get(repoRoot);
+  if (!loaded) return 'pending';
+  if (loaded.length > 0) return 'ready';
+  return (teamSourceCountByRoot.get(repoRoot) ?? 0) > 0 ? 'unavailable' : 'ready';
+}
+
+/**
+ * Wait, at most `timeoutMs`, for the FIRST team-skills load of this project to complete, and
+ * answer with the catalog state either way (#777).
+ *
+ * This is deliberately NOT a second network path and NOT a change to the catalog read: it awaits
+ * the very background load `getTeamSkillsCached` already started, and every other caller keeps
+ * returning immediately. AGENTS.md § Skills ("team-skill loading never blocks on the network")
+ * is about that catalog READ; one run's first resolution of a skill it was explicitly asked for
+ * is a different question, and the answer is bounded.
+ *
+ * `timeoutMs <= 0` means "do not wait, just report" — what a dry run passes, and what keeps the
+ * zero-config default from turning into a knob: the ceiling is a constant, not a setting.
+ */
+export async function awaitFirstTeamSkills(
+  repoRoot: string,
+  timeoutMs: number,
+): Promise<TeamCatalogState> {
+  const current = teamCatalogStateOf(repoRoot);
+  if (current !== 'pending' || timeoutMs <= 0) return current;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      // Already `.catch`-wrapped by `initialTeamSkillsLoad`: a failed load settles, it never
+      // rejects, so the race can only be won by a real completion or by the timer.
+      waitForTeamSkills(repoRoot),
+      new Promise<void>((done) => {
+        timer = setTimeout(done, timeoutMs);
+        // Never hold the loop open for the wait: a one-shot command that finished its work
+        // must still exit at once (#249's contract, the other end of `git(… network: true)`).
+        timer.unref?.();
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+  // Re-read rather than infer from who won the race: a load that completed by failing is
+  // `unavailable`, and a load whose config read threw never records anything and stays `pending`.
+  return teamCatalogStateOf(repoRoot);
 }
 
 /** Refresh: clone missing sources, `git fetch` existing ones, reload the list. */
@@ -611,6 +673,7 @@ async function loadTeamSkills(repoRoot: string, refresh: boolean): Promise<Skill
     }
   }
   teamSkillsByRoot.set(repoRoot, out);
+  teamSourceCountByRoot.set(repoRoot, config.skillsRepos.length);
   return out;
 }
 
