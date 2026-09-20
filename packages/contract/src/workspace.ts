@@ -484,7 +484,18 @@ export type SkillsUpdateScopeState = z.infer<typeof skillsUpdateScopeStateSchema
  * degraded case (no clone yet, an unresolvable ref, git unavailable) and is the zero-config
  * default on a cold machine, never an error.
  */
-export const skillsCatalogStateSchema = z.enum(['up-to-date', 'update-available', 'unknown']);
+/**
+ * `stale-check` is its own word rather than a shade of `unknown` (#747, design review B-1): the two
+ * commits ARE known and identical, and what has aged past the passive-fetch window is the CHECK. A
+ * reader told "version unknown" under two printed versions reads a contradiction, so the six-hour
+ * policy stays in one place — `compareState` — and the surface gets a state it can name.
+ */
+export const skillsCatalogStateSchema = z.enum([
+  'up-to-date',
+  'update-available',
+  'stale-check',
+  'unknown',
+]);
 export type SkillsCatalogState = z.infer<typeof skillsCatalogStateSchema>;
 
 /** One commit of a skills catalog, ready to render as `<tag> (<shortCommit>, <date>)`.
@@ -494,7 +505,12 @@ export const skillsCatalogCommitSchema = z.object({
   shortCommit: z.string(),
   /** The commit date as `YYYY-MM-DD` (from git's `%cI`). */
   date: z.string(),
+  /** The nearest reachable tag NAME — never `git describe`'s `v1.1.0-1-g769ebc7` form (#747,
+   *  design review NB-1), which repeats the hash and only a git user can read. */
   tag: z.string().optional(),
+  /** How many commits this one is after `tag`, so a surface can say it in words ("1 commit after
+   *  v1.1.0"). Absent — not 0 — when the tag is exact, so `JSON.stringify` drops the key. */
+  commitsSinceTag: z.number().int().optional(),
 });
 export type SkillsCatalogCommit = z.infer<typeof skillsCatalogCommitSchema>;
 

@@ -39,7 +39,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **States**: hover only when rendered as a link (`[a&]:hover:…`); focus-visible ring; `aria-invalid` styling.
 - **Rules**: DO use `outline` and `ghost` (the two variants the cockpit uses). DO NOT use Badge for run status; that is `Pill` + `StatusDot`.
 - **Accessibility**: plain span; no role.
-- **Where used**: 3 files (`add-project-dialog.tsx`, `settings/accounts-section.tsx`, `settings/agent-config-section.tsx`).
+- **Where used**: 4 files (`add-project-dialog.tsx`, `settings/accounts-section.tsx`, `settings/agent-config-section.tsx`, `settings/skills-section.tsx` — the skill catalog's state word, `variant="outline"`, which is a label and not a run status).
 
 ### Collapsible
 

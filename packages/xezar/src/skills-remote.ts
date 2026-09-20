@@ -608,12 +608,25 @@ async function describeCommit(bareDir: string, commit: string): Promise<SkillsCa
   // `describe --tags` rather than `tag --points-at` (#744, OQ-3): `fetchAll`'s
   // `+refs/heads/*` refspec never refreshes tags, so a long-lived clone's tag set goes stale.
   // `--points-at` then answers nothing at all, while `describe` degrades to the nearest tag it
-  // does know (`v1.1.0-3-gde525c6`) — still a truthful answer to "which catalog is this?".
-  const described = await git(['describe', '--tags', commit], LIST_TIMEOUT_MS, bareDir);
-  const tag = described.ok ? described.stdout.trim() : '';
+  // does know — still a truthful answer to "which catalog is this?".
+  //
+  // `--long` (#747, design review NB-1) so the shape is ALWAYS `<tag>-<n>-g<hash>` and the parse
+  // below is unambiguous even for an exact tag (`-0-g…`) or a tag whose own name has dashes. The
+  // raw string never leaves this function: the contract carries the tag NAME and the distance, so
+  // no surface has to print `v1.1.0-1-g769ebc7` and repeat the hash it already shows.
+  const described = await git(['describe', '--tags', '--long', commit], LIST_TIMEOUT_MS, bareDir);
+  const parsed = described.ok ? /^(.+)-(\d+)-g[0-9a-f]+$/.exec(described.stdout.trim()) : null;
+  const tag = parsed?.[1] ?? '';
+  const commitsSinceTag = parsed ? Number(parsed[2]) : 0;
   // Spread, never `tag: maybeUndefined`: a key `JSON.stringify` drops must not be typed
   // as always-present (AGENTS.md § The HTTP API, the recurring contract-parity break).
-  return { commit, shortCommit: commit.slice(0, 7), date, ...(tag ? { tag } : {}) };
+  return {
+    commit,
+    shortCommit: commit.slice(0, 7),
+    date,
+    ...(tag ? { tag } : {}),
+    ...(tag && commitsSinceTag > 0 ? { commitsSinceTag } : {}),
+  };
 }
 
 /**
@@ -697,7 +710,12 @@ async function catalogVersionOf(repoRoot: string, src: SkillsRepoSource): Promis
  * Up to date only when the two commits are the same object AND the machine has heard from
  * upstream inside the passive-fetch window. Without a recent fetch xezar genuinely does not
  * know whether upstream moved, and saying "up to date" there would claim more than it can see
- * (#744, OQ-1) — so that case reads `unknown` with both commits still shown.
+ * (#744, OQ-1).
+ *
+ * That case reads `stale-check`, not `unknown` (#747, design review B-1): both commits ARE known
+ * and are shown, and it is the check that has aged. `unknown` stays for what is genuinely not
+ * known — no clone, an unresolvable ref, a never-fetched clone, or two commits with no shared
+ * history. The six-hour window lives here and nowhere else, so no surface re-derives it.
  */
 async function compareState(
   bareDir: string,
@@ -715,5 +733,6 @@ async function compareState(
   }
   if (fetchedAt === null) return 'unknown';
   const age = Date.now() - new Date(fetchedAt).getTime();
-  return Number.isFinite(age) && age <= PASSIVE_FETCH_TTL_MS ? 'up-to-date' : 'unknown';
+  if (!Number.isFinite(age)) return 'unknown';
+  return age <= PASSIVE_FETCH_TTL_MS ? 'up-to-date' : 'stale-check';
 }

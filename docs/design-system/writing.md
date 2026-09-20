@@ -122,7 +122,11 @@ Form dialogs use a plain phrase, no question mark: "Commit changes", "Add agent 
   "Pinned", "Needs you", "Working" and "Recent" bucket headings went with its task list in #546); reference labels "Draft", "Waiting for review", "Changes requested", "Checks running",
   "Checks failing", "Ready to merge", "Merged", "Closed", "Merge conflicts" with lower-case hints
   ("CI is red on the latest commit"); connection states "Ready to connect", "Connected",
-  "Disconnected — reconnecting".
+  "Disconnected — reconnecting"; the skill catalog's "Up to date", "Update available", "Check is
+  stale", "Comparison unknown" and "Version unknown" (`routes/settings/skills-section.tsx`,
+  `catalogStateLabel`). Those last two are deliberately different words for different facts: a
+  badge never says "Version unknown" over two printed versions, so "Version unknown" belongs to
+  the no-local-copy case alone and "Check is stale" names the CHECK, not the version.
 - Product names come from `lib/runner-label.ts`: "Claude Code", "Codex", "OpenCode", "pi" (lower case).
   Multi-backend runs read "Claude Code +1".
 

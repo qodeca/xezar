@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { delimiter, join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { bareDirFor, ensureBareClone, fetchAll, skillsCatalogVersions, waitForTeamSkills } from './skills-remote.ts';
 import { projectStateLayout, setActiveStateLayout } from './state-layout.ts';
@@ -90,6 +90,37 @@ describe('skillsCatalogVersions', () => {
     expect(entry?.installed?.date).toBe('2026-01-02');
     expect(entry?.installed?.shortCommit).toHaveLength(7);
     expect(entry?.available).toEqual(entry?.installed);
+    expect(entry?.fetchedAt).not.toBeNull();
+    // An exact tag carries no distance at all — the key is absent, never 0 (#747, NB-1).
+    expect(Object.hasOwn(entry?.installed ?? {}, 'commitsSinceTag')).toBe(false);
+  });
+
+  it('names the nearest tag and the distance, never git describe\'s own suffix (#747, NB-1)', async () => {
+    makeOrigin(origin, '# demo\n', '2026-01-02T10:00:00+01:00', 'v1.0.0');
+    commitMore(origin, '# demo v2\n', '2026-01-03T10:00:00+01:00');
+    await ensureBareClone(origin);
+    const [entry] = await skillsCatalogVersions(project);
+    // `v1.0.0` + 1, so a surface can say "1 commit after v1.0.0" in words. The raw
+    // `v1.0.0-1-g<sha>` never reaches the wire: it repeats the hash the same line already shows.
+    expect(entry?.installed?.tag).toBe('v1.0.0');
+    expect(entry?.installed?.commitsSinceTag).toBe(1);
+    expect(entry?.installed?.tag).not.toMatch(/-g[0-9a-f]+$/);
+  });
+
+  it('reads stale-check, not unknown, when the commits match but the check aged out (#747, B-1)', async () => {
+    makeOrigin(origin, '# demo\n', '2026-01-02T10:00:00+01:00', 'v1.0.0');
+    // Cloned directly rather than through `ensureBareClone`, so no in-process fetch timestamp
+    // shadows the clone's own mtime — this is what a cockpit opened after an idle night sees.
+    const bare = bareDirFor(origin);
+    mkdirSync(dirname(bare), { recursive: true });
+    execFileSync(REAL_GIT, ['clone', '--bare', origin, bare], { stdio: 'ignore', env: GIT_ENV });
+    const aged = new Date(Date.now() - 13 * 60 * 60 * 1_000);
+    utimesSync(join(bare, 'HEAD'), aged, aged);
+
+    const [entry] = await skillsCatalogVersions(project);
+    expect(entry?.state).toBe('stale-check');
+    // Both versions ARE known: what aged is the check, which is why this is not `unknown`.
+    expect(entry?.installed?.commit).toBe(entry?.available?.commit);
     expect(entry?.fetchedAt).not.toBeNull();
   });
 
