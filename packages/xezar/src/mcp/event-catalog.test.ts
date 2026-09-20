@@ -412,6 +412,39 @@ describe('every other kind the catalog emits', () => {
       );
     });
 
+    /**
+     * #673, AC-07 — findings never reach the summary.
+     *
+     * BACKWARD_COMPATIBILITY.md § 2 already forbids "putting a packet's prose into the summary",
+     * and a findings list is the largest piece of prose the packet can now carry. The summary's
+     * field list is closed: the two rows below are written from records that differ ONLY in their
+     * findings, and they must be byte-identical.
+     */
+    it('writes the same summary with and without findings — the field list is closed', () => {
+      const without = startedRun();
+      store.updateRun(without.id, { verdicts: [pendingVerdict(without.id, without.steps[0]!.id)] });
+      const With = startedRun();
+      store.updateRun(With.id, {
+        verdicts: [
+          {
+            ...pendingVerdict(With.id, With.steps[0]!.id),
+            findings: [
+              { id: 'f1', severity: 'blocker', file: 'packages/xezar/src/runs/store.ts', line: 412, title: 'the cap is gone', body: 'the retention cap is never applied' },
+              { id: 'f2', severity: 'nit', title: 'a stale comment' },
+            ],
+            findingsOmitted: 3,
+          },
+        ],
+      });
+
+      const posted = rows().filter((row) => row.kind === 'verdict.posted');
+      expect(posted).toHaveLength(2);
+      expect(posted[1]?.summary).toBe(posted[0]?.summary);
+      for (const fragment of ['the cap is gone', 'blocker', 'store.ts', 'finding', 'omitted']) {
+        expect(posted[1]?.summary).not.toContain(fragment);
+      }
+    });
+
     it('marks the report announced, so a second snapshot of the same run writes no second row', () => {
       const run = startedRun();
       store.updateRun(run.id, { verdicts: [pendingVerdict(run.id, run.steps[0]!.id)] });

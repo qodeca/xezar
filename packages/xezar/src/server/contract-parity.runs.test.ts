@@ -73,7 +73,16 @@ describe('src/contract/runs.ts matches the runs routes exactly', () => {
   type DeleteRun200 = InferResponseType<Run['$delete'], 200>;
   type Version200 = InferResponseType<Run['version']['$get'], 200>;
 
+  /** One reviewer verdict, as the schema says it and as the route actually answers it (#673). */
+  type SchemaVerdict = NonNullable<z.infer<typeof runRecordSchema>['verdicts']>[number];
+  type RouteVerdict = NonNullable<RunArchive200['verdicts']>[number];
+
   type _Checks = [
+    // #673 — the findings list rides the record's own verdict shape rather than a second copy of
+    // it. Pinned on its own, and NARROWER than the record-wide assertion below on purpose: a route
+    // that started answering a locally declared verdict DTO fails here first, by name.
+    Assert<Exact<SchemaVerdict['findings'], RouteVerdict['findings']>>,
+    Assert<Exact<SchemaVerdict['findingsOmitted'], RouteVerdict['findingsOmitted']>>,
     // the record, in both of its two forms
     Assert<Exact<z.infer<typeof apiRunSchema>[], RunsList200[number][]>>,
     Assert<Exact<z.infer<typeof apiRunSchema>, RunGet200>>,
