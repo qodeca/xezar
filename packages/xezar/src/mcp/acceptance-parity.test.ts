@@ -1221,8 +1221,8 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
     parity(
       'P-45',
       ['A-09', 'A-08', 'A-05'],
-      ['I-117', 'I-118', 'I-119', 'I-120', 'I-121'],
-      'the workspace limits, composer defaults, skills auto-update and agent defaults are written through either door with the same effect, the same bound on a bad value and the same narrowed answer',
+      ['I-117', 'I-118', 'I-119', 'I-120', 'I-121', 'I-127'],
+      'the workspace limits, composer defaults, skills auto-update, agent defaults and the two workspace folder paths are written through either door with the same effect, the same bound on a bad value and the same narrowed answer',
       async () => {
         const w = world();
         // Every key of the write, in one body, as the owner's 2026-09-20 rule allows (#677 B1).
@@ -1295,6 +1295,45 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
         }
         expect((await mcp(w, 'project_config', { action: 'get_limits' })).result.workspace.resources.maxParallel).toBe(2);
 
+        // I-127 — THE TWO WORKSPACE FOLDER PATHS (#677 B2). The same owner rule, the last two keys
+        // the write held back. They are the one pair whose validity is a fact about the FILESYSTEM
+        // rather than a bound in a schema, so the route probes them for real and the MCP door adds
+        // no opinion of its own.
+        const browseRoot = join(w.home, 'b2-browse');
+        const projectsDir = join(w.home, 'b2-clones');
+        mkdirSync(browseRoot, { recursive: true });
+        const roots = await mcp(w, 'project_config', { action: 'set_workspace_config', workspaceConfig: { browseRoot, projectsDir } });
+        expect(roots.result.workspace).toEqual((await mcp(w, 'project_config', { action: 'get_limits' })).result.workspace);
+        // The checkout root did not have to exist: the route's probe is `mkdir -p`, so the write
+        // CREATES it — a real filesystem side effect of a settings write, named in the spec's § 3.
+        expect(existsSync(projectsDir), 'the checkout root the probe created').toBe(true);
+        expect((await ui(w, '/api/v1/workspace/config')).body).toMatchObject({ browseRoot, projectsDir });
+        // Written, and still not read back: the answer is the narrowed `get_limits` vocabulary.
+        expect(JSON.stringify(roots.result)).not.toContain(browseRoot);
+
+        // NAMED BREAK 5 OF THE SPEC. A root that does not exist is refused by the ROUTE's own write
+        // probe — not by a bound, not by a second check at the MCP door — and the probe runs BEFORE
+        // `mergeWriteWorkspaceConfig`, so the `resources` key travelling in the same body does not
+        // half-apply. Remove the probe and this case passes while a broken browse root is stored.
+        const missingRoot = join(w.home, 'b2-does-not-exist');
+        const badRoots = await w.call('a', 'project_config', {
+          action: 'set_workspace_config',
+          operationId: op(),
+          workspaceConfig: { browseRoot: missingRoot, resources: { maxParallel: 11 } },
+        });
+        expect(badRoots.isError).toBe(true);
+        expect(resultText(badRoots)).toContain('browse folder does not exist');
+        // The cockpit's own door answers the same 400, with the same reason.
+        const badUiRoot = await ui(w, '/api/v1/workspace/config', 'PUT', { browseRoot: missingRoot, resources: { maxParallel: 11 } });
+        expect(badUiRoot.status).toBe(400);
+        expect(badUiRoot.body.error).toContain('browse folder does not exist');
+        // Nothing of that body was written, through either door: the root is the old one and the
+        // cap is still the human's 2.
+        const afterBad = (await ui(w, '/api/v1/workspace/config')).body;
+        expect(afterBad.browseRoot).toBe(browseRoot);
+        expect(afterBad.resources.maxParallel).toBe(2);
+        expect((await mcp(w, 'project_config', { action: 'get_limits' })).result.workspace.resources.maxParallel).toBe(2);
+
         // "Repeating one key changes nothing twice" is NOT assertable here: this world wires the
         // tools directly, and the operation receipt belongs to the generic door. It is pinned
         // where the door really runs — `composition.test.ts`, "a workspace write replayed under
@@ -1365,9 +1404,11 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
     parity(
       'P-29',
       ['A-09', 'A-11'],
-      // I-117 … I-121 left this case with #677 B1: the workspace SETTINGS write is no longer a
-      // refusal, and P-45 proves it. I-127, the two workspace folder paths, is still here.
-      ['I-012', 'I-024', 'I-092', 'I-093', 'I-112', 'I-115', 'I-122', 'I-123', 'I-124', 'I-125', 'I-126', 'I-127', 'I-130', 'I-131', 'I-132'],
+      // I-117 … I-121 left this case with #677 B1 and I-127 with B2: the workspace SETTINGS write
+      // is no longer a refusal and the two folder paths are keys of it, both proved by P-45. What
+      // is still here is every boundary the owner's rule did NOT name — the home files, the
+      // accounts, the project registry and the host filesystem.
+      ['I-012', 'I-024', 'I-092', 'I-093', 'I-112', 'I-115', 'I-122', 'I-123', 'I-124', 'I-125', 'I-126', 'I-130', 'I-131', 'I-132'],
       'every global-source, home-file, shared-account and workspace-root write is refused with its boundary, dispatches nothing, and no approval parameter changes that',
       async () => {
         const w = world();
@@ -1404,12 +1445,6 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
           for (const extra of [{ approvedBy: 'the human' }, { humanApproval: true }, { confirm: true }, { override: true }]) {
             answers.push([`approval ${JSON.stringify(extra)}`, await w.call('a', 'project_config', { action: 'set_workspace_ui_state', ...extra })]);
           }
-          // I-127: the workspace SETTINGS write exists now (P-45), and the two workspace folder
-          // paths are still not one of its keys — refused as an argument, nothing dispatched.
-          answers.push([
-            'workspace roots',
-            await w.call('a', 'project_config', { action: 'set_workspace_config', operationId: op(), workspaceConfig: { browseRoot: '/tmp', projectsDir: '/tmp' } }),
-          ]);
           return answers;
         });
         assertIsolated(w, seen);
@@ -1421,7 +1456,7 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
             // I-112 / M-16: refused by the catalog's `scope`, as a HOME file — not merely because the
             // path happens to resolve outside the project, which a relocated agent home would defeat.
             expect(resultText(result), what).toMatch(/^Refused \(home file shared by every project\)/);
-          } else if (what.startsWith('approval') || what === 'workspace roots') {
+          } else if (what.startsWith('approval')) {
             // The approval key itself is refused as an argument the tool does not have.
             expect(resultText(result), what).toMatch(/^Invalid arguments for project_config: .*Unrecognized key/);
           } else {
@@ -2020,11 +2055,12 @@ describe('A-05 — the coverage matrix against the closed inventory', () => {
     if (blockedCases.length > 0) console.info(`[#116] blocked parity cases (not passing): ${blockedCases.join(', ')}`);
   });
 
-  it('the inventory is the closed 147-record one, with 101 covered records', () => {
+  it('the inventory is the closed 147-record one, with 102 covered records', () => {
     const inventory = readInventory();
     expect(inventory.size).toBe(147);
-    // 96 until #677 B1 moved the five workspace-settings rows (I-117 … I-121) from `global`.
-    expect([...inventory.values()].filter((s) => s === 'covered')).toHaveLength(101);
+    // 96 until #677 B1 moved the five workspace-settings rows (I-117 … I-121) from `global`, and
+    // 101 until B2 moved the two workspace folder paths (I-127) under the same owner rule.
+    expect([...inventory.values()].filter((s) => s === 'covered')).toHaveLength(102);
   });
 
   it('every covered record maps to at least one case, and every case names inventory records', () => {

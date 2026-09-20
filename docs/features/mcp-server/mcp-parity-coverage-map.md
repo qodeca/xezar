@@ -103,8 +103,11 @@ run.
 - **Per-project concurrency.** P-28 proves the cap and tags are written to the bound project's
   registry entry only and read back by both doors. The shared world's scheduler is built with a fixed
   limit loader, so it does not show the scheduler enforcing that cap.
-- **Workspace settings.** P-45 proves the settings write (#677 B1) lands the cockpit's own values
-  through either door and answers in the `get_limits` vocabulary. It does NOT show the change
+- **Workspace settings.** P-45 proves the settings write (#677 B1, widened to the two workspace
+  folder paths by B2) lands the cockpit's own values through either door and answers in the
+  `get_limits` vocabulary. For the folder paths it also shows the route's own write probe firing
+  through the leader's door: a root that does not exist is answered with the route's own 400 and
+  nothing of that body is persisted, the `resources` key sent with it included. It does NOT show the change
   taking effect without a restart: for the same reason as the bullet above, the shared world's
   semaphore is built with a fixed limit loader. The per-tool suite
   (`tools/project-config.test.ts`, "the workspace-settings write") observes the refreshed
@@ -222,7 +225,7 @@ run.
 | I-124 | global | P-29 |
 | I-125 | global | P-29 |
 | I-126 | global | P-29 |
-| I-127 | global | P-29 |
+| I-127 | covered | P-45 |
 | I-128 | covered | P-28 |
 | I-129 | covered | P-28 |
 | I-130 | global | P-29 |
@@ -269,9 +272,9 @@ run.
 | P-26 | A-09, A-05 | I-111, I-113 | an agent config file is written through the cockpit’s own route, a stale write is refused, and an MCP-carrying file is read as structure only |
 | P-27 | A-09, A-11 | I-111, I-113 | in hosted mode an agent config write is refused with the cockpit’s own 409, through MCP too |
 | P-28 | A-09, A-08, A-05 | I-128, I-129 | the bound project’s own cap and tags are written to its registry entry only, and each door sees the other’s |
-| P-45 | A-09, A-08, A-05 | I-117, I-118, I-119, I-120, I-121 | the workspace limits, composer defaults, skills auto-update and agent defaults are written through either door with the same effect, the same bound on a bad value and the same narrowed answer |
+| P-45 | A-09, A-08, A-05 | I-117, I-118, I-119, I-120, I-121, I-127 | the workspace limits, composer defaults, skills auto-update, agent defaults and the two workspace folder paths are written through either door with the same effect, the same bound on a bad value and the same narrowed answer |
 | P-44 | A-09, A-08, A-05 | I-143, I-144, I-145, I-146 | the leader reads this project’s setup state, dispatches the bundled setup task and records the offer, and the cockpit sees the same thing |
-| P-29 | A-09, A-11 | I-012, I-024, I-092, I-093, I-112, I-115, I-122, I-123, I-124, I-125, I-126, I-127, I-130, I-131, I-132 | every global-source, home-file, shared-account and workspace-root write is refused with its boundary, dispatches nothing, and no approval parameter changes that |
+| P-29 | A-09, A-11 | I-012, I-024, I-092, I-093, I-112, I-115, I-122, I-123, I-124, I-125, I-126, I-130, I-131, I-132 | every global-source, home-file, shared-account and workspace-root write is refused with its boundary, dispatches nothing, and no approval parameter changes that |
 | P-30 | A-10, A-05 | I-033, I-041, I-045, I-049, I-052, I-053, I-054 | a result, its files, diff, commits and handoff read the same as the cockpit’s, with references and origin as fields, and `done` is not proof |
 | P-31 | A-10, A-05 | I-055, I-054, I-052 | after a commit moves the SHA, earlier evidence reads as stale, and the commit is the one the cockpit makes |
 | P-32 | A-10, A-11, A-05 | I-068, I-052, I-053 | with the working tree gone, evidence reads as unavailable rather than empty, and worktree clean-up matches the cockpit’s |

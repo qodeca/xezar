@@ -62,7 +62,8 @@ import { defineTool, errorResult, textResult, type McpToolContext, type McpToolR
  * refusal naming its boundary and dispatches NOTHING — so a leader asking for it learns why, and
  * no argument can route around it. ONE of those exclusions has been reversed by the owner's rule
  * of 2026-09-20 (#677): the workspace SETTINGS write is `set_workspace_config`, a real write
- * through the cockpit's own route, and only the two workspace folder paths stay out of it.
+ * through the cockpit's own route, and since slice B2 that includes the two workspace folder
+ * paths — the route's own write probe is what keeps them honest, not a second check here.
  * There is no project id argument anywhere: the project is the connection's (D-01 § 1.5), and a
  * call that names one is refused rather than silently redirected.
  *
@@ -434,22 +435,29 @@ const validPathId = (id: string): boolean => id !== '.' && id !== '..' && PATH_I
 const projectConfigWriteSchema = setConfigInputSchema.omit({ maxParallel: true }).strict();
 
 /**
- * The workspace-settings write (#677 wave 2, slice B1). Owner rule 2026-09-20 ("every key")
- * reverses the D-03 § 4.9 boundary that made this a refusal: a leader now writes the same
+ * The workspace-settings write (#677 wave 2, slices B1 and B2). Owner rule 2026-09-20 ("every
+ * key") reverses the D-03 § 4.9 boundary that made this a refusal: a leader now writes the same
  * workspace keys the cockpit's own Settings panes write, through the same route.
  *
- * TWO KEYS ARE STILL NOT ACCEPTED, and the omission is the whole of the narrowing: `browseRoot`
- * and `projectsDir` are the cockpit folder browser's confinement root and the directory a GUI
- * clone lands in — filesystem boundaries rather than limits, reviewed on their own in slice B2.
+ * SLICE B2 REMOVED THE LAST NARROWING. `browseRoot` (the folder browser's confinement root) and
+ * `projectsDir` (where a cockpit clone lands) are the two filesystem boundaries B1 held back for
+ * their own review; the same owner rule covers them, so the argument is now the contract schema
+ * itself with nothing omitted. They are NOT validated here and must not be: the route runs a real
+ * write probe on each — an absolute path, an existing directory for the browse root, `mkdir -p`
+ * for the checkout root — and answers 400 with its reason BEFORE `mergeWriteWorkspaceConfig`, so
+ * a `resources` key sent in the same body does not half-apply. Re-implementing that check at this
+ * door would be a second opinion about the filesystem, which is exactly how the two doors drift.
+ *
  * An unknown key is refused rather than silently dropped, at EVERY level, and that strictness
  * lives in the contract (`packages/contract/src/workspace.ts`) rather than here — the route
- * validates with the same schema this one narrows, so both doors refuse the same body with the
- * same reason. It used to live only here, and the asymmetry was the bug: the route answered 200
- * for `{ nonsenseKey: 123 }` (QA case H) and both doors answered 200 for a misspelt nested key
- * (review m1) — success for a change that never happened. The `.strict()` below is kept because
- * `.omit()` returns a new shape and the narrowing must be explicit at the door a leader reads.
+ * validates with the same schema this one re-declares, so both doors refuse the same body with
+ * the same reason. It used to live only here, and the asymmetry was the bug: the route answered
+ * 200 for `{ nonsenseKey: 123 }` (QA case H) and both doors answered 200 for a misspelt nested
+ * key (review m1) — success for a change that never happened. The `.strict()` below is kept even
+ * though the contract shape already carries it: this is the door a leader reads, and the guarantee
+ * it states must not depend on a schema somewhere else keeping a modifier.
  */
-const workspaceConfigWriteSchema = setWorkspaceConfigInputSchema.omit({ browseRoot: true, projectsDir: true }).strict();
+const workspaceConfigWriteSchema = setWorkspaceConfigInputSchema.strict();
 const projectRegistryWriteSchema = z.strictObject(updateProjectInputSchema.shape);
 const promptTemplatesSchema = uiStateSchema.shape.promptTemplates.unwrap();
 
@@ -498,7 +506,7 @@ export const projectConfigInputSchema = z
     action: z
       .enum([...PROJECT_CONFIG_ACTIONS, ...REFUSED_ACTION_NAMES])
       .describe(
-        'What to do in the project this connection is bound to, plus the shared settings set_workspace_config changes for every project on this machine. Actions outside that boundary (the two workspace folder paths, accounts, the project registry, host folders) are answered with a refusal that names the boundary.',
+        'What to do in the project this connection is bound to, plus the shared settings set_workspace_config changes for every project on this machine. Actions outside that boundary (accounts, the project registry, host folders) are answered with a refusal that names the boundary.',
       ),
     projectId: z
       .unknown()
@@ -510,7 +518,7 @@ export const projectConfigInputSchema = z
     workspaceConfig: workspaceConfigWriteSchema
       .optional()
       .describe(
-        'set_workspace_config: the workspace-wide settings to change — they apply to every project on this machine. Only the keys you send are touched; null clears a key back to its default. The two workspace folder paths are not accepted here.',
+        'set_workspace_config: the workspace-wide settings to change — they apply to every project on this machine. Only the keys you send are touched; null clears a key back to its default. The two workspace folder paths are included: the folder the file picker may browse, and the folder new checkouts land in. Both are checked for real: a path that is not absolute, is not a folder, or cannot be written to is answered with the reason and nothing is saved, the other keys in the same call included.',
       ),
     project: projectRegistryWriteSchema
       .optional()
@@ -913,9 +921,10 @@ function skillEntry(root: string, skill: Skill, withBody: boolean) {
  * The workspace half of `get_limits`, and the answer `set_workspace_config` gives back (#677 B1):
  * ONE vocabulary in both directions, so a leader reads its own write in the words it read the
  * settings in. § 4.9's narrowing survives the reversal — the two workspace folder paths and the
- * machine-wide agent defaults stay out of the answer even though the write now accepts the
- * defaults, because what may be CHANGED and what may be READ were decided separately (I-121's
- * read is still the cockpit's).
+ * machine-wide agent defaults stay out of the ANSWER even though the write accepts both (the
+ * defaults since B1, the folder paths since B2), because what may be CHANGED and what may be READ
+ * were decided separately (I-121's and I-127's reads are still the cockpit's). A leader that
+ * writes a folder path therefore gets the acknowledgement without the path echoed back.
  */
 function workspaceLimits(w: WorkspaceConfigResponse) {
   return {
@@ -1410,7 +1419,7 @@ export const projectConfigTool = defineTool({
   name: 'project_config',
   title: 'Project configuration',
   description:
-    "Read and change THIS project's own configuration: its settings (agent, models, system prompt, review gate, base branch, worktree retention, memory limit), its registry entry (concurrency cap and tags), prompt templates, in-repo agent config files, workflows, skills, GitHub automations and worktrees. It also reads the shared settings as effective limits and capabilities (get_limits, get_capabilities, get_account) and CHANGES them with set_workspace_config — the shared limits, composer defaults, follow-up inbox and environment passthrough, skills auto-update and the machine-wide agent defaults, which apply to every project on this machine. The two workspace folder paths, agent accounts, account identity, home files, the project registry and host folders are outside this boundary and are refused with the reason.",
+    "Read and change THIS project's own configuration: its settings (agent, models, system prompt, review gate, base branch, worktree retention, memory limit), its registry entry (concurrency cap and tags), prompt templates, in-repo agent config files, workflows, skills, GitHub automations and worktrees. It also reads the shared settings as effective limits and capabilities (get_limits, get_capabilities, get_account) and CHANGES them with set_workspace_config — the shared limits, composer defaults, follow-up inbox and environment passthrough, skills auto-update and the machine-wide agent defaults, which apply to every project on this machine, and the two workspace folder paths — the folder the file picker may browse and the folder new checkouts land in, each checked for real before anything is saved. Agent accounts, account identity, home files, the project registry and host folders are outside this boundary and are refused with the reason.",
   inputSchema: projectConfigInputSchema,
   annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
   async call(args, ctx: ProjectConfigContext) {

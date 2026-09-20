@@ -253,8 +253,9 @@ describe('#261 — the MCP API reference against the registry and the inventory'
       for (const r of cover.serves ?? []) served.add(r);
     }
     const covered = [...inventory].filter(([, rec]) => rec.status === 'covered').map(([id]) => id);
-    // 96 until #677 B1 moved the five workspace-settings rows (I-117 … I-121) from `global`.
-    expect(covered).toHaveLength(101);
+    // 96 until #677 B1 moved the five workspace-settings rows (I-117 … I-121) from `global`, and
+    // 101 until B2 moved the two workspace folder paths (I-127) under the same owner rule.
+    expect(covered).toHaveLength(102);
     expect(covered.filter((id) => !served.has(id) && !(id in COVERAGE_GAPS)), 'covered records no action serves').toEqual([]);
     // A gap is only for a covered record nothing serves: never a second label on a served one.
     for (const id of Object.keys(COVERAGE_GAPS)) {

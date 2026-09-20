@@ -84,12 +84,11 @@ describe('every MCP write action accepts what its route accepts', () => {
         'resources',
         'skillsAutoUpdate',
       ],
-      omittedFromMcp: {
-        browseRoot:
-          'the confinement root of the cockpit’s own folder browser: a filesystem boundary the person at the keyboard set, not a limit. Slice B2 (#677) decides it on its own review.',
-        projectsDir:
-          'where a GUI clone lands, and the route’s writability probe `mkdir -p`s it, so writing it creates a directory. Slice B2 (#677) decides it on its own review.',
-      },
+      // NOTHING is omitted since slice B2 (#677): `browseRoot` and `projectsDir` were the last two,
+      // held back by B1 as the security-relevant half of the reversal, and the owner's rule of
+      // 2026-09-20 ("every key") covers them. The two doors now accept the identical key inventory,
+      // which is the state this guard exists to notice a drift away from.
+      omittedFromMcp: {},
     },
     {
       action: 'set_project',

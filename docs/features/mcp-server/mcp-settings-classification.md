@@ -318,7 +318,8 @@ Every key here is enforced workspace-wide by `WorkspaceSemaphore`
 > decided on 2026-09-10: they are a dated record of what was true then, and the READ half of each
 > — what the answer withholds — is still in force. The two workspace folder paths (§ 4.12's
 > `browseRoot` and `projectsDir`) are NOT part of the reversal in B1 and are decided on their own
-> in slice B2. The full re-scope of this document is slice B6.
+> in slice B2 — **which has since decided them the same way; see the superseding entry at the head
+> of § 4.12.** The full re-scope of this document is slice B6.
 >
 > **Hosted mode does not narrow the write** (owner decision, 2026-09-20; raised by independent QA
 > as case G on #734 and filed as #735). Workspace-config writes are permitted through both doors
@@ -369,6 +370,34 @@ Every key here is enforced workspace-wide by `WorkspaceSemaphore`
 | Agent installed / version rows | safe-effective-read | Which agents this host can run — an availability fact F-03 requires, with an understandable reason when one is missing. | `GET /health` checks | Install paths, home directories, account identity. |
 
 ### 4.12 Global → Projects — `projects-section.tsx`
+
+> **SUPERSEDED, 2026-09-20 (#677 wave 2 slice B2) — the `browseRoot` / `projectsDir` row only.**
+> The owner's rule of 2026-09-20 on #677 — *"Every key"* — covers the two workspace folder paths as
+> well. They are now WRITABLE by the leader through `project_config set_workspace_config`, which
+> dispatches the same `PUT /workspace/config` the pane uses, and the `excluded` row below is kept
+> unchanged as the dated record of what was decided on 2026-09-10. Slice B1 had held this pair back
+> as the security-relevant half of the reversal; B2 is the review that decided it.
+>
+> Three things the reversal does NOT change, each load-bearing:
+>
+> - **The two actions the paths parameterise stay `excluded`.** `browse_folders` and the clone are
+>   still refused with their boundary, so a leader that moves `browseRoot` gains no directory
+>   listing of its own — it relocates a boundary a PERSON at the cockpit then browses within. That
+>   is the most counter-intuitive consequence of the decision and is stated here rather than
+>   implied.
+> - **The paths are written and not read back.** The write answers in the narrowed `get_limits`
+>   vocabulary, which carries no folder path, so the disclosure half of the 2026-09-10 row survives:
+>   what may be CHANGED and what may be READ were decided separately.
+> - **The route's own write probe is the whole validation, and it is inherited, not copied.**
+>   `PUT /workspace/config` requires an absolute path, requires an existing directory for the browse
+>   root and runs `mkdir -p` for the checkout root, answering 400 with its reason BEFORE
+>   `mergeWriteWorkspaceConfig` — so a `resources` key sent in the same body does not half-apply.
+>   The MCP door adds no second opinion about the filesystem. The accepted exposure this leaves,
+>   recorded rather than mitigated: the probe's `mkdir -p` means a settings write can CREATE a
+>   directory anywhere the user can write.
+>
+> Hosted mode is unchanged by B2 and stays as § 4.9 records it: the write is ALLOWED through both
+> doors when `capabilities.localHandoff` is false, by the owner's decision of 2026-09-20.
 
 | Field / action | Status | Reason | Enforcing code path | Withheld |
 | --- | --- | --- | --- | --- |

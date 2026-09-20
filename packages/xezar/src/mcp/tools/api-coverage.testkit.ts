@@ -154,10 +154,10 @@ export const TOOL_ACTION_COVERAGE: Readonly<Record<string, ActionCoverage>> = {
   'project_config:check_account_status': { refuses: ['I-123'] },
   'project_config:get_account_details': { refuses: ['I-124'] },
   'project_config:open_account_file': { refuses: ['I-125'] },
-  // I-127 (the two workspace folder paths) is deliberately NOT named here: this action does not
-  // accept those keys at all, so it neither serves them nor answers a boundary for them. Slice B2
-  // decides them on their own.
-  'project_config:set_workspace_config': { serves: ['I-117', 'I-118', 'I-119', 'I-120', 'I-121'] },
+  // I-127 (the two workspace folder paths) joined the list with #677 B2: the same owner rule made
+  // them writable, and this action is the only one that serves them — `get_limits` still withholds
+  // the paths themselves, so the record is served by its WRITE alone.
+  'project_config:set_workspace_config': { serves: ['I-117', 'I-118', 'I-119', 'I-120', 'I-121', 'I-127'] },
   'project_config:set_workspace_ui_state': { refuses: ['I-024', 'I-092', 'I-132'] },
   'project_config:browse_folders': { refuses: ['I-126'] },
   'project_config:add_project': { refuses: ['I-131'] },
