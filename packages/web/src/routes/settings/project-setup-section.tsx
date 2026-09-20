@@ -31,7 +31,7 @@ export function ProjectSetupSection() {
     // One muted line. No skeleton, and above all no premature "Not set up yet" — a state that has
     // not answered yet must not be shown as a state.
     return (
-      <p data-slot="project-setup-loading" className="p-4 text-[13px] text-muted-foreground md:p-6">
+      <p data-slot="project-setup-loading" className="p-list text-[13px] text-muted-foreground md:p-group">
         Loading project setup…
       </p>
     )

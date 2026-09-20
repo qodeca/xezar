@@ -54,7 +54,7 @@ export function ResourcesSection() {
 
   if (config.isPending) {
     return (
-      <p data-slot="resources-loading" className="p-4 text-[13px] text-soft-foreground md:p-6">
+      <p data-slot="resources-loading" className="p-list text-[13px] text-soft-foreground md:p-group">
         Loading resource settings…
       </p>
     )

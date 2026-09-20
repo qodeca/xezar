@@ -45,7 +45,7 @@ export function PromptTemplatesSection() {
 
   if (uiState.isPending) {
     return (
-      <p data-slot="prompt-templates-loading" className="p-4 text-[13px] text-soft-foreground md:p-6">
+      <p data-slot="prompt-templates-loading" className="p-list text-[13px] text-soft-foreground md:p-group">
         Loading prompt templates…
       </p>
     )

@@ -314,7 +314,7 @@ export function McpConnectionSection() {
 
   if (health.isPending || projects.isPending) {
     return (
-      <p data-slot="mcp-connection-loading" role="status" className="p-4 text-[13px] text-soft-foreground md:p-6">
+      <p data-slot="mcp-connection-loading" role="status" className="p-list text-[13px] text-soft-foreground md:p-group">
         Loading MCP connection…
       </p>
     )

@@ -234,7 +234,7 @@ export function SkillsSection() {
 
   if (config.isPending) {
     return (
-      <p data-slot="skills-settings-loading" className="p-4 text-[13px] text-soft-foreground md:p-6">
+      <p data-slot="skills-settings-loading" className="p-list text-[13px] text-soft-foreground md:p-group">
         Loading skill settings…
       </p>
     )

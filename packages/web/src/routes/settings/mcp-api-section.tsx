@@ -48,7 +48,7 @@ export function McpApiSection() {
 
   if (reference.isPending) {
     return (
-      <p data-slot="mcp-api-loading" role="status" aria-live="polite" className="p-4 text-[13px] text-soft-foreground md:p-6">
+      <p data-slot="mcp-api-loading" role="status" aria-live="polite" className="p-list text-[13px] text-soft-foreground md:p-group">
         Loading the tool list…
       </p>
     )

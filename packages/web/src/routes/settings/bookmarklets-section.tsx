@@ -20,7 +20,7 @@ export function BookmarkletsSection() {
   // user "(no skills yet)" — a claim that is simply false while the fetch is still running.
   if (skillsQuery.isPending) {
     return (
-      <p data-slot="bookmarklets-loading" className="p-4 text-[13px] text-soft-foreground md:p-6">
+      <p data-slot="bookmarklets-loading" className="p-list text-[13px] text-soft-foreground md:p-group">
         Loading bookmarklets…
       </p>
     )
@@ -38,7 +38,7 @@ export function BookmarkletsSection() {
   }
 
   return (
-    <div className="flex min-h-full flex-1 overflow-y-auto px-4 py-5 md:px-7">
+    <div className="flex min-h-full flex-1 overflow-y-auto p-list md:p-group">
       <BookmarkletPanel skills={orderSkills(skillsQuery.data ?? [])} />
     </div>
   )
