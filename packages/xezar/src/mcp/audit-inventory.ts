@@ -166,6 +166,13 @@ export const AUDIT_ACTIONS: readonly AuditActionRow[] = [
   { id: 'provider.setEnabled', family: 'F10', mcp: ['project_config:set_provider_enabled'], ui: [put('/providers/:provider/enabled')] },
   { id: 'provider.retry', family: 'F10', mcp: ['project_config:retry_provider'], ui: [post('/providers/:provider/retry')] },
   { id: 'provider.connect', family: 'F10', mcp: ['project_config:connect_provider'], ui: [post('/providers/connect')] },
+  // The agent accounts followed with #677 B5: the four MCP keys below are real writes now,
+  // through the four routes beside them. Like every row above them, the records needed no change
+  // — each already named both doors, and none of the four was ever in `AUDIT_MCP_READS`, so a
+  // leader's write and a person's click land on one action id. `account.openFile` is the one that
+  // did NOT move (it hands a path to a desktop application), and the family's two GETs — status
+  // and details — record nothing at either door, which is why they are reads below rather than
+  // rows here.
   { id: 'account.create', family: 'F10', mcp: ['project_config:create_account'], ui: [post('/workspace/agent-profiles')] },
   { id: 'account.update', family: 'F10', mcp: ['project_config:update_account'], ui: [patch('/workspace/agent-profiles/:id')] },
   { id: 'account.openFile', family: 'F10', mcp: ['project_config:open_account_file'], ui: [post('/workspace/agent-profiles/:id/open')] },
@@ -212,9 +219,14 @@ export const AUDIT_MCP_READS: readonly string[] = [
   'project_config:get_automation_check',
   'project_config:get_automation_log',
   'project_config:list_worktrees',
-  // Refused reads: their cockpit counterparts are reads.
+  // The two account GETs (#677 B5). They were "refused reads" here while the whole account family
+  // was refused; they are SERVED reads now, and the entry is unchanged because the reason never
+  // was the refusal: their cockpit counterparts are `GET` routes that carry no audit descriptor,
+  // so a probe and an identity read record nothing at either door. Moving either to a mutation
+  // row would claim a cockpit record that is not written.
   'project_config:check_account_status',
   'project_config:get_account_details',
+  // Refused reads: their cockpit counterparts are reads.
   'project_config:browse_folders',
   'project_config:get_launch_key',
 ];
