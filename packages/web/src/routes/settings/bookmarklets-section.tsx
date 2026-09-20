@@ -19,10 +19,12 @@ export function BookmarkletsSection() {
   // Without this the in-flight catalog renders as the panel's empty state, which tells the
   // user "(no skills yet)" — a claim that is simply false while the fetch is still running.
   if (skillsQuery.isPending) {
+    // The loaded state puts the gutter on the scroll container and the reading measure on the
+    // panel inside it, so the loading state reproduces both — one element cannot carry them.
     return (
-      <p data-slot="bookmarklets-loading" className="p-4 text-[13px] text-soft-foreground md:p-6">
-        Loading bookmarklets…
-      </p>
+      <div data-slot="bookmarklets-loading" className="flex min-h-full flex-1 overflow-y-auto p-list md:p-group">
+        <p className="mx-auto w-full max-w-2xl text-[13px] text-soft-foreground">Loading bookmarklets…</p>
+      </div>
     )
   }
   if (skillsQuery.isError) {
@@ -38,7 +40,7 @@ export function BookmarkletsSection() {
   }
 
   return (
-    <div className="flex min-h-full flex-1 overflow-y-auto px-4 py-5 md:px-7">
+    <div className="flex min-h-full flex-1 overflow-y-auto p-list md:p-group">
       <BookmarkletPanel skills={orderSkills(skillsQuery.data ?? [])} />
     </div>
   )
