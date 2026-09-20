@@ -68,6 +68,55 @@ interface Boot {
   exitCode: number | null | undefined;
 }
 
+interface OutputWait {
+  promise: Promise<RegExpExecArray>;
+  cancel(): void;
+}
+
+/** Resolve from the child output event that carries readiness; the timer is only a failure bound. */
+function waitForOutput(
+  streams: NodeJS.ReadableStream[],
+  read: () => string,
+  pattern: RegExp,
+  description: string,
+): OutputWait {
+  let settled = false;
+  let resolveMatch: (match: RegExpExecArray) => void;
+  let rejectMatch: (error: Error) => void;
+  const promise = new Promise<RegExpExecArray>((resolve, reject) => {
+    resolveMatch = resolve;
+    rejectMatch = reject;
+  });
+  const inspect = () => {
+    const match = pattern.exec(read());
+    if (!settled && match) {
+      settled = true;
+      cleanup();
+      resolveMatch(match);
+    }
+  };
+  const deadline = setTimeout(() => {
+    if (settled) return;
+    settled = true;
+    cleanup();
+    rejectMatch(new Error(`timed out waiting for ${description}`));
+  }, 60_000);
+  const cleanup = () => {
+    clearTimeout(deadline);
+    for (const stream of streams) stream.off('data', inspect);
+  };
+  for (const stream of streams) stream.on('data', inspect);
+  inspect();
+  return {
+    promise,
+    cancel() {
+      if (settled) return;
+      settled = true;
+      cleanup();
+    },
+  };
+}
+
 /** Boot `serve` in `repo` with `home` as its registry, wait for the cockpit line, stop it. */
 async function bootServe(
   repo: string,
@@ -100,15 +149,18 @@ async function bootServe(
   child.stdout.on('data', (chunk: string) => { output += chunk; });
   child.stderr.setEncoding('utf8');
   child.stderr.on('data', (chunk: string) => { output += chunk; });
+  const cockpitReady = waitForOutput(
+    [child.stdout],
+    () => output,
+    COCKPIT_LINE,
+    'serve cockpit readiness line',
+  );
   let exitCode: number | null | undefined;
   const exited = once(child, 'exit').then(([code]) => { exitCode = code as number | null; });
   const reap = () => { child.kill('SIGKILL'); };
   process.once('exit', reap);
   try {
-    const deadline = Date.now() + 60_000;
-    while (!COCKPIT_LINE.test(output) && exitCode === undefined && Date.now() < deadline) {
-      await sleep(50);
-    }
+    await Promise.race([cockpitReady.promise, exited]);
     const printed = COCKPIT_LINE.exec(output);
     const started = START_PORT.exec(output);
     return {
@@ -118,6 +170,7 @@ async function bootServe(
       exitCode,
     };
   } finally {
+    cockpitReady.cancel();
     if (exitCode === undefined) {
       child.kill('SIGTERM');
       const stopped = await Promise.race([exited.then(() => true), sleep(10_000, false)]);

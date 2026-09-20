@@ -59,6 +59,55 @@ interface Boot {
   port: number | undefined;
 }
 
+interface OutputWait {
+  promise: Promise<RegExpExecArray>;
+  cancel(): void;
+}
+
+/** Resolve from the stream event that carries readiness; the timer is only a failure bound. */
+function waitForOutput(
+  streams: NodeJS.ReadableStream[],
+  read: () => string,
+  pattern: RegExp,
+  description: string,
+): OutputWait {
+  let settled = false;
+  let resolveMatch: (match: RegExpExecArray) => void;
+  let rejectMatch: (error: Error) => void;
+  const promise = new Promise<RegExpExecArray>((resolve, reject) => {
+    resolveMatch = resolve;
+    rejectMatch = reject;
+  });
+  const inspect = () => {
+    const match = pattern.exec(read());
+    if (!settled && match) {
+      settled = true;
+      cleanup();
+      resolveMatch(match);
+    }
+  };
+  const deadline = setTimeout(() => {
+    if (settled) return;
+    settled = true;
+    cleanup();
+    rejectMatch(new Error(`timed out waiting for ${description}`));
+  }, 60_000);
+  const cleanup = () => {
+    clearTimeout(deadline);
+    for (const stream of streams) stream.off('data', inspect);
+  };
+  for (const stream of streams) stream.on('data', inspect);
+  inspect();
+  return {
+    promise,
+    cancel() {
+      if (settled) return;
+      settled = true;
+      cleanup();
+    },
+  };
+}
+
 /** Hold an OS-assigned port until the caller releases it. */
 async function heldPort(): Promise<{ port: number; server: Server }> {
   const server = createServer();
@@ -69,7 +118,13 @@ async function heldPort(): Promise<{ port: number; server: Server }> {
 }
 
 /** Boot `serve` with the two streams kept APART, wait for the cockpit line, stop it. */
-async function bootServe(repo: string, home: string, args: string[] = [], port = '0'): Promise<Boot> {
+async function bootServe(
+  repo: string,
+  home: string,
+  args: string[] = [],
+  port = '0',
+  waitForMcp = false,
+): Promise<Boot> {
   const child = spawn(
     process.execPath,
     ['--import', tsxLoader, entry, 'serve', '--no-open', '--repo', repo, '--port', port, ...args],
@@ -92,18 +147,31 @@ async function bootServe(repo: string, home: string, args: string[] = [], port =
   child.stdout.on('data', (chunk: string) => { stdout += chunk; });
   child.stderr.setEncoding('utf8');
   child.stderr.on('data', (chunk: string) => { stderr += chunk; });
+  const cockpitReady = waitForOutput(
+    [child.stdout],
+    () => stdout,
+    COCKPIT_LINE,
+    'serve cockpit readiness line',
+  );
+  const mcpReady = waitForMcp
+    ? waitForOutput(
+        [child.stderr],
+        () => stderr,
+        /event=mcp\.(?:ready|unavailable)\b/,
+        'serve MCP ready or unavailable line',
+      )
+    : undefined;
   let exited = false;
   const done = once(child, 'exit').then(() => { exited = true; });
   const reap = () => { child.kill('SIGKILL'); };
   process.once('exit', reap);
   try {
-    const deadline = Date.now() + 60_000;
-    while (!COCKPIT_LINE.test(stdout) && !exited && Date.now() < deadline) await sleep(50);
-    // Give the asynchronous boot lines (the MCP socket) a moment to land on stderr.
-    await sleep(1_500);
+    await Promise.all([cockpitReady.promise, ...(mcpReady ? [mcpReady.promise] : [])]);
     const printed = COCKPIT_LINE.exec(stdout);
     return { stdout, stderr, port: printed ? Number(printed[1]) : undefined };
   } finally {
+    cockpitReady.cancel();
+    mcpReady?.cancel();
     if (!exited) {
       child.kill('SIGTERM');
       await Promise.race([done, sleep(5_000)]);
@@ -117,7 +185,7 @@ test('serve keeps its stdout contract and puts every new activity line on stderr
   // named break: `activity-on-stdout`
   const repo = await makeRepo('streams-default');
   const home = join(fixtureRoot, 'home-default');
-  const boot = await bootServe(repo, home);
+  const boot = await bootServe(repo, home, [], '0', true);
 
   assert.match(boot.stdout, COCKPIT_LINE, 'the cockpit URL stays on stdout');
   assert.match(boot.stdout, /xezar v\d/, 'the banner stays on stdout');
