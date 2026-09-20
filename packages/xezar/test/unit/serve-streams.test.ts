@@ -64,6 +64,27 @@ interface OutputWait {
   cancel(): void;
 }
 
+interface ExpectedOutput {
+  pattern: RegExp;
+  description: string;
+}
+
+/** Capture stream completion before the child can exit, so negative assertions see every byte. */
+function streamCompleted(stream: NodeJS.ReadableStream): Promise<void> {
+  return new Promise((resolve) => {
+    let completed = false;
+    const finish = () => {
+      if (completed) return;
+      completed = true;
+      stream.off('end', finish);
+      stream.off('close', finish);
+      resolve();
+    };
+    stream.once('end', finish);
+    stream.once('close', finish);
+  });
+}
+
 /** Resolve from the stream event that carries readiness; the timer is only a failure bound. */
 function waitForOutput(
   streams: NodeJS.ReadableStream[],
@@ -123,7 +144,7 @@ async function bootServe(
   home: string,
   args: string[] = [],
   port = '0',
-  waitForMcp = false,
+  expectedStderr: ExpectedOutput[] = [],
 ): Promise<Boot> {
   const child = spawn(
     process.execPath,
@@ -147,45 +168,52 @@ async function bootServe(
   child.stdout.on('data', (chunk: string) => { stdout += chunk; });
   child.stderr.setEncoding('utf8');
   child.stderr.on('data', (chunk: string) => { stderr += chunk; });
+  // Register completion before readiness. A negative assertion must inspect the fully drained
+  // pipe, not a string snapshot taken when the independent stdout pipe happened to become ready.
+  const stdoutCompleted = streamCompleted(child.stdout);
+  const stderrCompleted = streamCompleted(child.stderr);
   const cockpitReady = waitForOutput(
     [child.stdout],
     () => stdout,
     COCKPIT_LINE,
     'serve cockpit readiness line',
   );
-  const mcpReady = waitForMcp
-    ? waitForOutput(
-        [child.stderr],
-        () => stderr,
-        /event=mcp\.(?:ready|unavailable)\b/,
-        'serve MCP ready or unavailable line',
-      )
-    : undefined;
+  const stderrRecords = expectedStderr.map(({ pattern, description }) => waitForOutput(
+    [child.stderr],
+    () => stderr,
+    pattern,
+    description,
+  ));
   let exited = false;
   const done = once(child, 'exit').then(() => { exited = true; });
   const reap = () => { child.kill('SIGKILL'); };
   process.once('exit', reap);
   try {
-    await Promise.all([cockpitReady.promise, ...(mcpReady ? [mcpReady.promise] : [])]);
-    const printed = COCKPIT_LINE.exec(stdout);
-    return { stdout, stderr, port: printed ? Number(printed[1]) : undefined };
+    await Promise.all([cockpitReady.promise, ...stderrRecords.map((record) => record.promise)]);
   } finally {
     cockpitReady.cancel();
-    mcpReady?.cancel();
+    for (const record of stderrRecords) record.cancel();
     if (!exited) {
       child.kill('SIGTERM');
       await Promise.race([done, sleep(5_000)]);
       if (!exited) child.kill('SIGKILL');
     }
+    await done;
+    await Promise.all([stdoutCompleted, stderrCompleted]);
     process.off('exit', reap);
   }
+  const printed = COCKPIT_LINE.exec(stdout);
+  return { stdout, stderr, port: printed ? Number(printed[1]) : undefined };
 }
 
 test('serve keeps its stdout contract and puts every new activity line on stderr', async () => {
   // named break: `activity-on-stdout`
   const repo = await makeRepo('streams-default');
   const home = join(fixtureRoot, 'home-default');
-  const boot = await bootServe(repo, home, [], '0', true);
+  const boot = await bootServe(repo, home, [], '0', [{
+    pattern: /event=mcp\.(?:ready|unavailable)\b/,
+    description: 'serve MCP ready or unavailable line',
+  }]);
 
   assert.match(boot.stdout, COCKPIT_LINE, 'the cockpit URL stays on stdout');
   assert.match(boot.stdout, /xezar v\d/, 'the banner stays on stdout');
@@ -212,7 +240,10 @@ test('off a terminal there is no escape byte, and each event is one logfmt line'
 test('an explicit --output rich off a terminal falls back to plain, and says so once', async () => {
   const repo = await makeRepo('streams-fallback');
   const home = join(fixtureRoot, 'home-fallback');
-  const boot = await bootServe(repo, home, ['--output', 'rich']);
+  const boot = await bootServe(repo, home, ['--output', 'rich'], '0', [{
+    pattern: /event=output\.fallback\b/,
+    description: 'serve output fallback line',
+  }]);
 
   const fallbacks = boot.stderr.split('\n').filter((l) => l.includes('event=output.fallback'));
   assert.equal(fallbacks.length, 1, `expected exactly one fallback line, got ${fallbacks.length}`);
@@ -241,7 +272,10 @@ test('--log-level debug adds the routine diagnostics, still only on stderr', asy
   const held = await heldPort();
   let boot: Boot;
   try {
-    boot = await bootServe(repo, home, ['--log-level', 'debug'], String(held.port));
+    boot = await bootServe(repo, home, ['--log-level', 'debug'], String(held.port), [{
+      pattern: /level=debug .* event=registry\.port\b/,
+      description: 'serve registry port debug line',
+    }]);
   } finally {
     await new Promise<void>((done) => held.server.close(() => done()));
   }

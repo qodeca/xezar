@@ -5146,19 +5146,34 @@ ciw_expect "a green base-branch CI run is observed and exits 0" 0 success "finis
 # 2. RED IS OBSERVED, NOT FATAL — and the known-load-flake question is answered in the record, so
 #    the report step applies the one-rerun rule from a fact rather than from the job list's shape.
 ciw_fixture failure-flake
-ciw_view completed failure '[{"name":"Cockpit browser e2e","conclusion":"failure"},{"name":"Typecheck, unit tests, build, and package","conclusion":"success"}]'
+ciw_view completed failure '[{"name":"MCP per-file coverage","conclusion":"failure"},{"name":"Typecheck, unit tests, build, and package","conclusion":"success"}]'
 printf '1\n' > "$CIW_STUB/responses/watch.exit"
 ciw_expect "a red CI run is recorded as failure and still exits 0 so the report step can adjudicate" \
   0 failure "concluded failure"
 node -e '
   const r = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
-  if (JSON.stringify(r.failedJobs) !== JSON.stringify(["Cockpit browser e2e"])) throw Error("failedJobs " + JSON.stringify(r.failedJobs));
+  if (JSON.stringify(r.failedJobs) !== JSON.stringify(["MCP per-file coverage"])) throw Error("failedJobs " + JSON.stringify(r.failedJobs));
   if (r.failedJobsAreKnownLoadFlakes !== true) throw Error("flake flag " + r.failedJobsAreKnownLoadFlakes);
 ' "$CIW_EVIDENCE/ci-watch/outcome.json" 2>/dev/null \
   && ok "the record names the failed job and marks it a known load flake" \
   || bad "the record names the failed job and marks it a known load flake" "see $CIW_EVIDENCE/ci-watch/outcome.json"
 
-# 2a. THE FAIL-OPEN CONTROL. "every failed job is a known flake" and "nothing failed" are the same
+# 2a. A REPAIRED BROWSER SPEC IS NOT A KNOWN LOAD FLAKE. The jobs API reports only the browser
+#     job, not its inner spec name; removing blanket browser eligibility is what makes a sole
+#     progressive-history failure evidence, in agreement with the leader guide.
+ciw_fixture failure-repaired-browser
+ciw_view completed failure '[{"name":"Cockpit browser e2e","conclusion":"failure"}]'
+ciw_expect "a repaired progressive-history browser failure is recorded as real evidence" \
+  0 failure "concluded failure"
+node -e '
+  const r = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
+  if (JSON.stringify(r.failedJobs) !== JSON.stringify(["Cockpit browser e2e"])) throw Error("failedJobs " + JSON.stringify(r.failedJobs));
+  if (r.failedJobsAreKnownLoadFlakes !== false) throw Error("flake flag " + r.failedJobsAreKnownLoadFlakes);
+' "$CIW_EVIDENCE/ci-watch/outcome.json" 2>/dev/null \
+  && ok "a repaired-spec browser failure is NOT marked a known load flake" \
+  || bad "a repaired-spec browser failure is NOT marked a known load flake" "see $CIW_EVIDENCE/ci-watch/outcome.json"
+
+# 2b. THE FAIL-OPEN CONTROL. "every failed job is a known flake" and "nothing failed" are the same
 #     branch against an empty list, and they must not read the same — a green run must never be
 #     reported as a flake nobody needs to look at.
 ciw_fixture failure-real

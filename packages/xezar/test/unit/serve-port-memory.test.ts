@@ -73,6 +73,22 @@ interface OutputWait {
   cancel(): void;
 }
 
+/** Capture stream completion before the child can exit, so snapshots include every pipe byte. */
+function streamCompleted(stream: NodeJS.ReadableStream): Promise<void> {
+  return new Promise((resolve) => {
+    let completed = false;
+    const finish = () => {
+      if (completed) return;
+      completed = true;
+      stream.off('end', finish);
+      stream.off('close', finish);
+      resolve();
+    };
+    stream.once('end', finish);
+    stream.once('close', finish);
+  });
+}
+
 /** Resolve from the child output event that carries readiness; the timer is only a failure bound. */
 function waitForOutput(
   streams: NodeJS.ReadableStream[],
@@ -123,6 +139,7 @@ async function bootServe(
   home: string,
   args: string[] = [],
   env: NodeJS.ProcessEnv = {},
+  waitForStartPort = true,
 ): Promise<Boot> {
   const child = spawn(
     process.execPath,
@@ -149,28 +166,37 @@ async function bootServe(
   child.stdout.on('data', (chunk: string) => { output += chunk; });
   child.stderr.setEncoding('utf8');
   child.stderr.on('data', (chunk: string) => { output += chunk; });
+  // Register both drain signals before readiness. stdout and stderr are independent pipes, so a
+  // cockpit line can never be treated as evidence that the stderr boot record was collected.
+  const stdoutCompleted = streamCompleted(child.stdout);
+  const stderrCompleted = streamCompleted(child.stderr);
   const cockpitReady = waitForOutput(
     [child.stdout],
     () => output,
     COCKPIT_LINE,
     'serve cockpit readiness line',
   );
+  const startReady = waitForStartPort
+    ? waitForOutput(
+        [child.stderr],
+        () => output,
+        START_PORT,
+        'serve resolved start-port record',
+      )
+    : undefined;
   let exitCode: number | null | undefined;
   const exited = once(child, 'exit').then(([code]) => { exitCode = code as number | null; });
   const reap = () => { child.kill('SIGKILL'); };
   process.once('exit', reap);
   try {
-    await Promise.race([cockpitReady.promise, exited]);
-    const printed = COCKPIT_LINE.exec(output);
-    const started = START_PORT.exec(output);
-    return {
-      output,
-      port: printed ? Number(printed[1]) : undefined,
-      startPort: started ? Number(started[1]) : undefined,
-      exitCode,
-    };
+    const completion = await Promise.race([
+      cockpitReady.promise.then(() => 'cockpit' as const),
+      exited.then(() => 'exit' as const),
+    ]);
+    if (completion === 'cockpit') await startReady?.promise;
   } finally {
     cockpitReady.cancel();
+    startReady?.cancel();
     if (exitCode === undefined) {
       child.kill('SIGTERM');
       const stopped = await Promise.race([exited.then(() => true), sleep(10_000, false)]);
@@ -179,8 +205,18 @@ async function bootServe(
         await exited;
       }
     }
+    await exited;
+    await Promise.all([stdoutCompleted, stderrCompleted]);
     process.off('exit', reap);
   }
+  const printed = COCKPIT_LINE.exec(output);
+  const started = START_PORT.exec(output);
+  return {
+    output,
+    port: printed ? Number(printed[1]) : undefined,
+    startPort: started ? Number(started[1]) : undefined,
+    exitCode,
+  };
 }
 
 /** One fixture: a folder to serve and its own isolated registry home. */
@@ -304,7 +340,7 @@ test('named break `env-over-stored`: a project port beats XEZ_PORT', { timeout: 
 test('--port 0 binds an OS port and is never remembered', { timeout: 180_000 }, async () => {
   const { repo, home } = await fixture('ephemeral');
 
-  const boot = await bootServe(repo, home, ['--port', '0']);
+  const boot = await bootServe(repo, home, ['--port', '0'], {}, false);
 
   assert.ok(boot.port && boot.port > 0, `--port 0 must bind a real port. Output:\n${boot.output}`);
   // "Any free port" is a request for anything. Remembering it would turn the next plain `xez`
@@ -317,7 +353,7 @@ test('--port 0 binds an OS port and is never remembered', { timeout: 180_000 }, 
 test('an invalid value is refused before anything is claimed', { timeout: 120_000 }, async () => {
   const { repo, home } = await fixture('invalid');
 
-  const boot = await bootServe(repo, home, ['--port', '43a1']);
+  const boot = await bootServe(repo, home, ['--port', '43a1'], {}, false);
 
   assert.equal(boot.exitCode, 1, `a bad --port must exit 1. Output:\n${boot.output}`);
   assert.match(boot.output, /--port must be a whole number from 0 to 65535 — got “43a1”/);
@@ -329,7 +365,7 @@ test('an invalid value is refused before anything is claimed', { timeout: 120_00
 test('an invalid XEZ_PORT is refused the same way', { timeout: 120_000 }, async () => {
   const { repo, home } = await fixture('invalid-env');
 
-  const boot = await bootServe(repo, home, [], { XEZ_PORT: '99999' });
+  const boot = await bootServe(repo, home, [], { XEZ_PORT: '99999' }, false);
 
   assert.equal(boot.exitCode, 1, `a bad XEZ_PORT must exit 1. Output:\n${boot.output}`);
   assert.match(boot.output, /XEZ_PORT must be a whole number from 0 to 65535/);
