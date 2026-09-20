@@ -10,22 +10,30 @@ import { describe, expect, it } from 'vitest'
  * `guide-browser.ts`'s semantic locator and contain no CSS or attribute locator outside prose —
  * but nothing committed enforced it, so the rule survived on review attention alone. This guard
  * reads the package's own source and fails on `querySelector`, `getElementById`, `data-testid` or
- * a `data-slot` string outside a comment.
+ * a `data-slot` string outside a comment, and on a CSS-selector-shaped string handed to one of
+ * `AgentBrowser`'s selector methods — the four tokens alone let `#id`, `.class`, `[aria-label=…]`,
+ * `[data-state=…]` and `:nth-child(…)` through.
  *
  * Scope, stated rather than implied: the 16 files #549's rule governs — `guide-*.e2e.ts` and
- * `screenshot-states.e2e.ts`. The suite's ~50 pre-existing specs predate the rule and are not
+ * `screenshot-states.e2e.ts`. The suite's 50 pre-existing specs predate the rule and are not
  * scanned; they use CSS selectors by design and retrofitting them is not this package's work.
+ * Those three counts are asserted against `readdirSync` in the suite below rather than restated
+ * here, the same rule the runtime-ceiling guard applies to the suite's 66 files.
  *
  * A comment is told from code by `codeOnly` below, which blanks `//` and block comments and keeps
  * everything else — string literals included, because a CSS selector is almost always a string,
  * and template-literal `${…}` interpolation, because the suite's own specs build selectors there.
- * Two limits are honest and stated: a locator assembled at runtime from pieces no single line
- * contains is invisible to any source scan, and a `data-slot` reached through an imported helper
- * is out of reach. `capture/scenario-state.ts` is that second case, and it is an explicit,
- * reason-carrying entry in `EXCLUSIONS` rather than a silent skip.
+ * Four limits are honest and stated: a locator assembled at runtime from pieces no single line
+ * contains is invisible to any source scan; a `data-slot` reached through an imported helper is
+ * out of reach; a selector handed to a method this guard does not know (`evaluate`, a helper) is
+ * not seen; and a regex literal whose trailing `//` is read as a comment start blinds the rest of
+ * its own line. `capture/scenario-state.ts` is the imported-helper case, and it is an explicit,
+ * reason-carrying entry in `EXCLUSIONS` with an upper bound on its `data-slot` count rather than a
+ * silent skip.
  *
  * The empty-input branch is pinned: a glob that matches no files FAILS the test instead of passing
- * vacuously (AGENTS.md, "A fail-open helper needs a populated-input guarantee, or it lies").
+ * vacuously (AGENTS.md, "A fail-open helper needs a populated-input guarantee, or it lies"). So is
+ * a glob narrowed to a single file.
  *
  * Lives in `src/` for the same reason as `e2e-file-parallelism.test.ts`: the web unit project
  * collects `src/**` only, so this runs on the fast gate (`npm test`) and never in `ui-e2e` —
@@ -34,6 +42,7 @@ import { describe, expect, it } from 'vitest'
 
 const repoRoot = resolve(import.meta.dirname, '../../..')
 const e2eDir = resolve(repoRoot, 'packages/web/e2e')
+const AGENT_BROWSER = resolve(repoRoot, 'docs/testing/agent-browser.md')
 
 /** The browser-test package's own files: the rule's scope, and nothing wider. */
 export function packageSpecFiles(dir: string = e2eDir): string[] {
@@ -42,11 +51,31 @@ export function packageSpecFiles(dir: string = e2eDir): string[] {
     .sort()
 }
 
+/** Every `*.e2e.ts` in the suite, the wider set this package's rule does not cover. */
+export function suiteSpecFiles(dir: string = e2eDir): string[] {
+  return readdirSync(dir)
+    .filter((name) => name.endsWith('.e2e.ts'))
+    .sort()
+}
+
+/** The `guide-*.e2e.ts` files, the package's bulk. */
+export function guideSpecFiles(dir: string = e2eDir): string[] {
+  return readdirSync(dir)
+    .filter((name) => /^guide-.*\.e2e\.ts$/.test(name))
+    .sort()
+}
+
 export interface Exclusion {
   /** Path relative to `packages/web/e2e/`. */
   file: string
   /** Why this file may name markup the rule forbids everywhere else. */
   reason: string
+  /**
+   * The most `data-slot` occurrences this file may carry. Without it the exclusion is open-ended
+   * and a NEW locator added to an excluded file is invisible; with it, one more occurrence than
+   * this fails the suite.
+   */
+  maxDataSlots: number
 }
 
 /**
@@ -57,6 +86,7 @@ export interface Exclusion {
 export const EXCLUSIONS: readonly Exclusion[] = [
   {
     file: 'capture/scenario-state.ts',
+    maxDataSlots: 61,
     reason:
       'The pre-existing `data-slot` waits/clicks the screenshot scenarios run are the DOM-ready ' +
       'steps the 0.15.0 capture plan has always used to know a page settled — relocated, not ' +
@@ -72,6 +102,15 @@ export const FORBIDDEN: ReadonlyArray<{ name: string; pattern: RegExp }> = [
   { name: 'data-testid', pattern: /data-testid/ },
   { name: 'data-slot', pattern: /data-slot/ },
 ]
+
+/**
+ * The second net: a CSS-selector-shaped string handed to one of `AgentBrowser`'s selector-taking
+ * methods (`click`, `fill`, `hover`, `text`, `isVisible`, `count`). The four tokens above miss
+ * every selector that is not one of them — `#id`, `.class`, `[aria-label=…]`, `[data-state=…]` and
+ * `:nth-child(…)` all pass — so this closes a hole in the rule rather than widening it.
+ */
+export const CSS_METHOD_CALL =
+  /\.(?:text|isVisible|count|fill|click|hover)\s*\(\s*['"`]\s*(?:#|\.|\[|:[\w-]+\()/
 
 /**
  * Blank out every comment, keep everything else. Comments are `//` to end of line and `/* … *​/`;
@@ -174,6 +213,8 @@ export function violationsIn(source: string): string[] {
     const matches = code.match(new RegExp(pattern.source, 'g'))
     if (matches && matches.length > 0) found.push(`${name} ×${matches.length}`)
   }
+  const cssCalls = code.match(new RegExp(CSS_METHOD_CALL.source, 'g'))
+  if (cssCalls && cssCalls.length > 0) found.push(`css-selector method call ×${cssCalls.length}`)
   return found
 }
 
@@ -199,7 +240,22 @@ export function assertLocatorRule(files: ReadonlyArray<{ rel: string; source: st
 
 describe('the browser-test package uses semantic locators only', () => {
   it('scans a non-empty package, so the clean result below is not vacuous', () => {
-    expect(packageSpecFiles().length).toBeGreaterThan(0)
+    // A floor, not `> 0`: a glob narrowed to a single file is the same fail-open shape as an empty
+    // one, and would leave the clean result below vacuous.
+    expect(packageSpecFiles().length).toBeGreaterThan(1)
+  })
+
+  it('states the package and out-of-scope counts the directory actually holds', () => {
+    const guides = guideSpecFiles().length
+    const pkg = packageSpecFiles().length
+    const outside = suiteSpecFiles().length - pkg
+    const doc = readFileSync(AGENT_BROWSER, 'utf8')
+
+    // Derived from `readdirSync`, never restated: a narrowed `packageSpecFiles()` glob changes
+    // `pkg` and fails the middle assertion rather than silently shrinking the scan.
+    expect(doc).toMatch(new RegExp(`the ${guides} \`guide-\\*\\.e2e\\.ts\` files`))
+    expect(doc).toMatch(new RegExp(`scans the package's ${pkg} files`))
+    expect(doc).toMatch(new RegExp(`The ${outside} pre-existing specs`))
   })
 
   it('no package spec names a CSS or attribute locator outside a comment', () => {
@@ -224,6 +280,28 @@ describe('the browser-test package uses semantic locators only', () => {
         },
       ]),
     ).toThrow(/guide-01-getting-started\.e2e\.ts: data-slot ×1/)
+  })
+
+  it('goes red on a CSS selector the four tokens miss', () => {
+    // `#id`, `.class`, `[aria-label=…]`, `[data-state=…]` and `:nth-child(…)` are all selectors,
+    // and none of them contains `querySelector`, `getElementById`, `data-testid` or `data-slot`.
+    expect(violationsIn("  await browser.click('#composer')\n")).toEqual([
+      'css-selector method call ×1',
+    ])
+    expect(violationsIn("  await browser.isVisible('.composer')\n")).toEqual([
+      'css-selector method call ×1',
+    ])
+    expect(violationsIn("  await browser.fill('[aria-label=\"Prompt\"]', 'x')\n")).toEqual([
+      'css-selector method call ×1',
+    ])
+    expect(violationsIn("  await browser.click('[data-state=\"open\"]')\n")).toEqual([
+      'css-selector method call ×1',
+    ])
+    expect(violationsIn("  await browser.hover(':nth-child(2)')\n")).toEqual([
+      'css-selector method call ×1',
+    ])
+    // A semantic locator on the same method is not a selector.
+    expect(violationsIn("  await browser.click('Composer')\n")).toEqual([])
   })
 
   it('tells a comment from code', () => {
@@ -251,6 +329,16 @@ describe('the browser-test package uses semantic locators only', () => {
     for (const exclusion of EXCLUSIONS) {
       expect(existsSync(resolve(e2eDir, exclusion.file)), exclusion.file).toBe(true)
       expect(exclusion.reason.length, exclusion.file).toBeGreaterThan(80)
+    }
+  })
+
+  it('bounds every exclusion, so a new locator there is visible', () => {
+    for (const exclusion of EXCLUSIONS) {
+      const source = readFileSync(resolve(e2eDir, exclusion.file), 'utf8')
+      const dataSlots = (source.match(/data-slot/g) ?? []).length
+      expect(dataSlots, `${exclusion.file}: data-slot occurrences`).toBeLessThanOrEqual(
+        exclusion.maxDataSlots,
+      )
     }
   })
 

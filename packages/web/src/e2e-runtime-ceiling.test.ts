@@ -59,6 +59,27 @@ export function documentedCounts(text: string, pattern: RegExp): number[] {
 }
 
 /**
+ * One top-level job's block in `ci.yml`: from its own `\n  <job>:\n` key to the next top-level job
+ * key, and nothing past it. The CI bound is asserted INSIDE this slice and nowhere else.
+ *
+ * The assertion this replaced — `ci.toMatch(/ui-e2e:[\s\S]*?timeout-minutes: 30/)` — was lazy and
+ * unanchored to the job. `ui-e2e` sits at `ci.yml:163`; the NEXT job (`xezar-infra-fixtures`)
+ * carries its own `timeout-minutes: 30`. Widening `ui-e2e`'s own bound to 45 on line 174 therefore
+ * stayed green: the regex spilled into its neighbour and found the neighbour's 30. The test named
+ * the one thing the suite's stability rule forbids and gave false assurance it was held.
+ */
+export function ciJobBlock(ci: string, job: string): string {
+  const key = `\n  ${job}:\n`
+  const start = ci.indexOf(key)
+  if (start === -1) {
+    throw new Error(`e2e-runtime-ceiling: ci.yml has no top-level "${job}:" job`)
+  }
+  const body = ci.slice(start + 1)
+  const next = body.search(/\n  [a-z][\w-]*:\n/)
+  return next === -1 ? body : body.slice(0, next)
+}
+
+/**
  * Throw unless every documented count equals the real one. Exported with injectable inputs so the
  * empty-input and stale-count branches are pinned directly rather than through the tree.
  */
@@ -111,7 +132,22 @@ describe('the browser suite records its runtime ceilings', () => {
   it("leaves the CI job's 30-minute bound in place", () => {
     const ci = readFileSync(CI, 'utf8')
 
-    expect(ci).toMatch(/ui-e2e:[\s\S]*?timeout-minutes: 30/)
+    expect(ciJobBlock(ci, 'ui-e2e')).toMatch(/timeout-minutes: 30/)
+  })
+
+  it('slices one job only, so a neighbouring job cannot satisfy the bound', () => {
+    const synthetic =
+      'jobs:\n  ui-e2e:\n    timeout-minutes: 30\n  xezar-infra-fixtures:\n    timeout-minutes: 45\n'
+
+    expect(ciJobBlock(synthetic, 'ui-e2e')).toMatch(/timeout-minutes: 30/)
+    expect(ciJobBlock(synthetic, 'ui-e2e')).not.toMatch(/timeout-minutes: 45/)
+    expect(() => ciJobBlock(synthetic, 'no-such-job')).toThrow(/no top-level "no-such-job:" job/)
+  })
+
+  it('states the amended stability rule', () => {
+    const doc = readFileSync(AGENT_BROWSER, 'utf8')
+
+    expect(doc).toMatch(/Never a retry, a `\.retry`, a\s+sleep, a widened timeout, or a register/)
   })
 
   it('every documented file count equals the directory', () => {
