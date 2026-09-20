@@ -346,8 +346,197 @@ expect_fail "a marked block whose path escapes the repository fails" \
   "source path escapes repository" node "$FQ" "$fq_root"
 rm "$fq_root/ESCAPE.md"
 
+printf '<!-- from: /etc/hosts -->\n```\nanything\n```\n' > "$fq_root/ABSOLUTE.md"
+expect_fail "a marked block whose source path is absolute fails" \
+  "source path escapes repository" node "$FQ" "$fq_root"
+rm "$fq_root/ABSOLUTE.md"
+
+mkdir "$fq_root/source-directory"
+printf '<!-- from: source-directory -->\n```\nanything\n```\n' > "$fq_root/DIRECTORY.md"
+expect_fail "a marked block whose source is not a file fails" \
+  "source source-directory is not a readable file" node "$FQ" "$fq_root"
+rm "$fq_root/DIRECTORY.md"
+
+printf 'outside\n' > "$WORK/fenced-quotes-outside.txt"
+ln -s "$WORK/fenced-quotes-outside.txt" "$fq_root/outside-link.txt"
+printf '<!-- from: outside-link.txt -->\n```\noutside\n```\n' > "$fq_root/SYMLINK.md"
+expect_fail "a source symlink that resolves outside the repository fails" \
+  "source path resolves outside repository" node "$FQ" "$fq_root"
+rm "$fq_root/SYMLINK.md"
+
+printf '<!-- from: source.txt#L2-L9 -->\n```\nbeta\n```\n' > "$fq_root/RANGE.md"
+expect_fail "a marked line range outside the source fails" \
+  "source range is outside source.txt: L2-L9" node "$FQ" "$fq_root"
+rm "$fq_root/RANGE.md"
+
+printf '<!-- from: source.txt -->\nprose, not a fence\n' > "$fq_root/NO-FENCE.md"
+expect_fail "a marker without an immediately following fence fails" \
+  "marker must be immediately followed by a fenced block" node "$FQ" "$fq_root"
+rm "$fq_root/NO-FENCE.md"
+
+printf '<!-- from: source.txt -->\n```\nalpha\nbeta\n' > "$fq_root/UNCLOSED.md"
+expect_fail "an unclosed marked fence fails" \
+  "marked fenced block is not closed" node "$FQ" "$fq_root"
+rm "$fq_root/UNCLOSED.md"
+
+printf '<!-- from: source.txt -->\n ```\n alpha\n beta\n ```\n' > "$fq_root/INDENTED.md"
+expect_fail "an indented marked fence is refused instead of silently accepted" \
+  "marked fenced block must not be indented" node "$FQ" "$fq_root"
+rm "$fq_root/INDENTED.md"
+
+printf 'no trailing newline' > "$fq_root/no-final-newline.txt"
+printf '<!-- from: no-final-newline.txt -->\n```\nno trailing newline\n```\n' > "$fq_root/NO-NEWLINE.md"
+expect_ok "a whole source with no trailing newline can be quoted" node "$FQ" "$fq_root"
+rm "$fq_root/NO-NEWLINE.md"
+
+printf 'case-sensitive\n' > "$fq_root/CaseSource.txt"
+git -C "$fq_root" -c user.email=t@t -c user.name=t add CaseSource.txt
+git -C "$fq_root" -c user.email=t@t -c user.name=t commit -q -m "track case source"
+printf '<!-- from: casesource.txt -->\n```\ncase-sensitive\n```\n' > "$fq_root/WRONG-CASE.md"
+expect_fail "a wrong-case source path fails against the git index" \
+  "source path case does not match git index" node "$FQ" "$fq_root"
+rm "$fq_root/WRONG-CASE.md"
+
+mkdir -p "$fq_root/docs/node_modules/pkg" "$fq_root/docs/.local/state" \
+  "$fq_root/designs/example/changelog.d"
+printf '<!-- from: absent.txt -->\n```\nwould fail if scanned\n```\n' \
+  > "$fq_root/docs/node_modules/pkg/ignored.md"
+cp "$fq_root/docs/node_modules/pkg/ignored.md" "$fq_root/docs/.local/state/ignored.md"
+cp "$fq_root/docs/node_modules/pkg/ignored.md" "$fq_root/designs/example/changelog.d/README.md"
+expect_ok "nested .local, node_modules and changelog.d Markdown is explicitly excluded" \
+  node "$FQ" "$fq_root"
+
 printf '````text\n<!-- from: absent-inside-example.txt -->\n```\nnot source bytes\n```\n````\n' > "$fq_root/docs/unmarked.md"
 expect_ok "an unmarked fenced block, including marker-like example text, is ignored" node "$FQ" "$fq_root"
+
+# --- 1b. Allowlisted documented output (#675) -----------------------------------------------
+printf '\n-- documented output --\n'
+DO="$SCRIPT_DIR/documented-output.mjs"
+do_root="$(make_fixture documented-output)"
+mkdir -p "$do_root/docs"
+cat > "$do_root/docs/output.md" <<'EOF'
+<!-- documented-output:leader-context -->
+```json
+{
+  "hookSpecificOutput": {
+    "hookEventName": "SessionStart",
+    "additionalContext": "fixture-dependent"
+  }
+}
+```
+EOF
+git -C "$do_root" -c user.email=t@t -c user.name=t add docs/output.md
+git -C "$do_root" -c user.email=t@t -c user.name=t commit -q -m "document output"
+expect_ok "an allowlisted script's documented JSON keys match its isolated fixture output" \
+  node "$DO" "$do_root"
+
+mv "$do_root/docs/output.md" "$do_root/output.backup"
+expect_fail "a tracked Markdown file missing from the working tree fails with a named reason" \
+  "docs/output.md: cannot be read:" node "$DO" "$do_root"
+mv "$do_root/output.backup" "$do_root/docs/output.md"
+
+cat > "$do_root/docs/output.md" <<'EOF'
+<!-- documented-output:unlisted -->
+```json
+{"anything": true}
+```
+EOF
+cat > "$do_root/.xezar/checks/unlisted.sh" <<'EOF'
+#!/usr/bin/env bash
+touch "${DO_UNLISTED_SENTINEL:?}"
+printf '{"anything":true}\n'
+EOF
+export DO_UNLISTED_SENTINEL="$do_root/unlisted-ran"
+expect_fail "an unknown script id fails without executing an unlisted script" \
+  "unknown script id: unlisted" node "$DO" "$do_root"
+if [ ! -e "$DO_UNLISTED_SENTINEL" ]; then
+  ok "BREAK-DO-UNLISTED-RUNS: unknown marker text is never executed"
+else
+  bad "BREAK-DO-UNLISTED-RUNS: unknown marker text is never executed" \
+    "the unlisted script created its sentinel"
+  rm -f "$DO_UNLISTED_SENTINEL"
+fi
+
+cat > "$do_root/docs/output.md" <<'EOF'
+<!-- documented-output:.xezar/checks/leader-context.sh -->
+```json
+{"anything": true}
+```
+EOF
+expect_fail "a documented-output marker naming a path fails" \
+  "marker names a path, not a script id" node "$DO" "$do_root"
+
+cat > "$do_root/docs/output.md" <<'EOF'
+<!-- documented-output:bash leader-context.sh -->
+```json
+{"anything": true}
+```
+EOF
+expect_fail "a documented-output marker naming a command fails" \
+  "marker names a command, not a script id" node "$DO" "$do_root"
+
+cat > "$do_root/docs/output.md" <<'EOF'
+<!-- documented-output: -->
+EOF
+expect_fail "an empty documented-output marker fails instead of becoming a no-op" \
+  "empty marker" node "$DO" "$do_root"
+
+cat > "$do_root/docs/output.md" <<'EOF'
+<!-- documented-output:leader-context -->
+EOF
+expect_fail "a documented-output marker with nothing after it fails instead of skipping" \
+  "marker must be immediately followed by a JSON fence" node "$DO" "$do_root"
+
+cat > "$do_root/docs/output.md" <<'EOF'
+<!-- documented-output:unlisted --> trailing text is inert
+<!-- documented-output:unlisted
+-->
+EOF
+expect_ok "documented-output marker lookalikes with trailing text or a line break are inert" \
+  node "$DO" "$do_root"
+
+cat > "$do_root/docs/output.md" <<'EOF'
+<!-- documented-output:leader-context -->
+```json
+{"wrongKey": true}
+```
+EOF
+expect_fail "BREAK-DO-MISMATCH-PASSES: a documented JSON key absent from output fails" \
+  "documented JSON key is not printed: wrongKey" node "$DO" "$do_root"
+
+cp "$do_root/.xezar/checks/documented-output.allowlist.json" "$do_root/allowlist.backup"
+node -e '
+  const fs = require("node:fs");
+  const file = process.argv[1];
+  const rows = JSON.parse(fs.readFileSync(file, "utf8"));
+  rows[0].script = ".xezar/checks/absent.sh";
+  fs.writeFileSync(file, `${JSON.stringify(rows, null, 2)}\n`);
+' "$do_root/.xezar/checks/documented-output.allowlist.json"
+cat > "$do_root/docs/output.md" <<'EOF'
+<!-- documented-output:leader-context -->
+```json
+{"hookSpecificOutput": true}
+```
+EOF
+expect_fail "a documented-output fixture setup failure fails closed with its named reason" \
+  "fixture setup failure for leader-context" node "$DO" "$do_root"
+mv "$do_root/allowlist.backup" "$do_root/.xezar/checks/documented-output.allowlist.json"
+
+mkdir -p "$do_root/docs/node_modules/pkg" "$do_root/docs/.local/state" "$do_root/changelog.d"
+printf '<!-- documented-output:unlisted -->\n```json\n{"anything":true}\n```\n' \
+  > "$do_root/docs/node_modules/pkg/ignored.md"
+cp "$do_root/docs/node_modules/pkg/ignored.md" "$do_root/docs/.local/state/ignored.md"
+cp "$do_root/docs/node_modules/pkg/ignored.md" "$do_root/changelog.d/ignored.md"
+git -C "$do_root" -c user.email=t@t -c user.name=t add -f \
+  docs/node_modules/pkg/ignored.md docs/.local/state/ignored.md changelog.d/ignored.md
+git -C "$do_root" -c user.email=t@t -c user.name=t commit -q -m "track excluded markdown"
+cat > "$do_root/docs/output.md" <<'EOF'
+ ```text
+ <!-- documented-output:unlisted -->
+ ```
+EOF
+expect_ok "excluded Markdown and markers inside an ordinary indented fence are ignored" \
+  node "$DO" "$do_root"
 
 # Each of these breaks the catalog in one specific way that Xezar itself would NOT report,
 # because its step schema strips unknown keys instead of rejecting them.
@@ -2404,6 +2593,17 @@ expect_ok "a changed trust boundary resolves the stage" scan_json "$sw" "$WORK/s
   || bad "and does not turn the sealed headline into unknown" "status=$(scan_status "$WORK/scan-trust.json" status)"
 [ "$(scan_status "$WORK/scan-trust.json" reviewerRequired)" = "true" ] && ok "and still records that a reviewer is required" \
   || bad "and still records that a reviewer is required" "reviewerRequired=$(scan_status "$WORK/scan-trust.json" reviewerRequired)"
+
+# Adding an allowlist row authorizes another executable inside repository gate 8. That exact file
+# is therefore a named trust boundary, not merely code-shaped input to the generic classification.
+sw="$(scan_fixture scan-documented-output-allowlist .xezar/checks/documented-output.allowlist.json \
+  '[{"id":"fixture","script":".xezar/checks/fixture.sh","fixture":"fixture","expectedOutputProducer":"fixture"}]')"
+expect_ok "a documented-output allowlist change resolves the security stage" \
+  scan_json "$sw" "$WORK/scan-documented-output-allowlist.json"
+[ "$(scan_status "$WORK/scan-documented-output-allowlist.json" reviewerRequired)" = "true" ] \
+  && ok "and the documented-output allowlist requires a reviewer" \
+  || bad "and the documented-output allowlist requires a reviewer" \
+    "reviewerRequired=$(scan_status "$WORK/scan-documented-output-allowlist.json" reviewerRequired)"
 
 # The #156 rule as a check rather than a paragraph: a kill by command-line pattern in an
 # executable file is a finding, and the same text in a comment is not.

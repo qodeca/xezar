@@ -25,3 +25,5 @@ leader-guide.md – the project leader's own contract: who the leader is, sessio
 leader-context-loading.md – the committed leader guide and the SessionStart hook that reloads it, the guard that keeps it out of task agents, and the checklist for installing it in a new project
 
 fenced-quotes.md – the source marker for byte-checked fenced quotes and the maintained Markdown surfaces the repository check scans
+
+documented-output.md – the allowlisted script-output marker, isolated fixtures and fail-closed trust boundary

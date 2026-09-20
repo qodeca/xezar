@@ -8,10 +8,12 @@ discussion. Put a source marker immediately before such a fenced block:
     exact file bytes
     ```
 
-`path/to/file` is relative to the repository root. The block content, including its final newline,
-must byte-match the file. An absolute path, a `..` segment, a path that resolves outside the
-repository, or a missing file fails the repository check. Missing sources never skip: the marker
-exists specifically to catch a quote copied from a file that is absent on the current branch.
+`path/to/file` is relative to the repository root and must use the path's exact case from the Git
+index. The block content must byte-match the file. A fence necessarily puts a newline before its
+closing delimiter, so that one final newline is tolerated when the source itself has none. An
+absolute path, a `..` segment, a wrong-case path, a path that resolves outside the repository, or a
+missing file fails the repository check. Missing sources never skip: the marker exists specifically
+to catch a quote copied from a file that is absent on the current branch.
 
 For a focused excerpt, append an inclusive line range:
 
@@ -20,13 +22,18 @@ For a focused excerpt, append an inclusive line range:
 The selected source lines retain their line endings and are compared byte for byte. The start must
 not exceed the end, and both lines must exist.
 
-The marker is optional. Unmarked fences remain ordinary examples and are not compared. Markers
-inside another fenced block are also ordinary example text. Opening and closing fences may use
-three or more backticks or tildes; a closing fence must use the same character and at least the
-opening length.
+The marker is optional. Unmarked fences remain ordinary examples and are not compared. A marker
+without an immediately following fence fails, as does a marked fence that is not closed. Markers
+inside another fenced block are ordinary example text. A marker indented four or more spaces is
+also ordinary example text and is therefore a deliberate silent no-op; use no more than three
+leading spaces when the quote must be checked. The marked fence itself must not be indented.
+Opening and closing fences may use three or more backticks or tildes; a closing fence must use the
+same character and at least the opening length.
 
 The check scans maintained Markdown under `docs/` and `.xezar/docs/`, root `*.md`, and
-`designs/**/README.md`. It does not scan `.local/`, `node_modules/`, or `changelog.d/`.
+`designs/**/README.md`. It explicitly excludes every `.local/`, `node_modules/`, and `changelog.d/`
+directory encountered inside those surfaces rather than relying on their usual repository
+locations to keep them out of the walk.
 
 This excerpt is checked against the task-agent guard in the maintained hook script:
 
