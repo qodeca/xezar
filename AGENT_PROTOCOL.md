@@ -583,6 +583,12 @@ To be first-class:
    and Settings → Agents. Keep additive
    so old `runs.json` records still parse (the `runner` enum keeps `claude-cli`
    parseable — follow that precedent).
+   Two of those places are **resume policy**, and both are total `Record<RunnerId, boolean>`
+   maps in `packages/xezar/src/workflows/run.ts` precisely so a fifth id is a compile error
+   rather than a default (#676, #732): `BACKENDS_WITHOUT_RESUME` — does the runner actually
+   honour `spec.resume`, or does it always open a new conversation? — and
+   `BACKENDS_WITH_CUMULATIVE_TOKENS` — is the `token-usage` figure this EXECUTION's own, or the
+   session's running total? Answering the second one wrong double-bills a resumed step.
 9. **Model selection** — accept `provider/model` where relevant, and never silently
    drop or substitute a model. A backend with no default provider gets no
    `defaultProvider` in `BACKEND_MODEL_MAP` (`model-identity.ts`), so a bare id

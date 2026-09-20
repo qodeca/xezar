@@ -362,7 +362,8 @@ if (n <= ${failures}) { console.log('GATE-RED-' + n + ' the failing gate output'
       expect(runner.specs[2]?.userPrompt).toContain(TASK);
       expect(runner.specs[2]?.userPrompt).toContain('GATE-RED-1 the failing gate output');
       expect(notes.some(message =>
-        message.includes('refused the recorded session') && message.includes('No conversation found'))).toBe(true);
+        message.includes('the resumed turn ended before the model produced anything')
+        && message.includes('No conversation found'))).toBe(true);
       // The fall-back is a second backend SESSION, and `UiEventSink` latches `ended` — reusing one
       // sink for both would drop the fresh execution's whole v2 stream, its own close included.
       // Three closes on the author step is what proves the second sink exists: the original
@@ -401,6 +402,150 @@ if (n <= ${failures}) { console.log('GATE-RED-' + n + ' the failing gate output'
       expect(runner.specs[1]?.resume).toBe(true);
       // 1 500, the thread's own total — never 1 000 + 1 500.
       expect(store.getRun(run.id)?.steps.find(s => s.id === 'author')?.tokensUsed).toBe(1_500);
+    } finally {
+      runner.restore();
+    }
+  }, 30_000);
+
+  /**
+   * A clock only `run.ts` reads. `Date.now()` is shifted; `new Date()` — which is what stamps a
+   * step's `startedAt` — is not, so the shift IS the elapsed time of the execution under test and
+   * no test ever waits for a real minute. Restored by the suite's `vi.restoreAllMocks()`.
+   */
+  function shiftableClock() {
+    const real = Date.now;
+    let offset = 0;
+    vi.spyOn(Date, 'now').mockImplementation(() => real.call(Date) + offset);
+    return { advance: (ms: number) => { offset += ms; } };
+  }
+
+  /**
+   * BREAK-732-A-WORDING (#732 Minor A). The fall-back branch tests `outcome !== null &&
+   * !sawActivity`, never the KIND of failure, so every no-activity end of the resumed turn used
+   * to be announced as "the backend refused the recorded session" — including the reviewer's Q5
+   * probe, a turn that ended cleanly having said nothing, and a usage limit, neither of which is
+   * a refusal. The branch is deliberately unchanged (it is the recovery that makes those cases
+   * end well); only the sentence is, and it now states what was observed rather than a cause it
+   * cannot know.
+   */
+  it.each([
+    {
+      cause: 'a conversation the backend has forgotten',
+      turn: { error: 'No conversation found with session ID: gone' } as ScriptedTurn,
+      reason: 'No conversation found with session ID: gone',
+    },
+    {
+      cause: 'a usage limit on the resumed turn',
+      turn: { error: 'Claude usage limit reached; resets 11:50am' } as ScriptedTurn,
+      reason: 'Claude usage limit reached; resets 11:50am',
+    },
+    {
+      // Probe Q5 of the re-check: the resumed turn ends cleanly having produced no text at all.
+      cause: 'a turn that ended cleanly having produced nothing',
+      turn: { chunks: [] } as ScriptedTurn,
+      reason: 'without the XEZ:DONE completion marker',
+    },
+  ])('names what it observed, not a refusal it cannot know: $cause', async ({ turn, reason }) => {
+    const { store, manager, runner, workflow } = cheapFixture(1, 3, [{}, turn, {}]);
+    const notes: string[] = [];
+    try {
+      const run = manager.startRun(workflow, { task: TASK, worktree: false });
+      await settled(store, run.id);
+      for (const event of store.readEvents(run.id)) {
+        if ((event as { type?: string }).type === 'note') notes.push(String((event as { message?: string }).message ?? ''));
+      }
+      // Unchanged: the fall-back still happens, inside the same return, and the run ends well.
+      expect(store.getRun(run.id)?.status).toBe('done');
+      expect(runner.specs).toHaveLength(3);
+      expect(runner.specs.map(s => s.resume === true)).toEqual([false, true, false]);
+      expect(notes.some(message =>
+        message.includes('the resumed turn ended before the model produced anything')
+        && message.includes(reason))).toBe(true);
+      // And never the claim the branch cannot support.
+      expect(notes.some(message => message.includes('refused the recorded session'))).toBe(false);
+    } finally {
+      runner.restore();
+    }
+  }, 30_000);
+
+  /**
+   * BREAK-732-B-DOUBLE-CLOCK (#732 Minor B). A resumed turn that hangs and is killed by its own
+   * wall clock used to fall back to a fresh execution carrying the FULL `stepTimeoutMs` again —
+   * 30 minutes after 30 minutes for one return — while `progress.deadlineAt` was still computed
+   * from the step's original `startedAt` and so pointed at an instant the second execution was
+   * allowed to run straight past. The fall-back now gets what is LEFT of the step's clock, which
+   * is also what makes the deadline true again.
+   */
+  it('the fall-back execution gets what is left of the step clock, not a second full one', async () => {
+    const clock = shiftableClock();
+    const observed: Array<{ now: number; deadlineAt: string | null | undefined }> = [];
+    const context: { store?: RunStore; runId?: string } = {};
+    const readProgress = () => {
+      const step = context.store?.getRun(context.runId ?? '')?.steps.find(s => s.id === 'author');
+      observed.push({ now: Date.now(), deadlineAt: step?.progress?.deadlineAt });
+    };
+    const { store, manager, runner, workflow } = cheapFixture(
+      1,
+      3,
+      [
+        {},
+        // The resumed turn burns 20 of the step's 30 minutes and is killed by its own deadline.
+        { error: 'claude CLI timed out after 30m and was killed', before: () => clock.advance(20 * 60_000) },
+        { before: readProgress },
+      ],
+      { timeout: '30m' },
+    );
+    context.store = store;
+    try {
+      const run = manager.startRun(workflow, { task: TASK, worktree: false });
+      context.runId = run.id;
+      await settled(store, run.id);
+      expect(store.getRun(run.id)?.status).toBe('done');
+      expect(runner.specs).toHaveLength(3);
+      // Unchanged: the step's own `timeout` still governs both the first execution and the
+      // resumed repair turn, exactly as #676 shipped it.
+      expect(runner.specs[0]?.timeoutMs).toBe(30 * 60_000);
+      expect(runner.specs[1]?.timeoutMs).toBe(30 * 60_000);
+      // The fall-back is bounded by the remainder — about ten minutes, never another thirty.
+      const remaining = runner.specs[2]?.timeoutMs ?? 0;
+      expect(remaining).toBeGreaterThan(0);
+      expect(remaining).toBeLessThanOrEqual(10 * 60_000);
+      expect(remaining).toBeGreaterThan(9 * 60_000);
+      // And the advertised deadline is the instant that budget actually runs out.
+      const [progress] = observed;
+      expect(progress?.deadlineAt).toBeTruthy();
+      expect(Date.parse(String(progress?.deadlineAt)) - (progress?.now ?? 0))
+        .toBeGreaterThan(remaining - 5_000);
+      expect(Date.parse(String(progress?.deadlineAt)) - (progress?.now ?? 0))
+        .toBeLessThanOrEqual(remaining + 5_000);
+    } finally {
+      runner.restore();
+    }
+  }, 30_000);
+
+  /** BREAK-732-B-DOUBLE-CLOCK, the other half: a resumed turn that spent the WHOLE step clock has
+   *  nothing left to lend a fresh execution, so the return ends on the failure it has instead of
+   *  starting a second execution that would be over its deadline before it spoke. */
+  it('does not start a fall-back execution when the step clock is already spent', async () => {
+    const clock = shiftableClock();
+    const { store, manager, runner, workflow } = cheapFixture(
+      1,
+      3,
+      [{}, { error: 'claude CLI timed out after 30m and was killed', before: () => clock.advance(31 * 60_000) }, {}],
+      { timeout: '30m' },
+    );
+    const notes: string[] = [];
+    try {
+      const run = manager.startRun(workflow, { task: TASK, worktree: false });
+      await settled(store, run.id);
+      for (const event of store.readEvents(run.id)) {
+        if ((event as { type?: string }).type === 'note') notes.push(String((event as { message?: string }).message ?? ''));
+      }
+      expect(runner.specs).toHaveLength(2);
+      expect(store.getRun(run.id)?.status).toBe('failed');
+      expect(notes.some(message =>
+        message.includes('the resumed turn ended before the model produced anything')
+        && message.includes('no time is left on this step\'s wall clock'))).toBe(true);
     } finally {
       runner.restore();
     }
