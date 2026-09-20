@@ -4,7 +4,7 @@
 > supersedes the planned “to be added” fields; original `path:line` observations remain at `9fdcf0e`.
 
 Status: **field record; partly implemented by the `read_results_evidence` MCP tool** (`packages/xezar/src/mcp/tools/results-evidence.ts`, #95). Date: 2026-09-10; status updated 2026-09-11.
-Audience: engineering. Baseline revision: `9fdcf0e878999783db6c2a69dec93a7d00ccea44`.
+Audience: engineering. Baseline revision: `9fdcf0e878999783db6c2a69dec93a7d00ccea44`; the `path:line` anchors below were re-derived at `7df2cf4d` (2026-09-20) — the claim each one supports is unchanged.
 
 Delivers [#78](https://github.com/qodeca/xezar/issues/78), Phase 1 of [epic #67](https://github.com/qodeca/xezar/issues/67),
 against § 13's closing subsection ("Process-evidence implications from the 2026-09-09 source audit") of the
@@ -39,8 +39,8 @@ Every field in this record therefore has a **defined ABSENT value**, and that va
 Three supporting rules follow from the requirements and are testable:
 
 - **`done` alone is not proof of passing tests** (A-10). `RunStatus.done`
-  (`packages/contract/src/runs.ts:29-38`) says the chain reached its end. It does not say a check ran, and a
-  workflow whose only check step is `skipped` (`stepStatusSchema`, `packages/contract/src/runs.ts:48-57`)
+  (`packages/contract/src/runs.ts:39-47`) says the chain reached its end. It does not say a check ran, and a
+  workflow whose only check step is `skipped` (`stepStatusSchema`, `packages/contract/src/runs.ts:58-67`)
   still ends `done`.
 - **A SHA change invalidates the assumption that previous evidence covers the current result** (S-02, F-10).
   Evidence is only ever evidence *for a revision*.
@@ -55,7 +55,7 @@ This repository already has three correct precedents, and they are the shapes to
 
 | Precedent | Where | What it does right |
 | --- | --- | --- |
-| `mergeabilityOf` | `packages/xezar/src/server/forge/github.ts:1652-1663` | GitHub's `UNKNOWN` "means *we were not told*, never *it is clean*". Anything not explicitly `MERGEABLE`/`CONFLICTING`, **including an omitted field**, answers `'unknown'`. |
+| `mergeabilityOf` | `packages/xezar/src/server/forge/github.ts:1654-1666` | GitHub's `UNKNOWN` "means *we were not told*, never *it is clean*". Anything not explicitly `MERGEABLE`/`CONFLICTING`, **including an omitted field**, answers `'unknown'`. |
 | `forgeInfoSchema.available` | `packages/contract/src/health.ts:24-33` | Optional on purpose: absent means "not determined yet", which is not the same as `false`, and the cockpit renders the two differently. |
 | `/api/v1/github/ref-status` | `BACKWARD_COMPATIBILITY.md` § 2 | A number the forge does not know is **absent from the map** rather than present with a fallback; "collapsing that into a status would let 'we could not ask' render as 'nothing is wrong'". |
 
@@ -71,7 +71,7 @@ Everything below is measured against those three.
 A `⟵ to be added` row always names the schema file the field must be added to. A field that also **persists**
 into `.local/xezar/runs.json` names its second home, `packages/xezar/src/runs/store.ts`, and is marked
 **optional**: `runs.json` is `safeParse`d as one array, so a required addition silently drops every
-pre-existing run (`BACKWARD_COMPATIBILITY.md` § 3; `packages/xezar/src/runs/store.ts:116-130` says the same in
+pre-existing run (`BACKWARD_COMPATIBILITY.md` § 3; `packages/xezar/src/runs/store.ts:130-136` says the same in
 the code, about `diffStat`). That is N-08.
 
 ## 3. Distinction 1 — historical validity
@@ -80,8 +80,8 @@ the code, about `diffStat`). That is N-08.
 
 | Carrier | Where | Route | ABSENT reads as |
 | --- | --- | --- | --- |
-| `RunRecord.startedAt`, `RunRecord.finishedAt` | `packages/contract/src/runs.ts:198-199` (optional) | `GET /api/v1/runs`, `GET /api/v1/runs/:id` | not started / not finished — never "finished now" |
-| `StepState.startedAt`, `StepState.finishedAt` | `packages/contract/src/runs.ts:77-78` (optional) | same | this attempt has no recorded window |
+| `RunRecord.startedAt`, `RunRecord.finishedAt` | `packages/contract/src/runs.ts:217-218` (optional) | `GET /api/v1/runs`, `GET /api/v1/runs/:id` | not started / not finished — never "finished now" |
+| `StepState.startedAt`, `StepState.finishedAt` | `packages/contract/src/runs.ts:87-88` (optional) | same | this attempt has no recorded window |
 | `RunHistoryEvent.ts` + `seq` | `packages/contract/src/events.ts:62-68` | `GET /api/v1/runs/:id/history` | n/a — both are required on every journal record |
 | `runHistoryPageSchema.asOfSeq` | `packages/contract/src/events.ts:70-79` | `GET /api/v1/runs/:id/history` | n/a — required; this is the existing "as of" precedent |
 | `runHistoryContextSchema.asOfSeq` | `packages/contract/src/events.ts:81-85` | `GET /api/v1/runs/:id/history-context` | n/a — required |
@@ -91,7 +91,7 @@ the code, about `diffStat`). That is N-08.
 later reader can tell whether it is looking at the same thing.
 
 **Why `committedAt` is needed.** `RunCommit.when` is git's relative `%cr` text — "3 hours ago"
-(`packages/contract/src/runs.ts:576-583`, and `packages/xezar/src/server/git-changes.ts:388` supplies it). Two
+(`packages/contract/src/runs.ts:605-610`, and `packages/xezar/src/server/git-changes.ts:388` supplies it). Two
 reads of the *same* commit a day apart return different strings, and no read returns an instant a leader can
 compare. `when` is a protected response field and stays; `committedAt` is an additive ISO-8601 sibling.
 
@@ -103,10 +103,10 @@ compare. `when` is a protected response field and stays; `committedAt` is an add
 
 | Carrier | Where | Route | ABSENT reads as |
 | --- | --- | --- | --- |
-| `RunRecord.worktreePath` | `packages/contract/src/runs.ts:228-229` (optional) | `GET /api/v1/runs/:id` | no isolated worktree — the diff/files/commits evidence cannot be re-read |
-| `RunRecord.worktreeReclaimedAt` | `packages/contract/src/runs.ts:233-235` (optional) | same | retention has not reclaimed the directory |
-| `409 {error: NO_WORKTREE}` | `packages/xezar/src/server/server.ts:4113`, `:4131`; the message at `:4475` | `GET /api/v1/runs/:id/changes`, `…/commits` | n/a — this **is** the unavailable answer |
-| `githubPrMergeStateResponseSchema` `available: false` + `reason` | `packages/contract/src/github.ts:326-330` | `GET /api/v1/github/prs/:number/merge-state` | n/a — a discriminated union; the unavailable branch carries no `checks` or `blockers` at all |
+| `RunRecord.worktreePath` | `packages/contract/src/runs.ts:248` (optional) | `GET /api/v1/runs/:id` | no isolated worktree — the diff/files/commits evidence cannot be re-read |
+| `RunRecord.worktreeReclaimedAt` | `packages/contract/src/runs.ts:254` (optional) | same | retention has not reclaimed the directory |
+| `409 {error: NO_WORKTREE}` | `packages/xezar/src/server/server.ts:4360`, `:4378`; the message at `:4745` | `GET /api/v1/runs/:id/changes`, `…/commits` | n/a — this **is** the unavailable answer |
+| `githubPrMergeStateResponseSchema` `available: false` + `reason` | `packages/contract/src/github.ts:325-328` | `GET /api/v1/github/prs/:number/merge-state` | n/a — a discriminated union; the unavailable branch carries no `checks` or `blockers` at all |
 | `githubPrMergeState.eligibility` (`ready\|blocked\|pending\|unauthorized\|terminal\|unknown`) | `packages/contract/src/github.ts:318` | same | n/a — required, and `unknown` is a real member |
 | `githubPrMergeState.blockers[]` | `packages/contract/src/github.ts:319` | same | n/a — only reachable on the `available: true` branch |
 
@@ -125,9 +125,9 @@ This is the largest gap. **No run-scoped read returns a head SHA today.**
 
 | Carrier | Where | Route | ABSENT reads as |
 | --- | --- | --- | --- |
-| `RunRecord.branch`, `RunRecord.baseBranch` | `packages/contract/src/runs.ts:230-232` (optional) | `GET /api/v1/runs/:id` | names only, never a revision; absent = in-place run or pre-field record |
+| `RunRecord.branch`, `RunRecord.baseBranch` | `packages/contract/src/runs.ts:249-251` (optional) | `GET /api/v1/runs/:id` | names only, never a revision; absent = in-place run or pre-field record |
 | `changesPayloadSchema.repointedHead` | `packages/contract/src/repo.ts:98-99` (optional) | `GET /api/v1/runs/:id/changes` | HEAD sat on the task's own branch |
-| `RunRecord.diffStat.repointed` | `packages/contract/src/runs.ts:98-104` (optional, only ever `true`) | `GET /api/v1/runs`, `…/:id` | the stat was not narrowed |
+| `RunRecord.diffStat.repointed` | `packages/contract/src/runs.ts:109-121` (optional, only ever `true`) | `GET /api/v1/runs`, `…/:id` | the stat was not narrowed |
 | `changesPayloadSchema.headSha`, `.baseSha` ⟵ to be added, `packages/contract/src/repo.ts` | — | `GET /api/v1/runs/:id/changes` | the unreadable case is the existing **409**, never an omitted key on a 200 |
 | `runCommitsResponseSchema.headSha`, `.baseSha` ⟵ to be added, `packages/contract/src/runs.ts` | — | `GET /api/v1/runs/:id/commits` | same — the existing 409 |
 | `RunRecord.diffStat.sha` ⟵ to be added, **optional**, `packages/contract/src/runs.ts` **and** `packages/xezar/src/runs/store.ts` | — | `GET /api/v1/runs`, `…/:id` | **the revision these numbers were measured at is unknown** — never "the current head" |
@@ -145,7 +145,7 @@ same reason `repointed` is: `runs.json` records that predate it must keep parsin
 A new task-diff surface resolves through `resolveTaskDiffBase`
 (`packages/xezar/src/git-diff-base.ts:173-209`) and passes the run's **`branch` and its `startedAt`**. The
 existing correct callers are `worktreeShortstat` (`packages/xezar/src/git-worktree.ts:548-563`) and
-`collectChanges` (`packages/xezar/src/server/git-changes.ts:288-295`, fed by `server.ts:4114-4120`).
+`collectChanges` (`packages/xezar/src/server/git-changes.ts:288-295`, fed by `server.ts:4361-4367`).
 
 `AGENTS.md` records why: anchoring a review or QA run at the whole-branch base produced five-figure diffs
 (pre-rename issues 591 and 751), and anchoring at `HEAD` instead reported `+0 −0` for work that was really
@@ -160,11 +160,11 @@ either, and Phase 3 must not "fix" them.
 
 | Carrier | Where | Route | ABSENT reads as |
 | --- | --- | --- | --- |
-| `RunStatus` (`queued\|running\|waiting\|review\|done\|failed\|cancelled`) | `packages/contract/src/runs.ts:29-38` | `GET /api/v1/runs/:id` | n/a — required. **`done` is not "tests passed"** |
-| `StepStatus` (`pending\|running\|waiting\|review\|done\|failed\|cancelled\|skipped`) | `packages/contract/src/runs.ts:48-57` | same | n/a — required |
-| `StepState.iterations` | `packages/contract/src/runs.ts:68` | same | n/a — required; the attempt count for a retried step |
-| `StepState.error` | `packages/contract/src/runs.ts:79` (optional) | same | no error text was captured — **not** "no error occurred" |
-| `check-output` event `exitCode` | emitted at `packages/xezar/src/workflows/run.ts:3855` and `:3861`; a standalone history item, `packages/xezar/src/runs/event-history.ts:104-114` | `GET /api/v1/runs/:id/history` | reachable only as an untyped `any` (see below) |
+| `RunStatus` (`queued\|running\|waiting\|review\|done\|failed\|cancelled`) | `packages/contract/src/runs.ts:39-47` | `GET /api/v1/runs/:id` | n/a — required. **`done` is not "tests passed"** |
+| `StepStatus` (`pending\|running\|waiting\|review\|done\|failed\|cancelled\|skipped`) | `packages/contract/src/runs.ts:58-67` | same | n/a — required |
+| `StepState.iterations` | `packages/contract/src/runs.ts:78` | same | n/a — required; the attempt count for a retried step |
+| `StepState.error` | `packages/contract/src/runs.ts:89` (optional) | same | no error text was captured — **not** "no error occurred" |
+| `check-output` event `exitCode` | emitted at `packages/xezar/src/workflows/run.ts:4917` and `:4923`; a standalone history item, `packages/xezar/src/runs/event-history.ts:104-114` | `GET /api/v1/runs/:id/history` | reachable only as an untyped `any` (see below) |
 | `StepState.checkOutcome` (`passed\|failed\|interrupted\|not-run`) ⟵ to be added, **optional**, `packages/contract/src/runs.ts` **and** `packages/xezar/src/runs/store.ts` | — | `GET /api/v1/runs/:id` | **unknown** — a leader must not default it to `passed`, and specifically must not infer it from `status: 'done'` |
 | `StepState.exitCode` (number) ⟵ to be added, **optional**, same two files | — | same | not recorded |
 | `StepState.signal` (string) ⟵ to be added, **optional**, same two files | — | same | the process was not observed to die on a signal |
@@ -172,12 +172,12 @@ either, and Phase 3 must not "fix" them.
 **Three source facts drive those additions.**
 
 1. **The exit code exists but is not typed.** A check step's exit code rides only in the NDJSON journal
-   (`run.ts:3855`, `:3861`). It reaches a reader through `runHistoryPageSchema.events`, whose element schema
+   (`run.ts:4917`, `:4923`). It reaches a reader through `runHistoryPageSchema.events`, whose element schema
    is `runHistoryEventSchema` — required envelope plus `.catchall(z.any())`
    (`packages/contract/src/events.ts:62-68`). So a leader must reverse-page the journal and read an untyped
    value to learn whether a gate passed. Nothing in `RunRecord`, `StepState` or any run response carries it.
 2. **Interrupted and failed are the same record today.** Cancelling a run SIGTERMs the check child
-   (`run.ts:3841`); `close` then reports no exit code, the event records `exitCode: -1` (`run.ts:3861`), the
+   (`run.ts:4891`); `close` then reports no exit code, the event records `exitCode: -1` (`run.ts:4923`), the
    step settles `failed`, and the signal is never recorded. `interrupted` is therefore a genuinely new value,
    not a relabel.
 3. **Exit 0 is not "passed".** `scripts/e2e.sh:32` prints `TEST_E2E_STATUS=skipped` and exits **0**. A check
@@ -196,7 +196,7 @@ either, and Phase 3 must not "fix" them.
 | `githubPrMergeState.reviewDecision` (`approved\|changes-requested\|review-required\|unknown`) | `packages/contract/src/github.ts:314` | same | n/a — `unknown` is a real member |
 | `githubPrMergeState.checks[]` → `githubPrCheckSchema.state` (`passing\|failing\|pending\|unknown`) | `packages/contract/src/github.ts:295-301` | same | n/a — see correction C-3 for what currently reaches `passing` |
 | `githubPrCheckSchema.required` (`boolean \| null`) | `packages/contract/src/github.ts:298` | same | `null` = we do not know whether this check is required |
-| `githubPrChangesData.headSha` | `packages/contract/src/github.ts:363` | `GET /api/v1/github/prs/:number/changes` | n/a — required on the `available: true` branch |
+| `githubPrChangesData.headSha` | `packages/contract/src/github.ts:376-380` | `GET /api/v1/github/prs/:number/changes` | n/a — required on the `available: true` branch |
 | `githubChecksData.checks[n]` glyph (`passing\|failing\|pending\|null`) | `packages/contract/src/github.ts:16`, `:65-74` | `GET /api/v1/github/checks?prs=…` | see correction C-5 — absence currently means two different things |
 | `githubPrCheckSchema.headSha` ⟵ to be added, **optional**, `packages/contract/src/github.ts` | — | `GET /api/v1/github/prs/:number/merge-state` | **unknown** — never "this check tested the current head" |
 | `githubPrCheckSchema.completedAt` ⟵ to be added, **optional**, `packages/contract/src/github.ts` | — | same | unknown finish instant |
@@ -283,7 +283,7 @@ them in `packages/contract/src/runs.ts`. They are declared in **`packages/contra
 Phase 3 edits `events.ts` for anything touching history paging.
 
 **C-2 — `rollupToChecks` normalizes unknown CI conclusions to `'passing'`.**
-`packages/xezar/src/server/forge/github.ts:262-268` collapses the rollup with an explicit `failing` list
+`packages/xezar/src/server/forge/github.ts:264-269` collapses the rollup with an explicit `failing` list
 (`FAILURE, ERROR, TIMED_OUT, ACTION_REQUIRED`), an explicit `pending` list, and then
 `return 'passing'` for **everything else** — which includes GitHub's `SKIPPED`, `NEUTRAL`, `CANCELLED` and
 `STALE`. This is the hard rule of § 1 being broken in the current code: a cancelled CI run glyphs as
@@ -291,12 +291,12 @@ Phase 3 edits `events.ts` for anything touching history paging.
 protected shape (`BACKWARD_COMPATIBILITY.md` § 2).
 
 **C-3 — `mergeCheckState` maps `SKIPPED` and `NEUTRAL` to `'passing'`.**
-`packages/xezar/src/server/forge/github.ts:2621-2627`. A check that never ran is reported to the merge panel
+`packages/xezar/src/server/forge/github.ts:2623-2629`. A check that never ran is reported to the merge panel
 as passing. Its fallthrough is correct (`return 'unknown'`); its `SUCCESS, NEUTRAL, SKIPPED` list is not.
 
 **C-4 — the two check mappers disagree about `CANCELLED`.** `rollupToChecks` (C-2) has no `CANCELLED` entry, so
 a cancelled check falls through to `'passing'`; `mergeCheckState` (C-3) lists it under `'failing'`
-(`github.ts:2624`). The same CI conclusion therefore reads as passing on a PR row and failing in the merge
+(`github.ts:2626`). The same CI conclusion therefore reads as passing on a PR row and failing in the merge
 panel. Neither is `interrupted`, which is what it actually is.
 
 **C-5 — `githubChecksDataSchema`'s absence carries two meanings.** Its comment
@@ -307,13 +307,13 @@ already does this correctly and says so (`github.ts:262-264`: absent and `null` 
 
 **C-6 — `GET /runs/:id/commits` does not resolve through `resolveTaskDiffBase`.**
 `packages/xezar/src/server/git-changes.ts:384-398` runs a raw `git merge-base <baseBranch> HEAD`: no
-`freshestBaseRef`, no `taskBranch`, no `runStartedAt`, and `server.ts:4132` passes none. So on a repointed
+`freshestBaseRef`, no `taskBranch`, no `runStartedAt`, and `server.ts:4379` passes none. So on a repointed
 worktree, or against a stale local base ref, the Commits list and the Changes list of the *same run* are
 anchored differently and can disagree. This record does not assume a shared anchor, and it does not ask for
 the change: whether to route that surface through the helper is a Phase-3 decision with its own
 backward-compatibility question.
 
-**C-7 — `RunCommit.when` is not a timestamp.** `packages/contract/src/runs.ts:576-583` documents it as git's
+**C-7 — `RunCommit.when` is not a timestamp.** `packages/contract/src/runs.ts:605-610` documents it as git's
 relative `%cr`. § 3 adds `committedAt` rather than reinterpreting it.
 
 ## 11. Coordination point
