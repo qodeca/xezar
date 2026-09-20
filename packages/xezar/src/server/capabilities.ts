@@ -32,6 +32,12 @@
  * Sent only when it is true, so a 0.15.0 payload and a global-layout 0.16.0
  * payload are the same bytes.
  *
+ * `instanceMode` (#467): which projects' DATA this process serves. `project` serves the project
+ * it started in only; every other registered project stays visible and manageable and is reached
+ * through its own cockpit. It is a THIRD state, not a spelling of the two above — those hide the
+ * other projects and refuse project management, and this one does neither. Sent only when it is
+ * `project`, so the default `workspace` payload is the same bytes as before the key existed.
+ *
  * `automations` (spec 2026-07-25-github-automations, #801): GitHub automations
  * are **opt-in** via `XEZ_AUTOMATIONS=1` and off by default. Off, the
  * `Automations` nav item is gone everywhere it is rendered, the
@@ -49,6 +55,7 @@
 
 import { followupsEnabled } from '../handoff.ts';
 import { activeStateLayout } from '../state-layout.ts';
+import type { InstanceModeInForce } from '../workspace/projects.ts';
 import type { Capabilities } from '@qodeca/xezar-contract';
 
 /** Every IPv4 address in 127.0.0.0/8, anchored. Anchoring is load-bearing: a
@@ -161,6 +168,7 @@ export function resolveCapabilities(
   env: NodeJS.ProcessEnv = process.env,
   bindHost?: string,
   followupsOverride?: boolean,
+  instanceMode?: InstanceModeInForce,
 ): Capabilities {
   const hideAllUsage = env.XEZ_HIDE_TOKEN_METRICS === '1';
   const tokenUsageMetrics = !hideAllUsage && env.XEZ_HIDE_TOKEN_USAGE !== '1';
@@ -180,6 +188,17 @@ export function resolveCapabilities(
     // the global layout omits the key on the wire instead of sending `false`
     // (AGENTS.md § The HTTP API) — which is what makes it additive.
     ...(activeStateLayout().mode === 'project' ? { singleProjectRoot: true } : {}),
+    // Threaded in, never re-derived (#467, PR 2): what is IN FORCE is `instanceModeInForce`'s
+    // answer and that function is the only one allowed to give it, because the two registry
+    // narrowings beat the requested value and a second reader of that rule would eventually
+    // disagree with the first. Absent — every legacy caller and every test that builds an app
+    // without one — reads as `workspace`, the default.
+    //
+    // Sent ONLY for `project`, on `singleProjectRoot`'s rule above: `workspace` and `narrowed`
+    // both omit the key, so a default payload stays byte-identical to the one before this key
+    // existed (AC-2.1), and a narrowed cockpit keeps saying what it already said through
+    // `singleProject` / `singleProjectRoot`.
+    ...(instanceMode === 'project' ? { instanceMode: 'project' as const } : {}),
     automations: env.XEZ_AUTOMATIONS === '1',
     tokenMetrics: tokenUsageMetrics && costMetrics,
     tokenUsageMetrics,

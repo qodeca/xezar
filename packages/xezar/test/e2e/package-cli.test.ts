@@ -599,6 +599,82 @@ if (args.join(' ') === 'auth status --json') {
       squatter.close();
       await once(squatter, 'close');
     }
+
+    // `--instance <project|workspace>` (#467, PR 2). The argument surface is exactly what a
+    // packaged test is for: `parseArgs` is strict, so an option the built CLI does not register
+    // is an "unknown option" crash no in-process test can see.
+    assert.match(help.stdout, /--instance <mode>/, 'the help lists the instance flag');
+
+    const instanceBoot = await withServe(
+      cliPath,
+      ['--instance', 'project', '--repo', serveRepo],
+      { cwd: consumerDir, env: serveEnv },
+      async ({ port }) => {
+        assert.equal(await healthStatus(port), 200, 'project mode still serves its own cockpit');
+        const caps = await healthCapabilities(port);
+        assert.equal(caps.instanceMode, 'project', 'health reports the mode it is running in');
+        // The mode is NOT either shipped narrowing, and health is where a client would read
+        // that wrong: project management and the other projects stay available.
+        assert.equal(caps.singleProject, false);
+        assert.equal(caps.singleProjectRoot, undefined);
+      },
+    );
+    // One line, once, on stderr with the rest of the activity. A piped boot is PLAIN output, so
+    // what is asserted is the logfmt row rather than the sentence — the message is the terminal
+    // surface and never reaches a pipe, which is exactly why the mode travels as a field.
+    const instanceRows = instanceBoot.split('\n').filter((line) => line.includes('event=instance.mode'));
+    assert.equal(instanceRows.length, 1, `a project-mode boot says so once. Output:\n${instanceBoot}`);
+    assert.match(instanceRows[0] ?? '', /level=info .*event=instance\.mode mode=project/);
+
+    // The default is unchanged and says nothing: a start that asked for nothing prints no new
+    // line (spec § 2.5). `firstBoot` is that same default boot, captured above.
+    assert.doesNotMatch(firstBoot, /instance\.mode/, 'the default workspace boot stays silent');
+    assert.doesNotMatch(firstBoot, /--instance/, 'the default boot mentions no instance flag');
+
+    // A bad value refuses BEFORE anything is claimed or bound (BACKWARD_COMPATIBILITY.md § 1,
+    // exit codes) — so this exits 1 rather than starting a cockpit on some port.
+    await assert.rejects(
+      execFile(process.execPath, [cliPath, '--instance', 'projekt', '--repo', serveRepo], {
+        cwd: consumerDir,
+        env: serveEnv,
+        timeout: 60_000,
+        maxBuffer: 10 * 1024 * 1024,
+      }),
+      (error: unknown) => {
+        const result = error as { code?: number; stderr?: string; stdout?: string };
+        assert.equal(result.code, 1, '--instance projekt exits 1');
+        assert.match(result.stderr ?? '', /--instance/);
+        assert.match(result.stderr ?? '', /project/);
+        assert.match(result.stderr ?? '', /workspace/);
+        assert.doesNotMatch(result.stdout ?? '', COCKPIT_LINE, 'it never reached a bind');
+        return true;
+      },
+      '--instance projekt should exit 1 before binding',
+    );
+
+    // AC-2.4 `xez mcp` stdout stays JSON-RPC and nothing else: the flag is registered globally
+    // (parseArgs is strict) and is accepted and ignored there, with no mode line on stdout.
+    const mcpProbe = spawn(process.execPath, [cliPath, 'mcp', '--instance', 'project', '--repo', serveRepo], {
+      cwd: consumerDir,
+      env: serveEnv,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    let mcpStdout = '';
+    mcpProbe.stdout.setEncoding('utf8');
+    mcpProbe.stdout.on('data', (chunk: string) => { mcpStdout += chunk; });
+    const mcpExited = once(mcpProbe, 'exit').catch(() => undefined);
+    try {
+      // No request is sent: whatever reaches stdout in that window is unsolicited, which is
+      // precisely what must never happen on a JSON-RPC transport.
+      await sleep(1_500);
+      for (const line of mcpStdout.split('\n').filter((l) => l.trim() !== '')) {
+        assert.doesNotThrow(() => JSON.parse(line), `xez mcp wrote non-JSON to stdout: ${line}`);
+      }
+      assert.doesNotMatch(mcpStdout, /instance/i, 'no instance line reaches the JSON-RPC stream');
+    } finally {
+      mcpProbe.kill('SIGTERM');
+      await mcpExited;
+    }
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -664,6 +740,14 @@ async function healthStatus(port: number): Promise<number> {
  * package must say `release` — even here, where the consumer sits under a task TMPDIR that is
  * itself inside a git checkout.
  */
+/** The booted server's own `capabilities` block (#467, PR 2). */
+async function healthCapabilities(port: number): Promise<Record<string, unknown>> {
+  const res = await fetch(`http://127.0.0.1:${port}/api/v1/health`, {
+    signal: AbortSignal.timeout(15_000),
+  });
+  return ((await res.json()) as { capabilities: Record<string, unknown> }).capabilities;
+}
+
 async function healthChannel(port: number): Promise<unknown> {
   const res = await fetch(`http://127.0.0.1:${port}/api/v1/health`, {
     signal: AbortSignal.timeout(15_000),

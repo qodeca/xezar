@@ -32,6 +32,7 @@ export const TERMINAL_ONLY_EVENTS = [
   'session.summary',
   'registry.invalid',
   'registry.port',
+  'instance.mode',
   'mcp.ready',
   'mcp.unavailable',
   'http.error',

@@ -202,7 +202,14 @@ async function resolveContext(contexts: McpProjectContextSource, projectId: stri
   try {
     return await contexts.context(projectId);
   } catch (err) {
-    if (err instanceof ProjectContextError) throw new McpScopeError(err.reason, projectId, err);
+    if (err instanceof ProjectContextError) {
+      // `other-instance` (#467, PR 2) does not translate: its sentence names the other project's
+      // FOLDER, and no path may reach a client (N-01). It is also unreachable in practice — a
+      // session is bound to this cockpit's own project, and in `project` mode that is the only
+      // project with a socket — so it degrades to `unavailable`, whose cause stays server-side.
+      const reason = err.reason === 'other-instance' ? 'unavailable' : err.reason;
+      throw new McpScopeError(reason, projectId, err);
+    }
     // Anything else — the writer error, or a raw fs error from building the context —
     // can carry a data directory, a path or a pid in its message; none may reach a
     // client. The original stays on `cause` for the service's own log.

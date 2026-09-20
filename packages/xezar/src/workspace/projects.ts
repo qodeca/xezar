@@ -106,6 +106,69 @@ export function instanceModeInForce(
 }
 
 /**
+ * The one line a start prints about the instance mode, or `null` for silence (#467, spec § 2.5).
+ *
+ * Silence is the common case and is deliberate: the default `workspace` mode, and a narrowing
+ * nobody argued with, both print nothing, so a start that did not change says nothing new.
+ * Exactly two things are worth a line — the new mode being on, and a request this process is
+ * knowingly not honouring.
+ *
+ * Copy follows `designs/cli-terminal/README.md` § 9: sentence case, `xezar` lower case, ` — `
+ * between clauses, no contractions. It lives here beside the predicate that decides it, the way
+ * `singleProjectRefusalText` lives beside `singleProjectNarrowing` — one subject, one home, so
+ * the sentence and the rule it describes cannot drift apart.
+ */
+export function instanceBootLine(args: {
+  /** `instanceModeInForce`'s answer — never a re-derivation of one. */
+  mode: InstanceModeInForce;
+  /** Which narrowing is in force, for the `narrowed` wording. */
+  narrowing: SingleProjectNarrowing | null;
+  /** What this invocation asked for — `resolveCliSettings(...).instance`. */
+  requested: InstanceMode;
+  /** Did anyone actually ASK — a flag, a stored key or the variable — or is this the default? */
+  explicit: boolean;
+  /** What to call the project this cockpit serves — its registry id. */
+  projectName: string;
+}): { level: 'info' | 'warn'; message: string } | null {
+  const { mode, narrowing, requested, explicit, projectName } = args;
+  if (mode === 'project') {
+    return {
+      level: 'info',
+      message:
+        `project mode — this cockpit serves ${projectName} only; ` +
+        'other projects are links to their own cockpit',
+    };
+  }
+  if (mode === 'narrowed' && narrowing !== null) {
+    const because =
+      narrowing === 'env-flag'
+        ? 'single-project mode is enabled'
+        : 'this folder owns its xezar state';
+    // A narrowing nobody argued with is not news: the default `workspace` under one prints
+    // nothing at all, exactly as it did before this flag existed.
+    if (!explicit) return null;
+    // An explicit `--instance project` is already satisfied — the extra half it asks for, the
+    // other projects as links, is precisely what the narrowing removes — so it is `info` and
+    // names the narrowing rather than the mode. An explicit `workspace` is the one request this
+    // process is knowingly not honouring, so it is `warn`.
+    return requested === 'project'
+      ? {
+          level: 'info',
+          message:
+            `--instance project is already in force — ${because}, ` +
+            'so this cockpit already serves one project',
+        }
+      : {
+          level: 'warn',
+          message:
+            `--instance workspace is ignored — ${because}, ` +
+            'so this cockpit already serves one project',
+        };
+  }
+  return null;
+}
+
+/**
  * The one sentence every door refuses with, for one narrowing and one action.
  *
  * The `env-flag` half is the promised text, byte for byte

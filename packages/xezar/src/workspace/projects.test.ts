@@ -10,6 +10,7 @@ import { readStoredCliSettings, rememberLastListen } from './port-memory.ts';
 import {
   allocateProjectSlug,
   clearProjectProbeCache,
+  instanceBootLine,
   instanceModeInForce,
   listProjects,
   normalizeProjectTags,
@@ -543,6 +544,119 @@ describe('instanceModeInForce (#467, spec § 2.3–2.4)', () => {
     it('named break `narrowing-loses`: project answers narrowed there too', () => {
       setActiveStateLayout(projectStateLayout(projectRoot));
       expect(instanceModeInForce({ instance: 'project' }, {})).toBe('narrowed');
+    });
+  });
+});
+
+/**
+ * `instanceBootLine` — the one line a start prints about the instance mode (#467 PR 2, spec
+ * § 2.5). The table it implements is § 2.3's, and the property worth pinning is the SILENCE:
+ * four of its six rows print nothing, and a change that made any of them print would put a new
+ * line into every existing start.
+ */
+describe('instanceBootLine (#467, spec § 2.5)', () => {
+  const line = (over: Parameters<typeof instanceBootLine>[0]) => instanceBootLine(over);
+
+  it('the default workspace mode says nothing — a start that changed nothing prints nothing', () => {
+    expect(
+      line({
+        mode: 'workspace',
+        narrowing: null,
+        requested: 'workspace',
+        explicit: false,
+        projectName: 'xezar',
+      }),
+    ).toBeNull();
+  });
+
+  it('an explicit --instance workspace with no narrowing also says nothing', () => {
+    // It got exactly what it asked for. A line here would be noise on the default path.
+    expect(
+      line({
+        mode: 'workspace',
+        narrowing: null,
+        requested: 'workspace',
+        explicit: true,
+        projectName: 'xezar',
+      }),
+    ).toBeNull();
+  });
+
+  it('project mode says so once, at info, naming the project and the link-out', () => {
+    expect(
+      line({
+        mode: 'project',
+        narrowing: null,
+        requested: 'project',
+        explicit: true,
+        projectName: 'xezar',
+      }),
+    ).toEqual({
+      level: 'info',
+      message:
+        'project mode — this cockpit serves xezar only; other projects are links to their own cockpit',
+    });
+  });
+
+  it('a narrowing nobody argued with stays silent, under either narrowing', () => {
+    for (const narrowing of ['env-flag', 'project-root'] as const) {
+      expect(
+        line({
+          mode: 'narrowed',
+          narrowing,
+          requested: 'workspace',
+          explicit: false,
+          projectName: 'xezar',
+        }),
+      ).toBeNull();
+    }
+  });
+
+  it('an explicit workspace under XEZ_SINGLE_PROJECT warns once, naming the narrowing', () => {
+    expect(
+      line({
+        mode: 'narrowed',
+        narrowing: 'env-flag',
+        requested: 'workspace',
+        explicit: true,
+        projectName: 'xezar',
+      }),
+    ).toEqual({
+      level: 'warn',
+      message:
+        '--instance workspace is ignored — single-project mode is enabled, so this cockpit already serves one project',
+    });
+  });
+
+  it('the project-root narrowing says the folder owns its state, never “the flag is enabled”', () => {
+    // A folder that carries no flag must not be described as one, for the same reason
+    // `singleProjectRefusalText` keeps two sentences.
+    expect(
+      line({
+        mode: 'narrowed',
+        narrowing: 'project-root',
+        requested: 'workspace',
+        explicit: true,
+        projectName: 'xezar',
+      })?.message,
+    ).toBe(
+      '--instance workspace is ignored — this folder owns its xezar state, so this cockpit already serves one project',
+    );
+  });
+
+  it('an explicit project under a narrowing is info, not a warning — it is already satisfied', () => {
+    expect(
+      line({
+        mode: 'narrowed',
+        narrowing: 'env-flag',
+        requested: 'project',
+        explicit: true,
+        projectName: 'xezar',
+      }),
+    ).toEqual({
+      level: 'info',
+      message:
+        '--instance project is already in force — single-project mode is enabled, so this cockpit already serves one project',
     });
   });
 });

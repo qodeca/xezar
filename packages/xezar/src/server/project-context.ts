@@ -8,6 +8,7 @@ import { armRepoHandle } from '../runs/arm-repo-handle.ts';
 import { reclaimWorktrees } from '../runs/retention.ts';
 import { RunStore, type RunStatus } from '../runs/store.ts';
 import { ownProjectData } from '../runs/project-writer.ts';
+import type { InstanceModeInForce } from '../workspace/projects.ts';
 import { WorkspaceSemaphore } from '../workspace/semaphore.ts';
 import { RunManager } from '../workflows/run.ts';
 import { ensureLaunchKey } from './launch-key.ts';
@@ -26,6 +27,10 @@ import { getRepoInfo } from './git.ts';
  * root is gone (`status: 'missing'`) is never instantiated; `context()`
  * throws a typed `ProjectContextError` the route layer maps to 409 (and
  * `unknown-project` to 404).
+ *
+ * In `project` mode (#467, PR 2) a non-boot project is never built at all: the map refuses it
+ * before the writer claim, with the reason `other-instance`, so the person is told which cockpit
+ * owns it instead of reading a lock error about a data directory.
  */
 
 /** The per-project bundle the routes operate on. */
@@ -93,9 +98,18 @@ export interface ProjectContextDeps {
    *  When omitted, the map still shares one private instance across the
    *  managers it builds (workspace defaults, never refreshed). */
   semaphore?: WorkspaceSemaphore;
+  /** What the instance mode IS for this process (#467, PR 2) — `instanceModeInForce`'s answer,
+   *  read per call so a test can flip it between requests. Absent reads as `workspace`, which
+   *  is the default and what every legacy caller gets: no guard, nothing changed. */
+  instanceMode?: () => InstanceModeInForce;
+  /** Which project this process boots in — the ONE project `project` mode serves. Read per call
+   *  and allowed to be async, because in production this is the server's own `resolveBootProject`
+   *  and that reads the registry. Answering `undefined` means it could not be learned, which is
+   *  NOT the same as "this is not it" — see `refusedByInstanceMode`. */
+  bootProjectId?: () => string | undefined | Promise<string | undefined>;
 }
 
-export type ProjectContextFailure = 'unknown-project' | 'missing-root';
+export type ProjectContextFailure = 'unknown-project' | 'missing-root' | 'other-instance';
 
 /** Typed failure so the route layer can map reasons to statuses (404/409)
  *  without string matching. */
@@ -103,14 +117,67 @@ export class ProjectContextError extends Error {
   constructor(
     readonly reason: ProjectContextFailure,
     readonly projectId: string,
+    /** The whole message, for a reason whose text carries facts the reason alone cannot
+     *  (`other-instance` names the other project's folder). Ignored by the other two. */
+    detail?: string,
   ) {
     super(
-      reason === 'unknown-project'
-        ? `unknown project: ${projectId}`
-        : `project root is missing: ${projectId}`,
+      detail ??
+        (reason === 'unknown-project'
+          ? `unknown project: ${projectId}`
+          : `project root is missing: ${projectId}`),
     );
     this.name = 'ProjectContextError';
   }
+}
+
+/**
+ * In `project` mode, is `projectId` a project this process must NOT open (#467, PR 2)?
+ *
+ * The refusal exists so a person meets the right sentence: without it, a scoped request for
+ * another project reaches `ownProjectData` and comes back as a writer-claim error about a data
+ * directory, which describes a lock rather than the model. Refusing here, before the claim, is
+ * what makes the answer a 409 naming the other project's own cockpit — and it also means no
+ * claim file is ever written for a project this instance does not serve.
+ *
+ * **It fails OPEN, and the populated-input guarantee is the whole point** (AGENTS.md § *A
+ * fail-open helper needs a populated-input guarantee, or it lies*). `bootProjectId` is read from
+ * the registry, and a registry can be unreadable, empty or mid-write. If "we never learned which
+ * project this process boots" took the same branch as "this is not that project", an unreadable
+ * `~/.xezar/config.json` would make a `project`-mode cockpit refuse EVERY project including its
+ * own — a start that serves nothing, from a file that is written-never-required (AC-2.5). So an
+ * absent boot id serves, and only a boot id we actually have can refuse.
+ *
+ * Answers the project this process DOES serve when `projectId` must be refused, and `null` when
+ * the build may go ahead — rather than a boolean, so the refusal text cannot be written without
+ * the fact that justified it.
+ */
+export function refusedByInstanceMode(
+  mode: InstanceModeInForce | undefined,
+  bootProjectId: string | undefined,
+  projectId: string,
+): string | null {
+  if (mode !== 'project') return null;
+  if (bootProjectId === undefined || bootProjectId === '') return null;
+  return projectId === bootProjectId ? null : bootProjectId;
+}
+
+/** The refusal a person reads: the other project, the folder its cockpit starts in, and the one
+ *  project this cockpit does serve. Copy follows `designs/cli-terminal/README.md` § 9.
+ *
+ *  Naming the folder is not a new disclosure: this sentence rides a SAME-ORIGIN route, and
+ *  `GET /api/v1/projects` already answers every registered project's absolute `root` there. The
+ *  shape that must never carry a path is the CORS-open `/api/v1/health`, which carries id+name
+ *  pairs only (#431) and is untouched by this. */
+export function otherInstanceRefusalText(
+  projectId: string,
+  root: string,
+  bootProjectId: string,
+): string {
+  return (
+    `${projectId} has its own cockpit — this cockpit serves ${bootProjectId} only; ` +
+    `start xezar in ${root} to open ${projectId}`
+  );
 }
 
 /** Mirrors `ACTIVE_RUN_STATUSES` in server.ts — the same three statuses the removal route's own
@@ -542,6 +609,26 @@ export class ProjectContexts {
     const project = projects.find((p) => p.id === projectId);
     if (!project) throw new ProjectContextError('unknown-project', projectId);
     if (project.status === 'missing') throw new ProjectContextError('missing-root', projectId);
+
+    // BEFORE the claim below, deliberately (#467, PR 2): this process does not serve this
+    // project, so it must not take its writer claim to find that out.
+    //
+    // The outer `=== 'project'` is a short-circuit and NOT a second copy of the policy: the
+    // default path must not pay the boot-id read (which reaches the registry) for a question
+    // that cannot refuse anything. The rule itself — including the fail-open one — lives in
+    // `refusedByInstanceMode` and nowhere else.
+    const mode = this.deps.instanceMode?.();
+    if (mode === 'project') {
+      const bootProjectId = await Promise.resolve(this.deps.bootProjectId?.()).catch(() => undefined);
+      const servedInstead = refusedByInstanceMode(mode, bootProjectId, projectId);
+      if (servedInstead !== null) {
+        throw new ProjectContextError(
+          'other-instance',
+          projectId,
+          otherInstanceRefusalText(projectId, project.root, servedInstead),
+        );
+      }
+    }
 
     const dataDir = projectDataDir(project.root);
     ownProjectData(dataDir);

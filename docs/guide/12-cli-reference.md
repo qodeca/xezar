@@ -54,7 +54,7 @@ Every line carries an `event=` name. Where the event is also something the proje
 | `config.changed`, `workflow.saved`, `workflow.deleted`, `agent-config.changed` | A change that affects how tasks run. |
 | `goal.changed`, `instruction.added`, `instruction.queued`, `instruction.edited`, `instruction.removed` | A person changed a task's prompt or messages (shown at `debug`). |
 
-Names for the terminal only: `task.queued`, `task.started`, `task.recovered`, `step.started`, `xezar.ready`, `xezar.stopping`, `xezar.stopped`, `session.summary`, `mcp.ready`, `mcp.unavailable`, `registry.port`, `registry.invalid`, `http.error`, `http.refused`, `http.repeated`, `output.fallback` and `output.folded`.
+Names for the terminal only: `task.queued`, `task.started`, `task.recovered`, `step.started`, `xezar.ready`, `xezar.stopping`, `xezar.stopped`, `session.summary`, `mcp.ready`, `mcp.unavailable`, `registry.port`, `registry.invalid`, `instance.mode`, `http.error`, `http.refused`, `http.repeated`, `output.fallback` and `output.folded`.
 
 At start-up, `task.recovered count=<n> settled=<n>` is one aggregate about the previous session. `count` is every queued, waiting or running task found before recovery; `settled` is the originally waiting subset that recovery deliberately finished as done or ready for review. It is historical information, never a new per-task outcome, and it does not change the session's done, review, failed or cancelled totals. Under `--quiet` this information-level line is omitted.
 
@@ -68,8 +68,9 @@ A check step marked `resultScope: routine` in its workflow prints its success at
 | `--color <auto\|always\|never>` | `XEZ_COLOR`, `NO_COLOR` | Colour. Every coloured state also has a written label. Files, pipes, CI and `TERM=dumb` never receive colour or cursor movement. |
 | `--log-level <debug\|info\|warn\|error>` | `XEZ_LOG_LEVEL` | Lowest level shown. Default `info`. |
 | `-q`, `--quiet` | `XEZ_QUIET=1` | Warnings and errors only. The banner shrinks to the cockpit URL, there is no live table, and failures are never hidden. |
+| `--instance <project\|workspace>` | `XEZ_INSTANCE` | Which projects this cockpit serves. Default `workspace`. In `project` mode the boot prints one line saying so, and a request for another project answers with a pointer to that project's own cockpit. |
 
-A flag beats a saved value in `~/.xezar/config.json` (`cli.output`, `cli.color`, `cli.logLevel`), and a saved value beats the environment variable. The [configuration reference](11-configuration-reference.md) has the exact rules. When you stop the cockpit, the terminal prints a short summary of what finished in this session and how many tasks are still running (not with `--quiet`).
+A flag beats a saved value in `~/.xezar/config.json` (`cli.output`, `cli.color`, `cli.logLevel`, `cli.instance`), and a saved value beats the environment variable. The [configuration reference](11-configuration-reference.md) has the exact rules. When you stop the cockpit, the terminal prints a short summary of what finished in this session and how many tasks are still running (not with `--quiet`).
 
 `--no-open` suppresses browser opening. `--repo` selects the directory; otherwise the current directory is used. Inside Git, xezar resolves that directory to the repository root; outside Git, it uses the directory itself.
 
@@ -174,6 +175,7 @@ Use the [server-install guide](../server-install/README.md) for prerequisites an
 | `--workflow <name>` | `run`: workflow name, default `quick-task`. |
 | `--model <model>` | `run`: task model override. |
 | `--no-open` | `serve`: do not open the browser. |
+| `--instance <mode>` | `serve`: which projects this cockpit serves — `workspace` (the default: every project you have registered) or `project` (the project it started in; your other projects stay listed and manageable, and open in their own cockpit). `XEZ_INSTANCE` says the same, a saved `cli.instance` beats the variable, and this flag beats both. `--single-project`, and a folder that owns its xezar state, already serve one project and win over it — an explicit `workspace` then says so in one line. Accepted and ignored by `xezar mcp`. |
 | `--single-project` | Every command: this folder owns its xezar setup — settings, accounts and the registry in `.xezar/`, working files in `.local/xezar/`, `~/.xezar` not opened. Needed only the first time; afterwards the folder decides. The first run asks once, in a terminal, whether to copy your global setup in (never the project list). A linked Git worktree is never a project root. See [above](#to-keep-the-setup-in-the-project-folder---single-project). |
 | `--global-layout` | Every command: resolve the global layout for this launch, even in a folder that carries `.xezar/workspace.json`. The explicit counterpart of `--single-project`, and it outranks the marker; nothing is moved, renamed or written. `XEZ_GLOBAL_LAYOUT=1` says the same. See [above](#to-ask-for-the-global-layout---global-layout). |
 | `--platform <id>` | Server commands: `ubuntu-vps` or `macosx-ngrok`. Required for install; optional for deploy/uninstall only when saved instance state supplies it. |

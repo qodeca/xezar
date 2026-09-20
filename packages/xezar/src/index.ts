@@ -5,7 +5,7 @@ import { parseArgs } from 'node:util';
 import { spawn, execFileSync } from 'node:child_process';
 import type { Server } from 'node:net';
 import { mkdirSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { detectEnvironment } from './core/backend-detect.ts';
 import {
@@ -58,7 +58,14 @@ import { entry as activityEntry, startTerminalActivity, type TerminalActivity } 
 import { recoverAndReport } from './terminal/recovery.ts';
 import { formatDuration, formatTokens, glyphsFor } from './terminal/format.ts';
 import { runMigrations } from './workspace/migrations.ts';
-import { registerProject, shouldRegisterProject, singleProjectRegistry } from './workspace/projects.ts';
+import {
+  instanceBootLine,
+  instanceModeInForce,
+  registerProject,
+  shouldRegisterProject,
+  singleProjectNarrowing,
+  singleProjectRegistry,
+} from './workspace/projects.ts';
 import { runProjectsCommand } from './workspace/projects-cli.ts';
 import { cliAudit, PROJECTS_SUBCOMMANDS, projectResource, type CliAudit } from './cli-audit.ts';
 import { WorkspaceSemaphore } from './workspace/semaphore.ts';
@@ -102,6 +109,14 @@ Options:
       --color <when>          auto (default), always, never (NO_COLOR honoured)
       --log-level <level>     debug, info (default), warn, error
   -q, --quiet                 warnings and errors only
+      --instance <mode>       which projects this cockpit serves: workspace (the
+                              default — every project you have registered) or
+                              project (the project it started in; your other
+                              projects stay listed and manageable, and open in
+                              their own cockpit). A saved \`cli.instance\` beats
+                              XEZ_INSTANCE; this flag beats both. --single-project
+                              and a folder that owns its xezar state already serve
+                              one project and win over it.
       --repo <dir>            repo to operate on (default: cwd)
       --workflow <name>       workflow for \`run\` (default: quick-task)
       --model <model>         model override for \`run\`
@@ -466,6 +481,36 @@ async function serveCommand(
       }),
     );
   }
+  // What this process actually serves (#467, PR 2, spec § 2.5). ONE line at most, on stderr with
+  // the rest of the activity, and only when there is news: the default `workspace` mode prints
+  // nothing, so a start that changed nothing says nothing. `xez mcp` never reaches here — its
+  // stdout stays JSON-RPC and nothing else (AC-2.4).
+  const instanceMode = instanceModeInForce(settings);
+  const bootLine = instanceBootLine({
+    mode: instanceMode,
+    narrowing: singleProjectNarrowing(),
+    requested: settings.instance,
+    explicit: settings.instanceExplicit,
+    projectName: bootProjectId ?? basename(repoRoot),
+  });
+  if (bootLine) {
+    terminal.log(
+      activityEntry({
+        level: bootLine.level,
+        subject: 'instance',
+        message: bootLine.message,
+        event: 'instance.mode',
+        // The message is the human surface and does NOT appear in the plain output, which
+        // carries the event name and the fields only — the same rule the `registry.invalid`
+        // warning above follows. So what the sentence says travels as fields or it is lost:
+        // what is in force, and what was asked for when the two differ.
+        fields:
+          instanceMode === 'narrowed'
+            ? [['mode', instanceMode], ['requested', settings.instance]]
+            : [['mode', instanceMode]],
+      }),
+    );
+  }
   const manager = new RunManager(store, repoRoot, { semaphore });
   const providerAuth = new ProviderAuthService();
   const workspaceEvents = new WorkspaceEventBus();
@@ -538,6 +583,10 @@ async function serveCommand(
     channel,
     update,
     bootProjectId,
+    // Resolved ONCE, here, and handed over (#467, PR 2): it is a boot decision — the MCP socket,
+    // the bind and every context this process builds are all settled under it — so the server
+    // reads the answer rather than re-deriving it per request.
+    instanceMode,
     semaphore,
     bindHost,
     providerAuth,

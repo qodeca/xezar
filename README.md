@@ -179,6 +179,7 @@ setup. See [single-project mode](docs/guide/09-projects.md#to-keep-a-projects-xe
 | `NO_COLOR=1` | Any non-empty value turns colour off. It outranks `XEZ_COLOR` and a saved `cli.color`; an explicit `--color` beats it. |
 | `XEZ_LOG_LEVEL=info` | How much `xezar serve` says: `debug`, `info` (default), `warn`, `error`. A saved `cli.logLevel` overrides it; `--log-level` overrides both. |
 | `XEZ_QUIET=1` | Warnings and errors only (exact `1`; `--quiet` is the flag). The cockpit URL, each task's final status and every bind or exposure failure are still printed — quiet can never hide a failure. It raises the threshold but never lowers one you set higher. |
+| `XEZ_INSTANCE=workspace` | Which projects one xezar process serves: `workspace` (default — this cockpit opens every project you have registered) or `project` (this cockpit serves the project it started in, and your other projects appear as links to their own cockpit; they stay listed and you can still add and remove them). A saved `cli.instance` overrides it; `--instance` overrides both. `XEZ_SINGLE_PROJECT` and a folder that owns its xezar state already serve one project and win over it. |
 | `VITE_XEZ_API_BASE=http://localhost:4321` | Build-time API origin for a separately hosted cockpit; default is same-origin. A served `xez-api-base` meta tag overrides it. |
 | `XEZ_REMOTE=1` | Hide conveniences that open files or applications on the host machine. Off by default. |
 | `XEZ_CODEX_NETWORK=0` | Use Codex's network-blocked workspace-write sandbox; default is full access. |
