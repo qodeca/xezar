@@ -1,3 +1,6 @@
+// FIRST import on purpose: the home pin is a module-load side effect and must run before anything
+// that reaches `skills.ts` (#671).
+import './mcp-test-home.testkit.ts';
 import type { GithubPrMergeState } from '@qodeca/xezar-contract';
 import { execFileSync } from 'node:child_process';
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';

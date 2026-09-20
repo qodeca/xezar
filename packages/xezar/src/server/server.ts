@@ -2180,7 +2180,13 @@ export function createApp(deps: ServerDeps) {
       let created: AgentAccount | undefined;
       try {
         await mergeWriteAgentAccounts((store) => {
-          const id = allocateAgentProfileId(label ?? configDir, store.accounts.map((a) => a.id));
+          // An identity-shaped label is still stored for the person's pane, but neither it nor an
+          // identity-shaped folder basename becomes the public id/handle: slugging an identity
+          // only changes its punctuation, it does not redact it (#677 B6, QA F1 on #764). Existing
+          // stored ids are read untouched; this applies only at allocation time for a new row.
+          const identityShaped = label?.includes('@') || basename(expandTilde(configDir)).includes('@');
+          const idSource = identityShaped ? `account-${randomUUID().slice(0, 8)}` : (label ?? configDir);
+          const id = allocateAgentProfileId(idSource, store.accounts.map((a) => a.id));
           created = {
             id,
             provider,
