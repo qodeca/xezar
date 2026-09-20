@@ -112,9 +112,14 @@ when it lands — pre-rename issue 694 arrived with eleven unreachable routes fo
 - **Every RESPONSE shape is a zod schema in `packages/contract`, with its TypeScript type
   inferred from it (`z.infer`)** — `contract-parity*.test.ts` asserts each is mutually assignable
   with the route's own inferred type, so that half is enforced. **Request schemas are migrating
-  there and most have not arrived**: roughly forty are still declared in `server.ts`, and
-  `setConfigInputSchema` already sits in the contract with a `server.ts` duplicate
-  (`setConfigSchema`) still validating `PUT /config`. Never hand-write an API TYPE, and never
+  there and most have not arrived**: roughly forty are still declared in `server.ts`. The two
+  settings routes arrived first (#677 wave 1): `PUT /config` and `PUT /workspace/config` validate
+  with the contract's `setConfigInputSchema` / `setWorkspaceConfigInputSchema`, the `server.ts`
+  copies are gone, and `contract-parity.requests.test.ts` pins the route against the schema in both
+  directions the way the response files do. Two things travelled WITH those schemas and are
+  behaviour a type cannot carry: `systemPrompt`'s custom `'must be at most 20000 characters'`
+  message and the shape's key ORDER, which decides the field order of a multi-issue `{ error }`
+  string. A request schema you migrate carries its own equivalents. Never hand-write an API TYPE, and never
   declare one in `server.ts` or in the api-client; when you touch a request shape, move it to
   `packages/contract` and delete the local copy rather than editing the copy. The api-client re-exports the contract; the cockpit imports
   the schema when it wants to validate and the type when it wants to compile.

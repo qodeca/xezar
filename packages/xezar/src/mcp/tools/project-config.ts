@@ -337,8 +337,11 @@ const none = { required: [], optional: [] } as const;
  *     exactly D-06's "deliberately new identical work uses a new identity".
  * The refusal-only actions (`REFUSED_ACTIONS`) dispatch nothing and are checked by neither branch:
  * the refinement returns before it reaches this table.
+ *
+ * Exported for `project-config.request-parity.test.ts` (#677 wave 1), which reads the `operationId`
+ * rule above as the definition of "a write action" and refuses to leave a new one unclassified.
  */
-const ACTION_FIELDS: Record<ProjectConfigAction, { required: readonly Field[]; optional: readonly Field[] }> = {
+export const ACTION_FIELDS: Record<ProjectConfigAction, { required: readonly Field[]; optional: readonly Field[] }> = {
   get_config: none,
   set_config: { required: ['config', 'operationId'], optional: [] },
   get_project: none,

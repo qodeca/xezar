@@ -90,6 +90,11 @@ export type WorkspaceConfigResponse = z.infer<typeof workspaceConfigResponseSche
  * may send both in one request only if they want that atomicity. Bounds mirror
  * `src/workspace/config.ts` exactly, so a value this schema accepts can never be degraded away by
  * the next load's `.catch`.
+ *
+ * THIS is what the route's `jsonZodValidator` middleware validates with (#677 wave 1); the server
+ * declares no copy. The key ORDER is part of the wire behaviour and not cosmetic: a body with two
+ * bad fields answers one `{ error }` string built by joining the zod issues in shape order, so
+ * `resources` stays ahead of `agentDefaults` exactly as the deleted server copy had it.
  */
 export const setWorkspaceConfigInputSchema = z.object({
   browseRoot: z.string().trim().min(1).max(4096).optional(),
@@ -106,6 +111,18 @@ export const setWorkspaceConfigInputSchema = z.object({
       worktree: z.boolean().nullable().optional(),
     })
     .optional(),
+  resources: z
+    .object({
+      maxParallel: z.number().int().min(1).max(16).optional(),
+      maxMonitoringSessions: z.number().int().min(0).max(16).optional(),
+      monitoringWakeIntervalMinutes: z.number().int().min(1).max(60).nullable().optional(),
+      autoResumeOnUsageLimit: z.boolean().optional(),
+      /** `null` = never close an idle session; a number is minutes (1 to 1440). */
+      idleTimeoutMinutes: z.number().int().min(1).max(1440).nullable().optional(),
+      memoryLimitMb: z.number().int().min(0).max(1_048_576).nullable().optional(),
+      worktreeRetentionDefault: z.number().int().min(0).max(1000).optional(),
+    })
+    .optional(),
   /** Machine-wide agent defaults. `null` on a key CLEARS it back to "no opinion", which a bare
    *  absent key cannot say in a partial patch. */
   agentDefaults: z
@@ -119,18 +136,6 @@ export const setWorkspaceConfigInputSchema = z.object({
           pi: z.string().trim().min(1).max(200).nullable().optional(),
         })
         .optional(),
-    })
-    .optional(),
-  resources: z
-    .object({
-      maxParallel: z.number().int().min(1).max(16).optional(),
-      maxMonitoringSessions: z.number().int().min(0).max(16).optional(),
-      monitoringWakeIntervalMinutes: z.number().int().min(1).max(60).nullable().optional(),
-      autoResumeOnUsageLimit: z.boolean().optional(),
-      /** `null` = never close an idle session; a number is minutes (1 to 1440). */
-      idleTimeoutMinutes: z.number().int().min(1).max(1440).nullable().optional(),
-      memoryLimitMb: z.number().int().min(0).max(1_048_576).nullable().optional(),
-      worktreeRetentionDefault: z.number().int().min(0).max(1000).optional(),
     })
     .optional(),
 });
@@ -388,11 +393,20 @@ export type SetConfigResponse = z.infer<typeof setConfigResponseSchema>;
  * per-runner `defaultModels` entries clear on `null` (or `''`) too. Merged into the raw
  * config.json server-side — `defaultModels` merges per runner, so one write never clobbers
  * another runner's preset.
+ *
+ * THE route's own validator (`jsonZodValidator` middleware on `PUT /config`) and the MCP's
+ * `project_config` `set_config` argument are both this schema — there is no second copy to drift
+ * against, and `contract-parity.requests.test.ts` plus
+ * `mcp/tools/project-config.request-parity.test.ts` pin both halves.
  */
 export const setConfigInputSchema = z.object({
   baseBranch: z.string().trim().min(1).max(200).nullable().optional(),
   defaultRunner: runnerSchema.optional(),
-  systemPrompt: z.string().trim().max(20_000).nullable().optional(),
+  /** The custom message is the WIRE text: `PUT /api/v1/config` answers
+   *  `{"error":"systemPrompt: must be at most 20000 characters"}` and the cockpit renders it
+   *  verbatim in a toast. It travelled with the schema when the route stopped declaring its own
+   *  copy (#677 wave 1), so the 400 text is unchanged. */
+  systemPrompt: z.string().trim().max(20_000, 'must be at most 20000 characters').nullable().optional(),
   defaultModels: z
     .object({
       claude: z.string().trim().max(200).nullable().optional(),

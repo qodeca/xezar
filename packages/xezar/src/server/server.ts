@@ -51,6 +51,8 @@ import {
   MODEL_DISCOVERY_RUNNERS,
   modelDiscoveryRunnerSchema,
   openProjectInSchema,
+  setConfigInputSchema,
+  setWorkspaceConfigInputSchema,
   updateProjectInputSchema,
   type WorkspaceConfigResponse,
 } from '@qodeca/xezar-contract';
@@ -3016,7 +3018,7 @@ export function createApp(deps: ServerDeps) {
   const workspaceConfigRoutes = new Hono<ProjectApiEnv>()
     .get('/workspace/config', async (c) => c.json(workspaceConfigBody(await loadWorkspaceConfig())))
 
-    .put('/workspace/config', jsonZodValidator(() => workspaceConfigUpdateSchema), ui.route('workspace.config.set', { fieldNames: true }), async (c) => {
+    .put('/workspace/config', jsonZodValidator(setWorkspaceConfigInputSchema), ui.route('workspace.config.set', { fieldNames: true }), async (c) => {
       const parsed = { data: c.req.valid('json') };
       const {
         browseRoot,
@@ -3150,52 +3152,6 @@ export function createApp(deps: ServerDeps) {
       }
     });
 
-  // Partial updates only — absent keys stay untouched. Bounds mirror the
-  // workspace schema (src/workspace/config.ts, step 1.2) exactly, so a value
-  // this route accepts can never be degraded away by the next load's `.catch`.
-  const workspaceConfigUpdateSchema = z.object({
-    browseRoot: z.string().trim().min(1).max(4096).optional(),
-    projectsDir: z.string().trim().min(1).max(4096).optional(),
-    skillsAutoUpdate: z.boolean().nullable().optional(),
-    followups: z.boolean().nullable().optional(),
-    agentEnvPassthrough: z
-      .array(z.string().trim().min(1).max(200))
-      .max(64)
-      .nullable()
-      .optional(),
-    composerDefaults: z
-      .object({
-        autonomous: z.boolean().nullable().optional(),
-        worktree: z.boolean().nullable().optional(),
-      })
-      .optional(),
-    resources: z
-      .object({
-        maxParallel: z.number().int().min(1).max(16).optional(),
-        maxMonitoringSessions: z.number().int().min(0).max(16).optional(),
-        monitoringWakeIntervalMinutes: z.number().int().min(1).max(60).nullable().optional(),
-        autoResumeOnUsageLimit: z.boolean().optional(),
-        idleTimeoutMinutes: z.number().int().min(1).max(1440).nullable().optional(),
-        memoryLimitMb: z.number().int().min(0).max(1_048_576).nullable().optional(),
-        worktreeRetentionDefault: z.number().int().min(0).max(1000).optional(),
-      })
-      .optional(),
-    // Bounds mirror `src/workspace/config.ts`, so a value this accepts is never degraded away by
-    // the next load's `.catch`. `null` clears a key back to "no opinion".
-    agentDefaults: z
-      .object({
-        runner: z.enum(PROVIDER_IDS).nullable().optional(),
-        models: z
-          .object({
-            claude: z.string().trim().min(1).max(200).nullable().optional(),
-            codex: z.string().trim().min(1).max(200).nullable().optional(),
-            opencode: z.string().trim().min(1).max(200).nullable().optional(),
-            pi: z.string().trim().min(1).max(200).nullable().optional(),
-          })
-          .optional(),
-      })
-      .optional(),
-  });
   // ---- chained family: filesystem browse (workspace-level) ----
   const fsBrowseRoutes = new Hono<ProjectApiEnv>()
     .get(
@@ -5630,7 +5586,7 @@ export function createApp(deps: ServerDeps) {
       // XEZ_REVIEW_GATE env default (OFF) decides".
       reviewGate: config.reviewGate ?? null,
       // Planner/namer models and team skill sources (E). Declared in the file schema since
-      // spec 008 but absent from this answer and from `setConfigSchema`, so the only way to
+      // spec 008 but absent from this answer and from `setConfigInputSchema`, so the only way to
       // change them was to hand-edit `.xezar/config.json`. All three are `.default()`ed by
       // the file schema, so they are always materialized here — never tri-state.
       plannerModel: config.plannerModel,
@@ -5645,7 +5601,12 @@ export function createApp(deps: ServerDeps) {
       return c.json(await configAnswer(repoRoot, await loadConfig(repoRoot)));
     })
 
-    .put('/config', jsonZodValidator(() => setConfigSchema), ui.route('project.config.set', { fieldNames: true }), async (c) => {
+    // Set/clear the agents' config knobs (Settings → Agents; the Repo tab's
+    // base-branch picker). Merges into the RAW config.json so user keys
+    // (skillsRepos…) survive and schema defaults are never materialized into
+    // the file. All fields optional + additive: `null` (and `''` for the
+    // R6 keys) clears a knob back to its default.
+    .put('/config', jsonZodValidator(setConfigInputSchema), ui.route('project.config.set', { fieldNames: true }), async (c) => {
       const { root: repoRoot } = c.get('project');
       const dataDir = projectKitDir(repoRoot);
       const parsed = { data: c.req.valid('json') };
@@ -5752,49 +5713,6 @@ export function createApp(deps: ServerDeps) {
   // (skillsRepos…) survive and schema defaults are never materialized into
   // the file. All fields optional + additive: `null` (and `''` for the
   // R6 keys) clears a knob back to its default.
-  const modelPresetSchema = z.string().trim().max(200).nullable().optional();
-  const setConfigSchema = z.object({
-    baseBranch: z.string().trim().min(1).max(200).nullable().optional(),
-    defaultRunner: z.enum(RUNNER_IDS).optional(),
-    systemPrompt: z.string().trim().max(20_000, 'must be at most 20000 characters').nullable().optional(),
-    defaultModels: z
-      .object({
-        claude: modelPresetSchema,
-        codex: modelPresetSchema,
-        opencode: modelPresetSchema,
-        pi: modelPresetSchema,
-      })
-      .optional(),
-    // Concurrency + memory guard (Settings → Resources). maxParallel clamps to
-    // the schema's 1–16; memoryLimitMb null/0 clears the ceiling.
-    maxParallel: z.number().int().min(1).max(16).optional(),
-    memoryLimitMb: z.number().int().min(0).max(1_048_576).nullable().optional(),
-    // Worktree retention count (Settings → Resources, #483). 0 = unlimited;
-    // null clears the key back to the schema default (10). Unlike memoryLimitMb,
-    // 0 is a meaningful value (unlimited), so it is stored, not treated as clear.
-    worktreeRetention: z.number().int().min(0).max(1000).nullable().optional(),
-    // Live title updates toggle (Settings → Agents): null clears the key back
-    // to the env-default behavior.
-    liveTitleUpdates: z.boolean().nullable().optional(),
-    // Optional review gate toggle (Settings → Agents, #489): null clears the key
-    // back to the env-default behavior (OFF).
-    reviewGate: z.boolean().nullable().optional(),
-    // Planner/namer models and team skill sources (E). `null` clears each key back to its
-    // schema default; `skillsRepos: []` is a real value that disables team skills, which is
-    // why the empty array is stored rather than treated as a clear.
-    plannerModel: z.string().trim().min(1).max(200).nullable().optional(),
-    namerModel: z.string().trim().min(1).max(200).nullable().optional(),
-    skillsRepos: z
-      .array(
-        z.object({
-          repo: z.string().trim().min(1).max(500),
-          ref: z.string().trim().min(1).max(200).optional(),
-        }),
-      )
-      .max(32)
-      .nullable()
-      .optional(),
-  });
   const setAgentConfigSchema = z.object({
     content: z.string().max(2_000_000),
     version: z.string().nullable(),
