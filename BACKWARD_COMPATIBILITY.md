@@ -1092,7 +1092,7 @@ Participant `user-message` input also advances the decision revision; it is stee
 
 Pending question replacement also advances the decision revision (#534), including changed content under the same question ID. The optional additive `decisionQuestion` record field stores only the ID and a content digest; legacy records remain readable, and the next question event initializes it. Clearing the question with participant input remains one decision revision. Clients must re-read after a replacement. Known structured `applied:false` refusals now settle and replay as `rejected` (#536); existing durable receipts are not rewritten, and ambiguous throws/lost responses remain `unverified`. The run response gains the same optional metadata; MCP action and receipt response schemas are unchanged.
 
-## The MCP `project_config` tool writes the workspace settings (#677 wave 2 B1) — deliberate, 0.17.0
+## The MCP `project_config` tool writes the workspace settings (#677 wave 2 B1 and B2) — deliberate, 0.17.0
 
 A documented product boundary is reversed here, by the owner's rule of 2026-09-20 on #677 ("every
 key"). Until 0.17.0 the `project_config` action `set_workspace_config` existed only to REFUSE: it
@@ -1109,10 +1109,17 @@ every workspace limit as a safe effective read a leader could see and never chan
   before; an older leader simply does not know the argument exists. The refusal vocabulary, the
   boundary ids, every other refused action and the `get_limits` answer shape are untouched, and
   the write answers in that same `get_limits` vocabulary rather than the raw route body.
-- **Still refused**: `browseRoot` and `projectsDir`, the two workspace folder paths, are not keys
-  of the action — they are filesystem boundaries rather than limits and are decided on their own
-  (#677 slice B2). A body naming one is refused as an argument and nothing is dispatched, so a
-  `resources` key sent in the same body does not half-apply.
+- **`browseRoot` and `projectsDir` followed in slice B2, under the same owner rule.** They are keys
+  of the action now: B1 had held the two workspace folder paths back as the security-relevant half
+  of the reversal, and B2 is the review that decided them. What refuses a bad one is the ROUTE, not
+  the tool — `PUT /api/v1/workspace/config` requires an absolute path, requires an existing
+  directory for the browse root and runs `mkdir -p` for the checkout root, answering 400 with its
+  own reason **before** `mergeWriteWorkspaceConfig`, so a `resources` key sent in the same body
+  still does not half-apply. Two consequences a reader should know: a settings write can CREATE a
+  directory anywhere the user can write (the checkout root's probe), and moving `browseRoot` widens
+  what a PERSON at the cockpit may then browse — the leader itself gains no listing, because
+  `browse_folders` and the clone stay refused. The paths are written and not read back: the answer
+  is the narrowed `get_limits` vocabulary, which carries no folder path.
 - **What a reader could notice**: the audit trail can now hold `workspace.config.set` rows with
   origin `mcp`. That row already existed in the inventory for the cockpit door; what is new is
   that the MCP door produces it. The MCP record carries the action id, the operation key and a

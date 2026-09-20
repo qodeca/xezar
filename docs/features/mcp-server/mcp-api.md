@@ -290,13 +290,13 @@ Unknown arguments are rejected.
 
 ### `project_config`
 
-> Read and change THIS project's own configuration: its settings (agent, models, system prompt, review gate, base branch, worktree retention, memory limit), its registry entry (concurrency cap and tags), prompt templates, in-repo agent config files, workflows, skills, GitHub automations and worktrees. It also reads the shared settings as effective limits and capabilities (get_limits, get_capabilities, get_account) and CHANGES them with set_workspace_config — the shared limits, composer defaults, follow-up inbox and environment passthrough, skills auto-update and the machine-wide agent defaults, which apply to every project on this machine. The two workspace folder paths, agent accounts, account identity, home files, the project registry and host folders are outside this boundary and are refused with the reason.
+> Read and change THIS project's own configuration: its settings (agent, models, system prompt, review gate, base branch, worktree retention, memory limit), its registry entry (concurrency cap and tags), prompt templates, in-repo agent config files, workflows, skills, GitHub automations and worktrees. It also reads the shared settings as effective limits and capabilities (get_limits, get_capabilities, get_account) and CHANGES them with set_workspace_config — the shared limits, composer defaults, follow-up inbox and environment passthrough, skills auto-update and the machine-wide agent defaults, which apply to every project on this machine, and the two workspace folder paths — the folder the file picker may browse and the folder new checkouts land in, each checked for real before anything is saved. Agent accounts, account identity, home files, the project registry and host folders are outside this boundary and are refused with the reason.
 
 Unknown arguments are rejected.
 
 | Argument | Type | Required | Limits | Description (verbatim from the schema) |
 | --- | --- | --- | --- | --- |
-| `action` | `get_config` \| `set_config` \| `get_project` \| `set_project` \| `get_prompt_templates` \| `set_prompt_templates` \| `get_limits` \| `set_workspace_config` \| `get_capabilities` \| `get_account` \| `list_agent_config` \| `read_agent_config` \| `write_agent_config` \| `list_workflows` \| `parse_workflow` \| `save_workflow` \| `delete_workflow` \| `list_skills` \| `get_skill` \| `list_importable_skills` \| `refresh_skills` \| `check_skill_updates` \| `list_automations` \| `get_automation` \| `create_automation` \| `update_automation` \| `delete_automation` \| `enable_automation` \| `pause_automation` \| `check_automation` \| `get_automation_check` \| `get_automation_log` \| `retry_automation_receipt` \| `list_worktrees` \| `reclaim_worktrees` \| `remove_worktree` \| `dismiss_onboarding_offer` \| `set_provider_enabled` \| `connect_provider` \| `retry_provider` \| `create_account` \| `update_account` \| `remove_account` \| `select_account` \| `check_account_status` \| `get_account_details` \| `open_account_file` \| `set_workspace_ui_state` \| `browse_folders` \| `add_project` \| `clone_project` \| `remove_project` \| `apply_skill_updates` \| `import_skills` \| `get_launch_key` \| `open_in_app` | yes |  | What to do in the project this connection is bound to, plus the shared settings set_workspace_config changes for every project on this machine. Actions outside that boundary (the two workspace folder paths, accounts, the project registry, host folders) are answered with a refusal that names the boundary. |
+| `action` | `get_config` \| `set_config` \| `get_project` \| `set_project` \| `get_prompt_templates` \| `set_prompt_templates` \| `get_limits` \| `set_workspace_config` \| `get_capabilities` \| `get_account` \| `list_agent_config` \| `read_agent_config` \| `write_agent_config` \| `list_workflows` \| `parse_workflow` \| `save_workflow` \| `delete_workflow` \| `list_skills` \| `get_skill` \| `list_importable_skills` \| `refresh_skills` \| `check_skill_updates` \| `list_automations` \| `get_automation` \| `create_automation` \| `update_automation` \| `delete_automation` \| `enable_automation` \| `pause_automation` \| `check_automation` \| `get_automation_check` \| `get_automation_log` \| `retry_automation_receipt` \| `list_worktrees` \| `reclaim_worktrees` \| `remove_worktree` \| `dismiss_onboarding_offer` \| `set_provider_enabled` \| `connect_provider` \| `retry_provider` \| `create_account` \| `update_account` \| `remove_account` \| `select_account` \| `check_account_status` \| `get_account_details` \| `open_account_file` \| `set_workspace_ui_state` \| `browse_folders` \| `add_project` \| `clone_project` \| `remove_project` \| `apply_skill_updates` \| `import_skills` \| `get_launch_key` \| `open_in_app` | yes |  | What to do in the project this connection is bound to, plus the shared settings set_workspace_config changes for every project on this machine. Actions outside that boundary (accounts, the project registry, host folders) are answered with a refusal that names the boundary. |
 | `projectId` | any | no |  | Never accepted: the project is the one this connection is bound to, and a call that names one is refused. |
 | `config` | object | no |  | set_config: the project's own settings to change. null clears a key back to its default. |
 | `config.baseBranch` | string or null | no | min length 1, max length 200 |  |
@@ -316,7 +316,9 @@ Unknown arguments are rejected.
 | `config.skillsRepos` | array of object or null | no | max items 32 |  |
 | `config.skillsRepos[].repo` | string | yes | min length 1, max length 500 |  |
 | `config.skillsRepos[].ref` | string | no | min length 1, max length 200 |  |
-| `workspaceConfig` | object | no |  | set_workspace_config: the workspace-wide settings to change — they apply to every project on this machine. Only the keys you send are touched; null clears a key back to its default. The two workspace folder paths are not accepted here. |
+| `workspaceConfig` | object | no |  | set_workspace_config: the workspace-wide settings to change — they apply to every project on this machine. Only the keys you send are touched; null clears a key back to its default. The two workspace folder paths are included: the folder the file picker may browse, and the folder new checkouts land in. Both are checked for real: a path that is not absolute, is not a folder, or cannot be written to is answered with the reason and nothing is saved, the other keys in the same call included. |
+| `workspaceConfig.browseRoot` | string | no | min length 1, max length 4096 |  |
+| `workspaceConfig.projectsDir` | string | no | min length 1, max length 4096 |  |
 | `workspaceConfig.skillsAutoUpdate` | boolean or null | no |  |  |
 | `workspaceConfig.followups` | boolean or null | no |  |  |
 | `workspaceConfig.agentEnvPassthrough` | array of string or null | no | max items 64 |  |
@@ -918,6 +920,7 @@ business outcome as the cockpit is the separate [parity coverage map](mcp-parity
 | I-119 | Decided 2026-09-20 (D-677-B1, owner rule "every key" on #677). | `project_config:get_limits`, `project_config:set_workspace_config` |
 | I-120 | Decided 2026-09-20 (D-677-B1, owner rule "every key" on #677). | `project_config:get_limits`, `project_config:set_workspace_config` |
 | I-121 | Decided 2026-09-20 (D-677-B1, owner rule "every key" on #677). | `project_config:get_limits`, `project_config:set_workspace_config` |
+| I-127 | Decided 2026-09-20 (D-677-B2, owner rule "every key" on #677). | `project_config:set_workspace_config` |
 | I-128 | Decided 2026-09-10 (D-128). | `project_config:get_project`, `project_config:set_project`, `project_config:get_limits` |
 | I-129 | Decided 2026-09-10 (D-129). | `project_config:get_project`, `project_config:set_project` |
 | I-133 | The capability set itself is the requirement, not the nav. | `discover_project`, `project_config:get_capabilities` |
@@ -1047,7 +1050,7 @@ Roles:
 | `project_config:check_account_status` |  |  | I-123 |  |
 | `project_config:get_account_details` |  |  | I-124 |  |
 | `project_config:open_account_file` |  |  | I-125 |  |
-| `project_config:set_workspace_config` | I-117, I-118, I-119, I-120, I-121 |  |  |  |
+| `project_config:set_workspace_config` | I-117, I-118, I-119, I-120, I-121, I-127 |  |  |  |
 | `project_config:set_workspace_ui_state` |  |  | I-024, I-092, I-132 |  |
 | `project_config:browse_folders` |  |  | I-126 |  |
 | `project_config:add_project` |  |  | I-131 |  |

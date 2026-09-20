@@ -479,6 +479,13 @@ describe('project_config: project writes (acceptance)', () => {
  * "applies without a restart" is observed rather than asserted.
  */
 describe('project_config: the workspace-settings write (#677 B1)', () => {
+  /** A real file inside the sandboxed workspace home — a path that exists and is NOT a directory. */
+  function writeTemp(name: string): string {
+    const file = join(ws.home, name);
+    writeFileSync(file, 'not a directory\n', 'utf8');
+    return file;
+  }
+
   /** A second cockpit over the same workspace home, with a semaphore that really loads.
    *  `bindHost: '0.0.0.0'` builds the same cockpit in HOSTED mode (`localHandoff: false`). */
   function hotCockpit(bindHost?: string): { app: ReturnType<typeof createApp>; semaphore: WorkspaceSemaphore } {
@@ -560,15 +567,78 @@ describe('project_config: the workspace-settings write (#677 B1)', () => {
     expect((await cockpit('/api/v1/workspace/config')).body).toEqual(before);
   });
 
-  it('does not accept the two workspace folder paths, and an unknown key is refused rather than dropped', async () => {
+  it('an unknown key is refused rather than dropped, and nothing reaches the route', async () => {
     const spy = spyService();
-    for (const bad of [{ browseRoot: '/tmp' }, { projectsDir: '/tmp' }, { resources: { maxParallel: 3 }, browseRoot: '/tmp' }, { notASetting: true }]) {
+    for (const bad of [{ notASetting: true }, { resources: { maxParallel: 3 }, notASetting: true }]) {
       const called = await invoke({ action: 'set_workspace_config', workspaceConfig: bad }, { service: spy });
       expect(called.result.isError, JSON.stringify(bad)).toBe(true);
     }
     // Refused as arguments: nothing reached the route, so the partial body did not half-apply.
     expect(spy.requests).toEqual([]);
     expect((await cockpit('/api/v1/workspace/config')).body.resources.maxParallel).toBe(2);
+  });
+
+  /**
+   * #677 wave 2 slice B2 — the two workspace folder paths.
+   *
+   * B1 held `browseRoot` and `projectsDir` back because they are the one pair whose validity is a
+   * fact about the FILESYSTEM rather than a bound in a schema. The same owner rule covers them, so
+   * the argument is now the contract schema with nothing omitted, and what keeps them honest is the
+   * route's own write probe — inherited, not re-implemented at this door.
+   */
+  it('writes the two workspace folder paths, creating the checkout root, without echoing them back', async () => {
+    const browseRoot = join(ws.home, 'b2-browse');
+    const projectsDir = join(ws.home, 'b2-clones');
+    mkdirSync(browseRoot, { recursive: true });
+    const spy = spyService();
+    const called = await invoke({ action: 'set_workspace_config', workspaceConfig: { browseRoot, projectsDir } }, { service: spy });
+    expect(called.result.isError, called.text).toBeFalsy();
+    expect(spy.requests).toEqual(['PUT /api/v1/workspace/config']);
+    // The checkout root did NOT have to exist: the probe is `mkdir -p`, so a settings write has a
+    // real filesystem side effect. Named as accepted exposure in the spec's § 3, pinned here.
+    expect(existsSync(projectsDir), 'the checkout root the probe created').toBe(true);
+    expect((await cockpit('/api/v1/workspace/config')).body).toMatchObject({ browseRoot, projectsDir });
+    // Writable, still not readable: the answer stays the narrowed `get_limits` vocabulary, so a
+    // leader gets the acknowledgement without the host path echoed back to it.
+    expect(called.json).not.toContain(browseRoot);
+    expect(JSON.stringify(value(await invoke({ action: 'get_limits' })))).not.toContain(browseRoot);
+  });
+
+  /**
+   * NAMED BREAK 5 OF THE SPEC, through the MCP door.
+   *
+   * The route probes each root for real and answers 400 with its reason BEFORE
+   * `mergeWriteWorkspaceConfig` runs, so a `resources` key travelling in the same body does not
+   * half-apply. The tool must SHOW that guard firing rather than assume it: a bad root and a good
+   * limit in one call, then the limit read back through the route, not off the file. Remove the
+   * probe from the handler and this case goes green while a broken browse root is stored.
+   */
+  it('passes the route’s write probe through: a bad root refuses the whole body, resources included', async () => {
+    const before = (await cockpit('/api/v1/workspace/config')).body;
+    const missing = join(ws.home, 'b2-does-not-exist');
+    const spy = spyService();
+    const called = await invoke(
+      { action: 'set_workspace_config', workspaceConfig: { browseRoot: missing, resources: { maxParallel: 11 } } },
+      { service: spy },
+    );
+    expect(called.result.isError).toBe(true);
+    expect(called.structured.status, 'the route’s own 400, not an argument refusal').toBe(400);
+    expect(called.text).toContain('browse folder does not exist');
+    // It really was the ROUTE that refused: the dispatch happened, and it was the only one.
+    expect(spy.requests).toEqual(['PUT /api/v1/workspace/config']);
+    // Nothing of the body survived — the root is unchanged and the cap is still the human's 2.
+    expect((await cockpit('/api/v1/workspace/config')).body).toEqual(before);
+    expect(value(await invoke({ action: 'get_limits' })).workspace.resources.maxParallel).toBe(2);
+  });
+
+  it.each([
+    ['a relative path', () => 'not/absolute', 'is not an absolute path'],
+    ['a file rather than a folder', () => writeTemp('b2-a-file'), 'is not a directory'],
+  ])('passes the route’s write probe through: %s is refused with the route’s own reason', async (_what, root, reason) => {
+    const called = await invoke({ action: 'set_workspace_config', workspaceConfig: { browseRoot: root() } });
+    expect(called.result.isError).toBe(true);
+    expect(called.structured.status).toBe(400);
+    expect(called.text).toContain(reason);
   });
 
   /**
