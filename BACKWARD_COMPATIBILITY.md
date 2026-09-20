@@ -1131,10 +1131,16 @@ every workspace limit as a safe effective read a leader could see and never chan
 - **The shared PRESENTATION preferences followed in slice B3, under the same owner rule plus the
   exclusions the owner named at 07:41 on 2026-09-20.** `set_workspace_ui_state` and `import_skills`
   stopped being refusals and are real writes through `PUT /api/v1/workspace/ui-state`, the
-  cockpit's own route — its schema bounds, its 128 KiB body cap and its shallow merge, so only the
-  keys sent are touched. The leader's argument names exactly five keys: `appearance.{accent,
+  cockpit's own route — its schema bounds, its 128 KiB body cap and its shallow merge, so a key
+  that is not sent is left alone. `get_workspace_ui_state` reads the same bag back, in the same
+  narrowed vocabulary. The leader's argument names exactly five keys: `appearance.{accent,
   density,width}`, `notifications.enabled`, `taskTable.expandedColumns`, `importedSkills` and
-  `dismissedProviderAuthFailures`. Three exclusions are part of the decision and none of them is a
+  `dismissedProviderAuthFailures`, and the argument is strict at EVERY level it names — an unknown
+  key inside one of the four nested objects is an argument refusal that dispatches nothing. The
+  merge is shallow at the TOP level only, so the three object-valued keys (`appearance`,
+  `taskTable`, `dismissedProviderAuthFailures`) are sent WHOLE and a partial one clears the rest
+  of its own object: the supported recipe is read, spread, write, exactly as the cockpit's panes
+  do it, and `get_workspace_ui_state` is what makes it possible from this door. Three exclusions are part of the decision and none of them is a
   new refusal: the colour THEME is not a stored setting at all (the browser keeps it in
   `localStorage`, with no server route to dispatch), the per-repo composer-memory keys are one
   browser's preselection memory, and the two LEGACY keys of the same file, `sidebar` and

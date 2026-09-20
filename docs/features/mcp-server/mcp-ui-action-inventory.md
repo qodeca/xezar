@@ -98,7 +98,12 @@ makes the shared PRESENTATION bag writable, so I-024 (task-table column folding)
 curated imported-skills list) and I-132 (appearance and notifications) move `global` → `covered`.
 They are served by `project_config set_workspace_ui_state` and `import_skills`, which dispatch
 `PUT /workspace/ui-state`, the cockpit's own route, with its schema bounds, its 128 KiB body cap
-and its shallow merge. **Two halves of these rows are deliberately NOT served, and neither is a
+and its shallow merge — plus `get_workspace_ui_state`, the READ half added after the #753 review,
+which serves all three records as well. That merge is shallow at the TOP LEVEL, so an
+object-valued preference (`appearance`, `taskTable`, `dismissedProviderAuthFailures`) is sent
+WHOLE: the leader reads the bag, spreads it and writes it back, exactly as the cockpit's own panes
+do. Without the read a leader changing one accent would have cleared the person's density and
+width, which is why the read is part of these rows and not a convenience. **Two halves of these rows are deliberately NOT served, and neither is a
 refusal.** The colour THEME of I-132 is not a stored setting at all: the browser keeps it in its
 own `localStorage` (`packages/web/src/lib/theme.ts`) and no server route exists to dispatch, so
 making it leader-writable would be a new feature rather than parity (spec § 4 Q1, owner 07:41).

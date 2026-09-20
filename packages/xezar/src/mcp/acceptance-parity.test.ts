@@ -1346,7 +1346,7 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
       'P-46',
       ['A-09', 'A-08', 'A-05'],
       ['I-024', 'I-092', 'I-132'],
-      'the shared presentation preferences — appearance, notifications, folded columns and the curated skills list — are written through either door with the same effect, the route’s own bound on a bad value, and an answer that carries no incident id',
+      'the shared presentation preferences — appearance, notifications, folded columns and the curated skills list — are read and written through either door with the same effect, the route’s own bound on a bad value, and an answer that carries no incident id; an object-valued preference is sent whole, after the read, the way the panes send it',
       async () => {
         const w = world();
         // Something of the person's already in the bag, including the two LEGACY keys the leader
@@ -1399,6 +1399,23 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
         const afterImport = (await mcp(w, 'project_config', { action: 'import_skills', importedSkills: [] })).result.uiState;
         expect(afterImport.importedSkills, 'a curated EMPTY list, not "never curated"').toEqual([]);
         expect(afterImport.appearance.accent, 'the human’s accent survived').toBe('lime');
+
+        // The READ half, and the recipe it exists for (#753 review, Major 1). The route replaces
+        // an object-valued key whole, so the leader reads the bag through its own door, spreads
+        // the object and writes it back — and the person's density and width survive an accent
+        // change. Drop `get_workspace_ui_state` and this block goes RED at the read.
+        expect((await ui(w, '/api/v1/workspace/ui-state', 'PUT', { appearance: { accent: 'lime', density: 'compact', width: 'wide' } })).status).toBe(200);
+        const readBack = await w.observe(() => mcp(w, 'project_config', { action: 'get_workspace_ui_state' }));
+        expect(readBack.dispatched, 'the cockpit’s own route, read side').toEqual(['GET /api/v1/workspace/ui-state']);
+        const bag = (readBack.response.result as { uiState: Record<string, any> }).uiState;
+        expect(bag.appearance).toEqual({ accent: 'lime', density: 'compact', width: 'wide' });
+        expect(JSON.stringify(bag), 'the read is narrowed exactly like the write’s answer').not.toMatch(/incident-9f3a-SECRET-ID|sidebar|lastLocation/);
+        const spread = await mcp(w, 'project_config', {
+          action: 'set_workspace_ui_state',
+          uiState: { appearance: { ...bag.appearance, accent: 'violet' } },
+        });
+        expect(spread.result.uiState.appearance).toEqual({ accent: 'violet', density: 'compact', width: 'wide' });
+        expect((await ui(w, '/api/v1/workspace/ui-state')).body.appearance).toEqual({ accent: 'violet', density: 'compact', width: 'wide' });
 
         // A value the ROUTE refuses: 201 skill names, one past the contract's bound. The door
         // dispatches — it holds no second opinion about a value — and the route answers 400 with

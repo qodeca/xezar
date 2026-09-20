@@ -443,8 +443,16 @@ this list names the keys the schemas name, never the keys they permit.
 > leader: `appearance.{accent,density,width}`, `notifications.enabled`,
 > `taskTable.expandedColumns`, `importedSkills` and `dismissedProviderAuthFailures`, through
 > `project_config` `set_workspace_ui_state` and `import_skills`, which dispatch the same
-> `PUT /workspace/ui-state` the panes use. The `excluded` rows below, and the two in § 4.7 and
-> § 4.8, are kept unchanged as the dated record of what was decided on 2026-09-10.
+> `PUT /workspace/ui-state` the panes use, with `get_workspace_ui_state` reading the same bag back
+> in the same narrowed vocabulary. The `excluded` rows below, and the two in § 4.7 and § 4.8, are
+> kept unchanged as the dated record of what was decided on 2026-09-10.
+>
+> **An object-valued key is written WHOLE** (added after the #753 review). The route merges
+> shallowly at the TOP level, so `appearance`, `taskTable` and `dismissedProviderAuthFailures` are
+> replaced entire by whatever is sent: the leader reads with `get_workspace_ui_state`, spreads and
+> writes back, which is what the panes themselves do. The door is strict at every level it names,
+> so an unknown key INSIDE one of those objects is an argument refusal that dispatches nothing,
+> rather than a value silently stripped or silently stored.
 >
 > Four things the reversal does NOT change:
 >

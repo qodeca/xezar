@@ -852,6 +852,82 @@ describe('project_config: the shared preference write (#677 B3)', () => {
     expect(JSON.parse(readFileSync(uiStateFile(), 'utf8'))).toMatchObject({ appearance: change.appearance });
   });
 
+  /**
+   * THE READ HALF (#753 review, Major 1), and why it is not a convenience.
+   *
+   * `PUT /workspace/ui-state` merges shallowly at the TOP level, so a key that is SENT replaces
+   * its whole value: `{appearance: {accent}}` over a populated appearance clears the person's
+   * density and width. The cockpit's own pane never hits that because it reads the bag first and
+   * sends `{...appearance, accent}` (`packages/web/src/components/appearance-provider.tsx`). Both
+   * halves are pinned here: the bare partial really does clear the siblings — that is the route's
+   * documented behaviour and the reason the read exists — and the documented recipe, read, spread,
+   * write, really does preserve them.
+   *
+   * The named break: DROP `get_workspace_ui_state` (from `PROJECT_CONFIG_ACTIONS`, its
+   * `ACTION_FIELDS` row, or its handler case). The recipe half then goes RED at the read, because
+   * there is no supported way for a leader to learn the two values it must send back — which is
+   * exactly the state this review found.
+   */
+  it('read, spread, write keeps the person’s other appearance values — and a bare partial does not', async () => {
+    const populated = { accent: 'violet', density: 'compact', width: 'wide' } as const;
+    value(await invoke({ action: 'set_workspace_ui_state', uiState: { appearance: populated } }));
+
+    // The bare partial, first: the route replaces the whole key, and the answer says so honestly
+    // rather than reporting values that are no longer in the file.
+    const bare = value(await invoke({ action: 'set_workspace_ui_state', uiState: { appearance: { accent: 'lime' } } })).uiState;
+    expect(bare.appearance, 'the whole key was replaced, and the answer does not pretend otherwise').toEqual({
+      accent: 'lime',
+      density: null,
+      width: null,
+    });
+    expect((await cockpit('/api/v1/workspace/ui-state')).body.appearance).toEqual({ accent: 'lime' });
+
+    // And now the recipe the argument description prescribes, from the same starting point.
+    value(await invoke({ action: 'set_workspace_ui_state', uiState: { appearance: populated } }));
+    const read = value(await invoke({ action: 'get_workspace_ui_state' })).uiState;
+    expect(read.appearance).toEqual(populated);
+    const spread = { ...read.appearance, accent: 'lime' };
+    const written = value(await invoke({ action: 'set_workspace_ui_state', uiState: { appearance: spread } })).uiState;
+    expect(written.appearance, 'density and width survived the accent change').toEqual({
+      accent: 'lime',
+      density: 'compact',
+      width: 'wide',
+    });
+    expect((await cockpit('/api/v1/workspace/ui-state')).body.appearance).toEqual({
+      accent: 'lime',
+      density: 'compact',
+      width: 'wide',
+    });
+  });
+
+  it('the read is the same narrowed vocabulary, needs no operation key, and dispatches one GET', async () => {
+    expect(
+      (await cockpit('/api/v1/workspace/ui-state', 'PUT', {
+        appearance: { accent: 'violet' },
+        importedSkills: ['review'],
+        dismissedProviderAuthFailures: { claude: 'incident-9f3a-SECRET-ID' },
+        sidebar: { collapsed: { group: true } },
+        lastLocation: { projectId: 'proj-a', pathname: '/p/proj-a/tasks' },
+      })).status,
+    ).toBe(200);
+
+    const spy = spyService();
+    const called = await invoke({ action: 'get_workspace_ui_state' }, { service: spy });
+    const read = value(called).uiState;
+    expect(spy.requests).toEqual(['GET /api/v1/workspace/ui-state']);
+    expect(read.appearance).toEqual({ accent: 'violet', density: null, width: null });
+    expect(read.importedSkills).toEqual(['review']);
+    // Narrowed exactly like the write's answer: the provider's NAME, never the incident id, and
+    // neither legacy window key. Return the raw response here instead of `workspacePreferences`
+    // and all three of these go RED.
+    expect(read.dismissedProviderAuthFailures).toEqual(['claude']);
+    expect(called.json).not.toContain('incident-9f3a-SECRET-ID');
+    expect(called.json).not.toMatch(/sidebar|lastLocation/);
+    // A read, so no operation key — and no audit row, which `audit-inventory.test.ts` holds it to.
+    const withoutKey = await invoke({ action: 'get_workspace_ui_state', operationId: undefined });
+    expect(withoutKey.result.isError, withoutKey.text).toBeFalsy();
+  });
+
   it('dispatches the cockpit’s own route, once, and nothing else — through either action', async () => {
     const spy = spyService();
     const prefs = await invoke({ action: 'set_workspace_ui_state', uiState: { notifications: { enabled: true } } }, { service: spy });
@@ -881,6 +957,10 @@ describe('project_config: the shared preference write (#677 B3)', () => {
     const called = await invoke({ action: 'import_skills', importedSkills: tooMany }, { service: spy });
     expect(called.result.isError).toBe(true);
     expect(called.structured.status, 'the route’s own 400, not an argument refusal').toBe(400);
+    // The SAME 400, which is the acceptance wording: not merely the same status, but the route's
+    // own reason text, carried to the leader unrewritten (#753 review, Minor 1). Re-word the
+    // reason at the MCP door instead of passing the route's through and this line goes RED.
+    expect(called.text, 'the route’s own reason, not a message invented here').toContain(viaUi.body.error);
     // It really was the ROUTE that refused: the dispatch happened, and it was the only one.
     expect(spy.requests).toEqual(['PUT /api/v1/workspace/ui-state']);
     expect((await cockpit('/api/v1/workspace/ui-state')).body).toEqual(before);
@@ -931,6 +1011,14 @@ describe('project_config: the shared preference write (#677 B3)', () => {
    * file that stay out of the leader's reach because they describe one person's window.
    */
   it('accepts exactly the five keys the owner opened: theme, the two legacy window keys and an unknown key are argument refusals', async () => {
+    // A POPULATED bag, so "nothing changed" is a real assertion rather than empty-equals-empty:
+    // the two dismissals below are what a stripped `dismissedProviderAuthFailures` would wipe.
+    expect(
+      (await cockpit('/api/v1/workspace/ui-state', 'PUT', {
+        appearance: { accent: 'violet', density: 'compact', width: 'wide' },
+        dismissedProviderAuthFailures: { claude: 'incident-one', codex: 'incident-two' },
+      })).status,
+    ).toBe(200);
     const before = (await cockpit('/api/v1/workspace/ui-state')).body;
     const spy = spyService();
     for (const bad of [
@@ -939,6 +1027,20 @@ describe('project_config: the shared preference write (#677 B3)', () => {
       { lastLocation: { projectId: 'proj-a', pathname: '/p/proj-a/tasks' } },
       { notASetting: true },
       { appearance: { accent: 'violet' }, theme: 'dark' },
+      // ONE LEVEL DOWN, too (#753 review, Major 2). The contract's read-side shapes are tolerant
+      // in two different directions, and inheriting either one is a silent loss: `appearance` and
+      // `dismissedProviderAuthFailures` STRIP an unknown key — `{appearance: {theme}}` would have
+      // become `{appearance: {}}`, erasing the person's whole appearance under an `ok`, and
+      // `{dismissedProviderAuthFailures: {gemini}}` would have wiped every dismissal the cockpit's
+      // own route refuses with a 400 — while `notifications` and `taskTable` KEEP one and would
+      // have stored it in the person's file, invisible in the answer and in the audit row. Take
+      // the `z.strictObject(…)` wrappers back off `workspaceUiStateWriteSchema` and these four
+      // lines go RED, each one a body the route itself would have refused or a key nobody
+      // reviewed landing in `ui-state.json`.
+      { appearance: { theme: 'dark', accent: 'lime' } },
+      { dismissedProviderAuthFailures: { gemini: 'abc' } },
+      { notifications: { enabled: true, lastTask: 'smuggled' } },
+      { taskTable: { expandedColumns: { title: true }, sidebar: { collapsed: { g: true } } } },
     ]) {
       const called = await invoke({ action: 'set_workspace_ui_state', uiState: bad }, { service: spy });
       expect(called.result.isError, JSON.stringify(bad)).toBe(true);

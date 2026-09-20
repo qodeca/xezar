@@ -63,6 +63,8 @@ const NO_OPERATION_ID: Readonly<Record<string, string>> = {
   'project_config:get_project': 'reads the registry entry',
   'project_config:get_prompt_templates': 'reads the follow-up prompt templates',
   'project_config:get_limits': 'reads the effective limits',
+  'project_config:get_workspace_ui_state':
+    'reads the shared presentation preferences. It is the read half `set_workspace_ui_state` needs — the route replaces an object-valued key whole, so a leader reads the bag, spreads it and writes it back — and it changes nothing itself',
   'project_config:get_capabilities':
     'reads capabilities and provider status. `refresh: true` is not free — `startFreshProbe` (`core/provider-auth.ts`) spawns the vendor CLI probes and replaces `completed`, the process-wide provider-status cache every other reader consults — but it refreshes a CACHE of an external fact, so a repeat re-reads the world rather than doing anything a second time. A receipt is the wrong tool here twice over: it would serve the replay a stale snapshot, which is the one thing `refresh` exists to avoid',
   'project_config:get_account': 'reads the effective account selection',
@@ -72,7 +74,7 @@ const NO_OPERATION_ID: Readonly<Record<string, string>> = {
   'project_config:parse_workflow': 'validates YAML and writes nothing',
   'project_config:list_skills': 'lists the skills',
   'project_config:get_skill': 'reads one skill',
-  'project_config:list_importable_skills': 'lists what could be imported; importing is refused',
+  'project_config:list_importable_skills': 'lists what could be imported; importing itself is `import_skills`, which does take an operation key',
   'project_config:check_skill_updates': 'reports which skill updates are pending; applying them is `refresh_skills`',
   'project_config:list_automations': 'lists the automations',
   'project_config:get_automation': 'reads one automation',

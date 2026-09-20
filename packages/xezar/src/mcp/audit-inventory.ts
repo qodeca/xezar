@@ -189,6 +189,10 @@ export const AUDIT_MCP_READS: readonly string[] = [
   'project_config:get_project',
   'project_config:get_prompt_templates',
   'project_config:get_limits',
+  // The read half of `workspace.uiState.set` (#753 review, Major 1): a leader must read the
+  // preference bag before it can send an object-valued key back whole. A read writes no audit
+  // row, exactly like `get_limits` beside `set_workspace_config`.
+  'project_config:get_workspace_ui_state',
   'project_config:get_capabilities',
   'project_config:get_account',
   'project_config:list_agent_config',

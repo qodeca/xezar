@@ -164,6 +164,10 @@ export const TOOL_ACTION_COVERAGE: Readonly<Record<string, ActionCoverage>> = {
   // WIDTH and notification half; its `theme` half is served by nobody and never will be — the
   // browser stores the theme itself (`packages/web/src/lib/theme.ts`), so there is no route to
   // dispatch, which is a fact about the cockpit rather than a boundary (spec § 4 Q1).
+  // The read half the three records need as much as the write (#753 review, Major 1): the route
+  // merges shallowly at the top level, so `set_workspace_ui_state` can only change one key of an
+  // object-valued preference after this read has handed the leader the rest of it.
+  'project_config:get_workspace_ui_state': { serves: ['I-024', 'I-092', 'I-132'] },
   'project_config:set_workspace_ui_state': { serves: ['I-024', 'I-092', 'I-132'] },
   'project_config:browse_folders': { refuses: ['I-126'] },
   'project_config:add_project': { refuses: ['I-131'] },
