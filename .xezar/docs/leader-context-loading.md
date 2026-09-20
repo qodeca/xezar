@@ -43,6 +43,19 @@ is what makes the client reload both without a prompt.
 | `.local/xezar/campaigns/<release>/README.md` | Live campaign state, rewritten at every milestone. | no — runtime |
 | `.local/xezar/campaigns/<release>/decisions.md` | Owner decisions in the owner's exact words, append-only. | no — runtime |
 
+The loader's documented JSON shape is checked by its allowlisted fixture. Values can vary with the
+guide and campaign notes, while these keys are its stable output contract:
+
+<!-- documented-output:leader-context -->
+```json
+{
+  "hookSpecificOutput": {
+    "hookEventName": "SessionStart",
+    "additionalContext": "fixture-dependent text"
+  }
+}
+```
+
 The loader is deliberately tiny and dependency-free: a shell script that reads the guide and the
 newest campaign folder, checks the guard, and prints one JSON object. It reads no configuration, so
 a project that has the three committed files needs nothing else. The newest folder is chosen by

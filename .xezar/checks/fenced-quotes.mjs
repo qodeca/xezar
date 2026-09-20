@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { lstat, readFile, readdir, realpath } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -14,6 +15,15 @@ const scriptRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '.
 const repositoryRoot = await realpath(requestedRoot ? path.resolve(requestedRoot) : scriptRoot);
 const failures = [];
 let checked = 0;
+const trackedResult = spawnSync('git', ['-C', repositoryRoot, 'ls-files', '-z'], {
+  encoding: 'utf8',
+});
+if (trackedResult.status !== 0) {
+  failures.push(`could not read git index paths: ${trackedResult.stderr.trim() || 'git failed'}`);
+}
+const trackedPaths = trackedResult.status === 0
+  ? trackedResult.stdout.split('\0').filter(Boolean)
+  : [];
 
 function withinRepository(candidate) {
   const relative = path.relative(repositoryRoot, candidate);
@@ -33,6 +43,9 @@ async function markdownFiles() {
     }
     for (const entry of entries) {
       if (entry.isSymbolicLink()) continue;
+      if (entry.isDirectory() && ['.local', 'node_modules', 'changelog.d'].includes(entry.name)) {
+        continue;
+      }
       const absolute = path.join(directory, entry.name);
       if (entry.isDirectory()) await walk(absolute, keep);
       else if (entry.isFile() && keep(absolute)) found.add(absolute);
@@ -70,7 +83,7 @@ function openingFence(text) {
   const match = text.match(/^( {0,3})(`{3,}|~{3,})(.*?)(?:\r?\n)?$/);
   if (!match) return null;
   if (match[2][0] === '`' && match[3].includes('`')) return null;
-  return { marker: match[2][0], length: match[2].length };
+  return { marker: match[2][0], length: match[2].length, indentation: match[1].length };
 }
 
 function closesFence(text, fence) {
@@ -103,6 +116,18 @@ async function expectedBytes(specification, document, lineNumber) {
   const lexicalPath = path.resolve(repositoryRoot, source.path);
   if (!withinRepository(lexicalPath)) {
     failures.push(`${document}:${lineNumber}: source path escapes repository: ${source.path}`);
+    return null;
+  }
+
+  const gitPath = source.path.split(path.sep).join('/');
+  const wrongCasePath = trackedPaths.find(
+    (trackedPath) => trackedPath.toLowerCase() === gitPath.toLowerCase()
+      && trackedPath !== gitPath,
+  );
+  if (wrongCasePath) {
+    failures.push(
+      `${document}:${lineNumber}: source path case does not match git index: ${source.path} (tracked as ${wrongCasePath})`,
+    );
     return null;
   }
 
@@ -149,7 +174,14 @@ async function checkDocument(absoluteDocument) {
       if (!closesFence(line.text, quote.fence)) continue;
       const actual = bytes.subarray(quote.contentStart, line.start);
       const expected = await expectedBytes(quote.source, relativeDocument, quote.markerLine);
-      if (expected && !actual.equals(expected)) {
+      const matches = expected && (
+        actual.equals(expected)
+        || (expected.at(-1) !== 0x0a
+          && actual.length === expected.length + 1
+          && actual.at(-1) === 0x0a
+          && actual.subarray(0, -1).equals(expected))
+      );
+      if (expected && !matches) {
         failures.push(
           `${relativeDocument}:${quote.markerLine}: fenced quote differs from ${quote.source}`,
         );
@@ -173,6 +205,14 @@ async function checkDocument(absoluteDocument) {
         );
         pending = null;
       } else {
+        if (fence.indentation > 0) {
+          failures.push(
+            `${relativeDocument}:${pending.line}: marked fenced block must not be indented`,
+          );
+          ordinaryFence = fence;
+          pending = null;
+          continue;
+        }
         quote = {
           source: pending.source,
           markerLine: pending.line,
