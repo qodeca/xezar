@@ -2143,6 +2143,44 @@ expect_fail "template-is-acceptance: criteria with no accepting authority are re
 printf 'AC-1: the thing works\naccepted-by: the owner, 2026-09-16\n' > "$ev/CRITERIA"
 expect_ok "criteria with an ID and an accepting authority pass" run_in "$wt" "$PF" --readiness
 
+# --- 7g-bis. A declared refresh round (#670) ------------------------------------------------------
+#
+# A round whose only job is to merge the base into a pull request and refresh the seal makes no
+# content claim of its own, so CRITERIA has no criterion to name. Before the REFRESH shape it had no
+# way to say that, and readiness refused it (`phase.criteria`) — the `refresh-needs-claim` defect.
+# The shape names the refresh, the merged base sha and the evidence it refreshed, and it stands in
+# for the content claim ONLY when it carries none of its own. Two guards keep it from being a
+# generic bypass: `refresh-is-a-bypass` (a REFRESH record that claims content is refused) and
+# `no-refresh-no-claim` (a round with no REFRESH is still judged by CRITERIA). The predicate stays
+# `phase.criteria` because the refusal is about the accepted-criteria INPUT, of which REFRESH is the
+# refresh-round spelling.
+base_sha="$(git -C "$wt" rev-parse HEAD)"
+printf 'not applicable — this round only merges the base and refreshes the seal; see REFRESH\n' > "$ev/CRITERIA"
+printf 'refresh: merged main into the pull request branch and re-ran the required checks\nbase: %s\nevidence: the gate evidence sealed for the refreshed candidate\n' "$base_sha" > "$ev/REFRESH"
+expect_ok "refresh-needs-claim: a declared REFRESH round with no content claim passes readiness" \
+  run_in "$wt" "$PF" --readiness
+
+# `refresh-is-a-bypass`: the declaration is not a way to claim content without the accepted-by line.
+printf 'refresh: merged main and refreshed the seal\nbase: %s\nevidence: the seal\nAC-1: the fixture behaves as the case asserts\n' "$base_sha" > "$ev/REFRESH"
+expect_fail "refresh-is-a-bypass: a REFRESH record that carries a content claim is refused" \
+  "phase.criteria" run_in "$wt" "$PF" --readiness
+
+# The shape itself is required: a declaration that names no merged base sha stands in for nothing.
+printf 'refresh: merged main and refreshed the seal\nevidence: the seal\n' > "$ev/REFRESH"
+expect_fail "a REFRESH record with no merged base sha does not stand in for a content claim" \
+  "phase.criteria" run_in "$wt" "$PF" --readiness
+
+# `no-refresh-no-claim`: with no REFRESH at all, an absent content claim is still refused.
+rm -f "$ev/REFRESH"
+expect_fail "no-refresh-no-claim: a round with neither a REFRESH declaration nor a content claim is refused" \
+  "phase.criteria" run_in "$wt" "$PF" --readiness
+
+# Restoring the accepted criteria restores readiness — the control that the refusals above are about
+# the record they removed, not about the fixture.
+printf 'AC-1: the thing works\naccepted-by: the owner, 2026-09-16\n' > "$ev/CRITERIA"
+expect_ok "restoring the criteria record restores readiness" run_in "$wt" "$PF" --readiness
+rm -f "$ev/REFRESH"
+
 # An empty record is not a record. `set` refuses to write one rather than leaving a file that
 # passes an existence test and says nothing.
 expect_fail "an empty record is refused by the writer" \
