@@ -348,9 +348,23 @@ describe('the saved four-door audit harness (#306 part 2)', () => {
     expect(otherRecords[0]).toMatchObject({ origin: 'ui', action: 'project.registry.add', outcome: { status: 'applied' } });
     matrix.push({ door: 'ui', family: 'F9', action: 'project.registry.add', outcome: 'applied' });
 
-    // F10 — workspace: MCP can only refuse (§ 6.2)
-    await once('mcp', { family: 'F10', action: 'workspace.config.set', outcome: 'refused', reason: 'workspace_settings' }, () =>
-      mcp('project_config', { action: 'set_workspace_config', operationId: operationId() }));
+    // F10 — workspace: MCP refuses the shared preference bag, and APPLIES the settings write the
+    // owner's 2026-09-20 rule opened (#677 B1). Both outcomes, through the same audit action ids.
+    await once('mcp', { family: 'F10', action: 'workspace.uiState.set', outcome: 'refused', reason: 'workspace_settings' }, () =>
+      mcp('project_config', { action: 'set_workspace_ui_state', operationId: operationId() }));
+    await once('mcp', { family: 'F10', action: 'workspace.config.set', outcome: 'applied' }, () =>
+      mcp('project_config', { action: 'set_workspace_config', operationId: operationId(), workspaceConfig: { resources: { maxParallel: 3 } } }));
+    // The record the MCP door writes for this write is its OWN, not the route middleware's: one
+    // row, origin `mcp`, the inventory's action id, the operation key and a payload DIGEST. The
+    // route's `fieldNames: true` belongs to the `ui` door and is not inherited — the door that
+    // settles the call is the door that records it — so the MCP trail carries neither the field
+    // names nor any value. Nothing new was needed for the reversal (#677 B1).
+    const configSet = records(c.dataDir).filter((row) => row.action === 'workspace.config.set');
+    expect(configSet).toHaveLength(1);
+    expect(configSet[0], JSON.stringify(configSet[0])).toMatchObject({ origin: 'mcp', actor: { type: 'mcp' }, outcome: { status: 'applied' } });
+    expect(configSet[0]!.payloadDigest, 'the payload is a digest, never the params').toMatch(/^[0-9a-f]{64}$/);
+    expect(configSet[0], 'the MCP door records no field names').not.toHaveProperty('fieldNames');
+    expect(JSON.stringify(configSet[0]), 'no key and no value of the body in the record').not.toMatch(/maxParallel|resources/);
     await once('ui', { family: 'F10', action: 'workspace.uiState.set', outcome: 'applied' }, () => http('PUT', '/workspace/ui-state', {}));
     await once('ui', { family: 'F10', action: 'account.update', outcome: 'refused', reason: 'http_404' }, () =>
       http('PATCH', '/workspace/agent-profiles/no-such-account', { label: 'x' }));
@@ -360,7 +374,8 @@ describe('the saved four-door audit harness (#306 part 2)', () => {
     for (const family of families) {
       for (const door of ['ui', 'mcp'] as const) {
         const outcomes = new Set(matrix.filter((row) => row.family === family && row.door === door).map((row) => row.outcome));
-        const mcpRefusedOnly = door === 'mcp' && (family === 'F9' || family === 'F10');
+        // F10 stopped being refusal-only for MCP with #677 B1 (`workspace.config.set` applies).
+        const mcpRefusedOnly = door === 'mcp' && family === 'F9';
         expect([...outcomes].sort(), `${door} ${family}`).toEqual(mcpRefusedOnly ? ['refused'] : ['applied', 'refused']);
       }
     }

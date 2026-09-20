@@ -292,7 +292,7 @@ Unknown arguments are rejected.
 
 | Argument | Type | Required | Limits | Description (verbatim from the schema) |
 | --- | --- | --- | --- | --- |
-| `action` | `get_config` \| `set_config` \| `get_project` \| `set_project` \| `get_prompt_templates` \| `set_prompt_templates` \| `get_limits` \| `get_capabilities` \| `get_account` \| `list_agent_config` \| `read_agent_config` \| `write_agent_config` \| `list_workflows` \| `parse_workflow` \| `save_workflow` \| `delete_workflow` \| `list_skills` \| `get_skill` \| `list_importable_skills` \| `refresh_skills` \| `check_skill_updates` \| `list_automations` \| `get_automation` \| `create_automation` \| `update_automation` \| `delete_automation` \| `enable_automation` \| `pause_automation` \| `check_automation` \| `get_automation_check` \| `get_automation_log` \| `retry_automation_receipt` \| `list_worktrees` \| `reclaim_worktrees` \| `remove_worktree` \| `dismiss_onboarding_offer` \| `set_provider_enabled` \| `connect_provider` \| `retry_provider` \| `create_account` \| `update_account` \| `remove_account` \| `select_account` \| `check_account_status` \| `get_account_details` \| `open_account_file` \| `set_workspace_config` \| `set_workspace_ui_state` \| `browse_folders` \| `add_project` \| `clone_project` \| `remove_project` \| `apply_skill_updates` \| `import_skills` \| `get_launch_key` \| `open_in_app` | yes |  | What to do in the project this connection is bound to. Actions outside the project boundary (workspace settings, accounts, the project registry, host folders) are answered with a refusal that names the boundary. |
+| `action` | `get_config` \| `set_config` \| `get_project` \| `set_project` \| `get_prompt_templates` \| `set_prompt_templates` \| `get_limits` \| `set_workspace_config` \| `get_capabilities` \| `get_account` \| `list_agent_config` \| `read_agent_config` \| `write_agent_config` \| `list_workflows` \| `parse_workflow` \| `save_workflow` \| `delete_workflow` \| `list_skills` \| `get_skill` \| `list_importable_skills` \| `refresh_skills` \| `check_skill_updates` \| `list_automations` \| `get_automation` \| `create_automation` \| `update_automation` \| `delete_automation` \| `enable_automation` \| `pause_automation` \| `check_automation` \| `get_automation_check` \| `get_automation_log` \| `retry_automation_receipt` \| `list_worktrees` \| `reclaim_worktrees` \| `remove_worktree` \| `dismiss_onboarding_offer` \| `set_provider_enabled` \| `connect_provider` \| `retry_provider` \| `create_account` \| `update_account` \| `remove_account` \| `select_account` \| `check_account_status` \| `get_account_details` \| `open_account_file` \| `set_workspace_ui_state` \| `browse_folders` \| `add_project` \| `clone_project` \| `remove_project` \| `apply_skill_updates` \| `import_skills` \| `get_launch_key` \| `open_in_app` | yes |  | What to do in the project this connection is bound to. Actions outside the project boundary (workspace settings, accounts, the project registry, host folders) are answered with a refusal that names the boundary. |
 | `projectId` | any | no |  | Never accepted: the project is the one this connection is bound to, and a call that names one is refused. |
 | `config` | object | no |  | set_config: the project's own settings to change. null clears a key back to its default. |
 | `config.baseBranch` | string or null | no | min length 1, max length 200 |  |
@@ -312,6 +312,28 @@ Unknown arguments are rejected.
 | `config.skillsRepos` | array of object or null | no | max items 32 |  |
 | `config.skillsRepos[].repo` | string | yes | min length 1, max length 500 |  |
 | `config.skillsRepos[].ref` | string | no | min length 1, max length 200 |  |
+| `workspaceConfig` | object | no |  | set_workspace_config: the workspace-wide settings to change — they apply to every project on this machine. Only the keys you send are touched; null clears a key back to its default. The two workspace folder paths are not accepted here. |
+| `workspaceConfig.skillsAutoUpdate` | boolean or null | no |  |  |
+| `workspaceConfig.followups` | boolean or null | no |  |  |
+| `workspaceConfig.agentEnvPassthrough` | array of string or null | no | max items 64 |  |
+| `workspaceConfig.composerDefaults` | object | no |  |  |
+| `workspaceConfig.composerDefaults.autonomous` | boolean or null | no |  |  |
+| `workspaceConfig.composerDefaults.worktree` | boolean or null | no |  |  |
+| `workspaceConfig.resources` | object | no |  |  |
+| `workspaceConfig.resources.maxParallel` | integer | no | min 1, max 16 |  |
+| `workspaceConfig.resources.maxMonitoringSessions` | integer | no | min 0, max 16 |  |
+| `workspaceConfig.resources.monitoringWakeIntervalMinutes` | integer or null | no | min 1, max 60 |  |
+| `workspaceConfig.resources.autoResumeOnUsageLimit` | boolean | no |  |  |
+| `workspaceConfig.resources.idleTimeoutMinutes` | integer or null | no | min 1, max 1440 |  |
+| `workspaceConfig.resources.memoryLimitMb` | integer or null | no | min 0, max 1048576 |  |
+| `workspaceConfig.resources.worktreeRetentionDefault` | integer | no | min 0, max 1000 |  |
+| `workspaceConfig.agentDefaults` | object | no |  |  |
+| `workspaceConfig.agentDefaults.runner` | `claude` \| `codex` \| `opencode` \| `pi` or null | no |  |  |
+| `workspaceConfig.agentDefaults.models` | object | no |  |  |
+| `workspaceConfig.agentDefaults.models.claude` | string or null | no | min length 1, max length 200 |  |
+| `workspaceConfig.agentDefaults.models.codex` | string or null | no | min length 1, max length 200 |  |
+| `workspaceConfig.agentDefaults.models.opencode` | string or null | no | min length 1, max length 200 |  |
+| `workspaceConfig.agentDefaults.models.pi` | string or null | no | min length 1, max length 200 |  |
 | `project` | object | no |  | set_project: this project's concurrency cap (maxParallel, null inherits the workspace cap) and/or its tags (whole list). |
 | `project.maxParallel` | integer or null | no | min 1, max 16 |  |
 | `project.tags` | array of string or null | no | max items 20 |  |
@@ -887,6 +909,11 @@ business outcome as the cockpit is the separate [parity coverage map](mcp-parity
 | I-144 | Create the setup or re-check task from the bundled launch definition `discover_project.onboarding.launch.workflowId` names. | `task_create:start` |
 | I-145 | Record that the offer was made for this identity, so the same pair does not offer again. | `project_config:dismiss_onboarding_offer` |
 | I-146 | Learn that the running identity differs from the last one a finished check covered, as a pull. | `discover_project` |
+| I-117 | Decided 2026-09-20 (D-677-B1, owner rule "every key" on #677). | `project_config:get_limits`, `project_config:set_workspace_config` |
+| I-118 | Decided 2026-09-20 (D-677-B1, owner rule "every key" on #677). | `project_config:get_limits`, `project_config:set_workspace_config` |
+| I-119 | Decided 2026-09-20 (D-677-B1, owner rule "every key" on #677). | `project_config:get_limits`, `project_config:set_workspace_config` |
+| I-120 | Decided 2026-09-20 (D-677-B1, owner rule "every key" on #677). | `project_config:get_limits`, `project_config:set_workspace_config` |
+| I-121 | Decided 2026-09-20 (D-677-B1, owner rule "every key" on #677). | `project_config:get_limits`, `project_config:set_workspace_config` |
 | I-128 | Decided 2026-09-10 (D-128). | `project_config:get_project`, `project_config:set_project`, `project_config:get_limits` |
 | I-129 | Decided 2026-09-10 (D-129). | `project_config:get_project`, `project_config:set_project` |
 | I-133 | The capability set itself is the requirement, not the nav. | `discover_project`, `project_config:get_capabilities` |
@@ -976,7 +1003,7 @@ Roles:
 | `project_config:set_project` | I-128, I-129 |  |  |  |
 | `project_config:get_prompt_templates` | I-110 |  |  |  |
 | `project_config:set_prompt_templates` | I-110 |  |  |  |
-| `project_config:get_limits` | I-009, I-128 | I-117, I-118, I-119, I-120, I-121 |  |  |
+| `project_config:get_limits` | I-009, I-117, I-118, I-119, I-120, I-121, I-128 |  |  |  |
 | `project_config:get_capabilities` | I-133 | I-115 |  |  |
 | `project_config:get_account` | I-042 | I-122 |  |  |
 | `project_config:list_agent_config` | I-111, I-113 |  |  |  |
@@ -1016,7 +1043,7 @@ Roles:
 | `project_config:check_account_status` |  |  | I-123 |  |
 | `project_config:get_account_details` |  |  | I-124 |  |
 | `project_config:open_account_file` |  |  | I-125 |  |
-| `project_config:set_workspace_config` |  |  | I-117, I-118, I-119, I-120, I-121, I-127 |  |
+| `project_config:set_workspace_config` | I-117, I-118, I-119, I-120, I-121 |  |  |  |
 | `project_config:set_workspace_ui_state` |  |  | I-024, I-092, I-132 |  |
 | `project_config:browse_folders` |  |  | I-126 |  |
 | `project_config:add_project` |  |  | I-131 |  |

@@ -1218,6 +1218,71 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
       expect(JSON.stringify(entry(PROJECT_B))).toBe(bBefore);
     });
 
+    parity(
+      'P-45',
+      ['A-09', 'A-08', 'A-05'],
+      ['I-117', 'I-118', 'I-119', 'I-120', 'I-121'],
+      'the workspace limits, composer defaults, skills auto-update and agent defaults are written through either door with the same effect, the same bound on a bad value and the same narrowed answer',
+      async () => {
+        const w = world();
+        // Every key of the write, in one body, as the owner's 2026-09-20 rule allows (#677 B1).
+        const change = {
+          resources: { maxParallel: 5, maxMonitoringSessions: 3, monitoringWakeIntervalMinutes: null, autoResumeOnUsageLimit: false, idleTimeoutMinutes: 30, memoryLimitMb: 4096, worktreeRetentionDefault: 7 },
+          followups: false,
+          agentEnvPassthrough: ['CI'],
+          composerDefaults: { autonomous: true, worktree: false },
+          skillsAutoUpdate: false,
+          agentDefaults: { runner: 'codex', models: { codex: 'gpt-5.6-sol' } },
+        } as const;
+        const seen = await w.observe(() => mcp(w, 'project_config', { action: 'set_workspace_config', workspaceConfig: change }));
+        // NOT `assertIsolated`: this write is workspace-wide BY DESIGN — that is the whole of the
+        // owner's 2026-09-20 decision — so its one dispatch is deliberately outside A's scope and
+        // the helper's project-scoped rule does not apply. What must still hold is the rest of
+        // N-01: exactly the cockpit's own workspace route, once; project B's own recorded state
+        // byte-identical; and nothing of B or any secret on the leader-visible surface.
+        expect(seen.dispatched).toEqual(['PUT /api/v1/workspace/config']);
+        expect(seen.after, 'B unchanged').toBe(seen.before);
+        const surface = JSON.stringify({ response: seen.response, leaderLog: seen.leaderLog, journalA: seen.journal.a, log: seen.log });
+        expect(leaked(surface, w.b.names), 'nothing of B').toEqual([]);
+        expect(leaked(surface, w.secrets), 'no secret').toEqual([]);
+
+        // The leader reads its own write in the SAME words `get_limits` answers in.
+        const written = seen.response.result as { workspace: Record<string, any> };
+        const limits = (await mcp(w, 'project_config', { action: 'get_limits' })).result.workspace;
+        expect(written.workspace).toEqual(limits);
+        expect(limits.resources).toMatchObject({ maxParallel: 5, maxMonitoringSessions: 3, monitoringWakeIntervalMinutes: null, autoResumeOnUsageLimit: false, idleTimeoutMinutes: 30, memoryLimitMb: 4096, worktreeRetentionDefault: 7 });
+        expect(limits.followups).toEqual({ effective: false, inherited: false });
+        expect(limits.agentEnvPassthrough.effectiveNames).toContain('CI');
+        expect(limits.composerDefaults).toMatchObject({ autonomous: true, worktree: false });
+        expect(limits.skillsAutoUpdate).toEqual({ effective: false, inherited: false });
+        // The narrowing § 4.9 set survives the reversal: the answer carries no folder path and no
+        // machine-wide agent default, even though the write accepted the defaults.
+        expect(JSON.stringify(written.workspace)).not.toMatch(/browseRoot|projectsDir|agentDefaults/);
+
+        // The cockpit's own pane sees exactly the leader's values, agent defaults included.
+        const cockpit = await ui(w, '/api/v1/workspace/config');
+        expect(cockpit.body).toMatchObject({ resources: { maxParallel: 5, memoryLimitMb: 4096 }, skillsAutoUpdate: false, followups: false, agentDefaults: { runner: 'codex', models: { codex: 'gpt-5.6-sol' } } });
+
+        // The human changes it back in the cockpit; the leader reads the human's value.
+        expect((await ui(w, '/api/v1/workspace/config', 'PUT', { resources: { maxParallel: 2 }, followups: null })).status).toBe(200);
+        const after = (await mcp(w, 'project_config', { action: 'get_limits' })).result.workspace;
+        expect(after.resources.maxParallel).toBe(2);
+        expect(after.followups.inherited).toBe(true);
+
+        // Out of range is refused by the SAME BOUND through either door — both validate with the
+        // contract's `setWorkspaceConfigInputSchema` — and nothing is written. Not the same 400
+        // STRING: the tool's copy runs as argument validation, so the leader reads the zod issue
+        // and the cockpit reads the route's `{ error }` line. Same schema, same answer, no write.
+        const badUi = await ui(w, '/api/v1/workspace/config', 'PUT', { resources: { maxParallel: 99 } });
+        expect(badUi.status).toBe(400);
+        expect(badUi.body.error).toContain('<=16');
+        const badMcp = await w.call('a', 'project_config', { action: 'set_workspace_config', operationId: op(), workspaceConfig: { resources: { maxParallel: 99 } } });
+        expect(badMcp.isError).toBe(true);
+        expect(resultText(badMcp)).toContain('<=16');
+        expect((await mcp(w, 'project_config', { action: 'get_limits' })).result.workspace.resources.maxParallel).toBe(2);
+      },
+    );
+
     parity('P-44', ['A-09', 'A-08', 'A-05'], ['I-143', 'I-144', 'I-145', 'I-146'], 'the leader reads this project’s setup state, dispatches the bundled setup task and records the offer, and the cockpit sees the same thing', async () => {
       const w = world();
       const stateFile = join(w.a.root, '.local/xezar/onboarding-state.json');
@@ -1281,14 +1346,15 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
     parity(
       'P-29',
       ['A-09', 'A-11'],
-      ['I-012', 'I-024', 'I-092', 'I-093', 'I-112', 'I-115', 'I-117', 'I-118', 'I-119', 'I-120', 'I-121', 'I-122', 'I-123', 'I-124', 'I-125', 'I-126', 'I-127', 'I-130', 'I-131', 'I-132'],
-      'every global-source, home-file, shared-account and limit write is refused with its boundary, dispatches nothing, and no approval parameter changes that',
+      // I-117 … I-121 left this case with #677 B1: the workspace SETTINGS write is no longer a
+      // refusal, and P-45 proves it. I-127, the two workspace folder paths, is still here.
+      ['I-012', 'I-024', 'I-092', 'I-093', 'I-112', 'I-115', 'I-122', 'I-123', 'I-124', 'I-125', 'I-126', 'I-127', 'I-130', 'I-131', 'I-132'],
+      'every global-source, home-file, shared-account and workspace-root write is refused with its boundary, dispatches nothing, and no approval parameter changes that',
       async () => {
         const w = world();
         const workspaceFile = join(w.home, 'config.json');
         const workspaceBefore = readFileSync(workspaceFile, 'utf8');
         const refusals = [
-          'set_workspace_config',
           'set_workspace_ui_state',
           'select_account',
           'create_account',
@@ -1317,8 +1383,14 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
           }
           // No approval, confirmation or override parameter exists to turn a refusal into a write.
           for (const extra of [{ approvedBy: 'the human' }, { humanApproval: true }, { confirm: true }, { override: true }]) {
-            answers.push([`approval ${JSON.stringify(extra)}`, await w.call('a', 'project_config', { action: 'set_workspace_config', ...extra })]);
+            answers.push([`approval ${JSON.stringify(extra)}`, await w.call('a', 'project_config', { action: 'set_workspace_ui_state', ...extra })]);
           }
+          // I-127: the workspace SETTINGS write exists now (P-45), and the two workspace folder
+          // paths are still not one of its keys — refused as an argument, nothing dispatched.
+          answers.push([
+            'workspace roots',
+            await w.call('a', 'project_config', { action: 'set_workspace_config', operationId: op(), workspaceConfig: { browseRoot: '/tmp', projectsDir: '/tmp' } }),
+          ]);
           return answers;
         });
         assertIsolated(w, seen);
@@ -1330,7 +1402,7 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
             // I-112 / M-16: refused by the catalog's `scope`, as a HOME file — not merely because the
             // path happens to resolve outside the project, which a relocated agent home would defeat.
             expect(resultText(result), what).toMatch(/^Refused \(home file shared by every project\)/);
-          } else if (what.startsWith('approval')) {
+          } else if (what.startsWith('approval') || what === 'workspace roots') {
             // The approval key itself is refused as an argument the tool does not have.
             expect(resultText(result), what).toMatch(/^Invalid arguments for project_config: .*Unrecognized key/);
           } else {
@@ -1339,7 +1411,7 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
             expect(resultText(result), what).not.toMatch(/approv/i);
           }
         }
-        expect(resultText(seen.response.find(([what]) => what === 'set_workspace_config')![1])).toMatch(/workspace-wide setting/);
+        expect(resultText(seen.response.find(([what]) => what === 'set_workspace_ui_state')![1])).toMatch(/workspace-wide setting|shared by every project/);
         expect(resultText(seen.response.find(([what]) => what === 'get_account_details')![1])).toMatch(/account identity/);
         expect(readFileSync(workspaceFile, 'utf8')).toBe(workspaceBefore);
         expect(existsSync(join(w.home, 'agent-accounts.json'))).toBe(false);
@@ -1923,10 +1995,11 @@ describe('A-05 — the coverage matrix against the closed inventory', () => {
     if (blockedCases.length > 0) console.info(`[#116] blocked parity cases (not passing): ${blockedCases.join(', ')}`);
   });
 
-  it('the inventory is the closed 147-record one, with 96 covered records', () => {
+  it('the inventory is the closed 147-record one, with 101 covered records', () => {
     const inventory = readInventory();
     expect(inventory.size).toBe(147);
-    expect([...inventory.values()].filter((s) => s === 'covered')).toHaveLength(96);
+    // 96 until #677 B1 moved the five workspace-settings rows (I-117 … I-121) from `global`.
+    expect([...inventory.values()].filter((s) => s === 'covered')).toHaveLength(101);
   });
 
   it('every covered record maps to at least one case, and every case names inventory records', () => {
