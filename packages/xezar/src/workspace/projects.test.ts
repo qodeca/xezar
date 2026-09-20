@@ -10,6 +10,7 @@ import { readStoredCliSettings, rememberLastListen } from './port-memory.ts';
 import {
   allocateProjectSlug,
   clearProjectProbeCache,
+  instanceModeInForce,
   listProjects,
   normalizeProjectTags,
   registerProject,
@@ -478,5 +479,70 @@ describe('single-project layout — per-machine facts stay out of the committed 
     expect(Date.parse(second.addedAt)).toBe(firstMs);
     // ...and the first start persisted it, so the next start can reuse it.
     expect(JSON.parse(readFileSync(machinePath, 'utf8'))).toMatchObject({ addedAt: first.addedAt });
+  });
+});
+
+/**
+ * `instanceModeInForce` — the six-row cross-product of spec § 2.3 (#467 PR 1): two resolved
+ * values against three narrowing states. Proven red against the named break
+ * `narrowing-loses` (return the resolved value regardless of `singleProjectNarrowing`).
+ */
+describe('instanceModeInForce (#467, spec § 2.3–2.4)', () => {
+  let projectRoot: string;
+
+  beforeEach(() => {
+    projectRoot = mkdtempSync(join(realpathSync(tmpdir()), 'xez-instance-'));
+    mkdirSync(join(projectRoot, '.xezar'), { recursive: true });
+  });
+
+  afterEach(() => {
+    setActiveStateLayout(null);
+    rmSync(projectRoot, { recursive: true, force: true });
+  });
+
+  describe('no narrowing — the request stands', () => {
+    it('workspace resolves to workspace, i.e. today’s behaviour', () => {
+      expect(instanceModeInForce({ instance: 'workspace' }, {})).toBe('workspace');
+    });
+
+    it('project resolves to project — the opt-in mode', () => {
+      expect(instanceModeInForce({ instance: 'project' }, {})).toBe('project');
+    });
+  });
+
+  describe('AC-1.5 the env-flag narrowing wins over both requests', () => {
+    it('named break `narrowing-loses`: an explicit workspace cannot re-widen it', () => {
+      // The promise BACKWARD_COMPATIBILITY.md § Single-project workspace mode makes to
+      // someone who set the variable on purpose: nothing re-widens it.
+      expect(
+        instanceModeInForce({ instance: 'workspace' }, { XEZ_SINGLE_PROJECT: '1' }),
+      ).toBe('narrowed');
+    });
+
+    it('named break `narrowing-loses`: project answers narrowed, not project', () => {
+      // `narrowed` is its own word so nothing downstream reads "someone asked for
+      // --instance project" out of a cockpit narrowed by a shell variable.
+      expect(
+        instanceModeInForce({ instance: 'project' }, { XEZ_SINGLE_PROJECT: '1' }),
+      ).toBe('narrowed');
+    });
+
+    it('only the exact string 1 narrows — the strict activation rule is unchanged', () => {
+      expect(instanceModeInForce({ instance: 'project' }, { XEZ_SINGLE_PROJECT: 'true' })).toBe(
+        'project',
+      );
+    });
+  });
+
+  describe('AC-1.5 the project-root narrowing wins over both requests', () => {
+    it('named break `narrowing-loses`: an explicit workspace cannot re-widen a folder that owns its state', () => {
+      setActiveStateLayout(projectStateLayout(projectRoot));
+      expect(instanceModeInForce({ instance: 'workspace' }, {})).toBe('narrowed');
+    });
+
+    it('named break `narrowing-loses`: project answers narrowed there too', () => {
+      setActiveStateLayout(projectStateLayout(projectRoot));
+      expect(instanceModeInForce({ instance: 'project' }, {})).toBe('narrowed');
+    });
   });
 });

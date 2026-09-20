@@ -255,3 +255,71 @@ describe('parsePortValue', () => {
     }
   });
 });
+
+/**
+ * The instance mode (#467 PR 1, spec § 2.1–2.2). Four rows of precedence and the two
+ * failure modes, each proven red against the named break the PR body records.
+ */
+describe('instance mode precedence', () => {
+  it('AC-1.1 nothing set resolves the workspace default', () => {
+    // The 2026-09-20 owner decision: `workspace` stays the default, `project` is opt-in.
+    expect(resolveCliSettings(invoke()).instance).toBe('workspace');
+  });
+
+  it('--instance beats the stored key and the environment', () => {
+    const settings = resolveCliSettings(
+      invoke({ instance: 'project' }, { XEZ_INSTANCE: 'workspace' }),
+      { workspace: { instance: 'workspace' } },
+    );
+    expect(settings.instance).toBe('project');
+  });
+
+  it('AC-1.2 named break `env-beats-stored`: the stored key beats XEZ_INSTANCE', () => {
+    // A variable exported once in a shell profile must not outrank a saved preference —
+    // the same rule `output` and `logLevel` follow.
+    const settings = resolveCliSettings(invoke({}, { XEZ_INSTANCE: 'workspace' }), {
+      workspace: { instance: 'project' },
+    });
+    expect(settings.instance).toBe('project');
+  });
+
+  it('XEZ_INSTANCE beats the default', () => {
+    expect(resolveCliSettings(invoke({}, { XEZ_INSTANCE: 'project' })).instance).toBe('project');
+  });
+
+  it('an empty XEZ_INSTANCE is absent, not a value', () => {
+    expect(resolveCliSettings(invoke({}, { XEZ_INSTANCE: '   ' })).instance).toBe('workspace');
+  });
+
+  it('AC-1.3 named break `explicit-bad-value-passes`: --instance projekt refuses, naming both values', () => {
+    expect(() => invoke({ instance: 'projekt' })).toThrow(CliSettingsError);
+    expect(() => invoke({ instance: 'projekt' })).toThrow(/--instance must be one of project, workspace/);
+  });
+
+  it('AC-1.3 XEZ_INSTANCE is explicit too — a typo in a shell profile refuses the start', () => {
+    expect(() => invoke({}, { XEZ_INSTANCE: 'projekt' })).toThrow(CliSettingsError);
+    expect(() => invoke({}, { XEZ_INSTANCE: 'projekt' })).toThrow(
+      /XEZ_INSTANCE must be one of project, workspace/,
+    );
+  });
+
+  it('AC-1.4 named break `stored-bad-value-refuses`: a mangled cli.instance degrades with exactly one warning', () => {
+    const settings = resolveCliSettings(invoke(), { workspace: { instance: 'projekt' } });
+    expect(settings.instance).toBe('workspace');
+    expect(settings.warnings).toEqual([expect.stringContaining('cli.instance is “projekt”')]);
+  });
+
+  it('AC-1.4 a mangled cli.instance never throws, and the environment takes over', () => {
+    const settings = resolveCliSettings(invoke({}, { XEZ_INSTANCE: 'project' }), {
+      workspace: { instance: 'projekt' },
+    });
+    expect(settings.instance).toBe('project');
+    expect(settings.warnings).toHaveLength(1);
+  });
+
+  it('an absent stored key is silent — absence is not a defect', () => {
+    const settings = resolveCliSettings(invoke(), { workspace: { instance: null } });
+    expect(settings.instance).toBe('workspace');
+    expect(settings.warnings).toEqual([]);
+  });
+});

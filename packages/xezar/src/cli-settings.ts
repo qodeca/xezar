@@ -33,6 +33,22 @@ export type ColorMode = (typeof COLOR_MODES)[number];
 export const LOG_LEVELS = ['debug', 'info', 'warn', 'error'] as const;
 export type LogLevel = (typeof LOG_LEVELS)[number];
 
+/**
+ * Which projects one xezar process serves (#467, PR 1). `workspace` — the DEFAULT, and
+ * today's behaviour byte for byte — opens every registered project; `project` is the opt-in
+ * mode where the cockpit serves the project it started in and the others become links to
+ * their own cockpit (owner decision 2026-09-20).
+ *
+ * PR 1 resolves the value and nothing else: no capability, no route, no boot line, no help
+ * entry. This module answers what was REQUESTED; what is actually IN FORCE is a different
+ * question, because `XEZ_SINGLE_PROJECT=1` and a folder that owns its xezar state already
+ * narrow the registry and win over it — and that question belongs beside the one narrowing
+ * predicate, in `workspace/projects.ts` (`instanceModeInForce`), not here, so this module
+ * stays pure.
+ */
+export const INSTANCE_MODES = ['project', 'workspace'] as const;
+export type InstanceMode = (typeof INSTANCE_MODES)[number];
+
 /** The lowest port a start may ask for, and the highest the range may ever reach. */
 export const PORT_MIN = 0;
 export const PORT_MAX = 65535;
@@ -60,6 +76,7 @@ export interface CliFlags {
   color?: string;
   logLevel?: string;
   quiet?: boolean;
+  instance?: string;
 }
 
 /** What the flags and the environment together settled, before the registry is read. */
@@ -77,12 +94,15 @@ export interface CliInvocation {
   flagLogLevel?: LogLevel;
   envLogLevel?: LogLevel;
   quiet: boolean;
+  flagInstance?: InstanceMode;
+  /** A `XEZ_INSTANCE` that parsed. Loses to `W.cli.instance`, beats the default. */
+  envInstance?: InstanceMode;
 }
 
 /** The stored layer: the workspace `cli` object and this project's own keys. */
 export interface StoredCliSettings {
   /** `W.cli.*` — workspace-wide presentation defaults. */
-  workspace?: { output?: unknown; color?: unknown; logLevel?: unknown };
+  workspace?: { output?: unknown; color?: unknown; logLevel?: unknown; instance?: unknown };
   /** `P.cli.port` — the port a person chose for THIS project. A preference. */
   projectPort?: unknown;
   /** `P.lastListen.port` — the port this project's cockpit last really held. A hint. */
@@ -112,6 +132,9 @@ export interface ResolvedCliSettings {
    * `--quiet` never lowers a level someone raised: `--quiet --log-level error` stays `error`.
    */
   effectiveLogLevel: LogLevel;
+  /** The instance mode this invocation REQUESTED. What is in force also depends on the two
+   *  registry narrowings — ask `instanceModeInForce` for that (#467, spec § 2.3–2.4). */
+  instance: InstanceMode;
   /** One line per degraded stored value (`error-cases.txt` A10). Never a refusal. */
   warnings: string[];
 }
@@ -216,6 +239,17 @@ export function parseCliInvocation(
     invocation.envLogLevel = level;
   }
 
+  if (flags.instance !== undefined) {
+    const instance = parseEnumValue(flags.instance, INSTANCE_MODES);
+    if (instance === null) refuseEnum('--instance', flags.instance, INSTANCE_MODES);
+    invocation.flagInstance = instance;
+  }
+  if (env.XEZ_INSTANCE !== undefined && env.XEZ_INSTANCE.trim() !== '') {
+    const instance = parseEnumValue(env.XEZ_INSTANCE, INSTANCE_MODES);
+    if (instance === null) refuseEnum('XEZ_INSTANCE', env.XEZ_INSTANCE, INSTANCE_MODES);
+    invocation.envInstance = instance;
+  }
+
   invocation.quiet = flags.quiet === true || envFlagOn(env.XEZ_QUIET);
   return invocation;
 }
@@ -270,6 +304,7 @@ export interface TransportFacts {
  * Level:   CLI > W.cli.logLevel > XEZ_LOG_LEVEL  > info
  * Colour:  transport safety > --color > NO_COLOR > W.cli.color > XEZ_COLOR > auto
  * Quiet:   --quiet > XEZ_QUIET > false
+ * Instance: CLI > W.cli.instance > XEZ_INSTANCE > workspace
  *
  * Two rows in that list look like mistakes and are not. **Stored beats environment** for
  * output and log level, following `followups` / `agentEnvPassthrough` (AGENTS.md § Workspace
@@ -290,11 +325,19 @@ export function resolveCliSettings(
   const storedOutput = storedEnum(stored.workspace?.output, OUTPUT_MODES, 'cli.output', warnings);
   const storedColor = storedEnum(stored.workspace?.color, COLOR_MODES, 'cli.color', warnings);
   const storedLevel = storedEnum(stored.workspace?.logLevel, LOG_LEVELS, 'cli.logLevel', warnings);
+  const storedInstance = storedEnum(
+    stored.workspace?.instance,
+    INSTANCE_MODES,
+    'cli.instance',
+    warnings,
+  );
 
   const port = resolvePort(invocation, projectPort, rememberedPort);
 
   const output = invocation.flagOutput ?? storedOutput ?? invocation.envOutput ?? 'auto';
   const logLevel = invocation.flagLogLevel ?? storedLevel ?? invocation.envLogLevel ?? 'info';
+  const instance =
+    invocation.flagInstance ?? storedInstance ?? invocation.envInstance ?? 'workspace';
   // NO_COLOR sits ABOVE the stored keys and below `--color`: it is an accessibility override
   // a person sets for the whole machine, not another preference to be overruled by a file.
   const color =
@@ -309,6 +352,7 @@ export function resolveCliSettings(
     logLevel,
     quiet,
     effectiveLogLevel: quiet ? moreRestrictive(logLevel, 'warn') : logLevel,
+    instance,
     warnings,
   };
 }

@@ -124,7 +124,7 @@ export async function rememberLastListen(
  * a start that has to keep going.
  */
 export async function readStoredCliSettings(projectId: string | undefined): Promise<{
-  workspace?: { output?: unknown; color?: unknown; logLevel?: unknown };
+  workspace?: { output?: unknown; color?: unknown; logLevel?: unknown; instance?: unknown };
   projectPort?: unknown;
   rememberedPort?: unknown;
   config?: WorkspaceConfig;

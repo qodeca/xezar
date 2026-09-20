@@ -41,7 +41,8 @@ import { withWorkspaceConfigLock } from './config-lock.ts';
 export const PROJECT_ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
 /**
- * The CLI keys (#467) — port, presentation, colour and diagnostic level.
+ * The CLI keys (#467) — port, presentation, colour, diagnostic level and which projects one
+ * process serves.
  *
  * These five values are declared `z.unknown()` on purpose, which is the one place in this
  * file that does NOT follow the usual "type it and `.catch` it" shape. A per-key `.catch`
@@ -82,6 +83,9 @@ const workspaceCliSchema = z
     output: z.unknown().optional(),
     color: z.unknown().optional(),
     logLevel: z.unknown().optional(),
+    /** Which projects one process serves (#467). Absent inherits `XEZ_INSTANCE`, then the
+     *  `workspace` default — the same absent-vs-explicit tri-state its three siblings keep. */
+    instance: z.unknown().optional(),
   })
   .passthrough();
 

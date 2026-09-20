@@ -2,6 +2,7 @@ import { realpath, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, join, resolve, sep } from 'node:path';
 import { PROJECT_TAGS_MAX, PROJECT_TAG_MAX_LENGTH } from '@qodeca/xezar-contract';
+import type { InstanceMode } from '../cli-settings.ts';
 import { forgeKindOfRemote, forgeWebRoot, type ForgeKind } from '../server/forge/index.ts';
 import { getRepoInfo } from '../server/git.ts';
 import { activeStateLayout } from '../state-layout.ts';
@@ -67,6 +68,41 @@ export function singleProjectNarrowing(env: NodeJS.ProcessEnv = process.env): Si
 
 export function singleProjectRegistry(env: NodeJS.ProcessEnv = process.env): boolean {
   return singleProjectNarrowing(env) !== null;
+}
+
+/**
+ * What the instance mode actually IS for this process (#467, spec § 2.3–2.4).
+ *
+ * `cli-settings.ts` answers what was REQUESTED and stays pure; this answers what is in
+ * force, because the two shipped narrowings above already serve exactly one project and
+ * they WIN over the request. Three answers, not two: `narrowed` is its own word so a reader
+ * can never mistake "this cockpit serves one project because someone set
+ * `XEZ_SINGLE_PROJECT`" for "someone asked for `--instance project`".
+ *
+ * The narrowing wins in BOTH directions and that is the load-bearing half:
+ *
+ * - `--instance project` under a narrowing is already satisfied, and the extra half it asks
+ *   for — the other projects as links — is precisely what the narrowing removes.
+ * - `--instance workspace` under a narrowing can never RE-WIDEN it. Letting it would give
+ *   `singleProjectNarrowing` a second, contradicting reader, which is the drift that
+ *   function's own comment exists to prevent, and it would make `--instance workspace` a way
+ *   to defeat `XEZ_SINGLE_PROJECT` — a promise `BACKWARD_COMPATIBILITY.md` § Single-project
+ *   workspace mode makes to someone who set that variable on purpose.
+ *
+ * Nothing refuses: two compatible-in-spirit settings meeting is not a typo, and AGENTS.md
+ * § Zero config forbids failing a boot over one. A bad VALUE still refuses, in `cli-settings.ts`.
+ *
+ * This is the ONE reader of that question. PR 2's capability, context guard, projects route
+ * and boot line all call it rather than re-deriving `resolved.instance` beside a narrowing
+ * check of their own.
+ */
+export type InstanceModeInForce = InstanceMode | 'narrowed';
+
+export function instanceModeInForce(
+  resolved: { instance: InstanceMode },
+  env: NodeJS.ProcessEnv = process.env,
+): InstanceModeInForce {
+  return singleProjectNarrowing(env) !== null ? 'narrowed' : resolved.instance;
 }
 
 /**
