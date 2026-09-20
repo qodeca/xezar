@@ -8,6 +8,51 @@ import { z } from 'zod';
  */
 
 /**
+ * Does another xezar serve this project right now, and where (#467, PR 3;
+ * `designs/cli-terminal/multi-instance.md` § 6)?
+ *
+ * Five answers, and each is the result of a CHECK rather than of a remembered value. The stored
+ * `projects[].lastListen` is a hint that is stale the moment a process exits, and
+ * `BACKWARD_COMPATIBILITY.md` § 9 promises it is "never to be rendered as running without a
+ * liveness check of its own" — so it never appears on the wire and is only ever an ADDRESS to
+ * probe.
+ *
+ * - `this` — the project this cockpit itself serves. No probe: it is answering the request.
+ * - `running` — `GET /api/v1/health` at the remembered address answered, and it named THIS
+ *   project as its `bootProject`. Only this state and `this` carry a `url`.
+ * - `running-unknown-address` — a live writer claim in the project's own data directory, but no
+ *   address answers as that project. The honest shape of a `--port 0` start, which deliberately
+ *   remembers no address at all (§ 3.2): the process is up and this cockpit cannot link to it.
+ * - `stopped` — no live claim and no answer. A remembered address alone never reaches `running`.
+ * - `checking` — no answer yet. The probe is bounded and runs off the request, so the first read
+ *   of a project with a remembered address says so rather than blocking the registry on a socket.
+ */
+export const projectInstanceStateSchema = z.enum([
+  'this',
+  'running',
+  'running-unknown-address',
+  'stopped',
+  'checking',
+]);
+export type ProjectInstanceState = z.infer<typeof projectInstanceStateSchema>;
+
+export const projectInstanceSchema = z.object({
+  state: projectInstanceStateSchema,
+  /**
+   * Where that project's OWN cockpit answers — `http://<host>:<port>/p/<id>/`. Present only with
+   * `running`, where a health answer naming that project proved both halves: that something is
+   * there, and that it is not this instance (this instance's health names ITS boot project, so
+   * its own address can never satisfy the identity check for another project's row).
+   *
+   * Omitted for `this`, which the design allows and which is the safer of the two readings: the
+   * row for the project you are already looking at needs no absolute address, and building one
+   * would mean guessing this process's externally reachable spelling from its bind host.
+   */
+  url: z.string().optional(),
+});
+export type ProjectInstance = z.infer<typeof projectInstanceSchema>;
+
+/**
  * One `GET /api/v1/projects` registry entry (multi-project spec, step 1.6).
  *
  * Unlike health's id+name pairs this carries the absolute `root`: the registry routes are
@@ -60,12 +105,20 @@ export const projectListEntrySchema = z.object({
    * directly.
    */
   tags: z.array(z.string()).optional(),
-  // NOT here, on purpose (#467): `projects[].cli.port` and `projects[].lastListen` are stored
-  // in `~/.xezar/config.json` and stripped before this shape is built
-  // (`toProjectListEntry`). They are terminal settings and a stale address hint; the cockpit's
-  // answer to "which other projects run, and where" is the DERIVED `instance?` field the
-  // switcher PR adds (`designs/cli-terminal/multi-instance.md` § 6), which carries a checked
-  // state rather than a value that is out of date the moment a process exits.
+  /**
+   * Does another xezar serve this project, and where (#467, PR 3)? DERIVED per request, never
+   * stored: `projects[].cli.port` and `projects[].lastListen` stay in `~/.xezar/config.json` and
+   * are stripped before this shape is built (`toProjectListEntry`), because a terminal setting
+   * and a stale address hint are not the cockpit's answer to "which other projects run".
+   *
+   * **Omitted, never null, when it is unknown**, which is exactly one case: a hosted cockpit
+   * (`capabilities.localHandoff === false`), which never probes another port and can see no
+   * writer claim on a machine it does not run on. Absent is the honest spelling of "this server
+   * did not look" — `JSON.stringify` drops an absent key, so a `null` here would be a value the
+   * route does not send (AGENTS.md § The HTTP API), and it would also be a THIRD thing for the
+   * cockpit to tell apart from `checking` and `stopped`.
+   */
+  instance: projectInstanceSchema.optional(),
 });
 export type ProjectListEntry = z.infer<typeof projectListEntrySchema>;
 

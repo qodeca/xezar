@@ -6,6 +6,11 @@ import { localMachineId, machineRelation, type MachineRelation } from '../machin
 
 const owned = new Map<string, string>();
 
+/** `<pid>-<uuid>.json` — the one spelling of a claim file name, read by the publisher's scan and
+ *  by the read-only liveness check at the bottom of this file. One definition on purpose: a
+ *  second copy that drifts would make the reader blind to claims the writer still publishes. */
+const CLAIM_NAME = /^([1-9]\d*)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.json$/;
+
 export class ProjectWriterError extends Error {
   constructor(readonly dataDir: string, detail: string) {
     super(`project data is already in use or its writer cannot be verified: ${dataDir} (${detail}). Use the existing cockpit.`);
@@ -92,7 +97,7 @@ export function ownProjectData(dataDir: string): void {
     for (const name of readdirSync(directory)) {
       const path = join(directory, name);
       if (path === claim) continue;
-      const match = /^([1-9]\d*)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.json$/.exec(name);
+      const match = CLAIM_NAME.exec(name);
       const pid = Number(match?.[1]);
       if (!match || !Number.isSafeInteger(pid)) throw new Error('invalid writer claim name');
       // A refused contender can remove its own claim between readdir and read.
@@ -151,4 +156,50 @@ export function ownProjectData(dataDir: string): void {
     }
     throw new ProjectWriterError(canonical, error instanceof Error ? error.message : String(error));
   }
+}
+
+/**
+ * Does ANOTHER live process hold a writer claim on `dataDir` (#467, PR 3)?
+ *
+ * Read-only and never throwing: it publishes nothing, reaps nothing and repairs nothing, because
+ * its one caller is a liveness CHECK behind `GET /api/v1/projects` and a list render must never
+ * mutate another project's state. `ownProjectData` above stays the only writer.
+ *
+ * Three rules, and each is the conservative direction:
+ *
+ * - **Our own claim never counts.** A workspace cockpit takes the claim for every project it
+ *   opens in place, so without this a project would report itself "running elsewhere" on the
+ *   strength of a lock this very process holds.
+ * - **A claim from another machine never counts.** A PID is only evidence on the machine that
+ *   wrote it — on shared storage its number could collide with a local process and manufacture a
+ *   "running" answer. Judged with the same `foreign` rule `ownProjectData` uses, so the two
+ *   readers of one claim file cannot disagree about whose it is.
+ * - **Anything unreadable reads as "no live claim".** A missing directory is the common case (a
+ *   project no cockpit has ever opened), and a claim that cannot be read is not evidence of a
+ *   process. This answer only ever WIDENS `stopped`, never `running`.
+ */
+export function foreignWriterClaimIsLive(dataDir: string): boolean {
+  const machine = localMachineId();
+  let names: string[];
+  try { names = readdirSync(join(dataDir, 'writer-claims')); }
+  catch { return false; }
+  for (const name of names) {
+    const match = CLAIM_NAME.exec(name);
+    const pid = Number(match?.[1]);
+    if (!match || !Number.isSafeInteger(pid) || pid === process.pid) continue;
+    let claim: { host?: unknown; machine?: unknown } | undefined;
+    try { claim = JSON.parse(readFileSync(join(dataDir, 'writer-claims', name), 'utf8')) as typeof claim; }
+    catch { continue; }
+    if (!claim || typeof claim !== 'object') continue;
+    const relation = machineRelation(claim.machine, machine);
+    if (relation !== 'same' && claim.host !== hostname()) continue;
+    try { process.kill(pid, 0); }
+    catch (error) {
+      // ESRCH is a dead writer; EPERM is a live process this user may not signal, which is
+      // still a live process.
+      if ((error as NodeJS.ErrnoException).code === 'ESRCH') continue;
+    }
+    return true;
+  }
+  return false;
 }
