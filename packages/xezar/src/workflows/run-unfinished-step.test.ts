@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -120,6 +120,55 @@ describe('a non-final agent step that did not finish stops the workflow (#317)',
     ]);
     expect(readinessRan()).toBe(true);
   }, 30_000);
+
+  /**
+   * #676 B8 — the cheap repair turn is still a non-final agent step, so #317 judges it exactly
+   * as it judges a fresh one: a clean session close is not a finished step.
+   *
+   * Also AC5 and the headless proof: this drives the REAL `--resume` through the bundled mock
+   * CLI under `XEZ_DRY_RUN=1`, the same `RunManager` path `xezar run` uses, and reads the argv
+   * the mock recorded. The gate's own stdout becomes the repair turn's whole prompt, so what
+   * the check prints is what decides whether the repair turn ends with a marker.
+   */
+  it.each([
+    { name: 'a repair turn without XEZ:DONE fails the step', gateSays: 'the gate is red', status: 'failed' },
+    { name: 'a repair turn that finishes proceeds', gateSays: 'the gate is red — mock:done', status: 'done' },
+  ])('#676: $name', async ({ gateSays, status }) => {
+    const argsFile = join(repoRoot, `mock-args-${status}.ndjson`);
+    const gate = join(repoRoot, `gate-${status}.cjs`);
+    const flag = join(repoRoot, `gate-ran-${status}`);
+    writeFileSync(gate, `const fs = require('node:fs');
+if (fs.existsSync(${JSON.stringify(flag)})) process.exit(0);
+fs.writeFileSync(${JSON.stringify(flag)}, 'yes');
+console.log(${JSON.stringify(gateSays)});
+process.exit(1);
+`);
+    const saved = process.env.XEZ_MOCK_ARGS_FILE;
+    process.env.XEZ_MOCK_ARGS_FILE = argsFile;
+    try {
+      const record = manager.startRun(
+        {
+          name: 'cheap-return-dry-run',
+          source: 'built-in',
+          steps: [
+            { id: 'implement', prompt: '{{task}}' },
+            { id: 'gates', command: `node ${JSON.stringify(gate)}`, onFail: { retry: 'implement', max: 2 } },
+          ],
+        },
+        { task: 'mock:done fix the parser', worktree: false },
+      );
+      await settle(record.id);
+      expect(store.getRun(record.id)?.status).toBe(status);
+      // The second CLI invocation really carried `--resume <the first session id>`.
+      const invocations = readFileSync(argsFile, 'utf8').trim().split('\n').map((line) => JSON.parse(line) as string[]);
+      expect(invocations.length).toBeGreaterThanOrEqual(2);
+      expect(invocations[0]).not.toContain('--resume');
+      expect(invocations[1]).toContain('--resume');
+    } finally {
+      if (saved === undefined) delete process.env.XEZ_MOCK_ARGS_FILE;
+      else process.env.XEZ_MOCK_ARGS_FILE = saved;
+    }
+  }, 40_000);
 
   // Passes with or without the fix: the LAST step is interactive and keeps its own rules — a
   // markerless turn parks it at `waiting` for the user's reply, it is never failed.

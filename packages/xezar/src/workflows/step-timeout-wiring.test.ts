@@ -163,4 +163,47 @@ describe('per-step timeout wiring', () => {
 
     expect(specs.map((s) => s.timeoutMs)).toEqual([7_200_000, undefined, 0]);
   }, 40_000);
+
+  /**
+   * #676 B7 — the cheap repair turn is an execution of the SAME step, so it takes that step's
+   * own wall clock. Copying the Continue path's `timeoutMs: 0` here would silently uncap a
+   * step whose workflow deliberately leaves `timeout` absent (`release.yaml`'s author step),
+   * and BACKWARD_COMPATIBILITY.md §4 makes changing what an absent `timeout` does a break.
+   */
+  it.each([
+    { name: 'timeout: 2h', timeout: '2h', expected: 7_200_000 },
+    { name: 'no timeout field at all', timeout: undefined, expected: undefined },
+  ])('the repair turn after a red check carries the step\'s own wall clock ($name)', async ({ timeout, expected }) => {
+    writeFileSync(
+      join(repoRoot, 'gate.cjs'),
+      `const fs = require('node:fs');
+if (fs.existsSync('gate-ran')) process.exit(0);
+fs.writeFileSync('gate-ran', 'yes');
+console.log('the gate output');
+process.exit(1);
+`,
+    );
+    const record = manager!.startRun(
+      {
+        name: 'cheap-return-timeout',
+        source: 'built-in',
+        steps: [
+          { id: 'author', prompt: '{{task}}', ...(timeout === undefined ? {} : { timeout }) },
+          { id: 'gates', command: 'node gate.cjs', onFail: { retry: 'author', max: 2 } },
+        ],
+      },
+      { task: 'do the thing', worktree: false },
+    );
+    await expect.poll(() => captured.specs.length, { timeout: 20_000 }).toBeGreaterThanOrEqual(2);
+    await expect
+      .poll(() => store.getRun(record.id)?.status, { timeout: 20_000 })
+      .toSatisfy((status) => ['done', 'review', 'failed', 'cancelled'].includes(String(status)));
+
+    const repair = captured.specs[1];
+    expect(repair?.resume).toBe(true);
+    expect(repair?.timeoutMs).toBe(expected);
+    // The control: the first execution of the same step spawned with the same value, so the
+    // assertion above is about the repair turn and not about the step's timeout resolving.
+    expect(captured.specs[0]?.timeoutMs).toBe(expected);
+  }, 40_000);
 });

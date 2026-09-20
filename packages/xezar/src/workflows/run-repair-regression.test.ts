@@ -1,11 +1,12 @@
 import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AgentRunResult, AgentRunSpec } from '../core/agent-runner.ts';
 import * as factory from '../core/runner-factory.ts';
 import { RunStore, type RunRecord } from '../runs/store.ts';
 import { RunManager } from './run.ts';
+import { scriptedRunner } from './engine-incidents.testkit.ts';
 import type { WorkflowDef } from './types.ts';
 
 const roots: string[] = [];
@@ -160,4 +161,127 @@ if (name === 'readiness' && !fs.existsSync('ready')) process.exit(1);`);
     : ['readiness', 'repair', 'readiness']);
   expect(premature).toEqual([]);
   expect(store.getRun(run.id)?.status).toBe(repaired ? 'done' : 'failed');
+});
+
+/**
+ * #676 — the FIRST automatic return after a red check resumes the author's own session and
+ * sends it only the failing output; the SECOND is byte-for-byte the fresh spawn it has always
+ * been. The return is counted either way: `onFail.max` stays 2 and the terminal message is
+ * unchanged. Named breaks B1–B8 in the issue's spec; B7 lives in `step-timeout-wiring.test.ts`
+ * and B8 in `run-unfinished-step.test.ts`, which own those seams.
+ */
+describe('the cheap return after a red check (#676)', () => {
+  const TASK = 'repair-the-gate-brief';
+
+  /** author agent + a `gates` check that exits non-zero its first `failures` times. */
+  function cheapFixture(failures: number, turns = 3) {
+    const root = mkdtempSync(join(tmpdir(), 'xez-676-'));
+    roots.push(root);
+    writeFileSync(join(root, 'check.cjs'), `const fs = require('node:fs');
+const n = (fs.existsSync('count') ? Number(fs.readFileSync('count', 'utf8')) : 0) + 1;
+fs.writeFileSync('count', String(n));
+if (n <= ${failures}) { console.log('GATE-RED-' + n + ' the failing gate output'); process.exit(1); }
+`);
+    const store = RunStore.open(join(root, 'data'));
+    stores.push(store);
+    const manager = new RunManager(store, root);
+    managers.push(manager);
+    const runner = scriptedRunner(Array.from({ length: turns }, () => ({})));
+    const workflow: WorkflowDef = {
+      name: 'cheap-return', source: 'file', steps: [
+        { id: 'author', prompt: '{{task}}' },
+        { id: 'gates', command: 'node check.cjs', onFail: { retry: 'author', max: 2 } },
+      ],
+    };
+    return { root, store, manager, runner, workflow };
+  }
+
+  // B1 (always spawn fresh), B2 (send the full prompt on the cheap turn), B4 (use the cheap
+  // path on return #2 as well) — and AC1.
+  it('return #1 resumes the recorded session with only the failing output; return #2 is fresh', async () => {
+    const { store, manager, runner, workflow } = cheapFixture(2);
+    try {
+      const run = manager.startRun(workflow, { task: TASK, worktree: false });
+      await settled(store, run.id);
+      expect(store.getRun(run.id)?.status).toBe('done');
+      expect(runner.specs).toHaveLength(3);
+
+      const [first, cheap, fresh] = runner.specs;
+      // The first execution is untouched: whole brief, no resume.
+      expect(first?.resume).toBeFalsy();
+      expect(first?.userPrompt).toContain(TASK);
+
+      // B1 — return #1 reopens the SAME session the first execution recorded.
+      expect(cheap?.resume).toBe(true);
+      expect(cheap?.sessionId).toBe(first?.sessionId);
+      // B2 — the failing output, and deliberately not the brief.
+      expect(cheap?.userPrompt).toContain('GATE-RED-1 the failing gate output');
+      expect(cheap?.userPrompt).not.toContain(TASK);
+      expect(cheap?.userPrompt).toContain('repair turn');
+      // The system prompt is composed exactly as for a fresh spawn — that is what keeps the
+      // skill body (and its counter instruction) in front of the agent on a resumed turn.
+      expect(cheap?.systemPrompt).toBe(first?.systemPrompt);
+
+      // B4 — return #2 is today's spawn, byte for byte: fresh id, whole brief, failing output.
+      expect(fresh?.resume).toBeFalsy();
+      expect(fresh?.sessionId).not.toBe(first?.sessionId);
+      expect(fresh?.userPrompt).toContain(TASK);
+      expect(fresh?.userPrompt).toContain('GATE-RED-2 the failing gate output');
+    } finally {
+      runner.restore();
+    }
+  }, 30_000);
+
+  // B3 — the cheap turn is counted, not extra. AC2.
+  it('two returns are still all there are, and the terminal message is unchanged', async () => {
+    const { store, manager, runner, workflow } = cheapFixture(3);
+    try {
+      const run = manager.startRun(workflow, { task: TASK, worktree: false });
+      await settled(store, run.id);
+      expect(store.getRun(run.id)?.status).toBe('failed');
+      expect(store.getRun(run.id)?.error).toBe('check "gates" failed after 3 attempts');
+      // One original execution plus exactly two returns — never a fourth spawn.
+      expect(runner.specs).toHaveLength(3);
+      expect(runner.specs.map(s => s.resume === true)).toEqual([false, true, false]);
+    } finally {
+      runner.restore();
+    }
+  }, 30_000);
+
+  // B5 (no recorded session) and B6 (backend mismatch) — the resume is unavailable, so the
+  // return falls back to today's fresh spawn INSIDE the same return: still two returns, the
+  // whole brief is sent, and the fall-back is announced rather than silent. AC4.
+  it.each([
+    { name: 'no recorded session', patch: { sessionId: undefined }, note: 'no session was recorded' },
+    { name: 'the session belongs to another backend', patch: { backend: 'pi' as const }, note: 'recorded session belongs to pi' },
+  ])('falls back to a fresh spawn without consuming a return: $name', async ({ patch, note }) => {
+    const { store, manager, runner, workflow } = cheapFixture(2);
+    const notes: string[] = [];
+    try {
+      const run = manager.startRun(workflow, { task: TASK, worktree: false });
+      // Break the recorded session the moment the gate step starts — before it fails, and so
+      // before the engine decides how to return.
+      let broken = false;
+      store.on('run', (record: RunRecord) => {
+        if (broken || record.id !== run.id) return;
+        if (record.steps.find(s => s.id === 'gates')?.status !== 'running') return;
+        broken = true;
+        store.updateStep(run.id, 'author', patch);
+      });
+      await settled(store, run.id);
+      for (const event of store.readEvents(run.id)) {
+        if ((event as { type?: string }).type === 'note') notes.push(String((event as { message?: string }).message ?? ''));
+      }
+
+      expect(broken).toBe(true);
+      expect(store.getRun(run.id)?.status).toBe('done');
+      // Still exactly two returns — an unreachable session is an environment fact, not a round.
+      expect(runner.specs).toHaveLength(3);
+      expect(runner.specs.map(s => s.resume === true)).toEqual([false, false, false]);
+      expect(runner.specs[1]?.userPrompt).toContain(TASK);
+      expect(notes.some(message => message.includes(note))).toBe(true);
+    } finally {
+      runner.restore();
+    }
+  }, 30_000);
 });

@@ -76,6 +76,14 @@ import {
 } from './types.ts';
 
 const CHECK_OUTPUT_CAP = 20_000;
+/**
+ * The one fixed sentence a cheap repair turn opens with (#676). The FIRST automatic return
+ * after a red check resumes the author's own backend session, so the brief it already read is
+ * deliberately NOT repeated — this line is what tells the model which turn it is in.
+ */
+const REPAIR_TURN_PREFIX =
+  'This is a repair turn on the work you already did in this same session — your original brief is '
+  + 'not repeated, it is still above in this conversation.';
 /** How rarely a check step's output chunks report liveness (#460 § 2). One per second is far
  *  finer than the 5-minute quiet window it feeds, and keeps a megabyte of output from becoming
  *  a megabyte of in-process notifications. */
@@ -350,6 +358,12 @@ function autoContinueCap(state: ActiveRun): number {
 }
 /** What the turn that just ended did, as far as the nudge bounds care (#613). */
 interface TurnActivity { toolCalls: number; nudged: boolean }
+/**
+ * The session a cheap repair turn resumes (#676) — the retry target's own, as the run recorded
+ * it when it last ran. `profileId` rides along because a resume that reads the wrong account's
+ * config dir finds no session and silently starts fresh; the pair is checked, never assumed.
+ */
+interface RepairResume { stepId: string; sessionId: string; profileId: string | undefined }
 /** Read and reset the per-turn activity. BOTH turn-end handlers call it at every turn end — also
  *  a DONE or monitoring one — so a count never leaks into the next turn. */
 function takeTurnActivity(state: ActiveRun): TurnActivity {
@@ -3701,6 +3715,9 @@ export class RunManager {
       Math.max(0, (this.store.getRun(runId)?.steps.find(s => s.id === step.id)?.iterations ?? 0) - 1),
     ]));
     let checkFailure: string | null = null;
+    /** The session the NEXT agent step may resume instead of spawning fresh (#676), or null for
+     *  today's fresh spawn. Set only alongside `checkFailure`, and cleared with it. */
+    let repairResume: RepairResume | null = null;
     let runError: string | null = null;
     const lastAgentIdx = findLastAgentStepIndex(workflow);
 
@@ -3739,10 +3756,12 @@ export class RunManager {
           extraSystemPrompt,
           chainStepNote(workflow.steps, i),
           startAttachments,
+          repairResume,
         );
         startImages = undefined;
         startAttachments = [];
         checkFailure = null;
+        repairResume = null;
         if (state.cancelled) break;
         if (failure) {
           this.finishStep(runId, step.id, 'failed', failure, emit);
@@ -3778,6 +3797,14 @@ export class RunManager {
         for (const s of workflow.steps.slice(retryIdx, i + 1)) {
           this.store.updateStep(runId, s.id, { status: 'pending' });
         }
+        // #676: the FIRST return is cheap — it resumes the retry target's own session and sends
+        // it only the failing output. Every later return is byte-for-byte today's fresh spawn.
+        // The return itself is counted either way (`retriesUsed` above, `onFail.max` untouched).
+        // Decided AFTER the note above so a transcript reads the return before any reason the
+        // return could not be the cheap one.
+        repairResume = used === 0
+          ? this.repairResumeTarget(runId, workflow, retryIdx, taskBackend, emit)
+          : null;
         i = retryIdx;
         continue;
       }
@@ -3810,6 +3837,49 @@ export class RunManager {
     this.clearIdleTimer(state);
   }
 
+  /**
+   * Can the first automatic return after a red check (#676) resume the retry target's own
+   * session instead of spawning a fresh one with the whole brief?
+   *
+   * Every condition is checked HERE, in one place, except the profile pair — `agentEnvForStep`
+   * resolves that inside `runAgentStep`, so the last condition is re-checked there against the
+   * recorded `profileId` and falls back inside the SAME return. A return whose resume is
+   * unavailable is an environment fact, not a repair round: it never costs an extra attempt,
+   * and it is always announced (a silent fall-back to a fresh session is the failure this
+   * whole path has to avoid).
+   */
+  private repairResumeTarget(
+    runId: string,
+    workflow: WorkflowDef,
+    retryIdx: number,
+    taskBackend: RunnerId,
+    emit: (event: { type: string; stepId?: string; [k: string]: unknown }) => void,
+  ): RepairResume | null {
+    const target = workflow.steps[retryIdx] as WorkflowStepDef | undefined;
+    // A check step has no session to resume; it just re-runs, exactly as today.
+    if (!target || stepKind(target) !== 'agent') return null;
+    const record = this.store.getRun(runId)?.steps.find((s) => s.id === target.id);
+    const sessionId = record?.sessionId;
+    const backendNow = target.runner ?? taskBackend;
+    const say = (why: string) =>
+      emit({
+        type: 'note',
+        stepId: target.id,
+        message: `repair turn unavailable (${why}) — starting a fresh session with the whole brief; this does not cost an extra attempt`,
+      });
+    if (sessionId === undefined) {
+      say('no session was recorded for this step');
+      return null;
+    }
+    // Absence is NOT a match: a record that never said which backend owns the session cannot
+    // prove the session is reachable from the one about to spawn, so it spawns fresh.
+    if (record?.backend !== backendNow) {
+      say(`the recorded session belongs to ${record?.backend ?? 'an unrecorded backend'}, this step now runs on ${backendNow}`);
+      return null;
+    }
+    return { stepId: target.id, sessionId, profileId: record?.profileId };
+  }
+
   /** Returns an error message, or null on success. */
   private async runAgentStep(
     runId: string,
@@ -3830,6 +3900,9 @@ export class RunManager {
      *  paths are appended to `userPrompt` so the agent can operate on the
      *  real files, not just view the inline image blocks. */
     attachments: PersistedAttachment[] = [],
+    /** The session this execution may resume instead of spawning fresh (#676), decided by
+     *  `repairResumeTarget`. Null on a first execution and on every return after the first. */
+    repair: RepairResume | null = null,
   ): Promise<string | null> {
     let systemPrompt: string | undefined;
     if (step.skill) {
@@ -3891,8 +3964,22 @@ export class RunManager {
     // location of.
     if (attachments.length) userPrompt += `\n\n${pastedAttachmentsText(attachments)}`;
 
-    const sessionId = randomUUID();
+    // The cheap return's whole prompt (#676): the same capped failing output the fresh return
+    // appends, and nothing else — no `{{task}}`, no chain note, no attachments. The session
+    // being resumed already holds all of that.
+    const repairPrompt = checkFailure === null
+      ? null
+      : `${REPAIR_TURN_PREFIX}\n\nA verification command failed after the previous attempt. `
+        + `Fix the cause. Failing output:\n\n${checkFailure}`;
+
+    const freshSessionId = randomUUID();
     const backend = step.runner ?? taskBackend;
+    // `repair.stepId` is belt and braces: the descriptor is built for ONE step, and a retry
+    // target that is not the step now executing must never inherit another step's session.
+    let resumedSessionId = repair !== null && repairPrompt !== null && repair.stepId === step.id
+      ? repair.sessionId
+      : undefined;
+    let sessionId = resumedSessionId ?? freshSessionId;
     this.store.updateStep(runId, step.id, { sessionId, backend });
 
     const stepRecord = this.store.getRun(runId)?.steps.find((s) => s.id === step.id);
@@ -4054,6 +4141,29 @@ export class RunManager {
       if (err instanceof AgentTempDirError || err instanceof AgentAccountUnavailableError) return err.message;
       throw err;
     }
+    // The last eligibility condition of the cheap return (#676), and the one that could only be
+    // checked here: `sessionId` and `profileId` are a pair (see the comment just above), so a
+    // resume under a different account would find no session and silently start fresh. Fall back
+    // inside the SAME return — loudly, and without consuming a second attempt.
+    if (resumedSessionId !== undefined && repair?.profileId !== stepProfile.profileId) {
+      emit({
+        type: 'note',
+        stepId: step.id,
+        message: `repair turn unavailable (the session belongs to agent account ${repair?.profileId ?? 'unknown'}, `
+          + `this step now runs under ${stepProfile.profileId}) — starting a fresh session with the whole brief; `
+          + 'this does not cost an extra attempt',
+      });
+      resumedSessionId = undefined;
+      sessionId = freshSessionId;
+      this.store.updateStep(runId, step.id, { sessionId, backend });
+    }
+    if (resumedSessionId !== undefined) {
+      emit({
+        type: 'note',
+        stepId: step.id,
+        message: 'repair turn — resuming this step\'s own session with the failing output only; the brief is not repeated',
+      });
+    }
     const runner = createRunner(stepBackend);
     // Advisory liveness (#460 § 2): record the wall clock this step is ACTUALLY spawning with,
     // once, here — the one place that knows both the step's own `timeout` and which backend is
@@ -4097,8 +4207,9 @@ export class RunManager {
               ? HANDOFF_INSTRUCTIONS
               : HANDOFF_ONLY_INSTRUCTIONS,
           ),
-          userPrompt,
-          images,
+          userPrompt: resumedSessionId !== undefined && repairPrompt !== null ? repairPrompt : userPrompt,
+          // A resumed session already saw them; re-sending would re-bill the same blocks.
+          images: resumedSessionId === undefined ? images : undefined,
           cwd: state.cwd,
           ...worktreeGuardRoots(state.cwd, this.repoRoot),
           allowedTools: step.allowedTools ?? DEFAULT_ALLOWED_TOOLS,
@@ -4108,9 +4219,13 @@ export class RunManager {
           env: stepProfile.env,
           model: backendModel,
           sessionId,
+          resume: resumedSessionId !== undefined,
           // Interactive sessions have no wall clock — the idle timer rules. A
           // step's own `timeout` (#22) outranks that; with the field absent
           // this is byte-for-byte the pre-#22 `interactive ? 0 : undefined`.
+          // A repair turn (#676) is an execution of THIS step, so it takes this same value —
+          // never the Continue path's `timeoutMs: 0`, which would uncap a step whose workflow
+          // deliberately left `timeout` absent (`release.yaml`'s author; BC §4).
           timeoutMs: stepTimeoutMs(step, interactive),
         },
         onEvent,
