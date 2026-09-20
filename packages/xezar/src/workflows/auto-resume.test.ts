@@ -65,6 +65,29 @@ describe('a run stopped by a usage limit resumes itself', () => {
     }
   }
 
+  /**
+   * Resolve when a fact about the RECORDS becomes true — the store's own change signal, never a
+   * poll budget or a sleep.
+   *
+   * `RunStore` emits `run` from `touch()`, and `touch()` is the tail of every `updateRun` /
+   * `updateStep` / `setArchived` / `addStep`, so a record can change no other way. The predicate
+   * is checked synchronously before the listener is registered, in the same tick, so a transition
+   * that already happened (or one landing while the caller was elsewhere) cannot be missed. A
+   * fact that never becomes true is a hang, not a slow pass — the case's own timeout is the guard
+   * and it should never fire, which is the point of not budgeting patience here.
+   */
+  function whenTrue(fact: () => boolean): Promise<void> {
+    if (fact()) return Promise.resolve();
+    return new Promise((resolve) => {
+      const check = () => {
+        if (!fact()) return;
+        store.off('run', check);
+        resolve();
+      };
+      store.on('run', check);
+    });
+  }
+
   beforeEach(async () => {
     savedEnv.XEZ_DRY_RUN = process.env.XEZ_DRY_RUN;
     savedEnv.XEZ_MOCK_LIMIT_RESET_SECONDS = process.env.XEZ_MOCK_LIMIT_RESET_SECONDS;
@@ -236,68 +259,93 @@ describe('a run stopped by a usage limit resumes itself', () => {
     // The reported scenario: five tasks, two slots. The two that start hit the limit and become
     // `scheduled`; the other three must not be walked into the same wall just to be marked
     // scheduled too. Before the hold existed this drained the whole queue in ~500 ms.
-    manager = new RunManager(store, repoRoot, {
-      semaphore: new WorkspaceSemaphore({ initial: { maxParallel: 2 } }),
-    });
-    // Isolated worktrees — the default, and the shape that matters here: an in-place run parks
-    // on the repo-root lease (#438) instead of holding a slot, which is a different queue rule
-    // altogether and would mask what this test is about.
-    const runs = [1, 2, 3, 4, 5].map((n) =>
-      manager!.startRun(workflow, { task: `mock:limit task ${n}` }),
+    //
+    // REBUILT (F-20 of the #671 flake inventory, `expected [...] to have a length of 4 but got 5`,
+    // CI run 35110511675). The old shape drove the REAL mock CLI and read the queue length after a
+    // fixed 250 ms sleep, so "the fifth never started" was a claim about how fast the machine
+    // settled rather than about the fixture: the count was a snapshot of an in-flight process, and
+    // the case never asked whether the auto-resume deadline the hold rests on was still in the
+    // future. It is now a fact about the fixture. The limit turn is scripted and the window is a
+    // value on the case's OWN clock, every count is read after awaiting the store's change signal
+    // (no `expect.poll`, no sleep), and the last phase removes the hold and watches the fifth run
+    // start — so the negative half cannot pass against a queue that simply drained or a fixture
+    // that never had a fifth task.
+    const clock = providerClock();
+    const reset = clock.reset(3_600);
+    const deadline = reset * 1_000 + AUTO_RESUME_GRACE_MS;
+    // One turn per run that ever reaches an agent: two in each held pair, then the fifth once the
+    // hold is gone. A turn past this list throws `unscripted agent invocation`, so the list is also
+    // a cap on how many runs may spawn — the same count the assertions below make.
+    const runner = scriptedRunner(
+      Array.from({ length: 6 }, () => ({ error: `Claude AI usage limit reached|${reset}` })),
     );
+    const semaphore = new WorkspaceSemaphore({ initial: { maxParallel: 2 } });
+    try {
+      manager = new RunManager(store, repoRoot, { semaphore, autoResumeTimer: clock.timer });
+      // Isolated worktrees — the default, and the shape that matters here: an in-place run parks
+      // on the repo-root lease (#438) instead of holding a slot, which is a different queue rule
+      // altogether and would mask what this test is about.
+      const runs = [1, 2, 3, 4, 5].map((n) =>
+        manager!.startRun(workflow, { task: `mock:limit task ${n}` }),
+      );
+      const scheduled = () =>
+        runs.filter((r) => store.getRun(r.id)?.autoResumeAt !== undefined).length;
+      const started = () => runs.filter((r) => store.getRun(r.id)?.startedAt !== undefined).length;
+      const queued = () => runs.filter((r) => store.getRun(r.id)?.status === 'queued').length;
+      /** Pump every path that can start a run, and await it, so the next count is a fact. */
+      const flush = async () => {
+        await semaphore.release();
+        await manager!.rescueStalledQueue();
+      };
 
-    // Two schedules is the whole story: exactly the two that had slots ever ran.
-    await expect
-      .poll(
-        () => runs.filter((r) => store.getRun(r.id)?.autoResumeAt !== undefined).length,
-        { timeout: 20_000 },
-      )
-      .toBe(2);
-    // Give a stampede every chance to happen before asserting it did not.
-    await new Promise((resolve) => setTimeout(resolve, 1_000));
-    const started = runs.filter((r) => store.getRun(r.id)?.startedAt !== undefined);
-    expect(started).toHaveLength(2);
-    expect(runs.filter((r) => store.getRun(r.id)?.status === 'queued')).toHaveLength(3);
+      // Two schedules is the whole story: exactly the two that had slots ever ran.
+      await whenTrue(() => scheduled() === 2);
+      await flush();
+      expect(started()).toBe(2);
+      expect(queued()).toBe(3);
+      // …and the window is a value on this case's clock, not the wall: it cannot have reopened on
+      // its own, which is what makes the hold below a fact about the fixture. `armAutoResume`
+      // writes the reset instant the scripted turn reported plus the grace, verbatim.
+      expect(store.getRun(runs[0]!.id)?.autoResumeAt).toBe(new Date(deadline).toISOString());
 
-    // …and the hold is exactly as wide as the limit, with no restart and no timer needed:
-    // cancelling both schedules releases the queue, the next pair takes their slots — and then
-    // promptly holds it again by hitting the same limit, which is the mechanism working rather
-    // than failing. One task never runs at all, which is the entire point.
-    for (const run of started) manager.cancelAutoResume(run.id);
-    await expect
-      .poll(
-        () => runs.filter((r) => store.getRun(r.id)?.startedAt !== undefined).length,
-        { timeout: 20_000 },
-      )
-      .toBe(4);
-    // The mirror of the guard above, and this case's headline rests on it: the poll returns the
-    // instant the FOURTH `startedAt` lands, so a fifth dequeue a millisecond later would never be
-    // observed and "one task never runs at all" would pass against a queue that had already
-    // drained.
-    //
-    // The wait is a POLL on the re-established hold rather than the guard above's bare sleep,
-    // because there is a real signal here and it is load-independent: the two tasks that just
-    // started meet the same limit and schedule their own resumes, and `scheduleAutoResumeIfLimited`
-    // publishes that deadline BEFORE releasing the slot (deliberately — a pump reads the hold off
-    // the records). Two fresh deadlines therefore means the second stampede has run its course and
-    // the account is held again, which no amount of machine load can fake.
-    //
-    // The short settle after it is NOT redundant and cannot be polled away: the last pump of the
-    // stampede is floated after that record write and still has `getRepoInfo` to cross, so the
-    // only remaining way for a fifth task to appear is a pump that has already been fired and has
-    // not finished. Nothing observable marks its end. It is a give-the-bug-a-chance guard, so it
-    // can only ever fail in the safe direction — but the poll is what keeps its budget spent on
-    // that window instead of on waiting out a mock agent turn.
-    await expect
-      .poll(
-        () => runs.filter((r) => store.getRun(r.id)?.autoResumeAt !== undefined).length,
-        { timeout: 20_000 },
-      )
-      .toBe(2);
-    await new Promise((resolve) => setTimeout(resolve, 250));
-    expect(runs.filter((r) => store.getRun(r.id)?.startedAt !== undefined)).toHaveLength(4);
-    expect(runs.filter((r) => store.getRun(r.id)?.status === 'queued')).toHaveLength(1);
-  }, 60_000);
+      // …and the hold is exactly as wide as the limit, with no restart and no timer needed:
+      // cancelling both schedules releases the queue, the next pair takes their slots — and then
+      // promptly holds it again by hitting the same limit, which is the mechanism working rather
+      // than failing. One task never runs at all, which is the entire point.
+      for (const run of runs.slice(0, 2)) manager.cancelAutoResume(run.id);
+      await whenTrue(() => started() === 4);
+      // The mirror of the guard above, and this case's headline rests on it: the wait for the
+      // FOURTH `startedAt` can return before a fifth dequeue, so the hold has to be asserted
+      // again. It is a signal here rather than a bare sleep — the two tasks that just started
+      // meet the same limit and schedule their own resumes, and `scheduleAutoResumeIfLimited`
+      // publishes that deadline BEFORE releasing the slot (deliberately — a pump reads the hold
+      // off the records). Two fresh deadlines therefore means the second stampede has run its
+      // course, and no amount of machine load can fake it.
+      await whenTrue(() => scheduled() === 2);
+      await flush();
+      expect(started()).toBe(4);
+      expect(queued()).toBe(1);
+
+      // The negative half is worth nothing unless the fifth CAN start: a queue that had quietly
+      // drained, or a fixture with no fifth task at all, reads exactly the same as a hold that
+      // works. Releasing the account is the only change — same five records, same two slots — and
+      // the fifth task runs. (In the pre-fix case this is where the count could read 5 while the
+      // assertion said 4: the old shape never controlled whether the deadline had passed.)
+      for (const run of runs.slice(2, 4)) manager.cancelAutoResume(run.id);
+      await whenTrue(() => started() === 5);
+      await flush();
+      expect(started()).toBe(5);
+      expect(queued()).toBe(0);
+    } finally {
+      // The scripted backend and the frozen clock belong to this case; the shared `store` and
+      // `repoRoot` are the hook's. Quiesce before restoring the runner so no run that has not
+      // spawned yet reaches the real factory on the way out.
+      await manager?.quiesce();
+      manager = undefined;
+      runner.restore();
+      clock.restore();
+    }
+  }, 30_000);
 
   it('holds in-place runs too, which dequeue long before they spawn', async () => {
     // The reported case. A `worktree: false` run parks on the exclusive repo-root lease (#438),
