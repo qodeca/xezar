@@ -107,6 +107,11 @@ gate_lease_take() {
   # world-writable path is a way into a gate run. `mktemp -d` creates it 0700 under this user, and
   # `gate_lease_drop` removes it. If even that cannot be created, `/tmp` is still better than a
   # tsx that cannot start — the lease would otherwise fail open on every run in this repository.
+  #
+  # Only `gate_lease_drop` removes it, so a gate script that dies without running its EXIT trap —
+  # the SIGKILL case above — leaves one `/tmp/xez-lease.XXXXXX` folder behind. It is small, `0700`
+  # and under the OS's own `/tmp` cleaning; a reaper here would be a second owner of a path this
+  # function does not know is still in use, which is worse than the litter.
   local lease_tmp="${TMPDIR:-/tmp}"
   case "${argv[0]}" in
     *"/tsx")
@@ -130,6 +135,13 @@ gate_lease_take() {
   # alive and its heartbeat keeps the slot fresh, so NEITHER pid liveness NOR the stale bound can
   # reclaim it and every later gate run on the machine waits the whole bound. The holder command
   # opens the FIFO by PATH for reading, so closing the inherited descriptor costs it nothing.
+  #
+  # "Freed" is when the LAST inheritor of fd 9 ends, not the instant the gate script dies: every
+  # child this shell starts AFTER this line — the install, the three lanes — inherits fd 9 too, and
+  # the holder's `read` only sees EOF once the last of them is gone. A SIGKILLed gate script with a
+  # 12-second child frees its slot 12 seconds later, not at once. That is bounded by the children's
+  # own lifetimes and it is arguably the right answer, because orphaned lanes are still loading the
+  # machine the next gate run is waiting for; what it is NOT is instantaneous.
   TMPDIR="$lease_tmp" "${argv[@]}" lease gates --status-file "$status" -- \
     bash -c 'read -r _ < "$1"' gate-lease-holder "$GATE_LEASE_FIFO" 9>&- &
   GATE_LEASE_PID=$!

@@ -5963,6 +5963,12 @@ else
   # the verb's exit, which is only how it happens. The budget is the same `lease_wait_polls` every
   # other case here uses (30 s), and it is far inside one stale window (6 × 10 s), so "freed" here
   # means freed by the holder going away rather than by the bound expiring.
+  #
+  # "Freed" is not "freed instantly", and this fixture is the fast shape of it on purpose: fd 9 is
+  # inherited by every child the gate script starts, so the holder's `read` reaches EOF only when
+  # the LAST of them ends. This holder's only child is a one-second `sleep`, so the slot comes back
+  # in about a second; a real gate script SIGKILLed with a twelve-second child would take twelve.
+  # Bounded by the children, in every case, and never needing a person.
   lease_kill="$WORK/lease-sigkill"
   mkdir -p "$lease_kill/attempt" "$lease_kill/home"
   cat > "$lease_kill/hold.sh" <<'LEASE_KILL_EOF'
@@ -6010,6 +6016,146 @@ LEASE_KILL_EOF
     kill -9 "$LEASE_KILL_PID" 2>/dev/null
     bad "a SIGKILLed gate script's slot is freed without a person" "the holder never took a slot"
     cat "$lease_kill/out" 2>/dev/null
+  fi
+
+  # -- the three fail-open branches, each driven for real (round 2 review finding 2) --------------
+  #
+  # EVERY failure of the lease runs the gates anyway (AGENTS.md § Zero config): a lease that cannot
+  # be taken must not turn a working gate into a failure. The branches below were new or rewritten
+  # in round 1 and none of them had a case, so deleting any one of them left this suite green —
+  # which is the one shape a fail-open path must never be in, because its whole job is to be
+  # invisible when it works. Each is driven through the REAL `lib/gate-lease.sh` with the smallest
+  # fixture that reaches it, and each asserts the same three things: the loud line, `gate_lease_take`
+  # returning 0, and the gates running afterwards.
+
+  # (i) `gate-lease.sh:80-84` — the FIFO cannot be CREATED. A read-only attempt directory is the
+  # honest way there: `mkfifo` fails for the reason it would really fail, and no code path pretends.
+  lease_nofifo="$WORK/lease-no-fifo"
+  mkdir -p "$lease_nofifo/attempt" "$lease_nofifo/home"
+  chmod 500 "$lease_nofifo/attempt"
+  lease_nofifo_out="$WORK/lease-no-fifo.out"
+  HOME="$lease_nofifo/home" TMPDIR="$LEASE_TMPDIR" XEZ_HOME="$lease_nofifo/home/.xezar" \
+    TASK_CWD="$REPO_ROOT" GATE_ATTEMPT_DIR="$lease_nofifo/attempt" \
+    bash -c '. "$1"; gate_lease_take; printf "TAKE=%s\n" "$?"; gate_lease_drop; printf "GATES RAN\n"' \
+    kit-lease "$SCRIPT_DIR/lib/gate-lease.sh" > "$lease_nofifo_out" 2>&1
+  lease_nofifo_rc=$?
+  chmod 700 "$lease_nofifo/attempt"
+  if [ "$lease_nofifo_rc" -eq 0 ] &&
+    grep -q 'UNAVAILABLE: could not create' "$lease_nofifo_out" &&
+    grep -q '^TAKE=0$' "$lease_nofifo_out" &&
+    grep -q '^GATES RAN$' "$lease_nofifo_out"; then
+    ok "a FIFO that cannot be created leaves the gates unleased rather than blocked"
+  else
+    bad "a FIFO that cannot be created leaves the gates unleased rather than blocked" \
+      "exit $lease_nofifo_rc"
+    cat "$lease_nofifo_out"
+  fi
+
+  # (ii) `gate-lease.sh:92-97` — the FIFO is created and fd 9 cannot be OPENED on it. This is its
+  # own branch and its own bug: bash does NOT exit on a failed `exec` redirection even under
+  # `set -e`, so without it the run carried on with fd 9 unopened and the drop later wrote into a
+  # closed descriptor and then waited for a holder nobody could release.
+  #
+  # A descriptor limit below 9 is the one trigger that separates the two branches — `mkfifo` still
+  # succeeds, and only the open fails. Bash juggles its own descriptors above 10, so the limit also
+  # makes IT print `redirection error` lines; they are the fixture's noise, not the lease's, and
+  # the assertions are on the lease's own line.
+  lease_nofd="$WORK/lease-no-fd"
+  mkdir -p "$lease_nofd/attempt" "$lease_nofd/home"
+  lease_nofd_out="$WORK/lease-no-fd.out"
+  HOME="$lease_nofd/home" TMPDIR="$LEASE_TMPDIR" XEZ_HOME="$lease_nofd/home/.xezar" \
+    TASK_CWD="$REPO_ROOT" GATE_ATTEMPT_DIR="$lease_nofd/attempt" \
+    bash -c 'ulimit -n 9; . "$1"; gate_lease_take; printf "TAKE=%s\n" "$?"; gate_lease_drop; printf "GATES RAN\n"' \
+    kit-lease "$SCRIPT_DIR/lib/gate-lease.sh" > "$lease_nofd_out" 2>&1
+  lease_nofd_rc=$?
+  if [ "$lease_nofd_rc" -eq 0 ] &&
+    grep -q 'UNAVAILABLE: could not open' "$lease_nofd_out" &&
+    grep -q '^TAKE=0$' "$lease_nofd_out" &&
+    grep -q '^GATES RAN$' "$lease_nofd_out" &&
+    [ ! -e "$lease_nofd/attempt/lease.fifo" ]; then
+    ok "a FIFO that cannot be opened leaves the gates unleased, and removes the FIFO it made"
+  else
+    bad "a FIFO that cannot be opened leaves the gates unleased, and removes the FIFO it made" \
+      "exit $lease_nofd_rc"
+    cat "$lease_nofd_out"
+  fi
+
+  # (iii) `gate-lease.sh:151-155` — the verb dies before it writes a status. A fake `tsx` that exits
+  # 1 is exactly that state (a tsx that cannot start, a verb that crashes on boot), and it is the
+  # branch that must leave `GATE_LEASE_WAIT_MS` EMPTY: `unavailable` carries `waitedMs: 0`, which is
+  # byte-identical to "took a slot with no queue", and the record's contract spells empty as "this
+  # run did not lease". The stderr line after the drop is the round 1 finding 4 guard: a bare
+  # `exec 9>&- 2>/dev/null` made EVERY later redirection permanent and silenced the rest of the run.
+  lease_nostatus="$WORK/lease-no-status"
+  mkdir -p "$lease_nostatus/attempt" "$lease_nostatus/home" \
+    "$lease_nostatus/cwd/node_modules/.bin" "$lease_nostatus/cwd/packages/xezar/src"
+  : > "$lease_nostatus/cwd/packages/xezar/src/index.ts"
+  printf '#!/usr/bin/env bash\nexit 1\n' > "$lease_nostatus/cwd/node_modules/.bin/tsx"
+  chmod +x "$lease_nostatus/cwd/node_modules/.bin/tsx"
+  lease_nostatus_out="$WORK/lease-no-status.out"
+  HOME="$lease_nostatus/home" TMPDIR="$LEASE_TMPDIR" XEZ_HOME="$lease_nostatus/home/.xezar" \
+    TASK_CWD="$lease_nostatus/cwd" GATE_ATTEMPT_DIR="$lease_nostatus/attempt" \
+    bash -c '. "$1"; gate_lease_take; printf "TAKE=%s WAIT=[%s]\n" "$?" "${GATE_LEASE_WAIT_MS}";
+             gate_lease_drop; printf "GATES RAN\n"; printf "stderr survived the drop\n" >&2' \
+    kit-lease "$SCRIPT_DIR/lib/gate-lease.sh" > "$lease_nostatus_out" 2>&1
+  lease_nostatus_rc=$?
+  if [ "$lease_nostatus_rc" -eq 0 ] &&
+    grep -q 'UNAVAILABLE: the lease helper produced no status' "$lease_nostatus_out" &&
+    grep -q '^TAKE=0 WAIT=\[\]$' "$lease_nostatus_out" &&
+    grep -q '^GATES RAN$' "$lease_nostatus_out" &&
+    grep -q 'stderr survived the drop' "$lease_nostatus_out" &&
+    [ ! -e "$lease_nostatus/attempt/lease.fifo" ]; then
+    ok "a verb that dies before its status runs the gates unleased, with an empty recorded wait"
+  else
+    bad "a verb that dies before its status runs the gates unleased, with an empty recorded wait" \
+      "exit $lease_nostatus_rc"
+    cat "$lease_nostatus_out"
+  fi
+
+  # (iv) `gate-lease.sh:190-206` — the bounded drop, and the pid it kills. `wait` with no bound is
+  # the wrong tool: a verb wedged after it resolved would block this script's own exit, and a check
+  # step has no wall clock of its own to end it. The fake verb here RESOLVES its lease and then
+  # ignores both the release FIFO and SIGTERM, which is the one state the escalation exists for.
+  # The grace is lowered in the driving shell rather than in the helper, so the real 20 s constant
+  # is the one the case runs against everywhere else. The pid killed is the one this function SAVED
+  # when it started it — never a command-line pattern, which would match every peer agent on this
+  # machine carrying the same skill text.
+  lease_wedged="$WORK/lease-wedged"
+  mkdir -p "$lease_wedged/attempt" "$lease_wedged/home" \
+    "$lease_wedged/cwd/node_modules/.bin" "$lease_wedged/cwd/packages/xezar/src"
+  : > "$lease_wedged/cwd/packages/xezar/src/index.ts"
+  cat > "$lease_wedged/cwd/node_modules/.bin/tsx" <<'LEASE_WEDGED_EOF'
+#!/usr/bin/env bash
+# A verb that resolves its lease and then never lets go: it never reads the release FIFO and it
+# ignores SIGTERM. Its only child is a one-second `sleep`, so nothing outlives the kill.
+trap '' TERM
+lease_status=""
+while [ "$#" -gt 0 ]; do
+  [ "$1" = "--status-file" ] && lease_status="$2"
+  shift
+done
+printf '{"held":true,"slot":1,"slots":1,"waitedMs":0}\n' > "$lease_status"
+while :; do sleep 1; done
+LEASE_WEDGED_EOF
+  chmod +x "$lease_wedged/cwd/node_modules/.bin/tsx"
+  lease_wedged_out="$WORK/lease-wedged.out"
+  HOME="$lease_wedged/home" TMPDIR="$LEASE_TMPDIR" XEZ_HOME="$lease_wedged/home/.xezar" \
+    TASK_CWD="$lease_wedged/cwd" GATE_ATTEMPT_DIR="$lease_wedged/attempt" \
+    bash -c '. "$1"; GATE_LEASE_DROP_GRACE_SECONDS=1; gate_lease_take;
+             lease_pid="$GATE_LEASE_PID"; gate_lease_drop;
+             kill -0 "$lease_pid" 2>/dev/null && printf "STILL ALIVE\n" || printf "VERB ENDED\n";
+             printf "GATES RAN\n"' \
+    kit-lease "$SCRIPT_DIR/lib/gate-lease.sh" > "$lease_wedged_out" 2>&1
+  lease_wedged_rc=$?
+  if [ "$lease_wedged_rc" -eq 0 ] &&
+    grep -q 'the holder did not exit within 1s — ending pid' "$lease_wedged_out" &&
+    grep -q '^VERB ENDED$' "$lease_wedged_out" &&
+    grep -q '^GATES RAN$' "$lease_wedged_out"; then
+    ok "a verb that ignores the release and SIGTERM is ended by the drop, inside its own bound"
+  else
+    bad "a verb that ignores the release and SIGTERM is ended by the drop, inside its own bound" \
+      "exit $lease_wedged_rc"
+    cat "$lease_wedged_out"
   fi
 
   # A checkout with no xezar CLI at all — the state a gate run is in before its dependencies are
