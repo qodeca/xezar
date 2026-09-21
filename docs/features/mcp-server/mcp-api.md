@@ -333,7 +333,7 @@ Unknown arguments are rejected.
 | `workspaceConfig.resources.idleTimeoutMinutes` | integer or null | no | min 1, max 1440 |  |
 | `workspaceConfig.resources.memoryLimitMb` | integer or null | no | min 0, max 1048576 |  |
 | `workspaceConfig.resources.worktreeRetentionDefault` | integer | no | min 0, max 1000 |  |
-| `workspaceConfig.resources.gateSlots` | integer | no | min 1, max 16 |  |
+| `workspaceConfig.resources.gateSlots` | integer or null | no | min 1, max 16 |  |
 | `workspaceConfig.agentDefaults` | object | no |  |  |
 | `workspaceConfig.agentDefaults.runner` | `claude` \| `codex` \| `opencode` \| `pi` or null | no |  |  |
 | `workspaceConfig.agentDefaults.models` | object | no |  |  |

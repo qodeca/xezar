@@ -90,6 +90,7 @@ Turn on **Notify when an agent needs you** and allow browser permission. Notific
 | Auto-resume after a usage limit | Leave on to continue after the provider's stated reset, plus 30 seconds, up to 12 consecutive retries. Off leaves the failed task with Continue. |
 | Waiting tasks close after | Set an idle-session timeout (default **15 minutes**) or never close on idle. The task remains available for Continue after its session closes. |
 | Per-task memory limit | Limit the whole task process tree in MiB. The default is derived from host memory, bounded between **1024 and 8192 MiB**. An empty field saves no limit. |
+| Gate slots | Set how many full check runs may work at once on this machine; **1** to **16**, default **1**, so a second gate run waits for a slot instead of competing. An empty field clears the setting back to that default. A change applies to the next gate run with no restart; a run already waiting keeps the count it started with. |
 | Keep last N worktrees, by default | Set retention for projects without their own choice; default **10**, **0** means unlimited. |
 | Follow-up Inbox | Choose **On**, **Off**, or **Follow XEZ_FOLLOWUPS**. On applies to newly started tasks; Off also affects running tasks at their next step or Continue. Refresh an open tab for live Inbox updates. |
 | Extra variables agents receive | Save a comma-separated list of additional environment variable names, or choose **Follow XEZ_ENV_PASSTHROUGH**. An explicitly empty list forwards no extra variables. |

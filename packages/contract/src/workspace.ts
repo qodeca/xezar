@@ -202,9 +202,17 @@ export const setWorkspaceConfigInputSchema = z.strictObject({
       idleTimeoutMinutes: z.number().int().min(1).max(1440).nullable().optional(),
       memoryLimitMb: z.number().int().min(0).max(1_048_576).nullable().optional(),
       worktreeRetentionDefault: z.number().int().min(0).max(1000).optional(),
-      /** Concurrent gate runs allowed by the machine-wide gate lease (#672). No `null`: there
-       *  is no "unlimited" spelling, and 16 is the way to say "never binds". */
-      gateSlots: z.number().int().min(1).max(16).optional(),
+      /**
+       * Concurrent gate runs allowed by the machine-wide gate lease (#672).
+       *
+       * A number is a stored choice, 1 to 16 — there is still no "unlimited" spelling, and 16 is
+       * the way to say "never binds". `null` is NOT that third value: it CLEARS the key, the way
+       * `followups` and `agentDefaults.runner` clear theirs, so the derived `DEFAULT_GATE_SLOTS`
+       * applies again and nothing a user never chose is left on disk (#672 G4). A partial patch
+       * has no other way to say "delete this key", and the cockpit's cleared Gate-slots field
+       * means exactly that — never `0` (out of range) and never a materialised `1`.
+       */
+      gateSlots: z.number().int().min(1).max(16).nullable().optional(),
     })
     .optional(),
   /** Machine-wide agent defaults. `null` on a key CLEARS it back to "no opinion", which a bare

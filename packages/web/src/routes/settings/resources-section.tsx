@@ -18,9 +18,11 @@ import { SettingsField } from './settings-field'
  * Global settings → Resources: how hard the MACHINE works. `maxParallel` caps concurrent tasks
  * across every project (the workspace semaphore holds the rest); `memoryLimitMb` is the
  * per-task ceiling the engine enforces by pausing a task that crosses it and letting the queue
- * advance (#memory-guard).
+ * advance (#memory-guard). `gateSlots` is the third of that kind (#672 G4): how many full gate
+ * runs the machine-wide gate lease admits at once, read fresh by `xezar lease gates` on every
+ * gate run rather than cached in this process, so it needs no restart and no semaphore refresh.
  *
- * Both are workspace-level since the multi-project split (spec §"Resource governance"): they
+ * All three are workspace-level since the multi-project split (spec §"Resource governance"): they
  * protect the host, not a repo, so they live in `~/.xezar/config.json` and persist through
  * `PUT /api/workspace/config` — the merged answer lands straight in the workspace config query,
  * and the server refreshes the shared semaphore so a change takes effect without a restart.
@@ -46,6 +48,13 @@ const IDLE_TIMEOUT_MAX = 1440
 /** Workspace worktree-retention default bounds (#483), same rule. */
 const RETENTION_MIN = 0
 const RETENTION_MAX = 1000
+/** Gate-slot bounds, mirroring `setWorkspaceConfigInputSchema.resources.gateSlots` (#672 G4). */
+const GATE_SLOTS_MIN = 1
+const GATE_SLOTS_MAX = 16
+/** What an ABSENT `gateSlots` derives — `DEFAULT_GATE_SLOTS` on the server. Named here only to
+ *  write the hint; the response always reports the EFFECTIVE number, so the field never has to
+ *  guess it. */
+const GATE_SLOTS_DEFAULT = 1
 /** Env-var NAMES only — the value never comes near this file. */
 const ENV_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/
 const ENV_PASSTHROUGH_MAX = 64
@@ -226,6 +235,44 @@ function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
           toast(memoryNum === 0 ? 'Memory limit cleared' : `Memory limit set to ${memoryNum} MiB`),
       },
     )
+  // G4 — the machine-wide gate-slot count (#672). Edits locally and saves explicitly, like the
+  // memory field above, and for the same reason: a number input that saved on every keystroke
+  // would write a partial number.
+  //
+  // The response reports the EFFECTIVE count and never "stored or null" (there is no `null`
+  // spelling on disk and an absent key derives 1), so the field starts at whatever is in force
+  // and an emptied field means "clear the stored key" rather than "no limit". After a clear the
+  // field stays empty until the pane is re-read, which then shows the derived 1 — the same
+  // number, which is what makes losing the distinction harmless here. One consequence of not
+  // seeing the stored state: Save stays enabled on an emptied field even when nothing is stored,
+  // so clearing twice writes the same delete twice. That is the harmless direction — the
+  // alternative, disabling Save whenever the effective count is 1, would make an explicitly
+  // stored `1` impossible to clear.
+  const [gateSlots, setGateSlots] = useState(String(config.resources.gateSlots))
+  const gateSlotsCleared = gateSlots.trim() === ''
+  const gateSlotsNum = Number(gateSlots)
+  const gateSlotsInvalid =
+    !gateSlotsCleared &&
+    (!Number.isInteger(gateSlotsNum) || gateSlotsNum < GATE_SLOTS_MIN || gateSlotsNum > GATE_SLOTS_MAX)
+  const gateSlotsSaved =
+    !gateSlotsInvalid && !gateSlotsCleared && config.resources.gateSlots === gateSlotsNum
+  const saveGateSlots = () =>
+    save.mutate(
+      // `null`, never `0`: the contract's 1–16 bound refuses 0, and `null` is the one spelling
+      // that DELETES the key so the derived default applies again (#672 G4).
+      { resources: { gateSlots: gateSlotsCleared ? null : gateSlotsNum } },
+      {
+        onSuccess: () =>
+          toast(
+            gateSlotsCleared
+              ? `Gate slots back to the default — ${GATE_SLOTS_DEFAULT} gate run at a time`
+              : gateSlotsNum === 1
+                ? 'One gate run at a time on this machine'
+                : `Up to ${gateSlotsNum} gate runs at a time on this machine`,
+          ),
+      },
+    )
+
   const composerDefaults = config.composerDefaults ?? {
     autonomous: null,
     worktree: null,
@@ -466,6 +513,55 @@ function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
             <span data-slot="resources-memory-default">{config.resources.memoryLimitDefaultMb}</span> MiB,
             sized from its total memory. A project can set its own in its settings, under General
             → Per-task memory limit.
+          </p>
+        )}
+      </SettingsField>
+
+      <SettingsField
+        title="Gate slots"
+        hint="How many full check runs (gates) may work at once on this machine. A gate run that finds every slot taken waits for one instead of starting and competing with the others. Leave empty for the default."
+      >
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            inputMode="numeric"
+            min={GATE_SLOTS_MIN}
+            max={GATE_SLOTS_MAX}
+            step={1}
+            aria-label="Gate slots"
+            data-slot="resources-gate-slots"
+            value={gateSlots}
+            disabled={save.isPending}
+            placeholder={String(GATE_SLOTS_DEFAULT)}
+            onChange={(event) => setGateSlots(event.target.value)}
+            className={cn(nativeFieldClass, 'block w-32')}
+          />
+          <span className="text-xs text-soft-foreground">
+            {gateSlotsNum === 1 && !gateSlotsCleared ? 'gate run' : 'gate runs'}
+          </span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            data-action="resources-save-gate-slots"
+            disabled={gateSlotsSaved || gateSlotsInvalid || save.isPending}
+            onClick={saveGateSlots}
+          >
+            Save
+          </Button>
+        </div>
+        {gateSlotsInvalid ? (
+          <p data-slot="resources-gate-slots-invalid" className="text-[11px] text-danger">
+            Enter a whole number from {GATE_SLOTS_MIN} to {GATE_SLOTS_MAX}, or leave empty for the
+            default.
+          </p>
+        ) : (
+          <p className="text-[11px] text-soft-foreground">
+            Default {GATE_SLOTS_DEFAULT}: one full gate run at a time on this machine; a second
+            waits. Raising it is what made four or five concurrent runs fail nine times in ten, so
+            raise it only on a machine that can take it; {GATE_SLOTS_MAX} effectively never binds.
+            A change applies to the next gate run, with no restart — a run already waiting keeps
+            the count it started with.
           </p>
         )}
       </SettingsField>

@@ -1241,9 +1241,16 @@
                   "maximum": 1000
                 },
                 "gateSlots": {
-                  "type": "integer",
-                  "minimum": 1,
-                  "maximum": 16
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 16
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
                 }
               },
               "additionalProperties": false

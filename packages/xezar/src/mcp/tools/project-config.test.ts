@@ -786,6 +786,66 @@ describe('project_config: the workspace-settings write (#677 B1)', () => {
     expect(missing.text).toMatch(/set_workspace_config needs operationId/);
   });
 
+  /**
+   * #672 G4 — the owner's 2026-09-19 rule, for the one key G4 adds a control for: every limit is
+   * editable through BOTH the MCP and the cockpit. G1 opened the leader's door; the cockpit's
+   * Settings → Resources control is the second, and this is the one case that proves the two
+   * accept the SAME shape rather than two similar ones.
+   *
+   * Same schema is WHY they agree (`setWorkspaceConfigInputSchema` is what the route's
+   * `jsonZodValidator` and `workspaceConfigWriteSchema` both validate with), but "same schema" is
+   * an implementation fact that a future copy of the shape at either door would quietly end.
+   * What is asserted is the observable agreement: a stored count, the `null` that DELETES the
+   * key, and the same refusal on the same out-of-range values.
+   */
+  it('takes the gate-slot count through BOTH doors with the same shape, the same clear and the same refusal', async () => {
+    const { app, semaphore } = hotCockpit();
+    const viaCockpit = async (body: unknown) =>
+      app.request('/api/v1/workspace/config', {
+        method: 'PUT',
+        headers: { host: COCKPIT_HOST, origin: `http://${COCKPIT_HOST}`, 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    const readCockpit = async () =>
+      ((await (await app.request('/api/v1/workspace/config', { headers: { host: COCKPIT_HOST } })).json()) as {
+        resources: { gateSlots: number };
+      }).resources.gateSlots;
+    const readLeader = async () =>
+      (value(await invoke({ action: 'get_limits' }, { service: app })) as { workspace: { resources: { gateSlots: number } } })
+        .workspace.resources.gateSlots;
+
+    // The cockpit writes; the leader reads its number.
+    expect((await viaCockpit({ resources: { gateSlots: 4 } })).status).toBe(200);
+    expect(await readLeader()).toBe(4);
+    expect(semaphore.gateSlots()).toBe(4);
+
+    // The leader writes; the cockpit reads its number.
+    value(await invoke({ action: 'set_workspace_config', workspaceConfig: { resources: { gateSlots: 6 } } }, { service: app }));
+    expect(await readCockpit()).toBe(6);
+    expect(semaphore.gateSlots()).toBe(6);
+
+    // `null` is the CLEAR at both doors, and both fall back to the same derived 1.
+    value(await invoke({ action: 'set_workspace_config', workspaceConfig: { resources: { gateSlots: null } } }, { service: app }));
+    expect(await readCockpit()).toBe(1);
+    expect(await readLeader()).toBe(1);
+    await viaCockpit({ resources: { gateSlots: 8 } });
+    expect((await viaCockpit({ resources: { gateSlots: null } })).status).toBe(200);
+    expect(await readLeader()).toBe(1);
+    expect(semaphore.gateSlots()).toBe(1);
+
+    // And the same bound refuses the same values at both doors, with nothing written.
+    for (const bad of [0, 17, 2.5]) {
+      expect((await viaCockpit({ resources: { gateSlots: bad } })).status, `cockpit ${bad}`).toBe(400);
+      const leader = await invoke(
+        { action: 'set_workspace_config', workspaceConfig: { resources: { gateSlots: bad } } },
+        { service: app },
+      );
+      expect(leader.result.isError, `leader ${bad}`).toBe(true);
+      expect(leader.text, `leader ${bad}`).toMatch(/gateSlots/);
+    }
+    expect(await readCockpit()).toBe(1);
+  });
+
   it('applies to the shared semaphore without a restart (the refreshed-snapshot class)', async () => {
     const { app, semaphore } = hotCockpit();
     expect(semaphore.maxParallel()).toBe(2);

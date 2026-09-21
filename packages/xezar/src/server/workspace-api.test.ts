@@ -290,6 +290,51 @@ describe('the workspace settings API (step 2.7)', () => {
     expect(semaphore.idleTimeoutMinutes()).toBeNull();
   });
 
+  /**
+   * #672 G4 — what the cockpit's cleared Gate-slots field does, and the AC proof of this change.
+   * The round-trip and the no-restart half are the G1 case above; the half that had no way to
+   * happen before G4 is here.
+   *
+   * `null` DELETES the file key, and must leave nothing behind — not a stored `null` (the load
+   * schema has no null spelling and would `.catch` it into absence on the NEXT read, which is a
+   * different thing from never having written it), not a `0` (outside the 1–16 bound), and not a
+   * materialised `1`, which is a choice the user never made and the reason the file key is
+   * `.optional()` rather than `.default(1)` in the first place.
+   */
+  it('PUT gateSlots: null DELETES the key rather than storing null, 0 or 1', async () => {
+    expect(semaphore.gateSlots()).toBe(1); // the derived default, with no file key at all
+    await putConfig({ resources: { gateSlots: 4 } });
+    expect((rawConfig().resources as Record<string, unknown>).gateSlots).toBe(4);
+    expect(semaphore.gateSlots()).toBe(4);
+
+    const cleared = await putConfig({ resources: { gateSlots: null } });
+    expect(cleared.status).toBe(200);
+    // The RESPONSE reports the effective count, so it reads 1 again…
+    expect(((await cleared.json()) as WorkspaceConfigResponse).resources.gateSlots).toBe(1);
+    // …and the FILE has no such key. `'gateSlots' in …` is the assertion that matters: a stored
+    // `null` or `0` would also make a `?? 1` read answer 1 while leaving the key behind.
+    const stored = rawConfig().resources as Record<string, unknown>;
+    expect('gateSlots' in stored, 'a cleared gateSlots must leave NO key on disk').toBe(false);
+    expect(stored.gateSlots).toBeUndefined();
+    expect(((await (await getConfig()).json()) as WorkspaceConfigResponse).resources.gateSlots).toBe(1);
+    expect(semaphore.gateSlots()).toBe(1);
+  });
+
+  it('rejects a gate-slot count outside 1–16 with 400, and the stored count is untouched', async () => {
+    await putConfig({ resources: { gateSlots: 3 } });
+    expect(semaphore.gateSlots()).toBe(3);
+    for (const bad of [0, -1, 17, 2.5]) {
+      const res = await putConfig({ resources: { gateSlots: bad } as never });
+      expect(res.status, `gateSlots: ${bad} must be refused`).toBe(400);
+      // The route's own message shape — `{ error }`, naming the key that failed.
+      const body = (await res.json()) as { error?: string };
+      expect(typeof body.error).toBe('string');
+      expect(body.error).toMatch(/gateSlots/);
+    }
+    expect((rawConfig().resources as Record<string, unknown>).gateSlots).toBe(3);
+    expect(semaphore.gateSlots()).toBe(3);
+  });
+
   it('rejects an out-of-bounds idle timeout with 400 and writes nothing', async () => {
     for (const body of [{ idleTimeoutMinutes: 0 }, { idleTimeoutMinutes: 1441 }]) {
       const res = await putConfig({ resources: body as never });
@@ -649,9 +694,10 @@ describe('the workspace settings API (step 2.7)', () => {
       { gateSlots: 0 },
       { gateSlots: 17 },
       { gateSlots: 1.5 },
-      // There is no "unlimited" spelling, deliberately: an unbounded gate lease is the state
-      // #672 exists to remove, and a high number is how you say "never binds".
-      { gateSlots: null },
+      // `{ gateSlots: null }` USED to belong on this list, when G1 shipped the key with no null
+      // spelling at all. G4 gave it one, and it is not the "unlimited" spelling G1 refused —
+      // there still is none, and a high number is how you say "never binds". It is the CLEAR:
+      // delete the key so the derived default applies again. Its case is the clear test below.
     ] as const) {
       const res = await putConfig({ resources });
       expect(res.status, JSON.stringify(resources)).toBe(400);
