@@ -435,6 +435,16 @@ locator there goes red instead of hiding behind the exclusion — an auditable e
 a silent skip. The 50 pre-existing specs outside this package predate the rule and are out of its
 scope, which is why the guard scans the package's 16 files and not every `*.e2e.ts`.
 
+**A `role="status"` loading line needs an `aria-label`, or the wait on it is silently vacuous.**
+`status` is not a name-from-content role, so a `<p role="status">Loading …</p>` computes an EMPTY
+accessible name and `agent-browser find role status … --name "Loading …"` matches nothing:
+`2 elements have role "status", but none match name "Loading …". Names seen: ""`. A
+`waitForRoleGone('status', …)` against that region therefore returns on its first attempt, while
+the indicator is still on screen — a wait that reads as a wait and is not one. Measured on #671's
+`worktrees-panel.tsx` fix: with the label the redesigned assertion is green against a component
+holding its query back 3 s, without it the same spec is red at the same line. Give any pending
+region a guide spec waits on its own `aria-label`, and prove the wait red without it.
+
 ### Iterating on one spec
 
 The `npm run test:e2e` wrapper takes no file filter, so iterating on ONE spec means booting
