@@ -10,6 +10,8 @@ import { hc } from 'hono/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   createAgentProfileInputSchema,
+  modelDiscoveryRunnerSchema,
+  providerIdSchema,
   setConfigInputSchema,
   setWorkspaceConfigInputSchema,
   setWorkspaceUiStateInputSchema,
@@ -303,5 +305,27 @@ describe('every MCP write action accepts what its route accepts', () => {
       expect(answer.browseRoot).toBe(repoRoot);
       expect(answer.projectsDir).toBe(join(repoRoot, 'checkouts'));
     });
+  });
+});
+
+/**
+ * #819 item 4 — the one READ this file pairs, because its argument becomes a route QUERY value.
+ * `list_models` sends its `provider` as `GET /api/v1/models?runner=…`, whose validator accepts
+ * `modelDiscoveryRunnerSchema` only. Named break: a backend the door accepts (a new `runnerSchema`
+ * member) that has no model discovery — the leader would get the route's 400 for a value its own
+ * tool schema offered, instead of a row. Whoever adds that backend decides what `list_models`
+ * answers for it, here.
+ */
+describe('list_models → GET /api/v1/models', () => {
+  it('accepts exactly the tools the route discovers models for', () => {
+    expect([...providerIdSchema.options].sort()).toEqual([...modelDiscoveryRunnerSchema.options].sort());
+    for (const provider of modelDiscoveryRunnerSchema.options) {
+      expect(projectConfigInputSchema.safeParse({ action: 'list_models', provider }).success, provider).toBe(true);
+    }
+    expect(projectConfigInputSchema.safeParse({ action: 'list_models', provider: 'gemini' }).success).toBe(false);
+  });
+
+  it('is a read: it takes no operation key and nothing but provider', () => {
+    expect(ACTION_FIELDS.list_models).toEqual({ required: [], optional: ['provider'] });
   });
 });

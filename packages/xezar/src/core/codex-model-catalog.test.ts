@@ -169,3 +169,36 @@ describe('Codex model discovery', () => {
     });
   });
 });
+
+/**
+ * #819 item 4 (T4.2): `vision` from Codex's own `inputModalities`, the field a real `model/list`
+ * answer carries beside each model (read from a live app-server on 2026-09-21). Named break: a
+ * `false` default for a model whose answer has no list — absent must stay absent.
+ */
+describe('Codex model discovery: vision only where inputModalities proves it (#819)', () => {
+  const page = (data: unknown[]) => [
+    { id: 1, result: { serverInfo: { name: 'codex-app-server' } } },
+    { id: 2, result: { data, nextCursor: null } },
+  ];
+
+  it('reads image support from the list, and leaves a model without one unknown', async () => {
+    const fake = fakeChild(
+      page([
+        { model: 'sees', inputModalities: ['text', 'image'] },
+        { model: 'text-only', inputModalities: ['text'] },
+        { model: 'no-list' },
+        { model: 'garbled', inputModalities: 'image' },
+      ]),
+    );
+    const models = await discoverCodexModels({ cwd: '/repo', spawn: () => fake.child });
+    expect(models).toEqual([
+      { id: 'sees', label: 'sees', description: '', vision: true },
+      { id: 'text-only', label: 'text-only', description: '', vision: false },
+      { id: 'no-list', label: 'no-list', description: '' },
+      { id: 'garbled', label: 'garbled', description: '' },
+    ]);
+    expect('vision' in (models[2] as object)).toBe(false);
+    // A value it cannot read never costs the other models: the page still parses whole.
+    expect(models).toHaveLength(4);
+  });
+});
