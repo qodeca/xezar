@@ -75,8 +75,10 @@ Your other projects do not disappear. Every registered project stays listed and 
 - **running** — the row is a link to that project's cockpit at its own address. Click it to go there, or open it in a new tab the usual way.
 - **running — address not known** — that project's process is up, but it did not record an address to link to (a start with `--port 0` never remembers one). Find the terminal that runs it.
 - **not running** — nothing serves that project. On your own machine the row offers **Copy command**, which copies `xez --repo <folder>` for you to paste into a terminal. A cockpit you reach over the network offers nothing here: that terminal is on another machine.
-- **checking…** — the check has not answered yet.
+- **checking…** — the check has not answered yet. It is what you see for a moment on a cockpit you open the instant xezar starts, and it resolves on its own.
 - **folder not found** — the registry entry points at a folder that is gone; see [To handle a missing project](#to-handle-a-missing-project).
+
+These rows stay current while the page is open: start or stop another project's xezar in a terminal and its row here follows within a few seconds, without a reload. A cockpit you reach over the network keeps the answer it loaded with, and says nothing about a project it never looked at.
 
 The same rows appear in the ⌘K palette's Projects group. **All tasks** shows this project's tasks only in this mode, and says so in one line above the list — the other projects have their own cockpits, and each one lists its own work.
 

@@ -21,6 +21,11 @@ import { cn } from '@/lib/utils'
  * Nothing here probes anything. The row state is `ProjectListEntry.instance`, which the server
  * derived for this request (PR 3) — a page that scans localhost ports is the wrong habit to build,
  * and only the server can also read a project's writer claim.
+ *
+ * Nothing here re-asks, either, and that is deliberate: the answer is kept current by the
+ * `project-instances` topic the app shell holds while this band is on screen
+ * (`useProjectInstancesSubscription`, #796), which folds each frame into the registry cache these
+ * rows read. This component stays a pure function of what it is handed.
  */
 
 /** The state text shown beside the name, and what the row can do about it. */

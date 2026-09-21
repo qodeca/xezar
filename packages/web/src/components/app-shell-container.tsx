@@ -1,7 +1,15 @@
 import type { ReactNode } from 'react'
 import { useLocation } from 'react-router'
 
-import { useHealth, useProjectRuns, useProjects, useRuns, useSkillsUpdate, useTodos } from '@/api/queries'
+import {
+  useHealth,
+  useProjectInstancesSubscription,
+  useProjectRuns,
+  useProjects,
+  useRuns,
+  useSkillsUpdate,
+  useTodos,
+} from '@/api/queries'
 import type { HealthResponse, SkillsUpdateState } from '@qodeca/xezar-api-client'
 import { AppShell, type RepoChip } from '@/components/app-shell'
 import { CommandPalette } from '@/components/command-palette'
@@ -116,6 +124,12 @@ export function AppShellContainer({ children }: { children: ReactNode }) {
   // are all still listed and Add project still works. See `lib/project-mode.ts`.
   const capabilities = health.data?.capabilities
   const linksOut = linksOutToOtherProjects(capabilities)
+  // The band's liveness, live (#796). Held here because this container's lifetime IS the band's:
+  // it renders both surfaces that read the answer (the sidebar group and the ⌘K palette), and it
+  // is mounted once for the session. Gated on the mode AND on a definite local answer — the
+  // server publisher must not start for a cockpit that has no band, and a remote one opens no
+  // WebSocket at all (`useProjectInstancesSubscription` says why).
+  useProjectInstancesSubscription(linksOut && capabilities?.localHandoff === true)
   const projects =
     !projectsLocked(capabilities) && !linksOut && registry && registry.projects.length > 1
       ? registry

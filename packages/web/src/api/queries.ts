@@ -85,7 +85,7 @@ import {
   putAgentConfigFile,
   retryProviderAuth,
 } from './client'
-import { mcpLeaderTopicSchema, queryScope, REFERENCE_STATUS_MAX, runnerDiscoversModels } from '@qodeca/xezar-api-client'
+import { mcpLeaderTopicSchema, projectInstancesTopicSchema, queryScope, REFERENCE_STATUS_MAX, runnerDiscoversModels } from '@qodeca/xezar-api-client'
 import { useProjectScope } from './project-scope-context'
 import { isReferenceStatus } from '@/lib/reference-status'
 import { githubRepoBase } from '@/lib/tasks-table'
@@ -101,6 +101,7 @@ import type {
   PatchRunInput,
   ProviderId,
   OpenAgentAccountFileInput,
+  ProjectInstancesTopic,
   ProjectListEntry,
   ProjectsResponse,
   GithubRefStatusData,
@@ -384,6 +385,81 @@ export function useProjects() {
     queryKey: workspaceQueryKeys.projects,
     queryFn: ({ signal }) => getProjects({ signal }),
   })
+}
+
+/**
+ * Fold one `project-instances` frame into the registry the cockpit already holds (#796).
+ *
+ * Pure, and it returns the SAME object when the frame says nothing new — which is not an
+ * optimization but the loop guard: the hook below re-applies the latest frame whenever the query
+ * cache changes, and its own write is a cache change.
+ *
+ * A row the frame does not mention keeps whatever it had. The server puts every project it
+ * answers for in every frame, so that case is a hosted server's empty map or a project registered
+ * since the frame was built — in both, the HTTP answer is the better of the two and overwriting it
+ * with "I have no opinion" would be the freeze this fixes, pointing the other way.
+ */
+export function withProjectInstances(
+  response: ProjectsResponse,
+  frame: ProjectInstancesTopic,
+): ProjectsResponse {
+  let changed = false
+  const projects = response.projects.map((project) => {
+    const instance = frame.projects[project.id]
+    if (instance === undefined) return project
+    const current = project.instance
+    if (current?.state === instance.state && current.url === instance.url) return project
+    changed = true
+    return { ...project, instance }
+  })
+  return changed ? { ...response, projects } : response
+}
+
+/**
+ * The `project-instances` topic, held while the "Other projects" band is on screen (#796).
+ *
+ * `enabled` is the band's own demand: `--instance project` AND a local cockpit. The band exists
+ * only in that mode, so subscribing anywhere else would start a server publisher for a screen
+ * nobody is looking at; it is held by `AppShellContainer`, which is the one component whose
+ * lifetime is exactly the band's (the sidebar group and the ⌘K palette read one cache and neither
+ * touches the socket). Remote/hosted mode opens no WebSocket — browser WebSocket cannot carry the
+ * proxy's credentials, the same reason `useHealthSubscription` gives — and there `instance` is
+ * absent from every row anyway, which the band renders as the honest "this cockpit did not look".
+ *
+ * Why a topic at all: `GET /api/v1/projects` is the only read behind these rows, and NOTHING
+ * invalidates it when another xezar starts or stops — the registry did not change, so no event
+ * fires. A `refetchInterval` would poll the registry forever in every tab for a signal that moves
+ * a few times a day (AGENTS.md § Real-time events); the publisher runs only while this band is up.
+ *
+ * The re-apply on cache change is the ordering guard: the subscription's snapshot can land while
+ * the registry's own HTTP read is still in flight, and that read — built before the probe settled
+ * — would otherwise put `checking…` back and stay there, since the next frame goes out only on a
+ * change the server has already published.
+ */
+export function useProjectInstancesSubscription(enabled: boolean): void {
+  const queryClient = useQueryClient()
+  useEffect(() => {
+    if (!enabled) return undefined
+    let latest: ProjectInstancesTopic | null = null
+    const apply = (): void => {
+      if (latest === null) return
+      const cached = queryClient.getQueryData<ProjectsResponse>(workspaceQueryKeys.projects)
+      if (cached === undefined) return
+      const merged = withProjectInstances(cached, latest)
+      if (merged !== cached) queryClient.setQueryData(workspaceQueryKeys.projects, merged)
+    }
+    const releaseTopic = subscribeTopic('project-instances', (data) => {
+      const frame = projectInstancesTopicSchema.safeParse(data)
+      if (!frame.success) return // a shape this cockpit does not know is not news
+      latest = frame.data
+      apply()
+    })
+    const releaseCache = queryClient.getQueryCache().subscribe(apply)
+    return () => {
+      releaseTopic()
+      releaseCache()
+    }
+  }, [queryClient, enabled])
 }
 
 /** One directory listing for the add-project folder picker (step 4.2). `path: null` asks for
