@@ -2,7 +2,12 @@ import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
-import type { SkillsCatalogCommit, SkillsCatalogVersion, SkillsRefreshSource } from '@qodeca/xezar-contract';
+import type {
+  SkillsCatalogCommit,
+  SkillsCatalogVersion,
+  SkillsRefreshResponse,
+  SkillsRefreshSource,
+} from '@qodeca/xezar-contract';
 import { loadConfig, type SkillsRepoSource } from './config.ts';
 import { expandTilde, xezCacheDir } from './paths.ts';
 import { parseFrontmatter, type Skill } from './skills.ts';
@@ -390,20 +395,42 @@ export async function readRemoteSkill(
 }
 
 /**
- * List every skill the repo defines at `src.ref`. Reads from the local bare
- * clone only — no network. Empty list when the clone doesn't exist yet or
- * the ref can't be resolved.
+ * What ONE listing managed, with the reason when it managed nothing (#789 review finding 1).
+ *
+ * `listRemoteSkills` answers `[]` for three different things — no clone on this machine, a ref
+ * that will not resolve (unsafe or absent), and an `ls-tree` that failed — and it answers `[]`
+ * for a fourth, legitimately empty, catalog. It cannot throw for the first three without
+ * breaking every caller that treats an unreachable source as "contributes nothing"; but a
+ * caller that REPORTS the refresh (#771) must tell those apart, and the surrounding `try/catch`
+ * in `loadTeamSkills` never ran because nothing was thrown. So the distinction is returned.
  */
-export async function listRemoteSkills(src: SkillsRepoSource): Promise<Skill[]> {
+export interface RemoteSkillsListing {
+  skills: Skill[];
+  /** null → the listing genuinely read the tree (an empty catalog is still a success). */
+  failure: string | null;
+}
+
+/**
+ * List every skill the repo defines at `src.ref`, and say whether the listing worked. Reads
+ * from the local bare clone only — no network.
+ */
+export async function listRemoteSkillsOutcome(src: SkillsRepoSource): Promise<RemoteSkillsListing> {
   const bareDir = bareDirFor(src.repo);
-  if (!existsSync(join(bareDir, 'HEAD'))) return [];
+  if (!existsSync(join(bareDir, 'HEAD'))) {
+    return { skills: [], failure: `no local clone of ${src.repo} to read skills from` };
+  }
   // An immutable SHA (#428): the tree listing and every body below are read at
   // this one commit, and it is what gets recorded on each skill.
   const commit = await resolveRef(bareDir, src.ref);
-  if (commit === null) return [];
+  if (commit === null) {
+    return { skills: [], failure: `cannot resolve ref ${src.ref} in ${src.repo}` };
+  }
   // `--` after the ref keeps a `-`-leading value out of git's option surface.
   const ls = await git(['ls-tree', '-r', '--name-only', commit, '--'], LIST_TIMEOUT_MS, bareDir);
-  if (!ls.ok) return [];
+  if (!ls.ok) {
+    const said = ls.stderr.trim() || ls.stdout.trim();
+    return { skills: [], failure: `cannot read the skills tree at ${commit.slice(0, 8)}${said ? `: ${said}` : ''}` };
+  }
 
   const skills: Skill[] = [];
   const seen = new Set<string>();
@@ -434,7 +461,16 @@ export async function listRemoteSkills(src: SkillsRepoSource): Promise<Skill[]> 
       team: { repo: src.repo, ref: src.ref, path: line, dir: hit.kind === 'skill', commit },
     });
   }
-  return skills;
+  return { skills, failure: null };
+}
+
+/**
+ * The same listing for every caller that only wants the catalog. Empty list when the clone
+ * doesn't exist yet or the ref can't be resolved — unchanged behaviour; the reason is available
+ * from `listRemoteSkillsOutcome` for the one caller that has to report it.
+ */
+export async function listRemoteSkills(src: SkillsRepoSource): Promise<Skill[]> {
+  return (await listRemoteSkillsOutcome(src)).skills;
 }
 
 // ---- materialization (directory skills) ---------------------------------------
@@ -566,11 +602,14 @@ export function waitForTeamSkills(repoRoot: string): Promise<Skill[]> {
   return initialTeamSkillsLoad(repoRoot);
 }
 
-/** What one refresh managed, per configured source — the catalog plus the truth about it (#771). */
-export interface TeamSkillsRefresh {
-  skills: Skill[];
-  sources: SkillsRefreshSource[];
-}
+/**
+ * What one refresh managed, per configured source — the catalog plus the truth about it (#771).
+ *
+ * This is the CONTRACT type, not a second hand-written copy of it (#789 review finding 2): the
+ * route answers this object verbatim, so a local interface that happened to agree could drift
+ * from the schema without anything failing.
+ */
+export type TeamSkillsRefresh = SkillsRefreshResponse;
 
 /**
  * A git failure carries the command's whole stderr, which is several lines and is not a toast.
@@ -629,21 +668,31 @@ async function loadTeamSkills(repoRoot: string, refresh: boolean): Promise<TeamS
       failure = refreshReason(error);
     }
     try {
-      for (const skill of await listRemoteSkills(src)) {
+      // The RETURNED failure, not a thrown one (#789 review finding 1). An unsafe or
+      // unresolvable ref and a failed `ls-tree` never threw, so the catch below never ran and a
+      // source whose catalog could not be read was still reported `ok: true`.
+      const listing = await listRemoteSkillsOutcome(src);
+      // The fetch's own reason wins when there is one — it is the cause, and the failed listing
+      // is its consequence.
+      failure ??= listing.failure;
+      for (const skill of listing.skills) {
         if (seen.has(skill.name)) continue;
         seen.add(skill.name);
         out.push(skill);
       }
     } catch (error) {
-      // degrade: this source contributes nothing. The fetch's own reason wins when there is
-      // one — it is the cause, and the failed listing is its consequence.
+      // degrade: this source contributes nothing.
       failure ??= refreshReason(error);
     }
     // Only a REFRESH answers for its sources. The passive load may legitimately fetch nothing
     // (inside the TTL), so recording `ok: true` there would be the same untrue "it refreshed"
     // one layer down.
     if (refresh) {
-      sources.push(failure === null ? { repo: src.repo, ok: true } : { repo: src.repo, ok: false, reason: failure });
+      sources.push(
+        failure === null
+          ? { repo: src.repo, ok: true as const }
+          : { repo: src.repo, ok: false as const, reason: failure },
+      );
     }
   }
   teamSkillsByRoot.set(repoRoot, out);

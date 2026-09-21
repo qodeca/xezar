@@ -325,7 +325,10 @@ export function refreshOutcome(sources: readonly SkillsRefreshSource[]): Refresh
   const failed = sources.filter((source) => !source.ok)
   // No configured source is not a failure: there was nothing to reach.
   if (failed.length === 0) return { message: 'Team skills refreshed', tone: 'default' }
-  const reasons = failed.map((source) => `${source.repo}: ${source.reason ?? 'the refresh failed'}`).join('; ')
+  // No `?? 'the refresh failed'` fallback: the contract's discriminated union makes `reason`
+  // REQUIRED on a failure (#789 review finding 2), so inventing text here would only paper over
+  // a shape the schema now rejects.
+  const reasons = failed.map((source) => `${source.repo}: ${source.reason}`).join('; ')
   const refreshed = sources.length - failed.length
   return {
     message:

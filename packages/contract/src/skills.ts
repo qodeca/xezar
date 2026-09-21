@@ -41,14 +41,21 @@ export type Skill = z.infer<typeof skillSchema>;
  *
  * `ok: false` carries the server's own one-line `reason` — the refresh degrades (the catalog is
  * still served from whatever clone exists) but nothing was fetched, and a surface that reports
- * success there is reporting something that did not happen (#771). `reason` is absent on `ok`,
- * so `JSON.stringify` drops the key.
+ * success there is reporting something that did not happen (#771). A success has no `reason` key
+ * at all, so `JSON.stringify` writes none.
+ *
+ * The discriminant is ENCODED, not merely documented (#789 review finding 2). A flat
+ * `{ ok: z.boolean(), reason: z.string().optional() }` accepted both impossible combinations —
+ * `{ ok: false }` with no reason (which forces every reader to invent fallback text) and
+ * `{ ok: true, reason }` (a success carrying a failure sentence) — and mutual contract parity
+ * stayed green only because the route was typed through the same broad definition. Both branches
+ * are `z.strictObject` so a stray `reason` on a success FAILS rather than being silently
+ * stripped: a schema that strips the contradiction still lets the route emit it.
  */
-export const skillsRefreshSourceSchema = z.object({
-  repo: z.string(),
-  ok: z.boolean(),
-  reason: z.string().optional(),
-});
+export const skillsRefreshSourceSchema = z.discriminatedUnion('ok', [
+  z.strictObject({ repo: z.string(), ok: z.literal(true) }),
+  z.strictObject({ repo: z.string(), ok: z.literal(false), reason: z.string() }),
+]);
 export type SkillsRefreshSource = z.infer<typeof skillsRefreshSourceSchema>;
 
 /**

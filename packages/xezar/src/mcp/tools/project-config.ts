@@ -1777,7 +1777,18 @@ async function run(args: ProjectConfigInput & { action: ProjectConfigAction }, s
       if (!answer.ok) return fail(answer);
       return ok(action, {
         skills: answer.value.skills.map((skill) => skillEntry(s.root, skill, false)),
-        sources: answer.value.sources,
+        // A per-source reason is service error text and can quote the absolute clone-cache path
+        // under the user's home — exactly what `failed()` removes from a REFUSAL (#789 review
+        // finding 3). A successful call that forwarded it verbatim disclosed what the same tool
+        // deliberately withholds one branch away. The failure FACT is untouched.
+        // `repo` goes through the same scrubber for the same reason: it is normally a remote URL
+        // (a no-op there), but a source configured as a local path is a host path too, and half a
+        // scrub is not a scrub.
+        sources: answer.value.sources.map((source) => ({
+          ...source,
+          repo: scrubPaths(source.repo, s.root),
+          ...(source.ok ? {} : { reason: scrubPaths(source.reason, s.root) }),
+        })),
       });
     }
     case 'list_skills':
