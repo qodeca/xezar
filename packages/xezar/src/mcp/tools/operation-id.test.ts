@@ -67,6 +67,8 @@ const NO_OPERATION_ID: Readonly<Record<string, string>> = {
     'reads the shared presentation preferences. It is the read half `set_workspace_ui_state` needs — the route replaces an object-valued key whole, so a leader reads the bag, spreads it and writes it back — and it changes nothing itself',
   'project_config:get_capabilities':
     'reads capabilities and provider status. `refresh: true` is not free — `startFreshProbe` (`core/provider-auth.ts`) spawns the vendor CLI probes and replaces `completed`, the process-wide provider-status cache every other reader consults — but it refreshes a CACHE of an external fact, so a repeat re-reads the world rather than doing anything a second time. A receipt is the wrong tool here twice over: it would serve the replay a stale snapshot, which is the one thing `refresh` exists to avoid',
+  'project_config:list_models':
+    'reads the model catalog of each agent backend through `GET /api/v1/models`, which serves its own 5-minute cache and at worst refreshes that cache of an external fact — a repeat re-reads the list and does nothing a second time (#819 item 4)',
   'project_config:get_account': 'reads the effective account selection',
   'project_config:check_account_status':
     'reads ONE account’s sign-in state, and is the account-scoped twin of `get_capabilities` above in every way that matters here (#677 B5): `refresh: true` drops that account’s cached answer and spawns the vendor CLI probe again, which re-reads the world rather than doing anything a second time, and a receipt would serve the replay the stale snapshot `refresh` exists to avoid. The cockpit’s own counterpart is a GET that records no audit row either',
