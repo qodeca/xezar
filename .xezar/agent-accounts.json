@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "accounts": [
+    {
+      "id": "qodeca-priv",
+      "provider": "claude",
+      "configDir": "~/.claude.qodeca.priv",
+      "label": "qodeca.priv",
+      "addedAt": "2026-09-17T15:59:37.122Z"
+    },
+    {
+      "id": "gmail-priv",
+      "provider": "claude",
+      "configDir": "~/.claude.gmail.priv",
+      "label": "gmail.priv",
+      "addedAt": "2026-09-17T16:02:29.315Z"
+    },
+    {
+      "id": "eqamana-priv",
+      "provider": "claude",
+      "configDir": "~/.claude.eqamana.priv",
+      "label": "eqamana.priv",
+      "addedAt": "2026-09-17T16:05:48.693Z"
+    },
+    {
+      "id": "westagilelabs-priv",
+      "provider": "claude",
+      "configDir": "~/.claude.westagilelabs.priv",
+      "label": "westagilelabs.priv",
+      "addedAt": "2026-09-17T16:59:46.884Z"
+    }
+  ],
+  "defaults": {
+    "claude": "qodeca-org"
+  },
+  "selections": {}
+}
