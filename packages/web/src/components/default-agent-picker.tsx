@@ -1,4 +1,9 @@
-import type { AgentProfile, ProviderStatusResponse, Runner } from '@qodeca/xezar-api-client'
+import {
+  looksLikeAccountIdentity,
+  type AgentProfile,
+  type ProviderStatusResponse,
+  type Runner,
+} from '@qodeca/xezar-api-client'
 import { cn } from '@/lib/utils'
 import { providerStatusFor } from '@/lib/provider-status'
 import { RUNNERS } from '@/routes/new-task-form'
@@ -6,7 +11,7 @@ import { RUNNERS } from '@/routes/new-task-form'
 /**
  * "Which agent, and which of its logins" as ONE flat list (spec 2026-07-29-agent-profiles):
  *
- *     claude · Default
+ *     claude · Built-in login
  *     claude · Klaudiusz
  *     codex
  *
@@ -38,7 +43,11 @@ export function agentPickerRows(profiles: readonly AgentProfile[]): AgentPickerR
     return logins.map((login) => ({
       runner,
       account: login.isDefault ? null : login.id,
-      label: `${runner.label} · ${login.label}`,
+      // The built-in login is named for what it is, and a label that reads as an identity is never
+      // printed on this collapsed surface (#819 PR 9, designs/agent-accounts-onboarding § 7).
+      label: `${runner.label} · ${
+        login.isDefault ? 'Built-in login' : looksLikeAccountIdentity(login.label) ? 'Name hidden' : login.label
+      }`,
       // The folder, because the labels are xezar's invention and the folder is the account. A
       // folder the CLI has not written yet is called out rather than left looking fine: a run under
       // it fails on auth BY DESIGN — it must not quietly fall back to another login — so the place

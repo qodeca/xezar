@@ -27,6 +27,7 @@ import {
   workflowStepDefSchema,
   workspaceUiStateSchema,
   type AgentAccountDetailsResponse,
+  type ImportGlobalAccountsResponse,
   type AgentAccountStatusResponse,
   type AgentConfigFileContent,
   type AgentConfigListing,
@@ -181,6 +182,7 @@ export const PROJECT_CONFIG_ACTIONS = [
   'select_account',
   'check_account_status',
   'get_account_details',
+  'import_global_accounts',
   'list_agent_config',
   'read_agent_config',
   'write_agent_config',
@@ -419,6 +421,10 @@ export const ACTION_FIELDS: Record<ProjectConfigAction, { required: readonly Fie
   // here. `refresh` re-probes this account only, exactly as the pane's "Check again" does.
   check_account_status: { required: ['provider', 'accountId'], optional: ['refresh'] },
   get_account_details: { required: ['provider', 'accountId'], optional: [] },
+  // #819 PR 9: copy the machine-wide accounts into THIS project — the same merge as
+  // `xezar accounts import-global` and the cockpit's "Copy {n} accounts". A write, so it carries an
+  // operation key, and nothing else: there is nothing to choose (all-or-nothing, merge-only).
+  import_global_accounts: { required: ['operationId'], optional: [] },
   list_agent_config: none,
   read_agent_config: { required: ['fileId'], optional: [] },
   // `version` is required but may be `null` ("I expect no file yet"), so presence is checked.
@@ -947,6 +953,7 @@ const ACCOUNT_ACTIONS: ReadonlySet<string> = new Set([
   'select_account',
   'check_account_status',
   'get_account_details',
+  'import_global_accounts',
 ]);
 
 /**
@@ -1575,6 +1582,11 @@ async function run(args: ProjectConfigInput & { action: ProjectConfigAction }, s
             ...(label && !looksLikeIdentity(label) ? { label } : {}),
           };
         }),
+        // Whether this project took the machine-wide accounts and how many it still could (#819
+        // PR 9) — the listing's own field, passed through as it is: a state and a COUNT, never a
+        // name. Absent whenever the listing omits it (the global layout, where there is nothing to
+        // import into), so a leader reads absence exactly as the cockpit does.
+        ...(listing.globalImport ? { globalImport: listing.globalImport } : {}),
       });
     }
 
@@ -1712,6 +1724,26 @@ async function run(args: ProjectConfigInput & { action: ProjectConfigAction }, s
       if (!id.ok) return id.result;
       const answer = await settle<AgentAccountDetailsResponse>(
         s.api.workspace['agent-profiles'][':id'].details.$get({ param: { id: accountRouteId(args.provider!, id.id) } }),
+        [200],
+      );
+      return answer.ok ? ok(action, answer.value) : fail(answer);
+    }
+
+    /**
+     * COPY THE MACHINE-WIDE ACCOUNTS INTO THIS PROJECT (#819 PR 9). Owner, 2026-09-21: "Allow both,
+     * people and MCP (leader) to use the import my accounts functionality" — so this is an ordinary
+     * write of the accounts family, audited as `account.importGlobal` at both doors.
+     *
+     * It dispatches `POST …/agent-profiles/import-global`, the route the cockpit's button calls,
+     * which runs `importGlobalAccounts` — the merge `xezar accounts import-global` runs. So the
+     * three doors cannot disagree: merge-only, it never replaces a row the project has, it never
+     * writes a dangling default, and a second call adds nothing. The answer is COUNTS and the import
+     * state, never which accounts; the route refuses (409) in hosted mode, in the global layout and
+     * on an unreadable file, and those refusals come back in its own words.
+     */
+    case 'import_global_accounts': {
+      const answer = await settle<ImportGlobalAccountsResponse>(
+        s.api.workspace['agent-profiles']['import-global'].$post(),
         [200],
       );
       return answer.ok ? ok(action, answer.value) : fail(answer);
@@ -2115,7 +2147,7 @@ export const projectConfigTool = defineTool({
   name: 'project_config',
   title: 'Project configuration',
   description:
-    "Read and change THIS project's own configuration: its settings (agent, models, system prompt, review gate, base branch, worktree retention, memory limit), its registry entry (concurrency cap and tags), prompt templates, in-repo agent config files, workflows, skills, GitHub automations and worktrees. It also reads the shared settings as effective limits and capabilities (get_limits, get_capabilities, get_account) and CHANGES them with set_workspace_config — the shared limits, composer defaults, follow-up inbox and environment passthrough, skills auto-update and the machine-wide agent defaults, which apply to every project on this machine, the terminal settings (the instance mode — which projects one xezar serves — and how its terminal prints; all are settled at start, so a change applies the next time one starts) and the two workspace folder paths — the folder the file picker may browse and the folder new checkouts land in, each checked for real before anything is saved. The shared presentation preferences are read with get_workspace_ui_state and changed with set_workspace_ui_state (appearance, notifications, task-table columns, dismissed provider incidents) and import_skills (the curated list of default skills); an object-valued preference is replaced whole, so read it before you change one key of it. The colour theme is not among them — the browser stores that itself. The models each agent backend can run are read with list_models: per backend, every model id exactly as that backend's own --model flag takes it, whether the list could be read and why not when it could not, and local and vision only where the backend's own data proves them – a missing one means unknown, not no. The agent backends can be switched off and on for the whole machine with set_provider_enabled and their authentication incidents cleared with retry_provider. The agent ACCOUNTS — the separate logins a backend can run under — are read with get_account, added with create_account, edited with update_account, removed with remove_account and pointed at this project with select_account; check_account_status probes one account's sign-in state and get_account_details reports who it is signed in as. Connecting a provider, opening an account's folder in a desktop application, home files, the project registry and host folders are outside this boundary and are refused with the reason.",
+    "Read and change THIS project's own configuration: its settings (agent, models, system prompt, review gate, base branch, worktree retention, memory limit), its registry entry (concurrency cap and tags), prompt templates, in-repo agent config files, workflows, skills, GitHub automations and worktrees. It also reads the shared settings as effective limits and capabilities (get_limits, get_capabilities, get_account) and CHANGES them with set_workspace_config — the shared limits, composer defaults, follow-up inbox and environment passthrough, skills auto-update and the machine-wide agent defaults, which apply to every project on this machine, the terminal settings (the instance mode — which projects one xezar serves — and how its terminal prints; all are settled at start, so a change applies the next time one starts) and the two workspace folder paths — the folder the file picker may browse and the folder new checkouts land in, each checked for real before anything is saved. The shared presentation preferences are read with get_workspace_ui_state and changed with set_workspace_ui_state (appearance, notifications, task-table columns, dismissed provider incidents) and import_skills (the curated list of default skills); an object-valued preference is replaced whole, so read it before you change one key of it. The colour theme is not among them — the browser stores that itself. The models each agent backend can run are read with list_models: per backend, every model id exactly as that backend's own --model flag takes it, whether the list could be read and why not when it could not, and local and vision only where the backend's own data proves them – a missing one means unknown, not no. The agent backends can be switched off and on for the whole machine with set_provider_enabled and their authentication incidents cleared with retry_provider. The agent ACCOUNTS — the separate logins a backend can run under — are read with get_account, added with create_account, edited with update_account, removed with remove_account and pointed at this project with select_account; check_account_status probes one account's sign-in state and get_account_details reports who it is signed in as. import_global_accounts copies the accounts of the person's machine-wide xezar setup into this project — the same merge as the `xezar accounts import-global` command: it only adds accounts the project does not have, never replaces one, answers how many were added and kept (never which), and works only when the project keeps its own setup (single-project mode); get_account reports whether that was done and how many could still be copied. Connecting a provider, opening an account's folder in a desktop application, home files, the project registry and host folders are outside this boundary and are refused with the reason.",
   inputSchema: projectConfigInputSchema,
   annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
   // #819 item 6: the refusals stand whatever else was sent. Without this, a refused action carrying

@@ -10,6 +10,7 @@ import type {
   agentProfileSelectionsResponseSchema,
   agentProfilesResponseSchema,
   openAgentAccountFileResponseSchema,
+  importGlobalAccountsResponseSchema,
   removeAgentProfileResponseSchema,
 } from '@qodeca/xezar-contract';
 import type {
@@ -158,6 +159,10 @@ describe('src/contract projects/workspace schemas match the routes exactly', () 
     (typeof client.api.v1.workspace)['agent-profiles'][':id']['open']['$post'],
     200
   >;
+  type ImportGlobalAccounts200 = InferResponseType<
+    (typeof client.api.v1.workspace)['agent-profiles']['import-global']['$post'],
+    200
+  >;
 
   type RunsIndex200 = InferResponseType<
     (typeof client.api.v1.workspace)['runs-index']['$get'],
@@ -217,6 +222,7 @@ describe('src/contract projects/workspace schemas match the routes exactly', () 
     Assert<Exact<z.infer<typeof agentAccountDetailsResponseSchema>, AgentAccountDetails200>>,
     Assert<Exact<z.infer<typeof agentAccountStatusResponseSchema>, AgentAccountStatus200>>,
     Assert<Exact<z.infer<typeof openAgentAccountFileResponseSchema>, OpenAgentAccountFile200>>,
+    Assert<Exact<z.infer<typeof importGlobalAccountsResponseSchema>, ImportGlobalAccounts200>>,
   ];
 
   it('is enforced by tsc, not at runtime', () => {

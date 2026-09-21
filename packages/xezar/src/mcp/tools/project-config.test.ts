@@ -28,6 +28,7 @@ import { createApp } from '../../server/server.ts';
 import type { SkillsUpdateService } from '../../skills-update.ts';
 import type { RunManager } from '../../workflows/run.ts';
 import { mergeWriteWorkspaceConfig } from '../../workspace/config.ts';
+import { projectStateLayout, setActiveStateLayout } from '../../state-layout.ts';
 import { WorkspaceSemaphore } from '../../workspace/semaphore.ts';
 import type { ServiceDispatch } from '../service-adapter.ts';
 import { toolListing, type McpToolResult } from '../tool.ts';
@@ -1936,6 +1937,8 @@ describe('project_config: the agent accounts (#677 B5)', () => {
       [{ action: 'select_account', provider: 'claude', accountId: null }, ['PUT', '/api/v1/workspace/agent-profiles/selection', { projectId: null, provider: 'claude', profileId: null }]],
       [{ action: 'check_account_status', provider: 'claude', accountId: 'default' }, ['GET', '/api/v1/workspace/agent-profiles/default:claude/status']],
       [{ action: 'get_account_details', provider: 'claude', accountId: 'default' }, ['GET', '/api/v1/workspace/agent-profiles/default:claude/details']],
+      // #819 PR 9 (P9-AC6): the copy of the machine-wide accounts, through both doors.
+      [{ action: 'import_global_accounts' }, ['POST', '/api/v1/workspace/agent-profiles/import-global']],
     ];
     for (const [args, [method, path, body]] of cases) {
       const cockpitDoor = await via(app, path, method, body);
@@ -2652,6 +2655,73 @@ describe('project_config: dismiss_onboarding_offer', () => {
 });
 
 // ---- the negative sweep: no identity, no secret, anywhere in this surface ----------------------------
+
+/**
+ * #819 PR 9 — `import_global_accounts`: the leader's door to the merge `xezar accounts import-global`
+ * runs (owner, 2026-09-21: "Allow both, people and MCP (leader) to use the import my accounts
+ * functionality"). Each case names the break it fails against.
+ */
+describe('project_config: import_global_accounts (#819 PR 9)', () => {
+  const globalAccounts = (): string => join(process.env.XEZ_HOME!, 'agent-accounts.json');
+  let saved: string | null = null;
+  beforeEach(() => {
+    saved = existsSync(globalAccounts()) ? readFileSync(globalAccounts(), 'utf8') : null;
+  });
+  afterEach(() => {
+    setActiveStateLayout(null);
+    if (saved === null) rmSync(globalAccounts(), { force: true });
+    else writeFileSync(globalAccounts(), saved);
+    rmSync(join(ws.roots.a, '.xezar', 'agent-accounts.json'), { force: true });
+  });
+
+  // Break: a handler that copies on its own instead of dispatching the cockpit's route (the two
+  // doors would drift), or one that answers the machine-wide file's names.
+  it('dispatches the cockpit’s own route once and answers counts, never names', async () => {
+    writeFileSync(globalAccounts(), JSON.stringify({
+      accounts: [
+        { id: 'mcp-work', provider: 'claude', configDir: '~/.claude-mcp-work', label: 'someone@example.com' },
+        { id: 'mcp-team', provider: 'codex', configDir: '~/.codex-mcp-team', label: 'Team' },
+      ],
+    }));
+    setActiveStateLayout(projectStateLayout(ws.roots.a));
+    const read = value(await invoke({ action: 'get_account' }));
+    expect(read.globalImport).toEqual({ state: 'unknown', importable: 2 });
+
+    const spy = spyService();
+    const called = await invoke({ action: 'import_global_accounts' }, { service: spy });
+    expect(spy.requests).toEqual(['POST /api/v1/workspace/agent-profiles/import-global']);
+    expect(value(called)).toEqual({ added: 2, kept: 0, globalImport: { state: 'done', importable: 0 } });
+    expect(called.json).not.toMatch(/mcp-work|mcp-team|someone@example|claude-mcp/);
+    // Merge-only and idempotent, exactly as the CLI: a second call adds nothing.
+    expect(value(await invoke({ action: 'import_global_accounts' }))).toEqual({
+      added: 0,
+      kept: 2,
+      globalImport: { state: 'done', importable: 0 },
+    });
+  });
+
+  // Break: a refusal softened or re-worded at this door, or a write where there is nothing to
+  // import into.
+  it('carries the route’s own 409 in the global layout, and writes nothing', async () => {
+    writeFileSync(globalAccounts(), JSON.stringify({ accounts: [{ id: 'mcp-work', provider: 'claude', configDir: '~/.claude-mcp-work' }] }));
+    const refused = await invoke({ action: 'import_global_accounts' });
+    expect(refused.result.isError).toBe(true);
+    expect(refused.structured.status).toBe(409);
+    expect(refused.text).toContain('nothing to copy');
+    expect(existsSync(join(ws.roots.a, '.xezar', 'agent-accounts.json'))).toBe(false);
+    // …and get_account carries no import state where the listing sends none.
+    expect(value(await invoke({ action: 'get_account' }))).not.toHaveProperty('globalImport');
+  });
+
+  it('needs an operation key and takes nothing else', async () => {
+    const withoutKey = await invoke({ action: 'import_global_accounts', operationId: undefined });
+    expect(withoutKey.result.isError).toBe(true);
+    expect(withoutKey.text).toMatch(/import_global_accounts needs operationId/);
+    const mixed = await invoke({ action: 'import_global_accounts', provider: 'claude' });
+    expect(mixed.result.isError).toBe(true);
+    expect(mixed.text).toMatch(/provider is not used by import_global_accounts/);
+  });
+});
 
 describe('project_config: nothing identifies an account or leaks a secret', () => {
   it('the fixture is live: the cockpit’s own identity route DOES serve the email and organisation (control)', async () => {

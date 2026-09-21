@@ -1,9 +1,9 @@
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { createInterface } from 'node:readline/promises';
-import { DEFAULT_AGENT_ACCOUNT_ID } from '@qodeca/xezar-contract';
+import { DEFAULT_AGENT_ACCOUNT_ID, type AgentAccountsGlobalImport } from '@qodeca/xezar-contract';
 import { globalStateLayout, isSymbolicLink, projectStateDirRefusal, type StateLayout } from '../state-layout.ts';
 import { atomicWriteJsonSync, withoutMachineScopedKeys } from './config.ts';
-import type { GlobalImportState, RecordedGlobalImportState } from './project-machine-state.ts';
+import { readGlobalImportState, type GlobalImportState, type RecordedGlobalImportState } from './project-machine-state.ts';
 
 /**
  * Single-project mode, piece (d): import from the global setup (#600 FR-4, AC-4).
@@ -373,6 +373,85 @@ export function importGlobalAccounts(layout: StateLayout, env: NodeJS.ProcessEnv
     danglingSkipped,
     selectionAdded,
     changed,
+  };
+}
+
+/**
+ * The state the `accounts import-global` door records after a merge, or `null` for "record
+ * nothing" — ONE rule for every door that runs the merge, the CLI command and the cockpit's
+ * button and the leader's `import_global_accounts` (#819 PR 9), so the two cannot disagree about what "imported" means.
+ *
+ * `imported` only when something was actually copied or the project already holds accounts
+ * (#819 F4): on a folder whose global setup holds no accounts file nothing happened, and an
+ * `imported` there would silence `repeatedImportLine` for good. A merge that could not be done at
+ * all (a refused symbolic link, an unreadable file) records nothing.
+ */
+export function globalImportStateAfter(
+  report: AccountImportReport,
+  layout: StateLayout,
+): RecordedGlobalImportState | null {
+  if (report.outcome === 'refused-symlink' || report.outcome === 'unreadable') return null;
+  return report.changed || projectHasAccounts(layout) ? 'imported' : null;
+}
+
+/**
+ * How many accounts `accounts import-global` would still ADD to this project — a count and nothing
+ * else (#819 PR 9, the cockpit's "Copy {n} accounts").
+ *
+ * This is the SECOND read of the global setup, and it exists by an explicit owner decision
+ * ("Allow the count", 2026-09-21) with fixed limits, each of which is a test:
+ *
+ * - **A number only.** No id, label, provider, handle or path leaves this function, so nothing a
+ *   caller serialises can be reassembled into anyone's account list. The ids are compared here and
+ *   dropped here.
+ * - **Read-only.** It never writes, never creates the global home and never migrates a file.
+ * - **Fail to zero.** An absent, unreadable, unparsable or permission-denied file, a refused
+ *   symbolic link, or any other surprise reads as `0` — never an error and never a warning, because
+ *   it runs on every listing and a report nobody acts on must not fail or flood anything.
+ * - **Project layout only.** In the global layout there is nothing to import into: `0`.
+ *
+ * It counts exactly what {@link importGlobalAccounts} would add: a global row whose id the project
+ * does not already carry, each id once.
+ */
+export function countImportableGlobalAccounts(layout: StateLayout, env: NodeJS.ProcessEnv = process.env): number {
+  try {
+    if (layout.mode !== 'project' || layout.projectRoot === null) return 0;
+    if (projectStateDirRefusal(layout) !== null || isSymbolicLink(layout.accountsPath)) return 0;
+    const globalAccountsPath = globalStateLayout(env).accountsPath;
+    const global = readJsonObject(globalAccountsPath);
+    if (global === 'absent' || global === 'unreadable') return 0;
+    const existing = readJsonObject(layout.accountsPath);
+    if (existing === 'unreadable') return 0;
+    const ids = new Set(accountRows(existing === 'absent' ? {} : existing).map((row) => row.id));
+    let importable = 0;
+    for (const row of accountRows(global)) {
+      if (ids.has(row.id)) continue;
+      ids.add(row.id);
+      importable += 1;
+    }
+    return importable;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * The import state the cockpit shows (#819 PR 9): the recorded outcome folded into the three
+ * answers a person can act on, and {@link countImportableGlobalAccounts}. `null` outside the
+ * project layout, where there is nothing to import into — the caller omits the field then.
+ *
+ * `not-asked` and a project set up before the outcome was recorded both read as `unknown`: neither
+ * is a "no", and the offer is still open.
+ */
+export function globalImportSummary(
+  layout: StateLayout,
+  env: NodeJS.ProcessEnv = process.env,
+): AgentAccountsGlobalImport | null {
+  if (layout.mode !== 'project' || layout.projectRoot === null) return null;
+  const recorded = readGlobalImportState(layout);
+  return {
+    state: recorded === 'imported' ? 'done' : recorded === 'declined' ? 'declined' : 'unknown',
+    importable: countImportableGlobalAccounts(layout, env),
   };
 }
 

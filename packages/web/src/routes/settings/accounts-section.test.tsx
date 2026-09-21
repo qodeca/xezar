@@ -12,6 +12,7 @@ import {
 } from '@qodeca/xezar-api-client'
 import { Toaster, resetToasts } from '@/components/ui/toaster'
 import { AppRoutes } from '@/routes'
+import { agentPickerRows } from '@/components/default-agent-picker'
 
 /**
  * Global settings → Agent accounts.
@@ -82,6 +83,9 @@ function serve(
     openError?: string
     targets?: unknown
     status?: unknown
+    importStatus?: number
+    importError?: string
+    importResult?: { added: number; kept: number; globalImport: { state: 'done' | 'declined' | 'unknown'; importable: number } }
   } = {},
 ) {
   requests = []
@@ -157,6 +161,20 @@ function serve(
           truncated: false,
         })
       }
+      if (url === '/api/v1/workspace/agent-profiles/import-global' && method === 'POST') {
+        if (options.importStatus) return json({ error: options.importError }, options.importStatus)
+        const answer = options.importResult ?? { added: 0, kept: 0, globalImport: { state: 'done', importable: 0 } }
+        state = { ...state, globalImport: answer.globalImport }
+        return json(answer)
+      }
+      if (url === '/api/v1/workspace/agent-profiles/selection' && method === 'PUT') {
+        // The server recomputes `problems` after a write; clearing a choice fixes its problem.
+        state = {
+          ...state,
+          problems: (state.problems ?? []).filter((p) => p.provider !== body?.provider),
+        }
+        return json({ selections: {}, defaults: {} })
+      }
       if (url === '/api/v1/projects' && method === 'GET') {
         return json({ projects: [], bootProject: 'boot', projectsDir: '~/xezar/projects' })
       }
@@ -195,17 +213,13 @@ function renderAccounts({ singleProjectRoot = false }: { singleProjectRoot?: boo
 }
 
 const rows = () => [...document.querySelectorAll('[data-slot="account-row"]')]
-/** Switch to an agent's tab and wait for its panel to mount. */
-const openTab = async (provider: string) => {
-  await waitFor(() =>
-    expect(document.querySelector(`[data-slot="accounts-tabs"] [data-provider="${provider}"]`)).not.toBeNull(),
-  )
-  // Radix activates a tab on mousedown, not click — a `click` alone leaves the panel unmounted.
-  fireEvent.mouseDown(document.querySelector(`[data-slot="accounts-tabs"] [data-provider="${provider}"]`)!)
-  await waitFor(() =>
-    expect(document.querySelector(`[data-slot="accounts-provider"][data-provider="${provider}"]`)).not.toBeNull(),
-  )
-}
+/** One agent's group — every agent is on the page at once since #819 PR 9 (no tabs). */
+const groupFor = async (provider: string) =>
+  waitFor(() => {
+    const group = document.querySelector(`[data-slot="accounts-provider"][data-provider="${provider}"]`)
+    expect(group).not.toBeNull()
+    return group!
+  })
 const rowFor = (id: string) => document.querySelector(`[data-slot="account-row"][data-account="${id}"]`)
 
 afterEach(() => {
@@ -237,13 +251,13 @@ describe('the agent accounts section', () => {
       selections: {}, profiles: DEFAULTS })
     renderAccounts()
 
-    // One tab at a time, so only the ACTIVE agent's rows are in the DOM.
-    await waitFor(() => expect(rows()).toHaveLength(1))
-    expect(document.body.textContent).toContain('discovered')
+    // Every agent's rows are on the page at once: Claude's and Codex's built-in logins.
+    await waitFor(() => expect(rows()).toHaveLength(2))
+    expect(rowFor('default')?.querySelector('[data-slot="account-name"]')?.textContent).toBe('Built-in login')
     // The discovered profile is what xezar found — a Rename or Remove would imply a setting. Checked
     // with the panel OPEN, since that is now the only place either could appear.
-    await openDetails('default')
-    expect(document.querySelector('[data-slot="account-manage"]')).toBeNull()
+    const row = await openDetails('default')
+    expect(row.querySelector('[data-slot="account-manage"]')).toBeNull()
     expect(document.querySelector('[data-action="account-rename"]')).toBeNull()
     expect(document.querySelector('[data-action="account-remove"]')).toBeNull()
   })
@@ -793,17 +807,17 @@ describe('the agent accounts section', () => {
     expect(document.querySelector('[data-action="accounts-add"]')).toBeNull()
   })
 
-  it('gives every agent a tab, including one that cannot carry a second account', async () => {
+  it('gives every agent a group, including one that cannot carry a second account', async () => {
     serve({ editable: true, profileCapableProviders: ['claude', 'codex'],
       defaults: {},
       selections: {}, profiles: DEFAULTS })
     renderAccounts()
 
-    await waitFor(() => expect(rows()).toHaveLength(1))
-    // OpenCode and pi get a tab too: it is where "is this agent installed?" is answered, and
+    await waitFor(() => expect(rows()).toHaveLength(2))
+    // OpenCode and pi get a group too: it is where "is this agent installed?" is answered, and
     // hiding the ones that cannot carry a second login would only move that question elsewhere.
     expect(
-      [...document.querySelectorAll('[data-slot="accounts-tabs"] [data-provider]')].map((el) =>
+      [...document.querySelectorAll('[data-slot="accounts-provider"]')].map((el) =>
         el.getAttribute('data-provider'),
       ),
     ).toEqual(['claude', 'codex', 'opencode', 'pi'])
@@ -815,9 +829,9 @@ describe('the agent accounts section', () => {
       selections: {}, profiles: DEFAULTS })
     renderAccounts()
 
-    await openTab('opencode')
-    expect(document.querySelector('[data-action="accounts-add"]')).toBeNull()
-    expect(document.querySelector('[data-slot="accounts-single-only"]')?.textContent).toContain(
+    const group = await groupFor('opencode')
+    expect(group.querySelector('[data-action="accounts-add"]')).toBeNull()
+    expect(group.querySelector('[data-slot="accounts-single-only"]')?.textContent).toContain(
       'credentials outside its config folder',
     )
   })
@@ -829,10 +843,13 @@ describe('the agent accounts section', () => {
     renderAccounts()
 
     // A version and an install belong to the BINARY: every login of one CLI shares them.
+    const group = await groupFor('claude')
     await waitFor(() =>
-      expect(document.querySelector('[data-slot="agent-version"]')?.textContent).toBe('2.1.220'),
+      expect(group.querySelector('[data-slot="agent-version"]')?.textContent).toBe(' · 2.1.220'),
     )
-    expect(document.querySelector('[data-slot="agent-installed"]')?.textContent).toBe('Yes')
+    expect(group.querySelector('[data-slot="agent-installed"]')?.textContent).toBe('Installed')
+    // One heading line per agent: installed, version, and how many logins it has.
+    expect(group.querySelector('[data-slot="agent-facts"]')?.textContent).toBe('Installed · 2.1.220 · 1 account')
   })
 
   it('names the install command for an agent that is not on this machine', async () => {
@@ -841,12 +858,29 @@ describe('the agent accounts section', () => {
       selections: {}, profiles: DEFAULTS })
     renderAccounts()
 
-    await openTab('codex')
-    expect(document.querySelector('[data-slot="agent-installed"]')?.textContent).toContain(
-      '@openai/codex',
+    const codex = await groupFor('codex')
+    expect(codex.querySelector('[data-slot="agent-installed"]')?.textContent).toBe('Not installed')
+    // No version at all when there is nothing installed to have one.
+    expect(codex.querySelector('[data-slot="agent-version"]')).toBeNull()
+  })
+
+  it('gives an agent with no login at all its own words, naming the install when it is missing', async () => {
+    // Codex is not installed (the health fixture) and this listing carries no Codex row.
+    serve({ editable: true, profileCapableProviders: ['claude', 'codex'],
+      defaults: {},
+      selections: {}, profiles: [DEFAULTS[0]!] })
+    renderAccounts()
+
+    const codex = await groupFor('codex')
+    expect(codex.querySelector('[data-slot="agent-facts"]')?.textContent).toBe('Not installed · no accounts')
+    expect(codex.querySelector('[data-slot="accounts-provider-empty"]')?.textContent).toContain(
+      'No Codex accounts yet',
     )
-    // No version row at all when there is nothing installed to have one.
-    expect(document.querySelector('[data-slot="agent-version"]')).toBeNull()
+    expect(codex.querySelector('[data-slot="accounts-provider-empty"]')?.textContent).toContain(
+      'npm i -g @openai/codex',
+    )
+    // An empty frame is not a tile per agent: no CenteredState is rendered for it.
+    expect(codex.querySelector('[data-slot="centered-state"]')).toBeNull()
   })
 })
 
@@ -857,7 +891,7 @@ describe('the agent accounts section', () => {
  */
 describe('the add-account dialog', () => {
   const openDialog = async (provider = 'claude') => {
-    if (provider !== 'claude') await openTab(provider);
+    await groupFor(provider)
     await waitFor(() => expect(document.querySelector('[data-action="accounts-add"]')).not.toBeNull())
     fireEvent.click(document.querySelector(`[data-action="accounts-add"][data-provider="${provider}"]`)!)
     await waitFor(() => expect(document.querySelector('[data-slot="add-account-dialog"]')).not.toBeNull())
@@ -1014,5 +1048,349 @@ describe('the add-account dialog', () => {
         "that is already this agent's default folder",
       ),
     )
+  })
+})
+
+/**
+ * #819 PR 9 (designs/agent-accounts-onboarding): which login each agent uses, the built-in login
+ * named as built-in, the choices that name a missing account, and no identity on a collapsed row.
+ * Every marker and problem comes from the SERVER — each case below fails against a pane that drops
+ * the field, derives it itself, or prints what it should withhold.
+ */
+describe('the accounts pane – in use, built-in and problems (#819 PR 9)', () => {
+  const inUse = () =>
+    [...document.querySelectorAll('[data-slot="account-in-use"]')].map((badge) => ({
+      account: badge.closest('[data-slot="account-row"]')?.getAttribute('data-account'),
+      provider: badge.closest('[data-slot="accounts-provider"]')?.getAttribute('data-provider'),
+      text: badge.textContent,
+    }))
+
+  const WORK = profile({ id: 'work', label: 'Work', selected: true })
+  const withSelection: AgentProfile[] = [
+    { ...DEFAULTS[0]!, selected: false },
+    WORK,
+    { ...DEFAULTS[1]!, selected: true },
+  ]
+
+  // Break: the badge keyed on `isDefault` (or on nothing) instead of the server's `selected`.
+  it('marks exactly one account per agent "In use", from the server’s `selected`', async () => {
+    serve({ editable: true, profileCapableProviders: ['claude', 'codex'], defaults: {}, selections: {},
+      profiles: withSelection, problems: [] })
+    renderAccounts({ singleProjectRoot: true })
+
+    await waitFor(() => expect(rows()).toHaveLength(3))
+    expect(inUse()).toEqual([
+      { account: 'work', provider: 'claude', text: 'In use' },
+      { account: 'default', provider: 'codex', text: 'In use' },
+    ])
+  })
+
+  // Break: "In use" in the global layout, where `selected` is the machine default and not what
+  // every project runs (design OD-3).
+  it('says "Default" instead in the global layout', async () => {
+    serve({ editable: true, profileCapableProviders: ['claude', 'codex'], defaults: {}, selections: {},
+      profiles: withSelection, problems: [] })
+    renderAccounts()
+
+    await waitFor(() => expect(rows()).toHaveLength(3))
+    expect(inUse().map((marker) => marker.text)).toEqual(['Default', 'Default'])
+  })
+
+  // Break: the built-in row still named "Default" and badged "discovered" (the pre-#819 pane).
+  it('names the built-in login in words, with what it is, and never "discovered"', async () => {
+    serve({ editable: true, profileCapableProviders: ['claude', 'codex'], defaults: {}, selections: {},
+      profiles: withSelection, problems: [] })
+    renderAccounts({ singleProjectRoot: true })
+
+    const row = await waitFor(() => {
+      const found = document.querySelector('[data-slot="accounts-provider"][data-provider="claude"] [data-built-in="true"]')
+      expect(found).not.toBeNull()
+      return found!
+    })
+    expect(row.querySelector('[data-slot="account-name"]')?.textContent).toBe('Built-in login')
+    expect(row.querySelector('[data-slot="account-built-in"]')?.textContent).toBe(
+      'Found on this machine — xezar does not save it.',
+    )
+    expect(document.body.textContent).not.toContain('discovered')
+  })
+
+  // Break: a dangling project default that the pane never mentions (the #819 item 2 confusion).
+  it('names a dangling default, what tasks do instead, and fixes it with the built-in login', async () => {
+    serve({ editable: true, profileCapableProviders: ['claude', 'codex'], defaults: { claude: 'client-a' },
+      selections: {}, profiles: DEFAULTS,
+      problems: [{ kind: 'unknown-account', where: 'defaults', provider: 'claude', handle: 'client-a' }] })
+    renderAccounts({ singleProjectRoot: true })
+
+    const summary = await waitFor(() => {
+      const found = document.querySelector('[data-slot="accounts-problems"]')
+      expect(found).not.toBeNull()
+      return found!
+    })
+    expect(summary.textContent).toBe(
+      '1 account choice names an account that is not in this list. Tasks still run, with the built-in login. See Claude Code.',
+    )
+    expect(summary.getAttribute('aria-live')).toBe('polite')
+    const block = document.querySelector('[data-slot="accounts-provider"][data-provider="claude"] [data-slot="account-problem"]')!
+    expect(block.getAttribute('data-where')).toBe('defaults')
+    expect(block.textContent).toContain(
+      'The project default for Claude Code names client-a, which is not in this list. Tasks use the built-in login instead.',
+    )
+    expect(block.querySelector('[data-slot="account-problem-fix"]')?.textContent).toBe(
+      'Fix: choose an account under Defaults for this project, or use the built-in login.',
+    )
+    expect(document.querySelector('[data-slot="agent-problem-count"]')?.textContent).toBe('1 choice to fix')
+
+    fireEvent.click(block.querySelector('[data-action="account-problem-use-built-in"]')!)
+    await waitFor(() =>
+      expect(requests.find((r) => r.method === 'PUT')?.body).toEqual({
+        projectId: null,
+        provider: 'claude',
+        profileId: null,
+      }),
+    )
+    await waitFor(() =>
+      expect(document.querySelector('[data-slot="toast"]')?.textContent).toContain(
+        'Claude Code now uses the built-in login',
+      ),
+    )
+    // The server recomputes `problems`; the refetch removes the line and the block.
+    await waitFor(() => expect(document.querySelector('[data-slot="accounts-problems"]')).toBeNull())
+    expect(document.querySelector('[data-slot="account-problem"]')).toBeNull()
+  })
+
+  // Break: a selection problem worded as a default, or its fix clearing the machine-wide default.
+  it('names a dangling project selection and clears THIS project’s choice', async () => {
+    serve({ editable: true, profileCapableProviders: ['claude', 'codex'], defaults: {},
+      selections: { '/repo': { codex: 'work' } }, profiles: DEFAULTS,
+      problems: [{ kind: 'unknown-account', where: 'selection', provider: 'codex', handle: 'work' }] })
+    renderAccounts({ singleProjectRoot: true })
+
+    const block = await waitFor(() => {
+      const found = document.querySelector('[data-slot="accounts-provider"][data-provider="codex"] [data-slot="account-problem"]')
+      expect(found).not.toBeNull()
+      return found!
+    })
+    expect(block.textContent).toContain(
+      'This project’s own choice for Codex names work, which is not in this list. Tasks use the built-in login instead.',
+    )
+    expect(block.querySelector('[data-action="account-problem-agents-settings"]')?.textContent).toBe('Agents settings')
+    fireEvent.click(block.querySelector('[data-action="account-problem-use-built-in"]')!)
+    await waitFor(() =>
+      expect(requests.find((r) => r.method === 'PUT')?.body).toEqual({
+        projectId: 'default',
+        provider: 'codex',
+        profileId: null,
+      }),
+    )
+  })
+
+  // Break: a missing `problems` key read as "no problems" and a fabricated all-clear, or a line
+  // drawn for an empty list.
+  it('draws no problem line when the key is absent or empty', async () => {
+    serve({ editable: true, profileCapableProviders: ['claude', 'codex'], defaults: {}, selections: {},
+      profiles: DEFAULTS })
+    renderAccounts({ singleProjectRoot: true })
+    await waitFor(() => expect(rows()).toHaveLength(2))
+    expect(document.querySelector('[data-slot="accounts-problems"]')).toBeNull()
+    expect(document.querySelector('[data-slot="account-problem"]')).toBeNull()
+    expect(document.querySelector('[data-slot="agent-problem-count"]')).toBeNull()
+  })
+
+  // Break: a jump link that only scrolls, leaving keyboard focus at the top of the pane.
+  it('moves focus to the agent’s heading from the summary’s jump link', async () => {
+    serve({ editable: true, profileCapableProviders: ['claude', 'codex'], defaults: {}, selections: {},
+      profiles: DEFAULTS,
+      problems: [{ kind: 'unknown-account', where: 'defaults', provider: 'codex', handle: 'gone' }] })
+    renderAccounts({ singleProjectRoot: true })
+
+    const jump = await waitFor(() => {
+      const found = document.querySelector<HTMLAnchorElement>('[data-action="accounts-problem-jump"][data-provider="codex"]')
+      expect(found).not.toBeNull()
+      return found!
+    })
+    fireEvent.click(jump)
+    expect(document.activeElement?.id).toBe('accounts-agent-codex')
+    expect(document.activeElement?.textContent).toBe('Codex')
+  })
+
+  // Break: an e-mail-shaped label or handle printed on the collapsed row, the picker, the problem
+  // sentence or the Remove confirm (P9-AC5).
+  it('never prints an e-mail-shaped label or handle before Show details', async () => {
+    const hidden = profile({ id: 'client', label: 'a@b.example', configDir: '~/.claude-client' })
+    serve({ editable: true, profileCapableProviders: ['claude', 'codex'], defaults: { claude: 'x@y.example' },
+      selections: {}, profiles: [...DEFAULTS, hidden],
+      problems: [{ kind: 'unknown-account', where: 'defaults', provider: 'claude', handle: 'x@y.example' }] })
+    renderAccounts({ singleProjectRoot: true })
+
+    const row = await waitFor(() => {
+      expect(rowFor('client')).not.toBeNull()
+      return rowFor('client')!
+    })
+    expect(row.getAttribute('data-label-hidden')).toBe('true')
+    expect(row.querySelector('[data-slot="account-name"]')?.textContent).toBe('Name hidden')
+    expect(document.querySelector('[data-slot="account-problem"]')?.textContent).toContain(
+      'The project default for Claude Code names an account that is not in this list.',
+    )
+    expect(document.body.innerHTML).not.toContain('a@b.example')
+    expect(document.body.innerHTML).not.toContain('x@y.example')
+
+    // Show details is the one opt-in door; the Remove confirm still withholds it.
+    fireEvent.click(row.querySelector('[data-action="account-details-toggle"]')!)
+    fireEvent.click(await waitFor(() => {
+      const remove = row.querySelector('[data-action="account-remove"]')
+      expect(remove).not.toBeNull()
+      return remove!
+    }))
+    await waitFor(() =>
+      expect(document.querySelector('[data-slot="accounts-remove-confirm"]')?.textContent).toContain(
+        'Remove this account?',
+      ),
+    )
+    expect(document.querySelector('[data-slot="accounts-remove-confirm"]')?.textContent).not.toContain('a@b.example')
+  })
+
+  // Break: the fix button rendered in hosted mode (it is a local-machine write).
+  it('renders no problem line and no fix in hosted mode', async () => {
+    serve({ editable: false, profileCapableProviders: [], defaults: {}, selections: {}, profiles: [],
+      problems: [] })
+    renderAccounts()
+    await waitFor(() => expect(document.querySelector('[data-slot="accounts-hosted"]')).not.toBeNull())
+    expect(document.querySelector('[data-slot="accounts-problems"]')).toBeNull()
+    expect(document.querySelector('[data-action="account-problem-use-built-in"]')).toBeNull()
+  })
+})
+
+// Break: the Defaults picker still printing the stored label — "claude · Default" for the built-in
+// login, or an e-mail address on a collapsed radio (design § 7).
+describe('the Defaults picker rows (#819 PR 9)', () => {
+  it('names the built-in login and hides an identity-shaped label', () => {
+    const labels = agentPickerRows([
+      DEFAULTS[0]!,
+      profile({ id: 'work', label: 'Work' }),
+      profile({ id: 'client', label: 'a@b.example' }),
+    ]).filter((row) => row.runner.id === 'claude').map((row) => row.label)
+    expect(labels).toEqual(['claude · Built-in login', 'claude · Work', 'claude · Name hidden'])
+  })
+})
+
+/**
+ * #819 PR 9 — the global-import block (designs/agent-accounts-onboarding § 7, import.html 1–7).
+ * Each case names the break it fails against.
+ */
+describe('the accounts pane – the global-import block (#819 PR 9)', () => {
+  const base = { editable: true, profileCapableProviders: ['claude', 'codex'] as AgentProfile['provider'][],
+    defaults: {}, selections: {}, profiles: DEFAULTS, problems: [] }
+  const block = () => document.querySelector('[data-slot="accounts-import"]')
+  const copyButton = () => document.querySelector<HTMLButtonElement>('[data-action="accounts-import"]')
+  const renderWith = async (globalImport: AgentProfilesResponse['globalImport'], singleProjectRoot = true, options = {}) => {
+    serve({ ...base, ...(globalImport ? { globalImport } : {}) }, options)
+    renderAccounts({ singleProjectRoot })
+    await waitFor(() => expect(rows()).toHaveLength(2))
+  }
+
+  // Break: the first offer drawn as a line (no stated cost), or without the CLI alternative.
+  it('offers the first copy as a card that states the cost, with the CLI alternative', async () => {
+    await renderWith({ state: 'unknown', importable: 3 })
+    expect(block()?.querySelector('h3')?.textContent).toBe('Copy accounts from your personal setup')
+    expect(block()?.textContent).toContain(
+      '3 accounts in your personal xezar setup on this machine are not in this project yet. Copying adds their names and config folders to .xezar/agent-accounts.json, which is committed, so everyone who clones this project sees them. Sign-ins stay in their own folders and are never copied.',
+    )
+    expect(copyButton()?.textContent).toBe('Copy 3 accounts')
+    expect(block()?.querySelector('[data-slot="accounts-import-cli"]')?.textContent).toBe(
+      'Or run xezar accounts import-global in a terminal in this folder.',
+    )
+  })
+
+  it('says "1 account … is" and "Copy 1 account" for one', async () => {
+    await renderWith({ state: 'unknown', importable: 1 })
+    expect(block()?.textContent).toContain('1 account in your personal xezar setup on this machine is not in this project yet.')
+    expect(copyButton()?.textContent).toBe('Copy 1 account')
+  })
+
+  // Break: a "Copy 0 accounts" button, or a card offering nothing.
+  it('shows one line and NO button when there is nothing to copy', async () => {
+    await renderWith({ state: 'unknown', importable: 0 })
+    expect(block()?.querySelector('[data-slot="accounts-import-line"]')?.textContent).toBe(
+      'There are no accounts in your personal xezar setup that this project does not already have.',
+    )
+    expect(copyButton()).toBeNull()
+  })
+
+  it('reminds a person who declined, with the button while something is left', async () => {
+    await renderWith({ state: 'declined', importable: 2 })
+    expect(block()?.querySelector('[data-slot="accounts-import-line"]')?.textContent).toBe(
+      'You chose not to copy accounts from your personal xezar setup when this project was set up. 2 can still be copied into .xezar/agent-accounts.json.',
+    )
+    expect(copyButton()?.textContent).toBe('Copy 2 accounts')
+  })
+
+  it('says done — and offers the rest when more were added since', async () => {
+    await renderWith({ state: 'done', importable: 0 })
+    expect(block()?.textContent).toContain('Accounts were copied from your personal xezar setup — this project has all of them.')
+    expect(copyButton()).toBeNull()
+    cleanup()
+    await renderWith({ state: 'done', importable: 2 })
+    expect(block()?.textContent).toContain(
+      'Accounts were copied from your personal xezar setup. 2 more were added there since and can be copied too.',
+    )
+    expect(copyButton()?.textContent).toBe('Copy 2 accounts')
+  })
+
+  // Break: an absent key read as "unknown" (a fabricated offer), or the block in the global layout.
+  it('draws nothing when the key is absent, and nothing in the global layout', async () => {
+    await renderWith(undefined)
+    expect(block()).toBeNull()
+    cleanup()
+    await renderWith({ state: 'unknown', importable: 3 }, false)
+    expect(block()).toBeNull()
+  })
+
+  // P9-AC3. Break: a click that runs anything but the import route, or never refetches.
+  it('copies on a click only — posting the import once, toasting the counts, announcing the new state', async () => {
+    await renderWith({ state: 'unknown', importable: 3 }, true, {
+      importResult: { added: 2, kept: 1, globalImport: { state: 'done', importable: 0 } },
+    })
+    // Nothing is posted on load.
+    expect(requests.some((r) => r.url.endsWith('/import-global'))).toBe(false)
+    fireEvent.click(copyButton()!)
+    await waitFor(() =>
+      expect(document.querySelector('[data-slot="toast"]')?.textContent).toContain(
+        'Copied 2 accounts — 1 was already in this project',
+      ),
+    )
+    expect(requests.filter((r) => r.url === '/api/v1/workspace/agent-profiles/import-global')).toEqual([
+      { method: 'POST', url: '/api/v1/workspace/agent-profiles/import-global', body: undefined },
+    ])
+    await waitFor(() =>
+      expect(document.querySelector('[data-slot="accounts-import-announcer"]')?.textContent).toBe(
+        'Accounts were copied from your personal xezar setup — this project has all of them.',
+      ),
+    )
+    // The listing refetch turns the card into the done line.
+    await waitFor(() => expect(block()?.getAttribute('data-state')).toBe('done'))
+    expect(copyButton()).toBeNull()
+  })
+
+  it("shows a refused copy in the server's own words", async () => {
+    await renderWith({ state: 'unknown', importable: 3 }, true, {
+      importStatus: 409, importError: 'could not read the agent accounts — nothing was copied',
+    })
+    fireEvent.click(copyButton()!)
+    await waitFor(() =>
+      expect(document.querySelector('[data-slot="toast"]')?.textContent).toContain(
+        'could not read the agent accounts — nothing was copied',
+      ),
+    )
+  })
+
+  // Break: the import block or its button rendered in hosted mode (absent, not disabled).
+  it('renders no import block, button or CLI line in hosted mode', async () => {
+    serve({ editable: false, profileCapableProviders: [], defaults: {}, selections: {}, profiles: [],
+      problems: [], globalImport: { state: 'unknown', importable: 3 } })
+    renderAccounts({ singleProjectRoot: true })
+    await waitFor(() => expect(document.querySelector('[data-slot="accounts-hosted"]')).not.toBeNull())
+    expect(block()).toBeNull()
+    expect(copyButton()).toBeNull()
+    expect(document.body.textContent).not.toContain('import-global')
   })
 })

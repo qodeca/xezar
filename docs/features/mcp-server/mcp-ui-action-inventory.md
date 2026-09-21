@@ -171,6 +171,12 @@ owner's decision D-5 of 2026-09-20 — I-149 … I-151, the three terminal prese
 beside it. Each is a `select` in Settings → Terminal writing `PUT /workspace/config`, served by the
 `get_limits` + `set_workspace_config` pair. Covered 113, global 7, total 151.
 
+**#819 PR 9 (2026-09-21) adds one record, covered:** I-152, the accounts pane's "Copy {n} accounts"
+in single-project mode — the copy of the person's machine-wide accounts into this project, the same
+merge as `xezar accounts import-global`. The owner allowed it to a leader on 2026-09-21 ("Allow both,
+people and MCP (leader) to use the import my accounts functionality"), so it is served by
+`import_global_accounts`, with its state read by `get_account`. Covered 114, global 7, total 152.
+
 **Hosted mode does not narrow these five rows** (owner decision, 2026-09-20, raised by independent
 QA as case G on #734 and filed as #735). Workspace-config writes are permitted in hosted mode
 through **both** doors — the cockpit's `PUT /workspace/config` and the leader's
@@ -270,7 +276,7 @@ issue claimed, and what the source says at `9fdcf0e`.
 Nothing else disagreed. No row's file was missing, and no named symbol failed to resolve anywhere in
 the files examined.
 
-## The inventory — 151 records
+## The inventory — 152 records
 
 Status values: **covered** = a project business action MCP must be able to perform or read;
 **global** = the effect reaches the workspace or another project, so no MCP write (a safe effective
@@ -444,7 +450,7 @@ Project-scope sections: `agents`, `agent-config`, `worktrees`, `bookmarklets`, `
 | I-145 | `packages/web/src/components/onboarding-offer-row.tsx` offer row "Later" → `POST /api/v1/p/:projectId/onboarding/offered` | an offer is pending for the observed identity | the observed identity → the recorded pair | answered `conflict` when the observed identity moved since the read, `unwritable` when the record could not be persisted; both write nothing | project | Record that the offer was made for this identity, so the same pair does not offer again. Added 2026-09-16 (#464 P2) | covered |
 | I-146 | `onboarding-offer-row.tsx` offer-row presence ← the same read as I-143 | a changed identity that has not been offered, with no check running | none → whether an offer is pending, and what changed | never shown without a baseline | project | Learn that the running identity differs from the last one a finished check covered, as a pull. Added 2026-09-16 (#464 P2) | covered |
 
-### H. Global and workspace settings — 20 records
+### H. Global and workspace settings — 21 records
 
 Global-scope sections in `registry.tsx`: `appearance`, `notifications`, `resources`, `terminal` (#467 PR 5), `skills`, `accounts`, `projects`, and `keyboard` (`hidden: true`, rendered only via `comingSoon()` — **no route mounts it**, so `/settings/global/keyboard` 404s today; there is no keyboard-shortcut editor). All rows are `global` unless noted.
 
@@ -479,6 +485,7 @@ flipping either would make this inventory claim an implementation that does not 
 | I-149 | `packages/web/src/routes/settings/terminal-section.tsx` `PresentationField` `select[data-slot="terminal-output"]` → `cli.output` (`'auto' \| 'lines' \| 'rich'` \| null, `PUT /workspace/config`) | always | a value, or null for “Not set” → the stored key; absent inherits `XEZ_OUTPUT`, then the default | the same contract enum at both doors, refused the same way as I-148; a body that does not name the key leaves it untouched | GLOBAL | **Decided 2026-09-21 (the owner's D-5 of 2026-09-20, applied to #467 PR 5).** A presentation key of the same stored `cli` object, written and read by the same pair as I-148 (`set_workspace_config` + `get_limits`, which reports `{effective, inherited}`). Settled at a start, so it does not apply live. Added 2026-09-21 (#467 PR 5) | covered |
 | I-150 | `packages/web/src/routes/settings/terminal-section.tsx` `PresentationField` `select[data-slot="terminal-color"]` → `cli.color` (`'auto' \| 'always' \| 'never'` \| null, `PUT /workspace/config`) | always | a value, or null for “Not set” → the stored key; absent inherits `XEZ_COLOR`, then the default, and a non-empty `NO_COLOR` outranks a stored value | the same contract enum at both doors, refused the same way as I-148; a body that does not name the key leaves it untouched | GLOBAL | **Decided 2026-09-21 (the owner's D-5 of 2026-09-20, applied to #467 PR 5).** A presentation key of the same stored `cli` object, written and read by the same pair as I-148 (`set_workspace_config` + `get_limits`, which reports `{effective, inherited}`). Settled at a start, so it does not apply live. Added 2026-09-21 (#467 PR 5) | covered |
 | I-151 | `packages/web/src/routes/settings/terminal-section.tsx` `PresentationField` `select[data-slot="terminal-log-level"]` → `cli.logLevel` (`'debug' \| 'info' \| 'warn' \| 'error'` \| null, `PUT /workspace/config`) | always | a value, or null for “Not set” → the stored key; absent inherits `XEZ_LOG_LEVEL`, then the default | the same contract enum at both doors, refused the same way as I-148; a body that does not name the key leaves it untouched | GLOBAL | **Decided 2026-09-21 (the owner's D-5 of 2026-09-20, applied to #467 PR 5).** A presentation key of the same stored `cli` object, written and read by the same pair as I-148 (`set_workspace_config` + `get_limits`, which reports `{effective, inherited}`). Settled at a start, so it does not apply live. Added 2026-09-21 (#467 PR 5) | covered |
+| I-152 | `packages/web/src/routes/settings/accounts-import.tsx` `AccountsImportBlock` `Button[data-action="accounts-import"]` → `POST /workspace/agent-profiles/import-global` (no body); the block's state ← `globalImport` on `GET /workspace/agent-profiles` | single-project mode on the host only; the button shows only when `importable > 0`; absent in hosted mode and in the global layout | none → `{added, kept, globalImport}` — counts, never which accounts | merge-only and idempotent, the same `importGlobalAccounts` as `xezar accounts import-global`; 409 in hosted mode, in the global layout and on an unreadable file or a symbolic link | project (writes `<project>/.xezar/agent-accounts.json`; reads the machine-wide accounts file) | **Decided 2026-09-21 (owner: "Allow both, people and MCP (leader) to use the import my accounts functionality").** Copy the machine-wide accounts into this project with `import_global_accounts`; read whether it was done and how many could still be copied with `get_account` (`globalImport`). Added 2026-09-21 (#819 PR 9) | covered |
 
 ### I. Navigation, layout, shortcuts and live signals — 8 records
 

@@ -80,8 +80,9 @@ describe('the shared audit action inventory (#306 part 2, spec § 6)', () => {
   it('rule 4 — the three inputs are populated, so no assertion below can pass vacuously', () => {
     expect(AUDIT_ACTIONS.length).toBeGreaterThanOrEqual(60);
     expect(coverageKeys.length).toBeGreaterThan(100);
-    // Sixty mutations plus three read-like POSTs, as the spec counted them.
-    expect(routes.size).toBe(63);
+    // Sixty mutations plus three read-like POSTs, as the spec counted them — 63 until #819 PR 9
+    // added `POST /workspace/agent-profiles/import-global` (`account.importGlobal`).
+    expect(routes.size).toBe(64);
   });
 
   it('every action id is unique and a valid v2 action', () => {

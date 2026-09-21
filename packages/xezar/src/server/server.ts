@@ -39,6 +39,7 @@ import {
   resumeCommand,
   setWorkspaceUiStateInputSchema,
   type AgentProfilesResponse,
+  type ImportGlobalAccountsResponse,
   type GroupResponse,
   type GroupVariant,
   type PickVariantResponse,
@@ -206,8 +207,12 @@ import {
   resolveProfileEnvForRoot,
   resolveStoredProfile,
   sameProfileDir,
+  selectProfile,
   type ResolvedAgentProfile,
 } from '../workspace/agent-profiles.ts';
+import { activeStateLayout } from '../state-layout.ts';
+import { globalImportStateAfter, globalImportSummary, importGlobalAccounts } from '../workspace/import-global.ts';
+import { recordGlobalImportState } from '../workspace/project-machine-state.ts';
 import { PROFILE_CAPABLE_PROVIDERS, profileEnv, supportsProfiles } from '../core/agent-profiles.ts';
 import { withEnvPrefix } from '../core/shell-env.ts';
 import {
@@ -2150,7 +2155,22 @@ export function createApp(deps: ServerDeps) {
         }
       }
       const resolved = editable ? listAgentProfiles(store, PROVIDER_IDS) : [];
-      const profiles = await Promise.all(resolved.map(agentProfileBody));
+      // Which account per provider the listing's subject runs under (#819 PR 9) — resolved HERE,
+      // through `selectProfile`, the function a run resolves through, so the cockpit's "In use"
+      // can never disagree with what a task does (a dangling id lands on the discovered account in
+      // both). The subject is the folder in single-project mode and nobody's project otherwise,
+      // which leaves the machine-wide default.
+      const layout = activeStateLayout();
+      const subjectRoot = layout.mode === 'project' && layout.projectRoot !== null ? layout.projectRoot : undefined;
+      const inUse = new Map(
+        PROVIDER_IDS.map((provider) => [provider, selectProfile(store, { provider, repoRoot: subjectRoot }).id]),
+      );
+      const profiles = await Promise.all(
+        resolved.map(async (profile) => ({
+          ...(await agentProfileBody(profile)),
+          selected: inUse.get(profile.provider) === profile.id,
+        })),
+      );
       // Built as the CONTRACT shape and handed to `c.json` (the pattern `GET /projects` uses): the
       // body IS the response, so hono infers exactly what the schema describes. `problems` is
       // optional in the contract — additive for a consumer that predates it — and this route always
@@ -2171,6 +2191,14 @@ export function createApp(deps: ServerDeps) {
          *  two can never disagree about which ids are known; empty when the store was never read,
          *  like the rest of this listing. */
         problems: editable ? accountProblems(store, resolved) : [],
+        // Whether this folder took the machine-wide accounts, and how many it still could (#819
+        // PR 9). Single-project mode on the host only: SPREAD, so the key is absent — never
+        // `undefined` on a key hono would type as present — in the global layout and in hosted
+        // mode, where the global home is never read. The count is a number and nothing else.
+        ...(() => {
+          const globalImport = editable ? globalImportSummary(layout) : null;
+          return globalImport === null ? {} : { globalImport };
+        })(),
       };
       return c.json(body);
     })
@@ -2417,6 +2445,41 @@ export function createApp(deps: ServerDeps) {
     // Which account a PROJECT uses. On the accounts family rather than `PATCH /api/v1/projects`
     // because the selection is stored beside the accounts it names — one file, one atomic write,
     // and nothing about it can be dropped by a xezar version that never heard of accounts.
+    // The cockpit's and the leader's door to the SAME merge `xezar accounts import-global` runs
+    // (#819 PR 9): `importGlobalAccounts`, then the outcome recorded by the one rule every door
+    // shares (`globalImportStateAfter`). The MCP action `project_config import_global_accounts`
+    // dispatches this route (owner, 2026-09-21: "Allow both, people and MCP (leader)"), audited as
+    // `account.importGlobal` at both doors. No body. 409 in hosted mode like every write of this
+    // family, and 409 in the global layout, where there is no project to import into.
+    .post('/workspace/agent-profiles/import-global', localHandoffRoute, ui.route('account.importGlobal'), async (c) => {
+      if (!capabilities().localHandoff) return c.json(hostedProfileRefusal, 409);
+      const layout = activeStateLayout();
+      if (layout.mode !== 'project') {
+        return c.json({ error: 'this folder uses your personal xezar setup already — there is nothing to copy' }, 409);
+      }
+      const report = importGlobalAccounts(layout);
+      if (report.outcome === 'refused-symlink') {
+        return c.json({ error: 'refused to write this project’s agent accounts through a symbolic link — nothing was copied' }, 409);
+      }
+      if (report.outcome === 'unreadable') {
+        return c.json({ error: 'could not read the agent accounts — nothing was copied' }, 409);
+      }
+      const state = globalImportStateAfter(report, layout);
+      if (state !== null) {
+        try {
+          await recordGlobalImportState(state, layout);
+        } catch {
+          // best effort, as at the CLI door: a report nothing runs on never fails the copy
+        }
+      }
+      const body: ImportGlobalAccountsResponse = {
+        added: report.added.length,
+        kept: report.kept.length,
+        globalImport: globalImportSummary(layout) ?? { state: 'unknown', importable: 0 },
+      };
+      return c.json(body);
+    })
+
     .put(
       '/workspace/agent-profiles/selection',
       localHandoffRoute,

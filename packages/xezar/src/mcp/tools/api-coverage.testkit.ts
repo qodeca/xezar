@@ -128,7 +128,7 @@ export const TOOL_ACTION_COVERAGE: Readonly<Record<string, ActionCoverage>> = {
   // I-122 was this action's `reads` while the selection was global-read-only. #677 B5 made
   // `select_account` a real write, so the record is `covered` and this read serves it beside it —
   // the same move I-115 made in B4 and I-117 … I-121 in B1.
-  'project_config:get_account': { serves: ['I-042', 'I-122'] },
+  'project_config:get_account': { serves: ['I-042', 'I-122', 'I-152'] },
   'project_config:list_agent_config': { serves: ['I-111', 'I-113'] },
   'project_config:read_agent_config': { serves: ['I-111', 'I-113'] },
   'project_config:write_agent_config': { serves: ['I-111', 'I-113'] },
@@ -176,6 +176,9 @@ export const TOOL_ACTION_COVERAGE: Readonly<Record<string, ActionCoverage>> = {
   'project_config:select_account': { serves: ['I-122'] },
   'project_config:check_account_status': { serves: ['I-123'] },
   'project_config:get_account_details': { serves: ['I-124'] },
+  // #819 PR 9: the accounts pane's "Copy {n} accounts" (I-152) — the same merge as the CLI command,
+  // allowed to a leader by the owner on 2026-09-21. `get_account` above reads its state.
+  'project_config:import_global_accounts': { serves: ['I-152'] },
   'project_config:open_account_file': { refuses: ['I-125'] },
   // I-127 (the two workspace folder paths) joined the list with #677 B2: the same owner rule made
   // them writable, and this action is the only one that serves them — `get_limits` still withholds

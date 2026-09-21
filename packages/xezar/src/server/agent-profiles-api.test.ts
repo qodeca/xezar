@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -9,6 +9,7 @@ import type { RunManager } from '../workflows/run.ts';
 import { loadAgentAccounts, mergeWriteAgentAccounts } from '../workspace/agent-accounts.ts';
 import { clearProjectProbeCache, registerProject } from '../workspace/projects.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
+import { projectStateLayout, setActiveStateLayout } from '../state-layout.ts';
 import { ProviderAuthService } from '../core/provider-auth.ts';
 import { createApp, type ServerDeps } from './server.ts';
 
@@ -180,6 +181,76 @@ describe('agent profiles API', () => {
       // consumer; the ENGINE always fills it in, which is what keeps that choice from being an
       // absence a consumer has to guess at.
       expect('problems' in body).toBe(true);
+    });
+
+    // #819 PR 9: the cockpit's "In use" / "Default" marker is the server's answer, never the
+    // browser's. Break each of these pins against: a listing with no `selected` at all (the pane
+    // would have to recompute the resolution order), or one that marks the stored default even
+    // when it dangles (it would name an account no run uses).
+    describe('selected — exactly one per provider, resolved the way a run resolves', () => {
+      const selectedIds = (body: AgentProfilesResponse) =>
+        Object.fromEntries(
+          ['claude', 'codex', 'opencode', 'pi'].map((provider) => [
+            provider,
+            body.profiles.filter((p) => p.provider === provider && p.selected === true).map((p) => p.id),
+          ]),
+        );
+
+      afterEach(() => setActiveStateLayout(null));
+
+      it('marks the discovered account of every provider on a zero-config machine', async () => {
+        expect(selectedIds(await list())).toEqual({
+          claude: ['default'],
+          codex: ['default'],
+          opencode: ['default'],
+          pi: ['default'],
+        });
+      });
+
+      it('follows the machine-wide default in the global layout', async () => {
+        const { body: created } = await send('POST', '/api/v1/workspace/agent-profiles', {
+          provider: 'claude',
+          configDir: claudeDir('claude-work'),
+        });
+        await send('PUT', '/api/v1/workspace/agent-profiles/selection', {
+          projectId: null,
+          provider: 'claude',
+          profileId: created.profile.id,
+        });
+        const body = await list();
+        expect(selectedIds(body).claude).toEqual([created.profile.id]);
+        expect(body.profiles.find((p) => p.provider === 'claude' && p.isDefault)?.selected).toBe(false);
+      });
+
+      it('lands on the discovered account when the stored default dangles — as a run does', async () => {
+        await mergeWriteAgentAccounts((store) => {
+          store.defaults.claude = 'deleted-yesterday';
+        });
+        const body = await list();
+        expect(selectedIds(body).claude).toEqual(['default']);
+        expect(body.problems).toEqual([
+          { kind: 'unknown-account', where: 'defaults', provider: 'claude', handle: 'deleted-yesterday' },
+        ]);
+      });
+
+      it("prefers the folder's own selection over the default in single-project mode", async () => {
+        setActiveStateLayout(projectStateLayout(repoRoot));
+        const work = await send('POST', '/api/v1/workspace/agent-profiles', {
+          provider: 'claude',
+          label: 'Work',
+          configDir: claudeDir('claude-work'),
+        });
+        const client = await send('POST', '/api/v1/workspace/agent-profiles', {
+          provider: 'claude',
+          label: 'Client',
+          configDir: claudeDir('claude-client'),
+        });
+        await mergeWriteAgentAccounts((store) => {
+          store.defaults.claude = work.body.profile.id;
+          store.selections[repoRoot] = { claude: client.body.profile.id };
+        });
+        expect(selectedIds(await list()).claude).toEqual([client.body.profile.id]);
+      });
     });
   });
 
@@ -910,6 +981,106 @@ describe('agent profiles API', () => {
         expect(body.error).toContain('hosted mode');
       }
       expect((await loadAgentAccounts()).accounts).toEqual([]);
+    });
+
+    // P9-AC6. Break: the import route missing its localHandoff refusal — a hosted client could
+    // make the host read its person's machine-wide home and write the project's committed file.
+    it('409s the global import and copies nothing, even in single-project mode (#819 PR 9)', async () => {
+      setActiveStateLayout(projectStateLayout(repoRoot));
+      try {
+        writeFileSync(join(home, 'agent-accounts.json'), JSON.stringify({
+          accounts: [{ id: 'work', provider: 'claude', configDir: '~/.claude-work', label: 'Work' }],
+        }));
+        const res = await apiRequest(makeApp(), '/api/v1/workspace/agent-profiles/import-global', { method: 'POST' });
+        expect(res.status).toBe(409);
+        expect(((await res.json()) as { error: string }).error).toContain('hosted mode');
+        expect(existsSync(projectStateLayout(repoRoot).accountsPath)).toBe(false);
+        // …and the listing carries no import state there: the global home is never read.
+        expect('globalImport' in (await list())).toBe(false);
+      } finally {
+        setActiveStateLayout(null);
+      }
+    });
+  });
+
+  /**
+   * #819 PR 9 — the import state on the listing and the import route (the cockpit's button and the leader's `import_global_accounts`). Single-project
+   * mode is the only layout with a project to import into; XEZ_HOME is the machine-wide home.
+   */
+  describe('the global import (#819 PR 9)', () => {
+    const globalAccounts = (accounts: Array<Record<string, string>>) =>
+      writeFileSync(join(home, 'agent-accounts.json'), JSON.stringify({ accounts }));
+    const importGlobal = async () => {
+      const res = await apiRequest(makeApp(), '/api/v1/workspace/agent-profiles/import-global', { method: 'POST' });
+      return { status: res.status, body: (await res.json()) as Record<string, unknown> };
+    };
+
+    afterEach(() => setActiveStateLayout(null));
+
+    // Break: the field sent in the global layout, where there is nothing to import into.
+    it('carries no import state in the global layout, and refuses the import there', async () => {
+      globalAccounts([{ id: 'work', provider: 'claude', configDir: '~/.claude-work' }]);
+      expect('globalImport' in (await list())).toBe(false);
+      const { status, body } = await importGlobal();
+      expect(status).toBe(409);
+      expect(String(body.error)).toContain('nothing to copy');
+    });
+
+    // Break: a listing that names the accounts it could copy instead of counting them (P9-AC5).
+    it('counts what could be copied, and says unknown before anything was asked', async () => {
+      setActiveStateLayout(projectStateLayout(repoRoot));
+      globalAccounts([
+        { id: 'work', provider: 'claude', configDir: '~/.claude-work', label: 'me@example.com' },
+        { id: 'team', provider: 'codex', configDir: '~/.codex-team', label: 'Team' },
+      ]);
+      const body = await list();
+      expect(body.globalImport).toEqual({ state: 'unknown', importable: 2 });
+      expect(JSON.stringify(body.globalImport)).not.toMatch(/work|team|example|claude-|codex-/);
+    });
+
+    // P9-AC3. Break: a route that runs its own copy instead of the CLI's merge (it would overwrite
+    // a row the project already has, or not record the outcome the CLI records).
+    it('runs the CLI’s merge: adds, keeps, records the outcome, and is idempotent', async () => {
+      setActiveStateLayout(projectStateLayout(repoRoot));
+      const layout = projectStateLayout(repoRoot);
+      mkdirSync(layout.root, { recursive: true });
+      writeFileSync(layout.accountsPath, JSON.stringify({
+        accounts: [{ id: 'team', provider: 'codex', configDir: '~/.codex-mine', label: 'Mine' }],
+      }));
+      globalAccounts([
+        { id: 'work', provider: 'claude', configDir: '~/.claude-work', label: 'Work' },
+        { id: 'team', provider: 'codex', configDir: '~/.codex-team', label: 'Team' },
+      ]);
+
+      const first = await importGlobal();
+      expect(first).toEqual({ status: 200, body: { added: 1, kept: 1, globalImport: { state: 'done', importable: 0 } } });
+      const stored = JSON.parse(readFileSync(layout.accountsPath, 'utf8')) as { accounts: Array<{ id: string; configDir: string }> };
+      expect(stored.accounts.map((row) => [row.id, row.configDir])).toEqual([
+        ['team', '~/.codex-mine'],
+        ['work', '~/.claude-work'],
+      ]);
+      const bytes = readFileSync(layout.accountsPath, 'utf8');
+      const second = await importGlobal();
+      expect(second.body).toEqual({ added: 0, kept: 2, globalImport: { state: 'done', importable: 0 } });
+      expect(readFileSync(layout.accountsPath, 'utf8')).toBe(bytes);
+      expect((await list()).globalImport).toEqual({ state: 'done', importable: 0 });
+    });
+
+    // Break: a failed global read that fails the listing (or 500s the import).
+    it('reads an unreadable machine-wide file as 0 on the listing', async () => {
+      setActiveStateLayout(projectStateLayout(repoRoot));
+      writeFileSync(join(home, 'agent-accounts.json'), '{ not json');
+      expect((await list()).globalImport).toEqual({ state: 'unknown', importable: 0 });
+    });
+
+    // Break: the import state riding on the CORS-exempt health route.
+    it('never puts the import state on /api/v1/health', async () => {
+      setActiveStateLayout(projectStateLayout(repoRoot));
+      globalAccounts([{ id: 'work', provider: 'claude', configDir: '~/.claude-work' }]);
+      const res = await apiRequest(makeApp(), '/api/v1/health');
+      const text = await res.text();
+      expect(text).not.toContain('globalImport');
+      expect(text).not.toContain('importable');
     });
   });
 

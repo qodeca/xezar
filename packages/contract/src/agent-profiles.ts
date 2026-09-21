@@ -78,8 +78,30 @@ export const agentProfileSchema = z.object({
   /** This agent's own user-scope config files, resolved inside THIS account's folder — so a
    *  second login's `settings.json` is the one you open, not the default account's. */
   files: z.array(agentAccountFileSchema),
+  /** The ONE account per provider that the listing's subject runs under (#819 PR 9): in
+   *  single-project mode this project's selection, else the machine-wide default, else the
+   *  discovered account — `selectProfile`'s own order, a dangling id included, so the cockpit never
+   *  re-derives it. In the global layout there is no project, so it is the machine-wide default.
+   *
+   *  Set by the LISTING only; the per-account write answers (`POST`/`PATCH`) omit it, because one
+   *  row cannot say which of its siblings is in use. Optional so a consumer that predates it
+   *  compiles unchanged. */
+  selected: z.boolean().optional(),
 });
 export type AgentProfile = z.infer<typeof agentProfileSchema>;
+
+/**
+ * Whether an account label reads as a person's identity — today, anything with an `@`, the rule the
+ * MCP door already applies before it echoes a label (#819 PR 5, `get_account`).
+ *
+ * Defined here so the cockpit and the server answer the same question with the same rule instead
+ * of a second regex (#819 PR 9 design § 8): a surface that prints a label collapsed calls this and
+ * shows "Name hidden" instead. The label itself is still in the listing — identity is withheld from
+ * the page, and "Show details" is the one opt-in door to it.
+ */
+export function looksLikeAccountIdentity(label: string): boolean {
+  return label.includes('@');
+}
 
 /**
  * How to address one account in the per-account routes (`…/:id/details`, `…/:id/open`).
@@ -154,6 +176,43 @@ export const agentAccountProblemSchema = z.object({
 export type AgentAccountProblem = z.infer<typeof agentAccountProblemSchema>;
 
 /**
+ * Whether this project has taken the agent accounts of the person's machine-wide xezar setup
+ * (#819 items 1a–1d, cockpit side in PR 9) — single-project mode only.
+ *
+ * `state` folds the engine's recorded outcome into the three answers a person can act on:
+ * `done` (copied at least once — the first-run question, the launch flag or
+ * `xezar accounts import-global`), `declined` (a person said no), `unknown` (never asked here, or a
+ * project set up before the outcome was recorded; absence is never read as a "no").
+ *
+ * `importable` is a COUNT and never a list: how many accounts the machine-wide file has that this
+ * project does not. No name, id, label or folder of the other file crosses this boundary, because
+ * the cockpit can offer the copy without knowing any of them and the page must not print a
+ * person's account list before they chose to copy it. `0` when that file cannot be read.
+ */
+export const agentAccountsGlobalImportSchema = z.object({
+  state: z.enum(['done', 'declined', 'unknown']),
+  importable: z.number().int().nonnegative(),
+});
+export type AgentAccountsGlobalImport = z.infer<typeof agentAccountsGlobalImportSchema>;
+
+/**
+ * `POST /api/v1/workspace/agent-profiles/import-global` — the cockpit's door to the SAME merge
+ * `xezar accounts import-global` runs — reached from the cockpit's button and from the leader's
+ * `project_config import_global_accounts` (owner, 2026-09-21: "Allow both"). It answers 409 in
+ * hosted mode like every other write of this family, and in the global layout, where there is no
+ * project to import into. It takes no body.
+ *
+ * Counts only, for the same reason as {@link agentAccountsGlobalImportSchema}: the toast says how
+ * many were copied and how many the project already had, never which.
+ */
+export const importGlobalAccountsResponseSchema = z.object({
+  added: z.number().int().nonnegative(),
+  kept: z.number().int().nonnegative(),
+  globalImport: agentAccountsGlobalImportSchema,
+});
+export type ImportGlobalAccountsResponse = z.infer<typeof importGlobalAccountsResponseSchema>;
+
+/**
  * `GET /api/v1/workspace/agent-profiles` — every account, discovered defaults first.
  *
  * `editable` is false in hosted mode (`XEZ_REMOTE`), where the whole family is refused: defining
@@ -187,6 +246,10 @@ export const agentProfilesResponseSchema = z.object({
    *  ADVISORY: run resolution still falls back to the discovered account for an unknown id, which
    *  is why this is reported rather than enforced. */
   problems: z.array(agentAccountProblemSchema).optional(),
+  /** Whether this project took the machine-wide accounts, and how many it still could (#819 PR 9).
+   *  PRESENT only in single-project mode on the host; absent in the global layout and in hosted
+   *  mode. Absent is never "unknown" — a surface draws nothing for it. Never on `/api/v1/health`. */
+  globalImport: agentAccountsGlobalImportSchema.optional(),
 });
 export type AgentProfilesResponse = z.infer<typeof agentProfilesResponseSchema>;
 

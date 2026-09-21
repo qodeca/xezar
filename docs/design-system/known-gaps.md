@@ -124,6 +124,7 @@ is gone says so and keeps its line so the history reads.
 
 - **Differs**: `components/ui/card.tsx`, `scroll-area.tsx`, `select.tsx`, `separator.tsx` have zero importers.
 - **Rule**: do not use them until adopted (each entry in components.md says what to use instead).
+- **Also (#819 PR 9, 2026-09-21)**: `components/ui/tabs.tsx` joined them when the Agent accounts pane, its only user, stacked its four agents instead of tabbing them (`designs/agent-accounts-onboarding` DG-1). Kept on the same terms as the four: `components.md` still documents it, so a surface that genuinely switches panels can adopt it.
 - **Fix**: delete or adopt.
 - **Final disposition (#453 B8, 2026-09-17)**: kept, with a reason. All four still have zero importers. #453 gives adding and deleting catalogued component files to batch B1 in a single commit, so that mirror and coverage ownership stays in one place, and B1 has merged — no later batch may delete them, and B8 did not. They are harmless while the rule holds: each entry in `components.md` names what to use instead, `design-system-drift.test.ts` keeps their rows honest, and the two decisions that would close this row (adopt `Select` in settings per G-11, restyle or delete `card.tsx` per G-02) are design decisions, not cleanup. Revisit when a surface genuinely wants one of the four; deleting them is a `decisions.md` record, not a silent removal.
 

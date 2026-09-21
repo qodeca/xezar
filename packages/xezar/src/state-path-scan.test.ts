@@ -159,6 +159,15 @@ const ALLOWED: readonly Allowance[] = [
       'setup ONCE, read-only, before the project files exist and only after the person answered yes, and ' +
       'never writes there. Named in BACKWARD_COMPATIBILITY.md; every read in that module goes through this line.',
   },
+  {
+    file: 'workspace/import-global.ts',
+    code: 'const globalAccountsPath = globalStateLayout(env).accountsPath;',
+    reason:
+      'countImportableGlobalAccounts — the SECOND read of the global setup, granted by the owner ("Allow the ' +
+      'count", 2026-09-21, #819 PR 9) so the cockpit can offer "Copy {n} accounts". Read-only, a NUMBER only ' +
+      '(no id, label, provider or path leaves the function), fails to 0, project layout only. Its own ' +
+      'BACKWARD_COMPATIBILITY.md entry; kept on its own line so it cannot hide behind the first-run exception.',
+  },
 
   // ---- 2. The user's own host config: it stays on the host (BR-7, SP-2.3). -----------
   {

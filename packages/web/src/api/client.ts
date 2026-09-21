@@ -4,6 +4,7 @@ import type {
   AgentAccountStatusResponse,
   AgentProfileResponse,
   AgentProfileSelectionsResponse,
+  ImportGlobalAccountsResponse,
   AgentProfilesResponse,
   CreateAgentProfileInput,
   OpenAgentAccountFileInput,
@@ -1892,6 +1893,18 @@ export async function selectAgentProfile(
   return unwrap(
     await xez.api.v1.workspace['agent-profiles'].selection.$put({ json: input }),
     '/workspace/agent-profiles/selection',
+  )
+}
+
+/**
+ * Copy the machine-wide agent accounts into this project (#819 PR 9) — the SAME merge
+ * `xezar accounts import-global` runs. Called from a button a person clicks, never on load.
+ * Answers counts, never names.
+ */
+export async function importGlobalAccounts(): Promise<ImportGlobalAccountsResponse> {
+  return unwrap(
+    await xez.api.v1.workspace['agent-profiles']['import-global'].$post(),
+    '/workspace/agent-profiles/import-global',
   )
 }
 

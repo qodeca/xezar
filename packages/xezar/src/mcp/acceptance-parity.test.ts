@@ -18,6 +18,7 @@ import {
 import { BUNDLED_TEMPLATES_DIGEST, ONBOARDING_WORKFLOW_ID } from '../onboarding/status.ts';
 import type { RunRecord } from '../runs/store.ts';
 import { mergeWriteWorkspaceConfig } from '../workspace/config.ts';
+import { globalStateLayout, projectStateLayout, setActiveStateLayout } from '../state-layout.ts';
 import { runBridge, type ServiceTarget } from './bridge.ts';
 import { startMcpService } from './index.ts';
 import { LineFramer, encodeFrame } from './ipc.ts';
@@ -1680,6 +1681,53 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
       },
     );
 
+    parity(
+      'P-49',
+      ['A-09', 'A-08', 'A-05'],
+      ['I-152'],
+      'the leader copies the machine-wide accounts through the cockpit’s own route, the accounts pane sees the copy, and both doors refuse it the same way where there is nothing to import into',
+      async () => {
+        const w = world();
+        const globalAccounts = globalStateLayout().accountsPath;
+        mkdirSync(join(globalAccounts, '..'), { recursive: true });
+        writeFileSync(globalAccounts, JSON.stringify({
+          accounts: [{ id: 'parity-work', provider: 'claude', configDir: '~/.claude-parity-work', label: 'someone@example.com' }],
+        }));
+        try {
+          // ---- the global layout: nothing to import into, the same 409 at both doors ------------
+          const refusedUi = await ui(w, '/api/v1/workspace/agent-profiles/import-global', 'POST');
+          const refused = await w.observe(() => w.call('a', 'project_config', { action: 'import_global_accounts', operationId: op() }));
+          expect(refused.dispatched).toEqual(['POST /api/v1/workspace/agent-profiles/import-global']);
+          expect(refusedUi.status).toBe(409);
+          expect(refused.response.isError).toBe(true);
+          expect(resultText(refused.response)).toContain(refusedUi.body.error as string);
+
+          // ---- single-project mode: the leader's call is the CLI's merge ------------------------
+          setActiveStateLayout(projectStateLayout(w.a.root));
+          const before = (await ui(w, '/api/v1/workspace/agent-profiles')).body;
+          expect(before.globalImport).toEqual({ state: 'unknown', importable: 1 });
+          expect(ok(await w.call('a', 'project_config', { action: 'get_account' })).result.globalImport).toEqual(before.globalImport);
+          const copied = await w.observe(() =>
+            w.call('a', 'project_config', { action: 'import_global_accounts', operationId: op() }),
+          );
+          // Through the route and nothing else — the route the cockpit's button posts.
+          expect(copied.dispatched).toEqual(['POST /api/v1/workspace/agent-profiles/import-global']);
+          expect(ok(copied.response).result).toEqual({ added: 1, kept: 0, globalImport: { state: 'done', importable: 0 } });
+          // Counts only: no id, label or folder of the machine-wide file comes back to the leader.
+          const surface = JSON.stringify({ response: copied.response, leaderLog: copied.leaderLog, journalA: copied.journal.a });
+          expect(surface).not.toMatch(/parity-work|someone@example|claude-parity/);
+          expect(leaked(surface, w.b.names), 'nothing of B').toEqual([]);
+          // The person's pane sees the copied row and the new state.
+          const after = (await ui(w, '/api/v1/workspace/agent-profiles')).body;
+          expect(after.profiles.map((row: { id: string }) => row.id)).toContain('parity-work');
+          expect(after.globalImport).toEqual({ state: 'done', importable: 0 });
+        } finally {
+          setActiveStateLayout(null);
+          rmSync(globalAccounts, { force: true });
+        }
+      },
+    );
+
     parity('P-44', ['A-09', 'A-08', 'A-05'], ['I-143', 'I-144', 'I-145', 'I-146'], 'the leader reads this project’s setup state, dispatches the bundled setup task and records the offer, and the cockpit sees the same thing', async () => {
       const w = world();
       const stateFile = join(w.a.root, '.local/xezar/onboarding-state.json');
@@ -2401,17 +2449,18 @@ describe('A-05 — the coverage matrix against the closed inventory', () => {
     if (blockedCases.length > 0) console.info(`[#116] blocked parity cases (not passing): ${blockedCases.join(', ')}`);
   });
 
-  it('the inventory is the closed 151-record one, with 113 covered records', () => {
+  it('the inventory is the closed 152-record one, with 114 covered records', () => {
     const inventory = readInventory();
-    expect(inventory.size).toBe(151);
+    expect(inventory.size).toBe(152);
     // 96 until #677 B1 moved the five workspace-settings rows (I-117 … I-121) from `global`, 101
     // until B2 moved the two workspace folder paths (I-127) and 102 until B3 moved the three
     // shared-preference rows (I-024, I-092, I-132), 105 until B4 moved the provider switch
     // (I-115) and 106 until B5 moved the accounts (I-122, I-123, I-124), all under the same
     // owner rule.
     // 109 until #467 PR 5 added I-148 … I-151, the instance mode and its three presentation
-    // siblings in Settings → Terminal, covered by the same `get_limits` + `set_workspace_config` pair.
-    expect([...inventory.values()].filter((s) => s === 'covered')).toHaveLength(113);
+    // siblings in Settings → Terminal, covered by the same `get_limits` + `set_workspace_config` pair,
+    // and 113 until #819 PR 9 added I-152, the copy of the machine-wide accounts (P-49).
+    expect([...inventory.values()].filter((s) => s === 'covered')).toHaveLength(114);
   });
 
   it('every covered record maps to at least one case, and every case names inventory records', () => {
