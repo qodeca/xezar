@@ -186,9 +186,11 @@ describe('deriveProjectCapabilities (U-M06)', () => {
 
   it('names the project switch first only when the project key holds the lock (#809 NB-2)', () => {
     const list = deriveProjectCapabilities({ health: FULL, modelsLocked: true, projectModelsLocked: true })
+    // #809 NB-8: the environment or the workspace config may hold as well, and the cockpit cannot
+    // tell, so the row says turning the switch off lifts the project lock only.
     expect(byId(list, 'model_selection')).toMatchObject({
       status: 'read-only',
-      next: 'A person can turn off Lock models in this project’s Agents settings, or a leader can with project_config set_config.',
+      next: 'A person can turn off Lock models in this project’s Agents settings, or a leader can with project_config set_config — that lifts the project lock only; if XEZ_AGENT_MODELS_LOCKED or the workspace config file also locks models, they stay locked.',
     })
   })
 

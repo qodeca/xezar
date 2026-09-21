@@ -53,11 +53,11 @@ const SYSTEM_PROMPT_MAX = 20_000
  *  mirror the route so an invalid draft is a disabled Save, not a 400 round-trip. */
 const SKILLS_REPOS_MAX = 32
 
-/** One source per line; the default `main` ref is left implicit so the common case reads as
- *  the bare `owner/name` a user would type. */
 /** The Lock models switch's third-state hint, which the switch names in `aria-describedby`. */
 const MODELS_LOCKED_ELSEWHERE_ID = 'agents-models-locked-elsewhere'
 
+/** One source per line; the default `main` ref is left implicit so the common case reads as
+ *  the bare `owner/name` a user would type. */
 function formatSkillsRepos(sources: { repo: string; ref: string }[]): string {
   return sources.map((source) => (source.ref === 'main' ? source.repo : `${source.repo}@${source.ref}`)).join('\n')
 }

@@ -185,9 +185,11 @@ export function deriveProjectCapabilities({ health, modelsLocked, projectModelsL
           status: 'read-only',
           reason: 'Models are locked: each coding agent uses the model from its own settings.',
           // #809 NB-2: only the project's own key is liftable here, so the first instruction
-          // depends on whether that key is what holds the lock.
+          // depends on whether that key is what holds the lock. NB-8: with the project key on,
+          // the cockpit cannot tell whether the environment or the workspace config ALSO holds,
+          // so the sentence says turning the switch off lifts the project lock only.
           next: projectModelsLocked
-            ? 'A person can turn off Lock models in this project’s Agents settings, or a leader can with project_config set_config.'
+            ? 'A person can turn off Lock models in this project’s Agents settings, or a leader can with project_config set_config — that lifts the project lock only; if XEZ_AGENT_MODELS_LOCKED or the workspace config file also locks models, they stay locked.'
             : 'Only a person can lift it — by restarting xezar without XEZ_AGENT_MODELS_LOCKED, or by removing modelsLocked from the workspace config file.',
         }
       : available('model_selection', 'Choose a task model'),

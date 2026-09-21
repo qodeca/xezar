@@ -166,6 +166,11 @@ Form dialogs use a plain phrase, no question mark: "Commit changes", "Add agent 
   remain, in `routes/new-task.tsx` and `routes/github/hand-to-agent.tsx` (G-15).
 - "Filter" for narrowing a local list ("Filter skills…", "Filter labels…"); "Search" for a search box
   ("Search tasks…", "Search every project…").
+- A switch whose setting is off while another source still holds it says so in its state text and
+  names where each source is lifted: "Off — still locked elsewhere", with the hint "If xezar was
+  started with XEZ_AGENT_MODELS_LOCKED=1, restart it without that variable to unlock. If the
+  workspace config file — ~/.xezar/config.json, or .xezar/workspace.json in single-project mode —
+  sets modelsLocked, remove that key from it." (`routes/settings/agents-section.tsx`, #809).
 
 ## 11. Tooltips and accessible names
 
@@ -198,6 +203,9 @@ Form dialogs use a plain phrase, no question mark: "Commit changes", "Add agent 
   (#771). When part of it failed, the toast is the partial: "Refreshed 1 of 2 team skills sources
   — {repo}: {the server's reason}", `tone: 'danger'` — rounding a partial to either side is what
   made Skills → Refresh report success for a fetch that never ran.
+- Turning a setting off reports what still holds: "Project lock removed — models stay locked by the
+  environment or the workspace config" when another lock remains, "Models unlocked for this
+  project" when none does (`routes/settings/agents-section.tsx`, #809).
 - Copying: "Command copied", "Worktree path copied", "No terminal found — command copied". When the
   clipboard refuses, the toast is the payload itself: "Run manually: {command}", "Path: {path}".
 - Browser notification body: "Task needs you", "Task needs review", "Task failed"; title is the run title.
