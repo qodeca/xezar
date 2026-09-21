@@ -4,6 +4,7 @@ import { stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { parsePortValue, PORT_MAX, PORT_MIN } from '../cli-settings.ts';
 import { workspaceConfigPath } from '../paths.ts';
+import { npxCommand } from '../own-package.ts';
 import { loadWorkspaceConfig, mergeWriteWorkspaceConfig } from './config.ts';
 import {
   listProjects,
@@ -151,7 +152,7 @@ async function listCommand(
       : await listProjects();
   if (projects.length === 0) {
     io.log('\n  no projects registered yet');
-    io.log('  start the cockpit in a repo (npx xezar) or add one: xezar projects add <dir>\n');
+    io.log(`  start the cockpit in a repo (${npxCommand()}) or add one: xezar projects add <dir>\n`);
     return 0;
   }
   const idWidth = Math.max(...projects.map((p) => p.id.length));

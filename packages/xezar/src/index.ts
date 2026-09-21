@@ -77,10 +77,30 @@ import {
   resolveStateLayout,
   setActiveStateLayout,
   SingleProjectStateError,
+  type StateLayout,
   stateLayoutBootLine,
 } from './state-layout.ts';
 import { createProjectStateFiles } from './workspace/config.ts';
-import { askInTerminal, firstRunImportLine, runFirstRunImport } from './workspace/import-global.ts';
+import { npxCommand, readOwnName } from './own-package.ts';
+import {
+  accountImportLines,
+  askInTerminal,
+  firstRunImportLine,
+  globalImportStateOf,
+  importGlobalAccounts,
+  IMPORT_FLAG_CONFLICT,
+  IMPORT_IN_GLOBAL_LAYOUT_LINE,
+  projectHasAccounts,
+  repeatedImportLine,
+  resolveImportDecision,
+  runFirstRunImport,
+  skippedDefaultLines,
+} from './workspace/import-global.ts';
+import {
+  readGlobalImportState,
+  recordGlobalImportState,
+  type RecordedGlobalImportState,
+} from './workspace/project-machine-state.ts';
 
 const HELP =`xezar — local cockpit for AI agent tasks in any project folder
 
@@ -91,6 +111,11 @@ Usage:
   xezar projects            list the projects this cockpit serves
                             (also: projects add [<dir>] · projects remove <id>
                              · projects port <id> [<port>])
+  xezar accounts import-global
+                            copy your global agent accounts into this project's
+                            own setup (never overwrites one it already has).
+                            Each account's label and config folder are copied
+                            as they are, into a file the project may commit
   xezar mcp                 MCP bridge for a coding agent — the agent starts it
                             (stdio), in a project whose cockpit is running
   xezar lease gates -- <cmd>
@@ -136,6 +161,15 @@ Options:
                               That first run asks once, in a terminal, whether to
                               copy your global setup in (never the project list).
                               A linked git worktree is never a project root.
+      --import-global         answer that question with yes, without being asked —
+                              so a script, a CI job or an IDE task can import too.
+                              Each account's label and config folder are copied
+                              as they are, into a file the project may commit,
+                              so do not pass it from a shared bootstrap.
+      --no-import-global      answer it with no. Giving both refuses the launch;
+                              giving neither keeps the question. After the first
+                              run either flag only points at the command:
+                              \`xezar accounts import-global\`.
       --global-layout         resolve the GLOBAL layout for this launch, even in a
                               folder that carries .xezar/workspace.json — the
                               explicit answer to "which layout", and the
@@ -206,6 +240,12 @@ async function main(): Promise<void> {
       // this entry is only what keeps `xez --single-project` from being an
       // unknown option.
       'single-project': { type: 'boolean', default: false },
+      // The two answers to the first-run import question (#819 item 1a), registered globally for
+      // the same `parseArgs`-is-strict reason as the flags around them. Node has no notion of a
+      // negated boolean, so `--no-import-global` is its OWN option rather than the negation of the
+      // one above — which is also what lets both being given be refused instead of last-wins.
+      'import-global': { type: 'boolean', default: false },
+      'no-import-global': { type: 'boolean', default: false },
       // The same arrangement for the flag that answers "global" (#657). The
       // value is read from argv by `resolveStateLayout`, which owns the
       // detection rule and stays a pure function of `(cwd, argv, env)`; this
@@ -232,6 +272,19 @@ async function main(): Promise<void> {
   // works outside any git repository and never touches ~/.xezar.
   if (values.version) {
     console.log(readOwnVersion());
+    return;
+  }
+
+  // The import answer is resolved before anything else is read or written, for the same reason
+  // the settings below are: a launch that says both "import" and "do not import" is a typo, and a
+  // typo must touch nothing — not a state file, not the global home it names.
+  const importDecision = resolveImportDecision({
+    import: values['import-global'],
+    skip: values['no-import-global'],
+  });
+  if (importDecision === 'conflict') {
+    console.error(`error  ${IMPORT_FLAG_CONFLICT}`);
+    process.exitCode = 1;
     return;
   }
 
@@ -295,6 +348,13 @@ async function main(): Promise<void> {
   // stderr, which is where a wait notice belongs.
   const modeLine = stateLayoutBootLine(stateLayout);
   if (modeLine !== null && command !== 'mcp' && command !== 'lease') console.log(modeLine);
+  // What `init`'s closing lines need to know about this same launch (#825): the accounts line
+  // exists to tell a person their agent accounts were NOT brought along, so a run that just
+  // copied them — the prompt answered yes, or `--import-global` — must not print it and send
+  // them to a command that already ran. The predicate is the copied FILE, not the outcome kind:
+  // a global setup with no accounts file, or a project that already carried one, imported no
+  // accounts and the line is still the truth there.
+  let accountsImported = false;
   if (stateLayout.mode === 'project') {
     // The first-run ask (#600 FR-4.1, SP-5.1/5.2): a folder with no state yet
     // is asked, once, in the terminal, whether to copy the global setup in —
@@ -305,11 +365,51 @@ async function main(): Promise<void> {
     // run, whose stdin is not a terminal, and a question there would hang the run rather than
     // being answered. Neither command writes project state of its own, so importing nothing
     // costs nothing.
+    //
+    // `accounts` is skipped entirely: the command IS the import, so a prompt in front of it would
+    // ask a question the person already answered by typing it.
     const silent = command === 'mcp' || command === 'lease';
-    const outcome = await runFirstRunImport(stateLayout, silent ? async () => null : askInTerminal);
-    const importLine = silent ? null : firstRunImportLine(outcome, stateLayout);
-    if (importLine !== null) console.log(importLine);
+    if (command !== 'accounts') {
+      // A flag (#819 item 1a) is the person's own answer and replaces the question, in every
+      // command: `runFirstRunImport` never calls the ask, so stdin is not read even here.
+      const outcome = await runFirstRunImport(
+        stateLayout,
+        silent ? async () => null : askInTerminal,
+        process.env,
+        importDecision,
+      );
+      // A bootstrap that starts the engine may pass `--import-global` on every start, so a folder
+      // that is already set up says nothing at all once there is nothing left to import: no
+      // prompt, no second copy, no error, and the launch's exit code is untouched.
+      const importLine = silent
+        ? null
+        : outcome.kind === 'already-set-up'
+          ? repeatedImportLine(stateLayout, readGlobalImportState(stateLayout))
+          : firstRunImportLine(outcome, stateLayout);
+      if (importLine !== null) console.log(importLine);
+      // A default the import left out is named on its own line (#824), so a program reading this
+      // output can tell "a default was skipped" from "there was nothing to skip". It is the same
+      // line the `accounts import-global` door prints, from the same helper. Like `importLine`
+      // above it is suppressed for `mcp` and `lease`, which own their stdout (#823 F7): the line is
+      // routed off a channel that is not the boot's, never deleted — the ordinary boot and the
+      // command door still print it, and a later `accounts import-global` re-derives it from the
+      // global file, so a handle skipped by a silent launch is still named when someone asks.
+      if (!silent) {
+        for (const line of skippedDefaultLines(outcome)) console.log(line);
+      }
+      // What happened is remembered per machine (#819 item 1d), so "declined", "nobody was asked"
+      // and "imported" stop being the same disk state. Best-effort by contract: a launch that
+      // cannot record a report still starts.
+      await rememberGlobalImport(globalImportStateOf(outcome), stateLayout);
+      accountsImported =
+        outcome.kind === 'imported' &&
+        outcome.files.some((file) => file.to === stateLayout.accountsPath && file.outcome === 'copied');
+    }
     createProjectStateFiles(stateLayout);
+  } else if (importDecision !== 'ask' && command !== 'mcp' && command !== 'lease') {
+    // A flag in the global layout: there is no project file to import INTO, and the global setup
+    // is already what this launch runs on. One line, and the launch carries on.
+    console.log(IMPORT_IN_GLOBAL_LAYOUT_LINE);
   }
 
   switch (command) {
@@ -327,7 +427,7 @@ async function main(): Promise<void> {
       );
       return;
     case 'init': {
-      initCommand(repoRoot);
+      initCommand(repoRoot, accountsImported);
       const audit = cliAudit('init', repoRoot);
       await audit.applied({ resource: projectResource(await audit.scope()) });
       return;
@@ -356,6 +456,10 @@ async function main(): Promise<void> {
       return;
     case 'lease': {
       process.exitCode = await leaseCommand(positionals[1], process.argv.slice(2), values['status-file']);
+      return;
+    }
+    case 'accounts': {
+      process.exitCode = await accountsCommand(positionals[1], stateLayout);
       return;
     }
     case 'mcp': {
@@ -412,6 +516,58 @@ async function main(): Promise<void> {
       console.error(`unknown command: ${command}\n`);
       console.log(HELP);
       process.exitCode = 1;
+  }
+}
+
+// ---- accounts ----------------------------------------------------------------
+
+/**
+ * `xezar accounts import-global` (#819 item 1b) — the later door of the one-time import.
+ *
+ * A person typing this command is the consent the mode requires before the global home is read,
+ * exactly as an answered prompt is; nothing else reaches it. It merges ACCOUNTS only, never
+ * overwrites a row the project already has, and writes nothing when there is nothing to add, so
+ * running it twice is safe and running it on a shared checkout cannot replace a teammate's row.
+ *
+ * Exit 1 only where the import could not be done at all — an unknown verb, a refused symbolic
+ * link, an unreadable file. "Nothing to import" is a successful answer, not a failure.
+ */
+async function accountsCommand(verb: string | undefined, layout: StateLayout): Promise<number> {
+  if (verb !== 'import-global') {
+    console.error(`unknown accounts command: ${verb ?? '(none)'}\n`);
+    console.error('usage: xezar accounts import-global');
+    return 1;
+  }
+  const report = importGlobalAccounts(layout);
+  for (const line of accountImportLines(report, layout)) console.log(line);
+  if (report.outcome === 'refused-symlink' || report.outcome === 'unreadable') return 1;
+  // Recorded only when something was actually imported, or the project already holds accounts
+  // (#819 F4). The state names what happened, and on a folder whose global setup holds no
+  // accounts file nothing did — an `imported` here would silence `repeatedImportLine` for good,
+  // so an account created in the global setup afterwards would never be copied in. Leaving the
+  // state as it was keeps that door open.
+  if (report.changed || projectHasAccounts(layout)) {
+    await rememberGlobalImport('imported', layout);
+  }
+  return 0;
+}
+
+/**
+ * Persist what happened to the global import, and never let that report fail a launch.
+ *
+ * The same best-effort contract `recordProjectOpened` has: a read-only `.local`, a lock that
+ * cannot be taken or a folder that is gone means "this machine will not remember", which is not a
+ * reason to refuse to start or to fail a command that did its work.
+ */
+async function rememberGlobalImport(
+  state: RecordedGlobalImportState | null,
+  layout: StateLayout,
+): Promise<void> {
+  if (state === null) return;
+  try {
+    await recordGlobalImportState(state, layout);
+  } catch {
+    // a report nothing runs on is never worth a failed boot
   }
 }
 
@@ -1152,10 +1308,11 @@ async function runCommand(
     process.exitCode = final === 'done' || final === 'review' ? 0 : 1;
     return;
   }
+  const cockpit = npxCommand();
   if (final === 'review') {
-    console.log(`\n  changes ready for review on branch ${record?.branch ?? '?'} — inspect them in the cockpit: npx xezar`);
+    console.log(`\n  changes ready for review on branch ${record?.branch ?? '?'} — inspect them in the cockpit: ${cockpit}`);
   }
-  console.log(`\nrun ${final} — ${record?.tokensUsed ?? 0} tokens — details in the cockpit: npx xezar`);
+  console.log(`\nrun ${final} — ${record?.tokensUsed ?? 0} tokens — details in the cockpit: ${cockpit}`);
   process.exitCode = final === 'done' || final === 'review' ? 0 : 1;
 }
 
@@ -1325,7 +1482,43 @@ async function serverCommand(
 
 // ---- init --------------------------------------------------------------------
 
-function initCommand(repoRoot: string): void {
+/**
+ * The lines `init` ends with (#819 item 9b).
+ *
+ * `npx <name>` names the SCOPED package, always, and that is a security property rather than
+ * tidiness: the unscoped name this line used to print is not published by us, so anyone could
+ * publish it and a person following our own closing line would run their code. The name is read
+ * from the running package rather than spelled here, so it cannot drift from what npm installs.
+ *
+ * The accounts line exists because `init` scaffolds a project and people reasonably assume it
+ * brought their agent accounts with it. It did not — accounts are copied by their own command,
+ * which is the one that asks the person's consent to read their global setup. That line's whole
+ * job is to say the import has NOT happened, so a launch that imported the accounts itself (the
+ * first-run prompt answered yes, or `--import-global`) leaves it out (#825): printing it beside
+ * the `imported N file(s)` line above would contradict the run and send the person to a command
+ * they just ran. `accountsImported` is this launch's own outcome, never a remembered one.
+ *
+ * The single-project line is only printed in a repository: outside one there is no folder for a
+ * team to carry, so the recommendation would name a choice that does not apply.
+ */
+function initClosingLines(gitRepository: boolean, accountsImported: boolean): string[] {
+  const npx = npxCommand();
+  return [
+    ...(accountsImported
+      ? []
+      : [
+          '',
+          `Agent accounts are not imported by init. To copy your global accounts into this project, run: ${npx} accounts import-global`,
+        ]),
+    '',
+    `Done. Start the cockpit with: ${npx}`,
+    ...(gitRepository
+      ? [`To keep this project's xezar setup inside the project folder: ${npx} --single-project`]
+      : []),
+  ];
+}
+
+function initCommand(repoRoot: string, accountsImported: boolean): void {
   const workflowsDir = join(projectKitDir(repoRoot), 'workflows');
   const skillsDir = join(projectKitDir(repoRoot), 'skills');
   mkdirSync(workflowsDir, { recursive: true });
@@ -1355,7 +1548,9 @@ function initCommand(repoRoot: string): void {
         : '\nVerification: no verification command is configured, so fix-and-verify ends with a review step that reports what it could not verify.',
     );
   }
-  console.log('\nDone. Start the cockpit with: npx xezar');
+  // `.git` rather than a git call: a folder someone has just `git init`-ed has no commit yet,
+  // and a repository is exactly what makes the project-owned setup worth naming.
+  for (const line of initClosingLines(existsSync(join(repoRoot, '.git')), accountsImported)) console.log(line);
 }
 
 // ---- helpers -----------------------------------------------------------------
@@ -1385,17 +1580,6 @@ function ensureDataGitignore(repoRoot: string): void {
     const content = existsSync(ignore) ? readFileSync(ignore, 'utf8') : '';
     if (!content.split('\n').includes('*')) writeFileSync(ignore, `${content}\n*\n`, 'utf8');
   } catch { /* read-only repositories retain the normal degradation policy */ }
-}
-
-/** Own package name — for the npm-registry update check (#368). */
-function readOwnName(): string {
-  try {
-    const here = dirname(fileURLToPath(import.meta.url));
-    const pkg = JSON.parse(readFileSync(join(here, '..', 'package.json'), 'utf8')) as { name?: string };
-    return pkg.name ?? '@qodeca/xezar';
-  } catch {
-    return '@qodeca/xezar';
-  }
 }
 
 function readOwnVersion(): string {

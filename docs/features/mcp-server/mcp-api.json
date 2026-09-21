@@ -1703,7 +1703,7 @@
           ]
         },
         "enabled": {
-          "description": "set_provider_enabled: true offers the provider for new tasks again, false stops it being offered. It takes effect at once, with no restart — and it is a machine-wide switch, so turning one off is a denial of service for the person’s other projects and turning one on re-enables a backend they deliberately disabled.",
+          "description": "set_provider_enabled: true offers the provider for new tasks again, false stops it being offered. It takes effect at once, with no restart — and it is a machine-wide switch, so turning one off is a denial of service for the person’s other projects and turning one on re-enables a backend they deliberately disabled. provider and enabled are top-level arguments from xezar 0.17.0 on; xezar 0.16.0 refused set_provider_enabled outright and had neither argument, so it answered them as unrecognized keys.",
           "type": "boolean"
         },
         "account": {
@@ -2007,7 +2007,7 @@
           "maximum": 100
         },
         "operationId": {
-          "description": "ack, attach and stop: required — a client-generated key for this call (8–128 chars). Use a new one for every call; reuse it only to repeat the same call after a lost answer. read and status: not accepted, because they change nothing you would want replayed.",
+          "description": "ack, attach and stop: required — a client-generated key for this call (8–128 chars). Use a new one for every call; reuse it only to repeat the same call after a lost answer. read and status: accepted and ignored — they change nothing you would want replayed, so no receipt is recorded and a repeat is answered afresh.",
           "type": "string",
           "minLength": 8,
           "maxLength": 128,

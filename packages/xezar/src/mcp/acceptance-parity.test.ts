@@ -1797,8 +1797,13 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
             // path happens to resolve outside the project, which a relocated agent home would defeat.
             expect(resultText(result), what).toMatch(/^Refused \(home file shared by every project\)/);
           } else if (what.startsWith('approval')) {
-            // The approval key itself is refused as an argument the tool does not have.
-            expect(resultText(result), what).toMatch(/^Invalid arguments for project_config: .*Unrecognized key/);
+            // #819 item 6 (deliberate change): the refusal now outranks the unknown key, so the
+            // approval key gets the boundary refusal rather than `Unrecognized key`. What this case
+            // protects is unchanged: it dispatched nothing (`dispatched` above), it never offers an
+            // approval route or echoes the key it was sent, and it still says nothing changed.
+            expect(resultText(result), what).toMatch(/^Refused \(host process\): connect_provider — /);
+            expect(resultText(result), what).not.toMatch(/approv|humanApproval|confirm|override/i);
+            expect(resultText(result), what).toMatch(/Nothing was changed\.$/);
           } else {
             expect(resultText(result), what).toMatch(/Refused \(|user-scope|home/);
             // A refusal names its boundary and never offers an approval route (F-22, A-22).

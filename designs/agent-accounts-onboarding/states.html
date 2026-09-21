@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent accounts – problems, empty, loading, error, refusal and partial states</title>
+<link rel="stylesheet" href="../../docs/design-system/cockpit.css">
+<link rel="stylesheet" href="styles.css">
+<script src="theme.js"></script>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-id" viewBox="0 0 24 24"><path d="M16 10h2"/><path d="M16 14h2"/><path d="M6.17 15a3 3 0 0 1 5.66 0"/><circle cx="9" cy="11" r="2"/><rect x="2" y="5" width="20" height="14" rx="2"/></symbol>
+</svg>
+
+<nav class="doc-bar" aria-label="Design pages">
+  <span class="brand">Agent accounts onboarding</span>
+  <a href="index.html">Overview</a>
+  <a href="pane.html">The pane</a>
+  <a href="import.html">Import states</a>
+  <a href="states.html" aria-current="page">Problems and states</a>
+  <a href="phone.html">Phone</a>
+  <span class="spacer"></span>
+  <button class="theme-toggle" type="button" data-theme-toggle>Light / dark</button>
+</nav>
+
+<div class="doc">
+  <h1>Problems and the other states</h1>
+  <p class="lead">A problem is a saved choice that names an account the list does not have. Nothing is broken – a task still runs, with the built-in login – so the pane shows it in the pending tone with words, never the danger tone, and puts the fix beside it.</p>
+
+  <h2 id="problems">1. Where a problem appears</h2>
+  <p>Twice, on purpose. <b>Once at the top of the pane</b> as one line, because the agents are stacked and the affected one may be three screens down on a phone. <b>Once inside that agent’s group</b>, directly above its account list, with the fix. It cannot sit “next to its row”: the account it names has no row – that is the problem – and the row that IS in use instead is the built-in login, whose own “In use” marker is correct.</p>
+
+  <div class="state-stack">
+    <div>
+      <p class="frame-label">1a · where = defaults (single-project mode)</p>
+      <div class="frame pane-frame">
+        <div class="problem-block" data-where="defaults">
+          <span class="what"><span class="dot pending" aria-hidden="true"></span><span>The project default for Claude Code names <code>client-a</code>, which is not in this list. Tasks use the built-in login instead.</span></span>
+          <span class="fix"><b>Fix:</b> choose an account under Defaults for this project, or use the built-in login.</span>
+          <div><button class="btn" type="button">Use the built-in login</button></div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <p class="frame-label">1b · where = selection (single-project mode)</p>
+      <div class="frame pane-frame">
+        <div class="problem-block" data-where="selection">
+          <span class="what"><span class="dot pending" aria-hidden="true"></span><span>This project’s own choice for Codex names <code>work</code>, which is not in this list. Tasks use the built-in login instead.</span></span>
+          <span class="fix"><b>Fix:</b> choose an account in this project’s <a class="link" href="#">Agents settings</a>, or use the built-in login.</span>
+          <div><button class="btn" type="button">Use the built-in login</button></div>
+        </div>
+      </div>
+      <p class="note"><strong>Why “Use the built-in login” is a button.</strong> It is the one fix that is always valid and it is exactly what tasks already do, so pressing it changes no run – it only makes the saved choice say what happens. It goes through the existing selection route (<code>profileId: null</code> for the built-in login), which already refuses an unknown id. Choosing another account stays where it lives today: the Defaults card for 1a, the project’s Agents settings for 1b.</p>
+    </div>
+
+    <div>
+      <p class="frame-label">1c · the handle looks like an e-mail address – the name is left out</p>
+      <div class="frame pane-frame">
+        <div class="problem-block" data-where="defaults">
+          <span class="what"><span class="dot pending" aria-hidden="true"></span><span>The project default for Claude Code names an account that is not in this list. Tasks use the built-in login instead.</span></span>
+          <span class="fix"><b>Fix:</b> choose an account under Defaults for this project, or use the built-in login.</span>
+          <div><button class="btn" type="button">Use the built-in login</button></div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <p class="frame-label">1d · pane-level line with two problems in two agents</p>
+      <div class="frame pane-frame">
+        <p class="problem-summary" role="status" aria-live="polite" aria-atomic="true">
+          <span class="dot pending" aria-hidden="true"></span>
+          <span>2 account choices name accounts that are not in this list. Tasks still run, with the built-in login. See <a class="link jump" href="#">Claude Code</a>, <a class="link jump" href="#">Codex</a>.</span>
+        </p>
+      </div>
+    </div>
+
+    <div>
+      <p class="frame-label">1e · after the fix – the line goes, a toast confirms</p>
+      <div class="frame pad row">
+        <div class="toast" role="status">Claude Code now uses the built-in login</div>
+      </div>
+      <p class="note"><strong>Announced once.</strong> The pane-level line is a polite live region, so the drop from 2 to 1 is read; when the last problem is fixed the line is removed and the toast carries the news. Its first render is not announced – a page load is not a change.</p>
+    </div>
+  </div>
+
+  <h2 id="identity">2. A label that looks like an e-mail address</h2>
+  <p>The collapsed row never prints it. The pane already treats who an account is signed in as as opt-in (“Show details” fetches identity only when pressed); a label someone typed as their address is the same fact by another road, and in single-project mode it sits in a committed file. The row reads “Name hidden”, keeps the folder (the folder is the account), and says how to see or change it. Show details reveals the stored label and offers Rename, as today. The same test decides a problem’s handle (1c). The test is the engine’s own <code>looksLikeIdentity</code>; the cockpit must not grow a second one that disagrees.</p>
+  <div class="frame pane-frame">
+    <ul class="acct-rows">
+      <li class="acct-row" data-label-hidden="true">
+        <div class="who">
+          <div class="name-line"><span class="name hidden-name">Name hidden</span></div>
+          <p class="path">~/.claude-client</p>
+          <p class="sub">The name looks like an e-mail address, so it is not shown here. Show details to see it or rename it.</p>
+          <div class="status"><span class="dot success" aria-hidden="true"></span><span>Connected</span></div>
+        </div>
+        <div class="actions">
+          <button class="btn ghost" type="button">Check again</button>
+          <button class="btn ghost" type="button" aria-expanded="false">Show details</button>
+        </div>
+      </li>
+    </ul>
+  </div>
+  <p class="note"><strong>Also never shown:</strong> an address in the Defaults picker row (it reads “Claude Code · Name hidden”), in a toast (it reads “Account removed”), in the Remove confirm title (“Remove this account?”) or in a problem sentence. The folder path is shown, as today: it is this person’s own machine and the only way to tell two hidden names apart.</p>
+
+  <h2 id="empty">3. An agent with no accounts at all</h2>
+  <p>An inline line inside the list frame, not a <code>CenteredState</code>: the page has its heading and three other agents, and a 72 px tile per empty agent would push them down for no information.</p>
+  <div class="state-stack">
+    <div>
+      <p class="frame-label">3a · not installed</p>
+      <div class="frame pane-frame">
+        <section class="tool-group">
+          <div class="tool-head"><h3>pi</h3><span class="facts">Not installed · no accounts</span></div>
+          <div class="acct-rows"><p class="tool-empty"><b>No pi accounts yet</b>pi is not installed on this machine. Install it — <code>https://github.com/badlogic/pi-mono</code> — and the login it finds appears here.</p></div>
+        </section>
+      </div>
+    </div>
+    <div>
+      <p class="frame-label">3b · installed, but the listing has no row for it</p>
+      <div class="frame pane-frame">
+        <section class="tool-group">
+          <div class="tool-head"><h3>Codex</h3><span class="facts">Installed · no accounts</span><span class="end"><button class="btn" type="button">Add account</button></span></div>
+          <div class="acct-rows"><p class="tool-empty"><b>No Codex accounts yet</b>xezar lists the login Codex finds on this machine and any account you add. Use Add account to add one.</p></div>
+        </section>
+      </div>
+      <p class="note"><strong>Defensive.</strong> The built-in login is listed whenever the engine can place the agent’s folder, so 3b should be rare. It still gets its own words: an empty frame would read as “the import lost everything”.</p>
+    </div>
+  </div>
+
+  <h2 id="loading">4. Loading, error and refusal</h2>
+  <div class="state-stack">
+    <div>
+      <p class="frame-label">4a · loading the pane (unchanged)</p>
+      <div class="frame pane-frame"><p class="loading-reserve">Loading agent accounts…</p></div>
+    </div>
+    <div>
+      <p class="frame-label">4b · the listing failed (unchanged: CenteredState tone="danger", the server’s words)</p>
+      <div class="frame">
+        <div class="centered-state danger">
+          <div class="tile"><svg class="icon" aria-hidden="true"><use href="#i-id"/></svg></div>
+          <h2>Could not load agent accounts</h2>
+          <p>connect ECONNREFUSED 127.0.0.1:5173</p>
+        </div>
+      </div>
+    </div>
+    <div>
+      <p class="frame-label">4c · hosted mode – refusal (unchanged sentence; no import, no fix, no CLI line)</p>
+      <div class="frame pane-frame">
+        <div class="acct-pane">
+          <div>
+            <h2 class="pane-title">Agent accounts</h2>
+            <p class="pane-lead" data-slot="accounts-hosted">Agent accounts are managed from the machine that owns the checkout — this cockpit runs in hosted mode.</p>
+          </div>
+        </div>
+      </div>
+      <p class="note"><strong>Absent, not disabled.</strong> Hosted mode already replaces the whole pane with this one sentence, which names who can act. The import block, the problem fixes and the CLI hint are all local-machine actions, so none of them renders – a greyed “Copy 3 accounts” would ask a question nobody on this page can answer. The server serves <code>problems: []</code> in hosted mode and the import route answers 409.</p>
+    </div>
+  </div>
+
+  <h2 id="partial">5. Stale and partial data</h2>
+  <div class="table-scroll">
+    <table class="decision-table">
+      <thead><tr><th>Situation</th><th>What the pane shows</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr><td><code>globalImport</code> absent</td><td>No import block at all.</td><td>An older engine that never sent it. Absence is not “unknown”; drawing the offer would invent a state.</td></tr>
+        <tr><td><code>problems</code> absent</td><td>No summary line, no problem blocks, no “to fix” counts.</td><td>Never a fabricated zero or “all good”.</td></tr>
+        <tr><td>An account’s login state not in yet</td><td>“Checking…” with a pulsing neutral dot (unchanged).</td><td>A probe that has not answered is not a result.</td></tr>
+        <tr><td>Accounts copied from a terminal while the page is open</td><td>The old count until the next refetch (window focus or the success of any accounts mutation); pressing Copy then answers “Nothing new to copy — …” and the block updates.</td><td>The copy is idempotent, so a stale button cannot double anything.</td></tr>
+        <tr><td>The account named by a problem is added while the page is open</td><td>The problem disappears on refetch; the new row shows “In use”.</td><td>The server recomputes <code>problems</code>; the cockpit never computes them itself.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 id="global">6. The global layout</h2>
+  <p>Global mode (no single-project root) keeps everything above with three differences: no import block and no file note; the marker reads <b>“Default”</b> instead of “In use”, because a machine default is what new projects get, not what every project runs; and the problem sentences name “The default for new projects” and point at “Defaults for new projects”. See open decision OD-3 and OD-4 in the README.</p>
+  <div class="frame pane-frame">
+    <ul class="acct-rows">
+      <li class="acct-row">
+        <div class="who">
+          <div class="name-line"><span class="name">Work</span><span class="badge outline"><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg>Default</span></div>
+          <p class="path">~/.claude-work</p>
+          <div class="status"><span class="dot success" aria-hidden="true"></span><span>Connected</span></div>
+        </div>
+        <div class="actions"><button class="btn ghost" type="button">Check again</button><button class="btn ghost" type="button" aria-expanded="false">Show details</button></div>
+      </li>
+    </ul>
+  </div>
+</div>
+</body>
+</html>
