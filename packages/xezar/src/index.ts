@@ -13,6 +13,7 @@ import {
   providerAuthChecksDisabled,
 } from './core/provider-auth.ts';
 import { applyProviderEnablement } from './core/provider-availability.ts';
+import { runUnderGateLease } from './core/gate-lease.ts';
 import { pruneOrphans } from './git-worktree.ts';
 import { getRepoInfo } from './server/git.ts';
 import { DEFAULT_WORKTREE_RETENTION, loadConfig, resolveWorktreeRetention } from './config.ts';
@@ -92,6 +93,13 @@ Usage:
                              · projects port <id> [<port>])
   xezar mcp                 MCP bridge for a coding agent — the agent starts it
                             (stdio), in a project whose cockpit is running
+  xezar lease gates -- <cmd>
+                            run <cmd> holding one of this machine's gate slots,
+                            so several checkouts do not run their full test
+                            suites at once. How many run together is
+                            resources.gateSlots (default 1). Bounded: after 20
+                            minutes of waiting, or if the slot folder cannot be
+                            written, it says so and runs <cmd> anyway.
   xezar server-install      interactive wizard to host xezar on a server
   xezar server-deploy       redeploy a new version (reload the service) + verify
   xezar server-uninstall    reverse a server-install
@@ -176,6 +184,11 @@ async function main(): Promise<void> {
       // value; nothing reads it yet, and the help text lands with the behaviour in PR 2.
       instance: { type: 'string' },
       repo: { type: 'string' },
+      // `xezar lease gates --status-file <path>` (#672). Registered globally for the same reason
+      // `instance` is: `parseArgs` is strict, so a flag only one subcommand uses must still be
+      // declared here or every other subcommand dies on it as an unknown option. Only
+      // `leaseCommand` reads it.
+      'status-file': { type: 'string' },
       workflow: { type: 'string' },
       model: { type: 'string' },
       'no-open': { type: 'boolean', default: false },
@@ -277,16 +290,24 @@ async function main(): Promise<void> {
   // The one boot line naming the mode and the state folder (FR-9.1). Not for
   // `mcp`: that command's stdout carries JSON-RPC frames for the agent, and a
   // human-readable line there is a protocol error, not a banner.
+  // Not for `lease` either: its stdout is the wrapped command's stdout, and a banner in the
+  // middle of a gate log is noise at best and a parse failure at worst. Its own lines go to
+  // stderr, which is where a wait notice belongs.
   const modeLine = stateLayoutBootLine(stateLayout);
-  if (modeLine !== null && command !== 'mcp') console.log(modeLine);
+  if (modeLine !== null && command !== 'mcp' && command !== 'lease') console.log(modeLine);
   if (stateLayout.mode === 'project') {
     // The first-run ask (#600 FR-4.1, SP-5.1/5.2): a folder with no state yet
     // is asked, once, in the terminal, whether to copy the global setup in —
     // BEFORE the four files exist, so a decline writes nothing and a folder
     // that already holds `workspace.json` is never asked. `mcp` has nobody to
     // ask (its stdio is the protocol), so it imports nothing and says nothing.
-    const outcome = await runFirstRunImport(stateLayout, command === 'mcp' ? async () => null : askInTerminal);
-    const importLine = command === 'mcp' ? null : firstRunImportLine(outcome, stateLayout);
+    // `lease` joins `mcp` in having nobody to ask: it is spawned by a check script inside a gate
+    // run, whose stdin is not a terminal, and a question there would hang the run rather than
+    // being answered. Neither command writes project state of its own, so importing nothing
+    // costs nothing.
+    const silent = command === 'mcp' || command === 'lease';
+    const outcome = await runFirstRunImport(stateLayout, silent ? async () => null : askInTerminal);
+    const importLine = silent ? null : firstRunImportLine(outcome, stateLayout);
     if (importLine !== null) console.log(importLine);
     createProjectStateFiles(stateLayout);
   }
@@ -333,6 +354,10 @@ async function main(): Promise<void> {
         ...(projectsCommand ? { audit: cliAudit(projectsCommand, repoRoot) } : {}),
       });
       return;
+    case 'lease': {
+      process.exitCode = await leaseCommand(positionals[1], process.argv.slice(2), values['status-file']);
+      return;
+    }
     case 'mcp': {
       // The MCP bridge (#86, D-01): stdio for the client, the project's socket for
       // the running service. Starts no server, opens no port, registers nothing —
@@ -416,6 +441,79 @@ async function initWorkspace(repoRoot: string): Promise<string | undefined> {
     console.warn(`[xez] workspace registry unavailable (${message}) — continuing without it`);
   }
   return undefined;
+}
+
+// ---- lease -----------------------------------------------------------------
+
+/**
+ * `xezar lease gates -- <command>` — run `<command>` holding one of this machine's gate slots
+ * (#672 G2, option (a)).
+ *
+ * WHY A VERB rather than a lock re-implemented in the kit's bash, or a number passed down as an
+ * env var. A verb reads `resources.gateSlots` through the same resolver everything else does, so
+ * there is nothing to configure, nothing to pass and no second copy of a lock algorithm whose
+ * "never two holders" guard cost a measured 27 double acquisitions before it existed. An env var
+ * would also have missed the case #672 names: roughly half the gate attempts are an agent running
+ * the gates inside its own step, where the engine is not the parent that would set it.
+ *
+ * The command tail is taken from `process.argv` rather than from `positionals`, because
+ * `parseArgs` folds everything after `--` into positionals and the boundary is exactly what this
+ * needs. `<command>` is spawned WITHOUT a shell and with its argv passed through verbatim.
+ *
+ * NO `cliAudit`, and that is a decision rather than an omission. The audit trail records what
+ * xezar DID to a project or a workspace; this verb takes and gives back a lock file in a cache
+ * directory and then runs a command the caller had already decided to run. Auditing it would
+ * record the caller's action as xezar's, and every gate run would write a row saying nothing the
+ * gate attempt record does not already say — including `leaseWaitMs`, which is where the wait
+ * actually belongs.
+ */
+async function leaseCommand(
+  subject: string | undefined,
+  argv: readonly string[],
+  statusFile: string | undefined,
+): Promise<number> {
+  if (subject !== 'gates') {
+    console.error(`xezar lease: the only lease is "gates", got ${subject === undefined ? 'nothing' : `"${subject}"`}`);
+    console.error('usage: xezar lease gates -- <command> [args…]');
+    return 2;
+  }
+  const separator = argv.indexOf('--');
+  const command = separator === -1 ? [] : argv.slice(separator + 1);
+  if (command.length === 0) {
+    console.error('xezar lease: nothing to run. Put the command after `--`.');
+    console.error('usage: xezar lease gates -- <command> [args…]');
+    return 2;
+  }
+  // A config that cannot be read is not a reason to refuse: the derived default is what an
+  // install with no `~/.xezar/config.json` gets anyway, and § Zero config wants the smaller
+  // working xezar, not a failed gate run.
+  const slots = await loadWorkspaceConfig()
+    .then((config) => config.resources.gateSlots)
+    .catch(() => undefined);
+  // `--status-file` is what lets a caller that keeps the lease across its own work
+  // (`repo-gates.sh`) record `leaseWaitMs` without parsing human-readable stderr.
+  return await runUnderGateLease(command, {
+    ...(slots !== undefined ? { slots } : {}),
+    onEvent: (event) => {
+      if (statusFile === undefined) return;
+      if (event.type !== 'acquired' && event.type !== 'timeout' && event.type !== 'unavailable') return;
+      try {
+        writeFileSync(
+          statusFile,
+          `${JSON.stringify({
+            held: event.type === 'acquired',
+            outcome: event.type,
+            slot: event.type === 'acquired' ? event.slot : null,
+            slots: event.slots,
+            waitedMs: event.waitedMs,
+          })}\n`,
+        );
+      } catch {
+        // The status file is diagnostics, not the lease. A caller that cannot read one treats
+        // the wait as unknown, which is exactly what it is.
+      }
+    },
+  });
 }
 
 // ---- serve -----------------------------------------------------------------

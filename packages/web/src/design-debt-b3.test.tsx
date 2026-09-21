@@ -162,7 +162,7 @@ describe('G-22 save contracts stay mixed on purpose', () => {
       followups: null, effectiveFollowups: false, agentEnvPassthrough: null, effectiveAgentEnvPassthrough: [],
       cli: ABSENT_CLI_SETTINGS,
       composerDefaults: { autonomous: null, worktree: null, inheritedAutonomous: 'source-dependent', inheritedWorktree: true },
-      resources: { maxParallel: 2, maxMonitoringSessions: 2, monitoringWakeIntervalMinutes: null, idleTimeoutMinutes: 15, memoryLimitDefaultMb: 4096, autoResumeOnUsageLimit: true, memoryLimitMb: null, worktreeRetentionDefault: 10 },
+      resources: { maxParallel: 2, maxMonitoringSessions: 2, monitoringWakeIntervalMinutes: null, idleTimeoutMinutes: 15, memoryLimitDefaultMb: 4096, autoResumeOnUsageLimit: true, memoryLimitMb: null, worktreeRetentionDefault: 10, gateSlots: 1 },
     } as WorkspaceConfigResponse
     vi.stubGlobal('fetch', vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       const method = init?.method ?? 'GET'

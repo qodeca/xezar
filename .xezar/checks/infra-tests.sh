@@ -862,6 +862,40 @@ printf '{\n  "resources": {\n    "memoryLimitMb": null\n  }\n}\n' > "$root/.xeza
 expect_ok "an explicit null memoryLimitMb — the user's own \"no limit\" — is accepted" \
   node "$SCRIPT_DIR/catalog-check.mjs" "$root"
 
+# `gateSlots` (#672) is machine-shaped like the other two, so the mode accepts it HERE and the
+# `.xezar/config.json` rule still refuses it. Found by live QA in round 1: the key was added to
+# MACHINE_SHAPED and not to RANGES, so the very first committed workspace.json carrying it
+# destructured `undefined` and crashed the whole check with a TypeError — every other rule in this
+# file went unchecked with it. The range cases are what keep the two lists in step.
+printf '{\n  "resources": {\n    "gateSlots": 2\n  }\n}\n' > "$root/.xezar/workspace.json"
+expect_ok "a committed gateSlots in workspace.json -> resources is accepted, not a crash" \
+  node "$SCRIPT_DIR/catalog-check.mjs" "$root"
+# The output is CAPTURED before it is searched, never piped into grep: this file runs under
+# `set -o pipefail`, so `node … | grep -q` answers node's own non-zero exit even when grep matched,
+# and a case written that way reports "no crash" for every crash there is.
+out="$(node "$SCRIPT_DIR/catalog-check.mjs" "$root" 2>&1)"
+if printf '%s' "$out" | grep -qF 'TypeError'; then
+  bad "the check never crashes on a machine-shaped key" "it threw a TypeError"
+else
+  ok "the check never crashes on a machine-shaped key"
+fi
+printf '{\n  "resources": {\n    "gateSlots": 1\n  }\n}\n' > "$root/.xezar/workspace.json"
+expect_ok "the low boundary of the gateSlots range is accepted" node "$SCRIPT_DIR/catalog-check.mjs" "$root"
+printf '{\n  "resources": {\n    "gateSlots": 16\n  }\n}\n' > "$root/.xezar/workspace.json"
+expect_ok "and the high one" node "$SCRIPT_DIR/catalog-check.mjs" "$root"
+printf '{\n  "resources": {\n    "gateSlots": 17\n  }\n}\n' > "$root/.xezar/workspace.json"
+expect_fail "a committed gateSlots above the schema range is refused" \
+  "must be a whole number in 1–16" node "$SCRIPT_DIR/catalog-check.mjs" "$root"
+printf '{\n  "resources": {\n    "gateSlots": 0\n  }\n}\n' > "$root/.xezar/workspace.json"
+expect_fail "and below it too" "must be a whole number in 1–16" node "$SCRIPT_DIR/catalog-check.mjs" "$root"
+printf '{\n  "resources": {\n    "gateSlots": null\n  }\n}\n' > "$root/.xezar/workspace.json"
+expect_fail "a null gateSlots is refused — the key deliberately has no unlimited spelling" \
+  "not null" node "$SCRIPT_DIR/catalog-check.mjs" "$root"
+printf '{\n  "gateSlots": 2\n}\n' > "$root/.xezar/workspace.json"
+expect_fail "gateSlots at the top level of workspace.json is rejected like its siblings" \
+  "where nothing reads it" node "$SCRIPT_DIR/catalog-check.mjs" "$root"
+printf '{\n  "resources": {\n    "memoryLimitMb": null\n  }\n}\n' > "$root/.xezar/workspace.json"
+
 # The same fault the config.json rule catches, in the other file: a key where nothing reads it.
 printf '{\n  "memoryLimitMb": 131072\n}\n' > "$root/.xezar/workspace.json"
 expect_fail "a machine-shaped key at the top level of workspace.json is rejected" \
@@ -5717,6 +5751,473 @@ expect_fail "and that spent budget is carried forward as well" \
 # the check looks; it does not weaken what it concludes when it finds nothing.
 expect_fail "a predecessor with no COUNTERS under either root is still unknown" \
   "unknown" run_in "$wt_b" "$PR_SH" counters init --predecessor "aaaaaaaa-0000-4000-8000-00000000dead"
+
+# --- 24e. The machine-wide gate lease (#672) ----------------------------------------------------
+#
+# Several full gate runs on ONE machine do not merely go slower, they FAIL: 20 % attempt failure
+# with one concurrent run, 37 % at three, 90 % at four to five, 100 % at six or more. The lease is
+# the bound, and these cases exercise the REAL verb — `xezar lease gates -- <command>` — because
+# that is what `repo-gates.sh` calls; a bash re-implementation here would test a second copy.
+#
+# ISOLATION. The lease is machine-wide ON PURPOSE (#672 Q6): its slot files sit under the user's
+# home and do NOT move with the state layout, so two single-project folders on one machine still
+# contend. That is also exactly what makes a naive test here dangerous — it would queue behind, or
+# in front of, a REAL gate run on the developer's machine. Every case below pins `HOME` to its own
+# fixture directory, which is the same seam `os.homedir()` reads and the only one there is: there
+# is deliberately no env var for the lock path, because a new `XEZ_*` var would be a
+# `.env.example` contract change for a value nobody needs to set.
+printf '\n-- the machine-wide gate lease (#672) --\n'
+
+LEASE_TSX="$REPO_ROOT/node_modules/.bin/tsx"
+LEASE_ENTRY="$REPO_ROOT/packages/xezar/src/index.ts"
+# `tsx` opens a unix socket under TMPDIR for its own IPC and a unix socket path is capped at 104
+# bytes; a task worktree's TMPDIR is long enough to break it. Same reason as `repo-gates.sh`'s.
+LEASE_TMPDIR="${TMPDIR:-/tmp}"
+[ "${#LEASE_TMPDIR}" -gt 64 ] && LEASE_TMPDIR="/tmp"
+
+# One ceiling, shared by every wait below, so "it appeared" and "it did not appear" are judged
+# against the SAME budget. That is what keeps the negative case honest: the `gateSlots: 2` case
+# uses this budget to observe a second slot being taken, so the `gateSlots: 1` case's "nothing
+# appeared within it" is calibrated by a positive observation in this same suite on this same
+# machine rather than by a number somebody guessed. 300 × 0.1 s = 30 s, which is many times the
+# ~1–2 s the verb needs to boot and resolve.
+lease_wait_polls=300
+# Wait for a file to become non-empty. Returns non-zero when it never did.
+lease_await_file() {
+  local path="$1" polls=0
+  while [ "$polls" -lt "$lease_wait_polls" ]; do
+    [ -s "$path" ] && return 0
+    sleep 0.1
+    polls=$((polls + 1))
+  done
+  return 1
+}
+
+if [ ! -x "$LEASE_TSX" ] || [ ! -f "$LEASE_ENTRY" ]; then
+  bad "the gate lease cases can run at all" "no tsx or no CLI entry in $REPO_ROOT — dependencies are not installed"
+else
+  lease_home="$WORK/lease-home"
+  mkdir -p "$lease_home"
+
+  # -- control: the verb runs its command and reports the command's own exit code ----------------
+  lease_out="$WORK/lease-control.out"
+  HOME="$lease_home" TMPDIR="$LEASE_TMPDIR" "$LEASE_TSX" "$LEASE_ENTRY" lease gates -- \
+    bash -c 'printf "ran\n"; exit 5' > "$lease_out" 2>&1
+  lease_rc=$?
+  if [ "$lease_rc" -eq 5 ] && grep -q '^ran$' "$lease_out"; then
+    ok "the verb runs its command and returns the command's own exit code"
+  else
+    bad "the verb runs its command and returns the command's own exit code" "exit $lease_rc"
+    tail -20 "$lease_out"
+  fi
+
+  expect_fail "a lease the verb does not know is refused, and runs nothing" \
+    'the only lease is "gates"' env HOME="$lease_home" TMPDIR="$LEASE_TMPDIR" \
+    "$LEASE_TSX" "$LEASE_ENTRY" lease sandwiches -- true
+  expect_fail "a lease with no command after -- is refused" \
+    'nothing to run' env HOME="$lease_home" TMPDIR="$LEASE_TMPDIR" \
+    "$LEASE_TSX" "$LEASE_ENTRY" lease gates
+
+  # -- the shape both concurrency cases use ------------------------------------------------------
+  #
+  # Holder A takes a slot and then BLOCKS on a FIFO this shell keeps open read-write, so it holds
+  # until this shell says go and cannot be released by a timer. Runner B is started while A holds.
+  # What separates the two cases is only `gateSlots`, and the observation is B's OWN status file,
+  # which the verb writes the moment its lease resolves either way.
+  lease_race() {
+    local slots="$1" dir="$2"
+    # HOME decides where the SLOT FILES go (machine-wide, never the state layout); XEZ_HOME
+    # decides where `gateSlots` is READ from. Two different questions, deliberately pinned apart.
+    mkdir -p "$dir/home/.xezar"
+    printf '{\n  "resources": { "gateSlots": %s }\n}\n' "$slots" > "$dir/home/.xezar/config.json"
+    rm -f "$dir/hold"
+    mkfifo "$dir/hold" || return 1
+    exec 8<>"$dir/hold"
+    HOME="$dir/home" XEZ_HOME="$dir/home/.xezar" TMPDIR="$LEASE_TMPDIR" \
+      "$LEASE_TSX" "$LEASE_ENTRY" lease gates --status-file "$dir/a.json" -- \
+      bash -c 'printf "a-start\n" >> "$2"; read -r _ < "$1"; printf "a-end\n" >> "$2"' \
+      holder "$dir/hold" "$dir/order" > "$dir/a.out" 2>&1 &
+    LEASE_A_PID=$!
+    lease_await_file "$dir/a.json" || return 1
+    HOME="$dir/home" XEZ_HOME="$dir/home/.xezar" TMPDIR="$LEASE_TMPDIR" \
+      "$LEASE_TSX" "$LEASE_ENTRY" lease gates --status-file "$dir/b.json" -- \
+      bash -c 'printf "b-start\n" >> "$1"' runner "$dir/order" > "$dir/b.out" 2>&1 &
+    LEASE_B_PID=$!
+  }
+  lease_release_a() {
+    local dir="$1"
+    printf 'go\n' >&8 2>/dev/null
+    wait "$LEASE_A_PID" 2>/dev/null
+    exec 8>&- 2>/dev/null
+    rm -f "$dir/hold"
+  }
+
+  # -- gateSlots: 1 serialises two runs ----------------------------------------------------------
+  lease_one="$WORK/lease-one"
+  mkdir -p "$lease_one"
+  if lease_race 1 "$lease_one"; then
+    if lease_await_file "$lease_one/b.json"; then
+      bad "gateSlots: 1 serialises two gate runs" "the second run's lease resolved while the first still held its slot"
+      cat "$lease_one/b.json"
+    else
+      ok "gateSlots: 1 serialises two gate runs"
+    fi
+    lease_release_a "$lease_one"
+    wait "$LEASE_B_PID" 2>/dev/null
+    lease_b_rc=$?
+    # The ORDER is the part no timing can fake: `b-start` after `a-end` is only possible if the
+    # second run really waited for the first to finish.
+    if [ "$lease_b_rc" -eq 0 ] && [ "$(tr '\n' ' ' < "$lease_one/order")" = "a-start a-end b-start " ]; then
+      ok "the queued run starts only after the holder finished, and then succeeds"
+    else
+      bad "the queued run starts only after the holder finished, and then succeeds" \
+        "exit $lease_b_rc, order: $(tr '\n' ' ' < "$lease_one/order" 2>/dev/null)"
+      tail -10 "$lease_one/b.out"
+    fi
+  else
+    bad "gateSlots: 1 serialises two gate runs" "the fixture could not start both runs"
+  fi
+
+  # -- gateSlots: 2 does NOT serialise them ------------------------------------------------------
+  lease_two="$WORK/lease-two"
+  mkdir -p "$lease_two"
+  if lease_race 2 "$lease_two"; then
+    if lease_await_file "$lease_two/b.json" &&
+      node -e 'const s=JSON.parse(require("node:fs").readFileSync(process.argv[1],"utf8")); process.exit(s.held === true && s.slot === 2 && s.slots === 2 ? 0 : 1)' "$lease_two/b.json"; then
+      ok "gateSlots: 2 lets a second gate run take the SECOND slot while the first still holds slot 1"
+    else
+      bad "gateSlots: 2 lets a second gate run take the SECOND slot while the first still holds slot 1" \
+        "status: $(cat "$lease_two/b.json" 2>/dev/null)"
+      tail -10 "$lease_two/b.out"
+    fi
+    wait "$LEASE_B_PID" 2>/dev/null
+    lease_release_a "$lease_two"
+  else
+    bad "gateSlots: 2 lets a second gate run take the SECOND slot while the first still holds slot 1" \
+      "the fixture could not start both runs"
+  fi
+
+  # -- a lease that cannot be taken still runs the command, and still exits 0 --------------------
+  #
+  # § Zero config's half of this feature: a lease that cannot be taken must not turn a working
+  # gate into a failure. A read-only home is the honest way to produce that — the slot directory
+  # cannot be created, and there is no code path that "pretends" the lock worked.
+  lease_ro="$WORK/lease-readonly"
+  mkdir -p "$lease_ro/home"
+  chmod 500 "$lease_ro/home"
+  lease_ro_out="$WORK/lease-readonly.out"
+  HOME="$lease_ro/home" TMPDIR="$LEASE_TMPDIR" "$LEASE_TSX" "$LEASE_ENTRY" lease gates -- \
+    bash -c 'printf "gates ran anyway\n"' > "$lease_ro_out" 2>&1
+  lease_ro_rc=$?
+  chmod 700 "$lease_ro/home"
+  if [ "$lease_ro_rc" -eq 0 ] && grep -q 'gates ran anyway' "$lease_ro_out" &&
+    grep -q 'gate slot directory is unusable' "$lease_ro_out"; then
+    ok "a lease that cannot be taken says so loudly, runs the gates anyway and exits 0"
+  else
+    bad "a lease that cannot be taken says so loudly, runs the gates anyway and exits 0" "exit $lease_ro_rc"
+    tail -20 "$lease_ro_out"
+  fi
+
+  # -- repo-gates.sh's own take/drop, driven directly ---------------------------------------------
+  #
+  # `lib/gate-lease.sh` is what `repo-gates.sh` sources, and these cases source the SAME file. The
+  # alternative would be proving this path only by running the full canonical gate list, which is
+  # the most expensive thing this repository does and the one thing an author may not run — so the
+  # acquire/release wiring would otherwise ship proved by reading alone.
+  lease_kit="$WORK/lease-kit"
+  mkdir -p "$lease_kit/attempt" "$lease_kit/home"
+  lease_kit_out="$WORK/lease-kit.out"
+  # `TASK_CWD` is what the resolver reads, and the real checkout is the only place a xezar CLI
+  # exists; nothing here writes to it.
+  HOME="$lease_kit/home" TMPDIR="$LEASE_TMPDIR" XEZ_HOME="$lease_kit/home/.xezar" \
+    TASK_CWD="$REPO_ROOT" GATE_ATTEMPT_DIR="$lease_kit/attempt" \
+    bash -c '. "$1"; gate_lease_take; printf "WAIT=%s\n" "${GATE_LEASE_WAIT_MS:-unset}";
+             ls "$HOME/.cache/xez/gate-slots" 2>/dev/null | tr "\n" " "; printf "\n";
+             gate_lease_drop;
+             printf "AFTER=%s\n" "$(ls "$HOME/.cache/xez/gate-slots" 2>/dev/null | tr "\n" " ")"' \
+    kit-lease "$SCRIPT_DIR/lib/gate-lease.sh" > "$lease_kit_out" 2>&1
+  lease_kit_rc=$?
+  if [ "$lease_kit_rc" -eq 0 ] &&
+    grep -q 'gate lease    slot 1 of 1' "$lease_kit_out" &&
+    grep -qE '^WAIT=[0-9]+$' "$lease_kit_out" &&
+    grep -q 'gate-slot-1.lock' "$lease_kit_out" &&
+    grep -q '^AFTER=$' "$lease_kit_out"; then
+    ok "repo-gates.sh's lease takes a real slot, records the wait, and gives the slot back"
+  else
+    bad "repo-gates.sh's lease takes a real slot, records the wait, and gives the slot back" "exit $lease_kit_rc"
+    cat "$lease_kit_out"
+  fi
+
+  # -- a SIGKILLed gate script must not keep its slot ---------------------------------------------
+  #
+  # Round 1 review finding, reproduced live before the fix. `gate_lease_take` opens the FIFO
+  # read-write on fd 9 and starts the verb in the background, and a background job INHERITS the
+  # shell's descriptors — so the verb was itself a writer on the FIFO it was waiting to read. A
+  # `repo-gates.sh` that dies without running its EXIT trap (a SIGKILL, an OOM kill, a supervisor
+  # escalation) then left a holder whose `read` never reaches EOF: the verb stayed alive, its
+  # heartbeat kept stamping, and NEITHER pid liveness NOR the stale bound could reclaim the slot.
+  # Every later gate run on the machine waited the whole 20-minute bound, for good, until a person
+  # found the orphan. `9>&-` on the verb's command line closes that descriptor for the child only.
+  #
+  # The observation is the SLOT FOLDER emptying, which is the thing the next gate run reads — not
+  # the verb's exit, which is only how it happens. The budget is the same `lease_wait_polls` every
+  # other case here uses (30 s), and it is far inside one stale window (6 × 10 s), so "freed" here
+  # means freed by the holder going away rather than by the bound expiring.
+  #
+  # "Freed" is not "freed instantly", and this fixture is the fast shape of it on purpose: fd 9 is
+  # inherited by every child the gate script starts, so the holder's `read` reaches EOF only when
+  # the LAST of them ends. This holder's only child is a one-second `sleep`, so the slot comes back
+  # in about a second; a real gate script SIGKILLed with a twelve-second child would take twelve.
+  # Bounded by the children, in every case, and never needing a person.
+  lease_kill="$WORK/lease-sigkill"
+  mkdir -p "$lease_kill/attempt" "$lease_kill/home"
+  cat > "$lease_kill/hold.sh" <<'LEASE_KILL_EOF'
+#!/usr/bin/env bash
+# Take a real slot through the real kit helper, then hold it until this shell is SIGKILLed.
+set -uo pipefail
+. "$1"
+gate_lease_take
+printf 'took\n' > "$2"
+while :; do sleep 1; done
+LEASE_KILL_EOF
+  HOME="$lease_kill/home" TMPDIR="$LEASE_TMPDIR" XEZ_HOME="$lease_kill/home/.xezar" \
+    TASK_CWD="$REPO_ROOT" GATE_ATTEMPT_DIR="$lease_kill/attempt" \
+    bash "$lease_kill/hold.sh" "$SCRIPT_DIR/lib/gate-lease.sh" "$lease_kill/took" \
+    > "$lease_kill/out" 2>&1 &
+  LEASE_KILL_PID=$!
+  lease_slots="$lease_kill/home/.cache/xez/gate-slots"
+  if lease_await_file "$lease_kill/took" && [ -e "$lease_slots/gate-slot-1.lock" ]; then
+    # Saved pids, never a command-line pattern: `pkill -f` would match every peer agent on this
+    # machine that carries this skill's text. Collected BEFORE the kill, while the parent links
+    # still exist, and used only to clean up if the fix ever regresses.
+    lease_kill_kids="$(pgrep -P "$LEASE_KILL_PID" 2>/dev/null | tr '\n' ' ')"
+    for lease_kid in $lease_kill_kids; do
+      lease_kill_kids="$lease_kill_kids $(pgrep -P "$lease_kid" 2>/dev/null | tr '\n' ' ')"
+    done
+    kill -9 "$LEASE_KILL_PID" 2>/dev/null
+    wait "$LEASE_KILL_PID" 2>/dev/null
+    lease_kill_polls=0
+    while [ "$lease_kill_polls" -lt "$lease_wait_polls" ]; do
+      [ -e "$lease_slots/gate-slot-1.lock" ] || break
+      sleep 0.1
+      lease_kill_polls=$((lease_kill_polls + 1))
+    done
+    if [ -e "$lease_slots/gate-slot-1.lock" ]; then
+      bad "a SIGKILLed gate script's slot is freed without a person" \
+        "the slot file was still there after $((lease_wait_polls / 10))s"
+      ls -la "$lease_slots"
+    else
+      ok "a SIGKILLed gate script's slot is freed without a person"
+    fi
+    for lease_kid in $lease_kill_kids; do
+      kill -0 "$lease_kid" 2>/dev/null && kill -9 "$lease_kid" 2>/dev/null
+    done
+  else
+    kill -9 "$LEASE_KILL_PID" 2>/dev/null
+    bad "a SIGKILLed gate script's slot is freed without a person" "the holder never took a slot"
+    cat "$lease_kill/out" 2>/dev/null
+  fi
+
+  # -- the three fail-open branches, each driven for real (round 2 review finding 2) --------------
+  #
+  # EVERY failure of the lease runs the gates anyway (AGENTS.md § Zero config): a lease that cannot
+  # be taken must not turn a working gate into a failure. The branches below were new or rewritten
+  # in round 1 and none of them had a case, so deleting any one of them left this suite green —
+  # which is the one shape a fail-open path must never be in, because its whole job is to be
+  # invisible when it works. Each is driven through the REAL `lib/gate-lease.sh` with the smallest
+  # fixture that reaches it, and each asserts the same three things: the loud line, `gate_lease_take`
+  # returning 0, and the gates running afterwards.
+
+  # (i) `gate-lease.sh:80-84` — the FIFO cannot be CREATED. A read-only attempt directory is the
+  # honest way there: `mkfifo` fails for the reason it would really fail, and no code path pretends.
+  lease_nofifo="$WORK/lease-no-fifo"
+  mkdir -p "$lease_nofifo/attempt" "$lease_nofifo/home"
+  chmod 500 "$lease_nofifo/attempt"
+  lease_nofifo_out="$WORK/lease-no-fifo.out"
+  HOME="$lease_nofifo/home" TMPDIR="$LEASE_TMPDIR" XEZ_HOME="$lease_nofifo/home/.xezar" \
+    TASK_CWD="$REPO_ROOT" GATE_ATTEMPT_DIR="$lease_nofifo/attempt" \
+    bash -c '. "$1"; gate_lease_take; printf "TAKE=%s\n" "$?"; gate_lease_drop; printf "GATES RAN\n"' \
+    kit-lease "$SCRIPT_DIR/lib/gate-lease.sh" > "$lease_nofifo_out" 2>&1
+  lease_nofifo_rc=$?
+  chmod 700 "$lease_nofifo/attempt"
+  if [ "$lease_nofifo_rc" -eq 0 ] &&
+    grep -q 'UNAVAILABLE: could not create' "$lease_nofifo_out" &&
+    grep -q '^TAKE=0$' "$lease_nofifo_out" &&
+    grep -q '^GATES RAN$' "$lease_nofifo_out"; then
+    ok "a FIFO that cannot be created leaves the gates unleased rather than blocked"
+  else
+    bad "a FIFO that cannot be created leaves the gates unleased rather than blocked" \
+      "exit $lease_nofifo_rc"
+    cat "$lease_nofifo_out"
+  fi
+
+  # (ii) `gate-lease.sh:92-97` — the FIFO is created and fd 9 cannot be OPENED on it. This is its
+  # own branch and its own bug: bash does NOT exit on a failed `exec` redirection even under
+  # `set -e`, so without it the run carried on with fd 9 unopened and the drop later wrote into a
+  # closed descriptor and then waited for a holder nobody could release.
+  #
+  # A descriptor limit below 9 is the one trigger that separates the two branches — `mkfifo` still
+  # succeeds, and only the open fails. Bash juggles its own descriptors above 10, so the limit also
+  # makes IT print `redirection error` lines; they are the fixture's noise, not the lease's, and
+  # the assertions are on the lease's own line.
+  lease_nofd="$WORK/lease-no-fd"
+  mkdir -p "$lease_nofd/attempt" "$lease_nofd/home"
+  lease_nofd_out="$WORK/lease-no-fd.out"
+  HOME="$lease_nofd/home" TMPDIR="$LEASE_TMPDIR" XEZ_HOME="$lease_nofd/home/.xezar" \
+    TASK_CWD="$REPO_ROOT" GATE_ATTEMPT_DIR="$lease_nofd/attempt" \
+    bash -c 'ulimit -n 9; . "$1"; gate_lease_take; printf "TAKE=%s\n" "$?"; gate_lease_drop; printf "GATES RAN\n"' \
+    kit-lease "$SCRIPT_DIR/lib/gate-lease.sh" > "$lease_nofd_out" 2>&1
+  lease_nofd_rc=$?
+  if [ "$lease_nofd_rc" -eq 0 ] &&
+    grep -q 'UNAVAILABLE: could not open' "$lease_nofd_out" &&
+    grep -q '^TAKE=0$' "$lease_nofd_out" &&
+    grep -q '^GATES RAN$' "$lease_nofd_out" &&
+    [ ! -e "$lease_nofd/attempt/lease.fifo" ]; then
+    ok "a FIFO that cannot be opened leaves the gates unleased, and removes the FIFO it made"
+  else
+    bad "a FIFO that cannot be opened leaves the gates unleased, and removes the FIFO it made" \
+      "exit $lease_nofd_rc"
+    cat "$lease_nofd_out"
+  fi
+
+  # (iii) `gate-lease.sh:151-155` — the verb dies before it writes a status. A fake `tsx` that exits
+  # 1 is exactly that state (a tsx that cannot start, a verb that crashes on boot), and it is the
+  # branch that must leave `GATE_LEASE_WAIT_MS` EMPTY: `unavailable` carries `waitedMs: 0`, which is
+  # byte-identical to "took a slot with no queue", and the record's contract spells empty as "this
+  # run did not lease". The stderr line after the drop is the round 1 finding 4 guard: a bare
+  # `exec 9>&- 2>/dev/null` made EVERY later redirection permanent and silenced the rest of the run.
+  lease_nostatus="$WORK/lease-no-status"
+  mkdir -p "$lease_nostatus/attempt" "$lease_nostatus/home" \
+    "$lease_nostatus/cwd/node_modules/.bin" "$lease_nostatus/cwd/packages/xezar/src"
+  : > "$lease_nostatus/cwd/packages/xezar/src/index.ts"
+  printf '#!/usr/bin/env bash\nexit 1\n' > "$lease_nostatus/cwd/node_modules/.bin/tsx"
+  chmod +x "$lease_nostatus/cwd/node_modules/.bin/tsx"
+  lease_nostatus_out="$WORK/lease-no-status.out"
+  HOME="$lease_nostatus/home" TMPDIR="$LEASE_TMPDIR" XEZ_HOME="$lease_nostatus/home/.xezar" \
+    TASK_CWD="$lease_nostatus/cwd" GATE_ATTEMPT_DIR="$lease_nostatus/attempt" \
+    bash -c '. "$1"; gate_lease_take; printf "TAKE=%s WAIT=[%s]\n" "$?" "${GATE_LEASE_WAIT_MS}";
+             gate_lease_drop; printf "GATES RAN\n"; printf "stderr survived the drop\n" >&2' \
+    kit-lease "$SCRIPT_DIR/lib/gate-lease.sh" > "$lease_nostatus_out" 2>&1
+  lease_nostatus_rc=$?
+  if [ "$lease_nostatus_rc" -eq 0 ] &&
+    grep -q 'UNAVAILABLE: the lease helper produced no status' "$lease_nostatus_out" &&
+    grep -q '^TAKE=0 WAIT=\[\]$' "$lease_nostatus_out" &&
+    grep -q '^GATES RAN$' "$lease_nostatus_out" &&
+    grep -q 'stderr survived the drop' "$lease_nostatus_out" &&
+    [ ! -e "$lease_nostatus/attempt/lease.fifo" ]; then
+    ok "a verb that dies before its status runs the gates unleased, with an empty recorded wait"
+  else
+    bad "a verb that dies before its status runs the gates unleased, with an empty recorded wait" \
+      "exit $lease_nostatus_rc"
+    cat "$lease_nostatus_out"
+  fi
+
+  # (iv) `gate-lease.sh:190-206` — the bounded drop, and the pid it kills. `wait` with no bound is
+  # the wrong tool: a verb wedged after it resolved would block this script's own exit, and a check
+  # step has no wall clock of its own to end it. The fake verb here RESOLVES its lease and then
+  # ignores both the release FIFO and SIGTERM, which is the one state the escalation exists for.
+  # The grace is lowered in the driving shell rather than in the helper, so the real 20 s constant
+  # is the one the case runs against everywhere else. The pid killed is the one this function SAVED
+  # when it started it — never a command-line pattern, which would match every peer agent on this
+  # machine carrying the same skill text.
+  lease_wedged="$WORK/lease-wedged"
+  mkdir -p "$lease_wedged/attempt" "$lease_wedged/home" \
+    "$lease_wedged/cwd/node_modules/.bin" "$lease_wedged/cwd/packages/xezar/src"
+  : > "$lease_wedged/cwd/packages/xezar/src/index.ts"
+  cat > "$lease_wedged/cwd/node_modules/.bin/tsx" <<'LEASE_WEDGED_EOF'
+#!/usr/bin/env bash
+# A verb that resolves its lease and then never lets go: it never reads the release FIFO and it
+# ignores SIGTERM. Its only child is a one-second `sleep`, so nothing outlives the kill.
+trap '' TERM
+lease_status=""
+while [ "$#" -gt 0 ]; do
+  [ "$1" = "--status-file" ] && lease_status="$2"
+  shift
+done
+printf '{"held":true,"slot":1,"slots":1,"waitedMs":0}\n' > "$lease_status"
+while :; do sleep 1; done
+LEASE_WEDGED_EOF
+  chmod +x "$lease_wedged/cwd/node_modules/.bin/tsx"
+  lease_wedged_out="$WORK/lease-wedged.out"
+  HOME="$lease_wedged/home" TMPDIR="$LEASE_TMPDIR" XEZ_HOME="$lease_wedged/home/.xezar" \
+    TASK_CWD="$lease_wedged/cwd" GATE_ATTEMPT_DIR="$lease_wedged/attempt" \
+    bash -c '. "$1"; GATE_LEASE_DROP_GRACE_SECONDS=1; gate_lease_take;
+             lease_pid="$GATE_LEASE_PID"; gate_lease_drop;
+             kill -0 "$lease_pid" 2>/dev/null && printf "STILL ALIVE\n" || printf "VERB ENDED\n";
+             printf "GATES RAN\n"' \
+    kit-lease "$SCRIPT_DIR/lib/gate-lease.sh" > "$lease_wedged_out" 2>&1
+  lease_wedged_rc=$?
+  if [ "$lease_wedged_rc" -eq 0 ] &&
+    grep -q 'the holder did not exit within 1s — ending pid' "$lease_wedged_out" &&
+    grep -q '^VERB ENDED$' "$lease_wedged_out" &&
+    grep -q '^GATES RAN$' "$lease_wedged_out"; then
+    ok "a verb that ignores the release and SIGTERM is ended by the drop, inside its own bound"
+  else
+    bad "a verb that ignores the release and SIGTERM is ended by the drop, inside its own bound" \
+      "exit $lease_wedged_rc"
+    cat "$lease_wedged_out"
+  fi
+
+  # A checkout with no xezar CLI at all — the state a gate run is in before its dependencies are
+  # installed. It must say so and carry on, not abort the gates.
+  lease_nocli="$WORK/lease-no-cli"
+  mkdir -p "$lease_nocli/cwd" "$lease_nocli/attempt"
+  lease_nocli_out="$WORK/lease-no-cli.out"
+  TASK_CWD="$lease_nocli/cwd" GATE_ATTEMPT_DIR="$lease_nocli/attempt" \
+    bash -c '. "$1"; gate_lease_take; gate_lease_drop' kit-lease "$SCRIPT_DIR/lib/gate-lease.sh" \
+    > "$lease_nocli_out" 2>&1
+  lease_nocli_rc=$?
+  if [ "$lease_nocli_rc" -eq 0 ] && grep -q 'UNAVAILABLE: no xezar CLI' "$lease_nocli_out"; then
+    ok "a checkout with no xezar CLI says so and leaves the gates unleased rather than blocked"
+  else
+    bad "a checkout with no xezar CLI says so and leaves the gates unleased rather than blocked" "exit $lease_nocli_rc"
+    cat "$lease_nocli_out"
+  fi
+
+  # -- the kit never reaches for a different xezar ------------------------------------------------
+  #
+  # Comments are stripped first: the resolver's own comment SAYS why it never uses the registry
+  # fetcher, and a check that cannot tell an explanation from an invocation would fail on the
+  # documentation of the rule it is enforcing.
+  #
+  # BOTH files, and `lib/gate-lease.sh` is the one that matters: the resolver is `gate_lease_argv`
+  # THERE, so a version of this case that read only `repo-gates.sh` passed whatever the resolver
+  # did — put `npx` into the real resolver and it stayed green. Found in the round 1 review.
+  lease_npx_dirty=""
+  for lease_npx_file in "$SCRIPT_DIR/repo-gates.sh" "$SCRIPT_DIR/lib/gate-lease.sh"; do
+    if grep -v '^[[:space:]]*#' "$lease_npx_file" | grep -q 'npx'; then
+      lease_npx_dirty="$lease_npx_dirty $(basename "$lease_npx_file")"
+    fi
+  done
+  if [ -n "$lease_npx_dirty" ]; then
+    bad "the lease verb is resolved without npx, in the resolver AND its caller" \
+      "an npx invocation would fetch a different xezar from the registry:$lease_npx_dirty"
+  else
+    ok "the lease verb is resolved without npx, in the resolver AND its caller"
+  fi
+
+  # -- the kit's backstop cannot drift away from the bound it backs up ----------------------------
+  #
+  # `gate_lease_take`'s loop needs a number of its own because a shell cannot import a TypeScript
+  # constant, and a backstop SHORTER than the verb's bound would cut a legitimate 19-minute queue
+  # off at the knees while a much longer one would leave a run neither running nor given up for
+  # however far the two had drifted. This reads the real constant out of the real source file and
+  # compares it with the real shell constant, so the mirror is checked rather than promised.
+  lease_bound_ms="$(grep -E '^export const GATE_LEASE_WAIT_MS' "$REPO_ROOT/packages/xezar/src/core/gate-lease.ts" |
+    sed -E 's/[^=]*= *//; s/[;_]//g; s/ //g')"
+  lease_bound_s="$(node -e 'process.stdout.write(String(Math.round(eval(process.argv[1]) / 1000)))' "$lease_bound_ms" 2>/dev/null)"
+  lease_shell_s="$(grep -E '^GATE_LEASE_BOUND_SECONDS=' "$SCRIPT_DIR/lib/gate-lease.sh" | sed -E 's/.*=//')"
+  lease_backstop_s="$(bash -c '. "$1" >/dev/null 2>&1; printf "%s" "$GATE_LEASE_BACKSTOP_SECONDS"' \
+    drift "$SCRIPT_DIR/lib/gate-lease.sh")"
+  if [ -n "$lease_bound_s" ] && [ "$lease_shell_s" = "$lease_bound_s" ] &&
+    [ "$lease_backstop_s" -gt "$lease_bound_s" ] &&
+    [ "$lease_backstop_s" -le $((lease_bound_s + 300)) ]; then
+    ok "the kit's backstop mirrors the verb's own bound and sits just past it"
+  else
+    bad "the kit's backstop mirrors the verb's own bound and sits just past it" \
+      "verb ${lease_bound_s}s, shell ${lease_shell_s}s, backstop ${lease_backstop_s}s"
+  fi
+fi
 
 # --- 25. The suite did not touch the real repository --------------------------------------------------
 #

@@ -212,6 +212,16 @@ const ALLOWED: readonly Allowance[] = [
       "half's cross-process lock follows the layout (`cacheDir`); neither the mirror nor its machine-wide lock moves.",
   },
   {
+    file: 'core/gate-lease.ts',
+    code: "return join(homedir(), '.cache', 'xez', 'gate-slots');",
+    reason:
+      'gateLeaseDir — the gate lease is MACHINE-wide by definition (#672 Q6). It arbitrates one disk, one page ' +
+      'cache and one pool of vitest workers, and the failures it exists to prevent were measured across ' +
+      'checkouts, not inside one. Resolving it through xezCacheDir would give two single-project folders a set ' +
+      'of slots each and they would not contend — the lease would render, test green and prevent nothing. Same ' +
+      "category as skills-update.ts's machine-wide lock above: a host artifact that never moves with the state.",
+  },
+  {
     file: 'server/open-in-app.ts',
     code: "join(homedir(), 'Applications', `${name}.app`),",
     count: 2,

@@ -1,6 +1,7 @@
 import { realpathSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
+  DEFAULT_GATE_SLOTS,
   DEFAULT_IDLE_TIMEOUT_MINUTES,
   DEFAULT_MEMORY_LIMIT_MB,
   DEFAULT_MONITORING_WAKE_MINUTES,
@@ -60,6 +61,9 @@ export interface WorkspaceResourceLimits {
   idleTimeoutMinutes?: number | null;
   /** Per-task process-tree memory ceiling in MiB; null = no limit. */
   memoryLimitMb: number | null;
+  /** Concurrent gate runs the machine-wide gate lease admits (#672). Absent means "this
+   *  loader predates the key" and reads as `DEFAULT_GATE_SLOTS`; there is no `null`. */
+  gateSlots?: number;
   /**
    * Per-project memory ceilings in MiB, keyed by realpath-normalized project root — the
    * repo's own `.xezar/config.json` `memoryLimitMb` (B2). A root absent from the map
@@ -149,6 +153,7 @@ const DEFAULT_LIMITS: WorkspaceResourceLimits = {
   autoResumeOnUsageLimit: true,
   idleTimeoutMinutes: DEFAULT_IDLE_TIMEOUT_MINUTES,
   memoryLimitMb: DEFAULT_MEMORY_LIMIT_MB,
+  gateSlots: DEFAULT_GATE_SLOTS,
 };
 
 /** Production loader: the `resources` slice of `~/.xezar/config.json`
@@ -184,6 +189,10 @@ async function loadResourceLimits(): Promise<WorkspaceResourceLimits> {
     autoResumeOnUsageLimit: resources.autoResumeOnUsageLimit,
     idleTimeoutMinutes: resources.idleTimeoutMinutes,
     memoryLimitMb: resources.memoryLimitMb,
+    // SPREAD, not `gateSlots: resources.gateSlots`: the file key is optional, and writing an
+    // explicit `undefined` here would be indistinguishable from an absent one for the getter
+    // but would still claim the key exists to anything that enumerates this object.
+    ...(resources.gateSlots !== undefined ? { gateSlots: resources.gateSlots } : {}),
     projectLimits,
     projectMemoryLimits,
     ...(config.followups !== undefined ? { followups: config.followups } : {}),
@@ -297,6 +306,20 @@ export class WorkspaceSemaphore {
    *  written before the key existed) reads as ON — the shipped default. */
   autoResumeOnUsageLimit(): boolean {
     return this.limits.autoResumeOnUsageLimit ?? true;
+  }
+
+  /**
+   * How many gate runs the machine-wide gate lease admits at once (#672).
+   *
+   * Absent — an older `load` stub, a config written before the key existed, a file that never
+   * set it — reads as `DEFAULT_GATE_SLOTS`, following `monitoringWakeIntervalMinutes()` rather
+   * than `maxMonitoringSessions()`'s looser `?? 2`: the fallback names the shipped constant
+   * instead of repeating its value, so the schema and this getter cannot drift apart. There is
+   * no `null` to preserve here, which is the one way this key is simpler than its neighbours.
+   */
+  gateSlots(): number {
+    const configured = this.limits.gateSlots;
+    return configured === undefined ? DEFAULT_GATE_SLOTS : configured;
   }
 
   /** Cached per-task memory ceiling (MiB), or null for no limit. Applied as

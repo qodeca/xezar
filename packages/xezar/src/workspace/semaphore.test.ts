@@ -212,6 +212,41 @@ describe('WorkspaceSemaphore', () => {
     });
   });
 
+  /**
+   * #672 G1. The one difference from every other `resources` key: there is NO `null`, so absent
+   * has only one thing it can mean. The fallback still has to be the ABSENT branch rather than
+   * `?? 1`, because a loader that predates the key and a loader that reports it are two different
+   * facts, and only the first one may be filled in.
+   */
+  describe('gateSlots (#672)', () => {
+    it('an ABSENT key reads as the derived default of 1', () => {
+      const sem = new WorkspaceSemaphore({ initial: { maxParallel: 2, memoryLimitMb: null } });
+      expect(sem.gateSlots()).toBe(1);
+    });
+
+    it('a stored value is applied as written', () => {
+      const sem = new WorkspaceSemaphore({ initial: { maxParallel: 2, memoryLimitMb: null, gateSlots: 6 } });
+      expect(sem.gateSlots()).toBe(6);
+    });
+
+    it('a refresh moves it without a restart — the next gate run reads the new number', async () => {
+      let slots: number | undefined;
+      const sem = new WorkspaceSemaphore({
+        load: () =>
+          Promise.resolve({
+            maxParallel: 2,
+            memoryLimitMb: null,
+            ...(slots !== undefined ? { gateSlots: slots } : {}),
+          }),
+      });
+      await sem.refresh();
+      expect(sem.gateSlots()).toBe(1);
+      slots = 3;
+      await sem.refresh();
+      expect(sem.gateSlots()).toBe(3);
+    });
+  });
+
   it('honors an initial override (test seam)', () => {
     const sem = new WorkspaceSemaphore({ initial: { maxParallel: 5, memoryLimitMb: 512 } });
     expect(sem.maxParallel()).toBe(5);

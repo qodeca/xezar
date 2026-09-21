@@ -173,6 +173,7 @@ import { listAgentConfig } from '../agent-config/service.ts';
 import { listConfigFiles, type AgentHomePaths } from '../agent-config/catalog.ts';
 import { readAccountIdentity } from '../agent-config/account-identity.ts';
 import {
+  DEFAULT_GATE_SLOTS,
   DEFAULT_MEMORY_LIMIT_MB,
   PROJECT_ID_RE,
   defaultWorkspaceConfig,
@@ -3158,6 +3159,10 @@ export function createApp(deps: ServerDeps) {
       // user can see what an unset `memoryLimitMb` actually means here (B1).
       memoryLimitDefaultMb: DEFAULT_MEMORY_LIMIT_MB,
       worktreeRetentionDefault: config.resources.worktreeRetentionDefault,
+      // EFFECTIVE, not stored: the file key is optional so an absent one never materialises
+      // into a user's config, and absent derives 1 here (#672). `DEFAULT_GATE_SLOTS` is the
+      // one source of that number — `WorkspaceSemaphore.gateSlots()` reads the same constant.
+      gateSlots: config.resources.gateSlots ?? DEFAULT_GATE_SLOTS,
     },
     // SPREAD, never `runner: maybeUndefined`: hono would type the key as always-present while
     // `JSON.stringify` drops it, which is the exact drift `contract-parity` catches. And absent has
@@ -3278,6 +3283,7 @@ export function createApp(deps: ServerDeps) {
           if (resources?.worktreeRetentionDefault !== undefined) {
             config.resources.worktreeRetentionDefault = resources.worktreeRetentionDefault;
           }
+          if (resources?.gateSlots !== undefined) config.resources.gateSlots = resources.gateSlots;
           // `null` CLEARS back to "no opinion" — a partial patch cannot say that by omission,
           // and leaving a stale runner behind would keep overriding repos that never chose.
           if (agentDefaults?.runner === null) delete config.agentDefaults.runner;
