@@ -146,6 +146,20 @@ Copies the agent accounts of your global setup (`~/.xezar`, or `XEZ_HOME`) into 
 
 It merges accounts only: `workspace.json` and `workspace-ui.json` are left alone, because a project may already carry committed ones. An account this project already has is kept exactly as it is, never replaced. A default account naming an account that does not exist is skipped and named, in the same line the first-run `--import-global` flag prints: `! skipped a default naming <handle>, which no account matches`, because nothing would use it. Running it twice adds nothing and rewrites no bytes. The output names account ids and providers only — never a label or a folder path. Each account's `label` and `configDir`, though, are copied exactly as they are into `<project>/.xezar/agent-accounts.json`: a label is often an identity (an e-mail address, a client's name) and a `configDir` is a path on this machine, and that file is one a repository may commit. A bootstrap shared by a team should therefore not pass `--import-global` when the file is committed. Exit code 0 when it ran, including when there was nothing to copy; 1 for an unknown verb, an unreadable accounts file, or a state file that is a symbolic link. In the global layout it prints one line and exits 0.
 
+## To sign an agent tool in: `providers connect`
+
+```sh
+xezar providers connect <claude|codex|opencode|pi> [--account <id>]
+```
+
+Opens a terminal window that runs the tool's own login command, on the machine that runs xezar. Without `--account` it signs in the tool's built-in login; with it, the named account from **Settings → Agent accounts**. It is the same sequence as **Connect** in the cockpit's Providers settings, and it is the command a project leader is told to hand you when it asks for a provider it may not connect itself. It needs no running cockpit.
+
+- An account that is already signed in opens nothing and exits 0.
+- A tool that is not installed prints how to install it; a sign-in that cannot be checked prints the login command to run yourself; both exit 1.
+- When no terminal window can be opened, it prints the exact login command to run yourself and exits 1.
+- In hosted mode (`XEZ_REMOTE=1`, or a non-loopback `--bind-host`) it refuses before it reads or probes anything, and exits 1: nobody is sitting at that machine's screen.
+- An unknown verb, a missing or unknown tool, an extra argument or an account id that names no account is refused with exit code 1.
+
 ## To manage projects: `projects`
 
 These commands edit/read the workspace registry directly and work without a running server. `XEZ_HOME` selects that registry, except in single-project mode, where the registry is the project's own `.xezar/workspace.json`.

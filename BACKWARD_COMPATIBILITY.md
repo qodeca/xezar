@@ -9,9 +9,10 @@ xezar is a published npm CLI (`@qodeca/xezar`, currently 0.x) whose state lives 
 ## 1. CLI commands, flags and exit codes (`packages/xezar/src/index.ts`)
 
 - **Bins:** `xezar` and `xez` (both in `package.json` `bin`). Removing either alias is breaking.
-- **Commands:** bare invocation = `serve` (cockpit); `xezar run "<task>"`; `xezar init`; `xezar mcp` (the stdio MCP bridge a coding agent starts); `xezar lease gates -- <command>` (#672 — 0.17.0); `xezar accounts import-global` (#819 — 0.18.0); `xezar server-install` / `server-deploy` / `server-uninstall` (the hosted-instance provisioner).
+- **Commands:** bare invocation = `serve` (cockpit); `xezar run "<task>"`; `xezar init`; `xezar mcp` (the stdio MCP bridge a coding agent starts); `xezar lease gates -- <command>` (#672 — 0.17.0); `xezar accounts import-global` (#819 — 0.18.0); `xezar providers connect <provider> [--account <id>]` (#819 item 8 — 0.18.0); `xezar server-install` / `server-deploy` / `server-uninstall` (the hosted-instance provisioner).
 - **`xezar lease gates -- <command>`** (#672) runs `<command>` holding one of this machine's gate slots, so several checkouts do not run their full test suites at once. Four things about it are the contract, not the implementation: it answers the COMMAND's exit code (a wrapper that swallowed it would silently green a red suite); it is FAIL-OPEN, so a 20-minute timeout or an unusable slot directory prints one loud line to **stderr** and runs the command anyway with its own exit code; it writes nothing to stdout, which belongs entirely to the command; and how many run together is the stored `resources.gateSlots` (section 9), never an env var. `--status-file <path>` writes one JSON line describing how the lease resolved, for a caller that keeps the lease across work of its own. Making any failure path refuse to run the command is breaking: it would turn a queueing aid into a new way for a working check to fail.
 - **`xezar accounts import-global`** (#819) copies the agent accounts of the global setup into a project that owns its own setup — the later door of the one-time import, for a first run that had nobody to ask. Four things about it are the contract: it merges ACCOUNTS only (`workspace.json` and `workspace-ui.json` are never touched, because a project may carry committed ones); it never replaces an account, a default or a selection the project already has; it never writes a `defaults.<provider>` naming an account that does not exist, because nothing would use it; and it is idempotent — a second run adds nothing and rewrites no bytes. Exit 0 when it ran, including "nothing to copy" and including the global layout, where it prints one line; exit 1 for an unknown verb, an unreadable accounts file or a state file that is a symbolic link. Its output names account ids and providers ONLY — never a label, never a config-folder path. The COPY is verbatim, though: each account's `label` and `configDir` land as they are in `<project>/.xezar/agent-accounts.json`, a file a repository may commit, so a bootstrap shared by a team should not pass `--import-global` when that file is committed. Making it overwrite, letting it write a dangling default, or printing an account label is breaking.
+- **`xezar providers connect <provider> [--account <id>]`** (#819 item 8) opens a terminal that runs the agent tool's own login command on the machine that runs xezar — the built-in login, or the named account. It is the command a refused MCP `connect_provider` names, and it follows `POST /api/v1/providers/connect` step for step. Four things are the contract: in hosted mode (`XEZ_REMOTE=1` or a non-loopback `--bind-host`) it REFUSES, exit 1, before it reads the accounts file, probes a login or opens anything; an account id that names no account is an error, never a silent fall-back to another login; an account already signed in opens nothing and exits 0; and every outcome that leaves the person something to do by hand — a tool not installed, a sign-in that cannot be checked, no terminal window — exits 1 and prints what to run. Only `connect` is a verb. Breaking: opening or probing anything in hosted mode, or signing in a different account than the one named.
 - **`xezar projects` subcommands:** `list` (the default), `add`, `remove`/`rm`, `tag`, `port`. `tag <id> [<tag>…]` replaces a project's grouping tags wholesale; naming none clears them. `port <id> [<port>]` (#467) pins the cockpit port of a project; naming none clears it. Both are refused in single-project mode.
 - **Flags:** `-p/--port` (see the port precedence in [Remembered ports](#per-project-port-memory-and-cli-output-settings--deliberate-0160-467) — it is no longer "default 4321" flat, and it still auto-picks the next free port), `--output <auto|lines|rich>`, `--color <auto|always|never>`, `--log-level <debug|info|warn|error>`, `-q/--quiet` (all four #467: accepted and resolved now, consumed by the renderer), `--repo <dir>`, `--workflow <name>` (default `quick-task`), `--model <model>`, `--no-open`, `-h/--help`, `-v/--version` (prints the bare package version to stdout, exits 0, runs before any repo or `~/.xezar` lookup), `--single-project` (#600 — see [Single-project ROOT mode](#single-project-root-mode--the-folder-owns-the-state-0160-600); needed only the first time, and every command accepts it), `--instance <project|workspace>` (#467 — 0.17.0: WHICH projects' data one process serves, see [Instance mode](#instance-mode--which-projects-one-process-serves-0170-467); `workspace` is the default and is unchanged), `--global-layout` (#657 — 0.17.0; the explicit counterpart of `--single-project`: it resolves the GLOBAL layout for that launch even in a folder that carries `.xezar/workspace.json`, outranks the marker, and writes nothing), `--import-global` / `--no-import-global` (#819 — 0.18.0: the two answers to the first-run import question, accepted by every command. With either given the question is not asked and stdin is never read, so a launch with no terminal imports or declines as it was told; both given exits 1 before anything is read or written; neither given leaves the prompt byte-identical. On a folder that is already set up neither flag changes state — a bootstrap may pass `--import-global` on every start, and once there is nothing left to import it succeeds silently with the launch's exit code untouched. A `defaults.<provider>` naming an account that does not exist is skipped and named on this door too, exactly as `accounts import-global` does. Deliberately NOT an env var: a variable is inherited by every child process, so it would answer for people who never typed it), plus the `server-*` flags `--platform`, `--domain`, `--bind-host`, `--external-proxy`, `--yes`, `--reconfigure <name>`, `--reinstall`.
 - **Exit codes:** `run` exits 0 on `done` **and** `review` (spec 009 — headless runs must not hang on the review gate), 1 on `failed`/`cancelled`/unknown workflow. CI scripts depend on this. A flag or `XEZ_*` value that is not a legal value exits 1 **before** the registry is read, the project writer is claimed or any port is bound, and names the accepted values.
@@ -1383,12 +1384,17 @@ REFUSE: both answered `Refused (workspace-wide setting)` and dispatched nothing.
 - **Changed**: both are real writes. `set_provider_enabled` takes `provider` and `enabled` and
   dispatches `PUT /api/v1/providers/:provider/enabled`; `retry_provider` takes `provider` and
   dispatches `POST /api/v1/providers/:provider/retry`. Both are the cockpit's own routes, with
-  their own param and body validators, the same `mergeWrite` of `disabledProviders` into
-  `~/.xezar/config.json`, the same `provider-status` event and the same refusals. The switch is
-  **machine-wide and takes effect with no restart**: the gate that decides whether a new task may
-  start reads the same key, so a provider a leader turns off stops being offered for the next task
-  at once — in EVERY project on that machine. Turning one on re-enables a backend the person
-  deliberately disabled. That exposure is the decision, not an oversight.
+  their own param and body validators, the same `mergeWrite` of `disabledProviders` into the
+  workspace settings file of the active state layout, the same `provider-status` event and the same
+  refusals. The switch **takes effect with no restart**: the gate that decides whether a new task
+  may start reads the same key, so a provider a leader turns off stops being offered for the next
+  task at once. Its reach is the layout's: in the global layout the file is `~/.xezar/config.json`
+  (or `$XEZ_HOME/config.json`) and the switch applies to EVERY project on that machine; in
+  single-project mode (#600) the file is the project's own `.xezar/workspace.json` and the switch
+  applies to that project alone — shared, like the rest of that file, with everyone who works on
+  the project. `XEZ_SINGLE_PROJECT` narrows the registry only, so its switch is still the machine's.
+  Turning one on re-enables a backend the person deliberately disabled. That exposure is the
+  decision, not an oversight.
 - **Unchanged**: nothing is removed, and a leader that never calls either action behaves exactly
   as before. `connect_provider` is still refused and its boundary is unchanged — `host-process`,
   because it opens a login terminal on the person's machine (owner, 2026-09-20 07:41). The refusal
@@ -1425,6 +1431,31 @@ REFUSE: both answered `Refused (workspace-wide setting)` and dispatched nothing.
   sent them was answered `Unrecognized keys: "provider", "enabled"` rather than the refusal. That
   0.16.0 answer is therefore not a sign of a different shape — there was no shape. The `enabled`
   argument's description says so to a leader (#819 item 6).
+- **Additive since 0.18.0 (#819 item 7): the answer says where it wrote.** `set_provider_enabled`
+  answers `scope: 'machine' | 'project'` and `live: true` beside the unchanged `providers` rows.
+  `scope` is read from the same state layout the write resolved: `project` in single-project mode,
+  `machine` otherwise. The argument descriptions stopped calling the switch machine-wide in every
+  layout, because in single-project mode that sent a leader to hand-edit a home file that is never
+  read. Breaking: dropping either key, or answering `machine` for a write that landed in the
+  project's file.
+- **Additive since 0.18.0 (#819 item 8): every refusal names the next step, and the leader can hand
+  the person the cockpit's address.** Every `project_config` refusal — the `REFUSED_ACTIONS` rows
+  (`connect_provider` among them), the project-binding, home-file and outside-project refusals —
+  ends its text with `Next step: <sentence> Nothing was changed.` and carries the same sentence as
+  `nextStep`; the quality-gate refusal's `nextAction` now names `save_workflow`. The sentence is a
+  tool call the leader can make, or a command (`xez providers connect <provider>`, `xez projects
+  add <folder>`) or a cockpit page the PERSON uses, worded to the person (#439). The boundary ids,
+  the labels, the reasons' meaning and the closing `Nothing was changed.` are unchanged;
+  `connect_provider`'s reason no longer ends "A person does this in the cockpit.", because its next
+  step now says what that person does. The address is served through the MCP only (owner,
+  2026-09-21, "MCP only"): `discover_project` carries an optional `cockpit: {url, pages: {providers,
+  accounts, mcpConnection}}` and the MCP `health` tool an optional `cockpitUrl`. Both are the
+  running cockpit's REAL listen origin, read from its listening socket after the bind, and both are
+  ABSENT when that is unknown — before the listen, and in hosted mode, where the public address is
+  behind a reverse proxy. `GET /api/v1/health` gains nothing, and a test pins that. An older bridge
+  strips `cockpitUrl`; an older service never sends it. Breaking: a refusal without a next step, a
+  next step that sends the leader to the cockpit or the HTTP API, a guessed or loopback address in
+  place of the real one, or the address on `/api/v1/health`.
 
 ## MCP argument errors: a refusal outranks an unknown key, and the error names what the action takes (#819 item 6) — deliberate, 0.18.0
 
