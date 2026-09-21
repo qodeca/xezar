@@ -18,7 +18,7 @@ import { withWorkspaceConfigLock } from './config-lock.ts';
  *
  * So they live here instead, beside the other working files the layout already
  * puts under `<project>/.local/xezar` (`dataDir`), which is gitignored by the
- * blanket `.local/.gitignore` and never committed. Two facts, one file:
+ * blanket `.local/.gitignore` and never committed. Three facts, one file:
  *
  * - `lastOpenedAt` — the boot registration stamp. Read by `listProjects` (so
  *   Settings → General's "Last opened" and the MCP's `project_facts` keep a real
@@ -27,6 +27,10 @@ import { withWorkspaceConfigLock } from './config-lock.ts';
  *   which has one row to order in this mode.
  * - `lastListen` — the port hint (#467). Read by `readStoredCliSettings`, so a
  *   plain `xez` in this folder comes back to the same port across restarts.
+ * - `globalImport` — what this machine did about the one-time import of the
+ *   global setup (#819 item 1d). Per-machine for a reason of its own: consent
+ *   belongs to the person at this checkout, while `workspace.json` is shared
+ *   with everyone who clones the repository.
  *
  * The GLOBAL layout never touches this file: `projectMachineStatePath` answers
  * `null` there, every reader answers "nothing recorded", and every writer is a
@@ -107,6 +111,7 @@ export const projectMachineStateSchema = z
     addedAt: z.string().min(1).max(64).optional().catch(undefined),
     lastOpenedAt: z.string().min(1).max(64).optional().catch(undefined),
     lastListen: machineLastListenSchema.optional().catch(undefined),
+    globalImport: z.enum(['imported', 'declined', 'not-asked']).optional().catch(undefined),
   })
   .passthrough();
 
@@ -193,6 +198,53 @@ export async function recordProjectOpened(
   await mergeWriteProjectMachineState(path, (state) => {
     if (state.addedAt === undefined) state.addedAt = openedAt;
     state.lastOpenedAt = openedAt;
+  });
+}
+
+/**
+ * What happened to the one-time import of the global setup (#819 item 1d).
+ *
+ * Four values, and `unknown` is the one that carries the design: a file written before this field
+ * existed, or a folder set up by an older xezar, must NOT read as `not-asked`, because "nobody was
+ * asked" is a claim about what this machine did and an absent key proves nothing. A fail-open
+ * default would make the two indistinguishable again, which is the defect this field exists to
+ * end.
+ *
+ * - `imported` — the global setup was copied in (a yes at the prompt, `--import-global`, or the
+ *   `accounts import-global` command).
+ * - `declined` — a person said no, at the prompt or with `--no-import-global`.
+ * - `not-asked` — a first run with nobody to ask: no terminal, or a command whose stdout speaks a
+ *   protocol (`mcp`, `lease`). Nothing was imported and nothing was refused.
+ * - `unknown` — never recorded here. Not stored: it is what an absent key reads as.
+ */
+export type GlobalImportState = 'imported' | 'declined' | 'not-asked' | 'unknown';
+
+/** The stored values — `unknown` is the absence of all three, never one of them. */
+export type RecordedGlobalImportState = Exclude<GlobalImportState, 'unknown'>;
+
+/**
+ * What this machine did about the global import, or `unknown` when nothing recorded it — which is
+ * also the answer in the global layout, where the question is never asked.
+ */
+export function readGlobalImportState(layout: StateLayout = activeStateLayout()): GlobalImportState {
+  return readProjectMachineState(layout).globalImport ?? 'unknown';
+}
+
+/**
+ * Record what happened to the global import, keeping whatever else the file holds.
+ *
+ * Best-effort like every other writer here: the value is a REPORT, and a launch that cannot write
+ * it still works exactly as it did — the caller catches and carries on rather than failing a boot
+ * over a fact nobody runs on.
+ */
+export async function recordGlobalImportState(
+  state: RecordedGlobalImportState,
+  layout: StateLayout = activeStateLayout(),
+): Promise<void> {
+  const path = projectMachineStatePath(layout);
+  if (path === null) return;
+  await mergeWriteProjectMachineState(path, (current) => {
+    current.globalImport = state;
   });
 }
 

@@ -133,7 +133,10 @@ xezar never loads a `.env` file; export variables in your shell.
 To let a repository carry its own xezar setup, start `xezar --single-project` once in it: settings,
 agent accounts and limits then live in the project's `.xezar/` folder, `~/.xezar` is not opened, and a
 clone runs the same way with no setup step. The first run offers a one-time copy of your global
-setup. See [single-project mode](docs/guide/09-projects.md#to-keep-a-projects-xezar-setup-inside-the-project--single-project-mode).
+setup; `--import-global` and `--no-import-global` answer that question without being asked (so a
+script, a CI job or an IDE task can answer it too), and `xezar accounts import-global` copies your
+agent accounts in later, without overwriting one this project already has. See
+[single-project mode](docs/guide/09-projects.md#to-keep-a-projects-xezar-setup-inside-the-project--single-project-mode).
 
 <details>
 <summary>Environment variables</summary>

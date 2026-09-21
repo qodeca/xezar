@@ -94,6 +94,8 @@ On the first run in a folder without `.xezar/workspace.json`, xezar asks once, i
   not a terminal, so nothing was imported from your global setup — starting <project>/.xezar with defaults
 ```
 
+Two flags answer that question without being asked, so a script, a CI job or an IDE task can answer it too: `--import-global` imports, `--no-import-global` imports nothing. With either flag nothing is read from standard input, giving both refuses the start with exit code 1 and changes nothing, and giving neither keeps the question. A folder that is already set up is not imported into by a flag — a bootstrap script may therefore pass `--import-global` on every start: once there is nothing left to import the flag succeeds in silence, with the start's exit code unchanged. What this machine did is remembered in `<project>/.local/xezar/machine-state.json`, which Git ignores.
+
 `xezar mcp` never asks. A folder that already holds `.xezar/workspace.json`, such as a clone, is never asked. A `.xezar/workspace.json` that is not valid JSON, or a state folder that cannot be written, stops the start with a named error and exit code 1. See [single-project mode](09-projects.md#to-keep-a-projects-xezar-setup-inside-the-project--single-project-mode) for what the mode changes and how it differs from `XEZ_SINGLE_PROJECT=1`.
 
 ### To ask for the global layout: `--global-layout`
@@ -131,6 +133,19 @@ xezar init --repo /path/to/project
 ```
 
 Creates `.xezar/workflows/fix-and-verify.yaml` and `.xezar/skills/project-conventions.md`, leaving existing examples untouched. Replace the example workflow's `echo` check with your real verification command. It also maintains `.local/.gitignore` for runtime state. See [Project layout](../project-layout.md).
+
+It ends by naming the package as npm resolves it (`npx @qodeca/xezar`), the command that copies agent accounts in — `init` never copies them — and, inside a repository, the start that keeps the setup in the project folder.
+
+## To copy your agent accounts into a project: `accounts import-global`
+
+```sh
+xezar accounts import-global
+```
+
+Copies the agent accounts of your global setup (`~/.xezar`, or `XEZ_HOME`) into a project that owns its own setup. It is the later door of the one-time import above, for the common case where the first run had nobody to ask, or was answered before you knew you wanted your accounts here.
+
+It merges accounts only: `workspace.json` and `workspace-ui.json` are left alone, because a project may already carry committed ones. An account this project already has is kept exactly as it is, never replaced. A default account naming an account that does not exist is skipped and named, because nothing would use it. Running it twice adds nothing and rewrites no bytes. The output names account ids and providers only — never a label or a folder path. Exit code 0 when it ran, including when there was nothing to copy; 1 for an unknown verb, an unreadable accounts file, or a state file that is a symbolic link. In the global layout it prints one line and exits 0.
+
 
 ## To manage projects: `projects`
 
@@ -177,6 +192,8 @@ Use the [server-install guide](../server-install/README.md) for prerequisites an
 | `--no-open` | `serve`: do not open the browser. |
 | `--instance <mode>` | `serve`: which projects this cockpit serves — `workspace` (the default: every project you have registered) or `project` (the project it started in; your other projects stay listed and manageable, and open in their own cockpit). `XEZ_INSTANCE` says the same, a saved `cli.instance` beats the variable, and this flag beats both. `--single-project`, and a folder that owns its xezar state, already serve one project and win over it — an explicit `workspace` then says so in one line. Accepted and ignored by `xezar mcp`. |
 | `--single-project` | Every command: this folder owns its xezar setup — settings, accounts and the registry in `.xezar/`, working files in `.local/xezar/`, `~/.xezar` not opened. Needed only the first time; afterwards the folder decides. The first run asks once, in a terminal, whether to copy your global setup in (never the project list). A linked Git worktree is never a project root. See [above](#to-keep-the-setup-in-the-project-folder---single-project). |
+| `--import-global` | Every command, single-project layout: answer the first-run import question with yes, without being asked. Nothing is read from standard input. On a folder that is already set up it imports nothing and is quiet, so a bootstrap may pass it on every start. In the global layout it prints one line. |
+| `--no-import-global` | Every command: answer the same question with no. Giving both flags refuses the start with exit code 1, before anything is read or written. |
 | `--global-layout` | Every command: resolve the global layout for this launch, even in a folder that carries `.xezar/workspace.json`. The explicit counterpart of `--single-project`, and it outranks the marker; nothing is moved, renamed or written. `XEZ_GLOBAL_LAYOUT=1` says the same. See [above](#to-ask-for-the-global-layout---global-layout). |
 | `--platform <id>` | Server commands: `ubuntu-vps` or `macosx-ngrok`. Required for install; optional for deploy/uninstall only when saved instance state supplies it. |
 | `--domain <host>` | `ubuntu-vps` server commands only: select the domain's instance; install can create a second independent one. |

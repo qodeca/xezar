@@ -244,4 +244,47 @@ describe('project machine state (#649)', () => {
     expect(existsSync(join(root, 'global-home'))).toBe(false);
     expect(existsSync(statePath)).toBe(false);
   });
+
+  /**
+   * #819 item 1d — what this machine did about the one-time global import.
+   *
+   * `unknown` is the case with teeth: a state file written before this field existed says nothing
+   * about consent, and reading it as `not-asked` would claim this machine asked nobody. That is
+   * the "fail-open helper needs a populated-input guarantee" rule — against an absent input,
+   * "never recorded" and "nobody was asked" must not read the same.
+   */
+  describe('the global-import record (#819 item 1d)', () => {
+    it('named break `absent-reads-as-not-asked`: an absent field reads as unknown (T1.6)', () => {
+      writeRaw({ addedAt: '2026-01-01T00:00:00.000Z' });
+      expect(readProjectMachineState().globalImport).toBeUndefined();
+      expect(machineState.readGlobalImportState()).toBe('unknown');
+      // And a file that does not exist at all answers the same way, without creating one.
+      rmSync(statePath);
+      expect(machineState.readGlobalImportState()).toBe('unknown');
+      expect(existsSync(statePath)).toBe(false);
+    });
+
+    it('records each answer, keeping the facts already in the file', async () => {
+      await recordLastListen({ port: 4321, host: '127.0.0.1', observedAt: '2026-01-01T00:00:00.000Z' });
+      for (const state of ['imported', 'declined', 'not-asked'] as const) {
+        await machineState.recordGlobalImportState(state);
+        expect(machineState.readGlobalImportState()).toBe(state);
+      }
+      expect(readRaw().lastListen).toEqual({ port: 4321, host: '127.0.0.1', observedAt: '2026-01-01T00:00:00.000Z' });
+    });
+
+    it('a value this xezar does not know degrades to unknown, and never evicts the rest', () => {
+      writeRaw({ addedAt: '2026-01-01T00:00:00.000Z', globalImport: 'half-imported' });
+      expect(machineState.readGlobalImportState()).toBe('unknown');
+      expect(readProjectMachineState().addedAt).toBe('2026-01-01T00:00:00.000Z');
+    });
+
+    it('guard: the GLOBAL layout records nothing and reads unknown', async () => {
+      setActiveStateLayout(null);
+      process.env.XEZ_HOME = join(root, 'global-home');
+      await machineState.recordGlobalImportState('imported');
+      expect(machineState.readGlobalImportState()).toBe('unknown');
+      expect(existsSync(join(root, 'global-home'))).toBe(false);
+    });
+  });
 });

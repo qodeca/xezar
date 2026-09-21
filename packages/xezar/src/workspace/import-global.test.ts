@@ -22,10 +22,16 @@ import {
 } from '../state-layout.ts';
 import { createProjectStateFiles } from './config.ts';
 import {
+  accountImportLines,
   askInTerminal,
   firstRunImportLine,
+  globalImportStateOf,
+  importGlobalAccounts,
   importGlobalSetup,
   isFirstSingleProjectRun,
+  projectHasAccounts,
+  repeatedImportLine,
+  resolveImportDecision,
   runFirstRunImport,
   type ImportAsk,
 } from './import-global.ts';
@@ -340,6 +346,226 @@ describe('import from the global setup (#600 FR-4)', () => {
           say: () => undefined,
         }),
       ).rejects.toThrow('boom');
+    });
+  });
+
+  /**
+   * #819 items 1a–1d. The prompt above is unchanged; these are the two other doors that answer the
+   * same question, and the record that finally tells the three answers apart on disk.
+   */
+  describe('#819 — a flag answers the question, a command runs it later', () => {
+    /** An ask that must never be reached: a flag is the answer, so stdin is never read. */
+    const neverAsk: ImportAsk = async () => {
+      throw new Error('the terminal was asked although a flag had already answered');
+    };
+
+    describe('the launch flags (item 1a)', () => {
+      it('both flags together contradict each other — break: last-wins parsing silently picks one (T1.3)', () => {
+        expect(resolveImportDecision({ import: true, skip: true })).toBe('conflict');
+        expect(resolveImportDecision({ import: true })).toBe('import');
+        expect(resolveImportDecision({ skip: true })).toBe('skip');
+        expect(resolveImportDecision({})).toBe('ask');
+        expect(resolveImportDecision({ import: false, skip: false })).toBe('ask');
+      });
+
+      it('--import-global imports with nobody to ask, and never reads stdin — break: the flag parsed but the terminal still consulted, so a non-TTY degrades to no-terminal (T1.1)', async () => {
+        const outcome = await runFirstRunImport(layout, neverAsk, env, 'import');
+
+        expect(outcome.kind).toBe('imported');
+        expect(projectStateDirContents()).toEqual(['agent-accounts.json', 'workspace-ui.json', 'workspace.json']);
+        expect(json(layout.accountsPath)).toEqual({
+          accounts: [{ id: 'work', provider: 'claude', configDir: '~/.claude-work', label: 'Work account' }],
+          defaults: { claude: 'work' },
+          selections: { [project]: { claude: 'work' } },
+        });
+        expect(globalImportStateOf(outcome)).toBe('imported');
+      });
+
+      it('--no-import-global imports nothing and records a decline — break: the flag ignored, so the outcome reads not-asked (T1.2)', async () => {
+        const before = homeBytes();
+        const outcome = await runFirstRunImport(layout, neverAsk, env, 'skip');
+
+        expect(outcome).toEqual({ kind: 'declined' });
+        expect(projectStateDirContents()).toEqual([]);
+        expect(homeBytes()).toEqual(before);
+        expect(globalImportStateOf(outcome)).toBe('declined');
+      });
+
+      it('without a flag the question is asked exactly as before — break: a flag path leaking into the default one (P2-AC7 guard)', async () => {
+        const asked: string[] = [];
+        const outcome = await runFirstRunImport(layout, async (question) => {
+          asked.push(question);
+          return false;
+        }, env);
+
+        expect(asked).toHaveLength(1);
+        expect(asked[0]).toBe(
+          `  This folder has no xezar setup yet. Copy your global setup (${home}) into ${layout.root} once? ` +
+            'Settings, agent accounts and GUI preferences are copied; your project list is not, and nothing is ' +
+            'kept in sync afterwards. [y/N] ',
+        );
+        expect(outcome).toEqual({ kind: 'declined' });
+        // Nobody to ask is still neither a yes nor a no, and it is recorded as neither.
+        expect(globalImportStateOf(await runFirstRunImport(layout, async () => null, env))).toBe('not-asked');
+      });
+
+      it('a flag on a folder that is already set up changes nothing and is not recorded — break: a launch flag merging into a committed file', async () => {
+        mkdirSync(layout.root, { recursive: true });
+        writeFileSync(layout.workspacePath, '{"resources":{"maxParallel":2}}\n');
+
+        const outcome = await runFirstRunImport(layout, neverAsk, env, 'import');
+
+        expect(outcome).toEqual({ kind: 'already-set-up' });
+        expect(projectStateDirContents()).toEqual(['workspace.json']);
+        expect(firstRunImportLine(outcome, layout, env)).toBeNull();
+        expect(globalImportStateOf(outcome)).toBeNull();
+      });
+
+      it('a bootstrap may pass --import-global on every start: once there is nothing to import it says nothing — break: a recommendation repeated on every launch', () => {
+        mkdirSync(layout.root, { recursive: true });
+        // Nothing imported yet and no accounts here: the pointer is still worth one line.
+        expect(repeatedImportLine(layout, 'unknown')).toContain('accounts import-global');
+        expect(repeatedImportLine(layout, 'not-asked')).toContain('accounts import-global');
+        // Already imported on this machine: silence, whatever the accounts file holds.
+        expect(repeatedImportLine(layout, 'imported')).toBeNull();
+        // Or accounts are simply already here — a clone that carried them was never asked at all.
+        writeFileSync(layout.accountsPath, `${JSON.stringify({ accounts: [{ id: 'work', provider: 'claude', configDir: '~/.claude-work' }] })}\n`);
+        expect(projectHasAccounts(layout)).toBe(true);
+        expect(repeatedImportLine(layout, 'unknown')).toBeNull();
+      });
+    });
+
+    describe('accounts import-global (item 1b)', () => {
+      /** What the boot leaves behind after any first-run outcome: four files, three of them empty. */
+      const bootedWithoutImport = (): void => {
+        createProjectStateFiles(layout);
+      };
+
+      it('merges into the empty file the boot already wrote, and a second run changes nothing — break: re-appending a row, or overwriting the file (T1.4)', () => {
+        bootedWithoutImport();
+
+        const first = importGlobalAccounts(layout, env);
+        expect(first.outcome).toBe('merged');
+        expect(first.added).toEqual([{ id: 'work', provider: 'claude' }]);
+        expect(first.changed).toBe(true);
+        expect(json(layout.accountsPath)).toEqual({
+          accounts: [{ id: 'work', provider: 'claude', configDir: '~/.claude-work', label: 'Work account' }],
+          defaults: { claude: 'work' },
+          selections: { [project]: { claude: 'work' } },
+        });
+
+        const bytes = readFileSync(layout.accountsPath, 'utf8');
+        const second = importGlobalAccounts(layout, env);
+        expect(second.added).toEqual([]);
+        expect(second.kept).toEqual([{ id: 'work', provider: 'claude' }]);
+        expect(second.changed).toBe(false);
+        expect(readFileSync(layout.accountsPath, 'utf8')).toBe(bytes);
+        expect(accountImportLines(second, layout).at(-1)).toBe('  0 account(s) added, 1 left untouched');
+      });
+
+      it('never replaces a row, a default or a choice the project already has — break: an import overwriting a teammate\'s committed row', () => {
+        mkdirSync(layout.root, { recursive: true });
+        writeFileSync(
+          layout.accountsPath,
+          `${JSON.stringify({
+            accounts: [{ id: 'work', provider: 'claude', configDir: '/opt/shared/.claude-work', label: 'Shared' }],
+            defaults: { claude: 'work' },
+            selections: { [project]: { claude: 'work' } },
+            futureKey: { kept: true },
+          })}\n`,
+        );
+        writeFileSync(
+          join(home, 'agent-accounts.json'),
+          `${JSON.stringify({
+            accounts: [
+              { id: 'work', provider: 'claude', configDir: '~/.claude-mine', label: 'Mine' },
+              { id: 'second', provider: 'codex', configDir: '~/.codex-second' },
+            ],
+            defaults: { claude: 'second', codex: 'second' },
+            selections: { [project]: { claude: 'second' } },
+          })}\n`,
+        );
+
+        const report = importGlobalAccounts(layout, env);
+
+        expect(report.added).toEqual([{ id: 'second', provider: 'codex' }]);
+        expect(report.kept).toEqual([{ id: 'work', provider: 'claude' }]);
+        expect(json(layout.accountsPath)).toEqual({
+          accounts: [
+            { id: 'work', provider: 'claude', configDir: '/opt/shared/.claude-work', label: 'Shared' },
+            { id: 'second', provider: 'codex', configDir: '~/.codex-second' },
+          ],
+          // `claude` kept the project's own answer; `codex` had none, so the global one applies.
+          defaults: { claude: 'work', codex: 'second' },
+          selections: { [project]: { claude: 'work' } },
+          futureKey: { kept: true },
+        });
+      });
+
+      it('never writes a default account that names no account — break: the verbatim copy of `defaults` that creates a dangling id (T1.5)', () => {
+        bootedWithoutImport();
+        writeFileSync(
+          join(home, 'agent-accounts.json'),
+          `${JSON.stringify({
+            accounts: [{ id: 'work', provider: 'claude', configDir: '~/.claude-work' }],
+            // `codex` names an account this file does not hold — the exact shape #819 item 2 reports.
+            defaults: { claude: 'work', codex: 'gone-org' },
+            selections: { [project]: { claude: 'work', codex: 'gone-org' } },
+          })}\n`,
+        );
+
+        const report = importGlobalAccounts(layout, env);
+
+        expect(report.defaults).toEqual(['claude → work']);
+        expect(report.danglingSkipped).toEqual(['codex → gone-org']);
+        const stored = json(layout.accountsPath) as { defaults: Record<string, string>; selections: Record<string, unknown> };
+        expect(stored.defaults).toEqual({ claude: 'work' });
+        expect(stored.selections).toEqual({ [project]: { claude: 'work' } });
+      });
+
+      it('names account ids and providers only — never a label that looks like an identity, never a config folder', () => {
+        bootedWithoutImport();
+        writeFileSync(
+          join(home, 'agent-accounts.json'),
+          `${JSON.stringify({
+            accounts: [{ id: 'work', provider: 'claude', configDir: '/Users/a.person/.claude-work', label: 'a.person@example.com' }],
+            defaults: { claude: 'work' },
+          })}\n`,
+        );
+
+        const lines = accountImportLines(importGlobalAccounts(layout, env), layout).join('\n');
+
+        expect(lines).toContain('+ account work (claude)');
+        expect(lines).not.toContain('a.person@example.com');
+        expect(lines).not.toContain('/Users/a.person/.claude-work');
+        expect(lines).not.toContain(layout.accountsPath);
+      });
+
+      it('the global layout has nothing to import into, and says so without writing', () => {
+        const report = importGlobalAccounts(globalStateLayout(env), env);
+        expect(report.outcome).toBe('not-project-layout');
+        expect(report.changed).toBe(false);
+        expect(accountImportLines(report, layout)).toEqual([
+          '  this folder uses your global setup already, so there is nothing to import',
+        ]);
+      });
+
+      it('a symlinked accounts file is refused, never written through', () => {
+        mkdirSync(layout.root, { recursive: true });
+        symlinkSync(join(base, 'elsewhere.json'), layout.accountsPath);
+        const report = importGlobalAccounts(layout, env);
+        expect(report.outcome).toBe('refused-symlink');
+        expect(existsSync(join(base, 'elsewhere.json'))).toBe(false);
+      });
+
+      it('a global setup with no accounts file is a successful "nothing to do"', () => {
+        bootedWithoutImport();
+        rmSync(join(home, 'agent-accounts.json'));
+        const report = importGlobalAccounts(layout, env);
+        expect(report.outcome).toBe('no-global-file');
+        expect(report.changed).toBe(false);
+        expect(json(layout.accountsPath)).toEqual({});
+      });
     });
   });
 });

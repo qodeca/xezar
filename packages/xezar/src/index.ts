@@ -80,7 +80,24 @@ import {
   stateLayoutBootLine,
 } from './state-layout.ts';
 import { createProjectStateFiles } from './workspace/config.ts';
-import { askInTerminal, firstRunImportLine, runFirstRunImport } from './workspace/import-global.ts';
+import type { StateLayout } from './state-layout.ts';
+import {
+  accountImportLines,
+  askInTerminal,
+  firstRunImportLine,
+  globalImportStateOf,
+  importGlobalAccounts,
+  IMPORT_FLAG_CONFLICT,
+  IMPORT_IN_GLOBAL_LAYOUT_LINE,
+  repeatedImportLine,
+  resolveImportDecision,
+  runFirstRunImport,
+} from './workspace/import-global.ts';
+import {
+  readGlobalImportState,
+  recordGlobalImportState,
+  type RecordedGlobalImportState,
+} from './workspace/project-machine-state.ts';
 
 const HELP =`xezar — local cockpit for AI agent tasks in any project folder
 
@@ -91,6 +108,9 @@ Usage:
   xezar projects            list the projects this cockpit serves
                             (also: projects add [<dir>] · projects remove <id>
                              · projects port <id> [<port>])
+  xezar accounts import-global
+                            copy your global agent accounts into this project's
+                            own setup (never overwrites one it already has)
   xezar mcp                 MCP bridge for a coding agent — the agent starts it
                             (stdio), in a project whose cockpit is running
   xezar lease gates -- <cmd>
@@ -136,6 +156,12 @@ Options:
                               That first run asks once, in a terminal, whether to
                               copy your global setup in (never the project list).
                               A linked git worktree is never a project root.
+      --import-global         answer that question with yes, without being asked —
+                              so a script, a CI job or an IDE task can import too.
+      --no-import-global      answer it with no. Giving both refuses the launch;
+                              giving neither keeps the question. After the first
+                              run either flag only points at the command:
+                              \`xezar accounts import-global\`.
       --global-layout         resolve the GLOBAL layout for this launch, even in a
                               folder that carries .xezar/workspace.json — the
                               explicit answer to "which layout", and the
@@ -206,6 +232,12 @@ async function main(): Promise<void> {
       // this entry is only what keeps `xez --single-project` from being an
       // unknown option.
       'single-project': { type: 'boolean', default: false },
+      // The two answers to the first-run import question (#819 item 1a), registered globally for
+      // the same `parseArgs`-is-strict reason as the flags around them. Node has no notion of a
+      // negated boolean, so `--no-import-global` is its OWN option rather than the negation of the
+      // one above — which is also what lets both being given be refused instead of last-wins.
+      'import-global': { type: 'boolean', default: false },
+      'no-import-global': { type: 'boolean', default: false },
       // The same arrangement for the flag that answers "global" (#657). The
       // value is read from argv by `resolveStateLayout`, which owns the
       // detection rule and stays a pure function of `(cwd, argv, env)`; this
@@ -232,6 +264,19 @@ async function main(): Promise<void> {
   // works outside any git repository and never touches ~/.xezar.
   if (values.version) {
     console.log(readOwnVersion());
+    return;
+  }
+
+  // The import answer is resolved before anything else is read or written, for the same reason
+  // the settings below are: a launch that says both "import" and "do not import" is a typo, and a
+  // typo must touch nothing — not a state file, not the global home it names.
+  const importDecision = resolveImportDecision({
+    import: values['import-global'],
+    skip: values['no-import-global'],
+  });
+  if (importDecision === 'conflict') {
+    console.error(`error  ${IMPORT_FLAG_CONFLICT}`);
+    process.exitCode = 1;
     return;
   }
 
@@ -305,11 +350,38 @@ async function main(): Promise<void> {
     // run, whose stdin is not a terminal, and a question there would hang the run rather than
     // being answered. Neither command writes project state of its own, so importing nothing
     // costs nothing.
+    //
+    // `accounts` is skipped entirely: the command IS the import, so a prompt in front of it would
+    // ask a question the person already answered by typing it.
     const silent = command === 'mcp' || command === 'lease';
-    const outcome = await runFirstRunImport(stateLayout, silent ? async () => null : askInTerminal);
-    const importLine = silent ? null : firstRunImportLine(outcome, stateLayout);
-    if (importLine !== null) console.log(importLine);
+    if (command !== 'accounts') {
+      // A flag (#819 item 1a) is the person's own answer and replaces the question, in every
+      // command: `runFirstRunImport` never calls the ask, so stdin is not read even here.
+      const outcome = await runFirstRunImport(
+        stateLayout,
+        silent ? async () => null : askInTerminal,
+        process.env,
+        importDecision,
+      );
+      // A bootstrap that starts the engine may pass `--import-global` on every start, so a folder
+      // that is already set up says nothing at all once there is nothing left to import: no
+      // prompt, no second copy, no error, and the launch's exit code is untouched.
+      const importLine = silent
+        ? null
+        : outcome.kind === 'already-set-up'
+          ? repeatedImportLine(stateLayout, readGlobalImportState(stateLayout))
+          : firstRunImportLine(outcome, stateLayout);
+      if (importLine !== null) console.log(importLine);
+      // What happened is remembered per machine (#819 item 1d), so "declined", "nobody was asked"
+      // and "imported" stop being the same disk state. Best-effort by contract: a launch that
+      // cannot record a report still starts.
+      await rememberGlobalImport(globalImportStateOf(outcome), stateLayout);
+    }
     createProjectStateFiles(stateLayout);
+  } else if (importDecision !== 'ask' && command !== 'mcp' && command !== 'lease') {
+    // A flag in the global layout: there is no project file to import INTO, and the global setup
+    // is already what this launch runs on. One line, and the launch carries on.
+    console.log(IMPORT_IN_GLOBAL_LAYOUT_LINE);
   }
 
   switch (command) {
@@ -356,6 +428,10 @@ async function main(): Promise<void> {
       return;
     case 'lease': {
       process.exitCode = await leaseCommand(positionals[1], process.argv.slice(2), values['status-file']);
+      return;
+    }
+    case 'accounts': {
+      process.exitCode = await accountsCommand(positionals[1], stateLayout);
       return;
     }
     case 'mcp': {
@@ -412,6 +488,56 @@ async function main(): Promise<void> {
       console.error(`unknown command: ${command}\n`);
       console.log(HELP);
       process.exitCode = 1;
+  }
+}
+
+// ---- accounts ----------------------------------------------------------------
+
+/**
+ * `xezar accounts import-global` (#819 item 1b) — the later door of the one-time import.
+ *
+ * A person typing this command is the consent the mode requires before the global home is read,
+ * exactly as an answered prompt is; nothing else reaches it. It merges ACCOUNTS only, never
+ * overwrites a row the project already has, and writes nothing when there is nothing to add, so
+ * running it twice is safe and running it on a shared checkout cannot replace a teammate's row.
+ *
+ * Exit 1 only where the import could not be done at all — an unknown verb, a refused symbolic
+ * link, an unreadable file. "Nothing to import" is a successful answer, not a failure.
+ */
+async function accountsCommand(verb: string | undefined, layout: StateLayout): Promise<number> {
+  if (verb !== 'import-global') {
+    console.error(`unknown accounts command: ${verb ?? '(none)'}\n`);
+    console.error('usage: xezar accounts import-global');
+    return 1;
+  }
+  const report = importGlobalAccounts(layout);
+  for (const line of accountImportLines(report, layout)) console.log(line);
+  if (report.outcome === 'refused-symlink' || report.outcome === 'unreadable') return 1;
+  // The question is settled either way: the global setup was consulted, and what it held is now
+  // here. A folder with nothing to import has no more importing to do than one that copied four
+  // accounts.
+  if (report.outcome === 'merged' || report.outcome === 'no-global-file') {
+    await rememberGlobalImport('imported', layout);
+  }
+  return 0;
+}
+
+/**
+ * Persist what happened to the global import, and never let that report fail a launch.
+ *
+ * The same best-effort contract `recordProjectOpened` has: a read-only `.local`, a lock that
+ * cannot be taken or a folder that is gone means "this machine will not remember", which is not a
+ * reason to refuse to start or to fail a command that did its work.
+ */
+async function rememberGlobalImport(
+  state: RecordedGlobalImportState | null,
+  layout: StateLayout,
+): Promise<void> {
+  if (state === null) return;
+  try {
+    await recordGlobalImportState(state, layout);
+  } catch {
+    // a report nothing runs on is never worth a failed boot
   }
 }
 
@@ -1325,6 +1451,34 @@ async function serverCommand(
 
 // ---- init --------------------------------------------------------------------
 
+/**
+ * The lines `init` ends with (#819 item 9b).
+ *
+ * `npx <name>` names the SCOPED package, always, and that is a security property rather than
+ * tidiness: the unscoped name this line used to print is not published by us, so anyone could
+ * publish it and a person following our own closing line would run their code. The name is read
+ * from the running package rather than spelled here, so it cannot drift from what npm installs.
+ *
+ * The accounts line exists because `init` scaffolds a project and people reasonably assume it
+ * brought their agent accounts with it. It did not — accounts are copied by their own command,
+ * which is the one that asks the person's consent to read their global setup.
+ *
+ * The single-project line is only printed in a repository: outside one there is no folder for a
+ * team to carry, so the recommendation would name a choice that does not apply.
+ */
+function initClosingLines(gitRepository: boolean): string[] {
+  const pkg = readOwnName();
+  return [
+    '',
+    `Agent accounts are not imported by init. To copy your global accounts into this project, run: npx ${pkg} accounts import-global`,
+    '',
+    `Done. Start the cockpit with: npx ${pkg}`,
+    ...(gitRepository
+      ? [`To keep this project's xezar setup inside the project folder: npx ${pkg} --single-project`]
+      : []),
+  ];
+}
+
 function initCommand(repoRoot: string): void {
   const workflowsDir = join(projectKitDir(repoRoot), 'workflows');
   const skillsDir = join(projectKitDir(repoRoot), 'skills');
@@ -1355,7 +1509,9 @@ function initCommand(repoRoot: string): void {
         : '\nVerification: no verification command is configured, so fix-and-verify ends with a review step that reports what it could not verify.',
     );
   }
-  console.log('\nDone. Start the cockpit with: npx xezar');
+  // `.git` rather than a git call: a folder someone has just `git init`-ed has no commit yet,
+  // and a repository is exactly what makes the project-owned setup worth naming.
+  for (const line of initClosingLines(existsSync(join(repoRoot, '.git')))) console.log(line);
 }
 
 // ---- helpers -----------------------------------------------------------------
