@@ -166,6 +166,8 @@ one is the DeepSeek lane and is a normal lane of this table.
 | Every model – a superseding run (from 2026-09-21) | a superseding run on a fresh branch declares `counters init --none`, never `--predecessor`: inheriting the exhausted gate-return counter makes the supersede fail at readiness (leader, 2026-09-21; run `98cc751d`) |
 | Every model – a conflict refresh (from 2026-09-21) | the brief says: merge `main` through `.xezar/checks/merge-recovery.sh`, then REWRITE the `DELIVERED` record for the NEW head – a refresh that leaves the old head in the record is refused at readiness, so re-recording the head is a numbered step of the brief and not an afterthought (leader, 2026-09-21) |
 | Every model – the handoff step (from 2026-09-21) | when `gh pr checks` shows NO checks at all on a fresh push, the brief's remedy is `gh workflow run ci.yml --ref <branch>`, never closing and reopening the pull request (leader, 2026-09-21) |
+| Every model – the completion marker in every step (from 2026-09-21) | every agent turn in EVERY step ends with `XEZ:DONE` as its very last line, not only the last step of a run (leader, 2026-09-21) |
+| Every model – a bug-fix brief's proofs (from 2026-09-21) | a bug-fix brief forbids background proofs outright: run `16d05de6` (the #812 fix, opus, 2026-09-21 10:50) failed at `investigate` on `XEZ:MONITORING` after starting its proofs in the background with the fix already committed, and one `continue` saying "re-run the proofs in the foreground" finished it – the #734 lesson again (leader, 2026-09-21; run `5495f83d`, 2026-09-20) |
 
 The evidence behind these rows is in the findings log (§ 13): conditional wording cost two Codex
 integration chains on 2026-09-15, and a pi model posted its comment and then looped.
@@ -431,6 +433,36 @@ rules are in [leader-guide.md](leader-guide.md).
   `execution_control continue` on run `9395bcfb` (2026-09-21 06:04) resumed a run that had merely
   omitted `XEZ:DONE`, at no extra cost – the $144 re-prompting loop of #613 (2026-09-18, above) did
   not recur. The ten-minute watch on every continue is unchanged.
+
+### 2026-09-21 (after the 0.17.0 release)
+
+Leader lessons 17–20 of the same day, recorded after the entries above, together with the release
+record itself. Every rule below is the leader's own, not the owner's; the brief rules are the § 6
+rows dated 2026-09-21 and the leader rules are in [leader-guide.md](leader-guide.md).
+
+- **0.17.0 shipped.** 0.17.0 was released on 2026-09-21 13:55 CEST (npm `latest` = 0.17.0, tag
+  `v0.17.0` → `114aa348`, bump merge `ccff8a2f`) by release run `b477bc90` on the DeepSeek lane in
+  state 2, with all 18 issues of the fixed scope the owner set on 2026-09-20 06:55 closed. That scope
+  is not the label's total: 19 `release-0.17.0` issues were open on the morning of 2026-09-21, and
+  #669 was closed the same day as won't-do on the owner's "No, keep it strict". The label as a whole
+  holds 59 issues, all closed (`gh issue list --label release-0.17.0 --state all`, read 2026-09-21).
+- **Every agent turn in every step ends with the marker.** `XEZ:DONE` is the very last line of every
+  turn of every step, not only of the last step of a run. The base "Every model" row already carried
+  the marker, so what is new is that it applies to every turn of every step. The rule it produced is
+  the § 6 row (leader, 2026-09-21).
+- **A bug-fix brief forbids background proofs outright.** Run `16d05de6` (the #812 fix, opus,
+  2026-09-21 10:50) failed at `investigate` on `XEZ:MONITORING` because it started its proofs in the
+  background, with the fix already committed; one `continue` saying "re-run the proofs in the
+  foreground" finished it. This is the #734 lesson again (run `5495f83d`, 2026-09-20). The rule it
+  produced is the § 6 row (leader, 2026-09-21).
+- **The release brief dispatches the changelog review at once.** On release run `b477bc90`
+  (2026-09-21 13:36) the run's last step polled about 15 minutes for a review of PR #814 because the
+  leader had not dispatched one. The rule it produced is in [leader-guide.md](leader-guide.md)
+  (leader, 2026-09-21).
+- **A CI re-run of an unfixed flaky case is never the remedy.** On PR #653 (2026-09-21 12:25–12:41)
+  the leader cancelled CI re-run 35588702096, then refresh run `def330f3` merged `main` `22334449`
+  (the #813 fixture fix) and CI went green. The rule it produced is in
+  [leader-guide.md](leader-guide.md) (leader, 2026-09-21).
 
 ## Glossary
 
