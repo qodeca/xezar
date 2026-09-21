@@ -462,7 +462,7 @@ function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
           </p>
         ) : (
           <p className="text-[11px] text-soft-foreground">
-            Applies to newly started tasks. This machine's default is{' '}
+            A change applies straight away, to running tasks too. This machine's default is{' '}
             <span data-slot="resources-memory-default">{config.resources.memoryLimitDefaultMb}</span> MiB,
             sized from its total memory. A project can set its own in its settings, under General
             → Per-task memory limit.

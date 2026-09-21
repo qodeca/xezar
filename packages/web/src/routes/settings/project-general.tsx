@@ -215,7 +215,7 @@ function ProjectMemoryLimitForm({
           data-slot="project-memory-limit"
           value={memory}
           disabled={save.isPending}
-          placeholder="workspace"
+          placeholder="Use workspace limit"
           onChange={(event) => setMemory(event.target.value)}
           className={cn(nativeFieldClass, 'block w-32')}
         />
