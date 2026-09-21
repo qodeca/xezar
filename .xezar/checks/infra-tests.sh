@@ -5775,12 +5775,9 @@ LEASE_ENTRY="$REPO_ROOT/packages/xezar/src/index.ts"
 LEASE_TMPDIR="${TMPDIR:-/tmp}"
 [ "${#LEASE_TMPDIR}" -gt 64 ] && LEASE_TMPDIR="/tmp"
 
-# One ceiling, shared by every wait below, so "it appeared" and "it did not appear" are judged
-# against the SAME budget. That is what keeps the negative case honest: the `gateSlots: 2` case
-# uses this budget to observe a second slot being taken, so the `gateSlots: 1` case's "nothing
-# appeared within it" is calibrated by a positive observation in this same suite on this same
-# machine rather than by a number somebody guessed. 300 × 0.1 s = 30 s, which is many times the
-# ~1–2 s the verb needs to boot and resolve.
+# One ceiling for the waits below that still judge by a budget. 300 × 0.1 s = 30 s, which is many
+# times the ~1–2 s the verb needs to boot and resolve. The `gateSlots: 2` case no longer uses it:
+# it judges by which signal the verb emitted, not by what appeared inside this window (see there).
 lease_wait_polls=300
 # Wait for a file to become non-empty. Returns non-zero when it never did.
 lease_await_file() {
@@ -5791,6 +5788,28 @@ lease_await_file() {
     polls=$((polls + 1))
   done
   return 1
+}
+# Wait for the verb to SAY something, and print which thing it said. Every live lease emits one of
+# these, so what ends the wait is the verb's own signal, never an elapsed budget:
+#   status  — the status file, written the moment the lease resolves (held, timeout, unavailable)
+#   queued  — the "waiting for a gate slot" line, emitted only after a sweep found every slot busy
+#             and only once the verb's own first notice period (GATE_LEASE_NOTICE_MS, 30 s) has
+#             passed — which is why a queued FAIL costs about 30 s; no budget here decided it
+#   exited  — the process ended without writing a status
+#   silent  — none of the three in five minutes: a wedged verb, reported by name instead of a hang
+# A slow machine only makes the answer arrive later; it cannot change which answer it is.
+lease_await_signal() {
+  local status="$1" out="$2" pid="$3" deadline=$(( $(date +%s) + 300 ))
+  while :; do
+    if [ -s "$status" ]; then printf 'status'; return 0; fi
+    if grep -q 'waiting for a gate slot' "$out" 2>/dev/null; then printf 'queued'; return 0; fi
+    if ! kill -0 "$pid" 2>/dev/null; then
+      if [ -s "$status" ]; then printf 'status'; else printf 'exited'; fi
+      return 0
+    fi
+    if [ "$(date +%s)" -ge "$deadline" ]; then printf 'silent'; return 0; fi
+    sleep 0.1
+  done
 }
 
 if [ ! -x "$LEASE_TSX" ] || [ ! -f "$LEASE_ENTRY" ]; then
@@ -5826,20 +5845,29 @@ else
   # which the verb writes the moment its lease resolves either way.
   lease_race() {
     local slots="$1" dir="$2"
+    # Reset before anything can fail, so a caller's FAIL line never reports the PREVIOUS case's
+    # signal and `set -u` never trips on it.
+    LEASE_A_SIGNAL=""
     # HOME decides where the SLOT FILES go (machine-wide, never the state layout); XEZ_HOME
     # decides where `gateSlots` is READ from. Two different questions, deliberately pinned apart.
+    # XEZ_GLOBAL_LAYOUT=1 is what makes XEZ_HOME the answer wherever this suite runs: the verb
+    # resolves its state layout from the CWD, and a CWD inside a single-project checkout (one with
+    # `.xezar/workspace.json`) reads `gateSlots` from THAT file instead — the fixture's 2 never
+    # arrives, the verb derives 1, and the `gateSlots: 2` case's second run queues behind the first.
     mkdir -p "$dir/home/.xezar"
     printf '{\n  "resources": { "gateSlots": %s }\n}\n' "$slots" > "$dir/home/.xezar/config.json"
     rm -f "$dir/hold"
     mkfifo "$dir/hold" || return 1
     exec 8<>"$dir/hold"
-    HOME="$dir/home" XEZ_HOME="$dir/home/.xezar" TMPDIR="$LEASE_TMPDIR" \
+    HOME="$dir/home" XEZ_HOME="$dir/home/.xezar" XEZ_GLOBAL_LAYOUT=1 TMPDIR="$LEASE_TMPDIR" \
       "$LEASE_TSX" "$LEASE_ENTRY" lease gates --status-file "$dir/a.json" -- \
       bash -c 'printf "a-start\n" >> "$2"; read -r _ < "$1"; printf "a-end\n" >> "$2"' \
       holder "$dir/hold" "$dir/order" > "$dir/a.out" 2>&1 &
     LEASE_A_PID=$!
-    lease_await_file "$dir/a.json" || return 1
-    HOME="$dir/home" XEZ_HOME="$dir/home/.xezar" TMPDIR="$LEASE_TMPDIR" \
+    # Kept for the caller: an A that never resolved must be reported by WHICH signal it gave.
+    LEASE_A_SIGNAL="$(lease_await_signal "$dir/a.json" "$dir/a.out" "$LEASE_A_PID")"
+    [ "$LEASE_A_SIGNAL" = status ] || return 1
+    HOME="$dir/home" XEZ_HOME="$dir/home/.xezar" XEZ_GLOBAL_LAYOUT=1 TMPDIR="$LEASE_TMPDIR" \
       "$LEASE_TSX" "$LEASE_ENTRY" lease gates --status-file "$dir/b.json" -- \
       bash -c 'printf "b-start\n" >> "$1"' runner "$dir/order" > "$dir/b.out" 2>&1 &
     LEASE_B_PID=$!
@@ -5851,6 +5879,25 @@ else
     exec 8>&- 2>/dev/null
     rm -f "$dir/hold"
   }
+  # End a saved pid and its children by pid and parent pid ONLY — never a command-line pattern.
+  # This is the "A never resolved" path's ending: a queued or wedged holder never reads the FIFO,
+  # so `lease_release_a`'s `wait` would block for the verb's own lease bound. An empty pid is a
+  # no-op, which is what the `mkfifo`-failed path passes.
+  lease_end_by_pid() {
+    local pid="$1" kid
+    [ -n "$pid" ] || return 0
+    for kid in $(pgrep -P "$pid" 2>/dev/null); do
+      kill -TERM "$kid" 2>/dev/null
+    done
+    kill -TERM "$pid" 2>/dev/null
+    wait "$pid" 2>/dev/null
+  }
+
+  # Both holders are started by `lease_race`; a `mkfifo` failure returns before either is set, so
+  # they start empty and every "end by saved pid" path stays safe under `set -u`.
+  LEASE_A_PID=""
+  LEASE_B_PID=""
+  LEASE_A_SIGNAL=""
 
   # -- gateSlots: 1 serialises two runs ----------------------------------------------------------
   lease_one="$WORK/lease-one"
@@ -5879,22 +5926,60 @@ else
   fi
 
   # -- gateSlots: 2 does NOT serialise them ------------------------------------------------------
+  #
+  # Judged by WHICH signal the second run emits, never by what appeared inside a window. It used to
+  # read `b.json` after a 30 s budget, so a second run that had not resolved yet read as an empty
+  # status — and it then waited on that run BEFORE releasing the first, so a second run really
+  # queued behind slot 1 held this suite for the verb's whole 20-minute bound. Now: the status
+  # (slot 2 of 2) is a fact and the "waiting for a gate slot" line is the opposite fact.
+  # "While the first still holds" is read from the TWO STATUS FILES, not from the order file:
+  # holder A blocks on the FIFO and is released only below, so the instant B's status says
+  # `slot 2 of 2` A's still says `slot 1 of 2` and A still holds it — a fact this fixture
+  # controls. The old `a-start b-start` order comparison was a process race: the verb writes A's
+  # status BEFORE it spawns A's command, so `a-start` could still be unwritten when B launched and
+  # a starved machine could fail a healthy system. The order stays in the FAIL line for diagnosis;
+  # neither a time window nor a spawn race decides the verdict.
+  # Every path ends a second run that is still waiting by its saved pid and releases the first
+  # before moving on; on the `status` path nothing is killed and B exits on its own.
   lease_two="$WORK/lease-two"
+  lease_two_case="gateSlots: 2 lets a second gate run take the SECOND slot while the first still holds slot 1"
   mkdir -p "$lease_two"
   if lease_race 2 "$lease_two"; then
-    if lease_await_file "$lease_two/b.json" &&
-      node -e 'const s=JSON.parse(require("node:fs").readFileSync(process.argv[1],"utf8")); process.exit(s.held === true && s.slot === 2 && s.slots === 2 ? 0 : 1)' "$lease_two/b.json"; then
-      ok "gateSlots: 2 lets a second gate run take the SECOND slot while the first still holds slot 1"
+    lease_two_signal="$(lease_await_signal "$lease_two/b.json" "$lease_two/b.out" "$LEASE_B_PID")"
+    lease_two_b_rc=""
+    if [ "$lease_two_signal" = status ]; then
+      # Slot 2 is held for the instant it takes to run `b-start`, so this returns on its own.
+      wait "$LEASE_B_PID" 2>/dev/null
+      lease_two_b_rc=$?
     else
-      bad "gateSlots: 2 lets a second gate run take the SECOND slot while the first still holds slot 1" \
-        "status: $(cat "$lease_two/b.json" 2>/dev/null)"
+      # Saved pid and its children by parent pid, never a command-line pattern.
+      for lease_two_kid in $(pgrep -P "$LEASE_B_PID" 2>/dev/null); do
+        kill -TERM "$lease_two_kid" 2>/dev/null
+      done
+      kill -TERM "$LEASE_B_PID" 2>/dev/null
+      wait "$LEASE_B_PID" 2>/dev/null
+    fi
+    lease_two_order="$(tr '\n' ' ' < "$lease_two/order" 2>/dev/null)"
+    if [ "$lease_two_signal" = status ] && [ "$lease_two_b_rc" -eq 0 ] &&
+      node -e 'const r=(p)=>JSON.parse(require("node:fs").readFileSync(p,"utf8"));
+        const a=r(process.argv[1]), b=r(process.argv[2]);
+        process.exit(a.held === true && a.slot === 1 && a.slots === 2 &&
+          b.held === true && b.slot === 2 && b.slots === 2 ? 0 : 1)' \
+        "$lease_two/a.json" "$lease_two/b.json"; then
+      ok "$lease_two_case"
+    else
+      bad "$lease_two_case" \
+        "signal: $lease_two_signal, exit: ${lease_two_b_rc:-killed}, order: $lease_two_order, first: $(cat "$lease_two/a.json" 2>/dev/null), second: $(cat "$lease_two/b.json" 2>/dev/null)"
       tail -10 "$lease_two/b.out"
     fi
-    wait "$LEASE_B_PID" 2>/dev/null
     lease_release_a "$lease_two"
   else
-    bad "gateSlots: 2 lets a second gate run take the SECOND slot while the first still holds slot 1" \
-      "the fixture could not start both runs"
+    # A's signal was not `status`: a queued or wedged holder never reads the FIFO, so end it by
+    # its saved pid before the release's `wait` (which would otherwise block for the lease bound),
+    # and name the signal it gave.
+    lease_end_by_pid "$LEASE_A_PID"
+    lease_release_a "$lease_two"
+    bad "$lease_two_case" "the fixture could not start both runs (holder A signal: ${LEASE_A_SIGNAL:-none})"
   fi
 
   # -- a lease that cannot be taken still runs the command, and still exits 0 --------------------
