@@ -9,6 +9,7 @@ import type { RunManager } from '../workflows/run.ts';
 import { loadAgentAccounts, mergeWriteAgentAccounts } from '../workspace/agent-accounts.ts';
 import { clearProjectProbeCache, registerProject } from '../workspace/projects.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
+import { projectStateLayout, setActiveStateLayout } from '../state-layout.ts';
 import { ProviderAuthService } from '../core/provider-auth.ts';
 import { createApp, type ServerDeps } from './server.ts';
 
@@ -180,6 +181,76 @@ describe('agent profiles API', () => {
       // consumer; the ENGINE always fills it in, which is what keeps that choice from being an
       // absence a consumer has to guess at.
       expect('problems' in body).toBe(true);
+    });
+
+    // #819 PR 9: the cockpit's "In use" / "Default" marker is the server's answer, never the
+    // browser's. Break each of these pins against: a listing with no `selected` at all (the pane
+    // would have to recompute the resolution order), or one that marks the stored default even
+    // when it dangles (it would name an account no run uses).
+    describe('selected — exactly one per provider, resolved the way a run resolves', () => {
+      const selectedIds = (body: AgentProfilesResponse) =>
+        Object.fromEntries(
+          ['claude', 'codex', 'opencode', 'pi'].map((provider) => [
+            provider,
+            body.profiles.filter((p) => p.provider === provider && p.selected === true).map((p) => p.id),
+          ]),
+        );
+
+      afterEach(() => setActiveStateLayout(null));
+
+      it('marks the discovered account of every provider on a zero-config machine', async () => {
+        expect(selectedIds(await list())).toEqual({
+          claude: ['default'],
+          codex: ['default'],
+          opencode: ['default'],
+          pi: ['default'],
+        });
+      });
+
+      it('follows the machine-wide default in the global layout', async () => {
+        const { body: created } = await send('POST', '/api/v1/workspace/agent-profiles', {
+          provider: 'claude',
+          configDir: claudeDir('claude-work'),
+        });
+        await send('PUT', '/api/v1/workspace/agent-profiles/selection', {
+          projectId: null,
+          provider: 'claude',
+          profileId: created.profile.id,
+        });
+        const body = await list();
+        expect(selectedIds(body).claude).toEqual([created.profile.id]);
+        expect(body.profiles.find((p) => p.provider === 'claude' && p.isDefault)?.selected).toBe(false);
+      });
+
+      it('lands on the discovered account when the stored default dangles — as a run does', async () => {
+        await mergeWriteAgentAccounts((store) => {
+          store.defaults.claude = 'deleted-yesterday';
+        });
+        const body = await list();
+        expect(selectedIds(body).claude).toEqual(['default']);
+        expect(body.problems).toEqual([
+          { kind: 'unknown-account', where: 'defaults', provider: 'claude', handle: 'deleted-yesterday' },
+        ]);
+      });
+
+      it("prefers the folder's own selection over the default in single-project mode", async () => {
+        setActiveStateLayout(projectStateLayout(repoRoot));
+        const work = await send('POST', '/api/v1/workspace/agent-profiles', {
+          provider: 'claude',
+          label: 'Work',
+          configDir: claudeDir('claude-work'),
+        });
+        const client = await send('POST', '/api/v1/workspace/agent-profiles', {
+          provider: 'claude',
+          label: 'Client',
+          configDir: claudeDir('claude-client'),
+        });
+        await mergeWriteAgentAccounts((store) => {
+          store.defaults.claude = work.body.profile.id;
+          store.selections[repoRoot] = { claude: client.body.profile.id };
+        });
+        expect(selectedIds(await list()).claude).toEqual([client.body.profile.id]);
+      });
     });
   });
 

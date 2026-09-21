@@ -206,8 +206,10 @@ import {
   resolveProfileEnvForRoot,
   resolveStoredProfile,
   sameProfileDir,
+  selectProfile,
   type ResolvedAgentProfile,
 } from '../workspace/agent-profiles.ts';
+import { activeStateLayout } from '../state-layout.ts';
 import { PROFILE_CAPABLE_PROVIDERS, profileEnv, supportsProfiles } from '../core/agent-profiles.ts';
 import { withEnvPrefix } from '../core/shell-env.ts';
 import {
@@ -2150,7 +2152,22 @@ export function createApp(deps: ServerDeps) {
         }
       }
       const resolved = editable ? listAgentProfiles(store, PROVIDER_IDS) : [];
-      const profiles = await Promise.all(resolved.map(agentProfileBody));
+      // Which account per provider the listing's subject runs under (#819 PR 9) — resolved HERE,
+      // through `selectProfile`, the function a run resolves through, so the cockpit's "In use"
+      // can never disagree with what a task does (a dangling id lands on the discovered account in
+      // both). The subject is the folder in single-project mode and nobody's project otherwise,
+      // which leaves the machine-wide default.
+      const layout = activeStateLayout();
+      const subjectRoot = layout.mode === 'project' && layout.projectRoot !== null ? layout.projectRoot : undefined;
+      const inUse = new Map(
+        PROVIDER_IDS.map((provider) => [provider, selectProfile(store, { provider, repoRoot: subjectRoot }).id]),
+      );
+      const profiles = await Promise.all(
+        resolved.map(async (profile) => ({
+          ...(await agentProfileBody(profile)),
+          selected: inUse.get(profile.provider) === profile.id,
+        })),
+      );
       // Built as the CONTRACT shape and handed to `c.json` (the pattern `GET /projects` uses): the
       // body IS the response, so hono infers exactly what the schema describes. `problems` is
       // optional in the contract — additive for a consumer that predates it — and this route always

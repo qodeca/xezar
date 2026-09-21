@@ -154,7 +154,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Variants** (`TabsList variant`, default `default`): `default` = `bg-muted` track, active trigger `bg-card font-semibold text-foreground shadow-xs`; `line` = transparent track with a `after:` underline on the active trigger. Trigger text `text-[12.5px] font-medium`.
 - **Targets**: the trigger carries `min-h-tap md:min-h-0`, so a horizontal track is `h-fit` on phone and grows to hold its triggers; `md:` restores the fixed `h-9` segmented control.
 - **Rules**: DO use Tabs for real panel switching. For URL-backed segments use `TabLink`; for filters that re-slice one list use `aria-pressed` toggle buttons (`SegmentedControl`, the Active/Archived tabs).
-- **Where used**: 1 file (`settings/accounts-section.tsx`).
+- **Where used**: none since #819 PR 9, which stacked the Agent accounts pane's four agents instead of tabbing them (`designs/agent-accounts-onboarding` OD-1). Kept as a dead primitive – see known-gaps G-20.
 
 ### Skeleton
 
