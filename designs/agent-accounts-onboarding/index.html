@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent accounts onboarding – overview</title>
+<link rel="stylesheet" href="../../docs/design-system/cockpit.css">
+<link rel="stylesheet" href="styles.css">
+<script src="theme.js"></script>
+</head>
+<body>
+<nav class="doc-bar" aria-label="Design pages">
+  <span class="brand">Agent accounts onboarding</span>
+  <a href="index.html" aria-current="page">Overview</a>
+  <a href="pane.html">The pane</a>
+  <a href="import.html">Import states</a>
+  <a href="states.html">Problems and states</a>
+  <a href="phone.html">Phone</a>
+  <span class="spacer"></span>
+  <button class="theme-toggle" type="button" data-theme-toggle>Light / dark</button>
+</nav>
+
+<div class="doc">
+  <h1>Agent accounts – what onboarding needs to see</h1>
+  <p class="lead">Settings → Agent accounts, for #819 PR 9. After a project is set up, a person opens this pane to answer three questions: which logins does each agent have, which one do tasks use, and did my accounts come over? Today the pane answers the first for one agent at a time, calls the built-in login “Default” or “discovered”, and says nothing about the import or about a saved choice that points at an account that is not there. This design answers all three on one screen.</p>
+
+  <div class="table-scroll">
+    <table class="decision-table">
+      <thead><tr><th>Page</th><th>What it shows</th></tr></thead>
+      <tbody>
+        <tr><td><a class="link" href="pane.html">The pane</a></td><td>The whole pane in single-project mode: the import offer, one problem, the Defaults card, four agents stacked with every account, the built-in login named as such, an “In use” marker per agent, a hidden e-mail-shaped name and an agent with no accounts. Keyboard focus is drawn on “Copy 3 accounts”.</td></tr>
+        <tr><td><a class="link" href="import.html">Import states</a></td><td>unknown with a count, unknown with none, declined, done (with and without new accounts), copying, copied, failed, not yet loaded.</td></tr>
+        <tr><td><a class="link" href="states.html">Problems and states</a></td><td>Both problem kinds, a hidden handle, two problems, after the fix; the e-mail-shaped label; agents with no accounts; loading, load error, hosted refusal; stale and partial data; the global layout.</td></tr>
+        <tr><td><a class="link" href="phone.html">Phone</a></td><td>The pane and the import states framed at 375 px; what is cut first and what never is.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>The decisions, each with its reason</h2>
+  <ul>
+    <li><b>Four agents stacked, not four tabs.</b> Tabs showed one agent’s list at a time, so after an import a person saw one list and three hidden ones – the “did it fail?” reading. Stacked, each agent is a heading with one line of facts (installed, version, how many accounts, anything to fix) over its list; four headings scan in one pass on a laptop and in a few flicks on a phone, and a jump link from the top reaches the one that needs attention.</li>
+    <li><b>“In use” is a word in an outline badge, and the built-in login is named “Built-in login”.</b> Both are words first; a check icon reinforces “In use”; no colour carries either. The old names “Default” and “discovered” described how xezar found the login, not what it is.</li>
+    <li><b>A problem shows twice: one line at the top, the fix inside its agent.</b> The account it names has no row to sit beside, and the agent may be far down the page. Pending tone, never danger: the task still runs.</li>
+    <li><b>The import is a card once, then a line.</b> The first offer explains the one cost (a committed file clones will see); after an answer the block shrinks so a decision is not re-pitched. A count of zero never gets a button.</li>
+    <li><b>Hosted mode renders none of it.</b> The pane is already one refusal sentence there; an import button, a fix button or a CLI hint would be actions nobody on that page can take.</li>
+    <li><b>An e-mail-shaped name is “Name hidden”</b> in the row, the picker, toasts, the confirm and problem sentences – identity stays opt-in behind Show details.</li>
+  </ul>
+  <p>The developer handoff, the exact copy and the open decisions are in <a class="link" href="README.md">README.md</a>.</p>
+</div>
+</body>
+</html>

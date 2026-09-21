@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent accounts – phone, 375 px</title>
+<link rel="stylesheet" href="../../docs/design-system/cockpit.css">
+<link rel="stylesheet" href="styles.css">
+<script src="theme.js"></script>
+</head>
+<body>
+<nav class="doc-bar" aria-label="Design pages">
+  <span class="brand">Agent accounts onboarding</span>
+  <a href="index.html">Overview</a>
+  <a href="pane.html">The pane</a>
+  <a href="import.html">Import states</a>
+  <a href="states.html">Problems and states</a>
+  <a href="phone.html" aria-current="page">Phone</a>
+  <span class="spacer"></span>
+  <button class="theme-toggle" type="button" data-theme-toggle>Light / dark</button>
+</nav>
+
+<div class="doc">
+  <h1>At 375 px</h1>
+  <p class="lead">The same page as <a class="link" href="pane.html">the pane</a>, framed at 375 px. The desktop header and the section nav go (the mobile top bar names the page and the settings pills replace the nav, as today). The agents were already stacked, so nothing re-flows into a new layout: rows wrap, and every action becomes a 44 px target.</p>
+  <ul>
+    <li><b>Cut first:</b> the agent’s version number, then “Check again”, which moves into Show details. Both are facts a person looks for on purpose, not while scanning.</li>
+    <li><b>Never cut:</b> an account’s name (or “Name hidden”), the “In use” marker, the login state word, a problem sentence and its fix, and the import block’s sentence and button.</li>
+    <li><b>Full width:</b> “Copy 3 accounts”, “Use the built-in login” and “Add account” – one clear thing to press per block.</li>
+    <li><b>Paths wrap</b> at any character rather than truncating, so a long folder never pushes the page sideways.</li>
+  </ul>
+  <div class="phone-row">
+    <div>
+      <p class="frame-label">The pane – top</p>
+      <div class="phone phone-375"><iframe src="pane.html" title="The pane at 375 px, top"></iframe></div>
+    </div>
+    <div>
+      <p class="frame-label">The pane – Claude Code group</p>
+      <div class="phone phone-375"><iframe src="pane.html#tool-claude" title="The pane at 375 px, the Claude Code group"></iframe></div>
+    </div>
+    <div>
+      <p class="frame-label">Import states</p>
+      <div class="phone phone-375"><iframe src="import.html" title="The import states at 375 px"></iframe></div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
