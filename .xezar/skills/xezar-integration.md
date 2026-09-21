@@ -30,7 +30,7 @@ Do not wait for CI in this step. It is not the last step, so it gets one turn an
 
 - `success`: report green, name the run id and the merge SHA, and finish.
 - `cancelled`: this is NOT a failure. A later push on the base branch cancels an in-flight run through the concurrency group. Report it as "observed, superseded by `<supersededBy.headSha>`" when the record names one; when `supersededBy` is null, say plainly that it was cancelled and that nothing newer was found, and do not claim it was superseded.
-- `failure`: apply the one-rerun rule, once, and only for the two known load flakes. When `failedJobsAreKnownLoadFlakes` is true, `gh run rerun <runId> --failed` and re-dispatch the observation yourself in this turn — `bash .xezar/checks/ci-watch.sh` reads the same target and rewrites the same record. One rerun, never two. When it is false, or when the rerun is also red, the base branch is red on a real defect: say so, name the failed jobs, and ask the leader with `XEZ:ASK` whether to revert, forward-fix or hold. Never rerun a job to make a red main go away.
+- `failure`: a failed job is a failure, full stop — there is no rerun list any more (#671, every load flake it once carried is fixed or rebuilt). Say so, name the failed jobs, and ask the leader with `XEZ:ASK` whether to revert, forward-fix or hold. Never rerun a job to make a red main go away.
 
 This is the last step, so `XEZ:ASK` is live here and an unanswered question parks the run rather than losing it. Finish with `XEZ:DONE` only once the outcome is reported.
 
