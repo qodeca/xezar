@@ -344,8 +344,15 @@ function SkillsForm({
             Use default
           </Button>
         </div>
+        {/* `data-state` is this paragraph's own answer to "has the skills-update query settled?".
+            The section around it is gated by a DIFFERENT query (`useWorkspaceConfig`), so the
+            section existing says nothing about this line, and a reader of the copy alone cannot
+            tell the pending sentence from a settled one that happens to read the same. A pure
+            function of `updateError`/`update`, so it flips when the query does and never on a
+            timer (#671). */}
         <p
           data-slot="skills-installation-status"
+          data-state={updateError ? 'error' : update ? 'ready' : 'pending'}
           role={updateError || update?.status === 'unavailable' ? 'status' : undefined}
           className="text-[13px] text-soft-foreground"
         >

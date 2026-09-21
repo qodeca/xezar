@@ -50,8 +50,32 @@ afterAll(() => {
 
 describe('automatic xezar-skills updates', () => {
   it('shows the inherited global preference and persists an explicit override', async () => {
+    // "Inherited" is a fact about the shared scratch home (`.local/qa/xez-home/config.json`),
+    // which this spec snapshots but never SETS: an earlier session interrupted between the switch
+    // click and "Use default" leaves `skillsAutoUpdate: false` behind, and the assertion below
+    // then reads a settled page that honestly says `Off`. So establish the precondition through
+    // the same route the page's own "Use default" button calls, and confirm it is stored before
+    // the page ever reads it (#671, failure A).
+    await api('/api/v1/workspace/config', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ skillsAutoUpdate: null }),
+    })
+    let config = await api<{ skillsAutoUpdate: boolean | null }>('/api/v1/workspace/config')
+    for (let attempt = 0; config.skillsAutoUpdate !== null && attempt < 40; attempt += 1) {
+      await new Promise((resolvePromise) => setTimeout(resolvePromise, 100))
+      config = await api('/api/v1/workspace/config')
+    }
+    expect(config.skillsAutoUpdate).toBeNull()
+
     browser.goto(`${baseUrl}/settings/global/skills`)
     browser.waitForFunction(`document.querySelector('[data-slot="skills-settings-section"]') !== null`)
+    // That wait proves the CONFIG query settled — the section is what it gates. The installation
+    // status line is gated by a second, independent query (`useSkillsUpdate`), so wait for that
+    // query's own rendered state before reading its copy (#671, failure B).
+    browser.waitForFunction(
+      `document.querySelector('[data-slot="skills-installation-status"][data-state="ready"]') !== null`,
+    )
 
     expect(browser.isVisible('[data-slot="skills-auto-update"]')).toBe(true)
     expect(browser.text('[data-slot="skills-settings-section"]')).toContain('On (default)')
@@ -61,7 +85,7 @@ describe('automatic xezar-skills updates', () => {
     browser.screenshot(`${artifactsDir}/settings-skills-auto-update.png`)
 
     browser.click('[data-slot="skills-auto-update"]')
-    let config = await api<{ skillsAutoUpdate: boolean | null }>('/api/v1/workspace/config')
+    config = await api('/api/v1/workspace/config')
     for (let attempt = 0; config.skillsAutoUpdate !== false && attempt < 40; attempt += 1) {
       await new Promise((resolvePromise) => setTimeout(resolvePromise, 100))
       config = await api('/api/v1/workspace/config')
