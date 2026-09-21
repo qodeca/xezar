@@ -618,7 +618,7 @@ export const projectConfigInputSchema = z
     workspaceConfig: workspaceConfigWriteSchema
       .optional()
       .describe(
-        'set_workspace_config: the workspace-wide settings to change — they apply to every project on this machine. Only the keys you send are touched; null clears a key back to its default. The two workspace folder paths are included: the folder the file picker may browse, and the folder new checkouts land in. Both are checked for real: a path that is not absolute, is not a folder, or cannot be written to is answered with the reason and nothing is saved, the other keys in the same call included.',
+        'set_workspace_config: the workspace-wide settings to change — they apply to every project on this machine. Only the keys you send are touched; null clears a key back to its default. The two workspace folder paths are included: the folder the file picker may browse, and the folder new checkouts land in. Both are checked for real: a path that is not absolute, is not a folder, or cannot be written to is answered with the reason and nothing is saved, the other keys in the same call included. The cli keys are the ones that do NOT take effect now: they are settled when a xezar starts, so a change applies the next time one starts and the running cockpit keeps doing what it was started to do. cli.instance chooses which projects one xezar serves — workspace, the default, serves every registered project in one cockpit, and project serves only the one it started in; cli.output (auto, lines or rich), cli.color (auto, always or never) and cli.logLevel (debug, info, warn or error) choose how its terminal prints.',
       ),
     uiState: workspaceUiStateWriteSchema
       .optional()
@@ -1128,6 +1128,12 @@ function skillEntry(root: string, skill: Skill, withBody: boolean) {
  * defaults since B1, the folder paths since B2), because what may be CHANGED and what may be READ
  * were decided separately (I-121's and I-127's reads are still the cockpit's). A leader that
  * writes a folder path therefore gets the acknowledgement without the path echoed back.
+ *
+ * `cli` (#467 PR 5, I-148) is IN the answer rather than out of it, and for the reason the
+ * narrowing exists: the instance mode is a fact about the leader's OWN cockpit — which projects
+ * this process serves — and the three presentation keys are how its terminal prints; none is a
+ * host path or another project's data, and a leader that may change them must be able to see
+ * what it changed them to.
  */
 function workspaceLimits(w: WorkspaceConfigResponse) {
   return {
@@ -1141,6 +1147,24 @@ function workspaceLimits(w: WorkspaceConfigResponse) {
       worktreeInherited: w.composerDefaults.worktree === null,
     },
     skillsAutoUpdate: { effective: w.effectiveSkillsAutoUpdate, inherited: w.skillsAutoUpdate === null },
+    // #467 PR 5. The `{ effective, inherited }` pair of every row above, plus `inForce` — which
+    // is a different question and the reason the field exists: `effective` is what the NEXT start
+    // resolves from the file and `XEZ_INSTANCE`, while `inForce` is what THIS process is doing,
+    // and a cockpit narrowed by `XEZ_SINGLE_PROJECT` or by a folder that owns its xezar state
+    // answers `narrowed` whatever the file holds. A leader that reported `effective` alone would
+    // tell its owner the mode is `workspace` while the process serves one project.
+    cli: {
+      instance: {
+        effective: w.cli.effectiveInstance,
+        inherited: w.cli.instance === null,
+        inForce: w.cli.inForce,
+      },
+      // The owner's D-5 (2026-09-20): the presentation keys of the same stored object, in the
+      // plain pair shape. They are read at a start too, so `effective` is the NEXT start's value.
+      output: { effective: w.cli.effectiveOutput, inherited: w.cli.output === null },
+      color: { effective: w.cli.effectiveColor, inherited: w.cli.color === null },
+      logLevel: { effective: w.cli.effectiveLogLevel, inherited: w.cli.logLevel === null },
+    },
   };
 }
 
@@ -2017,7 +2041,7 @@ export const projectConfigTool = defineTool({
   name: 'project_config',
   title: 'Project configuration',
   description:
-    "Read and change THIS project's own configuration: its settings (agent, models, system prompt, review gate, base branch, worktree retention, memory limit), its registry entry (concurrency cap and tags), prompt templates, in-repo agent config files, workflows, skills, GitHub automations and worktrees. It also reads the shared settings as effective limits and capabilities (get_limits, get_capabilities, get_account) and CHANGES them with set_workspace_config — the shared limits, composer defaults, follow-up inbox and environment passthrough, skills auto-update and the machine-wide agent defaults, which apply to every project on this machine, and the two workspace folder paths — the folder the file picker may browse and the folder new checkouts land in, each checked for real before anything is saved. The shared presentation preferences are read with get_workspace_ui_state and changed with set_workspace_ui_state (appearance, notifications, task-table columns, dismissed provider incidents) and import_skills (the curated list of default skills); an object-valued preference is replaced whole, so read it before you change one key of it. The colour theme is not among them — the browser stores that itself. The agent backends can be switched off and on for the whole machine with set_provider_enabled and their authentication incidents cleared with retry_provider. The agent ACCOUNTS — the separate logins a backend can run under — are read with get_account, added with create_account, edited with update_account, removed with remove_account and pointed at this project with select_account; check_account_status probes one account's sign-in state and get_account_details reports who it is signed in as. Connecting a provider, opening an account's folder in a desktop application, home files, the project registry and host folders are outside this boundary and are refused with the reason.",
+    "Read and change THIS project's own configuration: its settings (agent, models, system prompt, review gate, base branch, worktree retention, memory limit), its registry entry (concurrency cap and tags), prompt templates, in-repo agent config files, workflows, skills, GitHub automations and worktrees. It also reads the shared settings as effective limits and capabilities (get_limits, get_capabilities, get_account) and CHANGES them with set_workspace_config — the shared limits, composer defaults, follow-up inbox and environment passthrough, skills auto-update and the machine-wide agent defaults, which apply to every project on this machine, the terminal settings (the instance mode — which projects one xezar serves — and how its terminal prints; all are settled at start, so a change applies the next time one starts) and the two workspace folder paths — the folder the file picker may browse and the folder new checkouts land in, each checked for real before anything is saved. The shared presentation preferences are read with get_workspace_ui_state and changed with set_workspace_ui_state (appearance, notifications, task-table columns, dismissed provider incidents) and import_skills (the curated list of default skills); an object-valued preference is replaced whole, so read it before you change one key of it. The colour theme is not among them — the browser stores that itself. The agent backends can be switched off and on for the whole machine with set_provider_enabled and their authentication incidents cleared with retry_provider. The agent ACCOUNTS — the separate logins a backend can run under — are read with get_account, added with create_account, edited with update_account, removed with remove_account and pointed at this project with select_account; check_account_status probes one account's sign-in state and get_account_details reports who it is signed in as. Connecting a provider, opening an account's folder in a desktop application, home files, the project registry and host folders are outside this boundary and are refused with the reason.",
   inputSchema: projectConfigInputSchema,
   annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
   async call(args, ctx: ProjectConfigContext) {

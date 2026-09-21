@@ -584,9 +584,10 @@ async function serveCommand(
   // nothing, so a start that changed nothing says nothing. `xez mcp` never reaches here — its
   // stdout stays JSON-RPC and nothing else (AC-2.4).
   const instanceMode = instanceModeInForce(settings);
+  const instanceNarrowing = singleProjectNarrowing();
   const bootLine = instanceBootLine({
     mode: instanceMode,
-    narrowing: singleProjectNarrowing(),
+    narrowing: instanceNarrowing,
     requested: settings.instance,
     explicit: settings.instanceExplicit,
     projectName: bootProjectId ?? basename(repoRoot),
@@ -685,6 +686,7 @@ async function serveCommand(
     // the bind and every context this process builds are all settled under it — so the server
     // reads the answer rather than re-deriving it per request.
     instanceMode,
+    ...(instanceNarrowing !== null ? { instanceNarrowing } : {}),
     semaphore,
     bindHost,
     providerAuth,

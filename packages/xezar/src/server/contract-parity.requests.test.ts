@@ -160,4 +160,27 @@ describe('the settings routes validate with the CONTRACT request schemas', () =>
     expect(Object.keys(body)).toEqual(['error']);
     expect(body.error).toMatch(/^resources\.maxParallel: /);
   });
+
+  /**
+   * `cli` (#467 PR 5) is the newest key of the workspace body, and where it sits in the shape is
+   * wire behaviour rather than style: the 400 string is the zod issues joined in SHAPE order, so
+   * a key inserted before `resources` would reword an existing two-bad-field message. Placed
+   * last, `resources` still leads — which is the assertion, not the exact words.
+   *
+   * The `cli.instance` issue itself is the second half: the route refuses a mode the vocabulary
+   * does not know rather than storing it and letting the next boot degrade it with a warning.
+   */
+  it('reports a bad cli.instance AFTER an earlier bad field, in shape order', async () => {
+    const res = await put('/api/v1/workspace/config', {
+      resources: { maxParallel: 99 },
+      cli: { instance: 'both' },
+    });
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(Object.keys(body)).toEqual(['error']);
+    expect(body.error).toMatch(/^resources\.maxParallel: /);
+    expect(body.error).toContain('cli.instance: ');
+    expect(body.error.indexOf('resources.maxParallel')).toBeLessThan(body.error.indexOf('cli.instance'));
+  });
 });

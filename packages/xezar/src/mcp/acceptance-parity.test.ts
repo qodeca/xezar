@@ -1260,8 +1260,8 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
     parity(
       'P-45',
       ['A-09', 'A-08', 'A-05'],
-      ['I-117', 'I-118', 'I-119', 'I-120', 'I-121', 'I-127'],
-      'the workspace limits, composer defaults, skills auto-update, agent defaults and the two workspace folder paths are written through either door with the same effect, the same bound on a bad value and the same narrowed answer',
+      ['I-117', 'I-118', 'I-119', 'I-120', 'I-121', 'I-127', 'I-148', 'I-149', 'I-150', 'I-151'],
+      'the workspace limits, composer defaults, skills auto-update, agent defaults, the two workspace folder paths and the terminal settings are written through either door with the same effect, the same bound on a bad value and the same narrowed answer',
       async () => {
         const w = world();
         // Every key of the write, in one body, as the owner's 2026-09-20 rule allows (#677 B1).
@@ -1333,6 +1333,66 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
           expect(typoMcp.isError, JSON.stringify(typo)).toBe(true);
         }
         expect((await mcp(w, 'project_config', { action: 'get_limits' })).result.workspace.resources.maxParallel).toBe(2);
+
+
+        // I-148 — THE INSTANCE MODE (#467 PR 5). The one workspace key that is a BOOT decision,
+        // and the two things that makes different.
+        //
+        // AC-5.1: the two doors produce the IDENTICAL `~/.xezar/config.json`. Not "an equivalent
+        // one" — the same bytes, which is what makes the cockpit and the leader one setting
+        // rather than two that happen to agree today.
+        const configPath = join(w.home, 'config.json');
+        const afterMcpInstance = await mcp(w, 'project_config', { action: 'set_workspace_config', workspaceConfig: { cli: { instance: 'project' } } });
+        const mcpBytes = readFileSync(configPath, 'utf8');
+        expect(afterMcpInstance.result.workspace.cli.instance).toEqual({ effective: 'project', inherited: false, inForce: 'workspace' });
+        // Clear it, then make the same change through the cockpit's own door.
+        expect((await ui(w, '/api/v1/workspace/config', 'PUT', { cli: { instance: null } })).status).toBe(200);
+        expect((await ui(w, '/api/v1/workspace/config', 'PUT', { cli: { instance: 'project' } })).status).toBe(200);
+        expect(readFileSync(configPath, 'utf8'), 'AC-5.1: byte-identical through either door').toBe(mcpBytes);
+
+        // AC-5.4 / the named break `cli-key-cleared-by-unrelated-write`: a write that does not
+        // name `cli` leaves the stored key exactly where it was, through either door.
+        expect((await ui(w, '/api/v1/workspace/config', 'PUT', { resources: { maxParallel: 3 } })).status).toBe(200);
+        await mcp(w, 'project_config', { action: 'set_workspace_config', workspaceConfig: { followups: true } });
+        expect(JSON.parse(readFileSync(configPath, 'utf8')).cli).toEqual({ instance: 'project' });
+        expect((await mcp(w, 'project_config', { action: 'get_limits' })).result.workspace.cli.instance.effective).toBe('project');
+
+        // A word the vocabulary does not know is refused by the same contract enum at both doors,
+        // and nothing is written.
+        const badMode = await w.call('a', 'project_config', { action: 'set_workspace_config', operationId: op(), workspaceConfig: { cli: { instance: 'both' } } });
+        expect(badMode.isError).toBe(true);
+        expect((await ui(w, '/api/v1/workspace/config', 'PUT', { cli: { instance: 'both' } })).status).toBe(400);
+        expect(JSON.parse(readFileSync(configPath, 'utf8')).cli).toEqual({ instance: 'project' });
+
+        // I-149 … I-151 — the three presentation keys beside it (the owner's D-5, 2026-09-20): the same pair of
+        // doors, the same bytes, and the same contract enum refusing a bad word at both.
+        const presentation = { output: 'rich', color: 'never', logLevel: 'debug' } as const;
+        const afterMcpPresentation = await mcp(w, 'project_config', { action: 'set_workspace_config', workspaceConfig: { cli: presentation } });
+        expect(afterMcpPresentation.result.workspace.cli).toMatchObject({
+          output: { effective: 'rich', inherited: false },
+          color: { effective: 'never', inherited: false },
+          logLevel: { effective: 'debug', inherited: false },
+        });
+        const mcpPresentationBytes = readFileSync(configPath, 'utf8');
+        expect((await ui(w, '/api/v1/workspace/config', 'PUT', { cli: { output: null, color: null, logLevel: null } })).status).toBe(200);
+        expect(JSON.parse(readFileSync(configPath, 'utf8')).cli, 'a cleared sibling leaves the instance alone').toEqual({ instance: 'project' });
+        expect((await ui(w, '/api/v1/workspace/config', 'PUT', { cli: presentation })).status).toBe(200);
+        expect(readFileSync(configPath, 'utf8'), 'D-5: byte-identical through either door').toBe(mcpPresentationBytes);
+        for (const bad of [{ output: 'plain' }, { color: 'yes' }, { logLevel: 'verbose' }]) {
+          const refused = await w.call('a', 'project_config', { action: 'set_workspace_config', operationId: op(), workspaceConfig: { cli: bad } });
+          expect(refused.isError, JSON.stringify(bad)).toBe(true);
+          expect((await ui(w, '/api/v1/workspace/config', 'PUT', { cli: bad })).status, JSON.stringify(bad)).toBe(400);
+        }
+        expect(readFileSync(configPath, 'utf8'), 'nothing written by a refusal').toBe(mcpPresentationBytes);
+
+        // Back to the state the rest of this case left behind, so the folder-path half below
+        // still starts from the human's cap of 2.
+        expect(
+          (await ui(w, '/api/v1/workspace/config', 'PUT', {
+            cli: { instance: null, output: null, color: null, logLevel: null },
+            resources: { maxParallel: 2 },
+          })).status,
+        ).toBe(200);
 
         // I-127 — THE TWO WORKSPACE FOLDER PATHS (#677 B2). The same owner rule, the last two keys
         // the write held back. They are the one pair whose validity is a fact about the FILESYSTEM
@@ -2336,15 +2396,17 @@ describe('A-05 — the coverage matrix against the closed inventory', () => {
     if (blockedCases.length > 0) console.info(`[#116] blocked parity cases (not passing): ${blockedCases.join(', ')}`);
   });
 
-  it('the inventory is the closed 147-record one, with 109 covered records', () => {
+  it('the inventory is the closed 151-record one, with 113 covered records', () => {
     const inventory = readInventory();
-    expect(inventory.size).toBe(147);
+    expect(inventory.size).toBe(151);
     // 96 until #677 B1 moved the five workspace-settings rows (I-117 … I-121) from `global`, 101
     // until B2 moved the two workspace folder paths (I-127) and 102 until B3 moved the three
     // shared-preference rows (I-024, I-092, I-132), 105 until B4 moved the provider switch
     // (I-115) and 106 until B5 moved the accounts (I-122, I-123, I-124), all under the same
     // owner rule.
-    expect([...inventory.values()].filter((s) => s === 'covered')).toHaveLength(109);
+    // 109 until #467 PR 5 added I-148 … I-151, the instance mode and its three presentation
+    // siblings in Settings → Terminal, covered by the same `get_limits` + `set_workspace_config` pair.
+    expect([...inventory.values()].filter((s) => s === 'covered')).toHaveLength(113);
   });
 
   it('every covered record maps to at least one case, and every case names inventory records', () => {

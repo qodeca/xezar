@@ -1,4 +1,5 @@
 import { QueryClientProvider } from '@tanstack/react-query'
+import { ABSENT_CLI_SETTINGS } from '@/api/client'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -159,6 +160,7 @@ describe('G-22 save contracts stay mixed on purpose', () => {
     const state = {
       agentDefaults: {}, browseRoot: '~/', projectsDir: '~/p', skillsAutoUpdate: null, effectiveSkillsAutoUpdate: true,
       followups: null, effectiveFollowups: false, agentEnvPassthrough: null, effectiveAgentEnvPassthrough: [],
+      cli: ABSENT_CLI_SETTINGS,
       composerDefaults: { autonomous: null, worktree: null, inheritedAutonomous: 'source-dependent', inheritedWorktree: true },
       resources: { maxParallel: 2, maxMonitoringSessions: 2, monitoringWakeIntervalMinutes: null, idleTimeoutMinutes: 15, memoryLimitDefaultMb: 4096, autoResumeOnUsageLimit: true, memoryLimitMb: null, worktreeRetentionDefault: 10, gateSlots: 1 },
     } as WorkspaceConfigResponse

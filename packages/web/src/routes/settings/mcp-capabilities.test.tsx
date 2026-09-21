@@ -1,4 +1,5 @@
 import { QueryClientProvider } from '@tanstack/react-query'
+import { ABSENT_CLI_SETTINGS } from '@/api/client'
 import { cleanup, render, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -77,6 +78,7 @@ const WORKSPACE: WorkspaceConfigResponse = {
   effectiveFollowups: true,
   agentEnvPassthrough: null,
   effectiveAgentEnvPassthrough: [],
+  cli: ABSENT_CLI_SETTINGS,
   composerDefaults: { autonomous: null, worktree: null, inheritedAutonomous: 'source-dependent', inheritedWorktree: true },
   resources: {
     maxParallel: 4,

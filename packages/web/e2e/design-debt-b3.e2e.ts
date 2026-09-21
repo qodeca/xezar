@@ -32,7 +32,7 @@ let url: string
 let project: string
 let emulationSocket: WebSocket | undefined
 
-const GLOBAL_SECTIONS = ['appearance', 'notifications', 'resources', 'skills', 'accounts', 'projects'] as const
+const GLOBAL_SECTIONS = ['appearance', 'notifications', 'resources', 'terminal', 'skills', 'accounts', 'projects'] as const
 const PROJECT_SECTIONS = ['agents', 'agent-config', 'project-setup', 'worktrees', 'bookmarklets', 'prompt-templates', 'mcp-connection', 'mcp-api'] as const
 
 function read<T>(expression: string): T {

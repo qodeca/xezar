@@ -15,8 +15,8 @@
 #
 # NO `onFail` HERE, DELIBERATELY. `onFail.retry` may only name an EARLIER step, and every step
 # earlier than `ci-watch` is earlier than the merge, so any retry would re-run `integrate`. The
-# observation's own repair budget lives in `report`, which may re-dispatch `ci-watch.sh` in its own
-# turn — once, for the two known load flakes.
+# observation has no repair budget at all: `report` never reruns a job (#671), and a red main run
+# goes to the leader through `XEZ:ASK` — revert, forward-fix or hold.
 #
 # A check step still runs inside the run's own slot (`packages/xezar/src/workflows/run.ts:3735`).
 # What this split saves is tokens, a parked session and an unbounded wait — NOT a workspace slot.

@@ -178,6 +178,73 @@ function parseEnumValue<T extends string>(raw: unknown, allowed: readonly T[]): 
   return (allowed as readonly string[]).includes(text) ? (text as T) : null;
 }
 
+/** Which layer decides the value the NEXT start resolves: a stored key, a variable, or the default. */
+export type CliValueSource = 'stored' | 'env' | 'default';
+
+/** One workspace `cli` key as the Settings route reports it (#467, PR 5). */
+export interface NextStartCliValue<T extends string, S extends string = CliValueSource> {
+  /** The stored key, parsed — `null` for absent or a word this vocabulary does not know. */
+  stored: T | null;
+  /** What a plain start — no flags — would resolve from the file and this environment. */
+  effective: T;
+  /** Which layer that answer came from. */
+  source: S;
+}
+
+export interface NextStartCliSettings {
+  instance: NextStartCliValue<InstanceMode>;
+  output: NextStartCliValue<OutputMode>;
+  /** `no-color`: a non-empty `NO_COLOR` outranks the stored key, as it does at a real start. */
+  color: NextStartCliValue<ColorMode, CliValueSource | 'no-color'>;
+  logLevel: NextStartCliValue<LogLevel>;
+}
+
+/**
+ * What the NEXT plain start will resolve for the four workspace `cli` keys, and why (#467, PR 5).
+ *
+ * The settings ROUTE needs the answer `resolveCliSettings` gives without the flags, the ports and
+ * the transport, so this builds the flag-less invocation and hands it to that same resolver
+ * rather than restating the precedence beside it — two readers of one setting drift apart the
+ * day one of them is edited. The environment is parsed LENIENTLY here: a bad `XEZ_OUTPUT` refuses
+ * a start (A9), but a settings read is not a start, and the process already running has passed
+ * that check or never read the variable. A bad value reads as unset.
+ *
+ * `source` is what lets the pane say "(from XEZ_INSTANCE)" only when that variable really decides,
+ * instead of whenever nothing is stored (design review B-1 on PR #798).
+ */
+export function resolveNextStartCli(
+  stored: StoredCliSettings['workspace'],
+  env: NodeJS.ProcessEnv = process.env,
+): NextStartCliSettings {
+  const invocation: CliInvocation = { noColor: (env.NO_COLOR ?? '') !== '', quiet: false };
+  const envOutput = parseEnumValue(env.XEZ_OUTPUT, OUTPUT_MODES);
+  const envColor = parseEnumValue(env.XEZ_COLOR, COLOR_MODES);
+  const envLogLevel = parseEnumValue(env.XEZ_LOG_LEVEL, LOG_LEVELS);
+  const envInstance = parseEnumValue(env.XEZ_INSTANCE, INSTANCE_MODES);
+  if (envOutput !== null) invocation.envOutput = envOutput;
+  if (envColor !== null) invocation.envColor = envColor;
+  if (envLogLevel !== null) invocation.envLogLevel = envLogLevel;
+  if (envInstance !== null) invocation.envInstance = envInstance;
+  const resolved = resolveCliSettings(invocation, stored === undefined ? {} : { workspace: stored });
+
+  const source = (storedValue: string | null, envValue: string | null): CliValueSource =>
+    storedValue !== null ? 'stored' : envValue !== null ? 'env' : 'default';
+  const storedOutput = parseEnumValue(stored?.output, OUTPUT_MODES);
+  const storedColor = parseEnumValue(stored?.color, COLOR_MODES);
+  const storedLogLevel = parseEnumValue(stored?.logLevel, LOG_LEVELS);
+  const storedInstance = parseEnumValue(stored?.instance, INSTANCE_MODES);
+  return {
+    instance: { stored: storedInstance, effective: resolved.instance, source: source(storedInstance, envInstance) },
+    output: { stored: storedOutput, effective: resolved.output, source: source(storedOutput, envOutput) },
+    color: {
+      stored: storedColor,
+      effective: resolved.color,
+      source: invocation.noColor ? 'no-color' : source(storedColor, envColor),
+    },
+    logLevel: { stored: storedLogLevel, effective: resolved.logLevel, source: source(storedLogLevel, envLogLevel) },
+  };
+}
+
 function refusePort(label: string, raw: string): never {
   throw new CliSettingsError(
     `${label} must be a whole number from ${PORT_MIN} to ${PORT_MAX} — got “${raw}”.`,
