@@ -22,9 +22,31 @@ const ROOT = '/Users/me/code/demo-project'
 const BOOT_ROOT = '/Users/me/code/xezar'
 
 let requests: Array<{ method: string; url: string; body?: unknown }> = []
+/** What `GET /config` answers for the project; `PUT /config` merges `memoryLimitMb` into it the way
+ *  the route does (null or 0 clears). Only the field under test varies. */
+let projectConfig: Record<string, unknown> = {}
 
-function serve() {
+function configAnswer(memoryLimitMb: number | null) {
+  return {
+    baseBranch: null,
+    defaultRunner: 'claude',
+    systemPrompt: null,
+    defaultModels: {},
+    modelsLocked: false,
+    maxParallel: 2,
+    memoryLimitMb,
+    worktreeRetention: 10,
+    liveTitleUpdates: null,
+    reviewGate: null,
+    plannerModel: 'haiku',
+    namerModel: 'haiku',
+    skillsRepos: [],
+  }
+}
+
+function serve(memoryLimitMb: number | null = null) {
   requests = []
+  projectConfig = configAnswer(memoryLimitMb)
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -35,6 +57,14 @@ function serve() {
       const json = (payload: unknown) =>
         new Response(JSON.stringify(payload), { status: 200, headers: { 'content-type': 'application/json' } })
       if (url.endsWith('/open-targets')) return json({ targets: [] })
+      // Scoped under a project URL, or the unscoped mount single-project mode renders at.
+      if (/^\/api\/v1\/(p\/[^/]+\/)?config$/.test(url)) {
+        if (method === 'PUT') {
+          const next = (body as { memoryLimitMb?: number | null }).memoryLimitMb
+          projectConfig = { ...projectConfig, memoryLimitMb: next ? next : null }
+        }
+        return json(projectConfig)
+      }
       if (url.startsWith('/api/v1/projects/') && method === 'DELETE') {
         return json({ removed: true, id: url.split('/').pop() })
       }
@@ -111,7 +141,7 @@ function seededClient({
       maxParallel: 4,
       maxMonitoringSessions: 2,
       monitoringWakeIntervalMinutes: null,
-      memoryLimitMb: null,
+      memoryLimitMb: 4096,
       worktreeRetentionDefault: 10,
     },
   })
@@ -269,5 +299,86 @@ describe('the General page', () => {
     expect(status.textContent).toContain('folder not found')
     expect(status.textContent).toContain('restore the folder at the path above')
     expect(status.textContent).not.toContain('remove it below')
+  })
+
+  /** #677 C1 — the project's own per-task memory ceiling, written through `PUT /config`. */
+  describe('the per-task memory limit', () => {
+    const memoryInput = () => screen.findByLabelText('Per-task memory limit for demo-project in MiB')
+    const saveButton = () => document.querySelector<HTMLButtonElement>('[data-action="project-save-memory"]')!
+    const puts = () => requests.filter((r) => r.method === 'PUT' && r.url === '/api/v1/p/demo/config')
+    const effective = () => document.querySelector('[data-slot="project-memory-effective"]')?.textContent ?? ''
+
+    it('sets a value, then clears it back to the workspace limit, and says which one applies', async () => {
+      renderAt('/p/demo/settings')
+      const input = (await memoryInput()) as HTMLInputElement
+      expect(input.value).toBe('')
+      await waitFor(() => expect(effective()).toContain('This project uses the workspace limit (4096 MiB).'))
+      // Nothing to save until the draft differs from what is stored.
+      expect(saveButton().disabled).toBe(true)
+
+      fireEvent.change(input, { target: { value: '1024' } })
+      fireEvent.click(saveButton())
+      await waitFor(() => expect(puts()).toHaveLength(1))
+      expect(puts()[0]!.body).toEqual({ memoryLimitMb: 1024 })
+      await waitFor(() => expect(effective()).toContain('This project’s tasks pause at 1024 MiB.'))
+      expect(saveButton().disabled).toBe(true)
+
+      // Emptying the field is the clear: `null`, which the route turns into a deleted key.
+      fireEvent.change(input, { target: { value: '' } })
+      fireEvent.click(saveButton())
+      await waitFor(() => expect(puts()).toHaveLength(2))
+      expect(puts()[1]!.body).toEqual({ memoryLimitMb: null })
+      await waitFor(() => expect(effective()).toContain('This project uses the workspace limit (4096 MiB).'))
+    })
+
+    it('treats 0 as a clear too, and empties the field once it lands', async () => {
+      serve(2048)
+      renderAt('/p/demo/settings')
+      const input = (await memoryInput()) as HTMLInputElement
+      await waitFor(() => expect(input.value).toBe('2048'))
+
+      fireEvent.change(input, { target: { value: '0' } })
+      fireEvent.click(saveButton())
+      await waitFor(() => expect(puts()).toHaveLength(1))
+      expect(puts()[0]!.body).toEqual({ memoryLimitMb: null })
+      await waitFor(() => expect(input.value).toBe(''))
+    })
+
+    it('refuses a draft the schema would reject before any request', async () => {
+      renderAt('/p/demo/settings')
+      const input = (await memoryInput()) as HTMLInputElement
+      for (const value of ['100', '12.5', '2000000']) {
+        fireEvent.change(input, { target: { value } })
+        expect(saveButton().disabled).toBe(true)
+        expect(document.querySelector('[data-slot="project-memory-invalid"]')).not.toBeNull()
+      }
+      expect(puts()).toHaveLength(0)
+    })
+
+    it('names a workspace "no limit" as such, whether it is stored as null or 0', async () => {
+      for (const stored of [null, 0]) {
+        const client = seededClient()
+        const ws = client.getQueryData(workspaceQueryKeys.config) as { resources: Record<string, unknown> }
+        client.setQueryData(workspaceQueryKeys.config, { ...ws, resources: { ...ws.resources, memoryLimitMb: stored } })
+        render(
+          <QueryClientProvider client={client}>
+            <ListViewProvider>
+              <MemoryRouter initialEntries={['/p/demo/settings']}>
+                <AppRoutes />
+              </MemoryRouter>
+            </ListViewProvider>
+          </QueryClientProvider>,
+        )
+        await waitFor(() => expect(effective()).toContain('This project uses the workspace limit (no limit).'))
+        cleanup()
+      }
+    })
+
+    it('stays in single-project mode, where the registry controls are gone', async () => {
+      // `PUT /config` is the project's own file, not a registry door, so nothing refuses it there.
+      renderAt('/settings', { singleProjectRoot: true })
+      expect(await screen.findByLabelText('Per-task memory limit for xezar in MiB')).not.toBeNull()
+      expect(screen.queryByLabelText('Max parallel tasks for xezar')).toBeNull()
+    })
   })
 })

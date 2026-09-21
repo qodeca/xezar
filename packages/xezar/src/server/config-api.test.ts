@@ -1,9 +1,10 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { RunStore } from '../runs/store.ts';
+import { WorkspaceSemaphore } from '../workspace/semaphore.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { createApp } from './server.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
@@ -388,5 +389,80 @@ describe('reviewGate round-trip (optional review gate, #489)', () => {
     const cleared = (await (await put({ reviewGate: null })).json()) as Record<string, unknown>;
     expect(cleared.reviewGate).toBeNull();
     expect(rawFile().reviewGate).toBeUndefined();
+  });
+});
+
+/**
+ * #677 C1 — the cockpit's project-level memory ceiling writes `PUT /config {memoryLimitMb}`, and
+ * enforcement reads the semaphore's cached snapshot, never the file. So the write is only worth
+ * anything if the route refreshes that snapshot: these cases drive the REAL semaphore with its
+ * production loader and read `projectMemoryLimitMb` straight after the PUT, with no restart in
+ * between. Remove the route's `semaphore.refresh()` and the first case goes red.
+ */
+describe('the project memoryLimitMb write reaches enforcement without a restart (#677 C1)', () => {
+  let repoRoot: string;
+  let homeRoot: string;
+  let store: RunStore;
+  let semaphore: WorkspaceSemaphore;
+  let app: Hono;
+  const savedXezHome = process.env.XEZ_HOME;
+
+  beforeEach(async () => {
+    repoRoot = realpathSync(mkdtempSync(join(tmpdir(), 'xez-configapi-mem-')));
+    homeRoot = mkdtempSync(join(tmpdir(), 'xez-configapi-mem-home-'));
+    process.env.XEZ_HOME = homeRoot;
+    mkdirSync(join(repoRoot, '.xezar'), { recursive: true });
+    // The workspace ceiling, and this repo registered so the loader reads its own config.json.
+    writeFileSync(
+      join(homeRoot, 'config.json'),
+      JSON.stringify({
+        resources: { memoryLimitMb: 4096 },
+        projects: [{ id: 'mem', root: repoRoot, name: 'mem', addedAt: '2026-09-21T00:00:00.000Z' }],
+      }),
+    );
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
+    semaphore = new WorkspaceSemaphore();
+    await semaphore.refresh();
+    app = createApp({ repoRoot, store, manager: {} as RunManager, version: '0.0.0-test', semaphore });
+  });
+
+  afterEach(() => {
+    store.flush();
+    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(homeRoot, { recursive: true, force: true });
+    if (savedXezHome === undefined) delete process.env.XEZ_HOME;
+    else process.env.XEZ_HOME = savedXezHome;
+  });
+
+  const put = (body: unknown) =>
+    apiRequest(app, '/api/v1/config', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  const rawFile = () =>
+    JSON.parse(readFileSync(join(repoRoot, '.xezar', 'config.json'), 'utf8')) as Record<string, unknown>;
+
+  it('a project ceiling below the workspace one takes effect without a restart', async () => {
+    expect(semaphore.projectMemoryLimitMb(repoRoot)).toBe(4096); // inherits before the write
+
+    const res = await put({ memoryLimitMb: 1024 });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as Record<string, unknown>).memoryLimitMb).toBe(1024);
+    expect(rawFile().memoryLimitMb).toBe(1024);
+    expect(semaphore.projectMemoryLimitMb(repoRoot)).toBe(1024);
+    // The workspace ceiling itself is untouched — the project value is an override, not a rewrite.
+    expect(semaphore.memoryLimitMb()).toBe(4096);
+  });
+
+  it.each([null, 0])('clearing with %s deletes the key and the project inherits again', async (clear) => {
+    await put({ memoryLimitMb: 1024 });
+    expect(semaphore.projectMemoryLimitMb(repoRoot)).toBe(1024);
+
+    const res = await put({ memoryLimitMb: clear });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as Record<string, unknown>).memoryLimitMb).toBeNull();
+    expect('memoryLimitMb' in rawFile()).toBe(false);
+    expect(semaphore.projectMemoryLimitMb(repoRoot)).toBe(4096);
   });
 });

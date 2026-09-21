@@ -24,8 +24,9 @@ import { SettingsField } from './settings-field'
  * protect the host, not a repo, so they live in `~/.xezar/config.json` and persist through
  * `PUT /api/workspace/config` — the merged answer lands straight in the workspace config query,
  * and the server refreshes the shared semaphore so a change takes effect without a restart.
- * Leftover per-repo `maxParallel`/`memoryLimitMb` keys were imported once by Migration 001 and
- * are ignored afterwards; this section deliberately no longer writes them.
+ * Leftover per-repo `maxParallel`/`memoryLimitMb` keys were imported once by Migration 001, and
+ * this section deliberately no longer writes them. The per-repo `memoryLimitMb` is enforced again
+ * since B2, as a project's own override: Project settings → General writes it (#677 C1).
  *
  * Worktree retention stayed behind in the PROJECT settings (worktrees-section.tsx) — it sizes
  * one repo's own worktree pool, which is a property of the repo.
@@ -37,7 +38,7 @@ const MAX_MONITORING_MAX = 16
 const WAKE_INTERVAL_MIN = 1
 const WAKE_INTERVAL_MAX = 60
 /** Below this a limit would pause almost any real agent immediately — reject it as a footgun. */
-const MEMORY_MIN_MB = 256
+export const MEMORY_MIN_MB = 256
 /** Idle-timeout bounds, mirroring the workspace schema so an invalid draft is a disabled Save
  *  rather than a 400 round-trip. */
 const IDLE_TIMEOUT_MIN = 1
@@ -463,8 +464,8 @@ function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
           <p className="text-[11px] text-soft-foreground">
             Applies to newly started tasks. This machine's default is{' '}
             <span data-slot="resources-memory-default">{config.resources.memoryLimitDefaultMb}</span> MiB,
-            sized from its total memory — a project can set a lower one of its own in its
-            Settings.
+            sized from its total memory. A project can set its own in its settings, under General
+            → Per-task memory limit.
           </p>
         )}
       </SettingsField>

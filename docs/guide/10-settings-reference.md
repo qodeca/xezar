@@ -8,7 +8,7 @@ Open **Settings** for the intended project. Its sections live under `/p/<project
 
 ### To inspect the project — General overview
 
-The Settings overview shows the project folder, registry facts, status, branch when known, and dates. Set **Max parallel tasks** to narrow the workspace ceiling, or use **Remove from workspace** to unregister the project without deleting files. The cockpit refuses removal of the startup project or one with queued, running, or waiting tasks. In single-project mode, the overview keeps the project information and omits registry-management controls. See [Projects](09-projects.md).
+The Settings overview shows the project folder, registry facts, status, branch when known, and dates. Set **Max parallel tasks** to narrow the workspace ceiling, set **Per-task memory limit** to give this project's tasks their own memory ceiling in MiB, or use **Remove from workspace** to unregister the project without deleting files. The project memory limit replaces the workspace limit for this project only, lower or higher; leave it empty (or enter 0) to use the workspace limit again. It is saved as `memoryLimitMb` in the project's `.xezar/config.json` and applies straight away, to running tasks too. The cockpit refuses removal of the startup project or one with queued, running, or waiting tasks. In single-project mode, the overview keeps the project information and the memory limit, and omits registry-management controls. See [Projects](09-projects.md).
 
 ### To choose how tasks run — Agents
 
@@ -95,7 +95,7 @@ Turn on **Notify when an agent needs you** and allow browser permission. Notific
 | Extra variables agents receive | Save a comma-separated list of additional environment variable names, or choose **Follow XEZ_ENV_PASSTHROUGH**. An explicitly empty list forwards no extra variables. |
 | New task defaults | Set **Autonomous by default** and **Use a worktree by default** to **Inherit environment**, **On**, or **Off**. They inherit `XEZ_AUTONOMOUS_DEFAULT` and `XEZ_WORKTREE_DEFAULT`, respectively. Explicit task choices and task constraints still take precedence. |
 
-Open the project’s **Settings → Worktrees** table to inspect disk use and reclaim eligible task folders. A project's own Worktrees choice overrides default retention; its registry cap narrows the total concurrency limit. A project memory override, `memoryLimitMb` in `.xezar/config.json`, can supersede the workspace memory ceiling; no cockpit control sets it. In single-project mode there is no **Configure per-project limits** link under Max parallel tasks, because the workspace holds only this project; limits saved here go to `.xezar/workspace.json` and apply exactly as written on every machine that uses the project.
+Open the project’s **Settings → Worktrees** table to inspect disk use and reclaim eligible task folders. A project's own Worktrees choice overrides default retention; its registry cap narrows the total concurrency limit. A project memory override, **Per-task memory limit** in the project's Settings overview (`memoryLimitMb` in `.xezar/config.json`), supersedes the workspace memory ceiling for that project. In single-project mode there is no **Configure per-project limits** link under Max parallel tasks, because the workspace holds only this project; limits saved here go to `.xezar/workspace.json` and apply exactly as written on every machine that uses the project.
 
 Automations have no control here: start the server with `XEZ_AUTOMATIONS=1` to enable them.
 
