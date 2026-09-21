@@ -1,4 +1,5 @@
 import { QueryClientProvider } from '@tanstack/react-query'
+import { ABSENT_CLI_SETTINGS } from '@/api/client'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -166,7 +167,7 @@ const WORKSPACE_CONFIG: WorkspaceConfigResponse = {
   effectiveFollowups: false,
   agentEnvPassthrough: null,
   effectiveAgentEnvPassthrough: [],
-  cli: { instance: null, effectiveInstance: 'workspace', inForce: 'workspace' },
+  cli: ABSENT_CLI_SETTINGS,
   composerDefaults: {
     autonomous: null,
     worktree: null,

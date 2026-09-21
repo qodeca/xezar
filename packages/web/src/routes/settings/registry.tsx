@@ -246,16 +246,19 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     fileNote: { file: WORKSPACE_CONFIG_FILE, tail: 'It is committed, so a clone starts with these limits.' },
   },
   {
-    // #467 PR 5: a START-UP mode, not a concurrency limit — a row inside Resources would bury
-    // "which projects does my cockpit open" under memory ceilings. The `cli.output`, `cli.color`
-    // and `cli.logLevel` keys stored beside it are its natural later tenants.
+    // #467 PR 5: START-UP choices, not concurrency limits — a row inside Resources would bury
+    // "which projects does my cockpit open" under memory ceilings. The instance mode and, by the
+    // owner's decision D-5, the `cli.output`, `cli.color` and `cli.logLevel` keys stored beside it.
     id: 'terminal',
     title: 'Terminal',
     description: 'How xezar behaves when you start it in a terminal.',
     icon: TerminalIcon,
     component: TerminalSection,
     scope: 'global',
-    fileNote: { file: WORKSPACE_CONFIG_FILE, tail: 'It is committed, so a clone starts in the same mode.' },
+    // Not "in the same mode": a folder that owns its state always serves one project, so the
+    // instance mode is read-only there (design review B-2 on PR #798); what a clone inherits is
+    // the terminal presentation.
+    fileNote: { file: WORKSPACE_CONFIG_FILE, tail: 'It is committed, so a clone prints the same way.' },
   },
   {
     id: 'skills',

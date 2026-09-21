@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process'
+import { ABSENT_CLI_SETTINGS } from '@/api/client'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -64,7 +65,7 @@ function serve(
     effectiveFollowups: false,
     agentEnvPassthrough: null,
     effectiveAgentEnvPassthrough: [],
-    cli: { instance: null, effectiveInstance: 'workspace', inForce: 'workspace' },
+    cli: ABSENT_CLI_SETTINGS,
     composerDefaults: {
       autonomous: null,
       worktree: null,

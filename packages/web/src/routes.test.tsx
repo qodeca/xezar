@@ -391,7 +391,7 @@ describe('the global settings area (/settings/global)', () => {
   // XEZ_SINGLE_PROJECT narrowing does (BACKWARD_COMPATIBILITY.md §2).
   it('keeps the global Settings URLs in single-project mode and omits only Projects', () => {
     const health = { ...HEALTH, capabilities: { ...HEALTH.capabilities, singleProjectRoot: true } }
-    for (const id of ['appearance', 'notifications', 'resources', 'skills', 'accounts']) {
+    for (const id of ['appearance', 'notifications', 'resources', 'terminal', 'skills', 'accounts']) {
       renderAt(`/settings/global/${id}`, { health })
       expect(routeName()).toBe(`settings-global-${id}`)
       cleanup()

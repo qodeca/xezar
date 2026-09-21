@@ -68,6 +68,7 @@ describe('guide 10 — settings reference', () => {
       ['appearance', 'Appearance'],
       ['notifications', 'Notifications'],
       ['resources', 'Resources'],
+      ['terminal', 'Terminal'],
       ['skills', 'Skills'],
       ['accounts', 'Agent accounts'],
       ['projects', 'Projects'],

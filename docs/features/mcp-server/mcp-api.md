@@ -290,7 +290,7 @@ Unknown arguments are rejected.
 
 ### `project_config`
 
-> Read and change THIS project's own configuration: its settings (agent, models, system prompt, review gate, base branch, worktree retention, memory limit), its registry entry (concurrency cap and tags), prompt templates, in-repo agent config files, workflows, skills, GitHub automations and worktrees. It also reads the shared settings as effective limits and capabilities (get_limits, get_capabilities, get_account) and CHANGES them with set_workspace_config — the shared limits, composer defaults, follow-up inbox and environment passthrough, skills auto-update and the machine-wide agent defaults, which apply to every project on this machine, the instance mode (which projects one xezar serves; it is settled at start, so a change applies the next time one starts) and the two workspace folder paths — the folder the file picker may browse and the folder new checkouts land in, each checked for real before anything is saved. The shared presentation preferences are read with get_workspace_ui_state and changed with set_workspace_ui_state (appearance, notifications, task-table columns, dismissed provider incidents) and import_skills (the curated list of default skills); an object-valued preference is replaced whole, so read it before you change one key of it. The colour theme is not among them — the browser stores that itself. The agent backends can be switched off and on for the whole machine with set_provider_enabled and their authentication incidents cleared with retry_provider. The agent ACCOUNTS — the separate logins a backend can run under — are read with get_account, added with create_account, edited with update_account, removed with remove_account and pointed at this project with select_account; check_account_status probes one account's sign-in state and get_account_details reports who it is signed in as. Connecting a provider, opening an account's folder in a desktop application, home files, the project registry and host folders are outside this boundary and are refused with the reason.
+> Read and change THIS project's own configuration: its settings (agent, models, system prompt, review gate, base branch, worktree retention, memory limit), its registry entry (concurrency cap and tags), prompt templates, in-repo agent config files, workflows, skills, GitHub automations and worktrees. It also reads the shared settings as effective limits and capabilities (get_limits, get_capabilities, get_account) and CHANGES them with set_workspace_config — the shared limits, composer defaults, follow-up inbox and environment passthrough, skills auto-update and the machine-wide agent defaults, which apply to every project on this machine, the terminal settings (the instance mode — which projects one xezar serves — and how its terminal prints; all are settled at start, so a change applies the next time one starts) and the two workspace folder paths — the folder the file picker may browse and the folder new checkouts land in, each checked for real before anything is saved. The shared presentation preferences are read with get_workspace_ui_state and changed with set_workspace_ui_state (appearance, notifications, task-table columns, dismissed provider incidents) and import_skills (the curated list of default skills); an object-valued preference is replaced whole, so read it before you change one key of it. The colour theme is not among them — the browser stores that itself. The agent backends can be switched off and on for the whole machine with set_provider_enabled and their authentication incidents cleared with retry_provider. The agent ACCOUNTS — the separate logins a backend can run under — are read with get_account, added with create_account, edited with update_account, removed with remove_account and pointed at this project with select_account; check_account_status probes one account's sign-in state and get_account_details reports who it is signed in as. Connecting a provider, opening an account's folder in a desktop application, home files, the project registry and host folders are outside this boundary and are refused with the reason.
 
 Unknown arguments are rejected.
 
@@ -316,7 +316,7 @@ Unknown arguments are rejected.
 | `config.skillsRepos` | array of object or null | no | max items 32 |  |
 | `config.skillsRepos[].repo` | string | yes | min length 1, max length 500 |  |
 | `config.skillsRepos[].ref` | string | no | min length 1, max length 200 |  |
-| `workspaceConfig` | object | no |  | set_workspace_config: the workspace-wide settings to change — they apply to every project on this machine. Only the keys you send are touched; null clears a key back to its default. The two workspace folder paths are included: the folder the file picker may browse, and the folder new checkouts land in. Both are checked for real: a path that is not absolute, is not a folder, or cannot be written to is answered with the reason and nothing is saved, the other keys in the same call included. cli.instance is the one key that does NOT take effect now: it chooses which projects one xezar serves — workspace, the default, serves every registered project in one cockpit, and project serves only the one it started in — and it is settled when a xezar starts, so a change here applies the next time one starts in a project and the running cockpit keeps doing what it was started to do. |
+| `workspaceConfig` | object | no |  | set_workspace_config: the workspace-wide settings to change — they apply to every project on this machine. Only the keys you send are touched; null clears a key back to its default. The two workspace folder paths are included: the folder the file picker may browse, and the folder new checkouts land in. Both are checked for real: a path that is not absolute, is not a folder, or cannot be written to is answered with the reason and nothing is saved, the other keys in the same call included. The cli keys are the ones that do NOT take effect now: they are settled when a xezar starts, so a change applies the next time one starts and the running cockpit keeps doing what it was started to do. cli.instance chooses which projects one xezar serves — workspace, the default, serves every registered project in one cockpit, and project serves only the one it started in; cli.output (auto, lines or rich), cli.color (auto, always or never) and cli.logLevel (debug, info, warn or error) choose how its terminal prints. |
 | `workspaceConfig.browseRoot` | string | no | min length 1, max length 4096 |  |
 | `workspaceConfig.projectsDir` | string | no | min length 1, max length 4096 |  |
 | `workspaceConfig.skillsAutoUpdate` | boolean or null | no |  |  |
@@ -342,6 +342,9 @@ Unknown arguments are rejected.
 | `workspaceConfig.agentDefaults.models.pi` | string or null | no | min length 1, max length 200 |  |
 | `workspaceConfig.cli` | object | no |  |  |
 | `workspaceConfig.cli.instance` | `project` \| `workspace` or null | no |  |  |
+| `workspaceConfig.cli.output` | `auto` \| `lines` \| `rich` or null | no |  |  |
+| `workspaceConfig.cli.color` | `auto` \| `always` \| `never` or null | no |  |  |
+| `workspaceConfig.cli.logLevel` | `debug` \| `info` \| `warn` \| `error` or null | no |  |  |
 | `uiState` | object | no |  | set_workspace_ui_state: the shared presentation preferences to change — they apply to every project on this machine. The keys are appearance (accent, density, width), notifications.enabled, taskTable.expandedColumns, importedSkills (the whole curated list) and dismissedProviderAuthFailures. A key you do not send is left alone, but a key you DO send is replaced WHOLE: appearance, taskTable and dismissedProviderAuthFailures are objects, and sending {appearance: {accent}} alone clears the person’s density and width. Read the bag with get_workspace_ui_state first and send the whole object back with your change in it — read, spread, write, exactly as the cockpit’s own panes do. That recipe does NOT reach dismissedProviderAuthFailures: the read reports the provider NAMES of the dismissed incidents and never the incident ids, which are the values a write needs, so any write of that key replaces every dismissal there is — send {} to clear them all, and leave the key out to keep them. The colour theme is not here: it is stored by the browser itself, not by the server. |
 | `uiState.appearance` | object | no |  |  |
 | `uiState.appearance.accent` | `lime` \| `violet` | no |  |  |
@@ -963,6 +966,9 @@ business outcome as the cockpit is the separate [parity coverage map](mcp-parity
 | I-129 | Decided 2026-09-10 (D-129). | `project_config:get_project`, `project_config:set_project` |
 | I-132 | Decided 2026-09-20 (D-677-B3, owner rule "every key", exclusions of 07:41). | `project_config:get_workspace_ui_state`, `project_config:set_workspace_ui_state` |
 | I-148 | Decided 2026-09-21 (D-677-B1's rule, applied to #467 PR 5). | `project_config:get_limits`, `project_config:set_workspace_config` |
+| I-149 | Decided 2026-09-21 (the owner's D-5 of 2026-09-20, applied to #467 PR 5). | `project_config:get_limits`, `project_config:set_workspace_config` |
+| I-150 | Decided 2026-09-21 (the owner's D-5 of 2026-09-20, applied to #467 PR 5). | `project_config:get_limits`, `project_config:set_workspace_config` |
+| I-151 | Decided 2026-09-21 (the owner's D-5 of 2026-09-20, applied to #467 PR 5). | `project_config:get_limits`, `project_config:set_workspace_config` |
 | I-133 | The capability set itself is the requirement, not the nav. | `discover_project`, `project_config:get_capabilities` |
 | I-136 | Same read as I-133 (`checks`) | `discover_project` |
 | I-138 | This is the state source F-13 and section 8 require MCP to reuse after project filtering, and the unfiltered workspace stream is prohibited. | `leader_events:read` |
@@ -1050,7 +1056,7 @@ Roles:
 | `project_config:set_project` | I-128, I-129 |  |  |  |
 | `project_config:get_prompt_templates` | I-110 |  |  |  |
 | `project_config:set_prompt_templates` | I-110 |  |  |  |
-| `project_config:get_limits` | I-009, I-117, I-118, I-119, I-120, I-121, I-128, I-148 |  |  |  |
+| `project_config:get_limits` | I-009, I-117, I-118, I-119, I-120, I-121, I-128, I-148, I-149, I-150, I-151 |  |  |  |
 | `project_config:get_capabilities` | I-115, I-133 |  |  |  |
 | `project_config:get_account` | I-042, I-122 |  |  |  |
 | `project_config:list_agent_config` | I-111, I-113 |  |  |  |
@@ -1090,7 +1096,7 @@ Roles:
 | `project_config:check_account_status` | I-123 |  |  |  |
 | `project_config:get_account_details` | I-124 |  |  |  |
 | `project_config:open_account_file` |  |  | I-125 |  |
-| `project_config:set_workspace_config` | I-117, I-118, I-119, I-120, I-121, I-127, I-148 |  |  |  |
+| `project_config:set_workspace_config` | I-117, I-118, I-119, I-120, I-121, I-127, I-148, I-149, I-150, I-151 |  |  |  |
 | `project_config:get_workspace_ui_state` | I-024, I-092, I-132 |  |  |  |
 | `project_config:set_workspace_ui_state` | I-024, I-092, I-132 |  |  |  |
 | `project_config:browse_folders` |  |  | I-126 |  |

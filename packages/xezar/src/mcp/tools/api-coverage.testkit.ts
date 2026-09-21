@@ -114,9 +114,10 @@ export const TOOL_ACTION_COVERAGE: Readonly<Record<string, ActionCoverage>> = {
   // I-117 … I-121 were this action's `reads` while the workspace settings were global-read-only.
   // The owner's 2026-09-20 rule made them writable (#677 B1), so the records are `covered` and the
   // pair of actions that serves them is this read plus `set_workspace_config`.
-  // I-148 (#467 PR 5) is served by the same pair: the write below stores `cli.instance`, and this
-  // read is the only place a leader learns what it resolved to AND what is in force in this process.
-  'project_config:get_limits': { serves: ['I-009', 'I-117', 'I-118', 'I-119', 'I-120', 'I-121', 'I-128', 'I-148'] },
+  // I-148 … I-151 (#467 PR 5) are served by the same pair: the write below stores the four `cli`
+  // keys, and this read is the only place a leader learns what they resolve to — and, for the
+  // instance mode, what is in force in this process.
+  'project_config:get_limits': { serves: ['I-009', 'I-117', 'I-118', 'I-119', 'I-120', 'I-121', 'I-128', 'I-148', 'I-149', 'I-150', 'I-151'] },
   // I-115 was this action's `reads` while the provider switch was global-read-only. #677 B4 made
   // the switch and the retry real writes, so the record is `covered` and the status read serves it
   // beside them — the same move I-117 … I-121 made in B1.
@@ -176,7 +177,7 @@ export const TOOL_ACTION_COVERAGE: Readonly<Record<string, ActionCoverage>> = {
   // I-127 (the two workspace folder paths) joined the list with #677 B2: the same owner rule made
   // them writable, and this action is the only one that serves them — `get_limits` still withholds
   // the paths themselves, so the record is served by its WRITE alone.
-  'project_config:set_workspace_config': { serves: ['I-117', 'I-118', 'I-119', 'I-120', 'I-121', 'I-127', 'I-148'] },
+  'project_config:set_workspace_config': { serves: ['I-117', 'I-118', 'I-119', 'I-120', 'I-121', 'I-127', 'I-148', 'I-149', 'I-150', 'I-151'] },
   // #677 B3: the shared preference bag is a write now. I-132 is served for its ACCENT, DENSITY,
   // WIDTH and notification half; its `theme` half is served by nobody and never will be — the
   // browser stores the theme itself (`packages/web/src/lib/theme.ts`), so there is no route to

@@ -57,7 +57,7 @@ In [single-project mode](09-projects.md#to-keep-a-projects-xezar-setup-inside-th
 
 | Section | File in single-project mode |
 | --- | --- |
-| Resources, Skills, and the workspace defaults | `.xezar/workspace.json` |
+| Resources, Terminal, Skills, and the workspace defaults | `.xezar/workspace.json` |
 | Agent accounts | `.xezar/agent-accounts.json` |
 | Appearance and Notifications | `.xezar/workspace-ui.json` |
 | Project Settings (Agents and the other project sections) | `.xezar/config.json`, as in every mode |
@@ -101,6 +101,19 @@ Automations have no control here: start the server with `XEZ_AUTOMATIONS=1` to e
 
 ![Workspace resource settings](../screenshots/0.16.0/settings-resources-dark-1280.png)
 
+### To choose how xezar starts in a terminal — Terminal
+
+Each control applies the next time you start xezar; the cockpit you are using keeps running as it is. **Not set — use the default** removes your choice, so the matching environment variable decides when it is set, and the built-in default otherwise. The line under each control names the value the next start will use and, when a variable decides it, which one.
+
+| Control | Choices and effect |
+| --- | --- |
+| Instance mode | **One cockpit for every project** (the default) opens everything you have registered. **One cockpit per project** serves the project it was started in; your other projects appear as links to their own cockpit, and each cockpit applies its own task limit. Falls back to `XEZ_INSTANCE`. With `XEZ_SINGLE_PROJECT=1` the cockpit already serves one project, so a choice here only affects a cockpit you start elsewhere. In single-project mode the project always serves one project, so the section shows that as text and offers no choice. |
+| Terminal output | **Automatic** shows the live panel in a wide terminal, one line per event in a narrow one, and plain lines when the output is not a terminal. **Live panel** and **One line per event** fix the choice. Falls back to `XEZ_OUTPUT`. |
+| Colour | **Automatic**, **Always**, or **Never**. A non-empty `NO_COLOR` turns colour off whatever is chosen here. Falls back to `XEZ_COLOR`. |
+| Log level | **Everything, for debugging**, **Activity** (the default), **Warnings and errors**, or **Errors only**. Falls back to `XEZ_LOG_LEVEL`. |
+
+A command-line flag (`--instance`, `--output`, `--color`, `--log-level`) outranks every choice here for that start. When a flag started this cockpit in a different instance mode, the section says which mode it is running in. See the [CLI reference](12-cli-reference.md#live-activity-in-the-terminal).
+
 ### To control installed skill updates — Skills
 
 Use **Update xezar-skills automatically** to save an on/off workspace override and read the installation/update status beneath it. **Use default** removes the override: `XEZ_SKILLS_AUTO_UPDATE` then supplies the inherited value, otherwise updates are on. The updater applies to tracked xezar-skills installations and leaves other skills and untracked folders alone. See [Skills](06-skills.md).
@@ -129,7 +142,7 @@ Press **⌘K / Ctrl+K** to open the palette. Search for a view, project, task, o
 
 - `.xezar/config.json`: project agent defaults, system prompt, review gate, base branch, team skills, worktree retention, `liveTitleUpdates`, `plannerModel` / `namerModel`, and `memoryLimitMb`.
 - `~/.xezar/config.json`: workspace resources, project registry, fallback agent/models, stored Inbox choice, skill-update choice, `disabledProviders`, `composerDefaults`, `agentEnvPassthrough`, `browseRoot` / `projectsDir`, and `modelsLocked`.
-- Terminal output (`cli.output`, `cli.color`, `cli.logLevel`) and each project's cockpit port have no control in Settings. Set them with command-line flags, environment variables, `xezar projects port`, or `~/.xezar/config.json`; see the [CLI reference](12-cli-reference.md#live-activity-in-the-terminal).
+- `cli.instance`, `cli.output`, `cli.color` and `cli.logLevel` in `~/.xezar/config.json` are set under **Global settings → Terminal**. Each project's cockpit port has no control in Settings: set it with `--port`, `XEZ_PORT` or `xezar projects port`; see the [CLI reference](12-cli-reference.md#live-activity-in-the-terminal).
 - `~/.xezar/ui-state.json`: global appearance and notification preferences; project `.local/xezar/ui-state.json`: prompt templates.
 - In single-project mode, the three `~/.xezar` files above are the project's `.xezar/workspace.json`, `.xezar/agent-accounts.json` and `.xezar/workspace-ui.json`; see [Configuration reference](11-configuration-reference.md#to-find-where-the-files-live-in-each-layout).
 - Browser storage: theme and the appearance mirror. Native agent configuration files are separate from xezar's settings.

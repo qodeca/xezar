@@ -60,7 +60,7 @@ Two new optional keys on each `projects[]` entry, and one optional workspace obj
 |---|---|---|---|
 | `projects[].cli.port` | The port a person chose for this project. A preference. | `xez projects port <id> <port>` only. `xez projects port <id>` with no port removes it. | Written by a start, by `--port` or by `XEZ_PORT`. |
 | `projects[].lastListen` | The last address this project’s cockpit really listened on. A hint. | The instance, once, right after `listen` succeeds. | A liveness claim. It is stale the moment the process ends. No PID, no lease, no socket path. |
-| `cli.output`, `cli.color`, `cli.logLevel` | Workspace defaults for how the terminal looks. | `xez config set cli.<key> <value>` is **not** built (Q-9); a person edits the file, or uses the flag or env. | Required. |
+| `cli.output`, `cli.color`, `cli.logLevel` | Workspace defaults for how the terminal looks. | Global Settings → Terminal and the MCP `project_config` action `set_workspace_config` (#467 PR 5; the owner's decision D-5 of 2026-09-20 added these three beside `cli.instance`), or the file, the flag or env. `xez config set cli.<key> <value>` is still **not** built (Q-9). | Required. |
 | `cli.instance` | `project` (default) or `workspace`. | Same as above. | Required. |
 
 `lastListen.host` is the bound address (`127.0.0.1` by default, the `--bind-host` value otherwise). It is recorded so that a later check probes the right address. It is never used to choose the bind address.

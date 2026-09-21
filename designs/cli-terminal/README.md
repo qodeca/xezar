@@ -1,6 +1,6 @@
 # CLI terminal – live activity, settings and one cockpit per project
 
-Status: **Draft** – round 1 findings (B-1 … B-3, NB-1 … NB-8) addressed; the review at `d4bfacb` (B-1, B-2, NB-1) is addressed in the PR #528 response, and the next `design-review` is pending (§ 18). Issue #467, PR 1 of the CLI plan. Base `main` at `bb271fc`.
+Status: **In review** – the PR #798 design review at `b659c16a` (FAIL: B-1, B-2, NB-1 … NB-5) is answered in the round-1 review response, and a re-review of the repaired head is pending (§ 18). Earlier rounds: round 1 (B-1 … B-3, NB-1 … NB-8) and the review at `d4bfacb` (B-1, B-2, NB-1, PR #528 response) addressed. Issue #467, PR 1 of the CLI plan. Base `main` at `bb271fc`.
 
 This folder designs a surface that is not a web page: what `xez` prints in a terminal. It also designs the one cockpit change that follows from running one xezar per project (the project switcher). No code changes here.
 
@@ -520,3 +520,34 @@ review findings remain proposed follow-ups under issue #467, not independent acc
 The unchanged stdout banner also retains its port-note position and lacks the staged loading
 banner; both stay with the previously declared § 6.1 follow-up. QA and design must re-review
 the delivered head; these dispositions do not clear either gate.
+
+### PR #798 design review (`b659c16a`, FAIL) – dispositions
+
+The Settings → Terminal pane of #467 PR 5 was reviewed in a real browser at `b659c16a`
+([PR #798 `## Design review`](https://github.com/qodeca/xezar/pull/798)). Disposing every finding
+does not turn that FAIL into approval: the repaired head needs its own `design-review`. Fixes land in
+the round-1 review response on PR #798.
+
+- **B-1 – fixed.** The third option is **Not set — use the default**; `XEZ_INSTANCE` appears only in
+  the hint. “Saved.” renders only after a save succeeded in this visit (a failed save clears it). “(from
+  XEZ_INSTANCE)” renders only when the server reports `cli.instanceSource: 'env'` – a new field of the
+  `GET /api/v1/workspace/config` contract, next to `outputSource`, `colorSource` and `logLevelSource`.
+- **B-2 – fixed.** The server reports `cli.narrowing` (`env-flag` / `project-root`). In a folder that
+  owns its state the pane shows “This project has its own settings, so this cockpit always serves one
+  project.” and no instance control; under `XEZ_SINGLE_PROJECT` the control and the narrowed sentence
+  stay, reworded to “A choice is kept for the next cockpit you start elsewhere.” The section's
+  single-project file note no longer promises “the same mode”.
+- **NB-1 – screen half fixed; start line not in this PR.** The Instance mode hint says “Each cockpit
+  applies its own task limit.” The honest start line about other running cockpits (spec § 6 D-3,
+  `open-questions.md` Q-3) is not delivered by PR #798 and stays open under #467. Separately, the
+  owner's decision D-5 (2026-09-20) brought `cli.output`, `cli.color` and `cli.logLevel` into the same
+  section (§ 8 “Presentation”, “Colour”, “Level”), each with its own **Not set — use the default**
+  choice and consequence line.
+- **NB-2 – fixed.** Every consequence line is `text-[13px] text-muted-foreground`, the hint slot.
+- **NB-3 – fixed.** Toasts say “xezar”, prose says “cockpit”; the title stays **Instance mode**, the
+  name of the `--instance` flag and `XEZ_INSTANCE` the hint refers to.
+- **NB-4 – recorded, no change.** The load error has no Retry, as in Resources and ten sibling panes;
+  it is the shared gap `recipes.md` § 3 names, not a regression of this section.
+- **NB-5 – recorded, no change.** The active section pill can sit off screen at 375 px because the
+  settings shell has no scroll-into-view; existing behaviour of `settings-shell.tsx`.
+
