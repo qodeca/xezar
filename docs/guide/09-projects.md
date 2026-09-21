@@ -66,6 +66,24 @@ A non-Git folder runs one task at a time. See [Worktrees and Git](03-worktrees-a
 
 A deleted or moved folder is labeled **folder not found**, and its project pages cannot start a working project context. In the sidebar's project groups, that project's row stays listed alongside your other projects but does not expand into a nav — there is nothing behind it to open. Restore the folder at its recorded path, or remove the stale registry entry and add the new location, then restore its tags and cap and recreate its bookmarklets. A folder that exists without Git is shown as **no git repo**, which is different from **folder not found**. The CLI uses **not a git repo** and **missing** for these states.
 
+## To run one cockpit per project — instance mode
+
+By default one xezar serves every project you have registered, and you switch between them inside the same cockpit. Start it with `--instance project` (or `XEZ_INSTANCE=project`, or a saved `cli.instance`) when you would rather give each project its own xezar process, on its own port — one terminal per project, one cockpit per project.
+
+Your other projects do not disappear. Every registered project stays listed and stays manageable: you can still add, clone, tag and remove projects here. What changes is how a row for another project behaves — instead of opening in this cockpit, it **links out** to that project's own cockpit:
+
+- **running** — the row is a link to that project's cockpit at its own address. Click it to go there, or open it in a new tab the usual way.
+- **running — address not known** — that project's process is up, but it did not record an address to link to (a start with `--port 0` never remembers one). Find the terminal that runs it.
+- **not running** — nothing serves that project. On your own machine the row offers **Copy command**, which copies `xez --repo <folder>` for you to paste into a terminal. A cockpit you reach over the network offers nothing here: that terminal is on another machine.
+- **checking…** — the check has not answered yet. It is what you see for a moment on a cockpit you open the instant xezar starts, and it resolves on its own.
+- **folder not found** — the registry entry points at a folder that is gone; see [To handle a missing project](#to-handle-a-missing-project).
+
+These rows stay current while the page is open: start or stop another project's xezar in a terminal and its row here follows within a few seconds, without a reload. A cockpit you reach over the network keeps the answer it loaded with, and says nothing about a project it never looked at.
+
+The same rows appear in the ⌘K palette's Projects group. **All tasks** shows this project's tasks only in this mode, and says so in one line above the list — the other projects have their own cockpits, and each one lists its own work.
+
+The mode is a start-up decision: the port, the MCP connection and the project this process serves are all settled when it starts, so changing the saved value applies the next time you start xezar. A cockpit already narrowed to one project — by `--single-project`, or by `XEZ_SINGLE_PROJECT=1` — already serves one project, and that wins: asking for an instance mode there changes nothing, and the terminal says so in one line.
+
 ## To keep a project's xezar setup inside the project — single-project mode
 
 Use single-project mode when a repository should carry its own xezar setup, so that everyone who clones it runs with the same settings, agent accounts and limits, with no setup step on their machine.

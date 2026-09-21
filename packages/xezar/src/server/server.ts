@@ -227,6 +227,7 @@ import { WorkspaceSemaphore } from '../workspace/semaphore.ts';
 import { mergeWriteWorkspaceUiState, readWorkspaceUiState } from '../workspace/ui-state.ts';
 import { checkoutRepo, type CloneRunner } from './checkout.ts';
 import { InstanceLiveness } from './instance-liveness.ts';
+import { projectInstancesTopic } from './project-instances-topic.ts';
 import { ProjectContextError, ProjectContexts, type ProjectContext } from './project-context.ts';
 import { ProjectWriterError } from '../runs/project-writer.ts';
 import { reviewGateEnabled } from '../runs/review-gate.ts';
@@ -2564,6 +2565,39 @@ export function createApp(deps: ServerDeps) {
     instanceLiveness.retainOnly(answered.map((project) => project.id));
     return answered;
   };
+
+  // The push twin of the field above (#796). `GET /api/v1/projects` answers `instance` once, and
+  // the band that renders it has no other reason to re-ask: another xezar starting or stopping
+  // changes nothing in the registry, so no workspace event fires and a page-load read freezes —
+  // a `checking` row (the honest first answer for a remembered address) never resolves, and a
+  // stopped project keeps its link to a dead port. While a cockpit holds this topic the same ONE
+  // `instanceLiveness` is re-derived on the shared 5 s cadence and a frame goes out only when the
+  // map changed; with no subscriber nothing probes anything. See `project-instances-topic.ts`.
+  //
+  // Default trust, unlike `health`: a `url` names another local port and the map says which
+  // projects this machine has open, so it is legible to the cockpit's own connection only.
+  deps.socketHub?.registerTopic(
+    'project-instances',
+    projectInstancesTopic({
+      liveness: instanceLiveness,
+      read: async () => {
+        // The same hosted-mode decision `withInstanceState` makes, at the same place: this server
+        // sees no writer claim on a machine it does not run on and may reach only its own host's
+        // ports, so it publishes the empty map rather than a guess.
+        if (!capabilities().localHandoff) return null;
+        const bootProject = await resolveBootProject();
+        // The RAW rows, because `lastListen` is the address to probe and `toProjectListEntry`
+        // strips it — deliberately, since the hint never goes on the wire, only the checked
+        // answer does. Narrowed the same way the route narrows its list, so single-project mode
+        // probes no sibling here either.
+        const rows = await registryRows(singleProjectRegistry() ? { projectId: bootProject } : undefined);
+        return {
+          bootProject,
+          projects: rows.map((row) => ({ id: row.id, root: row.root, lastListen: row.lastListen })),
+        };
+      },
+    }),
+  );
 
   // ---- chained family: project registry (workspace-level) ----
   const projectsRoutes = new Hono<ProjectApiEnv>()
