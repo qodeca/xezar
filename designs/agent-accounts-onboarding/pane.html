@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent accounts – the pane, single-project mode</title>
+<link rel="stylesheet" href="../../docs/design-system/cockpit.css">
+<link rel="stylesheet" href="styles.css">
+<script src="theme.js"></script>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v5h6"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="18" y2="18"/></symbol>
+</svg>
+
+<nav class="doc-bar" aria-label="Design pages">
+  <span class="brand">Agent accounts onboarding</span>
+  <a href="index.html">Overview</a>
+  <a href="pane.html" aria-current="page">The pane</a>
+  <a href="import.html">Import states</a>
+  <a href="states.html">Problems and states</a>
+  <a href="phone.html">Phone</a>
+  <span class="spacer"></span>
+  <button class="theme-toggle" type="button" data-theme-toggle>Light / dark</button>
+</nav>
+
+<!-- The route: /settings/global/agent-accounts, single-project mode ("Workspace settings").
+     State shown: globalImport.state = unknown, importable = 3; one problem
+     {kind: unknown-account, where: defaults, provider: claude, handle: client-a};
+     pi not installed and listing no account. -->
+<div class="shell settings">
+  <nav class="settings-nav" aria-label="Settings sections">
+    <a href="#">Appearance</a>
+    <a href="#">Notifications</a>
+    <a href="#">Resources</a>
+    <a href="pane.html" aria-current="page">Agent accounts</a>
+    <a href="#">Skills</a>
+    <a href="#">Terminal</a>
+  </nav>
+
+  <main class="main">
+    <div class="mobile-bar">
+      <button class="btn ghost icon" type="button" aria-label="Open menu"><svg class="icon" aria-hidden="true"><use href="#i-menu"/></svg></button>
+      <span class="title">Agent accounts</span>
+    </div>
+    <nav class="settings-pills phone-only" aria-label="Settings sections">
+      <a href="#">Appearance</a>
+      <a href="#">Resources</a>
+      <a href="pane.html" aria-current="page">Agent accounts</a>
+      <a href="#">Skills</a>
+    </nav>
+
+    <header class="page-head">
+      <h1>Agent accounts</h1>
+      <p>The logins each agent can run under.</p>
+    </header>
+
+    <div class="acct-pane" data-slot="accounts-section">
+      <div>
+        <h2 class="pane-title">Agent accounts</h2>
+        <!-- CHANGED copy: the tabs are gone, and the pane names its two new words once. -->
+        <p class="pane-lead">Every agent, whether it is installed, and the logins you have for it. “In use” marks the login tasks in this project run under. The built-in login is the one each agent finds on this machine by itself; tasks use it when no other account is chosen.</p>
+        <p class="file-note" data-slot="settings-file-note">
+          <svg class="icon" aria-hidden="true"><use href="#i-file"/></svg>
+          <span>Saved in this project — <code>.xezar/agent-accounts.json</code>.</span>
+        </p>
+      </div>
+
+      <!-- NEW: the import block. Single-project mode only; never rendered in hosted mode or in the
+           global layout. State: unknown, importable = 3. The button carries the static focus ring
+           so a capture shows keyboard focus. -->
+      <section class="import-block" data-slot="accounts-import" aria-labelledby="import-title">
+        <h3 id="import-title">Copy accounts from your personal setup</h3>
+        <p>3 accounts in your personal xezar setup on this machine are not in this project yet. Copying adds their names and config folders to <code>.xezar/agent-accounts.json</code>, which is committed, so everyone who clones this project sees them. Sign-ins stay in their own folders and are never copied.</p>
+        <div class="import-actions">
+          <button class="btn focus-demo" type="button" data-action="accounts-import">Copy 3 accounts</button>
+          <span class="import-cli">Or run <code>xezar accounts import-global</code> in a terminal in this folder.</span>
+        </div>
+        <div class="sr-only" role="status" aria-live="polite" aria-atomic="true" data-slot="accounts-import-announcer"></div>
+      </section>
+
+      <!-- NEW: the pane-level problem summary. Rendered only when `problems` is present AND
+           non-empty. The same node is a polite live region, so a fix that changes the count is
+           announced; its first render is not. -->
+      <p class="problem-summary" data-slot="accounts-problems" role="status" aria-live="polite" aria-atomic="true">
+        <span class="dot pending" aria-hidden="true"></span>
+        <span>1 account choice names an account that is not in this list. Tasks still run, with the built-in login. See <a class="link jump" href="#tool-claude">Claude Code</a>.</span>
+      </p>
+
+      <!-- UNCHANGED: Defaults for this project (DefaultAgentPicker). Drawn in short, for order. -->
+      <section class="defaults-card" data-slot="accounts-defaults">
+        <div>
+          <h3>Defaults for this project</h3>
+          <p>What a task in this project runs when it does not choose for itself. Saved with the project, so a clone starts with the same choice.</p>
+        </div>
+        <div class="picker" role="radiogroup" aria-label="Default runner">
+          <button type="button" role="radio" aria-checked="true">Claude Code · Built-in login</button>
+          <button type="button" role="radio" aria-checked="false">Claude Code · Work</button>
+          <button type="button" role="radio" aria-checked="false">Codex · Team</button>
+          <button type="button" role="radio" aria-checked="false">OpenCode</button>
+        </div>
+        <span class="elided">Default model per agent — unchanged, not drawn.</span>
+      </section>
+
+      <!-- CHANGED: four agents stacked instead of four tabs, so all four are read at once. -->
+      <div class="tool-list" data-slot="accounts-tools">
+
+        <!-- Claude Code: three accounts, the built-in one in use because the saved default is dangling. -->
+        <section class="tool-group" id="tool-claude" data-provider="claude" aria-labelledby="h-claude">
+          <div class="tool-head">
+            <h3 id="h-claude">Claude Code</h3>
+            <span class="facts">Installed<span class="version"> · 2.1.4</span> · 3 accounts</span>
+            <span class="problem-count"><span class="dot pending" aria-hidden="true"></span>1 choice to fix</span>
+            <span class="end"><button class="btn" type="button" data-action="accounts-add">Add account</button></span>
+          </div>
+
+          <div class="problem-block" data-slot="account-problem" data-where="defaults">
+            <span class="what"><span class="dot pending" aria-hidden="true"></span><span>The project default for Claude Code names <code>client-a</code>, which is not in this list. Tasks use the built-in login instead.</span></span>
+            <span class="fix"><b>Fix:</b> choose an account under Defaults for this project, or use the built-in login.</span>
+            <div><button class="btn" type="button" data-action="account-problem-use-built-in">Use the built-in login</button></div>
+          </div>
+
+          <ul class="acct-rows">
+            <li class="acct-row" data-slot="account-row" data-built-in="true" data-selected="true">
+              <div class="who">
+                <div class="name-line">
+                  <span class="name">Built-in login</span>
+                  <span class="badge outline" data-slot="account-in-use"><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg>In use</span>
+                </div>
+                <p class="path">~/.claude</p>
+                <p class="sub">Found on this machine — xezar does not save it.</p>
+                <div class="status"><span class="dot success" aria-hidden="true"></span><span>Connected</span></div>
+              </div>
+              <div class="actions">
+                <button class="btn ghost desk-only" type="button">Check again</button>
+                <button class="btn ghost" type="button" aria-expanded="false">Show details</button>
+              </div>
+            </li>
+            <li class="acct-row" data-slot="account-row" data-built-in="false" data-selected="false">
+              <div class="who">
+                <div class="name-line"><span class="name">Work</span></div>
+                <p class="path">~/.claude-work</p>
+                <div class="status"><span class="dot success" aria-hidden="true"></span><span>Connected</span></div>
+              </div>
+              <div class="actions">
+                <button class="btn ghost desk-only" type="button">Check again</button>
+                <button class="btn ghost" type="button" aria-expanded="false">Show details</button>
+              </div>
+            </li>
+            <!-- Identity-shaped label: the stored label looks like an e-mail address, so the row
+                 never prints it. Show details (opt-in) reveals it and offers Rename. -->
+            <li class="acct-row" data-slot="account-row" data-built-in="false" data-selected="false" data-label-hidden="true">
+              <div class="who">
+                <div class="name-line"><span class="name hidden-name">Name hidden</span></div>
+                <p class="path">~/.claude-client</p>
+                <p class="sub">The name looks like an e-mail address, so it is not shown here. Show details to see it or rename it.</p>
+                <div class="status"><span class="dot pending" aria-hidden="true"></span><span>Not connected</span></div>
+              </div>
+              <div class="actions">
+                <button class="btn" type="button">Connect</button>
+                <button class="btn ghost desk-only" type="button">Check again</button>
+                <button class="btn ghost" type="button" aria-expanded="false">Show details</button>
+              </div>
+            </li>
+          </ul>
+        </section>
+
+        <!-- Codex: an added account is in use. -->
+        <section class="tool-group" id="tool-codex" data-provider="codex" aria-labelledby="h-codex">
+          <div class="tool-head">
+            <h3 id="h-codex">Codex</h3>
+            <span class="facts">Installed<span class="version"> · 0.44.0</span> · 2 accounts</span>
+            <span class="end"><button class="btn" type="button" data-action="accounts-add">Add account</button></span>
+          </div>
+          <ul class="acct-rows">
+            <li class="acct-row" data-slot="account-row" data-built-in="true" data-selected="false">
+              <div class="who">
+                <div class="name-line"><span class="name">Built-in login</span></div>
+                <p class="path">~/.codex</p>
+                <p class="sub">Found on this machine — xezar does not save it.</p>
+                <div class="status"><span class="dot success" aria-hidden="true"></span><span>Connected</span></div>
+              </div>
+              <div class="actions">
+                <button class="btn ghost desk-only" type="button">Check again</button>
+                <button class="btn ghost" type="button" aria-expanded="false">Show details</button>
+              </div>
+            </li>
+            <li class="acct-row" data-slot="account-row" data-built-in="false" data-selected="true">
+              <div class="who">
+                <div class="name-line">
+                  <span class="name">Team</span>
+                  <span class="badge outline" data-slot="account-in-use"><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg>In use</span>
+                </div>
+                <p class="path">~/.codex-team</p>
+                <div class="status"><span class="dot success" aria-hidden="true"></span><span>Connected</span></div>
+              </div>
+              <div class="actions">
+                <button class="btn ghost desk-only" type="button">Check again</button>
+                <button class="btn ghost" type="button" aria-expanded="false">Show details</button>
+              </div>
+            </li>
+          </ul>
+        </section>
+
+        <!-- OpenCode: the built-in login only, and today's single-account note (unchanged copy). -->
+        <section class="tool-group" id="tool-opencode" data-provider="opencode" aria-labelledby="h-opencode">
+          <div class="tool-head">
+            <h3 id="h-opencode">OpenCode</h3>
+            <span class="facts">Installed<span class="version"> · 1.0.12</span> · 1 account</span>
+          </div>
+          <ul class="acct-rows">
+            <li class="acct-row" data-slot="account-row" data-built-in="true" data-selected="true">
+              <div class="who">
+                <div class="name-line">
+                  <span class="name">Built-in login</span>
+                  <span class="badge outline" data-slot="account-in-use"><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg>In use</span>
+                </div>
+                <p class="path">~/.config/opencode</p>
+                <p class="sub">Found on this machine — xezar does not save it.</p>
+                <div class="status"><span class="dot success" aria-hidden="true"></span><span>Connected</span></div>
+              </div>
+              <div class="actions">
+                <button class="btn ghost desk-only" type="button">Check again</button>
+                <button class="btn ghost" type="button" aria-expanded="false">Show details</button>
+              </div>
+            </li>
+          </ul>
+          <p class="tool-note">OpenCode can only hold one account here: it keeps its credentials outside its config folder, so a second folder would change settings without changing the login — which would say “work account” while billing the other one.</p>
+        </section>
+
+        <!-- pi: not installed and no account listed – the per-agent empty state. -->
+        <section class="tool-group" id="tool-pi" data-provider="pi" aria-labelledby="h-pi">
+          <div class="tool-head">
+            <h3 id="h-pi">pi</h3>
+            <span class="facts">Not installed · no accounts</span>
+          </div>
+          <div class="acct-rows">
+            <p class="tool-empty" data-slot="accounts-provider-empty"><b>No pi accounts yet</b>pi is not installed on this machine. Install it — <code>https://github.com/badlogic/pi-mono</code> — and the login it finds appears here.</p>
+          </div>
+        </section>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

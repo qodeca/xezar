@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent accounts – the import block in every state</title>
+<link rel="stylesheet" href="../../docs/design-system/cockpit.css">
+<link rel="stylesheet" href="styles.css">
+<script src="theme.js"></script>
+</head>
+<body>
+<nav class="doc-bar" aria-label="Design pages">
+  <span class="brand">Agent accounts onboarding</span>
+  <a href="index.html">Overview</a>
+  <a href="pane.html">The pane</a>
+  <a href="import.html" aria-current="page">Import states</a>
+  <a href="states.html">Problems and states</a>
+  <a href="phone.html">Phone</a>
+  <span class="spacer"></span>
+  <button class="theme-toggle" type="button" data-theme-toggle>Light / dark</button>
+</nav>
+
+<div class="doc">
+  <h1>The import block</h1>
+  <p class="lead">The block answers one question a person has after setting up a project: “did my accounts come over?” It sits under the pane’s heading, above the problem line and the Defaults card, and it is drawn only in single-project mode. The global layout has nothing to import (the project already reads the personal setup), and hosted mode shows only its refusal sentence, so neither renders the block – not disabled, absent.</p>
+  <p>The rule that picks the shape: <b>a count above zero gets an action; zero never does</b> (recipes.md: “already-done is not another invitation to mutate”). The card is used once – for the first offer. After the person has answered, the block shrinks to one line, so a decision already made is not asked again in a bigger voice.</p>
+
+  <div class="state-stack">
+
+    <div>
+      <p class="frame-label">1 · unknown, importable = 3 – the first offer (card)</p>
+      <div class="frame pane-frame">
+        <section class="import-block" aria-labelledby="t1">
+          <h3 id="t1">Copy accounts from your personal setup</h3>
+          <p>3 accounts in your personal xezar setup on this machine are not in this project yet. Copying adds their names and config folders to <code>.xezar/agent-accounts.json</code>, which is committed, so everyone who clones this project sees them. Sign-ins stay in their own folders and are never copied.</p>
+          <div class="import-actions">
+            <button class="btn" type="button">Copy 3 accounts</button>
+            <span class="import-cli">Or run <code>xezar accounts import-global</code> in a terminal in this folder.</span>
+          </div>
+        </section>
+      </div>
+      <p class="note"><strong>Why a card and why the file name.</strong> This is the only state that asks for a decision, and the decision has a cost the person cannot see from here: the names and folder paths land in a committed file. Saying which file, and that clones see it, is the consent the first-run question used to carry. “unknown” is not “you were not asked” – it also covers a project set up before the answer was remembered – so the copy claims nothing about the past. One account reads “1 account in your personal xezar setup on this machine is not in this project yet.” and “Copy 1 account”.</p>
+    </div>
+
+    <div>
+      <p class="frame-label">2 · unknown, importable = 0 – nothing to copy (line, no button)</p>
+      <div class="frame pane-frame">
+        <p class="import-line" data-slot="accounts-import"><span class="grow">There are no accounts in your personal xezar setup that this project does not already have.</span></p>
+      </div>
+      <p class="note"><strong>Why a line and not nothing.</strong> The sentence is true both when the personal setup has no accounts and when every one is already here, and either way it tells a reader who is looking for missing accounts that the import is not what is missing. It never says “0 accounts”: a count of zero on a button or in a heading reads as a failure.</p>
+    </div>
+
+    <div>
+      <p class="frame-label">3 · declined, importable = 3 – the person said no (line, quiet button)</p>
+      <div class="frame pane-frame">
+        <p class="import-line" data-slot="accounts-import"><span class="grow">You chose not to copy accounts from your personal xezar setup when this project was set up. 3 can still be copied into <code>.xezar/agent-accounts.json</code>.</span><button class="btn" type="button">Copy 3 accounts</button></p>
+      </div>
+      <p class="note"><strong>Why still offered.</strong> A decline at first start is often a decline of the moment (a terminal question at boot), and the later path must exist without a terminal. Why quiet: the answer was No, so the pane does not reopen the pitch – one line, the same button, no card. Declined with importable = 0 reads as state 2: there is nothing left to choose.</p>
+    </div>
+
+    <div>
+      <p class="frame-label">4 · done, importable = 0 – copied, nothing new (line)</p>
+      <div class="frame pane-frame">
+        <p class="import-line" data-slot="accounts-import"><span class="grow">Accounts were copied from your personal xezar setup — this project has all of them.</span></p>
+      </div>
+    </div>
+
+    <div>
+      <p class="frame-label">4b · done, importable = 2 – copied once, more added there since (line, button)</p>
+      <div class="frame pane-frame">
+        <p class="import-line" data-slot="accounts-import"><span class="grow">Accounts were copied from your personal xezar setup. 2 more were added there since and can be copied too.</span><button class="btn" type="button">Copy 2 accounts</button></p>
+      </div>
+      <p class="note"><strong>Why “done” keeps a line.</strong> It is the direct answer to “did the import fail?”. The copy is idempotent and merge-only (it adds accounts that are absent and never overwrites a row), so offering it again for new accounts is safe.</p>
+    </div>
+
+    <div>
+      <p class="frame-label">5 · copying – the request is in flight</p>
+      <div class="frame pane-frame">
+        <section class="import-block" aria-labelledby="t5" aria-busy="true">
+          <h3 id="t5">Copy accounts from your personal setup</h3>
+          <p>3 accounts in your personal xezar setup on this machine are not in this project yet. Copying adds their names and config folders to <code>.xezar/agent-accounts.json</code>, which is committed, so everyone who clones this project sees them. Sign-ins stay in their own folders and are never copied.</p>
+          <div class="import-actions">
+            <button class="btn" type="button" disabled>Copying…</button>
+            <span class="import-cli">Or run <code>xezar accounts import-global</code> in a terminal in this folder.</span>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <div>
+      <p class="frame-label">6 · copied – toast, then the block becomes state 4 and is announced</p>
+      <div class="frame pad row">
+        <div class="toast" role="status">Copied 3 accounts</div>
+        <div class="toast" role="status">Copied 2 accounts — 1 was already in this project</div>
+        <div class="toast" role="status">Nothing new to copy — this project already has every account</div>
+      </div>
+      <p class="note"><strong>The toast reports what the server did, not what was asked</strong> (writing.md §13). The three shapes come from the server’s added/kept counts. The block re-renders from the refetched state; the live region inside it (<code>role="status" aria-live="polite" aria-atomic="true"</code>) reads the new line once.</p>
+    </div>
+
+    <div>
+      <p class="frame-label">7 · the copy failed – danger toast in the server’s words; the block is unchanged</p>
+      <div class="frame pad row">
+        <div class="toast danger" role="status">Could not read your personal xezar setup — ~/.xezar/agent-accounts.json is not a regular file</div>
+        <div class="toast danger" role="status">Agent accounts are managed from the machine that owns the checkout — this cockpit runs in hosted mode.</div>
+      </div>
+      <p class="note"><strong>No new error copy.</strong> Both lines are examples of server messages shown verbatim (patterns.md §6, “Mutation error”); the second is the hosted refusal arriving as a 409 if the mode changed under an open page. The button re-enables and the count stays as it was – a failed copy never shows as done.</p>
+    </div>
+
+    <div>
+      <p class="frame-label">8 · the state has not arrived yet (only if it is fetched apart from the listing)</p>
+      <div class="frame pane-frame">
+        <p class="import-line">Checking for accounts to copy…</p>
+      </div>
+      <p class="note"><strong>Prefer none.</strong> If <code>globalImport</code> rides on the accounts listing, the pane’s own “Loading agent accounts…” covers it and this line never shows. If the field is absent from a response (an older engine), the block is not rendered at all – absence is not “unknown”.</p>
+    </div>
+  </div>
+</div>
+</body>
+</html>
