@@ -8,6 +8,7 @@ import {
   automationLogResultSchema,
   createAgentProfileInputSchema,
   DEFAULT_AGENT_ACCOUNT_ID,
+  MODEL_DISCOVERY_RUNNERS,
   mcpExpectedVersionSchema,
   onboardingIdentitySchema,
   onboardingStatusSchema,
@@ -37,10 +38,13 @@ import {
   type AutomationDefinition,
   type ConfigResponse,
   type HealthResponse,
+  type ListModelsResult,
+  type ModelCatalogToolRow,
   type ProjectListEntry,
   type ProjectsResponse,
   type ProviderStatusResponse,
   type RemoveAgentProfileResponse,
+  type RunnerModelCatalogResponse,
   type Skill,
   type SkillsRefreshResponse,
   type SkillsUpdateState,
@@ -167,6 +171,7 @@ export const PROJECT_CONFIG_ACTIONS = [
   'get_workspace_ui_state',
   'set_workspace_ui_state',
   'get_capabilities',
+  'list_models',
   'set_provider_enabled',
   'retry_provider',
   'get_account',
@@ -387,6 +392,10 @@ export const ACTION_FIELDS: Record<ProjectConfigAction, { required: readonly Fie
   get_workspace_ui_state: none,
   set_workspace_ui_state: { required: ['uiState', 'operationId'], optional: [] },
   get_capabilities: { required: [], optional: ['refresh'] },
+  // A read (#819 item 4): no operation key. `provider` narrows the answer to one tool; absent
+  // answers every tool. No `refresh`: the route it dispatches has none, and a door that promised
+  // one would be promising a probe the cockpit cannot make either.
+  list_models: { required: [], optional: ['provider'] },
   set_provider_enabled: { required: ['provider', 'enabled', 'operationId'], optional: [] },
   // No `authFailureId` argument, on purpose: the incident id is what `get_capabilities` withholds
   // (F-03), so a leader cannot name one. The handler reads the CURRENT id from the same
@@ -660,7 +669,7 @@ export const projectConfigInputSchema = z
     provider: providerIdSchema
       .optional()
       .describe(
-        'set_provider_enabled / retry_provider / select_account / check_account_status / get_account_details: which agent backend. The two provider actions apply to EVERY project on this machine, not only this one: turning a provider off stops it being offered for new tasks everywhere, and clearing an authentication incident clears the warning every project sees. Read the current state with get_capabilities first. For the account actions it names which backend the account signs in to, and it is required beside accountId because every account xezar discovered by itself is called default. On check_account_status it must be the account’s OWN backend: naming a different one is refused rather than answered, so the answer always says which login was really read.',
+        'list_models: the one agent backend to list the models of; omit it for every backend. set_provider_enabled / retry_provider / select_account / check_account_status / get_account_details: which agent backend. The two provider actions apply to EVERY project on this machine, not only this one: turning a provider off stops it being offered for new tasks everywhere, and clearing an authentication incident clears the warning every project sees. Read the current state with get_capabilities first. For the account actions it names which backend the account signs in to, and it is required beside accountId because every account xezar discovered by itself is called default. On check_account_status it must be the account’s OWN backend: naming a different one is refused rather than answered, so the answer always says which login was really read.',
       ),
     enabled: setProviderEnabledInputSchema.shape.enabled
       .optional()
@@ -1203,6 +1212,20 @@ function workspacePreferences(state: WorkspaceUiState) {
   };
 }
 
+/** One `list_models` row from one `/models` answer. `reason` is spread, never written as a key
+ *  that may be undefined, and the model options travel as the route sent them — so a `local` or
+ *  `vision` the source did not prove stays ABSENT rather than becoming `false` here. */
+function modelCatalogRow(tool: ModelCatalogToolRow['tool'], answer: RunnerModelCatalogResponse): ModelCatalogToolRow {
+  return {
+    tool,
+    available: answer.source !== 'unavailable',
+    source: answer.source,
+    stale: answer.stale,
+    ...(answer.reason !== undefined ? { reason: answer.reason } : {}),
+    models: answer.models,
+  };
+}
+
 /**
  * The provider rows, narrowed — the answer of `get_capabilities` and of BOTH provider writes
  * (#677 B4), so a leader reads its own switch in the words it read the status in.
@@ -1454,6 +1477,30 @@ async function run(args: ProjectConfigInput & { action: ProjectConfigAction }, s
         // login command or an incident id.
         providers: providerRows(providers.value),
       });
+    }
+
+    /**
+     * THE MODEL CATALOG (#819 item 4). One `GET /api/v1/models` per tool, the cockpit's own route
+     * with its own 5-minute cache, so a leader reads exactly the list the composer's model picker
+     * offers — and never makes a probe the cockpit would not. A separate action rather than more
+     * keys on `get_capabilities`: that read stays cheap and byte-identical, and a leader detects
+     * this engine by whether `list_models` is a known action at all.
+     *
+     * Each row is the route's answer as it stands, with `runner` spelled `tool` and `available`
+     * derived; an unavailable tool is answered as a row with its reason, never dropped.
+     */
+    case 'list_models': {
+      const tools = args.provider === undefined ? MODEL_DISCOVERY_RUNNERS : [args.provider];
+      const answers = await Promise.all(
+        tools.map((runner) => settle<RunnerModelCatalogResponse>(s.api.models.$get({ query: { runner } }), [200])),
+      );
+      const rows: ModelCatalogToolRow[] = [];
+      for (const [index, answer] of answers.entries()) {
+        if (!answer.ok) return fail(answer);
+        rows.push(modelCatalogRow(tools[index]!, answer.value));
+      }
+      const result: ListModelsResult = { tools: rows };
+      return ok(action, result);
     }
 
     /**
@@ -2068,7 +2115,7 @@ export const projectConfigTool = defineTool({
   name: 'project_config',
   title: 'Project configuration',
   description:
-    "Read and change THIS project's own configuration: its settings (agent, models, system prompt, review gate, base branch, worktree retention, memory limit), its registry entry (concurrency cap and tags), prompt templates, in-repo agent config files, workflows, skills, GitHub automations and worktrees. It also reads the shared settings as effective limits and capabilities (get_limits, get_capabilities, get_account) and CHANGES them with set_workspace_config — the shared limits, composer defaults, follow-up inbox and environment passthrough, skills auto-update and the machine-wide agent defaults, which apply to every project on this machine, the terminal settings (the instance mode — which projects one xezar serves — and how its terminal prints; all are settled at start, so a change applies the next time one starts) and the two workspace folder paths — the folder the file picker may browse and the folder new checkouts land in, each checked for real before anything is saved. The shared presentation preferences are read with get_workspace_ui_state and changed with set_workspace_ui_state (appearance, notifications, task-table columns, dismissed provider incidents) and import_skills (the curated list of default skills); an object-valued preference is replaced whole, so read it before you change one key of it. The colour theme is not among them — the browser stores that itself. The agent backends can be switched off and on for the whole machine with set_provider_enabled and their authentication incidents cleared with retry_provider. The agent ACCOUNTS — the separate logins a backend can run under — are read with get_account, added with create_account, edited with update_account, removed with remove_account and pointed at this project with select_account; check_account_status probes one account's sign-in state and get_account_details reports who it is signed in as. Connecting a provider, opening an account's folder in a desktop application, home files, the project registry and host folders are outside this boundary and are refused with the reason.",
+    "Read and change THIS project's own configuration: its settings (agent, models, system prompt, review gate, base branch, worktree retention, memory limit), its registry entry (concurrency cap and tags), prompt templates, in-repo agent config files, workflows, skills, GitHub automations and worktrees. It also reads the shared settings as effective limits and capabilities (get_limits, get_capabilities, get_account) and CHANGES them with set_workspace_config — the shared limits, composer defaults, follow-up inbox and environment passthrough, skills auto-update and the machine-wide agent defaults, which apply to every project on this machine, the terminal settings (the instance mode — which projects one xezar serves — and how its terminal prints; all are settled at start, so a change applies the next time one starts) and the two workspace folder paths — the folder the file picker may browse and the folder new checkouts land in, each checked for real before anything is saved. The shared presentation preferences are read with get_workspace_ui_state and changed with set_workspace_ui_state (appearance, notifications, task-table columns, dismissed provider incidents) and import_skills (the curated list of default skills); an object-valued preference is replaced whole, so read it before you change one key of it. The colour theme is not among them — the browser stores that itself. The models each agent backend can run are read with list_models: per backend, every model id exactly as that backend's own --model flag takes it, whether the list could be read and why not when it could not, and local and vision only where the backend's own data proves them – a missing one means unknown, not no. The agent backends can be switched off and on for the whole machine with set_provider_enabled and their authentication incidents cleared with retry_provider. The agent ACCOUNTS — the separate logins a backend can run under — are read with get_account, added with create_account, edited with update_account, removed with remove_account and pointed at this project with select_account; check_account_status probes one account's sign-in state and get_account_details reports who it is signed in as. Connecting a provider, opening an account's folder in a desktop application, home files, the project registry and host folders are outside this boundary and are refused with the reason.",
   inputSchema: projectConfigInputSchema,
   annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
   // #819 item 6: the refusals stand whatever else was sent. Without this, a refused action carrying

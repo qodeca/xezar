@@ -22,7 +22,20 @@ const modelSchema = z.object({
   displayName: z.string().optional(),
   description: z.string().optional(),
   hidden: z.boolean().optional(),
+  // Read as `unknown` on purpose: a value we do not recognise must leave `vision` unknown, never
+  // fail the whole page (and with it every model) the way a stricter schema here would.
+  inputModalities: z.unknown().optional(),
 }).passthrough();
+
+/**
+ * `vision` from Codex's own `inputModalities` (#819 item 4): a list that names `image` proves it,
+ * a list that does not proves its absence, and no list at all proves nothing — so the key is
+ * omitted rather than guessed.
+ */
+function codexVision(modalities: unknown): { vision?: boolean } {
+  if (!Array.isArray(modalities)) return {};
+  return { vision: modalities.includes('image') };
+}
 
 const pageSchema = z.object({
   data: z.array(modelSchema),
@@ -125,6 +138,7 @@ async function discoverPages(rpc: CodexAppServerRpc): Promise<ModelOption[]> {
         id,
         label: model.displayName?.trim() || id,
         description: model.description ?? '',
+        ...codexVision(model.inputModalities),
       });
     }
 

@@ -205,6 +205,9 @@ export const AUDIT_MCP_READS: readonly string[] = [
   // row, exactly like `get_limits` beside `set_workspace_config`.
   'project_config:get_workspace_ui_state',
   'project_config:get_capabilities',
+  // #819 item 4: the model catalog read. `GET /api/v1/models` records no audit row at the cockpit
+  // door either.
+  'project_config:list_models',
   'project_config:get_account',
   'project_config:list_agent_config',
   'project_config:read_agent_config',

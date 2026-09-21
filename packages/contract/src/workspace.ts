@@ -767,10 +767,23 @@ export function runnerDiscoversModels(runner: Runner): runner is ModelDiscoveryR
   return (MODEL_DISCOVERY_RUNNERS as readonly string[]).includes(runner);
 }
 
+/**
+ * One model a runner can be dispatched to. `id` is exactly what that runner's own `--model` flag
+ * takes (Claude's `list_models` `value`, Codex's `model/list` `model`, OpenCode's and pi's
+ * `provider/model`), so `<runner>/<id>` is always reconstructible.
+ *
+ * `local` and `vision` are additive (#819 item 4) and are PRESENT ONLY WHERE THE SOURCE PROVES
+ * THEM: absent means "unknown", never "no", so a consumer must not read a missing key as `false`.
+ * `vision` comes from the vendor's own list of input modalities (Codex `inputModalities`, pi's
+ * `input`); `local` from pi's configured provider address (a loopback or private IP, or
+ * `localhost`, is `true`; a public IP literal is `false`; any other host name is unknown).
+ */
 export const runnerModelOptionSchema = z.object({
   id: z.string(),
   label: z.string(),
   description: z.string(),
+  local: z.boolean().optional(),
+  vision: z.boolean().optional(),
 });
 export type RunnerModelOption = z.infer<typeof runnerModelOptionSchema>;
 
@@ -785,6 +798,29 @@ export const runnerModelCatalogResponseSchema = z.object({
   reason: z.string().optional(),
 });
 export type RunnerModelCatalogResponse = z.infer<typeof runnerModelCatalogResponseSchema>;
+
+/**
+ * One row of the MCP `project_config` action `list_models` (#819 item 4): one agent tool and the
+ * `GET /api/v1/models` answer for it, with `runner` spelled `tool` and one derived flag.
+ * `available` is `source !== 'unavailable'`: a stale cached list is still a list xezar can
+ * dispatch to, and its `reason` says why it is stale. An unavailable tool is a ROW with its
+ * `reason`, never filtered out, so "no models" and "could not ask" stay distinguishable.
+ */
+export const modelCatalogToolRowSchema = z.object({
+  tool: runnerSchema,
+  available: z.boolean(),
+  source: runnerModelCatalogResponseSchema.shape.source,
+  stale: z.boolean(),
+  reason: z.string().optional(),
+  models: z.array(runnerModelOptionSchema),
+});
+export type ModelCatalogToolRow = z.infer<typeof modelCatalogToolRowSchema>;
+
+/** The `result` of `project_config list_models`: one row per tool asked about, in runner order. */
+export const listModelsResultSchema = z.object({
+  tools: z.array(modelCatalogToolRowSchema),
+});
+export type ListModelsResult = z.infer<typeof listModelsResultSchema>;
 
 // ---- "Open in…" targets (`GET /api/v1/open-targets`) -----------------------------------------
 

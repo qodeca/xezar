@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { discoverPiModels, parsePiModels } from './pi-model-catalog.ts';
+import { baseUrlLocality, discoverPiModels, parsePiModels } from './pi-model-catalog.ts';
 
 /**
  * The host shape #152 was reported on: pi configured with exactly ONE provider serving exactly
@@ -186,5 +186,74 @@ describe('parsePiModels', () => {
     expect(() => parsePiModels(JSON.stringify({ providers: { p: { models: many } } }))).toThrow(
       /size limit/,
     );
+  });
+});
+
+/**
+ * #819 item 4 (T4.2, T4.3): `local` and `vision`, set only where pi's own config proves them.
+ * The model entries below have the shape of a real `~/.pi/agent/models.json` (read on 2026-09-21:
+ * `input: ["text", "image"]` per model, a `baseUrl` per provider), and `pi --list-models` printed
+ * the same `input` fact in its `images` column.
+ */
+describe('parsePiModels: local and vision (#819)', () => {
+  it('marks a loopback provider local and an image-taking model vision, and guesses nothing else', () => {
+    const json = JSON.stringify({
+      providers: {
+        'dgx-spark': { baseUrl: 'http://127.0.0.1:8000/v1', apiKey: 'MUST-NEVER-BE-READ', models: [{ id: 'ds', input: ['text', 'image'] }] },
+        cloud: { baseUrl: 'https://api.deepseek.com/v1', models: [{ id: 'flash', input: ['text'] }] },
+        bare: { models: [{ id: 'm' }] },
+      },
+    });
+    const models = parsePiModels(json);
+    expect(models).toEqual([
+      { id: 'dgx-spark/ds', label: 'dgx-spark/ds', description: 'via dgx-spark', local: true, vision: true },
+      // A host NAME could resolve anywhere: `local` is unknown, so absent. `input` without an image
+      // proves no vision.
+      { id: 'cloud/flash', label: 'cloud/flash', description: 'via cloud', vision: false },
+      // No address and no input list: both unknown, both absent — never `false`.
+      { id: 'bare/m', label: 'bare/m', description: 'via bare' },
+    ]);
+    expect(JSON.stringify(models)).not.toContain('MUST-NEVER-BE-READ');
+    expect(JSON.stringify(models)).not.toContain('api.deepseek.com');
+  });
+});
+
+describe('baseUrlLocality (#819)', () => {
+  it.each([
+    ['http://127.0.0.1:8000/v1', { local: true }],
+    ['http://127.1.2.3/v1', { local: true }],
+    ['http://localhost:11434', { local: true }],
+    ['http://models.localhost/v1', { local: true }],
+    ['http://[::1]:8080/v1', { local: true }],
+    ['http://[::ffff:127.0.0.1]/v1', { local: true }],
+    ['http://[fd12:3456::1]/v1', { local: true }],
+    ['http://[fe80::1]/v1', { local: true }],
+    ['http://10.0.0.5/v1', { local: true }],
+    ['http://172.16.0.1/v1', { local: true }],
+    ['http://172.31.255.255/v1', { local: true }],
+    ['http://192.168.1.20/v1', { local: true }],
+    ['http://169.254.1.1/v1', { local: true }],
+    ['http://172.32.0.1/v1', { local: false }],
+    ['http://8.8.8.8/v1', { local: false }],
+    ['http://[2001:db8::1]/v1', { local: false }],
+    ['http://[::ffff:8.8.8.8]/v1', { local: false }],
+  ])('%s is %o', (url, expected) => {
+    expect(baseUrlLocality(url)).toEqual(expected);
+  });
+
+  /**
+   * T4.3's named break: a `127.` STRING-PREFIX test on the address. `127.evil.example` is a host
+   * name that resolves wherever its owner likes, so it proves nothing and `local` stays unknown.
+   */
+  it.each([
+    ['http://127.evil.example/v1'],
+    ['http://localhost.evil.example/v1'],
+    ['https://api.deepseek.com/v1'],
+    ['not a url'],
+    [''],
+    [42],
+    [undefined],
+  ])('%s proves nothing, so local is absent', (url) => {
+    expect(baseUrlLocality(url)).toEqual({});
   });
 });

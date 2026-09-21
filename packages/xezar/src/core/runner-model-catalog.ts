@@ -4,6 +4,10 @@ export interface ModelOption {
   id: string;
   label: string;
   description: string;
+  /** Set ONLY when the adapter's source proves it (#819 item 4); absent means unknown, never
+   *  `false`. See `runnerModelOptionSchema` in the contract for where each value comes from. */
+  local?: boolean;
+  vision?: boolean;
 }
 
 export type ModelCatalogSource = 'live' | 'cache' | 'unavailable';
