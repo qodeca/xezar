@@ -427,13 +427,29 @@ async function readRegistry(home: string): Promise<RegistryRow[]> {
 const MOVE_HEADROOM = 2;
 
 /**
+ * Spare ports kept ABOVE the deepest move a sentinel's boot can need. `MOVE_HEADROOM` alone only
+ * holds while the ports above the sentinel are free, and near the ceiling they need not be: another
+ * concurrent invocation of this file holds its own sentinel in the same top band, and serves on the
+ * ports it moved to. Accepting only sentinels this far below 65535 keeps that many ports above the
+ * deepest move, so a neighbour must take every one of them before a boot runs out of room — the
+ * harness case that reproduced #804 was a sentinel at 65533 with a neighbour holding 65534, both
+ * inside the band this now rejects.
+ */
+const SENTINEL_SLACK = 16;
+
+/**
  * Ask the OS for a sentinel port that `serve` can move up from, and retain ownership until the
  * assertion releases it (#804). macOS hands out ephemeral ports up to 65535, and a sentinel at
  * the top of the range leaves `serve` nowhere to move: it exits 1 with "no free port" and prints
- * no cockpit line at all. So a port without the headroom above it is not a usable sentinel. It
- * stays HELD while the next one is taken, so the OS cannot hand it back, and only
- * `MOVE_HEADROOM + 1` ports lack the headroom — the loop ends in at most that many extra binds,
- * decided by port numbers and never by timing.
+ * no cockpit line at all. So a port without `MOVE_HEADROOM` ports of headroom for the moves plus
+ * `SENTINEL_SLACK` ports above them for a neighbour is not a usable sentinel. It stays HELD while
+ * the next one is taken, so the OS cannot hand it back; exactly `MOVE_HEADROOM` ports (65534 and
+ * 65535) lack the headroom, `SENTINEL_SLACK` more below them are rejected for the neighbours, and
+ * the loop ends in at most `MOVE_HEADROOM + SENTINEL_SLACK` extra binds.
+ *
+ * The accept/reject test reads the port NUMBER and `PORT_MAX`, nothing else — never a clock, the
+ * arrival of output, or how the OS came to hand the number out — so which sentinel a case gets is
+ * decided by arithmetic, and every invocation of this file applies the same band.
  */
 async function sentinel(): Promise<{ port: number; server: Server }> {
   const unusable: Server[] = [];
@@ -444,7 +460,9 @@ async function sentinel(): Promise<{ port: number; server: Server }> {
       await once(server, 'listening');
       const address = server.address();
       assert.ok(address && typeof address === 'object');
-      if (address.port + MOVE_HEADROOM <= PORT_MAX) return { port: address.port, server };
+      if (address.port + MOVE_HEADROOM + SENTINEL_SLACK <= PORT_MAX) {
+        return { port: address.port, server };
+      }
       unusable.push(server);
     }
   } finally {
@@ -488,6 +506,7 @@ test('a start remembers the port it really bound, and the next start comes back 
 
   // Nothing asked for this time. Without memory this would start at 4321.
   const second = await bootServe(repo, home, [], { XEZ_TEST_BUSY_AT_BIND: String(first.port) });
+  boundPort(second, 'the second start');
   assert.equal(second.startPort, first.port, `the second start must request the remembered port. Output:\n${second.output}`);
 });
 
@@ -522,15 +541,16 @@ test('named break `remember-before-listen`/`false-ready`: a busy remembered port
 
   // Occupy the remembered port at the exact listen seam. No released number is re-acquired.
   const second = await bootServe(repo, home, [], { XEZ_TEST_BUSY_AT_BIND: String(first.port) });
+  const secondPort = boundPort(second, 'the second start');
   assert.equal(second.startPort, first.port, `the remembered port must be the resolved request. Output:\n${second.output}`);
-  assert.notEqual(second.port, first.port, `a busy remembered port must not be the port serve reports. Output:\n${second.output}`);
-  assert.match(second.output, new RegExp(`port ${first.port} was busy — using ${second.port}`));
+  assert.notEqual(secondPort, first.port, `a busy remembered port must not be the port serve reports. Output:\n${second.output}`);
+  assert.match(second.output, new RegExp(`port ${first.port} was busy — using ${secondPort}`));
   const [row] = await readRegistry(home);
   // The defect this names: remembering the port that was REQUESTED rather than the one the
   // listener reported. It survives a restart, so a wrong value here poisons every later start.
   assert.equal(
     row?.lastListen?.port,
-    second.port,
+    secondPort,
     `the remembered port must be the one that was bound, not the one that was asked for. Registry: ${JSON.stringify(row)}`,
   );
 });
@@ -578,7 +598,9 @@ test('--port 0 binds an OS port and is never remembered', { timeout: 180_000 }, 
 
   const boot = await bootServe(repo, home, ['--port', '0'], {}, false);
 
-  assert.ok(boot.port && boot.port > 0, `--port 0 must bind a real port. Output:\n${boot.output}`);
+  // `--port 0` asks for any free port, so it needs no headroom — but it is still a bound port,
+  // and it reports through the same helper as every other case.
+  assert.ok(boundPort(boot, 'the --port 0 start') > 0, `--port 0 must bind a real port. Output:\n${boot.output}`);
   // "Any free port" is a request for anything. Remembering it would turn the next plain `xez`
   // into a start at a random high port (`open-questions.md` Q-4).
   const [row] = await readRegistry(home);
