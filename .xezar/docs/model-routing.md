@@ -404,26 +404,31 @@ rules are in [leader-guide.md](leader-guide.md).
   through `.xezar/checks/merge-recovery.sh` and must then REWRITE the `DELIVERED` record for the new
   head; readiness compares the record against the current head and refuses a stale one. The rule it
   produced is the § 6 conflict-refresh row (leader, 2026-09-21).
-- **A `continue` note written from an older message re-answers a settled question.** Before acting on
-  a note the leader re-reads the run's LATEST text: a note composed from an earlier message can
-  answer a question the run has already moved past, so the continue spends a turn on a decision that
-  no longer exists. The leader rule is in [leader-guide.md](leader-guide.md) (leader, 2026-09-21).
-- **`gh pr checks` can show no checks at all on a fresh push.** The remedy is
-  `gh workflow run ci.yml --ref <branch>` for a real verdict on the head, never closing and
-  reopening the pull request. It is both a handoff-step brief rule (§ 6) and a leader rule
-  ([leader-guide.md](leader-guide.md)) (leader, 2026-09-21).
+- **A `continue` note written from an older message re-answered a settled question.** On run
+  `770d8428`, the #791 conflict refresh (2026-09-21 04:43), the leader's note said the merge commit
+  had never been made because `MERGE_HEAD` was left behind; `merge-recovery.sh` had in fact made it,
+  so the note sent the run back to a step it had already finished and the leader withdrew it a
+  minute later (timeline-2026-09-21.md 04:43, 04:44). The rule it produced is in
+  [leader-guide.md](leader-guide.md) (leader, 2026-09-21).
+- **A fresh push showed no checks at all.** Run `9395bcfb` finished #672 at 06:24 and opened PR #805
+  with no CI checks on the new head `3e49a44b`; the leader dispatched
+  `gh workflow run ci.yml --ref xez/9395bcfb` (Actions run 35560772898) rather than closing and
+  reopening the pull request (timeline-2026-09-21.md 06:24). The rule it produced is both the § 6
+  handoff-step row and a leader rule in [leader-guide.md](leader-guide.md) (leader, 2026-09-21).
 - **A flake fix was dispatched for a wait another pull request had already rebuilt.** Run
-  `e842b53c` (2026-09-21 03:09) was briefed on `progressive-history.e2e.ts:459`, which PR #782
+  `e842b53c` (2026-09-21 05:09) was briefed on `progressive-history.e2e.ts:459`, which PR #782
   (`2f195b78`) had already rebuilt; the run correctly stopped at readiness with `BLOCKED` rather than
   re-fixing it. The rule it produced – grep the campaign `merges.md` and run
   `gh pr list --search "<spec file>"` before dispatching a flake fix – is in
   [leader-guide.md](leader-guide.md) (leader, 2026-09-21).
-- **A rebuilt wait failed again once, under two concurrent gate runs.** The
-  `serve-port-memory.test.ts` "busy remembered port" case failed on a branch that already contained
-  `2f195b78`, so after the #782 rebuild (run `c03361ad`, 2026-09-21 05:4x, two gates in flight). It
-  was filed as #804. Recorded as a fact; no rule is drawn from one occurrence here.
+- **A rebuilt wait failed again once.** The `serve-port-memory.test.ts` "busy remembered port" case
+  failed on run `c03361ad` (2026-09-21 05:52, two gates in flight, load 12) on a branch that already
+  contained the #782 rebuild `2f195b78`; the cause was not established then, and PR #807 later found
+  the random busy sentinel could be port 65535, decided by the port number and not by timing
+  (timeline-2026-09-21.md 05:52, 06:12). Filed as #804. The rule it produced is in
+  [leader-guide.md](leader-guide.md) (leader, 2026-09-21).
 - **A `continue` that only supplied a missing `XEZ:DONE` cost nothing.** One
-  `execution_control continue` on run `9395bcfb` (2026-09-21 06:0x) resumed a run that had merely
+  `execution_control continue` on run `9395bcfb` (2026-09-21 06:04) resumed a run that had merely
   omitted `XEZ:DONE`, at no extra cost – the $144 re-prompting loop of #613 (2026-09-18, above) did
   not recur. The ten-minute watch on every continue is unchanged.
 

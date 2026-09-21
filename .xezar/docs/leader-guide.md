@@ -143,12 +143,14 @@ step dispatched by name (leader memory 2026-09-15).
   `.xezar/docs/model-routing.md` § 3).
 - **Before dispatching a flake fix, check whether that wait has already been rebuilt.** Grep the
   campaign `merges.md` and run `gh pr list --search "<spec file>"` for a pull request that already
-  redesigned it. Run `e842b53c` (2026-09-21 03:09) was briefed on `progressive-history.e2e.ts:459`,
+  redesigned it. Run `e842b53c` (2026-09-21 05:09) was briefed on `progressive-history.e2e.ts:459`,
   which PR #782 (`2f195b78`) had already rebuilt; the run correctly stopped at readiness with
   `BLOCKED` rather than re-fixing it, so the cost was a whole dispatch, not a wrong change. A
-  rebuilt wait can still fail once under load – `serve-port-memory.test.ts` did, on a branch that
-  contained `2f195b78`, filed as #804 – so a fresh failure is checked against the rebuild before it
-  is treated as a new flake (leader, 2026-09-21).
+  rebuilt wait can still fail once: `serve-port-memory.test.ts` failed once on a branch that already
+  contained `2f195b78`, with two gate runs in flight and the load at 12 (timeline-2026-09-21.md
+  05:52), and the cause was not established then (PR #807 later found the random busy sentinel could
+  be port 65535, not a timing effect) – filed as #804 – so a fresh failure is checked against the
+  rebuild before it is treated as a new flake (leader, 2026-09-21).
 - Ready a PR with `gh pr ready`, the `review` label and a short comment saying who authorized it
   (leader memory 2026-09-11).
 - A review cannot approve its own PR: every agent PR is authored by the same account, so the verdict
