@@ -7,6 +7,7 @@ import {
   type McpDiscoveryAction,
   type McpDiscoveryAgent,
   type McpDiscoveryLimits,
+  type McpDiscoveryOnboarding,
   type McpDiscoveryToolCheck,
   onboardingStatusSchema,
   type OnboardingStatus,
@@ -23,6 +24,8 @@ import { resolveForge } from '../../server/forge/index.ts';
 import { getRepoInfo } from '../../server/git.ts';
 import { loadWorkspaceConfig } from '../../workspace/config.ts';
 import { findRegistryProject } from '../../workspace/projects.ts';
+import { globalImportSummary } from '../../workspace/import-global.ts';
+import { activeStateLayout } from '../../state-layout.ts';
 import { projectDataDir } from '../../project-data-paths.ts';
 import { discoverIssueFiling } from '../../onboarding/issue-filing.ts';
 import { observedIdentity, onboardingStatus } from '../../onboarding/status.ts';
@@ -51,8 +54,9 @@ export interface DiscoveryFacts {
   config: { baseBranch: string | null; modelsLocked: boolean };
   providers: ProviderStatusResponse;
   limits: McpDiscoveryLimits;
-  /** This project's setup state (#464 P2) — see `collectOnboarding` for where it comes from. */
-  onboarding: OnboardingStatus;
+  /** This project's setup state (#464 P2) — see `collectOnboarding` for where it comes from —
+   *  plus, in single-project mode on the host, the global-import state (#819 PR 5). */
+  onboarding: McpDiscoveryOnboarding;
 }
 
 /** `discover_project` reads the onboarding block through the service when it has one — see
@@ -277,6 +281,25 @@ export async function collectOnboarding(
   });
 }
 
+/**
+ * Whether this project took the agent accounts of the person's machine-wide setup, and how many it
+ * still could (#819 PR 5, item 1d) — `discover_project.onboarding.globalImport`.
+ *
+ * The SAME reader the Agent accounts listing calls (`globalImportSummary`: the recorded outcome and
+ * `countImportableGlobalAccounts`), under the same two conditions the listing applies — the host
+ * (`localHandoff`) and the single-project layout — so the leader and the pane cannot disagree. A
+ * state and a count only; an unreadable machine-wide home counts 0 inside that helper and never
+ * throws. The key is SPREAD so it is absent, not `undefined`, in the global layout and hosted mode.
+ */
+export function collectGlobalImport(
+  localHandoff: boolean,
+  env: NodeJS.ProcessEnv = process.env,
+): Pick<McpDiscoveryOnboarding, 'globalImport'> {
+  if (!localHandoff) return {};
+  const globalImport = globalImportSummary(activeStateLayout(env), env);
+  return globalImport === null ? {} : { globalImport };
+}
+
 export async function collectDiscoveryFacts(
   ctx: DiscoveryContext,
   env: NodeJS.ProcessEnv = process.env,
@@ -309,7 +332,10 @@ export async function collectDiscoveryFacts(
       forge: forge ? { kind: forge.kind, ...availability } : null,
       capabilities,
     },
-    onboarding: await collectOnboarding(ctx, checks, capabilities.localHandoff),
+    onboarding: {
+      ...(await collectOnboarding(ctx, checks, capabilities.localHandoff)),
+      ...collectGlobalImport(capabilities.localHandoff),
+    },
     config: { baseBranch: config.baseBranch ?? null, modelsLocked: agentModelsLocked(root, env) },
     providers,
     limits: {
@@ -340,6 +366,7 @@ export function discoveryText(discovery: McpDiscovery): string {
     ...closed.map((a) => `${a.status === 'read-only' ? 'Read-only' : 'Unavailable'}: ${a.label} — ${a.reason}`),
     onboardingLine(discovery.onboarding),
     issueFilingLine(discovery.onboarding.issueFiling),
+    ...(discovery.onboarding.globalImport ? [globalImportLine(discovery.onboarding.globalImport)] : []),
     '',
     JSON.stringify(discovery, null, 2),
   ];
@@ -376,11 +403,25 @@ function issueFilingLine(issueFiling: OnboardingStatus['issueFiling']): string {
   return `Issue filing: ${issueFiling.reason.charAt(0).toLowerCase()}${issueFiling.reason.slice(1)}`;
 }
 
+/** The global-import state as one sentence (#819 PR 5): a fact and a count, never a name. */
+function globalImportLine(globalImport: NonNullable<McpDiscoveryOnboarding['globalImport']>): string {
+  const n = globalImport.importable;
+  const more = `${n} ${n === 1 ? 'account' : 'accounts'} of the machine-wide setup ${n === 1 ? 'is' : 'are'} not in this project`;
+  switch (globalImport.state) {
+    case 'done':
+      return `Agent accounts: the machine-wide accounts were copied into this project; ${more}.`;
+    case 'declined':
+      return `Agent accounts: a person declined to copy the machine-wide accounts into this project; ${more}.`;
+    default:
+      return `Agent accounts: nothing records whether the machine-wide accounts were copied into this project; ${more}.`;
+  }
+}
+
 export const discoverProjectTool = defineTool({
   name: 'discover_project',
   title: 'Discover the bound project',
   description:
-    'Read which xezar project this session is bound to, its effective capabilities and limits, and which actions are available. Every action that is unavailable or read-only says why. The answer also carries the project setup block: which identity is running, which was offered, which a finished check actually covered, whether setup can run here at all, the launch definition to name when dispatching one, and whether issue filing works here (the skill to select, or why not). Reading it changes nothing and authorises nothing. Call it at the start of a session and again after a person changes settings. It takes no arguments: the project comes from the connection, never from a parameter. A project leader works through these tools only, never the cockpit UI and never the HTTP API. Whether this session is attached as leader is not part of this answer: call leader_events with action status.',
+    'Read which xezar project this session is bound to, its effective capabilities and limits, and which actions are available. Every action that is unavailable or read-only says why. The answer also carries the project setup block: which identity is running, which was offered, which a finished check actually covered, whether setup can run here at all, the launch definition to name when dispatching one, and whether issue filing works here (the skill to select, or why not), and — when the project keeps its own setup (single-project mode) — globalImport: whether the agent accounts of the person’s machine-wide setup were copied into it (done, declined or unknown) and how many could still be copied, a count and never which. Reading it changes nothing and authorises nothing. Call it at the start of a session and again after a person changes settings. It takes no arguments: the project comes from the connection, never from a parameter. A project leader works through these tools only, never the cockpit UI and never the HTTP API. Whether this session is attached as leader is not part of this answer: call leader_events with action status.',
   inputSchema: z.strictObject({}),
   annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
   async call(_args, ctx: DiscoveryContext) {

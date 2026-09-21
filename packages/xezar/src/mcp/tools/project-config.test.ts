@@ -40,6 +40,7 @@ import {
   PROJECT_CONFIG_ACTIONS,
   QUALITY_GATE_NEXT_ACTION,
   REFUSED_ACTIONS,
+  accountsAnswer,
   projectConfigTool,
   structureOf,
   type ProjectConfigContext,
@@ -1689,7 +1690,7 @@ describe('project_config: the agent accounts (#677 B5)', () => {
     const folderOnlyEffective = value(await invoke({ action: 'get_account' })).accounts.find(
       (row: { provider: string }) => row.provider === 'claude',
     );
-    expect(folderOnlyEffective).toEqual({ provider: 'claude', handle: folderOnly.id, label: folderOnly.id });
+    expect(folderOnlyEffective).toEqual({ provider: 'claude', handle: folderOnly.id, label: folderOnly.id, builtIn: false });
     expect(JSON.stringify(folderOnlyEffective)).not.toContain('boss-corp-example-invalid');
   });
 
@@ -2239,8 +2240,8 @@ describe('project_config: safe effective reads', () => {
     expect(selected.status).toBe(200);
     const account = value(await invoke({ action: 'get_account' }));
     expect(account.available).toBe(true);
-    expect(account.accounts.find((a: { provider: string }) => a.provider === 'claude')).toEqual({ provider: 'claude', handle: id });
-    expect(account.accounts.find((a: { provider: string }) => a.provider === 'codex')).toEqual({ provider: 'codex', handle: 'default', label: 'Default' });
+    expect(account.accounts.find((a: { provider: string }) => a.provider === 'claude')).toEqual({ provider: 'claude', handle: id, builtIn: false });
+    expect(account.accounts.find((a: { provider: string }) => a.provider === 'codex')).toEqual({ provider: 'codex', handle: 'default', label: 'Default', builtIn: true });
     // Project B follows the discovered account: A's choice never reaches it.
     const b = value(await invoke({ action: 'get_account' }, { project: 'b' }));
     expect(b.accounts.find((a: { provider: string }) => a.provider === 'claude')).toMatchObject({ handle: 'default' });
@@ -2720,6 +2721,206 @@ describe('project_config: import_global_accounts (#819 PR 9)', () => {
     const mixed = await invoke({ action: 'import_global_accounts', provider: 'claude' });
     expect(mixed.result.isError).toBe(true);
     expect(mixed.text).toMatch(/provider is not used by import_global_accounts/);
+  });
+});
+
+/**
+ * #819 PR 5 — `get_account` reads every account, the one in use, and the stored choices that name no
+ * account, as the cockpit's Agent accounts pane does. Each case names the break it fails against.
+ */
+describe('project_config: get_account lists every account and its problems (#819 PR 5)', () => {
+  const accountsFile = (): string => join(process.env.XEZ_HOME!, 'agent-accounts.json');
+  let saved: string | null = null;
+  beforeEach(() => {
+    saved = existsSync(accountsFile()) ? readFileSync(accountsFile(), 'utf8') : null;
+  });
+  afterEach(() => {
+    if (saved === null) rmSync(accountsFile(), { force: true });
+    else writeFileSync(accountsFile(), saved);
+  });
+  const create = async (label: string): Promise<string> => {
+    const made = await cockpit('/api/v1/workspace/agent-profiles', 'POST', { provider: 'claude', configDir: makeDir('xez-pc-pr5-'), label });
+    expect(made.status).toBe(201);
+    return made.body.profile.id as string;
+  };
+  const select = async (projectId: string | null, profileId: string | null): Promise<void> => {
+    expect((await cockpit('/api/v1/workspace/agent-profiles/selection', 'PUT', { projectId, provider: 'claude', profileId })).status).toBe(200);
+  };
+  /** Drop an account row from the file by hand, leaving every reference to it dangling. */
+  const dangle = (id: string): void => {
+    const store = JSON.parse(readFileSync(accountsFile(), 'utf8'));
+    store.accounts = store.accounts.filter((row: { id: string }) => row.id !== id);
+    writeFileSync(accountsFile(), JSON.stringify(store));
+  };
+  type Row = { provider: string; handle: string; label?: string; builtIn: boolean; selected?: boolean };
+
+  // P5-AC1. Break: the 0.17.0 one-row mapping — no `profiles` at all — or `selected` computed from
+  // the listing's own subject (the machine default) instead of this project's selection.
+  it('P5-AC1: lists every account per provider with the built-in login, and exactly one selected, following selection → default → built-in', async () => {
+    const [work, team, lab, ops] = [await create('Work'), await create('Team'), await create('Lab'), await create('Ops')];
+    const claude = (answer: { profiles: Row[] }) => answer.profiles.filter((r) => r.provider === 'claude');
+
+    // Nothing chosen: the built-in login is the one in use.
+    let answer = value(await invoke({ action: 'get_account' }));
+    expect(claude(answer).map((r) => r.handle)).toEqual(['default', work, team, lab, ops]);
+    expect(claude(answer).filter((r) => r.builtIn).map((r) => r.handle)).toEqual(['default']);
+    for (const provider of PROVIDER_IDS) {
+      expect(answer.profiles.filter((r: Row) => r.provider === provider && r.selected), provider).toHaveLength(1);
+    }
+    expect(claude(answer).find((r) => r.selected)!.handle).toBe('default');
+
+    // A machine-wide default: every project without its own choice uses it.
+    await select(null, team);
+    answer = value(await invoke({ action: 'get_account' }));
+    expect(claude(answer).find((r) => r.selected)!.handle).toBe(team);
+
+    // This project's own choice outranks the default, and project B still follows the default.
+    await select('proj-a', lab);
+    answer = value(await invoke({ action: 'get_account' }));
+    expect(claude(answer).filter((r) => r.selected).map((r) => r.handle)).toEqual([lab]);
+    expect(answer.accounts.find((r: Row) => r.provider === 'claude')).toEqual({ provider: 'claude', handle: lab, label: 'Lab', builtIn: false });
+    const b = value(await invoke({ action: 'get_account' }, { project: 'b' }));
+    expect(claude(b).filter((r) => r.selected).map((r) => r.handle)).toEqual([team]);
+    expect(answer.problems).toEqual([]);
+  });
+
+  // P5-AC2. Break: the 0.17.0 raw echo, `handle = selection ?? default` with no existence check,
+  // which reported `qodeca-org` as the account in use while every run used the built-in login.
+  it('P5-AC2: a dangling handle is a problem with its fix and its raw handle, never the account in use', async () => {
+    const gone = await create('Gone');
+    await select(null, gone);
+    dangle(gone);
+    const answer = value(await invoke({ action: 'get_account' }));
+    expect(answer.accounts.find((r: Row) => r.provider === 'claude')).toEqual({ provider: 'claude', handle: 'default', label: 'Default', builtIn: true });
+    expect(answer.profiles.filter((r: Row) => r.provider === 'claude' && r.selected)).toEqual([
+      { provider: 'claude', handle: 'default', label: 'Default', builtIn: true, selected: true },
+    ]);
+    expect(JSON.stringify(answer.profiles)).not.toContain(gone);
+    expect(answer.problems).toEqual([
+      { kind: 'unknown-account', where: 'defaults', provider: 'claude', handle: gone, fix: expect.stringContaining('select_account') },
+    ]);
+  });
+
+  // Break: the listing's `problems` forwarded whole — another project's stored choice is not this
+  // project's fact (N-01) — or reported twice.
+  it('reports this project’s own dangling selection and not another project’s', async () => {
+    const mine = await create('Mine');
+    const theirs = await create('Theirs');
+    await select('proj-a', mine);
+    await select('proj-b', theirs);
+    dangle(mine);
+    dangle(theirs);
+    const a = value(await invoke({ action: 'get_account' }));
+    expect(a.problems).toEqual([
+      { kind: 'unknown-account', where: 'selection', provider: 'claude', handle: mine, fix: expect.stringContaining('accountId null') },
+    ]);
+    expect(a.accounts.find((r: Row) => r.provider === 'claude').handle).toBe('default');
+    const b = value(await invoke({ action: 'get_account' }, { project: 'b' }));
+    expect(b.problems.map((p: { handle: string }) => p.handle)).toEqual([theirs]);
+  });
+
+  // P5-AC3. Break: a row built by spreading the listing's profile (it carries `configDir` and
+  // `path`), or `profiles` skipping the identity rule `accounts` applies. The fixture really holds
+  // an e-mail-shaped label and a folder on this machine; the control proves the listing serves both.
+  it('P5-AC3: no identity-looking label and no config folder anywhere in the answer', async () => {
+    const dir = makeDir('xez-pc-pr5-secret-folder-');
+    const made = await cockpit('/api/v1/workspace/agent-profiles', 'POST', { provider: 'claude', configDir: dir, label: EMAIL_LABEL });
+    expect(made.status).toBe(201);
+    const listing = JSON.stringify((await cockpit('/api/v1/workspace/agent-profiles')).body);
+    expect(listing, 'control: the pane itself does serve both').toContain(EMAIL_LABEL);
+    expect(listing).toContain(basename(dir));
+    await select('proj-a', made.body.profile.id);
+    const called = await invoke({ action: 'get_account' });
+    expect(value(called).profiles.some((r: Row) => r.handle === made.body.profile.id)).toBe(true);
+    expect(called.json).not.toContain(EMAIL_LABEL);
+    expect(called.json).not.toMatch(/[\w.+-]+@[\w-]+\.[\w.-]+/);
+    expect(called.json).not.toContain(basename(dir));
+    expect(called.json).not.toMatch(/configDir|"path"/);
+  });
+
+  // P5-AC5. Break: the new keys served where the whole family is withheld.
+  it('P5-AC5: hosted mode answers exactly what it answered before', async () => {
+    process.env.XEZ_REMOTE = '1';
+    expect(value(await invoke({ action: 'get_account' }))).toEqual({ available: false, reason: 'account information is not served in hosted mode' });
+  });
+
+  // P5-AC6. Break: `accounts` replaced by the full list (option (b) of Q1), which a 0.16.0/0.17.0
+  // leader would read as "the first Claude row is the one in use".
+  it('P5-AC6: a reader of `accounts` alone still gets one row per provider in the 0.17.0 shape', async () => {
+    await create('Extra');
+    await create('Another');
+    const answer = value(await invoke({ action: 'get_account' }));
+    expect(answer.accounts.map((r: Row) => r.provider)).toEqual([...PROVIDER_IDS]);
+    for (const row of answer.accounts) {
+      expect(Object.keys(row).filter((k) => !['provider', 'handle', 'label', 'builtIn'].includes(k)), JSON.stringify(row)).toEqual([]);
+      expect(typeof row.handle).toBe('string');
+    }
+  });
+});
+
+/** The pure builder, for the branches the live fixture cannot reach. */
+describe('accountsAnswer (#819 PR 5)', () => {
+  const base = {
+    editable: true,
+    profileCapableProviders: [],
+    selections: {},
+    defaults: {},
+  };
+  const profile = (id: string, extra: Record<string, unknown> = {}) => ({
+    id,
+    provider: 'claude' as const,
+    label: id === 'default' ? 'Default' : id,
+    configDir: `/home/someone/.claude-${id}`,
+    path: `/home/someone/.claude-${id}`,
+    exists: true,
+    looksValid: true,
+    isDefault: id === 'default',
+    selected: false,
+    ...extra,
+  });
+
+  // Break: a problem's handle echoed even when a hand-edited file put an address there.
+  it('withholds an identity-looking problem handle, keeps a plain one, and de-duplicates', () => {
+    const answer = accountsAnswer(
+      {
+        ...base,
+        profiles: [profile('default')],
+        selections: { '/r': { claude: 'me@example.com' } },
+        defaults: { claude: 'qodeca-org' },
+        problems: [
+          { kind: 'unknown-account', where: 'defaults', provider: 'claude', handle: 'qodeca-org' },
+          { kind: 'unknown-account', where: 'selection', provider: 'claude', handle: 'me@example.com' },
+          { kind: 'unknown-account', where: 'selection', provider: 'claude', handle: 'me@example.com' },
+        ],
+      } as never,
+      '/r',
+    );
+    if (!answer.available) throw new Error('expected an answer');
+    expect(answer.problems.map((p) => [p.where, p.handle])).toEqual([
+      ['defaults', 'qodeca-org'],
+      ['selection', '(a handle that looks like an identity, withheld)'],
+    ]);
+    expect(JSON.stringify(answer)).not.toContain('@');
+    expect(answer.accounts).toEqual([{ provider: 'claude', handle: 'default', label: 'Default', builtIn: true }]);
+  });
+
+  // Break: a listing that predates `problems` (optional in the contract) read as an error.
+  it('reads an absent `problems` as none, and never copies a folder', () => {
+    const answer = accountsAnswer({ ...base, profiles: [profile('default'), profile('work', { label: '' })] } as never, '/r');
+    if (!answer.available) throw new Error('expected an answer');
+    expect(answer.problems).toEqual([]);
+    expect(answer.profiles[1]).toEqual({ provider: 'claude', handle: 'work', builtIn: false, selected: false });
+    expect(JSON.stringify(answer)).not.toContain('/home/someone');
+  });
+
+  // Break: an in-use handle whose row the listing lacks answered without a row at all.
+  it('still answers a row when the chosen account has no listing row of its own', () => {
+    const answer = accountsAnswer({ ...base, profiles: [profile('work')], defaults: { claude: 'work' } } as never, '/r');
+    if (!answer.available) throw new Error('expected an answer');
+    expect(answer.accounts).toEqual([{ provider: 'claude', handle: 'work', label: 'work', builtIn: false }]);
+    const orphan = accountsAnswer({ ...base, profiles: [profile('work')] } as never, '/r');
+    if (!orphan.available) throw new Error('expected an answer');
+    expect(orphan.accounts).toEqual([{ provider: 'claude', handle: 'default', builtIn: true }]);
   });
 });
 

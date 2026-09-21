@@ -49,7 +49,8 @@ export const TOOL_ACTION_COVERAGE: Readonly<Record<string, ActionCoverage>> = {
   'execution_control:remove_queued_message': { serves: ['I-035'] },
   'execution_control:cancel_auto_resume': { serves: ['I-040'] },
 
-  discover_project: { serves: ['I-007', 'I-008', 'I-042', 'I-044', 'I-104', 'I-114', 'I-133', 'I-136', 'I-143', 'I-146'] },
+  // #819 PR 5: `onboarding.globalImport` reads the accounts pane's import state (I-152).
+  discover_project: { serves: ['I-007', 'I-008', 'I-042', 'I-044', 'I-104', 'I-114', 'I-133', 'I-136', 'I-143', 'I-146', 'I-152'] },
 
   'organise_work:list_queue': { serves: ['I-035'] },
   'organise_work:set_title': { serves: ['I-018'] },
@@ -128,7 +129,9 @@ export const TOOL_ACTION_COVERAGE: Readonly<Record<string, ActionCoverage>> = {
   // I-122 was this action's `reads` while the selection was global-read-only. #677 B5 made
   // `select_account` a real write, so the record is `covered` and this read serves it beside it —
   // the same move I-115 made in B4 and I-117 … I-121 in B1.
-  'project_config:get_account': { serves: ['I-042', 'I-122', 'I-152'] },
+  // #819 PR 5: `profiles` and `problems` read the accounts pane's own rows (I-123) — every
+  // account with the one in use marked, and the choices that name no account.
+  'project_config:get_account': { serves: ['I-042', 'I-122', 'I-123', 'I-152'] },
   'project_config:list_agent_config': { serves: ['I-111', 'I-113'] },
   'project_config:read_agent_config': { serves: ['I-111', 'I-113'] },
   'project_config:write_agent_config': { serves: ['I-111', 'I-113'] },
