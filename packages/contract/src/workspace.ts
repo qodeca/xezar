@@ -25,6 +25,14 @@ import { type Runner, runnerSchema } from './health.ts';
  * `resources.maxMonitoringSessions` and `resources.monitoringWakeIntervalMinutes` optional, which
  * was wider than the server has ever been.
  */
+/**
+ * The instance-mode vocabulary (#467), spelled once for both directions of this file. It is the
+ * same pair `capabilities.instanceMode` uses (`health.ts`) and is deliberately NOT imported from
+ * there: that key is optional and sent only for `project`, while these are a stored value, a
+ * resolved value and a third answer the capability never carries.
+ */
+const instanceModeSchema = z.enum(['project', 'workspace']);
+
 export const workspaceConfigResponseSchema = z.object({
   /** Root exposed by the Add-project directory browser — stored as written (`~` kept). */
   browseRoot: z.string(),
@@ -80,6 +88,28 @@ export const workspaceConfigResponseSchema = z.object({
       opencode: z.string().optional(),
       pi: z.string().optional(),
     }).optional(),
+  }),
+  /**
+   * The workspace-wide `cli` settings this cockpit can edit (#467, PR 5). One key today —
+   * `instance`, WHICH projects one process serves — in the stored/effective pair shape
+   * `followups` uses above, plus a third answer the other pairs do not need.
+   *
+   * `inForce` is not decoration. `XEZ_SINGLE_PROJECT` and a folder that owns its xezar state
+   * already narrow this cockpit and BEAT the setting, so a pane that rendered only the stored
+   * value would tell a narrowed user `workspace` while the process serves one project. `narrowed`
+   * is that honest third answer, and it is what the Settings copy is driven by. It is also the
+   * only field here that describes THIS process rather than the file: it was settled at boot.
+   *
+   * Required, like `composerDefaults` and `resources`: the server materializes all three keys on
+   * every answer, degraded path included, so a client never has to guess.
+   */
+  cli: z.object({
+    /** The stored `cli.instance`; `null` = no stored key, so `XEZ_INSTANCE` then the default decides. */
+    instance: instanceModeSchema.nullable(),
+    /** Stored + `XEZ_INSTANCE` + the `workspace` default, resolved — what the NEXT start will use. */
+    effectiveInstance: instanceModeSchema,
+    /** What this process is actually doing, narrowings included. */
+    inForce: z.enum(['project', 'workspace', 'narrowed']),
   }),
 });
 export type WorkspaceConfigResponse = z.infer<typeof workspaceConfigResponseSchema>;
@@ -147,6 +177,26 @@ export const setWorkspaceConfigInputSchema = z.strictObject({
           pi: z.string().trim().min(1).max(200).nullable().optional(),
         })
         .optional(),
+    })
+    .optional(),
+  /**
+   * The workspace-wide `cli` settings (#467, PR 5). LAST in the shape on purpose: the `{ error }`
+   * string of a multi-issue body is built by joining zod issues in shape order, so adding a key
+   * anywhere earlier would reword an existing two-bad-field message.
+   *
+   * `null` on `instance` CLEARS the stored key back to the `XEZ_INSTANCE`/`workspace` chain — the
+   * documented meaning `followups`, `skillsAutoUpdate` and `agentDefaults` already carry. A body
+   * that does not name `cli` at all must leave the stored key byte-identical on disk: `cli` is
+   * `.optional()` with no default in the workspace schema, and materializing it on every write
+   * would turn "never chosen" into "chosen", which is the distinction the whole tri-state rests on.
+   *
+   * `output`, `color` and `logLevel` are stored in the same object and are deliberately NOT here
+   * yet: they are presentation, they have no Settings control, and a write door for a value no
+   * pane can show is a key nobody asked for.
+   */
+  cli: z
+    .strictObject({
+      instance: instanceModeSchema.nullable().optional(),
     })
     .optional(),
 });

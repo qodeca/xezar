@@ -159,6 +159,7 @@ describe('G-22 save contracts stay mixed on purpose', () => {
     const state = {
       agentDefaults: {}, browseRoot: '~/', projectsDir: '~/p', skillsAutoUpdate: null, effectiveSkillsAutoUpdate: true,
       followups: null, effectiveFollowups: false, agentEnvPassthrough: null, effectiveAgentEnvPassthrough: [],
+      cli: { instance: null, effectiveInstance: 'workspace', inForce: 'workspace' },
       composerDefaults: { autonomous: null, worktree: null, inheritedAutonomous: 'source-dependent', inheritedWorktree: true },
       resources: { maxParallel: 2, maxMonitoringSessions: 2, monitoringWakeIntervalMinutes: null, idleTimeoutMinutes: 15, memoryLimitDefaultMb: 4096, autoResumeOnUsageLimit: true, memoryLimitMb: null, worktreeRetentionDefault: 10 },
     } as WorkspaceConfigResponse

@@ -178,6 +178,19 @@ function parseEnumValue<T extends string>(raw: unknown, allowed: readonly T[]): 
   return (allowed as readonly string[]).includes(text) ? (text as T) : null;
 }
 
+/**
+ * One stored or environment `instance` value, parsed — `null` for absent, empty or a word this
+ * vocabulary does not know (#467, PR 5).
+ *
+ * Exported because the settings ROUTE needs the same answer `resolveCliSettings` gives, without
+ * the flags, the ports and the transport: `GET /api/v1/workspace/config` reports the stored value
+ * and what stored-plus-environment resolves to, and re-deriving "is this a legal mode" beside a
+ * second copy of the vocabulary is how two readers of one setting drift apart.
+ */
+export function parseInstanceModeValue(raw: unknown): InstanceMode | null {
+  return parseEnumValue(raw, INSTANCE_MODES);
+}
+
 function refusePort(label: string, raw: string): never {
   throw new CliSettingsError(
     `${label} must be a whole number from ${PORT_MIN} to ${PORT_MAX} — got “${raw}”.`,

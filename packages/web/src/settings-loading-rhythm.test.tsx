@@ -97,11 +97,12 @@ const LOADED_RHYTHM: Record<string, string[]> = {
   'prompt-templates-section.tsx': ['gutter+measure:max-w-2xl'], //   PromptTemplatesForm's root
   'resources-section.tsx': ['gutter+measure:max-w-2xl'], //          ResourcesForm's root
   'skills-section.tsx': ['gutter+measure:max-w-2xl'], //             SkillsForm's root
+  'terminal-section.tsx': ['gutter+measure:max-w-2xl'], //           TerminalForm's root
   'worktrees-section.tsx': ['gutter+measure:max-w-2xl'], //          WorktreesForm's root
 }
 
 describe('BREAK-424-LOADING-PAD — a Settings section loads and renders on the same gutter', () => {
-  it('finds the twelve sections that render a padded loading state', () => {
+  it('finds the thirteen sections that render a padded loading state', () => {
     expect(sectionsWithLoadingState.map((f) => f.name)).toEqual(Object.keys(LOADED_RHYTHM))
   })
 

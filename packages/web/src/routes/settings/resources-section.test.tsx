@@ -34,6 +34,7 @@ function serve(resources: Partial<WorkspaceConfigResponse['resources']> = {}) {
     effectiveFollowups: false,
     agentEnvPassthrough: null,
     effectiveAgentEnvPassthrough: [],
+    cli: { instance: null, effectiveInstance: 'workspace', inForce: 'workspace' },
     composerDefaults: {
       autonomous: null,
       worktree: null,

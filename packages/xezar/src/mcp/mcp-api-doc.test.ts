@@ -245,7 +245,7 @@ describe('#261 — the MCP API reference against the registry and the inventory'
 
   it('every covered inventory record is served by a tool action that exists, or is a named gap', () => {
     const inventory = readInventory();
-    expect(inventory.size).toBe(147);
+    expect(inventory.size).toBe(148);
     const actions = new Set(registryActions());
     const served = new Set<string>();
     for (const [action, cover] of Object.entries(TOOL_ACTION_COVERAGE)) {
@@ -257,8 +257,8 @@ describe('#261 — the MCP API reference against the registry and the inventory'
     // until B2 moved the two workspace folder paths (I-127), 102 until B3 moved the three
     // shared-preference rows (I-024, I-092, I-132), 105 until B4 moved the provider switch
     // (I-115) and 106 until B5 moved the agent accounts (I-122, I-123, I-124), all under the same
-    // owner rule.
-    expect(covered).toHaveLength(109);
+    // owner rule. 109 until #467 PR 5 added I-148, the instance mode's Settings control.
+    expect(covered).toHaveLength(110);
     expect(covered.filter((id) => !served.has(id) && !(id in COVERAGE_GAPS)), 'covered records no action serves').toEqual([]);
     // A gap is only for a covered record nothing serves: never a second label on a served one.
     for (const id of Object.keys(COVERAGE_GAPS)) {

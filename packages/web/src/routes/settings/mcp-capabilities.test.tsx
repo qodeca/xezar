@@ -77,6 +77,7 @@ const WORKSPACE: WorkspaceConfigResponse = {
   effectiveFollowups: true,
   agentEnvPassthrough: null,
   effectiveAgentEnvPassthrough: [],
+  cli: { instance: null, effectiveInstance: 'workspace', inForce: 'workspace' },
   composerDefaults: { autonomous: null, worktree: null, inheritedAutonomous: 'source-dependent', inheritedWorktree: true },
   resources: {
     maxParallel: 4,

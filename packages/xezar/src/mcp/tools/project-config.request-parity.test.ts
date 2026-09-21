@@ -89,6 +89,7 @@ describe('every MCP write action accepts what its route accepts', () => {
         'agentDefaults',
         'agentEnvPassthrough',
         'browseRoot',
+        'cli',
         'composerDefaults',
         'followups',
         'projectsDir',

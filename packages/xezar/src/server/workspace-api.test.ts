@@ -26,6 +26,7 @@ describe('the workspace settings API (step 2.7)', () => {
   const savedSkillsAutoUpdate = process.env.XEZ_SKILLS_AUTO_UPDATE;
   const savedAutonomousDefault = process.env.XEZ_AUTONOMOUS_DEFAULT;
   const savedWorktreeDefault = process.env.XEZ_WORKTREE_DEFAULT;
+  const savedInstance = process.env.XEZ_INSTANCE;
   let home: string;
   let repoRoot: string;
   let store: RunStore;
@@ -42,6 +43,7 @@ describe('the workspace settings API (step 2.7)', () => {
     delete process.env.XEZ_WORKTREE_DEFAULT;
     delete process.env.XEZ_FOLLOWUPS;
     delete process.env.XEZ_ENV_PASSTHROUGH;
+    delete process.env.XEZ_INSTANCE;
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-workspace-api-repo-'));
     mkdirSync(join(repoRoot, '.local/xezar'), { recursive: true });
     store = RunStore.open(join(repoRoot, '.local/xezar'));
@@ -72,6 +74,8 @@ describe('the workspace settings API (step 2.7)', () => {
     else process.env.XEZ_AUTONOMOUS_DEFAULT = savedAutonomousDefault;
     if (savedWorktreeDefault === undefined) delete process.env.XEZ_WORKTREE_DEFAULT;
     else process.env.XEZ_WORKTREE_DEFAULT = savedWorktreeDefault;
+    if (savedInstance === undefined) delete process.env.XEZ_INSTANCE;
+    else process.env.XEZ_INSTANCE = savedInstance;
     for (const dir of [home, repoRoot]) rmSync(dir, { recursive: true, force: true });
   });
 
@@ -122,6 +126,10 @@ describe('the workspace settings API (step 2.7)', () => {
       // keys mean "this machine has no opinion", which is what makes them defaults a repo can be
       // silent about rather than settings every checkout inherits a value from.
       agentDefaults: {},
+      // #467 PR 5. Nothing stored, no `XEZ_INSTANCE`, and this app was built without an
+      // `instanceMode` dep — the default every xezar has always had, spelled three times
+      // because the three answer three different questions.
+      cli: { instance: null, effectiveInstance: 'workspace', inForce: 'workspace' },
     });
     // Absolute project roots belong on /api/v1/projects; schemaVersion is a
     // migration cursor, not a setting.
@@ -178,6 +186,7 @@ describe('the workspace settings API (step 2.7)', () => {
       // Untouched by a resources write, and still empty — the two live in the same file but answer
       // unrelated questions, so one must never materialize the other.
       agentDefaults: {},
+      cli: { instance: null, effectiveInstance: 'workspace', inForce: 'workspace' },
     });
     // Round-trip through GET and the raw file.
     expect(((await (await getConfig()).json()) as WorkspaceConfigResponse).resources.maxParallel).toBe(5);
@@ -299,6 +308,104 @@ describe('the workspace settings API (step 2.7)', () => {
     expect(cleared.effectiveAgentEnvPassthrough).toEqual(['FROM_ENV']);
     expect(rawConfig().agentEnvPassthrough).toBeUndefined();
     expect(semaphore.agentEnvPassthrough()).toEqual(['FROM_ENV']);
+  });
+
+  /**
+   * #467 PR 5 — `cli.instance`, the one stored key of this route that is a BOOT decision.
+   *
+   * Named break `null-does-not-clear`: make the `null` branch store `'workspace'` instead of
+   * removing the key and the third block goes red — the file keeps a stored `workspace` that
+   * would outrank `XEZ_INSTANCE` forever, which is the opposite of what clearing means.
+   */
+  it('PUT cli.instance round-trips, wins over the env, and null clears back to it', async () => {
+    process.env.XEZ_INSTANCE = 'project';
+    // Nothing stored: `XEZ_INSTANCE` decides what the next start resolves.
+    expect((await (await getConfig()).json()) as WorkspaceConfigResponse).toMatchObject({
+      cli: { instance: null, effectiveInstance: 'project', inForce: 'workspace' },
+    });
+
+    const stored = (await (await putConfig({ cli: { instance: 'workspace' } })).json()) as WorkspaceConfigResponse;
+    // The stored value beats the variable, the way `cli.output` and `cli.logLevel` already do.
+    expect(stored.cli).toEqual({ instance: 'workspace', effectiveInstance: 'workspace', inForce: 'workspace' });
+    expect(rawConfig().cli).toEqual({ instance: 'workspace' });
+
+    const cleared = (await (await putConfig({ cli: { instance: null } })).json()) as WorkspaceConfigResponse;
+    expect(cleared.cli).toEqual({ instance: null, effectiveInstance: 'project', inForce: 'workspace' });
+    // The KEY is gone, and so is the object it was the only tenant of — `{}` would persist a
+    // key that says nothing, and an absent `cli` is what "never chosen" has always looked like.
+    expect(rawConfig().cli).toBeUndefined();
+  });
+
+  /**
+   * Named break `cli-key-cleared-by-unrelated-write` (AC-5.4): materialize `cli` on every write
+   * — `config.cli = { ...(config.cli ?? {}), ...}` outside the `cli !== undefined` guard — and
+   * this goes red. It is the same absent-vs-explicit discipline `memoryLimitMb` and `followups`
+   * carry, and the cheapest way to lose a stored setting is a write that never mentioned it.
+   */
+  it('a PUT that does not name cli leaves the stored key byte-identical on disk', async () => {
+    await putConfig({ cli: { instance: 'project' } });
+    const before = readFileSync(workspaceConfigPath(), 'utf8');
+    expect(JSON.stringify(rawConfig().cli)).toBe('{"instance":"project"}');
+
+    for (const unrelated of [
+      { resources: { maxParallel: 6 } },
+      { followups: true },
+      { agentDefaults: { runner: 'codex' } },
+    ]) {
+      const res = await putConfig(unrelated);
+      expect(res.status, JSON.stringify(unrelated)).toBe(200);
+      expect(((await res.json()) as WorkspaceConfigResponse).cli.instance).toBe('project');
+      expect(JSON.stringify(rawConfig().cli), JSON.stringify(unrelated)).toBe('{"instance":"project"}');
+    }
+    expect(before).not.toBe(readFileSync(workspaceConfigPath(), 'utf8')); // the writes DID land
+  });
+
+  /** A sibling nobody wrote through this route keeps the object alive when `instance` clears. */
+  it('clearing cli.instance keeps a stored presentation sibling and never re-serializes it', async () => {
+    writeFileSync(
+      workspaceConfigPath(),
+      JSON.stringify({ cli: { output: 'rich', logLevel: 'debug', instance: 'project' } }),
+      'utf8',
+    );
+    await putConfig({ cli: { instance: null } });
+    expect(rawConfig().cli).toEqual({ output: 'rich', logLevel: 'debug' });
+  });
+
+  /**
+   * Named break `inForce-mirrors-stored`: answer `inForce` from the stored value (or from
+   * `effectiveInstance`) instead of `deps.instanceMode` and this goes red. A cockpit narrowed by
+   * `XEZ_SINGLE_PROJECT` or by a folder that owns its xezar state serves ONE project whatever the
+   * file says, and a Settings pane that echoed `workspace` back would be describing the file
+   * while claiming to describe the cockpit.
+   */
+  it('inForce reports what THIS process does, not what the file stores', async () => {
+    await putConfig({ cli: { instance: 'workspace' } });
+    for (const mode of ['narrowed', 'project', 'workspace'] as const) {
+      const narrowedApp = createApp({
+        repoRoot,
+        store,
+        manager: {} as RunManager,
+        version: '0.0.0-test',
+        semaphore,
+        instanceMode: mode,
+      });
+      const body = (await (await apiRequest(narrowedApp, '/api/v1/workspace/config')).json()) as WorkspaceConfigResponse;
+      expect(body.cli, mode).toEqual({
+        instance: 'workspace',
+        effectiveInstance: 'workspace',
+        inForce: mode,
+      });
+    }
+  });
+
+  it('refuses a mode this vocabulary does not know, and an unknown cli key, without writing', async () => {
+    await putConfig({ cli: { instance: 'project' } });
+    for (const bad of [{ cli: { instance: 'both' } }, { cli: { output: 'rich' } }, { cli: 'project' }]) {
+      const res = await putConfig(bad);
+      expect(res.status, JSON.stringify(bad)).toBe(400);
+      expect(Object.keys((await res.json()) as object)).toEqual(['error']);
+    }
+    expect(rawConfig().cli).toEqual({ instance: 'project' });
   });
 
   it('PUT stores explicit auto-update values and null clears back to the inherited env value', async () => {

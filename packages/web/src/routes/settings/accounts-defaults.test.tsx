@@ -83,6 +83,7 @@ function serve({
     effectiveFollowups: false,
     agentEnvPassthrough: null,
     effectiveAgentEnvPassthrough: [],
+    cli: { instance: null, effectiveInstance: 'workspace', inForce: 'workspace' },
     composerDefaults: {
       autonomous: null,
       worktree: null,
@@ -223,6 +224,7 @@ describe('Agent accounts → Defaults for new projects', () => {
             effectiveFollowups: false,
             agentEnvPassthrough: null,
             effectiveAgentEnvPassthrough: [],
+            cli: { instance: null, effectiveInstance: 'workspace', inForce: 'workspace' },
             composerDefaults: {
               autonomous: null,
               worktree: null,

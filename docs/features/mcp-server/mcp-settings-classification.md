@@ -61,6 +61,7 @@ Current classifications, verified against the named cases in
 | § 4.7 accent, density and width; § 4.8 notifications; § 4.13 workspace appearance, notifications, task-table columns, curated skills and dismissed incidents | workspace-write | `set_workspace_ui_state` and `import_skills` via `PUT /workspace/ui-state` — PR #753 | Previously: workspace-wide personal presentation was excluded. |
 | § 4.1 provider enabled and retry controls | workspace-write | `set_provider_enabled` and `retry_provider` — PR #760 | Previously: provider administration was a safe effective read only; provider writes were excluded. |
 | § 4.1 bound-project account selection; § 4.11 selection, add, update and remove | workspace-write | `select_account`, `create_account`, `update_account` and `remove_account` — PR #764 | Previously: account writes were excluded because they touch a global personal file and name an account identity. |
+| § 4.16 the instance mode (`cli.instance`) | workspace-write | `set_workspace_config` via `PUT /workspace/config`, read by `get_limits` — #467 PR 5 | Previously: not classified at all — the key had no Settings control and no write door, so no cockpit action named it. |
 | § 4.11 account status | safe-effective-read | `check_account_status` — PR #764 | Previously: probing a named account was excluded. |
 | § 4.11 account details | identity-read | `get_account_details` — PR #764 | Previously: account identity was a negative requirement and was never served to a project leader. |
 
@@ -582,6 +583,17 @@ leader could need. Listed rather than omitted, so "unclassified" cannot be confu
 | Loading, error and empty states; every toast; every confirm dialog | throughout — MCP reproduces no confirmation click (section 3) |
 
 ---
+
+### 4.16 Global → Terminal — `terminal-section.tsx` (#467 PR 5)
+
+New section, new row, one key. It is classified `workspace-write` under the same owner rule of
+2026-09-20 ("every key") that § 4.9 records, and it is the first workspace write that does NOT take
+effect on the running process — which is the only thing that makes it different from its neighbours,
+and it is stated in the answer and in the control rather than left for a leader to discover.
+
+| Field | Status | Reason | Enforcing code path | Withheld |
+| --- | --- | --- | --- | --- |
+| `cli.instance` / `cli.effectiveInstance` / `cli.inForce` | workspace-write | Which projects one xezar process serves. Machine-wide in effect, and a fact about the leader's OWN cockpit rather than another project's data, which is why the read is not narrowed away. `inForce` is reported because the two registry narrowings beat the setting and a leader told only the stored value would be wrong about its own process. | `setWorkspaceConfigInputSchema.cli` (`packages/contract/src/workspace.ts`); the route's `mergeWriteWorkspaceConfig` branch, guarded on the body NAMING `cli`; `instanceModeInForce` (`packages/xezar/src/workspace/projects.ts`) threaded in at boot | `cli.output`, `cli.color` and `cli.logLevel`, stored in the same object: neither written nor read here, because they are presentation with no control and no write door. The answer carries no port, no bind address and no `lastListen`. |
 
 ## 5. The twelve carried rulings
 

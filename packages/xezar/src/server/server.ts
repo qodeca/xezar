@@ -2,6 +2,7 @@ import { expectEventTransition } from '../mcp/event-catalog.ts';
 import { EventCorrectionError } from '../runs/event-corrections.ts';
 import { validateLegacyHistoryResume } from '../runs/event-history.ts';
 import { projectDataDir } from '../project-data-paths.ts';
+import { parseInstanceModeValue } from '../cli-settings.ts';
 import { createUiAuditDoor } from './audit-ui.ts';
 import { automationAudit } from '../automations/audit.ts';
 import { projectKitDir } from '../project-kit-paths.ts';
@@ -3121,6 +3122,19 @@ export function createApp(deps: ServerDeps) {
       ...(config.agentDefaults.runner !== undefined ? { runner: config.agentDefaults.runner } : {}),
       ...(config.agentDefaults.models !== undefined ? { models: config.agentDefaults.models } : {}),
     },
+    // #467 PR 5. Three answers, and the third is the point: `instance` is what the file holds
+    // (`null` = never chosen), `effectiveInstance` is what the NEXT start will resolve from the
+    // file plus `XEZ_INSTANCE`, and `inForce` is what THIS process is doing — which a narrowing
+    // can make `narrowed` whatever the file says. `deps.instanceMode` is `instanceModeInForce`'s
+    // answer, threaded in at boot and never re-derived here for the reason `capabilities` states.
+    cli: (() => {
+      const stored = parseInstanceModeValue(config.cli?.instance);
+      return {
+        instance: stored,
+        effectiveInstance: stored ?? parseInstanceModeValue(process.env.XEZ_INSTANCE) ?? 'workspace',
+        inForce: deps.instanceMode ?? 'workspace',
+      };
+    })(),
   });
   // ---- chained family: workspace settings + GUI prefs (workspace-level) ----
   const workspaceConfigRoutes = new Hono<ProjectApiEnv>()
@@ -3137,6 +3151,7 @@ export function createApp(deps: ServerDeps) {
         composerDefaults,
         resources,
         agentDefaults,
+        cli,
       } = parsed.data;
       for (const [configuredRoot, create] of [
         [browseRoot, false],
@@ -3218,6 +3233,24 @@ export function createApp(deps: ServerDeps) {
             if (Object.keys(models).length === 0) delete config.agentDefaults.models;
             else config.agentDefaults.models = models;
           }
+          // #467 PR 5. The whole `cli` branch is guarded by "did the body NAME this key", never
+          // by "is there a value to write": `cli` is optional with no default in the workspace
+          // schema, so materializing `cli: {}` here would let a write that only changed a
+          // resource limit turn an absent `cli.instance` into a present one — the
+          // `cli-key-cleared-by-unrelated-write` break, and the same absent-vs-explicit rule
+          // `memoryLimitMb` and `followups` carry.
+          if (cli?.instance === null) {
+            // `null` clears back to the `XEZ_INSTANCE`/`workspace` chain. An emptied `cli` is
+            // removed rather than left as `{}`, which would persist a key that says nothing —
+            // the rule `agentDefaults.models` follows just above. A sibling someone stored
+            // (`output`, `color`, `logLevel`) keeps the object alive and is never touched.
+            if (config.cli !== undefined) {
+              delete config.cli.instance;
+              if (Object.keys(config.cli).length === 0) delete config.cli;
+            }
+          } else if (cli?.instance !== undefined) {
+            config.cli = { ...(config.cli ?? {}), instance: cli.instance };
+          }
         });
       } catch (err) {
         // e.g. a read-only home — nothing was persisted (atomic tmp+rename).
@@ -3227,6 +3260,10 @@ export function createApp(deps: ServerDeps) {
       // semaphore's in-memory snapshot and pump every manager (step 2.5's hook).
       // `followups` and `agentEnvPassthrough` are cached by the same semaphore snapshot
       // (F), so they refresh through the same hook rather than a second reload path.
+      // `cli` is deliberately NOT in that list (#467 PR 5): the instance mode was settled at
+      // boot — the MCP socket, the bind and every built project context were decided under it —
+      // so there is nothing in this process to refresh, and the Settings copy says so instead of
+      // pretending the change is live.
       if (resources !== undefined || followups !== undefined || agentEnvPassthrough !== undefined) {
         await deps.semaphore?.refresh();
       }
