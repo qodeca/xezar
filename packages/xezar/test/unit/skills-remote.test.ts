@@ -214,8 +214,8 @@ test('team-skills cache is keyed by repoRoot — projects never see each other\'
 
   const loadedA = await refreshTeamSkills(rootA);
   const loadedB = await refreshTeamSkills(rootB);
-  assert.deepEqual(loadedA.map((s) => s.name), ['alpha-skill']);
-  assert.deepEqual(loadedB.map((s) => s.name), ['beta-skill']);
+  assert.deepEqual(loadedA.skills.map((s) => s.name), ['alpha-skill']);
+  assert.deepEqual(loadedB.skills.map((s) => s.name), ['beta-skill']);
 
   // The regression: the cache was one module-global list, so after B's load,
   // A's scope was served B's skills. Each root must keep its own entry.
@@ -424,14 +424,14 @@ test('a failed fetch degrades to the cached clone instead of throwing', async (t
 
   // Warm the cache for real — a local path is a documented source shape, so the
   // first clone needs no network either.
-  assert.deepEqual((await refreshTeamSkills(root)).map((s) => s.name), ['cached-skill']);
+  assert.deepEqual((await refreshTeamSkills(root)).skills.map((s) => s.name), ['cached-skill']);
   assert.ok(existsSync(join(bareDirFor(src), 'HEAD')), 'expected a bare clone in the temp cache');
 
   // Now the network is gone: `fetch` fails while every local read still works.
   const git = shimGit(box, { fail: ['fetch'] });
   // Not throwing is half the assertion; serving the cached catalog is the rest.
   const afterFailure = await refreshTeamSkills(root);
-  assert.deepEqual(afterFailure.map((s) => s.name), ['cached-skill']);
+  assert.deepEqual(afterFailure.skills.map((s) => s.name), ['cached-skill']);
   assert.ok(
     git.calls().some((c) => c.sub === 'fetch'),
     'expected the failing fetch to actually be attempted',
@@ -447,7 +447,7 @@ test('a failed fetch with no cache returns an empty catalog and never throws', a
 
   // The boot must survive this. A throw here is "xezar will not start" on the
   // machine of a user whose network is down (AGENTS.md).
-  assert.deepEqual(await refreshTeamSkills(root), []);
+  assert.deepEqual((await refreshTeamSkills(root)).skills, []);
   assert.deepEqual(getTeamSkillsCached(root), []);
   assert.deepEqual(await waitForTeamSkills(root), []);
   assert.equal(existsSync(join(bareDirFor(missing), 'HEAD')), false);
@@ -476,7 +476,7 @@ test('a clone that hangs never blocks the catalog read, and a killed git degrade
   // ...and the load degrades to an empty catalog once the hung git is killed.
   git.release();
   assert.deepEqual(await waitForTeamSkills(root), []);
-  assert.deepEqual(await refreshTeamSkills(root), []);
+  assert.deepEqual((await refreshTeamSkills(root)).skills, []);
 });
 
 /** A one-shot command gets this long to leave after its own work — generous next to a node +
@@ -564,23 +564,23 @@ test('a corrupt or truncated cache degrades to empty, and a missing one re-clone
   const root = box.projectRoot([{ repo: src, ref: 'main' }]);
   const bare = bareDirFor(src);
 
-  assert.deepEqual((await refreshTeamSkills(root)).map((s) => s.name), ['fragile-skill']);
+  assert.deepEqual((await refreshTeamSkills(root)).skills.map((s) => s.name), ['fragile-skill']);
 
   // Truncated HEAD: the file is still there, so the "is there a clone?" probe
   // passes and every git call under it fails. That must not crash.
   writeFileSync(join(bare, 'HEAD'), '');
   assert.deepEqual(await listRemoteSkills({ repo: src, ref: 'main' }), []);
-  assert.deepEqual(await refreshTeamSkills(root), []);
+  assert.deepEqual((await refreshTeamSkills(root)).skills, []);
 
   // Garbled ref store: HEAD is valid again, the refs are not.
   writeFileSync(join(bare, 'HEAD'), 'ref: refs/heads/main\n');
   writeFileSync(join(bare, 'packed-refs'), 'not a ref file at all\n');
   assert.deepEqual(await listRemoteSkills({ repo: src, ref: 'main' }), []);
-  assert.deepEqual(await refreshTeamSkills(root), []);
+  assert.deepEqual((await refreshTeamSkills(root)).skills, []);
 
   // A cache that is simply gone degrades to a re-fetch: the skills come back.
   rmSync(bare, { recursive: true, force: true });
-  assert.deepEqual((await refreshTeamSkills(root)).map((s) => s.name), ['fragile-skill']);
+  assert.deepEqual((await refreshTeamSkills(root)).skills.map((s) => s.name), ['fragile-skill']);
 });
 
 test('all three configured source shapes resolve, and unsafe ones never reach git', async (t) => {
@@ -602,7 +602,7 @@ test('all three configured source shapes resolve, and unsafe ones never reach gi
 
   const loaded = await refreshTeamSkills(root);
   // An unreachable or refused source never hides a working one.
-  assert.deepEqual(loaded.map((s) => s.name), ['local-skill']);
+  assert.deepEqual(loaded.skills.map((s) => s.name), ['local-skill']);
 
   const cloneArgs = git.calls().filter((c) => c.sub === 'clone').flatMap((c) => c.args);
   assert.ok(
@@ -644,7 +644,7 @@ test('a read-only cache directory degrades instead of failing the boot', async (
     'this case needs a user that cannot write a 0500 directory',
   );
 
-  assert.deepEqual(await refreshTeamSkills(root), []);
+  assert.deepEqual((await refreshTeamSkills(root)).skills, []);
   assert.deepEqual(getTeamSkillsCached(root), []);
   assert.equal(existsSync(join(bareDirFor(src), 'HEAD')), false);
   // Pinned, not endorsed: this path degrades *silently*. The module's header

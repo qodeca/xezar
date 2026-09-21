@@ -42,6 +42,7 @@ import {
   type ProviderStatusResponse,
   type RemoveAgentProfileResponse,
   type Skill,
+  type SkillsRefreshResponse,
   type SkillsUpdateState,
   type UiState,
   type UpdateProjectResponse,
@@ -1769,14 +1770,31 @@ async function run(args: ProjectConfigInput & { action: ProjectConfigAction }, s
       return ok(action, { deleted: true, name, path: projectRelative(s.root, answer.value.path) ?? null });
     }
 
-    case 'list_skills':
-    case 'get_skill':
     case 'refresh_skills': {
+      // The refresh answers `{skills, sources}` (#771): a source it could not reach is reported
+      // rather than rounded to success, so a leader reads the same truth the cockpit toasts.
+      const answer = await settle<SkillsRefreshResponse>(s.api.p[':projectId'].skills.refresh.$post({ param: scope }), [200]);
+      if (!answer.ok) return fail(answer);
+      return ok(action, {
+        skills: answer.value.skills.map((skill) => skillEntry(s.root, skill, false)),
+        // A per-source reason is service error text and can quote the absolute clone-cache path
+        // under the user's home — exactly what `failed()` removes from a REFUSAL (#789 review
+        // finding 3). A successful call that forwarded it verbatim disclosed what the same tool
+        // deliberately withholds one branch away. The failure FACT is untouched.
+        // `repo` goes through the same scrubber for the same reason: it is normally a remote URL
+        // (a no-op there), but a source configured as a local path is a host path too, and half a
+        // scrub is not a scrub.
+        sources: answer.value.sources.map((source) => ({
+          ...source,
+          repo: scrubPaths(source.repo, s.root),
+          ...(source.ok ? {} : { reason: scrubPaths(source.reason, s.root) }),
+        })),
+      });
+    }
+    case 'list_skills':
+    case 'get_skill': {
       const query = args.wait ? { wait: '1' } : {};
-      const answer =
-        action === 'refresh_skills'
-          ? await settle<Skill[]>(s.api.p[':projectId'].skills.refresh.$post({ param: scope }), [200])
-          : await settle<Skill[]>(s.api.p[':projectId'].skills.$get({ param: scope, query }), [200]);
+      const answer = await settle<Skill[]>(s.api.p[':projectId'].skills.$get({ param: scope, query }), [200]);
       if (!answer.ok) return fail(answer);
       if (action === 'get_skill') {
         const skill = answer.value.find((entry) => entry.name === args.name);

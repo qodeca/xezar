@@ -185,6 +185,10 @@ Form dialogs use a plain phrase, no question mark: "Commit changes", "Add agent 
   Connect to sign in", "{project} removed from the workspace — its files are untouched".
 - Errors: the server message, `tone: 'danger'`. Hand-written only when there is no server:
   "Could not copy the command".
+- A success toast reports what the server actually managed, never the action that was asked for
+  (#771). When part of it failed, the toast is the partial: "Refreshed 1 of 2 team skills sources
+  — {repo}: {the server's reason}", `tone: 'danger'` — rounding a partial to either side is what
+  made Skills → Refresh report success for a fetch that never ran.
 - Copying: "Command copied", "Worktree path copied", "No terminal found — command copied". When the
   clipboard refuses, the toast is the payload itself: "Run manually: {command}", "Path: {path}".
 - Browser notification body: "Task needs you", "Task needs review", "Task failed"; title is the run title.

@@ -98,6 +98,7 @@ import type {
   SetWorkspaceUiStateInput,
   ImportableSkill,
   Skill,
+  SkillsRefreshResponse,
   StartTodoResponse,
   TodoItem,
   UiState,
@@ -606,8 +607,9 @@ export async function getSkillsWhenReady(opts?: ReadOptions): Promise<Skill[]> {
 }
 
 /** Refresh the team skills repos (spec 005: clone/fetch, degrade quietly offline) and answer
- *  the merged catalog — the Settings → Skills "Refresh" button. */
-export async function refreshSkills(): Promise<Skill[]> {
+ *  the merged catalog plus what the refresh actually managed, per source (#771) — the
+ *  Skills page's "Refresh" button. */
+export async function refreshSkills(): Promise<SkillsRefreshResponse> {
   return unwrap(
     await xez.api.v1.p[':projectId'].skills.refresh.$post({ param: { projectId: queryScope() } }),
     '/skills/refresh',
