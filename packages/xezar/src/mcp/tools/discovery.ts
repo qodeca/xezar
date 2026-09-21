@@ -88,7 +88,7 @@ export function buildDiscovery(facts: DiscoveryFacts): McpDiscovery {
       ? readOnly(
           'model_selection',
           'Choose a task model',
-          "Models are locked: each coding agent uses the model from its own native settings. Only a person can change that (XEZ_AGENT_MODELS_LOCKED or modelsLocked in xezar's config).",
+          "Models are locked: each coding agent uses the model from its own native settings. A lock set in this project's own settings is lifted with project_config set_config and modelsLocked false; a lock set by XEZ_AGENT_MODELS_LOCKED or the machine's workspace config stays until a person changes it.",
         )
       : action('model_selection', 'Choose a task model', null),
     action('github', 'GitHub issues, pull requests and draft PRs', githubReason),

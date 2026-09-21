@@ -307,6 +307,7 @@ Unknown arguments are rejected.
 | `config.defaultModels.codex` | string or null | no | max length 200 |  |
 | `config.defaultModels.opencode` | string or null | no | max length 200 |  |
 | `config.defaultModels.pi` | string or null | no | max length 200 |  |
+| `config.modelsLocked` | boolean or null | no |  |  |
 | `config.memoryLimitMb` | integer or null | no | min 0, max 1048576 |  |
 | `config.worktreeRetention` | integer or null | no | min 0, max 1000 |  |
 | `config.liveTitleUpdates` | boolean or null | no |  |  |
@@ -936,7 +937,7 @@ business outcome as the cockpit is the separate [parity coverage map](mcp-parity
 | I-101 | Read the automation log. | `project_config:get_automation_log` |
 | I-102 | Decided 2026-09-10 (D-102). | `project_config:delete_automation`, `project_config:retry_automation_receipt` |
 | I-103 | Read and set the project default runner | `project_config:get_config`, `project_config:set_config` |
-| I-104 | Read and set per-runner default models, and surface `modelsLocked` as an unavailability reason rather than failing opaquely (F-03) | `discover_project`, `project_config:get_config`, `project_config:set_config` |
+| I-104 | Read and set per-runner default models, and surface `modelsLocked` as an unavailability reason rather than failing opaquely (F-03). | `discover_project`, `project_config:get_config`, `project_config:set_config` |
 | I-105 | Read and set the project system prompt. | `project_config:get_config`, `project_config:set_config` |
 | I-106 | Read and set it, and report the inherited effective value | `project_config:get_config`, `project_config:set_config` |
 | I-107 | Read and set the review gate. | `project_config:get_config`, `project_config:set_config` |

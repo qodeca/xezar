@@ -147,6 +147,7 @@ const CONFIG: ConfigResponse = {
   systemPrompt: null,
   defaultModels: {},
   modelsLocked: false,
+  projectModelsLocked: false,
   maxParallel: 2,
   memoryLimitMb: null,
   worktreeRetention: 10,

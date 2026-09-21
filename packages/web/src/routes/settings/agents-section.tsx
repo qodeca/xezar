@@ -180,6 +180,37 @@ function AgentsForm({
         onPick={(runner) => save.mutate({ defaultRunner: runner })}
       />
 
+      {/* #677 C2 — the project's own `modelsLocked` key. Owner, 2026-09-20: "Both doors, like
+          every key". Off DELETES the key rather than storing false, so the environment and the
+          workspace config still decide; `projectModelsLocked` is defaulted because a server that
+          predates it answers without it. */}
+      <SettingsField
+        title="Lock models"
+        hint="When on, each coding agent uses the model from its own native settings, and the model pickers in this project are read-only. XEZ_AGENT_MODELS_LOCKED=1 in the environment keeps the machine locked whatever this switch says."
+      >
+        <label className="flex w-fit items-center gap-3">
+          <Switch
+            aria-label="Lock models"
+            data-slot="agents-models-locked"
+            checked={config.projectModelsLocked ?? false}
+            disabled={save.isPending}
+            onCheckedChange={(checked) =>
+              save.mutate(
+                { modelsLocked: checked },
+                { onSuccess: () => toast(checked ? 'Models locked' : 'Models unlocked for this project') },
+              )
+            }
+          />
+          <span data-slot="agents-models-locked-state" className="text-[13px] text-muted-foreground">
+            {(config.projectModelsLocked ?? false)
+              ? 'On'
+              : config.modelsLocked
+                ? 'Off — still locked by the environment or the workspace settings'
+                : 'Off (default)'}
+          </span>
+        </label>
+      </SettingsField>
+
       <SettingsField
         title="Default models"
         hint={

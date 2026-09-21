@@ -125,6 +125,7 @@ function serve({
     systemPrompt: null,
     defaultModels: {},
     modelsLocked: false,
+    projectModelsLocked: false,
     maxParallel: 2,
     memoryLimitMb: null,
     worktreeRetention: 10,
@@ -168,6 +169,13 @@ function serve({
         }
         if (body?.reviewGate !== undefined) {
           state.reviewGate = body.reviewGate as boolean | null
+        }
+        if (body?.modelsLocked !== undefined) {
+          // #677 C2: only true is stored; false/null delete the key. The effective lock is the
+          // project key OR an outside lock the fixture marks by starting locked without it.
+          const outside = state.modelsLocked && !state.projectModelsLocked
+          state.projectModelsLocked = body.modelsLocked === true
+          state.modelsLocked = outside || state.projectModelsLocked
         }
         if (body?.defaultModels !== undefined) {
           for (const [runner, model] of Object.entries(body.defaultModels as Record<string, string | null>)) {
@@ -393,6 +401,42 @@ describe('the agents form', () => {
     await waitFor(() => expect(puts()).toHaveLength(1))
     expect(puts()[0]?.body).toEqual({ liveTitleUpdates: false })
     await waitFor(() => expect(screen.getByText('Off')).toBeTruthy())
+  })
+
+  it('lock models: the switch defaults OFF, PUTs the project key, and the pickers follow live (#677 C2)', async () => {
+    serve()
+    renderAt('/settings/agents')
+    await waitFor(() => expect(form()).not.toBeNull())
+    expect(document.body.textContent).toContain('XEZ_AGENT_MODELS_LOCKED=1 in the environment keeps the machine locked')
+
+    const toggle = screen.getByLabelText('Lock models')
+    expect(toggle.getAttribute('aria-checked') ?? toggle.getAttribute('data-state')).toMatch(/false|unchecked/)
+    expect(screen.getByLabelText('Default model for claude').tagName).toBe('SELECT')
+
+    fireEvent.click(toggle)
+    await waitFor(() => expect(puts()).toHaveLength(1))
+    expect(puts()[0]?.body).toEqual({ modelsLocked: true })
+    // The PUT's answer lands in the config cache, so the pickers turn read-only with no reload.
+    await waitFor(() => expect(screen.getByLabelText('Default model for claude').tagName).toBe('OUTPUT'))
+    await waitFor(() => expect(document.body.textContent).toContain('Models locked'))
+
+    fireEvent.click(screen.getByLabelText('Lock models'))
+    await waitFor(() => expect(puts()).toHaveLength(2))
+    expect(puts()[1]?.body).toEqual({ modelsLocked: false })
+    await waitFor(() => expect(screen.getByLabelText('Default model for claude').tagName).toBe('SELECT'))
+  })
+
+  it('lock models: says so when the environment or the workspace holds the lock the project switch cannot lift (#677 C2)', async () => {
+    serve({ config: { modelsLocked: true, projectModelsLocked: false } })
+    renderAt('/settings/agents')
+    await waitFor(() => expect(form()).not.toBeNull())
+
+    const toggle = screen.getByLabelText('Lock models')
+    expect(toggle.getAttribute('aria-checked') ?? toggle.getAttribute('data-state')).toMatch(/false|unchecked/)
+    expect(document.querySelector('[data-slot="agents-models-locked-state"]')?.textContent).toBe(
+      'Off — still locked by the environment or the workspace settings',
+    )
+    expect(screen.getByLabelText('Default model for claude').tagName).toBe('OUTPUT')
   })
 
   it('review gate: the switch defaults OFF and PUTs the toggle (#489)', async () => {

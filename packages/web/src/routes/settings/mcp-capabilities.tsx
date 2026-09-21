@@ -182,7 +182,7 @@ export function deriveProjectCapabilities({ health, modelsLocked }: CapabilityFa
           label: 'Choose a task model',
           status: 'read-only',
           reason: 'Models are locked: each coding agent uses the model from its own settings.',
-          next: 'Only a person can change that, with XEZ_AGENT_MODELS_LOCKED or modelsLocked in xezar’s config.',
+          next: 'Turn off Lock models in this project’s Agents settings. XEZ_AGENT_MODELS_LOCKED or a workspace-wide lock keeps it locked whatever this project says.',
         }
       : available('model_selection', 'Choose a task model'),
     gate('open_in_app', 'Open the project or a task in a desktop app', caps.localHandoff ? null : HOSTED),

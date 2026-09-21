@@ -1007,6 +1007,16 @@
                 }
               }
             },
+            "modelsLocked": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "memoryLimitMb": {
               "anyOf": [
                 {
