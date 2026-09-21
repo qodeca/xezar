@@ -8,11 +8,12 @@ import { CommandPalette } from '@/components/command-palette'
 import { ListViewProvider } from '@/components/list-view'
 import { OnboardingOfferContainer } from '@/components/onboarding-offer-container'
 import { ProviderBannerContainer } from '@/components/provider-banner-container'
+import { OtherProjects } from '@/components/other-projects'
 import { ProjectGroups } from '@/components/project-groups'
 import { ToolsMenu } from '@/components/tools-menu'
 import { useDocumentTitle } from '@/lib/use-document-title'
 import { useActiveProjectId } from '@/lib/project-router'
-import { inSingleProjectRoot, projectsLocked } from '@/lib/project-mode'
+import { inSingleProjectRoot, linksOutToOtherProjects, projectsLocked } from '@/lib/project-mode'
 import { unreadDoneCount } from '@/lib/read-state'
 import { runTitle } from '@/lib/task-groups'
 import { pageTitleContext } from '@/routes'
@@ -109,9 +110,29 @@ export function AppShellContainer({ children }: { children: ReactNode }) {
   // A narrowed workspace (`XEZ_SINGLE_PROJECT=1` or single-project mode, #600) never shows them,
   // whatever the registry holds: that is a capability, and a registry that happens to list two
   // rows must not bring the switcher back.
+  // `--instance project` (#467, PR 4): this process serves its boot project only, so the other
+  // registered projects get LINKS to their own cockpits instead of groups whose every scoped
+  // route 409s. A separate question from `projectsLocked`, which stays FALSE here — the projects
+  // are all still listed and Add project still works. See `lib/project-mode.ts`.
   const capabilities = health.data?.capabilities
+  const linksOut = linksOutToOtherProjects(capabilities)
   const projects =
-    !projectsLocked(capabilities) && registry && registry.projects.length > 1 ? registry : null
+    !projectsLocked(capabilities) && !linksOut && registry && registry.projects.length > 1
+      ? registry
+      : null
+  // The band under the nav, and only in that mode. Undefined everywhere else, which is what keeps
+  // the default sidebar byte-for-byte what it was (AC-4.2). `OtherProjects` renders null when the
+  // registry holds nothing but this project, so a one-project cockpit grows no empty group.
+  const otherProjects =
+    linksOut && registry ? (
+      <OtherProjects
+        projects={registry.projects}
+        bootProjectId={registry.bootProject}
+        // Hosted mode offers no Copy command: the terminal that would run it is on a machine the
+        // reader does not have.
+        localHandoff={capabilities?.localHandoff !== false}
+      />
+    ) : undefined
   // Destructured rather than read as a member: the audit-door guard
   // (packages/xezar/src/mcp/audit-origin-wiring.test.ts) scans every workspace source tree and
   // counts a property access spelled like the audit-trail method as a possible door.
@@ -173,6 +194,7 @@ export function AppShellContainer({ children }: { children: ReactNode }) {
             />
           ) : undefined
         }
+        otherProjects={otherProjects}
         toolsMenu={<ToolsMenu health={health.data} />}
       >
         {children}

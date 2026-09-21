@@ -353,6 +353,15 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Accessibility**: `aria-expanded`, `aria-controls`, `<nav aria-label="{project} navigation">`.
 - **Where used**: 1 file.
 
+### OtherProjects
+
+- **Purpose**: the sidebar's "Other projects" band in `--instance project` (#467): one row per registered project this process does not serve, each a link to that project's own cockpit on its own port.
+- **Source**: `packages/web/src/components/other-projects.tsx`. Exports `OtherProjects`, the pure `otherProjectRow` and `startCommand`. Props `projects`, `bootProjectId`, `localHandoff`.
+- **Look**: band `shrink-0 border-t border-border px-1.5 pt-1.5 pb-2` under the nav; header the project-group header spelling (`min-h-tap … rounded-lg px-2 text-[13px] font-semibold md:h-9`); rows the project-group nav-row spelling (`min-h-tap … rounded-md px-2.5 text-[13px] font-medium text-muted-foreground md:h-8`), a link row adding `hover:bg-muted hover:text-foreground`; state text `text-[11px] text-soft-foreground`; hint `px-2.5 pb-1 text-[11px] text-soft-foreground`; `Copy command` is a `ghost`/`sm` Button.
+- **States** (the row is `data-state`): `running` — an anchor to the absolute url, label `running`; `running-unknown-address` — no link, `running — address not known` plus `Find the terminal that runs it.`; `stopped` — `not running` plus `Copy command` in local mode, nothing in hosted; `checking` — `checking…`; `this` — `current` (the boot project's row is not rendered here at all); `missing` — the shared `folder not found` badge; `unknown` (hosted, `instance` omitted) — no state text at all.
+- **Accessibility**: a real `<a href>`, so the keyboard, the modifier-click and the context menu all behave; the `title` names the project and the address.
+- **Where used**: 2 files (the shell container passes the band; the command palette reuses `otherProjectRow`).
+
 ### NavItems
 
 - **Purpose**: the nav model shared by the sidebar and the command palette.

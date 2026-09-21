@@ -30,6 +30,8 @@ searched, sorted and pinned on the Tasks pages (§4), never in the sidebar.
 - Badges: a violet count (`rounded-full bg-violet px-1.5 py-px text-[10.5px] font-semibold text-violet-foreground`) means "a person is wanted" (Inbox count, unread finished tasks). A `size-1.5` violet dot with `sr-only` text marks a Skills update. No badge while the count is unknown; none at zero.
 - Multi-project: from the second registered project the flat nav becomes a pinned `All tasks` link (to the global Tasks page) above collapsible project groups. Each group is a header (chevron · name · waiting/review count badge · branch) and a body with that project's own nav only. Collapsed groups are remembered in `localStorage` (`xez-sidebar-collapsed`); the sidebar width (264–420 px) in `xez-sidebar-width`.
 
+- One cockpit per project (`--instance project`, #467): the sidebar keeps the FLAT nav — this process serves one project — and grows a bordered band under it, "Other projects", with one row per other registered project. A running one is a link to its own cockpit on its own port (an absolute address, never `/p/<id>/` here); the rest say `running — address not known`, `not running` (with `Copy command` in local mode), `checking…` or `folder not found`, and a hosted cockpit says nothing at all because it never looked. Every project stays listed and `Add project` stays: this is not `XEZ_SINGLE_PROJECT`. In the default `workspace` mode the band does not exist and the sidebar is unchanged.
+
 Rule: add a nav item by adding a row to `NAV_ITEMS` with a `match` list and, if gated, a capability flag.
 Never add a nav link in the shell or the palette by hand.
 
