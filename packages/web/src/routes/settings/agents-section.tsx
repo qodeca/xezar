@@ -55,6 +55,9 @@ const SKILLS_REPOS_MAX = 32
 
 /** One source per line; the default `main` ref is left implicit so the common case reads as
  *  the bare `owner/name` a user would type. */
+/** The Lock models switch's third-state hint, which the switch names in `aria-describedby`. */
+const MODELS_LOCKED_ELSEWHERE_ID = 'agents-models-locked-elsewhere'
+
 function formatSkillsRepos(sources: { repo: string; ref: string }[]): string {
   return sources.map((source) => (source.ref === 'main' ? source.repo : `${source.repo}@${source.ref}`)).join('\n')
 }
@@ -104,6 +107,9 @@ function AgentsForm({
   // any other project (no Git, no remote, another host) still gets Accept and Send back.
   const activeProjectId = scope.projectId ?? projects.data?.bootProject
   const onGithub = projects.data?.projects.find((project) => project.id === activeProjectId)?.forge === 'github'
+  // The third state of Lock models: this project's switch is off, yet the environment or the
+  // workspace config still locks the models.
+  const lockedElsewhere = !(config.projectModelsLocked ?? false) && config.modelsLocked
 
   const save = useMutation({
     mutationFn: (patch: SetConfigInput) => putConfig(patch),
@@ -191,24 +197,45 @@ function AgentsForm({
         <label className="flex w-fit items-center gap-3">
           <Switch
             aria-label="Lock models"
+            aria-describedby={lockedElsewhere ? MODELS_LOCKED_ELSEWHERE_ID : undefined}
             data-slot="agents-models-locked"
             checked={config.projectModelsLocked ?? false}
             disabled={save.isPending}
             onCheckedChange={(checked) =>
               save.mutate(
                 { modelsLocked: checked },
-                { onSuccess: () => toast(checked ? 'Models locked' : 'Models unlocked for this project') },
+                {
+                  // The answer is the whole config, so the toast reports the lock that is
+                  // actually in force, not only the key this switch wrote (#809 NB-4).
+                  onSuccess: (saved) =>
+                    toast(
+                      checked
+                        ? 'Models locked'
+                        : saved.modelsLocked
+                          ? 'Project lock removed — models stay locked by the environment or the workspace config'
+                          : 'Models unlocked for this project',
+                    ),
+                },
               )
             }
           />
           <span data-slot="agents-models-locked-state" className="text-[13px] text-muted-foreground">
-            {(config.projectModelsLocked ?? false)
-              ? 'On'
-              : config.modelsLocked
-                ? 'Off — still locked by the environment or the workspace settings'
-                : 'Off (default)'}
+            {(config.projectModelsLocked ?? false) ? 'On' : lockedElsewhere ? 'Off — still locked elsewhere' : 'Off (default)'}
           </span>
         </label>
+        {/* The cockpit is told only that a lock holds, not which one, so the hint names both
+            and says where a person lifts each (#809 NB-1). */}
+        {lockedElsewhere ? (
+          <p
+            id={MODELS_LOCKED_ELSEWHERE_ID}
+            data-slot="agents-models-locked-elsewhere"
+            className="text-[13px] text-muted-foreground"
+          >
+            If xezar was started with XEZ_AGENT_MODELS_LOCKED=1, restart it without that variable to unlock.
+            If the workspace config file — ~/.xezar/config.json, or .xezar/workspace.json in single-project mode — sets
+            modelsLocked, remove that key from it.
+          </p>
+        ) : null}
       </SettingsField>
 
       <SettingsField

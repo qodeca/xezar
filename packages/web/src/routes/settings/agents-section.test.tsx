@@ -136,6 +136,9 @@ function serve({
     skillsRepos: [],
     ...config,
   }
+  // #677 C2: an outside lock (environment or workspace config) is whatever the fixture starts
+  // locked without the project key, and it persists across writes like the real one does.
+  const outsideLock = state.modelsLocked && !state.projectModelsLocked
   const json = (payload: unknown, status = 200) =>
     new Response(JSON.stringify(payload), { status, headers: { 'content-type': 'application/json' } })
   vi.stubGlobal(
@@ -172,10 +175,9 @@ function serve({
         }
         if (body?.modelsLocked !== undefined) {
           // #677 C2: only true is stored; false/null delete the key. The effective lock is the
-          // project key OR an outside lock the fixture marks by starting locked without it.
-          const outside = state.modelsLocked && !state.projectModelsLocked
+          // project key OR the outside lock.
           state.projectModelsLocked = body.modelsLocked === true
-          state.modelsLocked = outside || state.projectModelsLocked
+          state.modelsLocked = outsideLock || state.projectModelsLocked
         }
         if (body?.defaultModels !== undefined) {
           for (const [runner, model] of Object.entries(body.defaultModels as Record<string, string | null>)) {
@@ -424,6 +426,9 @@ describe('the agents form', () => {
     await waitFor(() => expect(puts()).toHaveLength(2))
     expect(puts()[1]?.body).toEqual({ modelsLocked: false })
     await waitFor(() => expect(screen.getByLabelText('Default model for claude').tagName).toBe('SELECT'))
+    await waitFor(() => expect(document.body.textContent).toContain('Models unlocked for this project'))
+    expect(screen.getByLabelText('Lock models').getAttribute('aria-describedby')).toBeNull()
+    expect(document.getElementById('agents-models-locked-elsewhere')).toBeNull()
   })
 
   it('lock models: says so when the environment or the workspace holds the lock the project switch cannot lift (#677 C2)', async () => {
@@ -434,9 +439,31 @@ describe('the agents form', () => {
     const toggle = screen.getByLabelText('Lock models')
     expect(toggle.getAttribute('aria-checked') ?? toggle.getAttribute('data-state')).toMatch(/false|unchecked/)
     expect(document.querySelector('[data-slot="agents-models-locked-state"]')?.textContent).toBe(
-      'Off — still locked by the environment or the workspace settings',
+      'Off — still locked elsewhere',
     )
+    // #809 NB-1 + NB-3: the hint names both locks and where each is lifted, and the switch is
+    // described by it, so assistive technology hears why "off" still means locked.
+    const hint = document.getElementById('agents-models-locked-elsewhere')
+    expect(hint?.textContent).toContain('restart it without that variable')
+    expect(hint?.textContent).toContain('XEZ_AGENT_MODELS_LOCKED=1')
+    expect(hint?.textContent).toContain('remove that key from it')
+    expect(toggle.getAttribute('aria-describedby')).toBe('agents-models-locked-elsewhere')
     expect(screen.getByLabelText('Default model for claude').tagName).toBe('OUTPUT')
+
+    // #809 NB-4: switching the project key on and off again leaves the outside lock in force,
+    // and the toast says so instead of "unlocked".
+    fireEvent.click(toggle)
+    await waitFor(() => expect(puts()).toHaveLength(1))
+    await waitFor(() => expect(document.querySelector('[data-slot="agents-models-locked-state"]')?.textContent).toBe('On'))
+    expect(screen.getByLabelText('Lock models').getAttribute('aria-describedby')).toBeNull()
+    fireEvent.click(screen.getByLabelText('Lock models'))
+    await waitFor(() => expect(puts()).toHaveLength(2))
+    await waitFor(() =>
+      expect(document.body.textContent).toContain(
+        'Project lock removed — models stay locked by the environment or the workspace config',
+      ),
+    )
+    expect(document.body.textContent).not.toContain('Models unlocked for this project')
   })
 
   it('review gate: the switch defaults OFF and PUTs the toggle (#489)', async () => {

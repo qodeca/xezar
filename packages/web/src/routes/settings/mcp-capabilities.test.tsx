@@ -184,6 +184,14 @@ describe('deriveProjectCapabilities (U-M06)', () => {
     expect(byId(list, 'github').label).toContain('merging')
   })
 
+  it('names the project switch first only when the project key holds the lock (#809 NB-2)', () => {
+    const list = deriveProjectCapabilities({ health: FULL, modelsLocked: true, projectModelsLocked: true })
+    expect(byId(list, 'model_selection')).toMatchObject({
+      status: 'read-only',
+      next: 'A person can turn off Lock models in this project’s Agents settings, or a leader can with project_config set_config.',
+    })
+  })
+
   it('names a reason AND the next legitimate action for every dependency that is missing', () => {
     const list = deriveProjectCapabilities({ health: DEGRADED, modelsLocked: true })
     // Only the two functions with no dependency stay usable.
@@ -194,6 +202,10 @@ describe('deriveProjectCapabilities (U-M06)', () => {
       expect(capability.next.length).toBeGreaterThan(10)
     }
     expect(byId(list, 'model_selection').status).toBe('read-only')
+    // #809 NB-2: with the project's own key off there is nothing to turn off here.
+    expect(byId(list, 'model_selection')).toMatchObject({
+      next: 'Only a person can lift it — by restarting xezar without XEZ_AGENT_MODELS_LOCKED, or by removing modelsLocked from the workspace config file.',
+    })
     expect(byId(list, 'create_task').status).toBe('unavailable')
     expect(byId(list, 'github').status).toBe('unavailable')
     expect(byId(list, 'agent_config_write').status).toBe('unavailable')
