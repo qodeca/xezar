@@ -54,12 +54,17 @@ const call = (args: Record<string, unknown>, ctx: Record<string, unknown>) =>
   leaderEventsTool.call(args as never, { ...base, ...ctx } as McpToolContext);
 
 describe('leader_events arguments for attach, stop and status (#450, T-1)', () => {
-  it('attach and stop need an operationId; status refuses one', () => {
-    // RED against: deleting the `door && operationId === undefined` or the status branch.
+  it('attach and stop need an operationId; status accepts one and drops it (#819 item 6)', () => {
+    // RED against: deleting the `door && operationId === undefined` branch, or the `overwrite` that
+    // drops a status key (it would then reach the door, which files a receipt for any key it sees).
     expect(issues({ action: 'attach' })).toEqual(['operationId: attach needs operationId']);
     expect(issues({ action: 'stop' })).toEqual(['operationId: stop needs operationId']);
-    expect(issues({ action: 'status', operationId: 'op-status-0001' })).toEqual(['operationId: operationId does not apply to status']);
+    expect(issues({ action: 'status', operationId: 'op-status-0001' })).toEqual([]);
+    expect(leaderEventsInputSchema.parse({ action: 'status', operationId: 'op-status-0001' })).toEqual({ action: 'status' });
+    // A malformed key is still an argument error: accepting a key is not accepting anything.
+    expect(issues({ action: 'status', operationId: 'short' })).not.toEqual([]);
     expect(issues({ action: 'attach', operationId: 'op-attach-0001' })).toEqual([]);
+    expect(leaderEventsInputSchema.parse({ action: 'attach', operationId: 'op-attach-0001' })).toEqual({ action: 'attach', operationId: 'op-attach-0001' });
     expect(issues({ action: 'status' })).toEqual([]);
   });
 
@@ -77,9 +82,12 @@ describe('leader_events arguments for attach, stop and status (#450, T-1)', () =
     expect(issues({ action: 'attach', operationId: 'op-attach-0002', client: 'pi' })).toEqual([expect.stringMatching(/Unrecognized key.*client/)]);
   });
 
-  it('keeps read and ack exactly as they were', () => {
+  it('keeps ack exactly as it was; read accepts an operationId and drops it (#819 item 6)', () => {
     expect(issues({ action: 'ack', operationId: 'op-ack-000001' })).toEqual(['cursor: ack needs cursor']);
-    expect(issues({ action: 'read', operationId: 'op-read-00001' })).toEqual(['operationId: operationId does not apply to read']);
+    expect(issues({ action: 'read', operationId: 'op-read-00001' })).toEqual([]);
+    expect(leaderEventsInputSchema.parse({ action: 'read', operationId: 'op-read-00001', limit: 5 })).toEqual({ action: 'read', limit: 5 });
+    // ack keeps its key: it is a write, and its receipt is what makes a resent ack one acknowledgement.
+    expect(leaderEventsInputSchema.parse({ action: 'ack', cursor: 'c', operationId: 'op-ack-000002' })).toMatchObject({ operationId: 'op-ack-000002' });
   });
 });
 

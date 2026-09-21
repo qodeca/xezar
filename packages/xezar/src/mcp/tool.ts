@@ -50,6 +50,30 @@ export interface McpTool<S extends z.ZodObject = z.ZodObject> {
     readonly openWorldHint?: boolean;
   };
   call(args: z.output<S>, ctx: McpToolContext): Promise<McpToolResult>;
+  /**
+   * #819 item 6: an answer that stands whatever else the call carries, read from the RAW arguments
+   * before the schema's verdict. `project_config` uses it for its refusals, so a refused action
+   * with an unknown key answers the refusal instead of an argument error. It must dispatch nothing
+   * and be pure: the service uses it only in place of an argument error, and a call whose arguments
+   * validate still reaches `call` through the door, which gives the same answer and records it.
+   * Absent on every other tool.
+   */
+  preflight?(rawArgs: unknown, ctx: McpToolContext): McpToolResult | undefined;
+  /**
+   * #819 item 6: which keys the action named in the RAW arguments takes, for the hint an unknown-key
+   * error ends with. Read from the tool's own argument table, never a second list. A tool without
+   * it is described by its schema's own shape keys; `undefined` means "no action I can name" and
+   * adds no hint.
+   */
+  acceptedKeys?(rawArgs: unknown): AcceptedKeys | undefined;
+}
+
+/** The keys one action (or one tool) takes, for the unknown-key hint (#819 item 6). */
+export interface AcceptedKeys {
+  /** `Accepted for <subject>` — an action name, or the tool's own name. */
+  readonly subject: string;
+  readonly required: readonly string[];
+  readonly optional: readonly string[];
 }
 
 /** Keeps a tool's argument type inferred from its own schema. */
@@ -65,6 +89,29 @@ export function textResult(text: string, structuredContent?: Record<string, unkn
 
 export function errorResult(text: string, structuredContent?: Record<string, unknown>): McpToolResult {
   return { ...textResult(text, structuredContent), isError: true };
+}
+
+/**
+ * The keys a tool takes, from its schema's own shape (#819 item 6): a key the schema accepts
+ * `undefined` for is optional, every other one required. Declaration order, so the hint reads like
+ * the published input schema.
+ */
+export function schemaKeys(tool: McpTool): AcceptedKeys {
+  const required: string[] = [];
+  const optional: string[] = [];
+  for (const [key, schema] of Object.entries(tool.inputSchema.shape)) {
+    ((schema as z.ZodType).safeParse(undefined).success ? optional : required).push(key);
+  }
+  return { subject: tool.name, required, optional };
+}
+
+/** `Accepted for set_provider_enabled: action, provider (required); refresh (optional).` */
+export function acceptedKeysSentence({ subject, required, optional }: AcceptedKeys): string {
+  const parts = [
+    ...(required.length > 0 ? [`${required.join(', ')} (required)`] : []),
+    ...(optional.length > 0 ? [`${optional.join(', ')} (optional)`] : []),
+  ];
+  return `Accepted for ${subject}: ${parts.length > 0 ? parts.join('; ') : 'no arguments'}.`;
 }
 
 /** The tool as `tools/list` sends it. */

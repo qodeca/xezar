@@ -90,7 +90,7 @@ const CURSOR_TEXT =
   'ack: required — the cursor a pushed message names, the nextCursor of a page, or the resumeCursor of a gap. Not accepted by attach, stop or status.';
 const OPERATION_ID_TEXT =
   'ack, attach and stop: required — a client-generated key for this call (8–128 chars). Use a new one for every call; reuse it only to repeat the same call after a lost answer. ' +
-  'read and status: not accepted, because they change nothing you would want replayed.';
+  'read and status: accepted and ignored — they change nothing you would want replayed, so no receipt is recorded and a repeat is answered afresh.';
 
 export const leaderEventsInputSchema = z
   .object({
@@ -108,22 +108,17 @@ export const leaderEventsInputSchema = z
       ctx.addIssue({ code: 'custom', path: ['limit'], message: 'limit does not apply to ack' });
     }
     // D-06 § 5.2 (#264). `ack` writes the leader's position, so it carries an operation id. `read`
-    // must NOT: at-least-once delivery means a repeated read deliberately returns the same rows
-    // again, and a receipt over it would answer the second read with the receipt instead.
+    // must not KEEP one: at-least-once delivery means a repeated read deliberately returns the same
+    // rows again, and a receipt over it would answer the second read with the receipt instead. It is
+    // dropped by the `overwrite` below rather than refused (#819 item 6).
     if (args.action === 'ack' && args.operationId === undefined) {
       ctx.addIssue({ code: 'custom', path: ['operationId'], message: 'ack needs operationId' });
     }
-    if (args.action === 'read' && args.operationId !== undefined) {
-      ctx.addIssue({ code: 'custom', path: ['operationId'], message: 'operationId does not apply to read' });
-    }
     // #450. Attach and stop change who events are pushed to, so they carry an operation id; status
-    // changes nothing. None of the three reads a cursor or a page size.
+    // changes nothing, so one it carries is dropped below. None of the three reads a cursor or a page size.
     const door = args.action === 'attach' || args.action === 'stop';
     if (door && args.operationId === undefined) {
       ctx.addIssue({ code: 'custom', path: ['operationId'], message: `${args.action} needs operationId` });
-    }
-    if (args.action === 'status' && args.operationId !== undefined) {
-      ctx.addIssue({ code: 'custom', path: ['operationId'], message: 'operationId does not apply to status' });
     }
     if ((door || args.action === 'status') && args.cursor !== undefined) {
       ctx.addIssue({ code: 'custom', path: ['cursor'], message: `cursor does not apply to ${args.action}` });
@@ -131,6 +126,17 @@ export const leaderEventsInputSchema = z
     if ((door || args.action === 'status') && args.limit !== undefined) {
       ctx.addIssue({ code: 'custom', path: ['limit'], message: `limit does not apply to ${args.action}` });
     }
+  })
+  // #819 item 6: `read` and `status` ACCEPT an operationId and drop it here, before anything sees the
+  // parsed arguments. A leader that sends one on every call is not wrong enough to fail, but the key
+  // must not survive: the door files a receipt for any call that carries one, and a receipt over a
+  // read would answer the next identical read with the receipt instead of the rows — the break
+  // at-least-once delivery exists to prevent (D-06 § 5.2, #264). `overwrite` keeps the schema a
+  // plain object, so the published input schema is unchanged.
+  .overwrite((args) => {
+    if ((args.action !== 'read' && args.action !== 'status') || args.operationId === undefined) return args;
+    const { operationId: _ignored, ...rest } = args;
+    return rest;
   });
 export type LeaderEventsInput = z.output<typeof leaderEventsInputSchema>;
 
