@@ -442,7 +442,10 @@ rows dated 2026-09-21 and the leader rules are in [leader-guide.md](leader-guide
 
 - **0.17.0 shipped.** 0.17.0 was released on 2026-09-21 13:55 CEST (npm `latest` = 0.17.0, tag
   `v0.17.0` → `114aa348`, bump merge `ccff8a2f`) by release run `b477bc90` on the DeepSeek lane in
-  state 2, with 18 of 18 `release-0.17.0` issues closed.
+  state 2, with all 18 issues of the fixed scope the owner set on 2026-09-20 06:55 closed. That scope
+  is not the label's total: 19 `release-0.17.0` issues were open on the morning of 2026-09-21, and
+  #669 was closed the same day as won't-do on the owner's "No, keep it strict". The label as a whole
+  holds 59 issues, all closed (`gh issue list --label release-0.17.0 --state all`, read 2026-09-21).
 - **Every agent turn in every step ends with the marker.** `XEZ:DONE` is the very last line of every
   turn of every step, not only of the last step of a run. The base "Every model" row already carried
   the marker, so what is new is that it applies to every turn of every step. The rule it produced is
