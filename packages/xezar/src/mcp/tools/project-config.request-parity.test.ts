@@ -68,6 +68,8 @@ describe('every MCP write action accepts what its route accepts', () => {
         'liveTitleUpdates',
         'maxParallel',
         'memoryLimitMb',
+        // #677 C2 — through BOTH doors, owner 2026-09-20: "Both doors, like every key".
+        'modelsLocked',
         'namerModel',
         'plannerModel',
         'reviewGate',

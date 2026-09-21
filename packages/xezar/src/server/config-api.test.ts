@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Hono } from 'hono';
@@ -100,6 +100,7 @@ describe('the config API', () => {
       systemPrompt: null,
       defaultModels: {},
       modelsLocked: false,
+      projectModelsLocked: false,
       maxParallel: 2,
       memoryLimitMb: null,
       worktreeRetention: 10,
@@ -170,6 +171,60 @@ describe('the config API', () => {
 
     expect((await getBody()).modelsLocked).toBe(true);
     expect((await put({ defaultModels: { claude: 'opus' } })).status).toBe(409);
+  });
+
+  // #677 C2: the project's own key is written through PUT /config (and so through the MCP's
+  // `set_config`, which is this route). Owner, 2026-09-20: "Both doors, like every key".
+  it('PUT modelsLocked true locks the NEXT write without a restart (#677 C2)', async () => {
+    expect((await put({ defaultModels: { claude: 'opus' } })).status).toBe(200);
+
+    const res = await put({ modelsLocked: true });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ modelsLocked: true, projectModelsLocked: true });
+    expect(rawFile().modelsLocked).toBe(true);
+
+    // Same app, same process: the very next model write is refused.
+    const refused = await put({ defaultModels: { claude: 'sonnet' } });
+    expect(refused.status).toBe(409);
+    expect(rawFile().defaultModels).toEqual({ claude: 'opus' });
+
+    // And clearing it lifts the lock just as live.
+    expect((await put({ modelsLocked: false })).status).toBe(200);
+    expect((await put({ defaultModels: { claude: 'sonnet' } })).status).toBe(200);
+  });
+
+  it('PUT modelsLocked false or null DELETES the key; the environment still locks (#677 C2)', async () => {
+    writeFileSync(configPath(), JSON.stringify({ modelsLocked: true, systemPrompt: 'keep me' }), 'utf8');
+
+    expect((await put({ modelsLocked: false })).status).toBe(200);
+    expect(rawFile()).toEqual({ systemPrompt: 'keep me' });
+    expect(await getBody()).toMatchObject({ modelsLocked: false, projectModelsLocked: false });
+
+    writeFileSync(configPath(), JSON.stringify({ modelsLocked: true }), 'utf8');
+    expect((await put({ modelsLocked: null })).status).toBe(200);
+    expect('modelsLocked' in rawFile()).toBe(false);
+
+    // With the key gone the environment decides — and it still locks.
+    process.env.XEZ_AGENT_MODELS_LOCKED = '1';
+    const body = await getBody();
+    expect(body).toMatchObject({ modelsLocked: true, projectModelsLocked: false });
+    expect((await put({ defaultModels: { claude: 'opus' } })).status).toBe(409);
+    // Clearing the project key again cannot disarm the environment's lock.
+    expect((await put({ modelsLocked: false })).status).toBe(200);
+    expect((await put({ defaultModels: { claude: 'opus' } })).status).toBe(409);
+  });
+
+  it('a workspace-config lock is reported apart from the project key (#677 C2)', async () => {
+    writeFileSync(join(homeRoot, '.xezar', 'config.json'), JSON.stringify({ modelsLocked: true }), 'utf8');
+    expect(await getBody()).toMatchObject({ modelsLocked: true, projectModelsLocked: false });
+    expect((await put({ modelsLocked: false })).status).toBe(200);
+    expect((await put({ defaultModels: { claude: 'opus' } })).status).toBe(409);
+  });
+
+  it('PUT modelsLocked refuses a non-boolean (#677 C2)', async () => {
+    const res = await put({ modelsLocked: 'yes' });
+    expect(res.status).toBe(400);
+    expect(existsSync(configPath())).toBe(false);
   });
 
   it('PUT systemPrompt trims, persists, and round-trips through GET', async () => {
@@ -261,6 +316,7 @@ describe('the config API', () => {
       systemPrompt: 'Be brief.',
       defaultModels: { claude: 'opus' },
       modelsLocked: false,
+      projectModelsLocked: false,
       maxParallel: 5,
       memoryLimitMb: null,
       worktreeRetention: 10,

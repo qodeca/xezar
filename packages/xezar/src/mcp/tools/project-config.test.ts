@@ -446,6 +446,34 @@ describe('project_config: project writes (acceptance)', () => {
     expect((await cockpit('/api/v1/workspace/config')).body.resources).toEqual(workspaceBefore.resources);
   });
 
+  // #677 C2 — owner 2026-09-20: modelsLocked = "Both doors, like every key" (the self-disarm hole
+  // is accepted). The MCP writes the project's OWN key through the cockpit's route.
+  it('locks and clears this project’s modelsLocked through set_config, live, and leaves project B alone', async () => {
+    const bBefore = (await cockpit('/api/v1/p/proj-b/config')).body;
+    const aConfig = join(ws.roots.a, '.xezar', 'config.json');
+
+    expect(value(await invoke({ action: 'set_config', config: { modelsLocked: true } }))).toMatchObject({
+      modelsLocked: true,
+      projectModelsLocked: true,
+    });
+    expect(JSON.parse(readFileSync(aConfig, 'utf8')).modelsLocked).toBe(true);
+    // The next model write — through either door — is refused without a restart.
+    const refused = await invoke({ action: 'set_config', config: { defaultModels: { claude: 'opus' } } });
+    expect(refused.result.isError).toBe(true);
+    expect(refused.structured.status).toBe(409);
+    expect((await cockpit('/api/v1/p/proj-b/config')).body).toEqual(bBefore);
+
+    // false deletes the key rather than storing false.
+    expect(value(await invoke({ action: 'set_config', config: { modelsLocked: false } }))).toMatchObject({
+      modelsLocked: false,
+      projectModelsLocked: false,
+    });
+    expect('modelsLocked' in JSON.parse(readFileSync(aConfig, 'utf8'))).toBe(false);
+    expect(value(await invoke({ action: 'set_config', config: { defaultModels: { claude: 'opus' } } }))).toMatchObject({
+      defaultModels: { claude: 'opus' },
+    });
+  });
+
   it('refuses the inert per-repo maxParallel instead of reporting a change that never happens', async () => {
     const before = readFileSync(join(ws.roots.a, '.xezar', 'config.json'), 'utf8');
     const spy = spyService();

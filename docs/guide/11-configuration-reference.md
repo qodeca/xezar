@@ -54,7 +54,7 @@ The [project schema and resolver](../../packages/xezar/src/config.ts) define the
 | `baseBranch` | Non-empty trimmed branch name for task worktree bases and draft PR targets. When omitted, worktree creation uses the current branch. |
 | `systemPrompt` | Optional trimmed text, 1–20,000 characters, supplying extra instructions for agent steps. |
 | `defaultModels` | Optional object with `claude`, `codex`, `opencode`, `pi` model strings, each 1–200 trimmed characters. Project values override machine `agentDefaults.models` per backend; unset means no preset. |
-| `modelsLocked` | `true` makes native agent model settings authoritative. It combines with the global key and env switch as described below; `false` cannot cancel another enabled lock. |
+| `modelsLocked` | `true` makes native agent model settings authoritative. It combines with the global key and env switch as described below; `false` cannot cancel another enabled lock. Settings → Agents → **Lock models** and the MCP `project_config` action `set_config` write it; turning it off deletes the key rather than storing `false`. A change applies to the next write and the next task without a restart. |
 
 For example, to retain five finished worktrees and enable the non-autonomous review gate:
 

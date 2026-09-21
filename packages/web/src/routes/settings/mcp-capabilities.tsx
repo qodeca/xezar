@@ -65,6 +65,8 @@ export interface FailingCheck {
 export interface CapabilityFacts {
   health: Pick<HealthResponse, 'repo' | 'checks' | 'forge' | 'capabilities'>
   modelsLocked: boolean
+  /** This project's own `modelsLocked` key; absent reads as off (a server that predates it). */
+  projectModelsLocked?: boolean
 }
 
 const STATUS_TEXT: Record<McpCapability['status'], string> = {
@@ -124,7 +126,7 @@ const NO_GIT = {
  * The project capabilities, derived from server facts only (§8: never from the presence of a
  * file). Pure, so every one of the three forms can be pinned by a test.
  */
-export function deriveProjectCapabilities({ health, modelsLocked }: CapabilityFacts): McpCapability[] {
+export function deriveProjectCapabilities({ health, modelsLocked, projectModelsLocked }: CapabilityFacts): McpCapability[] {
   const caps = health.capabilities
   const git = health.repo !== null
   const runners = health.checks.filter((check) => RUNNER_CHECKS.has(check.name))
@@ -182,7 +184,13 @@ export function deriveProjectCapabilities({ health, modelsLocked }: CapabilityFa
           label: 'Choose a task model',
           status: 'read-only',
           reason: 'Models are locked: each coding agent uses the model from its own settings.',
-          next: 'Only a person can change that, with XEZ_AGENT_MODELS_LOCKED or modelsLocked in xezar’s config.',
+          // #809 NB-2: only the project's own key is liftable here, so the first instruction
+          // depends on whether that key is what holds the lock. NB-8: with the project key on,
+          // the cockpit cannot tell whether the environment or the workspace config ALSO holds,
+          // so the sentence says turning the switch off lifts the project lock only.
+          next: projectModelsLocked
+            ? 'A person can turn off Lock models in this project’s Agents settings, or a leader can with project_config set_config — that lifts the project lock only; if XEZ_AGENT_MODELS_LOCKED or the workspace config file also locks models, they stay locked.'
+            : 'Only a person can lift it — by restarting xezar without XEZ_AGENT_MODELS_LOCKED, or by removing modelsLocked from the workspace config file.',
         }
       : available('model_selection', 'Choose a task model'),
     gate('open_in_app', 'Open the project or a task in a desktop app', caps.localHandoff ? null : HOSTED),
@@ -466,7 +474,11 @@ export function McpCapabilities() {
 
   const capabilities =
     health.data && config.data
-      ? deriveProjectCapabilities({ health: health.data, modelsLocked: config.data.modelsLocked })
+      ? deriveProjectCapabilities({
+          health: health.data,
+          modelsLocked: config.data.modelsLocked,
+          projectModelsLocked: config.data.projectModelsLocked ?? false,
+        })
       : null
   const constraints = workspace.data
     ? deriveSharedConstraints(workspace.data, {

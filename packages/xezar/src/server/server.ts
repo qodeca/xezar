@@ -5789,6 +5789,9 @@ export function createApp(deps: ServerDeps) {
         ? nativeModels
         : { ...nativeModels, ...(config.defaultModels ?? {}) },
       modelsLocked,
+      // #677 C2: the project file's own key, so a control can show what IT holds apart from a
+      // lock the environment or the workspace config imposes.
+      projectModelsLocked: config.modelsLocked === true,
       maxParallel: config.maxParallel,
       memoryLimitMb: config.memoryLimitMb ?? null,
       // Count-based worktree retention (#483): keep the last N finished worktrees
@@ -5850,6 +5853,14 @@ export function createApp(deps: ServerDeps) {
         } else {
           raw.systemPrompt = parsed.data.systemPrompt;
         }
+      }
+      if (parsed.data.modelsLocked !== undefined) {
+        // #677 C2: only `true` is stored. `false` and `null` delete the key rather than writing
+        // `false`, so the file never claims an opinion it does not have and
+        // `XEZ_AGENT_MODELS_LOCKED` / the workspace config still decide. No cache to refresh:
+        // `agentModelsLocked` reads this file on every check.
+        if (parsed.data.modelsLocked === true) raw.modelsLocked = true;
+        else delete raw.modelsLocked;
       }
       if (parsed.data.maxParallel !== undefined) raw.maxParallel = parsed.data.maxParallel;
       if (parsed.data.worktreeRetention !== undefined) {

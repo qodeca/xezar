@@ -23,7 +23,7 @@ If the executable is outside the server's `PATH`, export the matching variable b
 
 Open project **Settings → Agents** to select the default agent and per-agent model presets. You can override the choice for a task, or set `runner` and `model` in a workflow step. A step's model takes precedence over the task's model. Leaving a model on **auto (default)** lets the backend choose; OpenCode model IDs use `provider/model`.
 
-To lock models to native agent settings, set `XEZ_AGENT_MODELS_LOCKED=1` or `"modelsLocked": true` in global `~/.xezar/config.json` or project `.xezar/config.json`. Project **Settings → Agents** shows the locked model as read-only; it has no lock switch. While locked, requests that set a model override are refused with HTTP 409. The Agents section also has a shared system prompt and the planner and namer model controls. Those two background-model controls apply to Claude; their defaults are `sonnet` and `haiku` respectively. For Claude only, `ANTHROPIC_MODEL` supplies the native default when no cockpit preset is saved and the task model is left on **auto (default)**. A saved cockpit preset is layered over that default and the selected model is passed as `--model`.
+To lock models to native agent settings, set `XEZ_AGENT_MODELS_LOCKED=1` or `"modelsLocked": true` in global `~/.xezar/config.json` or project `.xezar/config.json`. Project **Settings → Agents → Lock models** turns the project key on and off (off deletes it); the locked model then shows read-only. The switch cannot lift a lock set by the environment variable or the global key, and says so. While locked, requests that set a model override are refused with HTTP 409. The Agents section also has a shared system prompt and the planner and namer model controls. Those two background-model controls apply to Claude; their defaults are `sonnet` and `haiku` respectively. For Claude only, `ANTHROPIC_MODEL` supplies the native default when no cockpit preset is saved and the task model is left on **auto (default)**. A saved cockpit preset is layered over that default and the selected model is passed as `--model`.
 
 ![Project Agents settings](../screenshots/0.16.0/settings-agents-dark-1280.png)
 
@@ -107,7 +107,7 @@ If a task fails before the agent starts with a temporary-directory error, fix th
 ## Related settings / env / config
 
 - Project **Agents**: `defaultRunner`, `defaultModels`, `systemPrompt`, `plannerModel`, `namerModel` in `.xezar/config.json`.
-- Model lock: `XEZ_AGENT_MODELS_LOCKED=1` or `modelsLocked: true` in global or project configuration; shown read-only in **Agents**.
+- Model lock: `XEZ_AGENT_MODELS_LOCKED=1` or `modelsLocked: true` in global or project configuration; the project key has a **Lock models** switch in **Agents**.
 - Global **Agent accounts** and **Resources**: account selections, usage-limit auto-resume and environment passthrough.
 - Claude Code account homes: `model`, `effortLevel` and `modelSettings`, plus the context-trimming keys above, live in each account's own `settings.json`.
 - `CLAUDE_CODE_EFFORT_LEVEL` is forwarded to Claude Code and outranks the effort an account saved; use it as a machine-wide override, not a default.

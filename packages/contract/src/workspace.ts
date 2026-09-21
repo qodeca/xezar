@@ -466,8 +466,14 @@ export const configResponseSchema = z.object({
   defaultRunner: runnerSchema,
   systemPrompt: z.string().nullable(),
   defaultModels: runnerModelsSchema,
-  /** True when native coding-agent settings are authoritative and model picks are read-only. */
+  /** True when native coding-agent settings are authoritative and model picks are read-only.
+   *  The EFFECTIVE answer: `XEZ_AGENT_MODELS_LOCKED=1`, the workspace config or this project's
+   *  own file can each turn it on. */
   modelsLocked: z.boolean(),
+  /** This project's own `modelsLocked` key (#677 C2) — the one half of the lock a write can
+   *  change. `modelsLocked` true with this false means the environment or the workspace config
+   *  holds the lock, and clearing the project key will not lift it. */
+  projectModelsLocked: z.boolean(),
   /** How many tasks run at once (1–16). */
   maxParallel: z.number(),
   /** Per-task memory ceiling in MiB (whole process tree); null = no limit. */
@@ -523,6 +529,10 @@ export const setConfigInputSchema = z.object({
       pi: z.string().trim().max(200).nullable().optional(),
     })
     .optional(),
+  /** #677 C2: `true` stores the project's lock; `false` and `null` DELETE the key, so
+   *  `XEZ_AGENT_MODELS_LOCKED` and the workspace config still decide. The lock is read fresh
+   *  on every check, so a change applies to the next write and the next task without a restart. */
+  modelsLocked: z.boolean().nullable().optional(),
   maxParallel: z.number().int().min(1).max(16).optional(),
   /** null or 0 clears the ceiling back to "no limit". */
   memoryLimitMb: z.number().int().min(0).max(1_048_576).nullable().optional(),
