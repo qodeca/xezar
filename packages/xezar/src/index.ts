@@ -94,6 +94,7 @@ import {
   repeatedImportLine,
   resolveImportDecision,
   runFirstRunImport,
+  skippedDefaultLines,
 } from './workspace/import-global.ts';
 import {
   readGlobalImportState,
@@ -379,6 +380,10 @@ async function main(): Promise<void> {
           ? repeatedImportLine(stateLayout, readGlobalImportState(stateLayout))
           : firstRunImportLine(outcome, stateLayout);
       if (importLine !== null) console.log(importLine);
+      // A default the import left out is named on its own line (#824), so a program reading this
+      // output can tell "a default was skipped" from "there was nothing to skip". It is the same
+      // line the `accounts import-global` door prints, from the same helper.
+      for (const line of skippedDefaultLines(outcome)) console.log(line);
       // What happened is remembered per machine (#819 item 1d), so "declined", "nobody was asked"
       // and "imported" stop being the same disk state. Best-effort by contract: a launch that
       // cannot record a report still starts.

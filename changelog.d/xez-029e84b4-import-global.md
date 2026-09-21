@@ -6,7 +6,9 @@
   input, and giving both refuses the start before anything is read or written. `xezar accounts
   import-global` copies your agent accounts into a project that already owns its setup: it merges
   accounts only, never replaces one the project already has, never writes a default account that
-  names no account, and adds nothing on a second run. What this machine decided is remembered in the
+  names no account, and adds nothing on a second run. A default naming no account is skipped and
+  named on the first-run `--import-global` flag too, so both doors give the same guarantee. What
+  this machine decided is remembered in the
   ignored `<project>/.local/xezar/machine-state.json`, so "declined", "nobody was asked" and
   "imported" are no longer the same state on disk. Without a flag the prompt is exactly what it was.
   (#819)

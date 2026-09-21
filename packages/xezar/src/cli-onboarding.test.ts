@@ -118,6 +118,25 @@ describe('CLI onboarding (#819)', () => {
     );
 
     it(
+      'named break `flag-door-copies-a-dangling-default`: --import-global drops a default naming no account, and names the handle (P2-AC8, P2-AC9)',
+      () => {
+        const run = cli('init', '--single-project', '--import-global');
+
+        expect(run.status).toBe(0);
+        // The fixture's global file carries `defaults: { claude: 'work', codex: 'gone-org' }` and no
+        // `gone-org` account: the flag door must not copy that id into the project file.
+        const stored = JSON.parse(readFileSync(stateFile('agent-accounts.json'), 'utf8')) as {
+          defaults: Record<string, string>;
+        };
+        expect(stored.defaults).toEqual({ claude: 'work' });
+        // A program reading this output cannot tell "a default was skipped" from "there was
+        // nothing to skip" unless the handle is named.
+        expect(run.stdout).toContain('skipped a default naming gone-org, which no account matches');
+      },
+      30_000,
+    );
+
+    it(
       'a bootstrap may pass --import-global on every start: the second one is quiet and changes nothing',
       () => {
         expect(cli('init', '--single-project', '--import-global').status).toBe(0);
@@ -145,8 +164,9 @@ describe('CLI onboarding (#819)', () => {
         const first = cli('accounts', 'import-global', '--single-project');
         expect(first.status).toBe(0);
         expect(first.stdout).toContain('+ account work (claude)');
-        // A default naming an account nobody has is skipped rather than copied.
-        expect(first.stdout).toContain('skipped default account for codex → gone-org');
+        // A default naming an account nobody has is skipped rather than copied, and named in the
+        // one line both doors print (#824).
+        expect(first.stdout).toContain('skipped a default naming gone-org, which no account matches');
         // Ids and providers only: no label that looks like an identity, no config folder.
         expect(first.stdout).not.toContain('a.person@example.com');
         expect(first.stdout).not.toContain('/Users/a.person/.claude-work');

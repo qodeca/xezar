@@ -88,6 +88,12 @@ export interface ImportedFile {
   /** Absolute path of the project file. */
   readonly to: string;
   readonly outcome: 'copied' | 'absent' | 'kept-existing' | 'unreadable' | 'refused-symlink';
+  /**
+   * Account handles this copy dropped as a dangling default — a `defaults.<provider>` naming an id
+   * with no account record (#824). Only the accounts file can carry these, and the field is absent
+   * (rather than empty) on every copy that dropped none, so an existing shape is unchanged.
+   */
+  readonly skippedDefaults?: readonly string[];
 }
 
 /**
@@ -225,10 +231,14 @@ export function importGlobalSetup(layout: StateLayout, env: NodeJS.ProcessEnv = 
   if (layout.mode !== 'project' || layout.projectRoot === null) return [];
   const global = globalSetup(env);
   const projectRoot = layout.projectRoot;
-  const plan: Array<{ from: string; to: string; transform: (value: Record<string, unknown>) => Record<string, unknown> }> = [
+  const plan: Array<{
+    from: string;
+    to: string;
+    transform: (value: Record<string, unknown>) => { readonly store: Record<string, unknown>; readonly skippedDefaults: readonly string[] };
+  }> = [
     { from: global.accountsPath, to: layout.accountsPath, transform: (value) => accountsForProject(value, projectRoot) },
-    { from: global.uiStatePath, to: layout.uiStatePath, transform: (value) => value },
-    { from: global.workspacePath, to: layout.workspacePath, transform: withoutMachineScopedKeys },
+    { from: global.uiStatePath, to: layout.uiStatePath, transform: (value) => ({ store: value, skippedDefaults: [] }) },
+    { from: global.workspacePath, to: layout.workspacePath, transform: (value) => ({ store: withoutMachineScopedKeys(value), skippedDefaults: [] }) },
   ];
   const dirRefused = projectStateDirRefusal(layout) !== null;
   return plan.map(({ from, to, transform }) => {
@@ -236,8 +246,11 @@ export function importGlobalSetup(layout: StateLayout, env: NodeJS.ProcessEnv = 
     if (existsSync(to)) return { from, to, outcome: 'kept-existing' };
     const value = readJsonObject(from);
     if (value === 'absent' || value === 'unreadable') return { from, to, outcome: value };
-    atomicWriteJsonSync(to, transform(value));
-    return { from, to, outcome: 'copied' };
+    const { store, skippedDefaults } = transform(value);
+    atomicWriteJsonSync(to, store);
+    return skippedDefaults.length > 0
+      ? { from, to, outcome: 'copied', skippedDefaults }
+      : { from, to, outcome: 'copied' };
   });
 }
 
@@ -258,7 +271,7 @@ export interface AccountImportReport {
   readonly kept: readonly ImportedAccount[];
   /** `<provider> → <account id>` per default account taken over. */
   readonly defaults: readonly string[];
-  /** `<provider> → <account id>` per default the global file names with no account to back it. */
+  /** Account handles the global file names as a default with no account record to back them. */
   readonly danglingSkipped: readonly string[];
   /** Whether this folder's own per-repo selection was taken over. */
   readonly selectionAdded: boolean;
@@ -320,21 +333,17 @@ export function importGlobalAccounts(layout: StateLayout, env: NodeJS.ProcessEnv
     accounts.push(row);
     added.push(named);
   }
-  // Resolves against the MERGED set, so a default whose account arrives in this same run is kept.
-  const resolves = (id: string): boolean => id === DEFAULT_AGENT_ACCOUNT_ID || ids.has(id);
-
+  // The rule resolves against the MERGED set, so a default whose account arrives in this same run
+  // is kept rather than reported as dangling.
   const defaults = { ...stringMap(base.defaults) };
-  const defaultsTaken: string[] = [];
-  const danglingSkipped: string[] = [];
-  for (const [provider, id] of Object.entries(stringMap(global.defaults))) {
-    if (defaults[provider] !== undefined) continue;
-    if (!resolves(id)) {
-      danglingSkipped.push(`${provider} → ${id}`);
-      continue;
-    }
-    defaults[provider] = id;
-    defaultsTaken.push(`${provider} → ${id}`);
-  }
+  // A provider the project already answers is left alone; everything else goes through the SAME
+  // dangling-default rule the first-run flag door uses (#824), so the two doors cannot disagree.
+  const candidates = Object.fromEntries(
+    Object.entries(stringMap(global.defaults)).filter(([provider]) => defaults[provider] === undefined),
+  );
+  const { kept: keptDefaults, skipped: danglingSkipped } = resolvableDefaults(candidates, ids);
+  Object.assign(defaults, keptDefaults);
+  const defaultsTaken = Object.entries(keptDefaults).map(([provider, id]) => `${provider} → ${id}`);
 
   const selections = { ...objectMap(base.selections) };
   const projectRoot = layout.projectRoot;
@@ -348,7 +357,7 @@ export function importGlobalAccounts(layout: StateLayout, env: NodeJS.ProcessEnv
   let selectionAdded = false;
   if (globalKey !== undefined && mineIsWanted) {
     const mine = Object.fromEntries(
-      Object.entries(stringMap(globalSelections[globalKey])).filter(([, id]) => resolves(id)),
+      Object.entries(stringMap(globalSelections[globalKey])).filter(([, id]) => resolvesAccount(id, ids)),
     );
     selectionAdded = Object.keys(mine).length > 0;
     if (selectionAdded) selections[globalKey] = mine;
@@ -393,13 +402,70 @@ export function accountImportLines(report: AccountImportReport, layout: StateLay
         ...report.added.map((entry) => `  + account ${entry.id} (${entry.provider})`),
         ...report.kept.map((entry) => `  = account ${entry.id} (${entry.provider}) already here, left untouched`),
         ...report.defaults.map((entry) => `  + default account for ${entry}`),
-        ...report.danglingSkipped.map(
-          (entry) => `  ! skipped default account for ${entry} — no such account, so nothing would use it`,
-        ),
+        ...report.danglingSkipped.map(danglingDefaultLine),
         ...(report.selectionAdded ? ['  + this folder\'s own account choice'] : []),
         `  ${report.added.length} account(s) added, ${report.kept.length} left untouched`,
       ];
   }
+}
+
+/**
+ * The `defaults` entries a copy may keep, and the account handles it must drop.
+ *
+ * A `defaults.<provider>` naming an id with no account record resolves silently to the built-in
+ * login at run time, so it REPORTS an account no run uses — the confusion #819 item 2 describes,
+ * and a verbatim copy of `defaults` is one of its three sources. The reserved built-in id resolves
+ * by definition.
+ *
+ * ONE implementation, called by BOTH doors (#824): the first-run flag door ({@link importGlobalSetup})
+ * and the later `accounts import-global` command ({@link importGlobalAccounts}). Two copies of this
+ * rule is exactly how the flag door came to write a dangling default the command had already
+ * learned to drop.
+ */
+function resolvableDefaults(
+  defaults: Record<string, string>,
+  ids: ReadonlySet<string>,
+): { readonly kept: Record<string, string>; readonly skipped: readonly string[] } {
+  const kept: Record<string, string> = {};
+  const skipped: string[] = [];
+  for (const [provider, id] of Object.entries(defaults)) {
+    if (resolvesAccount(id, ids)) kept[provider] = id;
+    else skipped.push(id);
+  }
+  return { kept, skipped };
+}
+
+/**
+ * Does an id name an account the store holds? The reserved built-in id resolves by definition — it
+ * is the login xezar falls back to when a provider has no account — so it is never dangling.
+ */
+function resolvesAccount(id: string, ids: ReadonlySet<string>): boolean {
+  return id === DEFAULT_AGENT_ACCOUNT_ID || ids.has(id);
+}
+
+/** The account handles a raw accounts store holds. */
+function accountIds(store: Record<string, unknown>): Set<string> {
+  return new Set(accountRows(store).map((row) => row.id));
+}
+
+/**
+ * The one line a skipped default gets, wherever it was skipped. Both doors print it from here, so
+ * the flag and the command cannot drift into two spellings of the same fact (#824). It names the
+ * account handle and nothing else: a label is very often an identity and a `configDir` is a path
+ * on this machine, and neither is needed to understand what was left out.
+ */
+export function danglingDefaultLine(handle: string): string {
+  return `  ! skipped a default naming ${handle}, which no account matches`;
+}
+
+/**
+ * The lines the boot prints for every default the first-run import left out — one per handle, in
+ * the order the global file listed them. The same {@link danglingDefaultLine} the
+ * `accounts import-global` door prints, so both doors say the same thing.
+ */
+export function skippedDefaultLines(outcome: FirstRunOutcome): string[] {
+  if (outcome.kind !== 'imported') return [];
+  return outcome.files.flatMap((file) => file.skippedDefaults ?? []).map(danglingDefaultLine);
 }
 
 /** Does this project already carry agent accounts of its own? */
@@ -436,17 +502,30 @@ function globalSetup(env: NodeJS.ProcessEnv): StateLayout {
 }
 
 /**
- * The accounts store with only this folder's per-repo selection kept. Looked up on the literal
- * spelling first and the realpath'd one second, as `selectionFor` does: stored keys are
- * realpath'd, and a non-git folder reached through a symlink would otherwise lose its own
+ * The accounts store with only this folder's per-repo selection kept, and every `defaults` entry
+ * whose id resolves dropped — the flag door's half of the one dangling-default rule (#824). Looked
+ * up on the literal spelling first and the realpath'd one second, as `selectionFor` does: stored
+ * keys are realpath'd, and a non-git folder reached through a symlink would otherwise lose its own
  * selection (#612 review n1). The key is kept as stored, so `selectionFor` finds it the same way.
+ *
+ * The accounts are copied whole, so the ids a default may name are the store's own. `defaults` is
+ * rewritten ONLY when something was dropped, so a file with no dangling entry is copied verbatim,
+ * key order included.
  */
-function accountsForProject(store: Record<string, unknown>, projectRoot: string): Record<string, unknown> {
+function accountsForProject(
+  store: Record<string, unknown>,
+  projectRoot: string,
+): { readonly store: Record<string, unknown>; readonly skippedDefaults: readonly string[] } {
+  const { kept, skipped } = resolvableDefaults(stringMap(store.defaults), accountIds(store));
   const selections = store.selections;
-  if (selections === null || typeof selections !== 'object' || Array.isArray(selections)) return store;
+  if (selections === null || typeof selections !== 'object' || Array.isArray(selections)) {
+    return { store: skipped.length > 0 ? { ...store, defaults: kept } : store, skippedDefaults: skipped };
+  }
   const byRoot = selections as Record<string, unknown>;
   const key = [projectRoot, realRoot(projectRoot)].find((candidate) => byRoot[candidate] !== undefined);
-  return { ...store, selections: key === undefined ? {} : { [key]: byRoot[key] } };
+  const narrowed: Record<string, unknown> = { ...store, selections: key === undefined ? {} : { [key]: byRoot[key] } };
+  if (skipped.length > 0) narrowed.defaults = kept;
+  return { store: narrowed, skippedDefaults: skipped };
 }
 
 function realRoot(root: string): string {

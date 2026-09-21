@@ -381,6 +381,24 @@ describe('import from the global setup (#600 FR-4)', () => {
         expect(globalImportStateOf(outcome)).toBe('imported');
       });
 
+      it('--import-global drops a default that names no account — break: the flag door copies `defaults` verbatim, so a dangling id reaches the project file (P2-AC8)', async () => {
+        writeFileSync(
+          join(home, 'agent-accounts.json'),
+          `${JSON.stringify({
+            accounts: [{ id: 'work', provider: 'claude', configDir: '~/.claude-work' }],
+            // `codex` names an account this file does not hold — the exact shape #819 item 2 reports.
+            defaults: { claude: 'work', codex: 'gone-org' },
+          })}\n`,
+        );
+
+        const outcome = await runFirstRunImport(layout, neverAsk, env, 'import');
+
+        expect((json(layout.accountsPath) as { defaults: Record<string, string> }).defaults).toEqual({ claude: 'work' });
+        // The copy reports what it left out, so the boot can name it on its own line (#824).
+        const copied = outcome.kind === 'imported' ? outcome.files.find((file) => file.to === layout.accountsPath) : undefined;
+        expect(copied?.skippedDefaults).toEqual(['gone-org']);
+      });
+
       it('--no-import-global imports nothing and records a decline — break: the flag ignored, so the outcome reads not-asked (T1.2)', async () => {
         const before = homeBytes();
         const outcome = await runFirstRunImport(layout, neverAsk, env, 'skip');
@@ -517,10 +535,29 @@ describe('import from the global setup (#600 FR-4)', () => {
         const report = importGlobalAccounts(layout, env);
 
         expect(report.defaults).toEqual(['claude → work']);
-        expect(report.danglingSkipped).toEqual(['codex → gone-org']);
+        expect(report.danglingSkipped).toEqual(['gone-org']);
         const stored = json(layout.accountsPath) as { defaults: Record<string, string>; selections: Record<string, unknown> };
         expect(stored.defaults).toEqual({ claude: 'work' });
         expect(stored.selections).toEqual({ [project]: { claude: 'work' } });
+      });
+
+      it('names the skipped handle in the one line both doors print — break: the command door keeps its own spelling of the skip line, so the two doors drift (P2-AC9)', () => {
+        bootedWithoutImport();
+        writeFileSync(
+          join(home, 'agent-accounts.json'),
+          `${JSON.stringify({
+            accounts: [{ id: 'work', provider: 'claude', configDir: '~/.claude-work' }],
+            defaults: { claude: 'work', codex: 'gone-org' },
+          })}\n`,
+        );
+
+        const report = importGlobalAccounts(layout, env);
+
+        // One spelling, from the shared `danglingDefaultLine`: the handle is named, and the line
+        // carries no label and no config-folder path.
+        expect(accountImportLines(report, layout)).toContain(
+          '  ! skipped a default naming gone-org, which no account matches',
+        );
       });
 
       it('names account ids and providers only — never a label that looks like an identity, never a config folder', () => {
