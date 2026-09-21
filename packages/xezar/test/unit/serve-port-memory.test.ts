@@ -9,6 +9,7 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { after, test } from 'node:test';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { PORT_MAX } from '../../src/cli-settings.ts';
 
 /**
  * Per-project port memory through the REAL `serve` command (#467, AC-02/AC-03).
@@ -417,14 +418,51 @@ async function readRegistry(home: string): Promise<RegistryRow[]> {
   }
 }
 
-/** Ask the OS for a sentinel port and retain ownership until the assertion releases it. */
+/**
+ * How many ports ABOVE a sentinel a case may need. `serve` only ever moves UP from a busy port
+ * (`listenOnFreePort`), and the deepest case moves twice: the requested port is busy, so the
+ * first start binds `port + 1`, and a later start finds that remembered port busy and binds
+ * `port + 2`.
+ */
+const MOVE_HEADROOM = 2;
+
+/**
+ * Ask the OS for a sentinel port that `serve` can move up from, and retain ownership until the
+ * assertion releases it (#804). macOS hands out ephemeral ports up to 65535, and a sentinel at
+ * the top of the range leaves `serve` nowhere to move: it exits 1 with "no free port" and prints
+ * no cockpit line at all. So a port without the headroom above it is not a usable sentinel. It
+ * stays HELD while the next one is taken, so the OS cannot hand it back, and only
+ * `MOVE_HEADROOM + 1` ports lack the headroom — the loop ends in at most that many extra binds,
+ * decided by port numbers and never by timing.
+ */
 async function sentinel(): Promise<{ port: number; server: Server }> {
-  const server = createServer();
-  server.listen(0, '127.0.0.1');
-  await once(server, 'listening');
-  const address = server.address();
-  assert.ok(address && typeof address === 'object');
-  return { port: address.port, server };
+  const unusable: Server[] = [];
+  try {
+    for (;;) {
+      const server = createServer();
+      server.listen(0, '127.0.0.1');
+      await once(server, 'listening');
+      const address = server.address();
+      assert.ok(address && typeof address === 'object');
+      if (address.port + MOVE_HEADROOM <= PORT_MAX) return { port: address.port, server };
+      unusable.push(server);
+    }
+  } finally {
+    await Promise.all(unusable.map(release));
+  }
+}
+
+/**
+ * The port a boot really bound, or a failure that says why there is none. A boot that ended
+ * without a cockpit line exited on its own, and its exit code and output are the only evidence
+ * of the reason — a bare `assert.ok(boot.port)` threw that evidence away (#804).
+ */
+function boundPort(boot: Boot, what: string): number {
+  assert.ok(
+    boot.port,
+    `${what} must print the cockpit line for the port it bound; exit code ${String(boot.exitCode)}. Output:\n${boot.output}`,
+  );
+  return boot.port;
 }
 
 async function release(server: Server): Promise<void> {
@@ -440,7 +478,7 @@ test('a start remembers the port it really bound, and the next start comes back 
   // while its URL records the fallback it actually owns; neither assertion races a released probe.
   const first = await bootServe(repo, home, ['--port', String(wanted.port)]).finally(() => release(wanted.server));
   assert.equal(first.startPort, wanted.port, `the explicit port must be the resolved request. Output:\n${first.output}`);
-  assert.ok(first.port, `serve must report the port it actually bound. Output:\n${first.output}`);
+  boundPort(first, 'the first start');
   const [row] = await readRegistry(home);
   assert.equal(row?.lastListen?.port, first.port, `the bound port must be remembered. Registry: ${JSON.stringify(row)}`);
   assert.equal(row?.lastListen?.host, '127.0.0.1');
@@ -480,7 +518,7 @@ test('named break `remember-before-listen`/`false-ready`: a busy remembered port
   const wanted = await sentinel();
 
   const first = await bootServe(repo, home, ['--port', String(wanted.port)]).finally(() => release(wanted.server));
-  assert.ok(first.port);
+  boundPort(first, 'the first start');
 
   // Occupy the remembered port at the exact listen seam. No released number is re-acquired.
   const second = await bootServe(repo, home, [], { XEZ_TEST_BUSY_AT_BIND: String(first.port) });
@@ -506,7 +544,7 @@ test('named break `memory-over-flag`: an explicit --port beats the remembered po
   const boot = await bootServe(repo, home, ['--port', String(asked.port)]).finally(() => release(asked.server));
 
   assert.equal(boot.startPort, asked.port, `--port must be the resolved request over memory. Output:\n${boot.output}`);
-  assert.ok(boot.port);
+  boundPort(boot, 'the --port start');
   const [row] = await readRegistry(home);
   assert.equal(row?.lastListen?.port, boot.port, 'the newly bound port becomes the memory');
 });
@@ -532,7 +570,7 @@ test('named break `env-over-stored`: a project port beats XEZ_PORT', { timeout: 
   });
 
   assert.equal(boot.startPort, chosen.port, `projects[].cli.port must be the resolved request over XEZ_PORT. Output:\n${boot.output}`);
-  assert.ok(boot.port, `serve must report the port it actually bound. Output:\n${boot.output}`);
+  boundPort(boot, 'the stored-port start');
 });
 
 test('--port 0 binds an OS port and is never remembered', { timeout: 180_000 }, async () => {
@@ -574,7 +612,7 @@ test('named break `memory-required`: a mangled stored port warns once and the co
   const { repo, home } = await fixture('mangled');
   const seed = await sentinel();
   const seeded = await bootServe(repo, home, ['--port', String(seed.port)]).finally(() => release(seed.server));
-  assert.ok(seeded.port);
+  boundPort(seeded, 'the seeding start');
   const configPath = join(home, 'config.json');
   const config = JSON.parse(await readFile(configPath, 'utf8')) as { projects: RegistryRow[] };
   (config.projects[0] as Record<string, unknown>).cli = { port: 'abc' };
@@ -582,7 +620,7 @@ test('named break `memory-required`: a mangled stored port warns once and the co
 
   const boot = await bootServe(repo, home, [], { XEZ_TEST_BUSY_AT_BIND: String(seeded.port) });
 
-  assert.ok(boot.port, `a mangled stored value must never stop the cockpit. Output:\n${boot.output}`);
+  boundPort(boot, 'a start with a mangled stored value');
   assert.match(boot.output, /projects\[\]\.cli\.port is “abc” — ignored/);
   // Degraded to absent, so the remembered port took over.
   assert.equal(boot.startPort, seeded.port, `the remembered port must become the resolved request. Output:\n${boot.output}`);
