@@ -1189,6 +1189,16 @@ later answered "xezar is not running" while the same cockpit served that project
 - **What a reader could notice**: one more listening socket and one more connection file per
   served project, and `mcp.ready` or `mcp.unavailable` activity lines that name those projects.
   MCP journal activity lines are still printed for the starting project only.
+- **Changed (#819 item 5, 0.18.0)**: `xez mcp` re-resolves its folder's state layout every time it
+  opens a session, not only when it starts. A client session started in a folder with no
+  `.xezar/workspace.json` used to stay in the global layout for its whole life, so once
+  `xez --single-project` created that file every call kept answering "not a xezar project yet"
+  until the client restarted the bridge (`/mcp` → reconnect); the next call now reaches the
+  single-project cockpit. Only global → single-project ever changes under a running bridge, an
+  explicit `--global-layout` or `XEZ_GLOBAL_LAYOUT=1` still wins, and the socket is still found
+  from the bridge's own folder, so a leader is never pointed at another project. The re-resolved
+  layout is passed to the lookup and never installed process-wide. No error text, status value,
+  frame or socket location changes.
 
 ## When in doubt
 

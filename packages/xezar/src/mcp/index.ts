@@ -13,6 +13,7 @@ import {
 import { collectSecretValues } from '../core/secret-redaction.ts';
 import { projectDataDir } from '../project-data-paths.ts';
 import type { RunStore } from '../runs/store.ts';
+import { activeStateLayout, resolveStateLayout, type StateLayout } from '../state-layout.ts';
 import { ProjectOwnership } from '../workspace/project-owner.ts';
 import { findRegistryProject } from '../workspace/projects.ts';
 import { codexControlHome } from './adapters/codex-link.ts';
@@ -657,10 +658,21 @@ export async function runMcpCommand(opts: {
  * The cwd only FINDS the socket; it never becomes the authority (D-01 § 4). A read of
  * the registry: the bridge registers nothing, so a directory xezar has never served
  * finds no project and answers with how to fix that.
+ *
+ * The state layout is re-resolved here, on every session open, for the bridge's OWN
+ * folder (#819 item 5). The process layout was decided once at bridge start, so a
+ * client session started before `xezar --single-project` created the folder's
+ * `workspace.json` kept reading the global registry and `~/.xezar/ipc` until the client
+ * restarted the bridge. `argv` and `env` are the bridge's launch inputs, so an explicit
+ * global request still wins exactly as it did at start.
  */
-export async function resolveMcpTarget(repoRoot: string): Promise<ServiceTarget> {
+export async function resolveMcpTarget(
+  repoRoot: string,
+  launch: { argv?: readonly string[]; env?: NodeJS.ProcessEnv } = {},
+): Promise<ServiceTarget> {
   const root = await realpath(repoRoot).catch(() => resolve(repoRoot));
-  const project = await findRegistryProject({ root });
+  const layout = bridgeLayout(root, launch.argv ?? process.argv.slice(2), launch.env ?? process.env);
+  const project = await findRegistryProject({ root }, layout);
   if (!project) {
     return {
       kind: 'unavailable',
@@ -669,9 +681,24 @@ export async function resolveMcpTarget(repoRoot: string): Promise<ServiceTarget>
         'This directory is not a xezar project yet. Start the cockpit here once with `xez` (or `npx @qodeca/xezar`) so it is registered, then call this tool again.',
     };
   }
-  const location = mcpSocketLocation(project);
+  const location = mcpSocketLocation(project, launch.env ?? process.env, process.platform, layout);
   if (location.kind === 'unavailable') return { kind: 'unavailable', status: 'unsupported', message: location.reason };
   return { kind: 'socket', path: location.path, project: { id: project.id, name: projectName(project) } };
+}
+
+/**
+ * The layout the bridge looks in for this session open. Only global → project ever
+ * changes under a running bridge (the marker appears; nothing removes it from under a
+ * live engine), so a bridge already in its folder's project layout keeps it. Otherwise
+ * the same pure resolver the boot used answers again for the same folder.
+ *
+ * Deliberately NOT installed with `setActiveStateLayout`: the answer is passed to the
+ * two lookups that need it, so the process-wide layout never moves mid-flight (#600
+ * DC-1) and the resolution for one folder can never leak into another's.
+ */
+function bridgeLayout(root: string, argv: readonly string[], env: NodeJS.ProcessEnv): StateLayout {
+  const active = activeStateLayout(env);
+  return active.mode === 'project' ? active : resolveStateLayout(root, argv, env);
 }
 
 function projectName(project: { name: string; root: string }): string {
