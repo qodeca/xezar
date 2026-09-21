@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "followups": true,
+  "resources": {
+    "maxParallel": 10,
+    "maxMonitoringSessions": 4,
+    "monitoringWakeIntervalMinutes": 5,
+    "autoResumeOnUsageLimit": true,
+    "idleTimeoutMinutes": 15,
+    "memoryLimitMb": 12000,
+    "worktreeRetentionDefault": 10
+  },
+  "composerDefaults": {
+    "autonomous": true,
+    "worktree": true
+  },
+  "disabledProviders": [],
+  "agentDefaults": {
+    "runner": "claude",
+    "models": {
+      "claude": "opus[1m]",
+      "codex": "gpt-5.6-sol",
+      "opencode": "mac-m4/qwen38-flash-next-mlx-mixed-4-8bit",
+      "pi": "dgx-spark/deepseek-v4-flash-vision"
+    }
+  }
+}

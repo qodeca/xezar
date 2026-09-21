@@ -1,0 +1,22 @@
+{
+  "notifications": {
+    "enabled": true
+  },
+  "appearance": {
+    "accent": "lime",
+    "density": "roomy",
+    "width": "wide"
+  },
+  "taskTable": {
+    "expandedColumns": {
+      "branch": false,
+      "workflow": true,
+      "tool": true,
+      "model": true,
+      "diff": true,
+      "reference": true,
+      "tokens": false,
+      "cost": false
+    }
+  }
+}
