@@ -6,6 +6,7 @@ import {
   type McpDiscovery,
   type McpDiscoveryAction,
   type McpDiscoveryAgent,
+  type McpDiscoveryCockpit,
   type McpDiscoveryLimits,
   type McpDiscoveryOnboarding,
   type McpDiscoveryToolCheck,
@@ -22,6 +23,7 @@ import { detectEnvironment } from '../../core/backend-detect.ts';
 import { resolveCapabilities } from '../../server/capabilities.ts';
 import { resolveForge } from '../../server/forge/index.ts';
 import { getRepoInfo } from '../../server/git.ts';
+import { ownCockpitOrigin } from '../../server/instance-liveness.ts';
 import { loadWorkspaceConfig } from '../../workspace/config.ts';
 import { findRegistryProject } from '../../workspace/projects.ts';
 import { globalImportSummary } from '../../workspace/import-global.ts';
@@ -57,6 +59,27 @@ export interface DiscoveryFacts {
   /** This project's setup state (#464 P2) — see `collectOnboarding` for where it comes from —
    *  plus, in single-project mode on the host, the global-import state (#819 PR 5). */
   onboarding: McpDiscoveryOnboarding;
+  /** Where the person opens this cockpit (#819 item 8); absent when the real address is unknown. */
+  cockpit?: McpDiscoveryCockpit;
+}
+
+/**
+ * The cockpit's links for `projectId` (#819 item 8), built on THIS process's recorded listen origin
+ * (`ownCockpitOrigin`) — or `undefined` when there is none, so every caller omits the link rather
+ * than guessing one. Shared by `discover_project` and `project_config`'s refusal next steps, so the
+ * address a leader is given is the same in both.
+ */
+export function cockpitLinks(projectId: string, origin: string | undefined = ownCockpitOrigin()): McpDiscoveryCockpit | undefined {
+  if (origin === undefined) return undefined;
+  const project = `${origin}/p/${encodeURIComponent(projectId)}/`;
+  return {
+    url: project,
+    pages: {
+      providers: `${project}settings/agents`,
+      accounts: `${origin}/settings/global/accounts`,
+      mcpConnection: `${project}settings/mcp-connection`,
+    },
+  };
 }
 
 /** `discover_project` reads the onboarding block through the service when it has one — see
@@ -66,6 +89,9 @@ export type DiscoveryContext = McpToolContext & { readonly service?: ServiceDisp
 const RUNNERS: readonly Runner[] = ['claude', 'codex', 'opencode', 'pi'];
 const LABEL: Record<Runner, string> = { claude: 'Claude Code', codex: 'Codex', opencode: 'OpenCode', pi: 'pi' };
 const PROVIDERS_SETTINGS = 'Settings → Agents → Providers';
+/** The page name, followed by its address when this cockpit's address is known. */
+const providersPage = (cockpit: McpDiscoveryCockpit | undefined): string =>
+  cockpit ? `${PROVIDERS_SETTINGS} (${cockpit.pages.providers})` : PROVIDERS_SETTINGS;
 const HOSTED_REASON =
   'This xezar runs in hosted mode (XEZ_REMOTE=1 or a non-loopback bind), so actions on the host machine are refused.';
 
@@ -138,6 +164,7 @@ export function buildDiscovery(facts: DiscoveryFacts): McpDiscovery {
     limits: facts.limits,
     actions,
     onboarding: facts.onboarding,
+    ...(facts.cockpit ? { cockpit: facts.cockpit } : {}),
   });
 }
 
@@ -165,18 +192,27 @@ function agentEntry(runner: Runner, facts: DiscoveryFacts): McpDiscoveryAgent {
     enabled,
     signIn,
     usable,
-    ...(usable ? {} : { reason: agentReason(runner, enabled, installed ? signIn : 'not-installed') }),
+    ...(usable ? {} : { reason: agentReason(runner, enabled, installed ? signIn : 'not-installed', facts.cockpit) }),
   };
 }
 
-function agentReason(runner: Runner, enabled: boolean, signIn: McpDiscoveryAgent['signIn']): string {
+function agentReason(
+  runner: Runner,
+  enabled: boolean,
+  signIn: McpDiscoveryAgent['signIn'],
+  cockpit: McpDiscoveryCockpit | undefined,
+): string {
   const label = LABEL[runner];
-  if (!enabled) return `${label} is disabled in ${PROVIDERS_SETTINGS}.`;
+  // #819 item 8: every "cannot" names the next step — a call the leader makes, or a command or page
+  // the PERSON uses. The leader itself never opens the page (#439).
+  if (!enabled) {
+    return `${label} is disabled in ${providersPage(cockpit)}. A person may have turned it off on purpose: ask them before turning it back on with project_config set_provider_enabled (provider ${runner}, enabled true).`;
+  }
   switch (signIn) {
     case 'not-installed':
-      return `${label} is not installed on this machine.`;
+      return `${label} is not installed on this machine. Once a person installs it, call this tool again.`;
     case 'disconnected':
-      return `${label} is installed but not signed in. A person can sign in from ${PROVIDERS_SETTINGS}.`;
+      return `${label} is installed but not signed in. A person signs in by running \`xez providers connect ${runner}\` on the machine that runs xezar, or from ${providersPage(cockpit)}.`;
     default:
       return `${label}'s sign-in could not be verified yet. Call this tool again shortly.`;
   }
@@ -336,6 +372,9 @@ export async function collectDiscoveryFacts(
       ...(await collectOnboarding(ctx, checks, capabilities.localHandoff)),
       ...collectGlobalImport(capabilities.localHandoff),
     },
+    // Hosted mode never has one: `serve` records no address there. Checked again here so a
+    // capability that changed after the listen cannot hand out a loopback link from a hosted box.
+    ...(capabilities.localHandoff ? optionalCockpit(ctx.project.id) : {}),
     config: { baseBranch: config.baseBranch ?? null, modelsLocked: agentModelsLocked(root, env) },
     providers,
     limits: {
@@ -358,6 +397,11 @@ export async function collectDiscoveryFacts(
   };
 }
 
+function optionalCockpit(projectId: string): { cockpit?: McpDiscoveryCockpit } {
+  const cockpit = cockpitLinks(projectId);
+  return cockpit ? { cockpit } : {};
+}
+
 /** The authoritative text block (D-05): a one-line orientation, then the whole result. */
 export function discoveryText(discovery: McpDiscovery): string {
   const closed = discovery.actions.filter((a) => a.status !== 'available');
@@ -367,6 +411,7 @@ export function discoveryText(discovery: McpDiscovery): string {
     onboardingLine(discovery.onboarding),
     issueFilingLine(discovery.onboarding.issueFiling),
     ...(discovery.onboarding.globalImport ? [globalImportLine(discovery.onboarding.globalImport)] : []),
+    ...(discovery.cockpit ? [`Cockpit: ${discovery.cockpit.url} — the address to give the person; you work through these tools.`] : []),
     '',
     JSON.stringify(discovery, null, 2),
   ];

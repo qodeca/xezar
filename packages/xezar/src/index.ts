@@ -72,6 +72,7 @@ import { cliAudit, PROJECTS_SUBCOMMANDS, projectResource, type CliAudit } from '
 import { WorkspaceSemaphore } from './workspace/semaphore.ts';
 import { discoverProjectCheck, fixAndVerifyWorkflow, PROJECT_CONVENTIONS_SKILL } from './init-kit.ts';
 import { resolveCapabilities } from './server/capabilities.ts';
+import { recordOwnListen } from './server/instance-liveness.ts';
 import {
   assertProjectStateUsable,
   resolveStateLayout,
@@ -116,6 +117,11 @@ Usage:
                             own setup (never overwrites one it already has).
                             Each account's label and config folder are copied
                             as they are, into a file the project may commit
+  xezar providers connect <provider> [--account <id>]
+                            open a terminal that signs an agent tool (claude,
+                            codex, opencode or pi) in — the built-in login, or
+                            the named account. Only on the machine that runs
+                            xezar: hosted mode refuses it
   xezar mcp                 MCP bridge for a coding agent — the agent starts it
                             (stdio), in a project whose cockpit is running
   xezar lease gates -- <cmd>
@@ -223,6 +229,9 @@ async function main(): Promise<void> {
       // declared here or every other subcommand dies on it as an unknown option. Only
       // `leaseCommand` reads it.
       'status-file': { type: 'string' },
+      // `xezar providers connect <provider> --account <id>` (#819 item 8). Global for the same
+      // reason as `status-file`; only `runProvidersCommand` reads it.
+      account: { type: 'string' },
       workflow: { type: 'string' },
       model: { type: 'string' },
       'no-open': { type: 'boolean', default: false },
@@ -460,6 +469,15 @@ async function main(): Promise<void> {
     }
     case 'accounts': {
       process.exitCode = await accountsCommand(positionals[1], stateLayout);
+      return;
+    }
+    case 'providers': {
+      // No server: the person at the host's terminal is the one the refused MCP action names.
+      const { runProvidersCommand } = await import('./providers-cli.ts');
+      process.exitCode = await runProvidersCommand(positionals.slice(1), values.account, {
+        cwd: repoRoot,
+        bindHost: values['bind-host'],
+      });
       return;
     }
     case 'mcp': {
@@ -920,6 +938,9 @@ async function serveCommand(
   }
   // The server owns its listening socket: `cli.serve` took effect.
   await audit?.applied({ resource: projectResource(await audit.scope()) });
+  // The address the MCP hands a leader for the person (#819 item 8), read from the socket that
+  // really listens and recorded only on the host — hosted mode records nothing, so it is omitted.
+  recordOwnListen(server, localHandoff());
   terminal.setUrl(`http://localhost:${port}`, {
     port,
     requestedPort,

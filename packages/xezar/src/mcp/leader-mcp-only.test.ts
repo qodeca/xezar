@@ -15,6 +15,9 @@ import { executionControlTool } from './tools/execution-control.ts';
 import { handoffGitTool } from './tools/handoff-git.ts';
 import { leaderEventsTool } from './tools/leader-events.ts';
 import { localHandoffTool } from './tools/local-handoff.ts';
+import { projectConfigTool, REFUSED_ACTIONS } from './tools/project-config.ts';
+import { recordOwnListen } from '../server/instance-liveness.ts';
+import { createServer as createHttpServer } from 'node:http';
 import { resultsEvidenceTool } from './tools/results-evidence.ts';
 import { taskCreateTool } from './tools/task-create.ts';
 import { taskReadsTool } from './tools/task-reads.ts';
@@ -243,5 +246,57 @@ describe('no leader-facing string names the HTTP attach route (#450, T-26)', () 
       expect(all).toContain(code);
     }
     clean('runtime texts', all);
+  });
+});
+
+
+/**
+ * #819 item 8 — a refusal names the next step, and the next step keeps #439: a leader works through
+ * the tools only, so a page, a URL or a shell command in a refusal is something the PERSON does, and
+ * the text says so. Swept with the address unknown AND known, because the URL is only there in the
+ * second case and a sentence that reads fine without it can read as an instruction with it.
+ */
+describe('every refusal next step keeps the leader on the tools (#439, #819 item 8)', () => {
+  const FORBIDDEN = [/\/api\/v1\//, /Use the cockpit/i, /\bopen the cockpit\b/i, /\bgo to the cockpit\b/i];
+  const refusedCalls: Array<Record<string, unknown>> = [
+    ...Object.keys(REFUSED_ACTIONS).map((action) => ({ action })),
+    { action: 'get_config', projectId: 'other' },
+  ];
+
+  async function sweep(): Promise<string[]> {
+    const steps: string[] = [];
+    for (const args of refusedCalls) {
+      const parsed = projectConfigTool.inputSchema.safeParse(args);
+      expect(parsed.success, JSON.stringify(args)).toBe(true);
+      const result = await projectConfigTool.call(parsed.data!, ctx);
+      const next = (result.structuredContent as { nextStep?: unknown }).nextStep;
+      expect(typeof next, JSON.stringify(args)).toBe('string');
+      steps.push(next as string);
+      for (const pattern of FORBIDDEN) expect(textOf(result), `${JSON.stringify(args)} matches ${pattern}`).not.toMatch(pattern);
+    }
+    return steps;
+  }
+
+  /** A page, an address or a shell command is the person's to use: the sentence must say so. */
+  const addressedToPerson = (next: string): boolean =>
+    !(/https?:\/\//.test(next) || /`xez\b/.test(next) || /\bcockpit\b/.test(next)) || /\bthe person\b/.test(next);
+
+  it('with the address unknown', async () => {
+    // RED against: "A person does this in the cockpit." with nothing to act on, or a page the leader is told to open.
+    for (const next of await sweep()) expect(addressedToPerson(next), next).toBe(true);
+  });
+
+  it('with the real address known', async () => {
+    const server = createHttpServer();
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    try {
+      recordOwnListen(server, true);
+      const steps = await sweep();
+      expect(steps.some((next) => /http:\/\/127\.0\.0\.1:\d+\//.test(next)), 'the sweep reached a URL').toBe(true);
+      for (const next of steps) expect(addressedToPerson(next), next).toBe(true);
+    } finally {
+      recordOwnListen(null, true);
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
   });
 });

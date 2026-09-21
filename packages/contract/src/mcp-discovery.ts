@@ -116,6 +116,31 @@ export const mcpDiscoveryOnboardingSchema = onboardingStatusSchema.extend({
 });
 export type McpDiscoveryOnboarding = z.infer<typeof mcpDiscoveryOnboardingSchema>;
 
+/**
+ * `discover_project.cockpit` (#819 item 8): where the PERSON opens this project's cockpit, so a
+ * leader can hand them a link instead of a page name to hunt for. The leader itself never opens it
+ * (#439): it works through the MCP tools only.
+ *
+ * Every URL is the running server's REAL listen origin — read from its listening socket after the
+ * bind, never from a requested port. The whole block is ABSENT when that is unknown (before the
+ * listen, or in hosted mode, where the public address behind a reverse proxy is not this process's
+ * to know): a confidently wrong URL is worse than none. Served through the MCP only, and never on
+ * `GET /api/v1/health` (owner, 2026-09-21), whose answer any web page can read.
+ */
+export const mcpDiscoveryCockpitSchema = z.strictObject({
+  /** This project's own page: `<origin>/p/<projectId>/`. */
+  url: z.string(),
+  pages: z.strictObject({
+    /** Where a person turns an agent tool on or off and signs it in. */
+    providers: z.string(),
+    /** Where a person manages the agent accounts. */
+    accounts: z.string(),
+    /** Where a person attaches or checks the leader connection. */
+    mcpConnection: z.string(),
+  }),
+});
+export type McpDiscoveryCockpit = z.infer<typeof mcpDiscoveryCockpitSchema>;
+
 export const mcpDiscoverySchema = z.strictObject({
   project: z.strictObject({
     id: z.string(),
@@ -145,6 +170,8 @@ export const mcpDiscoverySchema = z.strictObject({
    * `launch.workflowId`.
    */
   onboarding: mcpDiscoveryOnboardingSchema,
+  /** Where the person opens this cockpit — ABSENT when the real address is unknown (additive, #819). */
+  cockpit: mcpDiscoveryCockpitSchema.optional(),
 });
 export type McpDiscovery = z.infer<typeof mcpDiscoverySchema>;
 

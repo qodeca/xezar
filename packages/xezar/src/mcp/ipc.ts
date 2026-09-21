@@ -147,6 +147,12 @@ export const healthResultSchema = z.object({
   ipcVersion: z.number().int(),
   xezarVersion: z.string().max(64),
   project: z.object({ id: z.string().max(64), name: z.string().max(200) }),
+  /**
+   * Where the PERSON opens this project's cockpit (#819 item 8): the running server's real listen
+   * origin plus `/p/<id>/`. ABSENT when that is unknown (before the listen, hosted mode) — an older
+   * service never sends it, and an older bridge strips it, so both directions stay compatible.
+   */
+  cockpitUrl: z.string().max(2048).optional(),
 });
 export type HealthResult = z.infer<typeof healthResultSchema>;
 

@@ -59,6 +59,7 @@ import {
   type WorkflowsResponse,
   type WorkspaceConfigResponse,
   type WorkspaceUiState,
+  type McpDiscoveryCockpit,
 } from '@qodeca/xezar-contract';
 import { hc } from 'hono/client';
 import { parse as parseToml } from 'smol-toml';
@@ -70,10 +71,12 @@ import { agentHomePaths } from '../../paths.ts';
 import { slugify } from '../../planner.ts';
 import { projectWorkflowsDir } from '../../workflows/load.ts';
 import { singleProjectNarrowing } from '../../workspace/projects.ts';
+import { activeStateLayout } from '../../state-layout.ts';
 import type { AppType } from '../../server/app-type.ts';
 import { MCP_ORIGIN, type ServiceDispatch } from '../service-adapter.ts';
 import { staleRejectionIn } from '../stale-write.ts';
 import { defineTool, errorResult, textResult, type McpToolContext, type McpToolResult } from '../tool.ts';
+import { cockpitLinks } from './discovery.ts';
 
 /**
  * Project configuration for the bound project (#97, F-05, F-12, F-16; D-03 in
@@ -250,9 +253,30 @@ const BOUNDARY_LABEL: Record<ConfigBoundary, string> = {
 };
 
 /**
+ * What a refusal's next step may use (#819 item 8). `cockpit` is absent when this cockpit's real
+ * address is unknown, and every next step then still names a command — a refusal never ends at
+ * "not allowed here".
+ */
+export interface RefusalNextStepContext {
+  readonly cockpit?: McpDiscoveryCockpit | undefined;
+  /** The registry holds this project alone (single-project mode or `XEZ_SINGLE_PROJECT`). */
+  readonly narrowed: boolean;
+}
+
+/** How the PERSON reaches one cockpit page: its address when known, else how to start the cockpit. */
+function personPage(ctx: RefusalNextStepContext, page: keyof McpDiscoveryCockpit['pages'], name: string): string {
+  return ctx.cockpit ? `${name} at ${ctx.cockpit.pages[page]}` : `${name} in the xezar cockpit, which \`xez\` starts in the project folder`;
+}
+
+/**
  * The `excluded` rows of the classification a leader might plausibly ask for, each answered with
  * its boundary. None of them dispatches anything. Listed as actions (rather than left out of the
  * enum) so the answer is an understandable reason, not a schema error.
+ *
+ * Every row carries `next` (#819 item 8): what to do INSTEAD, as a tool call the leader makes or a
+ * command or page the PERSON uses — worded to the person ("Ask the person to …"), because a leader
+ * works through these tools only and never opens the cockpit itself (#439). A row without one is
+ * a refusal that sends its reader guessing, which is the failure #819 was filed for.
  */
 export const REFUSED_ACTIONS = {
   // `set_provider_enabled` and `retry_provider` left this table with #677 B4 (they are writes
@@ -260,7 +284,9 @@ export const REFUSED_ACTIONS = {
   // the other two write a workspace KEY, this one starts a process on the person's machine.
   connect_provider: {
     boundary: 'host-process',
-    reason: 'connecting a provider opens a login terminal on the host machine. A person does this in the cockpit.',
+    reason: 'connecting a provider opens a login terminal on the host machine.',
+    next: (ctx: RefusalNextStepContext) =>
+      `Ask the person to run \`xez providers connect <provider>\` on the machine that runs xezar (add \`--account <id>\` for a second login), or to connect it from ${personPage(ctx, 'providers', 'the Providers settings')}. get_capabilities reports the sign-in state afterwards.`,
   },
   // The four account WRITES, both account READS and the identity read left this table with #677
   // B5 (owner, 2026-09-20 07:41: "Writes and identity read"). `open_account_file` did NOT, and
@@ -269,37 +295,60 @@ export const REFUSED_ACTIONS = {
   open_account_file: {
     boundary: 'host-process',
     reason: 'opening an account folder launches an application on the host machine.',
+    next: (ctx: RefusalNextStepContext) =>
+      `Ask the person to open it from ${personPage(ctx, 'accounts', 'the Agent accounts settings')}. get_account and get_account_details report the accounts without opening anything.`,
   },
   browse_folders: {
     boundary: 'host-filesystem',
     reason: 'browsing folders lists host directories outside this project.',
+    next: () =>
+      'Ask the person for the full path of the folder you need. set_workspace_config checks a folder path for real before it saves one.',
   },
   add_project: {
     boundary: 'project-registry',
     reason: 'registering projects manages the workspace, not this project.',
+    next: (ctx: RefusalNextStepContext) =>
+      ctx.narrowed
+        ? 'Ask the person to run `xez` in the other project’s folder: it starts a cockpit of its own for that project.'
+        : 'Ask the person to run `xez projects add <folder>` on the machine that runs xezar.',
   },
   clone_project: {
     boundary: 'project-registry',
     reason: 'cloning creates and registers a checkout outside this project.',
+    next: (ctx: RefusalNextStepContext) =>
+      ctx.narrowed
+        ? 'Ask the person to make the copy themselves and run `xez` in its folder: it starts a cockpit of its own for that project.'
+        : 'Ask the person to make the copy themselves, then run `xez projects add <folder>` on the machine that runs xezar.',
   },
   remove_project: {
     boundary: 'project-registry',
     reason: 'removing a project deregisters it from the workspace and ends this connection’s binding.',
+    next: (ctx: RefusalNextStepContext) =>
+      ctx.narrowed
+        ? 'Nothing needs removing: this registry holds this project alone. Ask the person to stop xezar in this folder when it is no longer wanted.'
+        : 'Ask the person to run `xez projects remove <id>` on the machine that runs xezar (`xez projects` lists the ids).',
   },
   apply_skill_updates: {
     boundary: 'workspace-settings',
     reason:
-      'applying skill updates rewrites globally installed skills every project reads. check_skill_updates reports what is available.',
+      'applying skill updates rewrites globally installed skills every project reads.',
+    next: () =>
+      'check_skill_updates reports what is available. Updates apply by themselves while skills auto-update is on: turn it on with set_workspace_config and skillsAutoUpdate true.',
   },
   get_launch_key: {
     boundary: 'secret',
     reason: 'the launch key is a credential and never enters a tool response.',
+    next: () => 'No tool needs it: start tasks with task_create, and change settings with this tool, through this connection.',
   },
   open_in_app: {
     boundary: 'host-process',
     reason: 'opening the project launches a desktop application on the host machine.',
+    next: () => 'Call local_handoff with action open_project_in_app; its action list_apps names the applications it can open.',
   },
-} as const satisfies Record<string, { boundary: ConfigBoundary; reason: string }>;
+} as const satisfies Record<
+  string,
+  { boundary: ConfigBoundary; reason: string; next: (ctx: RefusalNextStepContext) => string }
+>;
 export type RefusedAction = keyof typeof REFUSED_ACTIONS;
 const REFUSED_ACTION_NAMES = Object.keys(REFUSED_ACTIONS) as [RefusedAction, ...RefusedAction[]];
 
@@ -626,7 +675,7 @@ export const projectConfigInputSchema = z
     action: z
       .enum([...PROJECT_CONFIG_ACTIONS, ...REFUSED_ACTION_NAMES])
       .describe(
-        'What to do in the project this connection is bound to, plus the shared settings set_workspace_config changes, the shared presentation preferences set_workspace_ui_state and import_skills change and the provider switch set_provider_enabled and retry_provider change, for every project on this machine. Actions outside that boundary (accounts, the project registry, host folders, host processes such as connecting a provider) are answered with a refusal that names the boundary.',
+        'What to do in the project this connection is bound to, plus the shared settings set_workspace_config changes, the shared presentation preferences set_workspace_ui_state and import_skills change and the provider switch set_provider_enabled and retry_provider change, for every project that shares these settings (every project on this machine, or only this one when it keeps its own setup). Actions outside that boundary (accounts, the project registry, host folders, host processes such as connecting a provider) are answered with a refusal that names the boundary.',
       ),
     projectId: z
       .unknown()
@@ -680,12 +729,12 @@ export const projectConfigInputSchema = z
     provider: providerIdSchema
       .optional()
       .describe(
-        'list_models: the one agent backend to list the models of; omit it for every backend. set_provider_enabled / retry_provider / select_account / check_account_status / get_account_details: which agent backend. The two provider actions apply to EVERY project on this machine, not only this one: turning a provider off stops it being offered for new tasks everywhere, and clearing an authentication incident clears the warning every project sees. Read the current state with get_capabilities first. For the account actions it names which backend the account signs in to, and it is required beside accountId because every account xezar discovered by itself is called default. On check_account_status it must be the account’s OWN backend: naming a different one is refused rather than answered, so the answer always says which login was really read.',
+        'list_models: the one agent backend to list the models of; omit it for every backend. set_provider_enabled / retry_provider / select_account / check_account_status / get_account_details: which agent backend. The two provider actions apply to every project that shares these settings, not only this one: every project on this machine, or only this project when it keeps its own setup (single-project mode). set_provider_enabled answers scope — machine or project — to say which. Turning a provider off stops it being offered for new tasks there, and clearing an authentication incident clears the warning every project sees. Read the current state with get_capabilities first. For the account actions it names which backend the account signs in to, and it is required beside accountId because every account xezar discovered by itself is called default. On check_account_status it must be the account’s OWN backend: naming a different one is refused rather than answered, so the answer always says which login was really read.',
       ),
     enabled: setProviderEnabledInputSchema.shape.enabled
       .optional()
       .describe(
-        'set_provider_enabled: true offers the provider for new tasks again, false stops it being offered. It takes effect at once, with no restart — and it is a machine-wide switch, so turning one off is a denial of service for the person’s other projects and turning one on re-enables a backend they deliberately disabled. provider and enabled are top-level arguments from xezar 0.17.0 on; xezar 0.16.0 refused set_provider_enabled outright and had neither argument, so it answered them as unrecognized keys.',
+        'set_provider_enabled: true offers the provider for new tasks again, false stops it being offered. It takes effect at once, with no restart (the answer says live true). Its reach is the answer’s scope: machine — every project on this machine, so turning one off is a denial of service for the person’s other projects and turning one on re-enables a backend they deliberately disabled — or project, when this project keeps its own setup (single-project mode): the switch is then written to this project’s own settings file, shared with everyone who works on the project. provider and enabled are top-level arguments from xezar 0.17.0 on; xezar 0.16.0 refused set_provider_enabled outright and had neither argument, so it answered them as unrecognized keys.',
       ),
     // ---- agent accounts (#677 B5) ----
     // `account` and `accountUpdate` ARE the route's own body schemas, re-used rather than
@@ -818,19 +867,30 @@ function failed(action: string, answer: Extract<Answer<unknown>, { ok: false }>,
   });
 }
 
-function refused(action: string, boundary: ConfigBoundary, reason: string): Result {
-  return errorResult(`Refused (${BOUNDARY_LABEL[boundary]}): ${action} — ${reason} Nothing was changed.`, {
+/**
+ * A boundary refusal. `next` is what to do instead (#819 item 8) — required, so no refusal can be
+ * written that stops at "not allowed here". It rides both the text, before the unchanged closing
+ * "Nothing was changed.", and the structured content as `nextStep`.
+ */
+function refused(action: string, boundary: ConfigBoundary, reason: string, next: string): Result {
+  return errorResult(`Refused (${BOUNDARY_LABEL[boundary]}): ${action} — ${reason} Next step: ${next} Nothing was changed.`, {
     action,
     origin: MCP_ORIGIN,
     refused: true,
     boundary,
+    nextStep: next,
   });
+}
+
+/** What the next steps of THIS call may use: the cockpit's address when known, and the narrowing. */
+function refusalContext(projectId: string): RefusalNextStepContext {
+  return { cockpit: cockpitLinks(projectId), narrowed: singleProjectNarrowing() !== null };
 }
 
 /** The next legitimate action after a quality-gate refusal. It offers no waiver, to anyone (A-22). */
 export const QUALITY_GATE_NEXT_ACTION =
   'This is a blocker. A check step is a quality gate and cannot be removed or weakened from MCP. Keep the step, ' +
-  'save the workflow under a new name, or report this blocker so a person can change the gate in the cockpit.';
+  'save the workflow under a new name with save_workflow, or report this blocker so a person can change the gate in the workflow file itself.';
 
 /** One check step of an on-disk workflow — named, never its command. */
 interface GateStep {
@@ -1028,12 +1088,18 @@ function agentConfigGate(action: string, fileId: string, root: string): { def: C
         action,
         'home-file',
         `${fileId} is a user-scope file in a home folder, shared by every project on this machine. Only this project’s own files are served.`,
+        'list_agent_config names the files this project serves; ask the person to edit a home file themselves, on the machine that runs xezar.',
       ),
     };
   }
   if (!resolvesInside(root, def.resolve(root, agentHomePaths(process.env)))) {
     return {
-      result: refused(action, 'outside-project', `${fileId} resolves outside this project folder, so it is not served here.`),
+      result: refused(
+        action,
+        'outside-project',
+        `${fileId} resolves outside this project folder, so it is not served here.`,
+        'list_agent_config names the files this project serves; ask the person to edit this one where it lives.',
+      ),
     };
   }
   return { def };
@@ -1617,19 +1683,27 @@ async function run(args: ProjectConfigInput & { action: ProjectConfigAction }, s
      * THE PROVIDER SWITCH (#677 wave 2 B4). The owner's rule of 2026-09-20 ("every key", with
      * providers scoped to "on/off and retry only" at 07:41) reverses D-03-2: a leader turns a
      * provider on or off through `PUT /providers/:provider/enabled`, the cockpit's own route, with
-     * its own param and body validators, its own `mergeWrite` into `~/.xezar/config.json` and its
-     * own `provider-status` event — so the change is live for the next task with no restart,
+     * its own param and body validators, its own `mergeWrite` into the workspace settings file and
+     * its own `provider-status` event — so the change is live for the next task with no restart,
      * exactly as a person's click is.
      *
-     * Machine-wide, and the argument description says so: `disabledProviders` is one workspace
-     * key, so this leader's switch is every project's switch.
+     * WHERE it lands is the state layout's answer, not this door's (#819 item 7): `disabledProviders`
+     * is one workspace key, written through `activeStateLayout().workspacePath` — the machine's
+     * `config.json` in the global layout (every project's switch), this project's own workspace
+     * settings file in single-project mode (this project's switch alone, shared with
+     * everyone who works on it). The answer says which as `scope`, read from the same layout the
+     * write resolved, and `live: true` because the route reloads the file per call. The
+     * `XEZ_SINGLE_PROJECT` narrowing does not change the answer: it narrows the registry, not where
+     * the settings live, so its switch is still the machine's.
      */
     case 'set_provider_enabled': {
       const answer = await settle<ProviderStatusResponse>(
         s.api.providers[':provider'].enabled.$put({ param: { provider: args.provider! }, json: { enabled: args.enabled! } }),
         [200],
       );
-      return answer.ok ? ok(action, { providers: providerRows(answer.value) }) : fail(answer);
+      if (!answer.ok) return fail(answer);
+      const scope: 'machine' | 'project' = activeStateLayout().mode === 'project' ? 'project' : 'machine';
+      return ok(action, { providers: providerRows(answer.value), scope, live: true });
     }
 
     /**
@@ -2203,11 +2277,16 @@ async function observedOnboardingIdentity(
  */
 function boundaryRefusal(action: string, namesProject: boolean, ctx: McpToolContext): Result | undefined {
   if (namesProject) {
-    return refused(action, 'project-binding', `this connection is bound to project ${ctx.project.name} and acts on it alone; a project cannot be named.`);
+    return refused(
+      action,
+      'project-binding',
+      `this connection is bound to project ${ctx.project.name} and acts on it alone; a project cannot be named.`,
+      'call again without projectId. To work on a different project, ask the person to connect a session started in that project’s folder, where the MCP client runs `xez mcp`.',
+    );
   }
   if (isRefused(action)) {
-    const { boundary, reason } = REFUSED_ACTIONS[action];
-    return refused(action, boundary, `${reason}${singleProjectNote(action)}`);
+    const { boundary, reason, next } = REFUSED_ACTIONS[action];
+    return refused(action, boundary, `${reason}${singleProjectNote(action)}`, next(refusalContext(ctx.project.id)));
   }
   return undefined;
 }
@@ -2225,7 +2304,7 @@ export const projectConfigTool = defineTool({
   name: 'project_config',
   title: 'Project configuration',
   description:
-    "Read and change THIS project's own configuration: its settings (agent, models, system prompt, review gate, base branch, worktree retention, memory limit), its registry entry (concurrency cap and tags), prompt templates, in-repo agent config files, workflows, skills, GitHub automations and worktrees. It also reads the shared settings as effective limits and capabilities (get_limits, get_capabilities, get_account) and CHANGES them with set_workspace_config — the shared limits, composer defaults, follow-up inbox and environment passthrough, skills auto-update and the machine-wide agent defaults, which apply to every project on this machine, the terminal settings (the instance mode — which projects one xezar serves — and how its terminal prints; all are settled at start, so a change applies the next time one starts) and the two workspace folder paths — the folder the file picker may browse and the folder new checkouts land in, each checked for real before anything is saved. The shared presentation preferences are read with get_workspace_ui_state and changed with set_workspace_ui_state (appearance, notifications, task-table columns, dismissed provider incidents) and import_skills (the curated list of default skills); an object-valued preference is replaced whole, so read it before you change one key of it. The colour theme is not among them — the browser stores that itself. The models each agent backend can run are read with list_models: per backend, every model id exactly as that backend's own --model flag takes it, whether the list could be read and why not when it could not, and local and vision only where the backend's own data proves them – a missing one means unknown, not no. The agent backends can be switched off and on for the whole machine with set_provider_enabled and their authentication incidents cleared with retry_provider. The agent ACCOUNTS — the separate logins a backend can run under — are read with get_account — the account each backend uses in this project (accounts), every account per backend with the one in use marked selected and the login the backend finds by itself marked builtIn (profiles), and every stored account choice that names no account, with the line that fixes it (problems; tasks still run, on the built-in login) — added with create_account, edited with update_account, removed with remove_account and pointed at this project with select_account; check_account_status probes one account's sign-in state and get_account_details reports who it is signed in as. import_global_accounts copies the accounts of the person's machine-wide xezar setup into this project — the same merge as the `xezar accounts import-global` command: it only adds accounts the project does not have, never replaces one, answers how many were added and kept (never which), and works only when the project keeps its own setup (single-project mode); get_account reports whether that was done and how many could still be copied. Connecting a provider, opening an account's folder in a desktop application, home files, the project registry and host folders are outside this boundary and are refused with the reason.",
+    "Read and change THIS project's own configuration: its settings (agent, models, system prompt, review gate, base branch, worktree retention, memory limit), its registry entry (concurrency cap and tags), prompt templates, in-repo agent config files, workflows, skills, GitHub automations and worktrees. It also reads the shared settings as effective limits and capabilities (get_limits, get_capabilities, get_account) and CHANGES them with set_workspace_config — the shared limits, composer defaults, follow-up inbox and environment passthrough, skills auto-update and the machine-wide agent defaults, which apply to every project on this machine, the terminal settings (the instance mode — which projects one xezar serves — and how its terminal prints; all are settled at start, so a change applies the next time one starts) and the two workspace folder paths — the folder the file picker may browse and the folder new checkouts land in, each checked for real before anything is saved. The shared presentation preferences are read with get_workspace_ui_state and changed with set_workspace_ui_state (appearance, notifications, task-table columns, dismissed provider incidents) and import_skills (the curated list of default skills); an object-valued preference is replaced whole, so read it before you change one key of it. The colour theme is not among them — the browser stores that itself. The models each agent backend can run are read with list_models: per backend, every model id exactly as that backend's own --model flag takes it, whether the list could be read and why not when it could not, and local and vision only where the backend's own data proves them – a missing one means unknown, not no. The agent backends can be switched off and on with set_provider_enabled — for the whole machine, or for this project alone when it keeps its own setup; the answer’s scope says which — and their authentication incidents cleared with retry_provider. The agent ACCOUNTS — the separate logins a backend can run under — are read with get_account — the account each backend uses in this project (accounts), every account per backend with the one in use marked selected and the login the backend finds by itself marked builtIn (profiles), and every stored account choice that names no account, with the line that fixes it (problems; tasks still run, on the built-in login) — added with create_account, edited with update_account, removed with remove_account and pointed at this project with select_account; check_account_status probes one account's sign-in state and get_account_details reports who it is signed in as. import_global_accounts copies the accounts of the person's machine-wide xezar setup into this project — the same merge as the `xezar accounts import-global` command: it only adds accounts the project does not have, never replaces one, answers how many were added and kept (never which), and works only when the project keeps its own setup (single-project mode); get_account reports whether that was done and how many could still be copied. Connecting a provider, opening an account's folder in a desktop application, home files, the project registry and host folders are outside this boundary and are refused with the reason.",
   inputSchema: projectConfigInputSchema,
   annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
   // #819 item 6: the refusals stand whatever else was sent. Without this, a refused action carrying
