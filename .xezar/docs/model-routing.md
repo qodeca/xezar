@@ -164,6 +164,8 @@ one is the DeepSeek lane and is a normal lane of this table.
 | Every model – gate repairs (from 2026-09-20) | a gate-repair return brief forbids editing any test outside the pull request's own scope: an unrelated flaky test that fails the gate is REPORTED in the response and pull request body, never repaired in that pull request, because the redesign is its own pull request under #671 (leader, 2026-09-20 22:3x) |
 | Every model – a resume that merges (from 2026-09-21) | the brief dictates the three `REFRESH` lines verbatim – `refresh: <what>`, `base: <full 40-character sha>` and `evidence: <what was re-run>` – because readiness refuses any other shape (leader, 2026-09-21) |
 | Every model – a superseding run (from 2026-09-21) | a superseding run on a fresh branch declares `counters init --none`, never `--predecessor`: inheriting the exhausted gate-return counter makes the supersede fail at readiness (leader, 2026-09-21; run `98cc751d`) |
+| Every model – a conflict refresh (from 2026-09-21) | the brief says: merge `main` through `.xezar/checks/merge-recovery.sh`, then REWRITE the `DELIVERED` record for the NEW head – a refresh that leaves the old head in the record is refused at readiness, so re-recording the head is a numbered step of the brief and not an afterthought (leader, 2026-09-21) |
+| Every model – the handoff step (from 2026-09-21) | when `gh pr checks` shows NO checks at all on a fresh push, the brief's remedy is `gh workflow run ci.yml --ref <branch>`, never closing and reopening the pull request (leader, 2026-09-21) |
 
 The evidence behind these rows is in the findings log (§ 13): conditional wording cost two Codex
 integration chains on 2026-09-15, and a pi model posted its comment and then looped.
@@ -386,6 +388,44 @@ incidents produced are in § 6 and the leader rules in
   step to keep the ceiling at two, and #783/#784 exhausted their gate-return counters on the same
   `todos.test.ts` flake (timeline-2026-09-21.md 01:04–01:23). The leader rule is in
   [leader-guide.md](leader-guide.md); the ceiling itself is § 6.
+
+### 2026-09-21 (continued)
+
+Leader lessons 12–16 of the same day, recorded after the entry above. Every rule below is the
+leader's own, not the owner's; the brief rules are the § 6 rows dated 2026-09-21 and the leader
+rules are in [leader-guide.md](leader-guide.md).
+
+- **A superseding run declares its counter history as none.** Lesson 12 repeats the finding already
+  recorded in the entry above (run `98cc751d`): a supersede on a fresh branch that declares
+  `counters init --predecessor` inherits the exhausted gate-return counter and fails at readiness.
+  The rule was already a § 6 row before this entry was written, so nothing was added for it (leader,
+  2026-09-21).
+- **A conflict refresh that keeps the old head in the record is refused.** The refresh merges `main`
+  through `.xezar/checks/merge-recovery.sh` and must then REWRITE the `DELIVERED` record for the new
+  head; readiness compares the record against the current head and refuses a stale one. The rule it
+  produced is the § 6 conflict-refresh row (leader, 2026-09-21).
+- **A `continue` note written from an older message re-answers a settled question.** Before acting on
+  a note the leader re-reads the run's LATEST text: a note composed from an earlier message can
+  answer a question the run has already moved past, so the continue spends a turn on a decision that
+  no longer exists. The leader rule is in [leader-guide.md](leader-guide.md) (leader, 2026-09-21).
+- **`gh pr checks` can show no checks at all on a fresh push.** The remedy is
+  `gh workflow run ci.yml --ref <branch>` for a real verdict on the head, never closing and
+  reopening the pull request. It is both a handoff-step brief rule (§ 6) and a leader rule
+  ([leader-guide.md](leader-guide.md)) (leader, 2026-09-21).
+- **A flake fix was dispatched for a wait another pull request had already rebuilt.** Run
+  `e842b53c` (2026-09-21 03:09) was briefed on `progressive-history.e2e.ts:459`, which PR #782
+  (`2f195b78`) had already rebuilt; the run correctly stopped at readiness with `BLOCKED` rather than
+  re-fixing it. The rule it produced – grep the campaign `merges.md` and run
+  `gh pr list --search "<spec file>"` before dispatching a flake fix – is in
+  [leader-guide.md](leader-guide.md) (leader, 2026-09-21).
+- **A rebuilt wait failed again once, under two concurrent gate runs.** The
+  `serve-port-memory.test.ts` "busy remembered port" case failed on a branch that already contained
+  `2f195b78`, so after the #782 rebuild (run `c03361ad`, 2026-09-21 05:4x, two gates in flight). It
+  was filed as #804. Recorded as a fact; no rule is drawn from one occurrence here.
+- **A `continue` that only supplied a missing `XEZ:DONE` cost nothing.** One
+  `execution_control continue` on run `9395bcfb` (2026-09-21 06:0x) resumed a run that had merely
+  omitted `XEZ:DONE`, at no extra cost – the $144 re-prompting loop of #613 (2026-09-18, above) did
+  not recur. The ten-minute watch on every continue is unchanged.
 
 ## Glossary
 

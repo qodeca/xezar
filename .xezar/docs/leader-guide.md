@@ -141,6 +141,14 @@ step dispatched by name (leader memory 2026-09-15).
 - Dispatch with `task_create`: `source.workflow` names the kit workflow, `worktree: false` only where
   the workflow says Worktree OFF, and `agentProfile` names the account (`.xezar/CLAUDE.md`,
   `.xezar/docs/model-routing.md` § 3).
+- **Before dispatching a flake fix, check whether that wait has already been rebuilt.** Grep the
+  campaign `merges.md` and run `gh pr list --search "<spec file>"` for a pull request that already
+  redesigned it. Run `e842b53c` (2026-09-21 03:09) was briefed on `progressive-history.e2e.ts:459`,
+  which PR #782 (`2f195b78`) had already rebuilt; the run correctly stopped at readiness with
+  `BLOCKED` rather than re-fixing it, so the cost was a whole dispatch, not a wrong change. A
+  rebuilt wait can still fail once under load – `serve-port-memory.test.ts` did, on a branch that
+  contained `2f195b78`, filed as #804 – so a fresh failure is checked against the rebuild before it
+  is treated as a new flake (leader, 2026-09-21).
 - Ready a PR with `gh pr ready`, the `review` label and a short comment saying who authorized it
   (leader memory 2026-09-11).
 - A review cannot approve its own PR: every agent PR is authored by the same account, so the verdict
@@ -210,6 +218,9 @@ because a head that moved since the brief makes the brief's exact-head guard sta
 - If a fresh PR shows no checks for more than about ten minutes, run
   `gh workflow run ci.yml --ref <branch>` for a real verdict on the head, and record it as a CI
   observation: a dispatch run does not attach as a PR check (leader memory 2026-09-16).
+  `gh pr checks` may report NO checks at all on a fresh push, not merely pending ones; the remedy is
+  still that dispatch, never closing and reopening the pull request to provoke one. The brief line
+  the handoff step carries is in `.xezar/docs/model-routing.md` § 6 (leader, 2026-09-21).
 
 ## Review discipline
 
@@ -308,7 +319,13 @@ because a head that moved since the brief makes the brief's exact-head guard sta
   (timeline-2026-09-21.md 02:27). The exact probe command and the rule are the leader's dated
   rule, not verified evidence (leader, 2026-09-21; `.xezar/docs/model-routing.md` § 5).
 - Watch every `execution_control continue` for its first ten minutes. One continue burned $144 on
-  2026-09-18 by re-prompting itself (`.xezar/docs/model-routing.md` § 5).
+  2026-09-18 by re-prompting itself (`.xezar/docs/model-routing.md` § 5). Not every continue is
+  expensive: one on run `9395bcfb` merely supplied a missing `XEZ:DONE` and cost nothing extra
+  (leader, 2026-09-21).
+- **Re-read the run's LATEST text before acting on a `continue` note.** A note composed from an
+  earlier message answers a question the run has already moved past, so the continue spends a turn
+  re-answering a settled decision. Read the newest text first, then write the note (leader,
+  2026-09-21).
 - Machine hygiene: pull the primary after every merge; at most two quality-gate runs at once; no new
   task when the machine load is above 18 (`.xezar/docs/model-routing.md` § 6). **The two-gate ceiling
   is a hand rule until the product enforces it** (leader measurement, 2026-09-17/18): attempt failure
@@ -477,7 +494,10 @@ Before a dispatch:
       never the author.
 - [ ] Brief carries the primary-checkout sentence, foreground gates, `XEZ:DONE` as the last line, and
       the exact head and base. A resume that merges `main`, and a superseding run, carry their
-      `.xezar/docs/model-routing.md` § 6 lines verbatim.
+      `.xezar/docs/model-routing.md` § 6 lines verbatim; a conflict refresh carries its § 6 line too,
+      including the rewrite of the `DELIVERED` record for the new head.
+- [ ] A flake fix: `merges.md` grepped and `gh pr list --search "<spec file>"` run, so the wait is
+      not one another pull request has already rebuilt.
 - [ ] A writing brief makes the full phase record a numbered step before readiness; a review brief
       names one experiment that could fail; a rename brief carries the dated-record sentence.
 - [ ] `gh pr view <n> --json headRefOid,mergeStateStatus` read immediately before the dispatch; the
