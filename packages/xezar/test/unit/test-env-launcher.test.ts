@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { createServer } from 'node:net';
 import { join, relative, resolve } from 'node:path';
 import { afterEach, test } from 'node:test';
 
@@ -59,7 +60,8 @@ cat > packages/xezar/dist/index.js <<'EOF'
 const fs = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
-const port = Number(process.argv[process.argv.indexOf('--port') + 1]);
+const net = require('node:net');
+const requestedPort = Number(process.argv[process.argv.indexOf('--port') + 1]);
 const repo = process.argv[process.argv.indexOf('--repo') + 1] ?? process.cwd();
 // What this boot actually SAW and what the launcher actually ASKED FOR, so a spec can assert the
 // layout input arrived rather than infer it from the descriptor the launcher wrote itself.
@@ -77,12 +79,39 @@ const taskEnv = JSON.stringify({
 // app, and let the caller hold the listener back so the kill lands inside the boot window rather
 // than after it (the crash case, review of #657 M2).
 fs.writeFileSync(path.join(repo, '.local/qa/app.pid'), String(process.pid));
-setTimeout(() => {
-  http.createServer((req, res) => {
+// The real app's bind contract (#238): --port is a REQUEST, and a port taken at bind time
+// moves the app to the next one, which it then PRINTS. This stub mirrors that so the launcher's
+// port reading is exercised. XEZ_TEST_TAKE_PORT_AT_BIND manufactures the takeover
+// deterministically: a thief binds the requested port first, exactly as a peer process would
+// between the old probe and this bind. The thief ignores its own bind error, because a port
+// already held by somebody else is just as taken.
+let port = requestedPort;
+const serve = () => {
+  const server = http.createServer((req, res) => {
     const json = req.url === '/api/health' || req.url === '/api/task-env' || req.url === '/api/boot-state';
     res.writeHead(200, { 'content-type': json ? 'application/json' : 'text/html' });
     res.end(req.url === '/api/health' ? '{"ok":true}' : req.url === '/api/task-env' ? taskEnv : req.url === '/api/boot-state' ? bootState : '<!doctype html>');
-  }).listen(port, '127.0.0.1');
+  });
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE' && port < requestedPort + 50) { port += 1; server.listen(port, '127.0.0.1'); return; }
+    console.error(err);
+    process.exit(1);
+  });
+  server.once('listening', () => {
+    console.log('  cockpit → http://localhost:' + port);
+    // Real startup prints later product copy containing "cockpit" but no URL. The launcher must
+    // read the boot URL itself, not whichever line happened to use that word last.
+    console.log('  reusable skills for your cockpit');
+  });
+  server.listen(port, '127.0.0.1');
+};
+setTimeout(() => {
+  if (process.env.XEZ_TEST_TAKE_PORT_AT_BIND === '1') {
+    const thief = net.createServer();
+    thief.on('error', () => serve());
+    thief.once('listening', () => serve());
+    thief.listen(requestedPort, '127.0.0.1');
+  } else serve();
 }, Number(process.env.XEZ_TEST_BOOT_DELAY_MS ?? '0'));
 EOF
 printf '<!doctype html>' > packages/xezar/web/dist/index.html
@@ -103,10 +132,10 @@ esac
   return { root, path: join(root, 'bin') };
 }
 
-function descriptor(root: string): { baseUrl: string; app: { pid: number } } {
+function descriptor(root: string): { baseUrl: string; app: { pid: number; port: number } } {
   return JSON.parse(readFileSync(join(root, '.local/qa/test-env.json'), 'utf8')) as {
     baseUrl: string;
-    app: { pid: number };
+    app: { pid: number; port: number };
   };
 }
 
@@ -144,6 +173,16 @@ async function waitFor(check: () => boolean, timeoutMs: number, what: string): P
     await new Promise((done) => setTimeout(done, 100));
   }
   assert.fail(`timed out after ${timeoutMs}ms waiting for ${what}`);
+}
+
+/** A loopback port that is free right now, for a fixture that must not depend on 4321. */
+async function freePort(): Promise<number> {
+  const probe = createServer();
+  await new Promise<void>((done) => probe.listen(0, '127.0.0.1', done));
+  const address = probe.address();
+  const port = address && typeof address === 'object' ? address.port : 0;
+  await new Promise<void>((done) => probe.close(() => done()));
+  return port;
 }
 
 /**
@@ -245,6 +284,47 @@ test('never reuses an instance across a change in the repository single-project 
 
   spawnSync('/bin/sh', [down], { encoding: 'utf8', env, timeout: 20_000 });
   launchedPids.delete(markerGone.app.pid);
+});
+
+/**
+ * The launcher reports the port the app really holds, not the one it probed and released.
+ *
+ * #238 removed exactly this shape from the product: a port proved free and then released can be
+ * taken before the real bind, and a boot that trusts the probed port polls a URL with nobody
+ * behind it. The launcher still had it (`port_free`/`free_port`). The race is MANUFACTURED here
+ * rather than raced: the stub takes the requested port for itself at bind time
+ * (`XEZ_TEST_TAKE_PORT_AT_BIND`), exactly as a peer process would between the probe and the bind,
+ * then falls back to the next port the way the real app does and prints the port it holds. The
+ * descriptor must name THAT port and it must answer.
+ */
+test('reports the port the app really holds when the probed port is taken at bind time', { timeout: 60_000 }, async () => {
+  // BREAK-671-ENV-PORT. The app's emitted boot URL is the deterministic signal; neither a
+  // released availability probe nor the last unrelated log line containing “cockpit” owns it.
+  const fixture = makeFixture(hasSetsid);
+  // A port this test knows is free, so the case does not depend on 4321 being free on the
+  // machine (a developer's cockpit, a peer run's instance). The launcher requests it, the stub
+  // takes it at bind time, and the app must move to the next port and be reported there.
+  const requested = await freePort();
+  const env = {
+    ...process.env,
+    PATH: fixture.path,
+    TEST_ENV_CACHE_TTL_SECONDS: '600',
+    TEST_ENV_PREFERRED_PORT: String(requested),
+    XEZ_TEST_TAKE_PORT_AT_BIND: '1',
+  };
+  const up = join(fixture.root, 'scripts/test-env-up.sh');
+  const down = join(fixture.root, 'scripts/test-env-down.sh');
+
+  const cold = spawnSync('/bin/sh', [up], { cwd: tmpdir(), encoding: 'utf8', env, timeout: 20_000 });
+  assert.equal(cold.status, 0, cold.stderr);
+  const started = descriptor(fixture.root);
+  launchedPids.add(started.app.pid);
+  assert.notEqual(started.app.port, requested, 'the descriptor named the requested port, which the app does not hold');
+  const health = await fetch(`${started.baseUrl}/api/v1/health`);
+  assert.equal(health.status, 200, 'the descriptor URL must answer');
+
+  spawnSync('/bin/sh', [down], { encoding: 'utf8', env, timeout: 20_000 });
+  launchedPids.delete(started.app.pid);
 });
 
 /**
