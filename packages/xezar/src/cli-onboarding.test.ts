@@ -39,14 +39,36 @@ describe('CLI onboarding (#819)', () => {
   let home: string;
   let project: string;
 
-  /** Run the CLI with stdin CLOSED — no terminal, the case a bootstrap script is in. */
-  const cli = (...args: string[]): Run => {
-    const result = spawnSync(process.execPath, ['--import', tsxLoader, entry, '--repo', project, ...args], {
-      env: { ...process.env, XEZ_HOME: home, VITEST: '', NO_COLOR: '1' },
+  /**
+   * The spawn every case uses, with stdin CLOSED — no terminal, the case a bootstrap script is in.
+   * Each case needs its own project folder: the first-run import and `init` both change a folder
+   * for good, so a second command in the same one meets a set-up project instead. `env` is spread
+   * over the pinned home, and `timeoutMs` is opt-in so a spawn that hangs fails the case instead of
+   * hanging the suite.
+   */
+  const cliIn = (
+    repo: string,
+    args: readonly string[],
+    opts: { env?: NodeJS.ProcessEnv; timeoutMs?: number } = {},
+  ): Run => {
+    const result = spawnSync(process.execPath, ['--import', tsxLoader, entry, '--repo', repo, ...args], {
+      env: { ...process.env, XEZ_HOME: home, VITEST: '', NO_COLOR: '1', ...opts.env },
       stdio: ['ignore', 'pipe', 'pipe'],
       encoding: 'utf8',
+      ...(opts.timeoutMs !== undefined ? { timeout: opts.timeoutMs } : {}),
     });
     return { status: result.status ?? -1, stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
+  };
+
+  /** The same spawn against the fixture project. */
+  const cli = (...args: string[]): Run => cliIn(project, args);
+
+  /** A fresh git project: the import and `init` both change a folder for good. */
+  const freshProject = (name: string): string => {
+    const dir = join(base, name);
+    mkdirSync(dir, { recursive: true });
+    execFileSync('git', ['init', '-q', dir]);
+    return dir;
   };
 
   const stateFile = (name: string): string => join(project, '.xezar', name);
@@ -211,6 +233,95 @@ describe('CLI onboarding (#819)', () => {
       expect(run.status).toBe(1);
       expect(run.stderr).toContain('usage: xezar accounts import-global');
     }, 30_000);
+  });
+
+  describe('a command that owns its stdout (F7)', () => {
+    const SKIP_LINE = 'skipped a default naming gone-org, which no account matches';
+    const machineStateOf = (repo: string): Record<string, unknown> => {
+      const path = join(repo, '.local', 'xezar', 'machine-state.json');
+      return existsSync(path) ? (JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>) : {};
+    };
+
+    it(
+      'named break `skip-line-on-the-protocol-channel`: mcp and lease keep the skip line off their stdout, and the ordinary boot still prints it (P2-AC9)',
+      () => {
+        // The ordinary boot prints it. F7 is about routing the line off a channel that is not the
+        // boot's, never about deleting it.
+        const boot = cliIn(freshProject('boot'), ['projects', '--single-project', '--import-global'], {
+          timeoutMs: 30_000,
+        });
+        expect(boot.status).toBe(0);
+        expect(boot.stdout).toContain(SKIP_LINE);
+
+        // `mcp` speaks JSON-RPC on stdout: a human line before the handshake is a protocol error,
+        // not a banner. The launch really did the import, so the line existed to be printed.
+        const mcpRepo = freshProject('mcp');
+        const mcp = cliIn(mcpRepo, ['--single-project', '--import-global', 'mcp'], { timeoutMs: 30_000 });
+        expect(mcp.status).toBe(0);
+        expect(machineStateOf(mcpRepo).globalImport).toBe('imported');
+        expect(mcp.stdout).not.toContain(SKIP_LINE);
+        expect(mcp.stdout).not.toContain('gone-org');
+        expect(mcp.stdout).toBe('');
+
+        // `lease` hands its stdout to the command it wraps — BACKWARD_COMPATIBILITY.md §1 promises
+        // `lease gates` writes nothing there. HOME is pinned as well, because the gate slot locks
+        // are machine-wide by design (`gateLeaseDir()`): without this the case would queue behind a
+        // real gate run, including the one running this suite, for up to the lease's 20-minute bound.
+        const leaseRepo = freshProject('lease');
+        const lease = cliIn(
+          leaseRepo,
+          [
+            '--single-project',
+            '--import-global',
+            'lease',
+            'gates',
+            '--',
+            process.execPath,
+            '-e',
+            'process.stdout.write("wrapped\\n")',
+          ],
+          { env: { HOME: join(base, 'lease-home') }, timeoutMs: 30_000 },
+        );
+        expect(lease.status).toBe(0);
+        expect(machineStateOf(leaseRepo).globalImport).toBe('imported');
+        expect(lease.stdout).toBe('wrapped\n');
+        expect(lease.stderr).not.toContain(SKIP_LINE);
+      },
+      90_000,
+    );
+  });
+
+  describe('init after the same launch imported (#825)', () => {
+    const ACCOUNTS_LINE = 'Agent accounts are not imported by init.';
+
+    it(
+      'named break `contradicting-init-closing-line`: --import-global drops the accounts line, and a launch that imported nothing keeps it',
+      () => {
+        const imported = cliIn(freshProject('init-flag'), ['init', '--single-project', '--import-global'], {
+          timeoutMs: 30_000,
+        });
+        expect(imported.status).toBe(0);
+        // The run says what it did …
+        expect(imported.stdout).toContain('imported');
+        expect(imported.stdout).toContain('Done. Start the cockpit with:');
+        // … and does not then tell the person to run the command it just ran.
+        expect(imported.stdout).not.toContain(ACCOUNTS_LINE);
+        expect(imported.stdout).not.toContain('accounts import-global');
+
+        // No flag and no terminal: nothing was imported, so the line is still the truth.
+        const asked = cliIn(freshProject('init-ask'), ['init', '--single-project'], { timeoutMs: 30_000 });
+        expect(asked.status).toBe(0);
+        expect(asked.stdout).toContain(ACCOUNTS_LINE);
+
+        // Declined: nothing was imported either.
+        const declined = cliIn(freshProject('init-declined'), ['init', '--single-project', '--no-import-global'], {
+          timeoutMs: 30_000,
+        });
+        expect(declined.status).toBe(0);
+        expect(declined.stdout).toContain(ACCOUNTS_LINE);
+      },
+      90_000,
+    );
   });
 
   describe('what init ends with (item 9b)', () => {

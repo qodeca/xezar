@@ -33,6 +33,7 @@ import {
   repeatedImportLine,
   resolveImportDecision,
   runFirstRunImport,
+  skippedDefaultLines,
   type ImportAsk,
 } from './import-global.ts';
 
@@ -397,6 +398,38 @@ describe('import from the global setup (#600 FR-4)', () => {
         // The copy reports what it left out, so the boot can name it on its own line (#824).
         const copied = outcome.kind === 'imported' ? outcome.files.find((file) => file.to === layout.accountsPath) : undefined;
         expect(copied?.skippedDefaults).toEqual(['gone-org']);
+      });
+
+      it('the prompt door follows the same rule: a yes drops the dangling default and the boot names the handle — break: the filter written on the flag path instead of in the shared setup (F11)', async () => {
+        writeFileSync(
+          join(home, 'agent-accounts.json'),
+          `${JSON.stringify({
+            accounts: [{ id: 'work', provider: 'claude', configDir: '~/.claude-work' }],
+            // `codex` names an account this file does not hold. The prompt path copies through the
+            // same `accountsForProject` as the flag, so a person who answers yes must get the same
+            // filtered copy and the same line — this is the door a person actually meets.
+            defaults: { claude: 'work', codex: 'gone-org' },
+          })}\n`,
+        );
+        const asked: string[] = [];
+
+        const outcome = await runFirstRunImport(
+          layout,
+          async (question) => {
+            asked.push(question);
+            return true;
+          },
+          env,
+        );
+
+        // The prompt really was the door: a person answered, and only then did the copy happen.
+        expect(asked).toHaveLength(1);
+        expect(outcome.kind).toBe('imported');
+        expect((json(layout.accountsPath) as { defaults: Record<string, string> }).defaults).toEqual({ claude: 'work' });
+        // And the boot names the skipped handle from the one shared line.
+        expect(skippedDefaultLines(outcome)).toEqual([
+          '  ! skipped a default naming gone-org, which no account matches',
+        ]);
       });
 
       it('--no-import-global imports nothing and records a decline — break: the flag ignored, so the outcome reads not-asked (T1.2)', async () => {

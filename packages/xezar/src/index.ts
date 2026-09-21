@@ -348,6 +348,13 @@ async function main(): Promise<void> {
   // stderr, which is where a wait notice belongs.
   const modeLine = stateLayoutBootLine(stateLayout);
   if (modeLine !== null && command !== 'mcp' && command !== 'lease') console.log(modeLine);
+  // What `init`'s closing lines need to know about this same launch (#825): the accounts line
+  // exists to tell a person their agent accounts were NOT brought along, so a run that just
+  // copied them — the prompt answered yes, or `--import-global` — must not print it and send
+  // them to a command that already ran. The predicate is the copied FILE, not the outcome kind:
+  // a global setup with no accounts file, or a project that already carried one, imported no
+  // accounts and the line is still the truth there.
+  let accountsImported = false;
   if (stateLayout.mode === 'project') {
     // The first-run ask (#600 FR-4.1, SP-5.1/5.2): a folder with no state yet
     // is asked, once, in the terminal, whether to copy the global setup in —
@@ -382,12 +389,21 @@ async function main(): Promise<void> {
       if (importLine !== null) console.log(importLine);
       // A default the import left out is named on its own line (#824), so a program reading this
       // output can tell "a default was skipped" from "there was nothing to skip". It is the same
-      // line the `accounts import-global` door prints, from the same helper.
-      for (const line of skippedDefaultLines(outcome)) console.log(line);
+      // line the `accounts import-global` door prints, from the same helper. Like `importLine`
+      // above it is suppressed for `mcp` and `lease`, which own their stdout (#823 F7): the line is
+      // routed off a channel that is not the boot's, never deleted — the ordinary boot and the
+      // command door still print it, and a later `accounts import-global` re-derives it from the
+      // global file, so a handle skipped by a silent launch is still named when someone asks.
+      if (!silent) {
+        for (const line of skippedDefaultLines(outcome)) console.log(line);
+      }
       // What happened is remembered per machine (#819 item 1d), so "declined", "nobody was asked"
       // and "imported" stop being the same disk state. Best-effort by contract: a launch that
       // cannot record a report still starts.
       await rememberGlobalImport(globalImportStateOf(outcome), stateLayout);
+      accountsImported =
+        outcome.kind === 'imported' &&
+        outcome.files.some((file) => file.to === stateLayout.accountsPath && file.outcome === 'copied');
     }
     createProjectStateFiles(stateLayout);
   } else if (importDecision !== 'ask' && command !== 'mcp' && command !== 'lease') {
@@ -411,7 +427,7 @@ async function main(): Promise<void> {
       );
       return;
     case 'init': {
-      initCommand(repoRoot);
+      initCommand(repoRoot, accountsImported);
       const audit = cliAudit('init', repoRoot);
       await audit.applied({ resource: projectResource(await audit.scope()) });
       return;
@@ -1476,16 +1492,24 @@ async function serverCommand(
  *
  * The accounts line exists because `init` scaffolds a project and people reasonably assume it
  * brought their agent accounts with it. It did not — accounts are copied by their own command,
- * which is the one that asks the person's consent to read their global setup.
+ * which is the one that asks the person's consent to read their global setup. That line's whole
+ * job is to say the import has NOT happened, so a launch that imported the accounts itself (the
+ * first-run prompt answered yes, or `--import-global`) leaves it out (#825): printing it beside
+ * the `imported N file(s)` line above would contradict the run and send the person to a command
+ * they just ran. `accountsImported` is this launch's own outcome, never a remembered one.
  *
  * The single-project line is only printed in a repository: outside one there is no folder for a
  * team to carry, so the recommendation would name a choice that does not apply.
  */
-function initClosingLines(gitRepository: boolean): string[] {
+function initClosingLines(gitRepository: boolean, accountsImported: boolean): string[] {
   const npx = npxCommand();
   return [
-    '',
-    `Agent accounts are not imported by init. To copy your global accounts into this project, run: ${npx} accounts import-global`,
+    ...(accountsImported
+      ? []
+      : [
+          '',
+          `Agent accounts are not imported by init. To copy your global accounts into this project, run: ${npx} accounts import-global`,
+        ]),
     '',
     `Done. Start the cockpit with: ${npx}`,
     ...(gitRepository
@@ -1494,7 +1518,7 @@ function initClosingLines(gitRepository: boolean): string[] {
   ];
 }
 
-function initCommand(repoRoot: string): void {
+function initCommand(repoRoot: string, accountsImported: boolean): void {
   const workflowsDir = join(projectKitDir(repoRoot), 'workflows');
   const skillsDir = join(projectKitDir(repoRoot), 'skills');
   mkdirSync(workflowsDir, { recursive: true });
@@ -1526,7 +1550,7 @@ function initCommand(repoRoot: string): void {
   }
   // `.git` rather than a git call: a folder someone has just `git init`-ed has no commit yet,
   // and a repository is exactly what makes the project-owned setup worth naming.
-  for (const line of initClosingLines(existsSync(join(repoRoot, '.git')))) console.log(line);
+  for (const line of initClosingLines(existsSync(join(repoRoot, '.git')), accountsImported)) console.log(line);
 }
 
 // ---- helpers -----------------------------------------------------------------
