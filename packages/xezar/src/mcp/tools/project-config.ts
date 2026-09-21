@@ -665,7 +665,7 @@ export const projectConfigInputSchema = z
     enabled: setProviderEnabledInputSchema.shape.enabled
       .optional()
       .describe(
-        'set_provider_enabled: true offers the provider for new tasks again, false stops it being offered. It takes effect at once, with no restart — and it is a machine-wide switch, so turning one off is a denial of service for the person’s other projects and turning one on re-enables a backend they deliberately disabled.',
+        'set_provider_enabled: true offers the provider for new tasks again, false stops it being offered. It takes effect at once, with no restart — and it is a machine-wide switch, so turning one off is a denial of service for the person’s other projects and turning one on re-enables a backend they deliberately disabled. provider and enabled are top-level arguments from xezar 0.17.0 on; xezar 0.16.0 refused set_provider_enabled outright and had neither argument, so it answered them as unrecognized keys.',
       ),
     // ---- agent accounts (#677 B5) ----
     // `account` and `accountUpdate` ARE the route's own body schemas, re-used rather than
@@ -2037,6 +2037,33 @@ async function observedOnboardingIdentity(
   return parsed.success ? parsed.data.observed : null;
 }
 
+/**
+ * The two answers a `project_config` call gets whatever else it carries: the project-binding refusal
+ * when it names a project, and the boundary refusal when its action is one of `REFUSED_ACTIONS`.
+ * Both dispatch nothing. Shared by `call` and `preflight` (#819 item 6), so a refused call answers
+ * the same text whether or not its other arguments validate — and neither echoes one of them: the
+ * text names the action, the boundary and the reason, and nothing a caller chose besides.
+ */
+function boundaryRefusal(action: string, namesProject: boolean, ctx: McpToolContext): Result | undefined {
+  if (namesProject) {
+    return refused(action, 'project-binding', `this connection is bound to project ${ctx.project.name} and acts on it alone; a project cannot be named.`);
+  }
+  if (isRefused(action)) {
+    const { boundary, reason } = REFUSED_ACTIONS[action];
+    return refused(action, boundary, `${reason}${singleProjectNote(action)}`);
+  }
+  return undefined;
+}
+
+const KNOWN_ACTIONS: ReadonlySet<string> = new Set<string>([...PROJECT_CONFIG_ACTIONS, ...REFUSED_ACTION_NAMES]);
+
+/** The raw call's `action`, when it is one this tool has — never an arbitrary string to echo back. */
+function rawAction(rawArgs: unknown): string | undefined {
+  if (typeof rawArgs !== 'object' || rawArgs === null || Array.isArray(rawArgs)) return undefined;
+  const action: unknown = Object.hasOwn(rawArgs, 'action') ? (rawArgs as { action: unknown }).action : undefined;
+  return typeof action === 'string' && KNOWN_ACTIONS.has(action) ? action : undefined;
+}
+
 export const projectConfigTool = defineTool({
   name: 'project_config',
   title: 'Project configuration',
@@ -2044,18 +2071,26 @@ export const projectConfigTool = defineTool({
     "Read and change THIS project's own configuration: its settings (agent, models, system prompt, review gate, base branch, worktree retention, memory limit), its registry entry (concurrency cap and tags), prompt templates, in-repo agent config files, workflows, skills, GitHub automations and worktrees. It also reads the shared settings as effective limits and capabilities (get_limits, get_capabilities, get_account) and CHANGES them with set_workspace_config — the shared limits, composer defaults, follow-up inbox and environment passthrough, skills auto-update and the machine-wide agent defaults, which apply to every project on this machine, the terminal settings (the instance mode — which projects one xezar serves — and how its terminal prints; all are settled at start, so a change applies the next time one starts) and the two workspace folder paths — the folder the file picker may browse and the folder new checkouts land in, each checked for real before anything is saved. The shared presentation preferences are read with get_workspace_ui_state and changed with set_workspace_ui_state (appearance, notifications, task-table columns, dismissed provider incidents) and import_skills (the curated list of default skills); an object-valued preference is replaced whole, so read it before you change one key of it. The colour theme is not among them — the browser stores that itself. The agent backends can be switched off and on for the whole machine with set_provider_enabled and their authentication incidents cleared with retry_provider. The agent ACCOUNTS — the separate logins a backend can run under — are read with get_account, added with create_account, edited with update_account, removed with remove_account and pointed at this project with select_account; check_account_status probes one account's sign-in state and get_account_details reports who it is signed in as. Connecting a provider, opening an account's folder in a desktop application, home files, the project registry and host folders are outside this boundary and are refused with the reason.",
   inputSchema: projectConfigInputSchema,
   annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+  // #819 item 6: the refusals stand whatever else was sent. Without this, a refused action carrying
+  // one unknown key answered `Unrecognized key` — a schema error for an action no argument can make
+  // a write — and a leader went round the loop correcting arguments it should never have sent.
+  preflight(rawArgs, ctx) {
+    const action = rawAction(rawArgs);
+    if (action === undefined) return undefined;
+    return boundaryRefusal(action, (rawArgs as { projectId?: unknown }).projectId !== undefined, ctx);
+  },
+  // The keys the named action takes, from `ACTION_FIELDS` itself, for an unknown-key error. A
+  // refused action has no row there and never reaches this: its refusal answered first.
+  acceptedKeys(rawArgs) {
+    const action = rawAction(rawArgs);
+    if (action === undefined || isRefused(action)) return undefined;
+    const fields = ACTION_FIELDS[action as ProjectConfigAction];
+    return { subject: action, required: ['action', ...fields.required], optional: [...fields.optional] };
+  },
   async call(args, ctx: ProjectConfigContext) {
-    if (args.projectId !== undefined) {
-      return refused(
-        args.action,
-        'project-binding',
-        `this connection is bound to project ${ctx.project.name} and acts on it alone; a project cannot be named.`,
-      );
-    }
-    if (isRefused(args.action)) {
-      const { boundary, reason } = REFUSED_ACTIONS[args.action];
-      return refused(args.action, boundary, `${reason}${singleProjectNote(args.action)}`);
-    }
+    const refusal = boundaryRefusal(args.action, args.projectId !== undefined, ctx);
+    // `isRefused` again only to narrow the type: `boundaryRefusal` answered every refused action.
+    if (refusal || isRefused(args.action)) return refusal!;
     if (!ctx.service) {
       return errorResult('project_config is unavailable: this xezar service did not hand the tool its in-process entry.');
     }

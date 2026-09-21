@@ -1358,6 +1358,58 @@ REFUSE: both answered `Refused (workspace-wide setting)` and dispatched nothing.
 - **The record of the old decision is kept, not deleted**: D-03-2 and the I-115 ruling stay in
   `docs/features/mcp-server/mcp-settings-classification.md` and
   `docs/features/mcp-server/mcp-ui-action-inventory.md` verbatim, beside the new one, dated.
+- **The argument shape applies from 0.17.0, and not before.** The top-level `provider` and
+  `enabled` arguments arrived with this change (commit `c9d2e341`, PR #760), which is an ancestor
+  of `v0.17.0` and not of `v0.16.0`. On 0.16.0 the schema had neither key, and the action was a
+  refusal whatever it carried; because 0.16.0 validated arguments BEFORE it refused, a call that
+  sent them was answered `Unrecognized keys: "provider", "enabled"` rather than the refusal. That
+  0.16.0 answer is therefore not a sign of a different shape — there was no shape. The `enabled`
+  argument's description says so to a leader (#819 item 6).
+
+## MCP argument errors: a refusal outranks an unknown key, and the error names what the action takes (#819 item 6) — deliberate, 0.18.0
+
+Until 0.18.0 the MCP service validated a call's arguments BEFORE the tool could refuse it, so a
+`project_config` action that is refused whatever it carries (`connect_provider`, the registry
+actions, `apply_skill_updates`, …) answered `Invalid arguments … Unrecognized key` whenever it
+also carried a key the schema did not know. In the field a leader spent four calls correcting
+arguments for an action no argument could ever make a write.
+
+- **Changed (order)**: when a call's arguments do NOT validate, the service first asks the tool's
+  optional `preflight` hook. `project_config` answers there with its project-binding refusal (a
+  call that names `projectId`) and its boundary refusal (an action in `REFUSED_ACTIONS`), whatever
+  else the call carries — the same text, from the same code, as the refusal a valid call gets. It
+  answers only for an action the tool has, so an arbitrary action string is still an argument
+  error and is never the subject of a refusal sentence. No other tool has the hook.
+- **Unchanged (what the old order was load-bearing for)**: no argument turns a refusal into a
+  write — the preflight refusal dispatches nothing, runs outside the door and files no receipt;
+  a refusal never offers an approval route and never echoes an argument it was sent (the text
+  names the action, the boundary and the reason only), and it still ends `Nothing was changed.`;
+  `.strict()` stays, so a misspelt key on a write that is NOT refused is still an argument error
+  and is never silently dropped. A refused call whose arguments DO validate is carried through the
+  door exactly as before, so its audit row (`refused`, with the boundary as the reason) and any
+  receipt are unchanged. A refused call with an unknown key is not audited, as an argument error
+  never was.
+- **Deliberate test change**: `mcp/acceptance-parity.test.ts` P-29's approval-key case
+  (`approvedBy`, `humanApproval`, `confirm`, `override` on `connect_provider`) now expects
+  `Refused (host process)` instead of `Invalid arguments … Unrecognized key`. Both assertions it
+  protects are kept and tightened: nothing is dispatched, and the answer matches neither
+  `/approv/i` nor the key names it was sent.
+- **Changed (text, additive)**: an argument error caused by an unknown TOP-LEVEL key now also
+  carries the other problems the call had — zod stops at an unknown key, so `set_provider_enabled
+  needs provider` was hidden — recovered by re-parsing a copy without the unknown keys that is read
+  for its messages and never dispatched. It then ends with `Accepted for <action>: <keys>
+  (required); <keys> (optional).`, read from `project_config`'s own `ACTION_FIELDS` table (with
+  `action` first) or, for a tool without an action table, from its schema's own shape. The prefix
+  `Invalid arguments for <tool>: ` and the `<path>: <message>` items separated by `; ` are
+  unchanged; an unknown key inside a nested object keeps the old text exactly.
+- **Loosened**: `leader_events` actions `status` and `read` ACCEPT an `operationId` and ignore it,
+  where they refused one (`operationId does not apply to status` / `… to read`). The key is dropped
+  while the arguments are parsed, before the door sees them, so it still files no receipt and a
+  repeat is answered afresh, never as a replay. A malformed key is still an argument error. `ack`,
+  `attach` and `stop` still require one.
+- **Breaking, from now on**: answering a refused action's unknown key with an argument error
+  again, letting any argument reach a dispatch from a refused action, echoing an argument in a
+  refusal, dropping `.strict()` from `project_config`, or filing a receipt for a `status` or `read`.
 
 ## The MCP `project_config` tool administers agent accounts (#677 wave 2 B5) — deliberate, 0.17.0
 

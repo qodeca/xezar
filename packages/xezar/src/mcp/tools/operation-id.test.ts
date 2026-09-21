@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { toolListing, type McpTool } from '../tool.ts';
 import { tools } from './index.ts';
-import { refusesOperationId, requiresOperationId } from './operation-id.testkit.ts';
+import { SAMPLE_OPERATION_ID, refusesOperationId, requiresOperationId } from './operation-id.testkit.ts';
 import { REFUSED_ACTIONS } from './project-config.ts';
 
 /**
@@ -87,6 +87,14 @@ const NO_OPERATION_ID: Readonly<Record<string, string>> = {
   'project_config:list_worktrees': 'lists the worktrees',
 };
 
+/**
+ * Exempt reads that ACCEPT an operationId and drop it while parsing, instead of refusing it (#819
+ * item 6). The guarantee is the same one refusing gives — no receipt is ever filed over a read —
+ * because the door only ever sees the PARSED arguments, and the key is gone from them. A leader
+ * that sends a key on every call is answered instead of sent round the loop.
+ */
+const DROPS_OPERATION_ID: ReadonlySet<string> = new Set(['leader_events:read', 'leader_events:status']);
+
 const REFUSAL_ONLY = new Set(Object.keys(REFUSED_ACTIONS).map((action) => `project_config:${action}`));
 
 /**
@@ -130,6 +138,13 @@ describe('#264 — every mutating tool action takes a required operationId (D-06
         const probe = PROBE_ARGS[id] ?? {};
         it(`${id} takes no operation id — ${exempt}`, () => {
           expect(requiresOperationId(tool, action, probe), `${id} is listed as exempt but demands an operationId`).toBe(false);
+          if (DROPS_OPERATION_ID.has(id)) {
+            // RED against: removing the drop, which would hand the key to the door and file a receipt.
+            const parsed = tool.inputSchema.safeParse({ action, ...probe, operationId: SAMPLE_OPERATION_ID });
+            expect(parsed.success, `${id} should accept an operationId it then drops`).toBe(true);
+            expect(Object.hasOwn(parsed.data as object, 'operationId'), `${id} kept the key, so a receipt could be filed over a read`).toBe(false);
+            return;
+          }
           expect(
             refusesOperationId(tool, action, probe),
             `${id} is exempt but accepts an operationId, so a receipt could be filed over a read`,
@@ -142,6 +157,10 @@ describe('#264 — every mutating tool action takes a required operationId (D-06
       });
     }
   }
+
+  it('every action that drops a key is also a written-down exemption', () => {
+    expect([...DROPS_OPERATION_ID].filter((id) => NO_OPERATION_ID[id] === undefined)).toEqual([]);
+  });
 
   it('every exemption named above is a real action of a real mutating tool', () => {
     const real = new Set(tools.filter(isMutatingTool).flatMap((tool) => actionsOf(tool).map((action) => key(tool, action))));

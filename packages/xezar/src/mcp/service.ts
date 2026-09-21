@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { McpPushCapability } from '@qodeca/xezar-contract';
 import { chmod, lstat, mkdir, unlink } from 'node:fs/promises';
 import { createConnection, createServer, type Socket } from 'node:net';
+import type { z } from 'zod';
 import { assertXezarHomeWriteIsSandboxed } from '../paths.ts';
 import { projectDataDir } from '../project-data-paths.ts';
 import { ProjectOwnership, sessionExpiredError } from '../workspace/project-owner.ts';
@@ -19,7 +20,7 @@ import {
   type HealthResult,
   type IpcResponse,
 } from './ipc.ts';
-import { errorResult, type McpTool, type McpToolContext, type McpToolResult } from './tool.ts';
+import { acceptedKeysSentence, errorResult, schemaKeys, type McpTool, type McpToolContext, type McpToolResult } from './tool.ts';
 
 /**
  * The service half of the IPC leg (D-01 § 1.2–1.5): the running xezar opens one
@@ -424,12 +425,21 @@ async function callTool(
   door: McpDoor | undefined,
   stillOwner: () => boolean,
 ): Promise<McpToolResult | 'fenced'> {
-  const parsed = tool.inputSchema.safeParse(args ?? {});
+  const raw = args ?? {};
+  const parsed = tool.inputSchema.safeParse(raw);
   // An argument error is a tool result, not a protocol error, so the model can
   // correct itself (MCP 2025-11-25, "Error Handling").
   if (!parsed.success) {
-    const issues = parsed.error.issues.map((i) => `${i.path.join('.') || '(arguments)'}: ${i.message}`);
-    return errorResult(`Invalid arguments for ${tool.name}: ${issues.join('; ')}`);
+    // #819 item 6: a refusal outranks an argument error. A refused action that also carries a key
+    // the schema does not know answers the refusal — which dispatches nothing, names no approval
+    // route and echoes no argument — instead of a schema complaint that sends the leader round the
+    // loop for an action it can never take. It is answered here, outside the door, exactly as an
+    // argument error always was: nothing ran, so there is nothing to receipt or audit. A refused
+    // call whose arguments DO validate still reaches the tool through the door below, which gives
+    // the same answer from the same code and records it as a refusal, as it always has.
+    const refusal = tool.preflight?.(raw, ctx);
+    if (refusal) return refusal;
+    return errorResult(invalidArgumentsText(tool, raw, parsed.error.issues));
   }
   // The fence (D-02.3): equality with the live owner's token, immediately before anything that can
   // change state. A read changes nothing, so it only needed the session check on arrival.
@@ -443,6 +453,38 @@ async function callTool(
     console.warn(`[xez] MCP tool ${tool.name} failed: ${err instanceof Error ? err.message : String(err)}`);
     return errorResult(`${tool.name} failed inside xezar; the cockpit's log has the details.`);
   }
+}
+
+const issueLine = (issue: z.core.$ZodIssue): string => `${issue.path.join('.') || '(arguments)'}: ${issue.message}`;
+
+/**
+ * `Invalid arguments for <tool>: <path>: <message>; …`, and — when a TOP-LEVEL key is unknown —
+ * what the call was missing besides, and which keys it takes (#819 item 6).
+ *
+ * zod stops at an unknown key: the object check aborts before any refinement runs, so the
+ * `set_provider_enabled needs provider` a leader most needs is exactly what it never saw. The
+ * missing messages are recovered by parsing a copy with the unknown keys left out, against the same
+ * schema. That copy is ONLY read for its messages and never dispatched, so `.strict()` keeps
+ * refusing the call: a typo'd key is still an error, never silently dropped. (The alternative, a
+ * `continue: true` on the strict check, is not available: the unknown-key issue is raised by the
+ * object parser itself, not by a check that carries an abort flag.)
+ *
+ * A nested unknown key (`uiState.appearance.theme`) keeps the plain text: the hint names top-level
+ * keys, and a nested object's keys are its own schema's to describe.
+ */
+function invalidArgumentsText(tool: McpTool, raw: unknown, issues: readonly z.core.$ZodIssue[]): string {
+  const lines = issues.map(issueLine);
+  const unknownKey = issues.some((issue) => issue.code === 'unrecognized_keys' && issue.path.length === 0);
+  if (!unknownKey) return `Invalid arguments for ${tool.name}: ${lines.join('; ')}`;
+  // A top-level unknown key is only ever reported for an object, so `raw` is one here.
+  const known = Object.keys(tool.inputSchema.shape);
+  const stripped = Object.fromEntries(Object.entries(raw as Record<string, unknown>).filter(([key]) => known.includes(key)));
+  const again = tool.inputSchema.safeParse(stripped);
+  if (!again.success) {
+    for (const line of again.error.issues.map(issueLine)) if (!lines.includes(line)) lines.push(line);
+  }
+  const accepted = tool.acceptedKeys ? tool.acceptedKeys(raw) : schemaKeys(tool);
+  return `Invalid arguments for ${tool.name}: ${lines.join('; ')}${accepted ? `. ${acceptedKeysSentence(accepted)}` : ''}`;
 }
 
 function expired(id: number, projectId: string): IpcResponse {
