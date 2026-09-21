@@ -15,6 +15,10 @@
 #             imports as missing/unknown and a cached build cannot start without node_modules.
 #   2026-07-30 execute the compound preparation chain through sh -c and stop requiring an
 #             api-client dist artifact that this source-aliased workspace does not produce.
+#   2026-09-20 let the APP own port selection: request PREFERRED_PORT (overridable for a
+#             hermetic test) and read the port the app really holds from its cockpit line,
+#             instead of proving a port free and releasing it before the bind — the #238
+#             TOCTOU, where a peer takes the probed port and the boot polls a dead URL.
 set -eu
 
 # ---- project-specific parameters -------------------------------------------
@@ -38,7 +42,7 @@ CACHE_FILE="$QA_DIR/.build-cache"
 APP_LOG="$QA_DIR/test-env-app.log"
 BROWSER_DESCRIPTOR="docs/testing/agent-browser.md"
 
-PREFERRED_PORT=4321
+PREFERRED_PORT=${TEST_ENV_PREFERRED_PORT:-4321}
 HEALTH_PATH="/api/v1/health"
 HEALTH_TIMEOUT=60
 TEST_ENV_CACHE_TTL_SECONDS=${TEST_ENV_CACHE_TTL_SECONDS:-600}
@@ -177,28 +181,6 @@ done
 mkdir -p "$QA_DIR"
 
 log() { echo "[test-env] $*" >&2; }
-
-# Never assume python3 exists — cascade through whatever the machine has.
-free_port() {
-  if command -v python3 >/dev/null 2>&1; then
-    python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1]);s.close()'
-  elif command -v python >/dev/null 2>&1; then
-    python -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1]);s.close()'
-  elif command -v node >/dev/null 2>&1; then
-    node -e 's=require("net").createServer();s.listen(0,"127.0.0.1",()=>{console.log(s.address().port);s.close()})'
-  else
-    awk 'BEGIN{srand();print 20000+int(rand()*20000)}'
-  fi
-}
-
-port_free() {
-  node -e '
-    const net = require("net");
-    const s = net.createServer();
-    s.once("error", () => process.exit(1));
-    s.listen(Number(process.argv[1]), "127.0.0.1", () => s.close(() => process.exit(0)));
-  ' "$1" 2>/dev/null
-}
 
 http_ok() { curl -fsS --max-time 5 "$1" >/dev/null 2>&1; }
 
@@ -448,23 +430,40 @@ ensure_browser() {
 }
 
 # ---- 6. app start + health wait ---------------------------------------------
-start_app() {
-  PORT=$PREFERRED_PORT
-  port_free "$PORT" || PORT=$(free_port)
-  BASE_URL="http://127.0.0.1:$PORT"
+# The APP owns port selection. The launcher used to prove a port free and then RELEASE it
+# (`port_free`/`free_port`), which is exactly the shape #238 removed from the product: a peer
+# process can take the port between the probe and the real bind, and a boot that trusts the
+# probed port then polls a URL with nobody behind it. `--port` is a request, not a promise — a
+# taken port makes the app move to the next one (BACKWARD_COMPATIBILITY.md §1/§3) and print the
+# port it really holds, and this reads that line. No port is probed and released here.
+app_port_from_log() {
+  [ -f "$APP_LOG" ] || return 1
+  # Match the boot record itself. Later product copy may also say "cockpit" without carrying a
+  # URL; choosing the last line with that word made a healthy boot invisible to this launcher.
+  url=$(grep -o 'http://localhost:[0-9][0-9]*' "$APP_LOG" 2>/dev/null | tail -1 || true)
+  [ -n "$url" ] || return 1
+  printf '%s\n' "${url##*:}"
+}
 
-  log "starting xezar on $BASE_URL (XEZ_DRY_RUN=1)"
+start_app() {
+  REQUESTED_PORT=$PREFERRED_PORT
+  # A stale line from a previous boot must never name this boot's port.
+  : >"$APP_LOG"
+
+  log "starting xezar (requesting port $REQUESTED_PORT, XEZ_DRY_RUN=1)"
   # --no-open: a test boot must never hijack the operator's browser.
   # $APP_LAYOUT_INPUT: the app is TOLD which layout to resolve, never tricked into it.
   if command -v setsid >/dev/null 2>&1; then
-    (cd "$REPO_ROOT" && exec setsid nohup node packages/xezar/dist/index.js --port "$PORT" --no-open --repo "$REPO_ROOT" "$APP_LAYOUT_INPUT" \
+    (cd "$REPO_ROOT" && exec setsid nohup node packages/xezar/dist/index.js --port "$REQUESTED_PORT" --no-open --repo "$REPO_ROOT" "$APP_LAYOUT_INPUT" \
       >"$APP_LOG" 2>&1 </dev/null) &
   else
-    (cd "$REPO_ROOT" && exec nohup node packages/xezar/dist/index.js --port "$PORT" --no-open --repo "$REPO_ROOT" "$APP_LAYOUT_INPUT" \
+    (cd "$REPO_ROOT" && exec nohup node packages/xezar/dist/index.js --port "$REQUESTED_PORT" --no-open --repo "$REPO_ROOT" "$APP_LAYOUT_INPUT" \
       >"$APP_LOG" 2>&1 </dev/null) &
   fi
   APP_PID=$!
 
+  PORT=""
+  BASE_URL=""
   waited=0
   while [ "$waited" -lt "$HEALTH_TIMEOUT" ]; do
     if ! kill -0 "$APP_PID" 2>/dev/null; then
@@ -472,8 +471,12 @@ start_app() {
       tail -20 "$APP_LOG" >&2 || true
       exit 1
     fi
-    if http_ok "$BASE_URL$HEALTH_PATH"; then
-      log "healthy after ${waited}s"
+    if [ -z "$BASE_URL" ]; then
+      PORT=$(app_port_from_log || true)
+      if [ -n "$PORT" ]; then BASE_URL="http://127.0.0.1:$PORT"; fi
+    fi
+    if [ -n "$BASE_URL" ] && http_ok "$BASE_URL$HEALTH_PATH"; then
+      log "healthy on $BASE_URL after ${waited}s"
       return 0
     fi
     sleep 1

@@ -10,6 +10,7 @@ import type {
   importableSkillSchema,
   removeTodoResponseSchema,
   skillSchema,
+  skillsRefreshResponseSchema,
   startTodoResponseSchema,
   todoItemSchema,
 } from '@qodeca/xezar-contract';
@@ -72,7 +73,7 @@ describe('src/contract workflows/skills/agent-config schemas match the routes ex
     Assert<Exact<z.infer<typeof groupResponseSchema>, Group200>>,
     Assert<Exact<z.infer<typeof pickVariantResponseSchema>, Pick200>>,
     Assert<Exact<z.infer<typeof skillSchema>[], Skills200>>,
-    Assert<Exact<z.infer<typeof skillSchema>[], SkillsRefresh200>>,
+    Assert<Exact<z.infer<typeof skillsRefreshResponseSchema>, SkillsRefresh200>>,
     Assert<Exact<z.infer<typeof importableSkillSchema>[], Importable200>>,
     Assert<Exact<z.infer<typeof todoItemSchema>[], Todos200>>,
     Assert<Exact<z.infer<typeof removeTodoResponseSchema>, RemoveTodo200>>,

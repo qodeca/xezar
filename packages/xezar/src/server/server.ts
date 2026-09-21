@@ -3321,11 +3321,13 @@ export function createApp(deps: ServerDeps) {
 
     // Refresh team skills (spec 005): clone/fetch the configured skills repos,
     // then return the merged catalog. Degrades quietly — offline just means the
-    // team entries stay as they were (or absent).
+    // team entries stay as they were (or absent) — but it says so: `sources`
+    // carries one outcome per configured source, so a caller can tell "upstream
+    // has not moved" from "this machine could not reach upstream" (#771).
     .post('/skills/refresh', ui.route('skills.refresh'), async (c) => {
       const { root: repoRoot } = c.get('project');
-      await refreshTeamSkills(repoRoot);
-      return c.json(await discoverSkills(repoRoot));
+      const { sources } = await refreshTeamSkills(repoRoot);
+      return c.json({ skills: await discoverSkills(repoRoot), sources });
     });
 
   // ---- chained family: GUI prefs / ui-state (project-scoped) ----

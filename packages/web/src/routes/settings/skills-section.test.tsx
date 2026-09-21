@@ -14,9 +14,13 @@ import {
   workspaceQueryKeys,
 } from '@/api/queries'
 import { createQueryClient } from '@/api/query-client'
-import type { SkillsUpdateState, WorkspaceConfigResponse } from '@qodeca/xezar-api-client'
+import type {
+  SkillsCatalogVersion,
+  SkillsUpdateState,
+  WorkspaceConfigResponse,
+} from '@qodeca/xezar-api-client'
 import { AppRoutes } from '@/routes'
-import { catalogAnnouncement } from './skills-section'
+import { catalogAnnouncement, catalogExplanation, catalogStateLabel } from './skills-section'
 // A test-only reach into the service, the same one `lib/github-task.test.ts` makes for
 // `runs/task-refs` (AGENTS.md § Repository layout). One case below renders the entry the REAL
 // producer builds for a cache with no successful fetch on record, because a hand-written fixture
@@ -638,5 +642,24 @@ describe('Global settings → Skills', () => {
     renderSkills()
     expect(await screen.findByText('npx is unavailable')).toBeTruthy()
     expect((screen.getByRole('switch') as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('reads the badge and the sentence the same way on `unknown` with two identical commits (#772, NB-2)', () => {
+    const entry: SkillsCatalogVersion = {
+      repo: 'qodeca/xezar-skills',
+      ref: 'main',
+      state: 'unknown',
+      installed: INSTALLED,
+      available: INSTALLED,
+      fetchedAt: null,
+    }
+    // The badge no longer says the COMPARISON is unknown under a sentence saying the CHECK is what
+    // is missing. `compareState` cannot send this today; both halves hold it whatever a future
+    // server sends.
+    expect(catalogStateLabel(entry)).toBe('Not checked yet')
+    expect(catalogExplanation(entry)).toContain('this machine has not checked upstream yet')
+    // Guard (passes with and without the change): `unknown` with two versions that really differ
+    // still reads as an unknown comparison, so the fix narrowed nothing else.
+    expect(catalogStateLabel({ ...entry, available: AVAILABLE })).toBe('Comparison unknown')
   })
 })

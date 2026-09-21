@@ -127,50 +127,55 @@ const MAX_ARRIVAL_FRAMES = 900
 const NEAR_TAIL_PX = 80
 
 /**
- * How many times to re-press ⌘K when the press was lost before the palette ever opened. Three,
- * the same bounded interaction retry `clickStepControl` and `clickRoleWhenStable` keep.
+ * The palette dialogs, found by ROLE and accessible name rather than a markup hook — the same
+ * fact `command-palette.e2e.ts` reads, and the one Radix keeps in sync with its own open state.
+ * A bare `[cmdk-root]` presence check cannot tell an OPEN palette from one still mounted for its
+ * exit animation, and that distinction is the whole defect below.
  */
-const PALETTE_PRESS_ATTEMPTS = 3
-/** How long one press is given to mount the palette, in the page's own clock. */
-const PALETTE_PRESS_WINDOW_MS = 1500
+const paletteDialogs = `[...document.querySelectorAll('[role="dialog"]')].filter((dialog) => document.getElementById(dialog.getAttribute('aria-labelledby') ?? '')?.textContent === 'Command palette')`
+/** The palette is in the document — open, or mid-exit. */
+const paletteMounted = `(${paletteDialogs}.length > 0)`
+/** The palette is mid-exit: the node is still there, but a press would reopen it, not remount it. */
+const paletteClosing = `(${paletteDialogs}.some((dialog) => dialog.getAttribute('data-state') === 'closed'))`
 
 /**
- * Open the ⌘K palette and land focus in its input.
+ * Open the ⌘K palette and land focus in its combobox.
  *
- * The single press this used to fire was UNRECOVERABLE when it was lost: the only wait was
- * `document.activeElement?.hasAttribute('cmdk-input')`, which spends its whole 25 s budget on a
- * palette that never opened, and nothing ever pressed again (2 CI runs: 35325364095 attempt 1,
- * 35411288411). So the press is repeated until the palette ROOT exists — a real state change —
- * and only then does the focus wait run, at full budget. That split matters: a palette that IS
- * up and does not take the keyboard is a real defect and must still fail, not be pressed away.
+ * Two properties, both earned from a real failure rather than added defensively.
  *
- * "Did the press land" is a yes/no question `waitForFunction` cannot ask (it throws instead of
- * answering "not yet"), so the page arms its own short window and one wait covers both answers.
+ * **A press never lands while the palette is closing.** Radix keeps a dialog mounted through its
+ * exit animation and unmounts it only at the end; a ⌘K that arrives in that window flips the SAME
+ * node back to open, and its focus-on-open — which is what puts focus in the input — never runs
+ * again because the node never unmounted. The palette then sits open with `document.activeElement`
+ * on `BODY` for the whole 25 s wait. That is #671: CI run 35526301088 failed at
+ * `progressive-history.e2e.ts:459` with the diagnostics showing `dialog-content`, `command-input`
+ * and `palette-task` present, and the reproduction here captures
+ * `REDPROOF activeElement was: "BODY slot="` with the palette open. Waiting for the palette's own
+ * CLOSED state before pressing makes the next open a genuine mount, which is what focuses the
+ * input.
+ *
+ * **Focus is asserted through the input's role**, `combobox`, not a `cmdk-input` attribute on
+ * `document.activeElement`. A palette that IS up and still does not take the keyboard is a real
+ * defect and must fail — the role wait keeps that; it just reads the fact the accessibility tree
+ * exposes instead of a cmdk implementation hook.
+ *
+ * This scroll-restoration spec does not need to retest the browser's Ctrl+K accelerator (the
+ * command-palette spec owns that journey). It dispatches one app-level keyboard event after the
+ * closed signal instead. The shortcut hook receives that event synchronously, so there is no
+ * browser accelerator to steal it and no retry or timing window in the test.
  */
 async function openCommandPalette(): Promise<void> {
-  for (let attempt = 0; attempt < PALETTE_PRESS_ATTEMPTS; attempt += 1) {
-    // Focus is parked on <body> first so the palette's focus return on close cannot scroll the
-    // destination transcript (unchanged from the single press this replaces). The window is
-    // armed in the same call: `setTimeout`, not `requestAnimationFrame`, because a throttled
-    // frame callback in a backgrounded tab would never close it.
-    browser.evaluate(`(() => {
-      document.activeElement?.blur?.()
-      window.__xezPalettePressWindowClosed = false
-      setTimeout(() => { window.__xezPalettePressWindowClosed = true }, ${PALETTE_PRESS_WINDOW_MS})
-      return true
-    })()`)
-    browser.press('Control+k')
-    browser.waitForFunction(
-      `document.querySelector('[cmdk-root]') !== null || window.__xezPalettePressWindowClosed === true`,
-    )
-    if (browser.evaluate(`document.querySelector('[cmdk-root]') !== null`) === true) {
-      browser.waitForFunction(`document.activeElement?.hasAttribute('cmdk-input') === true`)
-      return
-    }
-  }
-  throw new Error(
-    `xezar e2e: the command palette never opened after ${PALETTE_PRESS_ATTEMPTS} Ctrl+K presses`,
-  )
+  // BREAK-671-PALETTE-FOCUS. Radix's own closed state is the readiness signal: reopening the
+  // still-mounted closing node skipped focus-on-open and left BODY focused under load.
+  browser.waitForFunction(`!(${paletteClosing}) && !(${paletteMounted})`)
+  browser.evaluate(`(() => {
+    document.activeElement?.blur?.()
+    window.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'k', ctrlKey: true, bubbles: true, cancelable: true,
+    }))
+    return true
+  })()`)
+  browser.waitForFunction(`document.activeElement?.getAttribute('role') === 'combobox'`)
 }
 
 /**
@@ -193,9 +198,9 @@ async function navigateAndSampleArrival(runId: string): Promise<Arrival> {
   // filters on the run id (its items carry it for exactly that), so the one selected row is the
   // destination.
   await openCommandPalette()
-  browser.fill('[cmdk-input]', runId)
+  browser.fill('[role="combobox"]', runId)
   browser.waitForFunction(
-    `document.querySelector('[cmdk-item][aria-selected="true"]')?.getAttribute('data-run-id') === ${JSON.stringify(runId)}`,
+    `document.querySelector('[role="option"][aria-selected="true"]')?.getAttribute('data-run-id') === ${JSON.stringify(runId)}`,
   )
   browser.evaluate(`(() => {
     window.__xezArrivalSamples = []

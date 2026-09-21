@@ -2353,6 +2353,39 @@ describe('project_config: skills', () => {
     expect(JSON.stringify(checked.catalog)).not.toContain(ws.roots.a);
     expect(JSON.stringify(checked.catalog)).not.toContain(ws.home);
   });
+
+  it('refresh_skills scrubs the host path out of every failure reason (#789 review finding 3)', async () => {
+    // A configured source under the user's HOME that cannot be cloned. The service's own reason
+    // quotes the absolute path — the same disclosure `failed()` removes from a REFUSAL, which a
+    // SUCCESSFUL payload used to forward verbatim one branch away.
+    const unreachable = join(ws.home, '.cache', 'xez', 'no-such-skills-repo');
+    writeFileSync(
+      join(ws.roots.a, '.xezar', 'config.json'),
+      JSON.stringify({ skillsRepos: [{ repo: unreachable, ref: 'main' }] }),
+      'utf8',
+    );
+
+    const refreshed = value(await invoke({ action: 'refresh_skills' }));
+    expect(refreshed.sources).toHaveLength(1);
+    const [source] = refreshed.sources as Array<{ repo: string; ok: boolean; reason?: string }>;
+
+    // The failure FACT is untouched — scrubbing must not turn a failure into a success.
+    expect(source).toMatchObject({ ok: false });
+    expect(source?.reason).toMatch(/failed/);
+    // …and the host path is gone, from the reason and from the whole payload.
+    expect(source?.reason).not.toContain(ws.home);
+    // The whole payload, not just the reason: `repo` is a host path here too.
+    expect(JSON.stringify(refreshed)).not.toContain(ws.home);
+    expect(source?.reason).toContain('~/');
+    expect(source?.repo).toBe('~/.cache/xez/no-such-skills-repo');
+
+    // UI ↔ MCP parity: the cockpit route answers the same failure, and is the surface that may
+    // name a local path (it runs on this machine). The leader's door is the one that may not.
+    const route = await cockpit('/api/v1/p/proj-a/skills/refresh', 'POST');
+    expect(route.status).toBe(200);
+    expect(route.body.sources).toMatchObject([{ repo: unreachable, ok: false }]);
+    expect(route.body.sources[0].reason).toContain(ws.home);
+  });
 });
 
 describe('project_config: automations', () => {

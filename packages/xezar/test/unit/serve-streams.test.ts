@@ -3,7 +3,7 @@ import { execFileSync, spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { realpathSync } from 'node:fs';
-import { createServer } from 'node:net';
+import { createServer, type Server } from 'node:net';
 import { join, resolve } from 'node:path';
 import { after, test } from 'node:test';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -59,24 +59,93 @@ interface Boot {
   port: number | undefined;
 }
 
-/**
- * A port the OS has just confirmed is free.
- *
- * Only the `--log-level debug` case needs one: `--port 0` means "any free port", and #467
- * deliberately does NOT remember that, so the routine `registry.port` debug line never happens
- * on an ephemeral start. Every other case takes `--port 0` and cares only about the streams.
- */
-async function freePort(): Promise<number> {
+interface OutputWait {
+  promise: Promise<RegExpExecArray>;
+  cancel(): void;
+}
+
+interface ExpectedOutput {
+  pattern: RegExp;
+  description: string;
+}
+
+/** Capture stream completion before the child can exit, so negative assertions see every byte. */
+function streamCompleted(stream: NodeJS.ReadableStream): Promise<void> {
+  return new Promise((resolve) => {
+    let completed = false;
+    const finish = () => {
+      if (completed) return;
+      completed = true;
+      stream.off('end', finish);
+      stream.off('close', finish);
+      resolve();
+    };
+    stream.once('end', finish);
+    stream.once('close', finish);
+  });
+}
+
+/** Resolve from the stream event that carries readiness; the timer is only a failure bound. */
+function waitForOutput(
+  streams: NodeJS.ReadableStream[],
+  read: () => string,
+  pattern: RegExp,
+  description: string,
+): OutputWait {
+  let settled = false;
+  let resolveMatch: (match: RegExpExecArray) => void;
+  let rejectMatch: (error: Error) => void;
+  const promise = new Promise<RegExpExecArray>((resolve, reject) => {
+    resolveMatch = resolve;
+    rejectMatch = reject;
+  });
+  const inspect = () => {
+    const match = pattern.exec(read());
+    if (!settled && match) {
+      settled = true;
+      cleanup();
+      resolveMatch(match);
+    }
+  };
+  const deadline = setTimeout(() => {
+    if (settled) return;
+    settled = true;
+    cleanup();
+    rejectMatch(new Error(`timed out waiting for ${description}`));
+  }, 60_000);
+  const cleanup = () => {
+    clearTimeout(deadline);
+    for (const stream of streams) stream.off('data', inspect);
+  };
+  for (const stream of streams) stream.on('data', inspect);
+  inspect();
+  return {
+    promise,
+    cancel() {
+      if (settled) return;
+      settled = true;
+      cleanup();
+    },
+  };
+}
+
+/** Hold an OS-assigned port until the caller releases it. */
+async function heldPort(): Promise<{ port: number; server: Server }> {
   const server = createServer();
   await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
   const address = server.address();
   const port = typeof address === 'object' && address ? address.port : 0;
-  await new Promise<void>((done) => server.close(() => done()));
-  return port;
+  return { port, server };
 }
 
 /** Boot `serve` with the two streams kept APART, wait for the cockpit line, stop it. */
-async function bootServe(repo: string, home: string, args: string[] = [], port = '0'): Promise<Boot> {
+async function bootServe(
+  repo: string,
+  home: string,
+  args: string[] = [],
+  port = '0',
+  expectedStderr: ExpectedOutput[] = [],
+): Promise<Boot> {
   const child = spawn(
     process.execPath,
     ['--import', tsxLoader, entry, 'serve', '--no-open', '--repo', repo, '--port', port, ...args],
@@ -99,32 +168,52 @@ async function bootServe(repo: string, home: string, args: string[] = [], port =
   child.stdout.on('data', (chunk: string) => { stdout += chunk; });
   child.stderr.setEncoding('utf8');
   child.stderr.on('data', (chunk: string) => { stderr += chunk; });
+  // Register completion before readiness. A negative assertion must inspect the fully drained
+  // pipe, not a string snapshot taken when the independent stdout pipe happened to become ready.
+  const stdoutCompleted = streamCompleted(child.stdout);
+  const stderrCompleted = streamCompleted(child.stderr);
+  const cockpitReady = waitForOutput(
+    [child.stdout],
+    () => stdout,
+    COCKPIT_LINE,
+    'serve cockpit readiness line',
+  );
+  const stderrRecords = expectedStderr.map(({ pattern, description }) => waitForOutput(
+    [child.stderr],
+    () => stderr,
+    pattern,
+    description,
+  ));
   let exited = false;
   const done = once(child, 'exit').then(() => { exited = true; });
   const reap = () => { child.kill('SIGKILL'); };
   process.once('exit', reap);
   try {
-    const deadline = Date.now() + 60_000;
-    while (!COCKPIT_LINE.test(stdout) && !exited && Date.now() < deadline) await sleep(50);
-    // Give the asynchronous boot lines (the MCP socket) a moment to land on stderr.
-    await sleep(1_500);
-    const printed = COCKPIT_LINE.exec(stdout);
-    return { stdout, stderr, port: printed ? Number(printed[1]) : undefined };
+    await Promise.all([cockpitReady.promise, ...stderrRecords.map((record) => record.promise)]);
   } finally {
+    cockpitReady.cancel();
+    for (const record of stderrRecords) record.cancel();
     if (!exited) {
       child.kill('SIGTERM');
       await Promise.race([done, sleep(5_000)]);
       if (!exited) child.kill('SIGKILL');
     }
+    await done;
+    await Promise.all([stdoutCompleted, stderrCompleted]);
     process.off('exit', reap);
   }
+  const printed = COCKPIT_LINE.exec(stdout);
+  return { stdout, stderr, port: printed ? Number(printed[1]) : undefined };
 }
 
 test('serve keeps its stdout contract and puts every new activity line on stderr', async () => {
   // named break: `activity-on-stdout`
   const repo = await makeRepo('streams-default');
   const home = join(fixtureRoot, 'home-default');
-  const boot = await bootServe(repo, home);
+  const boot = await bootServe(repo, home, [], '0', [{
+    pattern: /event=mcp\.(?:ready|unavailable)\b/,
+    description: 'serve MCP ready or unavailable line',
+  }]);
 
   assert.match(boot.stdout, COCKPIT_LINE, 'the cockpit URL stays on stdout');
   assert.match(boot.stdout, /xezar v\d/, 'the banner stays on stdout');
@@ -151,7 +240,10 @@ test('off a terminal there is no escape byte, and each event is one logfmt line'
 test('an explicit --output rich off a terminal falls back to plain, and says so once', async () => {
   const repo = await makeRepo('streams-fallback');
   const home = join(fixtureRoot, 'home-fallback');
-  const boot = await bootServe(repo, home, ['--output', 'rich']);
+  const boot = await bootServe(repo, home, ['--output', 'rich'], '0', [{
+    pattern: /event=output\.fallback\b/,
+    description: 'serve output fallback line',
+  }]);
 
   const fallbacks = boot.stderr.split('\n').filter((l) => l.includes('event=output.fallback'));
   assert.equal(fallbacks.length, 1, `expected exactly one fallback line, got ${fallbacks.length}`);
@@ -173,10 +265,22 @@ test('--quiet keeps the cockpit line and drops the rest of the banner', async ()
 test('--log-level debug adds the routine diagnostics, still only on stderr', async () => {
   const repo = await makeRepo('streams-debug');
   const home = join(fixtureRoot, 'home-debug');
-  const port = String(await freePort());
-  const boot = await bootServe(repo, home, ['--log-level', 'debug'], port);
+  // BREAK-671-SERVE-PORT. The old test released a probed port, asked serve for it, then asserted
+  // equality. A peer could take it first, and serve correctly fell back. Keep an OS-assigned
+  // sentinel port occupied instead: fallback is now guaranteed, and the boot record is the source
+  // of truth for what the app bound.
+  const held = await heldPort();
+  let boot: Boot;
+  try {
+    boot = await bootServe(repo, home, ['--log-level', 'debug'], String(held.port), [{
+      pattern: /level=debug .* event=registry\.port\b/,
+      description: 'serve registry port debug line',
+    }]);
+  } finally {
+    await new Promise<void>((done) => held.server.close(() => done()));
+  }
 
-  assert.equal(boot.port, Number(port), 'the requested port is the bound port');
+  assert.ok(boot.port && boot.port !== held.port, 'serve must report its fallback, not the occupied request');
   // Remembering this project's port is routine bookkeeping, so it is a debug line — visible
   // here and silent at the default level.
   assert.match(boot.stderr, /level=debug .* event=registry\.port/, `no debug line:\n${boot.stderr}`);
@@ -186,10 +290,15 @@ test('--log-level debug adds the routine diagnostics, still only on stderr', asy
 test('the default level hides the routine diagnostics that debug shows', async () => {
   const repo = await makeRepo('streams-default-level');
   const home = join(fixtureRoot, 'home-default-level');
-  const port = String(await freePort());
-  const boot = await bootServe(repo, home, [], port);
+  const held = await heldPort();
+  let boot: Boot;
+  try {
+    boot = await bootServe(repo, home, [], String(held.port));
+  } finally {
+    await new Promise<void>((done) => held.server.close(() => done()));
+  }
 
-  assert.equal(boot.port, Number(port));
+  assert.ok(boot.port && boot.port !== held.port, 'serve must report its fallback, not the occupied request');
   assert.ok(!boot.stderr.includes('level=debug'), `default level printed a debug line:\n${boot.stderr}`);
 });
 

@@ -1,4 +1,4 @@
-import type { Skill, WorkflowDef } from '@qodeca/xezar-api-client'
+import type { Skill, SkillsRefreshSource, WorkflowDef } from '@qodeca/xezar-api-client'
 
 /**
  * The shared skill presentation rules (#377/#380): the ⌘K palette, the composer's `/`
@@ -304,4 +304,37 @@ export function filterSkills(
   usage?: Readonly<Record<string, number>>,
 ): Skill[] {
   return rankByQuery(orderSkillsByUsage(skills, usage), query, usage)
+}
+
+/** What the Skills page's Refresh toast says, and in which tone. */
+export interface RefreshOutcome {
+  message: string
+  tone: 'default' | 'danger'
+}
+
+/**
+ * Turn the refresh route's per-source outcomes into ONE toast line (#771).
+ *
+ * The button used to say "Team skills refreshed" whatever happened, so an unreachable origin
+ * read exactly like an up-to-date one — the confusion the catalog block below it had already
+ * removed. Three cases, and the middle one is the point: a partial result says so rather than
+ * rounding to either side. The failure text is the server's own reason, verbatim, which is the
+ * repo's error doctrine (`docs/design-system/writing.md` § 7 and § 13).
+ */
+export function refreshOutcome(sources: readonly SkillsRefreshSource[]): RefreshOutcome {
+  const failed = sources.filter((source) => !source.ok)
+  // No configured source is not a failure: there was nothing to reach.
+  if (failed.length === 0) return { message: 'Team skills refreshed', tone: 'default' }
+  // No `?? 'the refresh failed'` fallback: the contract's discriminated union makes `reason`
+  // REQUIRED on a failure (#789 review finding 2), so inventing text here would only paper over
+  // a shape the schema now rejects.
+  const reasons = failed.map((source) => `${source.repo}: ${source.reason}`).join('; ')
+  const refreshed = sources.length - failed.length
+  return {
+    message:
+      refreshed === 0
+        ? `Team skills not refreshed — ${reasons}`
+        : `Refreshed ${refreshed} of ${sources.length} team skills sources — ${reasons}`,
+    tone: 'danger',
+  }
 }

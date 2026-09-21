@@ -118,11 +118,10 @@ OUT_STATUS="" OUT_CONCLUSION="" OUT_HEAD_SHA="" OUT_URL=""
 OUT_FAILED_JOBS="" OUT_SUPERSEDED_SHA="" OUT_SUPERSEDED_RUN=""
 STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-# The two jobs this repository has observed failing under machine load rather than because of the
-# change under test. Named here so the record says which failed jobs are candidates for the ONE
-# rerun the integration recipe allows; the rerun itself is the agent's call, never this script's.
-KNOWN_LOAD_FLAKES="Cockpit browser e2e
-MCP per-file coverage"
+# Jobs still observed failing under machine load rather than because of the change under test.
+# Browser specs rebuilt by #671 are deterministic now, so the browser job is deliberately absent:
+# a sole progressive-history failure is evidence, never eligibility for the one allowed rerun.
+KNOWN_LOAD_FLAKES="MCP per-file coverage"
 
 record_outcome() {
   local outcome="$1" detail="$2"
