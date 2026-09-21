@@ -558,10 +558,9 @@ function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
         ) : (
           <p className="text-[11px] text-soft-foreground">
             Default {GATE_SLOTS_DEFAULT}: one full gate run at a time on this machine; a second
-            waits. Raising it is what made four or five concurrent runs fail nine times in ten, so
-            raise it only on a machine that can take it; {GATE_SLOTS_MAX} effectively never binds.
-            A change applies to the next gate run, with no restart — a run already waiting keeps
-            the count it started with.
+            waits. Runs that share a machine compete for its processor and memory and can slow
+            down or fail one another, so raise it only on a machine with room to spare —{' '}
+            {GATE_SLOTS_MAX} is the most; at that setting a gate run practically never waits.
           </p>
         )}
       </SettingsField>

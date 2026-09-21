@@ -308,11 +308,11 @@ describe('single-project mode names the file each section writes (#600)', () => 
   it('drops "every project" and "new projects" from its own copy in the mode', () => {
     renderAt('/settings/global/resources', { singleProjectRoot: true })
     const header = () => document.querySelector('[data-route="settings-global-resources"] header')
-    expect(header()?.textContent).toContain('Parallel tasks and per-task memory limit for this project.')
+    expect(header()?.textContent).toContain('Limits for tasks, memory and gate runs for this project.')
     expect(header()?.textContent).not.toContain('across every project')
     cleanup()
     renderAt('/settings/global/resources')
-    expect(header()?.textContent).toContain('Parallel tasks and per-task memory limit, across every project.')
+    expect(header()?.textContent).toContain('Limits for tasks, memory and gate runs, across every project.')
     cleanup()
     renderAt('/settings/global/accounts', { singleProjectRoot: true })
     expect(note()?.textContent).toContain('The defaults are saved in .xezar/workspace.json.')

@@ -302,14 +302,16 @@ describe('Global settings → Resources', () => {
     expect(puts()).toHaveLength(0)
   })
 
-  it('names the derived default and says the change needs no restart', async () => {
+  it('names the default, what a higher number costs and the maximum, in generic words', async () => {
     serve()
     renderResources()
     await waitFor(() => expect(gateSlotsInput()).not.toBeNull())
-    expect(
-      screen.getByText(/Default 1: one full gate run at a time on this machine; a second\s+waits\./),
-    ).not.toBeNull()
-    expect(screen.getByText(/applies to the next gate run, with no restart/)).not.toBeNull()
+    const hint = screen.getByText(/Default 1: one full gate run at a time on this machine; a second\s+waits\./)
+    const text = hint.textContent!.replace(/\s+/g, ' ')
+    expect(text).toContain('compete for its processor and memory and can slow down or fail one another')
+    expect(text).toContain('16 is the most; at that setting a gate run practically never waits.')
+    // #811 B-1: the hint ships to every project, so it carries no measurement of this repository's gates.
+    expect(text).not.toMatch(/nine times in ten|four or five|never binds/)
   })
 
   it('rejects a memory limit below the floor — Save stays disabled and nothing is PUT', async () => {
