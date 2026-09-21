@@ -200,7 +200,6 @@ const DRAWER = '[data-slot="mobile-nav-drawer"]'
  * `smoke.e2e.ts:436-439` carries for the same reason.
  */
 const DRAWER_SETTLED = `(() => { const d = document.querySelector('${DRAWER}'); return !!d && d.getBoundingClientRect().left === 0 })()`
-const ACCOUNTS_TABS = '[data-slot="accounts-tabs"]'
 const ADD_ACCOUNT = '[data-action="accounts-add"]'
 const ADD_ACCOUNT_DIALOG = '[data-slot="add-account-dialog"]'
 const DIALOG_CLOSE = `${ADD_ACCOUNT_DIALOG} [data-slot="dialog-close"]`
@@ -504,20 +503,18 @@ function sweep(): Sweep {
   targets.push(read<Target>(`__measure('Input (skills filter)', '[data-slot="skills-filter"]')`))
   overflow.push(read<Overflow>(`__overflow('/p/:projectId/skills')`))
 
-  // --- agent accounts: Tabs, a small Button, and the Dialog close overlay --------------------
+  // --- agent accounts: stacked agent groups and the Dialog close overlay --------------------
+  // PR #827 retired the tabbed layout for one stacked list per agent
+  // (`designs/agent-accounts-onboarding/README.md` §5: "Four agent groups, stacked … replaces the
+  // tabs"); `TabsTrigger` has no importer left anywhere in the cockpit, this route was its only
+  // caller. What this used to measure — every tab trigger, because a tab is as wide as its label
+  // and measuring only the widest one in the strip is how `pi` shipped 30.88px wide at ultra
+  // (B1-QA-1) past a green suite — no longer has anything to measure; the dedicated case below
+  // pins that absence instead. What remains real here is the "Add account" button each stacked
+  // group now carries.
   browser.goto(`${baseUrl}/settings/global/accounts`)
-  browser.waitForFunction(`document.querySelector('${ACCOUNTS_TABS} [data-slot="tabs-trigger"]') !== null`)
-  // EVERY trigger, not the first one. A tab is as wide as its label, so measuring only the widest
-  // label in the strip is how `pi` shipped 30.88px wide at ultra (B1-QA-1) past a green suite.
-  targets.push(
-    ...read<Target[]>(
-      `[...document.querySelectorAll('${ACCOUNTS_TABS} [data-slot="tabs-trigger"]')].map((el) => {
-        const b = __rect(el);
-        return { name: 'Tabs trigger (' + el.textContent.trim() + ')', w: b.w, h: b.h };
-      })`,
-    ),
-    read<Target>(`__measure('Button size=sm (Add account)', '${ADD_ACCOUNT}')`),
-  )
+  browser.waitForFunction(`document.querySelector('${ADD_ACCOUNT}') !== null`)
+  targets.push(read<Target>(`__measure('Button size=sm (Add account)', '${ADD_ACCOUNT}')`))
   overflow.push(read<Overflow>(`__overflow('/settings/global/accounts')`))
 
   // A 44px shell bar can leave this control partly below the phone viewport. Wait until the
@@ -638,29 +635,43 @@ describe('B1 geometry at 375px: every phone target is 44 x 44 for real', () => {
 
   it('measured every primitive the class scan lists in REQUIRE_TAP', () => {
     // The falsifier for this file itself. `design-debt-b1.test.tsx` fails when a primitive stops
-    // SPELLING the floor; that is only protection if this file measures the same eight. A ninth
-    // primitive added there with no rendered instance here would otherwise pass both.
+    // SPELLING the floor; that is only protection if this file measures the same primitives it
+    // still has a rendered instance of. A primitive added there with no rendered instance here
+    // would otherwise pass both.
+    //
+    // `tabs` is deliberately absent from this list, not merely uncovered: PR #827 retired the
+    // tabbed accounts layout for one stacked list per agent, and `TabsTrigger` now has no importer
+    // left anywhere in the cockpit — `design-debt-b1.test.tsx`'s REQUIRE_TAP still spells the 44px
+    // floor on `tabs.tsx` itself, so the primitive stays correct if it is ever used again, but
+    // there is nothing left for a real browser to measure. The case below pins that absence; the
+    // day something imports Tabs again, restore 'tabs' to this list too.
     const measured = sweepOf('comfortable').targets.map((target) => target.name.toLowerCase())
     const overlays = sweepOf('comfortable').overlays.map((sample) => sample.name.toLowerCase())
     const covered = [...measured, ...overlays].join(' | ')
-    const missing = ['button', 'command', 'dialog', 'dropdownmenu', 'input', 'sheet', 'switch', 'tabs'].filter(
+    const missing = ['button', 'command', 'dialog', 'dropdownmenu', 'input', 'sheet', 'switch'].filter(
       (primitive) => !covered.includes(primitive),
     )
     expect(missing, 'REQUIRE_TAP primitives with no rendered measurement').toEqual([])
   })
 
-  it('the SHORTEST tab label is 44px wide at Compact for real (B1-QA-1)', () => {
-    // The regression case QA asked to land with the fix, stated the way the defect was: a
-    // two-character label at the smallest density, measured, not inspected. `min-h-tap` alone let
-    // this render 30.88 x 44 — right height, unreachable width — and the whole strip had to be
-    // measured for it to show, because the other three labels are wide enough to hide it.
-    const tabs = sweepOf('ultra').targets.filter((target) => target.name.startsWith('Tabs trigger'))
-    expect(tabs.length, 'no tab trigger was measured at ultra').toBeGreaterThanOrEqual(4)
-    const narrowest = tabs.reduce((a, b) => (a.w <= b.w ? a : b))
-    expect(
-      narrowest.w,
-      `narrowest tab at ultra is ${narrowest.name} at ${narrowest.w} x ${narrowest.h}px`,
-    ).toBeGreaterThanOrEqual(TAP_PX - TOLERANCE_PX)
+  it('names the Tabs primitive with no rendered instance left, rather than passing over it (was B1-QA-1)', () => {
+    // B1-QA-1 pinned a real regression: a two-character tab label ("pi") rendered 30.88 x 44px at
+    // ultra density, because `TabsTrigger` sizes to its own label on both axes (`min-h-tap
+    // min-w-tap`) — right height, unreachable width — and it only showed up once EVERY trigger was
+    // measured, because the other three labels were wide enough to hide it.
+    //
+    // PR #827 retired the whole tabbed layout for one stacked list per agent
+    // (`designs/agent-accounts-onboarding/README.md` §5: "Four agent groups, stacked … replaces the
+    // tabs"), and this route — `/settings/global/accounts` — was `TabsTrigger`'s only caller in the
+    // cockpit. There is no longer a tab strip anywhere to measure, so this case pins the ABSENCE
+    // instead, exactly as `names the one guarded primitive with no rendered instance` pins Skeleton
+    // further below: it goes red the day a route renders `[data-slot="tabs-trigger"]` again, and a
+    // per-trigger measurement (the pattern this replaced) belongs back in the sweep above, with
+    // 'tabs' restored to the coverage list in the previous case.
+    browser.goto(`${baseUrl}/settings/global/accounts`)
+    browser.waitForFunction(`document.querySelector('${ADD_ACCOUNT}') !== null`)
+    const found = read<number>(`document.querySelectorAll('[data-slot="tabs-trigger"]').length`)
+    expect(found, 'a Tabs trigger now renders on the accounts page and must be measured again').toBe(0)
   })
 
   it('holds the 24px chip floor at every density', () => {
