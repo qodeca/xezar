@@ -397,4 +397,58 @@ describe('WorkspaceSemaphore', () => {
     expect(sem.memoryLimitMb()).toBe(256);
     expect(a.pumped.length).toBe(2);
   });
+
+  /** Flush the microtask queue without a real timer — every step between one `load()` call
+   *  and the next is a promise resolution, never a macrotask, so this is deterministic. */
+  const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+  it('two overlapping refresh() calls never run two loads at once (review response, Minor 3)', async () => {
+    let loadCount = 0;
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const releases: Array<(limits: { maxParallel: number; memoryLimitMb: number | null }) => void> = [];
+    const sem = new WorkspaceSemaphore({
+      load: () =>
+        new Promise((resolve) => {
+          loadCount += 1;
+          inFlight += 1;
+          maxInFlight = Math.max(maxInFlight, inFlight);
+          releases.push((limits) => {
+            inFlight -= 1;
+            resolve(limits);
+          });
+        }),
+    });
+
+    const first = sem.refresh();
+    expect(loadCount).toBe(1); // the first call's load() runs synchronously up to its own await
+
+    const second = sem.refresh(); // lands while the first load is still in flight
+    expect(loadCount).toBe(1); // coalesced, not a second overlapping load
+    expect(maxInFlight).toBe(1); // never two loads in flight at once
+
+    releases[0]!({ maxParallel: 2, memoryLimitMb: null });
+    await flush();
+    // The overlapping call queued exactly one trailing re-read — no more.
+    expect(loadCount).toBe(2);
+    expect(maxInFlight).toBe(1);
+
+    releases[1]!({ maxParallel: 5, memoryLimitMb: null });
+    await Promise.all([first, second]);
+    expect(loadCount).toBe(2);
+    expect(sem.maxParallel()).toBe(5); // the trailing re-read's snapshot wins, not a stale one
+  });
+
+  it('a refresh() call that arrives once the in-flight load is done starts a fresh load, not a coalesce', async () => {
+    let loadCount = 0;
+    const sem = new WorkspaceSemaphore({
+      load: () => {
+        loadCount += 1;
+        return Promise.resolve({ maxParallel: 3, memoryLimitMb: null });
+      },
+    });
+    await sem.refresh();
+    await sem.refresh();
+    expect(loadCount).toBe(2); // two SEQUENTIAL calls each get their own load, no coalescing
+  });
 });

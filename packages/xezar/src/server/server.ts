@@ -224,6 +224,7 @@ import {
   type ProjectListEntry,
 } from '../workspace/projects.ts';
 import { WorkspaceSemaphore } from '../workspace/semaphore.ts';
+import { startWorkspaceConfigWatcher, type WorkspaceConfigWatcher } from '../workspace/config-watcher.ts';
 import { mergeWriteWorkspaceUiState, readWorkspaceUiState } from '../workspace/ui-state.ts';
 import { checkoutRepo, type CloneRunner } from './checkout.ts';
 import { InstanceLiveness } from './instance-liveness.ts';
@@ -6516,7 +6517,25 @@ export function startServer(deps: ServerDeps, port: number): ServerType {
       return rescheduleAutomations();
     }).catch(() => undefined);
   });
+  // #677 D1: a hand edit of the workspace config, or a merge-write by another xezar process, reaches
+  // `semaphore.refresh()` without a restart. Started once the port is open, so a failed listen
+  // leaves no watcher behind; it never throws and degrades to one warning (config-watcher.ts).
+  let configWatcher: WorkspaceConfigWatcher | undefined;
   server.once('listening', () => {
+    if (deps.semaphore) {
+      // `startWorkspaceConfigWatcher` documents "never throws"; this `try` is hardening, not
+      // reliance on it throwing today. A throw here would otherwise be an uncaught exception
+      // inside a `listening` handler AND would skip `automationsListening = true` below, gating
+      // the automations poller off for the rest of the process — a future change to that
+      // contract must not reach the boot path (review response, Nit 5).
+      try {
+        configWatcher = startWorkspaceConfigWatcher({ target: deps.semaphore });
+      } catch (err) {
+        console.warn(
+          `[xez] workspace config watch failed to start (${err instanceof Error ? err.message : String(err)}) — edits made outside the cockpit apply on restart`,
+        );
+      }
+    }
     // Before anything may start the poller: `ensureAutomationsStarted` refuses while this is
     // false, so a resolve that arrives before the port is open cannot warm a half-built server.
     automationsListening = true;
@@ -6527,7 +6546,7 @@ export function startServer(deps: ServerDeps, port: number): ServerType {
     // the only one — the flag on here starts the poller once and a later resolve is a no-op.
     automationsEnabled();
   });
-  server.once('close', () => { unsubscribe(); offAutomationsDisposed(); coordinator.stop(); automationScheduler.stop(); });
+  server.once('close', () => { unsubscribe(); offAutomationsDisposed(); coordinator.stop(); automationScheduler.stop(); configWatcher?.close(); });
   socketHub.attach(server, (req) => verifyWsUpgrade(req, deps.bindHost));
   return server;
 }
