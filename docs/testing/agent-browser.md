@@ -330,10 +330,18 @@ retried nor fixed here.
 
 | Head SHA | Date | Order / seed | Files | Tests passed / skipped / failed | Seconds | Marker |
 | --- | --- | --- | --- | --- | --- | --- |
-| `fee89d0c` | 2026-09-20 | default | 66 (1 failed) | 452 / 6 / 1 | 637.79 | `TEST_E2E_STATUS=failed` |
+| `fee89d0c`¹ | 2026-09-20 | default | 66 (1 failed) | 452 / 6 / 1 | 637.79 | `TEST_E2E_STATUS=failed` |
 | `fee89d0c` | 2026-09-20 | default | 66 (2 failed) | 451 / 6 / 2 | 634.79 | `TEST_E2E_STATUS=failed` |
 | `fee89d0c` | 2026-09-20 | default | 66 (0 failed) | 453 / 6 / 0 | 603.43 | `TEST_E2E_STATUS=passed` |
 | `fee89d0c` | 2026-09-20 | shuffled, seed `482917365` | 66 (23 failed) | 407 / 6 / 46 | 938.97 | n/a — direct `vitest run --sequence.shuffle`, not through `scripts/e2e.sh`, so no `TEST_E2E_STATUS` marker |
+
+¹ Run 1's own log records both: `head=fee89d0c… (origin/main; worktree HEAD 5af6644f… differs
+only in the unrelated register-test fix)`. The `Head SHA` column above states the `origin/main`
+head every row anchors to for comparability; run 1's own worktree was actually one commit ahead of
+it, at `5af6644f`, a style-only fix to `packages/web/src/e2e-dry-run-register.test.ts` (see the
+Regression/control note in the dogfooding fragment for this task) that touches no browser-suite
+file. Runs 2–4 ran with no worktree diff from `fee89d0c` — their own `START` lines record one head,
+not two.
 
 All four runs are well inside the 1 200 s whole-suite ceiling above. The two default-order failures:
 run 1 failed only `skills-update.e2e.ts` ("shows the inherited global preference and persists an
@@ -341,9 +349,37 @@ explicit override"); run 2 failed the same test at a different assertion line pl
 `guide-03-worktrees-and-git.e2e.ts` ("Settings → Worktrees starts empty and Reclaim now opens the
 AlertDialog confirm") — the same spec failing at two different points across two runs is itself
 evidence of a race rather than a deterministic break, consistent with #671's own framing. The
-shuffled run's 23 failing files and their first failing assertions are recorded in
-`docs/testing/coverage-gaps.md` row P, which this measurement also updates; they are pre-existing
-files outside the guide-flow package's authority, evidence for #671, not retried or fixed here.
+shuffled run's 23 failing files and their first failing assertion each are below, read from
+`.local/xezar/tasks/700f23bf-97bd-4913-88b8-b4a18f1f6e39/runs/shuffled-1.log` (primary checkout);
+`docs/testing/coverage-gaps.md` row P names the same 23 files and this measurement's summary, and
+points back here for the assertions rather than duplicating them. They are pre-existing files
+outside the guide-flow package's authority, evidence for #671, not retried or fixed here.
+
+| File | First failing test | First failing assertion |
+| --- | --- | --- |
+| `settings-bookmarklets.e2e.ts` | "the generic launcher bakes the protected /new grammar with the server real launch key" | `wait --fn` timed out: `[data-slot="bm-generic"] [data-slot="bm-link"]` never appeared (0 nodes) |
+| `queued-stack.e2e.ts` | "removes the stacked message" | `click [aria-label="Remove message"]` failed |
+| `plan-mode.e2e.ts` | "Plan first selects visibly (#383) and submit produces the review overlay, not a run" | `click [data-slot="sidebar"] a[href="/p/xezar-e2e-plan-l1hxav/new"]` failed |
+| `task-files.e2e.ts` | "a directory expands lazily and its TypeScript file previews with Shiki tokens" | `eval` of `[data-slot="files-dir"][data-path="src"]`'s `.dataset.state` failed |
+| `settings-appearance.e2e.ts` | "compact density measurably tightens the spacing scale" | `AssertionError: expected 70 to be 56` |
+| `thread-scroll.e2e.ts` | "auto mode virtualizes past the threshold and keeps the DOM bounded" | `AssertionError: expected 19 to be less than 0` |
+| `task-thread.e2e.ts` | "the plan dock shows the LATEST snapshot (2/4), expanded on desktop, mirrored in the header" | `AssertionError: expected 'collapsed' to be 'open'` |
+| `variants-compare.e2e.ts` | "expanding a full diff shows the review gate's per-file cards for THAT variant" | `wait --fn` timed out: `[data-slot="variant-diff"]` count never reached 2 |
+| `mcp-collaboration.e2e.ts` | "B-03 (A-08, A-06) [I-019] a pin the human sets is the pin the leader reads, and the leader's unpin shows live in the human's header" | `wait --fn` timed out: `[data-slot="run-actions"] [data-slot="pin-run"]`'s `aria-pressed` never reached `'false'` |
+| `tools-menu.e2e.ts` | "routes the cog row to Settings → Agents and closes the menu" | `eval` of `[data-slot="tools-menu-content"] [data-slot="tools-settings"]`'s `href` failed |
+| `settings-agents.e2e.ts` | "a cold load renders the persisted knobs — the form is a view of config.json" | `AssertionError: expected +0 to be 1` |
+| `guide-02-running-a-task.e2e.ts` | "thread output: the running turn is visible as agent text and real tool activity" | `Error: Test timed out in 30000ms.` |
+| `composer.e2e.ts` | "waiting state: paused hint pulses above an enabled composer with the reply placeholder" | `is visible [aria-label="Start dictation"]` failed |
+| `progressive-history.e2e.ts` | "paints the current tail and docks without requesting an earlier page" | `AssertionError: expected 2 to be +0` |
+| `commit-list.e2e.ts` | "mounts rows that cover the viewport after scrolling (startMargin is real)" | `wait --fn` timed out: the scroll-`[data-slot="main"]`-to-1500-then-look-for-`[data-slot="commit-row"]` predicate never turned true |
+| `review-gate.e2e.ts` | "shows the banner and the real worktree diff as per-file sections" | `get text [data-slot="review-banner"]` failed |
+| `new-task.e2e.ts` | "the pill row resolves: no source picked, runner pill by the choice rule, base: main, ×1" | `AssertionError: expected 'skill' to be 'none'` |
+| `single-project.e2e.ts` | "boots in the mode because the folder carries its state — no flag, no host setup (SP-5.4)" | `AssertionError: expected 4 to be 3` |
+| `workflows.e2e.ts` | "reorders steps with the keyboard (dnd-kit defaults: Space lifts, arrows move, Space drops)" | `eval`'s `.focus()` on `[data-slot="wb-step"][data-id="e2e-wb-alpha"] [data-slot="wb-step-grip"]` failed |
+| `guide-01-getting-started.e2e.ts` | "Settings → Project setup names the same never-checked state with its own identities" | role "heading" named "Not set up yet" never appeared |
+| `diff-scroll.e2e.ts` | "force-virtual holds a viewport window instead of the whole changeset" | `AssertionError: expected 64 to be less than 0` |
+| `skills-update.e2e.ts` | "shows the inherited global preference and persists an explicit override" | `AssertionError: expected 'Skill catalog\n\nThe team skills this…' to contain 'On (default)'` |
+| `task-changes.e2e.ts` | "Commit: the dialog prefills the auto-summary, commits for real in the worktree" | `click [data-slot="git-toolbar"] [data-action="commit"]` failed |
 
 One default-order attempt at this same head is deliberately not a row above: it was contaminated
 by an unrelated `npm test` invocation sharing this task's `$TMPDIR` while the browser suite was
