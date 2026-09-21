@@ -45,7 +45,7 @@
 # A red CI exits 0 ON PURPOSE, and this is the one place this script departs from the brief that
 # asked for it. A non-zero check step with no `onFail` ends the run (`run.ts`, the break after
 # `finishStep(... 'failed' ...)`), so exiting non-zero on red would mean the report step never
-# runs: no flake adjudication, no `XEZ:ASK`, no question to the leader at the only moment
+# runs: no adjudication, no `XEZ:ASK`, no question to the leader at the only moment
 # integration ever needs one — and `onFail.retry` cannot help, because every step earlier than
 # this one is earlier than the merge, so retrying would re-run the merge. Red is therefore
 # OBSERVED (exit 0, outcome `failure`) and judged by the agent; unobservable and out-of-time are
