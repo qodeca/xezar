@@ -38,6 +38,7 @@ import {
   isSafeSessionId,
   resumeCommand,
   setWorkspaceUiStateInputSchema,
+  type AgentProfilesResponse,
   type GroupResponse,
   type GroupVariant,
   type PickVariantResponse,
@@ -196,6 +197,7 @@ import {
 } from '../workspace/agent-accounts.ts';
 import {
   accountHomePatch,
+  accountProblems,
   AgentAccountUnavailableError,
   assertAgentAccountAvailable,
   defaultAgentProfile,
@@ -2147,10 +2149,13 @@ export function createApp(deps: ServerDeps) {
           // an unreadable home degrades to "no extra accounts", never a failed request
         }
       }
-      const profiles = editable
-        ? await Promise.all(listAgentProfiles(store, PROVIDER_IDS).map(agentProfileBody))
-        : [];
-      return c.json({
+      const resolved = editable ? listAgentProfiles(store, PROVIDER_IDS) : [];
+      const profiles = await Promise.all(resolved.map(agentProfileBody));
+      // Built as the CONTRACT shape and handed to `c.json` (the pattern `GET /projects` uses): the
+      // body IS the response, so hono infers exactly what the schema describes. `problems` is
+      // optional in the contract — additive for a consumer that predates it — and this route always
+      // fills it in, which the listing tests pin.
+      const body: AgentProfilesResponse = {
         editable,
         profiles,
         profileCapableProviders: [...PROFILE_CAPABLE_PROVIDERS],
@@ -2160,7 +2165,14 @@ export function createApp(deps: ServerDeps) {
         /** The machine-wide fallback, for repos that have chosen nothing. Withheld in hosted mode
          *  on the same terms as the rest of this family. */
         defaults: editable ? store.defaults : {},
-      });
+        /** Stored references that name no account (#819 item 2). ADVISORY: resolution still falls
+         *  back to the discovered account, so this reports a choice that has no effect rather than
+         *  enforcing anything. Built from the SAME resolved list the rows above come from, so the
+         *  two can never disagree about which ids are known; empty when the store was never read,
+         *  like the rest of this listing. */
+        problems: editable ? accountProblems(store, resolved) : [],
+      };
+      return c.json(body);
     })
 
     .post('/workspace/agent-profiles', localHandoffRoute, jsonZodValidator(() => createAgentProfileInputSchema),
@@ -2490,6 +2502,13 @@ export function createApp(deps: ServerDeps) {
                 if (selection[key] === id) delete selection[key];
               }
               if (Object.keys(selection).length === 0) delete store.selections[root];
+            }
+            // …and the MACHINE-WIDE defaults, which this scrub used to walk past (#819 item 2):
+            // deleting the account a provider defaulted to left `defaults.<provider>` naming an
+            // account that no longer existed, served back by the listing forever after. Same
+            // mutator, so no reader can observe the half-scrubbed state.
+            for (const provider of PROVIDER_IDS) {
+              if (store.defaults[provider] === id) delete store.defaults[provider];
             }
           });
         } catch (err) {

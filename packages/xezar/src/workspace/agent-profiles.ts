@@ -1,9 +1,9 @@
 import { readdir, realpath } from 'node:fs/promises';
 import { profileEnv, looksLikeProfileDir } from '../core/agent-profiles.ts';
-import type { ProviderId } from '../core/provider-auth.ts';
+import { PROVIDER_IDS, type ProviderId } from '../core/provider-auth.ts';
 import { agentHomePaths, expandTilde } from '../paths.ts';
 import type { AgentHomePaths } from '../agent-config/catalog.ts';
-import { unavailableAgentAccountRefusal } from '@qodeca/xezar-contract';
+import { unavailableAgentAccountRefusal, type AgentAccountProblem } from '@qodeca/xezar-contract';
 import { activeStateLayout } from '../state-layout.ts';
 import {
   DEFAULT_AGENT_ACCOUNT_ID,
@@ -125,6 +125,54 @@ export function listAgentProfiles(
   env: NodeJS.ProcessEnv = process.env,
 ): ResolvedAgentProfile[] {
   return providers.flatMap((provider) => profilesForProvider(store, provider, env));
+}
+
+/**
+ * Stored references that name no account (issue #819 item 2) — a dangling `defaults.<provider>` or
+ * a project selection whose account has since been deleted (or never existed, in a hand-edited
+ * file).
+ *
+ * PURE and ADVISORY. Resolution deliberately keeps its silent fall back to the discovered account
+ * (`selectProfile`): a dangling reference names no account, so the default is the only safe answer
+ * and zero config still means "degrade, never fail". What was missing was any way to SAY that the
+ * stored choice has no effect — this is that answer, and nothing here changes resolution.
+ *
+ * `profiles` is the resolved listing, discovered defaults included, because "known" has to mean
+ * the same thing to the reporter and to `selectProfile`: an id that belongs to a DIFFERENT provider
+ * is reported for this one, exactly as the selection route refuses it. The reserved `default` id is
+ * never reported because the discovered default profile carries it for every provider.
+ *
+ * A store that was never loaded is EMPTY, and an empty store has no references to be dangling, so
+ * this answers `[]`. That fail-open direction is deliberate and the route only serves it after a
+ * successful load (and withholds the whole listing in hosted mode), so "we could not read the
+ * file" is never presented as "the file is clean".
+ */
+export function accountProblems(
+  store: Pick<AgentAccountStore, 'defaults' | 'selections'>,
+  profiles: readonly Pick<ResolvedAgentProfile, 'id' | 'provider'>[],
+): AgentAccountProblem[] {
+  const known = new Map<ProviderId, Set<string>>();
+  for (const profile of profiles) {
+    const ids = known.get(profile.provider) ?? new Set<string>();
+    ids.add(profile.id);
+    known.set(profile.provider, ids);
+  }
+  const problems: AgentAccountProblem[] = [];
+  const report = (where: 'defaults' | 'selection', provider: ProviderId, handle: string): void => {
+    if (known.get(provider)?.has(handle)) return;
+    problems.push({ kind: 'unknown-account' as const, where, provider, handle });
+  };
+  for (const provider of PROVIDER_IDS) {
+    const handle = store.defaults[provider];
+    if (handle !== undefined) report('defaults', provider, handle);
+  }
+  for (const selection of Object.values(store.selections)) {
+    for (const provider of PROVIDER_IDS) {
+      const handle = selection[provider];
+      if (handle !== undefined) report('selection', provider, handle);
+    }
+  }
+  return problems;
 }
 
 /**

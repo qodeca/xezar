@@ -6,6 +6,7 @@ import { agentAccountsPath } from '../paths.ts';
 import { PROVIDER_IDS } from '../core/provider-auth.ts';
 import {
   AgentAccountUnavailableError,
+  accountProblems,
   assertAgentAccountAvailable,
   accountHomePatch,
   defaultAgentProfile,
@@ -17,7 +18,7 @@ import {
   sameProfileDir,
   selectProfile,
 } from './agent-profiles.ts';
-import { DEFAULT_AGENT_ACCOUNT_ID, loadAgentAccounts } from './agent-accounts.ts';
+import { DEFAULT_AGENT_ACCOUNT_ID, defaultAgentAccountStore, loadAgentAccounts } from './agent-accounts.ts';
 import { unavailableAgentAccountReason, unavailableAgentAccountRefusal } from '@qodeca/xezar-contract';
 import { projectStateLayout, setActiveStateLayout } from '../state-layout.ts';
 
@@ -193,6 +194,89 @@ describe('agent profile resolution', () => {
       const store = await loadAgentAccounts();
       expect(selectProfile(store, { provider: 'claude', repoRoot: '/somewhere/else', env }).isDefault).toBe(true);
       expect(selectProfile(store, { provider: 'claude', env }).isDefault).toBe(true);
+    });
+  });
+
+  /**
+   * Dangling stored references (issue #819 item 2): the reporter that makes a silent fallback
+   * visible WITHOUT changing it. Each case names the break it fails against.
+   */
+  describe('accountProblems', () => {
+    const known = [
+      { id: 'default', provider: 'claude' as const },
+      { id: 'klaudiusz', provider: 'claude' as const },
+      { id: 'default', provider: 'codex' as const },
+    ];
+
+    it('names a dangling machine-wide default, echoing the handle as stored', () => {
+      const store = defaultAgentAccountStore();
+      store.defaults.claude = 'deleted-yesterday';
+      expect(accountProblems(store, known)).toEqual([
+        { kind: 'unknown-account', where: 'defaults', provider: 'claude', handle: 'deleted-yesterday' },
+      ]);
+    });
+
+    it('names a dangling project selection, one entry per dangling provider', () => {
+      const store = defaultAgentAccountStore();
+      store.selections['/tmp/projects/a'] = { claude: 'gone', codex: 'also-gone' };
+      expect(accountProblems(store, known)).toEqual([
+        { kind: 'unknown-account', where: 'selection', provider: 'claude', handle: 'gone' },
+        { kind: 'unknown-account', where: 'selection', provider: 'codex', handle: 'also-gone' },
+      ]);
+    });
+
+    it('reports nothing for a clean store — a known id in both maps', () => {
+      const store = defaultAgentAccountStore();
+      store.defaults.claude = 'klaudiusz';
+      store.selections['/tmp/projects/a'] = { claude: 'klaudiusz', codex: 'default' };
+      expect(accountProblems(store, known)).toEqual([]);
+    });
+
+    it('reports an id that is known for ANOTHER provider — it names no account of this one', () => {
+      const store = defaultAgentAccountStore();
+      // `klaudiusz` is a claude account; naming it as codex's default resolves to nothing, which is
+      // exactly the silent degradation this reports.
+      store.defaults.codex = 'klaudiusz';
+      expect(accountProblems(store, known)).toEqual([
+        { kind: 'unknown-account', where: 'defaults', provider: 'codex', handle: 'klaudiusz' },
+      ]);
+    });
+
+    it('never reports the reserved `default` id — the discovered account is always known', () => {
+      const store = defaultAgentAccountStore();
+      store.defaults.claude = DEFAULT_AGENT_ACCOUNT_ID;
+      store.selections['/tmp/projects/a'] = { claude: DEFAULT_AGENT_ACCOUNT_ID };
+      expect(accountProblems(store, known)).toEqual([]);
+    });
+
+    // The fail-open case, pinned on purpose: an EMPTY store is what "never loaded" and "loaded and
+    // clean" both look like, and this helper cannot tell them apart. It answers `[]` — and the
+    // route only ever serves that answer after a successful load (or in hosted mode, where the
+    // whole listing is withheld), so "we could not read the file" is never presented as "the file
+    // is clean". Without this test the distinction would be a silent assumption.
+    it('answers [] for a never-loaded store — the fail-open direction, pinned', () => {
+      expect(accountProblems(defaultAgentAccountStore(), [])).toEqual([]);
+      expect(accountProblems(defaultAgentAccountStore(), known)).toEqual([]);
+    });
+
+    // The guard this whole change must not break: reporting a dangling reference does NOT make the
+    // run fail. Resolution still answers the discovered account, exactly as before #819.
+    it('still resolves a dangling reference to the built-in login — reporting changes nothing', async () => {
+      write({
+        accounts: [klaudiuszProfile],
+        defaults: { claude: 'gone' },
+        selections: { '/tmp/projects/a': { codex: 'gone' } },
+      });
+      const store = await loadAgentAccounts();
+      expect(accountProblems(store, listAgentProfiles(store, PROVIDER_IDS, env)).map((p) => p.handle))
+        .toEqual(['gone', 'gone']);
+      const claude = selectProfile(store, { provider: 'claude', repoRoot: '/tmp/projects/a', env });
+      const codex = selectProfile(store, { provider: 'codex', repoRoot: '/tmp/projects/a', env });
+      expect(claude.isDefault).toBe(true);
+      expect(codex.isDefault).toBe(true);
+      // …and the run itself gets the zero-config answer: no env override for the default account.
+      await expect(resolveProfileEnvForRoot('/tmp/projects/a', 'claude', undefined, env)).resolves
+        .toMatchObject({ env: {}, profile: { id: DEFAULT_AGENT_ACCOUNT_ID } });
     });
   });
 
