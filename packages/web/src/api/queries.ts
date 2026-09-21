@@ -78,6 +78,7 @@ import {
   removeAgentProfile,
   removeProject,
   selectAgentProfile,
+  importGlobalAccounts,
   updateAgentProfile,
   updateProject,
   sendMessage,
@@ -621,8 +622,8 @@ function applyProjectPatch(
  * every project's reference to it server-side, so a projects cache left alone would keep showing
  * a selection that no longer exists.
  */
-function useAgentProfileMutation<TVariables>(
-  mutationFn: (variables: TVariables) => Promise<unknown>,
+function useAgentProfileMutation<TVariables, TResult = unknown>(
+  mutationFn: (variables: TVariables) => Promise<TResult>,
 ) {
   const queryClient = useQueryClient()
   return useMutation({
@@ -655,6 +656,15 @@ export function useRemoveAgentProfile() {
 /** Point one project's provider at an account (spec 2026-07-29-agent-profiles). */
 export function useSelectAgentProfile() {
   return useAgentProfileMutation((input: SelectAgentProfileInput) => selectAgentProfile(input))
+}
+
+/**
+ * Copy the machine-wide accounts into this project (#819 PR 9) — a person's click, never a load.
+ * Invalidates the listing like every account write, so the new rows, the new `globalImport` and
+ * any cleared problem arrive through one refetch of the one listing query.
+ */
+export function useImportGlobalAccounts() {
+  return useAgentProfileMutation(() => importGlobalAccounts())
 }
 
 /**

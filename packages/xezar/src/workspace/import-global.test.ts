@@ -1,4 +1,5 @@
 import {
+  chmodSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -24,7 +25,10 @@ import { createProjectStateFiles } from './config.ts';
 import {
   accountImportLines,
   askInTerminal,
+  countImportableGlobalAccounts,
   firstRunImportLine,
+  globalImportStateAfter,
+  globalImportSummary,
   globalImportStateOf,
   importGlobalAccounts,
   importGlobalSetup,
@@ -637,5 +641,109 @@ describe('import from the global setup (#600 FR-4)', () => {
         expect(json(layout.accountsPath)).toEqual({});
       });
     });
+  });
+});
+
+/**
+ * #819 PR 9 — the cockpit's read of the global setup: a COUNT of the accounts the project could
+ * still import, granted by the owner ("Allow the count", 2026-09-21) with fixed limits. Each case
+ * names the break it fails against.
+ */
+describe('countImportableGlobalAccounts — a number, read-only, never an error', () => {
+  let base: string;
+  let home: string;
+  let project: string;
+  let layout: StateLayout;
+  let env: NodeJS.ProcessEnv;
+  const GLOBAL_ACCOUNTS = {
+    accounts: [
+      { id: 'work', provider: 'claude', configDir: '/Users/someone/.claude-work', label: 'someone@example.com' },
+      { id: 'team', provider: 'codex', configDir: '/Users/someone/.codex-team', label: 'Team' },
+      { id: 'side', provider: 'pi', configDir: '/Users/someone/.pi/side', label: 'Side project' },
+    ],
+    defaults: { claude: 'work' },
+  };
+
+  beforeEach(() => {
+    base = realpathSync(mkdtempSync(join(tmpdir(), 'xez-import-count-')));
+    home = join(base, 'home', '.xezar');
+    project = join(base, 'project');
+    mkdirSync(home, { recursive: true });
+    mkdirSync(join(project, '.xezar'), { recursive: true });
+    env = { XEZ_HOME: home };
+    layout = projectStateLayout(project);
+    writeFileSync(join(home, 'agent-accounts.json'), `${JSON.stringify(GLOBAL_ACCOUNTS)}\n`);
+  });
+
+  afterEach(() => {
+    rmSync(base, { recursive: true, force: true });
+  });
+
+  const homeBytes = (): Record<string, string> =>
+    Object.fromEntries(readdirSync(home).sort().map((name) => [name, readFileSync(join(home, name), 'utf8')]));
+
+  // Break: counting every global row (the project's own copies included), or counting the ids the
+  // import would keep rather than add.
+  it('counts exactly the accounts the import would add, and reads the home without changing it', () => {
+    writeFileSync(layout.accountsPath, JSON.stringify({ accounts: [{ id: 'team', provider: 'codex', configDir: '~/.codex-team' }] }));
+    const before = homeBytes();
+    expect(countImportableGlobalAccounts(layout, env)).toBe(2);
+    expect(homeBytes()).toEqual(before);
+    // …and it agrees with what the merge then really adds.
+    expect(importGlobalAccounts(layout, env).added).toHaveLength(2);
+    expect(countImportableGlobalAccounts(layout, env)).toBe(0);
+  });
+
+  it('counts every account when the project has no accounts file yet, and creates none', () => {
+    expect(countImportableGlobalAccounts(layout, env)).toBe(3);
+    expect(existsSync(layout.accountsPath)).toBe(false);
+  });
+
+  // Break: letting an unreadable home throw (the listing would fail) or answer a stale number.
+  it('reads an unreadable, unparsable or absent home as 0 — never an error', () => {
+    writeFileSync(join(home, 'agent-accounts.json'), '{ not json');
+    expect(countImportableGlobalAccounts(layout, env)).toBe(0);
+    rmSync(join(home, 'agent-accounts.json'));
+    mkdirSync(join(home, 'agent-accounts.json')); // a directory where the file should be: EISDIR
+    expect(() => countImportableGlobalAccounts(layout, env)).not.toThrow();
+    expect(countImportableGlobalAccounts(layout, env)).toBe(0);
+    expect(countImportableGlobalAccounts(layout, { XEZ_HOME: join(base, 'no-such-home') })).toBe(0);
+    expect(existsSync(join(base, 'no-such-home'))).toBe(false);
+  });
+
+  it('reads a permission-denied home as 0', () => {
+    if (process.getuid?.() === 0) return; // root reads through a mode of 000
+    chmodSync(join(home, 'agent-accounts.json'), 0o000);
+    try {
+      expect(countImportableGlobalAccounts(layout, env)).toBe(0);
+    } finally {
+      chmodSync(join(home, 'agent-accounts.json'), 0o600);
+    }
+  });
+
+  it('answers 0 in the global layout, where there is nothing to import into', () => {
+    expect(countImportableGlobalAccounts(globalStateLayout(env), env)).toBe(0);
+    expect(globalImportSummary(globalStateLayout(env), env)).toBeNull();
+  });
+
+  // Break: a summary that carries an id, a label, a provider or a folder of the global file — the
+  // P9-AC5 rule that `importable` is a count and never a list.
+  it('serialises a count and a state, and no name, id, provider or path of the global file', () => {
+    const payload = JSON.stringify(globalImportSummary(layout, env));
+    expect(JSON.parse(payload)).toEqual({ state: 'unknown', importable: 3 });
+    for (const leak of ['someone', '@', 'work', 'team', 'side', 'claude', 'codex', 'pi', home, '/Users']) {
+      expect(payload, leak).not.toContain(leak);
+    }
+  });
+
+  // Break: two doors recording different outcomes for the same merge (#819 F4).
+  it('records "imported" only when the merge changed something or the project has accounts', () => {
+    const report = importGlobalAccounts(layout, env);
+    expect(globalImportStateAfter(report, layout)).toBe('imported');
+    const empty = projectStateLayout(join(base, 'other'));
+    mkdirSync(empty.root, { recursive: true });
+    const nothing = importGlobalAccounts(empty, { XEZ_HOME: join(base, 'no-such-home') });
+    expect(nothing.outcome).toBe('no-global-file');
+    expect(globalImportStateAfter(nothing, empty)).toBeNull();
   });
 });

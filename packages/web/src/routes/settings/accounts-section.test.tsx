@@ -83,6 +83,9 @@ function serve(
     openError?: string
     targets?: unknown
     status?: unknown
+    importStatus?: number
+    importError?: string
+    importResult?: { added: number; kept: number; globalImport: { state: 'done' | 'declined' | 'unknown'; importable: number } }
   } = {},
 ) {
   requests = []
@@ -157,6 +160,12 @@ function serve(
           dirs: [{ name: '.claude-second', path: '/home/u/.claude-second', isRepo: false }],
           truncated: false,
         })
+      }
+      if (url === '/api/v1/workspace/agent-profiles/import-global' && method === 'POST') {
+        if (options.importStatus) return json({ error: options.importError }, options.importStatus)
+        const answer = options.importResult ?? { added: 0, kept: 0, globalImport: { state: 'done', importable: 0 } }
+        state = { ...state, globalImport: answer.globalImport }
+        return json(answer)
       }
       if (url === '/api/v1/workspace/agent-profiles/selection' && method === 'PUT') {
         // The server recomputes `problems` after a write; clearing a choice fixes its problem.
@@ -1261,5 +1270,127 @@ describe('the Defaults picker rows (#819 PR 9)', () => {
       profile({ id: 'client', label: 'a@b.example' }),
     ]).filter((row) => row.runner.id === 'claude').map((row) => row.label)
     expect(labels).toEqual(['claude · Built-in login', 'claude · Work', 'claude · Name hidden'])
+  })
+})
+
+/**
+ * #819 PR 9 — the global-import block (designs/agent-accounts-onboarding § 7, import.html 1–7).
+ * Each case names the break it fails against.
+ */
+describe('the accounts pane – the global-import block (#819 PR 9)', () => {
+  const base = { editable: true, profileCapableProviders: ['claude', 'codex'] as AgentProfile['provider'][],
+    defaults: {}, selections: {}, profiles: DEFAULTS, problems: [] }
+  const block = () => document.querySelector('[data-slot="accounts-import"]')
+  const copyButton = () => document.querySelector<HTMLButtonElement>('[data-action="accounts-import"]')
+  const renderWith = async (globalImport: AgentProfilesResponse['globalImport'], singleProjectRoot = true, options = {}) => {
+    serve({ ...base, ...(globalImport ? { globalImport } : {}) }, options)
+    renderAccounts({ singleProjectRoot })
+    await waitFor(() => expect(rows()).toHaveLength(2))
+  }
+
+  // Break: the first offer drawn as a line (no stated cost), or without the CLI alternative.
+  it('offers the first copy as a card that states the cost, with the CLI alternative', async () => {
+    await renderWith({ state: 'unknown', importable: 3 })
+    expect(block()?.querySelector('h3')?.textContent).toBe('Copy accounts from your personal setup')
+    expect(block()?.textContent).toContain(
+      '3 accounts in your personal xezar setup on this machine are not in this project yet. Copying adds their names and config folders to .xezar/agent-accounts.json, which is committed, so everyone who clones this project sees them. Sign-ins stay in their own folders and are never copied.',
+    )
+    expect(copyButton()?.textContent).toBe('Copy 3 accounts')
+    expect(block()?.querySelector('[data-slot="accounts-import-cli"]')?.textContent).toBe(
+      'Or run xezar accounts import-global in a terminal in this folder.',
+    )
+  })
+
+  it('says "1 account … is" and "Copy 1 account" for one', async () => {
+    await renderWith({ state: 'unknown', importable: 1 })
+    expect(block()?.textContent).toContain('1 account in your personal xezar setup on this machine is not in this project yet.')
+    expect(copyButton()?.textContent).toBe('Copy 1 account')
+  })
+
+  // Break: a "Copy 0 accounts" button, or a card offering nothing.
+  it('shows one line and NO button when there is nothing to copy', async () => {
+    await renderWith({ state: 'unknown', importable: 0 })
+    expect(block()?.querySelector('[data-slot="accounts-import-line"]')?.textContent).toBe(
+      'There are no accounts in your personal xezar setup that this project does not already have.',
+    )
+    expect(copyButton()).toBeNull()
+  })
+
+  it('reminds a person who declined, with the button while something is left', async () => {
+    await renderWith({ state: 'declined', importable: 2 })
+    expect(block()?.querySelector('[data-slot="accounts-import-line"]')?.textContent).toBe(
+      'You chose not to copy accounts from your personal xezar setup when this project was set up. 2 can still be copied into .xezar/agent-accounts.json.',
+    )
+    expect(copyButton()?.textContent).toBe('Copy 2 accounts')
+  })
+
+  it('says done — and offers the rest when more were added since', async () => {
+    await renderWith({ state: 'done', importable: 0 })
+    expect(block()?.textContent).toContain('Accounts were copied from your personal xezar setup — this project has all of them.')
+    expect(copyButton()).toBeNull()
+    cleanup()
+    await renderWith({ state: 'done', importable: 2 })
+    expect(block()?.textContent).toContain(
+      'Accounts were copied from your personal xezar setup. 2 more were added there since and can be copied too.',
+    )
+    expect(copyButton()?.textContent).toBe('Copy 2 accounts')
+  })
+
+  // Break: an absent key read as "unknown" (a fabricated offer), or the block in the global layout.
+  it('draws nothing when the key is absent, and nothing in the global layout', async () => {
+    await renderWith(undefined)
+    expect(block()).toBeNull()
+    cleanup()
+    await renderWith({ state: 'unknown', importable: 3 }, false)
+    expect(block()).toBeNull()
+  })
+
+  // P9-AC3. Break: a click that runs anything but the import route, or never refetches.
+  it('copies on a click only — posting the import once, toasting the counts, announcing the new state', async () => {
+    await renderWith({ state: 'unknown', importable: 3 }, true, {
+      importResult: { added: 2, kept: 1, globalImport: { state: 'done', importable: 0 } },
+    })
+    // Nothing is posted on load.
+    expect(requests.some((r) => r.url.endsWith('/import-global'))).toBe(false)
+    fireEvent.click(copyButton()!)
+    await waitFor(() =>
+      expect(document.querySelector('[data-slot="toast"]')?.textContent).toContain(
+        'Copied 2 accounts — 1 was already in this project',
+      ),
+    )
+    expect(requests.filter((r) => r.url === '/api/v1/workspace/agent-profiles/import-global')).toEqual([
+      { method: 'POST', url: '/api/v1/workspace/agent-profiles/import-global', body: undefined },
+    ])
+    await waitFor(() =>
+      expect(document.querySelector('[data-slot="accounts-import-announcer"]')?.textContent).toBe(
+        'Accounts were copied from your personal xezar setup — this project has all of them.',
+      ),
+    )
+    // The listing refetch turns the card into the done line.
+    await waitFor(() => expect(block()?.getAttribute('data-state')).toBe('done'))
+    expect(copyButton()).toBeNull()
+  })
+
+  it("shows a refused copy in the server's own words", async () => {
+    await renderWith({ state: 'unknown', importable: 3 }, true, {
+      importStatus: 409, importError: 'could not read the agent accounts — nothing was copied',
+    })
+    fireEvent.click(copyButton()!)
+    await waitFor(() =>
+      expect(document.querySelector('[data-slot="toast"]')?.textContent).toContain(
+        'could not read the agent accounts — nothing was copied',
+      ),
+    )
+  })
+
+  // Break: the import block or its button rendered in hosted mode (absent, not disabled).
+  it('renders no import block, button or CLI line in hosted mode', async () => {
+    serve({ editable: false, profileCapableProviders: [], defaults: {}, selections: {}, profiles: [],
+      problems: [], globalImport: { state: 'unknown', importable: 3 } })
+    renderAccounts({ singleProjectRoot: true })
+    await waitFor(() => expect(document.querySelector('[data-slot="accounts-hosted"]')).not.toBeNull())
+    expect(block()).toBeNull()
+    expect(copyButton()).toBeNull()
+    expect(document.body.textContent).not.toContain('import-global')
   })
 })

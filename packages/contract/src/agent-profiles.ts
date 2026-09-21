@@ -176,6 +176,42 @@ export const agentAccountProblemSchema = z.object({
 export type AgentAccountProblem = z.infer<typeof agentAccountProblemSchema>;
 
 /**
+ * Whether this project has taken the agent accounts of the person's machine-wide xezar setup
+ * (#819 items 1a–1d, cockpit side in PR 9) — single-project mode only.
+ *
+ * `state` folds the engine's recorded outcome into the three answers a person can act on:
+ * `done` (copied at least once — the first-run question, the launch flag or
+ * `xezar accounts import-global`), `declined` (a person said no), `unknown` (never asked here, or a
+ * project set up before the outcome was recorded; absence is never read as a "no").
+ *
+ * `importable` is a COUNT and never a list: how many accounts the machine-wide file has that this
+ * project does not. No name, id, label or folder of the other file crosses this boundary, because
+ * the cockpit can offer the copy without knowing any of them and the page must not print a
+ * person's account list before they chose to copy it. `0` when that file cannot be read.
+ */
+export const agentAccountsGlobalImportSchema = z.object({
+  state: z.enum(['done', 'declined', 'unknown']),
+  importable: z.number().int().nonnegative(),
+});
+export type AgentAccountsGlobalImport = z.infer<typeof agentAccountsGlobalImportSchema>;
+
+/**
+ * `POST /api/v1/workspace/agent-profiles/import-global` — the cockpit's door to the SAME merge
+ * `xezar accounts import-global` runs. Person-only: no MCP action reaches it, and it answers 409 in
+ * hosted mode like every other write of this family, and in the global layout, where there is no
+ * project to import into. It takes no body.
+ *
+ * Counts only, for the same reason as {@link agentAccountsGlobalImportSchema}: the toast says how
+ * many were copied and how many the project already had, never which.
+ */
+export const importGlobalAccountsResponseSchema = z.object({
+  added: z.number().int().nonnegative(),
+  kept: z.number().int().nonnegative(),
+  globalImport: agentAccountsGlobalImportSchema,
+});
+export type ImportGlobalAccountsResponse = z.infer<typeof importGlobalAccountsResponseSchema>;
+
+/**
  * `GET /api/v1/workspace/agent-profiles` — every account, discovered defaults first.
  *
  * `editable` is false in hosted mode (`XEZ_REMOTE`), where the whole family is refused: defining
@@ -209,6 +245,10 @@ export const agentProfilesResponseSchema = z.object({
    *  ADVISORY: run resolution still falls back to the discovered account for an unknown id, which
    *  is why this is reported rather than enforced. */
   problems: z.array(agentAccountProblemSchema).optional(),
+  /** Whether this project took the machine-wide accounts, and how many it still could (#819 PR 9).
+   *  PRESENT only in single-project mode on the host; absent in the global layout and in hosted
+   *  mode. Absent is never "unknown" — a surface draws nothing for it. Never on `/api/v1/health`. */
+  globalImport: agentAccountsGlobalImportSchema.optional(),
 });
 export type AgentProfilesResponse = z.infer<typeof agentProfilesResponseSchema>;
 

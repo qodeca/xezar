@@ -10,4 +10,8 @@
   saved default or project choice that names an account the list does not have is shown at the top
   of the pane and in its agent's group, with what tasks do instead and a one-click "Use the built-in
   login" fix. An account name that looks like an e-mail address is shown as "Name hidden" until you
-  press Show details. (#819)
+  press Show details. In single-project mode the pane also says whether the accounts of your
+  personal xezar setup were copied into the project and how many could still be — a count, never
+  their names — with a "Copy {n} accounts" button that runs the same merge as
+  `xezar accounts import-global`. Only a person can press it: it is refused in hosted mode and no
+  MCP action reaches it. (#819)

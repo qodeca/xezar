@@ -58,6 +58,7 @@ import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
 import { DefaultAgentPicker, agentPickerRows } from '@/components/default-agent-picker'
 import { modelCatalogStatus, modelsForRunner, RUNNERS } from '@/routes/new-task-form'
 import { AddAccountDialog } from './add-account-dialog'
+import { AccountsImportBlock } from './accounts-import'
 import { useReturnFocus } from './remove-project'
 
 /**
@@ -197,6 +198,10 @@ function AccountsPane({ data }: { data: AgentProfilesResponse }) {
             : 'Every agent, whether it is installed, and the logins you have for it. “Default” marks the login a project runs under when it has not chosen one. The built-in login is the one each agent finds on this machine by itself; xezar uses it when no other account is chosen.'}
         </p>
       </div>
+
+      {/* Single-project mode only, and only when the server sent the key: absent is not "unknown"
+          (design § 6). The pane is already refused as a whole in hosted mode, above. */}
+      {projectRoot && data.globalImport ? <AccountsImportBlock globalImport={data.globalImport} /> : null}
 
       {problems && problems.length > 0 ? <ProblemSummary problems={problems} /> : null}
 
