@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { projectDataDir } from '../project-data-paths.ts';
 import { RunStore } from '../runs/store.ts';
 import { registerProject } from '../workspace/projects.ts';
@@ -286,5 +286,44 @@ describe('#819 item 6 — the hooks themselves', () => {
     expect(acceptedKeysSentence({ subject: 's', required: ['a', 'b'], optional: [] })).toBe('Accepted for s: a, b (required).');
     const events = tools.find((t) => t.name === 'leader_events')!;
     expect(schemaKeys(events)).toEqual({ subject: 'leader_events', required: ['action'], optional: ['cursor', 'limit', 'operationId'] });
+  });
+});
+
+describe('#819 item 6 — a throwing preflight degrades to the argument error, it never hangs or kills the call', () => {
+  it('T6.5 a preflight that throws answers the ordinary invalid-arguments error, dispatches nothing and never leaks the throw', async () => {
+    // RED against: `const refusal = tool.preflight?.(raw, ctx);` with NO exception guard (the
+    // service.ts at 928ea2db, before this fix). `callTool` is async, so the synchronous throw
+    // becomes a rejected promise; `answer()` awaits it with no `try/catch`, and
+    // `serveConnection`'s `.then(...)` has no `.catch`, so the call never answers and the
+    // unhandled rejection terminates the process on this Node. The hook runs before the door's
+    // `try/catch`, so it is the one place in `callTool` that needed its own.
+    //
+    // The `preflight` of a REFUSED action is forced to throw here, because that is the hook the
+    // PR added. The bound below is 100x the observed round trip and well under the suite's 15 s
+    // test clock, so a RED run reports "no answer" instead of a bare timeout, and a loaded machine
+    // cannot turn the green case red.
+    const w = await world();
+    const spy = vi.spyOn(projectConfigTool, 'preflight').mockImplementation(() => {
+      throw new Error('INJECTED preflight throw — probing exception safety');
+    });
+    try {
+      const answer = await Promise.race([
+        w.call('project_config', { action: 'connect_provider', approvedBy: 'the human' }),
+        new Promise<'no answer'>((resolve) => setTimeout(() => resolve('no answer'), 5_000)),
+      ]);
+      expect(answer, 'the call must answer: a throw before the door must not reject callTool').not.toBe('no answer');
+      const result = answer as McpToolResult;
+      expect(result.isError).toBe(true);
+      // The ordinary argument error this call answered before the hook existed — the throw falls
+      // through to it rather than becoming a refusal or an internal-error result.
+      expect(text(result)).toMatch(/^Invalid arguments for project_config: /);
+      expect(text(result)).toContain('Unrecognized key: "approvedBy"');
+      expect(text(result)).not.toMatch(/^Refused/);
+      // F-15: the exception text goes to the cockpit's log, never into the answer.
+      expect(text(result)).not.toContain('INJECTED');
+      expect(w.dispatched).toEqual([]);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

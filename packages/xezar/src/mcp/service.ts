@@ -437,7 +437,19 @@ async function callTool(
     // argument error always was: nothing ran, so there is nothing to receipt or audit. A refused
     // call whose arguments DO validate still reaches the tool through the door below, which gives
     // the same answer from the same code and records it as a refusal, as it always has.
-    const refusal = tool.preflight?.(raw, ctx);
+    // The hook is guarded like `tool.call` below, for the same reason (F-15): it runs before the
+    // door's try/catch, `callTool` is async, and an unguarded synchronous throw would become a
+    // rejected promise that `answer()` awaits with no `catch` and `serveConnection` sends with no
+    // `.catch` — an unhandled rejection that takes the whole cockpit process down (one door per
+    // registered project, all in it). A throwing `preflight` therefore degrades to the argument
+    // error it stands in for, which is what the call answered before the hook existed.
+    let refusal: McpToolResult | undefined;
+    try {
+      refusal = tool.preflight?.(raw, ctx);
+    } catch (err) {
+      // The exception text stays in the cockpit's own log, never in a tool response (F-15).
+      console.warn(`[xez] MCP tool ${tool.name} preflight failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
     if (refusal) return refusal;
     return errorResult(invalidArgumentsText(tool, raw, parsed.error.issues));
   }
