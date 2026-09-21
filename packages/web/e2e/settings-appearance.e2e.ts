@@ -99,17 +99,17 @@ describe('settings → appearance against the live dry-run server', () => {
     browser.goto(`${baseUrl}/settings/global/appearance`)
     browser.waitForFunction(`document.querySelector('[data-route="settings-global-appearance"]') !== null`)
 
-    // The GLOBAL nav: the original four sections, the xezar-skills preference and the
-    // Agent accounts section (registered unconditionally in settings/registry.tsx), and
-    // nothing project-scoped.
+    // The GLOBAL nav: every visible `scope: 'global'` entry of settings/registry.tsx, and
+    // nothing project-scoped. This spec runs in a plain node process that cannot import the
+    // registry (no React plugin, no `@/` alias), so the ids live in ONE list here and the total
+    // is that list's length: a section added to the registry is then one added id, never an id
+    // AND a hand-kept number that drift apart (the same list `design-debt-b3.e2e.ts` walks).
     const nav = '[data-slot="settings-nav"][data-scope="global"]'
-    expect(browser.count(`${nav} [data-section]`)).toBe(6)
-    expect(browser.count(`${nav} [data-section="accounts"]`)).toBe(1)
-    expect(browser.count(`${nav} [data-section="appearance"]`)).toBe(1)
-    expect(browser.count(`${nav} [data-section="notifications"]`)).toBe(1)
-    expect(browser.count(`${nav} [data-section="resources"]`)).toBe(1)
-    expect(browser.count(`${nav} [data-section="skills"]`)).toBe(1)
-    expect(browser.count(`${nav} [data-section="projects"]`)).toBe(1)
+    const globalSections = ['appearance', 'notifications', 'resources', 'terminal', 'skills', 'accounts', 'projects']
+    expect(browser.count(`${nav} [data-section]`)).toBe(globalSections.length)
+    for (const section of globalSections) {
+      expect(browser.count(`${nav} [data-section="${section}"]`)).toBe(1)
+    }
     // Project sections live in the OTHER area; hidden registry entries are nowhere at all.
     expect(browser.count(`${nav} [data-section="agents"]`)).toBe(0)
     expect(browser.count(`${nav} [data-section="bookmarklets"]`)).toBe(0)

@@ -1,4 +1,5 @@
 import { QueryClientProvider } from '@tanstack/react-query'
+import { ABSENT_CLI_SETTINGS } from '@/api/client'
 import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -83,6 +84,7 @@ function serve({
     effectiveFollowups: false,
     agentEnvPassthrough: null,
     effectiveAgentEnvPassthrough: [],
+    cli: ABSENT_CLI_SETTINGS,
     composerDefaults: {
       autonomous: null,
       worktree: null,
@@ -223,6 +225,7 @@ describe('Agent accounts → Defaults for new projects', () => {
             effectiveFollowups: false,
             agentEnvPassthrough: null,
             effectiveAgentEnvPassthrough: [],
+            cli: ABSENT_CLI_SETTINGS,
             composerDefaults: {
               autonomous: null,
               worktree: null,

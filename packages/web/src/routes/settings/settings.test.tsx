@@ -140,6 +140,9 @@ const GLOBAL_SECTIONS = [
   'appearance',
   'notifications',
   'resources',
+  // #467 PR 5: the instance mode — a start-up mode of the machine's cockpits, so global, and
+  // beside Resources rather than inside it.
+  'terminal',
   'skills',
   // Agent accounts (spec 2026-07-29-agent-profiles) sit beside Projects: both describe the
   // machine and the person at it, not any one repo.
@@ -171,7 +174,7 @@ describe('the section registry', () => {
     // Accounts survives: a single-project cockpit still runs on ONE of possibly several logins,
     // so "which account" is orthogonal to "how many projects".
     expect(visibleSettingsSections('global', { singleProject: true }).map((s) => s.id)).toEqual([
-      'appearance', 'notifications', 'resources', 'skills', 'accounts',
+      'appearance', 'notifications', 'resources', 'terminal', 'skills', 'accounts',
     ])
     expect(visibleSettingsSections('global', { singleProject: false }).map((s) => s.id)).toEqual(GLOBAL_SECTIONS)
     expect(visibleSettingsSections('global').map((s) => s.id)).toEqual(GLOBAL_SECTIONS)
@@ -179,7 +182,7 @@ describe('the section registry', () => {
 
   it('hides Projects in single-project mode too — the registry doors refuse there (#600)', () => {
     expect(visibleSettingsSections('global', { singleProjectRoot: true }).map((s) => s.id)).toEqual([
-      'appearance', 'notifications', 'resources', 'skills', 'accounts',
+      'appearance', 'notifications', 'resources', 'terminal', 'skills', 'accounts',
     ])
     // The project area is unchanged by either narrowing.
     expect(visibleSettingsSections('project', { singleProjectRoot: true }).map((s) => s.id)).toEqual(PROJECT_SECTIONS)
@@ -204,6 +207,7 @@ describe('single-project mode names the file each section writes (#600)', () => 
     appearance: '.xezar/workspace-ui.json',
     notifications: '.xezar/workspace-ui.json',
     resources: '.xezar/workspace.json',
+    terminal: '.xezar/workspace.json',
     skills: '.xezar/workspace.json',
     accounts: '.xezar/agent-accounts.json',
   }

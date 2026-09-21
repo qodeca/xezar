@@ -1758,13 +1758,43 @@ export async function putWorkspaceUiState(
  * different versions (Vite serves this bundle while `dist/` or another process serves the API), and
  * an older server answering without the key crashed the accounts page on `.runner`. One boundary,
  * one place a missing key becomes the empty answer it means.
+ *
+ * `cli` (#467, PR 5) is filled the same way and for the same skew: a server that predates it — or
+ * predates one of its fields — answers the defaults every xezar has always had, nothing stored,
+ * nothing from the environment and no narrowing. Merged per field, so a partly older answer keeps
+ * what it did send.
  */
 export async function getWorkspaceConfig(opts?: ReadOptions): Promise<WorkspaceConfigResponse> {
   const answer = await unwrap(
     await xez.api.v1.workspace.config.$get({}, init(opts)),
     '/workspace/config',
   )
-  return { ...answer, agentDefaults: answer.agentDefaults ?? {} }
+  return {
+    ...answer,
+    agentDefaults: answer.agentDefaults ?? {},
+    cli: { ...ABSENT_CLI_SETTINGS, ...answer.cli },
+  }
+}
+
+/**
+ * What a server that predates `cli` means by its absence: the built-in defaults, nothing chosen.
+ * Exported so a test fixture spells the default answer the way this boundary does.
+ */
+export const ABSENT_CLI_SETTINGS: WorkspaceConfigResponse['cli'] = {
+  instance: null,
+  effectiveInstance: 'workspace',
+  instanceSource: 'default',
+  inForce: 'workspace',
+  narrowing: null,
+  output: null,
+  effectiveOutput: 'auto',
+  outputSource: 'default',
+  color: null,
+  effectiveColor: 'auto',
+  colorSource: 'default',
+  logLevel: null,
+  effectiveLogLevel: 'info',
+  logLevelSource: 'default',
 }
 
 /**
