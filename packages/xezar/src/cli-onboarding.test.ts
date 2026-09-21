@@ -26,6 +26,14 @@ interface Run {
   readonly stderr: string;
 }
 
+/**
+ * The bare, unscoped command the closing lines must never print. npm has no package by that name,
+ * so anyone could publish it and a person following our own line would run their code; the scoped
+ * name is the one the install actually resolves. Spelled with `\s+` so this guard's own source
+ * does not carry the literal it bans.
+ */
+const BARE_UNSCOPED = /\bnpx\s+xezar\b/;
+
 describe('CLI onboarding (#819)', () => {
   let base: string;
   let home: string;
@@ -154,6 +162,30 @@ describe('CLI onboarding (#819)', () => {
       90_000,
     );
 
+    it(
+      'a folder whose global setup holds no accounts records nothing, so the door stays open (T1.6)',
+      () => {
+        // The boot the person did not answer, and then the global accounts file disappears: the
+        // command has nothing to copy.
+        expect(cli('init', '--single-project', '--no-import-global').status).toBe(0);
+        expect(machineState().globalImport).toBe('declined');
+        rmSync(join(home, 'agent-accounts.json'), { force: true });
+
+        const run = cli('accounts', 'import-global', '--single-project');
+
+        expect(run.status).toBe(0);
+        expect(run.stdout).toContain('your global setup holds no agent accounts — nothing was changed');
+        // Nothing was imported, so the state must not claim an import happened: `imported` would
+        // silence the one line that still points at this command, and an account created in the
+        // global setup later would never be copied in.
+        expect(machineState().globalImport).toBe('declined');
+        expect(cli('init', '--single-project', '--import-global').stdout).toContain(
+          'copy your global agent accounts in with',
+        );
+      },
+      60_000,
+    );
+
     it('an unknown verb is refused with the usage line', () => {
       const run = cli('accounts', 'list-everything', '--single-project');
       expect(run.status).toBe(1);
@@ -163,14 +195,14 @@ describe('CLI onboarding (#819)', () => {
 
   describe('what init ends with (item 9b)', () => {
     it(
-      'named break `unscoped-package-name`: the closing lines name the scoped package, never a bare `npx xezar` (T9.3)',
+      'named break `unscoped-package-name`: the closing lines name the scoped package, never a bare unscoped npm name (T9.3)',
       () => {
         const run = cli('init');
 
         expect(run.status).toBe(0);
-        // `npx xezar` asks the registry for an unscoped package we do not publish: anyone could
+        // The bare unscoped name asks the registry for a package we do not publish: anyone could
         // publish it, and a person following our own closing line would run their code.
-        expect(run.stdout).not.toMatch(/npx xezar\b/);
+        expect(run.stdout).not.toMatch(BARE_UNSCOPED);
         expect(run.stdout).toContain('Done. Start the cockpit with: npx @qodeca/xezar');
         expect(run.stdout).toContain(
           'Agent accounts are not imported by init. To copy your global accounts into this project, run: npx @qodeca/xezar accounts import-global',

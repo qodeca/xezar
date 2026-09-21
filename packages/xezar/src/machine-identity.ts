@@ -18,7 +18,7 @@ import { readFileSync, readlinkSync } from 'node:fs';
  * scoped by `XEZ_HOME`, which the writer claim is explicitly independent of ("independent of port
  * and XEZ_HOME", `ownProjectData`). The browser suite boots with `XEZ_HOME` pinned into
  * `.local/qa/` while writing claims into the repo's real `.local/xezar`, so a per-home UUID would
- * make that boot's claims foreign to an ordinary `npx xezar` in the same checkout: the very
+ * make that boot's claims foreign to an ordinary `npx @qodeca/xezar` in the same checkout: the very
  * failure #199 reports, re-created under a new trigger. The claim that triggered #199 was written
  * by exactly that test environment.
  *

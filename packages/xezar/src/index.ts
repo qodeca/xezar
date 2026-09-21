@@ -77,10 +77,11 @@ import {
   resolveStateLayout,
   setActiveStateLayout,
   SingleProjectStateError,
+  type StateLayout,
   stateLayoutBootLine,
 } from './state-layout.ts';
 import { createProjectStateFiles } from './workspace/config.ts';
-import type { StateLayout } from './state-layout.ts';
+import { npxCommand, readOwnName } from './own-package.ts';
 import {
   accountImportLines,
   askInTerminal,
@@ -89,6 +90,7 @@ import {
   importGlobalAccounts,
   IMPORT_FLAG_CONFLICT,
   IMPORT_IN_GLOBAL_LAYOUT_LINE,
+  projectHasAccounts,
   repeatedImportLine,
   resolveImportDecision,
   runFirstRunImport,
@@ -110,7 +112,9 @@ Usage:
                              · projects port <id> [<port>])
   xezar accounts import-global
                             copy your global agent accounts into this project's
-                            own setup (never overwrites one it already has)
+                            own setup (never overwrites one it already has).
+                            Each account's label and config folder are copied
+                            as they are, into a file the project may commit
   xezar mcp                 MCP bridge for a coding agent — the agent starts it
                             (stdio), in a project whose cockpit is running
   xezar lease gates -- <cmd>
@@ -158,6 +162,9 @@ Options:
                               A linked git worktree is never a project root.
       --import-global         answer that question with yes, without being asked —
                               so a script, a CI job or an IDE task can import too.
+                              Each account's label and config folder are copied
+                              as they are, into a file the project may commit,
+                              so do not pass it from a shared bootstrap.
       --no-import-global      answer it with no. Giving both refuses the launch;
                               giving neither keeps the question. After the first
                               run either flag only points at the command:
@@ -513,10 +520,12 @@ async function accountsCommand(verb: string | undefined, layout: StateLayout): P
   const report = importGlobalAccounts(layout);
   for (const line of accountImportLines(report, layout)) console.log(line);
   if (report.outcome === 'refused-symlink' || report.outcome === 'unreadable') return 1;
-  // The question is settled either way: the global setup was consulted, and what it held is now
-  // here. A folder with nothing to import has no more importing to do than one that copied four
-  // accounts.
-  if (report.outcome === 'merged' || report.outcome === 'no-global-file') {
+  // Recorded only when something was actually imported, or the project already holds accounts
+  // (#819 F4). The state names what happened, and on a folder whose global setup holds no
+  // accounts file nothing did — an `imported` here would silence `repeatedImportLine` for good,
+  // so an account created in the global setup afterwards would never be copied in. Leaving the
+  // state as it was keeps that door open.
+  if (report.changed || projectHasAccounts(layout)) {
     await rememberGlobalImport('imported', layout);
   }
   return 0;
@@ -1278,10 +1287,11 @@ async function runCommand(
     process.exitCode = final === 'done' || final === 'review' ? 0 : 1;
     return;
   }
+  const cockpit = npxCommand();
   if (final === 'review') {
-    console.log(`\n  changes ready for review on branch ${record?.branch ?? '?'} — inspect them in the cockpit: npx xezar`);
+    console.log(`\n  changes ready for review on branch ${record?.branch ?? '?'} — inspect them in the cockpit: ${cockpit}`);
   }
-  console.log(`\nrun ${final} — ${record?.tokensUsed ?? 0} tokens — details in the cockpit: npx xezar`);
+  console.log(`\nrun ${final} — ${record?.tokensUsed ?? 0} tokens — details in the cockpit: ${cockpit}`);
   process.exitCode = final === 'done' || final === 'review' ? 0 : 1;
 }
 
@@ -1467,14 +1477,14 @@ async function serverCommand(
  * team to carry, so the recommendation would name a choice that does not apply.
  */
 function initClosingLines(gitRepository: boolean): string[] {
-  const pkg = readOwnName();
+  const npx = npxCommand();
   return [
     '',
-    `Agent accounts are not imported by init. To copy your global accounts into this project, run: npx ${pkg} accounts import-global`,
+    `Agent accounts are not imported by init. To copy your global accounts into this project, run: ${npx} accounts import-global`,
     '',
-    `Done. Start the cockpit with: npx ${pkg}`,
+    `Done. Start the cockpit with: ${npx}`,
     ...(gitRepository
-      ? [`To keep this project's xezar setup inside the project folder: npx ${pkg} --single-project`]
+      ? [`To keep this project's xezar setup inside the project folder: ${npx} --single-project`]
       : []),
   ];
 }
@@ -1541,17 +1551,6 @@ function ensureDataGitignore(repoRoot: string): void {
     const content = existsSync(ignore) ? readFileSync(ignore, 'utf8') : '';
     if (!content.split('\n').includes('*')) writeFileSync(ignore, `${content}\n*\n`, 'utf8');
   } catch { /* read-only repositories retain the normal degradation policy */ }
-}
-
-/** Own package name — for the npm-registry update check (#368). */
-function readOwnName(): string {
-  try {
-    const here = dirname(fileURLToPath(import.meta.url));
-    const pkg = JSON.parse(readFileSync(join(here, '..', 'package.json'), 'utf8')) as { name?: string };
-    return pkg.name ?? '@qodeca/xezar';
-  } catch {
-    return '@qodeca/xezar';
-  }
 }
 
 function readOwnVersion(): string {
