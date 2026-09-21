@@ -151,6 +151,10 @@ step dispatched by name (leader memory 2026-09-15).
   05:52), and the cause was not established then (PR #807 later found the random busy sentinel could
   be port 65535, not a timing effect) – filed as #804 – so a fresh failure is checked against the
   rebuild before it is treated as a new flake (leader, 2026-09-21).
+- **A CI re-run of an unfixed flaky case is never the remedy** (leader, 2026-09-21). When the fix is
+  on `main`, refresh the pull request onto the fixed `main` so its CI runs the fixed case. On PR #653
+  (2026-09-21 12:25–12:41) the leader cancelled CI re-run 35588702096, then refresh run `def330f3`
+  merged `main` `22334449` (the #813 fixture fix) and CI went green.
 - Ready a PR with `gh pr ready`, the `review` label and a short comment saying who authorized it
   (leader memory 2026-09-11).
 - A review cannot approve its own PR: every agent PR is authored by the same account, so the verdict
@@ -466,6 +470,11 @@ because a head that moved since the brief makes the brief's exact-head guard sta
   changelog PR, dispatches the Release workflow once for that bump, verifies npm and the tag, and
   merges the bot's bump PR. Every remote wait lives in the last interactive step, which is the only
   step that can still ask a question (`.xezar/CLAUDE.md`).
+- **The release brief says the leader dispatches the Claude review of the changelog pull request at
+  once** (leader, 2026-09-21). On release run `b477bc90` (2026-09-21 13:36) the run's last step
+  polled about 15 minutes for a review of PR #814 because the leader had not dispatched one. The
+  changelog pull request is not left waiting in a queue: its review is dispatched as soon as it is
+  open.
 - Launching `release` authorizes exactly one dispatch of that bump. `dry-run: true` stops before the
   dispatch (`.xezar/docs/README.md`).
 - After it lands, name the two follow-ups the owner still owns: a `root-sync` task (Worktree OFF)
