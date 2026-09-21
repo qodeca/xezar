@@ -354,6 +354,17 @@ describe('Global settings → Resources', () => {
     expect(document.querySelector('[data-slot="resources-memory-default"]')?.textContent).toBe('8192')
   })
 
+  /** #677 C1 — the hint used to send the reader to a project control that did not exist. It now
+   *  names the one that does: Project settings → General → Per-task memory limit. */
+  it('points the per-project override at the control that exists', async () => {
+    serve({ memoryLimitDefaultMb: 8192, memoryLimitMb: null })
+    renderResources()
+    await waitFor(() => expect(memoryInput()).not.toBeNull())
+    const hint = document.querySelector('[data-slot="resources-memory-default"]')!.parentElement!.textContent ?? ''
+    expect(hint).toContain('A project can set its own in its settings, under General → Per-task memory limit.')
+    expect(hint).not.toContain('a lower one of its own')
+  })
+
   /** E — the workspace worktree-retention default had no control at all. */
   it('saves the workspace worktree-retention default', async () => {
     serve({ worktreeRetentionDefault: 10 })

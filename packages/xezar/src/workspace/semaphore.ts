@@ -221,6 +221,13 @@ export class WorkspaceSemaphore {
   /** A slot freed DURING a sweep. The in-flight sweep may already have pumped
    *  the manager that should get it, so re-run rather than drop the wakeup. */
   private pendingRelease = false;
+  /** A `refresh()` load is in flight — see `refreshQueued`. */
+  private refreshPromise: Promise<void> | undefined;
+  /** A `refresh()` landed while a load was already running. The in-flight load may already
+   *  have started reading the file before that caller's write finished, so the SAME
+   *  do-while re-run this class already uses for `release()` coalesces it into one trailing
+   *  re-read instead of starting a second, overlapping load. */
+  private refreshQueued = false;
 
   constructor(options: WorkspaceSemaphoreOptions = {}) {
     this.load = options.load ?? loadResourceLimits;
@@ -460,17 +467,45 @@ export class WorkspaceSemaphore {
   /**
    * The workspace resource-cache hook: re-read the config and pump every
    * registered manager, so a config change takes effect without a restart.
-   * Called at boot and by `PUT /api/workspace/config` (step 2.7). A failed
+   * Called at boot, by `PUT /api/workspace/config` (step 2.7), and by the
+   * workspace config file watcher (#677 D1) on an external write. A failed
    * read keeps the last good cache — enforcement never degrades to unlimited
    * because the file was momentarily unreadable.
+   *
+   * A call that lands while a load is already running never starts a SECOND,
+   * overlapping load — the watcher and a route `PUT` can both call this for
+   * the same write, and the file watcher's own onEvent debounce still leaves
+   * a load that started just before a second caller's edit finished writing.
+   * Two loads racing to completion could land in either order, and the
+   * OLDER read finishing last would silently overwrite the newer snapshot
+   * with stale limits that nothing then corrects. Instead this call is
+   * coalesced into the in-flight one: it waits for it, and if it landed
+   * before that load's `await` resolved, one trailing re-read runs after —
+   * the same do-while re-run `release()` already uses for `pendingRelease`.
    */
   async refresh(): Promise<void> {
-    try {
-      this.limits = await this.load();
-    } catch {
-      // keep the last good snapshot
+    if (this.refreshPromise) {
+      this.refreshQueued = true;
+      return this.refreshPromise;
     }
-    // A raised cap is capacity appearing everywhere at once — same sweep.
-    await this.release();
+    this.refreshPromise = this.runRefresh();
+    try {
+      await this.refreshPromise;
+    } finally {
+      this.refreshPromise = undefined;
+    }
+  }
+
+  private async runRefresh(): Promise<void> {
+    do {
+      this.refreshQueued = false;
+      try {
+        this.limits = await this.load();
+      } catch {
+        // keep the last good snapshot
+      }
+      // A raised cap is capacity appearing everywhere at once — same sweep.
+      await this.release();
+    } while (this.refreshQueued);
   }
 }

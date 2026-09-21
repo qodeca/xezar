@@ -106,6 +106,11 @@ export type AppShellProps = {
    *  Navigation only (#546): neither shape lists tasks. Tasks live on the Tasks pages, and the
    *  command palette opens from the keyboard (⌘K / Ctrl+K) rather than from a sidebar control. */
   projectGroups?: ReactNode
+  /** The "Other projects" group of `--instance project` (#467, PR 4): the registered projects
+   *  this process does NOT serve, each a link to its own cockpit. Rendered BELOW the nav, in its
+   *  own bordered band, and only when the container passes one — in the default `workspace` mode
+   *  the slot is absent and the sidebar is byte-for-byte the one that shipped before it existed. */
+  otherProjects?: ReactNode
 }
 
 /**
@@ -164,6 +169,7 @@ export function AppShell({
   singleProjectRoot = false,
   banner,
   projectGroups,
+  otherProjects,
 }: AppShellProps) {
   const { pathname } = useLocation()
   // The nav's area rules reason about the flat route map — strip any `/p/:projectId` prefix
@@ -225,6 +231,7 @@ export function AppShell({
     channel,
     toolsMenu,
     projectGroups,
+    otherProjects,
     singleProject,
     singleProjectRoot,
   }
@@ -283,6 +290,7 @@ type NavProps = {
   channel: HealthResponse['channel'] | null
   toolsMenu?: ReactNode
   projectGroups?: ReactNode
+  otherProjects?: ReactNode
   singleProject: boolean
   singleProjectRoot: boolean
 }
@@ -469,6 +477,7 @@ function SidebarContent({
   channel,
   toolsMenu,
   projectGroups,
+  otherProjects,
   singleProject,
   singleProjectRoot,
   onNavigate,
@@ -612,6 +621,16 @@ function SidebarContent({
           </nav>
         </>
       )}
+
+      {/* `--instance project` only (#467, PR 4). Absent in every other mode, so the sidebar above
+          this line and the one below it are unchanged — the band exists or it does not. It sits
+          UNDER the nav rather than in it: these rows go to another cockpit, and putting them
+          among the nav items would read as more places in this one. */}
+      {otherProjects ? (
+        <SidebarNavigateContext.Provider value={onNavigate}>
+          {otherProjects}
+        </SidebarNavigateContext.Provider>
+      ) : null}
 
       {/* One row of chrome controls, never a wrap (#702): a wrapping row once stranded the theme
        *  toggle on a line of its own. The ⌘K search launcher that owned a row above it is gone

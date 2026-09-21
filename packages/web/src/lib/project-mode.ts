@@ -13,7 +13,10 @@ import type { Capabilities } from '@qodeca/xezar-api-client'
  * registry happens to hold one row" and "this xezar cannot have a second project" agree most of
  * the time, which is exactly how one of them survives a refactor.
  */
-export type ProjectModeCapabilities = Pick<Capabilities, 'singleProject' | 'singleProjectRoot'>
+export type ProjectModeCapabilities = Pick<
+  Capabilities,
+  'singleProject' | 'singleProjectRoot' | 'instanceMode'
+>
 
 /** `true` when this cockpit serves one project and offers no way to add or switch to another. */
 export function projectsLocked(capabilities: Partial<ProjectModeCapabilities> | null | undefined): boolean {
@@ -26,4 +29,28 @@ export function projectsLocked(capabilities: Partial<ProjectModeCapabilities> | 
  */
 export function inSingleProjectRoot(capabilities: Partial<ProjectModeCapabilities> | null | undefined): boolean {
   return capabilities?.singleProjectRoot === true
+}
+
+/**
+ * `true` when this cockpit serves the project it started in and the other registered projects are
+ * reachable only through their OWN cockpit — `--instance project` (#467, PR 4).
+ *
+ * A THIRD predicate, deliberately not folded into `projectsLocked`, and the comment above says
+ * why in general: two questions must not share one answer. Here they are concretely different —
+ * `projectsLocked` asks "can this workspace hold a second project?" and the answer in this mode is
+ * YES. Every registered project stays listed and stays manageable (add, clone, remove all keep
+ * working), which is the whole difference between this mode and `XEZ_SINGLE_PROJECT`, and
+ * `BACKWARD_COMPATIBILITY.md` § Instance mode calls hiding one or refusing project management a
+ * BREAK. What this predicate asks instead is "does a row for another project LINK OUT, or open in
+ * place?" — and only the link-out surfaces (the sidebar's Other projects group, the palette's
+ * Projects group, the global Tasks note) ever ask it.
+ *
+ * `undefined` reads as `workspace`, which is both the default and what every xezar before 0.17.0
+ * did: the key is optional on the wire and is sent ONLY for `project` (`contract/src/health.ts`),
+ * so an absent answer must never be guessed into a link-out.
+ */
+export function linksOutToOtherProjects(
+  capabilities: Partial<ProjectModeCapabilities> | null | undefined,
+): boolean {
+  return capabilities?.instanceMode === 'project'
 }

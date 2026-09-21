@@ -122,6 +122,33 @@ export const projectListEntrySchema = z.object({
 });
 export type ProjectListEntry = z.infer<typeof projectListEntrySchema>;
 
+/**
+ * A frame's `data` on the `project-instances` WebSocket topic (`/api/v1/ws`, #796): the same
+ * derived `instance` answer `GET /api/v1/projects` attaches to each row, keyed by registry project
+ * id, for every project this server answers for.
+ *
+ * It exists because that answer is the one field of a registry row that changes WITHOUT this
+ * cockpit doing anything: another process on this machine starts or stops, and nothing on the
+ * workspace event stream fires — the registry itself did not change. A page-load read therefore
+ * freezes, which is exactly #796: the first read of a project with a remembered address is
+ * `checking` by design (see `projectInstanceStateSchema`), so a cockpit opened the moment `xez`
+ * boots renders every other row as `checking…` and, with nothing re-asking, keeps saying it.
+ *
+ * Every project in the answer is in every frame, so a row missing from one it was in is never
+ * "no news" — the whole map replaces the previous one. The cockpit validates each frame with this
+ * schema and ignores one that does not parse.
+ *
+ * `{}` is the honest empty answer, and the only thing a HOSTED server ever publishes: it makes no
+ * outbound probe and sees no writer claim, the same reason `instance` is absent from its rows.
+ *
+ * It keeps the hub's DEFAULT trust (`loopbackReadable` is not set): a `url` names another local
+ * port, and which projects this machine has open is not something a foreign local page may read.
+ */
+export const projectInstancesTopicSchema = z.object({
+  projects: z.record(z.string(), projectInstanceSchema),
+});
+export type ProjectInstancesTopic = z.infer<typeof projectInstancesTopicSchema>;
+
 /** `GET /api/v1/projects` — the workspace registry. Workspace-level: never 404s, never scoped.
  *  An unreadable workspace degrades to `projects: []` plus the default `projectsDir`, so all
  *  three keys are always present. */

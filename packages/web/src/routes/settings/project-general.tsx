@@ -1,14 +1,20 @@
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
 
-import { useProjects, useWorkspaceConfig } from '@/api/queries'
-import type { ProjectListEntry } from '@qodeca/xezar-api-client'
+import { putConfig } from '@/api/client'
+import { queryKeys, useConfig, useProjects, useWorkspaceConfig } from '@/api/queries'
+import type { ConfigResponse, ProjectListEntry, SetConfigInput } from '@qodeca/xezar-api-client'
 import { projectsLocked, type ProjectModeCapabilities } from '@/lib/project-mode'
 import { Button } from '@/components/ui/button'
+import { nativeFieldClass } from '@/components/ui/input'
+import { toast } from '@/components/ui/toaster'
 import { useActiveProjectId } from '@/lib/project-router'
+import { cn } from '@/lib/utils'
 import { ProjectFolderField } from './project-location'
 import { MaxParallelSelect, STATUS_LABEL } from './projects-section'
 import { RemoveProjectDialog, useProjectRemoval } from './remove-project'
+import { MEMORY_MIN_MB } from './resources-section'
 import { SettingsField } from './settings-field'
 
 /**
@@ -37,6 +43,10 @@ import { SettingsField } from './settings-field'
  * would offer a knob that can only fail, which is the opposite of what capabilities.ts asks for
  * ("the UI hides what the server says isn't there, and the matching endpoints refuse as defense
  * in depth").
+ *
+ * The per-task memory limit (#677 C1) is NOT a registry knob, so it stays in every mode: it is
+ * the project’s own `.xezar/config.json` `memoryLimitMb`, written through `PUT /config`, which
+ * refreshes the workspace semaphore so the next sample enforces it without a restart.
  */
 
 /** `2026-07-20T…` → a full local date. Unlike the registry table's compact `Jul 20`, this page has
@@ -103,10 +113,137 @@ export function ProjectGeneral({ capabilities }: { capabilities?: Partial<Projec
               <p className="text-[13px] text-soft-foreground">Loading the workspace limit…</p>
             )}
           </SettingsField>
-          <RemoveProject project={project} bootProject={registry.bootProject} />
         </>
       ) : null}
+      <ProjectMemoryLimitField projectName={project.name} />
+      {managesRegistry ? <RemoveProject project={project} bootProject={registry.bootProject} /> : null}
     </div>
+  )
+}
+
+/** The schema's upper bound for a per-repo `memoryLimitMb` (`setConfigInputSchema`), so an
+ *  over-limit draft is a disabled Save rather than a 400 round-trip. */
+const MEMORY_MAX_MB = 1_048_576
+
+/** How the workspace ceiling this project falls back to reads: a number, or "no limit" — which is
+ *  an explicit `null` or a stored 0, since enforcement skips any ceiling at or below zero. */
+function workspaceLimitLabel(limit: number | null): string {
+  return limit === null || limit <= 0 ? 'no limit' : `${limit} MiB`
+}
+
+/**
+ * This project’s own per-task memory ceiling (#677 C1). More specific wins: a value here replaces
+ * the workspace limit for this project’s tasks, lower or higher, and an empty field (or 0) sends
+ * `null`, which deletes the key so the project inherits the workspace limit again. The workspace
+ * limit is read only to name what "inherit" means here; the field works without it.
+ */
+function ProjectMemoryLimitField({ projectName }: { projectName: string }) {
+  const config = useConfig()
+  const workspace = useWorkspaceConfig()
+  const inherited = workspace.data ? workspace.data.resources.memoryLimitMb : undefined
+  return (
+    <SettingsField
+      title="Per-task memory limit"
+      hint="When one of this project’s tasks crosses this, the engine pauses it with a warning and starts the next queued task. A value here replaces the workspace limit for this project only. Leave empty to use the workspace limit."
+    >
+      {config.data ? (
+        <ProjectMemoryLimitForm config={config.data} projectName={projectName} inherited={inherited} />
+      ) : config.isError ? (
+        <p data-slot="project-memory-error" className="text-[13px] text-danger">
+          Could not load this project’s settings — {config.error.message}
+        </p>
+      ) : (
+        <p data-slot="project-memory-loading" className="text-[13px] text-soft-foreground">
+          Loading this project’s limit…
+        </p>
+      )}
+    </SettingsField>
+  )
+}
+
+function ProjectMemoryLimitForm({
+  config,
+  projectName,
+  inherited,
+}: {
+  config: ConfigResponse
+  projectName: string
+  /** The workspace ceiling, `null` for an explicit "no limit", `undefined` while it loads. */
+  inherited: number | null | undefined
+}) {
+  const queryClient = useQueryClient()
+  const save = useMutation({
+    mutationFn: (patch: SetConfigInput) => putConfig(patch),
+    onSuccess: (result) => queryClient.setQueryData(queryKeys.config, result),
+    onError: (error: Error) => toast(error.message, { tone: 'danger' }),
+  })
+
+  const [memory, setMemory] = useState(config.memoryLimitMb ? String(config.memoryLimitMb) : '')
+  const memoryNum = memory.trim() === '' ? 0 : Number(memory)
+  // 0 is accepted as "clear", the same as empty — the route deletes the key for both.
+  const memoryInvalid =
+    memoryNum !== 0 && (!Number.isInteger(memoryNum) || memoryNum < MEMORY_MIN_MB || memoryNum > MEMORY_MAX_MB)
+  const memorySaved = (config.memoryLimitMb ?? 0) === (memoryInvalid ? -1 : memoryNum)
+  const saveMemory = () =>
+    save.mutate(
+      // `null`, not 0: the per-repo key has no "no limit" of its own, so clearing means "inherit".
+      { memoryLimitMb: memoryNum === 0 ? null : memoryNum },
+      {
+        onSuccess: () => {
+          if (memoryNum === 0) {
+            setMemory('')
+            toast('Memory limit cleared — this project uses the workspace limit again')
+          } else {
+            toast(`Memory limit for this project set to ${memoryNum} MiB`)
+          }
+        },
+      },
+    )
+
+  const inheritedText = inherited === undefined ? 'the workspace limit' : `the workspace limit (${workspaceLimitLabel(inherited)})`
+
+  return (
+    <>
+      <div className="flex items-center gap-2">
+        <input
+          type="number"
+          inputMode="numeric"
+          min={MEMORY_MIN_MB}
+          max={MEMORY_MAX_MB}
+          step={1}
+          aria-label={`Per-task memory limit for ${projectName} in MiB`}
+          data-slot="project-memory-limit"
+          value={memory}
+          disabled={save.isPending}
+          placeholder="Use workspace limit"
+          onChange={(event) => setMemory(event.target.value)}
+          className={cn(nativeFieldClass, 'block w-32')}
+        />
+        <span className="text-xs text-soft-foreground">MiB</span>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          data-action="project-save-memory"
+          disabled={memorySaved || memoryInvalid || save.isPending}
+          onClick={saveMemory}
+        >
+          Save
+        </Button>
+      </div>
+      {memoryInvalid ? (
+        <p data-slot="project-memory-invalid" className="text-[11px] text-danger">
+          Enter a whole number from {MEMORY_MIN_MB} to {MEMORY_MAX_MB} MiB, or leave empty to use the workspace limit.
+        </p>
+      ) : (
+        <p data-slot="project-memory-effective" className="text-[11px] text-soft-foreground">
+          {config.memoryLimitMb
+            ? `This project’s tasks pause at ${config.memoryLimitMb} MiB. Clear the field to use ${inheritedText}.`
+            : `This project uses ${inheritedText}.`}{' '}
+          A change applies straight away, to running tasks too.
+        </p>
+      )}
+    </>
   )
 }
 
