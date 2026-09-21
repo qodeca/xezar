@@ -299,6 +299,46 @@ describe('acquireGateLease', () => {
     }
   });
 
+  it('BREAK 5 — an UNREMOVABLE slot path must not spin: the bound still holds and the lease still answers', async () => {
+    // Round 1 review finding, reproduced live at 162 % CPU before the fix.
+    //
+    // A DIRECTORY at the slot path is the honest unremovable object, and each of its three
+    // properties is load-bearing: `open(…, 'wx')` answers EEXIST on it exactly as it does on a
+    // real lock, so the sweep treats it as contention rather than as an error; it carries no
+    // readable pid, so once it is older than `FILE_LOCK_UNWRITTEN_GRACE_MS` it reads as abandoned;
+    // and `rm` without `recursive` cannot remove it. `takeOverIfStale` used to answer `true` after
+    // that swallowed `rm` failure, and `acquireFileLock` reads `true` as "try again at once" — it
+    // `continue`s past BOTH the deadline check and the sleep. The wait that documents "never
+    // blocks past waitMs" then never ended, and the gate run behind it never started.
+    //
+    // The clock is an hour ahead of the directory's real mtime, which is what makes it read as
+    // abandoned on the FIRST sweep rather than after a real second of waiting.
+    await mkdir(slotLockPath(dir, 1));
+    const clock = fakeClock(Date.now() + 60 * 60_000);
+    const events: GateLeaseEvent[] = [];
+    const lease = await acquireGateLease({
+      slots: 1,
+      lockDir: dir,
+      waitMs: 5_000,
+      sweepMs: 0,
+      // Every reading moves the clock on, so the 5-second bound is reached in a handful of sweeps
+      // and no real time passes. A loop that ignores the deadline never reaches it whatever the
+      // clock says, which is precisely what this case would catch.
+      now: () => {
+        const at = clock.now();
+        clock.advance(1_000);
+        return at;
+      },
+      onEvent: (e) => events.push(e),
+    });
+    expect(lease.held).toBe(false);
+    expect(lease.outcome).toBe('timeout');
+    expect(events.some((e) => e.type === 'timeout')).toBe(true);
+    // Still there — the point is that the lease gave up on it, not that it cleaned it up.
+    expect(await readdir(dir)).toContain('gate-slot-1.lock');
+    await lease.release();
+  });
+
   it('says it is still waiting on its own cadence, naming the elapsed wait', async () => {
     const held = await acquireGateLease({ slots: 1, lockDir: dir });
     const clock = fakeClock();
@@ -322,7 +362,7 @@ describe('acquireGateLease', () => {
       expect(waiter.held).toBe(false);
       const waits = events.filter((e) => e.type === 'waiting');
       expect(waits.length).toBeGreaterThan(0);
-      expect(gateLeaseLine(waits[0]!)).toMatch(/waiting for a gate slot \(1 of 1 busy, waited \d+m?\d*s\)/);
+      expect(gateLeaseLine(waits[0]!)).toMatch(/waiting for a gate slot \(all 1 busy, waited \d+m?\d*s\)/);
       // The elapsed wait is in the timeout line too — it is what makes a killed step diagnosable.
       const timeout = events.find((e) => e.type === 'timeout');
       expect(timeout).toBeDefined();
@@ -387,6 +427,34 @@ describe('runUnderGateLease', () => {
     } finally {
       await chmod(readOnly, 0o700);
     }
+  });
+
+  it('an unremovable slot path runs the command anyway, inside the bound', async () => {
+    // The other half of BREAK 5: the caller's contract is not merely "the lease returns" but "the
+    // gates run". Before the fix this never reached `run` at all.
+    await mkdir(slotLockPath(dir, 1));
+    const clock = fakeClock(Date.now() + 60 * 60_000);
+    const lines: string[] = [];
+    let ran = false;
+    const code = await runUnderGateLease(['irrelevant'], {
+      slots: 1,
+      lockDir: dir,
+      waitMs: 5_000,
+      sweepMs: 0,
+      now: () => {
+        const at = clock.now();
+        clock.advance(1_000);
+        return at;
+      },
+      stderr: { write: (chunk) => lines.push(String(chunk)) },
+      run: async () => {
+        ran = true;
+        return 0;
+      },
+    });
+    expect(ran).toBe(true);
+    expect(code).toBe(0);
+    expect(lines.join('')).toContain('NO GATE SLOT');
   });
 
   it('releases the slot even when the command fails, and passes its exit code through', async () => {

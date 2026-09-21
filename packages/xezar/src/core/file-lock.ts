@@ -171,7 +171,19 @@ async function takeOverIfStale(lockPath: string, now: () => number, staleMs: num
     if (!current) return true;
     if (current.token !== judged.token) return false;
     if (isHeld(current, now, staleMs)) return false;
-    await rm(lockPath, { force: true }).catch(() => undefined);
+    // A removal that FAILED must not answer `true`. `acquireFileLock` reads `true` as "the path is
+    // free now, try again at once" and `continue`s past both its deadline check and its sleep, so a
+    // lock path that cannot be removed — a directory there, an immutable flag, a `chflags`ed
+    // parent — turned the retry loop into an unbounded spin (a live reproduction sat at 162 % CPU
+    // and never returned). Whatever the reason, "I could not remove it" is indistinguishable, from
+    // here, from "somebody else still holds it": answer `false`, and the caller's own bound decides
+    // when to give up. The gate lease (#672) is the caller that made this load-bearing — it is the
+    // product's first BLOCKING wait, and its contract is that it never blocks past `waitMs`.
+    try {
+      await rm(lockPath, { force: true });
+    } catch {
+      return false;
+    }
     return true;
   });
 }

@@ -551,14 +551,27 @@ if (!singleProjectMode) {
       // The ranges are VALIDATION, not host reconciliation: they are the same on every machine,
       // so refusing an out-of-range value costs a clone nothing and tells the author now instead
       // of after a run behaved unlike the file. Keep them equal to the schema in
-      // `packages/xezar/src/workspace/config.ts` (`maxParallel` :213, `memoryLimitMb` :280).
+      // `packages/xezar/src/workspace/config.ts` (`maxParallel` :213, `memoryLimitMb` :280,
+      // `gateSlots` :329).
+      //
+      // EVERY key of MACHINE_SHAPED needs an entry here. A key added to that list and not to this
+      // one destructures `undefined` and crashes the whole check with a TypeError on the FIRST
+      // committed workspace file that carries it — which is how `gateSlots` shipped in the first
+      // round of #672. The guard below turns that into a refusal naming the key instead.
       const RANGES = {
         maxParallel: { min: 1, max: 16, nullable: false },
         memoryLimitMb: { min: 0, max: 1_048_576, nullable: true },
+        gateSlots: { min: 1, max: 16, nullable: false },
       };
+      for (const key of MACHINE_SHAPED) {
+        if (RANGES[key] === undefined) {
+          err(".xezar/checks/catalog-check.mjs", `\`${key}\` is machine-shaped but has no range — add it to RANGES beside MACHINE_SHAPED`);
+        }
+      }
       for (const key of MACHINE_SHAPED) {
         if (resources === undefined || !(key in resources)) continue;
         const value = resources[key];
+        if (RANGES[key] === undefined) continue;
         const { min, max, nullable } = RANGES[key];
         const range = `${min}–${max}${nullable ? " or null" : ""}`;
         if (value === null) {
@@ -574,7 +587,7 @@ if (!singleProjectMode) {
       const committed = MACHINE_SHAPED.filter((key) => resources !== undefined && key in resources);
       notes.push(
         committed.length > 0
-          ? `single-project workspace file checked: committed ${committed.join(" and ")} accepted, in range (maxParallel 1–16, memoryLimitMb 0–1048576 or null) and applied as written, never clamped to this host`
+          ? `single-project workspace file checked: committed ${committed.join(" and ")} accepted, in range (${Object.entries(RANGES).map(([key, r]) => `${key} ${r.min}–${r.max}${r.nullable ? " or null" : ""}`).join(", ")}) and applied as written, never clamped to this host`
           : "single-project workspace file checked",
       );
     }

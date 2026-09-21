@@ -862,6 +862,40 @@ printf '{\n  "resources": {\n    "memoryLimitMb": null\n  }\n}\n' > "$root/.xeza
 expect_ok "an explicit null memoryLimitMb — the user's own \"no limit\" — is accepted" \
   node "$SCRIPT_DIR/catalog-check.mjs" "$root"
 
+# `gateSlots` (#672) is machine-shaped like the other two, so the mode accepts it HERE and the
+# `.xezar/config.json` rule still refuses it. Found by live QA in round 1: the key was added to
+# MACHINE_SHAPED and not to RANGES, so the very first committed workspace.json carrying it
+# destructured `undefined` and crashed the whole check with a TypeError — every other rule in this
+# file went unchecked with it. The range cases are what keep the two lists in step.
+printf '{\n  "resources": {\n    "gateSlots": 2\n  }\n}\n' > "$root/.xezar/workspace.json"
+expect_ok "a committed gateSlots in workspace.json -> resources is accepted, not a crash" \
+  node "$SCRIPT_DIR/catalog-check.mjs" "$root"
+# The output is CAPTURED before it is searched, never piped into grep: this file runs under
+# `set -o pipefail`, so `node … | grep -q` answers node's own non-zero exit even when grep matched,
+# and a case written that way reports "no crash" for every crash there is.
+out="$(node "$SCRIPT_DIR/catalog-check.mjs" "$root" 2>&1)"
+if printf '%s' "$out" | grep -qF 'TypeError'; then
+  bad "the check never crashes on a machine-shaped key" "it threw a TypeError"
+else
+  ok "the check never crashes on a machine-shaped key"
+fi
+printf '{\n  "resources": {\n    "gateSlots": 1\n  }\n}\n' > "$root/.xezar/workspace.json"
+expect_ok "the low boundary of the gateSlots range is accepted" node "$SCRIPT_DIR/catalog-check.mjs" "$root"
+printf '{\n  "resources": {\n    "gateSlots": 16\n  }\n}\n' > "$root/.xezar/workspace.json"
+expect_ok "and the high one" node "$SCRIPT_DIR/catalog-check.mjs" "$root"
+printf '{\n  "resources": {\n    "gateSlots": 17\n  }\n}\n' > "$root/.xezar/workspace.json"
+expect_fail "a committed gateSlots above the schema range is refused" \
+  "must be a whole number in 1–16" node "$SCRIPT_DIR/catalog-check.mjs" "$root"
+printf '{\n  "resources": {\n    "gateSlots": 0\n  }\n}\n' > "$root/.xezar/workspace.json"
+expect_fail "and below it too" "must be a whole number in 1–16" node "$SCRIPT_DIR/catalog-check.mjs" "$root"
+printf '{\n  "resources": {\n    "gateSlots": null\n  }\n}\n' > "$root/.xezar/workspace.json"
+expect_fail "a null gateSlots is refused — the key deliberately has no unlimited spelling" \
+  "not null" node "$SCRIPT_DIR/catalog-check.mjs" "$root"
+printf '{\n  "gateSlots": 2\n}\n' > "$root/.xezar/workspace.json"
+expect_fail "gateSlots at the top level of workspace.json is rejected like its siblings" \
+  "where nothing reads it" node "$SCRIPT_DIR/catalog-check.mjs" "$root"
+printf '{\n  "resources": {\n    "memoryLimitMb": null\n  }\n}\n' > "$root/.xezar/workspace.json"
+
 # The same fault the config.json rule catches, in the other file: a key where nothing reads it.
 printf '{\n  "memoryLimitMb": 131072\n}\n' > "$root/.xezar/workspace.json"
 expect_fail "a machine-shaped key at the top level of workspace.json is rejected" \
@@ -5950,6 +5984,70 @@ else
     cat "$lease_kit_out"
   fi
 
+  # -- a SIGKILLed gate script must not keep its slot ---------------------------------------------
+  #
+  # Round 1 review finding, reproduced live before the fix. `gate_lease_take` opens the FIFO
+  # read-write on fd 9 and starts the verb in the background, and a background job INHERITS the
+  # shell's descriptors — so the verb was itself a writer on the FIFO it was waiting to read. A
+  # `repo-gates.sh` that dies without running its EXIT trap (a SIGKILL, an OOM kill, a supervisor
+  # escalation) then left a holder whose `read` never reaches EOF: the verb stayed alive, its
+  # heartbeat kept stamping, and NEITHER pid liveness NOR the stale bound could reclaim the slot.
+  # Every later gate run on the machine waited the whole 20-minute bound, for good, until a person
+  # found the orphan. `9>&-` on the verb's command line closes that descriptor for the child only.
+  #
+  # The observation is the SLOT FOLDER emptying, which is the thing the next gate run reads — not
+  # the verb's exit, which is only how it happens. The budget is the same `lease_wait_polls` every
+  # other case here uses (30 s), and it is far inside one stale window (6 × 10 s), so "freed" here
+  # means freed by the holder going away rather than by the bound expiring.
+  lease_kill="$WORK/lease-sigkill"
+  mkdir -p "$lease_kill/attempt" "$lease_kill/home"
+  cat > "$lease_kill/hold.sh" <<'LEASE_KILL_EOF'
+#!/usr/bin/env bash
+# Take a real slot through the real kit helper, then hold it until this shell is SIGKILLed.
+set -uo pipefail
+. "$1"
+gate_lease_take
+printf 'took\n' > "$2"
+while :; do sleep 1; done
+LEASE_KILL_EOF
+  HOME="$lease_kill/home" TMPDIR="$LEASE_TMPDIR" XEZ_HOME="$lease_kill/home/.xezar" \
+    TASK_CWD="$REPO_ROOT" GATE_ATTEMPT_DIR="$lease_kill/attempt" \
+    bash "$lease_kill/hold.sh" "$SCRIPT_DIR/lib/gate-lease.sh" "$lease_kill/took" \
+    > "$lease_kill/out" 2>&1 &
+  LEASE_KILL_PID=$!
+  lease_slots="$lease_kill/home/.cache/xez/gate-slots"
+  if lease_await_file "$lease_kill/took" && [ -e "$lease_slots/gate-slot-1.lock" ]; then
+    # Saved pids, never a command-line pattern: `pkill -f` would match every peer agent on this
+    # machine that carries this skill's text. Collected BEFORE the kill, while the parent links
+    # still exist, and used only to clean up if the fix ever regresses.
+    lease_kill_kids="$(pgrep -P "$LEASE_KILL_PID" 2>/dev/null | tr '\n' ' ')"
+    for lease_kid in $lease_kill_kids; do
+      lease_kill_kids="$lease_kill_kids $(pgrep -P "$lease_kid" 2>/dev/null | tr '\n' ' ')"
+    done
+    kill -9 "$LEASE_KILL_PID" 2>/dev/null
+    wait "$LEASE_KILL_PID" 2>/dev/null
+    lease_kill_polls=0
+    while [ "$lease_kill_polls" -lt "$lease_wait_polls" ]; do
+      [ -e "$lease_slots/gate-slot-1.lock" ] || break
+      sleep 0.1
+      lease_kill_polls=$((lease_kill_polls + 1))
+    done
+    if [ -e "$lease_slots/gate-slot-1.lock" ]; then
+      bad "a SIGKILLed gate script's slot is freed without a person" \
+        "the slot file was still there after $((lease_wait_polls / 10))s"
+      ls -la "$lease_slots"
+    else
+      ok "a SIGKILLed gate script's slot is freed without a person"
+    fi
+    for lease_kid in $lease_kill_kids; do
+      kill -0 "$lease_kid" 2>/dev/null && kill -9 "$lease_kid" 2>/dev/null
+    done
+  else
+    kill -9 "$LEASE_KILL_PID" 2>/dev/null
+    bad "a SIGKILLed gate script's slot is freed without a person" "the holder never took a slot"
+    cat "$lease_kill/out" 2>/dev/null
+  fi
+
   # A checkout with no xezar CLI at all — the state a gate run is in before its dependencies are
   # installed. It must say so and carry on, not abort the gates.
   lease_nocli="$WORK/lease-no-cli"
@@ -5971,10 +6069,43 @@ else
   # Comments are stripped first: the resolver's own comment SAYS why it never uses the registry
   # fetcher, and a check that cannot tell an explanation from an invocation would fail on the
   # documentation of the rule it is enforcing.
-  if grep -v '^[[:space:]]*#' "$SCRIPT_DIR/repo-gates.sh" | grep -q 'npx'; then
-    bad "repo-gates.sh resolves the lease verb without npx" "an npx invocation would fetch a different xezar from the registry"
+  #
+  # BOTH files, and `lib/gate-lease.sh` is the one that matters: the resolver is `gate_lease_argv`
+  # THERE, so a version of this case that read only `repo-gates.sh` passed whatever the resolver
+  # did — put `npx` into the real resolver and it stayed green. Found in the round 1 review.
+  lease_npx_dirty=""
+  for lease_npx_file in "$SCRIPT_DIR/repo-gates.sh" "$SCRIPT_DIR/lib/gate-lease.sh"; do
+    if grep -v '^[[:space:]]*#' "$lease_npx_file" | grep -q 'npx'; then
+      lease_npx_dirty="$lease_npx_dirty $(basename "$lease_npx_file")"
+    fi
+  done
+  if [ -n "$lease_npx_dirty" ]; then
+    bad "the lease verb is resolved without npx, in the resolver AND its caller" \
+      "an npx invocation would fetch a different xezar from the registry:$lease_npx_dirty"
   else
-    ok "repo-gates.sh resolves the lease verb without npx"
+    ok "the lease verb is resolved without npx, in the resolver AND its caller"
+  fi
+
+  # -- the kit's backstop cannot drift away from the bound it backs up ----------------------------
+  #
+  # `gate_lease_take`'s loop needs a number of its own because a shell cannot import a TypeScript
+  # constant, and a backstop SHORTER than the verb's bound would cut a legitimate 19-minute queue
+  # off at the knees while a much longer one would leave a run neither running nor given up for
+  # however far the two had drifted. This reads the real constant out of the real source file and
+  # compares it with the real shell constant, so the mirror is checked rather than promised.
+  lease_bound_ms="$(grep -E '^export const GATE_LEASE_WAIT_MS' "$REPO_ROOT/packages/xezar/src/core/gate-lease.ts" |
+    sed -E 's/[^=]*= *//; s/[;_]//g; s/ //g')"
+  lease_bound_s="$(node -e 'process.stdout.write(String(Math.round(eval(process.argv[1]) / 1000)))' "$lease_bound_ms" 2>/dev/null)"
+  lease_shell_s="$(grep -E '^GATE_LEASE_BOUND_SECONDS=' "$SCRIPT_DIR/lib/gate-lease.sh" | sed -E 's/.*=//')"
+  lease_backstop_s="$(bash -c '. "$1" >/dev/null 2>&1; printf "%s" "$GATE_LEASE_BACKSTOP_SECONDS"' \
+    drift "$SCRIPT_DIR/lib/gate-lease.sh")"
+  if [ -n "$lease_bound_s" ] && [ "$lease_shell_s" = "$lease_bound_s" ] &&
+    [ "$lease_backstop_s" -gt "$lease_bound_s" ] &&
+    [ "$lease_backstop_s" -le $((lease_bound_s + 300)) ]; then
+    ok "the kit's backstop mirrors the verb's own bound and sits just past it"
+  else
+    bad "the kit's backstop mirrors the verb's own bound and sits just past it" \
+      "verb ${lease_bound_s}s, shell ${lease_shell_s}s, backstop ${lease_backstop_s}s"
   fi
 fi
 

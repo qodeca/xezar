@@ -73,6 +73,19 @@ export const GATE_LEASE_HEARTBEAT_MS = 10_000;
  * `acquireFileLock` checks pid liveness first, so a `kill -9`ed holder is gone the moment the next
  * waiter looks, whatever this bound says. The bound only decides how long a lock whose pid was
  * REUSED, or whose process is alive but wedged, keeps a slot.
+ *
+ * ## The one case where a LIVE holder can still lose its slot, written down
+ *
+ * A machine that SLEEPS mid-gate for longer than this bound wakes with the wall clock jumped: the
+ * holder's next beat is up to one `GATE_LEASE_HEARTBEAT_MS` away, while a waiter sweeps every
+ * `GATE_LEASE_SWEEP_MS`, so the waiter can read a stamp older than `staleMs` against a pid that is
+ * alive and take the slot. The outcome is two overlapping gate runs — the pre-#672 behaviour, so
+ * it fails soft in the direction this feature came FROM, never into a blocked or failed gate. It
+ * is not fixed here on purpose: the alternative (require two stale observations at least one beat
+ * apart before taking over a lock whose pid is alive) lives in `file-lock.ts`, which two other
+ * callers share and whose holds are measured in milliseconds, and it would buy a rarer version of
+ * a failure that is already the old normal. Stated rather than silently carried, per
+ * BACKWARD_COMPATIBILITY.md § 9.
  */
 export const GATE_LEASE_STALE_MS = 6 * GATE_LEASE_HEARTBEAT_MS;
 
@@ -226,7 +239,13 @@ export async function acquireGateLease(options: GateLeaseOptions = {}): Promise<
           waitedMs,
           outcome: 'acquired',
           release: async () => {
-            clearInterval(heartbeat);
+            // Stop the beat AND wait for one already in flight. A beat is `truncate(0)` then
+            // `write`, and a release that reads the file inside that window sees no token, decides
+            // the lock is somebody else's and leaves it behind (`releaseIfStillMine`). In the CLI
+            // the process exits immediately after and pid liveness frees it on the next sweep, but
+            // a long-lived caller would hold a slot it thinks it gave back for a whole stale
+            // window. Awaiting the in-flight beat closes the window instead of narrowing it.
+            await heartbeat.stop();
             await attempt.release();
             emit({ type: 'released', slot });
           },
@@ -284,9 +303,12 @@ function startHeartbeat(
   now: () => number,
   emit: (event: GateLeaseEvent) => void,
   slot: number,
-): NodeJS.Timeout {
+): { stop(): Promise<void> } {
+  // The beat currently running, so `stop()` can await it rather than cutting it in half. Always a
+  // settled-or-settling promise that never rejects.
+  let inFlight: Promise<void> = Promise.resolve();
   const timer = setInterval(() => {
-    void (async () => {
+    inFlight = (async () => {
       let handle;
       try {
         handle = await open(lockPath, 'r+');
@@ -306,7 +328,12 @@ function startHeartbeat(
   // Unref'd: the work that holds this process open is the gate run, never the timer. A caller that
   // leaked a lease must not also leak a process that never exits.
   timer.unref?.();
-  return timer;
+  return {
+    stop: async () => {
+      clearInterval(timer);
+      await inFlight;
+    },
+  };
 }
 
 function sleep(ms: number): Promise<void> {
@@ -326,7 +353,10 @@ export interface RunUnderGateLeaseOptions extends GateLeaseOptions {
 export function gateLeaseLine(event: GateLeaseEvent): string | null {
   switch (event.type) {
     case 'waiting':
-      return `xezar lease: waiting for a gate slot (${event.slots} of ${event.slots} busy, waited ${formatWait(event.waitedMs)})`;
+      // "all N busy", not "N of N busy": the waiter only emits this event after a sweep in which
+      // every slot was taken, so the two numbers were always the same number and reading one of
+      // them as a live count of busy slots was an invitation the line should not extend.
+      return `xezar lease: waiting for a gate slot (all ${event.slots} busy, waited ${formatWait(event.waitedMs)})`;
     case 'acquired':
       return event.waitedMs >= 1000
         ? `xezar lease: gate slot ${event.slot} of ${event.slots} taken after ${formatWait(event.waitedMs)}`

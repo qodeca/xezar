@@ -307,7 +307,11 @@ gate_attempt_complete() {
   # the attempt directory exists — that ordering is what makes the wait part of the evidence
   # instead of something that happened before there was anywhere to write it. Empty becomes
   # `null`, which is what "this run did not lease" and "an older repo-gates.sh" both are: unknown,
-  # never zero. `cmdComplete` assigns the tail wholesale and derives `result` from the recorded
+  # never zero. A run that FAILED OPEN — an unusable slot directory, a bound reached, no CLI —
+  # writes nothing here for exactly that reason: the verb reports `waitedMs: 0` for an unusable
+  # directory, and recording that would be byte-identical to "took a slot with no queue", which is
+  # the one outcome a person reading this record most needs to be able to tell apart. A number
+  # here means a slot was really held; the loud line in the log says which fail-open it was. `cmdComplete` assigns the tail wholesale and derives `result` from the recorded
   # commands only, so nothing here can move a verdict.
   result="$(node "$GATE_RESULTS_MJS" complete --dir "$GATE_ATTEMPT_DIR" --json "$(_gate_json \
     "endedAt=$ended" \
