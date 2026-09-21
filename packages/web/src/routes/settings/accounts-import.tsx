@@ -7,8 +7,8 @@ import { toast } from '@/components/ui/toaster'
 import { AGENT_ACCOUNTS_FILE } from './registry'
 
 /**
- * Whether this project took the accounts of the person's machine-wide xezar setup, and the
- * a person's way to take them now (#819 PR 9, designs/agent-accounts-onboarding § 7, import.html).
+ * Whether this project took the accounts of the person's machine-wide xezar setup, and a
+ * person's way to take them now (#819 PR 9, designs/agent-accounts-onboarding § 7, import.html).
  *
  * Single-project mode only, and only when the server SENT `globalImport` — the pane renders nothing
  * for an absent key, which is how the global layout, hosted mode and an older engine all look. A
