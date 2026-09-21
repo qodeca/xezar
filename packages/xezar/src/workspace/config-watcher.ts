@@ -10,8 +10,12 @@ import { activeStateLayout } from '../state-layout.ts';
  * reach a route: a person editing the file by hand, and a SECOND xezar process (another project's
  * `serve`, `xez projects`, a headless run) merge-writing the shared home. Both took effect only on
  * the next restart. This watches the file and calls `refresh()` when it changes, and that is the
- * whole job: `refresh()` keeps its last good snapshot when a read fails, so nothing here needs its
- * own error policy for the file's CONTENTS.
+ * whole job: nothing here needs its own error policy for the file's CONTENTS. `refresh()`'s own
+ * `load()` never throws — a torn read (a hand edit caught mid-write) resolves to the
+ * `config.json.bak` snapshot, or the schema defaults when that snapshot is also unusable, for one
+ * debounce window, until the completing write's own event re-reads it. That is a real, if brief,
+ * cache replacement, not a "keep the last good snapshot" no-op — only a THROWING `load` leaves the
+ * previous cache untouched, and `loadWorkspaceConfig` is built not to throw.
  *
  * The rules it keeps, each pinned by `config-watcher.test.ts`:
  *
