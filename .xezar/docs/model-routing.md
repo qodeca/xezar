@@ -159,11 +159,11 @@ one is the DeepSeek lane and is a normal lane of this table.
 | Codex | paste this sentence whole, it reads briefs literally: "the kit's checks read the primary checkout by design – allowed; never run a git command of your own against that primary checkout and never write a TRACKED file there; the evidence dir `.local/xezar/tasks/<your run id>/` there IS allowed". Terra chains get explicit ALLOWED actions, never conditions |
 | pi (any model) | one deliverable, "post once and stop"; "run every command in your working folder, never cd elsewhere"; cancel after 15 silent minutes |
 | pi + DeepSeek API | the pi row above, plus: a writing task ends in a DRAFT PR whose body says it needs a full Claude review, with a red proof for a fix; phase-record lines are written as plain text, no backticks; `timeout` does not exist on macOS, so use the tool's own timeout instead of wrapping a command in it; never kill a process by command-line pattern (kill your own children with `pkill -P $$`, or save the PID) |
-| Every model — flaky tests (from 2026-09-20) | a flaky test is REDESIGNED onto a different mechanism — a deterministic signal from the system under test — and never a widened timeout, a retry, a sleep, a re-run or a register; every #671 pull request states the old mechanism, the new mechanism and why the new one cannot depend on timing, and the proof is the test green under two concurrent suite files (owner 2026-09-20 21:02, exact words: "flaky tests must be redesign to a different approach to ensure the are not flaky") |
-| Every model — load claims (from 2026-09-20) | never ask a task to "throttle CPU" or to "run under load": a synthetic busy-loop harness is not a measurement and drove the machine to load 55; a load claim is verified only by running two specs in one suite invocation (leader, 2026-09-20 10:3x) |
-| Every model — gate repairs (from 2026-09-20) | a gate-repair return brief forbids editing any test outside the pull request's own scope: an unrelated flaky test that fails the gate is REPORTED in the response and pull request body, never repaired in that pull request, because the redesign is its own pull request under #671 (leader, 2026-09-20 22:3x) |
-| Every model — a resume that merges (from 2026-09-21) | the brief dictates the three `REFRESH` lines verbatim — `refresh: <what>`, `base: <full 40-character sha>` and `evidence: <what was re-run>` — because readiness refuses any other shape (leader, 2026-09-21) |
-| Every model — a superseding run (from 2026-09-21) | a superseding run on a fresh branch declares `counters init --none`, never `--predecessor`: inheriting the exhausted gate-return counter makes the supersede fail at readiness (leader, 2026-09-21; run `98cc751d`) |
+| Every model – flaky tests (from 2026-09-20) | a flaky test is REDESIGNED onto a different mechanism – a deterministic signal from the system under test – and never a widened timeout, a retry, a sleep or a re-run (owner 2026-09-20 21:02, exact words: "flaky tests must be redesign to a different approach to ensure the are not flaky"), and never a flake register (owner 2026-09-20 06:55, exact words: "All flake tests MUST be fixed / rebuilt to ensure no flake(iness)"). The leader's reading of that rule, marked as the leader's and not the owner's (leader, 2026-09-20; decisions.md): every #671 pull request states the old mechanism, the new mechanism and why the new one cannot depend on timing, and the proof is the test green under two concurrent suite files |
+| Every model – load claims (from 2026-09-20) | never ask a task to "throttle CPU" or to "run under load": a synthetic busy-loop harness is not a measurement and drove the machine to load 55; a load claim is verified only by running two specs in one suite invocation (leader, 2026-09-20; decisions.md dates the rule 10:3x while timeline-2026-09-20.md times the incident at 09:47, so the two notes disagree on the order) |
+| Every model – gate repairs (from 2026-09-20) | a gate-repair return brief forbids editing any test outside the pull request's own scope: an unrelated flaky test that fails the gate is REPORTED in the response and pull request body, never repaired in that pull request, because the redesign is its own pull request under #671 (leader, 2026-09-20 22:3x) |
+| Every model – a resume that merges (from 2026-09-21) | the brief dictates the three `REFRESH` lines verbatim – `refresh: <what>`, `base: <full 40-character sha>` and `evidence: <what was re-run>` – because readiness refuses any other shape (leader, 2026-09-21) |
+| Every model – a superseding run (from 2026-09-21) | a superseding run on a fresh branch declares `counters init --none`, never `--predecessor`: inheriting the exhausted gate-return counter makes the supersede fail at readiness (leader, 2026-09-21; run `98cc751d`) |
 
 The evidence behind these rows is in the findings log (§ 13): conditional wording cost two Codex
 integration chains on 2026-09-15, and a pi model posted its comment and then looped.
@@ -331,14 +331,17 @@ incidents produced are in § 6 and the leader rules in
 - **A synthetic "load" harness is not a load test.** The #731 review (`b74e59fe`, sonnet) spawned 24
   `bash -c while :; do :; done` busy loops because its brief said "or throttle CPU"; the machine load
   went to 55 against a cap of 18. The leader killed the 24 PIDs and the load fell to 29 within three
-  minutes. The rule it produced is the § 6 load-claim row (leader, 2026-09-20 10:3x; decisions.md).
-  The same count is why four concurrent gate runs on 2026-09-21 (load 39–47, the 90 % failure band of
-  § 6) are a ceiling to stay under, not a condition to reproduce.
-- **The owner replaced "no flake register" with "redesign the flake".** At 2026-09-20 06:55 the
-  owner had said "All flake tests MUST be fixed / rebuilt to ensure no flake(iness)"; at 21:02 the
-  owner strengthened it: "flaky tests must be redesign to a different approach to ensure the are not
-  flaky". #671 became one redesign pull request per flake, each stating the old mechanism, the new
-  mechanism and why the new one cannot depend on timing (decisions.md; the § 6 row). The
+  minutes (timeline-2026-09-20.md 09:47). The rule it produced is the § 6 load-claim row (leader,
+  2026-09-20; decisions.md dates it 10:3x, the timeline times the incident at 09:47, and the two
+  notes disagree on the order). Separately, four concurrent gate runs on 2026-09-21 put the load at
+  39 (timeline-2026-09-21.md 01:11), inside the 90 % failure band of § 6: a ceiling to stay under,
+  not a condition to reproduce.
+- **The owner strengthened "fix or rebuild every flake" into "redesign the flake".** At 2026-09-20
+  06:55 the owner said "All flake tests MUST be fixed / rebuilt to ensure no flake(iness)"; at 21:02
+  the owner strengthened it: "flaky tests must be redesign to a different approach to ensure the are
+  not flaky" (decisions.md). #671 became one redesign pull request per flake; that each states the
+  old mechanism, the new mechanism and why the new one cannot depend on timing is the leader's
+  reading, marked as such in decisions.md (the § 6 row). The
   `todos.test.ts` FSEvents case below is one of them, redesigned by run `3730744e` as PR #786.
 - **An exhausted gate-return counter does not carry into a superseding run.** Run `98cc751d`, the
   first supersede of #784, was content-green (7 of 8 gates, the fragment fixed in `f510de9c`) and
@@ -347,36 +350,42 @@ incidents produced are in § 6 and the leader rules in
   (leader, 2026-09-21 02:38; timeline-2026-09-21.md). The counter itself was spent on
   `src/todos.test.ts` "scopes events to the written dataDir", a macOS FSEvents timing flake that
   reddened four of five gate runs (timeline-2026-09-21.md 01:23).
-- **A closing keyword closes an issue the work did not finish.** #670 was closed on a `ci-watch`
-  "passed" event before main CI was read, and reopened the same minute once the run was read as red
-  (2026-09-20 09:06). #677 was closed by a merge's closing keyword with B3–B6 still open and was
-  reopened by the leader (2026-09-20 15:4x). The rule it produced is in
+- **A closing keyword closes an issue the work did not finish.** #670 was closed at 09:05 on a
+  `ci-watch` "passed" event before main CI was read, and reopened at 09:06 once the run was read as
+  red (2026-09-20). #677 was closed by a merge's closing keyword with B3–B6 still open and was
+  reopened by the leader; the timeline entry is labelled 15:4x and the notes correct that label to
+  14:4x–14:5x (timeline-2026-09-20.md, the 15:01 correction). The rule it produced is in
   [leader-guide.md](leader-guide.md).
 - **An unrelated flaky test is reported, never repaired in the pull request that hit it.** Four pull
   requests on 2026-09-20 (#769, #775, #774 and the DeepSeek #671 attempt) each carried a private
   `todos.test.ts` rider, and every one conflicted with the next merge (leader, 2026-09-20 22:3x;
   decisions.md).
-- **A non-final step cannot host a long wait.** Two attempts of #734's round 1 (`5495f83d`) failed at
-  the gate-return address step on `XEZ:MONITORING`, and the lesson recorded then was that the brief
-  must forbid a self-run gate outright, not only "in the background" (timeline-2026-09-20.md 12:51,
-  13:12). The rule it produced is in [leader-guide.md](leader-guide.md) (leader, 2026-09-21).
+- **A non-final step cannot host a long wait.** Two attempts of #734's round 1 (`5495f83d`, opus)
+  failed on `XEZ:MONITORING` after starting their own background gate run: the first at `address`
+  (timeline-2026-09-20.md 12:51), the second in the gate-return `address` step (13:12). The lesson
+  recorded then was that the brief must forbid a self-run gate outright, not only "in the
+  background". The Codex and shared-`TMPDIR` halves of the leader-guide rule are the leader's
+  dated rule from the dispatch brief, not evidenced in the campaign notes (leader, 2026-09-21;
+  [leader-guide.md](leader-guide.md)).
 - **Codex out of credits is not a stuck session.** The #791 review on `gpt-6-astra` replayed one
-  identical turn eight times with no tool call; `codex exec` answered "Your workspace is out of
-  credits. Add credits to continue." — a credits problem, not a window limit — and routing moved to
-  state 2 (timeline-2026-09-21.md 02:26–02:27).
+  identical turn eight times with no tool call; a `codex exec` probe answered "Your workspace is out
+  of credits. Add credits to continue.", a credits problem and not a window limit, and routing moved
+  to state 2 (timeline-2026-09-21.md 02:26–02:27).
 - **A weaker model's Blocker claim holds the pull request.** A DeepSeek advisory on PR #791 claimed a
   Blocker (an unref timer letting a headless run exit 0 mid-step) that the sonnet APPROVE had not
-  tested; `merge-queue` was removed, and the claim was re-proven on a throwaway by Fable (run
-  `866c92bd`), a strong model that was neither the author (opus) nor the claimant (DeepSeek)
-  (timeline-2026-09-21.md 02:44).
+  tested; `merge-queue` was removed and the verification went to Fable (run `866c92bd`), a strong
+  model that was neither the author (opus) nor the claimant (DeepSeek) (timeline-2026-09-21.md
+  02:44). The hold was never lifted: the sonnet live QA reproduced the defect 4 of 4 and filed it as
+  #793 (02:48), Fable confirmed it live 3 of 3, wider than claimed (02:56), and fix round `16ae6f6e`
+  followed. The weaker model's claim was true.
 - **A `REFRESH` record refused for its shape.** #772's readiness refused the record shape until the
   brief carried `refresh:`, `base: <40-character sha>` and `evidence:`, and the same note went to
   #771 (timeline-2026-09-21.md 02:00). The three lines are in § 6.
 - **Several parked runs resumed at once.** Continuing three parked runs plus two fresh fixes put four
-  gates in flight and the load at 39; #771 was cancelled at its gates step to restore the ceiling, and
-  #783/#784 then exhausted their gate-return counters on the same `todos.test.ts` flake
-  (timeline-2026-09-21.md 01:04–01:23). The leader rule is in [leader-guide.md](leader-guide.md); the
-  ceiling itself is § 6.
+  gates in flight and the load at 39; #777 (01:11) and #771 (01:18) were cancelled at their gates
+  step to keep the ceiling at two, and #783/#784 exhausted their gate-return counters on the same
+  `todos.test.ts` flake (timeline-2026-09-21.md 01:04–01:23). The leader rule is in
+  [leader-guide.md](leader-guide.md); the ceiling itself is § 6.
 
 ## Glossary
 
