@@ -69,7 +69,7 @@ describe('G-11 native settings controls share the field class', () => {
   })
 
   it.each([
-    ['resources-section.tsx', 13],
+    ['resources-section.tsx', 14],
     ['agents-section.tsx', 6],
     ['projects-section.tsx', 3],
     ['add-account-dialog.tsx', 3],

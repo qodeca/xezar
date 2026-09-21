@@ -51,8 +51,8 @@ function serve(resources: Partial<WorkspaceConfigResponse['resources']> = {}) {
       autoResumeOnUsageLimit: true,
       memoryLimitMb: null,
       worktreeRetentionDefault: 10,
-      // #672 G1. Reported by the route since the gate lease landed; this pane grows its control
-      // in the separate G4 change, so here it is only what keeps the fixture a real response.
+      // #672 G1 reported it; G4 gave it a control in this pane. Always a NUMBER on the wire —
+      // the route answers the effective count, never "stored or null".
       gateSlots: 1,
       ...resources,
     },
@@ -131,6 +131,8 @@ const retentionDefault = () =>
   document.querySelector<HTMLInputElement>('[data-slot="resources-worktree-retention-default"]')
 const saveRetentionDefault = () =>
   document.querySelector<HTMLButtonElement>('[data-action="resources-save-retention-default"]')
+const gateSlotsInput = () => document.querySelector<HTMLInputElement>('[data-slot="resources-gate-slots"]')
+const saveGateSlots = () => document.querySelector<HTMLButtonElement>('[data-action="resources-save-gate-slots"]')
 const followupsSelect = () => document.querySelector<HTMLSelectElement>('[data-slot="resources-followups"]')
 const passthroughInput = () => document.querySelector<HTMLInputElement>('[data-slot="resources-env-passthrough"]')
 const savePassthrough = () =>
@@ -251,6 +253,65 @@ describe('Global settings → Resources', () => {
     fireEvent.click(saveMemory()!)
     await waitFor(() => expect(puts()).toHaveLength(2))
     expect(puts()[1]?.body).toEqual({ resources: { memoryLimitMb: null } })
+  })
+
+  // #672 G4 — the gate-slot control. The pane's half of the two AC proofs; the route's half
+  // (the key really leaves the file, and the bound really answers 400) is in
+  // src/server/workspace-api.test.ts.
+  it('shows the gate-slot count in force and saves a new one', async () => {
+    serve({ gateSlots: 3 })
+    renderResources()
+    await waitFor(() => expect(gateSlotsInput()).not.toBeNull())
+    expect(gateSlotsInput()!.value).toBe('3')
+    // Saved already — nothing to write until the number changes.
+    expect(saveGateSlots()!.disabled).toBe(true)
+
+    fireEvent.change(gateSlotsInput()!, { target: { value: '2' } })
+    fireEvent.click(saveGateSlots()!)
+    await waitFor(() => expect(puts()).toHaveLength(1))
+    expect(puts()[0]?.body).toEqual({ resources: { gateSlots: 2 } })
+  })
+
+  it('clears the gate-slot key with null — never 0 and never a materialised 1', async () => {
+    serve({ gateSlots: 4 })
+    renderResources()
+    await waitFor(() => expect(gateSlotsInput()).not.toBeNull())
+
+    fireEvent.change(gateSlotsInput()!, { target: { value: '' } })
+    expect(saveGateSlots()!.disabled).toBe(false)
+    fireEvent.click(saveGateSlots()!)
+    await waitFor(() => expect(puts()).toHaveLength(1))
+    // `null` is the DELETE spelling (#672 G4). `0` is out of the contract's 1–16 range and `1`
+    // would store a choice the user never made — both are the bug this pins.
+    expect(puts()[0]?.body).toEqual({ resources: { gateSlots: null } })
+    const sent = (puts()[0]?.body as { resources: { gateSlots: unknown } }).resources.gateSlots
+    expect(sent).not.toBe(0)
+    expect(sent).not.toBe(1)
+  })
+
+  it('refuses a gate-slot count outside 1–16 — Save stays disabled and nothing is PUT', async () => {
+    serve({ gateSlots: 1 })
+    renderResources()
+    await waitFor(() => expect(gateSlotsInput()).not.toBeNull())
+
+    for (const bad of ['0', '-1', '17', '2.5']) {
+      fireEvent.change(gateSlotsInput()!, { target: { value: bad } })
+      expect(saveGateSlots()!.disabled, `Save must stay disabled for ${bad}`).toBe(true)
+      expect(document.querySelector('[data-slot="resources-gate-slots-invalid"]')).not.toBeNull()
+    }
+    expect(puts()).toHaveLength(0)
+  })
+
+  it('names the default, what a higher number costs and the maximum, in generic words', async () => {
+    serve()
+    renderResources()
+    await waitFor(() => expect(gateSlotsInput()).not.toBeNull())
+    const hint = screen.getByText(/Default 1: one full gate run at a time on this machine; a second\s+waits\./)
+    const text = hint.textContent!.replace(/\s+/g, ' ')
+    expect(text).toContain('compete for its processor and memory and can slow down or fail one another')
+    expect(text).toContain('16 is the most; at that setting a gate run practically never waits.')
+    // #811 B-1: the hint ships to every project, so it carries no measurement of this repository's gates.
+    expect(text).not.toMatch(/nine times in ten|four or five|never binds/)
   })
 
   it('rejects a memory limit below the floor — Save stays disabled and nothing is PUT', async () => {

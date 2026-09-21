@@ -1,0 +1,5 @@
+### 2026-09-21 — A review response for another task's PR starts from that PR's tip, not its own branch
+- Input: round 1 of 2 on PR #811 (#672 G4), `address-review-findings` step `address`, `xezar-review-response`, Claude Opus 5 – real-task observed.
+- Observed: the task started on `xez/cdc5b11c` at `main`, not at the PR head `f22a0720`. The response had to reset its own empty branch to the PR tip before recording the merge intent, because `merge-recovery.sh record-intent` pins `HEAD` at that moment.
+- Observed: the merge of `main` (`66842f04`, #809) applied without a conflict even though both sides touched the contract, `server.ts`, `BACKWARD_COMPATIBILITY.md` and the MCP reference; regenerating `mcp-api.md/.json` with `-u` changed nothing, which confirmed the auto-merge rather than trusting it.
+- Observed: the first fragment was written as one prose paragraph and the gates step's `repository-checks.sh` refused it ("has no \"- \" line"), spending a gate-return round on a format rule the author could have checked locally first.

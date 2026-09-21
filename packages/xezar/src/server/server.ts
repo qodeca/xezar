@@ -3283,7 +3283,13 @@ export function createApp(deps: ServerDeps) {
           if (resources?.worktreeRetentionDefault !== undefined) {
             config.resources.worktreeRetentionDefault = resources.worktreeRetentionDefault;
           }
-          if (resources?.gateSlots !== undefined) config.resources.gateSlots = resources.gateSlots;
+          // `null` CLEARS, exactly like `agentDefaults.runner` below and for the same reason: the
+          // file key is optional so the derived `DEFAULT_GATE_SLOTS` applies again, and a partial
+          // patch cannot say "delete this key" by omission (#672 G4). Deleting is the only honest
+          // clear here — `null` is not storable (the load schema has no null spelling) and `0` is
+          // out of the 1–16 range the contract enforces.
+          if (resources?.gateSlots === null) delete config.resources.gateSlots;
+          else if (resources?.gateSlots !== undefined) config.resources.gateSlots = resources.gateSlots;
           // `null` CLEARS back to "no opinion" — a partial patch cannot say that by omission,
           // and leaving a stale runner behind would keep overriding repos that never chose.
           if (agentDefaults?.runner === null) delete config.agentDefaults.runner;
