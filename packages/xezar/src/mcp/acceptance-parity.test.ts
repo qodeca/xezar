@@ -1266,7 +1266,7 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
         const w = world();
         // Every key of the write, in one body, as the owner's 2026-09-20 rule allows (#677 B1).
         const change = {
-          resources: { maxParallel: 5, maxMonitoringSessions: 3, monitoringWakeIntervalMinutes: null, autoResumeOnUsageLimit: false, idleTimeoutMinutes: 30, memoryLimitMb: 4096, worktreeRetentionDefault: 7 },
+          resources: { maxParallel: 5, maxMonitoringSessions: 3, monitoringWakeIntervalMinutes: null, autoResumeOnUsageLimit: false, idleTimeoutMinutes: 30, memoryLimitMb: 4096, worktreeRetentionDefault: 7, gateSlots: 4 },
           followups: false,
           agentEnvPassthrough: ['CI'],
           composerDefaults: { autonomous: true, worktree: false },
@@ -1289,7 +1289,7 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
         const written = seen.response.result as { workspace: Record<string, any> };
         const limits = (await mcp(w, 'project_config', { action: 'get_limits' })).result.workspace;
         expect(written.workspace).toEqual(limits);
-        expect(limits.resources).toMatchObject({ maxParallel: 5, maxMonitoringSessions: 3, monitoringWakeIntervalMinutes: null, autoResumeOnUsageLimit: false, idleTimeoutMinutes: 30, memoryLimitMb: 4096, worktreeRetentionDefault: 7 });
+        expect(limits.resources).toMatchObject({ maxParallel: 5, maxMonitoringSessions: 3, monitoringWakeIntervalMinutes: null, autoResumeOnUsageLimit: false, idleTimeoutMinutes: 30, memoryLimitMb: 4096, worktreeRetentionDefault: 7, gateSlots: 4 });
         expect(limits.followups).toEqual({ effective: false, inherited: false });
         expect(limits.agentEnvPassthrough.effectiveNames).toContain('CI');
         expect(limits.composerDefaults).toMatchObject({ autonomous: true, worktree: false });

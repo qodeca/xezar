@@ -78,7 +78,7 @@ function serve(
       memoryLimitDefaultMb: 4096,
       autoResumeOnUsageLimit: true,
       memoryLimitMb: null,
-      worktreeRetentionDefault: 10,
+      worktreeRetentionDefault: 10, gateSlots: 1,
     },
     agentDefaults: {},
     ...overrides,

@@ -112,7 +112,7 @@ function seededClient({
       maxMonitoringSessions: 2,
       monitoringWakeIntervalMinutes: null,
       memoryLimitMb: null,
-      worktreeRetentionDefault: 10,
+      worktreeRetentionDefault: 10, gateSlots: 1,
     },
   })
   return client

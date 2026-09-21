@@ -117,6 +117,10 @@ describe('the workspace settings API (step 2.7)', () => {
         memoryLimitMb: DEFAULT_MEMORY_LIMIT_MB,
         memoryLimitDefaultMb: DEFAULT_MEMORY_LIMIT_MB,
         worktreeRetentionDefault: 10,
+        // #672 G1 — reported EFFECTIVE, so an absent file key reads as the derived 1. There is no
+        // `null` spelling, which is why this key has no `*DefaultMb`-style twin: absent and an
+        // explicit 1 are the same behaviour and the pane has nothing to tell apart.
+        gateSlots: 1,
       },
       // Machine-wide agent defaults (spec 2026-07-29-agent-profiles). EMPTY, not populated: absent
       // keys mean "this machine has no opinion", which is what makes them defaults a repo can be
@@ -174,6 +178,10 @@ describe('the workspace settings API (step 2.7)', () => {
         memoryLimitMb: 2048,
         memoryLimitDefaultMb: DEFAULT_MEMORY_LIMIT_MB,
         worktreeRetentionDefault: 10,
+        // #672 G1 — reported EFFECTIVE, so an absent file key reads as the derived 1. There is no
+        // `null` spelling, which is why this key has no `*DefaultMb`-style twin: absent and an
+        // explicit 1 are the same behaviour and the pane has nothing to tell apart.
+        gateSlots: 1,
       },
       // Untouched by a resources write, and still empty — the two live in the same file but answer
       // unrelated questions, so one must never materialize the other.
@@ -220,6 +228,7 @@ describe('the workspace settings API (step 2.7)', () => {
       memoryLimitMb: DEFAULT_MEMORY_LIMIT_MB,
       memoryLimitDefaultMb: DEFAULT_MEMORY_LIMIT_MB,
       worktreeRetentionDefault: 3,
+      gateSlots: 1,
     });
   });
 
@@ -343,8 +352,46 @@ describe('the workspace settings API (step 2.7)', () => {
     expect(() => readFileSync(workspaceConfigPath(), 'utf8')).toThrow();
   });
 
+  /**
+   * #672 G1 acceptance (e). `gateSlots` rides `PUT /workspace/config`, so it is reachable through
+   * BOTH doors — the cockpit's and the MCP's `set_workspace_config` — with no new route and no new
+   * MCP action, because the MCP dispatches through this very route in process.
+   *
+   * The two halves that are NOT free, and are what this pins: the value has to reach the shared
+   * cache the next gate run asks (so it binds with no restart), and an ABSENT key must stay absent
+   * ON DISK. That second one is the reason the file schema is `.optional()` rather than
+   * `.default(1)`: every write rewrites the parsed config, so a default would materialise
+   * `gateSlots: 1` into the file of every user who changed some unrelated setting.
+   */
+  it('PUT gateSlots round-trips, binds without a restart, and never materialises when absent', async () => {
+    expect(semaphore.gateSlots()).toBe(1); // the derived default, with nothing stored
+    await putConfig({ resources: { maxParallel: 3 } });
+    expect((rawConfig().resources as Record<string, unknown>).gateSlots).toBeUndefined();
+    // …and the route still REPORTS the effective 1 while the file says nothing.
+    expect(((await (await getConfig()).json()) as WorkspaceConfigResponse).resources.gateSlots).toBe(1);
+
+    const res = await putConfig({ resources: { gateSlots: 4 } });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as WorkspaceConfigResponse).resources.gateSlots).toBe(4);
+    expect((rawConfig().resources as Record<string, unknown>).gateSlots).toBe(4);
+    // The step-2.5 hook fired: the next gate run reads 4 without anything being restarted.
+    expect(semaphore.gateSlots()).toBe(4);
+  });
+
   it('rejects out-of-bounds resources with 400 and writes nothing', async () => {
-    for (const resources of [{ maxParallel: 0 }, { maxParallel: 17 }, { memoryLimitMb: -1 }]) {
+    // `gateSlots: 0` and `: 17` are here for the same reason the `maxParallel` pair is: the key's
+    // whole value is that it BINDS, and a zero would be a lease nothing can ever take.
+    for (const resources of [
+      { maxParallel: 0 },
+      { maxParallel: 17 },
+      { memoryLimitMb: -1 },
+      { gateSlots: 0 },
+      { gateSlots: 17 },
+      { gateSlots: 1.5 },
+      // There is no "unlimited" spelling, deliberately: an unbounded gate lease is the state
+      // #672 exists to remove, and a high number is how you say "never binds".
+      { gateSlots: null },
+    ] as const) {
       const res = await putConfig({ resources });
       expect(res.status, JSON.stringify(resources)).toBe(400);
       expect((await res.json()) as { error: string }).toHaveProperty('error');

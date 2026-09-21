@@ -302,8 +302,16 @@ gate_note_skip() {
 gate_attempt_complete() {
   local ended result
   ended="$(_gate_iso_now)"
+  # `leaseWaitMs` (#672): how long this attempt queued for a machine-wide gate slot before it ran
+  # anything. ADDITIVE and recorded here rather than at `begin`, because the lease is taken after
+  # the attempt directory exists — that ordering is what makes the wait part of the evidence
+  # instead of something that happened before there was anywhere to write it. Empty becomes
+  # `null`, which is what "this run did not lease" and "an older repo-gates.sh" both are: unknown,
+  # never zero. `cmdComplete` assigns the tail wholesale and derives `result` from the recorded
+  # commands only, so nothing here can move a verdict.
   result="$(node "$GATE_RESULTS_MJS" complete --dir "$GATE_ATTEMPT_DIR" --json "$(_gate_json \
     "endedAt=$ended" \
+    "leaseWaitMs:n=${GATE_LEASE_WAIT_MS:-}" \
     "durationMs:n=$(( $(_gate_epoch_ms) - GATE_STARTED_MS ))" \
     "after:j=$(_gate_json "headSha=$( cd "$TASK_CWD" && git rev-parse HEAD 2>/dev/null )" \
                           "treeFingerprint=$(tree_fingerprint)" \

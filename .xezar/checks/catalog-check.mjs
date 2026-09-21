@@ -104,6 +104,11 @@ const MAINTAINED_SKILLS = new Set([
 // everything else now that Xezar owns the worktree.
 const READ_ONLY_SKILLS = new Set(["xezar-code-review", "xezar-issue-triage"]);
 
+// The keys `.xezar/config.json` refuses with a reason of their own (see REFUSED_IN_PROJECT_CONFIG
+// below, which must name exactly these). Declared here so the unknown-key sweep can skip them and
+// report the specific reason once instead of a generic complaint alongside it.
+const REFUSED_PROJECT_CONFIG_KEYS = new Set(["maxParallel", "memoryLimitMb", "gateSlots"]);
+
 // `packages/xezar/src/config.ts:33-107`.
 const CONFIG_KEYS = new Set([
   "skillsRepos",
@@ -429,9 +434,15 @@ if (!existsSync(configPath)) {
     notes.push("project config NOT checked — it could not be parsed (see the failure below)");
   } else {
     for (const key of Object.keys(config)) {
+      // A key with its OWN refusal below is not reported as merely unknown as well. Two errors
+      // for one key bury the specific reason under the generic one, and the specific one is the
+      // only one that tells the author where the value actually belongs. `maxParallel` and
+      // `memoryLimitMb` are in `CONFIG_KEYS` (they are real per-repo keys the engine parses) and
+      // reach that rule anyway; `gateSlots` never was one, which is why this line is needed.
+      if (REFUSED_PROJECT_CONFIG_KEYS.has(key)) continue;
       if (!CONFIG_KEYS.has(key)) err(".xezar/config.json", `unknown key "${key}" — Xezar ignores it`);
     }
-    // Both keys below are refused in a COMMITTED project config, but for two different reasons,
+    // All three keys below are refused in a COMMITTED project config, but for different reasons,
     // and the difference is load-bearing: the message has to say the true one.
     //
     // `maxParallel` really is ignored by the engine after migration 001 seeds it into the
@@ -453,6 +464,10 @@ if (!existsSync(configPath)) {
     // ~/.xezar/config.json" is advice the user cannot take in the mode, because BR-2 means that
     // file is never opened there. Both texts below are AMENDED rather than replaced: outside the
     // mode they still describe a real engine behaviour and are still the whole truth.
+    //
+    // `gateSlots` (#672) is the third: the gate lease is machine-wide by construction — its lock
+    // does not move with the state layout — so the number it needs is a property of one machine
+    // and this file is the one place that travels to every other one.
     const modeSuffix = singleProjectMode
       ? " This folder is in single-project mode, so the committed home for this key is .xezar/workspace.json -> resources, which the engine does read; ~/.xezar is never opened here."
       : "";
@@ -461,7 +476,17 @@ if (!existsSync(configPath)) {
         "The scheduler ignores it: parallelism is workspace state, in ~/.xezar/config.json -> projects[].maxParallel and resources.maxParallel. A committed key here would be a false promise." + modeSuffix,
       memoryLimitMb:
         "The engine DOES honour a per-repo value, but the kit does not commit one: a memory ceiling is a property of a machine, not of a project, and this file travels to every checkout. Set it per user, in ~/.xezar/config.json -> resources.memoryLimitMb, or in an uncommitted local config." + modeSuffix,
+      gateSlots:
+        "The gate lease is machine-wide, not per project: it counts the gate runs one MACHINE is paying for, across every checkout on it, so a number committed here would be read by every clone of this repository on every other machine. Set it per user, in ~/.xezar/config.json -> resources.gateSlots." + modeSuffix,
     };
+    // The skip list above and this table are one fact written twice; a key in only one of them
+    // is either silently double-reported or silently not reported at all.
+    for (const key of Object.keys(REFUSED_IN_PROJECT_CONFIG)) {
+      if (!REFUSED_PROJECT_CONFIG_KEYS.has(key)) err("catalog-check", `\`${key}\` has a project-config refusal but is missing from REFUSED_PROJECT_CONFIG_KEYS`);
+    }
+    for (const key of REFUSED_PROJECT_CONFIG_KEYS) {
+      if (!(key in REFUSED_IN_PROJECT_CONFIG)) err("catalog-check", `\`${key}\` is skipped by the unknown-key sweep but has no project-config refusal to replace it`);
+    }
     for (const [key, why] of Object.entries(REFUSED_IN_PROJECT_CONFIG)) {
       if (key in config) {
         err(".xezar/config.json", `must not set \`${key}\`. ${why}`);
@@ -502,7 +527,7 @@ if (!singleProjectMode) {
     // written (AC-7, no clamp), so refusing it would refuse a legitimate setting. What is still
     // refused is the same fault the `.xezar/config.json` rule catches — a key in a place nothing
     // reads. `resources` is where `loadWorkspaceConfig` looks; the top level is not.
-    const MACHINE_SHAPED = ["maxParallel", "memoryLimitMb"];
+    const MACHINE_SHAPED = ["maxParallel", "memoryLimitMb", "gateSlots"];
     for (const key of MACHINE_SHAPED) {
       if (key in workspace) {
         err(
