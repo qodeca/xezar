@@ -13,6 +13,7 @@ The Settings overview shows the project folder, registry facts, status, branch w
 ### To choose how tasks run — Agents
 
 - **Providers**: inspect connection state. **Connect** appears for **Not connected**; a missing CLI shows installation steps. The enable switch is machine-wide: it writes `disabledProviders` in `~/.xezar/config.json` and affects every project.
+- **Lock models**: make each coding agent use the model from its own native settings; the model pickers in this project become read-only at once. Turning it off removes the project's `modelsLocked` key. `XEZ_AGENT_MODELS_LOCKED=1` or a workspace-wide `modelsLocked: true` keeps models locked whatever this switch says, and the switch then says so.
 - **Default agent / Default runner** and **Default models**: choose the project's defaults. If model selection is locked to native agent settings, the control shows the native model read-only. A default-agent account selection is saved separately in `~/.xezar/agent-accounts.json`.
 - **System prompt**: enter extra run instructions and save them. For Codex and OpenCode, they are prepended to the first message.
 - **Live title updates**: allow the namer to refresh task titles. A manual rename stops automatic updates for that task.

@@ -53,6 +53,9 @@ const SYSTEM_PROMPT_MAX = 20_000
  *  mirror the route so an invalid draft is a disabled Save, not a 400 round-trip. */
 const SKILLS_REPOS_MAX = 32
 
+/** The Lock models switch's third-state hint, which the switch names in `aria-describedby`. */
+const MODELS_LOCKED_ELSEWHERE_ID = 'agents-models-locked-elsewhere'
+
 /** One source per line; the default `main` ref is left implicit so the common case reads as
  *  the bare `owner/name` a user would type. */
 function formatSkillsRepos(sources: { repo: string; ref: string }[]): string {
@@ -104,6 +107,9 @@ function AgentsForm({
   // any other project (no Git, no remote, another host) still gets Accept and Send back.
   const activeProjectId = scope.projectId ?? projects.data?.bootProject
   const onGithub = projects.data?.projects.find((project) => project.id === activeProjectId)?.forge === 'github'
+  // The third state of Lock models: this project's switch is off, yet the environment or the
+  // workspace config still locks the models.
+  const lockedElsewhere = !(config.projectModelsLocked ?? false) && config.modelsLocked
 
   const save = useMutation({
     mutationFn: (patch: SetConfigInput) => putConfig(patch),
@@ -179,6 +185,58 @@ function AgentsForm({
         saving={save.isPending}
         onPick={(runner) => save.mutate({ defaultRunner: runner })}
       />
+
+      {/* #677 C2 — the project's own `modelsLocked` key. Owner, 2026-09-20: "Both doors, like
+          every key". Off DELETES the key rather than storing false, so the environment and the
+          workspace config still decide; `projectModelsLocked` is defaulted because a server that
+          predates it answers without it. */}
+      <SettingsField
+        title="Lock models"
+        hint="When on, each coding agent uses the model from its own native settings, and the model pickers in this project are read-only. XEZ_AGENT_MODELS_LOCKED=1 in the environment keeps the machine locked whatever this switch says."
+      >
+        <label className="flex w-fit items-center gap-3">
+          <Switch
+            aria-label="Lock models"
+            aria-describedby={lockedElsewhere ? MODELS_LOCKED_ELSEWHERE_ID : undefined}
+            data-slot="agents-models-locked"
+            checked={config.projectModelsLocked ?? false}
+            disabled={save.isPending}
+            onCheckedChange={(checked) =>
+              save.mutate(
+                { modelsLocked: checked },
+                {
+                  // The answer is the whole config, so the toast reports the lock that is
+                  // actually in force, not only the key this switch wrote (#809 NB-4).
+                  onSuccess: (saved) =>
+                    toast(
+                      checked
+                        ? 'Models locked'
+                        : saved.modelsLocked
+                          ? 'Project lock removed — models stay locked by the environment or the workspace config'
+                          : 'Models unlocked for this project',
+                    ),
+                },
+              )
+            }
+          />
+          <span data-slot="agents-models-locked-state" className="text-[13px] text-muted-foreground">
+            {(config.projectModelsLocked ?? false) ? 'On' : lockedElsewhere ? 'Off — still locked elsewhere' : 'Off (default)'}
+          </span>
+        </label>
+        {/* The cockpit is told only that a lock holds, not which one, so the hint names both
+            and says where a person lifts each (#809 NB-1). */}
+        {lockedElsewhere ? (
+          <p
+            id={MODELS_LOCKED_ELSEWHERE_ID}
+            data-slot="agents-models-locked-elsewhere"
+            className="text-[13px] text-muted-foreground"
+          >
+            If xezar was started with XEZ_AGENT_MODELS_LOCKED=1, restart it without that variable to unlock.
+            If the workspace config file — ~/.xezar/config.json, or .xezar/workspace.json in single-project mode — sets
+            modelsLocked, remove that key from it.
+          </p>
+        ) : null}
+      </SettingsField>
 
       <SettingsField
         title="Default models"
