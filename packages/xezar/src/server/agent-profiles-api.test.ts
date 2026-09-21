@@ -137,6 +137,50 @@ describe('agent profiles API', () => {
       expect(status.provider).toBe('claude');
       expect(status.profileId).toBe(created.profile.id);
     });
+    // T2.2 — the reporting half of #819 item 2. A dangling reference is still silently resolved at
+    // run time (that is the zero-config promise, guarded below); what changes is that the listing
+    // now SAYS so, for a machine-wide default and for a project selection alike.
+    it('reports a dangling machine-wide default and a dangling selection (T2.2)', async () => {
+      const project = await registerProject(repoRoot);
+      await mergeWriteAgentAccounts((store) => {
+        store.defaults.claude = 'deleted-yesterday';
+        store.selections[project.root] = { codex: 'also-gone' };
+      });
+
+      const body = await list();
+      expect(body.problems).toEqual([
+        { kind: 'unknown-account', where: 'defaults', provider: 'claude', handle: 'deleted-yesterday' },
+        { kind: 'unknown-account', where: 'selection', provider: 'codex', handle: 'also-gone' },
+      ]);
+      // The listing is still the listing: a dangling reference never removes a row or fails the
+      // request, so the discovered defaults are all still there.
+      expect(body.profiles.filter((p) => p.isDefault)).toHaveLength(4);
+    });
+
+    it('reports nothing for a clean store, and still carries the key', async () => {
+      const { body: created } = await send('POST', '/api/v1/workspace/agent-profiles', {
+        provider: 'claude',
+        configDir: claudeDir('claude-klaudiusz'),
+      });
+      const project = await registerProject(repoRoot);
+      await send('PUT', '/api/v1/workspace/agent-profiles/selection', {
+        projectId: null,
+        provider: 'claude',
+        profileId: created.profile.id,
+      });
+      await send('PUT', '/api/v1/workspace/agent-profiles/selection', {
+        projectId: project.id,
+        provider: 'claude',
+        profileId: created.profile.id,
+      });
+
+      const body = await list();
+      expect(body.problems).toEqual([]);
+      // The contract makes `problems` optional so the addition stays additive for a typed
+      // consumer; the ENGINE always fills it in, which is what keeps that choice from being an
+      // absence a consumer has to guess at.
+      expect('problems' in body).toBe(true);
+    });
   });
 
   describe('POST', () => {
@@ -349,6 +393,60 @@ describe('agent profiles API', () => {
       };
       // The whole row goes when its last account does — no empty object left behind.
       expect(raw.selections[first.root]).toBeUndefined();
+    });
+
+    // T2.1 — the bug this PR fixes. The scrub walked `selections` only, so deleting the account a
+    // provider DEFAULTED to left `defaults.<provider>` naming an account that no longer existed:
+    // served back by the listing forever after and silently ignored by every run. RED on main.
+    it('clears a machine-wide default that named the deleted account (T2.1)', async () => {
+      const { body: created } = await send('POST', '/api/v1/workspace/agent-profiles', {
+        provider: 'claude',
+        configDir: claudeDir('claude-klaudiusz'),
+      });
+      await send('PUT', '/api/v1/workspace/agent-profiles/selection', {
+        projectId: null,
+        provider: 'claude',
+        profileId: created.profile.id,
+      });
+      expect((await loadAgentAccounts()).defaults.claude).toBe(created.profile.id);
+
+      await send('DELETE', `/api/v1/workspace/agent-profiles/${created.profile.id}`);
+
+      // In memory AND on disk: the whole point is that no reader can observe the dangling handle.
+      expect((await loadAgentAccounts()).defaults.claude).toBeUndefined();
+      const raw = JSON.parse(readFileSync(agentAccountsPath(), 'utf8')) as {
+        defaults?: Record<string, string>;
+      };
+      expect(raw.defaults?.claude).toBeUndefined();
+      // …and the listing now reports a clean store, which is the other half of the same fix.
+      expect((await list()).problems).toEqual([]);
+    });
+
+    it('leaves another provider\'s default alone — one id, one provider', async () => {
+      const { body: claude } = await send('POST', '/api/v1/workspace/agent-profiles', {
+        provider: 'claude',
+        configDir: claudeDir('claude-klaudiusz'),
+      });
+      const { body: codex } = await send('POST', '/api/v1/workspace/agent-profiles', {
+        provider: 'codex',
+        label: 'cx',
+        configDir: claudeDir('codex-klaudiusz'),
+      });
+      await send('PUT', '/api/v1/workspace/agent-profiles/selection', {
+        projectId: null,
+        provider: 'claude',
+        profileId: claude.profile.id,
+      });
+      await send('PUT', '/api/v1/workspace/agent-profiles/selection', {
+        projectId: null,
+        provider: 'codex',
+        profileId: codex.profile.id,
+      });
+
+      await send('DELETE', `/api/v1/workspace/agent-profiles/${claude.profile.id}`);
+
+      // The scrub is keyed by the deleted id, not by "clear the defaults" — codex's choice stands.
+      expect((await loadAgentAccounts()).defaults).toEqual({ codex: codex.profile.id });
     });
 
     it('404s an unknown id', async () => {
@@ -779,6 +877,18 @@ describe('agent profiles API', () => {
     it('withholds the listing — the absolute paths are the host disclosure', async () => {
       const body = await list();
       expect(body).toMatchObject({ editable: false, profiles: [] });
+    });
+
+    it('serves problems: [] — the store is never read here, so there is nothing to report', async () => {
+      // A dangling reference exists on disk, and hosted mode must still answer `[]` rather than
+      // leaking a handle it never loaded: the whole family is withheld here, and "no problems"
+      // means "we did not look", not "the file is clean".
+      await mergeWriteAgentAccounts((store) => {
+        store.defaults.claude = 'ghost';
+      });
+      const body = await list();
+      expect(body.problems).toEqual([]);
+      expect('problems' in body).toBe(true);
     });
 
     it('refuses the identity read — an email is host state a hosted client is not trusted with', async () => {

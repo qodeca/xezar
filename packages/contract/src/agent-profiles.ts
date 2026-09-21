@@ -129,6 +129,31 @@ export const agentAccountSelectionSchema = z.object({
 export type AgentAccountSelection = z.infer<typeof agentAccountSelectionSchema>;
 
 /**
+ * A stored reference that names no account (issue #819 item 2) — a `defaults.<provider>` or a
+ * project selection whose account has since been deleted, or that never existed because the file
+ * was hand-edited.
+ *
+ * ADVISORY, and that is the whole design. Run resolution keeps its silent fall back to the
+ * discovered account (`selectProfile`): a dangling reference names no account, so the default is
+ * the only safe answer and zero config still means "degrade, never fail". What was missing was any
+ * way to SAY that the stored choice has no effect — so it is reported here, and nothing about
+ * resolution changes.
+ */
+export const agentAccountProblemSchema = z.object({
+  /** The only kind today, spelled as a literal so the discriminant cannot widen to `string`. */
+  kind: z.literal('unknown-account'),
+  /** Which map the dangling handle came from — the machine-wide default, or one project's
+   *  selection. The two are cleared by different writes, so a surface has to be able to tell. */
+  where: z.enum(['defaults', 'selection']),
+  /** The provider the dangling reference was stored FOR. An id that is known for a DIFFERENT
+   *  provider is reported too, because it names no account of this one. */
+  provider: providerIdSchema,
+  /** The stored string as written, so a surface can name it back to the person who chose it. */
+  handle: z.string(),
+});
+export type AgentAccountProblem = z.infer<typeof agentAccountProblemSchema>;
+
+/**
  * `GET /api/v1/workspace/agent-profiles` — every account, discovered defaults first.
  *
  * `editable` is false in hosted mode (`XEZ_REMOTE`), where the whole family is refused: defining
@@ -151,6 +176,17 @@ export const agentProfilesResponseSchema = z.object({
   selections: z.record(z.string(), agentAccountSelectionSchema),
   /** The machine-wide fallback account per provider, used by any repo that has chosen none. */
   defaults: agentAccountSelectionSchema,
+  /** Stored references that name no account — a dangling `defaults.<provider>` or a project
+   *  selection whose account is gone.
+   *
+   *  OPTIONAL on purpose, so the addition stays ADDITIVE in the typed sense as well as on the wire:
+   *  a consumer that predates this key (the cockpit's own fixtures, a third-party client) compiles
+   *  and behaves unchanged. The listing ALWAYS fills it in today — `[]` for a clean or unread
+   *  store, `[]` in hosted mode — which the listing tests pin, so the wire carries it in practice.
+   *
+   *  ADVISORY: run resolution still falls back to the discovered account for an unknown id, which
+   *  is why this is reported rather than enforced. */
+  problems: z.array(agentAccountProblemSchema).optional(),
 });
 export type AgentProfilesResponse = z.infer<typeof agentProfilesResponseSchema>;
 
