@@ -195,6 +195,7 @@ describe('every MCP write action accepts what its route accepts', () => {
     check_automation: 'takes an id and a mode, not a body.',
     retry_automation_receipt: 'takes a receipt id, not a body.',
     reclaim_worktrees: 'takes no argument beyond the operation key.',
+    import_global_accounts: 'takes no argument beyond the operation key: the route has no body, and the merge has nothing to choose (#819 PR 9).',
     remove_worktree: 'takes a run id and the expected version, not a body.',
     dismiss_onboarding_offer: 'takes an optional identity pair, not a body.',
   };

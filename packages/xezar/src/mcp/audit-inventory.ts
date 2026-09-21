@@ -178,6 +178,10 @@ export const AUDIT_ACTIONS: readonly AuditActionRow[] = [
   { id: 'account.openFile', family: 'F10', mcp: ['project_config:open_account_file'], ui: [post('/workspace/agent-profiles/:id/open')] },
   { id: 'account.select', family: 'F10', mcp: ['project_config:select_account'], ui: [put('/workspace/agent-profiles/selection')] },
   { id: 'account.remove', family: 'F10', mcp: ['project_config:remove_account'], ui: [del('/workspace/agent-profiles/:id')] },
+  // #819 PR 9: the copy of the machine-wide accounts into this project. Owner, 2026-09-21: "Allow
+  // both, people and MCP (leader) to use the import my accounts functionality" — so it is an
+  // ordinary row naming both doors, and a person's click and a leader's call land on one id.
+  { id: 'account.importGlobal', family: 'F10', mcp: ['project_config:import_global_accounts'], ui: [post('/workspace/agent-profiles/import-global')] },
 ];
 
 /**

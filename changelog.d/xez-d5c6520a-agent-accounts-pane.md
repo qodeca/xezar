@@ -13,5 +13,6 @@
   press Show details. In single-project mode the pane also says whether the accounts of your
   personal xezar setup were copied into the project and how many could still be — a count, never
   their names — with a "Copy {n} accounts" button that runs the same merge as
-  `xezar accounts import-global`. Only a person can press it: it is refused in hosted mode and no
-  MCP action reaches it. (#819)
+  `xezar accounts import-global`; it is refused in hosted mode. A project leader can run the same
+  copy through MCP with `project_config` action `import_global_accounts` (it needs only an
+  `operationId`), and `get_account` now reports the same import state. (#819)

@@ -197,7 +197,8 @@ export type AgentAccountsGlobalImport = z.infer<typeof agentAccountsGlobalImport
 
 /**
  * `POST /api/v1/workspace/agent-profiles/import-global` — the cockpit's door to the SAME merge
- * `xezar accounts import-global` runs. Person-only: no MCP action reaches it, and it answers 409 in
+ * `xezar accounts import-global` runs — reached from the cockpit's button and from the leader's
+ * `project_config import_global_accounts` (owner, 2026-09-21: "Allow both"). It answers 409 in
  * hosted mode like every other write of this family, and in the global layout, where there is no
  * project to import into. It takes no body.
  *

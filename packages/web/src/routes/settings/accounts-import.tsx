@@ -8,13 +8,14 @@ import { AGENT_ACCOUNTS_FILE } from './registry'
 
 /**
  * Whether this project took the accounts of the person's machine-wide xezar setup, and the
- * person-only way to take them now (#819 PR 9, designs/agent-accounts-onboarding § 7, import.html).
+ * a person's way to take them now (#819 PR 9, designs/agent-accounts-onboarding § 7, import.html).
  *
  * Single-project mode only, and only when the server SENT `globalImport` — the pane renders nothing
  * for an absent key, which is how the global layout, hosted mode and an older engine all look. A
  * card for the first offer; one line after an answer; a button only when there is something to copy
  * (never "Copy 0 accounts"). The button runs the same merge as `xezar accounts import-global`; it is
- * the only trigger on this page, and nothing here copies on load.
+ * the only trigger on this page, and nothing here copies on load. (A leader reaches the same route
+ * through `import_global_accounts`, which the owner allowed on 2026-09-21.)
  */
 export function AccountsImportBlock({ globalImport }: { globalImport: AgentAccountsGlobalImport }) {
   const copy = useImportGlobalAccounts()

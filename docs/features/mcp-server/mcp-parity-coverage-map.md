@@ -247,6 +247,7 @@ run.
 | I-149 | covered | P-45 |
 | I-150 | covered | P-45 |
 | I-151 | covered | P-45 |
+| I-152 | covered | P-49 |
 | I-133 | covered | P-42 |
 | I-136 | covered | P-42 |
 | I-138 | covered | P-22 |
@@ -292,6 +293,7 @@ run.
 | P-46 | A-09, A-08, A-05 | I-024, I-092, I-132 | the shared presentation preferences — appearance, notifications, folded columns and the curated skills list — are read and written through either door with the same effect, the route’s own bound on a bad value, and an answer that carries no incident id; an object-valued preference is sent whole, after the read, the way the panes send it |
 | P-47 | A-09, A-08, A-05 | I-115 | a provider is switched off and on through either door with the same effect, the cockpit’s own status answers both, and the leader is never handed an incident id |
 | P-48 | A-09, A-08, A-05 | I-122, I-123, I-124 | an agent account is added, selected, probed, read, edited and removed through the cockpit’s own routes, the accounts pane sees every one of them, and the leader’s answer names no other checkout |
+| P-49 | A-09, A-08, A-05 | I-152 | the leader copies the machine-wide accounts through the cockpit’s own route, the accounts pane sees the copy, and both doors refuse it the same way where there is nothing to import into |
 | P-44 | A-09, A-08, A-05 | I-143, I-144, I-145, I-146 | the leader reads this project’s setup state, dispatches the bundled setup task and records the offer, and the cockpit sees the same thing |
 | P-29 | A-09, A-11 | I-012, I-093, I-112, I-115, I-125, I-126, I-130, I-131 | every global-source, home-file, shared-account and host-folder write is refused with its boundary, dispatches nothing, and no approval parameter changes that |
 | P-30 | A-10, A-05 | I-033, I-041, I-045, I-049, I-052, I-053, I-054 | a result, its files, diff, commits and handoff read the same as the cockpit’s, with references and origin as fields, and `done` is not proof |

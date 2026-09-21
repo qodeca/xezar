@@ -2445,12 +2445,13 @@ export function createApp(deps: ServerDeps) {
     // Which account a PROJECT uses. On the accounts family rather than `PATCH /api/v1/projects`
     // because the selection is stored beside the accounts it names — one file, one atomic write,
     // and nothing about it can be dropped by a xezar version that never heard of accounts.
-    // The person-only door to the SAME merge `xezar accounts import-global` runs (#819 PR 9):
-    // `importGlobalAccounts`, then the outcome recorded by the one rule both doors share
-    // (`globalImportStateAfter`). No MCP action reaches it — reading the person's machine-wide home
-    // needs a person's click or command — and it takes no body. 409 in hosted mode like every
-    // write of this family, and 409 in the global layout, where there is no project to import into.
-    .post('/workspace/agent-profiles/import-global', localHandoffRoute, async (c) => {
+    // The cockpit's and the leader's door to the SAME merge `xezar accounts import-global` runs
+    // (#819 PR 9): `importGlobalAccounts`, then the outcome recorded by the one rule every door
+    // shares (`globalImportStateAfter`). The MCP action `project_config import_global_accounts`
+    // dispatches this route (owner, 2026-09-21: "Allow both, people and MCP (leader)"), audited as
+    // `account.importGlobal` at both doors. No body. 409 in hosted mode like every write of this
+    // family, and 409 in the global layout, where there is no project to import into.
+    .post('/workspace/agent-profiles/import-global', localHandoffRoute, ui.route('account.importGlobal'), async (c) => {
       if (!capabilities().localHandoff) return c.json(hostedProfileRefusal, 409);
       const layout = activeStateLayout();
       if (layout.mode !== 'project') {

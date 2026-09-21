@@ -1898,8 +1898,8 @@ export async function selectAgentProfile(
 
 /**
  * Copy the machine-wide agent accounts into this project (#819 PR 9) — the SAME merge
- * `xezar accounts import-global` runs. Person-only: called from a button a person clicks, never on
- * load, and no MCP action reaches the route. Answers counts, never names.
+ * `xezar accounts import-global` runs. Called from a button a person clicks, never on load.
+ * Answers counts, never names.
  */
 export async function importGlobalAccounts(): Promise<ImportGlobalAccountsResponse> {
   return unwrap(

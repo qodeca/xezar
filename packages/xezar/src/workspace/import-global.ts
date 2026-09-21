@@ -379,7 +379,7 @@ export function importGlobalAccounts(layout: StateLayout, env: NodeJS.ProcessEnv
 /**
  * The state the `accounts import-global` door records after a merge, or `null` for "record
  * nothing" — ONE rule for every door that runs the merge, the CLI command and the cockpit's
- * person-only button (#819 PR 9), so the two cannot disagree about what "imported" means.
+ * button and the leader's `import_global_accounts` (#819 PR 9), so the two cannot disagree about what "imported" means.
  *
  * `imported` only when something was actually copied or the project already holds accounts
  * (#819 F4): on a folder whose global setup holds no accounts file nothing happened, and an

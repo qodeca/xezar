@@ -1004,7 +1004,7 @@ describe('agent profiles API', () => {
   });
 
   /**
-   * #819 PR 9 — the import state on the listing and the person-only import route. Single-project
+   * #819 PR 9 — the import state on the listing and the import route (the cockpit's button and the leader's `import_global_accounts`). Single-project
    * mode is the only layout with a project to import into; XEZ_HOME is the machine-wide home.
    */
   describe('the global import (#819 PR 9)', () => {
