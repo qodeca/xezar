@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { mcpProjectOccupiedErrorSchema, mcpSessionExpiredErrorSchema } from '@qodeca/xezar-contract';
 import { z } from 'zod';
-import { activeStateLayout } from '../state-layout.ts';
+import { activeStateLayout, type StateLayout } from '../state-layout.ts';
 
 /**
  * The IPC leg between `xez mcp` (the bridge) and the running xezar service — D-01
@@ -86,16 +86,22 @@ export type McpSocketLocation =
  * is too long (a very long `XEZ_HOME`), there is no socket — the caller degrades.
  * Windows named pipes are untested and their naming is undecided (D-01 § 10.2), so
  * Windows is reported as unavailable rather than guessed.
+ *
+ * `layout` defaults to the process's own. The bridge passes the layout it
+ * resolved for its folder on this session open (#819 item 5), so a folder that
+ * gained its `workspace.json` after the bridge started is looked up where the
+ * single-project service listens.
  */
 export function mcpSocketLocation(
   project: { readonly id: string; readonly root: string },
   env: NodeJS.ProcessEnv = process.env,
   platform: NodeJS.Platform = process.platform,
+  layout: StateLayout = activeStateLayout(env),
 ): McpSocketLocation {
   if (platform === 'win32') {
     return { kind: 'unavailable', reason: 'the xezar MCP bridge is not supported on Windows yet' };
   }
-  const dir = mcpSocketDir(env);
+  const dir = layout.ipcDir;
   const limit = maxSocketPathBytes(platform);
   const primary = join(dir, `${project.id}.sock`);
   if (Buffer.byteLength(primary) <= limit) return { kind: 'socket', path: primary };
@@ -104,7 +110,7 @@ export function mcpSocketLocation(
   // In single-project mode the socket directory is inside the project, so
   // "point XEZ_HOME somewhere shorter" is advice the user cannot act on — the
   // folder they started xezar in is what decides. Name the real remedy instead.
-  const remedy = activeStateLayout(env).mode === 'project'
+  const remedy = layout.mode === 'project'
     ? 'move the project to a shorter path'
     : 'point XEZ_HOME at a shorter directory';
   return {

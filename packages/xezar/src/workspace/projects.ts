@@ -5,7 +5,7 @@ import { PROJECT_TAGS_MAX, PROJECT_TAG_MAX_LENGTH } from '@qodeca/xezar-contract
 import type { InstanceMode } from '../cli-settings.ts';
 import { forgeKindOfRemote, forgeWebRoot, type ForgeKind } from '../server/forge/index.ts';
 import { getRepoInfo } from '../server/git.ts';
-import { activeStateLayout } from '../state-layout.ts';
+import { activeStateLayout, type StateLayout } from '../state-layout.ts';
 import {
   mergeWriteWorkspaceConfig,
   loadWorkspaceConfig,
@@ -502,13 +502,14 @@ export interface ProjectListSelector {
 async function projectLayoutRow(
   stored: readonly WorkspaceProject[],
   projectRoot: string,
+  layout: StateLayout = activeStateLayout(),
 ): Promise<WorkspaceProject> {
   const real = await normalizeRoot(projectRoot);
   const existing = stored.find((project) => project.root === real);
   // Per-machine facts are overlaid from the working file, never from the
   // committed one (#600 defect A): the stored row keeps identity (id, name,
   // tags, cap) and the machine keeps its own stamps.
-  const machine = readProjectMachineState();
+  const machine = readProjectMachineState(layout);
   const row = existing ?? {
     id: allocateProjectSlug(real, stored.map((project) => project.id)),
     root: real,
@@ -560,14 +561,18 @@ export async function listProjects(selector?: ProjectListSelector): Promise<Proj
  * before any selector narrows it further — and a selector naming a project
  * this folder is not still answers nothing, which is what keeps a scoped
  * `/api/v1/p/<other>/…` request a 404 rather than the boot project.
+ *
+ * `layout` defaults to the process's own. Only the MCP bridge passes one: it
+ * re-resolves its folder's layout on every session open without installing it
+ * process-wide (#819 item 5), and reads the registry of THAT layout.
  */
 export async function registryRows(
   selector?: ProjectListSelector,
+  layout: StateLayout = activeStateLayout(),
 ): Promise<WorkspaceProject[]> {
-  const config = await loadWorkspaceConfig();
-  const layout = activeStateLayout();
+  const config = await loadWorkspaceConfig(layout.workspacePath);
   const rows = layout.mode === 'project'
-    ? [await projectLayoutRow(config.projects, layout.projectRoot!)]
+    ? [await projectLayoutRow(config.projects, layout.projectRoot!, layout)]
     : config.projects;
   return selector ? rows.filter((project) => project.id === selector.projectId) : rows;
 }
@@ -584,12 +589,13 @@ export async function registryRows(
  * same way.
  *
  * `root` is compared as given — callers pass a realpath'd path, the same
- * spelling `registerProject` dedupes on.
+ * spelling `registerProject` dedupes on. `layout` is `registryRows`'s.
  */
 export async function findRegistryProject(
   query: { id: string } | { root: string },
+  layout?: StateLayout,
 ): Promise<WorkspaceProject | undefined> {
-  const rows = await registryRows();
+  const rows = await registryRows(undefined, layout);
   return 'id' in query
     ? rows.find((project) => project.id === query.id)
     : rows.find((project) => project.root === query.root);

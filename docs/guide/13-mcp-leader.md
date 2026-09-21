@@ -33,7 +33,7 @@ limits do not prevent independent tasks or preparation of a reviewable project-o
 
 ## To run a leader in each client
 
-Start the local cockpit first. Configure the chosen client from the project root and start its session there. The client launches `npx -y @qodeca/xezar mcp` over stdio; the bridge forwards calls to the project's running cockpit. It is not another cockpit server. A cockpit started in another folder also serves a project added to it with **Add project**, once that project has been opened in the cockpit; after the cockpit restarts, open the project again (or start the cockpit in the project folder) before the client calls a tool.
+Configure the chosen client from the project root and start its session there. The cockpit and the client session can start in either order: until the cockpit serves the project, a tool call answers that xezar is not running or that the folder is not a xezar project yet, and the first call after the cockpit is up reaches it with no `/mcp` reconnect – also when the cockpit is started with `--single-project` in a folder that had no xezar state when the session began. The client launches `npx -y @qodeca/xezar mcp` over stdio; the bridge forwards calls to the project's running cockpit. It is not another cockpit server. A cockpit started in another folder also serves a project added to it with **Add project**, once that project has been opened in the cockpit; after the cockpit restarts, open the project again (or start the cockpit in the project folder) before the client calls a tool.
 
 xezar writes `.local/xezar/mcp-connection.json` automatically, but **none of these clients discovers that file**. Each client still needs its own registration below. Use one owning client per project.
 
