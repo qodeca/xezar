@@ -136,6 +136,26 @@ describe("a run's first skill resolution and the first team-skills fetch (#777)"
     expect(skillMissingNote('xez-demo', lookup.catalog)).toContain('no access');
   });
 
+  it('ends the wait when the caller cancels, instead of holding the run for the bound (#793)', async () => {
+    makeOrigin(origin, 'xez-demo');
+    configure([{ repo: origin, ref: 'main' }]);
+    installSlowCloneGit(bin, '5');
+    process.env.PATH = `${bin}${delimiter}${savedPath ?? ''}`;
+
+    const first = await discoverSkills(project);
+    let cancel: () => void = () => undefined;
+    const cancelled = new Promise<void>((resolve) => {
+      cancel = resolve;
+    });
+    const startedAt = Date.now();
+    const lookup = lookupRunSkill(project, 'xez-demo', first, 20_000, cancelled);
+    setTimeout(cancel, 50);
+    // A run cancelled mid-wait must not be held for the whole bound: `run.ts` § quiesce requires
+    // every park point in a run body to consume a cancellation that arrived while it was parked.
+    expect((await lookup).catalog).toBe('pending');
+    expect(Date.now() - startedAt).toBeLessThan(4_000);
+  });
+
   /* Guards below pass both ways — they pin what must NOT change. */
 
   it('never waits when the project configures no skills source at all', async () => {

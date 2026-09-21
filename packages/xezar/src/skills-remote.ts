@@ -598,10 +598,29 @@ export function teamCatalogStateOf(repoRoot: string): TeamCatalogState {
  *
  * `timeoutMs <= 0` means "do not wait, just report" — what a dry run passes, and what keeps the
  * zero-config default from turning into a knob: the ceiling is a constant, not a setting.
+ *
+ * `cancelled` is the caller's own abort — a run body that parks here must still consume a
+ * cancellation that arrived while it was parked (`run.ts` § quiesce). It never rejects; settling
+ * it just ends the wait, and the state is then reported exactly as it stands.
+ *
+ * ## The timer is REF'D, and that is the whole point (#793)
+ *
+ * It was `unref`'d first, for #249's contract — "a one-shot command that finished its work must
+ * still exit at once", the other end of `git(… network: true)`, which unrefs the clone child and
+ * its three pipes. Both sides of the race were then unref'd, and `runAgentStep` has not spawned
+ * the agent yet, so during the wait a headless `xezar run` held NO ref'd handle at all: node saw
+ * an empty loop and exited 0 mid-`await` — no note, no step end, the run record left `running`.
+ * That is worse than the bug #777 fixed, which at least started the step.
+ *
+ * #249's contract is about a command that has FINISHED its work. Here the await IS the work, so
+ * there is nothing to exit early for, and the loop must stay open for it. The bound is unchanged
+ * and the `finally` clears the timer the moment the race settles, so this holds the process for
+ * the wait itself and never one tick longer.
  */
 export async function awaitFirstTeamSkills(
   repoRoot: string,
   timeoutMs: number,
+  cancelled?: Promise<unknown>,
 ): Promise<TeamCatalogState> {
   const current = teamCatalogStateOf(repoRoot);
   if (current !== 'pending' || timeoutMs <= 0) return current;
@@ -609,14 +628,12 @@ export async function awaitFirstTeamSkills(
   try {
     await Promise.race([
       // Already `.catch`-wrapped by `initialTeamSkillsLoad`: a failed load settles, it never
-      // rejects, so the race can only be won by a real completion or by the timer.
+      // rejects, so the race can only be won by a real completion, by the timer or by a cancel.
       waitForTeamSkills(repoRoot),
       new Promise<void>((done) => {
         timer = setTimeout(done, timeoutMs);
-        // Never hold the loop open for the wait: a one-shot command that finished its work
-        // must still exit at once (#249's contract, the other end of `git(… network: true)`).
-        timer.unref?.();
       }),
+      ...(cancelled ? [cancelled] : []),
     ]);
   } finally {
     if (timer) clearTimeout(timer);

@@ -130,8 +130,12 @@ export async function discoverSkills(repoRoot: string): Promise<Skill[]> {
  * a small skills repo on a home connection lands in seconds — the reported incident's clone had
  * landed by the time the log line was written — so 20 s covers the normal case with room to
  * spare, while a network that is merely slow costs a third of what the clone itself would before
- * the run falls through and starts anyway. It is paid at most once per run, and only when a
- * named skill was NOT found locally, so a project whose skills are all local never waits at all.
+ * the run falls through and starts anyway. It is paid PER CALL — once for each step execution
+ * that names a skill the local catalog does not hold, not once per run (#793, advisory M2: the
+ * comment claimed the stronger bound and the mechanism never had it). Only a miss waits, so a
+ * project whose skills are all local never waits at all; the wording is what was wrong, and the
+ * mechanism is deliberately unchanged, because a once-per-run memo would have to decide what a
+ * `refreshTeamSkills` between two steps means and that is a different change.
  * A constant rather than a setting, on purpose: § Zero config — never trade a working default
  * for a knob.
  */
@@ -165,11 +169,14 @@ export async function lookupRunSkill(
   name: string,
   skills: Skill[],
   timeoutMs = FIRST_TEAM_CATALOG_WAIT_MS,
+  /** The caller's cancellation, if it has one: a run body that parks here must still consume a
+   *  cancel that arrived while it was parked (#793, advisory M1). Settling it ends the wait. */
+  cancelled?: Promise<unknown>,
 ): Promise<RunSkillLookup> {
   const local = skills.find((skill) => skill.name === name);
   // Found already — the catalog's state is irrelevant to this run and is reported as it stands.
   if (local) return { skill: local, skills, catalog: teamCatalogStateOf(repoRoot) };
-  const catalog = await awaitFirstTeamSkills(repoRoot, timeoutMs);
+  const catalog = await awaitFirstTeamSkills(repoRoot, timeoutMs, cancelled);
   if (catalog !== 'ready') return { skills, catalog };
   // The wait may have been a no-op (the load was already complete before this call), in which
   // case re-discovery is a cheap local re-read and finds exactly the same miss.
@@ -191,15 +198,15 @@ export function skillMissingNote(name: string, catalog: TeamCatalogState): strin
     return (
       `skill "${name}" not found — the team skills catalog was not ready yet (its first fetch ` +
       `had not finished), so this is not "no such skill" — running with the plain prompt. ` +
-      `Retry the task once the fetch lands, or refresh the catalog in Settings → Skills.`
+      `Retry the task once the fetch lands, or use Refresh on the Skills page.`
     );
   }
   if (catalog === 'unavailable') {
     return (
       `skill "${name}" not found — the team skills catalog is empty because no configured ` +
       `skills repo could be read (offline, or no access), so this is not "no such skill" — ` +
-      `running with the plain prompt. Retry after refreshing the catalog in Settings → Skills, ` +
-      `or check "skillsRepos" in the project's configuration.`
+      `running with the plain prompt. Retry after using Refresh on the Skills page, or check ` +
+      `"skillsRepos" in the project's configuration.`
     );
   }
   return `skill "${name}" not found in .xezar/skills, .ai/skills or the team skills repo — running with the plain prompt`;
