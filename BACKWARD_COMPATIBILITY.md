@@ -1601,3 +1601,45 @@ separate from the route's (section 2) because it is the leader's door.
 - **Breaking:** renaming the action or changing its argument shape (a peer tool keys on both),
   answering account names instead of counts, copying outside the route (a second merge that could
   drift from the CLI's), or accepting it in hosted mode.
+
+## The MCP reads every agent account, the account problems and the import state (#819 PR 5) — additive, 0.18.0
+
+**Owner-delegated answer to #819 Q1, 2026-09-21: "ADDITIVE".** A leader setting up a project had
+no way to see which accounts exist, which one a task really uses, or whether the machine-wide
+import was done. The facts the Agent accounts pane shows are now readable through the MCP, beside
+the 0.16.0 shape rather than instead of it.
+
+- **`project_config` `get_account` — `accounts` keeps its meaning and shape.** One row per
+  provider, `{provider, handle, label?}`: the account a task in THIS project runs under. The only
+  addition is `builtIn` (boolean), true on the login the agent finds by itself. A reader that
+  takes the first row per provider as the one in use keeps working. One deliberate correction: a
+  stored choice (this project's selection, else the machine-wide default) that names no account of
+  that provider now reads `handle: "default"`, `builtIn: true` — the login a run falls back to —
+  instead of echoing the missing name. The old answer named an account no task used.
+- **`profiles` (additive).** Every account per provider, the built-in login first:
+  `{provider, handle, label?, builtIn, selected}`, with `selected: true` on exactly one row per
+  provider, the same row `accounts` names. A consumer feature-detects the key.
+- **`problems` (additive).** `{kind: "unknown-account", where: "defaults" | "selection",
+  provider, handle, fix}` — the listing's own entries (`GET /api/v1/workspace/agent-profiles`
+  `problems`), narrowed to the machine-wide default and this project's own selection (another
+  project's choices are not this project's facts) and de-duplicated. `handle` is the stored string
+  as written, so the reader can recognise its own case; `fix` is one line naming the action that
+  fixes it. `[]` when there are none. Advisory: tasks still run, on the built-in login.
+- **`globalImport`** on `get_account` is unchanged (the listing's field, passed through).
+- **`discover_project` `onboarding.globalImport` (additive).** `{state: "done" | "declined" |
+  "unknown", importable: <number>}`, read by the listing's own reader (`globalImportSummary`: the
+  outcome recorded in the project's `machine-state.json` and `countImportableGlobalAccounts`).
+  Present only in single-project mode on the host; absent in the global layout and in hosted mode.
+  Absent is never "unknown". The rest of `onboarding` is still exactly `GET /onboarding`, which
+  does not change; `/api/v1/health` does not carry it.
+- **Redaction.** No row carries `configDir`, `path` or any other folder — the answer's schema
+  (`mcpAccountsSchema`) is strict, so a builder that forwarded one fails instead of answering. A
+  label that looks like an identity (contains `@`) is absent, as it already was in `accounts`; a
+  problem's handle that looks like one is replaced by a withheld marker, since it addresses no
+  account. `importable` is a count: no id, label, provider handle or path of the machine-wide file
+  appears anywhere, errors included, and an unreadable machine-wide file counts 0.
+- **Hosted mode is unchanged:** `{available: false, reason}`, no new key.
+- **Breaking:** removing or renaming `profiles`, `problems`, `builtIn`, `selected`, `fix` or
+  `onboarding.globalImport`; turning `accounts` into the full list; reporting a missing account as
+  the one in use; adding a folder or an identity-looking label to any row; or serving any of it in
+  hosted mode.

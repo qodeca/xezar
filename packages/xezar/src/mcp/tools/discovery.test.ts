@@ -9,6 +9,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mcpDiscoverySchema, type HealthResponse, type McpDiscovery } from '@qodeca/xezar-contract';
 import { BUNDLED_TEMPLATES_DIGEST } from '../../onboarding/status.ts';
 import { mergeWriteWorkspaceConfig } from '../../workspace/config.ts';
+import { globalImportSummary } from '../../workspace/import-global.ts';
+import { recordGlobalImportState } from '../../workspace/project-machine-state.ts';
+import { projectStateLayout, setActiveStateLayout } from '../../state-layout.ts';
 import { toolListing } from '../tool.ts';
 import { bindHostFromArgv, buildDiscovery, discoverProjectTool, discoveryText, type DiscoveryFacts } from './discovery.ts';
 
@@ -180,6 +183,21 @@ describe('discover_project — the filter', () => {
     }
     // The tool's text block carries the same result, so it must be clean too.
     expect(wire).not.toContain('Acme');
+  });
+});
+
+describe('discover_project — the global-import state (#819 PR 5)', () => {
+  // Break: the onboarding block rebuilt from a wider object — a list of names beside the count
+  // would ride along to the model.
+  it('carries the state and the count and drops anything else put beside them', () => {
+    const discovery = buildDiscovery(
+      facts({ onboarding: { globalImport: { state: 'declined', importable: 1, ids: ['secret-id'] } as never } }),
+    );
+    expect(discovery.onboarding.globalImport).toEqual({ state: 'declined', importable: 1 });
+    expect(JSON.stringify(discovery)).not.toContain('secret-id');
+    expect(discoveryText(discovery)).toContain(
+      'Agent accounts: a person declined to copy the machine-wide accounts into this project; 1 account of the machine-wide setup is not in this project.',
+    );
   });
 });
 
@@ -446,6 +464,74 @@ describe('discover_project — the tool', () => {
     expect(discovery.onboarding.issueFiling.reason).toMatch(/has no remote/);
     expect(text).toContain('Issue filing: not available: ');
   }, 60_000);
+
+  /**
+   * #819 PR 5, P5-AC4 — `onboarding.globalImport` is the persisted outcome and the count, read by
+   * the listing's own reader. Break: the key missing from discovery (the 0.17.0 answer), or a
+   * second reader that folds `not-asked` into `declined` or lists the machine-wide accounts.
+   */
+  describe('the global-import state (#819 PR 5)', () => {
+    afterEach(() => setActiveStateLayout(null));
+    const MACHINE_ACCOUNTS = {
+      accounts: [
+        { id: 'pr5-work', provider: 'claude', configDir: '~/.claude-pr5-work', label: 'someone@example.com' },
+        { id: 'pr5-team', provider: 'codex', configDir: '~/.codex-pr5-team', label: 'Team' },
+      ],
+    };
+    const call = async (root: string) => {
+      const result = await discoverProjectTool.call({}, { project: { id: 'proj-a', name: 'Project A', root }, xezarVersion: '1.2.3' });
+      return { discovery: mcpDiscoverySchema.parse(result.structuredContent), text: result.content[0]!.text, wire: JSON.stringify(result) };
+    };
+
+    it('P5-AC4: equals the persisted outcome and the count, and names no account', async () => {
+      const root = projectDir('xez-discovery-import-');
+      writeFileSync(join(process.env.XEZ_HOME!, 'agent-accounts.json'), JSON.stringify(MACHINE_ACCOUNTS), 'utf8');
+      const layout = projectStateLayout(root);
+      setActiveStateLayout(layout);
+
+      // Nothing recorded: `unknown`, never a "no".
+      let answer = await call(root);
+      expect(answer.discovery.onboarding.globalImport).toEqual({ state: 'unknown', importable: 2 });
+      expect(answer.text).toContain('Agent accounts: nothing records whether the machine-wide accounts were copied into this project; 2 accounts');
+
+      await recordGlobalImportState('declined', layout);
+      answer = await call(root);
+      expect(answer.discovery.onboarding.globalImport).toEqual({ state: 'declined', importable: 2 });
+      expect(answer.discovery.onboarding.globalImport).toEqual(globalImportSummary(layout));
+
+      await recordGlobalImportState('imported', layout);
+      answer = await call(root);
+      expect(answer.discovery.onboarding.globalImport).toEqual({ state: 'done', importable: 2 });
+      expect(answer.text).toContain('Agent accounts: the machine-wide accounts were copied into this project; 2 accounts');
+      for (const secret of ['pr5-work', 'pr5-team', 'someone@example.com', 'claude-pr5', 'codex-pr5', 'Team']) {
+        expect(answer.wire, secret).not.toContain(secret);
+      }
+    }, 60_000);
+
+    it('reads an unreadable machine-wide file as 0, never an error', async () => {
+      const root = projectDir('xez-discovery-import-bad-');
+      writeFileSync(join(process.env.XEZ_HOME!, 'agent-accounts.json'), '{ not json', 'utf8');
+      setActiveStateLayout(projectStateLayout(root));
+      const answer = await call(root);
+      expect(answer.discovery.onboarding.globalImport).toEqual({ state: 'unknown', importable: 0 });
+      expect(answer.text).toContain('0 accounts of the machine-wide setup are not in this project');
+    }, 60_000);
+
+    // P5-AC5 and the global layout. Break: the count served where the global home must not be
+    // read (hosted) or where there is nothing to import into (the global layout).
+    it('is absent in the global layout and in hosted mode', async () => {
+      const root = projectDir('xez-discovery-import-absent-');
+      writeFileSync(join(process.env.XEZ_HOME!, 'agent-accounts.json'), JSON.stringify(MACHINE_ACCOUNTS), 'utf8');
+      let answer = await call(root);
+      expect(answer.discovery.onboarding).not.toHaveProperty('globalImport');
+      expect(answer.text).not.toContain('Agent accounts:');
+      setActiveStateLayout(projectStateLayout(root));
+      process.env.XEZ_REMOTE = '1';
+      answer = await call(root);
+      expect(answer.discovery.capabilities.localHandoff).toBe(false);
+      expect(answer.discovery.onboarding).not.toHaveProperty('globalImport');
+    }, 60_000);
+  });
 
   it('states the issue-filing fact in the text block, for both answers', () => {
     const open = discoveryText(buildDiscovery(facts()));

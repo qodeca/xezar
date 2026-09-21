@@ -9,6 +9,7 @@ import {
   createAgentProfileInputSchema,
   DEFAULT_AGENT_ACCOUNT_ID,
   MODEL_DISCOVERY_RUNNERS,
+  mcpAccountsSchema,
   mcpExpectedVersionSchema,
   onboardingIdentitySchema,
   onboardingStatusSchema,
@@ -31,6 +32,7 @@ import {
   type AgentAccountStatusResponse,
   type AgentConfigFileContent,
   type AgentConfigListing,
+  type AgentAccountProblem,
   type AgentProfile,
   type AgentProfileResponse,
   type AgentProfileSelectionsResponse,
@@ -40,6 +42,9 @@ import {
   type ConfigResponse,
   type HealthResponse,
   type ListModelsResult,
+  type McpAccountProblem,
+  type McpAccountRow,
+  type McpAccounts,
   type ModelCatalogToolRow,
   type ProjectListEntry,
   type ProjectsResponse,
@@ -1288,6 +1293,104 @@ function accountRow(profile: AgentProfile, echoConfigDir: boolean) {
   };
 }
 
+/** What replaces a problem's stored handle when that handle looks like an identity. */
+const HANDLE_WITHHELD = '(a handle that looks like an identity, withheld)';
+
+/**
+ * `get_account`'s answer (#819 PR 5, items 2 and 3), built from the cockpit's own Agent accounts
+ * listing and nothing else — the same rows, the same `problems`, the same `globalImport` the pane
+ * shows, so a leader and a person cannot be told different things.
+ *
+ * WHICH ACCOUNT IS IN USE is the one thing resolved here rather than read from the listing's
+ * `selected`: the listing answers it for ITS subject (the folder in single-project mode, the
+ * machine default otherwise), while this answer is about the project the session is bound to. The
+ * rule is `selectProfile`'s, step for step — the project's selection, else the machine default, and
+ * a choice that names no account of that provider lands on the built-in login — so a dangling
+ * handle is never reported as the account a task uses (P5-AC2); it is reported as a problem.
+ *
+ * REDACTION (P5-AC3). No `configDir` or path is copied into any row — `mcpAccountsSchema` is strict,
+ * so one that slipped in would fail the parse rather than reach the leader — and a label that looks
+ * like an identity is withheld (ABSENT), as it always was in `accounts`. A problem's stored handle
+ * is withheld the same way: it addresses no account, so nothing is lost, and a hand-edited file is
+ * exactly where an address could sit. A row's handle is the account's id and stays as it is — it is
+ * what `select_account` takes, and since #764 an id is never allocated from an identity.
+ *
+ * `accounts` keeps its 0.16.0 shape (P5-AC6): one row per provider, `builtIn` the only addition.
+ * `profiles` and `problems` are additive keys, which a reader of `accounts` alone never sees.
+ */
+export function accountsAnswer(listing: AgentProfilesResponse, root: string): McpAccounts {
+  if (!listing.editable) {
+    return mcpAccountsSchema.parse({ available: false, reason: 'account information is not served in hosted mode' });
+  }
+  const selection = listing.selections[root] ?? {};
+  const providers = [...new Set(listing.profiles.map((p) => p.provider))];
+  const inUse = new Map(
+    providers.map((provider) => {
+      const chosen = selection[provider] ?? listing.defaults[provider];
+      const known = chosen !== undefined && listing.profiles.some((p) => p.provider === provider && p.id === chosen);
+      return [provider, known ? chosen : DEFAULT_AGENT_ACCOUNT_ID] as const;
+    }),
+  );
+  const row = (profile: Pick<AgentProfile, 'provider' | 'id' | 'label' | 'isDefault'>): McpAccountRow => ({
+    provider: profile.provider,
+    handle: profile.id,
+    ...(profile.label && !looksLikeIdentity(profile.label) ? { label: profile.label } : {}),
+    builtIn: profile.isDefault,
+  });
+  const accounts = providers.map((provider) => {
+    const handle = inUse.get(provider)!;
+    const profile = listing.profiles.find((p) => p.provider === provider && p.id === handle);
+    return row(profile ?? { provider, id: handle, label: '', isDefault: handle === DEFAULT_AGENT_ACCOUNT_ID });
+  });
+  const profiles = listing.profiles.map((profile) => ({ ...row(profile), selected: inUse.get(profile.provider) === profile.id }));
+  return mcpAccountsSchema.parse({
+    available: true,
+    accounts,
+    profiles,
+    problems: projectAccountProblems(listing.problems ?? [], selection),
+    // Whether this project took the machine-wide accounts and how many it still could (#819
+    // PR 9) — the listing's own field, passed through as it is: a state and a COUNT, never a
+    // name. Absent whenever the listing omits it (the global layout, where there is nothing to
+    // import into), so a leader reads absence exactly as the cockpit does.
+    ...(listing.globalImport ? { globalImport: listing.globalImport } : {}),
+  });
+}
+
+/**
+ * The listing's `problems` that concern THIS project, each with the line that fixes it.
+ *
+ * The machine-wide default is every project's fallback, so its problems are kept. A `selection`
+ * problem is kept only when it is this project's own stored choice: the listing reports every
+ * project's, and another project's choices are not this project's facts (N-01). Two projects that
+ * name the same missing handle arrive as two identical entries, so the list is de-duplicated.
+ */
+function projectAccountProblems(
+  problems: readonly AgentAccountProblem[],
+  selection: Partial<Record<AgentAccountProblem['provider'], string>>,
+): McpAccountProblem[] {
+  const seen = new Set<string>();
+  const kept: McpAccountProblem[] = [];
+  for (const problem of problems) {
+    if (problem.where === 'selection' && selection[problem.provider] !== problem.handle) continue;
+    const key = `${problem.where}\u0000${problem.provider}\u0000${problem.handle}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    kept.push({
+      ...problem,
+      handle: looksLikeIdentity(problem.handle) ? HANDLE_WITHHELD : problem.handle,
+      fix: accountProblemFix(problem),
+    });
+  }
+  return kept;
+}
+
+/** One line a leader can act on, through this tool's own actions. */
+function accountProblemFix(problem: AgentAccountProblem): string {
+  return problem.where === 'selection'
+    ? `This project's ${problem.provider} account choice names no account, so its tasks run on the built-in login. Point it at an account from profiles with select_account (provider ${problem.provider}), or clear it with accountId null.`
+    : `The machine-wide default ${problem.provider} account names no account, so projects without their own choice run on the built-in login. Choose this project's account with select_account (provider ${problem.provider}); a person changes the machine-wide default in the cockpit's Agent accounts settings.`;
+}
+
 /**
  * The route id of ONE account, built by the CONTRACT's own encoder (#677 B5).
  *
@@ -1562,32 +1665,7 @@ async function run(args: ProjectConfigInput & { action: ProjectConfigAction }, s
     case 'get_account': {
       const answer = await settle<AgentProfilesResponse>(s.api.workspace['agent-profiles'].$get(), [200]);
       if (!answer.ok) return fail(answer);
-      const listing = answer.value;
-      if (!listing.editable) {
-        return ok(action, { available: false, reason: 'account information is not served in hosted mode' });
-      }
-      // D-03-3: the effective handle and display label for THIS project only — the selection
-      // rule `selectionFor` applies (repo first, then the machine default), and nothing else.
-      const selection = listing.selections[s.root] ?? {};
-      const providers = [...new Set(listing.profiles.map((p) => p.provider))];
-      return ok(action, {
-        available: true,
-        accounts: providers.map((provider) => {
-          const handle = selection[provider] ?? listing.defaults[provider] ?? 'default';
-          const profile = listing.profiles.find((p) => p.provider === provider && p.id === handle);
-          const label = profile?.label;
-          return {
-            provider,
-            handle,
-            ...(label && !looksLikeIdentity(label) ? { label } : {}),
-          };
-        }),
-        // Whether this project took the machine-wide accounts and how many it still could (#819
-        // PR 9) — the listing's own field, passed through as it is: a state and a COUNT, never a
-        // name. Absent whenever the listing omits it (the global layout, where there is nothing to
-        // import into), so a leader reads absence exactly as the cockpit does.
-        ...(listing.globalImport ? { globalImport: listing.globalImport } : {}),
-      });
+      return ok(action, accountsAnswer(answer.value, s.root));
     }
 
     /**
@@ -2147,7 +2225,7 @@ export const projectConfigTool = defineTool({
   name: 'project_config',
   title: 'Project configuration',
   description:
-    "Read and change THIS project's own configuration: its settings (agent, models, system prompt, review gate, base branch, worktree retention, memory limit), its registry entry (concurrency cap and tags), prompt templates, in-repo agent config files, workflows, skills, GitHub automations and worktrees. It also reads the shared settings as effective limits and capabilities (get_limits, get_capabilities, get_account) and CHANGES them with set_workspace_config — the shared limits, composer defaults, follow-up inbox and environment passthrough, skills auto-update and the machine-wide agent defaults, which apply to every project on this machine, the terminal settings (the instance mode — which projects one xezar serves — and how its terminal prints; all are settled at start, so a change applies the next time one starts) and the two workspace folder paths — the folder the file picker may browse and the folder new checkouts land in, each checked for real before anything is saved. The shared presentation preferences are read with get_workspace_ui_state and changed with set_workspace_ui_state (appearance, notifications, task-table columns, dismissed provider incidents) and import_skills (the curated list of default skills); an object-valued preference is replaced whole, so read it before you change one key of it. The colour theme is not among them — the browser stores that itself. The models each agent backend can run are read with list_models: per backend, every model id exactly as that backend's own --model flag takes it, whether the list could be read and why not when it could not, and local and vision only where the backend's own data proves them – a missing one means unknown, not no. The agent backends can be switched off and on for the whole machine with set_provider_enabled and their authentication incidents cleared with retry_provider. The agent ACCOUNTS — the separate logins a backend can run under — are read with get_account, added with create_account, edited with update_account, removed with remove_account and pointed at this project with select_account; check_account_status probes one account's sign-in state and get_account_details reports who it is signed in as. import_global_accounts copies the accounts of the person's machine-wide xezar setup into this project — the same merge as the `xezar accounts import-global` command: it only adds accounts the project does not have, never replaces one, answers how many were added and kept (never which), and works only when the project keeps its own setup (single-project mode); get_account reports whether that was done and how many could still be copied. Connecting a provider, opening an account's folder in a desktop application, home files, the project registry and host folders are outside this boundary and are refused with the reason.",
+    "Read and change THIS project's own configuration: its settings (agent, models, system prompt, review gate, base branch, worktree retention, memory limit), its registry entry (concurrency cap and tags), prompt templates, in-repo agent config files, workflows, skills, GitHub automations and worktrees. It also reads the shared settings as effective limits and capabilities (get_limits, get_capabilities, get_account) and CHANGES them with set_workspace_config — the shared limits, composer defaults, follow-up inbox and environment passthrough, skills auto-update and the machine-wide agent defaults, which apply to every project on this machine, the terminal settings (the instance mode — which projects one xezar serves — and how its terminal prints; all are settled at start, so a change applies the next time one starts) and the two workspace folder paths — the folder the file picker may browse and the folder new checkouts land in, each checked for real before anything is saved. The shared presentation preferences are read with get_workspace_ui_state and changed with set_workspace_ui_state (appearance, notifications, task-table columns, dismissed provider incidents) and import_skills (the curated list of default skills); an object-valued preference is replaced whole, so read it before you change one key of it. The colour theme is not among them — the browser stores that itself. The models each agent backend can run are read with list_models: per backend, every model id exactly as that backend's own --model flag takes it, whether the list could be read and why not when it could not, and local and vision only where the backend's own data proves them – a missing one means unknown, not no. The agent backends can be switched off and on for the whole machine with set_provider_enabled and their authentication incidents cleared with retry_provider. The agent ACCOUNTS — the separate logins a backend can run under — are read with get_account — the account each backend uses in this project (accounts), every account per backend with the one in use marked selected and the login the backend finds by itself marked builtIn (profiles), and every stored account choice that names no account, with the line that fixes it (problems; tasks still run, on the built-in login) — added with create_account, edited with update_account, removed with remove_account and pointed at this project with select_account; check_account_status probes one account's sign-in state and get_account_details reports who it is signed in as. import_global_accounts copies the accounts of the person's machine-wide xezar setup into this project — the same merge as the `xezar accounts import-global` command: it only adds accounts the project does not have, never replaces one, answers how many were added and kept (never which), and works only when the project keeps its own setup (single-project mode); get_account reports whether that was done and how many could still be copied. Connecting a provider, opening an account's folder in a desktop application, home files, the project registry and host folders are outside this boundary and are refused with the reason.",
   inputSchema: projectConfigInputSchema,
   annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
   // #819 item 6: the refusals stand whatever else was sent. Without this, a refused action carrying

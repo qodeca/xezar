@@ -701,7 +701,7 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
       });
       // The account's label is readable by its handle (D-42), and the lock is a project fact.
       const account = await mcp(w, 'project_config', { action: 'get_account' });
-      expect(account.result.accounts).toContainEqual({ provider: 'claude', handle: 'default', label: 'Default' });
+      expect(account.result.accounts).toContainEqual({ provider: 'claude', handle: 'default', label: 'Default', builtIn: true });
       const discovery = await mcp(w, 'discover_project');
       expect(discovery.settings).toMatchObject({ modelsLocked: false });
       // F-12 / N-01: nothing on the way names an email, an organisation or a plan.

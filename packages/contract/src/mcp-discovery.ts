@@ -1,7 +1,8 @@
 import { z } from 'zod';
+import { agentAccountProblemSchema, agentAccountsGlobalImportSchema } from './agent-profiles.ts';
 import { capabilitiesSchema, runnerSchema } from './health.ts';
 import { onboardingStatusSchema } from './onboarding.ts';
-import { providerConnectionStateSchema } from './workspace.ts';
+import { providerConnectionStateSchema, providerIdSchema } from './workspace.ts';
 
 /**
  * The MCP discovery result (#90, F-03, U-M06): what a project-bound leader may learn about the
@@ -98,6 +99,23 @@ export const mcpDiscoveryLimitsSchema = z.strictObject({
 });
 export type McpDiscoveryLimits = z.infer<typeof mcpDiscoveryLimitsSchema>;
 
+/**
+ * `discover_project.onboarding`: the cockpit's own setup state (`onboardingStatusSchema`, the same
+ * shape `GET /onboarding` serves) plus one MCP-only key (#819 PR 5, item 1d).
+ *
+ * `globalImport` is whether this project took the agent accounts of the person's machine-wide setup
+ * and how many it still could — the SAME value the Agent accounts listing serves
+ * (`agentAccountsGlobalImportSchema`, read by one helper, `globalImportSummary`). A state and a
+ * COUNT, never a name, id, label, provider handle or path. PRESENT only in single-project mode on
+ * the host; absent in the global layout (nothing to import into) and in hosted mode. Absent is
+ * never "unknown". It is added here rather than to `onboardingStatusSchema` so that
+ * `GET /onboarding` does not change, and it is never on `/api/v1/health`.
+ */
+export const mcpDiscoveryOnboardingSchema = onboardingStatusSchema.extend({
+  globalImport: agentAccountsGlobalImportSchema.optional(),
+});
+export type McpDiscoveryOnboarding = z.infer<typeof mcpDiscoveryOnboardingSchema>;
+
 export const mcpDiscoverySchema = z.strictObject({
   project: z.strictObject({
     id: z.string(),
@@ -126,6 +144,62 @@ export const mcpDiscoverySchema = z.strictObject({
    * pending offer, and dispatching a check is a separate, deliberate `task_create` naming
    * `launch.workflowId`.
    */
-  onboarding: onboardingStatusSchema,
+  onboarding: mcpDiscoveryOnboardingSchema,
 });
 export type McpDiscovery = z.infer<typeof mcpDiscoverySchema>;
+
+/**
+ * `project_config` `get_account` (#819 PR 5, items 2 and 3) — which agent account THIS project's
+ * tasks run under, every account the machine has, and every stored choice that names no account.
+ *
+ * STRICT at every level, and that is the redaction guarantee rather than tidiness: an account row
+ * has no `configDir`, `path` or identity field, so a builder that forwards one fails the parse
+ * instead of handing a leader a folder on the person's machine. A label that looks like an identity
+ * (it contains `@`) is withheld by the builder, not here: the schema cannot tell a label from an
+ * address, and withheld means ABSENT, which `label` being optional allows.
+ */
+
+/** One account, as the leader addresses it: `handle` is what `select_account` takes. */
+export const mcpAccountRowSchema = z.strictObject({
+  provider: providerIdSchema,
+  /** The account's id. `default` is the login the agent finds on this machine by itself. */
+  handle: z.string(),
+  /** Its display label; ABSENT when there is none or it looks like an identity. */
+  label: z.string().optional(),
+  /** True on the login the agent finds by itself (never stored, never removable), false otherwise. */
+  builtIn: z.boolean(),
+});
+export type McpAccountRow = z.infer<typeof mcpAccountRowSchema>;
+
+/** One entry of `profiles`: every account per provider, the built-in login first. */
+export const mcpAccountProfileSchema = mcpAccountRowSchema.extend({
+  /** True on exactly one row per provider — the account a task in this project runs under. */
+  selected: z.boolean(),
+});
+export type McpAccountProfile = z.infer<typeof mcpAccountProfileSchema>;
+
+/**
+ * A stored choice that names no account — the listing's own `agentAccountProblemSchema` entry,
+ * with the stored `handle` kept as written so the reader can recognise its own case, plus the one
+ * line that says what to do about it. Advisory: tasks still run, on the built-in login.
+ */
+export const mcpAccountProblemSchema = agentAccountProblemSchema.extend({ fix: z.string().min(1) }).strict();
+export type McpAccountProblem = z.infer<typeof mcpAccountProblemSchema>;
+
+export const mcpAccountsSchema = z.discriminatedUnion('available', [
+  z.strictObject({ available: z.literal(false), reason: z.string().min(1) }),
+  z.strictObject({
+    available: z.literal(true),
+    /** One row per provider: the account a task here runs under. Unchanged since 0.16.0 except for
+     *  the additive `builtIn`; a dangling stored choice reads as `default`, the login a run uses. */
+    accounts: z.array(mcpAccountRowSchema),
+    /** Every account per provider, `selected: true` on the one `accounts` names (additive, #819). */
+    profiles: z.array(mcpAccountProfileSchema),
+    /** Stored choices that name no account: the machine-wide default and THIS project's selection
+     *  only — another project's choices are not this project's facts. `[]` when there are none. */
+    problems: z.array(mcpAccountProblemSchema),
+    /** As on the listing: present only in single-project mode on the host. */
+    globalImport: agentAccountsGlobalImportSchema.optional(),
+  }),
+]);
+export type McpAccounts = z.infer<typeof mcpAccountsSchema>;
