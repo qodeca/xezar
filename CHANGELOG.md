@@ -1,7 +1,734 @@
-# Unreleased
+# 0.17.0 (2026-09-21)
+
+## Highlights
+
+One cockpit per project is now a real mode: `xezar --instance project` serves the project it started
+in and turns the others into links to their own cockpits, each saying whether it is running. Settings
+parity is the second theme — the instance mode, the gate-slot count, model locking, a project's
+per-task memory limit and the terminal keys are editable from both Settings and a project leader's
+MCP, most with no restart. A machine-wide gate lease makes a second full check run wait instead of
+starving the first, and Settings → Skills now says which team-skills catalog is being served and
+whether a newer one is waiting. A secret hidden behind nested unicode escapes no longer reaches the
+audit digest, and single-project mode stops writing machine-wide keys into the committed file.
+
+## 🔒 Security
+
+- 🐛 **A secret hidden behind nested unicode escapes no longer reaches the audit digest.** The
+  audit-redaction seam decodes literal `\uXXXX` escapes before it checks a value against the host's
+  secret env values and well-known token shapes, but one pass peeled one layer only: a doubly
+  escaped value (`\u005cu0067…`, a double-escaped `g`) stayed encoded, so the check never saw the
+  secret and the digest was taken over the escaped text. The decode now iterates to a fixpoint,
+  capped at four passes, and the no-escape fast path is unchanged. (#646)
+
+## ✨ Features
+
+- ✨ **A leader can build a fix task from a reviewer's own recorded findings instead of retyping
+  them.** The MCP `task_create` action `start` takes an optional `fromFindings: {runId, ids, role?}`
+  and renders the task's text from the findings that reviewing task recorded — the role, the
+  reviewed commit, the engine that reviewing STEP ran on, the link to the full review, and the
+  findings as a numbered list, with the leader's own prompt appended whole after it. Each finding's
+  headline is one line and its body an indented quote under its own item, so nothing a reviewer
+  wrote can render as a second finding, a heading or a paragraph of its own; a report that left
+  findings out says how many. It refuses rather than works around: a task — or any step of an
+  inline chain — that would run on the reviewing step's own backend and model is refused with both
+  named, an id the task does not record refuses the whole call listing what was missing, and an
+  unreadable, absent or archived reviewing task is a named refusal instead of an empty brief. No
+  finding title or body reaches the tool's answer or a journal row. With `fromFindings` omitted
+  nothing changes. (#673)
+- ✨ **Settings → Skills now says which team-skills catalog this cockpit is serving, and whether a
+  newer one is waiting.** The page's only status line was about `npx skills` installations, while
+  the catalog xezar actually serves comes from a bare clone under the cache root whose version was
+  nowhere on screen — the workaround was `git -C ~/.cache/xez/skills/… log -1`. A new **Skill
+  catalog** block shows, per configured source, the version being served (`v1.1.0 (de525c6, Sep 20,
+  2026)`, or `1 commit after v1.1.0 (…)` when the tag is not exact), the version this machine last
+  saw upstream, and one state word — **Up to date**, **Update available**, **Check is stale**,
+  **Comparison unknown** or **Version unknown** — each with its own sentence saying what is tracked,
+  how long ago it was checked and, where there is one, what to do next. A project leader reads the
+  same two facts through the MCP — `project_config`
+  `check_skill_updates` carries them too. There is no new network call: "available" means upstream
+  as this machine last saw it, which is exactly what the copy says. No new route, no new setting, no
+  new environment variable, and every degraded case — no clone yet, an unresolvable ref, no git —
+  renders quietly as `Version unknown` rather than as an error. (#744)
+- ✨ **A project leader can set the two workspace folder paths through the MCP.** `project_config`'s
+  `set_workspace_config` now accepts `browseRoot` (where the folder picker may browse) and `projectsDir`
+  (where new checkouts land), completing the owner's "every key" rule that the previous slice applied to
+  the rest of the shared settings. Both are checked for real by the cockpit's own route before anything is
+  saved: a path that is not absolute, is not a folder, or cannot be written to is answered with the reason
+  and nothing in that call is stored — the shared limits sent alongside it included. The paths can be
+  changed and are still never read back. Three consequences worth knowing: moving the browse folder
+  widens what a **person** at the cockpit may then browse (the leader gains no folder listing of its
+  own), setting the checkout folder creates that folder if it does not exist, and — because the check
+  answers with its reason — a leader can also learn whether any absolute path on the machine exists,
+  whether it is a file or a folder, and whether it can be written to, without changing anything.
+  (#748)
+- ✨ **A reviewer's findings now reach the leader in machine-readable form, because the three
+  reviewing roles write them.** The code-review, QA and design-review playbooks carry the findings
+  in their verdict packet example and state the rules that go with it: the findings come from the
+  same working list the posted comment came from — never by re-reading that comment, never a second
+  file — the comment always carries every finding, and a packet that could not fit them all says
+  exactly how many it left out, in the comment as well. The leader's own guide explains reading
+  them back and building a fix brief from them instead of retyping them. A check now parses each
+  playbook's example through the real verdict schema, so an example that drifts from what the
+  engine accepts fails the build instead of silently costing a reviewer its whole verdict. (#673)
+- ✨ **A project leader can change the shared presentation preferences over MCP.** `project_config`'s
+  `set_workspace_ui_state` and `import_skills` used to exist only to refuse; both are real writes now
+  and go through `PUT /workspace/ui-state`, the same route the cockpit's own panes use, with the same
+  bounds; a preference the leader does not send is left alone. `get_workspace_ui_state` reads the same
+  preferences back, and a leader needs it: a preference that is an object — the appearance, the folded
+  Tasks-table columns, the dismissed provider incidents — is replaced whole by whatever is sent, so the
+  way to change one part of one is to read it, change that part and send the whole thing back, exactly
+  as the cockpit does. A leader can set the accent, density and
+  reading width, turn notifications on or off, fold and unfold Tasks-table columns, curate which
+  default skills are shown, and clear a dismissed provider incident — all of them shared by every
+  project on this machine. **The colour theme is not included and cannot be**: the browser stores it
+  itself, so there is no setting on the server to change. The leader also cannot touch the two keys
+  that describe one browser's window (which sidebar groups are folded, where it last navigated), and
+  what it reads back never includes a provider incident's id. (#677)
+- ✨ **A project leader can switch agent backends off and on over MCP, and clear a sign-in
+  problem.** `project_config`'s `set_provider_enabled` and `retry_provider` used to exist only to
+  refuse; both are real changes now and go through the same routes the cockpit's own Providers card
+  uses. Switching a backend off applies to **every project on this machine** and takes effect at
+  once: the next task simply is not offered that backend, with no restart. Switching one back on
+  re-enables a backend the person had deliberately turned off, so it is worth being sure before
+  either. "Try again" after a sign-in problem works too: the leader never sees, and never needs,
+  the id of the incident — the tool reads the current one itself and clears that, and if a newer
+  problem arrives in between, the answer is the same "refresh and try again" the cockpit gets.
+  **Connecting a backend is still not something a leader can do**: that opens a login window on the
+  person's own machine, which stays a person's job.
+  One piece of advice added earlier in this release is corrected at the same time: read a shared
+  preference, change one part of it and send the whole thing back does **not** work for the list of
+  dismissed provider sign-in problems, because reading it reports which backends were dismissed and
+  deliberately withholds the ids a change needs. Writing that one preference replaces every
+  dismissal there is; an empty object clears them all, and leaving the key out keeps them. (#677)
+- ✨ **`xezar --instance project` serves one project and points at the others instead of opening
+  them.** One cockpit per project, opt-in: the process serves the project it started in, a request
+  for another registered project answers with a sentence naming that project, its folder and the
+  project this cockpit does serve, and the cross-project task finder answers for this project only.
+  Every project stays visible and you can still add, clone and remove them — that is what makes it
+  different from `XEZ_SINGLE_PROJECT`, which hides them. `XEZ_INSTANCE` and a saved `cli.instance`
+  say the same thing; a flag beats a saved value and a saved value beats the variable.
+  `--single-project`, and a folder that owns its xezar state, already serve one project and win
+  over it, with one line saying so. **`workspace` — every registered project in one cockpit —
+  remains the default and is unchanged.** (#467)
+- ✨ **The project list says which of your other projects are running, and where.** Each registered
+  project now carries a checked answer — running (with a link to its own cockpit), running at an
+  address xezar cannot work out, not running, or still checking — instead of a remembered port that
+  is out of date the moment a cockpit closes. xezar asks that project's own cockpit and only
+  believes an answer that names that project, so another program sitting on the port it used to
+  hold is never mistaken for it, and a cockpit started with `--port 0` reads as running rather than
+  as stopped. A hosted xezar makes no such check and says nothing about it. The list itself never
+  waits for the answer. The check asks that project's own recorded address and nothing else: it
+  carries no credential and refuses to be redirected anywhere, so whatever happens to hold a port a
+  cockpit used to own cannot send it somewhere else. (#467)
+- ✨ **One cockpit per project: your other projects are now links to their own cockpits.** When
+  xezar runs with `--instance project` it serves the project it started in, and the sidebar grows an
+  "Other projects" group under the nav — one row per project you have registered, each saying what
+  it checked. A running one is a link straight to that project's own cockpit at its own address; one
+  whose process is up but recorded no address says so and tells you to find its terminal; one that is
+  not running offers Copy command, which hands you the line to paste into a terminal. A cockpit you
+  reach over the network offers no command — that terminal is on another machine — and says nothing
+  about a project it never looked at, rather than guessing. The same rows appear in the ⌘K palette,
+  and All tasks now says in one line that it is listing this project only. Nothing is hidden and
+  nothing is taken away: you can still add, clone, tag and remove projects exactly as before. The
+  default is unchanged — one cockpit for every project — and its sidebar is byte for byte what it
+  was. Those rows stay current while the page is open: start or stop another project's xezar in a
+  terminal and its row follows within a few seconds, with no reload — and a row that says
+  "checking…" the instant you open a fresh cockpit resolves by itself instead of staying there.
+  (#467, #796)
+- ✨ **How xezar starts in a terminal is now a set of settings you can change, from Settings →
+  Terminal or from a project leader.** The instance mode (`cli.instance` — whether one xezar opens
+  every project you have registered or serves only the project it started in) and the three
+  terminal presentation keys stored beside it (`cli.output`, `cli.color`, `cli.logLevel`) have
+  lived in `~/.xezar/config.json` and were editable nowhere but the file. A new global Settings
+  section, Terminal, offers each of them with a **Not set — use the default** choice, and the MCP
+  `project_config` action `set_workspace_config` writes the same keys through the same route, so
+  the cockpit and a leader produce the identical file. `workspace` remains the default and nothing
+  on that path changes. The section is honest about what a settings pane usually is not: every key
+  is decided when xezar starts, so it says a change applies at the next start rather than
+  pretending to be live; it names an environment variable only when that variable really decides
+  the value; it says which mode this cockpit is running in when a start-up flag made it differ; a
+  cockpit narrowed by `XEZ_SINGLE_PROJECT` is told the narrowing wins there; and a project that
+  keeps its own settings shows that it always serves one project instead of offering a choice that
+  could never take effect. (#467)
+- ✨ **Model locking has a switch in Settings and a write through the MCP.** Project Settings →
+  Agents now has **Lock models**, which makes each coding agent use the model from its own native
+  settings and turns the model pickers read-only at once, with no restart. A project leader can set
+  the same key with `project_config` `set_config`. Turning it off deletes the project's key rather
+  than storing `false`, so `XEZ_AGENT_MODELS_LOCKED=1` or a workspace-wide lock still keeps models
+  locked – and the switch says so when that is the case. (#809)
+- ✨ **How many gate runs may share this machine is now a setting you can see.** Settings →
+  Resources gains a **Gate slots** field: how many full check runs the machine-wide gate lease
+  admits at once, 1 to 16. The default of 1 has not moved — a second gate run still waits for a
+  slot rather than competing — and clearing the field goes back to that default instead of storing
+  a number nobody chose. A change applies to the next gate run with no restart; a run already
+  waiting keeps the count it started with. The leader could already set this through the MCP, so
+  this is the second of the two doors every limit is meant to have. (#672)
+- ✨ **A reviewer's findings can now travel with the verdict, machine-readable and counted.** The
+  report a reviewing task drops beside its handoff journal may carry an optional `findings` list —
+  at most 20 pointers, each naming a severity, an optional file and line, a headline and one
+  sentence — together with `findingsOmitted`, which says how many did not fit. The two are a pair:
+  a list without its counter is refused, because a missing counter beside a truncated report reads
+  as a complete one. Absent findings mean the reviewer reported none *in this form*; it is not "there
+  were none" and it is not an approval. An over-long or over-large list refuses the whole report
+  rather than recording part of it, the posted review stays the human record, and the 40 KB packet
+  bound is unchanged. Reports written before this parse exactly as they did, and nothing a reviewer
+  writes reaches the event journal's summary. (#673, PR 1 of 3)
+- ✨ **A project can set its own per-task memory limit in the cockpit.** Project Settings → General
+  now has a **Per-task memory limit** field. A value there replaces the workspace limit for that
+  project's tasks only, lower or higher, and applies straight away, to running tasks too; emptying
+  it (or entering 0) removes the project's own limit so it uses the workspace one again. The key
+  has been enforced since the per-repo limit came back, but until now only a hand edit of
+  `.xezar/config.json` or the MCP could set it — and the Resources page told people to use a
+  project control that did not exist. That hint now points at the real field. (#677)
+- ✨ **A hand edit of the workspace config now takes effect without a restart.** A running cockpit
+  watches its workspace config file (`~/.xezar/config.json`, or `.xezar/workspace.json` in
+  single-project mode) and re-reads the resource limits on the watcher's next delivery of a change —
+  whether a person edited the file or another xezar process wrote it. The delivery is usually within
+  a quarter of a second, but the operating system's own delivery time is not guaranteed, so a hand
+  edit can occasionally take longer. One write's burst is one re-read; a save made in the cockpit
+  refreshes immediately from the route and once more from the watch; the lock and backup files
+  beside it are ignored. A directory that cannot be watched logs one warning and the cockpit runs
+  as before. Part of #677. (xez-1cb64553)
+- ✨ **A project leader can change the workspace settings over MCP.** `project_config`'s
+  `set_workspace_config` used to exist only to refuse; it is now a real write and takes the same
+  keys the cockpit's Settings panes write — the seven `resources.*`, `followups`,
+  `agentEnvPassthrough`, `composerDefaults.*`, `skillsAutoUpdate` and
+  `agentDefaults.{runner,models.*}`. It dispatches `PUT /workspace/config`, the cockpit's own
+  route, so it gets the same bounds, the same refusals and the same "takes effect without a
+  restart", and it answers in the same words `get_limits` answers in. These settings apply to
+  every project on the machine, which is why the change is deliberate rather than incidental: it
+  reverses a documented "never from MCP" decision on the owner's rule of 2026-09-20. The two
+  workspace folder paths (`browseRoot`, `projectsDir`) are still not accepted. `discover_project`
+  says so too: its `workspace_limits` capability is `available` now, where it used to be
+  `read-only` with the reason that only a person can change those settings in the cockpit. (#677)
+- ✨ **The first automatic retry after a failed check now resumes the same agent session.** A
+  workflow check with `onFail` used to send the whole task brief to a brand-new session on every
+  retry; the first retry now reopens the step's own session and sends it only the failing output,
+  so the agent picks up where it left off instead of re-reading the job from scratch. The second
+  retry is unchanged, the two-retry limit is unchanged, and a session that cannot be reopened —
+  because none was recorded, because the agent tool or account changed, because the agent tool
+  cannot reopen a session at all, or because it no longer has the conversation — falls back to a
+  fresh start with the whole brief, in the same retry and without costing one. (#676)
+- ✨ **A project leader can manage the agent accounts over MCP, and read who one is signed in as.**
+  `project_config`'s `create_account`, `update_account`, `remove_account`, `select_account`,
+  `check_account_status` and `get_account_details` used to exist only to refuse; all six are real
+  now and go through the same routes the cockpit's own Accounts settings use — the same checks, the
+  same "that folder is already used by…" refusal, the same single atomic write. Adding an account
+  adds it for **every project on this machine**, and pointing one at a folder decides which folder
+  that login runs from, so it is worth being sure: the folder becomes an agent's whole home, and an
+  agent home can carry settings that run when the next task starts. Choosing which account to use
+  applies to **this project only** — a leader cannot change another project's choice, or the
+  machine-wide default for new ones. **Over a remote connection none of this works at all**, by
+  design: the cockpit refuses the whole accounts area when it is not running on the machine that
+  owns the checkout, and that refusal is what a leader gets too.
+  **Opening an account's folder in an app is still not something a leader can do**: that starts a
+  program on the person's own machine, which stays a person's job. (#677)
+
+## 🐛 Fixes
+
+- 🐛 **The release fold no longer moves an unknown group heading above `## Highlights`.** A release
+  section the release role had already written — Highlights, then a group heading outside the house
+  set, then Fixes — came back with that group at the top: `mergeIntoSection` sorted the section's
+  groups by `HOUSE_HEADINGS.indexOf(heading)`, and `indexOf` answers -1 for anything the house list
+  does not know, which sorts above Highlights at index 0. The merge path is the normal release path
+  (the role writes the section, then folds the fragments into it), so the fold rewrote prose the
+  role had just authored. A known heading keeps its house order; an unknown heading now keeps its
+  relative position and lands after every known one, and two unknown headings keep the order the
+  section had them in. A section of only house headings folds byte-for-byte as before.
+  Kit-internal: no shipped behaviour changes. (#685)
+- 🐛 **Cancelling a pi run no longer waits for the capability probe, and no message is lost when
+  pi has to be restarted.** The `--mcp-config` capability question is asked before the pi process
+  exists, and three things went wrong inside that window. A run cancelled while the question was
+  being asked still started a pi and wrote the opening prompt to it, only to tear it down; the
+  probe itself was never aborted, so the cancel could be delayed by up to ten seconds and the
+  `pi --help` process outlived it; and a message typed after the first pi was adopted was not kept
+  for the one-shot restart, so it was lost if that pi died at start-up on the configuration option.
+  A cancel or a close inside the probe window now aborts the probe, kills its process at once and
+  starts no pi at all, and a message handed over while a restart is still possible is replayed onto
+  the restarted session. The probe still runs before the spawn and an unconfirmed answer still
+  starts pi without the flag. (#648)
+- 🐛 **A read-only or merge-only run no longer writes its dogfooding fragment into the primary
+  checkout.** The project `systemPrompt` told every agent step to record observations as a fragment
+  in `.xezar/docs/dogfooding.d/<runId8>.md`, but `integration`, `code-review`, `qa`, `design-review`,
+  `research`, `business-analysis`, `issue-triage` and a `quick-task` skill have no step that
+  commits, so the fragment had nowhere legitimate to go — run `c16ae8a0` left an untracked
+  `.xezar/docs/dogfooding.d/c16ae8a0.md` in the owner's checkout. The sentence is now conditional:
+  a workflow with a committing handoff step still writes the fragment, and every other run writes
+  to its evidence dir `.local/xezar/tasks/<runId>/dogfooding.md`, never a repository path. The
+  shared contract of all twenty skills carries the same conditional sentence, `.xezar/docs/dogfooding.md`
+  says where a read-only run puts its observation, and a new guard
+  (`packages/xezar/src/kit-dogfooding-fragment-target.test.ts`) reads the config and every
+  non-committing skill and fails when the unconditional form returns. Kit-internal: no shipped
+  behaviour changes. (#721)
+- 🐛 **Single-project mode no longer writes the machine's multi-project keys into the committed
+  `workspace.json`.** `<project>/.xezar/workspace.json` reuses the global `~/.xezar/config.json`
+  schema, and the shared merge-write re-serialized the fully parsed config — defaults included — so
+  the first `--single-project` boot (through migration 001) wrote `browseRoot: "~/"`,
+  `projectsDir: "~/xezar/projects"` and `projects: []` into a file every clone of the repository
+  reads, although adding, cloning and browsing projects are refused in the mode. The single-project
+  writer now omits those three keys, and the one-time import from the global setup drops them too;
+  a file written by 0.16.0 that carries them still loads, and the next write removes them. The
+  global layout is unchanged: `~/.xezar/config.json` still gets all three. (#650)
+- 🐛 **Attaching an OpenCode leader now refuses a session that cannot receive events, instead of
+  accepting it.** Settings → MCP connection → Attach leader took any session id: one belonging to
+  another project's directory, or one that does not exist, was reported as "attached" with no
+  error, and its refusal appeared only later in Connection status — once an MCP session owned the
+  project — because the session check ran on the delivery path alone. xezar now runs that same
+  check before it records the attachment, so the refusal arrives where the guide has always said it
+  would: `session-not-found` for an id the server does not know, `wrong-project` — which now names
+  the directory the session does belong to — for one opened elsewhere, and a named error for an
+  address that does not answer, since attaching to something xezar cannot check is the bug. A
+  refused attach changes nothing: a leader that is already attached and working stays attached, and
+  a server that stops answering after an attach keeps its leader, exactly as before. A session
+  really opened in the project attaches as it always did. (#651)
+- 🐛 **A pi task can write its own evidence again.** The pi worktree guard's allowed roots now
+  include the run's two task-evidence directories — `<project>/.local/xezar/tasks/<runId>/` and
+  the frozen `<project>/.local/xezar-tasks/<runId>/` — produced by the same `runEvidenceRoots`
+  helper the OpenCode runner uses (#686), so one producer serves both backends and a sibling
+  run's evidence, the rest of `.local/xezar/` and the project root stay outside the grant.
+  (#652)
+- 🐛 **The pi worktree guard matches real commands, not quoted text.** A quoted word is one
+  argument unless a shell will run it (`sh -c "…"`, `bash -lc "…"`, `bash -o pipefail -c "…"`,
+  `eval "…"`), so a commit message, a printf argument or a pasted listing containing `cd` or `..`
+  is text. Real `cd`/`git -C` escapes, chained directory changes, unquoted `..` arguments and
+  quoted shell scripts are refused exactly as before — including a script behind a flag that takes
+  its argument as a separate word, whether that argument is bare or quoted
+  (`bash -euo pipefail -c "…"`, `bash --rcfile 'x' -c "…"`), because the script is looked for at
+  the command flag rather than at the first quoted word. The one deliberate loosening: a
+  quoted `..`-only word is no longer a path mention **for a pure text emitter** (`printf '%s\n'
+  '..'`, `echo '..'`), which prints the string; handed to anything else (`rm -rf '..'`,
+  `mv notes.md '..'`, `rsync -a . '../'`) it still names the worktree's parent and is refused.
+  (#652)
+- fix(kit): readiness accepts a declared `REFRESH` round that names the refresh, the merged base sha and the evidence it refreshed and carries no content claim, and it still refuses a `REFRESH` record that claims content and a non-refresh round with no content claim. (#670)
+- 🐛 **A failed security stage now stops the gate run instead of being overtaken by the quality
+  gates.** `.xezar/checks/repo-gates.sh` runs the security stage as gate 2, ahead of every gate that
+  produces a quality signal — but `gate_phase` reports only an *infrastructure* failure, so a scan
+  that ran and refused the candidate exited non-zero, recorded `failed`, and the five quality gates
+  still ran against a tree the scan had already refused. The runner now reads the stage's own
+  recorded outcome and stops before `typecheck`, with the refusal recorded as a completed `failed`
+  attempt. The stop reads the security gate's own recorded status — the gate-worker vocabulary
+  `passed` / `failed` / `not-run` — and `unknown` stays a resolved security outcome: the scan
+  deliberately does not refuse for it, and this change does not widen what counts as a security
+  failure. The
+  application phase is untouched — a failed typecheck still lets build and `test:package` run and be
+  recorded. Kit-internal: no shipped behaviour changes. (#680)
+- 🐛 **OpenCode tasks can now write the run's own evidence directory.** An OpenCode run answered
+  every `external_directory` permission ask for its own task-evidence directory — the folder a run
+  keeps its diagnosis, red proofs and phase record in, outside the worktree it is confined to —
+  with a denial, so that backend could not do what the other three already do and the ask could
+  fail the run. The allowed roots now include that one run's two evidence directories and nothing
+  wider: a sibling run's evidence, the rest of the state tree and the project root stay denied.
+  (#686)
+- 🐛 **An OpenCode run only reaches its frozen evidence directory when it already exists.** The
+  runner's allowed roots no longer include the historical `<project>/.local/xezar-tasks/<runId>`
+  directory for a run that never had one, matching the kit's own dual-read, while the current
+  `<project>/.local/xezar/tasks/<runId>` root stays available; the run-id guard behind both now
+  accepts only real run ids (a uuid), so a bare name can no longer become an allowed root. (#690)
+- 🐛 **The gate run's security early-stop now reads only the gate-worker status and always exits 1 on its own.** Two hardening follow-ups to #680. `.xezar/checks/repo-gates.sh` read `workers/2.json` through a `case` that named `not-applicable` — a status that file can never carry, because the gate-worker vocabulary is exactly `passed` / `failed` / `not-run` while the security vocabulary (`pass` / `findings` / `unknown` / `not-applicable`) lives in `security.json` one letter away, so a "more accurate" re-point would stop every clean run; the dead arm is gone and the comment now names the vocabulary it reads. The stop path also delegated its verdict to the shared `gate_finish`, which contains its own `exit 0`, so nothing in the stop path made a green exit impossible: `gate_finish` now takes the required expected outcome (`passed` at the end of a full run, `failed` from the security stop), and a completer that returned 0 for a refused scan can no longer print `ALL GATES PASSED` or exit 0. `unknown` still does not stop the run, and what counts as a security failure is unchanged. Kit-internal: no shipped behaviour changes. (#691)
+- 🐛 **An OpenCode run that goes quiet after a refused file access now stops with a reason instead
+  of waiting for someone to notice.** When a tool asks to touch a path outside the run's own
+  directories, xezar refuses it on purpose — that boundary is not changing. What went wrong is what
+  came next: in four observed runs the session produced nothing at all after the refusal, no output
+  and no end of turn, so a step before the last one burned its full 30-minute clock with no stated
+  cause and the last, uncapped step simply waited until a person killed it. After a refusal xezar
+  now gives the session five minutes to do anything at all; if it does not, the step ends with an
+  error naming the permission and the path that was refused. Anything the model itself does next —
+  a further tool call, a word of text, the start of a new turn — clears the watch; the server's own
+  note that the previous turn has finished does not, because it arrives after every refusal and
+  would clear the watch every time. A run with no refusal behaves exactly as before. (#692)
+- 🐛 **The release fold no longer inserts a new version section inside a fenced code block.** The
+  fold treated any `# ` line as a top-level heading, including one inside a ``` or `~~~` fence, so
+  folding a release into an `# Unreleased` section that held a fenced `# not-a-real-heading` line
+  put the new `# <version>` heading, its groups and its `---` separator between the opening and
+  closing fence markers. The fold now uses the same fence-aware notion of a top-level heading as
+  `changelog-check.sh`, which guards the same file. A fence that opens and never closes leaves no
+  heading to anchor to, so the fold is refused rather than writing the section inside it.
+  A CHANGELOG with no fence folds byte-for-byte as before. (#684)
+- 🐛 **fix(kit): changelog-check.sh treats `~~~` fences like ``` fences.** `.xezar/checks/changelog-check.sh` walked fences on the backtick marker only, so a tilde-fenced `# Unreleased` counted as a second heading and a backtick fence nested inside a tilde block swallowed the rest of the file. Both fence walks now track the open marker exactly like `fenceMarker` in `.xezar/checks/changelog-fragments.mjs`, so the check and the release fold agree on which lines are section boundaries. The direct-edit region walk carried the same divergence and was LAXER than the fold — a bullet edited below a fenced `# ` line was invisible to it and the check passed a direct edit — which the same change closes. Kit-internal: no shipped behaviour changes. (#698)
+- 🐛 **The release fold no longer treats a `## ` line inside a fenced code block as a group
+  heading.** `mergeIntoSection` read every column-0 `## ` line as a group boundary even when it sat
+  inside a ``` or `~~~` fence, so folding a fragment into a release section that held such a sample
+  tore the section around the fence: the sample line became a group heading and the closing fence
+  was stranded above it. The group scan now consults the same fence map the top-level `# ` scan,
+  `sectionEnd` and the insert anchor already use (#684/#696), so the fenced sample stays exactly
+  where the release role wrote it. A section with no fence folds byte-for-byte as before. (#704)
+- 🐛 **A project you remove while its folder-move clean-up is still running is no longer
+  re-registered behind you.** It used to come back in the skills-update list and in the automation
+  project map for the rest of the session; both are now closed, and moving a folder or re-adding a
+  project behaves exactly as before. (#715)
+- 🐛 **Five cockpit browser specs no longer wait on a read they had not earned.** Each was a
+  one-shot DOM read taken before the state it asserts had settled: `plan-mode.e2e.ts` treated an
+  empty step list mid-re-render as a reorder (`expected '' to be 'implement,review'`),
+  `progressive-history.e2e.ts` spent its whole 25 s budget on a `⌘K` press that had been lost,
+  `settings-agents.e2e.ts` read the checked runner before the picker had rendered,
+  `settings-appearance.e2e.ts` clicked a density option whose box the density change was still
+  moving, and `command-palette.e2e.ts` read the palette root without waiting for its own absence.
+  Each wait is rebuilt on the real UI condition — a stable-state click, a wait on the exact element
+  or store state, an interaction retried only while the control's own state is provably unchanged —
+  never a retry of the test, a `.retry`, or a wider timeout. Red proofs for all five (an injected,
+  deterministic race window; the old wait fails, the new one passes) are in the pull request body.
+  PR A of #671. (#730)
+- 🐛 **The browser suite's B6 virtual-diff case no longer depends on where the thread left the
+  scroller.** (#723) `design-debt-b6.e2e.ts` AC-6 scrolled the app-shell scroller 40 times by one
+  viewport and then asserted that line 420 of `big.txt` was rendered; measured in a real browser,
+  that loop is a one-way ratchet. `big.txt` is the FIRST file of that diff and `content-visibility`
+  keeps every row of a mounted card in the DOM, so the line is present the moment the card mounts —
+  near the TOP of the list — and virtua has unmounted it by step 13, at the bottom of the page. The
+  case was decided entirely by its first check, before any scrolling, which is why it went red in
+  eleven CI runs and spent the merge recipe's one allowed re-run. The wait now waits on real state:
+  the scroller's content height still for ten animation frames, the scroller parked at the virtual
+  list's own measured start, then the card's own arrival. The line-420 assertion, the timeout and
+  every other case in the file are unchanged, and the inferred stale-`startMargin` mechanism was
+  disproven by measurement — `diff-view.tsx` is untouched. Test-only: nothing shipped to users
+  changes.
+- 🐛 **Two cockpit browser specs no longer assert on the branch list of the checkout the suite
+  happens to run in.** `repo-git.e2e.ts` and `settings-agents.e2e.ts` read the shared test env's
+  refs, and `getBranches` filters every `xez/*` name out — so on a task branch, which is exactly
+  what CI checks out, the endpoint honestly answered `[]` and both failed deterministically:
+  `expected 0 to be greater than 0`, and a 25 s wait for a base-branch option that could never
+  arrive. Eleven CI runs were filed as a load flake a re-run could clear; a re-run could never
+  clear them. Both now boot a spec-owned fixture repository through one shared helper
+  (`e2e/fixture-server.ts`, over the existing `createFixtureRepo`), so the branch list, the log
+  and the working tree are state the spec owns — `settings-agents` also stops writing this
+  repository's own `.xezar/config.json` and writes the fixture's instead. The pair leaves the
+  leader guide's rerun line, which is now empty; `KNOWN_LOAD_FLAKES` in `ci-watch.sh` is keyed by
+  job name and is untouched. No retries, no sleeps, no widened timeouts. PR D of #671. (#745)
+- 🐛 **Two more cockpit browser specs stop waiting on a read they had not earned.** (#671) Both
+  were flaky for the same reason and neither is registered, retried or quarantined.
+  `task-thread.e2e.ts` opened the transcript's git-status card with a `browser.click(selector)`
+  and then waited for the card's output: the click re-reads a live box and hit-tests it, so a click
+  issued while the transcript was still replaying cards could land on a neighbouring card — three
+  CI runs left the target `data-state="closed"` with the only `tool-output` in the document
+  belonging to a neighbour, and no wait budget recovers from a click that went elsewhere. It now
+  clicks the trigger that card owns, from the same page task that read it, and succeeds only once
+  the card reports itself open. `diff-scroll.e2e.ts` scrolled to a fixed 900 px and then aimed the
+  fold once at a card: the offset was a hostage of every card height in the fixture, and the
+  one-shot aim could be clamped away entirely at the end of the list, leaving the fold in the gap
+  between two cards so the sticky check never ran (five CI runs). It now aims the fold at the
+  centre of the nearest card from measured geometry and returns only once a card really straddles
+  the fold. Test-only: nothing shipped to users changes. PR B of #671; the issue stays open.
+- 🐛 **The engine-leader-incidents G7/G9 waits now await the run store's own change signal instead
+  of a widened `expect.poll` budget.** (#671) The four waits raced the completion chain (`agent turn
+  → events → journal → run store`) against a fixed budget: #630 widened them to
+  `{ timeout: 3000, interval: 10 }` and #658 raised the suite-wide `expect.poll.timeout` to 10 s,
+  which masks the race rather than removing it. `RunStore` already extends `EventEmitter` and emits
+  `run` on every record mutation and `event` on every appended event, so the chain's end is
+  awaitable; the waits now subscribe to that signal (and the completion-variant wait also requires
+  the expected session count, so a first completion cannot satisfy a second wait). The file's own
+  comment claiming the race was "not a single awaitable promise" was wrong — the red proof shows the
+  pre-fix polls failing at the old 1 s budget under a 1200 ms delayed backend while the rebuilt
+  waits pass 69/69 under the same delay. Test-only: nothing shipped to users changes.
+- 🐛 **Nothing a reviewer wrote can render as a second finding, a heading or a paragraph of its own
+  — the file path included.** A finding's file was the one free-text field still rendered whole
+  into a fix brief, so a path carrying a line break forged a numbered item and a free-standing
+  paragraph sitting exactly where the leader's own instruction goes. It is folded to one line like
+  the headline, and a lone carriage return and the two Unicode separators now count as line breaks
+  everywhere a finding's text is folded or quoted. (#673)
+- 🐛 **A fix task can no longer run on the very model that reviewed it, on a chain that mixed
+  models.** The check that stops a model fixing its own findings preferred the identity the run
+  record carries — which the engine re-writes every time a step starts, so after a multi-step
+  reviewing run it names whichever step ran last. It now reads the model the reviewing step itself
+  was named with, so the pair it refuses is the pair the brief prints. (#673)
+- 🐛 **A failed upstream check no longer reads as "last checked just now" in the skill catalog.**
+  Settings → Skills dated its "last checked" line from the modification time of the bare clone's
+  `FETCH_HEAD`, which git rewrites — often as an empty file — on a fetch that FAILED, so a machine
+  whose skills origin was unreachable came back from a restart claiming "Up to date — last checked
+  0s ago". The time of the last SUCCESSFUL clone or fetch is now recorded durably beside the clone
+  in the skills cache, git's mtimes are not consulted, and an unreachable origin reads
+  `Check is stale` instead — or, when this machine has no successful check on record at all,
+  `Not checked yet` with "this machine has not checked upstream yet, so it cannot say whether
+  these versions are current. Use Refresh on the Skills page to check." A skills cache cloned
+  before this change reads that second state until its next successful fetch. The MCP
+  `check_skill_updates` answer reads the same route, so the cockpit and a project leader cannot
+  disagree about it. (#752)
+- 🐛 **The skill catalog no longer says two identical versions "share no history".** That sentence
+  and the `Comparison unknown` badge were written for two commits that genuinely cannot be lined
+  up, and a cache with no successful check on record reached them while showing one commit twice.
+  The server now names that case (`never-checked`) instead of folding it into `unknown`, so the
+  cockpit and the MCP answer describe it the same way. (#752)
+- 🐛 **Review-response gates now certify the exact commit pushed to the existing pull
+  request.** The response commit stays checked out on its task branch while the identical SHA is
+  pushed to the PR branch, so the workflow's canonical gate attempt and seal cover the reviewed
+  bytes. The guarded push accepts only the destination and expected tip in this run's complete
+  `DELIVERED` record; readiness and handoff reject stale, incomplete or superseded records even
+  when the task retained commits. Verification-only responses push nothing and report that their
+  task seal does not certify the separately verified PR revision. (#756)
+- 🐛 **A repeated leader call is one line in the audit trail, not two.** The trail answers "what
+  was done to this project, and by whom", so it counts operations rather than calls — but a leader
+  that lost an answer and sent the same call again under the same operation key added a second
+  `applied` line for the one thing that happened, and a reader saw two pins, two settings writes,
+  two hand-offs. The repeat never did the work twice; only the record said it had. The MCP door now
+  asks whether the call it just finished actually ran the work, and only that call writes the line.
+  Two more lines change with it, and comparing trails across the upgrade will show both. A call
+  whose work threw part-way used to leave an `applied` line saying the work was done, when nobody
+  can honestly say whether it was; it now leaves no line and warns that the action continued
+  without an audit record. And a call the server turned away BEFORE starting any work — because it
+  could not write the record that makes a repeat safe, or because the same operation key arrived
+  with different work — used to leave nothing at all; it now leaves one `refused` line naming why.
+  Failures caught by the MCP door's outer catch still omit the row and warn; the receipt-wrapped
+  thrown-effect path is the correction described above.
+  The cockpit, command-line and automation doors never had the fault — none of them answers a
+  repeat from a receipt — and none of them changes. (#743, #677)
+- 🐛 **Skills → Refresh says what actually happened instead of always reporting success.** With the
+  team-skills origin unreachable the button toasted "Team skills refreshed" although nothing had
+  been fetched — and the catalog block right below it, the one whose own sentences send the reader
+  to this button, still read `Check is stale`. `POST /api/v1/skills/refresh` now answers
+  `{skills, sources}` with one outcome per configured source — `{repo, ok: true}` or
+  `{repo, ok: false, reason}` — so the toast can report a failure in the server's own words in the
+  danger tone, and a partial result ("Refreshed 1 of 2 team skills sources — …") as the partial it
+  is. A source whose catalog cannot be READ counts as a failure too, not only one that cannot be
+  fetched: an unresolvable or refused ref used to produce an empty listing and a success. The shape
+  change is recorded in `BACKWARD_COMPATIBILITY.md` § 2; the MCP `project_config:refresh_skills`
+  action keeps its `skills` key and gains `sources`, with every path in it scrubbed the same way
+  that tool already scrubs a refusal, so a local clone-cache path never reaches a project leader.
+  (#771)
+- 🐛 **A new project's first task no longer misses a team skill the fetch was still downloading.**
+  When a run names a skill that is not in the catalog yet, the resolution now waits up to 20 s for
+  the team-skills fetch that is already running and then resolves against it; a fetch that fails or
+  times out still starts the step, and the note says the catalog was not ready and how to retry
+  instead of reading like "this skill does not exist". Nothing else waits: the catalog read every
+  other surface makes still returns immediately, and there is no new setting. (#777)
+- 🐛 **A Settings section no longer shifts when its data arrives.** The twelve Settings sections
+  that show their own "Loading …" line padded it with a hand-set 24 px gutter and were not held to
+  the same centred reading width as the panel that replaced them a moment later – so the text
+  jumped, by 68 px on Agents at a 1280 px window, as soon as the section loaded. Loading and loaded
+  now share one spacing and one reading width, at every density, and the Bookmarklets panel moves
+  onto the same pair. (#780)
+- 🐛 **An identity-shaped account label no longer leaks through a short handle or a duplicate-folder refusal.** New accounts use an opaque id when their label contains `@`; existing stored ids are never changed. Successful answers and refusals now use one identity test, including short handles such as `boss@corp` and `@marcin`. The defensive receipt fallback also keeps its one-refusal-row regression for every settled non-replay answer. (#677)
+- 🐛 **Five load-sensitive tests now synchronize on deterministic system signals.** The
+  progressive-history browser test waits for Radix's closed dialog state and dispatches one
+  app-level shortcut before locating the focused combobox by role. The todos watcher tests inject
+  the watch callback, prove both watchers deliver, and advance the debounce clock directly. The
+  test-env launcher reads the bound port from the boot URL itself. Serve stream and port-memory
+  tests distinguish the resolved request in the boot record from the port actually bound, with
+  retained OS-assigned sentinel handles and bind-seam contention making fallback deterministic.
+  Their helpers now await every stderr record a positive assertion consumes and return negative-
+  assertion snapshots only after child exit and explicit stdout/stderr completion, so stdout
+  readiness can never race a separate stderr pipe. The port-memory helper also preserves one
+  buffer per pipe and parses each record only from its owning stream; a retained probe splits the
+  stderr ready record around a real stdout chunk to pin that independent-stream contract. The
+  store-fixture scan now exempts only the
+  directly bound `RunStore` whose own directory is removed, never an unrelated store or `.close()`;
+  alias and destructuring forms remain conservatively unsupported and pinned. A repaired browser
+  spec failure is no longer classified as a known load flake by CI observation. Part of #671;
+  #671 remains open.
+- 🐛 **The MCP test fixtures pin `HOME`, so a developer's own skill catalog can no longer leak into a fixture that says "this project has no skills".** `skills.ts` resolves its two global skill dirs from `os.homedir()` once, at module load, and `vitest.setup.ts` pins `XEZ_HOME` but not `HOME` — so `task-create.test.ts`'s `setup({ skills: [] })` cases failed on any machine whose `~/.agents/skills` carries an `*-issue-create` skill, which xezar's own default-on skills update writes. A shared `mcp-test-home.testkit.ts` pins `HOME`/`USERPROFILE` to an empty scratch directory as a module-load side effect and is now the first import of all 27 MCP test files that build a project workspace or read the catalog; a retained case proves the catalog is empty even when the process `HOME` carries a skill. Test-only; no runtime behaviour changed. (#785, #671)
+- 🐛 **The port-memory `serve` test no longer fails when macOS hands out its highest port.**
+  (#804, part of #671) Its "busy" ports came from `listen(0)`, and macOS's ephemeral range runs to
+  65535. A busy port at 65535 leaves `serve` nowhere to move up to, so it exits with "no free port"
+  and prints no cockpit line: the busy-remembered-port case then read `first.port` as `undefined`,
+  with no output to say why. The sentinel now only accepts a port with room for the two moves the
+  deepest case makes plus a margin below the ceiling, so a neighbour holding a port above it cannot
+  strand a boot, and it holds each rejected port so the OS cannot hand it back: which port the
+  cases use is settled by port numbers rather than luck. Every case that needs a bound port now
+  fails with the boot's exit code and output instead of a bare `assert.ok`. Test-only: nothing
+  shipped to users changes. The issue #671 stays open.
+- 🐛 fix(release): the packed-archive content check now catches the kit's current snapshot and campaign-note roots — `.local/xezar/kit/` and `.local/xezar/campaigns` — and the historical singular `.local/xezar-campaign`, so a shipped instruction naming them fails `check:pack` instead of passing unnoticed; the bare `.local/xezar/kit` stays allowed because the shipped engine itself returns it as the home-directory collision guard, so the snapshot root is pinned as the directory path it is. (#681)
+- 🐛 **Turning GitHub automations on no longer needs a restart — and no longer pretends to work.**
+  `XEZ_AUTOMATIONS=1` was read afresh on every request, so setting it on a xezar that was already
+  running opened the Automations view and its endpoints: a definition could be created and saved.
+  The part that polls GitHub, however, was started once when the server came up and was never asked
+  again, so nothing was ever checked and no task was ever launched — with no error anywhere to say
+  so. The flag is now live in both halves: turning it on starts the poller as well as opening the
+  view, turning it off stops the poller as well as closing it, and each is picked up the next time
+  xezar consults the flag rather than only at the next restart. Definitions, receipts and
+  high-watermarks are untouched either way, and a xezar started with the flag already on behaves
+  exactly as before. (#678)
+- 🐛 **A project re-added while its previous context was still closing keeps its live events, its
+  terminal rows and its automations.** The companion of the door fix: the same late notification
+  also reached the open cockpit event stream, the terminal's activity table and the automation and
+  skills-update schedulers, and each of them released the rebuilt project's state on behalf of the
+  one it replaced — the stream stopped delivering that project's tasks until the page was
+  reloaded, its rows left the terminal, and its automations stopped polling for the rest of the
+  session. All three now act only on the registration a removal is about, and a dispose that a
+  rebuild has already superseded refreshes the automations and skills registrations from the
+  project's CURRENT registry row instead of leaving them on the root it moved away from. The
+  terminal also no longer lets a store opened by a build that lost the race take over from the one
+  that won. (#647)
+- 🐛 **A misspelt workspace setting is refused instead of quietly dropped.** A body with a typo
+  inside `resources`, `composerDefaults` or `agentDefaults` — `{ resources: { maxParalel: 9 } }` —
+  used to be accepted with a success answer while the setting never changed. Both the Settings
+  panes' own route and the MCP write now answer with an error naming the key. (#677)
+- 🐛 **The `auto-resume.test.ts` queue-hold case owns its clock instead of reading a count after a
+  fixed sleep, and asserts the account hold itself rather than only its effect.** F-20 of the #671
+  flake inventory failed once on CI with `expected [...] to have a length of 4 but got 5` (run
+  35110511675): the case drove the real mock CLI and asserted "the fifth task never started" 250 ms
+  after a poll, so the claim rested on how fast the machine settled, and the count could not tell a
+  working hold from a queue that had quietly drained. The case now scripts the limit turn and
+  freezes the usage-limit window on its own clock, reads every count after awaiting the store's own
+  change signal (no `expect.poll`, no sleep), and ends by releasing the account and watching the
+  fifth run start. Review round 1 found the counts were still explained by `maxParallel: 2` slot
+  cycling alone — forcing either gate site (`pump()`'s FIFO check, or `requeueWhileHeld`) to never
+  hold left the case green while it reddened a sibling — so the case now also asserts the account is
+  REPORTED held, proves a sweep ran with a free slot by starting a run on a second account, and
+  exercises the spawn-time gate with in-place runs that are dequeued before the account closes. No
+  production change. PR G of #671. (#671)
+- 🐛 **A repair turn that comes to nothing no longer says the backend "refused" a session it may
+  never have been asked about, and can no longer spend the step's wall clock twice.** The first
+  automatic return after a red check resumes the author's own session (#676); when that resumed
+  turn ends before the model produces any text or tool call, the return falls back to a fresh
+  session with the whole brief. That fall-back is unchanged, but its note used to blame a refusal
+  for every cause — a usage limit, a transient API error, a silent timeout and a turn that simply
+  ended having said nothing all read as "the backend refused the recorded session". It now states
+  what was observed and quotes the reason. The fall-back execution is also bounded by what is left
+  of the step's wall clock instead of receiving a second full `timeout`, which is what made a
+  resumed turn that hung cost 30 minutes and then 30 minutes again on one return, with the
+  advertised deadline pointing at the end of the first budget; when nothing is left the return
+  ends on the failure it has and says so. An absent step `timeout` still resolves to the runner's
+  30-minute default, and the last step stays uncapped. (#732)
+- 🐛 **The single-project layout's `machine-state.json` is read through a schema, written under
+  the same lock the project registry uses, and a launch that cannot be recorded is no longer
+  silent.** In the layout that keeps a folder's state in the repository, this gitignored working
+  file holds the per-machine facts — `addedAt`, `lastOpenedAt` and `lastListen` — and all three
+  were fragile. A hand-rolled `JSON.parse` kept only the keys it knew, so any key a newer xezar
+  wrote was dropped on the next rewrite, and it accepted a stamp of any length. The two
+  read-modify-writes held no lock, so two xezar instances starting at the same moment could each
+  read the same bytes and the later write lose the other's fact. And a registration whose write
+  failed swallowed the error in an empty `catch {}`, so the launch quietly forgot where it had
+  been. The parse now mirrors the registry's schema (per-field `.catch`, `.passthrough()`, and the
+  same 64-character cap on the stamps, so an over-long hand-edited stamp is dropped rather than
+  persisted), both writers take the bounded, fail-open cross-process lock the registry merge
+  already uses, and a failed registration write warns once per process while the boot still
+  finishes. A missing, unreadable or corrupt file still answers "nothing recorded" and never
+  throws, and the default global layout is byte-for-byte unchanged. (#649)
+- 🐛 **A run store whose data directory has been removed now skips that write silently instead of
+  logging it as a failure, and writes again if the directory comes back.** (#631, #671) `RunStore`
+  debounces its `runs.json` write by 300 ms, and a caller that removed the directory while that
+  timer was pending got the timer anyway: `saveNow()` hit `ENOENT` on `runs.json.tmp` and
+  `console.error`'d it. A directory that is gone is not a disk failure, so the store drops the
+  pending write instead of complaining — and because anything that recreates the directory (a
+  worktree creation does) should bring the index back, it is a skipped write rather than a
+  shutdown: the next save writes the index out again and says so once. The new `close()` is the
+  only thing that ends the write lifecycle (cancel the debounce, write the index out, refuse every
+  later write), which is what a project-context teardown and a test fixture both actually want. The
+  live path is untouched: an open store still coalesces token-usage updates into one write every
+  300 ms, still writes through the atomic tmp+rename, still saves a decision change immediately,
+  and a write that fails while the directory IS reachable is still logged — including a permission
+  failure on one of its parents.
+- 🐛 **A project re-added while its previous context was still closing keeps its MCP door.** Removing
+  a project tears its context down in the background, and that teardown can still be running when the
+  same folder is added back and touched again. The removal's notification then arrived after the
+  rebuild and closed the door the rebuilt project had just opened, so `xez mcp` in that folder
+  answered "xezar is not running" while the cockpit served its routes. A context now says which
+  registration it belongs to, and a removal is only ever acted on by the registration it is about.
+  (#647)
+- 🐛 **Two kit-check defects: an empty security change set no longer refuses, and an interrupted infra run now terminates.** `.xezar/checks/security-scan.sh` treated a genuinely empty change set — a branch the gate reached before anything was committed — as `unknown` and refused it, a false red that cost a whole agent-step re-run; it is now `not-applicable`, while a change set the stage could not read (an unresolved base, an unreadable repository, a failed enumeration) still refuses. `.xezar/checks/infra-tests.sh`'s `trap cleanup EXIT INT TERM` cleaned up on a signal and then carried on; INT and TERM now exit with the conventional signal status, matching `repo-gates.sh`. Both are kit-internal: neither changes shipped behaviour.
+- 🐛 **The MCP per-file coverage suite no longer flakes on worker teardown.** (#631)
+  `stale-write.test.ts` left the run store's 300 ms debounced `runs.json` save timer pending after
+  its tests ended. The `afterEach` removed the temporary data directory without flushing the store,
+  so the pending timer later fired, `saveNow()` hit ENOENT and logged `console.error('[xez] failed
+  to save runs.json: …')` during worker teardown — surfacing as `EnvironmentTeardownError: Closing
+  rpc while "onUserConsoleLog" was pending`. The test now flushes the store before removing the
+  directory, so no log can escape after the last test.
+- 🐛 **The gate-lease fixture waits on the lease verb's own signal instead of a 30-second window.**
+  `.xezar/checks/infra-tests.sh`'s `gateSlots: 2` case polled for the second holder's status file for
+  30 s, read it empty when it had not been written yet, and then waited for that holder to exit *before*
+  releasing slot 1 — so a holder that had queued behind slot 1 could only end at the lease's own
+  20-minute bound, which is what held the suite for twenty minutes on CI. The wait now ends on a signal
+  the lease verb itself emits — the status file, its `waiting for a gate slot` line, or its exit —
+  whichever comes first, and "slot 2 taken while slot 1 is held" is proven from the two status files
+  alone. A slow machine can only change which signal arrives first, never which one it is; a still
+  waiting holder is killed by saved pid and slot 1 is released on every exit path. Kit-internal: nothing
+  shipped to users changes. (#812, #813)
 
 ## 🔧 Changed
 
+- 🔧 **The single-project isolation guard now catches three more spellings of the per-user home,
+  and `xezarHomeDir(` needs a written reason like every other state path.** The source scan behind
+  single-project mode (#600 DC-1) read only `homedir()` calls and `'.xezar'` string literals, so a
+  path built from `process.env.HOME`/`USERPROFILE`, a `homedir` imported under another name
+  (`import { homedir as __hd } from 'node:os'`) or a `.xezar` segment inside a template literal
+  slipped past it — three ways to reach `~/.xezar` that the guard exists to make impossible to add
+  silently. Each spelling now has a probe that feeds a synthetic source through the real rule set,
+  the wrapper `xezarHomeDir(` is a scanned call whose existing call sites carry written reasons,
+  and two new guards pin that the environment an agent, `gh` or `git` spawns with is byte-identical
+  in the mode and that the too-long MCP socket message names the real socket directory in both
+  layouts. No production behaviour changes. (#644)
+- This repository now carries its own xezar setup in `.xezar/` (single-project mode); a fresh clone
+  starts in that mode. (#653)
+- 🔧 **Changelog and dogfooding entries become per-pull-request fragments, so open pull requests
+  stop conflicting on every merge.** `CHANGELOG.md` and `.xezar/docs/dogfooding.md` are append-only
+  at the top, so every pull request edited the same lines of the one `# Unreleased` section and the
+  first merge made every other open pull request conflict — and a content conflict stops GitHub from
+  running CI on it at all. A pull request now writes `changelog.d/<pr-or-branch>.md` and
+  `.xezar/docs/dogfooding.d/<runId8>.md` instead, and the `changelog` step of the `release` workflow
+  folds both into the documents it already assembles, deleting the fragments in the same commit.
+  `changelog-check.sh` gains one refusal — a diff that edits `# Unreleased` directly and still
+  differs from the diff base at HEAD, which is what the fragments replace; a branch that reverts its
+  direct edit and moves the bullet into a fragment passes, so a repair never needs a rewrite — plus a
+  parse of the fragment files, and the `# Unreleased` heading itself stays. Kit-internal: the release
+  still produces the same two documents, and nothing a user installs changes. (#668)
+- 🔧 **A gate attempt now records who produced it, and an author-produced attempt never seals.**
+  `repo-gates.sh` gains `--producer <author|gates>` (absent means the author), the value is
+  recorded in the attempt by `gate_attempt_begin`, and `worktree-preflight.sh
+  --record-gate-evidence` refuses to seal an attempt whose recorded producer is `author` — the
+  author's own run of the canonical list is the same tree proved to itself, and the workflow's
+  `gates` step (which now passes `--producer gates` in all ten writing workflows) is the run's one
+  canonical gate run. An attempt with **no** `producer` field at all is a legacy record and still
+  seals, so an in-flight run is not stranded; `author` and absence stay different branches. The
+  flag is deliberately not part of the command-list id — the id names the LIST of gates, and who
+  invoked it is not a gate. Kit-internal: no shipped behaviour changes. (#676)
+- 🔧 **The OpenCode attach-time check's timeout is injectable for tests; the shipped default is
+  unchanged.** `LeaderDelivery` now takes an `opencodeAttachCheckMs` option beside `heartbeatMs`,
+  and the 10 s `OPENCODE_ATTACH_CHECK_MS` bound still applies whenever it is absent, so production
+  behaviour is exactly as before. (#703)
+- 🔧 **`PUT /config` and `PUT /workspace/config` now validate with the shared contract schemas.**
+  The duplicate request schemas in `server.ts` are gone, so the routes, the typed client and the
+  MCP read one definition of each shape; the rejection text and bounds are unchanged, and two new
+  parity tests pin the routes against the contract and the MCP against the routes. (#729)
+- 🔧 **Three smaller repairs to the same Settings → Skills block.** The ticking "last checked"
+  age no longer sits inside a polite live region, so a screen reader announces a real state change
+  instead of re-reading the sentence once a minute; the block reserves about one card's height
+  while the check is in flight, so the automatic-update switch below it moves by under one text
+  line in the common case when the answer lands (a fixed reserve cannot be exact when the sentence
+  wraps — measured up to 46 px on a narrow phone); and the `Check is stale` sentence now names its next step, the way the
+  `Update available` sentence already did. The catalog's `sr-only` announcer is also
+  `role="status" aria-atomic="true"`, so what a screen reader reads when one of several sources
+  changes is defined rather than left to the reader. (#752)
+- 🔧 **`xez` now resolves an instance mode — `--instance <project|workspace>`, `XEZ_INSTANCE` and
+  a stored `cli.instance` — though nothing reads it yet.** The setting answers which projects one
+  xezar process serves: `workspace`, the DEFAULT and today's behaviour byte for byte, opens every
+  registered project, and `project` is the opt-in mode where the cockpit serves the project it
+  started in. Precedence is the chain `cli.output` and `cli.logLevel` already use, character for
+  character — flag, then the stored key, then the variable, then the default — so a variable
+  exported once in a shell profile cannot outrank a preference someone saved. Both existing failure
+  modes are inherited rather than re-described: an explicit bad value refuses the start naming both
+  accepted values, before the registry is read and before anything is claimed, and a bad stored
+  value degrades to absent with one warning naming `cli.instance`, leaving the file on disk. One
+  new predicate, `instanceModeInForce`, answers the different question of what is in FORCE: the two
+  shipped narrowings — `XEZ_SINGLE_PROJECT=1` and a folder that owns its xezar state — win over the
+  request in both directions, so `--instance workspace` can never re-widen a cockpit somebody
+  narrowed on purpose. No behaviour changes in this release step: no caller consults the value, the
+  default path is unmoved, and the flag, the variable and the mode they select are documented with
+  the behaviour that uses them. (#757)
+- 🔧 **The Skill catalog badge and the sentence under it now answer `unknown` with two identical
+  commits the same way, and the design system's pending-line row describes the line the code
+  actually renders.** The badge said "Comparison unknown" for an entry whose explanation already
+  read "this machine has not checked upstream yet", so a future server sending that shape would
+  have shown a badge its own sentence contradicts; it now reads "Not checked yet", the same
+  belt-and-braces `catalogExplanation` already carried. `compareState` and the server states are
+  untouched — the input is unreachable today. The `patterns.md` § 6 "Loading inside a surface that
+  will hold a card" row no longer calls the pending line "the same muted line" as the row above it
+  (it is a muted line in the surrounding page's text size, `text-[13px] text-soft-foreground` in
+  Settings, left-aligned and unpadded), and its density range now names the card it was measured on
+  and records that the longer cards run up to about +48 px at ultra and 375 px. (#772)
+- 🔧 **The MCP settings classification and inventory now record the 2026-09-20 reversal as their current rule.** Workspace settings, shared preferences, provider switches and account tools name the pull request that made each action available, while the superseded read-only rulings remain as dated history. Opening an account file and browsing host folders remain explicit refusals. (#677)
+- 🔧 **Adding a fifth agent backend is now a compile error until its resume and token-accounting
+  behaviour are answered.** The two lists that decide whether a runner can resume a recorded
+  session at all, and whether its `token-usage` figure is the session's running total rather than
+  this execution's own, were deny-lists: an unlisted backend silently defaulted to "can resume,
+  per-execution tokens", and answering the second one wrong double-bills a resumed step. Both are
+  now total `Record<RunnerId, boolean>` maps, and `AGENT_PROTOCOL.md`'s new-runner checklist names
+  them. (#732)
+- 🔧 **What a leader is told about account identity.** Until now, the answer to "who is this account
+  signed in as?" was always a refusal, and the documentation said it always would be. The owner
+  decided otherwise: a leader that names one account gets the same email, organisation and plan the
+  person sees behind "Show details", and nothing more. Identity still appears in no other answer —
+  the account list, the capability read and the sign-in check carry none of it, and an account
+  whose name looks like an email still has that name withheld — including in a refusal. Asking for
+  a folder another account already uses says so, but no longer repeats that account's name when the
+  name is an email address; the same message in the cockpit is unchanged, because there it is the
+  person's own name they are reading. (#677)
 - 🔧 **Kit-internal: an integration task no longer spends an agent turn waiting for CI.** (#667) The
   `integration` workflow now runs merge (agent) → `.xezar/checks/ci-watch.sh` (check) → report
   (agent, last and interactive). The wait itself needs no judgement, so it happens with no tokens
@@ -11,10 +738,304 @@
   merge, the exact-head guard, every integration-preflight refusal and "no automatic merge on green"
   are unchanged, and a check step still runs inside the run's own slot, so no workspace slot is
   freed. Nothing shipped to users changes.
+- 🔧 **Task evidence is read from `.local/xezar/tasks` and the historical root, and nothing on disk
+  moved.** New task evidence is written to `<project>/.local/xezar/tasks/<runId>`, and every reader —
+  `task_evidence_dir()`, the canonical-location fence in `gate-results.mjs`, `verify-evidence.sh
+  --list`, `phase-record.sh`'s predecessor `COUNTERS` read and the `own-local-path` instruction guard —
+  now accepts that root **and** the frozen `.local/xezar-tasks`. A run in flight keeps its own directory
+  for its whole life, which is what the counter and seal rules need; the sealed manifests on this machine
+  store absolute paths and a manifest must sit at its canonical location, so bulk-moving the old evidence
+  would invalidate every historical seal. A missing predecessor counter still reads as UNKNOWN and blocks
+  a repair, and one hand-built literal in `worktree-setup.sh` was moved onto the helper. Kit-internal: no
+  shipped behaviour changes. (#665)
+- 🔧 **The kit's fixture scratch root moves to `.local/xezar/tests/`.** Stage 2 of the owner's "everything
+  xezar-related and not committed lives under `.local/xezar/`" rule: `fixture_scratch_root()` in
+  `.xezar/checks/lib/common.sh` — the sole producer of the path — plus every fixture reference in
+  `infra-tests.sh`, the node:test scratch roots and `docs/testing/local-data.md` now name the new root.
+  Nothing on disk is moved: the fixture scratch is disposable by design and `fixture_scratch_remove`
+  still refuses anything outside the root. A dated findings-log entry that narrates a pre-rename session
+  was left spelling the old path, so the record still says what was true then. Kit-internal: no shipped
+  behaviour changes. (#662)
+- 🔧 **The kit's bootstrap snapshot moves to `.local/xezar/kit/`.** Stage 1 of the same rule: the
+  snapshot the `kit` step takes of the local kit moves from `<worktree>/.local/xezar-kit/` to
+  `<worktree>/.local/xezar/kit/`, and the literal is renamed consistently across the bootstrap module,
+  the contract assertion and the kit's documentation. Nothing on disk is moved — the snapshot is
+  task-worktree-local ignored state, recreated by the next run. Kit-internal: no shipped behaviour
+  changes. (#660)
 
-## 🐛 Fixes
+## 📝 Specs & Documentation
 
-- 🐛 **Two kit-check defects: an empty security change set no longer refuses, and an interrupted infra run now terminates.** `.xezar/checks/security-scan.sh` treated a genuinely empty change set — a branch the gate reached before anything was committed — as `unknown` and refused it, a false red that cost a whole agent-step re-run; it is now `not-applicable`, while a change set the stage could not read (an unresolved base, an unreadable repository, a failed enumeration) still refuses. `.xezar/checks/infra-tests.sh`'s `trap cleanup EXIT INT TERM` cleaned up on a signal and then carried on; INT and TERM now exit with the conventional signal status, matching `repo-gates.sh`. Both are kit-internal: neither changes shipped behaviour.
+- 📝 **The multi-project risk-to-test-level table is committed, and the two-project harness's
+  runtime ceiling and named-break proofs now live in the tracked tree.** `docs/testing/multi-project-test-levels.md`
+  recovers the 14-row risk → cheapest-level table from the frozen #548 evidence file, re-verified
+  against current `main`, with repo-relative paths and one drifted citation fixed (the
+  registration-suppression cases had moved within `workspace/projects.test.ts`). A doc-check test
+  resolves every cited suite and fails on a dropped row (`BREAK-MP-MATRIX-ROW-DROPPED`).
+  `docs/testing/multi-project-harness.md` states the harness's measured 1 m 44 s runtime against a
+  5-minute ceiling and records the four named breaks from PRs #567 and #583, reproducing
+  `unstamped-b-event` in-tree with its failing assertion (`BREAK-MP-RUNTIME-UNSTATED` pins the
+  ceiling line). (#548)
+- 📝 **The run store's count-based eviction rule is now part of its contract surface.** `BACKWARD_COMPATIBILITY.md`
+  § 3 records what `pruneOldRuns()` actually does — the newest 300 non-archived and newest 500 archived runs are
+  kept, and the rest are deleted oldest-first together with their record, event NDJSON, handoff journal and
+  images, silently, when a run is created — so two measurements over the same store can no longer disagree
+  without the reader knowing the difference is eviction rather than a bug. Docs only: no behaviour change.
+  (#679)
+- 📝 **The author step runs focused tests and `npm run typecheck`; the workflow's `gates` step is
+  the one canonical gate run.** The shared contract's "Writing-stage ownership" paragraph told the
+  author to run `.xezar/checks/repo-gates.sh --fast` "for final canonical evidence", and readiness
+  seals only an already-committed tree — so every writing run proved the same head twice, the
+  author's attempt and the `gates` step's, which is the pass-after-pass duplication #676 measured at
+  39 attempts. The paragraph now says the author runs the focused tests for what it changed and
+  `npm run typecheck`, self-reviews and commits, and does not run the canonical list; the workflow's
+  `gates` step runs it once, on the commit the author just made, and that single attempt is the
+  run's canonical evidence, while an author attempt at the same head is refused at sealing (PR 2).
+  A standalone run with no `gates` step still runs it once at the end, and the two `gate-return`
+  rounds and all three repair counters are unchanged. `xezar-quality-gates` gains one sentence
+  naming it as the `gates` step role and the standalone fallback, and `AGENTS.md` § Validation and
+  `.xezar/CLAUDE.md` § Commands and stage ownership say the same thing once. Kit wording only — no
+  engine, workflow or check behaviour changes. (#676)
+- 📝 **The browser suite's two runtime ceilings are now recorded, and the locator rule has a
+  source guard.** Three documents had drifted to three different spec counts (35, 35, 39 against a
+  real 66) because nothing read the directory. `docs/testing/agent-browser.md` gains a
+  `### Runtime ceilings` subsection anchored to measured numbers — 1 200 s whole-suite (996.22 s
+  measured on CI run 35512713688 plus the 20 % spread between the two recorded whole-suite
+  measurements) and 60 s per `*.e2e.ts` file (~2× the worst real file, `screenshot-states.e2e.ts`
+  at 30.9 s) — alongside the suite's stability rule as amended: a flaky browser spec is rebuilt on
+  real state, never retried, slept on, widened or registered. `.github/workflows/ci.yml` and
+  `docs/testing/coverage-gaps.md` carry the real numbers. Two new jsdom guards hold the tree to
+  them: `e2e-runtime-ceiling.test.ts` pins both ceiling lines and every documented count against
+  `readdirSync`, and `e2e-locator-rule.test.ts` fails on `querySelector`, `getElementById`,
+  `data-testid` or a `data-slot` string outside a comment in the browser-test package's 16 spec
+  files, with `capture/scenario-state.ts` an explicit, reason-carrying exclusion. Both fail on an
+  empty glob rather than passing vacuously. Tests and docs only, 0 s of browser time. Part of
+  #549. (#763)
+- 📝 **Documented how agent token usage becomes a step total.** The protocol now distinguishes
+  Codex's thread-cumulative figure from the per-execution figures reported by Claude, pi, and
+  OpenCode, including the resumed-session accounting rule. (#768)
+- 📝 **Two records of the workspace-settings write are completed.** The hosted-mode record in
+  `BACKWARD_COMPATIBILITY.md` and in the two MCP decision documents argued only about workspace
+  limits, and one writable key is not a limit: `agentEnvPassthrough` decides which of the server's
+  own environment variables the agent processes receive. All three now say in one sentence that the
+  owner decision of 2026-09-20 covers that key too, and what it decides. Separately, the change
+  `discover_project` made to its own answer — the `workspace_limits` capability became `available`,
+  where it used to be `read-only` with the reason that only a person can change those settings —
+  is now recorded in the entry and in the changelog. (#743, #677)
+- 📝 **Correct the Projects screenshot caption to describe phone-table overflow.** Retain the 375 px G-30 before-picture, regenerate the three Projects captures and their index, and re-check the 0.16.0 version chips (#776).
+- 📝 **The browser guide dry-run exception register and dated manual-check record are now committed and guarded.** Documentation – including the audit-only guide 17 – now identifies each guide's dry-run boundary without adding browser runtime. (Part of #549)
+- 📝 **The browser suite's default-order and shuffled-order stability is now recorded rather than estimated.** Three default-order runs and one shuffled-order run (seed 482917365) at one head are recorded in `docs/testing/agent-browser.md`, honestly showing two of three default-order runs and 23 of 66 files under shuffle as red — evidence for #671, not retried or fixed here. (Part of #549)
+- 📝 **The hosted/remote server-mode verification package is committed and reconciled with the
+  authenticated-proxy harness.** `docs/testing/server-mode-test-levels.md` recovers the 14-row
+  risk → cheapest-test-level table for #547 (re-verified against `main`), and
+  `server-mode-test-levels.test.ts` fails when a row's cited suite or file disappears. The
+  `test:server-mode` harness now also asserts the guide's documented port precedence through the
+  built CLI (`--port` beats `XEZ_PORT`; `XEZ_PORT` decides with no flag — case `A-PORT-01`), and
+  `hosted-docs.test.ts` ties each documented port-precedence and basic-auth-gate claim to the
+  harness case that observes it. `docs/testing/coverage-gaps.md` links the two axes. (#547)
+- 📝 **The OpenCode runner's 2026-09-19 qualification is recorded, and its routing rows now match
+  the evidence.** [`.xezar/docs/opencode-qualification-2026-09-19.md`](.xezar/docs/opencode-qualification-2026-09-19.md)
+  reports the day's 12 OpenCode runs — 11 read-only tasks across five workflow types, all completed
+  on three models, and a writing retrial that reached a sealed evidence set on the fixed build
+  before a post-denial stall (#692) stopped it at handoff — with the two defects the trial found
+  (#686, fixed by #688; #690, open). `.xezar/docs/model-routing.md` § 7, § 8 and § 11 and a new
+  dated § 13 entry carry the same verdict: OpenCode stays out of the rotation until #692 merges,
+  then re-enters for read-only rows first. Kit-internal: it changes how this repository dispatches
+  its own tasks, and nothing a user installs. (xez-0619292a)
+- 📝 **The 2026-09-20/21 brief rules and leader lessons are committed.** The owner's flaky-test rule
+  (a flake is REDESIGNED onto a deterministic signal from the system under test, never a widened
+  timeout, retry, sleep, re-run or register), the ban on asking a task to "throttle CPU" or "run
+  under load", the rule that a gate-repair return never edits a test outside the pull request's own
+  scope, the three verbatim `REFRESH` lines a resume that merges `main` must dictate, and the rule
+  that a superseding run declares `counters init --none` are rows in `.xezar/docs/model-routing.md`
+  § 6. The leader rules – verify issue state with `gh` before claiming it closed or open, stagger
+  parked-run resumes under the two-gate ceiling, a spent gate-return counter means a superseding PR,
+  poll a long job inside a non-final step in one turn, diagnose Codex's empty or replayed turns with
+  the `codex exec` probe, use `send_message` for a waiting run, and hold a PR on a weaker model's
+  Blocker claim until a strong model that is neither author nor claimant has re-proven it false or
+  the fix is verified – are in `.xezar/docs/leader-guide.md`, each attributed to the owner or the
+  leader with its date. The incidents behind them are a new
+  dated entry in `model-routing.md` § 13.
+- 📝 **Three user-guide claims now match the code they describe, and a 0.17.0-only claim is marked
+  unreleased.** Guide 13 said Codex tasks had followed the project-only MCP-server rule "since
+  0.13.0"; Codex MCP isolation (#324) shipped in 0.15.0, so the guide now says 0.15.0. Guide 17
+  called `mcp-audit.ndjson` "written by xezar 0.13.0–0.15.0"; the file first shipped in 0.14.0
+  (`git describe --contains 8e1a2161` is `v0.14.0~75`), so it now says 0.14.0–0.15.0. Guide 16
+  quoted a server log line the server never emits; it now quotes the real line from
+  `packages/xezar/src/server/server.ts` and keeps the source-checkout build advice as the guide's
+  own. Guides 07 and 11 said `XEZ_AUTOMATIONS` is read live "since 0.17.0"; the flag is read live on
+  `main` but 0.17.0 has not shipped, so both now say "unreleased – ships in 0.17.0". Docs only: no
+  behaviour change. (#447)
+- 📝 **Drifted `path:line` citations in a feature record are re-anchored, two coverage-gap claims
+  are updated and five records now state their status.** The MCP result-and-evidence record was
+  anchored to revision `9fdcf0e`, so every citation had moved: `RunStatus`, `StepStatus`,
+  `StepState.iterations`/`error`, the `RunRecord` field rows, the `NO_WORKTREE` routes, the
+  check-output `exitCode` and the SIGTERM, plus `store.ts`, `forge/github.ts`, the merge-state and
+  changes schemas. Each anchor is re-derived at `7df2cf4d` and the record's baseline line now says
+  so. `docs/testing/coverage-gaps.md` keeps its dated 2026-09-15 nightly observation and adds the
+  later first complete six-of-six run (`fe33541`, run 34999068325), and splits a run-on sentence
+  into its three dated facts (adopted as a release gate, removed 2026-09-12, scheduled by #433 on
+  2026-09-15) with no fact changed. The issue-filing contract, the Codex adapter evidence, the
+  real-client acceptance record, the MCP Definition-of-Done record and the pi leader extension
+  each gain one dated status line in their first 15 lines. Docs only: no behaviour change. (#447)
+- 📝 **The README's guide count, backend-status wording and environment table now match the source
+  they describe.** The "complete 16-part user guide" link said 16 while `docs/guide/README.md`
+  lists parts 01–17 (and `docs/README.md` already said "17-part"), so it now says 17-part. The
+  backend table marked **pi** _(experimental)_; only OpenCode is experimental
+  (`docs/guide/04-agent-backends.md` and `AGENTS.md` agree, and no runner carries such a marker in
+  `packages/xezar/src/core/`), so pi's marker is gone. The env table listed `XEZ_API_PORT` under
+  "Every user-facing `XEZ_*` variable"; the server never reads it (it is the Vite dev proxy target,
+  read by `packages/web/vite.config.ts` and set by `scripts/dev.mjs`), so its row is removed and
+  `.env.example` stays the only surface. Docs only: no behaviour change. (#447)
+- 📝 **The release-recovery list now names all four manifests, and two release claims match the
+  code they describe.** `docs/publishing.md` told a maintainer to hand-bump `version` in
+  `packages/contract`, `packages/api-client` and `packages/xezar` when the version-bump PR was not
+  opened; the release stamps four — `scripts/release.mjs` reads `contract`, `apiClient`, `web` and
+  `xezar` and `.github/workflows/release.yml` stages all four `package.json` files — so
+  `packages/web` is now in the list. The same page said Xezar "kills every non-final agent step at
+  30 minutes"; an earlier agent step with no `timeout` of its own falls through to the runner's
+  30-minute default, and an explicit `timeout` overrides it, so the qualification is now stated.
+  It also described the generic-instructions guard and the `check:pack` packed-archive scan as
+  something [PR #481](https://github.com/qodeca/xezar/pull/481) "adds"; that PR merged
+  2026-09-16, so the wording is past tense and names the landed build leg. Finally,
+  `BACKWARD_COMPATIBILITY.md` section 1 listed `--single-project` but not its counterpart
+  `--global-layout` (#657, unreleased — ships in 0.17.0), so the protected-flags list and the
+  single-project section now both name it. Docs only: no behaviour change. PR 2 of 4 for #447.
+- 📝 **The 2026-09-21 leader lessons 12–16 are committed.** A conflict-refresh brief now says to
+  merge `main` through `merge-recovery.sh` and rewrite the `DELIVERED` record for the new head, and
+  a handoff brief answers a pull request with no checks at all with
+  `gh workflow run ci.yml --ref <branch>` rather than a close and reopen – both are rows in
+  `.xezar/docs/model-routing.md` § 6. The leader rules – re-read a run's latest text before acting on
+  a `continue` note, and grep `merges.md` and `gh pr list --search` before dispatching a flake fix a
+  merged pull request has already rebuilt – are in `.xezar/docs/leader-guide.md`. The incidents and
+  run ids behind them are a new dated entry in `model-routing.md` § 13.
+- 📝 The project's model-routing document moves to version 3: pi + DeepSeek V4.1 Flash becomes a normal lane of the routing table instead of a backup, first choice for procedural work and never used for security reviews, design judgement, cockpit UI, claim verification or its own work; the campaign-only owner rules are expired at 0.16.0; and the table is the guideline for every dispatch again. Kit-internal: `.xezar/docs/model-routing.md` guides how this repository dispatches its own agent tasks and changes no shipped behaviour.
+- 📝 **The project leader now carries its own contract, loaded for the leader and never for a task agent.** [.xezar/docs/leader-guide.md](.xezar/docs/leader-guide.md) collects what a leader session of this repository needs in one place: who the leader is and is not (MCP tools and `gh` only, never the cockpit or HTTP, never source diagnosis), session start and compaction recovery, this repository's single-project setup, the task lifecycle with the integration and conflict-repair recipes, review discipline and the repair counters, routing and account probing, the brief-writing rules, owner-only decisions, what to log where, and the release runbook as it is today. A committed Claude Code `SessionStart` hook (`.claude/settings.json` → `.xezar/checks/leader-context.sh`) appends the guide and the newest campaign folder's `README.md` and `decisions.md` at every start, resume, clear and compaction; the hook stays silent in a linked worktree, on a `/.local/xezar/worktrees/` path, and whenever `XEZ_HANDOFF_FILE` or `XEZ_TODOS_FILE` is set, so a xezar task agent never loads it (owner 2026-09-18).
+- Documented leader-context loading as a reusable standard for onboarding a project: [`.xezar/docs/leader-context-loading.md`](.xezar/docs/leader-context-loading.md) covers the committed leader guide, the `.claude/settings.json` `SessionStart` hook that reloads it, the guard that keeps it silent for task agents, the JSON output shape, the cost model, the Codex/pi fallback and a numbered install checklist; [guide 13](docs/guide/13-mcp-leader.md) gains a product-neutral section on giving a leader a guide that survives compaction. (#600)
+- 📝 **The 2026-09-19 leader rules and the configuration-parity requirement are recorded in the committed kit.** The project leader's guide gains the rules established on 2026-09-18/19 in the sections that own them: a rule lives in committed documentation and never only in memory; the owner's exact words and the leader's reading are separate, marked lines; a finding from a reading task is a claim until reproduced; a rename brief must protect dated records; every review brief names one experiment that could fail; the last step idles on CI with no timeout; readiness refuses an incomplete phase record; the append-only files make every open PR dirty on every merge; and the two-gate ceiling is a measured hand rule. `.xezar/docs/model-routing.md` § 6 gains the universal brief rules behind those, and a new dated record, [docs/features/2026-09-19-configuration-parity.md](docs/features/2026-09-19-configuration-parity.md), states the owner's requirement that every configurable value be editable through both the MCP and the cockpit without a restart wherever possible. Kit-internal: it changes no shipped behaviour.
+- 📝 **One review-fix round is allowed, recorded in the committed leader guide.** The guide's
+  review-discipline section had made filing every Minor as a follow-up issue the default; the owner's
+  correction of 2026-09-19 records that a review's findings — Minors included — may get one fix round on
+  the same pull request before merge, with filing a Minor as a follow-up still allowed when a round is
+  not worth it. The cap is unchanged: at most two response rounds, and round 2 exists only for a blocker
+  round 1 introduced or missed. Kit-internal: it guides how this repository reviews its own work. (#719)
+- 📝 **The single-project-mode design record names the evidence root its captures actually live in.**
+  A dated 2026-09-17 record's `| Captures |` row had been rewritten to the post-rename
+  `.local/xezar/tasks/<runId>/design-captures/`, but the 12 PNGs that row records belong to a design run
+  made before the rename, so they are under the frozen historical `.local/xezar-tasks/<runId>/`. The
+  recorded location is restored and the post-rename destination is a separate clause, so the dated record
+  says what was true then and the present-tense instruction stays separate. Docs only: no behaviour
+  change. (#689, #712)
+- 📝 **Every campaign-note instruction points at `.local/xezar/campaigns/`.** Four Markdown files named
+  the old `.local/xezar-campaigns/` path — the campaign-notes section of `SDLC.md`, the folder layout in
+  `.xezar/docs/campaign-notes.md`, a "keep it honest" bullet in `.xezar/docs/leader-context-loading.md`
+  and the Leader-log line inside `.xezar/docs/model-routing.md`'s Sources block — and now name the layout
+  the notes actually live at. Every record of where notes used to live is deliberately untouched,
+  including `model-routing.md` § 13, whose dated entries say what the documents cited at the time. Docs
+  only: no behaviour change. (#661)
+
+## 🚀 CI/CD & Infrastructure
+
+- 🚀 **Verify documented output through fixed, isolated script fixtures.** Maintained Markdown can
+  now name a reviewed allowlist ID whose kit-owned script runs only in its own temporary fixture;
+  unknown IDs, executable-looking markers, fixture failures and mismatched JSON keys fail closed.
+  (#675)
+- 🚀 **The two-project product harness now runs in CI.** A `multi-project` job in
+  `.github/workflows/ci.yml` installs, builds the server and runs `npm run test:multi-project`
+  under a 12-minute bound derived from the harness's own 5-minute ceiling, so its production
+  wiring — registry, lazy contexts, route aliases, the shared cap, the cross-project runs index,
+  SSE stamping, disposal/re-add and per-project MCP doors — can no longer regress behind a green
+  run. The `P — not run in CI` row in `docs/testing/coverage-gaps.md` is replaced. (#548)
+- 🚀 **A second full gate run on one machine now waits instead of starving the first.** The gate
+  script takes one of this machine's gate slots before it installs anything and holds it until the
+  run ends, so the hand rule "at most two at once" is applied by the run rather than remembered.
+  How many run together is the new per-user `resources.gateSlots` (absent = 1, the measured safe
+  number); the slots are machine-wide, so two checkouts and two single-project folders contend for
+  the same ones. The wait is bounded at 20 minutes and fails open — a bound reached, an unwritable
+  slot folder or a checkout with no xezar CLI each print one loud line and run the gates anyway —
+  and the run says which slot it took and how long it queued. (#672)
+- 🚀 **New command `xezar lease gates -- <command>`.** Runs any command holding one of those slots,
+  answering the command's own exit code and leaving stdout entirely to it. (#672)
+- 🚀 **The bounded CI observation no longer carries a rerun list.** (#671) `KNOWN_LOAD_FLAKES` in
+  `.xezar/checks/ci-watch.sh` named one job left, `MCP per-file coverage` — its only recorded flake
+  (F-29, `stale-write.test.ts`'s teardown race, #631) was fixed by #634 and #765. `gh run list`/
+  `gh run view` against the last 15 completed `main` CI runs since `215d1e2f` showed it green on 14
+  and cancelled-superseded on 1, zero failures, so the entry and the one-rerun rule it granted are
+  retired: a failed job is a failure, full stop, and the integration `report` step always asks the
+  leader to revert, forward-fix or hold rather than auto-rerunning. Internal to this repository's
+  own kit — `.xezar/` ships in nothing published.
+- 🚀 **The two per-dataDir todos watch tests no longer wait on macOS to report a file write.**
+  (#671) `packages/xezar/src/todos.test.ts` proved "A fires, B stays silent" and "unsubscribe stops
+  delivery" by writing `todos.json` and giving the OS up to 4 s to deliver an `fs.watch` event.
+  That is not a signal a test can rely on: `fs.watch` announces nothing when it is armed, and a
+  write that lands during macOS registration is dropped rather than delayed, so on a loaded
+  machine the awaited event simply never came — three red gate runs on 2026-09-20, all with the
+  same `no change event for …/project-a/.local/xezar/todos.json within 4000 ms`. `todos.ts` now
+  carries a watcher seam (`setTodosWatchFactory`), the cases deliver the raw event themselves and
+  advance the product's own 300 ms debounce with fake timers, and the suite runs in 118 ms instead
+  of 4.8 s with no wall clock left to lose a race to. Nothing about the shipped behaviour changes:
+  the default factory is the same `fs.watch` call, and a new case fails if the default ever stops
+  constructing a real watcher. No test was retried, quarantined or given a wider timeout.
+- 🚀 **The guide-02 browser spec's tab-strip clicks now go through the covered-click retry — and that
+  retry can finally recognize the failure it exists for.** Three CI runs went red inside one hour —
+  main 35451994733, PR #702 35451195569 and #706's neighbour — on
+  `guide-02-running-a-task.e2e.ts` > "the Changes, Files and Commits tabs show the task's real
+  worktree state", all three with `Element '@e13' is covered by <a.-mb-px.flex inside div#root> at
+  its click point`, and all three green on re-run. The failing call was a bare
+  `clickRole('link', 'Files')`; all four run-header tabs (`Session | Changes | Commits | Files`) now
+  click through `clickRoleWhenStable`, because the tab that just became active re-renders with
+  `font-semibold` and re-measures that row in one synchronous frame. The same run's log showed the
+  retry could not have fired even with the helper in place: agent-browser writes its
+  `success:false` JSON to STDOUT and exits 1, so the failure reaches the helper through
+  `execFileSync`'s error, whose message names only the command — while the "covered by" phrase the
+  retry matches on sits on that error's `stdout` property. The wrapper now carries the CLI's own
+  payload into its message on that path too, and a unit case drives that real shape through the
+  real `run()`. Test-only: no shipped behaviour changes.
+- 🚀 **Two flaky test shapes removed at the source rather than retried.** (#631, #671 rows F-26 and
+  F-29) That late `console.error` is what vitest reports as
+  `EnvironmentTeardownError: Closing rpc while "onUserConsoleLog" was pending` — three red
+  `MCP per-file coverage` jobs on 2026-09-18 with all 2 267 tests passing — and what a gate reads
+  as a timeout in whichever case was running when it landed. Seventeen fixtures plus the two
+  shared ones now close their store before removing its temporary directory, through one shared
+  helper (`runs/store.testkit.ts`); the remaining sixty-nine that carry the same shape are covered
+  by the store's own behaviour above and are listed in a new scan test, which fails for any FUTURE
+  test written that way. `acceptance-parity.test.ts`'s waits await the run store's own
+  change signal instead of a 30 s inner budget that could pre-empt each case's own 90 s one. No
+  test was retried, quarantined or given a wider timeout; the two inner budgets are gone, not
+  raised.
+- 🚀 **The usage-limit parser's month/day handling now has the four edge cases the #622 review
+  named.** Test-only: `packages/xezar/src/core/usage-limit.test.ts` gains cases for a reset date in
+  the next calendar year, a single-digit day, `12am`/`12pm` and a lower-case month name, each on a
+  fixed injected clock. All four fail against the pre-#622 parser, which had no month/day path at
+  all, and pass on current code; no production code changed. (#645)
+- 🚀 **Keep marked documentation quotes aligned with their repository sources.** A
+  `<!-- from: path -->` marker now makes the following fenced block byte-checked during repository
+  validation, including a hard failure when the source path is missing or escapes the repository.
+  (#674)
+- test(automations-gate): the second-window regression proof now reads the real getRepoInfo before parking, so a slow git subprocess can no longer make it pass with the guard removed. (#720)
+- 🚀 **The skills-update browser spec establishes the state it asserts, and waits for the query
+  that owns the line it reads.** Two independent defects made
+  `packages/web/e2e/skills-update.e2e.ts` red on two different lines across four measured runs.
+  The spec asserted "no override is saved" about a scratch home it only snapshotted, so an earlier
+  session's leaked `skillsAutoUpdate: false` made it fail; it now writes `null` through the same
+  `PUT /api/v1/workspace/config` route the page's own "Use default" button calls and confirms the
+  stored value before the page reads it. And it read the installation-status copy after waiting on
+  a DIFFERENT query's section, so the pending sentence won whenever
+  `GET /workspace/skills-update` lost one round trip; the status paragraph now carries its own
+  `data-state` (`pending`/`ready`/`error`, a pure function of that query), and the spec waits for
+  `ready` before reading the copy. No timeout, retry, sleep or flake-register entry — both halves
+  are proven red against a named break and green after it. (#671)
+- 🚀 **The guide-03 worktrees spec waits for the query that owns the line it reads.**
+  `packages/web/e2e/guide-03-worktrees-and-git.e2e.ts` asserted "No task worktrees on disk."
+  straight after waiting for the "Worktrees" heading — but that heading belongs to the project
+  config query, while the sentence belongs to a second, independent worktrees query, so the
+  panel's pending state won whenever `GET /worktrees` lost one browser round trip (measured red in
+  1 of 3 default-order runs). The panel's loading line now carries `role="status"` with its own
+  `aria-label`, and the spec waits for that region to clear before reading the copy — the query's
+  own rendered state, never text and never time. The label is part of the fix rather than
+  decoration: `status` is not a name-from-content role, so without it the region has no accessible
+  name and the wait would pass while the indicator is still on screen. No timeout, retry, sleep or
+  flake-register entry — the new wait is proven red against a component holding its query back
+  three seconds and green under the identical build. (#671)
 - 🐛 **The cockpit browser suite runs when the repository itself is in single-project mode.** (#653)
   Once `.xezar/workspace.json` is committed, a plain clone is a single-project root, and the mode
   never opens the pinned `XEZ_HOME` — so the shared test server kept its state in the repository and
@@ -43,14 +1064,14 @@
   this does not do:** it makes no test faster and fixes no slow product path — a test that is slow
   because the code is slow is still slow, and a genuinely hung test still fails, three seconds
   later than before. A run that was green stays green at the same cost.
+- 🚀 **The link checker now runs as part of the gate list.** `scripts/check-links.mjs` existed and worked
+  but was called by nothing; `.xezar/checks/repository-checks.sh` — the last entry of the canonical gate
+  list, and the script the unconditional `Xezar infrastructure fixtures` CI job already runs — now calls
+  it, so a broken relative link in `docs/`, `README.md`, `.xezar/docs/` or `designs/**/README.md` fails
+  the gates. It is offline and build-free, walks only those trees, writes nothing, and costs 0.05 s.
+  Kit-internal: no shipped behaviour changes. (#663, #664)
 
-## 📝 Specs & Documentation
-
-- 📝 The project's model-routing document moves to version 3: pi + DeepSeek V4.1 Flash becomes a normal lane of the routing table instead of a backup, first choice for procedural work and never used for security reviews, design judgement, cockpit UI, claim verification or its own work; the campaign-only owner rules are expired at 0.16.0; and the table is the guideline for every dispatch again. Kit-internal: `.xezar/docs/model-routing.md` guides how this repository dispatches its own agent tasks and changes no shipped behaviour.
-- 📝 **The project leader now carries its own contract, loaded for the leader and never for a task agent.** [.xezar/docs/leader-guide.md](.xezar/docs/leader-guide.md) collects what a leader session of this repository needs in one place: who the leader is and is not (MCP tools and `gh` only, never the cockpit or HTTP, never source diagnosis), session start and compaction recovery, this repository's single-project setup, the task lifecycle with the integration and conflict-repair recipes, review discipline and the repair counters, routing and account probing, the brief-writing rules, owner-only decisions, what to log where, and the release runbook as it is today. A committed Claude Code `SessionStart` hook (`.claude/settings.json` → `.xezar/checks/leader-context.sh`) appends the guide and the newest campaign folder's `README.md` and `decisions.md` at every start, resume, clear and compaction; the hook stays silent in a linked worktree, on a `/.local/xezar/worktrees/` path, and whenever `XEZ_HANDOFF_FILE` or `XEZ_TODOS_FILE` is set, so a xezar task agent never loads it (owner 2026-09-18).
-
-- Documented leader-context loading as a reusable standard for onboarding a project: [`.xezar/docs/leader-context-loading.md`](.xezar/docs/leader-context-loading.md) covers the committed leader guide, the `.claude/settings.json` `SessionStart` hook that reloads it, the guard that keeps it silent for task agents, the JSON output shape, the cost model, the Codex/pi fallback and a numbered install checklist; [guide 13](docs/guide/13-mcp-leader.md) gains a product-neutral section on giving a leader a guide that survives compaction. (#600)
-- 📝 **The 2026-09-19 leader rules and the configuration-parity requirement are recorded in the committed kit.** The project leader's guide gains the rules established on 2026-09-18/19 in the sections that own them: a rule lives in committed documentation and never only in memory; the owner's exact words and the leader's reading are separate, marked lines; a finding from a reading task is a claim until reproduced; a rename brief must protect dated records; every review brief names one experiment that could fail; the last step idles on CI with no timeout; readiness refuses an incomplete phase record; the append-only files make every open PR dirty on every merge; and the two-gate ceiling is a measured hand rule. `.xezar/docs/model-routing.md` § 6 gains the universal brief rules behind those, and a new dated record, [docs/features/2026-09-19-configuration-parity.md](docs/features/2026-09-19-configuration-parity.md), states the owner's requirement that every configurable value be editable through both the MCP and the cockpit without a restart wherever possible. Kit-internal: it changes no shipped behaviour.
+---
 
 # 0.16.0 (2026-09-18)
 
@@ -251,13 +1272,6 @@ The sidebar is navigation-only, and more of the cockpit is keyboard- and phone-a
 
 ## 🐛 Fixes
 
-- 🐛 **The MCP per-file coverage suite no longer flakes on worker teardown.** (#631)
-  `stale-write.test.ts` left the run store's 300 ms debounced `runs.json` save timer pending after
-  its tests ended. The `afterEach` removed the temporary data directory without flushing the store,
-  so the pending timer later fired, `saveNow()` hit ENOENT and logged `console.error('[xez] failed
-  to save runs.json: …')` during worker teardown — surfacing as `EnvironmentTeardownError: Closing
-  rpc while "onUserConsoleLog" was pending`. The test now flushes the store before removing the
-  directory, so no log can escape after the last test.
 - 🐛 **The Tasks page header no longer scrolls sideways in a narrow desktop window.** (#625, #447, #424)
   Below about 896 px at comfortable density (`known-gaps.md` G-48; density-dependent, from 958 px
   roomy to 835 px ultra), with “Mark all read” and “Archive finished” both shown, the one-row header
