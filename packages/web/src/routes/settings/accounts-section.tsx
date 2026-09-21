@@ -372,9 +372,11 @@ function AgentGroup({
         ) : null}
       </div>
 
-      {problems?.map((problem) => (
+      {/* Indexed: two projects' selections may name the same missing handle for one agent, and
+          `problems` carries no project to tell them apart. */}
+      {problems?.map((problem, index) => (
         <ProblemBlock
-          key={`${problem.where}:${problem.handle}`}
+          key={`${index}:${problem.where}:${problem.handle}`}
           problem={problem}
           projectRoot={projectRoot}
         />
