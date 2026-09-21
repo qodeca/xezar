@@ -51,6 +51,9 @@ function serve(resources: Partial<WorkspaceConfigResponse['resources']> = {}) {
       autoResumeOnUsageLimit: true,
       memoryLimitMb: null,
       worktreeRetentionDefault: 10,
+      // #672 G1. Reported by the route since the gate lease landed; this pane grows its control
+      // in the separate G4 change, so here it is only what keeps the fixture a real response.
+      gateSlots: 1,
       ...resources,
     },
   }

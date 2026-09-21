@@ -59,6 +59,18 @@ export const FILE_LOCK_TAKEOVER_GUARD_STALE_MS = 1_000;
 export interface FileLockOptions {
   /** Overridable so a contention test does not have to wait two real seconds. */
   waitMs?: number;
+  /**
+   * How old a lock may be before a waiter treats it as abandoned. Defaults to
+   * `FILE_LOCK_STALE_MS`, which is right for the two original callers: both hold the lock for a
+   * few milliseconds, so thirty seconds is already three orders of magnitude of slack.
+   *
+   * It is an option because a caller that holds the lock for MINUTES cannot use that bound —
+   * `isHeld` would call a live holder abandoned and hand its lock to a waiter, which is the one
+   * thing this module promises never to do. The gate lease (#672) holds a slot for a whole gate
+   * run and therefore names its own bound AND re-stamps the lock while it works; neither half is
+   * sufficient alone. A caller that does not say keeps exactly the behaviour it had.
+   */
+  staleMs?: number;
   now?: () => number;
 }
 
@@ -101,6 +113,7 @@ export async function queueByLockPath<T>(lockPath: string, body: () => Promise<T
  */
 export async function acquireFileLock(lockPath: string, options: FileLockOptions = {}): Promise<FileLockAcquisition> {
   const now = options.now ?? Date.now;
+  const staleMs = options.staleMs ?? FILE_LOCK_STALE_MS;
   const deadline = now() + (options.waitMs ?? FILE_LOCK_WAIT_MS);
   for (;;) {
     let token: string | null;
@@ -118,7 +131,7 @@ export async function acquireFileLock(lockPath: string, options: FileLockOptions
         },
       };
     }
-    if (await takeOverIfStale(lockPath, now)) continue;
+    if (await takeOverIfStale(lockPath, now, staleMs)) continue;
     if (now() >= deadline) return { acquired: false, reason: 'timeout' };
     await sleep(FILE_LOCK_POLL_MS);
   }
@@ -149,16 +162,28 @@ async function tryCreate(lockPath: string, now: () => number): Promise<string | 
  * the guard and only for the same token. A lock created in between carries a different token and is
  * left alone; the waiter then simply keeps waiting for it.
  */
-async function takeOverIfStale(lockPath: string, now: () => number): Promise<boolean> {
+async function takeOverIfStale(lockPath: string, now: () => number, staleMs: number): Promise<boolean> {
   const judged = await readLockMetadata(lockPath, now);
-  if (!judged || isHeld(judged, now)) return false;
+  if (!judged || isHeld(judged, now, staleMs)) return false;
   return await underTakeoverGuard(lockPath, async () => {
     const current = await readLockMetadata(lockPath, now);
     // Gone already: the next create decides who gets it.
     if (!current) return true;
     if (current.token !== judged.token) return false;
-    if (isHeld(current, now)) return false;
-    await rm(lockPath, { force: true }).catch(() => undefined);
+    if (isHeld(current, now, staleMs)) return false;
+    // A removal that FAILED must not answer `true`. `acquireFileLock` reads `true` as "the path is
+    // free now, try again at once" and `continue`s past both its deadline check and its sleep, so a
+    // lock path that cannot be removed — a directory there, an immutable flag, a `chflags`ed
+    // parent — turned the retry loop into an unbounded spin (a live reproduction sat at 162 % CPU
+    // and never returned). Whatever the reason, "I could not remove it" is indistinguishable, from
+    // here, from "somebody else still holds it": answer `false`, and the caller's own bound decides
+    // when to give up. The gate lease (#672) is the caller that made this load-bearing — it is the
+    // product's first BLOCKING wait, and its contract is that it never blocks past `waitMs`.
+    try {
+      await rm(lockPath, { force: true });
+    } catch {
+      return false;
+    }
     return true;
   });
 }
@@ -180,8 +205,8 @@ async function releaseIfStillMine(lockPath: string, token: string, now: () => nu
   if (!guarded) await remove();
 }
 
-function isHeld(metadata: { timestamp: number; alive: boolean }, now: () => number): boolean {
-  return now() - metadata.timestamp <= FILE_LOCK_STALE_MS && metadata.alive;
+function isHeld(metadata: { timestamp: number; alive: boolean }, now: () => number, staleMs: number): boolean {
+  return now() - metadata.timestamp <= staleMs && metadata.alive;
 }
 
 /**

@@ -104,7 +104,7 @@ function serve(answers: Answers = {}) {
       memoryLimitDefaultMb: 4096,
       autoResumeOnUsageLimit: true,
       memoryLimitMb: null,
-      worktreeRetentionDefault: 10,
+      worktreeRetentionDefault: 10, gateSlots: 1,
     },
   }
   const json = (payload: unknown, status = 200) =>

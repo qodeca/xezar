@@ -83,6 +83,15 @@ export const workspaceConfigResponseSchema = z.object({
      *  the settings pane can name the machine's own default instead of guessing it. */
     memoryLimitDefaultMb: z.number(),
     worktreeRetentionDefault: z.number(),
+    /**
+     * How many gate runs may hold the machine-wide gate lease at once (#672).
+     *
+     * EFFECTIVE, never "stored or null": the file key is optional and an absent one derives 1,
+     * and since there is no `null`/unlimited spelling, absent and an explicit `1` are the same
+     * behaviour. Reporting one number therefore loses nothing a caller could act on — unlike
+     * `memoryLimitMb`, where `null` is a real third answer and the pane has to see it.
+     */
+    gateSlots: z.number(),
   }),
   /**
    * What a repo that has set none of its own runs (spec 2026-07-29-agent-profiles).
@@ -193,6 +202,9 @@ export const setWorkspaceConfigInputSchema = z.strictObject({
       idleTimeoutMinutes: z.number().int().min(1).max(1440).nullable().optional(),
       memoryLimitMb: z.number().int().min(0).max(1_048_576).nullable().optional(),
       worktreeRetentionDefault: z.number().int().min(0).max(1000).optional(),
+      /** Concurrent gate runs allowed by the machine-wide gate lease (#672). No `null`: there
+       *  is no "unlimited" spelling, and 16 is the way to say "never binds". */
+      gateSlots: z.number().int().min(1).max(16).optional(),
     })
     .optional(),
   /** Machine-wide agent defaults. `null` on a key CLEARS it back to "no opinion", which a bare

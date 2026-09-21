@@ -69,7 +69,7 @@ const WORKSPACE = {
     idleTimeoutMinutes: 15,
     memoryLimitMb: 4096,
     memoryLimitDefaultMb: 4096,
-    worktreeRetentionDefault: 10,
+    worktreeRetentionDefault: 10, gateSlots: 1,
   },
   agentDefaults: {},
 }

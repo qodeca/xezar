@@ -218,6 +218,21 @@ export function deriveDefaultMemoryLimitMb(totalBytes: number = totalmem()): num
  *  not a thunk. */
 export const DEFAULT_MEMORY_LIMIT_MB = deriveDefaultMemoryLimitMb();
 
+/**
+ * How many gate runs may hold the machine-wide gate lease at once, when nobody said (#672).
+ *
+ * ONE, and it is a measured number rather than a derivation: attempt failure was 20 % with one
+ * concurrent gate run, 37 % at three, 90 % at four to five and 100 % at six or more. A
+ * `floor(cores / 4)` shape was considered and rejected in #672 — the contention that produced
+ * those numbers is disk, memory and vitest worker processes, not cores.
+ *
+ * There is deliberately no `null` and no "unlimited" spelling. An unbounded gate lease is the
+ * state #672 exists to remove, so "effectively no lease" is a `gateSlots` high enough never to
+ * bind (the maximum is 16), not an absence. That also means absent and an explicit `1` behave
+ * identically, and the getter below is free to answer one number for both.
+ */
+export const DEFAULT_GATE_SLOTS = 1;
+
 const resourcesSchema = z
   .object({
     /** Workspace-wide parallel-task cap (moved from per-repo config.json). */
@@ -298,6 +313,20 @@ const resourcesSchema = z
       .catch(DEFAULT_MEMORY_LIMIT_MB),
     /** Default worktree retention for projects that don't override it. */
     worktreeRetentionDefault: z.number().int().min(0).max(1000).default(10).catch(10),
+    /**
+     * How many gate runs may hold the machine-wide gate lease at once (#672).
+     *
+     * `.optional()` rather than `.default(DEFAULT_GATE_SLOTS)`, and that is the one thing about
+     * this key that is not cosmetic. Every write goes through `mergeWriteWorkspaceConfig`, which
+     * writes the PARSED config back, so a `.default()` would materialise `gateSlots: 1` into
+     * every user's file the first time they change any unrelated setting — a stored choice
+     * nobody made. Absent stays absent on disk, and the derived 1 is applied by the reader
+     * (`WorkspaceSemaphore.gateSlots()`).
+     *
+     * There is no `null` spelling: see `DEFAULT_GATE_SLOTS`. Absent and `1` are the same
+     * behaviour, so nothing is lost by not being able to tell them apart.
+     */
+    gateSlots: z.number().int().min(1).max(16).optional().catch(undefined),
   })
   .passthrough();
 

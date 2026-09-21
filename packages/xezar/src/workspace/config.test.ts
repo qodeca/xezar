@@ -267,7 +267,7 @@ describe('workspace config', () => {
       schemaVersion: 'two',
       browseRoot: 42,
       projectsDir: 42,
-      resources: { maxParallel: 99, maxMonitoringSessions: 99, monitoringWakeIntervalMinutes: 0, memoryLimitMb: 'lots', worktreeRetentionDefault: -1 },
+      resources: { maxParallel: 99, maxMonitoringSessions: 99, monitoringWakeIntervalMinutes: 0, memoryLimitMb: 'lots', worktreeRetentionDefault: -1, gateSlots: 'plenty' },
       projects: [project('good')],
     });
     const config = await loadWorkspaceConfig();
@@ -276,6 +276,15 @@ describe('workspace config', () => {
     expect(config.projectsDir).toBe('~/xezar/projects');
     expect(config.resources).toEqual({ maxParallel: 2, maxMonitoringSessions: 2, monitoringWakeIntervalMinutes: 5, autoResumeOnUsageLimit: true, idleTimeoutMinutes: 15, memoryLimitMb: DEFAULT_MEMORY_LIMIT_MB, worktreeRetentionDefault: 10 });
     expect(config.projects).toEqual([project('good')]);
+    // #672 G1: `gateSlots` degrades to UNDEFINED rather than to a number, which is the difference
+    // between it and every key above. The `toEqual` already says so — no `gateSlots` in the
+    // expected object — but only by omission, and an omission is exactly what a later `.default()`
+    // would quietly turn into a materialised 1. The second assertion is the one that matters on
+    // disk: `mergeWriteWorkspaceConfig` writes the PARSED config back, and `JSON.stringify` drops
+    // an undefined value, so a user who rescues a typo by changing some other setting does not
+    // acquire a stored gate-slot count they never chose.
+    expect(config.resources.gateSlots).toBeUndefined();
+    expect(JSON.parse(JSON.stringify(config.resources))).not.toHaveProperty('gateSlots');
   });
 
   /**

@@ -2146,6 +2146,7 @@ describe('project_config: safe effective reads', () => {
     expect(Object.keys(limits.workspace.resources).sort()).toEqual(
       [
         'autoResumeOnUsageLimit',
+        'gateSlots',
         'idleTimeoutMinutes',
         'maxMonitoringSessions',
         'maxParallel',

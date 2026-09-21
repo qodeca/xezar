@@ -183,7 +183,7 @@ const WORKSPACE_CONFIG: WorkspaceConfigResponse = {
     memoryLimitDefaultMb: 4096,
     autoResumeOnUsageLimit: true,
     memoryLimitMb: null,
-    worktreeRetentionDefault: 10,
+    worktreeRetentionDefault: 10, gateSlots: 1,
   },
 }
 

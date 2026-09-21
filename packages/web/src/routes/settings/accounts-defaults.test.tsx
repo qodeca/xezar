@@ -99,7 +99,7 @@ function serve({
       memoryLimitDefaultMb: 4096,
       autoResumeOnUsageLimit: true,
       memoryLimitMb: null,
-      worktreeRetentionDefault: 10,
+      worktreeRetentionDefault: 10, gateSlots: 1,
     },
     agentDefaults,
   }
@@ -240,7 +240,7 @@ describe('Agent accounts → Defaults for new projects', () => {
               memoryLimitDefaultMb: 4096,
               autoResumeOnUsageLimit: true,
               memoryLimitMb: null,
-              worktreeRetentionDefault: 10,
+              worktreeRetentionDefault: 10, gateSlots: 1,
             },
             // …and no `agentDefaults`.
           })

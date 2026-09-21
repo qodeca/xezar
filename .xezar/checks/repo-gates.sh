@@ -34,6 +34,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 . "$SCRIPT_DIR/lib/common.sh"
 # shellcheck source=lib/gate-record.sh
 . "$SCRIPT_DIR/lib/gate-record.sh"
+# shellcheck source=lib/gate-lease.sh
+. "$SCRIPT_DIR/lib/gate-lease.sh"
 
 # --- The canonical list ------------------------------------------------------------------
 #
@@ -182,6 +184,10 @@ gate_cancel() {
   exit 130
 }
 trap gate_cancel INT TERM
+# The slot goes back on EVERY exit path, including `gate_finish`'s and the security stage's early
+# stop. Without it the lease would be reclaimed only by its stale bound, and the next gate run on
+# this machine would queue behind a run that finished minutes ago.
+trap gate_lease_drop EXIT
 
 gate_phase() {
   local mode="$1"; shift
@@ -235,6 +241,8 @@ gate_finish() {
   [ "$complete_rc" -eq 0 ] || printf 'The recorded result is "%s" — this attempt cannot be sealed.\n' "$result"
   exit 1
 }
+
+gate_lease_take
 
 if [ "$FAST" -eq 1 ]; then
   gate_note_skip "npm ci" "deps-verified-current" || exit 1

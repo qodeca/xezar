@@ -88,7 +88,7 @@ const WORKSPACE: WorkspaceConfigResponse = {
     idleTimeoutMinutes: null,
     memoryLimitMb: null,
     memoryLimitDefaultMb: 4096,
-    worktreeRetentionDefault: 10,
+    worktreeRetentionDefault: 10, gateSlots: 1,
   },
   agentDefaults: {},
 }
