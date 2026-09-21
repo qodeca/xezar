@@ -38,7 +38,14 @@ import {
   isImageMediaType,
 } from '@qodeca/xezar-contract';
 import type { AgentEvent, ContentBlock } from '../core/agent-runner.ts';
-import { discoverSkills, type Skill } from '../skills.ts';
+import {
+  discoverSkills,
+  FIRST_TEAM_CATALOG_WAIT_MS,
+  lookupRunSkill,
+  skillMissingNote,
+  type RunSkillLookup,
+  type Skill,
+} from '../skills.ts';
 import { materializeSkillDir } from '../skills-remote.ts';
 import { seedAgentConfigLocalLayer } from '../agent-config/seed.ts';
 import { readAgentModelProvider } from '../agent-config/models.ts';
@@ -3958,7 +3965,45 @@ export class RunManager {
   ): Promise<string | null> {
     let systemPrompt: string | undefined;
     if (step.skill) {
-      const skill = skills.find((s) => s.name === step.skill);
+      // A brand-new project's FIRST task used to resolve its skill against a team catalog whose
+      // first fetch had not landed yet, and ran the plain prompt while the fetch succeeded
+      // seconds later (#777). Give that already-running load a bounded chance, once, and only
+      // because this step named a skill that is not there yet.
+      //
+      // A dry run passes 0 — it never waits. `XEZ_DRY_RUN=1` is the mocked-backend mode whose
+      // whole contract is "no real CLI, no network" (AGENTS.md § Agent runners), and its
+      // one-shot commands must stay instant; the catalog state it reports is still the honest
+      // one, so the note below is the same note a real run would get.
+      // This is a park point, so it consumes a cancellation that arrives while it is parked —
+      // the rule `quiesce()` states above ("adding a new `await` inside a run body means asking
+      // which of those covers it"; none of them covered this one, #793 advisory M1). Same shape
+      // as `acquireRepoRoot`: wrap `state.interrupt` for the duration, restore it in `finally`,
+      // and check the flag first for a cancel that landed before the wait began — a cancelled
+      // run waits for nothing and falls through to today's note.
+      let abortWait: () => void = () => undefined;
+      const waitCancelled = new Promise<void>((resolve) => {
+        abortWait = resolve;
+      });
+      const parkedInterrupt = state.interrupt;
+      state.interrupt = () => {
+        parkedInterrupt();
+        abortWait();
+      };
+      let lookup: RunSkillLookup;
+      try {
+        lookup = await lookupRunSkill(
+          this.repoRoot,
+          step.skill,
+          skills,
+          process.env.XEZ_DRY_RUN === '1' || state.cancelled ? 0 : FIRST_TEAM_CATALOG_WAIT_MS,
+          waitCancelled,
+        );
+      } finally {
+        state.interrupt = parkedInterrupt;
+      }
+      const skill = lookup.skill;
+      // Keep the registry `/skill` expansion (#811, #278) on the catalog this resolution used.
+      state.skills = lookup.skills;
       if (skill) {
         // The body alone often does not identify the selected skill. Keep its
         // name and catalog description in the normalized runner payload so a
@@ -3983,7 +4028,7 @@ export class RunManager {
         emit({
           type: 'note',
           stepId: step.id,
-          message: `skill "${step.skill}" not found in .xezar/skills, .ai/skills or the team skills repo — running with the plain prompt`,
+          message: skillMissingNote(step.skill, lookup.catalog),
         });
       }
     }

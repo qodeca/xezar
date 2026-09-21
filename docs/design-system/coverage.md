@@ -196,6 +196,7 @@ Each entry maps a utility name to a theme token. Listed in foundations.md §1.7;
 | `packages/web/src/components/open-in-menu.tsx` | OpenInMenu | components.md §2 OpenInMenu | Documented |
 | `packages/web/src/components/picker-pill.tsx` | PickerPill, RunnerPill | components.md §2 PickerPill and RunnerPill | Documented (G-03 fixed in #453 B4) |
 | `packages/web/src/components/pill.tsx` | Pill | components.md §2 Pill | Documented |
+| `packages/web/src/components/other-projects.tsx` | OtherProjects | components.md §2 OtherProjects | Documented |
 | `packages/web/src/components/pin-toggle.tsx` | PinToggle | components.md §2 PinToggle | Documented |
 | `packages/web/src/components/project-groups.tsx` | ProjectGroups | components.md §2 ProjectGroups | Documented with known gap (G-14) |
 | `packages/web/src/components/prompt-template-menu.tsx` | PromptTemplateMenu | components.md §2 PromptTemplateMenu | Documented |

@@ -81,6 +81,9 @@ Do this in order after every session start and every context compaction, **befor
     with a new `operationId`. Never blindly retry the stale write (`.xezar/CLAUDE.md`). A **busy**
     run cannot be messaged or cancelled through the MCP at all, because every agent event bumps the
     version: put everything a task needs into its brief before dispatch (leader memory 2026-09-16).
+    A **waiting** run is a different refusal: `execution_control continue` is refused for it, so use
+    `send_message`; `cancel` needs the current `version`, so read the task's history first (leader,
+    2026-09-21).
 11. If a required decision is not yours, write a `BLOCKED` record naming the decision and its
     options before you end the step. Silence is not authority (shared contract, SDLC.md).
 
@@ -167,10 +170,16 @@ step dispatched by name (leader memory 2026-09-15).
    list of the checkout the suite runs in. That list is why they were listed: CI checks out a
    `xez/*` task branch, `getBranches` filters every `xez/*` name out, and the endpoint honestly
    answered `[]`, so a re-run could never clear them (leader memory 2026-09-16 recorded the
-   `workflow_dispatch` empty-branch symptom of the same filter).
+   `workflow_dispatch` empty-branch symptom of the same filter). A flaky test is fixed or rebuilt by
+   the redesign rule in `.xezar/docs/model-routing.md` § 6 (owner 2026-09-20 21:02), never by
+   widening the wait.
 6. Issues stay open. Never put a closing verb next to an issue number, not even to negate it: GitHub's
    scanner ignores the negation. After every merge, check the named issues and reopen anything closed
-   in error (leader memory 2026-09-16).
+   in error (leader memory 2026-09-16). Verify the state with `gh` before claiming an issue closed or
+   open: a closing keyword can close an issue that is not done, so read the issue, not the event.
+   #670 was closed at 09:05 on a `ci-watch` "passed" event and reopened at 09:06 when main CI was
+   read as red; #677 was closed by a merge's closing keyword with B3–B6 still open and reopened by
+   the leader (leader, 2026-09-20; timeline-2026-09-20.md).
 7. Merges are strictly serial, and the primary is pulled (`git pull --ff-only origin main`) after
    every merge, before the next dispatch. New task worktrees branch from local `main` (leader memory
    2026-09-17; `.xezar/docs/model-routing.md` § 6).
@@ -241,12 +250,23 @@ because a head that moved since the brief makes the brief's exact-head guard sta
   review before closing anything out.
 - Every Major or Blocker claim from a weaker model is verified by Opus before it reaches the owner. A
   merge-blocking claim is re-proven on `main` with a throwaway test; a claim that already carries its
-  own red proof needs a careful read, not a second proof (`.xezar/docs/model-routing.md` § 7).
+  own red proof needs a careful read, not a second proof (`.xezar/docs/model-routing.md` § 7). While
+  such a claim is open the PR is HELD (`merge-queue` is removed). The hold ends only when a strong
+  model that is neither the author nor the claimant has re-proven the claim false, or the fix is
+  verified. On 2026-09-21 a DeepSeek advisory claimed a Blocker on PR #791 (an unref timer lets a
+  headless run exit 0 mid-step) that the sonnet APPROVE had not tested, and the hold was never
+  lifted: the sonnet live QA reproduced the defect 4 of 4 (filed as #793), Fable (run `866c92bd`,
+  neither the author, opus, nor the claimant, DeepSeek) confirmed it live 3 of 3, wider than
+  claimed, and fix round `16ae6f6e` followed. The weaker model's claim was true (leader,
+  2026-09-21; timeline-2026-09-21.md 02:44–02:56).
 - The three kit repair counters are hard controls: self-review 2, gate-return 2 and quality-repair 2,
   counted durably per **run**, in that run's `COUNTERS` record through `phase-record.sh counter`. A
   third repair is refused; never bypass it and never lower a severity or a threshold to get past it. A
   superseding PR is legitimate only when the content genuinely changed (SDLC.md § Self-review; leader
-  memory 2026-09-17).
+  memory 2026-09-17). A gate that hits a flake still spends the run's `gate-return` counter (2 of 2),
+  and once it is spent the only way forward is a SUPERSEDING PR on a fresh branch; the brief line
+  that supersede must carry is in `.xezar/docs/model-routing.md` § 6 (leader, 2026-09-21; run
+  `98cc751d`).
 - Verdicts cross in flight. In a handoff or integration step, read every PR comment posted after the
   gate seal, not only the one your task names, and treat a verdict against an older head as still open
   unless you can point at the commit that closes it (leader memory 2026-09-16).
@@ -279,7 +299,14 @@ because a head that moved since the brief makes the brief's exact-head guard sta
   `runner`, `model`, `agentProfile`, `worktree: false`, `autonomous: true`,
   `generateFollowups: false` and a two-line prompt ending `XEZ:DONE`. Cancel the auto-resume of every
   failed probe, read the reset time from the error text, write the account table into the campaign
-  note, and never probe in a loop (`.xezar/docs/account-limits.md`).
+  note, and never probe in a loop (`.xezar/docs/account-limits.md`). Codex quota is not readable
+  either: "empty" 1–2-second turns, or identical turns replayed, mean a quota or credits problem, not
+  a stuck prompt, so probe with
+  `codex exec --model gpt-5.6-luna --skip-git-repo-check "reply with the single word ok"`. On
+  2026-09-21 a `codex exec` probe answered "Your workspace is out of credits. Add credits to
+  continue.", a credits problem and not a window limit, and routing moved to state 2
+  (timeline-2026-09-21.md 02:27). The exact probe command and the rule are the leader's dated
+  rule, not verified evidence (leader, 2026-09-21; `.xezar/docs/model-routing.md` § 5).
 - Watch every `execution_control continue` for its first ten minutes. One continue burned $144 on
   2026-09-18 by re-prompting itself (`.xezar/docs/model-routing.md` § 5).
 - Machine hygiene: pull the primary after every merge; at most two quality-gate runs at once; no new
@@ -287,7 +314,10 @@ because a head that moved since the brief makes the brief's exact-head guard sta
   is a hand rule until the product enforces it** (leader measurement, 2026-09-17/18): attempt failure
   was 20 % with one concurrent gate run, 37 % at three, 90 % at four to five and 100 % at six or
   more. The leader keeps at most two full gate runs going, queues the rest, and says so when it
-  queues one.
+  queues one. Never resume several parked runs at once either: stagger the continues so the ceiling
+  holds, because resuming three parked runs plus two fresh fixes put four gates in flight and the
+  load at 39 (01:11), inside the 90 % failure band, and two runs then exhausted their gate-return
+  counters on one flake (leader, 2026-09-21; timeline-2026-09-21.md 01:11, 01:23).
 
 ## Brief-writing rules that bit
 
@@ -305,7 +335,14 @@ because a head that moved since the brief makes the brief's exact-head guard sta
   readiness refuses an incomplete phase record. The recovery is `execution_control continue`
   spelling out exactly which record is missing.
 - Run gates in the foreground and wait. Never end a turn while a long job runs in the background: the
-  agent process is torn down and the step fails (leader memory 2026-09-13).
+  agent process is torn down and the step fails (leader memory 2026-09-13). A long job inside a
+  non-final step is polled in one turn: Codex cannot host the wait, and a second vitest in the same
+  `TMPDIR` wipes the SSR cache, so a poll that re-runs the suite is not a substitute for waiting
+  (leader, 2026-09-21; from the dispatch brief, not evidenced in the campaign notes). The
+  `XEZ:MONITORING` rule for a Claude step is the bullet below; the evidence for it is run
+  `5495f83d` (#734 round 1), which started its own background gate run and ended on
+  `XEZ:MONITORING` twice, at `address` (timeline-2026-09-20.md 12:51) and in the gate-return
+  `address` step (13:12).
 - End with `XEZ:DONE` as the **very last line**, after the checkpoint line. A trailing line after it
   re-prompted a finished step 40 times and cost $9.74 (leader memory 2026-09-16, #524).
 - Never put `XEZ:MONITORING` or a ScheduleWakeup on a non-final step. A non-final agent step runs one
@@ -439,7 +476,8 @@ Before a dispatch:
 - [ ] Model, account and `agentProfile` chosen from `.xezar/docs/model-routing.md`; the reviewer is
       never the author.
 - [ ] Brief carries the primary-checkout sentence, foreground gates, `XEZ:DONE` as the last line, and
-      the exact head and base.
+      the exact head and base. A resume that merges `main`, and a superseding run, carry their
+      `.xezar/docs/model-routing.md` § 6 lines verbatim.
 - [ ] A writing brief makes the full phase record a numbered step before readiness; a review brief
       names one experiment that could fail; a rename brief carries the dated-record sentence.
 - [ ] `gh pr view <n> --json headRefOid,mergeStateStatus` read immediately before the dispatch; the
@@ -455,7 +493,8 @@ On each verdict:
 On each merge:
 
 - [ ] PATCH `base=main` first, then check files; squash; verify one parent, the file list and the
-      issue's state.
+      issue's state – read each named issue with `gh`, because a closing keyword can close one that
+      is not done.
 - [ ] Compare the refreshed file SET the PR touches, never a count: `CHANGELOG.md` and `dogfooding.md`
       make every open PR dirty on every merge.
 - [ ] `git pull --ff-only origin main` in the primary.

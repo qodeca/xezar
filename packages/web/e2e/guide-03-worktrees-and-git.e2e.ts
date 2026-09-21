@@ -109,6 +109,18 @@ describe('guide 03 — worktrees and Git, a Git project', () => {
   it('Settings → Worktrees starts empty and Reclaim now opens the AlertDialog confirm', async () => {
     browser.goto(`${baseUrl}/p/${bootProject}/settings/worktrees`)
     await browser.waitForRole('heading', 'Worktrees')
+    // That heading belongs to the PROJECT-CONFIG query (`useConfig`, worktrees-section.tsx): it
+    // proves that query settled and that the panel below is mounted, and nothing more. The empty
+    // sentence is rendered by a second, independent query (`useWorktrees`, worktrees-panel.tsx),
+    // so reading it straight after the heading let the panel's pending state win whenever
+    // `GET /worktrees` lost one browser round trip (#671, measured red 1 of 3 default-order runs).
+    // Wait for that query's own rendered pending state to clear instead — never longer, never a
+    // retry: the panel's `role="status"` line named "Loading worktrees" exists exactly while
+    // `worktrees.isPending`. The NAME is what makes this wait bite — a `role="status"` paragraph
+    // whose name comes from its content alone computes an EMPTY accessible name (agent-browser:
+    // `2 elements have role "status", but none match name … Names seen: ""`), so the panel carries
+    // an explicit `aria-label` and this wait was proven to go red without it.
+    await browser.waitForRoleGone('status', 'Loading worktrees')
     expect(browser.hasText('No task worktrees on disk.')).toBe(true)
     expect(browser.hasRole('heading', 'Keep last N worktrees')).toBe(true)
 

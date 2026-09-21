@@ -63,7 +63,23 @@ export function WorktreesPanel() {
 
   if (worktrees.isPending) {
     return (
-      <p data-slot="worktrees-loading" className="text-[13px] text-soft-foreground">
+      // `role="status"` is this paragraph's own answer to "has the worktrees query settled?", and
+      // the only one a SEMANTIC reader has: the section around this panel is gated by a different
+      // query (`useConfig`, worktrees-section.tsx), so its "Worktrees" heading says nothing about
+      // this list, and the settled empty state renders the very sentence such a reader would be
+      // asserting — so "still loading" and "loaded, and not empty" cannot be told apart from the
+      // copy alone. It is a pure function of `worktrees.isPending`, so it clears when the query
+      // does and never on a timer (#671).
+      // `aria-label` is load-bearing, not decoration: `status` is not a name-from-content role, so
+      // without it this region's accessible name is EMPTY and every role+name reader matches
+      // nothing at all (agent-browser: `2 elements have role "status", but none match name …
+      // Names seen: ""`) — a wait for it to disappear would pass while it is still on screen.
+      <p
+        data-slot="worktrees-loading"
+        role="status"
+        aria-label="Loading worktrees"
+        className="text-[13px] text-soft-foreground"
+      >
         Loading worktrees…
       </p>
     )

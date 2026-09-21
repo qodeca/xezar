@@ -125,6 +125,7 @@ function stubFetch({
   indexStatus = 200,
   archiveStatus = 200,
   costMetrics = true,
+  instanceMode,
   refStatus,
   indexStatuses,
 }: {
@@ -134,6 +135,8 @@ function stubFetch({
   indexStatus?: number
   archiveStatus?: number
   costMetrics?: boolean
+  /** `capabilities.instanceMode` (#467, PR 4) — absent by default, and sent only for `project`. */
+  instanceMode?: 'project'
   /** Per-project chip status, as the forge would answer it. Absent = the forge is unreachable,
    *  which is the only honest default here: no `gh`, no statuses, neutral chips. */
   refStatus?: Record<
@@ -174,7 +177,13 @@ function stubFetch({
       if (message && method === 'POST') return jsonResponse({ ok: true })
       if (path === '/api/v1/health') {
         // Only the slice `usageMetricVisibility` reads — the host's cost/token gate.
-        return jsonResponse({ capabilities: { costMetrics, tokenUsageMetrics: true } })
+        return jsonResponse({
+          capabilities: {
+            costMetrics,
+            tokenUsageMetrics: true,
+            ...(instanceMode ? { instanceMode } : {}),
+          },
+        })
       }
       if (path === '/api/v1/projects') {
         return jsonResponse({ projects, bootProject: 'api', projectsDir: '/repos' })
@@ -366,6 +375,31 @@ describe('global tasks page', () => {
         row.getAttribute('data-run-id'),
       ),
     ).toEqual(['a1', 'w1'])
+  })
+
+  // #467, PR 4 (spec Q-7): in `--instance project` this page's index covers ONE project, because
+  // `GET /api/v1/workspace/runs-index` answers for the project this cockpit serves (PR 2). The
+  // page says so; without the line "All tasks" reads as "every project, and the others are idle".
+  describe('the this-project-only note (#467, PR 4)', () => {
+    const note = () => document.querySelector('[data-slot="global-tasks-project-only"]')
+
+    it('names the project this cockpit serves', async () => {
+      stubFetch({ instanceMode: 'project' })
+      renderPage()
+
+      await waitFor(() => expect(note()).not.toBeNull())
+      expect(note()?.textContent).toBe(
+        'This list is API only — your other projects run in their own cockpits.',
+      )
+    })
+
+    it('says nothing in the default workspace mode', async () => {
+      stubFetch()
+      renderPage()
+
+      await screen.findByText('Add checkout endpoint')
+      expect(note()).toBeNull()
+    })
   })
 
   describe('filters live in the URL', () => {
