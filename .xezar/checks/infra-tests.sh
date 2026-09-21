@@ -5246,9 +5246,10 @@ ciw_fixture success
 ciw_view completed success
 ciw_expect "a green base-branch CI run is observed and exits 0" 0 success "finished green"
 
-# 2. RED IS OBSERVED, NOT FATAL — and the known-load-flake question is answered in the record, so
-#    the report step applies the one-rerun rule from a fact rather than from the job list's shape.
-ciw_fixture failure-flake
+# 2. RED IS OBSERVED, NOT FATAL, and there is no rerun path any more (#671): every load flake the
+#    outcome record once carried is fixed or rebuilt, so a failed job is recorded as real evidence
+#    and nothing marks it eligible for a rerun.
+ciw_fixture failure-real
 ciw_view completed failure '[{"name":"MCP per-file coverage","conclusion":"failure"},{"name":"Typecheck, unit tests, build, and package","conclusion":"success"}]'
 printf '1\n' > "$CIW_STUB/responses/watch.exit"
 ciw_expect "a red CI run is recorded as failure and still exits 0 so the report step can adjudicate" \
@@ -5256,48 +5257,11 @@ ciw_expect "a red CI run is recorded as failure and still exits 0 so the report 
 node -e '
   const r = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
   if (JSON.stringify(r.failedJobs) !== JSON.stringify(["MCP per-file coverage"])) throw Error("failedJobs " + JSON.stringify(r.failedJobs));
-  if (r.failedJobsAreKnownLoadFlakes !== true) throw Error("flake flag " + r.failedJobsAreKnownLoadFlakes);
+  if ("failedJobsAreKnownLoadFlakes" in r) throw Error("the retired rerun-eligibility field is back: " + JSON.stringify(r));
+  if ("knownLoadFlakes" in r) throw Error("the retired known-flake list is back: " + JSON.stringify(r));
 ' "$CIW_EVIDENCE/ci-watch/outcome.json" 2>/dev/null \
-  && ok "the record names the failed job and marks it a known load flake" \
-  || bad "the record names the failed job and marks it a known load flake" "see $CIW_EVIDENCE/ci-watch/outcome.json"
-
-# 2a. A REPAIRED BROWSER SPEC IS NOT A KNOWN LOAD FLAKE. The jobs API reports only the browser
-#     job, not its inner spec name; removing blanket browser eligibility is what makes a sole
-#     progressive-history failure evidence, in agreement with the leader guide.
-ciw_fixture failure-repaired-browser
-ciw_view completed failure '[{"name":"Cockpit browser e2e","conclusion":"failure"}]'
-ciw_expect "a repaired progressive-history browser failure is recorded as real evidence" \
-  0 failure "concluded failure"
-node -e '
-  const r = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
-  if (JSON.stringify(r.failedJobs) !== JSON.stringify(["Cockpit browser e2e"])) throw Error("failedJobs " + JSON.stringify(r.failedJobs));
-  if (r.failedJobsAreKnownLoadFlakes !== false) throw Error("flake flag " + r.failedJobsAreKnownLoadFlakes);
-' "$CIW_EVIDENCE/ci-watch/outcome.json" 2>/dev/null \
-  && ok "a repaired-spec browser failure is NOT marked a known load flake" \
-  || bad "a repaired-spec browser failure is NOT marked a known load flake" "see $CIW_EVIDENCE/ci-watch/outcome.json"
-
-# 2b. THE FAIL-OPEN CONTROL. "every failed job is a known flake" and "nothing failed" are the same
-#     branch against an empty list, and they must not read the same — a green run must never be
-#     reported as a flake nobody needs to look at.
-ciw_fixture failure-real
-ciw_view completed failure '[{"name":"Xezar infrastructure fixtures","conclusion":"failure"}]'
-ciw_expect "a red job that is not a known load flake is recorded as such" 0 failure "concluded failure"
-node -e '
-  const r = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
-  if (r.failedJobsAreKnownLoadFlakes !== false) throw Error("flake flag " + r.failedJobsAreKnownLoadFlakes);
-' "$CIW_EVIDENCE/ci-watch/outcome.json" 2>/dev/null \
-  && ok "an unknown failed job is NOT marked a known load flake" \
-  || bad "an unknown failed job is NOT marked a known load flake" "see $CIW_EVIDENCE/ci-watch/outcome.json"
-ciw_fixture success-flakeflag
-ciw_view completed success
-ciw_expect "a green run is observed" 0 success "finished green"
-node -e '
-  const r = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
-  if (r.failedJobs.length !== 0) throw Error("failedJobs " + JSON.stringify(r.failedJobs));
-  if (r.failedJobsAreKnownLoadFlakes !== false) throw Error("an EMPTY failed-job list must not read as all-flakes");
-' "$CIW_EVIDENCE/ci-watch/outcome.json" 2>/dev/null \
-  && ok "an empty failed-job list does not read as \"all failures were known flakes\"" \
-  || bad "an empty failed-job list does not read as \"all failures were known flakes\"" "see $CIW_EVIDENCE/ci-watch/outcome.json"
+  && ok "the record names the failed job and carries no rerun-eligibility field" \
+  || bad "the record names the failed job and carries no rerun-eligibility field" "see $CIW_EVIDENCE/ci-watch/outcome.json"
 
 # 3. CANCELLED-SUPERSEDED IS NOT A FAILURE, and the newer head is named.
 ciw_fixture cancelled

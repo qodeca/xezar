@@ -9,10 +9,11 @@
 # a parked session and an unbounded wait; a workspace slot is NOT freed.
 #
 # WHAT IT DOES NOT DO. It never merges, never pushes, never reruns a job and never writes to
-# GitHub. It reads one run and records what it saw. Every decision that follows — flake or real
-# red, rerun or revert or forward-fix — belongs to the agent step after it, which is where
-# `XEZ:ASK` is still live and where the leader's `execution_control` `send_message` can reach a
-# session at all.
+# GitHub. It reads one run and records what it saw. Every decision that follows — real red,
+# revert or forward-fix — belongs to the agent step after it, which is where `XEZ:ASK` is still
+# live and where the leader's `execution_control` `send_message` can reach a session at all. There
+# is no rerun path any more (#671): every load flake the record once carried is fixed or rebuilt,
+# so a failed job is real evidence, full stop.
 #
 # THE BOUND LIVES HERE. A check step may not carry `timeout` (`workflows/types.ts`, the refine
 # beside `stepTimeoutSchema` refuses it), so the wall clock is this script's own: `--deadline`,
@@ -44,7 +45,7 @@
 # A red CI exits 0 ON PURPOSE, and this is the one place this script departs from the brief that
 # asked for it. A non-zero check step with no `onFail` ends the run (`run.ts`, the break after
 # `finishStep(... 'failed' ...)`), so exiting non-zero on red would mean the report step never
-# runs: no flake adjudication, no `XEZ:ASK`, no question to the leader at the only moment
+# runs: no adjudication, no `XEZ:ASK`, no question to the leader at the only moment
 # integration ever needs one — and `onFail.retry` cannot help, because every step earlier than
 # this one is earlier than the merge, so retrying would re-run the merge. Red is therefore
 # OBSERVED (exit 0, outcome `failure`) and judged by the agent; unobservable and out-of-time are
@@ -118,22 +119,16 @@ OUT_STATUS="" OUT_CONCLUSION="" OUT_HEAD_SHA="" OUT_URL=""
 OUT_FAILED_JOBS="" OUT_SUPERSEDED_SHA="" OUT_SUPERSEDED_RUN=""
 STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-# Jobs still observed failing under machine load rather than because of the change under test.
-# Browser specs rebuilt by #671 are deterministic now, so the browser job is deliberately absent:
-# a sole progressive-history failure is evidence, never eligibility for the one allowed rerun.
-KNOWN_LOAD_FLAKES="MCP per-file coverage"
-
 record_outcome() {
   local outcome="$1" detail="$2"
   mkdir -p "$WATCH_DIR" 2>/dev/null
   OUTCOME_JSON_OK=1
   node -e '
     const [file, outcome, detail, runId, repo, base, mergeSha, pr, status, conclusion,
-           headSha, url, failedJobs, supersededSha, supersededRun, startedAt, deadline,
-           flakes] = process.argv.slice(1);
+           headSha, url, failedJobs, supersededSha, supersededRun, startedAt,
+           deadline] = process.argv.slice(1);
     const list = (s) => s.split("\n").map((x) => x.trim()).filter(Boolean);
     const failed = list(failedJobs);
-    const known = list(flakes);
     const body = {
       outcome,
       detail,
@@ -147,10 +142,6 @@ record_outcome() {
       headSha: headSha || null,
       url: url || null,
       failedJobs: failed,
-      // "Every failed job is one of the two known load flakes" is a DIFFERENT statement from
-      // "nothing failed", and an empty list must never read as the first one.
-      failedJobsAreKnownLoadFlakes: failed.length > 0 && failed.every((j) => known.includes(j)),
-      knownLoadFlakes: known,
       supersededBy: supersededSha ? { headSha: supersededSha, runId: supersededRun || null } : null,
       observedFrom: startedAt,
       observedTo: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
@@ -159,8 +150,8 @@ record_outcome() {
     require("node:fs").writeFileSync(file, JSON.stringify(body, null, 2) + "\n");
   ' "$OUTCOME" "$outcome" "$detail" "$OUT_RUN_ID" "$OUT_REPO" "$OUT_BASE" "$OUT_MERGE_SHA" \
     "$OUT_PR" "$OUT_STATUS" "$OUT_CONCLUSION" "$OUT_HEAD_SHA" "$OUT_URL" "$OUT_FAILED_JOBS" \
-    "$OUT_SUPERSEDED_SHA" "$OUT_SUPERSEDED_RUN" "$STARTED_AT" "$DEADLINE_SECONDS" \
-    "$KNOWN_LOAD_FLAKES" 2>/dev/null || OUTCOME_JSON_OK=0
+    "$OUT_SUPERSEDED_SHA" "$OUT_SUPERSEDED_RUN" "$STARTED_AT" "$DEADLINE_SECONDS" 2>/dev/null \
+    || OUTCOME_JSON_OK=0
   if [ "$OUTCOME_JSON_OK" -eq 0 ]; then
     printf 'ci-watch: WARNING — could not write %s; the verdict below is the only record\n' "$OUTCOME" >&2
   fi
