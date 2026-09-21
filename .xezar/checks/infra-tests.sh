@@ -5921,7 +5921,9 @@ else
       lease_two_b_rc=$?
     else
       # Saved pid and its children by parent pid, never a command-line pattern.
-      pkill -TERM -P "$LEASE_B_PID" 2>/dev/null
+      for lease_two_kid in $(pgrep -P "$LEASE_B_PID" 2>/dev/null); do
+        kill -TERM "$lease_two_kid" 2>/dev/null
+      done
       kill -TERM "$LEASE_B_PID" 2>/dev/null
       wait "$LEASE_B_PID" 2>/dev/null
     fi
