@@ -2,6 +2,7 @@ import { expectEventTransition } from '../mcp/event-catalog.ts';
 import { EventCorrectionError } from '../runs/event-corrections.ts';
 import { validateLegacyHistoryResume } from '../runs/event-history.ts';
 import { projectDataDir } from '../project-data-paths.ts';
+import { resolveNextStartCli } from '../cli-settings.ts';
 import { createUiAuditDoor } from './audit-ui.ts';
 import { automationAudit } from '../automations/audit.ts';
 import { projectKitDir } from '../project-kit-paths.ts';
@@ -221,6 +222,7 @@ import {
   singleProjectRegistry,
   toProjectListEntry,
   type InstanceModeInForce,
+  type SingleProjectNarrowing,
   type ProjectListEntry,
 } from '../workspace/projects.ts';
 import { WorkspaceSemaphore } from '../workspace/semaphore.ts';
@@ -288,6 +290,14 @@ export interface ServerDeps {
    * app without one gets today's behaviour unchanged, down to the bytes of `/api/v1/health`.
    */
   instanceMode?: InstanceModeInForce;
+  /**
+   * WHICH narrowing makes `instanceMode` `narrowed` (#467, PR 5) — resolved at boot beside it.
+   * The Settings pane needs the difference (design review B-2 on PR #798): under
+   * `XEZ_SINGLE_PROJECT` a stored instance mode still reaches a start elsewhere, while a folder
+   * that owns its state is narrowed again at every start. Absent falls back to asking
+   * `singleProjectNarrowing()`, which is what production would have answered anyway.
+   */
+  instanceNarrowing?: SingleProjectNarrowing;
   /**
    * Which registered projects another xezar serves right now (#467, PR 3) — the source of the
    * derived `instance?` field on `GET /api/v1/projects`.
@@ -3156,6 +3166,34 @@ export function createApp(deps: ServerDeps) {
       ...(config.agentDefaults.runner !== undefined ? { runner: config.agentDefaults.runner } : {}),
       ...(config.agentDefaults.models !== undefined ? { models: config.agentDefaults.models } : {}),
     },
+    // #467 PR 5. Per key, three answers about the FILE: what it holds (`null` = never chosen),
+    // what the NEXT plain start will resolve from it plus the environment, and which layer that
+    // came from — `resolveNextStartCli` asks the same resolver a real start asks. Then two
+    // answers about THIS process, both settled at boot: `inForce`, which a narrowing makes
+    // `narrowed` whatever the file says, and `narrowing`, which of the two narrowings that is.
+    // `deps.instanceMode` is `instanceModeInForce`'s answer, threaded in and never re-derived
+    // here for the reason `capabilities` states.
+    cli: (() => {
+      const next = resolveNextStartCli(config.cli);
+      const inForce = deps.instanceMode ?? 'workspace';
+      return {
+        instance: next.instance.stored,
+        effectiveInstance: next.instance.effective,
+        instanceSource: next.instance.source,
+        inForce,
+        narrowing:
+          inForce === 'narrowed' ? (deps.instanceNarrowing ?? singleProjectNarrowing() ?? 'env-flag') : null,
+        output: next.output.stored,
+        effectiveOutput: next.output.effective,
+        outputSource: next.output.source,
+        color: next.color.stored,
+        effectiveColor: next.color.effective,
+        colorSource: next.color.source,
+        logLevel: next.logLevel.stored,
+        effectiveLogLevel: next.logLevel.effective,
+        logLevelSource: next.logLevel.source,
+      };
+    })(),
   });
   // ---- chained family: workspace settings + GUI prefs (workspace-level) ----
   const workspaceConfigRoutes = new Hono<ProjectApiEnv>()
@@ -3172,6 +3210,7 @@ export function createApp(deps: ServerDeps) {
         composerDefaults,
         resources,
         agentDefaults,
+        cli,
       } = parsed.data;
       for (const [configuredRoot, create] of [
         [browseRoot, false],
@@ -3253,6 +3292,27 @@ export function createApp(deps: ServerDeps) {
             if (Object.keys(models).length === 0) delete config.agentDefaults.models;
             else config.agentDefaults.models = models;
           }
+          // #467 PR 5. Every `cli` key is guarded by "did the body NAME this key", never by
+          // "is there a value to write": `cli` is optional with no default in the workspace
+          // schema, so materializing `cli: {}` here would let a write that only changed a
+          // resource limit turn an absent key into a present one — the
+          // `cli-key-cleared-by-unrelated-write` break, and the same absent-vs-explicit rule
+          // `memoryLimitMb` and `followups` carry.
+          for (const key of ['instance', 'output', 'color', 'logLevel'] as const) {
+            const value = cli?.[key];
+            if (value === null) {
+              // `null` clears back to the variable-then-default chain. An emptied `cli` is
+              // removed rather than left as `{}`, which would persist a key that says nothing —
+              // the rule `agentDefaults.models` follows just above. A sibling the body did not
+              // name keeps the object alive and is never touched.
+              if (config.cli !== undefined) {
+                delete config.cli[key];
+                if (Object.keys(config.cli).length === 0) delete config.cli;
+              }
+            } else if (value !== undefined) {
+              config.cli = { ...(config.cli ?? {}), [key]: value };
+            }
+          }
         });
       } catch (err) {
         // e.g. a read-only home — nothing was persisted (atomic tmp+rename).
@@ -3262,6 +3322,10 @@ export function createApp(deps: ServerDeps) {
       // semaphore's in-memory snapshot and pump every manager (step 2.5's hook).
       // `followups` and `agentEnvPassthrough` are cached by the same semaphore snapshot
       // (F), so they refresh through the same hook rather than a second reload path.
+      // `cli` is deliberately NOT in that list (#467 PR 5): all four keys were settled at boot —
+      // the instance mode decided the MCP socket, the bind and every built project context, and
+      // the presentation keys decided the renderer — so there is nothing in this process to
+      // refresh, and the Settings copy says so instead of pretending the change is live.
       if (resources !== undefined || followups !== undefined || agentEnvPassthrough !== undefined) {
         await deps.semaphore?.refresh();
       }

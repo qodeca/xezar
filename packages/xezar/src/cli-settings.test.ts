@@ -5,6 +5,7 @@ import {
   parseCliInvocation,
   parsePortValue,
   resolveCliSettings,
+  resolveNextStartCli,
   type CliFlags,
 } from './cli-settings.ts';
 
@@ -321,5 +322,48 @@ describe('instance mode precedence', () => {
     const settings = resolveCliSettings(invoke(), { workspace: { instance: null } });
     expect(settings.instance).toBe('workspace');
     expect(settings.warnings).toEqual([]);
+  });
+});
+
+/**
+ * #467 PR 5: what the Settings route reports for the NEXT plain start. It hands a flag-less
+ * invocation to `resolveCliSettings`, so these pin the parts that are its own: the lenient
+ * environment, the stored value parsed, and which layer decided.
+ */
+describe('resolveNextStartCli', () => {
+  it('reports the defaults, with nothing stored and nothing set', () => {
+    expect(resolveNextStartCli(undefined, {})).toEqual({
+      instance: { stored: null, effective: 'workspace', source: 'default' },
+      output: { stored: null, effective: 'auto', source: 'default' },
+      color: { stored: null, effective: 'auto', source: 'default' },
+      logLevel: { stored: null, effective: 'info', source: 'default' },
+    });
+  });
+
+  it('stored beats the variable, and the variable beats the default', () => {
+    const next = resolveNextStartCli(
+      { instance: 'workspace', output: 'rich' },
+      { XEZ_INSTANCE: 'project', XEZ_OUTPUT: 'lines', XEZ_LOG_LEVEL: 'warn', XEZ_COLOR: 'always' },
+    );
+    expect(next.instance).toEqual({ stored: 'workspace', effective: 'workspace', source: 'stored' });
+    expect(next.output).toEqual({ stored: 'rich', effective: 'rich', source: 'stored' });
+    expect(next.logLevel).toEqual({ stored: null, effective: 'warn', source: 'env' });
+    expect(next.color).toEqual({ stored: null, effective: 'always', source: 'env' });
+  });
+
+  it('NO_COLOR outranks a stored colour and is named as the source', () => {
+    expect(resolveNextStartCli({ color: 'always' }, { NO_COLOR: '1' }).color).toEqual({
+      stored: 'always',
+      effective: 'never',
+      source: 'no-color',
+    });
+  });
+
+  /** A settings read is not a start: a bad variable reads as unset rather than throwing (A9 is the start's). */
+  it('reads a bad stored value or a bad variable as absent, and never throws', () => {
+    const next = resolveNextStartCli({ instance: 'projekt', logLevel: 7 }, { XEZ_INSTANCE: 'both', XEZ_OUTPUT: '' });
+    expect(next.instance).toEqual({ stored: null, effective: 'workspace', source: 'default' });
+    expect(next.logLevel).toEqual({ stored: null, effective: 'info', source: 'default' });
+    expect(next.output.source).toBe('default');
   });
 });

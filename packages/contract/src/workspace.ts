@@ -12,6 +12,26 @@ import { type Runner, runnerSchema } from './health.ts';
 // ---- workspace settings (`GET/PUT /api/v1/workspace/config`) --------------------------------
 
 /**
+ * The instance-mode vocabulary (#467), spelled once for both directions of this file. It is the
+ * same pair `capabilities.instanceMode` uses (`health.ts`) and is deliberately NOT imported from
+ * there: that key is optional and sent only for `project`, while these are a stored value, a
+ * resolved value and a third answer the capability never carries.
+ */
+const instanceModeSchema = z.enum(['project', 'workspace']);
+
+/**
+ * The three presentation vocabularies of the same stored `cli` object (#467, PR 5 — owner decision
+ * D-5, 2026-09-20). Spelled here because the contract cannot import the server; `cli-settings.ts`
+ * owns the runtime copy (`OUTPUT_MODES`, `COLOR_MODES`, `LOG_LEVELS`) and
+ * `workspace-api.test.ts` fails the day the two lists differ. Exported for that test only.
+ */
+export const cliOutputModeSchema = z.enum(['auto', 'lines', 'rich']);
+export const cliColorModeSchema = z.enum(['auto', 'always', 'never']);
+export const cliLogLevelSchema = z.enum(['debug', 'info', 'warn', 'error']);
+/** Which layer decides what the NEXT start resolves: a stored key, a variable, or the default. */
+const cliValueSourceSchema = z.enum(['stored', 'env', 'default']);
+
+/**
  * `GET/PUT /api/v1/workspace/config` — the settings slice of `~/.xezar/config.json` (step 2.7).
  *
  * Global knobs only: the registry itself is `GET /api/v1/projects`, and `schemaVersion` (a
@@ -81,6 +101,47 @@ export const workspaceConfigResponseSchema = z.object({
       pi: z.string().optional(),
     }).optional(),
   }),
+  /**
+   * The workspace-wide `cli` settings this cockpit can edit (#467, PR 5): the instance mode — WHICH
+   * projects one process serves — and the three terminal presentation keys stored beside it. Each
+   * key comes as the same triple: the stored value (`null` = never chosen), what the NEXT plain
+   * start resolves from the file and the environment, and which layer that answer came from.
+   * `…Source` is what lets the pane name an environment variable only when one really decides,
+   * rather than whenever nothing is stored (design review B-1 on PR #798).
+   *
+   * Two fields describe THIS process rather than the file, and both were settled at boot.
+   * `inForce` is not decoration: `XEZ_SINGLE_PROJECT` and a folder that owns its xezar state
+   * narrow this cockpit and BEAT the setting, so a pane that rendered only the stored value would
+   * tell a narrowed user `workspace` while the process serves one project. `narrowing` says WHICH
+   * of the two is in force (`null` unless `inForce` is `narrowed`), because they are not the same
+   * situation for a person (B-2): under `XEZ_SINGLE_PROJECT` the stored value is written to the
+   * machine's file and a start elsewhere reads it, while a folder that owns its state writes to
+   * its own file and is narrowed again at every start, so the setting can never take effect there.
+   *
+   * Required, like `composerDefaults` and `resources`: the server materializes every key on every
+   * answer, degraded path included, so a client never has to guess.
+   */
+  cli: z.object({
+    /** The stored `cli.instance`; `null` = no stored key, so `XEZ_INSTANCE` then the default decides. */
+    instance: instanceModeSchema.nullable(),
+    /** Stored + `XEZ_INSTANCE` + the `workspace` default, resolved — what the NEXT start will use. */
+    effectiveInstance: instanceModeSchema,
+    instanceSource: cliValueSourceSchema,
+    /** What this process is actually doing, narrowings included. */
+    inForce: z.enum(['project', 'workspace', 'narrowed']),
+    /** Which narrowing makes `inForce` `narrowed`; `null` when none does. */
+    narrowing: z.enum(['env-flag', 'project-root']).nullable(),
+    output: cliOutputModeSchema.nullable(),
+    effectiveOutput: cliOutputModeSchema,
+    outputSource: cliValueSourceSchema,
+    color: cliColorModeSchema.nullable(),
+    effectiveColor: cliColorModeSchema,
+    /** `no-color`: a non-empty `NO_COLOR` outranks the stored key, as it does at a real start. */
+    colorSource: z.enum(['stored', 'env', 'no-color', 'default']),
+    logLevel: cliLogLevelSchema.nullable(),
+    effectiveLogLevel: cliLogLevelSchema,
+    logLevelSource: cliValueSourceSchema,
+  }),
 });
 export type WorkspaceConfigResponse = z.infer<typeof workspaceConfigResponseSchema>;
 
@@ -147,6 +208,30 @@ export const setWorkspaceConfigInputSchema = z.strictObject({
           pi: z.string().trim().min(1).max(200).nullable().optional(),
         })
         .optional(),
+    })
+    .optional(),
+  /**
+   * The workspace-wide `cli` settings (#467, PR 5). LAST in the shape on purpose: the `{ error }`
+   * string of a multi-issue body is built by joining zod issues in shape order, so adding a key
+   * anywhere earlier would reword an existing two-bad-field message.
+   *
+   * `null` on any key CLEARS the stored key back to its environment variable and then the default
+   * — the documented meaning `followups`, `skillsAutoUpdate` and `agentDefaults` already carry. A
+   * key the body does not name, and a body that does not name `cli` at all, must leave the stored
+   * value byte-identical on disk: `cli` is `.optional()` with no default in the workspace schema,
+   * and materializing it on every write would turn "never chosen" into "chosen", which is the
+   * distinction the whole tri-state rests on.
+   *
+   * `output`, `color` and `logLevel` joined `instance` by the owner's decision D-5 (2026-09-20):
+   * the three presentation keys already live in the same stored object and are read at the same
+   * moment — a start — so one section edits all four.
+   */
+  cli: z
+    .strictObject({
+      instance: instanceModeSchema.nullable().optional(),
+      output: cliOutputModeSchema.nullable().optional(),
+      color: cliColorModeSchema.nullable().optional(),
+      logLevel: cliLogLevelSchema.nullable().optional(),
     })
     .optional(),
 });

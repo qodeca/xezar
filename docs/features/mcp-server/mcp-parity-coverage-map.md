@@ -243,6 +243,10 @@ run.
 | I-130 | global | P-29 |
 | I-131 | global | P-29 |
 | I-132 | covered | P-46 |
+| I-148 | covered | P-45 |
+| I-149 | covered | P-45 |
+| I-150 | covered | P-45 |
+| I-151 | covered | P-45 |
 | I-133 | covered | P-42 |
 | I-136 | covered | P-42 |
 | I-138 | covered | P-22 |
@@ -284,7 +288,7 @@ run.
 | P-26 | A-09, A-05 | I-111, I-113 | an agent config file is written through the cockpit’s own route, a stale write is refused, and an MCP-carrying file is read as structure only |
 | P-27 | A-09, A-11 | I-111, I-113 | in hosted mode an agent config write is refused with the cockpit’s own 409, through MCP too |
 | P-28 | A-09, A-08, A-05 | I-128, I-129 | the bound project’s own cap and tags are written to its registry entry only, and each door sees the other’s |
-| P-45 | A-09, A-08, A-05 | I-117, I-118, I-119, I-120, I-121, I-127 | the workspace limits, composer defaults, skills auto-update, agent defaults and the two workspace folder paths are written through either door with the same effect, the same bound on a bad value and the same narrowed answer |
+| P-45 | A-09, A-08, A-05 | I-117, I-118, I-119, I-120, I-121, I-127, I-148, I-149, I-150, I-151 | the workspace limits, composer defaults, skills auto-update, agent defaults, the two workspace folder paths and the terminal settings are written through either door with the same effect, the same bound on a bad value and the same narrowed answer |
 | P-46 | A-09, A-08, A-05 | I-024, I-092, I-132 | the shared presentation preferences — appearance, notifications, folded columns and the curated skills list — are read and written through either door with the same effect, the route’s own bound on a bad value, and an answer that carries no incident id; an object-valued preference is sent whole, after the read, the way the panes send it |
 | P-47 | A-09, A-08, A-05 | I-115 | a provider is switched off and on through either door with the same effect, the cockpit’s own status answers both, and the leader is never handed an incident id |
 | P-48 | A-09, A-08, A-05 | I-122, I-123, I-124 | an agent account is added, selected, probed, read, edited and removed through the cockpit’s own routes, the accounts pane sees every one of them, and the leader’s answer names no other checkout |
