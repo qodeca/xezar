@@ -10,6 +10,11 @@ import { join } from 'node:path';
  * becomes a real `command` step, and a project with none gets an agent step that reviews the result
  * against the task and reports what it could not verify. An `echo` that always exits 0 used to sit
  * there, which made every run look verified.
+ *
+ * Whichever branch runs, the example ENDS with an agent step. The engine keeps a run interactive
+ * only when its last agent step is also its last step (`workflows/run.ts`, `const interactive =`),
+ * so a trailing `verify` command would silence XEZ:ASK and XEZ:DONE for the whole run — the
+ * example's own report step is what asks the person whether anything is still unclear.
  */
 
 /** The npm default `test` script: present, but a placeholder that fails. Not a check. */
@@ -68,6 +73,16 @@ ${DOMAIN_EXAMPLES.replace(/^/gm, '  ')}
     onFail:
       retry: implement
       max: 2
+  - id: report
+    name: Report the result
+    prompt: |
+      Summarise what changed for this task and how it was verified.
+
+      {{task}}
+
+      Give the result of this project's check, running it yourself if you need its output. Say
+      what the check did and did not cover, and name anything that remains unverified. Then ask
+      whether anything is unclear or still needs a decision.
 `;
   }
   return `name: fix-and-verify
