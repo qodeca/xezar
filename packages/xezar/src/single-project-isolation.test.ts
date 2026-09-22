@@ -307,6 +307,7 @@ describe('the default path did not change (AGENTS.md § Changing a mechanism tha
       workspacePath: join(home, '.xezar', 'config.json'),
       uiStatePath: join(home, '.xezar', 'ui-state.json'),
       accountsPath: join(home, '.xezar', 'agent-accounts.json'),
+      agentQuotaPath: join(home, '.xezar', 'agent-quota', 'quota.json'),
       dataDir: null,
       cacheDir: join(home, '.cache', 'xez'),
       ipcDir: join(home, '.xezar', 'ipc'),
