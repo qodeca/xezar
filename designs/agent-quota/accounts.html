@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent quota – Global settings → Agent accounts, with plan limits</title>
+<link rel="stylesheet" href="../../docs/design-system/cockpit.css">
+<link rel="stylesheet" href="styles.css">
+<script src="../../docs/design-system/specimens/icons.js" defer></script>
+<script src="theme.js"></script>
+</head>
+<body>
+<nav class="doc-bar" aria-label="Design pages">
+  <span class="brand">Agent quota</span>
+  <a href="index.html">Overview</a>
+  <a href="accounts.html" aria-current="page">The pane</a>
+  <a href="chip.html">The chip</a>
+  <a href="states.html">Every state</a>
+  <a href="phone.html">Phone</a>
+  <span class="spacer"></span>
+  <button class="theme-toggle" type="button" data-theme-toggle>Light / dark</button>
+</nav>
+
+<!-- Route: /settings/global/accounts (global layout, local mode). Clock: Tue 22 Sep 2026 16:48,
+     server zone Europe/Warsaw (CEST, +02:00). Data is safe example data; the numbers of the built-in
+     Claude Code login and of the Codex login are the ones the S0 proof on #867 read live. -->
+<div class="shell">
+  <aside class="sidebar" aria-label="Sidebar">
+    <div class="sidebar-head"><span class="logo">x</span><span class="name">xezar</span><span class="where">main</span></div>
+    <div class="new-task-row"><button class="btn-new-task" type="button"><svg class="icon sm" aria-hidden="true"><use href="#i-plus"/></svg> New task <kbd>C</kbd></button></div>
+    <nav class="nav" aria-label="Main">
+      <a href="#"><svg class="icon sm" aria-hidden="true"><use href="#i-tasks"/></svg> Tasks</a>
+      <a href="#"><svg class="icon sm" aria-hidden="true"><use href="#i-inbox"/></svg> Inbox</a>
+      <a href="#"><svg class="icon sm" aria-hidden="true"><use href="#i-workflow"/></svg> Workflows</a>
+      <a href="#"><svg class="icon sm" aria-hidden="true"><use href="#i-sparkles"/></svg> Skills</a>
+      <a href="#"><svg class="icon sm" aria-hidden="true"><use href="#i-github"/></svg> GitHub</a>
+      <a href="#"><svg class="icon sm" aria-hidden="true"><use href="#i-settings"/></svg> Settings</a>
+    </nav>
+    <!-- NEW: the limits band (data-slot="agent-quota-band"), above the one-row footer. Rendered only
+         when at least one agent is installed AND has a subscription login (D38). -->
+    <div class="quota-band" data-slot="agent-quota-band">
+      <button class="chip quota-chip" type="button" data-pop-toggle aria-controls="pop-desk" aria-expanded="false" aria-haspopup="dialog"
+        aria-label="Logins that can work now: Claude Code 3 of 5, Codex 1 of 1. Show details">
+        <span class="seg"><span class="dot pending" aria-hidden="true"></span>Claude Code <span class="n">3/5</span></span>
+        <span class="seg"><span class="dot success" aria-hidden="true"></span>Codex <span class="n">1/1</span></span>
+      </button>
+      <!-- The expanded state: a Popover, drawn in place for the mockup (the cockpit portals it). -->
+      <div class="popover quota-pop" id="pop-desk" role="dialog" aria-labelledby="pop-desk-title" hidden>
+        <h2 id="pop-desk-title">Logins that can work now</h2>
+        <ul class="pop-agents">
+          <li class="pop-agent"><span class="dot pending" aria-hidden="true"></span><div>Claude Code: 3 of 5 logins can work.
+            <ul><li>Personal — out until 17:10 CEST (+02:00)</li><li>Client A — limits unknown</li><li>Built-in login — near a limit</li></ul></div></li>
+          <li class="pop-agent"><span class="dot success" aria-hidden="true"></span><div>Codex: 1 of 1 login can work.</div></li>
+        </ul>
+        <div class="foot">
+          <span>Readings from 2m to 41m old. xezar shows these limits and never acts on them.</span>
+          <div><a class="btn" href="accounts.html#limits">Open agent accounts</a></div>
+        </div>
+      </div>
+    </div>
+    <div class="sidebar-foot">
+      <button class="chip" type="button" style="height:auto;min-height:0;padding:1px 8px;font-size:11px"><span class="dot success" aria-hidden="true"></span> Tools <svg class="icon sm" aria-hidden="true"><use href="#i-chevron-down"/></svg></button>
+      <span class="version-chip">v0.19.0</span>
+      <a class="btn icon ghost" href="accounts.html" aria-label="Global settings" aria-current="page" style="margin-left:auto"><svg class="icon sm" aria-hidden="true"><use href="#i-settings"/></svg></a>
+      <button class="btn icon ghost" type="button" aria-label="Toggle theme" data-theme-toggle><svg class="icon sm" aria-hidden="true"><use href="#i-moon"/></svg></button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <!-- Phone only: the top bar's mobile-status slot carries the short chip; the title truncates first. -->
+    <div class="mobile-bar">
+      <button class="btn ghost icon" type="button" aria-label="Open menu"><svg class="icon" aria-hidden="true"><use href="#i-menu"/></svg></button>
+      <span class="title">Agent accounts</span>
+      <div class="mobile-status" data-slot="mobile-status">
+        <button class="chip quota-chip" type="button" data-pop-toggle aria-controls="pop-phone" aria-expanded="false" aria-haspopup="dialog"
+          aria-label="4 of 6 logins can work now. Show details">
+          <span class="seg"><span class="dot pending" aria-hidden="true"></span><span class="n">4/6</span> can work</span>
+        </button>
+        <div class="popover quota-pop" id="pop-phone" role="dialog" aria-labelledby="pop-phone-title" hidden>
+          <h2 id="pop-phone-title">Logins that can work now</h2>
+          <ul class="pop-agents">
+            <li class="pop-agent"><span class="dot pending" aria-hidden="true"></span><div>Claude Code: 3 of 5 logins can work.
+              <ul><li>Personal — out until 17:10 CEST (+02:00)</li><li>Client A — limits unknown</li><li>Built-in login — near a limit</li></ul></div></li>
+            <li class="pop-agent"><span class="dot success" aria-hidden="true"></span><div>Codex: 1 of 1 login can work.</div></li>
+          </ul>
+          <div class="foot">
+            <span>Readings from 2m to 41m old. xezar shows these limits and never acts on them.</span>
+            <div><a class="btn" href="accounts.html#limits">Open agent accounts</a></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+
+    <div class="settings-split">
+      <nav class="settings-nav" aria-label="Settings sections">
+        <a href="#">Appearance</a>
+        <a href="#">Notifications</a>
+        <a href="#">Resources</a>
+        <a href="#">Terminal</a>
+        <a href="#">Skills</a>
+        <a href="accounts.html" aria-current="page">Agent accounts</a>
+        <a href="#">Projects</a>
+        <a href="#">Keyboard</a>
+      </nav>
+
+      <div>
+        <nav class="settings-pills phone-only" aria-label="Settings sections">
+          <a href="#">Appearance</a>
+          <a href="#">Resources</a>
+          <a href="accounts.html" aria-current="page">Agent accounts</a>
+          <a href="#">Skills</a>
+        </nav>
+
+        <div class="acct-pane" data-slot="accounts-section">
+          <div>
+            <h2 class="pane-title">Agent accounts</h2>
+            <!-- UNCHANGED lead (global layout). -->
+            <p class="pane-lead">Every agent, whether it is installed, and the logins you have for it. “Default” marks the login a project runs under when it has not chosen one. The built-in login is the one each agent finds on this machine by itself; xezar uses it when no other account is chosen.</p>
+          </div>
+
+          <!-- NEW: Plan limits. One summary sentence per agent (the answer's `summaries[].text`, verbatim
+               apart from the product name), Refresh all, and the promise. The summary list is a polite
+               live region: a changed count is announced, the first render is not. -->
+          <section class="limits-summary" id="limits" data-slot="agent-quota-summary" aria-labelledby="limits-title">
+            <div class="head">
+              <h3 id="limits-title">Plan limits</h3>
+              <span class="end">
+                <button class="btn" type="button" data-action="agent-quota-refresh-all"><svg class="icon sm" aria-hidden="true"><use href="#i-rerun"/></svg>Refresh all</button>
+              </span>
+            </div>
+            <ul class="summary-lines" role="status" aria-live="polite" aria-atomic="true">
+              <li><span class="dot pending" aria-hidden="true"></span><span>Claude Code: 3 of 5 logins can work. <a class="link jump" href="#acct-claude-personal">Personal</a> is out until 17:10 CEST (+02:00).</span></li>
+              <li><span class="dot success" aria-hidden="true"></span><span>Codex: 1 of 1 login can work.</span></li>
+            </ul>
+            <p class="fine">How much of each login’s short and weekly limits is used, as Claude Code and Codex report it, with the age of every reading. xezar only shows these facts — it never switches logins, holds a task back or changes auto-resume because of them. Times are in the server’s zone, Europe/Warsaw. OpenCode and pi do not report plan limits.</p>
+            <p class="fine">Refresh all checks every login last checked 5 or more minutes ago, 2 at a time; the rest wait their turn.</p>
+          </section>
+
+          <!-- UNCHANGED: Defaults for new projects (DefaultAgentPicker) – not drawn. -->
+          <p class="tool-note">Defaults for new projects — unchanged, not drawn.</p>
+
+          <div class="tool-list" data-slot="accounts-tools">
+
+            <!-- ============ Claude Code ============ -->
+            <section class="tool-group" id="tool-claude" data-provider="claude" aria-labelledby="h-claude">
+              <div class="tool-head">
+                <h3 id="h-claude">Claude Code</h3>
+                <span class="facts">Installed · 2.1.278 · 5 accounts</span>
+                <span class="end"><button class="btn" type="button">Add account</button></span>
+              </div>
+
+              <ul class="acct-rows">
+                <!-- 1. Built-in login: status warning / near-limit. Real S0 numbers. Refresh allowed. The
+                     Refresh button carries the static focus ring for the capture. -->
+                <li class="acct-row" id="acct-claude-default" data-slot="account-row" data-quota-status="warning">
+                  <div class="who">
+                    <div class="name-line">
+                      <span class="name">Built-in login</span>
+                      <span class="badge outline">Default</span>
+                    </div>
+                    <p class="path">~/.claude</p>
+                    <div class="status"><span class="dot success" aria-hidden="true"></span><span>Connected</span></div>
+                  </div>
+                  <div class="actions">
+                    <button class="btn ghost desk-only" type="button">Check again</button>
+                    <button class="btn ghost" type="button" aria-expanded="false">Show details</button>
+                  </div>
+                  <div class="limits" data-slot="account-limits" aria-label="Plan limits of Built-in login, Claude Code" role="group">
+                    <p class="limit-status"><span class="dot pending" aria-hidden="true"></span><span><b>Can work</b> <span class="why">— near a limit: the 5-hour window is 92% used.</span></span></p>
+                    <ul class="win-list">
+                      <li class="win"><span class="label">5-hour window</span><span class="meter near" aria-hidden="true"><span style="--used:92%"></span></span><span class="pct">92% used</span><span class="reset">resets 17:10 CEST (+02:00)</span></li>
+                      <li class="win"><span class="label">Weekly, all models</span><span class="meter" aria-hidden="true"><span style="--used:26%"></span></span><span class="pct">26% used</span><span class="reset">resets Sep 28, 19:00 CEST (+02:00)</span></li>
+                      <li class="win"><span class="label">Weekly, Fable</span><span class="meter" aria-hidden="true"><span style="--used:29%"></span></span><span class="pct">29% used</span><span class="reset">resets Sep 28, 19:00 CEST (+02:00)</span></li>
+                    </ul>
+                    <p class="limit-line"><span class="k">Extra credits:</span> off.</p>
+                    <div class="limit-meta">
+                      <span class="grow">Plan: max · checked 6m ago</span>
+                      <button class="btn ghost focus-demo" type="button" data-action="agent-quota-refresh" aria-label="Refresh limits of Built-in login, Claude Code"><svg class="icon" aria-hidden="true"><use href="#i-rerun"/></svg>Refresh</button>
+                    </div>
+                  </div>
+                </li>
+
+                <!-- 2. Work: ok, per-model windows, extra credits on; checked 2m ago so Refresh waits for the
+                     5-minute gap and says until when. Show details is open: the limits half of the panel. -->
+                <li class="acct-row" id="acct-claude-work" data-slot="account-row" data-quota-status="ok">
+                  <div class="who">
+                    <div class="name-line"><span class="name">Work</span></div>
+                    <p class="path">~/.claude-work</p>
+                    <div class="status"><span class="dot success" aria-hidden="true"></span><span>Connected</span></div>
+                  </div>
+                  <div class="actions">
+                    <button class="btn ghost desk-only" type="button">Check again</button>
+                    <button class="btn ghost" type="button" aria-expanded="true" aria-controls="work-details">Hide details</button>
+                  </div>
+                  <div class="limits" data-slot="account-limits" role="group" aria-label="Plan limits of Work, Claude Code">
+                    <p class="limit-status"><span class="dot success" aria-hidden="true"></span><span><b>Can work</b></span></p>
+                    <ul class="win-list">
+                      <li class="win"><span class="label">5-hour window</span><span class="meter" aria-hidden="true"><span style="--used:31%"></span></span><span class="pct">31% used</span><span class="reset">resets 19:40 CEST (+02:00)</span></li>
+                      <li class="win"><span class="label">Weekly, all models</span><span class="meter" aria-hidden="true"><span style="--used:58%"></span></span><span class="pct">58% used</span><span class="reset">resets Sep 27, 09:00 CEST (+02:00)</span></li>
+                      <li class="win"><span class="label">Weekly, Opus</span><span class="meter" aria-hidden="true"><span style="--used:64%"></span></span><span class="pct">64% used</span><span class="reset">resets Sep 27, 09:00 CEST (+02:00)</span></li>
+                      <li class="win"><span class="label">Weekly, Sonnet</span><span class="meter" aria-hidden="true"><span style="--used:12%"></span></span><span class="pct">12% used</span><span class="reset">resets Sep 27, 09:00 CEST (+02:00)</span></li>
+                    </ul>
+                    <p class="limit-line"><span class="k">Extra credits:</span> on — 12.40 of 50.00 USD used this month (25%).</p>
+                    <div class="limit-meta">
+                      <span class="grow" id="work-next">Plan: max · checked 2m ago · next check allowed at 16:51 CEST (+02:00)</span>
+                      <button class="btn ghost" type="button" aria-disabled="true" aria-describedby="work-next" aria-label="Refresh limits of Work, Claude Code"><svg class="icon" aria-hidden="true"><use href="#i-rerun"/></svg>Refresh</button>
+                    </div>
+                    <!-- The existing details panel gains its limits half. The account half (folder, e-mail
+                         behind opt-in, Rename, Remove) is unchanged and not drawn. -->
+                    <div class="limit-details" id="work-details" data-slot="account-limits-details">
+                      <h4>Plan limits in detail</h4>
+                      <dl>
+                        <dt>Where the numbers came from</dt><dd>A limit check with Claude Code 2.1.278, 2m ago. It uses no model tokens.</dd>
+                        <dt>Login kind</dt><dd>Subscription</dd>
+                        <dt>Extra credits</dt><dd>On · 12.40 of 50.00 USD used this month (25%) · not in use right now · you can buy more</dd>
+                        <dt>Spend limit</dt><dd>—</dd>
+                        <dt>Next check allowed</dt><dd>16:51 CEST (+02:00)</dd>
+                        <dt>Not reported by Claude Code</dt><dd>credit balance, unlimited credits, whether credits are available, member limit, limit-reset credits, token totals</dd>
+                      </dl>
+                      <span class="elided">Account details — folder, Rename, Remove — unchanged, not drawn.</span>
+                    </div>
+                  </div>
+                </li>
+
+                <!-- 3. Personal: limited. The 5-hour value came live from a running task 3m ago; the Fable
+                     window keeps the older reading of the last check and says so (FR-4). -->
+                <li class="acct-row" id="acct-claude-personal" data-slot="account-row" data-quota-status="limited">
+                  <div class="who">
+                    <div class="name-line"><span class="name">Personal</span></div>
+                    <p class="path">~/.claude-personal</p>
+                    <div class="status"><span class="dot success" aria-hidden="true"></span><span>Connected</span></div>
+                  </div>
+                  <div class="actions">
+                    <button class="btn ghost desk-only" type="button">Check again</button>
+                    <button class="btn ghost" type="button" aria-expanded="false">Show details</button>
+                  </div>
+                  <div class="limits" data-slot="account-limits" role="group" aria-label="Plan limits of Personal, Claude Code">
+                    <p class="limit-status"><span class="dot danger" aria-hidden="true"></span><span><b>Out until 17:10 CEST (+02:00)</b> <span class="why">— the 5-hour limit is used up.</span></span></p>
+                    <ul class="win-list">
+                      <li class="win"><span class="label">5-hour window</span><span class="meter full" aria-hidden="true"><span style="--used:100%"></span></span><span class="pct">100% used</span><span class="reset">resets 17:10 CEST (+02:00)</span></li>
+                      <li class="win"><span class="label">Weekly, all models</span><span class="meter" aria-hidden="true"><span style="--used:71%"></span></span><span class="pct">71% used</span><span class="reset">resets Sep 26, 21:00 CEST (+02:00)</span></li>
+                      <li class="win"><span class="label">Weekly, Fable</span><span class="meter near" aria-hidden="true"><span style="--used:83%"></span></span><span class="pct">83% used</span><span class="reset">resets Sep 26, 21:00 CEST (+02:00) <span class="as-of">· as of 38m ago</span></span></li>
+                    </ul>
+                    <p class="limit-line"><span class="k">Extra credits:</span> off.</p>
+                    <div class="limit-meta">
+                      <span class="grow">Plan: pro · seen 3m ago in a running task</span>
+                      <button class="btn ghost" type="button" aria-label="Refresh limits of Personal, Claude Code"><svg class="icon" aria-hidden="true"><use href="#i-rerun"/></svg>Refresh</button>
+                    </div>
+                  </div>
+                </li>
+
+                <!-- 4. Client A: unknown – the check answered but carried no percent lines (the S0 proof saw
+                     exactly this on one named login). No windows, no fabricated zero. -->
+                <li class="acct-row" id="acct-claude-client" data-slot="account-row" data-quota-status="unknown">
+                  <div class="who">
+                    <div class="name-line"><span class="name">Client A</span></div>
+                    <p class="path">~/.claude-client-a</p>
+                    <div class="status"><span class="dot success" aria-hidden="true"></span><span>Connected</span></div>
+                  </div>
+                  <div class="actions">
+                    <button class="btn ghost desk-only" type="button">Check again</button>
+                    <button class="btn ghost" type="button" aria-expanded="false">Show details</button>
+                  </div>
+                  <div class="limits" data-slot="account-limits" role="group" aria-label="Plan limits of Client A, Claude Code">
+                    <p class="limit-status"><span class="dot" aria-hidden="true"></span><span><b>Limits unknown</b> <span class="why">— Claude Code reported no limits for this login.</span></span></p>
+                    <p class="limit-note">Its answer had no session or weekly lines, so xezar cannot say how much is left. Tasks can still start under this login.</p>
+                    <div class="limit-meta">
+                      <span class="grow">Plan: — · checked 9m ago</span>
+                      <button class="btn ghost" type="button" aria-label="Refresh limits of Client A, Claude Code"><svg class="icon" aria-hidden="true"><use href="#i-rerun"/></svg>Refresh</button>
+                    </div>
+                  </div>
+                </li>
+
+                <!-- 5. Team: stale (41m) and a background re-check running because someone is looking.
+                     The old numbers stay, marked; the button shows the check in flight. -->
+                <li class="acct-row" id="acct-claude-team" data-slot="account-row" data-quota-status="ok" data-stale="true" data-refreshing="true">
+                  <div class="who">
+                    <div class="name-line"><span class="name">Team</span></div>
+                    <p class="path">~/.claude-team</p>
+                    <div class="status"><span class="dot success" aria-hidden="true"></span><span>Connected</span></div>
+                  </div>
+                  <div class="actions">
+                    <button class="btn ghost desk-only" type="button">Check again</button>
+                    <button class="btn ghost" type="button" aria-expanded="false">Show details</button>
+                  </div>
+                  <div class="limits" data-slot="account-limits" role="group" aria-label="Plan limits of Team, Claude Code">
+                    <p class="limit-status"><span class="dot success" aria-hidden="true"></span><span><b>Can work</b> <span class="why">— as of 41m ago.</span></span></p>
+                    <ul class="win-list">
+                      <li class="win"><span class="label">5-hour window</span><span class="meter" aria-hidden="true"><span style="--used:12%"></span></span><span class="pct">12% used</span><span class="reset">resets 20:05 CEST (+02:00)</span></li>
+                      <li class="win"><span class="label">Weekly, all models</span><span class="meter" aria-hidden="true"><span style="--used:40%"></span></span><span class="pct">40% used</span><span class="reset">resets Sep 25, 08:00 CEST (+02:00)</span></li>
+                    </ul>
+                    <p class="limit-line"><span class="k">Extra credits:</span> off.</p>
+                    <div class="limit-meta">
+                      <span class="badge outline">Stale</span>
+                      <span class="grow">Plan: team · checked 41m ago — the numbers may have moved since.</span>
+                      <button class="btn ghost" type="button" aria-disabled="true" aria-label="Checking the limits of Team, Claude Code"><span class="checking"><svg class="icon" aria-hidden="true"><use href="#i-loader"/></svg>Checking…</span></button>
+                    </div>
+                  </div>
+                </li>
+              </ul>
+            </section>
+
+            <!-- ============ Codex ============ -->
+            <section class="tool-group" id="tool-codex" data-provider="codex" aria-labelledby="h-codex">
+              <div class="tool-head">
+                <h3 id="h-codex">Codex</h3>
+                <span class="facts">Installed · 0.155.1 · 1 account</span>
+                <span class="end"><button class="btn" type="button">Add account</button></span>
+              </div>
+              <ul class="acct-rows">
+                <!-- The S0 proof's real Codex answer: pro, one 10 080-minute window at 0 %, no short window,
+                     credits none with balance 0. The window is classed by its length, never by its slot. -->
+                <li class="acct-row" id="acct-codex-default" data-slot="account-row" data-quota-status="ok">
+                  <div class="who">
+                    <div class="name-line">
+                      <span class="name">Built-in login</span>
+                      <span class="badge outline">Default</span>
+                    </div>
+                    <p class="path">~/.codex</p>
+                    <div class="status"><span class="dot success" aria-hidden="true"></span><span>Connected</span></div>
+                  </div>
+                  <div class="actions">
+                    <button class="btn ghost desk-only" type="button">Check again</button>
+                    <button class="btn ghost" type="button" aria-expanded="false">Show details</button>
+                  </div>
+                  <div class="limits" data-slot="account-limits" role="group" aria-label="Plan limits of Built-in login, Codex">
+                    <p class="limit-status"><span class="dot success" aria-hidden="true"></span><span><b>Can work</b></span></p>
+                    <ul class="win-list">
+                      <li class="win"><span class="label">Weekly</span><span class="meter" aria-hidden="true"><span style="--used:0%"></span></span><span class="pct">0% used</span><span class="reset">resets Sep 29, 14:45 CEST (+02:00)</span></li>
+                    </ul>
+                    <p class="limit-note">Codex reported no short window for this login.</p>
+                    <p class="limit-line"><span class="k">Credits:</span> none — balance 0.</p>
+                    <div class="limit-meta">
+                      <span class="grow">Plan: pro · checked 6m ago</span>
+                      <button class="btn ghost" type="button" aria-label="Refresh limits of Built-in login, Codex"><svg class="icon" aria-hidden="true"><use href="#i-rerun"/></svg>Refresh</button>
+                    </div>
+                  </div>
+                </li>
+              </ul>
+            </section>
+
+            <!-- OpenCode and pi keep their groups exactly as today: no limits block, no chip segment (D10). -->
+            <p class="tool-note">OpenCode and pi — unchanged, not drawn. Their groups get no Plan limits block.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

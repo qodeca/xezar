@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent quota – every state</title>
+<link rel="stylesheet" href="../../docs/design-system/cockpit.css">
+<link rel="stylesheet" href="styles.css">
+<script src="../../docs/design-system/specimens/icons.js" defer></script>
+<script src="theme.js"></script>
+</head>
+<body>
+<nav class="doc-bar" aria-label="Design pages">
+  <span class="brand">Agent quota</span>
+  <a href="index.html">Overview</a>
+  <a href="accounts.html">The pane</a>
+  <a href="chip.html">The chip</a>
+  <a href="states.html" aria-current="page">Every state</a>
+  <a href="phone.html">Phone</a>
+  <span class="spacer"></span>
+  <button class="theme-toggle" type="button" data-theme-toggle>Light / dark</button>
+</nav>
+
+<div class="doc">
+  <h1>Every state</h1>
+  <p class="lead">Each account row’s limits half, then the pane’s Plan limits block, one state at a time. Clock: Tue 22 Sep 2026, 16:48 CEST (+02:00). Every state has its own sentence; the dot and the bar only reinforce it. The chip’s own states are on <a class="link" href="chip.html">The chip</a>.</p>
+  <div class="state-stack"><h2>One account row, state by state</h2>
+  <section id="row-ok">
+    <p class="state-label">Can work – fresh</p>
+    <p class="state-why">The plain case: a word, the windows, credits, the plan and the age. Codex, as the S0 proof read it: one 7-day window in the “primary” slot is shown as Weekly because it is classed by its length.</p>
+    <div class="frame pane-frame"><div class="acct-pane"><ul class="acct-rows"><li class="acct-row" data-slot="account-row">
+        <div class="who"><div class="name-line"><span class="name">Built-in login</span><span class="badge outline">Default</span></div><p class="path">~/.codex</p><div class="status"><span class="dot success" aria-hidden="true"></span><span>Connected</span></div></div>
+        <div class="actions"><button class="btn ghost desk-only" type="button">Check again</button><button class="btn ghost" type="button" aria-expanded="false">Show details</button></div>
+        <div class="limits" data-slot="account-limits" role="group" aria-label="Plan limits of Built-in login, Codex"><p class="limit-status"><span class="dot success" aria-hidden="true"></span><span><b>Can work</b></span></p><ul class="win-list"><li class="win"><span class="label">Weekly</span><span class="meter" aria-hidden="true"><span style="--used:0%"></span></span><span class="pct">0% used</span><span class="reset">resets Sep 29, 14:45 CEST (+02:00)</span></li></ul><p class="limit-note">Codex reported no short window for this login.</p><p class="limit-line"><span class="k">Credits:</span> none — balance 0.</p><div class="limit-meta"><span class="grow">Plan: pro · checked 6m ago</span><button class="btn ghost" type="button" aria-label="Refresh limits of Built-in login, Codex"><svg class="icon" aria-hidden="true"><use href="#i-rerun"/></svg>Refresh</button></div></div>
+      </li></ul></div></div>
+  </section>
+  <section id="row-warning">
+    <p class="state-label">Can work – near a limit</p>
+    <p class="state-why">Any window at 80% or more. The bar turns amber; the sentence names which window, so the colour is never the only signal.</p>
+    <div class="frame pane-frame"><div class="acct-pane"><ul class="acct-rows"><li class="acct-row" data-slot="account-row">
+        <div class="who"><div class="name-line"><span class="name">Built-in login</span><span class="badge outline">Default</span></div><p class="path">~/.claude</p><div class="status"><span class="dot success" aria-hidden="true"></span><span>Connected</span></div></div>
+        <div class="actions"><button class="btn ghost desk-only" type="button">Check again</button><button class="btn ghost" type="button" aria-expanded="false">Show details</button></div>
+        <div class="limits" data-slot="account-limits" role="group" aria-label="Plan limits of Built-in login, Claude Code"><p class="limit-status"><span class="dot pending" aria-hidden="true"></span><span><b>Can work</b> <span class="why">— near a limit: the 5-hour window is 92% used.</span></span></p><ul class="win-list"><li class="win"><span class="label">5-hour window</span><span class="meter near" aria-hidden="true"><span style="--used:92%"></span></span><span class="pct">92% used</span><span class="reset">resets 17:10 CEST (+02:00)</span></li><li class="win"><span class="label">Weekly, all models</span><span class="meter" aria-hidden="true"><span style="--used:26%"></span></span><span class="pct">26% used</span><span class="reset">resets Sep 28, 19:00 CEST (+02:00)</span></li><li class="win"><span class="label">Weekly, Fable</span><span class="meter" aria-hidden="true"><span style="--used:29%"></span></span><span class="pct">29% used</span><span class="reset">resets Sep 28, 19:00 CEST (+02:00)</span></li></ul><p class="limit-line"><span class="k">Extra credits:</span> off.</p><div class="limit-meta"><span class="grow">Plan: max · checked 6m ago</span><button class="btn ghost" type="button" aria-label="Refresh limits of Built-in login, Claude Code"><svg class="icon" aria-hidden="true"><use href="#i-rerun"/></svg>Refresh</button></div></div>
+      </li></ul></div></div>
+  </section>
+  <section id="row-overage">
+    <p class="state-label">Can work – using extra credits</p>
+    <p class="state-why">Claude Code keeps working past a spent window when extra credits are on; the row says that is what is happening now, because it costs money.</p>
+    <div class="frame pane-frame"><div class="acct-pane"><ul class="acct-rows"><li class="acct-row" data-slot="account-row">
+        <div class="who"><div class="name-line"><span class="name">Work</span></div><p class="path">~/.claude-work</p><div class="status"><span class="dot success" aria-hidden="true"></span><span>Connected</span></div></div>
+        <div class="actions"><button class="btn ghost desk-only" type="button">Check again</button><button class="btn ghost" type="button" aria-expanded="false">Show details</button></div>
+        <div class="limits" data-slot="account-limits" role="group" aria-label="Plan limits of Work, Claude Code"><p class="limit-status"><span class="dot pending" aria-hidden="true"></span><span><b>Can work</b> <span class="why">— using extra credits: the 5-hour window is used up, so requests are paid from extra credits.</span></span></p><ul class="win-list"><li class="win"><span class="label">5-hour window</span><span class="meter full" aria-hidden="true"><span style="--used:100%"></span></span><span class="pct">100% used</span><span class="reset">resets 19:40 CEST (+02:00)</span></li><li class="win"><span class="label">Weekly, all models</span><span class="meter" aria-hidden="true"><span style="--used:58%"></span></span><span class="pct">58% used</span><span class="reset">resets Sep 27, 09:00 CEST (+02:00)</span></li></ul><p class="limit-line"><span class="k">Extra credits:</span> on, in use now — 31.90 of 50.00 USD used this month (63%).</p><div class="limit-meta"><span class="grow">Plan: max · seen 1m ago in a running task</span><button class="btn ghost" type="button" aria-label="Refresh limits of Work, Claude Code"><svg class="icon" aria-hidden="true"><use href="#i-rerun"/></svg>Refresh</button></div></div>
+      </li></ul></div></div>
+  </section>
+  <section id="row-out-short">
+    <p class="state-label">Out – the 5-hour limit, with its reset</p>
+    <p class="state-why">Danger dot and the reset time in the headline, because “when can I use it again” is the next question. A window that came from an older reading says how old it is.</p>
+    <div class="frame pane-frame"><div class="acct-pane"><ul class="acct-rows"><li class="acct-row" data-slot="account-row">
+        <div class="who"><div class="name-line"><span class="name">Personal</span></div><p class="path">~/.claude-personal</p><div class="status"><span class="dot success" aria-hidden="true"></span><span>Connected</span></div></div>
+        <div class="actions"><button class="btn ghost desk-only" type="button">Check again</button><button class="btn ghost" type="button" aria-expanded="false">Show details</button></div>
+        <div class="limits" data-slot="account-limits" role="group" aria-label="Plan limits of Personal, Claude Code"><p class="limit-status"><span class="dot danger" aria-hidden="true"></span><span><b>Out until 17:10 CEST (+02:00)</b> <span class="why">— the 5-hour limit is used up.</span></span></p><ul class="win-list"><li class="win"><span class="label">5-hour window</span><span class="meter full" aria-hidden="true"><span style="--used:100%"></span></span><span class="pct">100% used</span><span class="reset">resets 17:10 CEST (+02:00)</span></li><li class="win"><span class="label">Weekly, all models</span><span class="meter" aria-hidden="true"><span style="--used:71%"></span></span><span class="pct">71% used</span><span class="reset">resets Sep 26, 21:00 CEST (+02:00)</span></li><li class="win"><span class="label">Weekly, Fable</span><span class="meter near" aria-hidden="true"><span style="--used:83%"></span></span><span class="pct">83% used</span><span class="reset">resets Sep 26, 21:00 CEST (+02:00) <span class="as-of">· as of 38m ago</span></span></li></ul><p class="limit-line"><span class="k">Extra credits:</span> off.</p><div class="limit-meta"><span class="grow">Plan: pro · seen 3m ago in a running task</span><button class="btn ghost" type="button" aria-label="Refresh limits of Personal, Claude Code"><svg class="icon" aria-hidden="true"><use href="#i-rerun"/></svg>Refresh</button></div></div>
+      </li></ul></div></div>
+  </section>
+  <section id="row-out-week">
+    <p class="state-label">Out – the weekly limit</p>
+    <p class="state-why">Same shape; the reset is days away, so the date is part of it.</p>
+    <div class="frame pane-frame"><div class="acct-pane"><ul class="acct-rows"><li class="acct-row" data-slot="account-row">
+        <div class="who"><div class="name-line"><span class="name">Team</span></div><p class="path">~/.claude-team</p><div class="status"><span class="dot success" aria-hidden="true"></span><span>Connected</span></div></div>
+        <div class="actions"><button class="btn ghost desk-only" type="button">Check again</button><button class="btn ghost" type="button" aria-expanded="false">Show details</button></div>
+        <div class="limits" data-slot="account-limits" role="group" aria-label="Plan limits of Team, Claude Code"><p class="limit-status"><span class="dot danger" aria-hidden="true"></span><span><b>Out until Sep 25, 08:00 CEST (+02:00)</b> <span class="why">— the weekly limit is used up.</span></span></p><ul class="win-list"><li class="win"><span class="label">5-hour window</span><span class="meter" aria-hidden="true"><span style="--used:4%"></span></span><span class="pct">4% used</span><span class="reset">resets 20:05 CEST (+02:00)</span></li><li class="win"><span class="label">Weekly, all models</span><span class="meter full" aria-hidden="true"><span style="--used:100%"></span></span><span class="pct">100% used</span><span class="reset">resets Sep 25, 08:00 CEST (+02:00)</span></li></ul><p class="limit-line"><span class="k">Extra credits:</span> off.</p><div class="limit-meta"><span class="grow">Plan: team · checked 7m ago</span><button class="btn ghost" type="button" aria-label="Refresh limits of Team, Claude Code"><svg class="icon" aria-hidden="true"><use href="#i-rerun"/></svg>Refresh</button></div></div>
+      </li></ul></div></div>
+  </section>
+  <section id="row-out-workspace">
+    <p class="state-label">Out – the workspace owner’s credits are used up (Codex)</p>
+    <p class="state-why">Codex can block a login for the workspace, not for the person. The sentence says whose limit it is; percentages alone never decide Codex’s status (FR-5).</p>
+    <div class="frame pane-frame"><div class="acct-pane"><ul class="acct-rows"><li class="acct-row" data-slot="account-row">
+        <div class="who"><div class="name-line"><span class="name">Team</span></div><p class="path">~/.codex-team</p><div class="status"><span class="dot success" aria-hidden="true"></span><span>Connected</span></div></div>
+        <div class="actions"><button class="btn ghost desk-only" type="button">Check again</button><button class="btn ghost" type="button" aria-expanded="false">Show details</button></div>
+        <div class="limits" data-slot="account-limits" role="group" aria-label="Plan limits of Team, Codex"><p class="limit-status"><span class="dot danger" aria-hidden="true"></span><span><b>Out until Oct 1, 02:00 CEST (+02:00)</b> <span class="why">— the workspace owner’s credits are used up.</span></span></p><p class="limit-note">This limit belongs to the workspace, not to this login.</p><ul class="win-list"><li class="win"><span class="label">5-hour window</span><span class="meter" aria-hidden="true"><span style="--used:18%"></span></span><span class="pct">18% used</span><span class="reset">resets 19:12 CEST (+02:00)</span></li><li class="win"><span class="label">Weekly</span><span class="meter" aria-hidden="true"><span style="--used:44%"></span></span><span class="pct">44% used</span><span class="reset">resets Sep 29, 14:45 CEST (+02:00)</span></li></ul><p class="limit-line"><span class="k">Credits:</span> none — balance 0.</p><p class="limit-line"><span class="k">Member limit:</span> 480 of 600 used (80%) · resets Oct 1, 02:00 CEST (+02:00).</p><p class="limit-line"><span class="k">Limit-reset credits:</span> 2 available.</p><div class="limit-meta"><span class="grow">Plan: business · checked 5m ago</span><button class="btn ghost" type="button" aria-label="Refresh limits of Team, Codex"><svg class="icon" aria-hidden="true"><use href="#i-rerun"/></svg>Refresh</button></div></div>
+      </li></ul></div></div>
+  </section>
+  <section id="row-out-failed-run">
+    <p class="state-label">Out – learned from a task that stopped on the limit</p>
+    <p class="state-why">No check was needed: a task under this login failed on its usage limit 3 minutes ago. The row says where the fact came from.</p>
+    <div class="frame pane-frame"><div class="acct-pane"><ul class="acct-rows"><li class="acct-row" data-slot="account-row">
+        <div class="who"><div class="name-line"><span class="name">Work</span></div><p class="path">~/.claude-work</p><div class="status"><span class="dot success" aria-hidden="true"></span><span>Connected</span></div></div>
+        <div class="actions"><button class="btn ghost desk-only" type="button">Check again</button><button class="btn ghost" type="button" aria-expanded="false">Show details</button></div>
+        <div class="limits" data-slot="account-limits" role="group" aria-label="Plan limits of Work, Claude Code"><p class="limit-status"><span class="dot danger" aria-hidden="true"></span><span><b>Out until 19:40 CEST (+02:00)</b> <span class="why">— a task under this login stopped on the usage limit 3m ago.</span></span></p><ul class="win-list"><li class="win"><span class="label">Weekly, all models</span><span class="meter" aria-hidden="true"><span style="--used:58%"></span></span><span class="pct">58% used</span><span class="reset">resets Sep 27, 09:00 CEST (+02:00) <span class="as-of">· as of 24m ago</span></span></li></ul><p class="limit-line"><span class="k">Extra credits:</span> off.</p><div class="limit-meta"><span class="grow">Plan: max · from a failed task 3m ago</span><button class="btn ghost" type="button" aria-label="Refresh limits of Work, Claude Code"><svg class="icon" aria-hidden="true"><use href="#i-rerun"/></svg>Refresh</button></div></div>
+      </li></ul></div></div>
+  </section>
+  <section id="row-reset-passed">
+    <p class="state-label">A reset time passed – already done</p>
+    <p class="state-why">The 5-hour window’s reset came and went. Its old 100% is no longer true, so the window is removed, “out” clears, and the row says the new number comes with the next check – instead of showing a stale 100% or inventing 0%.</p>
+    <div class="frame pane-frame"><div class="acct-pane"><ul class="acct-rows"><li class="acct-row" data-slot="account-row">
+        <div class="who"><div class="name-line"><span class="name">Personal</span></div><p class="path">~/.claude-personal</p><div class="status"><span class="dot success" aria-hidden="true"></span><span>Connected</span></div></div>
+        <div class="actions"><button class="btn ghost desk-only" type="button">Check again</button><button class="btn ghost" type="button" aria-expanded="false">Show details</button></div>
+        <div class="limits" data-slot="account-limits" role="group" aria-label="Plan limits of Personal, Claude Code"><p class="limit-status"><span class="dot success" aria-hidden="true"></span><span><b>Can work</b> <span class="why">— the 5-hour window reset at 17:10.</span></span></p><ul class="win-list"><li class="win"><span class="label">Weekly, all models</span><span class="meter" aria-hidden="true"><span style="--used:71%"></span></span><span class="pct">71% used</span><span class="reset">resets Sep 26, 21:00 CEST (+02:00)</span></li></ul><p class="limit-note">The 5-hour window’s new number arrives with the next check.</p><p class="limit-line"><span class="k">Extra credits:</span> off.</p><div class="limit-meta"><span class="grow">Plan: pro · checked 12m ago</span><button class="btn ghost" type="button" aria-label="Refresh limits of Personal, Claude Code"><svg class="icon" aria-hidden="true"><use href="#i-rerun"/></svg>Refresh</button></div></div>
+      </li></ul></div></div>
+  </section>
+  <section id="row-first-check">
+    <p class="state-label">Checking – the first check, no numbers yet</p>
+    <p class="state-why">Right after the server starts. No dot, no bar and no zero until the check answers; at most 2 logins are checked at a time and each check is stopped after 20 seconds.</p>
+    <div class="frame pane-frame"><div class="acct-pane"><ul class="acct-rows"><li class="acct-row" data-slot="account-row">
+        <div class="who"><div class="name-line"><span class="name">Client A</span></div><p class="path">~/.claude-client-a</p><div class="status"><span class="dot success" aria-hidden="true"></span><span>Connected</span></div></div>
+        <div class="actions"><button class="btn ghost desk-only" type="button">Check again</button><button class="btn ghost" type="button" aria-expanded="false">Show details</button></div>
+        <div class="limits" data-slot="account-limits" role="group" aria-label="Plan limits of Client A, Claude Code"><p class="limit-status"><span class="dot" aria-hidden="true"></span><span><b>Checking the limits…</b></span></p><div class="limit-meta"><span class="grow">Not checked yet</span><button class="btn ghost" type="button" aria-disabled="true" aria-label="Checking the limits of Client A, Claude Code"><span class="checking"><svg class="icon" aria-hidden="true"><use href="#i-loader"/></svg>Checking…</span></button></div></div>
+      </li></ul></div></div>
+  </section>
+  <section id="row-stale">
+    <p class="state-label">Stale, and a background check on its way</p>
+    <p class="state-why">Older than 15 minutes: the numbers stay, with the word “Stale” and their age, and a check starts because this page is open.</p>
+    <div class="frame pane-frame"><div class="acct-pane"><ul class="acct-rows"><li class="acct-row" data-slot="account-row">
+        <div class="who"><div class="name-line"><span class="name">Team</span></div><p class="path">~/.claude-team</p><div class="status"><span class="dot success" aria-hidden="true"></span><span>Connected</span></div></div>
+        <div class="actions"><button class="btn ghost desk-only" type="button">Check again</button><button class="btn ghost" type="button" aria-expanded="false">Show details</button></div>
+        <div class="limits" data-slot="account-limits" role="group" aria-label="Plan limits of Team, Claude Code"><p class="limit-status"><span class="dot success" aria-hidden="true"></span><span><b>Can work</b> <span class="why">— as of 41m ago.</span></span></p><ul class="win-list"><li class="win"><span class="label">5-hour window</span><span class="meter" aria-hidden="true"><span style="--used:12%"></span></span><span class="pct">12% used</span><span class="reset">resets 20:05 CEST (+02:00)</span></li><li class="win"><span class="label">Weekly, all models</span><span class="meter" aria-hidden="true"><span style="--used:40%"></span></span><span class="pct">40% used</span><span class="reset">resets Sep 25, 08:00 CEST (+02:00)</span></li></ul><p class="limit-line"><span class="k">Extra credits:</span> off.</p><div class="limit-meta"><span class="badge outline">Stale</span><span class="grow">Plan: team · checked 41m ago — the numbers may have moved since.</span><button class="btn ghost" type="button" aria-disabled="true" aria-label="Checking the limits of Team, Claude Code"><span class="checking"><svg class="icon" aria-hidden="true"><use href="#i-loader"/></svg>Checking…</span></button></div></div>
+      </li></ul></div></div>
+  </section>
+  <section id="row-stale-idle">
+    <p class="state-label">Stale, and no check can run yet</p>
+    <p class="state-why">Stale, but this login was checked less than 5 minutes ago and that check failed, so the gap holds the next one. The old numbers stay, marked; Refresh says when it can run.</p>
+    <div class="frame pane-frame"><div class="acct-pane"><ul class="acct-rows"><li class="acct-row" data-slot="account-row">
+        <div class="who"><div class="name-line"><span class="name">Work</span></div><p class="path">~/.claude-work</p><div class="status"><span class="dot success" aria-hidden="true"></span><span>Connected</span></div></div>
+        <div class="actions"><button class="btn ghost desk-only" type="button">Check again</button><button class="btn ghost" type="button" aria-expanded="false">Show details</button></div>
+        <div class="limits" data-slot="account-limits" role="group" aria-label="Plan limits of Work, Claude Code"><p class="limit-status"><span class="dot success" aria-hidden="true"></span><span><b>Can work</b> <span class="why">— as of 23m ago.</span></span></p><ul class="win-list"><li class="win"><span class="label">5-hour window</span><span class="meter" aria-hidden="true"><span style="--used:31%"></span></span><span class="pct">31% used</span><span class="reset">resets 19:40 CEST (+02:00)</span></li><li class="win"><span class="label">Weekly, all models</span><span class="meter" aria-hidden="true"><span style="--used:58%"></span></span><span class="pct">58% used</span><span class="reset">resets Sep 27, 09:00 CEST (+02:00)</span></li></ul><p class="limit-warn"><span class="dot pending" aria-hidden="true"></span><span>The last check did not answer within 20 seconds.</span></p><div class="limit-meta"><span class="badge outline">Stale</span><span class="grow" id="stale-gap">Plan: max · last good reading 23m ago · next check allowed at 16:51 CEST (+02:00)</span><button class="btn ghost" type="button" aria-disabled="true" aria-describedby="stale-gap" aria-label="Refresh limits of Work, Claude Code"><svg class="icon" aria-hidden="true"><use href="#i-rerun"/></svg>Refresh</button></div></div>
+      </li></ul></div></div>
+  </section>
+  <section id="row-gap">
+    <p class="state-label">Refresh waits for the 5-minute gap</p>
+    <p class="state-why">Checked 2 minutes ago: Refresh stays in the tab order but is unavailable, and the line it would change says when the next check is allowed. No hidden tooltip carries the reason.</p>
+    <div class="frame pane-frame"><div class="acct-pane"><ul class="acct-rows"><li class="acct-row" data-slot="account-row">
+        <div class="who"><div class="name-line"><span class="name">Work</span></div><p class="path">~/.claude-work</p><div class="status"><span class="dot success" aria-hidden="true"></span><span>Connected</span></div></div>
+        <div class="actions"><button class="btn ghost desk-only" type="button">Check again</button><button class="btn ghost" type="button" aria-expanded="false">Show details</button></div>
+        <div class="limits" data-slot="account-limits" role="group" aria-label="Plan limits of Work, Claude Code"><p class="limit-status"><span class="dot success" aria-hidden="true"></span><span><b>Can work</b></span></p><ul class="win-list"><li class="win"><span class="label">5-hour window</span><span class="meter" aria-hidden="true"><span style="--used:31%"></span></span><span class="pct">31% used</span><span class="reset">resets 19:40 CEST (+02:00)</span></li><li class="win"><span class="label">Weekly, all models</span><span class="meter" aria-hidden="true"><span style="--used:58%"></span></span><span class="pct">58% used</span><span class="reset">resets Sep 27, 09:00 CEST (+02:00)</span></li></ul><p class="limit-line"><span class="k">Extra credits:</span> on — 12.40 of 50.00 USD used this month (25%).</p><div class="limit-meta"><span class="grow" id="gap-1">Plan: max · checked 2m ago · next check allowed at 16:51 CEST (+02:00)</span><button class="btn ghost" type="button" aria-disabled="true" aria-describedby="gap-1" aria-label="Refresh limits of Work, Claude Code"><svg class="icon" aria-hidden="true"><use href="#i-rerun"/></svg>Refresh</button></div></div>
+      </li></ul></div></div>
+  </section>
+  <section id="row-refreshing">
+    <p class="state-label">Refreshing – after a press</p>
+    <p class="state-why">The button shows the pending verb; the numbers stay until the answer lands. It waits up to 20 seconds, then shows whatever it has.</p>
+    <div class="frame pane-frame"><div class="acct-pane"><ul class="acct-rows"><li class="acct-row" data-slot="account-row">
+        <div class="who"><div class="name-line"><span class="name">Built-in login</span><span class="badge outline">Default</span></div><p class="path">~/.claude</p><div class="status"><span class="dot success" aria-hidden="true"></span><span>Connected</span></div></div>
+        <div class="actions"><button class="btn ghost desk-only" type="button">Check again</button><button class="btn ghost" type="button" aria-expanded="false">Show details</button></div>
+        <div class="limits" data-slot="account-limits" role="group" aria-label="Plan limits of Built-in login, Claude Code"><p class="limit-status"><span class="dot pending" aria-hidden="true"></span><span><b>Can work</b> <span class="why">— near a limit: the 5-hour window is 92% used.</span></span></p><ul class="win-list"><li class="win"><span class="label">5-hour window</span><span class="meter near" aria-hidden="true"><span style="--used:92%"></span></span><span class="pct">92% used</span><span class="reset">resets 17:10 CEST (+02:00)</span></li><li class="win"><span class="label">Weekly, all models</span><span class="meter" aria-hidden="true"><span style="--used:26%"></span></span><span class="pct">26% used</span><span class="reset">resets Sep 28, 19:00 CEST (+02:00)</span></li></ul><p class="limit-line"><span class="k">Extra credits:</span> off.</p><div class="limit-meta"><span class="grow">Plan: max · checked 6m ago</span><button class="btn ghost" type="button" aria-disabled="true" aria-label="Refreshing the limits of Built-in login, Claude Code"><span class="checking"><svg class="icon" aria-hidden="true"><use href="#i-loader"/></svg>Refreshing…</span></button></div></div>
+      </li></ul></div></div>
+  </section>
+  <section id="row-unknown-empty">
+    <p class="state-label">Limits unknown – the answer had no limit lines</p>
+    <p class="state-why">Seen live in the S0 proof on one named login. Nothing is guessed: no windows, no zero, and the row says tasks can still start.</p>
+    <div class="frame pane-frame"><div class="acct-pane"><ul class="acct-rows"><li class="acct-row" data-slot="account-row">
+        <div class="who"><div class="name-line"><span class="name">Client A</span></div><p class="path">~/.claude-client-a</p><div class="status"><span class="dot success" aria-hidden="true"></span><span>Connected</span></div></div>
+        <div class="actions"><button class="btn ghost desk-only" type="button">Check again</button><button class="btn ghost" type="button" aria-expanded="false">Show details</button></div>
+        <div class="limits" data-slot="account-limits" role="group" aria-label="Plan limits of Client A, Claude Code"><p class="limit-status"><span class="dot" aria-hidden="true"></span><span><b>Limits unknown</b> <span class="why">— Claude Code reported no limits for this login.</span></span></p><p class="limit-note">Its answer had no session or weekly lines, so xezar cannot say how much is left. Tasks can still start under this login.</p><div class="limit-meta"><span class="grow">Plan: — · checked 9m ago</span><button class="btn ghost" type="button" aria-label="Refresh limits of Client A, Claude Code"><svg class="icon" aria-hidden="true"><use href="#i-rerun"/></svg>Refresh</button></div></div>
+      </li></ul></div></div>
+  </section>
+  <section id="row-unknown-timeout">
+    <p class="state-label">Limits unknown – the check did not answer</p>
+    <p class="state-why">A check is stopped after 20 seconds. The row keeps no number it cannot vouch for.</p>
+    <div class="frame pane-frame"><div class="acct-pane"><ul class="acct-rows"><li class="acct-row" data-slot="account-row">
+        <div class="who"><div class="name-line"><span class="name">Team</span></div><p class="path">~/.claude-team</p><div class="status"><span class="dot success" aria-hidden="true"></span><span>Connected</span></div></div>
+        <div class="actions"><button class="btn ghost desk-only" type="button">Check again</button><button class="btn ghost" type="button" aria-expanded="false">Show details</button></div>
+        <div class="limits" data-slot="account-limits" role="group" aria-label="Plan limits of Team, Claude Code"><p class="limit-status"><span class="dot" aria-hidden="true"></span><span><b>Limits unknown</b> <span class="why">— the last check did not answer within 20 seconds.</span></span></p><div class="limit-meta"><span class="grow">Plan: — · tried 6m ago</span><button class="btn ghost" type="button" aria-label="Refresh limits of Team, Claude Code"><svg class="icon" aria-hidden="true"><use href="#i-rerun"/></svg>Refresh</button></div></div>
+      </li></ul></div></div>
+  </section>
+  <section id="row-unknown-format">
+    <p class="state-label">Limits unknown – the tool changed its format</p>
+    <p class="state-why">The reply no longer matched what xezar reads, so it is not used. One line in the server log records it once per tool version.</p>
+    <div class="frame pane-frame"><div class="acct-pane"><ul class="acct-rows"><li class="acct-row" data-slot="account-row">
+        <div class="who"><div class="name-line"><span class="name">Built-in login</span><span class="badge outline">Default</span></div><p class="path">~/.claude</p><div class="status"><span class="dot success" aria-hidden="true"></span><span>Connected</span></div></div>
+        <div class="actions"><button class="btn ghost desk-only" type="button">Check again</button><button class="btn ghost" type="button" aria-expanded="false">Show details</button></div>
+        <div class="limits" data-slot="account-limits" role="group" aria-label="Plan limits of Built-in login, Claude Code"><p class="limit-status"><span class="dot" aria-hidden="true"></span><span><b>Limits unknown</b> <span class="why">— Claude Code 2.1.290 changed how it reports usage, so xezar cannot read it.</span></span></p><div class="limit-meta"><span class="grow">Plan: — · tried 4m ago</span><button class="btn ghost" type="button" aria-label="Refresh limits of Built-in login, Claude Code"><svg class="icon" aria-hidden="true"><use href="#i-rerun"/></svg>Refresh</button></div></div>
+      </li></ul></div></div>
+  </section>
+  <section id="row-unknown-version">
+    <p class="state-label">Limits unknown – the tool is too old</p>
+    <p class="state-why">Below the minimum version no check runs, so there is no Refresh: pressing it could only fail. It comes back once the tool is updated.</p>
+    <div class="frame pane-frame"><div class="acct-pane"><ul class="acct-rows"><li class="acct-row" data-slot="account-row">
+        <div class="who"><div class="name-line"><span class="name">Built-in login</span><span class="badge outline">Default</span></div><p class="path">~/.codex</p><div class="status"><span class="dot success" aria-hidden="true"></span><span>Connected</span></div></div>
+        <div class="actions"><button class="btn ghost desk-only" type="button">Check again</button><button class="btn ghost" type="button" aria-expanded="false">Show details</button></div>
+        <div class="limits" data-slot="account-limits" role="group" aria-label="Plan limits of Built-in login, Codex"><p class="limit-status"><span class="dot" aria-hidden="true"></span><span><b>Limits unknown</b> <span class="why">— update Codex to at least 0.155.1 to report limits.</span></span></p><div class="limit-meta"><span class="grow">Codex 0.149.0 is installed.</span></div></div>
+      </li></ul></div></div>
+  </section>
+  <section id="row-unknown-missing">
+    <p class="state-label">Limits unknown – the tool is not installed</p>
+    <p class="state-why">The agent group already says “Not installed”; the row repeats it in the limits’ own words, with no Refresh.</p>
+    <div class="frame pane-frame"><div class="acct-pane"><ul class="acct-rows"><li class="acct-row" data-slot="account-row">
+        <div class="who"><div class="name-line"><span class="name">Built-in login</span><span class="badge outline">Default</span></div><p class="path">~/.codex</p></div>
+        <div class="actions"><button class="btn ghost desk-only" type="button">Check again</button><button class="btn ghost" type="button" aria-expanded="false">Show details</button></div>
+        <div class="limits" data-slot="account-limits" role="group" aria-label="Plan limits of Built-in login, Codex"><p class="limit-status"><span class="dot" aria-hidden="true"></span><span><b>Limits unknown</b> <span class="why">— Codex is not installed on this machine.</span></span></p></div>
+      </li></ul></div></div>
+  </section>
+  <section id="row-fallback-text">
+    <p class="state-label">Read from the /usage text – a fallback, with a warning</p>
+    <p class="state-why">When the usage request fails, the numbers come from the text Claude Code prints for /usage. They are shown, with a warning, because the text is not a fixed format.</p>
+    <div class="frame pane-frame"><div class="acct-pane"><ul class="acct-rows"><li class="acct-row" data-slot="account-row">
+        <div class="who"><div class="name-line"><span class="name">Built-in login</span><span class="badge outline">Default</span></div><p class="path">~/.claude</p><div class="status"><span class="dot success" aria-hidden="true"></span><span>Connected</span></div></div>
+        <div class="actions"><button class="btn ghost desk-only" type="button">Check again</button><button class="btn ghost" type="button" aria-expanded="false">Show details</button></div>
+        <div class="limits" data-slot="account-limits" role="group" aria-label="Plan limits of Built-in login, Claude Code"><p class="limit-status"><span class="dot pending" aria-hidden="true"></span><span><b>Can work</b> <span class="why">— near a limit: the 5-hour window is 92% used.</span></span></p><ul class="win-list"><li class="win"><span class="label">5-hour window</span><span class="meter near" aria-hidden="true"><span style="--used:92%"></span></span><span class="pct">92% used</span><span class="reset">resets 17:10 CEST (+02:00)</span></li><li class="win"><span class="label">Weekly, all models</span><span class="meter" aria-hidden="true"><span style="--used:26%"></span></span><span class="pct">26% used</span><span class="reset">resets Sep 28, 19:00 CEST (+02:00)</span></li><li class="win"><span class="label">Weekly, Fable</span><span class="meter" aria-hidden="true"><span style="--used:29%"></span></span><span class="pct">29% used</span><span class="reset">resets Sep 28, 19:00 CEST (+02:00)</span></li></ul><p class="limit-warn"><span class="dot pending" aria-hidden="true"></span><span>Read from the /usage text, because the usage request failed. That text is not a fixed format.</span></p><div class="limit-meta"><span class="grow">Plan: — · checked 6m ago</span><button class="btn ghost" type="button" aria-label="Refresh limits of Built-in login, Claude Code"><svg class="icon" aria-hidden="true"><use href="#i-rerun"/></svg>Refresh</button></div></div>
+      </li></ul></div></div>
+  </section>
+  <section id="row-fallback-live">
+    <p class="state-label">Live data only – per-model limits missing</p>
+    <p class="state-why">Both check paths failed; only a running task’s numbers are left, and those never carry per-model windows. The row says what is missing instead of dropping it silently.</p>
+    <div class="frame pane-frame"><div class="acct-pane"><ul class="acct-rows"><li class="acct-row" data-slot="account-row">
+        <div class="who"><div class="name-line"><span class="name">Work</span></div><p class="path">~/.claude-work</p><div class="status"><span class="dot success" aria-hidden="true"></span><span>Connected</span></div></div>
+        <div class="actions"><button class="btn ghost desk-only" type="button">Check again</button><button class="btn ghost" type="button" aria-expanded="false">Show details</button></div>
+        <div class="limits" data-slot="account-limits" role="group" aria-label="Plan limits of Work, Claude Code"><p class="limit-status"><span class="dot success" aria-hidden="true"></span><span><b>Can work</b></span></p><ul class="win-list"><li class="win"><span class="label">5-hour window</span><span class="meter" aria-hidden="true"><span style="--used:44%"></span></span><span class="pct">44% used</span><span class="reset">resets 19:40 CEST (+02:00)</span></li><li class="win"><span class="label">Weekly, all models</span><span class="meter" aria-hidden="true"><span style="--used:61%"></span></span><span class="pct">61% used</span><span class="reset">resets Sep 27, 09:00 CEST (+02:00)</span></li></ul><p class="limit-warn"><span class="dot pending" aria-hidden="true"></span><span>Per-model weekly limits are not shown: they come only from a check, and the last check failed.</span></p><div class="limit-meta"><span class="grow">Plan: — · seen 2m ago in a running task</span><button class="btn ghost" type="button" aria-label="Refresh limits of Work, Claude Code"><svg class="icon" aria-hidden="true"><use href="#i-rerun"/></svg>Refresh</button></div></div>
+      </li></ul></div></div>
+  </section>
+  <section id="row-apikey">
+    <p class="state-label">Not reported – an API-key login</p>
+    <p class="state-why">An API-key login has no plan limits to report. No windows, no Refresh (a check would say the same), and the words say why. Its details list every limit as not reported.</p>
+    <div class="frame pane-frame"><div class="acct-pane"><ul class="acct-rows"><li class="acct-row" data-slot="account-row">
+        <div class="who"><div class="name-line"><span class="name">CI key</span></div><p class="path">~/.claude-ci</p><div class="status"><span class="dot success" aria-hidden="true"></span><span>Connected</span></div></div>
+        <div class="actions"><button class="btn ghost desk-only" type="button">Check again</button><button class="btn ghost" type="button" aria-expanded="false">Show details</button></div>
+        <div class="limits" data-slot="account-limits" role="group" aria-label="Plan limits of CI key, Claude Code"><p class="limit-status"><span class="dot" aria-hidden="true"></span><span><b>Limits not reported</b> <span class="why">— API-key logins do not report plan limits.</span></span></p><div class="limit-details"><h4>Plan limits in detail</h4><dl><dt>Login kind</dt><dd>API key</dd><dt>Not reported by Claude Code</dt><dd>every plan limit, extra credits, spend limit and plan — this login uses an API key</dd></dl></div></div>
+      </li></ul></div></div>
+  </section>
+  <section id="row-codex-details">
+    <p class="state-label">Codex details – what only Codex reports</p>
+    <p class="state-why">The limits half of Show details for a Codex login: credits, member limit, limit-reset credits and the token totals Codex itself reports. Claude Code’s own fields are listed as not reported.</p>
+    <div class="frame pane-frame"><div class="acct-pane"><ul class="acct-rows"><li class="acct-row" data-slot="account-row">
+        <div class="who"><div class="name-line"><span class="name">Built-in login</span><span class="badge outline">Default</span></div><p class="path">~/.codex</p><div class="status"><span class="dot success" aria-hidden="true"></span><span>Connected</span></div></div>
+        <div class="actions"><button class="btn ghost desk-only" type="button">Check again</button><button class="btn ghost" type="button" aria-expanded="false">Show details</button></div>
+        <div class="limits" data-slot="account-limits" role="group" aria-label="Plan limits of Built-in login, Codex"><p class="limit-status"><span class="dot success" aria-hidden="true"></span><span><b>Can work</b></span></p><ul class="win-list"><li class="win"><span class="label">Weekly</span><span class="meter" aria-hidden="true"><span style="--used:0%"></span></span><span class="pct">0% used</span><span class="reset">resets Sep 29, 14:45 CEST (+02:00)</span></li></ul><p class="limit-line"><span class="k">Credits:</span> none — balance 0.</p><div class="limit-meta"><span class="grow">Plan: pro · checked 6m ago</span><button class="btn ghost" type="button" aria-label="Refresh limits of Built-in login, Codex"><svg class="icon" aria-hidden="true"><use href="#i-rerun"/></svg>Refresh</button></div><div class="limit-details"><h4>Plan limits in detail</h4><dl>
+<dt>Where the numbers came from</dt><dd>A limit check with Codex 0.155.1, 6m ago. It uses no model tokens.</dd>
+<dt>Login kind</dt><dd>Subscription</dd>
+<dt>Credits</dt><dd>None available · not unlimited · balance 0</dd>
+<dt>Member limit</dt><dd>—</dd>
+<dt>Spend limit</dt><dd>Not reached</dd>
+<dt>Limit-reset credits</dt><dd>—</dd>
+<dt>Tokens, as Codex reports them</dt><dd>2741.1M in all · 950.1M on the busiest day</dd>
+<dt>Tokens by day, as Codex reports them</dt><dd>Sep 16: 950.1M · Sep 17: 402.7M · Sep 18: 611.0M</dd>
+<dt>Next check allowed</dt><dd>now</dd>
+<dt>Not reported by Codex</dt><dd>extra credits on or off, monthly credit limit, credits used, whether extra credits are in use now, whether you can buy credits</dd>
+</dl><span class="elided">Account details — folder, Rename, Remove — unchanged, not drawn.</span></div></div>
+      </li></ul></div></div>
+  </section><h2>The whole block, state by state</h2>
+  <section id="loading">
+    <p class="state-label">Loading – before the first answer</p>
+    <p class="state-why">The block reserves about one card and says it is loading. The account rows below render as today, with no limits half, until the answer lands – never an empty or zero limits half. No chip in the sidebar yet.</p>
+    <div class="frame pane-frame"><div class="acct-pane"><section class="limits-summary" aria-label="Plan limits"><div class="head"><h3>Plan limits</h3></div><p class="loading-reserve"><span class="checking"><svg class="icon" aria-hidden="true"><use href="#i-loader"/></svg></span>Loading plan limits…</p></section></div></div>
+  </section>
+  <section id="error">
+    <p class="state-label">Could not load plan limits</p>
+    <p class="state-why">The request itself failed. The cockpit writes the title; the server’s words follow verbatim; Retry refetches. The rest of the pane loaded, so this is an inline block, not a page error. No chip.</p>
+    <div class="frame pane-frame"><div class="acct-pane"><section class="limits-summary" aria-label="Plan limits"><div class="head"><h3>Plan limits</h3></div><div class="inline-error" role="alert"><span class="what"><span class="dot danger" aria-hidden="true"></span><b>Could not load plan limits</b></span><span class="server">Request failed: 500 Internal Server Error</span><div><button class="btn" type="button">Retry</button></div></div></section></div></div>
+  </section>
+  <section id="refresh-all-running">
+    <p class="state-label">Refresh all – running</p>
+    <p class="state-why">After a press: the pending verb on the button, and one line saying how many are being checked and at what pace. The summary sentences update in place as rows answer, and the change is announced politely.</p>
+    <div class="frame pane-frame"><div class="acct-pane"><section class="limits-summary" aria-label="Plan limits"><div class="head"><h3>Plan limits</h3><span class="end"><button class="btn" type="button" aria-disabled="true"><span class="checking"><svg class="icon" aria-hidden="true"><use href="#i-loader"/></svg>Refreshing…</span></button></span></div><ul class="summary-lines" role="status" aria-live="polite" aria-atomic="true"><li><span class="dot pending" aria-hidden="true"></span><span>Claude Code: 3 of 5 logins can work.</span></li><li><span class="dot success" aria-hidden="true"></span><span>Codex: 1 of 1 login can work.</span></li></ul><p class="fine">Checking 6 logins, 2 at a time.</p><p class="fine">xezar only shows these facts — it never switches logins, holds a task back or changes auto-resume because of them. Times are in the server’s zone, Europe/Warsaw.</p></section></div></div>
+  </section>
+  <section id="refresh-all-gap">
+    <p class="state-label">Refresh all – every login was checked in the last 5 minutes</p>
+    <p class="state-why">Nothing to check yet. The button is unavailable and the reason is on screen, with the earliest time any login can be checked again.</p>
+    <div class="frame pane-frame"><div class="acct-pane"><section class="limits-summary" aria-label="Plan limits"><div class="head"><h3>Plan limits</h3><span class="end"><button class="btn" type="button" aria-disabled="true" aria-describedby="all-gap"><svg class="icon sm" aria-hidden="true"><use href="#i-rerun"/></svg>Refresh all</button></span></div><ul class="summary-lines" role="status" aria-live="polite" aria-atomic="true"><li><span class="dot success" aria-hidden="true"></span><span>Claude Code: 5 of 5 logins can work.</span></li><li><span class="dot success" aria-hidden="true"></span><span>Codex: 1 of 1 login can work.</span></li></ul><p class="fine" id="all-gap">Every login was checked in the last 5 minutes. The next check is allowed at 16:51 CEST (+02:00).</p><p class="fine">xezar only shows these facts — it never switches logins, holds a task back or changes auto-resume because of them. Times are in the server’s zone, Europe/Warsaw.</p></section></div></div>
+  </section>
+  <section id="toasts">
+    <p class="state-label">After a refresh – the toasts</p>
+    <p class="state-why">A toast reports what the server did, never what was asked (writing.md §13). A refresh that raced into the 5-minute gap says nothing was checked; a partial refresh names the one that failed; a request error is the server’s words.</p>
+    <div class="frame pane-frame"><div class="acct-pane"><div class="toast" role="status">Refreshed the limits of Work</div>
+<div class="toast" role="status">Not checked — Work was checked 3m ago. The next check is allowed at 16:53 CEST (+02:00).</div>
+<div class="toast danger" role="status">Checked 5 of 6 logins — Team: the check did not answer within 20 seconds.</div>
+<div class="toast danger" role="alert">Request failed: 500 Internal Server Error</div></div></div>
+  </section>
+  <section id="hosted">
+    <p class="state-label">Hosted mode – limits shown, accounts refused</p>
+    <p class="state-why">Account management stays refused in hosted mode (today’s sentence, unchanged). Plan limits are shown anyway (D9): no folder, no e-mail, no Connected line, no Check again or Show details – only names, limits and Refresh, which a hosted cockpit may use. The block says how the page stays current without a live connection.</p>
+    <div class="frame pane-frame"><div class="acct-pane"><div><h2 class="pane-title">Agent accounts</h2><p class="pane-lead">Agent accounts are managed from the machine that owns the checkout — this cockpit runs in hosted mode. Their plan limits are below.</p></div><section class="limits-summary" aria-label="Plan limits"><div class="head"><h3>Plan limits</h3><span class="end"><button class="btn" type="button"><svg class="icon sm" aria-hidden="true"><use href="#i-rerun"/></svg>Refresh all</button></span></div><ul class="summary-lines" role="status" aria-live="polite" aria-atomic="true"><li><span class="dot pending" aria-hidden="true"></span><span>Claude Code: 3 of 5 logins can work. Personal is out until 17:10 CEST (+02:00).</span></li><li><span class="dot success" aria-hidden="true"></span><span>Codex: 1 of 1 login can work.</span></li></ul><p class="fine">This cockpit is not on the machine that runs the agents, so it reads the limits again when the server reports a change, and every 15 minutes while this tab is open.</p><p class="fine">xezar only shows these facts — it never switches logins, holds a task back or changes auto-resume because of them. Times are in the server’s zone, Europe/Warsaw.</p></section><div class="tool-list"><section class="tool-group"><div class="tool-head"><h3>Claude Code</h3><span class="facts">5 accounts</span></div><ul class="acct-rows"><li class="acct-row" data-slot="account-row">
+        <div class="who"><div class="name-line"><span class="name">Personal</span></div></div>
+        
+        <div class="limits" data-slot="account-limits" role="group" aria-label="Plan limits of Personal, Claude Code"><p class="limit-status"><span class="dot danger" aria-hidden="true"></span><span><b>Out until 17:10 CEST (+02:00)</b> <span class="why">— the 5-hour limit is used up.</span></span></p><ul class="win-list"><li class="win"><span class="label">5-hour window</span><span class="meter full" aria-hidden="true"><span style="--used:100%"></span></span><span class="pct">100% used</span><span class="reset">resets 17:10 CEST (+02:00)</span></li><li class="win"><span class="label">Weekly, all models</span><span class="meter" aria-hidden="true"><span style="--used:71%"></span></span><span class="pct">71% used</span><span class="reset">resets Sep 26, 21:00 CEST (+02:00)</span></li></ul><div class="limit-meta"><span class="grow">Plan: pro · seen 3m ago in a running task</span><button class="btn ghost" type="button" aria-label="Refresh limits of Personal, Claude Code"><svg class="icon" aria-hidden="true"><use href="#i-rerun"/></svg>Refresh</button></div></div>
+      </li><li class="acct-row" data-slot="account-row">
+        <div class="who"><div class="name-line"><span class="name">Work</span></div></div>
+        
+        <div class="limits" data-slot="account-limits" role="group" aria-label="Plan limits of Work, Claude Code"><p class="limit-status"><span class="dot success" aria-hidden="true"></span><span><b>Can work</b></span></p><ul class="win-list"><li class="win"><span class="label">5-hour window</span><span class="meter" aria-hidden="true"><span style="--used:31%"></span></span><span class="pct">31% used</span><span class="reset">resets 19:40 CEST (+02:00)</span></li><li class="win"><span class="label">Weekly, all models</span><span class="meter" aria-hidden="true"><span style="--used:58%"></span></span><span class="pct">58% used</span><span class="reset">resets Sep 27, 09:00 CEST (+02:00)</span></li></ul><div class="limit-meta"><span class="grow">Plan: max · checked 2m ago</span><button class="btn ghost" type="button" aria-label="Refresh limits of Work, Claude Code"><svg class="icon" aria-hidden="true"><use href="#i-rerun"/></svg>Refresh</button></div></div>
+      </li></ul><p class="tool-note">Three more Claude Code rows and the Codex group follow in the same form.</p></section></div></div></div>
+  </section>
+  <section id="empty">
+    <p class="state-label">Empty – no login to report on</p>
+    <p class="state-why">No Claude Code or Codex login is known on this machine (neither is installed and no account was added). The block explains the absence and why the sidebar has no chip, then the agent groups below show today’s “No … accounts yet” lines.</p>
+    <div class="frame pane-frame"><div class="acct-pane"><section class="limits-summary" aria-label="Plan limits"><div class="head"><h3>Plan limits</h3><span class="end"></span></div><p class="limit-line"><b>No plan limits to show</b></p><p class="fine">No Claude Code or Codex login is known on this machine. Install either one and sign in, and its short and weekly limits appear here. Until then the sidebar shows no limits summary.</p></section></div></div>
+  </section>
+  <section id="empty-apikey">
+    <p class="state-label">Nothing to summarise – API-key logins only</p>
+    <p class="state-why">Logins exist, but every one uses an API key, so there are no plan limits and no chip (D38). The block says exactly that.</p>
+    <div class="frame pane-frame"><div class="acct-pane"><section class="limits-summary" aria-label="Plan limits"><div class="head"><h3>Plan limits</h3><span class="end"></span></div><ul class="summary-lines" role="status" aria-live="polite" aria-atomic="true"><li><span class="dot" aria-hidden="true"></span><span>Claude Code: 1 login, which uses an API key and reports no plan limits.</span></li></ul><p class="fine">The sidebar shows no limits summary: none of these logins has a plan with limits.</p></section></div></div>
+  </section>
+  <section id="na">
+    <p class="state-label">Not applicable</p>
+    <ul>
+      <li><b>Filtered to nothing</b> – the pane has no filter or search; the longest real list is a handful of logins per agent.</li>
+      <li><b>Refusal (hosted 409)</b> – no part of this surface is refused in hosted mode (D9). The account actions that are refused keep today’s sentence, shown above.</li>
+      <li><b>Single-project mode</b> – identical to the global layout: the limits belong to the login, not to the project, and the pane keeps its file note.</li>
+      <li><b>Confirm dialog</b> – nothing here is destructive; Refresh only reads.</li>
+    </ul>
+  </section>
+  </div>
+</div>
+</body>
+</html>

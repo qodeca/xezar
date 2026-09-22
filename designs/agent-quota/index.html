@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent quota – overview</title>
+<link rel="stylesheet" href="../../docs/design-system/cockpit.css">
+<link rel="stylesheet" href="styles.css">
+<script src="theme.js"></script>
+</head>
+<body>
+<nav class="doc-bar" aria-label="Design pages">
+  <span class="brand">Agent quota</span>
+  <a href="index.html" aria-current="page">Overview</a>
+  <a href="accounts.html">The pane</a>
+  <a href="chip.html">The chip</a>
+  <a href="states.html">Every state</a>
+  <a href="phone.html">Phone</a>
+  <span class="spacer"></span>
+  <button class="theme-toggle" type="button" data-theme-toggle>Light / dark</button>
+</nav>
+
+<div class="doc">
+  <h1>Agent quota – can my logins work now?</h1>
+  <p class="lead">The cockpit half of #867 (step S4). A person supervising the leader wants to see what the leader sees: for every Claude Code and Codex login, how much of the short and weekly limits is used, when each resets, and whether the login can work right now. Today the cockpit shows none of it; a limit is learned when a task fails. This design adds a limits half to each account row in Settings → Agent accounts, one Plan limits block at the top of that pane, and a small chip visible on every page that answers the question in one glance. It only shows facts – it never switches a login, holds a task back or changes auto-resume.</p>
+
+  <div class="table-scroll">
+    <table class="decision-table">
+      <thead><tr><th>Page</th><th>What it shows</th></tr></thead>
+      <tbody>
+        <tr><td><a class="link" href="accounts.html">The pane</a></td><td>Global settings → Agent accounts in local mode, with the sidebar. Five Claude Code logins (near a limit, fine with per-model windows and extra credits, out until 17:10, unknown, stale and being checked) and the Codex login exactly as the S0 proof read it. One row has Show details open; one has Refresh waiting for the 5-minute gap; keyboard focus is drawn on a Refresh. The chip opens its Popover on press.</td></tr>
+        <tr><td><a class="link" href="chip.html">The chip</a></td><td>The desktop band and the phone top-bar chip in every state: some out, all fine, none can work with the first free time, checking, stale, one agent only, hosted mode, and no chip at all.</td></tr>
+        <tr><td><a class="link" href="states.html">Every state</a></td><td>22 row states (can work, near a limit, extra credits in use, out for four reasons, a reset that passed, first check, stale, gap, refreshing, unknown for five reasons, two fallbacks, API key, Codex details) and 8 block states (loading, error, Refresh all running and waiting, the toasts, hosted mode, empty, API keys only), plus what does not apply and why.</td></tr>
+        <tr><td><a class="link" href="phone.html">Phone</a></td><td>The pane, an out login, a stale login, hosted mode, loading and the chip framed at 375 px; what is cut first and what never is.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>The decisions, each with its reason</h2>
+  <ul>
+    <li><b>The limits live in the account rows people already open.</b> A login’s limits are a fact about that login, next to its name and its sign-in state – not a second list of the same logins somewhere else. A dashed hairline separates “is it signed in” from “how much is left”, two different questions.</li>
+    <li><b>Every status is a sentence first.</b> “Can work”, “Can work — near a limit: the 5-hour window is 92% used”, “Out until 17:10 CEST (+02:00) — the 5-hour limit is used up”, “Limits unknown — …”, “Limits not reported — …”. The dot (success, pending, danger, none) and the bar’s colour only reinforce the words.</li>
+    <li><b>Every number carries its age, and old numbers say so.</b> “checked 6m ago”, “seen 3m ago in a running task”, “from a failed task 3m ago”; past 15 minutes the word “Stale” joins the age. A window read earlier than the rest says “as of 38m ago”. Nothing is ever shown as 0% because it is missing.</li>
+    <li><b>Refresh sits on the line it changes and shows its limit.</b> Inside the 5-minute gap it stays focusable but unavailable, and the same line says when the next check is allowed. Refresh all states the pace once: 2 at a time, the rest wait.</li>
+    <li><b>The chip is a band above the sidebar footer, not a top bar.</b> The cockpit has no desktop top bar, and the footer row must not wrap. On a phone the chip sits in the top bar’s status slot as “4/6 can work”. It is a button that opens a Popover naming the logins that are out or unknown, and links to the pane.</li>
+    <li><b>Hosted mode shows the limits, and still refuses account management.</b> No folder, e-mail or Connected line; names, limits and Refresh only.</li>
+    <li><b>What is not reported says so.</b> An API-key login reads “Limits not reported”; every field one tool never gives is listed under “Not reported by Claude Code” or “Not reported by Codex” in the row’s details.</li>
+  </ul>
+  <p>The developer handoff, the exact copy, the open decisions and the acceptance criteria are in <a class="link" href="README.md">README.md</a>.</p>
+</div>
+</body>
+</html>

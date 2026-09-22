@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent quota – the limits chip and its states</title>
+<link rel="stylesheet" href="../../docs/design-system/cockpit.css">
+<link rel="stylesheet" href="styles.css">
+<script src="../../docs/design-system/specimens/icons.js" defer></script>
+<script src="theme.js"></script>
+</head>
+<body>
+<nav class="doc-bar" aria-label="Design pages">
+  <span class="brand">Agent quota</span>
+  <a href="index.html">Overview</a>
+  <a href="accounts.html">The pane</a>
+  <a href="chip.html" aria-current="page">The chip</a>
+  <a href="states.html">Every state</a>
+  <a href="phone.html">Phone</a>
+  <span class="spacer"></span>
+  <button class="theme-toggle" type="button" data-theme-toggle>Light / dark</button>
+</nav>
+
+<div class="doc">
+  <h1>The limits chip</h1>
+  <p class="lead">The smallest honest answer to “can my logins work now?”, visible on every page. On a desktop it is a band above the sidebar footer, because the cockpit has no desktop top bar; on a phone it sits in the top bar’s status slot. It is a button: it opens a Popover with the per-agent sentence and the logins that are out or unknown, and a link to Settings → Agent accounts. It never starts a check and never acts on a login.</p>
+
+  <h2>Desktop – the sidebar band</h2>
+  <div class="state-stack">
+<section>
+  <p class="state-label">1 · Some logins out (the default case of this mockup) – expanded</p>
+  <p class="state-why">One segment per agent that applies, each with its own dot: success when every login of that agent can work, pending when some cannot, danger when none can. The counts are “can work / all logins of that agent”, the server’s <code>canWork</code> and <code>total</code>. Pressing the chip opens this Popover; it lists only the logins that are not plainly fine, so the good news stays short. Escape closes it and returns focus to the chip.</p>
+  <div class="sidebar-demo">
+    <aside class="sidebar" aria-label="Sidebar footer">
+      <p class="tool-note sidebar-elided">Brand, New task and nav — unchanged, not drawn.</p>
+      <div class="quota-band" data-slot="agent-quota-band">
+        <button class="chip quota-chip" type="button" aria-expanded="true" aria-haspopup="dialog" aria-label="Logins that can work now: Claude Code 3 of 5, Codex 1 of 1. Hide details">
+          <span class="seg"><span class="dot pending" aria-hidden="true"></span>Claude Code <span class="n">3/5</span></span><span class="seg"><span class="dot success" aria-hidden="true"></span>Codex <span class="n">1/1</span></span>
+        </button>
+      </div>
+      <div class="sidebar-foot">
+        <button class="chip" type="button" style="height:auto;min-height:0;padding:1px 8px;font-size:11px"><span class="dot success" aria-hidden="true"></span> Tools <svg class="icon sm" aria-hidden="true"><use href="#i-chevron-down"/></svg></button>
+        <span class="version-chip">v0.19.0</span>
+        <a class="btn icon ghost" href="accounts.html" aria-label="Global settings" style="margin-left:auto"><svg class="icon sm" aria-hidden="true"><use href="#i-settings"/></svg></a>
+        <button class="btn icon ghost" type="button" aria-label="Toggle theme" data-theme-toggle><svg class="icon sm" aria-hidden="true"><use href="#i-moon"/></svg></button>
+      </div>
+    </aside>
+    <div class="popover quota-pop" role="dialog" aria-labelledby="p1">
+        <h2 id="p1">Logins that can work now</h2>
+        <ul class="pop-agents">
+          <li class="pop-agent"><span class="dot pending" aria-hidden="true"></span><div>Claude Code: 3 of 5 logins can work.
+            <ul><li>Personal — out until 17:10 CEST (+02:00)</li><li>Client A — limits unknown</li><li>Built-in login — near a limit</li></ul></div></li>
+          <li class="pop-agent"><span class="dot success" aria-hidden="true"></span><div>Codex: 1 of 1 login can work.</div></li>
+        </ul>
+        <div class="foot">
+          <span>Readings from 2m to 41m old. xezar shows these limits and never acts on them.</span>
+          <div><a class="btn" href="accounts.html#limits">Open agent accounts</a></div>
+        </div>
+      </div>
+  </div>
+</section>
+<section>
+  <p class="state-label">2 · Every login can work</p>
+  <p class="state-why">Two green dots and the counts. The Popover has nothing to list under each agent, so it is two sentences and the link.</p>
+  <div class="sidebar-demo">
+    <aside class="sidebar" aria-label="Sidebar footer">
+      <p class="tool-note sidebar-elided">Brand, New task and nav — unchanged, not drawn.</p>
+      <div class="quota-band" data-slot="agent-quota-band">
+        <button class="chip quota-chip" type="button" aria-expanded="true" aria-haspopup="dialog" aria-label="Logins that can work now: Claude Code 5 of 5, Codex 1 of 1. Show details">
+          <span class="seg"><span class="dot success" aria-hidden="true"></span>Claude Code <span class="n">5/5</span></span><span class="seg"><span class="dot success" aria-hidden="true"></span>Codex <span class="n">1/1</span></span>
+        </button>
+      </div>
+      <div class="sidebar-foot">
+        <button class="chip" type="button" style="height:auto;min-height:0;padding:1px 8px;font-size:11px"><span class="dot success" aria-hidden="true"></span> Tools <svg class="icon sm" aria-hidden="true"><use href="#i-chevron-down"/></svg></button>
+        <span class="version-chip">v0.19.0</span>
+        <a class="btn icon ghost" href="accounts.html" aria-label="Global settings" style="margin-left:auto"><svg class="icon sm" aria-hidden="true"><use href="#i-settings"/></svg></a>
+        <button class="btn icon ghost" type="button" aria-label="Toggle theme" data-theme-toggle><svg class="icon sm" aria-hidden="true"><use href="#i-moon"/></svg></button>
+      </div>
+    </aside>
+    <div class="popover quota-pop" role="dialog" aria-labelledby="p2">
+        <h2 id="p2">Logins that can work now</h2>
+        <ul class="pop-agents">
+          <li class="pop-agent"><span class="dot success" aria-hidden="true"></span><div>Claude Code: 5 of 5 logins can work.</div></li>
+          <li class="pop-agent"><span class="dot success" aria-hidden="true"></span><div>Codex: 1 of 1 login can work.</div></li>
+        </ul>
+        <div class="foot">
+          <span>Readings from 1m to 9m old. xezar shows these limits and never acts on them.</span>
+          <div><a class="btn" href="accounts.html#limits">Open agent accounts</a></div>
+        </div>
+      </div>
+  </div>
+</section>
+<section>
+  <p class="state-label">3 · No Claude Code login can work – first free at</p>
+  <p class="state-why">The worst case the chip exists for. The danger dot reinforces “0/5”; the Popover gives the server’s own sentence with the first reset (D30) and every login’s reset time, soonest first.</p>
+  <div class="sidebar-demo">
+    <aside class="sidebar" aria-label="Sidebar footer">
+      <p class="tool-note sidebar-elided">Brand, New task and nav — unchanged, not drawn.</p>
+      <div class="quota-band" data-slot="agent-quota-band">
+        <button class="chip quota-chip" type="button" aria-expanded="true" aria-haspopup="dialog" aria-label="Logins that can work now: Claude Code 0 of 5, Codex 1 of 1. Hide details">
+          <span class="seg"><span class="dot danger" aria-hidden="true"></span>Claude Code <span class="n">0/5</span></span><span class="seg"><span class="dot success" aria-hidden="true"></span>Codex <span class="n">1/1</span></span>
+        </button>
+      </div>
+      <div class="sidebar-foot">
+        <button class="chip" type="button" style="height:auto;min-height:0;padding:1px 8px;font-size:11px"><span class="dot success" aria-hidden="true"></span> Tools <svg class="icon sm" aria-hidden="true"><use href="#i-chevron-down"/></svg></button>
+        <span class="version-chip">v0.19.0</span>
+        <a class="btn icon ghost" href="accounts.html" aria-label="Global settings" style="margin-left:auto"><svg class="icon sm" aria-hidden="true"><use href="#i-settings"/></svg></a>
+        <button class="btn icon ghost" type="button" aria-label="Toggle theme" data-theme-toggle><svg class="icon sm" aria-hidden="true"><use href="#i-moon"/></svg></button>
+      </div>
+    </aside>
+    <div class="popover quota-pop" role="dialog" aria-labelledby="p3">
+        <h2 id="p3">Logins that can work now</h2>
+        <ul class="pop-agents">
+          <li class="pop-agent"><span class="dot danger" aria-hidden="true"></span><div>Claude Code: 0 of 5 logins can work; first free at 17:10 CEST (+02:00).
+            <ul><li>Personal — out until 17:10 CEST (+02:00)</li><li>Work — out until 18:25 CEST (+02:00)</li><li>Team — out until 19:05 CEST (+02:00)</li><li>Built-in login — out until Sep 23, 09:00 CEST (+02:00)</li><li>Client A — limits unknown</li></ul></div></li>
+          <li class="pop-agent"><span class="dot success" aria-hidden="true"></span><div>Codex: 1 of 1 login can work.</div></li>
+        </ul>
+        <div class="foot">
+          <span>Readings from 1m to 6m old. xezar shows these limits and never acts on them.</span>
+          <div><a class="btn" href="accounts.html#limits">Open agent accounts</a></div>
+        </div>
+      </div>
+  </div>
+</section>
+<section>
+  <p class="state-label">4 · Checking – the first answer after the server starts</p>
+  <p class="state-why">Right after the server starts, every login is being checked (at most 2 at a time, up to 20 seconds each) and no row has a number yet. The chip says so instead of counting unknowns as “cannot work”. No dot: nothing is known.</p>
+  <div class="sidebar-demo">
+    <aside class="sidebar" aria-label="Sidebar footer">
+      <p class="tool-note sidebar-elided">Brand, New task and nav — unchanged, not drawn.</p>
+      <div class="quota-band" data-slot="agent-quota-band">
+        <button class="chip quota-chip" type="button" aria-expanded="true" aria-haspopup="dialog" aria-label="Checking the limits of every login. Hide details"><span class="seg"><svg class="icon spin-icon" aria-hidden="true"><use href="#i-loader"/></svg>Checking limits…</span></button>
+      </div>
+      <div class="sidebar-foot">
+        <button class="chip" type="button" style="height:auto;min-height:0;padding:1px 8px;font-size:11px"><span class="dot success" aria-hidden="true"></span> Tools <svg class="icon sm" aria-hidden="true"><use href="#i-chevron-down"/></svg></button>
+        <span class="version-chip">v0.19.0</span>
+        <a class="btn icon ghost" href="accounts.html" aria-label="Global settings" style="margin-left:auto"><svg class="icon sm" aria-hidden="true"><use href="#i-settings"/></svg></a>
+        <button class="btn icon ghost" type="button" aria-label="Toggle theme" data-theme-toggle><svg class="icon sm" aria-hidden="true"><use href="#i-moon"/></svg></button>
+      </div>
+    </aside>
+    <div class="popover quota-pop" role="dialog" aria-labelledby="p4">
+        <h2 id="p4">Logins that can work now</h2>
+        <p class="limit-note">Checking 6 logins, 2 at a time. Each check takes a few seconds and uses no model tokens.</p>
+        <div class="foot"><div><a class="btn" href="accounts.html#limits">Open agent accounts</a></div></div>
+      </div>
+  </div>
+</section>
+<section>
+  <p class="state-label">5 · Stale – every reading is over 15 minutes old</p>
+  <p class="state-why">The counts stay (they are the last true answer) and the word “stale” joins them. This happens when nobody was looking for a while: background checks run only while a cockpit tab is open or the leader reads, so a tab that was just reopened shows stale counts until its checks return.</p>
+  <div class="sidebar-demo">
+    <aside class="sidebar" aria-label="Sidebar footer">
+      <p class="tool-note sidebar-elided">Brand, New task and nav — unchanged, not drawn.</p>
+      <div class="quota-band" data-slot="agent-quota-band">
+        <button class="chip quota-chip" type="button" aria-expanded="true" aria-haspopup="dialog" aria-label="Logins that can work now: Claude Code 3 of 5, Codex 1 of 1 — stale, every reading is over 15 minutes old. Hide details">
+          <span class="seg"><span class="dot pending" aria-hidden="true"></span>Claude Code <span class="n">3/5</span></span><span class="seg"><span class="dot success" aria-hidden="true"></span>Codex <span class="n">1/1</span></span><span class="sep" aria-hidden="true">·</span><span class="stale">stale</span>
+        </button>
+      </div>
+      <div class="sidebar-foot">
+        <button class="chip" type="button" style="height:auto;min-height:0;padding:1px 8px;font-size:11px"><span class="dot success" aria-hidden="true"></span> Tools <svg class="icon sm" aria-hidden="true"><use href="#i-chevron-down"/></svg></button>
+        <span class="version-chip">v0.19.0</span>
+        <a class="btn icon ghost" href="accounts.html" aria-label="Global settings" style="margin-left:auto"><svg class="icon sm" aria-hidden="true"><use href="#i-settings"/></svg></a>
+        <button class="btn icon ghost" type="button" aria-label="Toggle theme" data-theme-toggle><svg class="icon sm" aria-hidden="true"><use href="#i-moon"/></svg></button>
+      </div>
+    </aside>
+    <div class="popover quota-pop" role="dialog" aria-labelledby="p5">
+        <h2 id="p5">Logins that can work now</h2>
+        <ul class="pop-agents">
+          <li class="pop-agent"><span class="dot pending" aria-hidden="true"></span><div>Claude Code: 3 of 5 logins can work.
+            <ul><li>Personal — out until 17:10 CEST (+02:00)</li><li>Client A — limits unknown</li><li>Built-in login — near a limit</li></ul></div></li>
+          <li class="pop-agent"><span class="dot success" aria-hidden="true"></span><div>Codex: 1 of 1 login can work.</div></li>
+        </ul>
+        <div class="foot">
+          <span>Stale — the newest reading is 22m old. New checks started when this tab opened. xezar shows these limits and never acts on them.</span>
+          <div><a class="btn" href="accounts.html#limits">Open agent accounts</a></div>
+        </div>
+      </div>
+  </div>
+</section>
+<section>
+  <p class="state-label">6 · Only one agent applies</p>
+  <p class="state-why">Claude Code is installed but its only logins use API keys, which report no plan limits, so it gets no segment (D38). The chip never shows a “0/0”.</p>
+  <div class="sidebar-demo">
+    <aside class="sidebar" aria-label="Sidebar footer">
+      <p class="tool-note sidebar-elided">Brand, New task and nav — unchanged, not drawn.</p>
+      <div class="quota-band" data-slot="agent-quota-band">
+        <button class="chip quota-chip" type="button" aria-expanded="false" aria-haspopup="dialog" aria-label="Logins that can work now: Codex 1 of 1. Show details">
+          <span class="seg"><span class="dot success" aria-hidden="true"></span>Codex <span class="n">1/1</span></span>
+        </button>
+      </div>
+      <div class="sidebar-foot">
+        <button class="chip" type="button" style="height:auto;min-height:0;padding:1px 8px;font-size:11px"><span class="dot success" aria-hidden="true"></span> Tools <svg class="icon sm" aria-hidden="true"><use href="#i-chevron-down"/></svg></button>
+        <span class="version-chip">v0.19.0</span>
+        <a class="btn icon ghost" href="accounts.html" aria-label="Global settings" style="margin-left:auto"><svg class="icon sm" aria-hidden="true"><use href="#i-settings"/></svg></a>
+        <button class="btn icon ghost" type="button" aria-label="Toggle theme" data-theme-toggle><svg class="icon sm" aria-hidden="true"><use href="#i-moon"/></svg></button>
+      </div>
+    </aside>
+    
+  </div>
+</section>
+<section>
+  <p class="state-label">7 · Hosted mode – same chip, fetched instead of pushed</p>
+  <p class="state-why">A hosted cockpit opens no live connection for this (patterns.md §10), so it re-reads the answer when the server’s event stream says it changed, on reconnect, when the tab becomes visible and every 15 minutes while it is visible. The chip looks the same; only the Popover’s foot says how fresh it can be.</p>
+  <div class="sidebar-demo">
+    <aside class="sidebar" aria-label="Sidebar footer">
+      <p class="tool-note sidebar-elided">Brand, New task and nav — unchanged, not drawn.</p>
+      <div class="quota-band" data-slot="agent-quota-band">
+        <button class="chip quota-chip" type="button" aria-expanded="true" aria-haspopup="dialog" aria-label="Logins that can work now: Claude Code 3 of 5, Codex 1 of 1. Hide details">
+          <span class="seg"><span class="dot pending" aria-hidden="true"></span>Claude Code <span class="n">3/5</span></span><span class="seg"><span class="dot success" aria-hidden="true"></span>Codex <span class="n">1/1</span></span>
+        </button>
+      </div>
+      <div class="sidebar-foot">
+        <button class="chip" type="button" style="height:auto;min-height:0;padding:1px 8px;font-size:11px"><span class="dot success" aria-hidden="true"></span> Tools <svg class="icon sm" aria-hidden="true"><use href="#i-chevron-down"/></svg></button>
+        <span class="version-chip">v0.19.0</span>
+        <a class="btn icon ghost" href="accounts.html" aria-label="Global settings" style="margin-left:auto"><svg class="icon sm" aria-hidden="true"><use href="#i-settings"/></svg></a>
+        <button class="btn icon ghost" type="button" aria-label="Toggle theme" data-theme-toggle><svg class="icon sm" aria-hidden="true"><use href="#i-moon"/></svg></button>
+      </div>
+    </aside>
+    <div class="popover quota-pop" role="dialog" aria-labelledby="p7">
+        <h2 id="p7">Logins that can work now</h2>
+        <ul class="pop-agents">
+          <li class="pop-agent"><span class="dot pending" aria-hidden="true"></span><div>Claude Code: 3 of 5 logins can work.
+            <ul><li>Personal — out until 17:10 CEST (+02:00)</li><li>Client A — limits unknown</li><li>Built-in login — near a limit</li></ul></div></li>
+          <li class="pop-agent"><span class="dot success" aria-hidden="true"></span><div>Codex: 1 of 1 login can work.</div></li>
+        </ul>
+        <div class="foot">
+          <span>Readings from 2m to 41m old. This cockpit reads them again when the server reports a change, and every 15 minutes while this tab is open. xezar shows these limits and never acts on them.</span>
+          <div><a class="btn" href="accounts.html#limits">Open agent accounts</a></div>
+        </div>
+      </div>
+  </div>
+</section>
+<section>
+  <p class="state-label">8 · No chip – nothing to summarise, or no answer yet</p>
+  <p class="state-why">No band at all when no agent is installed with a subscription login (D38), while the first answer is still loading, and when that first load failed. The footer is exactly today’s. Settings → Agent accounts says why (see <a class="link" href="states.html#empty">Every state</a>). A chip that said “0/0” or “—” would be a claim nobody made.</p>
+  <div class="sidebar-demo">
+    <aside class="sidebar" aria-label="Sidebar footer">
+      <p class="tool-note sidebar-elided">Brand, New task and nav — unchanged, not drawn.</p>
+      <div class="sidebar-foot">
+        <button class="chip" type="button" style="height:auto;min-height:0;padding:1px 8px;font-size:11px"><span class="dot success" aria-hidden="true"></span> Tools <svg class="icon sm" aria-hidden="true"><use href="#i-chevron-down"/></svg></button>
+        <span class="version-chip">v0.19.0</span>
+        <a class="btn icon ghost" href="accounts.html" aria-label="Global settings" style="margin-left:auto"><svg class="icon sm" aria-hidden="true"><use href="#i-settings"/></svg></a>
+        <button class="btn icon ghost" type="button" aria-label="Toggle theme" data-theme-toggle><svg class="icon sm" aria-hidden="true"><use href="#i-moon"/></svg></button>
+      </div>
+    </aside>
+    
+  </div>
+</section>
+  </div>
+
+  <h2 id="phone">Phone – the top bar’s status slot</h2>
+  <p>One combined count, “4/6 can work”, with the worst tone across agents: two product names do not fit beside a page title at 375 px, and abbreviating a product name is not allowed (<code>runner-label.ts</code>). The Popover it opens is the same as on a desktop and names each agent. The page title truncates first; the chip never does. The chip is a 44 px target.</p>
+  <div class="phone-row">
+  <div><p class="frame-label">Some out</p>
+  <div class="phone-375 topbar-frame">
+    <div class="topbar-demo">
+      <button class="btn ghost icon" type="button" aria-label="Open menu"><svg class="icon" aria-hidden="true"><use href="#i-menu"/></svg></button>
+      <span class="title">Agent accounts</span>
+      <div class="mobile-status" data-slot="mobile-status"><button class="chip quota-chip" type="button" aria-expanded="false" aria-haspopup="dialog" aria-label="4 of 6 logins can work now. Show details"><span class="seg"><span class="dot pending" aria-hidden="true"></span><span class="n">4/6</span> can work</span></button></div>
+    </div>
+  </div>
+  </div>
+  <div><p class="frame-label">All can work</p>
+  <div class="phone-375 topbar-frame">
+    <div class="topbar-demo">
+      <button class="btn ghost icon" type="button" aria-label="Open menu"><svg class="icon" aria-hidden="true"><use href="#i-menu"/></svg></button>
+      <span class="title">Agent accounts</span>
+      <div class="mobile-status" data-slot="mobile-status"><button class="chip quota-chip" type="button" aria-expanded="false" aria-haspopup="dialog" aria-label="6 of 6 logins can work now. Show details"><span class="seg"><span class="dot success" aria-hidden="true"></span><span class="n">6/6</span> can work</span></button></div>
+    </div>
+  </div>
+  </div>
+  <div><p class="frame-label">None can work</p>
+  <div class="phone-375 topbar-frame">
+    <div class="topbar-demo">
+      <button class="btn ghost icon" type="button" aria-label="Open menu"><svg class="icon" aria-hidden="true"><use href="#i-menu"/></svg></button>
+      <span class="title">Agent accounts</span>
+      <div class="mobile-status" data-slot="mobile-status"><button class="chip quota-chip" type="button" aria-expanded="false" aria-haspopup="dialog" aria-label="None of 6 logins can work now. Show details"><span class="seg"><span class="dot danger" aria-hidden="true"></span><span class="n">0/6</span> can work</span></button></div>
+    </div>
+  </div>
+  </div>
+  <div><p class="frame-label">Checking</p>
+  <div class="phone-375 topbar-frame">
+    <div class="topbar-demo">
+      <button class="btn ghost icon" type="button" aria-label="Open menu"><svg class="icon" aria-hidden="true"><use href="#i-menu"/></svg></button>
+      <span class="title">Agent accounts</span>
+      <div class="mobile-status" data-slot="mobile-status"><button class="chip quota-chip" type="button" aria-expanded="false" aria-haspopup="dialog" aria-label="Checking the limits of every login. Show details"><span class="seg"><svg class="icon spin-icon" aria-hidden="true"><use href="#i-loader"/></svg>Checking…</span></button></div>
+    </div>
+  </div>
+  </div>
+  <div><p class="frame-label">Stale</p>
+  <div class="phone-375 topbar-frame">
+    <div class="topbar-demo">
+      <button class="btn ghost icon" type="button" aria-label="Open menu"><svg class="icon" aria-hidden="true"><use href="#i-menu"/></svg></button>
+      <span class="title">Agent accounts</span>
+      <div class="mobile-status" data-slot="mobile-status"><button class="chip quota-chip" type="button" aria-expanded="false" aria-haspopup="dialog" aria-label="4 of 6 logins can work now — stale. Show details"><span class="seg"><span class="dot pending" aria-hidden="true"></span><span class="n">4/6</span> can work</span><span class="sep" aria-hidden="true">·</span><span class="stale">stale</span></button></div>
+    </div>
+  </div>
+  </div>
+  </div>
+</div>
+</body>
+</html>
