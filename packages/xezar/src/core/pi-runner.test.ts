@@ -270,15 +270,42 @@ describe('pi RPC argv', () => {
     ).toEqual(['--mode', 'rpc', '--tools', 'read,grep,find,bash']);
   });
 
-  it('fails closed by disabling bash when a command-prefix allowlist cannot be represented', () => {
+  it('keeps bash and hands a bashAllowlist to the guard extension, with no worktree (#856)', () => {
+    const args = buildPiArgs({
+      cwd: '/repo',
+      userPrompt: 'task',
+      allowedTools: ['Read', 'Bash'],
+      bashAllowlist: [' npm test ', '', 'gh pr comment'],
+    });
+    expect(args.slice(0, 4)).toEqual(['--mode', 'rpc', '--tools', 'read,bash']);
+    expect(args[4]).toBe('--extension');
+    expect(args[5]).toMatch(/pi-worktree-guard\.ts$/);
+    expect(args.slice(6)).toEqual(['--xezar-bash-allowlist=["npm test","gh pr comment"]']);
+  });
+
+  it('adds the bashAllowlist flag after the worktree flags on a worktree run (#856)', () => {
+    const args = buildPiArgs({
+      cwd: '/wt',
+      userPrompt: 'task',
+      allowedTools: ['Bash'],
+      bashAllowlist: ['git diff'],
+      worktreeRoot: '/wt',
+      primaryRoot: '/repo',
+    });
+    expect(args.filter((arg) => arg === '--extension')).toHaveLength(1);
+    expect(args.slice(-3)).toEqual(['--xezar-worktree-root=/wt', '--xezar-primary-root=/repo', '--xezar-bash-allowlist=["git diff"]']);
+  });
+
+  it('still removes bash when a bashAllowlist has no usable entry, as Claude Code does', () => {
     expect(
-      buildPiArgs({
-        cwd: '/repo',
-        userPrompt: 'task',
-        allowedTools: ['Read', 'Bash'],
-        bashAllowlist: ['npm test'],
-      }),
+      buildPiArgs({ cwd: '/repo', userPrompt: 'task', allowedTools: ['Read', 'Bash'], bashAllowlist: ['  ', ''] }),
     ).toEqual(['--mode', 'rpc', '--tools', 'read']);
+  });
+
+  it('leaves the argv unchanged without a bashAllowlist, or with an empty one (#856 C)', () => {
+    const plain = ['--mode', 'rpc', '--tools', 'read,bash'];
+    expect(buildPiArgs({ cwd: '/repo', userPrompt: 'task', allowedTools: ['Read', 'Bash'] })).toEqual(plain);
+    expect(buildPiArgs({ cwd: '/repo', userPrompt: 'task', allowedTools: ['Read', 'Bash'], bashAllowlist: [] })).toEqual(plain);
   });
 });
 
