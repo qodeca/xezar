@@ -748,7 +748,7 @@ interface CodexHooksFile {
 async function ensureCodexReadOnlyHookFile(codexHome: string, hook: CodexReadOnlyHook): Promise<void> {
   await mkdir(codexHome, { recursive: true, mode: 0o700 });
   const path = join(codexHome, 'hooks.json');
-  const lockPath = `${path}.xezar.lock`;
+  const lockPath = `${path}.lock`;
   await queueByLockPath(lockPath, async () => {
     const acquisition = await acquireFileLock(lockPath, { waitMs: 5_000 });
     if (!acquisition.acquired) throw new Error(`could not lock ${path} for hook registration`);
