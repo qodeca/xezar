@@ -9,6 +9,8 @@ Use the fifteen fields and semantic checklist in .xezar/docs/business-analysis.m
 
 Inputs: requested outcome and evidence. Output: the existing business-analysis checklist, falsifiable AC, recommendation and unresolved decisions. Preserve read-only scope; do not turn an analysis request into an implementation or published spec.
 
+Read local Git state only through `bash .xezar/checks/git-read.sh <op> [args]`, for example `bash .xezar/checks/git-read.sh log --oneline origin/main`. The trusted check before this step acquires `origin/<base>` and pull-request heads as `origin/pr/<n>`; never fetch or use bare `git diff`, `git show` or `git log` in the agent step.
+
 ## Shared contract
 
 Before reading kit files in a standalone skill run, if `.xezar/checks/bootstrap.sh` is absent, run `bash "$(git rev-parse --path-format=absolute --git-common-dir)/../.xezar/checks/bootstrap.sh"`. If unavailable or refused, stop with that specific blocker. Never fabricate commands or copy runtime. Workflow launches already perform this step.

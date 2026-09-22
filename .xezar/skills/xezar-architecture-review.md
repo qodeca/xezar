@@ -9,6 +9,8 @@ Initialize evidence with worktree-setup.sh --readonly-init. Review an immutable 
 
 Inputs: immutable candidate head/base, accepted scope and plan, and existing validation evidence. Output: consequence-ranked design findings with exact locations and reviewed/unread boundaries. Never edit/adopt the candidate, including same-account peer PRs; return repairs to its author. Tool lists are not a universal sandbox.
 
+Read local Git state only through `bash .xezar/checks/git-read.sh <op> [args]`, for example `bash .xezar/checks/git-read.sh diff --stat origin/main...origin/pr/123`. The trusted check before this step acquires `origin/<base>` and pull-request heads as `origin/pr/<n>`; never fetch or use bare `git diff`, `git show` or `git log` in the agent step.
+
 ## What this review checks
 
 Read the accepted plan first, then the diff against it. For each question, cite the file:line that answers it; a question you could not answer is an unread boundary you name, never a pass.

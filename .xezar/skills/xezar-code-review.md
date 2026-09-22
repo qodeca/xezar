@@ -9,6 +9,8 @@ Initialize evidence with worktree-setup.sh --readonly-init. Review an immutable 
 
 Inputs: immutable candidate head/base, accepted scope and existing validation evidence. Output: consequence-ranked findings with exact locations and reviewed/unread boundaries. Never edit/adopt the candidate, including same-account peer PRs; return repairs to its author. Tool lists are not a universal sandbox. For a diff touching `packages/web` UI, check design-system compliance against `docs/design-system/README.md` and cite the PR's `## Design review` comment; a missing comment is a finding, not a substitute review.
 
+Read local Git state only through `bash .xezar/checks/git-read.sh <op> [args]`, for example `bash .xezar/checks/git-read.sh diff origin/main...origin/pr/123`. The trusted check before this step acquires `origin/<base>` and pull-request heads as `origin/pr/<n>`; never fetch or use bare `git diff`, `git show` or `git log` in the agent step.
+
 Verdict vocabulary: `APPROVE` or `REQUEST CHANGES` (`SDLC.md` § Review loop — the reviewer approves or requests changes). Post it as a PR comment whose first line is `## Code review`, carrying the reviewed commit sha, the verdict and every finding; `gh pr review --approve` fails on your own account's PR, so the comment plus the label is the evidence.
 
 ## Record the verdict on the task record

@@ -9,10 +9,14 @@ steps:
     name: Report the checkout
     command: ".xezar/checks/worktree-preflight.sh --allow-root"
     resultScope: routine
+  - id: git-read-acquire
+    name: Acquire git reads
+    command: "bash .xezar/checks/git-read-acquire.sh"
+    resultScope: routine
   - id: review
     name: Review
     prompt: "{{task}}"
     skill: xezar-code-review
     verdictRole: code-review
     allowedTools: [Read, Grep, Glob, Bash]
-    bashAllowlist: ["git log", "git diff", "git show", "git rev-parse", "git cat-file", "git merge-base", "git status", "git fetch", "git branch --show-current", "git ls-files", "git ls-tree", "git rev-list", "git blame", "gh pr view", "gh pr diff", "gh pr checks", "gh pr comment", "gh pr edit", "gh issue view", "gh run view", "bash .xezar/checks/bootstrap.sh", "bash .xezar/checks/worktree-setup.sh", "bash .xezar/checks/worktree-preflight.sh", "bash .xezar/checks/phase-record.sh", "bash .xezar/checks/security-scan.sh", "bash .xezar/checks/verify-evidence.sh", "node .xezar/checks/catalog-check.mjs", "node .xezar/checks/xezar-contract.test.mjs", "bash .xezar/checks/verdict-packet.sh", pwd, ls, cat, echo, printf, grep, jq, wc, head, tail, find, diff, sha256sum, shasum]
+    bashAllowlist: ["bash .xezar/checks/git-read.sh", "git log", "git diff", "git show", "git rev-parse", "git cat-file", "git merge-base", "git status", "git fetch", "git branch --show-current", "git ls-files", "git ls-tree", "git rev-list", "git blame", "gh pr view", "gh pr diff", "gh pr checks", "gh pr comment", "gh pr edit", "gh issue view", "gh run view", "bash .xezar/checks/bootstrap.sh", "bash .xezar/checks/worktree-setup.sh", "bash .xezar/checks/worktree-preflight.sh", "bash .xezar/checks/phase-record.sh", "bash .xezar/checks/security-scan.sh", "bash .xezar/checks/verify-evidence.sh", "node .xezar/checks/catalog-check.mjs", "node .xezar/checks/xezar-contract.test.mjs", "bash .xezar/checks/verdict-packet.sh", pwd, ls, cat, echo, printf, grep, jq, wc, head, tail, find, diff, sha256sum, shasum]

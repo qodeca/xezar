@@ -6467,6 +6467,71 @@ git -C "$outer" branch -qf "xez/deadbeef" HEAD
   || bad "an unrelated branch and an advancing main are invisible to the fixture-scoped check" \
        "a concurrent agent would fail this suite"
 
+# --- git-read.sh: one closed, hardened Git-read grammar for read-only roles (#863) ----------------
+printf '\n-- read-only git wrapper --\n'
+git_read_root="$(make_fixture git-read)"
+git_read="$git_read_root/.xezar/checks/git-read.sh"
+
+# Every operation gets one representative real call. These are deliberately small enough to be
+# the examples a role can copy; broader Git option acceptance is not an accidental requirement.
+expect_ok "git-read: diff runs" run_in "$git_read_root" bash "$git_read" diff --stat HEAD HEAD
+expect_ok "git-read: log runs" run_in "$git_read_root" bash "$git_read" log --oneline -1
+expect_ok "git-read: show runs" run_in "$git_read_root" bash "$git_read" show --stat HEAD
+expect_ok "git-read: rev-parse runs" run_in "$git_read_root" bash "$git_read" rev-parse --verify HEAD
+expect_ok "git-read: status runs" run_in "$git_read_root" bash "$git_read" status --short
+expect_ok "git-read: merge-base runs" run_in "$git_read_root" bash "$git_read" merge-base HEAD HEAD
+expect_ok "git-read: ls-files runs" run_in "$git_read_root" bash "$git_read" ls-files --cached
+expect_ok "git-read: cat-file runs" run_in "$git_read_root" bash "$git_read" cat-file -t HEAD
+expect_ok "git-read: blame runs" run_in "$git_read_root" bash "$git_read" blame -- seed.ts
+expect_ok "git-read: describe runs" run_in "$git_read_root" bash "$git_read" describe --always HEAD
+expect_ok "git-read: rev-list runs" run_in "$git_read_root" bash "$git_read" rev-list --count HEAD
+expect_ok "git-read: diff-tree runs" run_in "$git_read_root" bash "$git_read" diff-tree --no-commit-id --name-only -r HEAD
+
+# Global options cannot precede the operation because argv[1] is always the operation enum.
+expect_fail "git-read: global -c is refused" "operation '-c'" run_in "$git_read_root" bash "$git_read" -c core.pager=cat diff
+expect_fail "git-read: global --exec-path is refused" "operation '--exec-path'" run_in "$git_read_root" bash "$git_read" --exec-path diff
+expect_fail "git-read: global -C is refused" "operation '-C'" run_in "$git_read_root" bash "$git_read" -C .. status
+
+# Per-operation options are exact allowlists: writing/helper modes, their abbreviations and any
+# future option Git learns remain refused until this script and its tests deliberately add them.
+expect_fail "git-read: --output is refused" "not allowlisted for diff" run_in "$git_read_root" bash "$git_read" diff --output=out
+expect_fail "git-read: --ext-diff is refused" "not allowlisted for diff" run_in "$git_read_root" bash "$git_read" diff --ext-diff
+expect_fail "git-read: --textconv is refused" "not allowlisted for diff" run_in "$git_read_root" bash "$git_read" diff --textconv
+expect_fail "git-read: --no-index is refused" "not allowlisted for diff" run_in "$git_read_root" bash "$git_read" diff --no-index a b
+expect_fail "git-read: --outp abbreviation is refused" "not allowlisted for diff" run_in "$git_read_root" bash "$git_read" diff --outp=out
+expect_fail "git-read: --ext-d abbreviation is refused" "not allowlisted for diff" run_in "$git_read_root" bash "$git_read" diff --ext-d
+expect_fail "git-read: --exec-p abbreviation is refused" "operation '--exec-p'" run_in "$git_read_root" bash "$git_read" --exec-p diff
+
+for refused_operation in fetch checkout stash config; do
+  expect_fail "git-read: $refused_operation operation is refused" "not allowlisted" \
+    run_in "$git_read_root" bash "$git_read" "$refused_operation"
+done
+expect_fail "git-read: compound syntax inside one argument is refused" "shell composition" \
+  run_in "$git_read_root" bash "$git_read" show 'HEAD;touch outside'
+expect_fail "git-read: redirect syntax inside one argument is refused" "shell composition" \
+  run_in "$git_read_root" bash "$git_read" show '>outside'
+expect_fail "git-read: a path after -- cannot escape the repository" "escapes the repository" \
+  run_in "$git_read_root" bash "$git_read" diff HEAD -- ../outside
+
+# Acquisition is its own trusted workflow check, never an operation or an allowlisted command. It
+# takes no argv and fetches only the configured base plus the fixed GitHub pull-request refspec.
+git_read_remote="$WORK/git-read-remote.git"
+git init -q --bare "$git_read_remote"
+git -C "$git_read_root" remote add origin "$git_read_remote"
+git -C "$git_read_root" push -q origin main:main HEAD:refs/pull/7/head
+git -C "$git_read_root" update-ref -d refs/remotes/origin/main
+git -C "$git_read_root" update-ref -d refs/remotes/origin/pr/7
+expect_ok "git-read acquisition fetches its fixed refs" run_in "$git_read_root" \
+  bash "$git_read_root/.xezar/checks/git-read-acquire.sh"
+if git -C "$git_read_root" show-ref --verify --quiet refs/remotes/origin/main \
+  && git -C "$git_read_root" show-ref --verify --quiet refs/remotes/origin/pr/7; then
+  ok "git-read acquisition publishes origin/<base> and origin/pr/<n>"
+else
+  bad "git-read acquisition publishes origin/<base> and origin/pr/<n>" "one or both refs are absent"
+fi
+expect_fail "git-read acquisition accepts no caller argv" "usage:" run_in "$git_read_root" \
+  bash "$git_read_root/.xezar/checks/git-read-acquire.sh" other
+
 # Run the maintained actual-repository checks once. They never invoke this suite.
 expect_ok "Actual repository catalog, changelog, links and contracts" bash "$SCRIPT_DIR/repository-checks.sh"
 

@@ -292,8 +292,9 @@ test('design workflows name xezar-ux-design and the skill holds the repository a
 });
 test('design-review is a read-only role',()=>{
  const flow=parseYaml(fs.readFileSync(path.join(kit,'workflows/design-review.yaml'),'utf8'));
- assert.deepEqual(flow.steps.map(s=>s.id),['kit','preflight','review']);
+ assert.deepEqual(flow.steps.map(s=>s.id),['kit','preflight','git-read-acquire','review']);
  assert.match(flow.steps[1].command,/--allow-root/);
+ assert.equal(flow.steps[2].command,'bash .xezar/checks/git-read-acquire.sh');
  const last=flow.steps.at(-1);
  assert.equal(last.skill,'xezar-ux-design');assert.equal(last.command,undefined);assert.equal(last.timeout,undefined);
  assert.deepEqual(last.allowedTools,['Read','Grep','Glob','Bash']);
@@ -304,8 +305,9 @@ test('design-review is a read-only role',()=>{
 test('architecture-review is a read-only verdict role',()=>{
  const flow=parseYaml(fs.readFileSync(path.join(kit,'workflows/architecture-review.yaml'),'utf8'));
  const review=parseYaml(fs.readFileSync(path.join(kit,'workflows/code-review.yaml'),'utf8'));
- assert.deepEqual(flow.steps.map(s=>s.id),['kit','preflight','review']);
+ assert.deepEqual(flow.steps.map(s=>s.id),['kit','preflight','git-read-acquire','review']);
  assert.match(flow.steps[1].command,/--allow-root/);
+ assert.equal(flow.steps[2].command,'bash .xezar/checks/git-read-acquire.sh');
  const last=flow.steps.at(-1);
  assert.equal(last.skill,'xezar-architecture-review');assert.equal(last.verdictRole,'architecture-review');
  assert.equal(last.command,undefined);assert.equal(last.timeout,undefined);
@@ -315,6 +317,16 @@ test('architecture-review is a read-only verdict role',()=>{
  for(const rule of [/## Architecture review/,/APPROVE/,/REQUEST CHANGES/,/verdict-packet\.sh/,/"role": "architecture-review"/,
   /§ The HTTP API/,/§ Changing a mechanism that already works/,/never merges/,/merge-queue/])
   assert.match(body,rule);
+});
+test('the five read-only roles acquire refs before the agent and allowlist only the git-read wrapper from this slice',()=>{
+ for(const name of ['code-review','design-review','qa','architecture-review','business-analysis']){
+  const flow=parseYaml(fs.readFileSync(path.join(kit,`workflows/${name}.yaml`),'utf8'));
+  const acquire=flow.steps.find(step=>step.id==='git-read-acquire');
+  assert.equal(acquire?.command,'bash .xezar/checks/git-read-acquire.sh',name);
+  const agent=flow.steps.at(-1);
+  assert.ok(agent.bashAllowlist.includes('bash .xezar/checks/git-read.sh'),name);
+  assert.ok(flow.steps.indexOf(acquire)<flow.steps.indexOf(agent),name);
+ }
 });
 test('design is a writing role',()=>{
  const flow=parseYaml(fs.readFileSync(path.join(kit,'workflows/design.yaml'),'utf8'));

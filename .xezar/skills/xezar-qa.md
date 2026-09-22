@@ -9,6 +9,8 @@ Exercise the change this task names — check the PR's head out (or use the head
 
 Inputs: the PR or head to QA, and what it claims to fix. Output: a single `## QA` PR comment — reviewed sha, verdict (PASS / FAIL), what was exercised and how, and each finding with a disposition — plus the SDLC QA-gate labels this verdict authorizes. Post the comment before anything else in this task risks not finishing; a QA verdict that exists only in this transcript did not happen (this role has no `handoff` step, so the PR comment is the delivery).
 
+Read local Git state only through `bash .xezar/checks/git-read.sh <op> [args]`, for example `bash .xezar/checks/git-read.sh log --oneline origin/main..origin/pr/123`. The trusted check before this step acquires `origin/<base>` and pull-request heads as `origin/pr/<n>`; never fetch or use bare `git diff`, `git show` or `git log` in the agent step.
+
 ## What a QA pass posts
 
 Per `SDLC.md` § The QA gate, evidence is a PR comment whose first line is the heading `## QA`, carrying: the reviewed commit sha; what was exercised and how (the flow, the command, the `XEZ_DRY_RUN=1` session — whichever applies); the verdict, PASS or FAIL; and each finding with exactly one disposition — *confirmed fixed*, *filed as #n*, or *accepted, because …*. A PASS with open low-severity findings still says which are outstanding rather than staying silent.
