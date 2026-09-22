@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { __internals as piExtension } from '../scripts/pi-leader-extension.ts';
+import { SCAN_UNRESOLVED_ONLY_NAMES, STATE_NAME_ENTRIES } from './local-xezar-top-level-names.ts';
 import { stripComments } from './release/instruction-hygiene.testkit.ts';
 
 // Every export stays the real one; only `renameSync` becomes observable, so the C1 control below
@@ -82,6 +83,12 @@ const DOCUMENTED_SUFFIX = /^(?:\.lock(?:\.takeover)?|\.takeover|\.tmp|\.\$\{[^}]
  * The allowed top-level base names, read from production source and verified individually (not
  * copied from a report — see the file header). The suffix is checked separately against
  * `DOCUMENTED_SUFFIX`; this map holds base names only.
+ *
+ * Derived from `STATE_NAME_ENTRIES` in `local-xezar-top-level-names.ts` — that module, not this
+ * test, is the one source of truth for the list (#838 item C3, follow-up: it is also what a
+ * future `xezar state-names --json` prints). `reachedOnlyThroughUnresolvedCall` is a scan-only
+ * annotation with no equivalent in the published contract, so it is layered on here from
+ * `SCAN_UNRESOLVED_ONLY_NAMES` rather than carried by the module.
  */
 interface AllowedName {
   readonly reason: string;
@@ -91,53 +98,15 @@ interface AllowedName {
   readonly reachedOnlyThroughUnresolvedCall?: true;
 }
 
-const ALLOWED_NAMES: Readonly<Record<string, AllowedName>> = {
-  'runs.json': { reason: 'The run index (runs/store.ts, runs/run-index.ts).' },
-  runs: { reason: 'The per-run event NDJSON / handoff / images directory (runs/store.ts, workflows/run.ts).' },
-  worktrees: { reason: 'Task git worktrees (git-worktree.ts WORKTREES_DIR, mcp/resource-ownership.ts).' },
-  tmp: { reason: 'Per-run agent scratch directories (runs/agent-tmpdir.ts, project-data-paths.ts projectScratchDir).' },
-  kit: {
-    reason:
-      'The project kit of a home-folder launch: projectKitDir moves the kit here so init and ' +
-      'PUT /config never turn the user workspace file into a kit (project-kit-paths.ts).',
-  },
-  'writer-claims': { reason: 'Cross-process writer-instance claims (runs/project-writer.ts).' },
-  'ui-state.json': { reason: 'Per-repo GUI state, direct write (ui-state.ts).' },
-  'launch-key': { reason: 'The `/new` prefill key, direct write, mode 0600 (server/launch-key.ts).' },
-  'todos.json': { reason: 'The follow-up inbox (todos.ts).' },
-  'onboarding-state.json': { reason: 'Onboarding progress (onboarding/state.ts).' },
-  'audit.ndjson': { reason: 'The MCP audit trail, with `.1`–`.4` rotation and `.lock` (mcp/audit-trail.ts, AUDIT_TRAIL_FILE).' },
-  'mcp-audit.ndjson': { reason: 'The legacy audit trail name, read-only, never written (mcp/audit-trail.ts, LEGACY_AUDIT_TRAIL_FILE).' },
-  'mcp-connection.json': { reason: 'The MCP bridge connection descriptor (mcp/connection-file.ts, MCP_CONNECTION_FILE).' },
-  mcp: { reason: 'The MCP subdirectory (leader cursors, …) (mcp/event-journal.ts, mcp/reconnect.ts).' },
-  'mcp-owner-claims': { reason: 'Cross-process MCP ownership claims (workspace/project-owner.ts, OWNER_CLAIM_DIR).' },
-  'mcp-operations.ndjson': { reason: 'The MCP operation-receipt journal (mcp/operation-receipts.ts, RECEIPT_JOURNAL_FILE).' },
-  'mcp-operations.json': { reason: 'The MCP operation-receipt snapshot (mcp/operation-receipts.ts, RECEIPT_SNAPSHOT_FILE).' },
-  'automations.json': { reason: 'Automation definitions (automations/store.ts DEFINITIONS, automations/coordinator.ts).' },
-  'automation-state.json': {
-    reason: 'Automation runtime state (automations/store.ts STATE).',
-    reachedOnlyThroughUnresolvedCall: true,
-  },
-  'automation-receipts.ndjson': {
-    reason: 'Automation receipts (automations/store.ts RECEIPTS).',
-    reachedOnlyThroughUnresolvedCall: true,
-  },
-  'automation-log.ndjson': {
-    reason: 'Automation log (automations/store.ts LOG).',
-    reachedOnlyThroughUnresolvedCall: true,
-  },
-  'automation-poll.lock': { reason: 'The automation poller’s cross-process lock (automations/store.ts, POLL_LOCK).' },
-  'pi-leader.json': {
-    reason: 'The pi leader socket descriptor (mcp/adapters/pi-link.ts PI_LEADER_FILE; written by scripts/pi-leader-extension.ts DESCRIPTOR_FILE).',
-  },
-  tasks: { reason: 'Task evidence directories — written by the kit, read here for evidence-root resolution (core/run-evidence-roots.ts).' },
-  // ---- single-project mode only ----
-  'machine-state.json': {
-    reason: 'Per-machine facts of a single-project root — single-project mode only (workspace/project-machine-state.ts).',
-  },
-  cache: { reason: 'The project layout’s skills cache — single-project mode only (state-layout.ts).' },
-  ipc: { reason: 'The project layout’s IPC directory — single-project mode only (state-layout.ts).' },
-};
+const ALLOWED_NAMES: Readonly<Record<string, AllowedName>> = Object.fromEntries(
+  STATE_NAME_ENTRIES.map((entry) => [
+    entry.name,
+    {
+      reason: entry.reason,
+      ...(SCAN_UNRESOLVED_ONLY_NAMES.has(entry.name) ? { reachedOnlyThroughUnresolvedCall: true as const } : {}),
+    },
+  ]),
+);
 
 /**
  * Call sites whose name argument is a runtime variable this scan cannot resolve statically.
