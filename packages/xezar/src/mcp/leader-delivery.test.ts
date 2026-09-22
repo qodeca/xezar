@@ -779,15 +779,26 @@ describe('the OpenCode attach-time check is bounded, and the bound is injectable
     // the value that reaches `AbortSignal.timeout` is a direct signal from the system under test.
     // (#846: a wall-clock measurement around the call was flaky — a Node timer can fire a tick
     // before `Date.now()` reads the bound it was given, e.g. 149 instead of 150.)
+    // With that `< 5_000` wall-clock guard gone, nothing here re-checks that the bound is actually
+    // HONOURED — only that it was CREATED with the right value. If `checkOpenCodeAttach` stopped
+    // wiring the injected signal into the fetch and the check hung instead, this case's own
+    // assertions would never run; the backstop is vitest's `testTimeout` (15 s, `vitest.config.ts`),
+    // which fails the case rather than hanging the suite.
     const timeoutSpy = vi.spyOn(AbortSignal, 'timeout');
-    const attached = await made.act({ action: 'attach', client: 'opencode', baseUrl: silent.baseUrl, sessionId: silent.sessionId });
-    expect(timeoutSpy).toHaveBeenCalledWith(150);
-    timeoutSpy.mockRestore();
-    // Refused with the attach-time unreachable wording, and nothing was attached.
-    expect(attached.ok).toBe(false);
-    expect(attached.ok === false && attached.error).toContain('the server did not answer');
-    expect(attached.ok === false && attached.error).toContain('Nothing was attached.');
-    expect(made.status()).toMatchObject({ leader: null });
+    try {
+      const attached = await made.act({ action: 'attach', client: 'opencode', baseUrl: silent.baseUrl, sessionId: silent.sessionId });
+      expect(timeoutSpy).toHaveBeenCalledWith(150);
+      // Refused with the attach-time unreachable wording, and nothing was attached.
+      expect(attached.ok).toBe(false);
+      expect(attached.ok === false && attached.error).toContain('the server did not answer');
+      expect(attached.ok === false && attached.error).toContain('Nothing was attached.');
+      expect(made.status()).toMatchObject({ leader: null });
+    } finally {
+      // Local to this case (preferred over a file-wide `vi.restoreAllMocks()` in `afterEach`,
+      // :38): a failing assertion above must not leave the global `AbortSignal.timeout` patched
+      // for every later case in this file.
+      timeoutSpy.mockRestore();
+    }
   });
 });
 
