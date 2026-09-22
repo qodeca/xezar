@@ -7,7 +7,9 @@ import { z } from 'zod';
  * `read_quota` / `check_quota`. These objects deliberately remain non-strict: consumers must
  * ignore unknown keys so a later release can add facts without breaking an older reader. The
  * committed fixture in `__fixtures__/agent-quota.expected.json` pins the known keys and their
- * canonical order byte-for-byte.
+ * canonical order byte-for-byte. An account is never `status: "ok"` when any reported window
+ * (`shortWindow`, `weeklyWindow`, or `modelWindows[]`) has `usedPercent` greater than or equal to
+ * 100.
  */
 
 export const agentQuotaRunnerSchema = z.enum(['claude', 'codex']);
@@ -108,10 +110,31 @@ export const agentQuotaAccountSchema = z
   });
 export type AgentQuotaAccount = z.infer<typeof agentQuotaAccountSchema>;
 
-export const agentQuotaResponseSchema = z.object({
-  generatedAt: isoTimestampSchema,
-  accounts: z.array(agentQuotaAccountSchema),
-});
+export const agentQuotaResponseSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    scope: z.literal('agent-quota'),
+    generatedAt: isoTimestampSchema,
+    accounts: z.array(agentQuotaAccountSchema),
+  })
+  .superRefine((response, ctx) => {
+    response.accounts.forEach((account, accountIndex) => {
+      if (account.status !== 'ok') return;
+
+      const windows = [
+        account.shortWindow,
+        account.weeklyWindow,
+        ...(account.modelWindows ?? []),
+      ];
+      if (windows.some((window) => window !== null && window.usedPercent >= 100)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['accounts', accountIndex, 'status'],
+          message: 'must not be ok when any reported window has usedPercent greater than or equal to 100',
+        });
+      }
+    });
+  });
 export type AgentQuotaResponse = z.infer<typeof agentQuotaResponseSchema>;
 
 const projectConfigQuotaSelectorShape = {

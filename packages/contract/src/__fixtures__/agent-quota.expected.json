@@ -1,4 +1,6 @@
 {
+  "schemaVersion": 1,
+  "scope": "agent-quota",
   "generatedAt": "2026-09-22T14:24:00Z",
   "accounts": [
     {

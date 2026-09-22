@@ -20,6 +20,13 @@ describe('the agent-quota answer matches its committed fixture', () => {
     expect(`${JSON.stringify(parsed, null, 2)}\n`).toBe(fixtureText);
   });
 
+  it('pins the schema version and agent-quota scope as literals', () => {
+    const fixture = JSON.parse(fixtureText) as Record<string, unknown>;
+
+    expect(agentQuotaResponseSchema.safeParse({ ...fixture, schemaVersion: 2 }).success).toBe(false);
+    expect(agentQuotaResponseSchema.safeParse({ ...fixture, scope: 'other' }).success).toBe(false);
+  });
+
   it('ignores additive unknown keys for older consumers', () => {
     const fixture = JSON.parse(fixtureText) as Record<string, unknown>;
     const parsed = agentQuotaResponseSchema.parse({
@@ -63,6 +70,24 @@ describe('the agent-quota answer matches its committed fixture', () => {
     expect(
       agentQuotaResponseSchema.safeParse({ ...answer, accounts: [{ ...out, resetsAt: undefined }] }).success,
     ).toBe(false);
+  });
+
+  it('rejects ok when any reported window is at 100 percent', () => {
+    const answer = JSON.parse(fixtureText) as { accounts: Record<string, unknown>[] };
+    const ok = answer.accounts[0] as {
+      shortWindow: Record<string, unknown>;
+      weeklyWindow: Record<string, unknown>;
+      modelWindows: Record<string, unknown>[];
+    };
+    const entries = [
+      { ...ok, shortWindow: { ...ok.shortWindow, usedPercent: 100 } },
+      { ...ok, weeklyWindow: { ...ok.weeklyWindow, usedPercent: 100 } },
+      { ...ok, modelWindows: [{ ...ok.modelWindows[0], usedPercent: 100 }] },
+    ];
+
+    for (const entry of entries) {
+      expect(agentQuotaResponseSchema.safeParse({ ...answer, accounts: [entry] }).success).toBe(false);
+    }
   });
 
   it('keeps status to exactly ok, out and unknown', () => {

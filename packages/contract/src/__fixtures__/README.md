@@ -12,3 +12,6 @@ For `agent-quota.expected.json`, the `claude` / `qodeca-priv` row is intentional
 The S0 check succeeded but returned no quota percentage lines, so it proved neither available
 capacity (`ok`) nor exhaustion (`out`). Treating a successful read with no quota facts as `ok`
 would turn “could not determine” into a routing promise.
+
+An account is never `status: "ok"` when any reported `shortWindow`, `weeklyWindow`, or
+`modelWindows[]` entry has `usedPercent` greater than or equal to 100.
