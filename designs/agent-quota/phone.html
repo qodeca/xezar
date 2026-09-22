@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent quota – phone, 375 px</title>
+<link rel="stylesheet" href="../../docs/design-system/cockpit.css">
+<link rel="stylesheet" href="styles.css">
+<script src="theme.js"></script>
+</head>
+<body>
+<nav class="doc-bar" aria-label="Design pages">
+  <span class="brand">Agent quota</span>
+  <a href="index.html">Overview</a>
+  <a href="accounts.html">The pane</a>
+  <a href="chip.html">The chip</a>
+  <a href="states.html">Every state</a>
+  <a href="phone.html" aria-current="page">Phone</a>
+  <span class="spacer"></span>
+  <button class="theme-toggle" type="button" data-theme-toggle>Light / dark</button>
+</nav>
+
+<div class="doc">
+  <h1>At 375 px</h1>
+  <p class="lead">The same pages framed at 375 px. The sidebar becomes the drawer, so the chip moves to the top bar’s status slot as “4/6 can work”; the desktop header and settings nav go, as today. Each window becomes three short lines – name and percent, the bar, the reset – so nothing scrolls sideways.</p>
+  <ul>
+    <li><b>Cut first:</b> the bar’s fixed column (it goes full width under its label), then “Check again”, which moves into Show details as it already does, then the per-agent names in the chip (the Popover still names them).</li>
+    <li><b>Never cut:</b> the status sentence with its reset time, every window’s percentage and reset, the word “Stale” and the age, the reason Refresh is unavailable, and “Not reported”.</li>
+    <li><b>Full width:</b> Refresh and Refresh all – one clear thing to press per block, each a 44 px target.</li>
+    <li><b>Wraps, never truncates:</b> a long login name, a long reset string and a long model name wrap; only the page title in the top bar truncates.</li>
+  </ul>
+  <div class="phone-row">
+    <div>
+      <p class="frame-label">The pane – top, chip in the top bar</p>
+      <div class="phone phone-375"><iframe src="accounts.html" title="The pane at 375 px, top"></iframe></div>
+    </div>
+    <div>
+      <p class="frame-label">An out login and its windows</p>
+      <div class="phone phone-375"><iframe src="accounts.html#acct-claude-personal" title="The pane at 375 px, the Personal login that is out"></iframe></div>
+    </div>
+    <div>
+      <p class="frame-label">Stale and checking</p>
+      <div class="phone phone-375"><iframe src="accounts.html#acct-claude-team" title="The pane at 375 px, a stale login being checked"></iframe></div>
+    </div>
+    <div>
+      <p class="frame-label">Hosted mode</p>
+      <div class="phone phone-375"><iframe src="states.html#hosted" title="Hosted mode at 375 px"></iframe></div>
+    </div>
+    <div>
+      <p class="frame-label">Loading and error</p>
+      <div class="phone phone-375"><iframe src="states.html#loading" title="Loading and error at 375 px"></iframe></div>
+    </div>
+    <div>
+      <p class="frame-label">The chip’s phone states</p>
+      <div class="phone phone-375"><iframe src="chip.html#phone" title="The chip’s phone states at 375 px"></iframe></div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

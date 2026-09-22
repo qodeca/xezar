@@ -1,0 +1,872 @@
+/* Agent quota (#867 S4) – feature rules only.
+   Tokens and base classes (.btn, .badge, .dot, .pill, .chip, .popover, .sidebar, .nav, .settings-nav,
+   .settings-pills, .mobile-bar, .version-chip, .centered-state, …) come from
+   ../../docs/design-system/cockpit.css. Nothing here redeclares a token, copies a base class or
+   carries a raw colour. Between blocks: rhythm tokens. Inside a control: the numeric scale. */
+
+/* ---------- the page frame ---------- */
+
+/* Global settings inside the app shell: the app sidebar (where the limits chip lives on a desktop),
+   then the settings nav, then the pane. cockpit.css `.shell` gives the first split; this gives the
+   second. Below md the sidebar and the settings nav are hidden by cockpit.css and the phone pills
+   and the mobile top bar take over, as today. */
+.settings-split {
+  display: grid;
+  grid-template-columns: 208px minmax(0, 1fr);
+  min-height: 100%;
+}
+
+.settings-pills.phone-only {
+  display: none;
+}
+
+.mobile-bar .title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The mobile top bar's `data-slot="mobile-status"` slot (patterns.md §9): the title truncates first. */
+.mobile-status {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--spacing-row);
+  margin-left: auto;
+}
+
+/* ---------- the pane (SettingsShell pane spelling, `max-w-2xl gap-section p-list md:p-group`) ---------- */
+
+.acct-pane {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-section);
+  width: 100%;
+  max-width: 42rem;
+  margin: 0 auto;
+  padding: var(--spacing-group);
+}
+
+.acct-pane h2.pane-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.acct-pane .pane-lead {
+  margin: calc(var(--spacing) * 1) 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+}
+
+.acct-pane code {
+  padding: 0 calc(var(--spacing) * 1);
+  border-radius: var(--radius-sm);
+  background: var(--muted);
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--foreground);
+  overflow-wrap: anywhere;
+}
+
+/* ---------- NEW: the "Plan limits" block at the top of the pane ---------- */
+
+/* A bordered card (`rounded-lg border border-border bg-card p-inset`, patterns.md §4). It is the
+   pane's answer to "can my logins work now", said once per agent in the server's own summary
+   sentence, and the one place the "shows, never acts" promise is written. */
+.limits-summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-stack);
+  padding: var(--spacing-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+  scroll-margin-top: calc(var(--spacing) * 16);
+}
+
+.limits-summary .head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-row) var(--spacing-stack);
+}
+
+.limits-summary h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.limits-summary .head .end {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-row);
+  margin-left: auto;
+}
+
+.summary-lines {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 1.5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.summary-lines li {
+  display: flex;
+  align-items: baseline;
+  gap: calc(var(--spacing) * 2);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--foreground);
+}
+
+.summary-lines .dot,
+.limit-status .dot,
+.pop-agent .dot {
+  align-self: flex-start;
+  margin-top: calc(var(--spacing) * 1.75);
+}
+
+.limits-summary .fine {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+}
+
+/* ---------- one agent (unchanged grammar from accounts-section.tsx, drawn for context) ---------- */
+
+.tool-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-section);
+}
+
+.tool-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-stack);
+  scroll-margin-top: calc(var(--spacing) * 16);
+}
+
+.tool-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: calc(var(--spacing) * 1) var(--spacing-stack);
+}
+
+.tool-head h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.tool-head .facts {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+.tool-head .end {
+  margin-left: auto;
+}
+
+.tool-note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+}
+
+/* The account list keeps today's spelling: `divide-y divide-border/60 rounded-md border bg-card`. */
+.acct-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+}
+
+.acct-rows > li + li {
+  border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+}
+
+.acct-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--spacing-stack);
+  padding: var(--spacing-stack) calc(var(--spacing) * 3.5);
+  scroll-margin-top: calc(var(--spacing) * 16);
+}
+
+.acct-row .who {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+
+.acct-row .name-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(var(--spacing) * 1.5) var(--spacing-row);
+}
+
+.acct-row .name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--foreground);
+  overflow-wrap: anywhere;
+}
+
+.acct-row .badge {
+  min-height: 20px;
+  padding: 0 calc(var(--spacing) * 2);
+  font-size: 11px;
+}
+
+.acct-row .path {
+  margin: calc(var(--spacing) * 0.5) 0 0;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--soft-foreground);
+  overflow-wrap: anywhere;
+}
+
+.acct-row .status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-row);
+  margin-top: calc(var(--spacing) * 1);
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+.acct-row .actions {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-row);
+}
+
+/* ---------- NEW: the limits block inside one account row ---------- */
+
+/* Full row width under the name and actions, separated by a hairline so it reads as its own fact
+   set: "signed in" (above, unchanged) and "how much is left" (here) are two different questions. */
+.limits {
+  display: flex;
+  flex: 1 1 100%;
+  flex-direction: column;
+  gap: var(--spacing-row);
+  min-width: 0;
+  padding-top: var(--spacing-stack);
+  border-top: 1px dashed color-mix(in srgb, var(--border) 80%, transparent);
+}
+
+.limit-status {
+  display: flex;
+  align-items: baseline;
+  gap: calc(var(--spacing) * 2);
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--foreground);
+}
+
+.limit-status b {
+  font-weight: 600;
+}
+
+.limit-status .why {
+  color: var(--muted-foreground);
+}
+
+/* One line per window. Desktop: label | bar | "58% used" | reset. The words carry the number; the
+   bar only lets an eye run down a column of them. */
+.win-list {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 1.5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.win {
+  display: grid;
+  grid-template-columns: minmax(7.5rem, 9rem) minmax(4rem, 7rem) 5.25rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0 var(--spacing-stack);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--foreground);
+}
+
+.win .label {
+  min-width: 0;
+  color: var(--muted-foreground);
+  overflow-wrap: anywhere;
+}
+
+.win .pct {
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+.win .reset {
+  min-width: 0;
+  color: var(--muted-foreground);
+  overflow-wrap: anywhere;
+}
+
+.win .as-of {
+  color: var(--muted-foreground);
+}
+
+/* PROPOSAL (README OD-4): the usage bar. It extends the step rail's `h-0.5 bg-muted` progress bar
+   (patterns.md §5) to 6 px so a fill is readable. Neutral fill; `pending` from 80 % and `danger`
+   at 100 % reinforce the words beside it, they never replace them. Decorative (`aria-hidden`). */
+.meter {
+  position: relative;
+  height: calc(var(--spacing) * 1.5);
+  border-radius: 999px;
+  background: var(--muted);
+  overflow: hidden;
+}
+
+.meter > span {
+  display: block;
+  width: var(--used, 0%);
+  height: 100%;
+  border-radius: inherit;
+  background: var(--muted-foreground);
+}
+
+.meter.near > span {
+  background: var(--pending);
+}
+
+.meter.full > span {
+  background: var(--danger);
+}
+
+.limit-line {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--foreground);
+}
+
+.limit-line .k {
+  color: var(--muted-foreground);
+}
+
+.limit-note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+}
+
+/* A warning from the answer's `warnings[]`: the pending dot plus a full sentence. */
+.limit-warn {
+  display: flex;
+  align-items: baseline;
+  gap: calc(var(--spacing) * 2);
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--foreground);
+}
+
+.limit-warn .dot {
+  align-self: flex-start;
+  margin-top: calc(var(--spacing) * 1.5);
+}
+
+/* The age line and its Refresh control, together: the button changes exactly this line. */
+.limit-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(var(--spacing) * 1) var(--spacing-row);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+}
+
+.limit-meta .grow {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+.limit-meta .badge {
+  min-height: 20px;
+  padding: 0 calc(var(--spacing) * 2);
+  font-size: 11px;
+}
+
+.limit-meta .btn svg.icon {
+  width: 13px;
+  height: 13px;
+}
+
+.checking {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 1.5);
+  color: var(--foreground);
+}
+
+.checking svg.icon {
+  width: 13px;
+  height: 13px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .checking svg.icon,
+  .quota-chip .spin-icon {
+    animation: quota-spin 1s linear infinite;
+  }
+}
+
+@keyframes quota-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* The limits half of the row's existing "Show details" panel (`bg-muted/40` card body). */
+.limit-details {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-row);
+  padding: var(--spacing-stack) var(--spacing-list);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--muted) 40%, transparent);
+}
+
+.limit-details h4 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.limit-details dl {
+  display: grid;
+  grid-template-columns: minmax(8rem, 11rem) minmax(0, 1fr);
+  gap: calc(var(--spacing) * 1.5) var(--spacing-stack);
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.limit-details dt {
+  color: var(--muted-foreground);
+}
+
+.limit-details dd {
+  margin: 0;
+  min-width: 0;
+  color: var(--foreground);
+  overflow-wrap: anywhere;
+}
+
+.limit-details .elided {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+/* Loading inside a surface that will hold a card (patterns.md §6): the muted line plus a reserve. */
+.loading-reserve {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 1.5);
+  min-height: calc(var(--spacing) * 28);
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+
+/* Load error inside the pane: the cockpit's title, the server's words, Retry – not a page state,
+   because the rest of the pane (accounts) still loaded. */
+.inline-error {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-row);
+  padding: var(--spacing-stack) var(--spacing-list);
+  border-radius: var(--radius);
+  background: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--foreground);
+}
+
+.inline-error .what {
+  display: flex;
+  align-items: baseline;
+  gap: calc(var(--spacing) * 2);
+}
+
+.inline-error .what .dot {
+  align-self: flex-start;
+  margin-top: calc(var(--spacing) * 1.75);
+}
+
+.inline-error .server {
+  color: var(--muted-foreground);
+}
+
+/* ---------- NEW: the limits chip (sidebar footer band on a desktop, top bar on a phone) ---------- */
+
+/* Its own band above the footer controls row, like the "Other projects" band (patterns.md §2): the
+   controls row is one row that never wraps (#702) and its only elastic item is the version chip,
+   so a second elastic item there would starve both. */
+.quota-band {
+  margin-top: auto;
+  padding: var(--spacing-row) calc(var(--spacing) * 2.5) 0;
+  border-top: 1px solid var(--border);
+}
+
+.quota-band + .sidebar-foot {
+  border-top: 0;
+}
+
+/* Extends the shared `.chip` (a `PickerPill`-family control): a button, card fill, border. The
+   colour sits in each agent's dot only. */
+.quota-chip {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(var(--spacing) * 1) var(--spacing-row);
+  max-width: 100%;
+  height: auto;
+  min-height: 24px;
+  padding: calc(var(--spacing) * 1) calc(var(--spacing) * 2.5);
+  color: var(--foreground);
+  font-size: 11.5px;
+  text-align: left;
+}
+
+.quota-chip .seg {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 1.5);
+  white-space: nowrap;
+}
+
+.quota-chip .n {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.quota-chip .sep {
+  color: var(--soft-foreground);
+}
+
+.quota-chip .stale {
+  color: var(--muted-foreground);
+}
+
+.quota-chip svg.icon {
+  width: 12px;
+  height: 12px;
+  color: var(--muted-foreground);
+}
+
+.quota-band .quota-chip {
+  width: 100%;
+  gap: calc(var(--spacing) * 1) calc(var(--spacing) * 1.5);
+  padding-inline: calc(var(--spacing) * 2);
+}
+
+/* The expanded state: a Popover (components.md Popover), anchored to the chip. In the cockpit it
+   portals; in the mockup it is drawn next to its anchor. */
+.quota-band,
+.mobile-status {
+  position: relative;
+}
+
+.quota-band .quota-pop {
+  position: absolute;
+  bottom: 0;
+  left: calc(100% + var(--spacing-row));
+  z-index: 20;
+}
+
+.mobile-status .quota-pop {
+  position: absolute;
+  top: calc(100% + var(--spacing-row));
+  right: 0;
+  z-index: 20;
+}
+
+.quota-pop {
+  width: 20rem;
+  max-width: calc(100vw - var(--spacing-list) * 2);
+  text-align: left;
+  padding: var(--spacing-list);
+  font-size: 13px;
+}
+
+.quota-pop h2 {
+  margin: 0 0 var(--spacing-stack);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.quota-pop .pop-agents {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-stack);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pop-agent {
+  display: flex;
+  align-items: baseline;
+  gap: calc(var(--spacing) * 2);
+  line-height: 1.5;
+}
+
+.quota-pop .pop-agent ul {
+  margin: calc(var(--spacing) * 1) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pop-agent ul li {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+.quota-pop .foot {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-row);
+  margin-top: var(--spacing-stack);
+  padding-top: var(--spacing-stack);
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+}
+
+/* ---------- mockup chrome (never shipped) ---------- */
+
+.state-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-group);
+}
+
+.state-label {
+  margin: 0 0 var(--spacing-row);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--soft-foreground);
+}
+
+.state-why {
+  margin: 0 0 var(--spacing-stack);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+}
+
+.pane-frame {
+  padding: var(--spacing-inset);
+}
+
+.pane-frame .acct-pane {
+  padding: 0;
+}
+
+.sidebar-demo {
+  display: grid;
+  grid-template-columns: 264px minmax(0, 20rem);
+  align-items: end;
+  gap: var(--spacing-group);
+}
+
+.sidebar-demo .sidebar {
+  min-height: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.sidebar-elided {
+  padding: var(--spacing-stack) calc(var(--spacing) * 3.5);
+}
+
+/* A static stand-in for the phone top bar (MobileTopBar: `min-h-tap … px-3 bg-card border-b`) so the
+   chip's phone states can be read side by side on a desktop page. Mockup chrome only. */
+.topbar-frame {
+  max-width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.topbar-demo {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 2.5);
+  min-height: calc(var(--spacing-tap) + var(--spacing-row));
+  padding: 0 calc(var(--spacing) * 3);
+  border-bottom: 1px solid var(--border);
+  background: var(--card);
+}
+
+.topbar-demo .btn.icon {
+  width: var(--spacing-tap);
+  height: var(--spacing-tap);
+  margin-left: calc(var(--spacing) * -1.5);
+}
+
+.topbar-demo .title {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 14.5px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbar-demo .quota-chip {
+  min-height: var(--spacing-tap);
+}
+
+.pop-demo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--spacing-group);
+}
+
+/* A static stand-in for `:focus-visible`, so a capture shows the ring the cockpit draws on a
+   keyboard focus. Mockup chrome only; never shipped. */
+.focus-demo {
+  outline: 3px solid color-mix(in srgb, var(--ring) 50%, transparent);
+  outline-offset: 1px;
+}
+
+.phone-375 {
+  width: 375px;
+}
+
+.phone-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-group);
+}
+
+.phone-row > div {
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* ---------- phone ---------- */
+
+@media (max-width: 767.98px) {
+  .settings-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .settings-pills.phone-only {
+    display: flex;
+  }
+
+  .acct-pane {
+    padding: var(--spacing-list);
+  }
+
+  /* One window = three short lines: label and percent, the bar, the reset. Nothing scrolls. */
+  .win {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: calc(var(--spacing) * 1) var(--spacing-row);
+  }
+
+  .win .meter {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .win .pct {
+    text-align: right;
+  }
+
+  .win .reset {
+    grid-column: 1 / -1;
+  }
+
+  .limit-details dl {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+
+  .limit-details dd {
+    margin-bottom: var(--spacing-row);
+  }
+
+  /* 44 px targets at every density (verification.md). The cockpit's Button carries
+     `min-h-tap min-w-tap md:min-h-0 md:min-w-0`; the mockup's `.btn` needs it spelled here. */
+  .acct-pane .btn,
+  .quota-pop .btn,
+  .mobile-status .quota-chip,
+  .acct-pane a.jump {
+    min-height: var(--spacing-tap);
+    min-width: var(--spacing-tap);
+  }
+
+  .acct-pane a.jump {
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .limits-summary .head .end {
+    flex: 1 1 100%;
+    margin-left: 0;
+  }
+
+  .limits-summary .head .end .btn {
+    flex: 1 1 100%;
+  }
+
+  .acct-row .actions {
+    flex: 1 1 100%;
+  }
+
+  .acct-row .actions .btn {
+    flex: 1 1 0;
+  }
+
+  /* Cut first on a phone: "Check again" moves into Show details (as today's onboarding design). */
+  .acct-row .actions .desk-only {
+    display: none;
+  }
+
+  .limit-meta .btn {
+    flex: 1 1 100%;
+  }
+
+  .sidebar-demo {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
