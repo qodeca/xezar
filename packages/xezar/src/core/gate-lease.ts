@@ -164,7 +164,9 @@ export function gateLeaseDir(): string {
   return join(homedir(), '.cache', 'xez', 'gate-slots');
 }
 
-function clampSlots(requested: number | undefined): number {
+/** The slot count a lease uses for a requested one: absent → `DEFAULT_GATE_SLOTS`, else clamped to
+ *  [1, `GATE_LEASE_MAX_SLOTS`]. Exported so `xezar lease gates --probe` reports the same number. */
+export function clampSlots(requested: number | undefined): number {
   if (requested === undefined || !Number.isFinite(requested)) return DEFAULT_GATE_SLOTS;
   return Math.min(GATE_LEASE_MAX_SLOTS, Math.max(1, Math.floor(requested)));
 }
