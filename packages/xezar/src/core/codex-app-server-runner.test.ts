@@ -1,11 +1,14 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { EventEmitter } from 'node:events';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import type { AgentEvent } from './agent-runner.js';
 import { KILL_GRACE_MS } from './claude-cli-runner.js';
-import { CodexAppServerRunner } from './codex-app-server-runner.js';
+import { CodexAppServerRunner, codexSandbox } from './codex-app-server-runner.js';
 
 /** Only the escalation tests below swap the child out; every other test in this
  *  file keeps spawning the real mock app-server through the untouched `spawn`. */
@@ -313,4 +316,84 @@ describe("a Codex run does not reach the person's own MCP servers (#324)", () =>
     await expect(session.result).rejects.toThrow(/could not list the MCP servers.*Method not found: config\/read/);
     expect(events.some((event) => event.type === 'tool-call')).toBe(false);
   }, 15_000);
+});
+
+/**
+ * #849 C — a read-only step (its `allowedTools` names neither Edit nor Write) runs the thread in
+ * Codex's `read-only` sandbox, on start AND on resume; every other step keeps the sandbox it had.
+ * The mock refuses a thread whose sandbox differs from MOCK_CODEX_EXPECT_SANDBOX and logs each
+ * thread request, so the params are pinned whole rather than one field at a time.
+ */
+describe('a read-only step runs Codex in the read-only sandbox (#849)', () => {
+  const mockBin = fileURLToPath(
+    new URL('./__fixtures__/codex/mock-codex-app-server.mjs', import.meta.url),
+  );
+  const REVIEW = ['Read', 'Grep', 'Glob', 'Bash'];
+  const DEFAULT = ['Read', 'Edit', 'Write', 'Grep', 'Glob', 'Bash'];
+  const noServers = { features: { plugins: false, apps: false } };
+
+  async function threadRequest(opts: { allowedTools: string[]; expect: string; resume?: boolean; network?: string }) {
+    const dir = mkdtempSync(join(tmpdir(), 'xez-849-'));
+    const log = join(dir, 'thread.ndjson');
+    try {
+      const runner = new CodexAppServerRunner({ bin: mockBin, timeoutMs: 0 });
+      const session = runner.startSession(
+        {
+          userPrompt: 'review it',
+          cwd: dir,
+          allowedTools: opts.allowedTools,
+          ...(opts.resume ? { resume: true, sessionId: 'th_mock_1' } : {}),
+          env: {
+            MOCK_CODEX_EXPECT_SANDBOX: opts.expect,
+            MOCK_CODEX_THREAD_LOG: log,
+            ...(opts.network ? { XEZ_CODEX_NETWORK: opts.network } : {}),
+          },
+        },
+        undefined,
+        { autoEndAfterFirstTurn: true },
+      );
+      await expect(session.result).resolves.toMatchObject({ sessionId: 'th_mock_1' });
+      // `cwd` is the run's own temp dir; swap it for a stable token so the params pin whole.
+      return readFileSync(log, 'utf8').trim().split('\n').map((line) => JSON.parse(line.split(dir).join('<cwd>')) as unknown);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  it('starts the code-review thread with sandbox read-only', async () => {
+    expect(await threadRequest({ allowedTools: REVIEW, expect: 'read-only' })).toEqual([
+      { method: 'thread/start', params: { cwd: '<cwd>', sandbox: 'read-only', approvalPolicy: 'never', config: noServers } },
+    ]);
+  }, 15_000);
+
+  it('resumes the code-review thread with sandbox read-only', async () => {
+    expect(await threadRequest({ allowedTools: REVIEW, expect: 'read-only', resume: true })).toEqual([
+      {
+        method: 'thread/resume',
+        params: { threadId: 'th_mock_1', cwd: '<cwd>', sandbox: 'read-only', approvalPolicy: 'never', config: noServers },
+      },
+    ]);
+  }, 15_000);
+
+  it('keeps danger-full-access for the default writing list, on start and on resume', async () => {
+    expect(await threadRequest({ allowedTools: DEFAULT, expect: 'danger-full-access' })).toEqual([
+      { method: 'thread/start', params: { cwd: '<cwd>', sandbox: 'danger-full-access', approvalPolicy: 'never', config: noServers } },
+    ]);
+    expect(await threadRequest({ allowedTools: DEFAULT, expect: 'danger-full-access', resume: true })).toEqual([
+      {
+        method: 'thread/resume',
+        params: { threadId: 'th_mock_1', cwd: '<cwd>', sandbox: 'danger-full-access', approvalPolicy: 'never', config: noServers },
+      },
+    ]);
+  }, 30_000);
+
+  it('picks the sandbox from the one signal, with XEZ_CODEX_NETWORK=0 only narrowing a writing step', () => {
+    expect(codexSandbox(REVIEW, {})).toBe('read-only');
+    expect(codexSandbox(REVIEW, { XEZ_CODEX_NETWORK: '0' })).toBe('read-only');
+    expect(codexSandbox([], {})).toBe('read-only');
+    expect(codexSandbox(DEFAULT, {})).toBe('danger-full-access');
+    expect(codexSandbox(DEFAULT, { XEZ_CODEX_NETWORK: '0' })).toBe('workspace-write');
+    expect(codexSandbox(undefined, {})).toBe('danger-full-access');
+    expect(codexSandbox(['Read', 'Edit'], {})).toBe('danger-full-access');
+  });
 });

@@ -18,6 +18,7 @@ import {
 import {
   AUTO_END_DELAY_MS,
   DEFAULT_RUN_TIMEOUT_MS,
+  isReadOnlyStep,
   KILL_GRACE_MS,
 } from './claude-cli-runner.ts';
 import { parseAskRequest, type AskQuestion } from './ask.ts';
@@ -59,10 +60,31 @@ export interface CodexRunnerOptions {
  * Auth = the host's logged-in ChatGPT/Codex session (or CODEX_API_KEY). The
  * agent runs autonomously via `sandbox: danger-full-access` +
  * `approvalPolicy: never`, matching xezar's default auto permission mode
- * (spec 2026-07-17-permission-modes). Codex has no per-tool allowlist, so
- * `spec.allowedTools` is ignored. `XEZ_CODEX_NETWORK=0` retains the previous
+ * (spec 2026-07-17-permission-modes). `XEZ_CODEX_NETWORK=0` retains the previous
  * network-blocked `workspace-write` sandbox as an explicit restriction.
+ *
+ * What IS honoured from `spec.allowedTools` (#849): one signal, `isReadOnlyStep` —
+ * a list naming neither `Edit` nor `Write` starts AND resumes the thread with
+ * `sandbox: read-only`, which covers Codex's own file edits and the shell it runs.
+ * Nothing finer: Codex has no per-tool allowlist, so the individual names and
+ * `spec.bashAllowlist` are ignored, and the sandbox does not cover MCP tools — what
+ * a run may reach there is the per-thread MCP scoping of `codex-run-isolation.ts`
+ * (#324), which applies to every run, read-only or not.
  */
+/**
+ * The thread's sandbox. A read-only step (#849) gets `read-only` whatever the network knob says.
+ * Otherwise full access is the `auto` preset shared by all backends: besides avoiding prompts, it
+ * keeps container installs working when bubblewrap cannot create a UID map (#563), and
+ * XEZ_CODEX_NETWORK=0 remains the backwards-compatible explicit `workspace-write` opt-out.
+ */
+export function codexSandbox(
+  allowedTools: readonly string[] | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+): 'read-only' | 'workspace-write' | 'danger-full-access' {
+  if (isReadOnlyStep(allowedTools)) return 'read-only';
+  return env.XEZ_CODEX_NETWORK === '0' ? 'workspace-write' : 'danger-full-access';
+}
+
 export class CodexAppServerRunner implements AgentRunner {
   readonly backend = 'codex' as const;
 
@@ -363,10 +385,8 @@ class CodexSession implements AgentSession {
     const overrides = {
       model: this.spec.model,
       cwd: this.spec.cwd,
-      // Full access is the `auto` preset shared by all backends. Besides avoiding prompts, this
-      // keeps container installs working when bubblewrap cannot create a UID map (#563).
-      // XEZ_CODEX_NETWORK=0 remains the backwards-compatible explicit sandbox opt-out.
-      sandbox: process.env.XEZ_CODEX_NETWORK === '0' ? 'workspace-write' : 'danger-full-access',
+      // `codexSandbox` owns the choice; start and resume both carry it (#849).
+      sandbox: codexSandbox(this.spec.allowedTools),
       approvalPolicy: 'never',
       // Only the project's own MCP servers; no home-config server, plugin, app or leader bridge
       // (#324, #323). Resume carries it too: a stored thread reloads its servers on reopen.

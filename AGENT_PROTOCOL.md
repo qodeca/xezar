@@ -521,6 +521,24 @@ or a new fixture set forgets one — a named row fails. The matrix:
 
 A new backend is not "done" until it produces every row.
 
+### Read-only steps — per backend (#849)
+
+Tool limits are the one place backends do NOT reach parity, so the difference is stated rather
+than hidden. A step is **read-only** when its resolved `allowedTools` names neither `Edit` nor
+`Write` (`isReadOnlyStep` in `claude-cli-runner.ts`; `undefined` is not read-only, an empty list
+is). That is the only signal: no step key, no `XEZ_*` variable.
+
+| Backend | Read-only step | Mechanism | Pinned by |
+| --- | --- | --- | --- |
+| Claude Code | **ENFORCED** (was MODE-DENIED before #849) | `--disallowedTools Edit,Write,NotebookEdit` beside `--allowedTools`: the tools are removed, so neither `--permission-mode acceptEdits` (`XEZ_APPROVAL_GATE=1`) nor a project's `permissions.allow` brings them back. Before #849 an unlisted Edit/Write was only denied by `dontAsk` | `claude-cli-runner.test.ts` |
+| Codex | **ENFORCED** (was NOT APPLIED before #849) | `thread/start` and `thread/resume` carry `sandbox: 'read-only'`, whatever `XEZ_CODEX_NETWORK` says. The sandbox covers Codex's file edits and shell; it does not cover MCP tools, which stay under the per-thread scoping of #324 (`codex-run-isolation.ts`). Individual tool names and `bashAllowlist` are still ignored | `codex-app-server-runner.test.ts` |
+| pi | partly: edit/write absent | `--tools` from the mapped list (`Read,Grep,Glob,Bash` → `read,grep,find,bash`); `bash` is dropped only when a `bashAllowlist` is set, because pi has no command-prefix rule | `pi-runner.test.ts` |
+| OpenCode | **NOT APPLIED** | nothing derived from `allowedTools` reaches the server; the agent can edit, write and run any command | — |
+
+Plain `Bash` in a read-only list is still a shell on Claude Code and pi; a `bashAllowlist` narrows
+it (Claude: `Bash(<prefix>:*)` entries only). A new runner states its row here, and a runner that
+cannot enforce a read-only step says NOT APPLIED rather than implying it.
+
 ## 7. The golden-fixture testing contract
 
 Each backend has, under `packages/xezar/src/core/__fixtures__/<backend>/`:

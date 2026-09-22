@@ -112,7 +112,9 @@ export const KILL_GRACE_MS = 4_000;
  * the session id resumes for "Continue".
  *
  * Auth = the host's opencode config/logins. OpenCode has no per-tool
- * allowlist, so `spec.allowedTools` is ignored; `spec.model` is
+ * allowlist, so `spec.allowedTools` is ignored, and a read-only step (#849:
+ * one whose list names neither `Edit` nor `Write`) is NOT applied here — the
+ * agent can still edit, write and run any shell command. `spec.model` is
  * `provider/model`.
  *
  * **Permissions are answered, not auto-approved** (#578 — the prior claim to

@@ -955,6 +955,30 @@ run can reach is breaking under section 1's rule, so it is recorded here rather 
   `codex-app-server-runner.test.ts` (under `MOCK_CODEX_AMBIENT` / `MOCK_CODEX_CONFIG_READ_ERROR`)
   pins the default; it fails against a runner that starts the thread without asking.
 
+## Read-only steps are read-only on Claude Code and Codex (#849) — deliberate, 0.19.0
+
+A step whose resolved `allowedTools` names neither `Edit` nor `Write` — the kit's review, QA and
+analysis workflows use `[Read, Grep, Glob, Bash]` — was meant to be read-only and was not on any
+backend. Changing what a shipped run may do is recorded here rather than silently:
+
+- **Broken (Codex)**: such a step used to run in `sandbox: danger-full-access` (or
+  `workspace-write` under `XEZ_CODEX_NETWORK=0`) and could write files and run writing commands.
+  It now starts AND resumes its thread in `sandbox: read-only`, so it cannot. A workflow that
+  relied on a Codex step writing without listing `Edit` or `Write` must add one of them.
+- **Tightened (Claude Code)**: such a step gets `--disallowedTools Edit,Write,NotebookEdit` beside
+  `--allowedTools`. Under the default `dontAsk` mode those tools were already denied, so nothing
+  observable changes there; under `XEZ_APPROVAL_GATE=1` (`acceptEdits`) or a project's own
+  `permissions.allow`, which used to re-admit them, they are now absent.
+- **Not broken**: every step whose list names `Edit` or `Write` — `DEFAULT_ALLOWED_TOOLS` included —
+  gets exactly the argv and sandbox it had; `XEZ_CODEX_NETWORK=0` keeps its meaning for those
+  steps; a spec with no resolved list (`allowedTools` absent) is treated as a writing step; the
+  Codex MCP scoping of #324 is unchanged and the sandbox does not cover MCP tools; pi and OpenCode
+  runs are unchanged (OpenCode still does NOT apply a read-only step); no `XEZ_*` variable or
+  step key was added, so `.env.example` is unchanged.
+- **Pinned by**: `claude-cli-runner.test.ts` and `codex-app-server-runner.test.ts` (the whole argv
+  and the whole `thread/start` / `thread/resume` params, for a read-only and a writing list).
+  Released as part of a **minor** version.
+
 ## Claude Code, pi and OpenCode runs no longer load xezar's own MCP bridge (#342) — deliberate, 0.16.0
 
 #324 gave Codex runs this rule. The other three backends passed nothing, so a task client loaded
