@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -31,6 +31,12 @@ interface Run {
   readonly status: number;
   readonly stdout: string;
   readonly stderr: string;
+}
+
+/** Every path under `root`, relative and sorted; `[]` for a folder that does not exist. */
+function listTree(root: string): string[] {
+  if (!existsSync(root)) return [];
+  return readdirSync(root, { recursive: true, encoding: 'utf8' }).sort();
 }
 
 /** A capturing pair of streams, so the in-process cases read both without touching the process. */
@@ -109,24 +115,49 @@ describe('xezar state-names (#852)', () => {
     expect(run.stderr).toContain('usage: xezar state-names [--json]');
   });
 
-  it('refuses the command behind a global flag rather than sharing the stream with a boot line', () => {
-    const run = cli('--repo', home, 'state-names');
+  it('answers the same bytes behind a global flag, and writes nothing in a single-project folder', () => {
+    // PR #858 review F1: with a flag before the word the launch used to run the whole boot — the
+    // mode line on stdout, the first-run import and the project's state files — before refusing.
+    // The folder is a git repository and `--single-project` is given, which is exactly the shape
+    // that boot writes `.xezar/` and `.local/xezar/` into, so an empty diff of the tree is a claim.
+    const project = mkdtempSync(join(home, 'single-project-'));
+    const init = spawnSync('git', ['init', '-q'], { cwd: project, encoding: 'utf8' });
+    expect(init.status).toBe(0);
+    const before = listTree(project);
 
-    expect(run.status).toBe(2);
+    const run = cli('--repo', project, '--single-project', 'state-names', '--json');
+
+    expect(run.stderr).toBe('');
+    expect(run.status).toBe(0);
+    expect(run.stdout).toBe(readFileSync(FIXTURE, 'utf8'));
+    expect(listTree(project)).toEqual(before);
+    expect(listTree(join(home, 'home'))).toEqual([]);
+
+    // The command's own refusals still apply after the word, and a typo BEFORE it is still the
+    // ordinary parser's, never a silent pass.
+    const extra = cli('--repo', project, 'state-names', '--jsonn');
+    expect(extra.status).toBe(2);
+    expect(extra.stdout).toBe('');
+    expect(extra.stderr).toContain('usage: xezar state-names [--json]');
+    const typo = cli('--repoo', project, 'state-names', '--json');
+    expect(typo.status).not.toBe(0);
+    expect(typo.stdout).not.toContain('"schemaVersion"');
+    expect(listTree(project)).toEqual(before);
+  });
+
+  it('does not take a flag value that happens to be the word for the command', () => {
+    // `--model state-names` is a value, so this launch is `xezar --model state-names --help`.
+    const run = cli('--model', 'state-names', '--help');
+
+    expect(run.status).toBe(0);
     expect(run.stdout).not.toContain('"schemaVersion"');
-    expect(run.stderr).toContain('takes no other option');
-
-    // With `--json` behind a global flag the shared parser refuses first — `--json` belongs to this
-    // command, not to the program — so the refusal is the parser's rather than this command's. Both
-    // are non-zero and neither prints the payload, which is what the caller depends on.
-    const withFlag = cli('--repo', home, 'state-names', '--json');
-    expect(withFlag.status).not.toBe(0);
-    expect(withFlag.stdout).not.toContain('"schemaVersion"');
+    expect(run.stdout).toContain('xezar state-names [--json]');
   });
 
   it('is not triggered by the word appearing later on the command line', () => {
-    // The word is a command only as the FIRST one, so `xezar run "… state-names …"` stays a run.
-    // Proven with `--help`, which reaches the same shared parser without starting anything.
+    // The word is a command only as the FIRST positional word, so `xezar run "… state-names …"`
+    // stays a run; and `--help` before it keeps its meaning. Proven with `--help`, which reaches
+    // the same shared parser without starting anything.
     const run = cli('--help', 'state-names');
 
     expect(run.status).toBe(0);

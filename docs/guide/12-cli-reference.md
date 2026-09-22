@@ -216,7 +216,7 @@ It exists for a check of your own. Projects that guard what appears in that fold
 - **`--json`** prints the published form: a schema version, the scope, the names with their kind and reason, the suffixes a name may carry (`.tmp`, `.lock`, `.takeover`, `.lock.takeover`, and the `.<pid>.<hex>.tmp` shape of a file being written), and the numbered rotations of the audit trail. There is no regular expression anywhere in it, so a shell script can match with ordinary patterns. Its **bytes are fixed**: see [backward compatibility](../../BACKWARD_COMPATIBILITY.md#1-cli-commands-flags-and-exit-codes-packagesxezarsrcindexts).
 - **Without `--json`** it prints a table for a person to read. That table is not a contract and its layout may change — parse the JSON instead.
 - It reads no project and writes nothing, so it works in any folder, inside a repository or not, and in either layout.
-- It takes no other option and must be the first word: `xezar --repo <dir> state-names` is refused, because this command has no project to point at. Standard output carries the listing and nothing else — no start-up line shares it.
+- A global option before it, such as `xezar --repo <dir> state-names --json`, changes nothing: the listing names no project, so the answer is the same and still nothing is read or written. Standard output carries the listing and nothing else — no start-up line shares it.
 - Exit code 0 when it printed; 2 for a usage error (an unknown option, an extra word), with the usage line on standard error.
 
 ## To install, deploy or remove a hosted instance

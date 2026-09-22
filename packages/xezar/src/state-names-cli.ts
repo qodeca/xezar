@@ -17,19 +17,12 @@ import { STATE_NAMES_PAYLOAD } from './local-xezar-top-level-names.ts';
  *   - **Standard output carries the payload and nothing else.** A caller pipes it into a JSON
  *     parser, so a banner, a mode line or a first-run notice on that stream is a parse error rather
  *     than noise. The command is therefore answered before the invocation resolves a project at
- *     all: it reads no repository, opens no state folder and writes no file, in any layout.
+ *     all — also when a global flag comes before the word (`index.ts`, `stateNamesTail`): it reads
+ *     no repository, opens no state folder and writes no file, in any layout.
  */
 
 /** The one usage line, printed to stderr on every refusal. */
 export const STATE_NAMES_USAGE = 'usage: xezar state-names [--json]';
-
-/**
- * Refused when the command word is not the first thing on the command line. It takes no global
- * flag — there is no project to point it at — and saying so is better than accepting a flag that
- * would change nothing.
- */
-export const STATE_NAMES_ALONE =
-  'xezar state-names: this command takes no other option. Run it on its own.';
 
 /** The exact bytes `--json` prints: the published payload, two-space indented, one trailing newline. */
 export function stateNamesJson(): string {
