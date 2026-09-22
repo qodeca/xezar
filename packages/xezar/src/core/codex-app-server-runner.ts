@@ -1,7 +1,8 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
-import { chmod, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { createHash, randomBytes } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { chmod, lstat, mkdir, readFile, realpath, rename, writeFile } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type {
   AgentEvent,
@@ -24,7 +25,7 @@ import {
   DEFAULT_RUN_TIMEOUT_MS,
   KILL_GRACE_MS,
 } from './claude-cli-runner.ts';
-import { CODEX_READ_ONLY_ALLOWLIST_ENV } from './codex-read-only-hook.ts';
+import { CODEX_READ_ONLY_ALLOWLIST_ENV, CODEX_READ_ONLY_RUN_ENV } from './codex-read-only-hook.ts';
 import { acquireFileLock, queueByLockPath } from './file-lock.ts';
 import { isReadOnlyStep, normalizeBashAllowlist } from './read-only-lock.ts';
 import { parseAskRequest, type AskQuestion } from './ask.ts';
@@ -47,6 +48,7 @@ import {
   type CodexUiMapping,
   type CodexUiMapperState,
 } from './codex-ui-mapper.ts';
+import { xezCacheDir } from '../paths.ts';
 
 export interface CodexRunnerOptions {
   /** Override the binary name/path; defaults to `codex` on PATH. */
@@ -131,7 +133,9 @@ export interface CodexReadOnlyHook {
  */
 export function codexReadOnlyHook(spec: AgentRunSpec): CodexReadOnlyHook | undefined {
   if (!isReadOnlyStep(spec.allowedTools) || spec.bashAllowlist === undefined) return undefined;
-  const script = fileURLToPath(new URL('../../scripts/codex-read-only-hook.mjs', import.meta.url));
+  const source = fileURLToPath(new URL('../../scripts/codex-read-only-hook.mjs', import.meta.url));
+  const digest = createHash('sha256').update(readFileSync(source)).digest('hex');
+  const script = join(xezCacheDir(), 'codex-hook', `${digest}.mjs`);
   const command = `${shellQuote(process.execPath)} ${shellQuote(script)} --xezar-read-only-hook`;
   return {
     command,
@@ -237,7 +241,11 @@ class CodexSession implements AgentSession {
         bin,
         spec.cwd,
         hook
-          ? { ...spec.env, [CODEX_READ_ONLY_ALLOWLIST_ENV]: JSON.stringify(hook.entries) }
+          ? {
+              ...spec.env,
+              [CODEX_READ_ONLY_RUN_ENV]: 'locked',
+              [CODEX_READ_ONLY_ALLOWLIST_ENV]: JSON.stringify(hook.entries),
+            }
           : spec.env,
       );
       this.rpc = new CodexAppServerRpc(this.child);
@@ -444,6 +452,17 @@ class CodexSession implements AgentSession {
 
   private async bootstrap(): Promise<void> {
     const initialized = await this.rpc.initialize();
+    const requestedCodexHome = this.spec.env?.CODEX_HOME;
+    const reportedCodexHome = stringField(initialized, 'codexHome');
+    if (requestedCodexHome && (
+      !reportedCodexHome || await canonicalPath(requestedCodexHome) !== await canonicalPath(reportedCodexHome)
+    )) {
+      throw new Error(
+        `Codex profile mismatch (codex-home.mismatch: xezar requested ${requestedCodexHome}, ` +
+          `but initialize reported ${JSON.stringify(reportedCodexHome ?? 'missing')}); ` +
+          'xezar did not start the step or write hook trust to an unexpected profile.',
+      );
+    }
     const isolation = await this.readIsolation();
 
     // `codexPermissions` owns the choice; start and resume both carry it (#849).
@@ -458,6 +477,7 @@ class CodexSession implements AgentSession {
         );
       }
       try {
+        await ensureCodexReadOnlyHookCache(hook);
         await ensureCodexReadOnlyHookFile(codexHome, hook);
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);
@@ -749,9 +769,9 @@ interface CodexHooksFile {
 
 /**
  * Codex 0.155.1 does not discover hooks supplied only in `thread/start`/`thread/resume` config.
- * Install the same handler in the active profile's user-layer hooks.json, the thinnest unavoidable
- * vendor adapter proven by #863 S0b/S0c. The handler is inert outside a xezar-spawned process
- * because its allowlist lives only in that process environment.
+ * Install the content-addressed handler in the active profile's user-layer hooks.json, the
+ * thinnest unavoidable vendor adapter proven by #863 S0b/S0c. Its separate locked-run marker
+ * leaves ordinary sessions inert while making a marked run's missing allowlist fail closed.
  */
 async function ensureCodexReadOnlyHookFile(codexHome: string, hook: CodexReadOnlyHook): Promise<void> {
   await mkdir(codexHome, { recursive: true, mode: 0o700 });
@@ -761,6 +781,13 @@ async function ensureCodexReadOnlyHookFile(codexHome: string, hook: CodexReadOnl
     const acquisition = await acquireFileLock(lockPath, { waitMs: 5_000 });
     if (!acquisition.acquired) throw new Error(`could not lock ${path} for hook registration`);
     try {
+      try {
+        if ((await lstat(path)).isSymbolicLink()) {
+          throw new Error(`hooks-file.symlink refused: ${path} is a symbolic link`);
+        }
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      }
       let document: CodexHooksFile = {};
       try {
         const parsed: unknown = JSON.parse(await readFile(path, 'utf8'));
@@ -784,10 +811,30 @@ async function ensureCodexReadOnlyHookFile(codexHome: string, hook: CodexReadOnl
       if (existing !== undefined && !Array.isArray(existing)) {
         throw new Error(`could not update ${path} because hooks.PreToolUse is not an array`);
       }
-      const installed = (existing ?? []).filter((entry) => isXezarCodexHookEntry(entry));
-      if (installed.length === 1 && hookEntryCommands(installed[0]).includes(hook.command)) return;
-      const handlers = (existing ?? []).filter((entry) => !isXezarCodexHookEntry(entry));
-      handlers.push({ matcher: 'Bash', hooks: [{ type: 'command', command: hook.command }] });
+      const handlers: unknown[] = [];
+      let currentInstalled = false;
+      for (const entry of existing ?? []) {
+        const script = xezarCodexHookScript(entry);
+        if (!script) {
+          handlers.push(entry);
+          continue;
+        }
+        if (hookEntryCommands(entry).includes(hook.command)) {
+          currentInstalled = true;
+          handlers.push(entry);
+          continue;
+        }
+        try {
+          await lstat(script);
+          handlers.push(entry); // another live xezar installation/profile command coexists
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') handlers.push(entry);
+        }
+      }
+      if (!currentInstalled) {
+        handlers.push({ matcher: 'Bash', hooks: [{ type: 'command', command: hook.command }] });
+      }
+      if (currentInstalled && handlers.length === (existing ?? []).length) return;
       const next = { ...document, hooks: { ...hooks, PreToolUse: handlers } };
       const temporary = `${path}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`;
       await writeFile(temporary, `${JSON.stringify(next, null, 2)}\n`, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
@@ -799,12 +846,85 @@ async function ensureCodexReadOnlyHookFile(codexHome: string, hook: CodexReadOnl
   });
 }
 
-function isXezarCodexHookEntry(entry: unknown): boolean {
-  if (!entry || typeof entry !== 'object' || (entry as { matcher?: unknown }).matcher !== 'Bash') return false;
+async function ensureCodexReadOnlyHookCache(hook: CodexReadOnlyHook): Promise<void> {
+  const source = fileURLToPath(new URL('../../scripts/codex-read-only-hook.mjs', import.meta.url));
+  const target = xezarCodexHookScript({ matcher: 'Bash', hooks: [{ command: hook.command }] });
+  if (!target) throw new Error('hook-cache.command could not resolve the generated handler path');
+  const content = readFileSync(source);
+  await mkdir(join(xezCacheDir(), 'codex-hook'), { recursive: true, mode: 0o700 });
+  const lockPath = `${target}.lock`;
+  await queueByLockPath(lockPath, async () => {
+    const acquisition = await acquireFileLock(lockPath, { waitMs: 5_000 });
+    if (!acquisition.acquired) throw new Error(`hook-cache.lock could not lock ${target}`);
+    try {
+      try {
+        const entry = await lstat(target);
+        if (!entry.isFile() || entry.isSymbolicLink()) {
+          throw new Error(`hook-cache.type refused non-regular cache entry ${target}`);
+        }
+        const existing = await readFile(target);
+        if (!existing.equals(content)) throw new Error(`hook-cache.digest found changed content at ${target}`);
+        await chmod(target, 0o444);
+        return;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      }
+      const temporary = `${target}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`;
+      await writeFile(temporary, content, { mode: 0o600, flag: 'wx' });
+      await chmod(temporary, 0o444);
+      await rename(temporary, target);
+    } finally {
+      await acquisition.release();
+    }
+  });
+}
+
+function xezarCodexHookScript(entry: unknown): string | undefined {
+  if (!entry || typeof entry !== 'object' || (entry as { matcher?: unknown }).matcher !== 'Bash') return undefined;
   const commands = hookEntryCommands(entry);
-  return commands.length === 1 &&
-    commands[0]!.includes('codex-read-only-hook.mjs') &&
-    commands[0]!.endsWith(' --xezar-read-only-hook');
+  const command = commands.length === 1 ? commands[0] : undefined;
+  if (!command) return undefined;
+  const words = shellQuotedWords(command);
+  return words?.marker === '--xezar-read-only-hook' ? words.script : undefined;
+}
+
+function shellQuotedWords(command: string): { executable: string; script: string; marker: string } | undefined {
+  const words: string[] = [];
+  let offset = 0;
+  while (words.length < 2) {
+    if (command[offset] !== "'") return undefined;
+    offset += 1;
+    let word = '';
+    while (offset < command.length) {
+      if (command.startsWith("'\\''", offset)) {
+        word += "'";
+        offset += 4;
+      } else if (command[offset] === "'") {
+        offset += 1;
+        break;
+      } else {
+        word += command[offset];
+        offset += 1;
+      }
+    }
+    words.push(word);
+    if (words.length < 2) {
+      if (command[offset] !== ' ') return undefined;
+      offset += 1;
+    }
+  }
+  if (command[offset] !== ' ') return undefined;
+  const marker = command.slice(offset + 1);
+  const [executable, script] = words;
+  return executable !== undefined && script !== undefined ? { executable, script, marker } : undefined;
+}
+
+async function canonicalPath(path: string): Promise<string> {
+  try {
+    return await realpath(path);
+  } catch {
+    return resolve(path);
+  }
 }
 
 /** Codex executes hook commands through a shell, so every generated path must be one shell word. */

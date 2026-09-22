@@ -142,6 +142,16 @@ More → [Getting started](docs/guide/01-getting-started.md)
 | **OpenCode** _(experimental)_ | `opencode serve`, HTTP + SSE | Ignores `allowedTools`; permission asks are answered fail-closed: a directory ask inside the run's own directories is allowed once, every other ask is denied |
 | **pi** | `--mode rpc` over JSONL | `allowedTools` mapped onto pi's `--tools`; a `bashAllowlist` disables `Bash` |
 
+For the Codex command lock, xezar writes a persistent `PreToolUse` entry to the active profile's
+`$CODEX_HOME/hooks.json` and its `hooks.state."<handler key>".trusted_hash` grant to
+`$CODEX_HOME/config.toml`. The entry points to a read-only content-addressed program under the
+xezar cache (`~/.cache/xez/codex-hook/<sha256>.mjs`, or the project-local cache in single-project
+mode). These profile entries outlive the run and Codex loads them in later interactive sessions;
+the handler is inert there because only a marked xezar read-only run activates it. To remove the
+integration, delete the `PreToolUse` entries whose command ends in `--xezar-read-only-hook`, delete
+their corresponding `hooks.state` trust tables from `config.toml`, and optionally delete the
+cache's `codex-hook/` directory. A later read-only xezar run recreates the current entry and grant.
+
 Backends are detected locally, with Claude offered when none is found. Model choices come from
 local discovery and configuration, with fallback choices when discovery is unavailable.
 Choose a backend in config (`defaultRunner`), per task or per workflow step (`runner:`); the most specific wins.

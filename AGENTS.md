@@ -13,6 +13,7 @@ Practical rules:
 - When a feature seems to need configuration, the design is wrong. Discover it, or default it.
 - Features that widen exposure or cost (network, other processes) are opt-in behind a `XEZ_*` flag, off by default — the zero-config default is also the safe default.
 - Owner-approved exception: `qodeca/xezar-skills` updates are default-on. They start only after the server listens, run at most once per six-hour cache window, use explicit lock-authorized names and fixed bounded `npx` argument arrays under a cross-process lock, and never block boot. `XEZ_SKILLS_AUTO_UPDATE=0` or the global Settings override disables automatic application (background detection remains read-only).
+- Owner-approved exception (#863 S2): a read-only Codex run with `bashAllowlist` may persist its content-addressed `PreToolUse` entry and exact trust hash in the active Codex profile; the cached handler is read-only and inert outside the marked xezar run.
 - A missing dependency, an absent peer, a read-only home: degrade to a smaller working cockpit, never fail the boot.
 - Prefer a proxy-free, daemon-free mechanism when one exists — and when it doesn't, keep the mechanism invisible: no process to manage, no port to remember, no file to edit.
 - Never trade a working default for a knob.

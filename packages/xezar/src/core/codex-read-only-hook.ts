@@ -2,6 +2,8 @@ import { decideReadOnlyShellCall, type ReadOnlyCommandDecision } from './read-on
 
 /** Internal child-only transport; the leading underscores keep it outside host env passthrough. */
 export const CODEX_READ_ONLY_ALLOWLIST_ENV = '__XEZAR_CODEX_READ_ONLY_ALLOWLIST';
+/** Separates an ordinary session from a locked xezar run whose allowlist may have been stripped. */
+export const CODEX_READ_ONLY_RUN_ENV = '__XEZAR_CODEX_READ_ONLY_RUN';
 
 export interface CodexPreToolUsePayload {
   readonly tool_name?: unknown;

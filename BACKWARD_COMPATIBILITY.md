@@ -1054,8 +1054,12 @@ empty-list compatibility statements remain in force.
   the stable rule that made the decision.
 - **Changed (Codex with `bashAllowlist`)**: a read-only step now starts and resumes with a
   `PreToolUse` Bash hook that sends the complete command through that same shared policy. An
-  allowed prefix still runs inside #849's confined `workspace-write` sandbox; compounds,
-  redirects, unsafe arguments and non-matching commands are denied with the shared reason code.
+  allowed prefix normally runs inside #849's confined `workspace-write` sandbox. One Codex
+  exec-policy exception remains: when the hook allows a command that also matches a user or
+  trusted-project `prefix_rule(..., decision="allow")`, Codex runs its first attempt outside the
+  sandbox. The allow rule does not skip the hook — a non-matching command is still denied by the
+  hook before it runs (live-verified by PR #885 Q9). Compounds, redirects, unsafe arguments and
+  non-matching commands are denied with the shared reason code.
   The trust grant completes before the first turn on both paths. If Codex cannot discover the
   handler, refuses `config/batchWrite`, or does not report the resulting handler trusted, the
   step fails closed instead of starting with an unenforced allowlist. `XEZ_CODEX_NETWORK=0`
@@ -1063,12 +1067,24 @@ empty-list compatibility statements remain in force.
 - **Codex profile state written by the adapter**: Codex 0.155.1 does not discover a hook supplied
   only in a thread config override, so xezar idempotently adds its shipped generic handler to the
   active Codex profile's user-layer `$CODEX_HOME/hooks.json`, preserving existing keys and handlers
-  under a bounded cross-process lock and atomic write. The handler is inert when the process-local
-  xezar allowlist is absent. Codex itself computes the handler's normalized `currentHash`; xezar
+  under a bounded cross-process lock and atomic write; a symlinked `hooks.json` is refused with
+  `hooks-file.symlink`. The command points to a content-addressed, mode-`0444` bundle under
+  `xezCacheDir()/codex-hook/<sha256>.mjs`, never to the checkout or installed package. Different
+  live xezar commands coexist; only an entry whose script is absent is pruned. The persistent
+  handler is inert outside a xezar run. A separate locked-run marker means a marked read-only run
+  whose allowlist variable is absent or malformed fails closed rather than becoming allow-all.
+  Codex itself computes the handler's normalized `currentHash`; xezar
   writes `hooks.state."<handler key>".trusted_hash = "<currentHash>"` to that same profile's
   `$CODEX_HOME/config.toml` through `config/batchWrite`. The grant is scoped to that exact handler
-  key and content hash, so changing the shipped command makes Codex require a new grant. This is
-  profile configuration, not project configuration: no project trust or tracked file is added.
+  key and content hash, so changed handler bytes produce a new cache path, command and trust grant.
+  Before either write, a `CODEX_HOME` supplied by xezar must equal the `codexHome` reported by
+  `initialize`; `codex-home.mismatch` stops the step before the wrapper-selected profile can be
+  changed. This profile state outlives the run and loads in later interactive Codex sessions,
+  where the marker keeps it inert. Remove it by deleting the `PreToolUse` entries whose commands
+  end in `--xezar-read-only-hook`, deleting their corresponding `hooks.state` trust tables from
+  `$CODEX_HOME/config.toml`, and optionally deleting `xezCacheDir()/codex-hook/`; the next locked
+  run recreates the current entry. This is profile configuration, not project configuration: no
+  project trust or tracked file is added.
 - **Changed (argument-bearing entries)**: `COMMAND_RUNNING_ARGUMENTS` refuses risky forms hidden
   behind an otherwise allowed prefix: every Git `-c`, `--config-env` and `--exec-path` form,
   abbreviated `fetch --upload-pack`/`--exec`, Git `diff`/`show`/`log` output files, checkout path

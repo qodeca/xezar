@@ -1,11 +1,20 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { projectStateLayout, setActiveStateLayout } from '../state-layout.ts';
 import type { AgentEvent } from './agent-runner.js';
 import { KILL_GRACE_MS } from './claude-cli-runner.js';
 import { CodexAppServerRunner, codexPermissions, codexReadOnlyHook } from './codex-app-server-runner.js';
@@ -367,6 +376,17 @@ describe('a read-only step runs Codex confined to its worktree and its own roots
     ...noServers,
     sandbox_workspace_write: { network_access: true, writable_roots: ROOTS },
   };
+  let cacheProject: string;
+
+  beforeEach(() => {
+    cacheProject = mkdtempSync(join(tmpdir(), 'xez-863-cache-'));
+    setActiveStateLayout(projectStateLayout(cacheProject));
+  });
+
+  afterEach(() => {
+    setActiveStateLayout(null);
+    rmSync(cacheProject, { recursive: true, force: true });
+  });
 
   async function threadRequest(opts: { allowedTools: string[]; expect: string; resume?: boolean; bashAllowlist?: string[] }) {
     const dir = mkdtempSync(join(tmpdir(), 'xez-849-'));
@@ -462,6 +482,62 @@ describe('a read-only step runs Codex confined to its worktree and its own roots
     }
   }, 15_000);
 
+  it('fails closed before any profile write when initialize reports a different CODEX_HOME', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'xez-863-home-'));
+    const requested = join(dir, 'requested');
+    const reported = join(dir, 'wrapper-selected');
+    const log = join(dir, 'rpc.ndjson');
+    mkdirSync(requested);
+    mkdirSync(reported);
+    try {
+      const session = new CodexAppServerRunner({ bin: mockBin, timeoutMs: 0 }).startSession(
+        {
+          userPrompt: 'review it',
+          cwd: dir,
+          allowedTools: REVIEW,
+          bashAllowlist: ['git status'],
+          env: { CODEX_HOME: requested, MOCK_CODEX_HOME: reported, MOCK_CODEX_RPC_LOG: log },
+        },
+        undefined,
+        { autoEndAfterFirstTurn: true },
+      );
+      await expect(session.result).rejects.toThrow(/codex-home\.mismatch.*did not start the step or write hook trust/);
+      const methods = readFileSync(log, 'utf8').trim().split('\n').map((line) => JSON.parse(line).method as string);
+      expect(methods).toEqual(['initialize', 'initialized']);
+      expect(readFileSync(log, 'utf8')).not.toContain('config/batchWrite');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 15_000);
+
+  it('accepts two CODEX_HOME spellings that resolve to the same directory', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'xez-863-home-alias-'));
+    const realHome = join(dir, 'real');
+    const aliasHome = join(dir, 'alias');
+    mkdirSync(realHome);
+    symlinkSync(realHome, aliasHome);
+    try {
+      const session = new CodexAppServerRunner({ bin: mockBin, timeoutMs: 0 }).startSession(
+        {
+          userPrompt: 'review it',
+          cwd: dir,
+          allowedTools: REVIEW,
+          bashAllowlist: ['git status'],
+          env: {
+            CODEX_HOME: aliasHome,
+            MOCK_CODEX_HOME: realHome,
+            MOCK_CODEX_EXPECT_SANDBOX: 'workspace-write',
+          },
+        },
+        undefined,
+        { autoEndAfterFirstTurn: true },
+      );
+      await expect(session.result).resolves.toMatchObject({ sessionId: 'th_mock_1' });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 15_000);
+
   it('preserves existing user hooks and grants trust before the first turn', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'xez-863-install-'));
     const log = join(dir, 'rpc.ndjson');
@@ -493,9 +569,77 @@ describe('a read-only step runs Codex confined to its worktree and its own roots
       expect(installed.owner).toBe('user');
       expect(installed.hooks.PreToolUse[0]?.hooks[0]?.command).toBe('existing-hook');
       expect(installed.hooks.PreToolUse.filter((entry) => entry.matcher === 'Bash')).toHaveLength(1);
+      const command = installed.hooks.PreToolUse.find((entry) => entry.matcher === 'Bash')?.hooks[0]?.command;
+      expect(command).toBeTypeOf('string');
+      if (!command) throw new Error('installed Bash hook has no command');
+      const script = command.match(/^'[^']+' '([^']+)' --xezar-read-only-hook$/)?.[1];
+      expect(script).toMatch(new RegExp(`${cacheProject.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&')}/\\.local/xezar/cache/codex-hook/[a-f0-9]{64}\\.mjs$`));
+      if (!script) throw new Error('installed Bash hook command has no cache script path');
+      expect(statSync(script).mode & 0o777).toBe(0o444);
       const methods = readFileSync(log, 'utf8').trim().split('\n').map((line) => JSON.parse(line).method as string);
       expect(methods.indexOf('hooks/list')).toBeLessThan(methods.indexOf('config/batchWrite'));
       expect(methods.indexOf('config/batchWrite')).toBeLessThan(methods.indexOf('turn/start'));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 15_000);
+
+  it('keeps two live xezar commands and prunes only the entry whose script is gone', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'xez-863-prune-'));
+    const live = join(dir, 'other-live.mjs');
+    const missing = join(dir, 'other-missing.mjs');
+    writeFileSync(live, '');
+    const command = (script: string) => `'${process.execPath}' '${script}' --xezar-read-only-hook`;
+    writeFileSync(join(dir, 'hooks.json'), JSON.stringify({
+      hooks: { PreToolUse: [live, missing].map((script) => ({
+        matcher: 'Bash',
+        hooks: [{ type: 'command', command: command(script) }],
+      })) },
+    }));
+    try {
+      const session = new CodexAppServerRunner({ bin: mockBin, timeoutMs: 0 }).startSession(
+        {
+          userPrompt: 'review it',
+          cwd: dir,
+          allowedTools: REVIEW,
+          bashAllowlist: ['git status'],
+          env: { MOCK_CODEX_EXPECT_SANDBOX: 'workspace-write', MOCK_CODEX_HOME: dir },
+        },
+        undefined,
+        { autoEndAfterFirstTurn: true },
+      );
+      await expect(session.result).resolves.toMatchObject({ sessionId: 'th_mock_1' });
+      const installed = JSON.parse(readFileSync(join(dir, 'hooks.json'), 'utf8')) as {
+        hooks: { PreToolUse: Array<{ hooks: Array<{ command: string }> }> };
+      };
+      const commands = installed.hooks.PreToolUse.map((entry) => entry.hooks[0]?.command ?? '');
+      expect(commands).toContain(command(live));
+      expect(commands).not.toContain(command(missing));
+      expect(commands).toHaveLength(2);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 15_000);
+
+  it('refuses a symlinked hooks.json with a named reason and leaves its target untouched', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'xez-863-symlink-'));
+    const target = join(dir, 'dotfiles-hooks.json');
+    writeFileSync(target, '{"owner":"user"}\n');
+    symlinkSync(target, join(dir, 'hooks.json'));
+    try {
+      const session = new CodexAppServerRunner({ bin: mockBin, timeoutMs: 0 }).startSession(
+        {
+          userPrompt: 'review it',
+          cwd: dir,
+          allowedTools: REVIEW,
+          bashAllowlist: ['git status'],
+          env: { MOCK_CODEX_EXPECT_SANDBOX: 'workspace-write', MOCK_CODEX_HOME: dir },
+        },
+        undefined,
+        { autoEndAfterFirstTurn: true },
+      );
+      await expect(session.result).rejects.toThrow(/hooks-file\.symlink refused/);
+      expect(readFileSync(target, 'utf8')).toBe('{"owner":"user"}\n');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
