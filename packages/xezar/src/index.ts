@@ -131,6 +131,11 @@ Usage:
                             resources.gateSlots (default 1). Bounded: after 20
                             minutes of waiting, or if the slot folder cannot be
                             written, it says so and runs <cmd> anyway.
+  xezar state-names [--json]
+                            list the names this engine writes at the top of the
+                            project's working-state folder. With --json, the
+                            published form a project's own checks can read
+                            instead of keeping their own copy of the list
   xezar server-install      interactive wizard to host xezar on a server
   xezar server-deploy       redeploy a new version (reload the service) + verify
   xezar server-uninstall    reverse a server-install
@@ -208,6 +213,19 @@ Skills live in .ai/skills/, .xezar/skills/ and your team skills repo
 workflows in .xezar/workflows/.`;
 
 async function main(): Promise<void> {
+  // `state-names` (#852) is answered before the shared parser runs, and that is the command rather
+  // than an optimisation. Its standard output is a CONTRACT a caller pipes into a JSON parser, so
+  // no mode line, no first-run notice and no repository lookup may reach that stream; and it owns
+  // its `--json` flag, so no other subcommand has to accept a flag it never uses and an unknown
+  // option here gets this command's own usage. It takes no global flag — there is no project to
+  // point it at — so the word must come first, and anything else says so instead of quietly
+  // accepting a flag that would change nothing.
+  if (process.argv[2] === 'state-names') {
+    const { runStateNamesCommand } = await import('./state-names-cli.ts');
+    process.exitCode = runStateNamesCommand(process.argv.slice(3));
+    return;
+  }
+
   const { values, positionals } = parseArgs({
     options: {
       // No `default` any more (#467): the fallback is no longer a constant but a
@@ -511,6 +529,17 @@ async function main(): Promise<void> {
         },
       });
       await recorded;
+      return;
+    }
+    case 'state-names': {
+      // Reached only when a global flag came first, because the command itself is answered at the
+      // top of `main` — see the comment there. Refused rather than served: everything this launch
+      // has already done by now (the mode line, the first-run door) is exactly what the early
+      // answer exists to keep off the contract stream.
+      const { STATE_NAMES_ALONE, STATE_NAMES_USAGE } = await import('./state-names-cli.ts');
+      console.error(STATE_NAMES_ALONE);
+      console.error(STATE_NAMES_USAGE);
+      process.exitCode = 2;
       return;
     }
     case 'server-install':
