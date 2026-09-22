@@ -40,6 +40,7 @@ import { createServer, type Server, type Socket } from 'node:net';
 import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
+import { randomBytes } from 'node:crypto';
 
 // The extension API types are pi's, resolved from the pi installation that loads this file. They are
 // imported as types only, so this file needs no dependency of its own and no `package.json`.
@@ -391,14 +392,20 @@ function findProjectDataDir(cwd: string): string | undefined {
   return undefined;
 }
 
-/** Atomic (tmp + rename) at 0600, like every other descriptor xezar writes. */
+/**
+ * Atomic (tmp + rename) at 0600, like every other descriptor xezar writes. The tmp name matches
+ * the `.<pid>.<hex>.tmp` shape documented for `.local/xezar/` top-level entries (AGENTS.md,
+ * BACKWARD_COMPATIBILITY.md §3) — this file deliberately carries no dependency of its own (see the
+ * file header), so it reproduces that shape inline with `node:crypto` rather than importing
+ * `atomicTmpPath` from `src/workspace/config.ts`, which would pull in zod and the contract package.
+ */
 function writeDescriptor(path: string, input: { socket: string; sessionId: string }): void {
   const descriptor = {
     schemaVersion: SCHEMA_VERSION,
     session: { pid: process.pid, startedAt: new Date().toISOString(), sessionId: input.sessionId },
     endpoint: { socket: input.socket },
   };
-  const tmp = `${path}.tmp-${process.pid}`;
+  const tmp = `${path}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`;
   try {
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(tmp, `${JSON.stringify(descriptor, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
