@@ -127,6 +127,14 @@ function isLoopbackName(hostname: string): boolean {
   return hostname === 'localhost' || LOOPBACK_V4.test(hostname) || hostname === LOOPBACK_V6;
 }
 
+/** The `--bind-host` entry of `parseArgs`' option table (#838 item H finding 2), shared by
+ *  `index.ts`'s own CLI parse and `cockpit-address.ts`'s independent `bindHostFromArgv` scan so a
+ *  `short:` or `multiple:` added to one side cannot silently diverge from the other. This module
+ *  is already a real (non-type) import of both, for `resolveBindHost`/`resolveCapabilities`, so
+ *  putting the shared entry here adds no new import edge — it neither pulls the MCP module into
+ *  `index.ts`'s otherwise lazy MCP import (N-07) nor risks a cycle back into `index.ts`. */
+export const BIND_HOST_OPTION = { type: 'string' } as const;
+
 /** The one answer to "what does this `--bind-host` value mean" (#838 item A).
  *  An empty value behaves exactly like the flag being absent (owner decision): a
  *  script passing an unset variable binds loopback rather than every interface,
