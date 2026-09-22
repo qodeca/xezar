@@ -61,13 +61,21 @@ export interface ClaudeCodeChannelAdapterOptions {
   readonly acknowledged: () => number;
   /** One heartbeat: how long a delivered-but-unacknowledged row waits before it is a blocker. */
   readonly heartbeatMs: number;
+  /**
+   * #886: when the owner session last called a xezar tool (ms, the `now` clock), or undefined when it
+   * has not called one since it opened. The one activity signal xezar has: an active session that is
+   * silent about pushed rows is the plain evidence the pushes did not reach its conversation.
+   */
+  readonly ownerCalledAt?: () => number | undefined;
+  /** #886: how long a pushed row may stay unacknowledged while the session keeps calling tools. */
+  readonly notSeenMs?: number;
   /** Test seam. Production uses `Date.now`. */
   readonly now?: () => number;
 }
 
 /** A condition the person can resolve, in Claude Code's own words. Never a secret, never an account. */
 export interface ClaudeCodeChannelBlocker {
-  readonly code: 'claude-code-push-unconfirmed';
+  readonly code: 'claude-code-push-unconfirmed' | 'claude-code-push-not-seen';
   readonly message: string;
   readonly fix: string;
 }
@@ -82,6 +90,24 @@ export const CLAUDE_CODE_PUSH_UNCONFIRMED_MESSAGE =
   'xezar pushed events to the attached Claude Code session, and they are not acknowledged yet. Claude Code does not confirm delivery, so xezar cannot tell a leader that is still working from one that never received them. Nothing is lost: the events stay in the journal.';
 export const CLAUDE_CODE_PUSH_UNCONFIRMED_FIX =
   'If the leader is working, nothing is needed. Otherwise check that Claude Code was started with --dangerously-load-development-channels server:xezar and that its startup notice says channels from server:xezar inject into the session. Channels need a claude.ai or Console API-key login, do not work on Bedrock, Vertex or Foundry, must be enabled by a Team or Enterprise admin, and are off while CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC is set. Until then, read events with leader_events.';
+
+/**
+ * #886: the bounded time after which an unacknowledged push, followed by a xezar tool call from the
+ * same session, stops reading as "the leader is still working". A leader that received an event reads
+ * state and acknowledges it within minutes; one that keeps calling xezar tools for five minutes and
+ * never mentions the pushed rows most likely never saw them.
+ */
+export const CLAUDE_CODE_PUSH_NOT_SEEN_MS = 5 * 60_000;
+
+/**
+ * The plain blocker for "pushed, still unacknowledged, and the session has called xezar tools well
+ * after the push" (#886). It says what xezar saw and what it concludes, and never claims to know which
+ * Claude Code condition dropped the rows — Claude Code writes that reason only to its own debug log.
+ */
+export const CLAUDE_CODE_PUSH_NOT_SEEN_MESSAGE =
+  'xezar pushed events to the attached Claude Code session more than five minutes ago, and the session has called xezar tools since without acknowledging them. The pushed events are most likely not reaching the conversation. Claude Code does not confirm delivery, so this is what xezar can see, not a certainty. Nothing is lost: the events stay in the journal.';
+export const CLAUDE_CODE_PUSH_NOT_SEEN_FIX =
+  'Read the events now with leader_events action read. To see why Claude Code dropped them, start Claude Code again with --dangerously-load-development-channels server:xezar --debug-file <a file path>, attach again, and look in that file for "Channel notifications registered" or for "Channel notifications skipped:" and the reason after it. Until then, read events with leader_events.';
 
 export class ClaudeCodeChannelAdapter implements ReactionAdapter {
   readonly projectId: string;
@@ -141,8 +167,9 @@ export class ClaudeCodeChannelAdapter implements ReactionAdapter {
   }
 
   /**
-   * The one blocker this adapter reports: rows pushed and confirmed, but not yet acknowledged for
-   * longer than a heartbeat. Delivery failures are the delivery seam's `deliveryFailing` /
+   * The blockers this adapter reports: rows pushed and confirmed, but not yet acknowledged for longer
+   * than a heartbeat — and, stronger (#886), still unacknowledged when the same session calls a xezar
+   * tool `notSeenMs` or more after the push. Delivery failures are the delivery seam's `deliveryFailing` /
    * `leaderNotAnswering` (a rejected push sets `failingSince` there), so this is only ever "delivered,
    * awaiting the leader".
    */
@@ -150,6 +177,13 @@ export class ClaudeCodeChannelAdapter implements ReactionAdapter {
     if (this.#closed) return {};
     this.#pruneAcknowledged();
     const oldest = this.#outstanding[0];
+    // #886: a call from the session made at least `notSeenMs` after the oldest unacknowledged push is
+    // the session being active and silent about it. Only a call AFTER that bound counts, so a leader
+    // that reads state before acknowledging, as the channel message asks, is never reported early.
+    const calledAt = this.#opts.ownerCalledAt?.();
+    if (oldest && calledAt !== undefined && calledAt - oldest.at >= (this.#opts.notSeenMs ?? CLAUDE_CODE_PUSH_NOT_SEEN_MS)) {
+      return { blocker: { code: 'claude-code-push-not-seen', message: CLAUDE_CODE_PUSH_NOT_SEEN_MESSAGE, fix: CLAUDE_CODE_PUSH_NOT_SEEN_FIX } };
+    }
     if (oldest && this.#now() - oldest.at >= this.#opts.heartbeatMs) {
       return { blocker: { code: 'claude-code-push-unconfirmed', message: CLAUDE_CODE_PUSH_UNCONFIRMED_MESSAGE, fix: CLAUDE_CODE_PUSH_UNCONFIRMED_FIX } };
     }

@@ -414,6 +414,8 @@ export interface LeaderDeliveryOptions {
   readonly warn: (message: string) => void;
   /** Test seam. Production uses the controller's 30 s. */
   readonly heartbeatMs?: number;
+  /** #886 test seam: how long an unacknowledged push may be followed by tool calls. Production: five minutes. */
+  readonly pushNotSeenMs?: number;
   /**
    * Test seam for the attach-time OpenCode check (#703). Production uses the 10 s
    * `OPENCODE_ATTACH_CHECK_MS` bound above; a case that needs a server which accepts a connection and
@@ -496,6 +498,8 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
    */
   #ownerTransport: McpSessionTransport | undefined;
   #ownerSessionKey: string | undefined;
+  /** #886: when the owner session last called a xezar tool; the Claude Code adapter's activity signal. */
+  #ownerCalledAt: number | undefined;
   /** The attached leader session and the facts observed against it. xezar never started it. */
   #leader: AttachedLeader | undefined;
   /** One `act` at a time: two concurrent attaches must not leave two adapters behind. */
@@ -530,6 +534,7 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
     // #374: this session's transport is now the one a Claude Code channel push travels down.
     this.#ownerTransport = transport;
     this.#ownerSessionKey = sessionKey;
+    this.#ownerCalledAt = undefined;
     if (this.#leader?.client === 'claude-code' && transport) {
       const blocker = this.#channelEligibility(transport);
       if (blocker) this.#opts.warn(`[xez] ${blocker.code}: ${blocker.message} fix: ${blocker.fix}`);
@@ -558,8 +563,20 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
     if (this.#ownerSessionKey === sessionKey) {
       this.#ownerTransport = undefined;
       this.#ownerSessionKey = undefined;
+      this.#ownerCalledAt = undefined;
     }
     this.#changed();
+  }
+
+  /**
+   * #886: the owner session called a xezar tool. Only the owner counts — a lapsed session's call says
+   * nothing about the leader — and only a Claude Code leader reads it. It publishes nothing: status is
+   * computed when read, and the heartbeat republishes, so a late `ack` (noted just before it applies)
+   * never flashes the stronger blocker in the cockpit.
+   */
+  sessionCalled(sessionKey: string): void {
+    if (this.#closed || sessionKey !== this.#ownerSessionKey) return;
+    this.#ownerCalledAt = Date.now();
   }
 
   /** Metadata arrives from the owner bridge, never from the HTTP attach request. */
@@ -868,6 +885,9 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
           // push-unconfirmed blocker compares against is the leader's own acknowledgement.
           acknowledged: () => this.#opts.leaderRecord?.acknowledged() ?? 0,
           heartbeatMs: this.#opts.heartbeatMs ?? EVENT_CONTROLLER_HEARTBEAT_MS,
+          // #886: the owner session keeps calling tools yet never acknowledges → the plain blocker.
+          ownerCalledAt: () => this.#ownerCalledAt,
+          ...(this.#opts.pushNotSeenMs === undefined ? {} : { notSeenMs: this.#opts.pushNotSeenMs }),
         }),
         failingSince: null,
         settledThrough: 0,

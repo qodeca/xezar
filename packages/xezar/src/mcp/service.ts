@@ -94,6 +94,12 @@ export interface McpSessionObserver {
   codexAnnounced?(sessionKey: string, announcement: { threadId: string }): void;
   /** #450: whether xezar can push to this session's client, answered in `session/open`. */
   pushCapability?(sessionKey: string, transport: McpSessionTransport): McpPushCapability;
+  /**
+   * #886: the session called a known tool. The one activity signal the delivery seam has for a client
+   * that confirms nothing (Claude Code): an active session that never acknowledges pushed rows is the
+   * plain evidence they are not reaching it. Optional, and like the other edges it may never fail a call.
+   */
+  called?(sessionKey: string): void;
 }
 
 /** No observer, or one that cannot say: no journal, so no delivery (#450). */
@@ -364,6 +370,7 @@ async function answer(
       if (announcement) opts.sessions?.codexAnnounced?.(sessionKey, announcement);
       const tool = opts.tools.find((t) => t.name === params.data.name);
       if (!tool) return failure(request.id, 'unknown-tool', `unknown tool: ${params.data.name}`);
+      noteCall(opts, sessionKey);
       const outcome = await callTool(tool, params.data.arguments, ctx, opts.door, () => ownership.checkMutation(token).ok);
       if (outcome === 'fenced') return expired(request.id, opts.project.id);
       return { v: IPC_PROTOCOL_VERSION, id: request.id, ok: true, result: outcome };
@@ -386,6 +393,15 @@ function observe(opts: McpServiceOptions, edge: 'opened' | 'closed', sessionKey:
   try {
     if (edge === 'opened') opts.sessions?.opened(sessionKey, transport);
     else opts.sessions?.closed(sessionKey);
+  } catch (err) {
+    console.warn(`[xez] MCP event delivery hook failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+/** #886: tell the delivery seam this session is active. A throw is one warning and the call carries on (N-07). */
+function noteCall(opts: McpServiceOptions, sessionKey: string): void {
+  try {
+    opts.sessions?.called?.(sessionKey);
   } catch (err) {
     console.warn(`[xez] MCP event delivery hook failed: ${err instanceof Error ? err.message : String(err)}`);
   }

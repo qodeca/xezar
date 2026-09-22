@@ -340,3 +340,62 @@ describe('oldest unacknowledged delivery (#404 finding 5)', () => {
     expect(h.adapter.status()).toEqual({});
   });
 });
+
+describe('a session that keeps calling tools but never acknowledges a push (#886 P3)', () => {
+  const FIVE_MIN = 5 * 60_000;
+  function active(): Harness & { setCalledAt: (ms: number | undefined) => void } {
+    let calledAt: number | undefined;
+    const h = harness({ ownerCalledAt: () => calledAt });
+    return { ...h, setCalledAt: (ms) => (calledAt = ms) };
+  }
+
+  it('says plainly that the pushes are most likely not reaching the conversation', async () => {
+    // RED against: status() reading only the heartbeat age, so an active, silent session stays the
+    // soft "if the leader is working, nothing is needed" blocker forever (the #886 incident).
+    const h = active();
+    h.setNow(0);
+    await h.adapter.deliver(dispatch([row(1)]), signal());
+    h.setNow(FIVE_MIN + 1_000);
+    h.setCalledAt(FIVE_MIN + 1_000);
+    const blocker = h.adapter.status().blocker;
+    expect(blocker?.code).toBe('claude-code-push-not-seen');
+    expect(blocker?.message).toContain('most likely not reaching the conversation');
+    expect(blocker?.message).toContain('Nothing is lost');
+    expect(blocker?.fix).toContain('--debug-file');
+    expect(blocker?.fix).toContain('Channel notifications skipped:');
+    expect(blocker?.fix).toMatch(/leader_events action read/);
+  });
+
+  it('keeps the soft blocker while the session only reads state before acknowledging (guard)', async () => {
+    // Guard, green both ways: the channel message asks the leader to read state first, so a call
+    // inside the bound is normal work, never evidence of a lost push.
+    const h = active();
+    h.setNow(0);
+    await h.adapter.deliver(dispatch([row(1)]), signal());
+    h.setCalledAt(FIVE_MIN - 1);
+    h.setNow(FIVE_MIN + 60_000);
+    expect(h.adapter.status().blocker?.code).toBe('claude-code-push-unconfirmed');
+  });
+
+  it('keeps the soft blocker for an idle session, however old the push (guard)', async () => {
+    // Guard: no call since the push is a leader that is away, not one that is ignoring events.
+    const h = active();
+    h.setNow(0);
+    await h.adapter.deliver(dispatch([row(1)]), signal());
+    h.setNow(10 * FIVE_MIN);
+    expect(h.adapter.status().blocker?.code).toBe('claude-code-push-unconfirmed');
+  });
+
+  it('clears once the leader acknowledges, and honours the configured bound', async () => {
+    // RED against: ignoring `notSeenMs` (a fixed five minutes) or not pruning acknowledged rows first.
+    let calledAt: number | undefined;
+    const h = harness({ ownerCalledAt: () => calledAt, notSeenMs: 1_000 });
+    h.setNow(0);
+    await h.adapter.deliver(dispatch([row(1)]), signal());
+    calledAt = 1_000;
+    h.setNow(1_000);
+    expect(h.adapter.status().blocker?.code).toBe('claude-code-push-not-seen');
+    h.setAcked(1);
+    expect(h.adapter.status()).toEqual({});
+  });
+});

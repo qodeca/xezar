@@ -281,4 +281,27 @@ describe('session/open push capability and the session key in the tool context (
     expect(seen).not.toContain('chosen-by-client');
     expect(JSON.stringify(answer)).not.toContain(opened[0]!);
   });
+
+  it('T-13: a known tool call tells the observer its session is active; an unknown one does not (#886)', async () => {
+    // RED against: never calling `called` (the push-not-seen blocker could never fire), or calling it
+    // for a call that never reached a tool.
+    const opened: string[] = [];
+    const called: string[] = [];
+    const svc = await twoConnections({ sessions: { opened: (key) => opened.push(key), closed: () => {}, called: (key) => called.push(key) } });
+    const c = await svc.open();
+    await c.request(1, 'session/open');
+    await c.request(2, 'tools/call', { name: 'no_such_tool', arguments: {} });
+    expect(called).toEqual([]);
+    await c.request(3, 'tools/call', { name: 'read_thing', arguments: {} });
+    expect(called).toEqual(opened);
+  });
+
+  it('T-14: an activity observer that throws never fails the call (#886)', async () => {
+    // RED against: letting the observer's throw escape into the tool call (N-07).
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const svc = await twoConnections({ sessions: { opened: () => {}, closed: () => {}, called: () => { throw new Error('boom'); } } });
+    const c = await svc.open();
+    await c.request(1, 'session/open');
+    expect(await c.request(2, 'tools/call', { name: 'read_thing', arguments: {} })).toMatchObject({ ok: true });
+  });
 });

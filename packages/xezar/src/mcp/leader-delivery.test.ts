@@ -73,7 +73,7 @@ const neverAnsweringOpenCode = async (): Promise<FakeOpenCodeSession> => {
 };
 
 /** A journal of its own, and the owner slot answering as the case needs. */
-function delivery(owns: boolean, warnings: string[] = [], guard?: Pick<EchoGuard, 'isOwn'>, attachCheckMs?: number) {
+function delivery(owns: boolean, warnings: string[] = [], guard?: Pick<EchoGuard, 'isOwn'>, attachCheckMs?: number, pushNotSeenMs?: number) {
   const dataDir = tmp();
   const journal = EventJournal.open({ dataDir, projectId: PROJECT, secretValues: [], warn: () => {} });
   journals.push(journal);
@@ -90,6 +90,7 @@ function delivery(owns: boolean, warnings: string[] = [], guard?: Pick<EchoGuard
     warn: (message) => warnings.push(message),
     heartbeatMs: 200,
     ...(attachCheckMs === undefined ? {} : { opencodeAttachCheckMs: attachCheckMs }),
+    ...(pushNotSeenMs === undefined ? {} : { pushNotSeenMs }),
   });
   deliveries.push(made);
   return { delivery: made, journal, warnings, dataDir };
@@ -661,6 +662,42 @@ describe('attaching Claude Code: the channel push travels down the owner session
     row(journal);
     await until('the unconfirmed blocker', () => blockerOf(made)?.code === 'claude-code-push-unconfirmed');
     expect(blockerOf(made)?.fix).toMatch(/leader_events/);
+  });
+
+  it('reports claude-code-push-not-seen when the owner keeps calling tools after an unacknowledged push (#886)', async () => {
+    // RED against: not wiring the owner's tool calls into the adapter (`sessionCalled` a no-op, or
+    // `ownerCalledAt` not passed), so an active leader that never saw its pushes stays "unconfirmed".
+    const { delivery: made, journal } = delivery(true, [], undefined, undefined, 300); // heartbeat 200, bound 300
+    const t = channelTransport();
+    made.sessionOpened('session-1', t.transport as never);
+    expect((await made.act({ action: 'attach', client: 'claude-code' })).ok).toBe(true);
+    row(journal);
+    await until('the push', () => t.pushed.length === 1);
+    await until('the unconfirmed blocker', () => blockerOf(made)?.code === 'claude-code-push-unconfirmed');
+    await new Promise((r) => setTimeout(r, 320));
+    // A call from a session that does not own the project says nothing about the leader.
+    made.sessionCalled('someone-else');
+    expect(blockerOf(made)?.code).toBe('claude-code-push-unconfirmed');
+    made.sessionCalled('session-1');
+    expect(blockerOf(made)?.code).toBe('claude-code-push-not-seen');
+    const own = made.sessionStatus('session-1');
+    expect(own.available && own.blocker?.code).toBe('claude-code-push-not-seen');
+  });
+
+  it('forgets the owner’s activity when another session takes the project over (#886)', async () => {
+    // RED against: keeping the previous owner's last call when a new owner opens without the old one
+    // closing (a lapsed lease), so the new session reads as active and silent before it did anything.
+    const { delivery: made, journal } = delivery(true, [], undefined, undefined, 300);
+    const t = channelTransport();
+    made.sessionOpened('session-1', t.transport as never);
+    expect((await made.act({ action: 'attach', client: 'claude-code' })).ok).toBe(true);
+    row(journal);
+    await until('the push', () => t.pushed.length === 1);
+    await new Promise((r) => setTimeout(r, 320));
+    made.sessionCalled('session-1');
+    expect(blockerOf(made)?.code).toBe('claude-code-push-not-seen');
+    made.sessionOpened('session-2', t.transport as never);
+    expect(blockerOf(made)?.code).toBe('claude-code-push-unconfirmed');
   });
 
   it('lets the transport go when its session closes, so nothing is pushed after (#374)', async () => {
