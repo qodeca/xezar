@@ -716,6 +716,48 @@ describe('pi honours a step bashAllowlist command by command (#856)', () => {
     expect(refused?.reason).toContain(why);
   });
 
+  it('refuses an input redirection `<` like an output one, and allows the same command without it', () => {
+    const refused = inPlaceRun(['cat'])('cat < /etc/passwd');
+    expect(refused).toMatchObject(BLOCK);
+    expect(refused?.reason).toContain('redirects input');
+    expect(inPlaceRun(['cat'])('cat file')).toBeUndefined();
+    // quoted, it is text the program receives
+    expect(inPlaceRun(['gh pr comment'])('gh pr comment 1 --body "a < b"')).toBeUndefined();
+  });
+
+  // `-exec rm {} \;` ends in an escaped or `+` terminator, so the splitter keeps it in the `find`
+  // part and a bare `find` entry would match it. An argument that runs or deletes is refused by
+  // name. A tool whose LEADING word runs another command (`xargs`, `env`, `nice`, `timeout`,
+  // `sh -c`, `bash -c`, `eval`) needs no such rule: the part starts with that word, so it is
+  // refused unless the list carries that word as an entry.
+  it.each([
+    ['find . -exec rm -rf {} \\;', '-exec'],
+    ['find . -execdir rm {} +', '-execdir'],
+    ['find . -ok rm {} \\;', '-ok'],
+    ['find . -okdir rm {} \\;', '-okdir'],
+    ['find . -name x -delete', '-delete'],
+    ["find . '-exec' rm {} +", '-exec'],
+    ['find . -fprint out', '-fprint'],
+    ['git status && find . -delete', '-delete'],
+  ])('refuses `%s` under the entry `find`, naming %s', (command, flag) => {
+    const refused = inPlaceRun(['find', 'git status'])(command);
+    expect(refused).toMatchObject(BLOCK);
+    expect(refused?.reason).toContain(`"${flag}"`);
+  });
+
+  it('allows a `find` that only reads, and a quoted `-exec` given to another program', () => {
+    expect(inPlaceRun(['find'])('find . -name x')).toBeUndefined();
+    expect(inPlaceRun(['find'])("find . -name '*.ts' -type f")).toBeUndefined();
+    expect(inPlaceRun(['gh pr comment'])('gh pr comment 1 --body "find -exec rm"')).toBeUndefined();
+  });
+
+  it.each(['xargs rm', 'env rm x', 'nice rm x', 'timeout 5 rm x', 'sh -c "rm x"', 'bash -c "rm x"', 'eval "rm x"'])(
+    'refuses `find . | %s`: a command-running leading word is an ordinary part that matches no entry',
+    (tail) => {
+      expect(inPlaceRun(['find'])(`find . | ${tail}`)).toMatchObject(BLOCK);
+    },
+  );
+
   it('does not let a comment\'s quote hide the next line\'s command', () => {
     expect(inPlaceRun(['git diff'])("git diff # it's\nrm x\n'")).toMatchObject(BLOCK);
   });

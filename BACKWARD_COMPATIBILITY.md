@@ -1007,19 +1007,21 @@ shipped step may run changes, so it is recorded here:
   (`scripts/pi-worktree-guard.ts`, passed `--xezar-bash-allowlist=<JSON>`) allows a command only
   under Claude Code's `Bash(<entry>:*)` rule — the entry itself, or the entry followed by
   whitespace (`git diff` allows `git diff --stat`, never `git difftool`). Every part of a compound
-  command (`;`, `&&`, `||`, `|`, `&`, newline, `$(…)`, backticks) must match on its own; output
-  redirection (any unquoted `>`), a heredoc and process substitution are refused outright, and so
-  is a command the extension cannot split (an unclosed quote or substitution). A step that relied
-  on "bash is dropped" now gets this restricted `bash`; a workflow that wants no shell on pi drops
-  `Bash` from `allowedTools`, which works the same on every backend.
+  command (`;`, `&&`, `||`, `|`, `&`, newline, `$(…)`, backticks) must match on its own; redirection
+  (any unquoted `>` or `<`), a heredoc and process substitution are refused outright, and so is a
+  `find` part carrying `-exec`, `-execdir`, `-ok`, `-okdir`, `-delete`, `-fprint`, `-fprint0`,
+  `-fprintf` or `-fls` (an argument that runs, deletes or writes inside a part the entry `find`
+  matches), and so is a command the extension cannot split (an unclosed quote or substitution). A
+  step that relied on "bash is dropped" now gets this restricted `bash`; a workflow that wants no
+  shell on pi drops `Bash` from `allowedTools`, which works the same on every backend.
 - **Not changed**: a step without a `bashAllowlist`, or with an empty one, gets exactly the argv it
   had (unrestricted `bash`, no new flag, the extension loaded only on a worktree run as before);
   a list whose entries are all blank still removes `bash`, matching Claude Code, which emits no
   `Bash` rule for it; the worktree check of #537 still runs, after the allowlist, on every worktree
   run; Codex and OpenCode still ignore `bashAllowlist`. No `XEZ_*` variable or step key was added.
 - **Pinned by**: `pi-runner.test.ts` (the argv with and without a list, on a worktree and an in-place
-  run) and `pi-worktree-guard.test.ts` (the prefix rule, compound, substitution and redirection
-  refusals). Released as part of a **minor** version.
+  run) and `pi-worktree-guard.test.ts` (the prefix rule, compound, substitution, redirection and
+  `find` argument refusals). Released as part of a **minor** version.
 
 ## Claude Code, pi and OpenCode runs no longer load xezar's own MCP bridge (#342) — deliberate, 0.16.0
 

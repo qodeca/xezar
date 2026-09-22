@@ -57,10 +57,12 @@
  * applies to `Bash(<entry>:*)` lives for pi: a command is allowed only when it is an entry, or an
  * entry followed by whitespace and anything (`git diff` allows `git diff --stat`, never
  * `git difftool`). A compound command – `;`, `&&`, `||`, `|`, `&`, a newline, a `$(…)` or backtick
- * substitution – is allowed only when EVERY part matches on its own; output redirection (any
- * unquoted `>`), a heredoc (`<<`) and process substitution (`<(`) are refused outright. Unlike
- * the worktree check above this is a strict allowlist: anything the splitter cannot read – an
- * unclosed quote or substitution – is refused. The flag is loaded only with a non-empty list, so
+ * substitution – is allowed only when EVERY part matches on its own; redirection (any unquoted `>`
+ * or `<`), a heredoc (`<<`) and process substitution (`<(`) are refused outright, and so is a part
+ * whose program takes an argument that runs a command, deletes or writes a file (`find` with
+ * `-exec`, `-execdir`, `-ok`, `-okdir`, `-delete` or `-fprint*`/`-fls`), because that argument
+ * sits inside a part an entry matches. Unlike the worktree check above this is a strict
+ * allowlist: anything the splitter cannot read – an unclosed quote or substitution – is refused. The flag is loaded only with a non-empty list, so
  * a step without one keeps an unrestricted `bash`; when the run has no worktree the extension is
  * loaded for the allowlist alone and the worktree flags are absent.
  */
@@ -699,6 +701,7 @@ function commandParts(command: string, start = 0, close?: ')' | '`', depth = 0):
     if (char === '>') return fail('it redirects output (">" or ">>"), which is refused outright', i);
     if (char === '<' && next === '<') return fail('it uses a heredoc or here-string ("<<"), which is refused outright', i);
     if (char === '<' && next === '(') return fail('it uses process substitution ("<("), which is refused outright', i);
+    if (char === '<') return fail('it redirects input ("<"), which is refused outright', i);
     if (char === '(') parens++;
     if (char === ')' && parens > 0) parens--;
     if (char === ';' || char === '&' || char === '|' || char === '\n') {
@@ -714,6 +717,55 @@ function commandParts(command: string, start = 0, close?: ')' | '`', depth = 0):
   return { parts: [...parts, ...nested], end: command.length };
 }
 
+/**
+ * Arguments that make an allowed program run another command, delete, or write a file, by the
+ * program they belong to. The splitter cannot see them – `find . -exec rm {} \;` is one part that
+ * starts with `find` – so a part whose first word is the program is refused when any word is one of
+ * these. A program whose LEADING word runs another command (`xargs`, `env`, `sh -c`, `eval`) needs
+ * no row: its part starts with that word and is refused unless the list names it.
+ */
+const COMMAND_RUNNING_ARGUMENTS: Record<string, readonly string[]> = {
+  find: ['-exec', '-execdir', '-ok', '-okdir', '-delete', '-fprint', '-fprint0', '-fprintf', '-fls'],
+};
+
+/** A part's words with their quotes and backslashes removed – how the program receives them. */
+function partWords(part: string): string[] {
+  const words: string[] = [];
+  let word = '';
+  let quote: "'" | '"' | undefined;
+  let started = false;
+  for (let i = 0; i < part.length; i++) {
+    const char = part[i] as string;
+    if (quote) {
+      if (char === quote) quote = undefined;
+      else if (char === '\\' && quote === '"' && i + 1 < part.length) word += part[++i];
+      else word += char;
+    } else if (char === "'" || char === '"') {
+      quote = char;
+      started = true;
+    } else if (char === '\\' && i + 1 < part.length) {
+      word += part[++i];
+      started = true;
+    } else if (/\s/.test(char)) {
+      if (started || word.length > 0) words.push(word);
+      word = '';
+      started = false;
+    } else {
+      word += char;
+      started = true;
+    }
+  }
+  if (started || word.length > 0) words.push(word);
+  return words;
+}
+
+/** The argument of `part` that runs a command, deletes or writes, when its program has such a row. */
+function commandRunningArgument(part: string): string | undefined {
+  const [program, ...args] = partWords(part);
+  const refused = program === undefined ? undefined : COMMAND_RUNNING_ARGUMENTS[program.slice(program.lastIndexOf('/') + 1)];
+  return refused === undefined ? undefined : args.find((arg) => refused.includes(arg));
+}
+
 /** Claude Code's `Bash(<entry>:*)`: the entry itself, or the entry followed by whitespace. */
 function matchesEntry(part: string, entry: string): boolean {
   return part === entry || (part.startsWith(entry) && /\s/.test(part[entry.length] as string));
@@ -726,6 +778,12 @@ function allowlistRefusal(event: ToolCall, entries: string[]): ToolGuardResult |
   const split = commandParts(command);
   if (split.problem) return { block: true, reason: `${ALLOWLIST_REASON} The command was refused because ${split.problem}.` };
   if (split.parts.length === 0) return { block: true, reason: `${ALLOWLIST_REASON} The command is empty.` };
+  for (const part of split.parts) {
+    const argument = commandRunningArgument(part);
+    if (argument !== undefined) {
+      return { block: true, reason: `${ALLOWLIST_REASON} The part "${part}" was refused: its argument "${argument}" runs a command, deletes or writes a file, which is refused outright.` };
+    }
+  }
   const failing = split.parts.find((part) => !entries.some((entry) => matchesEntry(part, entry)));
   if (failing === undefined) return undefined;
   const why = split.parts.length > 1
