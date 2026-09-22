@@ -999,6 +999,51 @@ backend. Changing what a shipped run may do is recorded here rather than silentl
   and the whole `thread/start` / `thread/resume` params, for a read-only and a writing list).
   Released as part of a **minor** version.
 
+## pi keeps a restricted `bash` under a `bashAllowlist` instead of dropping it (#856) — deliberate, 0.19.0
+
+Until #856 a pi step with a non-empty `bashAllowlist` ran with no `bash` tool at all, because pi
+has no command-prefix rule and xezar failed closed (`piTools` in `core/pi-runner.ts`). What a
+shipped step may run changes, so it is recorded here:
+
+- **Changed (pi)**: such a step now keeps `bash`, and xezar's pi extension
+  (`scripts/pi-worktree-guard.ts`, passed `--xezar-bash-allowlist=<JSON>`) allows a command only
+  under Claude Code's `Bash(<entry>:*)` rule — the entry itself, or the entry followed by
+  whitespace (`git diff` allows `git diff --stat`, never `git difftool`). Every part of a compound
+  command (`;`, `&&`, `||`, `|`, `&`, newline, `$(…)`, backticks) must match on its own; redirection
+  (any unquoted `>` or `<`), a heredoc and process substitution are refused outright, and so is a
+  `find` part carrying `-exec`, `-execdir`, `-ok`, `-okdir`, `-delete`, `-fprint`, `-fprint0`,
+  `-fprintf` or `-fls` (an argument that runs, deletes or writes inside a part the entry `find`
+  matches). The check reads the text before the shell expands it, so in such a part a word the
+  shell would still change – an unquoted `$`, a backtick, `$'…'`, `{`, `}`, `~` or a glob character,
+  or a `$` or backtick inside double quotes – cannot be checked before expansion and is refused:
+  `find sub -d${HOME:0:0}elete` and `find . -name *.ts` are refused, `find . -name '*.ts'` is
+  allowed. A command that groups commands or defines a function – an unquoted `(` or `)`, or a
+  part led by `function`, `{` or `}` – is refused outright, because `find () ( rm x ); find` makes
+  the entry `find` run `rm`. A command with a backslash that ends the input or a line is refused
+  outright, because the shell drops it or joins the next line and `find sub -delete\` would run
+  `find sub -delete`. A command the extension cannot split (an unclosed quote or substitution) is
+  refused as well. The `find` row is the only such table row: an entry must never name a program that can run
+  a command or write a file from an argument (`sed`, `awk`, `sort -o`, `dd`, `tee`, an
+  interpreter). A
+  step that relied on "bash is dropped" now gets this restricted `bash`; a workflow that wants no
+  shell on pi drops `Bash` from `allowedTools`, which works the same on every backend.
+- **Changed (pi, empty list)**: `bashAllowlist: []` used to leave pi's argv unchanged – an
+  unrestricted `bash`. It now removes `bash` exactly as a blanks-only list always did, and the
+  extension is told `[]`, which refuses every shell command. On Claude Code `[]` still leaves plain
+  `Bash`, unchanged by this entry.
+- **Changed (pi argv, no behaviour)**: every worktree run now also passes
+  `--xezar-bash-allowlist=null` when the step has no `bashAllowlist`, because the extension refuses
+  the shell when that flag is missing instead of reading its absence as "no allowlist".
+- **Not changed**: a step without a `bashAllowlist` keeps an unrestricted `bash`, and a run with no
+  worktree gets exactly the argv it had (no extension, no new flag); a list whose entries are all
+  blank still removes `bash`, matching Claude Code, which emits no `Bash` rule for it; the worktree
+  check of #537 still runs, after the allowlist, on every worktree run; Codex and OpenCode still
+  ignore `bashAllowlist`. No `XEZ_*` variable or step key was added.
+- **Pinned by**: `pi-runner.test.ts` (the argv with and without a list, on a worktree and an in-place
+  run, `[]` and blanks-only lists, `null` for a step without one) and `pi-worktree-guard.test.ts`
+  (the prefix rule, compound, substitution, redirection, `find` argument and before-expansion
+  refusals, `[]`, `null` and a missing flag). Released as part of a **minor** version.
+
 ## Claude Code, pi and OpenCode runs no longer load xezar's own MCP bridge (#342) — deliberate, 0.16.0
 
 #324 gave Codex runs this rule. The other three backends passed nothing, so a task client loaded

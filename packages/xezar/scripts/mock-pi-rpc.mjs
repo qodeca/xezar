@@ -18,7 +18,7 @@ const VALUE_OPTIONS = new Set([
 ]);
 
 /** The bundled worktree-guard extension's own options, which pi spells `--flag=value`. */
-const EXTENSION_PREFIXES = ['--xezar-worktree-root=', '--xezar-primary-root=', '--xezar-allowed-roots='];
+const EXTENSION_PREFIXES = ['--xezar-worktree-root=', '--xezar-primary-root=', '--xezar-allowed-roots=', '--xezar-bash-allowlist='];
 
 /**
  * `--mcp-config` is listed here because the mock stands in for a pi WITH the optional

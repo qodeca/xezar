@@ -1,4 +1,4 @@
-import type { ChildProcessWithoutNullStreams } from 'node:child_process';
+import { spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -246,6 +246,8 @@ describe('pi RPC argv', () => {
       '--xezar-worktree-root=/repo/.local/xezar/worktrees/task',
       '--xezar-primary-root=/repo',
       '--xezar-allowed-roots=["/repo/.local/xezar/runs","/repo/.local/xezar/tmp/task"]',
+      // no bashAllowlist key: the guard is told so, and a missing flag would refuse bash (#856)
+      '--xezar-bash-allowlist=null',
     ]);
   });
 
@@ -270,15 +272,83 @@ describe('pi RPC argv', () => {
     ).toEqual(['--mode', 'rpc', '--tools', 'read,grep,find,bash']);
   });
 
-  it('fails closed by disabling bash when a command-prefix allowlist cannot be represented', () => {
-    expect(
-      buildPiArgs({
-        cwd: '/repo',
-        userPrompt: 'task',
-        allowedTools: ['Read', 'Bash'],
-        bashAllowlist: ['npm test'],
-      }),
-    ).toEqual(['--mode', 'rpc', '--tools', 'read']);
+  it('keeps bash and hands a bashAllowlist to the guard extension, with no worktree (#856)', () => {
+    const args = buildPiArgs({
+      cwd: '/repo',
+      userPrompt: 'task',
+      allowedTools: ['Read', 'Bash'],
+      bashAllowlist: [' npm test ', '', 'gh pr comment'],
+    });
+    expect(args.slice(0, 4)).toEqual(['--mode', 'rpc', '--tools', 'read,bash']);
+    expect(args[4]).toBe('--extension');
+    expect(args[5]).toMatch(/pi-worktree-guard\.ts$/);
+    expect(args.slice(6)).toEqual(['--xezar-bash-allowlist=["npm test","gh pr comment"]']);
+  });
+
+  it('adds the bashAllowlist flag after the worktree flags on a worktree run (#856)', () => {
+    const args = buildPiArgs({
+      cwd: '/wt',
+      userPrompt: 'task',
+      allowedTools: ['Bash'],
+      bashAllowlist: ['git diff'],
+      worktreeRoot: '/wt',
+      primaryRoot: '/repo',
+    });
+    expect(args.filter((arg) => arg === '--extension')).toHaveLength(1);
+    expect(args.slice(-3)).toEqual(['--xezar-worktree-root=/wt', '--xezar-primary-root=/repo', '--xezar-bash-allowlist=["git diff"]']);
+  });
+
+  // Fable's table on #861, round 2: `[]` and a blanks-only list are the same list – no entry – so
+  // both remove bash and both still hand the guard `[]`, which refuses every bash command.
+  it.each([
+    ['[]', []],
+    ['["  ", ""]', ['  ', '']],
+  ])('removes bash and passes `[]` for the list %s, with no worktree', (_name, bashAllowlist) => {
+    const args = buildPiArgs({ cwd: '/repo', userPrompt: 'task', allowedTools: ['Read', 'Bash'], bashAllowlist });
+    expect(args.slice(0, 4)).toEqual(['--mode', 'rpc', '--tools', 'read']);
+    expect(args[4]).toBe('--extension');
+    expect(args[5]).toMatch(/pi-worktree-guard\.ts$/);
+    expect(args.slice(6)).toEqual(['--xezar-bash-allowlist=[]']);
+  });
+
+  it.each([
+    ['[]', []],
+    ['["  ", ""]', ['  ', '']],
+  ])('removes bash and passes `[]` for the list %s on a worktree run', (_name, bashAllowlist) => {
+    const args = buildPiArgs({
+      cwd: '/wt',
+      userPrompt: 'task',
+      allowedTools: ['Read', 'Bash'],
+      bashAllowlist,
+      worktreeRoot: '/wt',
+      primaryRoot: '/repo',
+    });
+    expect(args.slice(2, 4)).toEqual(['--tools', 'read']);
+    expect(args.slice(-3)).toEqual(['--xezar-worktree-root=/wt', '--xezar-primary-root=/repo', '--xezar-bash-allowlist=[]']);
+  });
+
+  it('leaves the in-place argv unchanged without a bashAllowlist key (#856 C)', () => {
+    expect(buildPiArgs({ cwd: '/repo', userPrompt: 'task', allowedTools: ['Read', 'Bash'] })).toEqual(['--mode', 'rpc', '--tools', 'read,bash']);
+  });
+
+  // The dry-run mock refuses an option it does not know, as the real CLI does (#548), so every
+  // flag `buildPiArgs` can emit must parse there – a worktree dry run carries the allowlist flag.
+  it.each([
+    ['without a bashAllowlist key', undefined],
+    ['with a bashAllowlist', ['git diff']],
+    ['with an empty bashAllowlist', []],
+  ])('emits an argv the dry-run mock accepts on a worktree run %s', (_name, bashAllowlist) => {
+    const args = buildPiArgs({ cwd: '/wt', userPrompt: 'task', allowedTools: ['Bash'], bashAllowlist, worktreeRoot: '/wt', primaryRoot: '/repo', additionalDirectories: ['/runs'] });
+    const mock = fileURLToPath(new URL('../../scripts/mock-pi-rpc.mjs', import.meta.url));
+    const result = spawnSync(process.execPath, [mock, ...args], { input: '', encoding: 'utf8' });
+    expect(result.stderr).toBe('');
+    expect(result.status).toBe(0);
+  });
+
+  it('tells the guard `null` – no allowlist – on a worktree run without a bashAllowlist key', () => {
+    const args = buildPiArgs({ cwd: '/wt', userPrompt: 'task', allowedTools: ['Bash'], worktreeRoot: '/wt', primaryRoot: '/repo' });
+    expect(args.slice(2, 4)).toEqual(['--tools', 'bash']);
+    expect(args.at(-1)).toBe('--xezar-bash-allowlist=null');
   });
 });
 

@@ -855,6 +855,11 @@ export function buildPiArgs(spec: AgentRunSpec, mcpOverlayPath?: string): string
   if (spec.model) args.push('--model', spec.model);
   const tools = piTools(spec.allowedTools ?? [], spec.bashAllowlist);
   if (tools.length > 0) args.push('--tools', tools.join(','));
+  // #856: pi has no command-prefix rule, so the extension applies the one Claude Code gives
+  // `Bash(<entry>:*)`. Whenever the extension is loaded it is told the step's list – `null` for a
+  // step without the key, and the usable entries otherwise, `[]` included – because the guard
+  // reads a MISSING flag as "refuse the shell", never as "no allowlist".
+  const allowlist = spec.bashAllowlist === undefined ? null : bashAllowlistEntries(spec.bashAllowlist);
   if (spec.worktreeRoot) {
     // `--flag=value`: pi reads a separate value that starts with `-` or `@` as a boolean flag.
     // A missing primary root is passed as absent, and the guard then fails closed.
@@ -863,7 +868,12 @@ export function buildPiArgs(spec: AgentRunSpec, mcpOverlayPath?: string): string
     if (spec.additionalDirectories?.length) {
       args.push(`--xezar-allowed-roots=${JSON.stringify(spec.additionalDirectories)}`);
     }
+  } else if (allowlist !== null) {
+    // No worktree, so no worktree check: the same extension is loaded for the allowlist alone.
+    args.push('--extension', piWorktreeGuardPath());
   }
+  // A run with no worktree and no bashAllowlist key loads no extension, and its argv is unchanged.
+  if (spec.worktreeRoot || allowlist !== null) args.push(`--xezar-bash-allowlist=${JSON.stringify(allowlist)}`);
   return args;
 }
 
@@ -871,6 +881,11 @@ function piWorktreeGuardPath(): string {
   // Source: src/core -> scripts. Published build: dist/core -> scripts. Keeping the extension in
   // the package's existing `scripts` payload lets both layouts resolve the same relative path.
   return resolvePath(dirname(fileURLToPath(import.meta.url)), '../../scripts/pi-worktree-guard.ts');
+}
+
+/** The usable entries of a step's `bashAllowlist`: trimmed, blanks dropped (as `buildAllowedTools`). */
+function bashAllowlistEntries(bashAllowlist?: string[]): string[] {
+  return (bashAllowlist ?? []).map((entry) => entry.trim()).filter(Boolean);
 }
 
 function piTools(tools: string[], bashAllowlist?: string[]): string[] {
@@ -885,9 +900,11 @@ function piTools(tools: string[], bashAllowlist?: string[]): string[] {
   return [
     ...new Set(
       tools
-        // Pi can allow/deny the whole bash tool but has no command-prefix
-        // equivalent. Fail closed when a workflow requests that narrower mode.
-        .filter((tool) => tool !== 'Bash' || !bashAllowlist || bashAllowlist.length === 0)
+        // A `bashAllowlist` keeps bash and the worktree-guard extension restricts it command by
+        // command (#856). A list with no usable entry – `[]` or blanks only, the same list – fails
+        // closed as Claude Code does (`buildAllowedTools` emits no Bash rule for it): bash is
+        // removed, and the guard is still told `[]`, which refuses every shell command.
+        .filter((tool) => tool !== 'Bash' || bashAllowlist === undefined || bashAllowlistEntries(bashAllowlist).length > 0)
         .map((tool) => map[tool] ?? tool.toLowerCase()),
     ),
   ];

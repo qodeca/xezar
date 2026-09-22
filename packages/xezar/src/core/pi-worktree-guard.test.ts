@@ -603,3 +603,309 @@ describe('pi linked-worktree tool guard (#537)', () => {
     });
   });
 });
+
+describe('pi honours a step bashAllowlist command by command (#856)', () => {
+  type GuardApi = Parameters<typeof extension>[0];
+  type Handler = Parameters<GuardApi['on']>[1];
+
+  function load(flags: Record<string, string | boolean | undefined>): Handler {
+    let handler: Handler | undefined;
+    extension({
+      registerFlag: () => undefined,
+      getFlag: (name) => flags[name],
+      on: (_event, next) => { handler = next; },
+    });
+    if (!handler) throw new Error('the extension registered no tool_call handler');
+    return handler;
+  }
+
+  /** A worktree run: both the worktree check and the allowlist apply. */
+  function worktreeRun(entries: string[]) {
+    const f = fixture();
+    const handler = load({
+      'xezar-worktree-root': f.worktree,
+      'xezar-primary-root': f.primary,
+      'xezar-bash-allowlist': JSON.stringify(entries),
+    });
+    return { f, run: (command: string) => handler(bash(command), { cwd: f.worktree }) };
+  }
+
+  /** A run with no worktree: the extension is loaded for the allowlist alone. */
+  function inPlaceRun(entries: string[]) {
+    const handler = load({ 'xezar-bash-allowlist': JSON.stringify(entries) });
+    return (command: string) => handler(bash(command), { cwd: tmpdir() });
+  }
+
+  it('allows a command that is an entry, or an entry followed by a space', () => {
+    const { run } = worktreeRun(['git diff']);
+    expect(run('git diff')).toBeUndefined();
+    expect(run('git diff --stat')).toBeUndefined();
+    // With no worktree the extension is loaded for the allowlist alone and must not fail closed.
+    expect(inPlaceRun(['git diff'])('git diff --stat')).toBeUndefined();
+  });
+
+  it('refuses a command whose prefix is no entry, including one that only shares its letters', () => {
+    const { run } = worktreeRun(['git diff']);
+    const refused = run('git difftool');
+    expect(refused).toMatchObject(BLOCK);
+    expect(refused?.reason).toContain('"git difftool"');
+    expect(run('rm -rf build')).toMatchObject(BLOCK);
+  });
+
+  it('allows `gh pr comment x --body y` with the entry `gh pr comment`', () => {
+    expect(inPlaceRun(['gh pr comment'])('gh pr comment x --body y')).toBeUndefined();
+    // a quoted operator is text the program receives, not a second command
+    expect(inPlaceRun(['gh pr comment'])('gh pr comment 12 --body "a; b | c > d"')).toBeUndefined();
+  });
+
+  it('refuses `git diff; rm x` with the entry `git diff`, naming the failing part and why', () => {
+    const refused = inPlaceRun(['git diff'])('git diff; rm x');
+    expect(refused).toMatchObject(BLOCK);
+    expect(refused?.reason).toContain('"rm x"');
+    expect(refused?.reason).toContain('every part of a compound command must match');
+  });
+
+  it.each(['git diff && rm x', 'git diff || rm x', 'git diff & rm x', 'git diff\nrm x'])(
+    'refuses the compound `%s` because one part matches no entry',
+    (command) => {
+      expect(inPlaceRun(['git diff'])(command)).toMatchObject(BLOCK);
+    },
+  );
+
+  it('refuses `gh pr view | tee out`: the `tee out` part matches no entry', () => {
+    const refused = inPlaceRun(['gh pr view'])('gh pr view | tee out');
+    expect(refused).toMatchObject(BLOCK);
+    expect(refused?.reason).toContain('"tee out"');
+  });
+
+  it('allows a pipe when every part matches: printf into the verdict-packet writer', () => {
+    const run = inPlaceRun(['printf', 'bash .xezar/checks/verdict-packet.sh']);
+    expect(run("printf '%s' x | bash .xezar/checks/verdict-packet.sh")).toBeUndefined();
+    // the same pipe with only one of the two entries is refused
+    expect(inPlaceRun(['printf'])("printf '%s' x | bash .xezar/checks/verdict-packet.sh")).toMatchObject(BLOCK);
+  });
+
+  it.each([
+    ['git diff $(rm x)', 'rm x'],
+    ['git diff `rm x`', 'rm x'],
+    ['git diff "$(rm x)"', 'rm x'],
+  ])('refuses the substitution in `%s` unless its command matches too', (command, part) => {
+    const refused = inPlaceRun(['git diff'])(command);
+    expect(refused).toMatchObject(BLOCK);
+    expect(refused?.reason).toContain(`"${part}"`);
+    expect(inPlaceRun(['git diff', 'rm'])(command)).toBeUndefined();
+  });
+
+  it.each(['git diff > out', 'git diff >> out', 'git diff 2>&1', 'git diff &> out', 'git diff $(git log > x)'])(
+    'refuses the output redirection in `%s` outright',
+    (command) => {
+      const refused = inPlaceRun(['git diff', 'git log'])(command);
+      expect(refused).toMatchObject(BLOCK);
+      expect(refused?.reason).toContain('redirects output');
+    },
+  );
+
+  it.each([
+    ['cat <<EOF\nx\nEOF', 'heredoc'],
+    ['git diff <(git log)', 'process substitution'],
+    ["git diff 'unclosed", 'unclosed quote'],
+    ['git diff $(git log', 'unclosed command substitution'],
+  ])('refuses `%s` it cannot read as plain commands (%s)', (command, why) => {
+    const refused = inPlaceRun(['git diff', 'git log', 'cat'])(command);
+    expect(refused).toMatchObject(BLOCK);
+    expect(refused?.reason).toContain(why);
+  });
+
+  it('refuses an input redirection `<` like an output one, and allows the same command without it', () => {
+    const refused = inPlaceRun(['cat'])('cat < /etc/passwd');
+    expect(refused).toMatchObject(BLOCK);
+    expect(refused?.reason).toContain('redirects input');
+    expect(inPlaceRun(['cat'])('cat file')).toBeUndefined();
+    // quoted, it is text the program receives
+    expect(inPlaceRun(['gh pr comment'])('gh pr comment 1 --body "a < b"')).toBeUndefined();
+  });
+
+  // `-exec rm {} \;` ends in an escaped or `+` terminator, so the splitter keeps it in the `find`
+  // part and a bare `find` entry would match it. An argument that runs or deletes is refused by
+  // name. A tool whose LEADING word runs another command (`xargs`, `env`, `nice`, `timeout`,
+  // `sh -c`, `bash -c`, `eval`) needs no such rule: the part starts with that word, so it is
+  // refused unless the list carries that word as an entry.
+  it.each([
+    ['find . -exec rm -rf {} \\;', '-exec'],
+    ['find . -execdir rm {} +', '-execdir'],
+    ['find . -ok rm {} \\;', '-ok'],
+    ['find . -okdir rm {} \\;', '-okdir'],
+    ['find . -name x -delete', '-delete'],
+    ["find . '-exec' rm {} +", '-exec'],
+    ['find . -fprint out', '-fprint'],
+    ['git status && find . -delete', '-delete'],
+  ])('refuses `%s` under the entry `find`, naming %s', (command, flag) => {
+    const refused = inPlaceRun(['find', 'git status'])(command);
+    expect(refused).toMatchObject(BLOCK);
+    expect(refused?.reason).toContain(`"${flag}"`);
+  });
+
+  it('allows a `find` that only reads, and a quoted `-exec` given to another program', () => {
+    expect(inPlaceRun(['find'])('find . -name x')).toBeUndefined();
+    expect(inPlaceRun(['find'])("find . -name '*.ts' -type f")).toBeUndefined();
+    expect(inPlaceRun(['find'])('find . -name "*.ts" -type f')).toBeUndefined();
+    expect(inPlaceRun(['find'])("find . -name '$HOME' -type f")).toBeUndefined();
+    expect(inPlaceRun(['find'])('find . -name \\*.ts')).toBeUndefined();
+    expect(inPlaceRun(['gh pr comment'])('gh pr comment 1 --body "find -exec rm"')).toBeUndefined();
+  });
+
+  // The shell expands a word before `find` sees it, and the guard compares the text it can read.
+  // So under a program with a row, a word that the shell would still change – an unquoted `$`,
+  // a backtick, `$'…'`, `{`, `}`, `~` or a glob character, or a `$`/backtick inside double
+  // quotes – is refused before expansion rather than guessed. A quoted glob stays allowed; an
+  // unquoted one (`find . -name *.ts`) is refused (Fable's verification on #861, round 2).
+  it.each([
+    ['find . -e${HOME:0:0}xec rm -rf {} \\;', '-e${HOME:0:0}xec'],
+    ['find . -e$(echo x)ec rm -rf {} \\;', '-e$(echo'],
+    ["find . -e$'x'ec rm -rf {} \\;", "-e$'x'ec"],
+    ['find sub -d${HOME:0:0}elete', '-d${HOME:0:0}elete'],
+    ['find . -e`echo x`ec rm {} +', '-e`echo'],
+    ['find . "-e${X}xec" rm {} +', '"-e${X}xec"'],
+    ['find . -{ex,}ec rm {} +', '-{ex,}ec'],
+    ['find ~ -name x', '~'],
+    ['find . -name *.ts', '*.ts'],
+    ['find . -name x?', 'x?'],
+    ['find . -name [ab]', '[ab]'],
+  ])('refuses `%s` under the entry `find`: %s cannot be checked before expansion', (command, word) => {
+    const refused = inPlaceRun(['find', 'echo'])(command);
+    expect(refused).toMatchObject(BLOCK);
+    expect(refused?.reason).toContain(`"${word}"`);
+    expect(refused?.reason).toContain('cannot be checked before expansion');
+  });
+
+  it('leaves the expansion rule to programs with a row: `git diff $X` and `echo *` stay allowed', () => {
+    expect(inPlaceRun(['git diff'])('git diff $X')).toBeUndefined();
+    expect(inPlaceRun(['echo'])('echo *')).toBeUndefined();
+  });
+
+  it.each(['xargs rm', 'env rm x', 'nice rm x', 'timeout 5 rm x', 'sh -c "rm x"', 'bash -c "rm x"', 'eval "rm x"'])(
+    'refuses `find . | %s`: a command-running leading word is an ordinary part that matches no entry',
+    (tail) => {
+      expect(inPlaceRun(['find'])(`find . | ${tail}`)).toMatchObject(BLOCK);
+    },
+  );
+
+  it('does not let a comment\'s quote hide the next line\'s command', () => {
+    expect(inPlaceRun(['git diff'])("git diff # it's\nrm x\n'")).toMatchObject(BLOCK);
+  });
+
+  it('does not let an ANSI-C `\\\'` end the quote early', () => {
+    expect(inPlaceRun(['echo'])("echo $'a\\'b'")).toBeUndefined();
+    expect(inPlaceRun(['echo'])("echo $'a\\'; rm x'")).toBeUndefined();
+    expect(inPlaceRun(['echo'])("echo $'a\\''; rm x")).toMatchObject(BLOCK);
+  });
+
+  // N1 of Fable's round-2 re-check on #861: `find () ( rm -rf sub/sentinel.txt ); find` splits
+  // into a part that starts with `find ` and a bare `find`, and bash reads the first as a function
+  // named `find` whose body the second part then runs. An unquoted `(` or `)` is never an argument
+  // of a simple command – it is a subshell, a function definition or a syntax error – and a part
+  // led by `function`, `{` or `}` is a definition or a group, so the whole command is refused.
+  it.each([
+    ['find () ( rm -rf sub/sentinel.txt ); find', 'defines a function'],
+    ['cat () ( rm -rf sub/sentinel.txt ); cat', 'defines a function'],
+    ['ls () ( rm -rf sub/sentinel.txt ); ls', 'defines a function'],
+    ['find () ( rm -rf sub/sentinel.txt )\nfind', 'defines a function'],
+    ['find() ( rm -rf sub/sentinel.txt ); find', 'defines a function'],
+    ['find () { rm x; }; find', 'defines a function'],
+    ['cat () { rm x; }; cat', 'defines a function'],
+    ['cat(){ rm x; }; cat', 'defines a function'],
+    ['function find ( rm -rf sub/sentinel.txt ); find', 'defines a function'],
+    ['function find { rm x; }; find', 'defines a function'],
+    ['{ rm x; }', 'defines a function'],
+    ['( rm x )', 'defines a function'],
+    ['find $( (rm x) )', 'defines a function'],
+  ])('refuses `%s`, which groups commands or defines a function', (command, why) => {
+    const refused = inPlaceRun(['find', 'cat', 'ls', 'rm', 'function', '{', '}'])(command);
+    expect(refused).toMatchObject(BLOCK);
+    expect(refused?.reason).toContain(why);
+  });
+
+  it('keeps the parentheses a program receives: escaped, quoted, or inside a quoted --jq filter', () => {
+    expect(inPlaceRun(['find'])('find . \\( -name a -o -name b \\)')).toBeUndefined();
+    expect(inPlaceRun(['find'])("find . '(' -name a ')'")).toBeUndefined();
+    expect(inPlaceRun(['gh pr view'])("gh pr view 1 --json labels --jq '.labels[] | select(.name)'")).toBeUndefined();
+    expect(inPlaceRun(['git diff', 'git log'])('git diff $(git log -1 --format=%H)')).toBeUndefined();
+  });
+
+  // N2 of the same re-check: bash drops a backslash at the end of the input, and a backslash-newline
+  // joins two lines, so `find sub -delete\` runs `find sub -delete` while the guard read the word
+  // `-delete\`. A backslash that ends the input or a line is refused, inside double quotes too.
+  it.each([
+    ['find sub -delete\\'],
+    ['find sub -name x -delete\\'],
+    ['find sub -delete\\\n'],
+    ['find sub -delete\\\n -name x'],
+    ['find sub -dele\\\nte'],
+    ['fi\\\nnd sub -delete'],
+    ['find sub "-dele\\\nte"'],
+    ['\\'],
+  ])('refuses %j, which ends a line with a backslash', (command) => {
+    const refused = inPlaceRun(['find'])(command);
+    expect(refused).toMatchObject(BLOCK);
+    expect(refused?.reason).toContain('ends a line with a backslash');
+  });
+
+  it('keeps an escaped backslash, and a backslash before any other character', () => {
+    expect(inPlaceRun(['echo'])('echo a\\\\')).toBeUndefined();
+    expect(inPlaceRun(['echo'])('echo "a\\\\"')).toBeUndefined();
+    expect(inPlaceRun(['find'])('find . -name a\\ b')).toBeUndefined();
+    expect(inPlaceRun(['echo'])("echo 'a\\\nb'")).toBeUndefined();
+  });
+
+  it('leaves the other tools alone, and still applies the worktree check to an allowed command', () => {
+    const { f, run } = worktreeRun(['git']);
+    const handler = load({ 'xezar-bash-allowlist': JSON.stringify(['git']) });
+    expect(handler(write(join(tmpdir(), 'x')), { cwd: tmpdir() })).toBeUndefined();
+    expect(run('git status')).toBeUndefined();
+    expect(run(`git -C ${f.primary} status`)).toMatchObject(BLOCK);
+  });
+
+  it('fails closed on an allowlist flag that is not `null` or a JSON list of strings, for every tool', () => {
+    for (const flag of ['not-json', '[1]', '{}', '"git"', true]) {
+      const handler = load({ 'xezar-bash-allowlist': flag });
+      expect(handler(bash('git diff'), { cwd: tmpdir() })).toMatchObject(BLOCK);
+      expect(handler(write('notes.md'), { cwd: tmpdir() })).toMatchObject(BLOCK);
+    }
+  });
+
+  // Fable's table on #861: `[]` must lock the shell down exactly as `["  "]` does, on a run with a
+  // worktree and on one without, and a missing flag must not read as "no allowlist".
+  it.each([
+    ['[]', '[]'],
+    ['["  "]', '["  "]'],
+  ])('refuses every bash command, and nothing else, with the list %s', (_name, flag) => {
+    const inPlace = load({ 'xezar-bash-allowlist': flag });
+    const refused = inPlace(bash('git diff'), { cwd: tmpdir() });
+    expect(refused).toMatchObject(BLOCK);
+    expect(refused?.reason).toContain('has no entry');
+    expect(inPlace(bash('rm -f sub/sentinel.txt'), { cwd: tmpdir() })).toMatchObject(BLOCK);
+    expect(inPlace(write(join(tmpdir(), 'x')), { cwd: tmpdir() })).toBeUndefined();
+    const f = fixture();
+    const worktree = load({ 'xezar-worktree-root': f.worktree, 'xezar-primary-root': f.primary, 'xezar-bash-allowlist': flag });
+    expect(worktree(bash('rm -f sub/sentinel.txt'), { cwd: f.worktree })).toMatchObject(BLOCK);
+    expect(worktree(write('notes.md'), { cwd: f.worktree })).toBeUndefined();
+  });
+
+  it('reads `null` as "this step has no allowlist" and refuses bash when the flag is absent', () => {
+    const f = fixture();
+    const roots = { 'xezar-worktree-root': f.worktree, 'xezar-primary-root': f.primary };
+    expect(load({ ...roots, 'xezar-bash-allowlist': 'null' })(bash('rm -f sub/sentinel.txt'), { cwd: f.worktree })).toBeUndefined();
+    const absent = load(roots);
+    const refused = absent(bash('rm -f sub/sentinel.txt'), { cwd: f.worktree });
+    expect(refused).toMatchObject(BLOCK);
+    expect(refused?.reason).toContain('flag is missing');
+    // the missing flag says nothing about the other tools, which keep the worktree check
+    expect(absent(write('notes.md'), { cwd: f.worktree })).toBeUndefined();
+  });
+
+  it('keeps failing closed when only one worktree flag is present, allowlist or not', () => {
+    const f = fixture();
+    const handler = load({ 'xezar-primary-root': f.primary, 'xezar-bash-allowlist': '["git diff"]' });
+    expect(handler(bash('git diff'), { cwd: f.worktree })).toMatchObject(BLOCK);
+  });
+});
