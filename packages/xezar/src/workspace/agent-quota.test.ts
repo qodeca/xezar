@@ -102,6 +102,25 @@ describe('AgentQuotaStore', () => {
     expect(agentQuotaResponseSchema.parse(store.answer()).accounts).toHaveLength(1);
   });
 
+  it('orders known profiles before stored-only rows regardless of observation arrival order', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'xez-quota-'));
+    const store = new AgentQuotaStore({ path: join(root, 'quota.json'), now: () => Date.parse('2026-09-22T14:24:00Z') });
+    await store.put(normalizeClaudeUsage(claudeDefault, 'named', at('2026-09-22T14:20:00Z')));
+    await store.put(normalizeCodexRateLimits(codexDefault, 'removed', at('2026-09-22T14:22:00Z')));
+    await store.put(normalizeClaudeUsage(claudeDefault, 'default', at('2026-09-22T14:20:00Z')));
+
+    expect(store.answer({}, [
+      { runner: 'claude', accountId: 'default' },
+      { runner: 'claude', accountId: 'named' },
+      { runner: 'codex', accountId: 'default' },
+    ]).accounts.map(({ runner, accountId }) => `${runner}:${accountId}`)).toEqual([
+      'claude:default',
+      'claude:named',
+      'codex:default',
+      'codex:removed',
+    ]);
+  });
+
   it('reproduces the frozen documented sample and the consumer accepts the full answer', async () => {
     const root = await mkdtemp(join(tmpdir(), 'xez-quota-'));
     const store = new AgentQuotaStore({ path: join(root, 'quota.json'), now: () => Date.parse(frozen.generatedAt) });

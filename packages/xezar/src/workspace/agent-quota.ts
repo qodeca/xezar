@@ -117,8 +117,10 @@ export class AgentQuotaStore {
   ): AgentQuotaProducerResponse {
     const now = this.now();
     const records = new Map(this.records);
+    const knownKeys: string[] = [];
     for (const known of knownAccounts) {
       const key = this.key(known.runner, known.accountId);
+      knownKeys.push(key);
       if (records.has(key)) continue;
       records.set(key, agentQuotaProducerAccountSchema.parse({
         ...known,
@@ -134,7 +136,13 @@ export class AgentQuotaStore {
         notReported: ['shortWindow', 'weeklyWindow', 'modelWindows', 'credits', 'planType'],
       }));
     }
-    const accounts = [...records.values()]
+    // `listAgentProfiles` supplies the public ordering contract (default first,
+    // then named logins). Stored observations arrive in runtime order, so put
+    // known rows first and retain stored-only rows afterward for forward-safe
+    // reads of observations whose account registration has since disappeared.
+    const orderedKeys = [...knownKeys, ...[...records.keys()].filter((key) => !knownKeys.includes(key))];
+    const accounts = orderedKeys
+      .map((key) => records.get(key)!)
       .filter((record) => selector.provider === undefined || record.runner === selector.provider)
       .filter((record) => selector.accountId === undefined || record.accountId === selector.accountId)
       .map((record) => ({
