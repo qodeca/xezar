@@ -359,6 +359,27 @@ explicit instruction rather than silently. It ships as a minor bump called out a
   `npx skills remove …` / `npx skills add qodeca/xezar-skills --skill '*'` migration in the
   README moves an `npx skills` install. xezar migrates neither automatically.
 
+## 10. Agent quota answer fixture (`packages/contract/src/__fixtures__/agent-quota.expected.json`)
+
+The committed fixture added by #867 S1 is the byte-level contract for the future
+`GET /api/v1/workspace/agent-quota` response and for the result carried by the MCP
+`project_config` actions `read_quota` and `check_quota`. Readers use the tolerant
+`agentQuotaResponseSchema`: it strips unknown object keys, accepts unknown `notReported` names and
+checks null pairing only for the five facts this version knows. Producers and the sibling fixture
+test use `agentQuotaProducerResponseSchema`, which rejects unknown keys and names; the test compares
+`JSON.stringify(parsed, null, 2) + "\n"` to the committed bytes and pins those bytes to an
+independently reviewed SHA-256 digest. This section protects the fixture now; the HTTP route and MCP
+runtime actions do not exist in S1 and join their own protected inventories when they land.
+
+The surface is **additive only**. A consumer must ignore unknown object keys. Adding a new key is
+compatible when every existing key keeps its meaning and representation; removing or renaming a
+key, changing a field's type or enum meaning, reordering the canonical fixture, changing its
+two-space indentation, or dropping its one trailing newline is breaking. The three status values
+are exactly `ok`, `out` and `unknown`; only an `out` row carries the account-level `resetsAt`.
+`unknown` stays distinct from `ok`: in particular, the frozen `qodeca-priv` row is `unknown`
+because its successful S0 reply contained no quota percentages and therefore established neither
+capacity nor exhaustion.
+
 ## Follow-up inbox default flip (pre-rename issue 471) — deliberate, 2026-07-17
 
 The global follow-up inbox shipped enabled (spec 007; pre-rename issue 444 added the per-run `generateFollowups`
