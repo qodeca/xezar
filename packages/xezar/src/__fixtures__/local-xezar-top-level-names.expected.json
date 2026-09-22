@@ -1,0 +1,205 @@
+{
+  "schemaVersion": 1,
+  "scope": "local-xezar-top-level",
+  "names": [
+    {
+      "name": "runs.json",
+      "kind": "file",
+      "reason": "The run index (runs/store.ts, runs/run-index.ts).",
+      "feature": null
+    },
+    {
+      "name": "runs",
+      "kind": "directory",
+      "reason": "The per-run event NDJSON / handoff / images directory (runs/store.ts, workflows/run.ts).",
+      "feature": null
+    },
+    {
+      "name": "worktrees",
+      "kind": "directory",
+      "reason": "Task git worktrees (git-worktree.ts WORKTREES_DIR, mcp/resource-ownership.ts).",
+      "feature": null
+    },
+    {
+      "name": "tmp",
+      "kind": "directory",
+      "reason": "Per-run agent scratch directories (runs/agent-tmpdir.ts, project-data-paths.ts projectScratchDir).",
+      "feature": null
+    },
+    {
+      "name": "kit",
+      "kind": "directory",
+      "reason": "The project kit of a home-folder launch: projectKitDir moves the kit here so init and PUT /config never turn the user workspace file into a kit (project-kit-paths.ts).",
+      "feature": null
+    },
+    {
+      "name": "writer-claims",
+      "kind": "directory",
+      "reason": "Cross-process writer-instance claims (runs/project-writer.ts).",
+      "feature": null
+    },
+    {
+      "name": "ui-state.json",
+      "kind": "file",
+      "reason": "Per-repo GUI state, direct write (ui-state.ts).",
+      "feature": null
+    },
+    {
+      "name": "launch-key",
+      "kind": "file",
+      "reason": "The `/new` prefill key, direct write, mode 0600 (server/launch-key.ts).",
+      "feature": null
+    },
+    {
+      "name": "todos.json",
+      "kind": "file",
+      "reason": "The follow-up inbox (todos.ts). `XEZ_TODOS_FILE` is only a usable path when follow-up generation is on.",
+      "feature": "followups"
+    },
+    {
+      "name": "onboarding-state.json",
+      "kind": "file",
+      "reason": "Onboarding progress (onboarding/state.ts).",
+      "feature": null
+    },
+    {
+      "name": "audit.ndjson",
+      "kind": "file",
+      "reason": "The MCP audit trail, with `.1`–`.4` rotation and `.lock` (mcp/audit-trail.ts, AUDIT_TRAIL_FILE).",
+      "feature": null
+    },
+    {
+      "name": "mcp-audit.ndjson",
+      "kind": "file",
+      "reason": "The legacy audit trail name, read-only, never written (mcp/audit-trail.ts, LEGACY_AUDIT_TRAIL_FILE).",
+      "feature": null
+    },
+    {
+      "name": "mcp-connection.json",
+      "kind": "file",
+      "reason": "The MCP bridge connection descriptor (mcp/connection-file.ts, MCP_CONNECTION_FILE).",
+      "feature": null
+    },
+    {
+      "name": "mcp",
+      "kind": "directory",
+      "reason": "The MCP subdirectory (leader cursors, …) (mcp/event-journal.ts, mcp/reconnect.ts).",
+      "feature": null
+    },
+    {
+      "name": "mcp-owner-claims",
+      "kind": "directory",
+      "reason": "Cross-process MCP ownership claims (workspace/project-owner.ts, OWNER_CLAIM_DIR).",
+      "feature": null
+    },
+    {
+      "name": "mcp-operations.ndjson",
+      "kind": "file",
+      "reason": "The MCP operation-receipt journal (mcp/operation-receipts.ts, RECEIPT_JOURNAL_FILE).",
+      "feature": null
+    },
+    {
+      "name": "mcp-operations.json",
+      "kind": "file",
+      "reason": "The MCP operation-receipt snapshot (mcp/operation-receipts.ts, RECEIPT_SNAPSHOT_FILE).",
+      "feature": null
+    },
+    {
+      "name": "automations.json",
+      "kind": "file",
+      "reason": "Automation definitions (automations/store.ts DEFINITIONS, automations/coordinator.ts).",
+      "feature": "automations"
+    },
+    {
+      "name": "automation-state.json",
+      "kind": "file",
+      "reason": "Automation runtime state (automations/store.ts STATE).",
+      "feature": "automations"
+    },
+    {
+      "name": "automation-receipts.ndjson",
+      "kind": "file",
+      "reason": "Automation receipts (automations/store.ts RECEIPTS).",
+      "feature": "automations"
+    },
+    {
+      "name": "automation-log.ndjson",
+      "kind": "file",
+      "reason": "Automation log (automations/store.ts LOG).",
+      "feature": "automations"
+    },
+    {
+      "name": "automation-poll.lock",
+      "kind": "file",
+      "reason": "The automation poller’s cross-process lock (automations/store.ts, POLL_LOCK).",
+      "feature": "automations"
+    },
+    {
+      "name": "pi-leader.json",
+      "kind": "file",
+      "reason": "The pi leader socket descriptor (mcp/adapters/pi-link.ts PI_LEADER_FILE; written by scripts/pi-leader-extension.ts DESCRIPTOR_FILE).",
+      "feature": "pi"
+    },
+    {
+      "name": "tasks",
+      "kind": "directory",
+      "reason": "Task evidence directories — written by the kit, read here for evidence-root resolution (core/run-evidence-roots.ts).",
+      "feature": null
+    },
+    {
+      "name": "machine-state.json",
+      "kind": "file",
+      "reason": "Per-machine facts of a single-project root — single-project mode only (workspace/project-machine-state.ts).",
+      "feature": "single-project-mode"
+    },
+    {
+      "name": "cache",
+      "kind": "directory",
+      "reason": "The project layout’s skills cache — single-project mode only (state-layout.ts).",
+      "feature": "single-project-mode"
+    },
+    {
+      "name": "ipc",
+      "kind": "directory",
+      "reason": "The project layout’s IPC directory — single-project mode only (state-layout.ts).",
+      "feature": "single-project-mode"
+    }
+  ],
+  "literalSuffixes": [
+    ".tmp",
+    ".lock",
+    ".takeover",
+    ".lock.takeover"
+  ],
+  "templatedSuffixes": [
+    {
+      "id": "atomic-write",
+      "appliesTo": "any-file-name",
+      "parts": [
+        {
+          "literal": "."
+        },
+        {
+          "kind": "digits"
+        },
+        {
+          "literal": "."
+        },
+        {
+          "kind": "lowerHex"
+        },
+        {
+          "literal": ".tmp"
+        }
+      ]
+    }
+  ],
+  "rotations": [
+    {
+      "base": "audit.ndjson",
+      "separator": ".",
+      "from": 1,
+      "to": 4
+    }
+  ]
+}
