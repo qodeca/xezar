@@ -64,25 +64,46 @@ export interface CodexRunnerOptions {
  * network-blocked `workspace-write` sandbox as an explicit restriction.
  *
  * What IS honoured from `spec.allowedTools` (#849): one signal, `isReadOnlyStep` —
- * a list naming neither `Edit` nor `Write` starts AND resumes the thread with
- * `sandbox: read-only`, which covers Codex's own file edits and the shell it runs.
- * Nothing finer: Codex has no per-tool allowlist, so the individual names and
- * `spec.bashAllowlist` are ignored, and the sandbox does not cover MCP tools — what
- * a run may reach there is the per-thread MCP scoping of `codex-run-isolation.ts`
+ * a list naming neither `Edit` nor `Write` starts AND resumes the thread CONFINED:
+ * `sandbox: workspace-write` with `sandbox_workspace_write` set through the thread's
+ * `config` override to network on and the run's own roots (`spec.additionalDirectories`:
+ * the evidence dir, handoff file dir and per-run TMPDIR) as the only writable paths
+ * besides the worktree. That covers Codex's own file edits and the shell it runs.
+ * Not `read-only`: that sandbox also drops all network and every write outside the
+ * worktree, so a review or QA step could read a diff and then not post, label or
+ * record its verdict (#850 review). Nothing finer either: Codex has no per-tool
+ * allowlist, so the individual names and `spec.bashAllowlist` are ignored, the
+ * worktree itself stays writable, and the sandbox does not cover MCP tools — what a
+ * run may reach there is the per-thread MCP scoping of `codex-run-isolation.ts`
  * (#324), which applies to every run, read-only or not.
  */
+/** The workspace-write policy a confined read-only step carries in its `config` override. */
+export interface CodexWorkspaceWrite {
+  network_access: boolean;
+  writable_roots: string[];
+}
+
 /**
- * The thread's sandbox. A read-only step (#849) gets `read-only` whatever the network knob says.
- * Otherwise full access is the `auto` preset shared by all backends: besides avoiding prompts, it
- * keeps container installs working when bubblewrap cannot create a UID map (#563), and
+ * The thread's sandbox, and the workspace-write policy that goes with it. A read-only step (#849)
+ * is confined: `workspace-write` with network on and the run's own directories writable, unless
+ * XEZ_CODEX_NETWORK=0, which keeps precedence and turns its network off too. Every other step keeps
+ * what it had: full access is the `auto` preset shared by all backends — besides avoiding prompts,
+ * it keeps container installs working when bubblewrap cannot create a UID map (#563) — and
  * XEZ_CODEX_NETWORK=0 remains the backwards-compatible explicit `workspace-write` opt-out.
  */
-export function codexSandbox(
+export function codexPermissions(
   allowedTools: readonly string[] | undefined,
+  additionalDirectories: readonly string[] | undefined,
   env: NodeJS.ProcessEnv = process.env,
-): 'read-only' | 'workspace-write' | 'danger-full-access' {
-  if (isReadOnlyStep(allowedTools)) return 'read-only';
-  return env.XEZ_CODEX_NETWORK === '0' ? 'workspace-write' : 'danger-full-access';
+): { sandbox: 'workspace-write' | 'danger-full-access'; workspaceWrite?: CodexWorkspaceWrite } {
+  const networkOff = env.XEZ_CODEX_NETWORK === '0';
+  if (isReadOnlyStep(allowedTools)) {
+    return {
+      sandbox: 'workspace-write',
+      workspaceWrite: { network_access: !networkOff, writable_roots: [...(additionalDirectories ?? [])] },
+    };
+  }
+  return { sandbox: networkOff ? 'workspace-write' : 'danger-full-access' };
 }
 
 export class CodexAppServerRunner implements AgentRunner {
@@ -382,15 +403,19 @@ class CodexSession implements AgentSession {
     await this.rpc.initialize();
     const isolation = await this.readIsolation();
 
+    // `codexPermissions` owns the choice; start and resume both carry it (#849).
+    const permissions = codexPermissions(this.spec.allowedTools, this.spec.additionalDirectories);
     const overrides = {
       model: this.spec.model,
       cwd: this.spec.cwd,
-      // `codexSandbox` owns the choice; start and resume both carry it (#849).
-      sandbox: codexSandbox(this.spec.allowedTools),
+      sandbox: permissions.sandbox,
       approvalPolicy: 'never',
       // Only the project's own MCP servers; no home-config server, plugin, app or leader bridge
-      // (#324, #323). Resume carries it too: a stored thread reloads its servers on reopen.
-      config: isolation.config,
+      // (#324, #323). Resume carries it too: a stored thread reloads its servers on reopen. A
+      // confined read-only step adds its workspace-write policy to the same override.
+      config: permissions.workspaceWrite
+        ? { ...isolation.config, sandbox_workspace_write: permissions.workspaceWrite }
+        : isolation.config,
     };
     if (this.spec.resume && this.spec.sessionId) {
       await this.rpc.request('thread/resume', { threadId: this.spec.sessionId, ...clean(overrides) });

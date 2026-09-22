@@ -124,7 +124,7 @@ Export variables before starting xezar, for example `XEZ_REVIEW_GATE=1 xezar`. T
 | `XEZ_CLAUDE_BIN`, `XEZ_CODEX_BIN`, `XEZ_OPENCODE_BIN`, `XEZ_PI_BIN` | Override backend executable discovery on `PATH`. |
 | `XEZ_CODEX_REASONING` | `auto` (default), `concise`, `detailed` or `none`; unknown values use `auto`. |
 | `XEZ_APPROVAL_GATE=1` | Claude `acceptEdits` approval mode instead of the default denial of tools needing approval. |
-| `XEZ_CODEX_NETWORK=0` | Codex workspace-write, network-blocked sandbox instead of full access. |
+| `XEZ_CODEX_NETWORK=0` | Codex workspace-write, network-blocked sandbox instead of full access; a read-only step keeps its own writable folders and loses only the network. |
 | `XEZ_SKILLS_AUTO_UPDATE=0` | Disable automatic tracked-skill update application unless the stored setting overrides it. |
 | `XEZ_AUTONOMOUS_DEFAULT`, `XEZ_WORKTREE_DEFAULT` | Exact `0`/`1` New Task seeds; stored composer defaults win. |
 | `XEZ_DISABLE_REPO_LOCK=1` | Bypass the repository-root lease. Concurrent in-place runs can overwrite each other's work; isolated worktrees are unaffected. |

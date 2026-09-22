@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import type { AgentEvent } from './agent-runner.js';
 import { KILL_GRACE_MS } from './claude-cli-runner.js';
-import { CodexAppServerRunner, codexSandbox } from './codex-app-server-runner.js';
+import { CodexAppServerRunner, codexPermissions } from './codex-app-server-runner.js';
 
 /** Only the escalation tests below swap the child out; every other test in this
  *  file keeps spawning the real mock app-server through the untouched `spawn`. */
@@ -319,20 +319,27 @@ describe("a Codex run does not reach the person's own MCP servers (#324)", () =>
 });
 
 /**
- * #849 C — a read-only step (its `allowedTools` names neither Edit nor Write) runs the thread in
- * Codex's `read-only` sandbox, on start AND on resume; every other step keeps the sandbox it had.
- * The mock refuses a thread whose sandbox differs from MOCK_CODEX_EXPECT_SANDBOX and logs each
- * thread request, so the params are pinned whole rather than one field at a time.
+ * #849 C (revised after the #850 review) — a read-only step (its `allowedTools` names neither Edit
+ * nor Write) runs the thread CONFINED: `workspace-write` with network on and the run's own
+ * directories as the only writable roots besides the worktree, on start AND on resume; every other
+ * step keeps the sandbox it had. The mock refuses a thread whose sandbox differs from
+ * MOCK_CODEX_EXPECT_SANDBOX and logs each thread request, so the params are pinned whole rather
+ * than one field at a time.
  */
-describe('a read-only step runs Codex in the read-only sandbox (#849)', () => {
+describe('a read-only step runs Codex confined to its worktree and its own roots (#849)', () => {
   const mockBin = fileURLToPath(
     new URL('./__fixtures__/codex/mock-codex-app-server.mjs', import.meta.url),
   );
   const REVIEW = ['Read', 'Grep', 'Glob', 'Bash'];
   const DEFAULT = ['Read', 'Edit', 'Write', 'Grep', 'Glob', 'Bash'];
+  const ROOTS = ['/data/runs', '/data/tasks/run-1', '/data/tmp/run-1'];
   const noServers = { features: { plugins: false, apps: false } };
+  const confined = {
+    ...noServers,
+    sandbox_workspace_write: { network_access: true, writable_roots: ROOTS },
+  };
 
-  async function threadRequest(opts: { allowedTools: string[]; expect: string; resume?: boolean; network?: string }) {
+  async function threadRequest(opts: { allowedTools: string[]; expect: string; resume?: boolean }) {
     const dir = mkdtempSync(join(tmpdir(), 'xez-849-'));
     const log = join(dir, 'thread.ndjson');
     try {
@@ -342,12 +349,9 @@ describe('a read-only step runs Codex in the read-only sandbox (#849)', () => {
           userPrompt: 'review it',
           cwd: dir,
           allowedTools: opts.allowedTools,
+          additionalDirectories: ROOTS,
           ...(opts.resume ? { resume: true, sessionId: 'th_mock_1' } : {}),
-          env: {
-            MOCK_CODEX_EXPECT_SANDBOX: opts.expect,
-            MOCK_CODEX_THREAD_LOG: log,
-            ...(opts.network ? { XEZ_CODEX_NETWORK: opts.network } : {}),
-          },
+          env: { MOCK_CODEX_EXPECT_SANDBOX: opts.expect, MOCK_CODEX_THREAD_LOG: log },
         },
         undefined,
         { autoEndAfterFirstTurn: true },
@@ -360,22 +364,22 @@ describe('a read-only step runs Codex in the read-only sandbox (#849)', () => {
     }
   }
 
-  it('starts the code-review thread with sandbox read-only', async () => {
-    expect(await threadRequest({ allowedTools: REVIEW, expect: 'read-only' })).toEqual([
-      { method: 'thread/start', params: { cwd: '<cwd>', sandbox: 'read-only', approvalPolicy: 'never', config: noServers } },
+  it('starts the code-review thread confined: workspace-write, network on, the run roots writable', async () => {
+    expect(await threadRequest({ allowedTools: REVIEW, expect: 'workspace-write' })).toEqual([
+      { method: 'thread/start', params: { cwd: '<cwd>', sandbox: 'workspace-write', approvalPolicy: 'never', config: confined } },
     ]);
   }, 15_000);
 
-  it('resumes the code-review thread with sandbox read-only', async () => {
-    expect(await threadRequest({ allowedTools: REVIEW, expect: 'read-only', resume: true })).toEqual([
+  it('resumes the code-review thread with the same confined params', async () => {
+    expect(await threadRequest({ allowedTools: REVIEW, expect: 'workspace-write', resume: true })).toEqual([
       {
         method: 'thread/resume',
-        params: { threadId: 'th_mock_1', cwd: '<cwd>', sandbox: 'read-only', approvalPolicy: 'never', config: noServers },
+        params: { threadId: 'th_mock_1', cwd: '<cwd>', sandbox: 'workspace-write', approvalPolicy: 'never', config: confined },
       },
     ]);
   }, 15_000);
 
-  it('keeps danger-full-access for the default writing list, on start and on resume', async () => {
+  it('keeps danger-full-access and no workspace-write policy for the default writing list, on start and on resume', async () => {
     expect(await threadRequest({ allowedTools: DEFAULT, expect: 'danger-full-access' })).toEqual([
       { method: 'thread/start', params: { cwd: '<cwd>', sandbox: 'danger-full-access', approvalPolicy: 'never', config: noServers } },
     ]);
@@ -387,13 +391,23 @@ describe('a read-only step runs Codex in the read-only sandbox (#849)', () => {
     ]);
   }, 30_000);
 
-  it('picks the sandbox from the one signal, with XEZ_CODEX_NETWORK=0 only narrowing a writing step', () => {
-    expect(codexSandbox(REVIEW, {})).toBe('read-only');
-    expect(codexSandbox(REVIEW, { XEZ_CODEX_NETWORK: '0' })).toBe('read-only');
-    expect(codexSandbox([], {})).toBe('read-only');
-    expect(codexSandbox(DEFAULT, {})).toBe('danger-full-access');
-    expect(codexSandbox(DEFAULT, { XEZ_CODEX_NETWORK: '0' })).toBe('workspace-write');
-    expect(codexSandbox(undefined, {})).toBe('danger-full-access');
-    expect(codexSandbox(['Read', 'Edit'], {})).toBe('danger-full-access');
+  it('picks the permissions from the one signal, with XEZ_CODEX_NETWORK=0 keeping precedence over network', () => {
+    const roots = ['/r'];
+    expect(codexPermissions(REVIEW, roots, {})).toEqual({
+      sandbox: 'workspace-write',
+      workspaceWrite: { network_access: true, writable_roots: ['/r'] },
+    });
+    expect(codexPermissions(REVIEW, roots, { XEZ_CODEX_NETWORK: '0' })).toEqual({
+      sandbox: 'workspace-write',
+      workspaceWrite: { network_access: false, writable_roots: ['/r'] },
+    });
+    expect(codexPermissions([], undefined, {})).toEqual({
+      sandbox: 'workspace-write',
+      workspaceWrite: { network_access: true, writable_roots: [] },
+    });
+    expect(codexPermissions(DEFAULT, roots, {})).toEqual({ sandbox: 'danger-full-access' });
+    expect(codexPermissions(DEFAULT, roots, { XEZ_CODEX_NETWORK: '0' })).toEqual({ sandbox: 'workspace-write' });
+    expect(codexPermissions(undefined, roots, {})).toEqual({ sandbox: 'danger-full-access' });
+    expect(codexPermissions(['Read', 'Edit'], roots, {})).toEqual({ sandbox: 'danger-full-access' });
   });
 });
