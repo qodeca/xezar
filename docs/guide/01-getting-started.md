@@ -130,6 +130,15 @@ For a fuller, opinionated setup on a clean GitHub project with a Claude Code lea
 role skills, gates, labels and branch protection – xezar-skills' `xez-onboard-opinionated` skill
 does the same job end to end; see
 its [one-prompt bootstrap](https://github.com/qodeca/xezar-skills/blob/main/docs/bootstrap-prompt.md).
+In a project that kit onboards, `.xezar/routing.json` (schema `.xezar/routing.schema.json`) holds model
+and lane routing. Its leader uses `node .xezar/checks/route.mjs --check` to validate it, `--rows` for
+classification rows without lane data, `node .xezar/checks/route.mjs <row id>` for that row's lane
+order, and `--table` for a human
+view; `--file <path>` is onboarding-only before the first merge and marks output `source=unmerged`.
+The kit's `.xezar/docs/account-limits.md` table records each runner/login budget as `ok`, `unknown`, or
+`out` with its reset time; its `.xezar/docs/routing.md` § 3 tells the leader to read it, and it will
+feed xezar's agent-quota status when that status ships. Earlier kit versions used prose
+`model-routing.md` for routing.
 
 ## To upgrade
 

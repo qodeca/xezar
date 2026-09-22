@@ -77,6 +77,24 @@ launcher that kit installs at the project root, `scripts/xezar-leader.sh`, or by
 kit's own variable, not xezar's: its session-start hook loads the leader guide only when
 `XEZAR_LEADER=1` is set, so every other Claude Code session in the project stays ordinary.
 
+That kit-onboarded project keeps its model and lane routing in `.xezar/routing.json`; its schema is
+`.xezar/routing.schema.json`. The leader reads it with `node .xezar/checks/route.mjs`: `--check`
+validates the file, `--rows` lists classification rows without lane data,
+`node .xezar/checks/route.mjs <row id>` prints that row's lane order, and `--table` prints a human
+view. `--file <path>` is only for onboarding before the first
+merge, and labels its output `source=unmerged`. Earlier kit versions used the prose
+`model-routing.md` form. The kit's `.xezar/docs/account-limits.md` budget table records each
+runner/login pair as `ok`, `unknown`, or `out`, with its reset time; the leader reads it as described
+in the kit's `.xezar/docs/routing.md` § 3, and it will supply xezar's agent-quota status when that
+status ships.
+
+xezar 0.19.0 is the minimum engine for xezar-skills 3.0.0; projects that must stay on 0.18 stay on xezar-skills 2.1.1.
+
+From 0.19.0, `xezar lease gates --probe` is the supported check for gate serialisation: it prints one
+JSON line such as `{"lease":{"gates":true},"slots":1}` and exits 0 when the lease is available.
+Non-zero exit or a different output means the installed xezar has no gate lease. Parse that JSON and
+ignore unrecognised keys; the human-readable `usage:` text is not a contract.
+
 **First contact.** Call `health`, then `discover_project`. Call `leader_events` with action `attach` and a fresh operation ID, then action `status`. Check `self.attached`, `canPush` and any blocker; this is **attached**, not yet **delivery verified**.
 
 **What a push looks like.** A real event appears in the session as a `<channel source="xezar" …>` message. It identifies xezar as the source, distinguishes the event from user instruction or approval, and names the cursor to acknowledge. This is the delivery evidence; after accounting for it, call `leader_events` action `ack` with that cursor and a fresh operation ID.
