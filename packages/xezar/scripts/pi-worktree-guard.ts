@@ -69,7 +69,11 @@
  * allowed; an unquoted one (`find . -name *.ts`) is refused. The table is only as complete as its
  * rows: an allowlist entry must never name a program that can run a command or write a file from an
  * argument (`sed`, `awk`, `sort -o`, `dd`, `tee`, an interpreter), because nothing here reads that
- * program's arguments. Unlike the worktree check above this is a strict allowlist: anything the
+ * program's arguments. An unquoted `(` or `)`, or a part led by `function`, `{` or `}`, groups
+ * commands or defines a function (`find () ( rm x ); find` would make `find` run `rm`), so the
+ * command is refused outright. A backslash that ends the input or a line is refused too: the shell
+ * drops it or joins the next line, so `find sub -delete\` would run `find sub -delete` while the
+ * guard read `-delete\`. Unlike the worktree check above this is a strict allowlist: anything the
  * splitter cannot read – an unclosed quote or substitution – is refused.
  *
  * Xezar passes the flag whenever it loads this extension: `null` for a step without a
@@ -621,6 +625,15 @@ function guardToolCall(
 const ALLOWLIST_FLAG = 'xezar-bash-allowlist';
 const ALLOWLIST_REASON = 'Blocked by Xezar: this step allows only the shell commands in its bashAllowlist.';
 
+/** bash drops a backslash that ends the input and joins a line that ends in one to the next, so the
+ *  word the guard would read (`-delete\`) is not the word the program receives (`-delete`). */
+const TRAILING_BACKSLASH = 'it ends a line with a backslash, which the shell would drop';
+/** An unquoted `(` or `)` is never an argument of a simple command: it is a subshell, a function
+ *  definition (`find () ( rm x ); find`) or a syntax error. A part led by `function`, `{` or `}`
+ *  defines a function or groups commands. Either way no entry can vouch for what it runs. */
+const GROUPING = 'it groups commands or defines a function, which is refused outright';
+const GROUPING_WORDS = new Set(['function', '{', '}']);
+
 /** The simple commands a command line runs, read the way the shell splits it, or why it cannot be. */
 interface CommandParts {
   parts: string[];
@@ -638,7 +651,6 @@ function commandParts(command: string, start = 0, close?: ')' | '`', depth = 0):
   const parts: string[] = [];
   const nested: string[] = [];
   let current = '';
-  let parens = 0;
   const finish = () => {
     const part = current.trim();
     if (part.length > 0) parts.push(part);
@@ -659,11 +671,12 @@ function commandParts(command: string, start = 0, close?: ')' | '`', depth = 0):
       finish();
       return { parts: [...parts, ...nested], end: i };
     }
-    if (close === ')' && char === ')' && parens === 0) {
+    if (close === ')' && char === ')') {
       finish();
       return { parts: [...parts, ...nested], end: i };
     }
     if (char === '\\') {
+      if (next === undefined || next === '\n') return fail(TRAILING_BACKSLASH, i);
       current += command.slice(i, i + 2);
       i += 2;
       continue;
@@ -681,7 +694,10 @@ function commandParts(command: string, start = 0, close?: ')' | '`', depth = 0):
     if (char === '"') {
       let j = i + 1;
       while (j < command.length && command[j] !== '"') {
-        if (command[j] === '\\') j += 2;
+        if (command[j] === '\\') {
+          if (command[j + 1] === '\n') return fail(TRAILING_BACKSLASH, j);
+          j += 2;
+        }
         else if (command[j] === '`' || (command[j] === '$' && command[j + 1] === '(')) {
           const backtick = command[j] === '`';
           const inner = substitution(j + (backtick ? 1 : 2), backtick ? '`' : ')');
@@ -714,8 +730,7 @@ function commandParts(command: string, start = 0, close?: ')' | '`', depth = 0):
     if (char === '<' && next === '<') return fail('it uses a heredoc or here-string ("<<"), which is refused outright', i);
     if (char === '<' && next === '(') return fail('it uses process substitution ("<("), which is refused outright', i);
     if (char === '<') return fail('it redirects input ("<"), which is refused outright', i);
-    if (char === '(') parens++;
-    if (char === ')' && parens > 0) parens--;
+    if (char === '(' || char === ')') return fail(GROUPING, i);
     if (char === ';' || char === '&' || char === '|' || char === '\n') {
       finish();
       i++;
@@ -836,6 +851,10 @@ function allowlistRefusal(event: ToolCall, entries: string[]): ToolGuardResult |
   if (split.problem) return { block: true, reason: `${ALLOWLIST_REASON} The command was refused because ${split.problem}.` };
   if (split.parts.length === 0) return { block: true, reason: `${ALLOWLIST_REASON} The command is empty.` };
   for (const part of split.parts) {
+    const [first] = partWords(part);
+    if (first !== undefined && GROUPING_WORDS.has(first.raw)) {
+      return { block: true, reason: `${ALLOWLIST_REASON} The part "${part}" was refused: ${GROUPING}.` };
+    }
     const why = commandRunningArgument(part);
     if (why !== undefined) return { block: true, reason: `${ALLOWLIST_REASON} The part "${part}" was refused: ${why}.` };
   }

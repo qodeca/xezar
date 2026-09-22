@@ -1017,8 +1017,12 @@ shipped step may run changes, so it is recorded here:
   shell would still change – an unquoted `$`, a backtick, `$'…'`, `{`, `}`, `~` or a glob character,
   or a `$` or backtick inside double quotes – cannot be checked before expansion and is refused:
   `find sub -d${HOME:0:0}elete` and `find . -name *.ts` are refused, `find . -name '*.ts'` is
-  allowed. A command the extension cannot split (an unclosed quote or substitution) is refused as
-  well. The `find` row is the only such table row: an entry must never name a program that can run
+  allowed. A command that groups commands or defines a function – an unquoted `(` or `)`, or a
+  part led by `function`, `{` or `}` – is refused outright, because `find () ( rm x ); find` makes
+  the entry `find` run `rm`. A command with a backslash that ends the input or a line is refused
+  outright, because the shell drops it or joins the next line and `find sub -delete\` would run
+  `find sub -delete`. A command the extension cannot split (an unclosed quote or substitution) is
+  refused as well. The `find` row is the only such table row: an entry must never name a program that can run
   a command or write a file from an argument (`sed`, `awk`, `sort -o`, `dd`, `tee`, an
   interpreter). A
   step that relied on "bash is dropped" now gets this restricted `bash`; a workflow that wants no

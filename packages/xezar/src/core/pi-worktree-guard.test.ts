@@ -800,6 +800,63 @@ describe('pi honours a step bashAllowlist command by command (#856)', () => {
     expect(inPlaceRun(['echo'])("echo $'a\\''; rm x")).toMatchObject(BLOCK);
   });
 
+  // N1 of Fable's round-2 re-check on #861: `find () ( rm -rf sub/sentinel.txt ); find` splits
+  // into a part that starts with `find ` and a bare `find`, and bash reads the first as a function
+  // named `find` whose body the second part then runs. An unquoted `(` or `)` is never an argument
+  // of a simple command – it is a subshell, a function definition or a syntax error – and a part
+  // led by `function`, `{` or `}` is a definition or a group, so the whole command is refused.
+  it.each([
+    ['find () ( rm -rf sub/sentinel.txt ); find', 'defines a function'],
+    ['cat () ( rm -rf sub/sentinel.txt ); cat', 'defines a function'],
+    ['ls () ( rm -rf sub/sentinel.txt ); ls', 'defines a function'],
+    ['find () ( rm -rf sub/sentinel.txt )\nfind', 'defines a function'],
+    ['find() ( rm -rf sub/sentinel.txt ); find', 'defines a function'],
+    ['find () { rm x; }; find', 'defines a function'],
+    ['cat () { rm x; }; cat', 'defines a function'],
+    ['cat(){ rm x; }; cat', 'defines a function'],
+    ['function find ( rm -rf sub/sentinel.txt ); find', 'defines a function'],
+    ['function find { rm x; }; find', 'defines a function'],
+    ['{ rm x; }', 'defines a function'],
+    ['( rm x )', 'defines a function'],
+    ['find $( (rm x) )', 'defines a function'],
+  ])('refuses `%s`, which groups commands or defines a function', (command, why) => {
+    const refused = inPlaceRun(['find', 'cat', 'ls', 'rm', 'function', '{', '}'])(command);
+    expect(refused).toMatchObject(BLOCK);
+    expect(refused?.reason).toContain(why);
+  });
+
+  it('keeps the parentheses a program receives: escaped, quoted, or inside a quoted --jq filter', () => {
+    expect(inPlaceRun(['find'])('find . \\( -name a -o -name b \\)')).toBeUndefined();
+    expect(inPlaceRun(['find'])("find . '(' -name a ')'")).toBeUndefined();
+    expect(inPlaceRun(['gh pr view'])("gh pr view 1 --json labels --jq '.labels[] | select(.name)'")).toBeUndefined();
+    expect(inPlaceRun(['git diff', 'git log'])('git diff $(git log -1 --format=%H)')).toBeUndefined();
+  });
+
+  // N2 of the same re-check: bash drops a backslash at the end of the input, and a backslash-newline
+  // joins two lines, so `find sub -delete\` runs `find sub -delete` while the guard read the word
+  // `-delete\`. A backslash that ends the input or a line is refused, inside double quotes too.
+  it.each([
+    ['find sub -delete\\'],
+    ['find sub -name x -delete\\'],
+    ['find sub -delete\\\n'],
+    ['find sub -delete\\\n -name x'],
+    ['find sub -dele\\\nte'],
+    ['fi\\\nnd sub -delete'],
+    ['find sub "-dele\\\nte"'],
+    ['\\'],
+  ])('refuses %j, which ends a line with a backslash', (command) => {
+    const refused = inPlaceRun(['find'])(command);
+    expect(refused).toMatchObject(BLOCK);
+    expect(refused?.reason).toContain('ends a line with a backslash');
+  });
+
+  it('keeps an escaped backslash, and a backslash before any other character', () => {
+    expect(inPlaceRun(['echo'])('echo a\\\\')).toBeUndefined();
+    expect(inPlaceRun(['echo'])('echo "a\\\\"')).toBeUndefined();
+    expect(inPlaceRun(['find'])('find . -name a\\ b')).toBeUndefined();
+    expect(inPlaceRun(['echo'])("echo 'a\\\nb'")).toBeUndefined();
+  });
+
   it('leaves the other tools alone, and still applies the worktree check to an allowed command', () => {
     const { f, run } = worktreeRun(['git']);
     const handler = load({ 'xezar-bash-allowlist': JSON.stringify(['git']) });
