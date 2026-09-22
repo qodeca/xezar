@@ -273,7 +273,7 @@ is gone says so and keeps its line so the history reads.
   - places the desktop band INSIDE `sidebar-footer`, above its controls, rather than as a sibling band above it: the same look (one hairline above the band, none between), and a cockpit with no chip keeps the footer byte-for-byte.
 - **Rule**: the shipped behaviour above; each item returns to the mockup's form when the contract grows the field it needs.
 - **Fix**: a contract revision (a new `schemaVersion`) that adds the missing facts, then the matching mockup behaviour; or revise the mockup to the slimmer answer.
-- **Final disposition (#867 S5, 2026-09-23)**: kept, with a reason — the merged contract wins over the spec and the mockup (the leader's brief for S5); every difference is listed in the S5 pull request.
+- **Final disposition (#867, 2026-09-22)**: kept, with a reason (S5) — the merged contract wins over the spec and the mockup (the leader's brief for S5); every difference is listed in the S5 pull request.
 
 ## Comment vs code
 
