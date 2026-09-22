@@ -28,7 +28,7 @@ Choose **Reclaim now** to apply that keep-limit immediately. It removes eligible
 
 The per-row **Delete** action is different: its confirmation removes both the worktree directory and branch. Preserve work you want before confirming it.
 
-![Global resource settings](../screenshots/0.16.0/settings-resources-dark-1280.png)
+![Global resource settings](../screenshots/0.18.0/settings-resources-dark-1280.png)
 
 ## To understand how the diff base is chosen
 
@@ -40,7 +40,7 @@ If the agent switches to another branch, xezar also checks that branch's recorde
 
 For a task started with **Worktree** off, xezar records the starting commit as the baseline while reading the shared working copy. Work done there by another editor can therefore appear in the task's view too.
 
-![Task diff in the Changes tab](../screenshots/0.16.0/task-changes-dark-1280.png)
+![Task diff in the Changes tab](../screenshots/0.18.0/task-changes-dark-1280.png)
 
 ## To use the Git view
 
@@ -52,7 +52,7 @@ Choose **Git** in the project sidebar to inspect the project's main working tree
 
 Check which working tree you intend to inspect: task tabs show the task's location, while this sidebar view shows the project's checkout. Read any Git refusal before retrying a branch change.
 
-![Repository Git view](../screenshots/0.16.0/repo-git-dark-1280.png)
+![Repository Git view](../screenshots/0.18.0/repo-git-dark-1280.png)
 
 ## To choose the base branch
 

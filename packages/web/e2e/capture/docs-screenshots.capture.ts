@@ -40,15 +40,15 @@ import {
  */
 
 /**
- * Reproducible 0.16.0 cockpit captures (#448 PR-1b, re-shot each release): every still in
+ * Reproducible cockpit captures (#448 PR-1b, re-shot each release): every still in
  * `manifest.ts`, then the tour GIF, from one dry-run fixture cockpit.
  *
  *   npm run build
  *   npm run capture:screenshots -w @qodeca/xezar-web
  *   npm run capture:screenshots -w @qodeca/xezar-web -- -t tasks-list   # one state
  *
- * Output goes straight to `docs/screenshots/0.16.0/`. Nothing here asserts product behaviour;
- * the `expect`s only refuse to write a picture of the wrong state.
+ * Output goes straight to `SCREENSHOT_DIR` (`docs/screenshots/0.18.0/`). Nothing here asserts
+ * product behaviour; the `expect`s only refuse to write a picture of the wrong state.
  */
 
 const repoRoot = resolve(import.meta.dirname, '../../../..')
@@ -258,7 +258,7 @@ describe(`${SCREENSHOT_DIR}/README.md`, () => {
     const rows = SHOT_STATES.flatMap((state) =>
       state.variants.map(([theme, width]) => `| [\`${shotFileName(state.name, theme, width)}\`](${shotFileName(state.name, theme, width)}) | ${state.shows} | ${theme} | ${width} × ${HEIGHT[width]} |`),
     )
-    const readme = `# xezar 0.16.0 cockpit screenshots
+    const readme = `# xezar ${docsVersion} cockpit screenshots
 
 Captured from a dry-run cockpit (\`XEZ_DRY_RUN=1\` with a sandboxed \`XEZ_HOME\`, no login, no network)
 with fixture data: a demo project with tasks in every status on Claude Code, Codex and pi, a second

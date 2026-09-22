@@ -52,7 +52,7 @@ Open **All tasks**. Search across projects, filter the list, and choose grouping
 
 The filters, grouping, search text, and Active/Archived choice are kept in the URL, so you can bookmark a useful view. A shared tag brings related repositories into the same view; **Untagged** filters tasks belonging to projects without tags and appears only when some tag exists in the workspace.
 
-![All tasks across tagged projects](../screenshots/0.16.0/all-tasks-dark-1280.png)
+![All tasks across tagged projects](../screenshots/0.18.0/all-tasks-dark-1280.png)
 
 ## To limit one project's parallel tasks
 

@@ -36,13 +36,13 @@ you can `cat` and fix by hand.
 
 ## 60-second tour
 
-<a href="docs/screenshots/0.16.0/tour.gif"><img src="docs/screenshots/0.16.0/tour.gif" width="100%" alt="A short loop of the cockpit: tasks running in parallel, the queue starting, a live thread, review and a draft PR"></a>
+<a href="docs/screenshots/0.18.0/tour.gif"><img src="docs/screenshots/0.18.0/tour.gif" width="100%" alt="A short loop of the cockpit: tasks running in parallel, the queue starting, a live thread, review and a draft PR"></a>
 
 <table>
 <tr>
-<td width="33%"><a href="docs/screenshots/0.16.0/task-thread-dark-1280.png"><picture><source media="(prefers-color-scheme: light)" srcset="docs/screenshots/0.16.0/task-thread-light-1280.png"><img src="docs/screenshots/0.16.0/task-thread-dark-1280.png" alt="A running task streaming agent text, tool calls and results live"></picture></a></td>
-<td width="33%"><a href="docs/screenshots/0.16.0/compare-variants-dark-1280.png"><picture><source media="(prefers-color-scheme: light)" srcset="docs/screenshots/0.16.0/compare-variants-light-1280.png"><img src="docs/screenshots/0.16.0/compare-variants-dark-1280.png" alt="Two variants of the same task compared side by side"></picture></a></td>
-<td width="33%"><a href="docs/screenshots/0.16.0/github-issues-dark-1280.png"><picture><source media="(prefers-color-scheme: light)" srcset="docs/screenshots/0.16.0/github-issues-light-1280.png"><img src="docs/screenshots/0.16.0/github-issues-dark-1280.png" alt="The GitHub view handing an open issue to an agent"></picture></a></td>
+<td width="33%"><a href="docs/screenshots/0.18.0/task-thread-dark-1280.png"><picture><source media="(prefers-color-scheme: light)" srcset="docs/screenshots/0.18.0/task-thread-light-1280.png"><img src="docs/screenshots/0.18.0/task-thread-dark-1280.png" alt="A running task streaming agent text, tool calls and results live"></picture></a></td>
+<td width="33%"><a href="docs/screenshots/0.18.0/compare-variants-dark-1280.png"><picture><source media="(prefers-color-scheme: light)" srcset="docs/screenshots/0.18.0/compare-variants-light-1280.png"><img src="docs/screenshots/0.18.0/compare-variants-dark-1280.png" alt="Two variants of the same task compared side by side"></picture></a></td>
+<td width="33%"><a href="docs/screenshots/0.18.0/github-issues-dark-1280.png"><picture><source media="(prefers-color-scheme: light)" srcset="docs/screenshots/0.18.0/github-issues-light-1280.png"><img src="docs/screenshots/0.18.0/github-issues-dark-1280.png" alt="The GitHub view handing an open issue to an agent"></picture></a></td>
 </tr>
 <tr>
 <td align="center"><b>Watch a run live</b><br>Every step, tool call and token as it happens.</td>

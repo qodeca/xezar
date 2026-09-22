@@ -71,7 +71,7 @@ Open **Workflows**, create a new workflow or select an existing one, and add ski
 
 Name the workflow and review the YAML preview before choosing **Save**. Saving asks for overwrite confirmation when the generated `<slug>.yaml` file already exists; different names can produce the same filename. Creating a file that shadows built-in `quick-task` needs no overwrite confirmation unless that file already exists. Choose **Auto** to propose a sequence from a brief, then review and edit it before saving. A planner fallback is shown as a one-step proposal.
 
-![Workflows builder](../screenshots/0.16.0/workflows-dark-1280.png)
+![Workflows builder](../screenshots/0.18.0/workflows-dark-1280.png)
 
 ## To import or export a workflow
 
