@@ -3043,6 +3043,10 @@ describe('project_config: every refusal names the next step (#819 item 8)', () =
     const connect = await invoke({ action: 'connect_provider' }, { service: null });
     expect(connect.structured.nextStep).not.toMatch(/https?:\/\//);
     expect(connect.structured.nextStep).toContain('`xez providers connect <provider>`');
+    // Review round 1 (F4). Break: sending the person to start a cockpit in exactly the state where
+    // one is already running — hosted mode is the only way this fallback is reached.
+    expect(connect.structured.nextStep).toContain('the Providers settings in the running cockpit (no address is recorded here)');
+    expect(connect.structured.nextStep).not.toContain('starts in the project folder');
   });
 
   // Break: a registry next step that sends a single-project leader to a command the narrowing refuses.

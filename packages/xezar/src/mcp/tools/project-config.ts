@@ -263,9 +263,10 @@ export interface RefusalNextStepContext {
   readonly narrowed: boolean;
 }
 
-/** How the PERSON reaches one cockpit page: its address when known, else how to start the cockpit. */
+/** How the PERSON reaches one cockpit page: its address when known. The address is unknown only in
+ *  hosted mode, where a cockpit is already running, so the page is named in THAT cockpit. */
 function personPage(ctx: RefusalNextStepContext, page: keyof McpDiscoveryCockpit['pages'], name: string): string {
-  return ctx.cockpit ? `${name} at ${ctx.cockpit.pages[page]}` : `${name} in the xezar cockpit, which \`xez\` starts in the project folder`;
+  return ctx.cockpit ? `${name} at ${ctx.cockpit.pages[page]}` : `${name} in the running cockpit (no address is recorded here)`;
 }
 
 /**

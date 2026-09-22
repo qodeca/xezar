@@ -54,6 +54,11 @@ export function providerForActiveRun(run: RunRecord): ProviderId {
   return 'claude';
 }
 
+/**
+ * The refusal names its next step for BOTH readers (#819 item 8): the person in the cockpit gets the
+ * page, and a leader — which reaches this route through the MCP and never opens the cockpit (#439) —
+ * gets the tool call or the command, in the same words `discover_project` uses.
+ */
 export function unavailableProviderMessage(
   required: readonly ProviderId[],
   response: ProviderStatusResponse,
@@ -61,10 +66,10 @@ export function unavailableProviderMessage(
   for (const provider of required) {
     const row = response.providers.find(({ provider: id }) => id === provider);
     if (row?.enabled === false) {
-      return `${LABEL[provider]} is disabled. Enable it in Settings → Agents → Providers.`;
+      return `${LABEL[provider]} is disabled. Enable it in Settings → Agents → Providers, or with project_config set_provider_enabled (provider ${provider}, enabled true).`;
     }
     if (row?.status !== 'connected') {
-      return `${LABEL[provider]} credentials are unavailable. Authorize it in Settings → Agents → Providers.`;
+      return `${LABEL[provider]} credentials are unavailable. Authorize it in Settings → Agents → Providers, or run \`xez providers connect ${provider}\` on the machine that runs xezar.`;
     }
   }
   return null;

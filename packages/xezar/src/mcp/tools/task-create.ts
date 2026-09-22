@@ -16,6 +16,7 @@ import { modelConflictsWithRunner } from '../../core/model-presets.ts';
 import type { AppType } from '../../server/app-type.ts';
 import { McpServiceAdapter, type ServiceDispatch, type StartRunValue } from '../service-adapter.ts';
 import { NOT_CONNECTED_NEXT, defineTool, errorResult, textResult, type McpToolContext, type McpToolResult } from '../tool.ts';
+import { cockpitLinks, providersPage } from './discovery.ts';
 
 /**
  * `task_create` — create and plan tasks with the composer form's options, defaults and validation
@@ -148,11 +149,11 @@ export const taskCreateTool = defineTool({
     const api = scopedClient(service, ctx.project.id);
     switch (args.action) {
       case 'start':
-        return startTask(args, api, new McpServiceAdapter({ projectId: ctx.project.id, service }));
+        return startTask(args, api, new McpServiceAdapter({ projectId: ctx.project.id, service }), ctx.project.id);
       case 'plan':
         return planTask(args, api);
       case 'start_from_inbox':
-        return startFromInbox(args, api);
+        return startFromInbox(args, api, ctx.project.id);
       case 'save_plan':
         return savePlan(args, api);
     }
@@ -252,6 +253,15 @@ const RUNNER_ORDER: readonly Runner[] = ['claude', 'codex', 'opencode', 'pi'];
 function usableRunners(rows: readonly { provider: string; status: string; enabled?: boolean }[]): Runner[] {
   const usable = new Set(rows.filter((row) => row.enabled === true && row.status === 'connected').map((row) => row.provider));
   return RUNNER_ORDER.filter((runner) => usable.has(runner));
+}
+
+/**
+ * The composer's "no usable provider" gate, with its next step (#819 item 8). The cockpit shows the
+ * sentence alone because the person is already looking at the Providers card; a leader never opens
+ * the cockpit (#439), so it gets the same command and tool call `discover_project` names.
+ */
+function noUsableProviderMessage(projectId: string): string {
+  return `Connect an agent provider before starting a task. discover_project says why each agent cannot run. A person signs one in by running \`xez providers connect <provider>\` on the machine that runs xezar, or from ${providersPage(cockpitLinks(projectId))}; a disabled one is turned back on with project_config set_provider_enabled (provider <provider>, enabled true).`;
 }
 
 /** `resolveRunner` (web `new-task-form.ts`). */
@@ -397,7 +407,7 @@ function refusal(operationId: string, status: number, error: string): McpToolRes
 
 // ---- actions -----------------------------------------------------------------------------------
 
-async function startTask(args: TaskCreateArgs, api: Api, adapter: McpServiceAdapter): Promise<McpToolResult> {
+async function startTask(args: TaskCreateArgs, api: Api, adapter: McpServiceAdapter, projectId: string): Promise<McpToolResult> {
   const { operationId } = args;
   const [state, skills, workflows] = await Promise.all([
     composerState(api),
@@ -408,7 +418,7 @@ async function startTask(args: TaskCreateArgs, api: Api, adapter: McpServiceAdap
   // The composer's two gates: providers resolved with a usable runner, and the catalogs loaded.
   if (!state.providers.ok) return refusal(operationId, 409, 'Provider authentication could not be verified.');
   const runners = usableRunners(state.providers.value.providers);
-  if (runners.length === 0) return refusal(operationId, 409, 'Connect an agent provider before starting a task.');
+  if (runners.length === 0) return refusal(operationId, 409, noUsableProviderMessage(projectId));
   if (!skills.ok || !workflows.ok) return errorResult('The workflows and skills could not be read — try again.');
   if (!state.config.ok) return errorResult('The project settings could not be read — try again.');
 
@@ -874,7 +884,7 @@ async function planTask(args: TaskCreateArgs, api: Api): Promise<McpToolResult> 
   });
 }
 
-async function startFromInbox(args: TaskCreateArgs, api: Api): Promise<McpToolResult> {
+async function startFromInbox(args: TaskCreateArgs, api: Api, projectId: string): Promise<McpToolResult> {
   const { operationId } = args;
   const todoId = args.todoId ?? '';
   // Same rule as the adapter's run ids: a dot segment would resolve to a different route.
@@ -885,7 +895,7 @@ async function startFromInbox(args: TaskCreateArgs, api: Api): Promise<McpToolRe
   // The Inbox card's gate (`canRun`) is the composer's provider gate.
   if (!state.providers.ok) return refusal(operationId, 409, 'Provider authentication could not be verified.');
   const runners = usableRunners(state.providers.value.providers);
-  if (runners.length === 0) return refusal(operationId, 409, 'Connect an agent provider before starting a task.');
+  if (runners.length === 0) return refusal(operationId, 409, noUsableProviderMessage(projectId));
   if (!state.config.ok) return errorResult('The project settings could not be read — try again.');
   const config = state.config.value;
   // `useResolvedEngine` + `engineBody` (web `components/engine-pills.tsx`).

@@ -7,11 +7,15 @@
   cockpit page to give the person. `discover_project` carries the cockpit's address as `cockpit`
   (the project page plus the providers, agent accounts and MCP connection pages) and the `health`
   tool as `cockpitUrl` – the running cockpit's real address, left out when it is not known, such as
-  in hosted mode. `GET /api/v1/health` is unchanged. (#819)
+  in hosted mode. `GET /api/v1/health` is unchanged. Starting a task on an agent that is disabled
+  or not signed in names the fix the same way: `project_config set_provider_enabled` for a disabled
+  one, `xez providers connect <provider>` for one that is not signed in, and the install command for
+  one that is not installed. (#819)
 - ✨ **`xezar providers connect <provider> [--account <id>]` signs an agent tool in from the
   terminal.** It opens a login terminal on the machine that runs xezar, the same sequence as
   **Connect** in the cockpit's Providers settings, and needs no running cockpit. It refuses in
-  hosted mode before it reads or opens anything. (#819)
+  hosted mode before it reads or opens anything, and names the agent's own login command to run on
+  the machine where it runs tasks. (#819)
 
 ## 🔧 Changed
 

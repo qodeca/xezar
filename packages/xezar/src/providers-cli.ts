@@ -76,9 +76,12 @@ export async function runProvidersCommand(
   }
   // 1. Off the host machine: refuse before the accounts file is read or anything is probed.
   if (!resolveCapabilities(env, deps.bindHost).localHandoff) {
+    // The login command is a static string — naming it resolves no account and probes nothing, and
+    // without it this refusal would send the reader back to where they started.
+    const login = (deps.providerAuth ?? new ProviderAuthService()).loginCommand(provider, null);
     io.error(
       'providers connect: refused — this xezar runs in hosted mode (XEZ_REMOTE=1 or a non-loopback --bind-host), so it does not open a login terminal here. ' +
-        'Sign the agent in on the machine where it runs tasks, with its own login command.',
+        `Sign the agent in on the machine where it runs tasks, with its own login command: ${login}`,
     );
     return 1;
   }
@@ -103,7 +106,9 @@ export async function runProvidersCommand(
   // 3. A folder this shell cannot carry safely is a refusal, never the bare command.
   const command = auth.loginCommand(provider, profile.isDefault ? null : profile.path);
   if (command === null) {
-    io.error(`providers connect: this account's folder cannot be used in a terminal command: ${profile.configDir}`);
+    // The folder comes from a file a repository may commit, and this refusal fires exactly when it
+    // holds characters a shell cannot carry — so control characters never reach the terminal raw.
+    io.error(`providers connect: this account's folder cannot be used in a terminal command: ${profile.configDir.replace(/[\u0000-\u001f\u007f-\u009f]/g, '?')}`);
     return 1;
   }
   // 4. Is it signed in NOW — the account branch evicts first, as the route does.

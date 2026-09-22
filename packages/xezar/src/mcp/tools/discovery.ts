@@ -17,7 +17,7 @@ import {
 } from '@qodeca/xezar-contract';
 import { loadConfig } from '../../config.ts';
 import { agentModelsLocked } from '../../core/agent-model-policy.ts';
-import { ProviderAuthService } from '../../core/provider-auth.ts';
+import { ProviderAuthService, providerInstallHint } from '../../core/provider-auth.ts';
 import { applyProviderEnablement } from '../../core/provider-availability.ts';
 import { detectEnvironment } from '../../core/backend-detect.ts';
 import { resolveCapabilities } from '../../server/capabilities.ts';
@@ -89,9 +89,10 @@ export type DiscoveryContext = McpToolContext & { readonly service?: ServiceDisp
 const RUNNERS: readonly Runner[] = ['claude', 'codex', 'opencode', 'pi'];
 const LABEL: Record<Runner, string> = { claude: 'Claude Code', codex: 'Codex', opencode: 'OpenCode', pi: 'pi' };
 const PROVIDERS_SETTINGS = 'Settings → Agents → Providers';
-/** The page name, followed by its address when this cockpit's address is known. */
-const providersPage = (cockpit: McpDiscoveryCockpit | undefined): string =>
-  cockpit ? `${PROVIDERS_SETTINGS} (${cockpit.pages.providers})` : PROVIDERS_SETTINGS;
+/** The page name, followed by its address when this cockpit's address is known. Without one (hosted
+ *  mode, where a cockpit IS running but this process recorded no address) it is the running cockpit's. */
+export const providersPage = (cockpit: McpDiscoveryCockpit | undefined): string =>
+  cockpit ? `${PROVIDERS_SETTINGS} (${cockpit.pages.providers})` : `${PROVIDERS_SETTINGS} in the running cockpit (no address is recorded here)`;
 const HOSTED_REASON =
   'This xezar runs in hosted mode (XEZ_REMOTE=1 or a non-loopback bind), so actions on the host machine are refused.';
 
@@ -210,7 +211,7 @@ function agentReason(
   }
   switch (signIn) {
     case 'not-installed':
-      return `${label} is not installed on this machine. Once a person installs it, call this tool again.`;
+      return `${label} is not installed on this machine. ${providerInstallHint(runner)} Once a person installs it, call this tool again.`;
     case 'disconnected':
       return `${label} is installed but not signed in. A person signs in by running \`xez providers connect ${runner}\` on the machine that runs xezar, or from ${providersPage(cockpit)}.`;
     default:

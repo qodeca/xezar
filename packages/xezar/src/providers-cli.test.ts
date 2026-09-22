@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import type { ProviderConnectionState } from './core/provider-auth.ts';
 import { runProvidersCommand, type ProvidersCommandDeps } from './providers-cli.ts';
+import { mergeWriteAgentAccounts } from './workspace/agent-accounts.ts';
 
 /**
  * `xezar providers connect` (#819 item 8) — the person's door to the one provider action the MCP
@@ -10,6 +11,8 @@ import { runProvidersCommand, type ProvidersCommandDeps } from './providers-cli.
 
 function harness(state: ProviderConnectionState, opts: { opens?: boolean; env?: NodeJS.ProcessEnv; bindHost?: string } = {}) {
   const reached: string[] = [];
+  /** The `configDir` every `loginCommand` call was given — which login the command signs in. */
+  const loginDirs: (string | null | undefined)[] = [];
   const out: string[] = [];
   const err: string[] = [];
   const deps: ProvidersCommandDeps = {
@@ -26,9 +29,12 @@ function harness(state: ProviderConnectionState, opts: { opens?: boolean; env?: 
         reached.push(`profileStatus:${profile.id}`);
         return { provider, status: state };
       },
-      loginCommand: (provider) => {
+      loginCommand: (provider, configDir) => {
         reached.push('loginCommand');
-        return `${provider} auth login`;
+        loginDirs.push(configDir);
+        // Like the real one: a folder this shell cannot carry is `null`, never the bare command.
+        if (configDir && /[\u0000-\u001f\u007f-\u009f]/.test(configDir)) return null;
+        return configDir ? `CLAUDE_CONFIG_DIR=${configDir} ${provider} auth login` : `${provider} auth login`;
       },
       installHint: () => 'Install it first.',
       forgetProfileStatus: () => {
@@ -40,23 +46,33 @@ function harness(state: ProviderConnectionState, opts: { opens?: boolean; env?: 
       return opts.opens ?? true;
     },
   };
-  return { deps, reached, out, err };
+  return { deps, reached, loginDirs, out, err };
 }
 
 describe('xezar providers connect (#819 item 8)', () => {
   // P7-AC5. Break: a hosted xezar opening (or probing for) a login terminal nobody is sitting at.
+  // Naming the login command is the one call it makes: a static string that reads, probes and
+  // opens nothing.
   it('refuses in hosted mode before it reads, probes or opens anything', async () => {
     const h = harness('disconnected', { env: { XEZ_REMOTE: '1' } });
     expect(await runProvidersCommand(['connect', 'claude'], undefined, h.deps)).toBe(1);
-    expect(h.reached).toEqual([]);
+    expect(h.reached).toEqual(['loginCommand']);
     expect(h.err.join('\n')).toMatch(/refused — this xezar runs in hosted mode/);
+  });
+
+  // Review round 1 (F2). Break: the hosted refusal ending at "its own login command" without
+  // naming one, which sends the person back to where they started.
+  it('names the login command in its hosted-mode refusal', async () => {
+    const h = harness('disconnected', { env: { XEZ_REMOTE: '1' } });
+    expect(await runProvidersCommand(['connect', 'claude'], undefined, h.deps)).toBe(1);
+    expect(h.err.join('\n')).toMatch(/with its own login command: claude auth login$/);
   });
 
   // P7-AC5, the bind half. Break: `--bind-host` on a network interface not counting as hosted.
   it('refuses behind a non-loopback bind host too', async () => {
     const h = harness('disconnected', { bindHost: '0.0.0.0' });
     expect(await runProvidersCommand(['connect', 'claude'], 'work', h.deps)).toBe(1);
-    expect(h.reached).toEqual([]);
+    expect(h.reached).toEqual(['loginCommand']);
   });
 
   // Break: the command not opening the terminal the refused MCP action sends the person to.
@@ -96,6 +112,42 @@ describe('xezar providers connect (#819 item 8)', () => {
     expect(await runProvidersCommand(['connect', 'claude'], 'no-such-account', h.deps)).toBe(1);
     expect(h.err.join('\n')).toContain('unknown claude account: no-such-account');
     expect(h.reached).toEqual([]);
+  });
+
+  describe('a stored account', () => {
+    afterEach(async () => {
+      await mergeWriteAgentAccounts((store) => ({ ...store, accounts: [] }));
+    });
+
+    // Review round 1 (F6). Break: `loginCommand(provider, null)` for a stored account — the command
+    // then signs the person into the BUILT-IN login instead of the account they named.
+    it('signs in the named account, with that account’s own folder', async () => {
+      await mergeWriteAgentAccounts((store) => ({
+        ...store,
+        accounts: [{ id: 'work', provider: 'claude', configDir: '/accounts/work', label: 'Work', addedAt: '2026-09-22T00:00:00.000Z' }],
+      }));
+      const h = harness('disconnected');
+      expect(await runProvidersCommand(['connect', 'claude'], 'work', h.deps)).toBe(0);
+      expect(h.loginDirs).toEqual(['/accounts/work']);
+      expect(h.reached).toContain('open:/work/project:CLAUDE_CONFIG_DIR=/accounts/work claude auth login');
+      expect(h.reached).toContain('profileStatus:work');
+    });
+
+    // Review round 1 (F5). Break: the refusal writing a committed file's folder to a real terminal
+    // raw. The 7-bit ESC is refused when the accounts file is read; the 8-bit CSI (U+009B) is not,
+    // and it is the one that reaches this refusal.
+    it('never writes a control character from the folder to the terminal', async () => {
+      await mergeWriteAgentAccounts((store) => ({
+        ...store,
+        accounts: [{ id: 'work', provider: 'claude', configDir: '/accounts/\u009b31mred\u009b0m', label: 'Work', addedAt: '2026-09-22T00:00:00.000Z' }],
+      }));
+      const h = harness('disconnected');
+      expect(await runProvidersCommand(['connect', 'claude'], 'work', h.deps)).toBe(1);
+      const written = h.err.join('\n');
+      expect(written).toContain("this account's folder cannot be used in a terminal command: /accounts/?31mred?0m");
+      expect(written).not.toMatch(/[\u0000-\u001f\u007f-\u009f]/);
+      expect(h.reached.some((step) => step.startsWith('open:'))).toBe(false);
+    });
   });
 
   // Break: a typo reaching the terminal instead of a named usage error.

@@ -329,6 +329,11 @@ describe('discover_project — unavailable actions carry a reason', () => {
     expect(reason).toMatch(/Claude Code is installed but not signed in/);
     expect(reason).toMatch(/Codex is disabled/);
     expect(reason).toMatch(/OpenCode is not installed/);
+    // Review round 1 (F3). Break: a not-installed reason that names no way to install the agent.
+    expect(reason).toContain('OpenCode is not installed on this machine. Install OpenCode, then run `opencode auth login`.');
+    // Review round 1 (F4). Break: with no address, telling the person to start a cockpit — this
+    // fallback is reached only in hosted mode, where one is already running.
+    expect(reason).toContain('Settings → Agents → Providers in the running cockpit (no address is recorded here)');
     expect(none.agents.every((a) => !a.usable && a.reason)).toBe(true);
 
     const ready = buildDiscovery(facts());

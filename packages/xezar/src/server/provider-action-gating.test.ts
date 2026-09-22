@@ -11,7 +11,7 @@ import type { WorkflowDef } from '../workflows/types.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { createApp } from './server.ts';
 
-const DISABLED_MESSAGE = 'Codex is disabled. Enable it in Settings → Agents → Providers.';
+const DISABLED_MESSAGE = 'Codex is disabled. Enable it in Settings → Agents → Providers, or with project_config set_provider_enabled (provider codex, enabled true).';
 
 const memoryWorkspaceConfig = (disabledProviders: ProviderId[] = ['codex']) => {
   let config: WorkspaceConfig = { ...defaultWorkspaceConfig(), disabledProviders };
@@ -345,7 +345,7 @@ describe('the gate verifies before it refuses', () => {
     const response = await start(app, 'claude');
     expect(response.status).toBe(409);
     expect(await response.json()).toEqual({
-      error: 'Claude Code credentials are unavailable. Authorize it in Settings → Agents → Providers.',
+      error: 'Claude Code credentials are unavailable. Authorize it in Settings → Agents → Providers, or run `xez providers connect claude` on the machine that runs xezar.',
     });
     expect(startRun).not.toHaveBeenCalled();
   });
