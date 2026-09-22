@@ -182,6 +182,20 @@ It is deliberately fail-open, because a lock that cannot be taken must never bec
 
 `gates` is the only lease. Naming another, or leaving the command out, is a usage error and exits 2. The slots live in `~/.cache/xez/gate-slots/` in every layout, including single-project mode, because the contention they bound belongs to one machine rather than to one project.
 
+### To check that the lease is there: `--probe`
+
+```sh
+xezar lease gates --probe
+# {"lease":{"gates":true},"slots":1}
+```
+
+A script that wants to use the lease only when the installed xezar has it should run this and read the answer, rather than run the command wrongly and look for its usage message. The usage message is written for a person: its wording is **not** a contract and may change in any release. The probe is the contract.
+
+- Standard output carries one JSON object on one line and nothing else, and the exit code is 0. `lease.gates` is `true`; `slots` is how many gate runs may hold a slot at once, as this launch resolves `resources.gateSlots` — the project's own value in [single-project mode](#to-keep-the-setup-in-the-project-folder---single-project), **1** when nothing is set.
+- It runs nothing, takes no slot and writes no file. It answers whether this xezar can lease, not whether the slot directory is usable right now, so a missing or unwritable `~/.cache/xez/gate-slots/` gives the same answer — the lease itself runs the command anyway in that case.
+- A xezar without the probe refuses `--probe` with a non-zero exit code, so a non-zero exit, or output that is not this JSON, means "no gate lease here".
+- `--probe` counts only before `--`: `xezar lease gates -- tool --probe` runs `tool --probe` under the lease, as it always did. A probe that also names a command, another lease or an unknown flag is a usage error and exits 2.
+
 ## To manage projects: `projects`
 
 These commands edit/read the workspace registry directly and work without a running server. `XEZ_HOME` selects that registry, except in single-project mode, where the registry is the project's own `.xezar/workspace.json`.
@@ -249,6 +263,7 @@ Use the [server-install guide](../server-install/README.md) for prerequisites an
 | `--global-layout` | Every command: resolve the global layout for this launch, even in a folder that carries `.xezar/workspace.json`. The explicit counterpart of `--single-project`, and it outranks the marker; nothing is moved, renamed or written. `XEZ_GLOBAL_LAYOUT=1` says the same. See [above](#to-ask-for-the-global-layout---global-layout). |
 | `--json` | `state-names` only, and not a global flag: print the published form instead of the table for reading. See [above](#to-list-the-names-of-the-working-state-folder-state-names). |
 | `--status-file <path>` | `lease gates`: write one JSON line recording whether the slot was held, the outcome, which slot and how long it waited. A path that cannot be written is ignored. See [above](#to-stop-check-runs-competing-lease-gates). |
+| `--probe` | `lease gates` only, and not a global flag: print one JSON line saying this xezar can lease gate slots and how many, run nothing and write nothing. See [above](#to-check-that-the-lease-is-there---probe). |
 | `--platform <id>` | Server commands: `ubuntu-vps` or `macosx-ngrok`. Required for install; optional for deploy/uninstall only when saved instance state supplies it. |
 | `--domain <host>` | `ubuntu-vps` server commands only: select the domain's instance; install can create a second independent one. |
 | `--bind-host <host>` | `serve` / `server-install`: bind host, default `127.0.0.1`. An empty value (`--bind-host ""`, or `--bind-host "$HOST"` with `HOST` unset) now binds `127.0.0.1` like an absent flag, without a warning – earlier versions bound every interface. |

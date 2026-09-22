@@ -131,6 +131,10 @@ Usage:
                             resources.gateSlots (default 1). Bounded: after 20
                             minutes of waiting, or if the slot folder cannot be
                             written, it says so and runs <cmd> anyway.
+  xezar lease gates --probe
+                            print one JSON line saying this xezar can lease
+                            gate slots, and how many run together. For a
+                            script: read this, never the usage text
   xezar state-names [--json]
                             list the names this engine writes at the top of the
                             project's working-state folder. With --json, the
@@ -311,7 +315,97 @@ function stateNamesTail(argv: readonly string[]): string[] | null {
   return argv.slice(word.index + 1);
 }
 
+/** What a `lease … --probe` launch asks for, decided before the shared parser runs (#838 B). */
+type LeaseProbeLaunch =
+  | { readonly kind: 'probe'; readonly repo: string | undefined }
+  | { readonly kind: 'usage'; readonly message: string }
+  | { readonly kind: 'help' }
+  | { readonly kind: 'version' };
+
+/**
+ * The `xezar lease gates --probe` launch, or `null` when this launch is not one (#838 B).
+ *
+ * `--probe` counts only BEFORE a `--`: everything after it belongs to the wrapped command, so
+ * `xezar lease gates -- tool --probe` is the ordinary lease running `tool --probe`, exactly as it
+ * was before the probe existed. A launch whose first word is not `lease` is left alone, so the
+ * flag stays unknown to every other command. The whole line is then parsed strictly: a typo, a
+ * lease other than `gates`, an extra word or a command after `--` is a usage error rather than a
+ * probe that half-answered. Global options before or after the words are accepted, and `--repo`,
+ * `--single-project` and `--global-layout` decide which stored `gateSlots` is reported.
+ */
+function leaseProbeLaunch(argv: readonly string[]): LeaseProbeLaunch | null {
+  const options = { ...GLOBAL_OPTIONS, probe: { type: 'boolean' } } as const;
+  const { tokens } = parseArgs({ args: [...argv], options, allowPositionals: true, strict: false, tokens: true });
+  const terminator = tokens.findIndex((token) => token.kind === 'option-terminator');
+  const before = terminator === -1 ? tokens : tokens.slice(0, terminator);
+  if (!before.some((token) => token.kind === 'option' && token.name === 'probe')) return null;
+  const first = before.find((token) => token.kind === 'positional');
+  if (first === undefined || first.value !== 'lease') return null;
+  let parsed;
+  try {
+    parsed = parseArgs({ args: [...argv], options, allowPositionals: true, tokens: true });
+  } catch (err) {
+    return { kind: 'usage', message: `xezar lease: ${err instanceof Error ? err.message : String(err)}` };
+  }
+  if (parsed.values.help) return { kind: 'help' };
+  if (parsed.values.version) return { kind: 'version' };
+  const subject = parsed.positionals[1];
+  if (subject !== 'gates') {
+    return {
+      kind: 'usage',
+      message: `xezar lease: the only lease is "gates", got ${subject === undefined ? 'nothing' : `"${subject}"`}`,
+    };
+  }
+  if (parsed.tokens.some((token) => token.kind === 'option-terminator') || parsed.positionals.length > 2) {
+    return { kind: 'usage', message: 'xezar lease: --probe runs nothing. Leave out `--` and the command.' };
+  }
+  return { kind: 'probe', repo: parsed.values.repo };
+}
+
+/**
+ * Answer `xezar lease gates --probe`: one JSON line on stdout, exit 0, nothing written.
+ *
+ * It resolves the state layout the way the boot does — so single-project mode reports the
+ * project's own `resources.gateSlots` — but installs it only in memory: no first-run import, no
+ * `createProjectStateFiles`, no mode line, and no slot directory is touched. Reading the config
+ * never writes (`loadWorkspaceConfig`), and one it cannot read reports the default, because the
+ * probe answers "can this xezar lease" and the verb itself runs on the default in that case.
+ */
+async function runLeaseProbe(launch: LeaseProbeLaunch): Promise<number> {
+  if (launch.kind === 'help') {
+    console.log(HELP);
+    return 0;
+  }
+  if (launch.kind === 'version') {
+    console.log(readOwnVersion());
+    return 0;
+  }
+  const { LEASE_PROBE_USAGE, leaseProbe, leaseProbeJson } = await import('./lease-probe.ts');
+  if (launch.kind === 'usage') {
+    console.error(launch.message);
+    console.error(LEASE_PROBE_USAGE);
+    return 2;
+  }
+  const cwd = resolve(launch.repo ?? process.cwd());
+  const repoRoot = (await getRepoInfo(cwd))?.root ?? cwd;
+  setActiveStateLayout(resolveStateLayout(repoRoot, process.argv.slice(2), process.env));
+  const slots = await loadWorkspaceConfig()
+    .then((config) => config.resources.gateSlots)
+    .catch(() => undefined);
+  process.stdout.write(leaseProbeJson(leaseProbe(slots)));
+  return 0;
+}
+
 async function main(): Promise<void> {
+  // `lease gates --probe` (#838 B) is answered before the shared parser for the reason
+  // `state-names` is below: its stdout is a contract a caller pipes into a JSON parser, and it
+  // must write no state file in any layout.
+  const leaseProbeArgs = leaseProbeLaunch(process.argv.slice(2));
+  if (leaseProbeArgs !== null) {
+    process.exitCode = await runLeaseProbe(leaseProbeArgs);
+    return;
+  }
+
   // `state-names` (#852) is answered before the shared parser runs, and that is the command rather
   // than an optimisation. Its standard output is a CONTRACT a caller pipes into a JSON parser, so
   // no mode line, no first-run notice and no repository lookup may reach that stream, and no state
