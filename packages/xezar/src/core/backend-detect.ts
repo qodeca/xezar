@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { installParenthetical } from './provider-install.ts';
 
 const exec = promisify(execFile);
 
@@ -59,7 +60,7 @@ async function probeClaude(): Promise<BackendCheck> {
     return {
       name: 'claude',
       available: false,
-      hint: 'install Claude Code (npm i -g @anthropic-ai/claude-code) and log in',
+      hint: `install Claude Code${installParenthetical('claude')} and log in`,
     };
   }
 }
@@ -85,7 +86,7 @@ async function probeCodex(): Promise<BackendCheck> {
     return {
       name: 'codex',
       available: false,
-      hint: 'optional: install the Codex CLI (npm i -g @openai/codex) and log in to use the Codex runner',
+      hint: `optional: install the Codex CLI${installParenthetical('codex')} and log in to use the Codex runner`,
     };
   }
 }
@@ -104,7 +105,7 @@ async function probeOpencode(): Promise<BackendCheck> {
     return {
       name: 'opencode',
       available: false,
-      hint: 'optional: install OpenCode (https://opencode.ai) and configure a provider to use the OpenCode runner',
+      hint: `optional: install OpenCode${installParenthetical('opencode')} and configure a provider to use the OpenCode runner`,
     };
   }
 }
@@ -129,7 +130,7 @@ async function probePi(): Promise<BackendCheck> {
     return {
       name: 'pi',
       available: false,
-      hint: 'optional: install the pi CLI and log in to use the pi runner',
+      hint: `optional: install the pi CLI${installParenthetical('pi')} and log in to use the pi runner`,
     };
   }
 }

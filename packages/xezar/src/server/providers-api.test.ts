@@ -160,7 +160,7 @@ describe('workspace provider API', () => {
         {
           provider: 'opencode',
           status: 'not-installed',
-          hint: 'Install OpenCode, then run `opencode auth login`.',
+          hint: 'Install OpenCode (from https://opencode.ai), then run `opencode auth login`.',
           enabled: true,
         },
         { provider: 'pi', status: 'connected', enabled: true },
@@ -607,7 +607,7 @@ describe('workspace provider API', () => {
 
     expect(response.status).toBe(409);
     expect(await response.json()).toEqual({
-      error: 'Install OpenCode, then run `opencode auth login`.',
+      error: 'Install OpenCode (from https://opencode.ai), then run `opencode auth login`.',
       command: "'opencode' auth login",
     });
     expect(openTerminal).not.toHaveBeenCalled();

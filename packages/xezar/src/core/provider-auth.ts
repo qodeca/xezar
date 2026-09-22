@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { AGENT_MODELS_LOCKED_ENV } from './agent-model-policy.ts';
 import { profileEnv } from './agent-profiles.ts';
 import { parseOpencodeModels } from './opencode-model-catalog.ts';
+import { installThenLogin } from './provider-install.ts';
 import { withEnvPrefix } from './shell-env.ts';
 
 export const PROVIDER_IDS = ['claude', 'codex', 'opencode', 'pi'] as const;
@@ -234,7 +235,7 @@ const DESCRIPTORS: readonly ProviderDescriptor[] = [
     executable: () => process.env.XEZ_CLAUDE_BIN ?? 'claude',
     statusArgs: ['auth', 'status', '--json'],
     loginArgs: ['auth', 'login'],
-    installHint: 'Install Claude Code, then run `claude auth login`.',
+    installHint: installThenLogin('claude', 'Claude Code', 'claude auth login'),
     parse: parseClaudeStatus,
   },
   {
@@ -242,7 +243,7 @@ const DESCRIPTORS: readonly ProviderDescriptor[] = [
     executable: () => process.env.XEZ_CODEX_BIN ?? 'codex',
     statusArgs: ['login', 'status'],
     loginArgs: ['login'],
-    installHint: 'Install the Codex CLI, then run `codex login`.',
+    installHint: installThenLogin('codex', 'the Codex CLI', 'codex login'),
     parse: parseCodexStatus,
   },
   {
@@ -250,7 +251,7 @@ const DESCRIPTORS: readonly ProviderDescriptor[] = [
     executable: () => process.env.XEZ_OPENCODE_BIN ?? 'opencode',
     statusArgs: ['auth', 'list'],
     loginArgs: ['auth', 'login'],
-    installHint: 'Install OpenCode, then run `opencode auth login`.',
+    installHint: installThenLogin('opencode', 'OpenCode', 'opencode auth login'),
     parse: parseOpenCodeStatus,
   },
   {
@@ -258,7 +259,7 @@ const DESCRIPTORS: readonly ProviderDescriptor[] = [
     executable: () => process.env.XEZ_PI_BIN ?? 'pi',
     statusArgs: ['--list-models'],
     loginArgs: ['/login'],
-    installHint: 'Install pi, then run `pi /login`.',
+    installHint: installThenLogin('pi', 'pi', 'pi /login'),
     parse: parsePiStatus,
   },
 ];

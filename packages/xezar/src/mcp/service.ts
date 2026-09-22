@@ -5,7 +5,7 @@ import { createConnection, createServer, type Socket } from 'node:net';
 import type { z } from 'zod';
 import { assertXezarHomeWriteIsSandboxed } from '../paths.ts';
 import { projectDataDir } from '../project-data-paths.ts';
-import { ownCockpitUrl } from '../server/instance-liveness.ts';
+import { cockpitLinks } from './cockpit-address.ts';
 import { ProjectOwnership, sessionExpiredError } from '../workspace/project-owner.ts';
 import {
   IPC_PROTOCOL_VERSION,
@@ -343,8 +343,9 @@ async function answer(
     }
     case 'health': {
       if (ownership.sessionToken(sessionKey) === undefined) return expired(request.id, opts.project.id);
-      // #819 item 8: the address the person opens, only when this process recorded a real one.
-      const cockpitUrl = ownCockpitUrl(opts.project.id);
+      // #819 item 8: the address the person opens, only when this process recorded a real one —
+      // through the one accessor that also applies the hosted check (#838 F).
+      const cockpitUrl = cockpitLinks(opts.project.id)?.url;
       const result: HealthResult = {
         ipcVersion: IPC_PROTOCOL_VERSION,
         xezarVersion: opts.version,

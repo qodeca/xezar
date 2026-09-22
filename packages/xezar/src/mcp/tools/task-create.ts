@@ -16,7 +16,8 @@ import { modelConflictsWithRunner } from '../../core/model-presets.ts';
 import type { AppType } from '../../server/app-type.ts';
 import { McpServiceAdapter, type ServiceDispatch, type StartRunValue } from '../service-adapter.ts';
 import { NOT_CONNECTED_NEXT, defineTool, errorResult, textResult, type McpToolContext, type McpToolResult } from '../tool.ts';
-import { cockpitLinks, providersPage } from './discovery.ts';
+import { cockpitLinks } from '../cockpit-address.ts';
+import { providersPage } from './discovery.ts';
 
 /**
  * `task_create` — create and plan tasks with the composer form's options, defaults and validation
