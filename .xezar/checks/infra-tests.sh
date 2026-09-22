@@ -2573,6 +2573,7 @@ expect_fail "a record name that escapes the evidence directory is refused" \
 if grep -q -- '--readiness\|--record-gate-evidence' \
   "$REPO_ROOT/.xezar/workflows/code-review.yaml" "$REPO_ROOT/.xezar/workflows/qa.yaml" \
   "$REPO_ROOT/.xezar/workflows/design-review.yaml" "$REPO_ROOT/.xezar/workflows/business-analysis.yaml" \
+  "$REPO_ROOT/.xezar/workflows/architecture-review.yaml" \
   "$REPO_ROOT/.xezar/workflows/research.yaml"; then
   bad "read-only roles are never asked for the author's phase facts" "a read-only workflow now runs a gated preflight mode"
 else

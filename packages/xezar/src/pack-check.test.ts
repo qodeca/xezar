@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { TASK_VERDICT_ROLES } from '@qodeca/xezar-contract';
 import { gzipSync, gunzipSync } from 'node:zlib';
 import {
   findArchiveGaps,
@@ -223,5 +224,14 @@ describe('release content check', () => {
     expect(kitNames('/nonexistent-root')).toContain('worktree-preflight');
     expect(PROJECT_SPECIFIC_RULES.length).toBeGreaterThan(0);
     expect(NATIVE_INSTRUCTION_FILE_RULE.id).toBe('native-instruction-file');
+  });
+
+  // #851: a kit verdict workflow is named for its role, and the published contract ships every role
+  // word (`TASK_VERDICT_ROLES`, the MCP `fromFindings.role` enum). A role that became a banned kit
+  // name would fail the archive scan on the engine's own contract. Named break: drop
+  // `architecture-review` from `GENERIC_WORKFLOW_NAMES` while `.xezar/workflows/architecture-review.yaml` exists.
+  it('never bans a verdict role word the published contract ships', () => {
+    const names = kitNames(REPO_ROOT);
+    for (const role of TASK_VERDICT_ROLES) expect(names, role).not.toContain(role);
   });
 });

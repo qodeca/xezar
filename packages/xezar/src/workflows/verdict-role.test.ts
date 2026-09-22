@@ -49,6 +49,7 @@ describe('#851 — the verdictRole step key', () => {
     ['code-review.yaml', 'code-review'],
     ['design-review.yaml', 'design-review'],
     ['qa.yaml', 'qa'],
+    ['architecture-review.yaml', 'architecture-review'],
   ] as const)('the kit verdict workflow %s declares %s on its verdict step', (file, role) => {
     const workflow = workflowFileSchema.parse(
       parseYaml(readFileSync(join(process.cwd(), '.xezar', 'workflows', file), 'utf8')),
