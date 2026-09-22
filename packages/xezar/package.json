@@ -1,6 +1,6 @@
 {
   "name": "@qodeca/xezar",
-  "version": "0.17.0",
+  "version": "0.18.0",
   "description": "Local cockpit for running and tracking AI agent tasks in any project folder, with the Claude Code, Codex, OpenCode or pi CLI you already use — zero config, zero database.",
   "author": "Qodeca",
   "license": "MIT",
@@ -53,8 +53,8 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@qodeca/xezar-api-client": "^0.17.0",
-    "@qodeca/xezar-contract": "^0.17.0",
+    "@qodeca/xezar-api-client": "^0.18.0",
+    "@qodeca/xezar-contract": "^0.18.0",
     "@stryker-mutator/core": "^9.6.1",
     "@stryker-mutator/vitest-runner": "^9.6.1",
     "@types/node": "^20.14.0",
