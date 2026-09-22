@@ -9,7 +9,6 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { after, test } from 'node:test';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { PORT_MAX } from '../../src/cli-settings.ts';
 
 /**
  * Per-project port memory through the REAL `serve` command (#467, AC-02/AC-03).
@@ -427,47 +426,76 @@ async function readRegistry(home: string): Promise<RegistryRow[]> {
 const MOVE_HEADROOM = 2;
 
 /**
- * Spare ports kept ABOVE the deepest move a sentinel's boot can need. `MOVE_HEADROOM` alone only
- * holds while the ports above the sentinel are free, and near the ceiling they need not be: another
- * concurrent invocation of this file holds its own sentinel in the same top band, and serves on the
- * ports it moved to. Accepting only sentinels this far below 65535 keeps that many ports above the
- * deepest move, so a neighbour must take every one of them before a boot runs out of room — the
- * harness case that reproduced #804 was a sentinel at 65533 with a neighbour holding 65534, both
- * inside the band this now rejects.
+ * Where sentinels come from: a band BELOW the operating system's ephemeral range (#874). The OS
+ * hands out `listen(0)` and outgoing-connection ports only from that range — 49152–65535 on macOS
+ * and Windows, 32768–60999 on Linux — so a port under 32768 is taken only by a program that asks
+ * for that exact number. Nothing in this repository does, and every invocation of this file asks
+ * only at the block boundaries below.
+ *
+ * The old sentinel was `listen(0)`, and macOS hands those ports out one after another: the sentinel
+ * was the port the OS gave LAST, and the ports `serve` must move up into were exactly the ones it
+ * gives NEXT — to every server every other test suite on the machine starts. With four or five gate
+ * runs at once, 49 of them were taken before the child finished booting, and `serve` exited 1 with
+ * `no free port in <sentinel>–<sentinel+49>`.
  */
-const SENTINEL_SLACK = 16;
+const SENTINEL_BAND_LOW = 20_000;
+const SENTINEL_BAND_HIGH = 32_767;
+/** A sentinel owns a block: itself, `MOVE_HEADROOM` ports for the moves, and spares above them. */
+const SENTINEL_BLOCK = 8;
+const SENTINEL_BLOCKS = Math.floor((SENTINEL_BAND_HIGH - SENTINEL_BAND_LOW + 1) / SENTINEL_BLOCK);
+assert.ok(SENTINEL_BAND_HIGH < 32_768 && SENTINEL_BAND_LOW > 1_024 && SENTINEL_BLOCK > MOVE_HEADROOM);
+/** The next block to try. Seeded from the pid so two concurrent invocations start apart. */
+let nextSentinelBlock = process.pid % SENTINEL_BLOCKS;
+
+/** Bind `port` on loopback: the held server, or undefined when something else has it. */
+async function tryHold(port: number): Promise<Server | undefined> {
+  const server = createServer();
+  try {
+    await new Promise<void>((resolveListen, rejectListen) => {
+      server.once('error', rejectListen);
+      server.listen(port, '127.0.0.1', () => {
+        server.off('error', rejectListen);
+        resolveListen();
+      });
+    });
+    return server;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'EADDRINUSE') throw err;
+    return undefined;
+  }
+}
 
 /**
- * Ask the OS for a sentinel port that `serve` can move up from, and retain ownership until the
- * assertion releases it (#804). macOS hands out ephemeral ports up to 65535, and a sentinel at
- * the top of the range leaves `serve` nowhere to move: it exits 1 with "no free port" and prints
- * no cockpit line at all. So a port without `MOVE_HEADROOM` ports of headroom for the moves plus
- * `SENTINEL_SLACK` ports above them for a neighbour is not a usable sentinel. It stays HELD while
- * the next one is taken, so the OS cannot hand it back; exactly `MOVE_HEADROOM` ports (65534 and
- * 65535) lack the headroom, `SENTINEL_SLACK` more below them are rejected for the neighbours, and
- * the loop ends in at most `MOVE_HEADROOM + SENTINEL_SLACK` extra binds.
- *
- * The accept/reject test reads the port NUMBER and `PORT_MAX`, nothing else — never a clock, the
- * arrival of output, or how the OS came to hand the number out — so which sentinel a case gets is
- * decided by arithmetic, and every invocation of this file applies the same band.
+ * A sentinel port `serve` can move up from, held until the assertion releases it. It is the first
+ * port of a block in the non-ephemeral band whose other ports are free when it is taken; a block
+ * with anything bound in it is skipped, never waited on. The check binds and closes each port above
+ * the sentinel, and that is safe only here: below the ephemeral range no released port can be
+ * handed to anyone who did not ask for that exact number, so the ports stay free for the boot.
+ * Other invocations of this file only ever take a whole block, so their sentinels and the ports
+ * their boots move into never share a block with this one.
  */
 async function sentinel(): Promise<{ port: number; server: Server }> {
-  const unusable: Server[] = [];
-  try {
-    for (;;) {
-      const server = createServer();
-      server.listen(0, '127.0.0.1');
-      await once(server, 'listening');
-      const address = server.address();
-      assert.ok(address && typeof address === 'object');
-      if (address.port + MOVE_HEADROOM + SENTINEL_SLACK <= PORT_MAX) {
-        return { port: address.port, server };
+  for (let tried = 0; tried < SENTINEL_BLOCKS; tried += 1) {
+    const block = (nextSentinelBlock + tried) % SENTINEL_BLOCKS;
+    const port = SENTINEL_BAND_LOW + block * SENTINEL_BLOCK;
+    const server = await tryHold(port);
+    if (!server) continue;
+    let blockFree = true;
+    for (let above = port + 1; above < port + SENTINEL_BLOCK; above += 1) {
+      const probe = await tryHold(above);
+      if (!probe) {
+        blockFree = false;
+        break;
       }
-      unusable.push(server);
+      await release(probe);
     }
-  } finally {
-    await Promise.all(unusable.map(release));
+    if (blockFree) {
+      nextSentinelBlock = (block + 1) % SENTINEL_BLOCKS;
+      return { port, server };
+    }
+    await release(server);
   }
+  assert.fail(`no free block of ${SENTINEL_BLOCK} ports in ${SENTINEL_BAND_LOW}–${SENTINEL_BAND_HIGH}`);
 }
 
 /**
