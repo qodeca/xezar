@@ -51,6 +51,18 @@
  * folders the run was granted outside its worktree (its handoff folder and task temp folder, which
  * may sit under the primary checkout). Absolute temp and home paths outside the primary checkout
  * keep their historical behaviour.
+ *
+ * The same extension carries a step's `bashAllowlist` (#856), passed as `--xezar-bash-allowlist`,
+ * a JSON list. pi has no command-prefix rule of its own, so this is where the rule Claude Code
+ * applies to `Bash(<entry>:*)` lives for pi: a command is allowed only when it is an entry, or an
+ * entry followed by whitespace and anything (`git diff` allows `git diff --stat`, never
+ * `git difftool`). A compound command – `;`, `&&`, `||`, `|`, `&`, a newline, a `$(…)` or backtick
+ * substitution – is allowed only when EVERY part matches on its own; output redirection (any
+ * unquoted `>`), a heredoc (`<<`) and process substitution (`<(`) are refused outright. Unlike
+ * the worktree check above this is a strict allowlist: anything the splitter cannot read – an
+ * unclosed quote or substitution – is refused. The flag is loaded only with a non-empty list, so
+ * a step without one keeps an unrestricted `bash`; when the run has no worktree the extension is
+ * loaded for the allowlist alone and the worktree flags are absent.
  */
 
 import { existsSync, lstatSync, realpathSync } from 'node:fs';
@@ -590,6 +602,151 @@ function guardToolCall(
   return bashEscapes(command, roots) ? { block: true, reason: SHELL_REASON } : undefined;
 }
 
+// ---- bash allowlist (#856): a strict command-prefix rule, see the header
+
+const ALLOWLIST_FLAG = 'xezar-bash-allowlist';
+const ALLOWLIST_REASON = 'Blocked by Xezar: this step allows only the shell commands in its bashAllowlist.';
+
+/** The simple commands a command line runs, read the way the shell splits it, or why it cannot be. */
+interface CommandParts {
+  parts: string[];
+  problem?: string;
+  end: number;
+}
+
+/**
+ * Split `command` from `start` into the simple commands it runs. Top-level parts are the raw text
+ * between operators; a `$(…)` or backtick substitution stays in its part's text AND contributes its
+ * own parts, so both have to match. `close` is the character that ends a substitution body.
+ */
+function commandParts(command: string, start = 0, close?: ')' | '`', depth = 0): CommandParts {
+  if (depth > MAX_SCRIPT_DEPTH) return { parts: [], problem: 'it nests command substitutions too deeply to read', end: command.length };
+  const parts: string[] = [];
+  const nested: string[] = [];
+  let current = '';
+  let parens = 0;
+  const finish = () => {
+    const part = current.trim();
+    if (part.length > 0) parts.push(part);
+    current = '';
+  };
+  const substitution = (from: number, closing: ')' | '`'): CommandParts => {
+    const inner = commandParts(command, from, closing, depth + 1);
+    nested.push(...inner.parts);
+    return inner;
+  };
+  const fail = (problem: string, at: number): CommandParts => ({ parts: [...parts, ...nested], problem, end: at });
+
+  let i = start;
+  while (i < command.length) {
+    const char = command[i] as string;
+    const next = command[i + 1];
+    if (close === '`' && char === '`') {
+      finish();
+      return { parts: [...parts, ...nested], end: i };
+    }
+    if (close === ')' && char === ')' && parens === 0) {
+      finish();
+      return { parts: [...parts, ...nested], end: i };
+    }
+    if (char === '\\') {
+      current += command.slice(i, i + 2);
+      i += 2;
+      continue;
+    }
+    if (char === "'" || (char === '$' && next === "'")) {
+      // A single-quoted string is literal; `$'…'` honours backslash escapes, so `\'` does not end it.
+      const ansi = char === '$';
+      let j = i + (ansi ? 2 : 1);
+      while (j < command.length && command[j] !== "'") j += ansi && command[j] === '\\' ? 2 : 1;
+      if (j >= command.length) return fail('it has an unclosed quote', i);
+      current += command.slice(i, j + 1);
+      i = j + 1;
+      continue;
+    }
+    if (char === '"') {
+      let j = i + 1;
+      while (j < command.length && command[j] !== '"') {
+        if (command[j] === '\\') j += 2;
+        else if (command[j] === '`' || (command[j] === '$' && command[j + 1] === '(')) {
+          const backtick = command[j] === '`';
+          const inner = substitution(j + (backtick ? 1 : 2), backtick ? '`' : ')');
+          if (inner.problem) return fail(inner.problem, inner.end);
+          if (inner.end >= command.length) return fail('it has an unclosed command substitution', j);
+          j = inner.end + 1;
+        } else j++;
+      }
+      if (j >= command.length) return fail('it has an unclosed quote', i);
+      current += command.slice(i, j + 1);
+      i = j + 1;
+      continue;
+    }
+    if (char === '`' || (char === '$' && next === '(')) {
+      const backtick = char === '`';
+      const inner = substitution(i + (backtick ? 1 : 2), backtick ? '`' : ')');
+      if (inner.problem) return fail(inner.problem, inner.end);
+      if (inner.end >= command.length) return fail('it has an unclosed command substitution', i);
+      current += command.slice(i, inner.end + 1);
+      i = inner.end + 1;
+      continue;
+    }
+    // A `#` that starts a word comments out the rest of the line; its text never runs, and reading
+    // a quote inside it as a real one could hide the next line's command.
+    if (char === '#' && (current.length === 0 || /\s/.test(current[current.length - 1] as string))) {
+      while (i < command.length && command[i] !== '\n') i++;
+      continue;
+    }
+    if (char === '>') return fail('it redirects output (">" or ">>"), which is refused outright', i);
+    if (char === '<' && next === '<') return fail('it uses a heredoc or here-string ("<<"), which is refused outright', i);
+    if (char === '<' && next === '(') return fail('it uses process substitution ("<("), which is refused outright', i);
+    if (char === '(') parens++;
+    if (char === ')' && parens > 0) parens--;
+    if (char === ';' || char === '&' || char === '|' || char === '\n') {
+      finish();
+      i++;
+      continue;
+    }
+    current += char;
+    i++;
+  }
+  if (close) return { parts: [...parts, ...nested], end: command.length };
+  finish();
+  return { parts: [...parts, ...nested], end: command.length };
+}
+
+/** Claude Code's `Bash(<entry>:*)`: the entry itself, or the entry followed by whitespace. */
+function matchesEntry(part: string, entry: string): boolean {
+  return part === entry || (part.startsWith(entry) && /\s/.test(part[entry.length] as string));
+}
+
+function allowlistRefusal(event: ToolCall, entries: string[]): ToolGuardResult | undefined {
+  if (event.toolName !== 'bash') return undefined;
+  const command = typeof event.input.command === 'string' ? event.input.command : undefined;
+  if (command === undefined) return { block: true, reason: `${ALLOWLIST_REASON} The bash call has no command.` };
+  const split = commandParts(command);
+  if (split.problem) return { block: true, reason: `${ALLOWLIST_REASON} The command was refused because ${split.problem}.` };
+  if (split.parts.length === 0) return { block: true, reason: `${ALLOWLIST_REASON} The command is empty.` };
+  const failing = split.parts.find((part) => !entries.some((entry) => matchesEntry(part, entry)));
+  if (failing === undefined) return undefined;
+  const why = split.parts.length > 1
+    ? 'every part of a compound command must match an entry on its own, and this part matches none'
+    : 'it does not start with any entry';
+  return { block: true, reason: `${ALLOWLIST_REASON} The part "${failing}" was refused: ${why}. Allowed: ${entries.join(', ')}.` };
+}
+
+function bashAllowlist(flag: boolean | string | undefined): string[] | null | undefined {
+  if (flag === undefined) return null;
+  if (typeof flag !== 'string') return undefined;
+  try {
+    const parsed: unknown = JSON.parse(flag);
+    if (!Array.isArray(parsed) || !parsed.every((entry) => typeof entry === 'string')) return undefined;
+    const entries = (parsed as string[]).map((entry) => entry.trim()).filter(Boolean);
+    return entries.length > 0 ? entries : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function allowedRoots(flag: boolean | string | undefined): string[] | undefined {
   if (flag === undefined) return [];
   if (typeof flag !== 'string') return undefined;
@@ -607,9 +764,19 @@ export default function piWorktreeGuard(pi: ExtensionApiLike): void {
   pi.registerFlag(ROOT_FLAG, { type: 'string', description: 'Pin Xezar task tools to this isolated working copy.' });
   pi.registerFlag(PRIMARY_FLAG, { type: 'string', description: 'The primary checkout Xezar task tools must not write to.' });
   pi.registerFlag(ALLOWED_FLAG, { type: 'string', description: 'JSON list of folders the Xezar task was granted outside its working copy.' });
+  pi.registerFlag(ALLOWLIST_FLAG, { type: 'string', description: 'JSON list of the shell command prefixes this Xezar step may run.' });
   pi.on('tool_call', (event, context) => {
     const configured = pi.getFlag(ROOT_FLAG);
     const primary = pi.getFlag(PRIMARY_FLAG);
+    const entries = bashAllowlist(pi.getFlag(ALLOWLIST_FLAG));
+    if (entries === undefined) return { block: true, reason: `${ALLOWLIST_REASON} The bashAllowlist flag is not a valid non-empty JSON list.` };
+    if (entries !== null) {
+      const refusal = allowlistRefusal(event, entries);
+      if (refusal) return refusal;
+      // Loaded for the allowlist alone: a run with no worktree passes neither root flag. Either one
+      // present means a worktree run, and a missing partner still fails closed below.
+      if (configured === undefined && primary === undefined) return undefined;
+    }
     const allowed = allowedRoots(pi.getFlag(ALLOWED_FLAG));
     if (typeof configured !== 'string' || configured.length === 0 || typeof primary !== 'string' || primary.length === 0) {
       return { block: true, reason: `${BLOCK_REASON} The configured worktree or primary checkout root is missing.` };
@@ -619,4 +786,4 @@ export default function piWorktreeGuard(pi: ExtensionApiLike): void {
   });
 }
 
-export const __internals = { guardToolCall };
+export const __internals = { guardToolCall, allowlistRefusal };
