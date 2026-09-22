@@ -102,11 +102,11 @@ describe('agent quota normalisers', () => {
     });
   });
 
-  it('never reports ok when an exhausted Claude row has an unreadable reset', () => {
+  it('uses the exhausted Claude window length as a conservative reset when its reset text is unreadable', () => {
     const row = normalizeClaudeUsage({
       result: 'Current session: 100% used · resets definitely not a date\nCurrent week (all models): 20% used · resets Sep 28 at 7:00pm (Europe/Warsaw)',
     }, 'default', at('2026-09-22T14:20:00Z'));
-    expect(row.status).toBe('out');
+    expect(row).toMatchObject({ status: 'out', resetsAt: '2026-09-22T19:20:00Z' });
   });
 });
 
@@ -163,6 +163,48 @@ describe('AgentQuotaStore', () => {
     expect(store.answer().accounts[0]).toMatchObject({
       shortWindow: { usedPercent: 25 }, weeklyWindow: { usedPercent: 0 }, planType: 'pro',
       credits: { balance: '0' },
+    });
+  });
+
+  it.each([
+    ['reported 100 percent with ordinary usage allowed', { ordinaryUsageAllowed: true, rateLimits: {
+      primary: { usedPercent: 100, windowDurationMins: 300, resetsAt: 1_790_685_902 },
+    } }],
+    ['clamped malformed 140 percent', { rateLimits: {
+      primary: { usedPercent: 140, windowDurationMins: 300, resetsAt: 1_790_685_902 },
+    } }],
+  ])('does not mark usable Codex quota out from %s alone', async (_case, raw) => {
+    const store = new AgentQuotaStore({ now: () => Date.parse('2026-09-22T14:24:00Z') });
+    await store.put(normalizeLiveQuota('codex', raw, 'default', at('2026-09-22T14:22:00Z'))!);
+    expect(store.answer().accounts[0]).toMatchObject({ status: 'ok', shortWindow: { usedPercent: 100 } });
+  });
+
+  it.each([
+    '2026-09-22T14:20:00Z',
+    '2026-09-22T15:20:00Z',
+  ])('keeps an exhausted Claude row out at %s when its reset text is unreadable', async (now) => {
+    const store = new AgentQuotaStore({ now: () => Date.parse(now) });
+    await store.put(normalizeClaudeUsage({
+      result: 'Current session: 100% used · resets definitely not a date\nCurrent week (all models): 20% used · resets Sep 28 at 7:00pm (Europe/Warsaw)',
+    }, 'default', at('2026-09-22T14:20:00Z')));
+    expect(store.answer().accounts[0]).toMatchObject({
+      status: 'out', resetsAt: '2026-09-22T19:20:00Z',
+    });
+  });
+
+  it('keeps a failed-run out fact through a non-out Claude live update before its reset', async () => {
+    const store = new AgentQuotaStore({ now: () => Date.parse('2026-09-22T14:24:00Z') });
+    await store.markOut('claude', 'default', at('2026-09-22T15:10:00Z'), at('2026-09-22T14:20:00Z'));
+    await store.put(normalizeLiveQuota('claude', {
+      rate_limit_info: {
+        utilization: 0.4,
+        resetsAt: Date.parse('2026-09-22T19:20:00Z') / 1_000,
+        rateLimitType: 'five_hour',
+        status: 'allowed',
+      },
+    }, 'default', at('2026-09-22T14:23:00Z'))!);
+    expect(store.answer().accounts[0]).toMatchObject({
+      status: 'out', resetsAt: '2026-09-22T15:10:00Z', source: 'live',
     });
   });
 

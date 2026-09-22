@@ -120,7 +120,7 @@ describe('the agent-quota answer matches its committed fixture', () => {
     ).toBe(false);
   });
 
-  it('rejects ok when any reported window is at 100 percent', () => {
+  it('rejects ok Claude windows at 100 percent but accepts explicit-ok Codex windows', () => {
     const answer = JSON.parse(fixtureText) as { accounts: Record<string, unknown>[] };
     const ok = answer.accounts[0] as {
       shortWindow: Record<string, unknown>;
@@ -136,6 +136,10 @@ describe('the agent-quota answer matches its committed fixture', () => {
     for (const entry of entries) {
       expect(agentQuotaResponseSchema.safeParse({ ...answer, accounts: [entry] }).success).toBe(false);
     }
+    expect(agentQuotaResponseSchema.safeParse({
+      ...answer,
+      accounts: [{ ...entries[0], runner: 'codex' }],
+    }).success).toBe(true);
   });
 
   it('keeps status to exactly ok, out and unknown', () => {

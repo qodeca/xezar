@@ -141,14 +141,22 @@ function mergeLiveRecord(previous: AgentQuotaProducerAccount, incoming: AgentQuo
   const windows = [detail.shortWindow, detail.weeklyWindow, ...(detail.modelWindows ?? [])].filter(
     (window): window is AgentQuotaWindow | AgentQuotaModelWindow => window !== null,
   );
-  const exhausted = windows.find((window) => window.usedPercent >= 100);
-  const status = incoming.status === 'out' || exhausted ? 'out' : windows.length ? 'ok' : 'unknown';
+  // #867 FR-5: percentages are a blocking signal for Claude only. Codex
+  // availability comes from its explicit ordinary-usage/rate-limit facts.
+  const exhausted = detail.runner === 'claude'
+    ? windows.find((window) => window.usedPercent >= 100)
+    : undefined;
+  // A newer live snapshot may omit a failed-run/check limit. Preserve that
+  // observed fact until its reset instead of treating omission as recovery.
+  const previousOut = previous.status === 'out'
+    && Date.parse(previous.resetsAt) > Date.parse(incoming.checkedAt);
+  const status = incoming.status === 'out' || previousOut || exhausted ? 'out' : windows.length ? 'ok' : 'unknown';
   const { resetsAt: _resetsAt, ...withoutReset } = detail;
   return agentQuotaProducerAccountSchema.parse({
     ...withoutReset,
     status,
     ...(status === 'out'
-      ? { resetsAt: incoming.status === 'out' ? incoming.resetsAt : exhausted!.resetsAt }
+      ? { resetsAt: incoming.status === 'out' ? incoming.resetsAt : previousOut ? previous.resetsAt : exhausted!.resetsAt }
       : {}),
     notReported: notReportedFor(detail),
   });
@@ -167,7 +175,10 @@ function currentRecord(record: AgentQuotaProducerAccount, now: number): AgentQuo
   const windows = [detail.shortWindow, detail.weeklyWindow, ...(detail.modelWindows ?? [])].filter(
     (window): window is AgentQuotaWindow | AgentQuotaModelWindow => window !== null,
   );
-  const exhausted = windows.find((window) => window.usedPercent >= 100);
+  // #867 FR-5: Codex percentages are descriptive, never a status decision.
+  const exhausted = record.runner === 'claude'
+    ? windows.find((window) => window.usedPercent >= 100)
+    : undefined;
   const topLevelOut = record.status === 'out' && Date.parse(record.resetsAt) > now;
   const status = topLevelOut || exhausted ? 'out' : windows.length ? 'ok' : 'unknown';
   const { resetsAt: _resetsAt, ...withoutReset } = detail;
@@ -203,12 +214,20 @@ export function normalizeClaudeUsage(
   let shortWindow: AgentQuotaWindow | null = null;
   let weeklyWindow: AgentQuotaWindow | null = null;
   const modelWindows: Array<AgentQuotaWindow & { model: string }> = [];
-  let unreadableExhausted = false;
+  let unreadableExhaustedReset: Date | null = null;
   for (const row of rows) {
     const usedPercent = Number(row[3]);
     const reset = claudeReset(row[4]!, checkedAt.getTime());
     if (!reset) {
-      if (usedPercent >= 100) unreadableExhausted = true;
+      if (usedPercent >= 100) {
+        const windowMinutes = row[1] === 'session' ? 300 : 10080;
+        // An unreadable reset must not turn exhaustion into availability. The
+        // window length supplies a conservative, finite bound for this fact.
+        const conservativeReset = new Date(checkedAt.getTime() + windowMinutes * 60_000);
+        if (!unreadableExhaustedReset || conservativeReset > unreadableExhaustedReset) {
+          unreadableExhaustedReset = conservativeReset;
+        }
+      }
       continue;
     }
     if (row[1] === 'session') shortWindow = windowFromPercent(usedPercent, reset, 300);
@@ -216,13 +235,18 @@ export function normalizeClaudeUsage(
     else modelWindows.push({ model: row[2]!, ...windowFromPercent(usedPercent, reset, 10080) });
   }
   const windows = [shortWindow, weeklyWindow, ...modelWindows].filter((value) => value !== null);
-  const exhausted = windows.find((window) => window.usedPercent >= 100);
+  const exhausted = windows.filter((window) => window.usedPercent >= 100);
   const unknown = windows.length === 0;
+  const exhaustedReset = [
+    ...exhausted.map((window) => window.resetsAt),
+    ...(unreadableExhaustedReset ? [isoUtc(unreadableExhaustedReset)] : []),
+  ].reduce<string | undefined>((latest, candidate) =>
+    !latest || Date.parse(candidate) > Date.parse(latest) ? candidate : latest, undefined);
   return agentQuotaProducerAccountSchema.parse({
     runner: 'claude',
     accountId,
-    status: exhausted || unreadableExhausted ? 'out' : unknown ? 'unknown' : 'ok',
-    ...(exhausted || unreadableExhausted ? { resetsAt: exhausted?.resetsAt ?? isoUtc(checkedAt) } : {}),
+    status: exhaustedReset ? 'out' : unknown ? 'unknown' : 'ok',
+    ...(exhaustedReset ? { resetsAt: exhaustedReset } : {}),
     checkedAt: isoUtc(checkedAt),
     ageSeconds: 0,
     source: 'check',
