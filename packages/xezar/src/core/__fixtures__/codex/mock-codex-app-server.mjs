@@ -30,6 +30,8 @@ const emit = (obj) => process.stdout.write(`${JSON.stringify(obj)}\n`);
 const rl = createInterface({ input: process.stdin });
 
 const ambient = process.env.MOCK_CODEX_AMBIENT === '1';
+let registeredHook;
+let hookTrusted = false;
 
 function configReadResult() {
   if (!ambient) return { config: { mcp_servers: {} }, origins: {} };
@@ -103,6 +105,9 @@ rl.on('line', (line) => {
   } catch {
     return;
   }
+  if (process.env.MOCK_CODEX_RPC_LOG && msg.method) {
+    appendFileSync(process.env.MOCK_CODEX_RPC_LOG, `${JSON.stringify({ method: msg.method, params: msg.params })}\n`);
+  }
   if (msg.id === 'ask-1' && msg.result) {
     const answer = msg.result.answers?.library?.answers;
     const freeText = msg.result.answers?.first?.answers;
@@ -110,11 +115,33 @@ rl.on('line', (line) => {
       ? { method: 'turn/completed', params: { turn: { id: 'turn_mock_1', status: 'completed' } } }
       : { method: 'turn/failed', params: { turn: { id: 'turn_mock_1', status: 'failed' }, error: { message: 'bad answer' } } });
   } else if (msg.method === 'initialize') {
-    emit({ id: msg.id, result: { userAgent: 'mock-codex/0.0.0' } });
+    emit({ id: msg.id, result: {
+      userAgent: 'mock-codex/0.0.0',
+      ...(process.env.MOCK_CODEX_HOME ? { codexHome: process.env.MOCK_CODEX_HOME } : {}),
+    } });
   } else if (msg.method === 'config/read') {
     emit(process.env.MOCK_CODEX_CONFIG_READ_ERROR === '1'
       ? { id: msg.id, error: { code: -32601, message: 'Method not found: config/read' } }
       : { id: msg.id, result: configReadResult() });
+  } else if (msg.method === 'hooks/list') {
+    const hook = registeredHook
+      ? [{
+          key: 'session:pre_tool_use:0:0',
+          command: registeredHook.command,
+          matcher: registeredHook.matcher,
+          enabled: true,
+          currentHash: 'sha256:mock-hook',
+          trustStatus: hookTrusted ? 'trusted' : 'untrusted',
+        }]
+      : [];
+    emit({ id: msg.id, result: { data: [{ cwd: msg.params?.cwds?.[0], hooks: hook, warnings: [], errors: [] }] } });
+  } else if (msg.method === 'config/batchWrite') {
+    if (process.env.MOCK_CODEX_REJECT_HOOK_TRUST === '1') {
+      emit({ id: msg.id, error: { code: -32603, message: 'mock trust store is read-only' } });
+    } else {
+      hookTrusted = true;
+      emit({ id: msg.id, result: { status: 'ok', filePath: '/mock/config.toml' } });
+    }
   } else if (msg.method === 'thread/start' || msg.method === 'thread/resume') {
     const problem = isolationProblem(msg.params?.config);
     if (problem) {
@@ -124,6 +151,12 @@ rl.on('line', (line) => {
     if (process.env.MOCK_CODEX_THREAD_LOG) {
       appendFileSync(process.env.MOCK_CODEX_THREAD_LOG, `${JSON.stringify({ method: msg.method, params: msg.params })}\n`);
     }
+    registeredHook = msg.params?.config?.hooks?.PreToolUse?.[0]?.hooks?.[0]
+      ? {
+          command: msg.params.config.hooks.PreToolUse[0].hooks[0].command,
+          matcher: msg.params.config.hooks.PreToolUse[0].matcher,
+        }
+      : undefined;
     const expectedSandbox = process.env.MOCK_CODEX_EXPECT_SANDBOX
       ?? (process.env.XEZ_CODEX_NETWORK === '0' ? 'workspace-write' : 'danger-full-access');
     if (msg.params?.sandbox !== expectedSandbox || msg.params?.approvalPolicy !== 'never') {

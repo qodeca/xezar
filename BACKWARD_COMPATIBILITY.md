@@ -1051,6 +1051,23 @@ empty-list compatibility statements remain in force.
   `sh <path>`, where the path is not an option. A bare interpreter remains refused because it
   would execute the piped standard input; every other pipe remains refused. Each refusal carries
   the stable rule that made the decision.
+- **Changed (Codex with `bashAllowlist`)**: a read-only step now starts and resumes with a
+  `PreToolUse` Bash hook that sends the complete command through that same shared policy. An
+  allowed prefix still runs inside #849's confined `workspace-write` sandbox; compounds,
+  redirects, unsafe arguments and non-matching commands are denied with the shared reason code.
+  The trust grant completes before the first turn on both paths. If Codex cannot discover the
+  handler, refuses `config/batchWrite`, or does not report the resulting handler trusted, the
+  step fails closed instead of starting with an unenforced allowlist. `XEZ_CODEX_NETWORK=0`
+  still takes precedence and changes only the outer sandbox's network access.
+- **Codex profile state written by the adapter**: Codex 0.155.1 does not discover a hook supplied
+  only in a thread config override, so xezar idempotently adds its shipped generic handler to the
+  active Codex profile's user-layer `$CODEX_HOME/hooks.json`, preserving existing keys and handlers
+  under a bounded cross-process lock and atomic write. The handler is inert when the process-local
+  xezar allowlist is absent. Codex itself computes the handler's normalized `currentHash`; xezar
+  writes `hooks.state."<handler key>".trusted_hash = "<currentHash>"` to that same profile's
+  `$CODEX_HOME/config.toml` through `config/batchWrite`. The grant is scoped to that exact handler
+  key and content hash, so changing the shipped command makes Codex require a new grant. This is
+  profile configuration, not project configuration: no project trust or tracked file is added.
 - **Changed (argument-bearing entries)**: `COMMAND_RUNNING_ARGUMENTS` refuses risky forms hidden
   behind an otherwise allowed prefix: every Git `-c`, `--config-env` and `--exec-path` form,
   abbreviated `fetch --upload-pack`/`--exec`, Git `diff`/`show`/`log` output files, checkout path
@@ -1067,15 +1084,17 @@ empty-list compatibility statements remain in force.
   entry/prefix rule, simple-command parser and argument table. pi keeps only flag parsing, its
   `tool_call` denial shape and the separate worktree guard. Claude builds `Bash(<entry>:*)` entries
   from the same normalized list, but Claude's own matcher still decides at run time: the shared
-  parser and argument table do **not** protect Claude in this slice. Codex continues with #849's
-  confined sandbox; its hook adapter is a separate slice.
+  parser and argument table do **not** protect Claude. Codex's shipped hook only adapts its
+  `tool_name` / `tool_input.command` payload and denial JSON; the shared module makes the decision.
 - **Not changed**: no `XEZ_*` variable, config key, workflow field or persisted shape was added;
-  a step without `bashAllowlist`, a writing Claude step, Codex confinement and OpenCode behavior
+  a step without `bashAllowlist`, any writing step, Codex's outer confinement and OpenCode behavior
   are unchanged. The source and built-module fallback in `scripts/pi-worktree-guard.ts` keeps the
   published extension loading from the same authored policy implementation.
 - **Pinned by**: `read-only-lock.test.ts` (one fixture table covering every refusal class and every
   argument row), `pi-worktree-guard.test.ts` (the same fixtures through pi's adapter),
-  `claude-cli-runner.test.ts` (setting sources only on read-only argv), and the package test.
+  `claude-cli-runner.test.ts` (setting sources only on read-only argv),
+  `codex-read-only-hook.test.ts` (the same fixtures through Codex payloads),
+  `codex-app-server-runner.test.ts` (start, resume and fail-closed trust), and the package test.
 
 ## pi keeps a restricted `bash` under a `bashAllowlist` instead of dropping it (#856) — deliberate, 0.19.0
 

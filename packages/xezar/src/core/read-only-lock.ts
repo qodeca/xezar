@@ -1,8 +1,8 @@
 /**
  * Shared policy for a step that resolves to read-only (#863).
  *
- * pi calls this module before a bash tool call. Codex will call it from its hook adapter in the
- * next slice. Claude Code consumes the same read-only signal and normalized entries, but its own
+ * pi calls this module before a bash tool call. Codex calls it from its PreToolUse hook adapter.
+ * Claude Code consumes the same read-only signal and normalized entries, but its own
  * `Bash(<entry>:*)` matcher makes the run-time decision today. Consequently the splitter and
  * `COMMAND_RUNNING_ARGUMENTS` do not protect Claude until that hook exists; read-only workflow
  * lists must omit entries whose safety depends on either check.
@@ -21,6 +21,11 @@ export interface ReadOnlyCommandAllowed {
 }
 
 export type ReadOnlyCommandDecision = ReadOnlyCommandAllowed | ReadOnlyCommandRefusal;
+
+export interface ReadOnlyShellCall {
+  readonly toolName: unknown;
+  readonly command: unknown;
+}
 
 export interface CommandArgumentPolicy {
   readonly program: string;
@@ -317,6 +322,23 @@ export function decideReadOnlyCommand(command: string, entries: readonly string[
     return refuse(ALLOWLIST_RULE, `${JSON.stringify(parsed.command)} does not match an entry exactly or followed by a literal space`);
   }
   return { allowed: true };
+}
+
+/**
+ * Decide an adapter-neutral shell-tool payload. Runners only extract their vendor fields; this
+ * module owns both malformed-input refusal and command policy so no adapter grows a second lock.
+ */
+export function decideReadOnlyShellCall(
+  call: ReadOnlyShellCall,
+  entries: readonly string[],
+): ReadOnlyCommandDecision {
+  if (call.toolName !== 'Bash') {
+    return refuse('payload.tool-name', 'the hook payload does not name the Bash shell tool');
+  }
+  if (typeof call.command !== 'string') {
+    return refuse('payload.command', 'the Bash hook payload has no string command');
+  }
+  return decideReadOnlyCommand(call.command, entries);
 }
 
 /**
