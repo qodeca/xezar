@@ -70,6 +70,7 @@ import {
 import { runProjectsCommand } from './workspace/projects-cli.ts';
 import { cliAudit, PROJECTS_SUBCOMMANDS, projectResource, type CliAudit } from './cli-audit.ts';
 import { WorkspaceSemaphore } from './workspace/semaphore.ts';
+import { AgentQuotaStore } from './workspace/agent-quota.ts';
 import { discoverProjectCheck, fixAndVerifyWorkflow, PROJECT_CONVENTIONS_SKILL } from './init-kit.ts';
 import { BIND_HOST_OPTION, resolveBindHost, resolveCapabilities } from './server/capabilities.ts';
 import { recordOwnListen } from './server/instance-liveness.ts';
@@ -947,7 +948,8 @@ async function serveCommand(
       }),
     );
   }
-  const manager = new RunManager(store, repoRoot, { semaphore });
+  const agentQuotaStore = new AgentQuotaStore();
+  const manager = new RunManager(store, repoRoot, { semaphore, agentQuotaStore });
   const providerAuth = new ProviderAuthService();
   const workspaceEvents = new WorkspaceEventBus();
   const providerRuntimeAuth = new ProviderRuntimeAuthObserver(providerAuth, (status) => {
@@ -1029,6 +1031,7 @@ async function serveCommand(
     providerAuth,
     providerRuntimeAuth,
     workspaceEvents,
+    agentQuotaStore,
     onApp: (built) => {
       app = built;
     },

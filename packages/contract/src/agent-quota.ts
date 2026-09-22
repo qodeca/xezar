@@ -216,6 +216,10 @@ const projectConfigQuotaSelectorShape = {
   accountId: z.string().min(1).max(64).optional(),
 } as const;
 
+/** Query accepted by the workspace quota read route. */
+export const agentQuotaQuerySchema = z.strictObject(projectConfigQuotaSelectorShape);
+export type AgentQuotaQuery = z.infer<typeof agentQuotaQuerySchema>;
+
 /** Request slices to be composed into `project_config` when the runtime actions land (#867 S1). */
 export const projectConfigReadQuotaInputSchema = z.strictObject({
   action: z.literal('read_quota'),

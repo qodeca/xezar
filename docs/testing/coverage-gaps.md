@@ -122,6 +122,7 @@ HTTP API.
 | workspace runs-index (`runsIndexRoutes`) | server unit | `runs-index-api.test.ts:85,101` | C |
 | origin/host guard (middleware, before every `/api/*` route bar health) | server unit | `origin-guard.test.ts:67,74,88,95`, `host-guard.test.ts:61,79` | C |
 | WebSocket bus `/api/v1/ws` | server unit | `ws.test.ts` (hub, local upgrade controls, hosted real-socket refusal); authenticated proxy composition in `test:server-mode` — see mode × transport matrix | C |
+| Agent quota read side (`GET /workspace/agent-quota`, MCP `read_quota`, WS topic, SSE hint) | server unit + contract/type checks | `server/agent-quota-api.test.ts`, `workspace/agent-quota.test.ts`, `mcp/tools/project-config.test.ts`, `contract-parity.workspace.test.ts`, `typed-bodies.test.ts` | C for deterministic fixtures; **P** for a live dry-run-stream failure mark and an installed-host MCP bridge read |
 | Route registration and alias parity | server unit | `route-parity.test.ts:158,206,215`; `versioned-surface.test.ts:93,108`; `bc-route-inventory.test.ts:119` | C |
 | Contract ↔ route shape agreement | typecheck | `contract-parity*.test.ts`, `typed-bodies.test.ts` – compile-time only | C (types), N (behaviour) |
 | MCP reference (`mcpReferenceRoutes`) | server unit | `server/mcp-reference-route.test.ts`, `server/mcp-reference-route.unavailable.test.ts` (see 10.5) | C |

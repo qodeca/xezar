@@ -515,3 +515,20 @@ describe('ClaudeCliRunner token usage', () => {
     }
   });
 });
+
+describe('Claude quota telemetry', () => {
+  it('emits rate_limit_event as an internal account-quota event', async () => {
+    const mockBin = fileURLToPath(new URL('../../scripts/mock-claude.mjs', import.meta.url));
+    const events: AgentEvent[] = [];
+    const cwd = mkdtempSync(join(tmpdir(), 'xez-claude-quota-'));
+    try {
+      await new ClaudeCliRunner({ bin: mockBin, timeoutMs: 60_000 }).run({
+        userPrompt: 'mock:quota', cwd,
+        env: { XEZ_HANDOFF_FILE: '', XEZ_MOCK_ARGS_FILE: '', XEZ_TODOS_FILE: '' },
+      }, (event) => events.push(event));
+      expect(events).toContainEqual(expect.objectContaining({ type: 'account-quota', runner: 'claude' }));
+    } finally {
+      rmSync(cwd, { force: true, recursive: true });
+    }
+  });
+});

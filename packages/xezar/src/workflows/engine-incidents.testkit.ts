@@ -24,6 +24,7 @@ export interface ScriptedTurn {
    *  which is the thing `run.ts` has to get right on a resumed turn (#676). */
   tokensUsed?: number;
   before?: (spec: AgentRunSpec) => void;
+  events?: readonly AgentEvent[];
 }
 
 /** Only the agent process is replaced. A rejected nudge is recorded, never allowed to spin 40 turns. */
@@ -46,6 +47,7 @@ export function scriptedRunner(turns: ScriptedTurn[]) {
       queueMicrotask(() => {
         turn.before?.(spec);
         emit({ type: 'session', sessionId: spec.sessionId ?? 'scripted-session' });
+        for (const event of turn.events ?? []) emit(event);
         if (turn.error) { emit({ type: 'error', message: turn.error }); end(); return; }
         if (turn.tokensUsed !== undefined) emit({ type: 'token-usage', tokensUsed: turn.tokensUsed });
         if (turn.streamed) {

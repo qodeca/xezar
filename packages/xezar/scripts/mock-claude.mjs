@@ -110,6 +110,14 @@ function writeVerdictPacket(userText) {
 async function respond(userText, imageCount) {
   turn += 1;
   await sleep(250);
+  if (userText.includes('mock:quota')) {
+    emit({
+      type: 'rate_limit_event',
+      rate_limit_info: {
+        status: 'allowed', utilization: 0.25, resetsAt: 1790685902, rateLimitType: 'five_hour',
+      },
+    });
+  }
   // `mock:done` anywhere in the message → the reply ends with the XEZ:DONE
   // completion marker (#347), so the auto-close path is testable dry.
   const doneMarker = userText.includes('mock:done') ? '\n\nXEZ:DONE' : '';
