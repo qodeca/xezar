@@ -3016,7 +3016,7 @@ describe('project_config: every refusal names the next step (#819 item 8)', () =
   // registry `tools` is imported from above, and no `project_config` refusal ever names it as the
   // next call to make.
   const actionable = (next: string): boolean =>
-    /`xez\b[^`]*`/.test(next) ||
+    /`xez(?:ar)?\b[^`]*`/.test(next) ||
     /https?:\/\/\S+\/(?:p\/[^/\s]+\/settings\/|settings\/global\/)\S*/.test(next) ||
     next.split(/[^a-z_]+/).some((word) => KNOWN_CALLS.has(word));
 
@@ -3029,6 +3029,9 @@ describe('project_config: every refusal names the next step (#819 item 8)', () =
   // Guard: every shape a real next step uses must keep passing.
   it('the actionable() predicate accepts a real CLI command, tool call and settings URL', () => {
     expect(actionable('Ask the person to run `xez providers connect <provider>` on the machine that runs xezar.')).toBe(true);
+    // The product ships both `xez` and `xezar` as `bin` (package.json), and project-config.ts
+    // already names the second spelling (`xezar accounts import-global`) in its own next steps.
+    expect(actionable('Ask the person to run `xezar accounts import-global` on the machine that runs xezar.')).toBe(true);
     expect(actionable('Call local_handoff with `{"action":"list_apps"}` for the app ids.')).toBe(true);
     expect(actionable('open it at http://127.0.0.1:4000/p/proj-a/settings/agents#providers')).toBe(true);
   });
