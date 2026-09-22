@@ -73,4 +73,4 @@ Inspect and integrate the result separately; xezar does not automatically merge 
 
 Next: [Agent backends](04-agent-backends.md)
 
-Describes xezar 0.16.0.
+Describes xezar 0.18.0.

@@ -51,6 +51,16 @@ npm run build:web
 
 This is a checkout build command. The published package is meant to include the built cockpit; if an installed package shows the hint, include the installation method and version in a bug report.
 
+### The tag is there, but `npm` still shows the old version
+
+That is normal, not a failed release, and it has two separate causes worth knowing before you go looking for a fault.
+
+**npm can keep serving the previous version for a while.** The tag and the GitHub release appear first, and `npm view @qodeca/xezar version` catches up afterwards — around a quarter of an hour, in one case observed here. Wait a few minutes and ask again before concluding that nothing published.
+
+**A project's own manifest keeps naming the previous version on purpose.** The version a release publishes is stamped during the release run, not committed beforehand, so the commit the tag points at can still hold the previous number. A follow-up pull request brings the repository in line afterwards. Until that lands, "the trunk says 0.17.0 and the registry says 0.18.0" is the expected middle state — and xezar's own 0.18.0 tag is exactly that: its `package.json` reads `0.17.0`. Any project whose release stamps its own version has the same window.
+
+So a green release run and an existing tag are the evidence that it published. Check those first, and read the registry and the default branch as things that catch up rather than as the verdict.
+
 ## Does it send my code anywhere?
 
 xezar keeps its run state on disk and has no xezar cloud service. It launches [agent backends](04-agent-backends.md) and passes them your task and working directory. Those agent CLIs communicate with their configured model providers; prompts and code an agent reads can therefore leave your machine. Check the provider and account you use before giving it sensitive work. “Local cockpit” is not a promise of offline model execution.
@@ -98,4 +108,4 @@ For a suspected vulnerability, follow [SECURITY.md](../../SECURITY.md) and repor
 
 Next: [User guide index](README.md)
 
-Describes xezar 0.16.0.
+Describes xezar 0.18.0.

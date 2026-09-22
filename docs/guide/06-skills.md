@@ -68,6 +68,12 @@ The Manage panel also shows installed-skill update status. Its action changes wi
 
 Use an issue-filing skill when you have a problem or proposal that does not yet have an issue. It drafts and, after the required approval, can create one new issue; issue triage instead reads an existing issue and returns a verdict without changing it. The issue-filing procedure comes from the shared skills collection at a pinned revision, so a project receives a reviewed common procedure rather than a moving copy. A project can add a local wrapper with its own tracker, templates, label policy, and evidence requirements; that nearer wrapper takes precedence over the shared skill.
 
+## To see which catalog version you have
+
+Global **Settings → Skills** opens with **Skill catalog**: per team-skills source, the version installed here, the newest version this machine has seen upstream, and one badge saying how the two compare — **Up to date**, **Update available**, **Check is stale** (the last upstream check is more than six hours old), **Not checked yet** (both versions are known and identical, but no check has succeeded), **Comparison unknown** (only one side could be read, or the two share no history) or **Version unknown** (nothing is installed yet). A version reads as `v1.1.0 (de525c6, Sep 20, 2026)`, or as the distance from the nearest tag when the tag is not exact.
+
+**Available** is upstream as this machine last saw it, never a live reading — the block says when it last checked, and **Refresh** on the Skills page is what re-checks and starts serving a newer version. A project with `skillsRepos: []`, or a machine with no source configured, sees that stated rather than an empty box.
+
 ## To change Settings → Skills
 
 Open global **Settings → Skills** to inspect tracked installation status and the automatic-update switch. A saved `skillsAutoUpdate` value in `~/.xezar/config.json` overrides the environment default. Choose **Use default** to clear the saved override and follow the environment again when you want `XEZ_SKILLS_AUTO_UPDATE` to decide. For manual check and apply actions, return to **Skills → Manage skills**.
@@ -87,4 +93,4 @@ Review workflow references using the old `om-` names and choose the matching cur
 
 Next: [GitHub and automations](07-github-and-automations.md)
 
-Describes xezar 0.16.0.
+Describes xezar 0.18.0.

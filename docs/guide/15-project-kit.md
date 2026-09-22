@@ -1,6 +1,6 @@
 # Project kit
 
-Use a project kit to keep reusable agent instructions and workflows beside your source. A kit is optional: start with the small `xezar init` examples, replace their placeholders with your project's conventions, and commit only the maintained files your team needs.
+A project kit keeps reusable agent instructions and workflows beside your source, so everyone who clones the project gets the same ones. It is optional: xezar works with no kit at all. `xezar init` writes two small starter files — a workflow that already runs, and a conventions skill with your project's own notes to fill in — and you commit only the ones your team needs.
 
 ## To find the project's kit
 
@@ -20,18 +20,27 @@ Today, initialization creates these directories and writes these examples when t
 
 | File | Initial content |
 | --- | --- |
-| `.xezar/workflows/fix-and-verify.yaml` | An `implement` agent step with `prompt: "{{task}}"`, then a `verify` command step. A failed verify retries `implement`, at most twice. |
-| `.xezar/skills/project-conventions.md` | A Markdown skill with `name` and `description` frontmatter and placeholders for your stack, style and testing conventions. |
+| `.xezar/workflows/fix-and-verify.yaml` | A short chain: do the task, then verify the result. Its exact shape depends on whether `init` found a check your project already declares — see below. |
+| `.xezar/skills/project-conventions.md` | A Markdown skill with `name` and `description` frontmatter and placeholders for what the work is for, what a finished result looks like, the constraints it must respect and how results are checked. |
 
-Existing example files are left untouched. Initialization also creates or updates `.local/.gitignore` with a blanket `*` rule when it can write there. It does **not** create `.xezar/config.json` or install this repository's development kit.
+Existing example files are left untouched. Initialization also creates or updates `.local/.gitignore` with a blanket `*` rule when it can write there. It does **not** create `.xezar/config.json`, and it generates none of the roles xezar's own project uses to develop itself.
 
-**The generated verify command is a placeholder.** It only runs:
+**`init` writes no placeholder command.** It reads the project for a check that is plainly declared — a real `test` script in `package.json`, or a `test` or `check` target in a `Makefile` — and writes one of two workflows. It guesses at nothing less certain than that:
 
-```sh
-echo 'replace me with: npm test / yarn test / pytest'
-```
+| What `init` found | Steps it writes |
+| --- | --- |
+| A check (`npm test`, `make test`, `make check`) | `implement` (agent, your task) → `verify` (that command, and a failure retries `implement` at most twice) → `report` (agent: what changed, the check's result, what the check did not cover, and any open question) |
+| No check | `implement` (agent, your task) → `verify` — an **agent** step, not a command: it reviews the result against the task's own criteria and reports each as met, not met or not verifiable, rather than claiming a check that never ran |
 
-Replace that command with your project's actual check before relying on the workflow to verify anything. Fill in `project-conventions.md` and add `skill: project-conventions` to a workflow agent step if you want it selected there; the starter workflow does not reference the skill automatically.
+Either way the workflow runs as written; there is nothing to replace first. To give the second form a real check, swap the `verify` step's `prompt` for a `command` your project already runs and add `onFail` with `retry: implement` and `max: 2`. The generated file says the same in a comment, with an example per kind of project.
+
+Fill in `project-conventions.md` and add `skill: project-conventions` to a workflow agent step if you want it selected there; the starter workflow does not reference the skill automatically.
+
+### If something else reads this file
+
+The generated file is recognised by its **step shape** — the step ids, and the last step being an agent step — not by its bytes. Its prose is reworded between releases, so its content hash moves and anything pinning that hash needs the new one after an upgrade.
+
+Adding, renaming or reordering a step is therefore the change that breaks a reader of this file, and neither id is only a name. `implement` is what the command form's `onFail.retry` points at, so renaming it breaks the retry loop. And the last step is an agent step because a run stays open for your questions and answers only when its last agent step is also its last step — append a check after it and the whole run goes silent. Edit the file freely for your own project; but if you generate or inspect it somewhere else, key on those ids rather than on the text.
 
 ## To resolve skills with the same name
 
@@ -80,9 +89,11 @@ The [Configuration reference](11-configuration-reference.md#to-configure-this-pr
 `~/.xezar/config.json` is separate from the project's file. It belongs to you and your computer, never to a project, and it holds:
 
 - The project registry (`projects`), including each project's optional `maxParallel` and tags.
-- Resource limits under `resources`: `maxParallel`, `maxMonitoringSessions`, `monitoringWakeIntervalMinutes`, `autoResumeOnUsageLimit`, `idleTimeoutMinutes`, `memoryLimitMb` and `worktreeRetentionDefault`.
+- Resource limits under `resources`: `maxParallel`, `maxMonitoringSessions`, `monitoringWakeIntervalMinutes`, `autoResumeOnUsageLimit`, `idleTimeoutMinutes`, `memoryLimitMb`, `worktreeRetentionDefault` and `gateSlots`.
 - Machine-wide agent defaults (`agentDefaults`), disabled providers, New Task defaults, and stored switches such as `skillsAutoUpdate`, `followups`, `agentEnvPassthrough` and `modelsLocked`.
-- Folder settings: `browseRoot` and `projectsDir`.
+- Terminal defaults under `cli`, and folder settings `browseRoot` and `projectsDir`.
+
+`gateSlots` has no project-level counterpart, and that is deliberate: it bounds how many full check runs work at once on **this computer**, across every project and every checkout of every project. A project file travels to every machine that clones the project, so it cannot say anything true about one machine's disk and memory.
 
 Its keys and defaults are listed in the [Configuration reference](11-configuration-reference.md#to-configure-the-workspace-xezarconfigjson), and the [workspace schema](../../packages/xezar/src/workspace/config.ts) defines them. Do not copy this file, or its registry, into a project. Guided setup never writes it.
 
@@ -116,4 +127,4 @@ The kit can also wrap a shared skill locally. For example, its issue-filing wrap
 
 Next: [Troubleshooting and FAQ](16-troubleshooting-faq.md)
 
-Describes xezar 0.16.0.
+Describes xezar 0.18.0.

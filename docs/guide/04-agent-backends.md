@@ -29,11 +29,31 @@ To lock models to native agent settings, set `XEZ_AGENT_MODELS_LOCKED=1` or `"mo
 
 ## To use another agent account
 
-1. Open global **Settings → Agent accounts** and choose the agent's tab.
-2. Use **Add account** for Claude Code, Codex or pi. Give the account a separate configuration directory and use **Connect** to sign in. The directory may be new.
-3. Pick the account as a machine default, in project **Settings → Agents**, or for a task. A project choice takes precedence over the machine default.
+Global **Settings → Agent accounts** shows all four agents at once, one group per agent rather than one tab at a time, so "is Codex installed, and which login does it use" is answerable without clicking. Each group opens with a one-line fact — installed or not, the version when there is one, and how many logins it holds — followed by that agent's logins.
 
-OpenCode does not support extra accounts through this feature: its configuration directory does not also move its credentials. Account registrations and selections live in `~/.xezar/agent-accounts.json`. **Remove** unregisters an added account; it does not delete its directory or sessions. Existing sessions belong to the account that created them, so changing the default does not move those sessions.
+1. Open global **Settings → Agent accounts** and find the agent's group.
+2. Use **Add account** for Claude Code, Codex or pi. Give the account a separate configuration directory and use **Connect** to sign in. The directory may be one that does not exist yet: **Connect** runs the agent's own login, and the agent creates it.
+3. Pick the account as a machine default under **Defaults for new projects**, in project **Settings → Agents**, or for a single task. A project choice takes precedence over the machine default.
+
+What each row tells you:
+
+- The login each agent finds on this machine by itself is called **Built-in login**. xezar does not save it, so it carries no rename or remove.
+- The login your tasks actually run under is marked in words — **In use** when the project keeps its own setup, **Default** for the machine-wide choice. The server decides which one, the same way a run does, so the marker cannot disagree with what runs.
+- **Show details** reveals who the account is signed in as, its own config files, and **Rename** and **Remove**. Nothing about the identity is fetched until you ask for it, and an account name that looks like an e-mail address reads **Name hidden** until then.
+- **Remove** only forgets the account: nothing in its directory is deleted — not the login, not the sessions — and projects that used it fall back to the built-in login. Existing sessions belong to the account that created them, so changing the default does not move those sessions.
+
+**A saved choice that names an account you no longer have is reported, not silent.** The top of the pane says how many such choices there are, with a link to each affected agent, and each one names what tasks do instead — they run on the built-in login — and how to fix it, including a one-click **Use the built-in login** that makes the saved choice say what already happens. Tasks keep running throughout.
+
+OpenCode cannot hold a second account here: its credentials live outside its configuration directory, so a second directory would change its settings without changing the login. Its group still appears, because "is OpenCode set up?" is a question this page should answer.
+
+Account registrations and selections live in a file of their own, never in xezar's settings file:
+
+| Layout | File |
+| --- | --- |
+| Global (the default) | `~/.xezar/agent-accounts.json` |
+| A project that keeps its own setup (`xezar --single-project`) | `<project>/.xezar/agent-accounts.json` |
+
+The second one can be committed, so a clone starts with the same account names and directories; the sign-ins themselves stay on each machine. In that layout the pane also says whether the accounts of your personal machine-wide setup were copied into this project and how many could still be — a count, never their names — with a **Copy _n_ accounts** button. That button is the only thing on the page that copies; nothing happens on load, and `xezar accounts import-global` runs the same merge from a terminal. An account whose directory does not exist on this machine reads **Unavailable** there, and a task that asks for it is refused before the agent starts rather than quietly run under another login.
 
 ![Global Agent accounts settings](../screenshots/0.16.0/settings-accounts-dark-1280.png)
 
@@ -116,4 +136,4 @@ If a task fails before the agent starts with a temporary-directory error, fix th
 
 Next: [Workflows](05-workflows.md)
 
-Describes xezar 0.16.0.
+Describes xezar 0.18.0.

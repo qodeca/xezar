@@ -57,4 +57,4 @@ Remove entries you no longer need and save, or choose **Reset to defaults**, the
 
 Next: [Projects](09-projects.md)
 
-Describes xezar 0.16.0.
+Describes xezar 0.18.0.

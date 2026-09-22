@@ -4,7 +4,7 @@ Use this page to reach a cockpit running on another machine. Choose a deployment
 
 ## To choose local or hosted mode
 
-A normal `xezar` launch binds to `127.0.0.1`. The port is the project's saved port if one exists, else `XEZ_PORT`, else the port it last listened on, else `4321` — then the next free port from there. The `test:server-mode` harness boots the built CLI and asserts that an explicit `--port` outranks `XEZ_PORT` and that `XEZ_PORT` decides when no `--port` is given (harness case `A-PORT-01`). Local mode reports `capabilities.localHandoff: true`. Setting `XEZ_REMOTE=1` or choosing a non-loopback `--bind-host` changes that capability to `false` and enables hosted mode. `XEZ_REMOTE` does not itself change the listening address.
+A normal `xezar` launch binds to `127.0.0.1`. The port is the one you pinned for the project if there is one, else `XEZ_PORT`, else the port it last listened on, else `4321` — then the next free port from there; an explicit `--port` outranks all of them. The [CLI reference](12-cli-reference.md#which-port-a-project-starts-from) has the full order. Local mode reports `capabilities.localHandoff: true`. Setting `XEZ_REMOTE=1` or choosing a non-loopback `--bind-host` changes that capability to `false` and enables hosted mode. `XEZ_REMOTE` does not itself change the listening address.
 
 For example, when an authenticated reverse proxy runs on the same host, keep the server on loopback:
 
@@ -22,9 +22,11 @@ The remote cockpit uses authenticated HTTP and server-sent events (SSE) for upda
 
 ## To protect the public endpoint
 
-**xezar has no built-in authentication.** Hosted mode disables specific local-machine routes; it does not add a login. Anyone who can reach an unprotected cockpit can request agent work on its host. Put HTTPS and authentication on the proxy or tunnel, and keep direct access to the cockpit port private. This is one user's workspace, not a multi-tenant service. The `test:server-mode` harness models that gate with a throwaway Basic-Auth proxy: anonymous and wrong credentials are challenged with `401` before the backend is reached, and valid credentials reach it (harness case `A-AUTH`). That is the same contract the Ubuntu installer verifies against real nginx, and it is not a substitute for a real install.
+**xezar has no built-in authentication.** Hosted mode disables specific local-machine routes; it does not add a login. Anyone who can reach an unprotected cockpit can request agent work on its host. Put HTTPS and authentication on the proxy or tunnel, and keep direct access to the cockpit port private. This is one user's workspace, not a multi-tenant service.
 
-The server's [request-origin guard](../../packages/xezar/src/server/server.ts) provides additional browser protections:
+Your proxy is expected to challenge anonymous and wrong credentials before the request reaches xezar at all, and to pass only authenticated ones through. That is what the bundled Ubuntu installer configures in nginx; if you bring your own proxy, it is the contract to match.
+
+The server's request-origin guard provides additional browser protections:
 
 - In local mode, `/api/*` requests need a loopback `Host` header, including health requests. This protects against DNS rebinding.
 - Mutating requests with an `Origin` header must pass the host-and-port comparison, with a specific exception for the local development proxy. Explicit cross-site requests are rejected.
@@ -78,4 +80,4 @@ For a named Ubuntu instance, include its `--domain`. Uninstall reverses the inst
 
 Next: [Project kit](15-project-kit.md)
 
-Describes xezar 0.16.0.
+Describes xezar 0.18.0.

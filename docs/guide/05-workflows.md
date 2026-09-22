@@ -4,7 +4,9 @@ Use a workflow to repeat an ordered sequence of agent work and shell checks for 
 
 ## To start with built-in quick-task
 
-Choose **quick-task** for one agent step that works on your prompt. It is available without a workflow file. For a reusable sequence, add a `.yaml` or `.yml` file directly under `.xezar/workflows/`. File workflows take precedence over built-ins with the same name. Invalid files are skipped without preventing other workflows from loading. Look for skipped-file messages in `xezar run` output or the `issues` field of `GET /api/v1/workflows`; a skipped file does not appear in the cockpit workflow list.
+Choose **quick-task** for one agent step that works on your prompt. It is available without a workflow file, as is the `project-setup` definition behind [guided setup](01-getting-started.md#to-let-an-agent-set-up-this-project-optional); those two are the built-ins, and they come back if you delete them. For a reusable sequence, add a `.yaml` or `.yml` file directly under `.xezar/workflows/`. File workflows take precedence over built-ins with the same name.
+
+An invalid file is skipped without stopping the other workflows from loading, and a skipped file does not appear in the cockpit's workflow list. To find out why one is missing, run a task with `xezar run` in that project and read the skipped-file messages in its output, or paste the file into **Workflows → Import**, which reports the validation errors before saving.
 
 ## To write the YAML format
 
@@ -83,4 +85,4 @@ Use **Import** to paste YAML into the builder. Parsing happens on the server; fi
 
 Next: [Skills](06-skills.md)
 
-Describes xezar 0.16.0.
+Describes xezar 0.18.0.

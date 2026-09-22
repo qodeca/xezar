@@ -271,6 +271,18 @@ More → [Run each supported client as the project leader](docs/guide/13-mcp-lea
 xezar binds to `127.0.0.1` by default (this machine only). To reach it from a phone or another machine, `xezar server-install` puts an
 authenticated front before it – see the [Remote access overview](docs/server-install/README.md).
 
+## Upgrading
+
+The sections below cover **0.15.0 and 0.16.0 only**, and they are not extended for every release: each
+one is kept because it needs a paragraph of explanation, not because it is the newest. For any release
+after those — including the current one — the [CHANGELOG](CHANGELOG.md) is the complete record, and
+every breaking change is called out there. Read it from your installed version forward:
+
+```bash
+xezar --version                 # the version you are on
+npm view @qodeca/xezar version  # the version you would get
+```
+
 ## Upgrading to 0.16.0
 
 ### Audit trail file
