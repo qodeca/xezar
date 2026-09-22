@@ -71,6 +71,7 @@ const NO_OPERATION_ID: Readonly<Record<string, string>> = {
     'reads the model catalog of each agent backend through `GET /api/v1/models`, which serves its own 5-minute cache and at worst refreshes that cache of an external fact — a repeat re-reads the list and does nothing a second time (#819 item 4)',
   'project_config:get_account': 'reads the effective account selection',
   'project_config:read_quota': 'reads stored Claude/Codex quota observations and starts no check',
+  'project_config:check_quota': 'refreshes the bounded in-memory Claude/Codex quota observation; a repeat only re-reads external state and the five-minute gap prevents duplicate work',
   'project_config:check_account_status':
     'reads ONE account’s sign-in state, and is the account-scoped twin of `get_capabilities` above in every way that matters here (#677 B5): `refresh: true` drops that account’s cached answer and spawns the vendor CLI probe again, which re-reads the world rather than doing anything a second time, and a receipt would serve the replay the stale snapshot `refresh` exists to avoid. The cockpit’s own counterpart is a GET that records no audit row either',
   'project_config:get_account_details':

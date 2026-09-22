@@ -36,6 +36,7 @@ import { z } from 'zod';
 import {
   appearanceSchema,
   agentQuotaQuerySchema,
+  agentQuotaRefreshInputSchema,
   isSafeSessionId,
   resumeCommand,
   setWorkspaceUiStateInputSchema,
@@ -75,6 +76,7 @@ import {
 } from '@qodeca/xezar-contract';
 import { detectEnvironment } from '../core/backend-detect.ts';
 import { AgentQuotaStore } from '../workspace/agent-quota.ts';
+import { AgentQuotaChecker } from '../workspace/agent-quota-checker.ts';
 import { RUNNER_IDS } from '../core/agent-runner.ts';
 import type { ContentBlock, RunnerId } from '../core/agent-runner.ts';
 import { AGENT_MODELS_LOCKED_ERROR, agentModelsLocked } from '../core/agent-model-policy.ts';
@@ -348,6 +350,8 @@ export interface ServerDeps {
   workspaceEvents?: WorkspaceEventBus;
   /** Shared quota store. Defaults to the boot RunManager's store so run observations are live. */
   agentQuotaStore?: AgentQuotaStore;
+  /** Shared bounded process checker. `startServer` owns its startup and shutdown lifecycle. */
+  agentQuotaChecker?: AgentQuotaChecker;
   /** How `POST /api/projects/checkout` (step 4.3) actually clones. Defaults to
    *  `gh repo clone` (or the `XEZ_DRY_RUN=1` fake) — injected by tests so the
    *  route's guards, cleanup and error surfacing are exercised for real
@@ -1302,6 +1306,7 @@ export function createApp(deps: ServerDeps) {
   const managerQuotaStore = deps.manager.agentQuotaStore;
   const agentQuotaStore = deps.agentQuotaStore
     ?? (managerQuotaStore instanceof AgentQuotaStore ? managerQuotaStore : new AgentQuotaStore());
+  const agentQuotaChecker = deps.agentQuotaChecker ?? new AgentQuotaChecker({ store: agentQuotaStore });
   const contexts = deps.contexts ?? new ProjectContexts({
     listProjects: async () => {
       const selector = singleProjectRegistry()
@@ -2150,30 +2155,50 @@ export function createApp(deps: ServerDeps) {
   const readAgentQuota = async (
     selector: { provider?: 'claude' | 'codex'; accountId?: string } = {},
   ): Promise<AgentQuotaResponse> => {
-    const accounts = await loadAgentAccounts().catch(() => defaultAgentAccountStore());
-    const known = listAgentProfiles(accounts, ['claude', 'codex']).map((profile) => ({
-      runner: profile.provider as 'claude' | 'codex',
-      accountId: profile.id,
-    }));
-    return agentQuotaStore.answer(selector, known);
+    return agentQuotaChecker.answer(selector);
   };
 
   deps.socketHub?.registerTopic('agent-quota', {
     snapshot: () => readAgentQuota(),
-    start: (publish) => agentQuotaStore.subscribe(() => {
-      void readAgentQuota().then(publish).catch(() => undefined);
-    }),
+    start: (publish) => {
+      const stopLooking = agentQuotaChecker.viewerStarted();
+      const stopStore = agentQuotaStore.subscribe(() => {
+        void readAgentQuota().then(publish).catch(() => undefined);
+      });
+      return () => { stopStore(); stopLooking(); };
+    },
   });
 
   const agentProfilesRoutes = new Hono<ProjectApiEnv>()
     .get('/workspace/agent-quota', queryZodValidator(agentQuotaQuerySchema), async (c) => {
-      const selector = c.req.valid('query');
-      const answer = await readAgentQuota(selector);
-      if (selector.accountId !== undefined && answer.accounts.length === 0) {
+      const query = c.req.valid('query');
+      const selector = {
+        ...(query.provider !== undefined ? { provider: query.provider } : {}),
+        ...(query.accountId !== undefined ? { accountId: query.accountId } : {}),
+      };
+      const current = await readAgentQuota(selector);
+      if (selector.accountId !== undefined && current.accounts.length === 0) {
         return c.json({ error: `unknown account: ${selector.accountId}` }, 404);
       }
+      agentQuotaChecker.noteRead();
+      const answer = query.wait === 'true' || query.wait === '1'
+        ? await agentQuotaChecker.refresh(selector, true)
+        : await readAgentQuota(selector);
       return c.json(answer);
     })
+    .post(
+      '/workspace/agent-quota/refresh',
+      jsonZodValidator(() => agentQuotaRefreshInputSchema),
+      async (c) => {
+        const selector = c.req.valid('json');
+        const known = await agentQuotaChecker.knownProfiles(selector);
+        if (selector.accountId !== undefined && known.length === 0) {
+          return c.json({ error: `unknown account: ${selector.accountId}` }, 404);
+        }
+        const answer: AgentQuotaResponse = await agentQuotaChecker.refresh(selector, true);
+        return c.json(answer);
+      },
+    )
     .get('/workspace/agent-profiles', async (c) => {
       const editable = capabilities().localHandoff;
       // Hosted mode withholds the listing entirely rather than serving it read-only: the paths
@@ -6515,8 +6540,12 @@ export function startServer(deps: ServerDeps, port: number): ServerType {
   let ensureAutomationsStarted = () => {};
   let stopAutomations = () => {};
   let rescheduleAutomations = () => {};
+  const quotaStore = deps.agentQuotaStore ?? deps.manager.agentQuotaStore ?? new AgentQuotaStore();
+  const quotaChecker = deps.agentQuotaChecker ?? new AgentQuotaChecker({ store: quotaStore });
   const app = createApp({
     ...deps,
+    agentQuotaStore: quotaStore,
+    agentQuotaChecker: quotaChecker,
     bindHost,
     contexts: sharedContexts,
     automationStore: bootAutomationStore,
@@ -6738,6 +6767,9 @@ export function startServer(deps: ServerDeps, port: number): ServerType {
   // leaves no watcher behind; it never throws and degrades to one warning (config-watcher.ts).
   let configWatcher: WorkspaceConfigWatcher | undefined;
   server.once('listening', () => {
+    // Checks begin only after the socket is accepting requests. They are deliberately detached:
+    // a missing/old/malformed agent can never delay or fail server startup.
+    quotaChecker.startup();
     if (deps.semaphore) {
       // `startWorkspaceConfigWatcher` documents "never throws"; this `try` is hardening, not
       // reliance on it throwing today. A throw here would otherwise be an uncaught exception
@@ -6762,7 +6794,7 @@ export function startServer(deps: ServerDeps, port: number): ServerType {
     // the only one — the flag on here starts the poller once and a later resolve is a no-op.
     automationsEnabled();
   });
-  server.once('close', () => { unsubscribe(); offAutomationsDisposed(); coordinator.stop(); automationScheduler.stop(); configWatcher?.close(); });
+  server.once('close', () => { unsubscribe(); offAutomationsDisposed(); coordinator.stop(); automationScheduler.stop(); configWatcher?.close(); quotaChecker.close(); });
   socketHub.attach(server, (req) => verifyWsUpgrade(req, bindHost));
   return server;
 }

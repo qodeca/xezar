@@ -214,6 +214,7 @@ export const AUDIT_MCP_READS: readonly string[] = [
   'project_config:list_models',
   'project_config:get_account',
   'project_config:read_quota',
+  'project_config:check_quota',
   'project_config:list_agent_config',
   'project_config:read_agent_config',
   'project_config:list_workflows',
@@ -242,6 +243,7 @@ export const AUDIT_MCP_READS: readonly string[] = [
 /** § 6.3: the non-GET routes that are previews or parses. No record. */
 export const AUDIT_HTTP_READS: readonly (AuditHttpRoute & { readonly reason: string })[] = [
   { ...post('/plan'), reason: 'preview: plans a task without starting it' },
+  { ...post('/workspace/agent-quota/refresh'), reason: 'read: refreshes an in-memory quota observation without changing user configuration' },
   { ...post('/workflows/parse'), reason: 'preview: parses a workflow without saving it' },
   { ...post('/workspace/skills-update/check'), reason: 'preview: checks for skill updates without applying them' },
 ];
