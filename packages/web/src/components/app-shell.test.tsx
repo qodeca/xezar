@@ -999,3 +999,37 @@ describe('AppShell', () => {
     })
   })
 })
+
+// #867 S5: the plan-limits chip's two homes. The chip itself is `agent-quota-chip.tsx`; the shell
+// only places what it is given.
+describe('AppShell — plan-limits chip slots', () => {
+  const band = <div data-slot="agent-quota-band">band chip</div>
+  const compact = <button type="button" data-slot="agent-quota-chip">2/5 can work</button>
+
+  // Break: the band became a second elastic item inside the one-row controls (#702), or moved
+  // outside the footer and grew a second hairline.
+  it('puts the desktop band inside the footer, above its one-row controls', () => {
+    renderShell('/', { agentQuota: band, agentQuotaCompact: compact })
+    const footerBand = footer().querySelector('[data-slot="agent-quota-band"]')
+    expect(footerBand).not.toBeNull()
+    expect(footerBand?.nextElementSibling?.getAttribute('data-slot')).toBe('sidebar-footer-controls')
+    expect(footer().querySelector('[data-slot="sidebar-footer-controls"] [data-slot="agent-quota-band"]')).toBeNull()
+  })
+
+  // Break: the phone chip missing from the top bar, or the band duplicated into the drawer.
+  it('puts the compact chip in the phone top bar, and no band in the drawer', () => {
+    renderShell('/', { agentQuota: band, agentQuotaCompact: compact })
+    const status = document.querySelector('[data-slot="mobile-status"]') as HTMLElement
+    expect(status.querySelector('[data-slot="agent-quota-chip"]')).not.toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Open menu' }))
+    const drawer = screen.getByRole('dialog')
+    expect(drawer.querySelector('[data-slot="agent-quota-band"]')).toBeNull()
+    // Only the desktop sidebar carries it.
+    expect(document.querySelectorAll('[data-slot="agent-quota-band"]')).toHaveLength(1)
+  })
+
+  it('renders an unchanged footer when the slot is empty', () => {
+    renderShell('/')
+    expect(footer().firstElementChild?.getAttribute('data-slot')).toBe('sidebar-footer-controls')
+  })
+})
