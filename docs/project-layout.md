@@ -22,6 +22,14 @@ Writers call `ensureProjectDataIgnored`, which keeps a blanket `*` rule in
 `.local/.gitignore`, so every present and future engine file is ignored without a
 per-file list.
 
+That rule is about git only. It says nothing about other tools that read
+`.local/xezar/`. At least one external consumer checks the files at the top level
+of `.local/xezar/` against a closed list of the names the engine writes today, and
+fails a gate when an unexpected name appears there. By that consumer's own report,
+a new subdirectory is safe and a new top-level file is a break. This layout is not
+a promise we have made, but a consumer depends on it: put new engine state in a
+subdirectory, and announce any new top-level file in the changelog.
+
 One exception exists, and it is a safety guard rather than a fallback: when xezar
 is launched in the user's home directory, `<repo>/.xezar` **is** the global
 workspace directory. Writing a project kit there would overwrite the user's
