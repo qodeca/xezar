@@ -177,7 +177,15 @@ interface Scan {
  * it never names this way is invisible to it (limit 3 above).
  */
 const AUDIT_STORAGE = /\b(auditTrailPath|rotatedAuditTrailPath|auditLockPath|appendAuditRecord|AUDIT_TRAIL_FILE|AUDIT_ROTATE_BYTES)\b|audit\.ndjson/;
-const EXPECTED_STORAGE_USERS = ['packages/xezar/src/mcp/audit-trail.ts'];
+/**
+ * `local-xezar-top-level-names.ts` (#838 follow-up) is a reader in the sense net 3 can see — its
+ * `rotations` entry names `audit.ndjson` literally, because that name is DATA describing the
+ * rotation shape for an external consumer's own gate, not a path this file builds or touches. It
+ * never imports `AuditTrail`/`AuditChannel` (net 1 does not list it) and never opens, locks,
+ * appends to or rotates the file itself; it is listed here, sorted, rather than widening
+ * `AUDIT_STORAGE` to stop seeing the literal.
+ */
+const EXPECTED_STORAGE_USERS = ['packages/xezar/src/local-xezar-top-level-names.ts', 'packages/xezar/src/mcp/audit-trail.ts'];
 
 function scanAll(roots: readonly string[]): Scan {
   const doors: Site[] = [];
