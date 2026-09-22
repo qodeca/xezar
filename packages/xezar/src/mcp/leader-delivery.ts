@@ -582,19 +582,29 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
   /**
    * #886: the owner session called a xezar tool. Only the owner counts — a lapsed session's call says
    * nothing about the leader — and only a Claude Code leader reads it. A `leader_events` call is the
-   * leader recovering or checking events, never "unrelated activity" (#890 review, finding 1): a read
-   * is remembered as a read, and status, ack, attach and stop are not counted at all. It publishes
-   * nothing: status is computed when read, and the heartbeat republishes.
+   * leader recovering or checking events, never "unrelated activity" (#890 review, finding 1): read,
+   * status, ack, attach and stop are not counted here at all. This edge fires on ARRIVAL, before the
+   * arguments are validated, so it never records a read — a rejected read returned no events (#890
+   * re-check); `sessionSucceeded` does. It publishes nothing: status is computed when read, and the
+   * heartbeat republishes.
    */
   sessionCalled(sessionKey: string, call: McpToolCallActivity): void {
     if (this.#closed || sessionKey !== this.#ownerSessionKey) return;
-    const at = Date.now();
-    if (call.tool === LEADER_EVENTS_TOOL_NAME) {
-      if (call.action === 'read') this.#ownerReadAt = at;
-      return;
-    }
-    this.#ownerOtherCallsAt.push(at);
+    if (call.tool === LEADER_EVENTS_TOOL_NAME) return;
+    this.#ownerOtherCallsAt.push(Date.now());
     if (this.#ownerOtherCallsAt.length > OWNER_CALLS_KEPT) this.#ownerOtherCallsAt.shift();
+  }
+
+  /**
+   * #886: the owner's call validated and answered without an error. Only a `leader_events` read counts
+   * here — it returned the events, so every push made before it ARRIVED (`calledAt`) is read. An ack
+   * needs nothing: the adapter prunes by the durable acknowledged position, which only a successful
+   * ack moves.
+   */
+  sessionSucceeded(sessionKey: string, call: McpToolCallActivity, calledAt: number): void {
+    if (this.#closed || sessionKey !== this.#ownerSessionKey) return;
+    if (call.tool !== LEADER_EVENTS_TOOL_NAME || call.action !== 'read') return;
+    this.#ownerReadAt = Math.max(this.#ownerReadAt ?? calledAt, calledAt);
   }
 
   #forgetOwnerActivity(): void {

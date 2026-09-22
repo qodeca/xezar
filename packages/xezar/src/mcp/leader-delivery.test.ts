@@ -669,6 +669,12 @@ describe('attaching Claude Code: the channel push travels down the owner session
   /** #886: the owner's calls, as the service reports them — a tool name and its string `action`. */
   const other = { tool: 'task_read' } as const;
   const read = { tool: LEADER_EVENTS_TOOL_NAME, action: 'read' } as const;
+  /** A read as the service reports one that validated and answered: arrival, then success (#890 re-check). */
+  const readOk = (made: LeaderDelivery, key: string): void => {
+    const calledAt = Date.now();
+    made.sessionCalled(key, read);
+    made.sessionSucceeded(key, read, calledAt);
+  };
 
   it('names leader_events by the tool’s own name (#886)', () => {
     // RED against: the delivery seam's copy of the name drifting from the tool it stands for, which
@@ -723,7 +729,7 @@ describe('attaching Claude Code: the channel push travels down the owner session
     await new Promise((r) => setTimeout(r, 320)); // past the not-seen bound
     // The fallback, exactly as documented: status, read, reconcile state with other tools, then ack.
     made.sessionCalled('session-1', { tool: LEADER_EVENTS_TOOL_NAME, action: 'status' });
-    made.sessionCalled('session-1', read);
+    readOk(made, 'session-1');
     for (let i = 0; i < 4; i++) made.sessionCalled('session-1', other);
     const before = published.length;
     await until('a delivery heartbeat after the read', () => published.length >= before + 2, 3_000);
@@ -746,13 +752,37 @@ describe('attaching Claude Code: the channel push travels down the owner session
     const t = channelTransport();
     made.sessionOpened('session-1', t.transport as never);
     expect((await made.act({ action: 'attach', client: 'claude-code' })).ok).toBe(true);
-    made.sessionCalled('session-1', read);
+    readOk(made, 'session-1');
     await new Promise((r) => setTimeout(r, 5));
     row(journal);
     await until('the push', () => t.pushed.length === 1);
     await new Promise((r) => setTimeout(r, 320));
     for (let i = 0; i < 3; i++) made.sessionCalled('session-1', other);
     expect(blockerOf(made)?.code).toBe('claude-code-push-not-seen');
+  });
+
+  it('counts a read only once it succeeded, for the owner, and only as of when it arrived (#890 re-check)', async () => {
+    // RED against: recording a read on arrival (a rejected read would suppress the blocker), taking a
+    // success from another session or another tool, or dating the read at completion so a push made
+    // while it ran reads as seen.
+    const { delivery: made, journal } = delivery(true, [], undefined, undefined, 300);
+    const t = channelTransport();
+    made.sessionOpened('session-1', t.transport as never);
+    expect((await made.act({ action: 'attach', client: 'claude-code' })).ok).toBe(true);
+    row(journal);
+    await until('the push', () => t.pushed.length === 1);
+    await new Promise((r) => setTimeout(r, 320));
+    made.sessionCalled('session-1', read); // arrived, then rejected: no success edge
+    made.sessionSucceeded('someone-else', read, Date.now());
+    made.sessionSucceeded('session-1', { tool: LEADER_EVENTS_TOOL_NAME, action: 'status' }, Date.now());
+    made.sessionSucceeded('session-1', { tool: 'task_read', action: 'read' }, Date.now());
+    made.sessionSucceeded('session-1', read, Date.now() - 10_000); // arrived before the push
+    for (let i = 0; i < 3; i++) made.sessionCalled('session-1', other);
+    expect(blockerOf(made)?.code).toBe('claude-code-push-not-seen');
+    // A later success never moves the read back in time.
+    made.sessionSucceeded('session-1', read, Date.now());
+    made.sessionSucceeded('session-1', read, Date.now() - 10_000);
+    expect(blockerOf(made)?.code).toBe('claude-code-push-unconfirmed');
   });
 
   it('forgets the owner’s activity when another session takes the project over (#886)', async () => {

@@ -7,7 +7,7 @@ import { ProjectOwnership, sessionExpiredError } from '../workspace/project-owne
 import { startMcpService } from './index.ts';
 import { IPC_PROTOCOL_VERSION, LineFramer, encodeFrame, type IpcResponse } from './ipc.ts';
 import { listenMcpSocket } from './service.ts';
-import { defineTool, textResult, type McpTool } from './tool.ts';
+import { defineTool, errorResult, textResult, type McpTool } from './tool.ts';
 
 /**
  * The service's answers to frames the bridge never sends on its good path (#333): a frame that is
@@ -305,6 +305,44 @@ describe('session/open push capability and the session key in the tool context (
     ]);
   });
 
+  it('T-15: `succeeded` fires only for a call whose arguments validated and whose answer is not an error, with its arrival time (#890 re-check)', async () => {
+    // RED against: telling the delivery seam a call succeeded before validation (a rejected
+    // `leader_events` read would suppress the push-not-seen blocker again), or for an error result.
+    const strict = defineTool({
+      name: 'strict_thing',
+      description: 'A strict tool: rejects an unknown key, and answers an error for action "fail".',
+      inputSchema: z.object({ action: z.enum(['read', 'fail']) }).strict(),
+      annotations: { readOnlyHint: true },
+      async call(args) {
+        return args.action === 'fail' ? errorResult('failed') : textResult('ok');
+      },
+    });
+    const opened: string[] = [];
+    const called: unknown[] = [];
+    const succeeded: Array<{ key: string; call: unknown; calledAt: number }> = [];
+    const svc = await twoConnections({
+      tools: [strict],
+      sessions: {
+        opened: (key) => opened.push(key),
+        closed: () => {},
+        called: (_key, call) => called.push(call),
+        succeeded: (key, call, calledAt) => succeeded.push({ key, call, calledAt }),
+      },
+    });
+    const c = await svc.open();
+    await c.request(1, 'session/open');
+    const before = Date.now();
+    expect(await c.request(2, 'tools/call', { name: 'strict_thing', arguments: { action: 'read', unexpected: true } })).toMatchObject({ ok: true, result: { isError: true } });
+    expect(await c.request(3, 'tools/call', { name: 'strict_thing', arguments: { action: 'fail' } })).toMatchObject({ ok: true, result: { isError: true } });
+    expect(succeeded).toEqual([]);
+    // The arrival edge is still the fail-safe one: both rejected calls were reported as activity.
+    expect(called).toEqual([{ tool: 'strict_thing', action: 'read' }, { tool: 'strict_thing', action: 'fail' }]);
+    await c.request(4, 'tools/call', { name: 'strict_thing', arguments: { action: 'read' } });
+    expect(succeeded).toEqual([{ key: opened[0], call: { tool: 'strict_thing', action: 'read' }, calledAt: expect.any(Number) }]);
+    expect(succeeded[0]!.calledAt).toBeGreaterThanOrEqual(before);
+    expect(succeeded[0]!.calledAt).toBeLessThanOrEqual(Date.now());
+  });
+
   it('T-14: an activity observer that throws never fails the call (#886)', async () => {
     // RED against: letting the observer's throw escape into the tool call (N-07).
     vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -312,5 +350,15 @@ describe('session/open push capability and the session key in the tool context (
     const c = await svc.open();
     await c.request(1, 'session/open');
     expect(await c.request(2, 'tools/call', { name: 'read_thing', arguments: {} })).toMatchObject({ ok: true });
+  });
+
+  it('T-16: a success observer that throws never fails the call (#890 re-check)', async () => {
+    // RED against: letting the success observer's throw escape into the tool call (N-07).
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const svc = await twoConnections({ sessions: { opened: () => {}, closed: () => {}, succeeded: () => { throw new Error('boom'); } } });
+    const c = await svc.open();
+    await c.request(1, 'session/open');
+    expect(await c.request(2, 'tools/call', { name: 'read_thing', arguments: {} })).toMatchObject({ ok: true, result: { content: [{ text: 'read' }] } });
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('boom'));
   });
 });

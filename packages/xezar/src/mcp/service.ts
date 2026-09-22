@@ -102,6 +102,13 @@ export interface McpSessionObserver {
    * missing them (#890 review, finding 1). Optional, and like the other edges it may never fail a call.
    */
   called?(sessionKey: string, call: McpToolCallActivity): void;
+  /**
+   * #886: the same call, told again only once its arguments validated and it answered without an error
+   * (#890 re-check). `called` fires on arrival, before validation, so it is the fail-safe activity
+   * signal; only this edge may be read as the leader HAVING done something — a recovery read that
+   * returned events. `calledAt` is when it arrived, so a push made while it ran is not counted as read.
+   */
+  succeeded?(sessionKey: string, call: McpToolCallActivity, calledAt: number): void;
 }
 
 /** #886: which tool a session called, and its `action` argument when it passed a string one. Never the arguments. */
@@ -378,9 +385,12 @@ async function answer(
       if (announcement) opts.sessions?.codexAnnounced?.(sessionKey, announcement);
       const tool = opts.tools.find((t) => t.name === params.data.name);
       if (!tool) return failure(request.id, 'unknown-tool', `unknown tool: ${params.data.name}`);
-      noteCall(opts, sessionKey, toolCallActivity(tool.name, params.data.arguments));
+      const activity = toolCallActivity(tool.name, params.data.arguments);
+      const calledAt = Date.now();
+      noteCall(opts, sessionKey, activity);
       const outcome = await callTool(tool, params.data.arguments, ctx, opts.door, () => ownership.checkMutation(token).ok);
       if (outcome === 'fenced') return expired(request.id, opts.project.id);
+      if (outcome.isError !== true) noteSuccess(opts, sessionKey, activity, calledAt);
       return { v: IPC_PROTOCOL_VERSION, id: request.id, ok: true, result: outcome };
     }
     default:
@@ -416,6 +426,15 @@ function toolCallActivity(tool: string, args: Record<string, unknown> | undefine
 function noteCall(opts: McpServiceOptions, sessionKey: string, call: McpToolCallActivity): void {
   try {
     opts.sessions?.called?.(sessionKey, call);
+  } catch (err) {
+    console.warn(`[xez] MCP event delivery hook failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+/** #886: the call validated and answered without an error. Guarded the same way (N-07). */
+function noteSuccess(opts: McpServiceOptions, sessionKey: string, call: McpToolCallActivity, calledAt: number): void {
+  try {
+    opts.sessions?.succeeded?.(sessionKey, call, calledAt);
   } catch (err) {
     console.warn(`[xez] MCP event delivery hook failed: ${err instanceof Error ? err.message : String(err)}`);
   }

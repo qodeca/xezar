@@ -918,6 +918,33 @@ describe('#309 — push delivery in the running service (A-19 delivery, A-20 no-
     expect(actions.some((action) => action.includes('read'))).toBe(false);
   }, 60_000);
 
+  it('#886 (#890 re-check): a REJECTED leader_events read does not hide claude-code-push-not-seen; a real read does', async () => {
+    // RED against: recording the read when the call arrives (the reviewed head `06868d99`), before
+    // the strict schema refuses `unexpected` — the rejected read returned no events, yet the session
+    // read as having recovered them and stayed on push-unconfirmed however long it kept working.
+    const c = await cockpit();
+    const handle = await startMcpService({ projectId: c.id, version: VERSION, service: c.app, store: c.store, warn: () => {}, leader: { heartbeatMs: 500, pushNotSeenMs: 1_000 } });
+    closers.push(() => handle.close());
+    const leader = claudeAgent(c.root);
+    await leader.initialize();
+    await until('the owner session’s controller', async () => ((await c.status()) as { delivery: unknown }).delivery !== null || undefined);
+    okResult(await leader.call('leader_events', { action: 'attach' }));
+    expect((await c.human('PUT', '/config', { baseBranch: 'develop' })).status).toBe(200);
+    const change = await until('the config row', () => journalRows(c.dataDir).find((row) => row.kind === 'config.changed' && row.origin === 'human'));
+    await until('the channel push', () => leader.channels.find((f) => f.content.includes(change.eventId)));
+    await new Promise((r) => setTimeout(r, 1_100)); // past the not-seen bound
+
+    const rejected = await leader.call('leader_events', { action: 'read', unexpected: true });
+    expect(rejected.isError).toBe(true);
+    for (let i = 0; i < 3; i++) await leader.call('discover_project', {});
+    const blocker = (s: McpLeaderStatus): string | undefined => (s as { blocker?: { code?: string } | null }).blocker?.code;
+    expect(blocker(await c.status())).toBe('claude-code-push-not-seen');
+
+    // The honest recovery still clears it: a read that validates and answers.
+    okResult(await leader.call('leader_events', { action: 'read' }));
+    expect(blocker(await c.status())).toBe('claude-code-push-unconfirmed');
+  }, 60_000);
+
   it('#450 T-22: in hosted mode the MCP door refuses attach and stop, and status says xezar cannot push', async () => {
     // RED against: skipping the hosted check in `attachSession`.
     const c = await cockpit();
