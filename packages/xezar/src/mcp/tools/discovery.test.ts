@@ -567,6 +567,9 @@ describe('discover_project — the tool', () => {
     expect(bindHostFromArgv(['node', 'xezar', 'serve'])).toBeUndefined();
     expect(bindHostFromArgv(['node', 'xezar', '--bind-host', '0.0.0.0'])).toBe('0.0.0.0');
     expect(bindHostFromArgv(['node', 'xezar', 'serve', '--bind-host=10.0.0.5'])).toBe('10.0.0.5');
+    // An empty value is the flag being absent, as it is for the CLI (#838 item A).
+    expect(bindHostFromArgv(['node', 'xezar', 'serve', '--bind-host', ''])).toBeUndefined();
+    expect(bindHostFromArgv(['node', 'xezar', 'serve', '--bind-host='])).toBeUndefined();
   });
 });
 

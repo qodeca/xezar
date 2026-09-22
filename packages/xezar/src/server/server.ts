@@ -244,7 +244,7 @@ import { ProjectWriterError } from '../runs/project-writer.ts';
 import { reviewGateEnabled } from '../runs/review-gate.ts';
 import { readUiState, uiStatePath } from '../ui-state.ts';
 import { agentHomePaths, expandTilde } from '../paths.ts';
-import { isLoopbackHostHeader, normalizeHostname, resolveCapabilities } from './capabilities.ts';
+import { isLoopbackHostHeader, normalizeHostname, resolveBindHost, resolveCapabilities } from './capabilities.ts';
 import { createSocketHub, type SocketHub, type WsUpgradeVerdict } from './ws.ts';
 import { browseDirectory, isInsideBrowseRoot, isLexicallyInsideBrowseRoot, resolveBrowseRoot } from './fs-browse.ts';
 import { parseRemote, resolveForge, type ForgeAvailability } from './forge/index.ts';
@@ -6433,6 +6433,11 @@ export function createApp(deps: ServerDeps) {
 }
 
 export function startServer(deps: ServerDeps, port: number): ServerType {
+  // Resolved here, not trusted from the caller: `bindHost: ''` must bind loopback exactly like an
+  // absent one (#838 item A), and a programmatic caller that skips the CLI's `parseArgs` step must
+  // not re-open every interface. This one value is what the listen, the WS upgrade guard and every
+  // capability resolve below (and inside `createApp`) read.
+  const bindHost = resolveBindHost(deps.bindHost);
   const workspaceEvents = deps.workspaceEvents ?? new WorkspaceEventBus();
   const skillsUpdate = deps.skillsUpdate ?? new SkillsUpdateService({ invalidateCatalog: refreshTeamSkills });
   // The subscription hub rides the same HTTP server (one port, zero config):
@@ -6464,7 +6469,7 @@ export function startServer(deps: ServerDeps, port: number): ServerType {
   // "enabled" and did nothing. Observing the resolve here (rather than in every route) is what
   // closes that: turning on starts the poller exactly once, turning off stops it again.
   const automationsEnabled = () => {
-    const enabled = resolveCapabilities(process.env, deps.bindHost).automations;
+    const enabled = resolveCapabilities(process.env, bindHost).automations;
     if (enabled) ensureAutomationsStarted();
     else stopAutomations();
     return enabled;
@@ -6474,6 +6479,7 @@ export function startServer(deps: ServerDeps, port: number): ServerType {
   let rescheduleAutomations = () => {};
   const app = createApp({
     ...deps,
+    bindHost,
     contexts: sharedContexts,
     automationStore: bootAutomationStore,
     workspaceEvents,
@@ -6485,12 +6491,15 @@ export function startServer(deps: ServerDeps, port: number): ServerType {
   // SECURITY: default to loopback. This server executes agents locally and its endpoints are
   // same-origin-trusted (only /api/health is CORS-open); binding to a non-loopback host would
   // expose an agent-executing box to the network. `bindHost` exists only for a deliberate
-  // hosted/VPS deployment (which also flips XEZ_REMOTE to gate the local-handoff endpoints) —
-  // src/index.ts never passes it, so the loopback guarantee holds for the normal CLI.
+  // hosted/VPS deployment (which also flips XEZ_REMOTE to gate the local-handoff endpoints).
+  // src/index.ts DOES pass it: the CLI resolves `--bind-host` once at its boundary and hands it in
+  // already normalised, and `startServer` resolves it once more above so a caller that skips the
+  // CLI gets the same answer. That single `bindHost` is the value the listen and every capability
+  // resolve trust; absent (or empty) binds loopback.
   const server = serve({
     fetch: app.fetch,
     port,
-    hostname: deps.bindHost ?? '127.0.0.1',
+    hostname: bindHost ?? '127.0.0.1',
   });
   const coordinator = new SkillsUpdateCoordinator(skillsUpdate, async () =>
     effectiveSkillsAutoUpdate(await loadWorkspaceConfig()));
@@ -6716,7 +6725,7 @@ export function startServer(deps: ServerDeps, port: number): ServerType {
     automationsEnabled();
   });
   server.once('close', () => { unsubscribe(); offAutomationsDisposed(); coordinator.stop(); automationScheduler.stop(); configWatcher?.close(); });
-  socketHub.attach(server, (req) => verifyWsUpgrade(req, deps.bindHost));
+  socketHub.attach(server, (req) => verifyWsUpgrade(req, bindHost));
   return server;
 }
 

@@ -1,5 +1,5 @@
 import type { McpDiscoveryCockpit } from '@qodeca/xezar-contract';
-import { resolveCapabilities } from '../server/capabilities.ts';
+import { resolveBindHost, resolveCapabilities } from '../server/capabilities.ts';
 import { ownCockpitOrigin } from '../server/instance-liveness.ts';
 
 /**
@@ -11,8 +11,9 @@ import { ownCockpitOrigin } from '../server/instance-liveness.ts';
 export function bindHostFromArgv(argv: readonly string[] = process.argv): string | undefined {
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]!;
-    if (arg === '--bind-host') return argv[i + 1];
-    if (arg.startsWith('--bind-host=')) return arg.slice('--bind-host='.length);
+    // `resolveBindHost`: an empty value means the flag was absent, as it does for the CLI (#838 item A).
+    if (arg === '--bind-host') return resolveBindHost(argv[i + 1]);
+    if (arg.startsWith('--bind-host=')) return resolveBindHost(arg.slice('--bind-host='.length));
   }
   return undefined;
 }

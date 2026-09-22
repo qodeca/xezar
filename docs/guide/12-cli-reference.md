@@ -233,7 +233,7 @@ Use the [server-install guide](../server-install/README.md) for prerequisites an
 | `--status-file <path>` | `lease gates`: write one JSON line recording whether the slot was held, the outcome, which slot and how long it waited. A path that cannot be written is ignored. See [above](#to-stop-check-runs-competing-lease-gates). |
 | `--platform <id>` | Server commands: `ubuntu-vps` or `macosx-ngrok`. Required for install; optional for deploy/uninstall only when saved instance state supplies it. |
 | `--domain <host>` | `ubuntu-vps` server commands only: select the domain's instance; install can create a second independent one. |
-| `--bind-host <host>` | `serve` / `server-install`: bind host, default `127.0.0.1`. |
+| `--bind-host <host>` | `serve` / `server-install`: bind host, default `127.0.0.1`. An empty value (`--bind-host ""`, or `--bind-host "$HOST"` with `HOST` unset) now binds `127.0.0.1` like an absent flag, without a warning – earlier versions bound every interface. |
 | `--external-proxy` | Ubuntu server install: an existing proxy owns ports 80/443; install the service without nginx/certbot. That proxy must provide TLS and authentication. |
 | `--yes` | Server commands: accept safe defaults; does not automatically authorize sudo. |
 | `--reconfigure <ids>` | `server-install`: rerun comma-separated step IDs. |
