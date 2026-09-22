@@ -24,7 +24,7 @@ export type ReadOnlyCommandDecision = ReadOnlyCommandAllowed | ReadOnlyCommandRe
 
 export interface CommandArgumentPolicy {
   readonly program: string;
-  readonly enforcement: 'checked' | 'argument-safe' | 'never-named';
+  readonly enforcement: 'checked' | 'argument-safe' | 'accepted-write' | 'never-named';
   readonly rule: string;
   readonly argumentShapes: readonly string[];
   readonly reason: string;
@@ -60,7 +60,7 @@ export const COMMAND_RUNNING_ARGUMENTS = [
   { program: 'gh', enforcement: 'argument-safe', rule: 'command.argument-safe', argumentShapes: [], reason: 'the shipped gh entries use API operations and templates without local command execution' },
   { program: 'node', enforcement: 'argument-safe', rule: 'command.argument-safe', argumentShapes: [], reason: 'each shipped node entry fixes the script path before any caller arguments' },
   { program: 'sh', enforcement: 'argument-safe', rule: 'command.argument-safe', argumentShapes: [], reason: 'each shipped sh entry fixes the script path before any caller arguments' },
-  { program: 'agent-browser', enforcement: 'argument-safe', rule: 'command.argument-safe', argumentShapes: [], reason: 'the browser harness operates through its own command grammar, not a shell program argument' },
+  { program: 'agent-browser', enforcement: 'accepted-write', rule: 'command.accepted-write', argumentShapes: ['screenshot --full <path>'], reason: 'QA and design-review roles intentionally allow browser artifacts, including screenshots at caller-chosen paths' },
   ...['pwd', 'ls', 'cat', 'echo', 'printf', 'wc', 'head', 'tail', 'diff', 'sha256sum', 'shasum'].map((program) => ({ program, enforcement: 'argument-safe' as const, rule: 'command.argument-safe', argumentShapes: [], reason: `${program} has no reviewed argument that executes another command` })),
 ] as const satisfies readonly CommandArgumentPolicy[];
 
@@ -204,6 +204,27 @@ function isLongOptionPrefix(argument: string, option: string): boolean {
   return name.startsWith('--') && name.length > 2 && option.startsWith(name);
 }
 
+const GIT_GLOBAL_OPTIONS_WITH_SEPARATE_VALUE = new Set([
+  '-C',
+  '--git-dir',
+  '--work-tree',
+  '--namespace',
+  '--super-prefix',
+]);
+
+function gitSubcommandIndex(args: readonly string[]): number {
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (GIT_GLOBAL_OPTIONS_WITH_SEPARATE_VALUE.has(arg)) {
+      i++;
+      continue;
+    }
+    if (arg.startsWith('-')) continue;
+    return i;
+  }
+  return -1;
+}
+
 function gitRefusal(words: readonly ReadOnlyShellWord[]): ReadOnlyCommandRefusal | undefined {
   const args = words.slice(1).map((word) => word.text);
   for (let i = 0; i < args.length; i++) {
@@ -216,8 +237,7 @@ function gitRefusal(words: readonly ReadOnlyShellWord[]): ReadOnlyCommandRefusal
     }
   }
 
-  const guardedSubcommands = new Set(['fetch', 'diff', 'show', 'log', 'checkout']);
-  const subcommandIndex = args.findIndex((arg) => guardedSubcommands.has(arg));
+  const subcommandIndex = gitSubcommandIndex(args);
   const subcommand = subcommandIndex < 0 ? undefined : args[subcommandIndex];
   const tail = subcommandIndex < 0 ? [] : args.slice(subcommandIndex + 1);
   if (subcommand === 'fetch') {
@@ -274,9 +294,9 @@ function commandArgumentRefusal(words: readonly ReadOnlyShellWord[]): ReadOnlyCo
 export function decideReadOnlyCommand(command: string, entries: readonly string[]): ReadOnlyCommandDecision {
   const normalized = normalizeBashAllowlist(entries);
   if (normalized.length === 0) return refuse(ALLOWLIST_RULE, 'the bashAllowlist has no usable entry');
-  const packetPipe = splitPacketWriterPipe(command, normalized);
-  if (packetPipe) {
-    const left = decideReadOnlyCommand(packetPipe.left, normalized);
+  const scriptPipe = splitAllowlistedScriptPipe(command, normalized);
+  if (scriptPipe) {
+    const left = decideReadOnlyCommand(scriptPipe.left, normalized);
     if (!left.allowed) return left;
     return { allowed: true };
   }
@@ -300,12 +320,11 @@ export function decideReadOnlyCommand(command: string, entries: readonly string[
 }
 
 /**
- * The sole compound shape retained for a read-only role's packet delivery: one pipe whose right
- * side is an exact, explicitly allowlisted `bash <…-packet.sh>` command with no arguments. The
- * filename suffix is the generic capability marker; ordinary allowlisted commands and other bash
- * scripts do not become pipe consumers.
+ * The sole compound shape retained for a read-only role: one pipe whose right side is an exact,
+ * explicitly allowlisted, argument-free `bash <path>` or `sh <path>` command. Bare interpreters
+ * remain excluded because they would execute the piped standard input as a program.
  */
-function splitPacketWriterPipe(command: string, entries: readonly string[]): { left: string; right: string } | undefined {
+function splitAllowlistedScriptPipe(command: string, entries: readonly string[]): { left: string; right: string } | undefined {
   let quote: "'" | '"' | undefined;
   let escaped = false;
   let pipe = -1;
@@ -339,6 +358,6 @@ function splitPacketWriterPipe(command: string, entries: readonly string[]): { l
   const parsedRight = splitReadOnlyCommand(right);
   if ('allowed' in parsedRight || parsedRight.words.length !== 2) return undefined;
   const [program, script] = parsedRight.words.map((word) => word.text);
-  if (basename(program ?? '') !== 'bash' || !/(?:^|\/)[^/]+-packet\.sh$/.test(script ?? '')) return undefined;
+  if ((program !== 'bash' && program !== 'sh') || script === undefined || script.startsWith('-')) return undefined;
   return { left, right };
 }

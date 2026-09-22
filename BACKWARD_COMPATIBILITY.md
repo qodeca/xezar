@@ -1033,11 +1033,12 @@ empty-list compatibility statements remain in force.
   `permissions.allow: ["Bash"]` cannot widen its shell. User settings still load and a user-scope
   `permissions.allow` (including one under the agent account's `CLAUDE_CONFIG_DIR`) can still
   widen it. Project `permissions.deny` rules and project `PreToolUse` guard hooks that used to
-  narrow the step are dropped too. Whether project `CLAUDE.md` still loads is not established by
-  the CLI argv and remains a live-Claude QA question. A workflow that depended on project Claude
-  settings from a read-only step must move that dependency into the step prompt or make the step a
-  writing step by naming `Edit` or `Write`. Writing steps receive no `--setting-sources` flag and
-  retain every prior source.
+  narrow the step are dropped too. Project `CLAUDE.md` (and anything it imports, such as
+  `AGENTS.md`) does not load either: a read-only step's model sees no project instruction file
+  under the flag (live-verified 2026-09-22, PR #871 QA). A workflow that depended on project
+  Claude settings from a read-only step must move that dependency into the step prompt or make the
+  step a writing step by naming `Edit` or `Write`. Writing steps receive no `--setting-sources`
+  flag and retain every prior source.
 - **Changed (pi with `bashAllowlist`)**: one shared policy now accepts exactly one simple command.
   It refuses shell composition (`;`, `&&`, `||`, pipes, backgrounding and newlines), every
   redirection, grouping/function syntax, a trailing or line-ending backslash, a leading assignment,
@@ -1045,9 +1046,11 @@ empty-list compatibility statements remain in force.
   every command any unquoted `$`, backtick, `~`, glob or brace character, and any `$` or backtick
   inside double quotes, under `syntax.expansion`; `$'…'` and `$"…"` words are refused by the same
   rule. This preserves #856's before-expansion guarantee. The only compound exception is a
-  two-part verdict pipe: the left command must independently match an allowlist entry and the
-  right side must be exactly `bash .xezar/checks/verdict-packet.sh`. Every other pipe remains
-  refused. Each refusal carries the stable rule that made the decision.
+  two-part pipe: the left command must independently match an allowlist entry, and the right side
+  must equal an exact, argument-free allowlist entry of exactly two words, `bash <path>` or
+  `sh <path>`, where the path is not an option. A bare interpreter remains refused because it
+  would execute the piped standard input; every other pipe remains refused. Each refusal carries
+  the stable rule that made the decision.
 - **Changed (argument-bearing entries)**: `COMMAND_RUNNING_ARGUMENTS` refuses risky forms hidden
   behind an otherwise allowed prefix: every Git `-c`, `--config-env` and `--exec-path` form,
   abbreviated `fetch --upload-pack`/`--exec`, Git `diff`/`show`/`log` output files, checkout path
@@ -1055,8 +1058,11 @@ empty-list compatibility statements remain in force.
   `sed` and `awk` are `command.never-named`: a read-only allowlist must never name either program,
   preserving #856's rule that their program languages cannot be made safe with a shell-word regex.
   Every checked row is reached through one program-keyed dispatcher; each command shipped in the
-  five read-only workflow lists has either such a row or an explicit argument-safe row with a
-  reason. The five lists themselves remain unchanged by this response.
+  five read-only workflow lists has either such a row, an explicit argument-safe row with a
+  reason, or an explicit accepted-write row for a capability the role deliberately grants.
+  `agent-browser` is accepted-write because QA and design-review intentionally allow browser
+  artifacts, including screenshots at caller-chosen paths. The five lists themselves remain
+  unchanged by this response.
 - **One policy, thin adapters**: `core/read-only-lock.ts` owns the read-only signal, normalized
   entry/prefix rule, simple-command parser and argument table. pi keeps only flag parsing, its
   `tool_call` denial shape and the separate worktree guard. Claude builds `Bash(<entry>:*)` entries
