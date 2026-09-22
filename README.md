@@ -146,11 +146,13 @@ For the Codex command lock, xezar writes a persistent `PreToolUse` entry to the 
 `$CODEX_HOME/hooks.json` and its `hooks.state."<handler key>".trusted_hash` grant to
 `$CODEX_HOME/config.toml`. The entry points to a read-only content-addressed program under the
 xezar cache (`~/.cache/xez/codex-hook/<sha256>.mjs`, or the project-local cache in single-project
-mode). These profile entries outlive the run and Codex loads them in later interactive sessions;
+mode). Content addressing protects against handler changes xezar ships; a same-user replacement is
+refused as `hook-cache.digest` at the next locked run, after which deleting that cached file or the
+cache's `codex-hook/` directory is the repair. These profile entries outlive the run and Codex loads them in later interactive sessions;
 the handler is inert there because only a marked xezar read-only run activates it. To remove the
 integration, delete the `PreToolUse` entries whose command ends in `--xezar-read-only-hook`, delete
-their corresponding `hooks.state` trust tables from `config.toml`, and optionally delete the
-cache's `codex-hook/` directory. A later read-only xezar run recreates the current entry and grant.
+their corresponding `hooks.state` trust tables from `config.toml`, and delete the cache's
+`codex-hook/` directory. A later read-only xezar run recreates the current entry and grant.
 
 Backends are detected locally, with Claude offered when none is found. Model choices come from
 local discovery and configuration, with fallback choices when discovery is unavailable.

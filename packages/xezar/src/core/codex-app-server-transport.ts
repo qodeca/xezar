@@ -29,11 +29,12 @@ export function spawnCodexAppServer(
   bin: string,
   cwd: string,
   extraEnv?: Record<string, string>,
+  preparedEnv?: NodeJS.ProcessEnv,
 ): ChildProcessWithoutNullStreams {
   try {
     return nodeSpawn(bin, ['app-server'], {
       cwd,
-      env: buildCodexAppServerEnv(extraEnv),
+      env: preparedEnv ?? buildCodexAppServerEnv(extraEnv),
     });
   } catch (error) {
     throw codexSpawnError(error, bin);

@@ -1,8 +1,8 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { chmod, lstat, mkdir, readFile, realpath, rename, writeFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { chmod, lstat, mkdir, readFile, realpath, rename, unlink, writeFile } from 'node:fs/promises';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type {
   AgentEvent,
@@ -25,7 +25,13 @@ import {
   DEFAULT_RUN_TIMEOUT_MS,
   KILL_GRACE_MS,
 } from './claude-cli-runner.ts';
-import { CODEX_READ_ONLY_ALLOWLIST_ENV, CODEX_READ_ONLY_RUN_ENV } from './codex-read-only-hook.ts';
+import {
+  CODEX_READ_ONLY_ALLOWLIST_ENV,
+  CODEX_READ_ONLY_LOCK_MAX_AGE_MS,
+  CODEX_READ_ONLY_RUN_ENV,
+  codexReadOnlyLockPath,
+  type CodexReadOnlyLockRecord,
+} from './codex-read-only-hook.ts';
 import { acquireFileLock, queueByLockPath } from './file-lock.ts';
 import { isReadOnlyStep, normalizeBashAllowlist } from './read-only-lock.ts';
 import { parseAskRequest, type AskQuestion } from './ask.ts';
@@ -33,6 +39,7 @@ import { readNdjson } from './ndjson.ts';
 import { V1TextCoalescer } from './v1-text-coalescer.ts';
 import {
   CodexAppServerRpc,
+  buildCodexAppServerEnv,
   codexSpawnError,
   endCodexAppServer,
   resolveCodexExecutable,
@@ -117,6 +124,7 @@ export function codexPermissions(
 }
 
 export interface CodexReadOnlyHook {
+  readonly script: string;
   readonly command: string;
   readonly config: {
     readonly PreToolUse: readonly [{
@@ -138,6 +146,7 @@ export function codexReadOnlyHook(spec: AgentRunSpec): CodexReadOnlyHook | undef
   const script = join(xezCacheDir(), 'codex-hook', `${digest}.mjs`);
   const command = `${shellQuote(process.execPath)} ${shellQuote(script)} --xezar-read-only-hook`;
   return {
+    script,
     command,
     config: {
       PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command }] }],
@@ -215,6 +224,9 @@ class CodexSession implements AgentSession {
   private eofKillTimer: NodeJS.Timeout | undefined;
   private spawnFailed: Error | null = null;
   private timedOut = false;
+  private readonly hook: CodexReadOnlyHook | undefined;
+  private readonly requestedCodexHome: string | undefined;
+  private hookLockPath: string | undefined;
   /** Set the moment WE signal the child (EOF watchdog, cancel, kill switch).
    *  codex handles the signal and exits 143, so without this the runner reads
    *  its own teardown as a codex failure (#703). */
@@ -236,10 +248,9 @@ class CodexSession implements AgentSession {
     private readonly opts: SessionOptions,
   ) {
     const hook = codexReadOnlyHook(spec);
+    this.hook = hook;
     try {
-      this.child = spawnCodexAppServer(
-        bin,
-        spec.cwd,
+      const childEnv = buildCodexAppServerEnv(
         hook
           ? {
               ...spec.env,
@@ -248,6 +259,8 @@ class CodexSession implements AgentSession {
             }
           : spec.env,
       );
+      this.requestedCodexHome = childEnv.CODEX_HOME;
+      this.child = spawnCodexAppServer(bin, spec.cwd, undefined, childEnv);
       this.rpc = new CodexAppServerRpc(this.child);
     } catch (err) {
       throw codexSpawnError(err, bin);
@@ -328,6 +341,7 @@ class CodexSession implements AgentSession {
       // Destroying stdout ends the read loop before the timeout escalation's
       // grace period. Keep that escalation armed until the child is gone.
       const exitCode = await waitForCodexAppServerExit(this.child);
+      await this.removeReadOnlyLock();
       if (killTimer) clearTimeout(killTimer);
       if (this.eofTermTimer) clearTimeout(this.eofTermTimer);
       if (this.eofKillTimer) clearTimeout(this.eofKillTimer);
@@ -452,7 +466,7 @@ class CodexSession implements AgentSession {
 
   private async bootstrap(): Promise<void> {
     const initialized = await this.rpc.initialize();
-    const requestedCodexHome = this.spec.env?.CODEX_HOME;
+    const requestedCodexHome = this.requestedCodexHome;
     const reportedCodexHome = stringField(initialized, 'codexHome');
     if (requestedCodexHome && (
       !reportedCodexHome || await canonicalPath(requestedCodexHome) !== await canonicalPath(reportedCodexHome)
@@ -467,7 +481,7 @@ class CodexSession implements AgentSession {
 
     // `codexPermissions` owns the choice; start and resume both carry it (#849).
     const permissions = codexPermissions(this.spec.allowedTools, this.spec.additionalDirectories);
-    const hook = codexReadOnlyHook(this.spec);
+    const hook = this.hook;
     if (hook) {
       const codexHome = stringField(initialized, 'codexHome');
       if (!codexHome) {
@@ -509,6 +523,7 @@ class CodexSession implements AgentSession {
       this.threadId = threadIdOf(res) ?? this.spec.sessionId;
     }
     if (hook) await this.trustReadOnlyHook(hook);
+    if (hook && this.threadId) await this.createReadOnlyLock(hook, this.threadId);
     if (this.threadId) {
       this.emit({ type: 'session', sessionId: this.threadId });
       // The result path (thread/start response, or thread/resume which sends
@@ -524,6 +539,46 @@ class CodexSession implements AgentSession {
     // of the opening message.
     const first = prependSystemPrompt(this.spec.systemPrompt, this.spec.userPrompt);
     await this.startOrSteerTurn(first);
+  }
+
+  private async createReadOnlyLock(hook: CodexReadOnlyHook, sessionId: string): Promise<void> {
+    const path = codexReadOnlyLockPath(hook.script, sessionId);
+    const createdAt = Date.now();
+    const configuredLifetime = this.spec.timeoutMs ?? DEFAULT_RUN_TIMEOUT_MS;
+    const lifetime = configuredLifetime > 0
+      ? Math.min(CODEX_READ_ONLY_LOCK_MAX_AGE_MS, Math.max(configuredLifetime + 60_000, 10 * 60_000))
+      : CODEX_READ_ONLY_LOCK_MAX_AGE_MS;
+    const record: CodexReadOnlyLockRecord = {
+      version: 1,
+      sessionId,
+      cwd: await canonicalPath(this.spec.cwd),
+      createdAt,
+      expiresAt: createdAt + lifetime,
+    };
+    try {
+      await mkdir(join(dirname(hook.script), 'locks'), { recursive: true, mode: 0o700 });
+      const temporary = `${path}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`;
+      await writeFile(temporary, `${JSON.stringify(record)}\n`, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+      await chmod(temporary, 0o600);
+      await rename(temporary, path);
+      this.hookLockPath = path;
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new Error(`Codex read-only lock record failed (${reason}); xezar did not start the turn.`);
+    }
+  }
+
+  private async removeReadOnlyLock(): Promise<void> {
+    const path = this.hookLockPath;
+    if (!path) return;
+    this.hookLockPath = undefined;
+    try {
+      await unlink(path);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        this.emit({ type: 'note', message: `codex: bounded read-only lock cleanup deferred (${String(error)})` });
+      }
+    }
   }
 
   /**
@@ -770,8 +825,9 @@ interface CodexHooksFile {
 /**
  * Codex 0.155.1 does not discover hooks supplied only in `thread/start`/`thread/resume` config.
  * Install the content-addressed handler in the active profile's user-layer hooks.json, the
- * thinnest unavoidable vendor adapter proven by #863 S0b/S0c. Its separate locked-run marker
- * leaves ordinary sessions inert while making a marked run's missing allowlist fail closed.
+ * thinnest unavoidable vendor adapter proven by #863 S0b/S0c. Its environment marker plus
+ * bounded session record leave ordinary sessions inert while making a matching run fail closed
+ * when Codex strips either the marker or the allowlist.
  */
 async function ensureCodexReadOnlyHookFile(codexHome: string, hook: CodexReadOnlyHook): Promise<void> {
   await mkdir(codexHome, { recursive: true, mode: 0o700 });
@@ -863,7 +919,12 @@ async function ensureCodexReadOnlyHookCache(hook: CodexReadOnlyHook): Promise<vo
           throw new Error(`hook-cache.type refused non-regular cache entry ${target}`);
         }
         const existing = await readFile(target);
-        if (!existing.equals(content)) throw new Error(`hook-cache.digest found changed content at ${target}`);
+        if (!existing.equals(content)) {
+          throw new Error(
+            `hook-cache.digest found changed content at ${target}; ` +
+            'remove that file (or the codex-hook cache directory) and retry',
+          );
+        }
         await chmod(target, 0o444);
         return;
       } catch (error) {

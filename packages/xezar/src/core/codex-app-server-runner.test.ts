@@ -4,13 +4,14 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   statSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -18,6 +19,15 @@ import { projectStateLayout, setActiveStateLayout } from '../state-layout.ts';
 import type { AgentEvent } from './agent-runner.js';
 import { KILL_GRACE_MS } from './claude-cli-runner.js';
 import { CodexAppServerRunner, codexPermissions, codexReadOnlyHook } from './codex-app-server-runner.js';
+
+const hostCodexHome = process.env.CODEX_HOME;
+beforeEach(() => {
+  delete process.env.CODEX_HOME;
+});
+afterEach(() => {
+  if (hostCodexHome === undefined) delete process.env.CODEX_HOME;
+  else process.env.CODEX_HOME = hostCodexHome;
+});
 
 /** Only the escalation tests below swap the child out; every other test in this
  *  file keeps spawning the real mock app-server through the untouched `spawn`. */
@@ -505,6 +515,77 @@ describe('a read-only step runs Codex confined to its worktree and its own roots
       const methods = readFileSync(log, 'utf8').trim().split('\n').map((line) => JSON.parse(line).method as string);
       expect(methods).toEqual(['initialize', 'initialized']);
       expect(readFileSync(log, 'utf8')).not.toContain('config/batchWrite');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 15_000);
+
+  it.each([
+    ['read-only', REVIEW, ['git status']],
+    ['writing', DEFAULT, undefined],
+  ] as const)('compares a host-exported CODEX_HOME for a %s run', async (_name, allowedTools, bashAllowlist) => {
+    const dir = mkdtempSync(join(tmpdir(), 'xez-863-host-home-'));
+    const requested = join(dir, 'host-exported');
+    const reported = join(dir, 'wrapper-selected');
+    const log = join(dir, 'rpc.ndjson');
+    mkdirSync(requested);
+    mkdirSync(reported);
+    const previous = process.env.CODEX_HOME;
+    process.env.CODEX_HOME = requested;
+    try {
+      const session = new CodexAppServerRunner({ bin: mockBin, timeoutMs: 0 }).startSession(
+        {
+          userPrompt: 'review it',
+          cwd: dir,
+          allowedTools,
+          ...(bashAllowlist ? { bashAllowlist: [...bashAllowlist] } : {}),
+          env: {
+            MOCK_CODEX_HOME: reported,
+            MOCK_CODEX_RPC_LOG: log,
+            ...(bashAllowlist ? { MOCK_CODEX_EXPECT_SANDBOX: 'workspace-write' } : {}),
+          },
+        },
+        undefined,
+        { autoEndAfterFirstTurn: true },
+      );
+      await expect(session.result).rejects.toThrow(/codex-home\.mismatch.*did not start the step or write hook trust/);
+      const methods = readFileSync(log, 'utf8').trim().split('\n').map((line) => JSON.parse(line).method as string);
+      expect(methods).toEqual(['initialize', 'initialized']);
+    } finally {
+      if (previous === undefined) delete process.env.CODEX_HOME;
+      else process.env.CODEX_HOME = previous;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 15_000);
+
+  it('passes the locked-run marker and allowlist through Codex to the hook process', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'xez-863-hook-env-'));
+    const hookLog = join(dir, 'hook.ndjson');
+    try {
+      const session = new CodexAppServerRunner({ bin: mockBin, timeoutMs: 0 }).startSession(
+        {
+          userPrompt: 'review it',
+          cwd: dir,
+          allowedTools: REVIEW,
+          bashAllowlist: ['git status'],
+          env: {
+            MOCK_CODEX_EXPECT_SANDBOX: 'workspace-write',
+            MOCK_CODEX_HOME: dir,
+            MOCK_CODEX_HOOK_LOG: hookLog,
+          },
+        },
+        undefined,
+        { autoEndAfterFirstTurn: true },
+      );
+      await expect(session.result).resolves.toMatchObject({ sessionId: 'th_mock_1' });
+      const invocation = JSON.parse(readFileSync(hookLog, 'utf8').trim()) as {
+        status: number;
+        stdout: string;
+        stderr: string;
+      };
+      expect(invocation).toMatchObject({ status: 0, stdout: '', stderr: '' });
+      const hook = codexReadOnlyHook({ cwd: dir, userPrompt: '', allowedTools: REVIEW, bashAllowlist: ['git status'] });
+      expect(readdirSync(join(dirname(hook!.script), 'locks'))).toEqual([]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

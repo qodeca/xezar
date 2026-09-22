@@ -1,7 +1,12 @@
 #!/usr/bin/env node
 
 // src/core/codex-read-only-hook-entry.ts
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync, unlinkSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
+// src/core/codex-read-only-hook.ts
+import { createHash } from "node:crypto";
+import { dirname, join } from "node:path";
 
 // src/core/read-only-lock.ts
 var ALLOWLIST_RULE = "prefix.entry";
@@ -292,6 +297,17 @@ function splitAllowlistedScriptPipe(command, entries) {
 // src/core/codex-read-only-hook.ts
 var CODEX_READ_ONLY_ALLOWLIST_ENV = "__XEZAR_CODEX_READ_ONLY_ALLOWLIST";
 var CODEX_READ_ONLY_RUN_ENV = "__XEZAR_CODEX_READ_ONLY_RUN";
+var CODEX_READ_ONLY_LOCK_MAX_AGE_MS = 24 * 60 * 60 * 1e3;
+function codexReadOnlyLockPath(hookScript, sessionId) {
+  const key = createHash("sha256").update(sessionId).digest("hex");
+  return join(dirname(hookScript), "locks", `${key}.json`);
+}
+function activeCodexReadOnlyLock(payload, record, now = Date.now()) {
+  const input = payload && typeof payload === "object" ? payload : {};
+  if (!record || typeof record !== "object") return false;
+  const lock = record;
+  return lock.version === 1 && typeof input.session_id === "string" && lock.sessionId === input.session_id && typeof input.cwd === "string" && lock.cwd === input.cwd && typeof lock.createdAt === "number" && typeof lock.expiresAt === "number" && lock.createdAt <= now && lock.expiresAt > now && lock.expiresAt - lock.createdAt <= CODEX_READ_ONLY_LOCK_MAX_AGE_MS;
+}
 function decideCodexPreToolUse(payload, entries) {
   const record = payload && typeof payload === "object" ? payload : {};
   const toolInput = record.tool_input && typeof record.tool_input === "object" ? record.tool_input : {};
@@ -310,18 +326,37 @@ function codexHookOutput(decision) {
 
 // src/core/codex-read-only-hook-entry.ts
 async function main() {
-  if (process.env[CODEX_READ_ONLY_RUN_ENV] !== "locked") return;
   let payload;
   try {
     payload = JSON.parse(readFileSync(0, "utf8"));
   } catch {
     payload = void 0;
   }
+  const marked = process.env[CODEX_READ_ONLY_RUN_ENV] === "locked";
+  if (!marked) {
+    const sessionId = payload && typeof payload === "object" ? payload.session_id : void 0;
+    if (typeof sessionId !== "string") return;
+    const lockPath = codexReadOnlyLockPath(fileURLToPath(import.meta.url), sessionId);
+    let record;
+    try {
+      record = JSON.parse(readFileSync(lockPath, "utf8"));
+    } catch {
+      return;
+    }
+    const normalizedPayload = payload && typeof payload === "object" && typeof payload.cwd === "string" ? { ...payload, cwd: realpathSync(payload.cwd) } : payload;
+    if (!activeCodexReadOnlyLock(normalizedPayload, record)) {
+      try {
+        unlinkSync(lockPath);
+      } catch {
+      }
+      return;
+    }
+  }
   let entries = [];
   try {
     const encoded = process.env[CODEX_READ_ONLY_ALLOWLIST_ENV];
     const parsed = encoded === void 0 ? void 0 : JSON.parse(encoded);
-    if (Array.isArray(parsed) && parsed.every((entry) => typeof entry === "string")) entries = parsed;
+    if (marked && Array.isArray(parsed) && parsed.every((entry) => typeof entry === "string")) entries = parsed;
   } catch {
   }
   const output = codexHookOutput(decideCodexPreToolUse(payload, entries));

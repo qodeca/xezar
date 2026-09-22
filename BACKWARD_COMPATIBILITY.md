@@ -1071,15 +1071,24 @@ empty-list compatibility statements remain in force.
   `hooks-file.symlink`. The command points to a content-addressed, mode-`0444` bundle under
   `xezCacheDir()/codex-hook/<sha256>.mjs`, never to the checkout or installed package. Different
   live xezar commands coexist; only an entry whose script is absent is pruned. The persistent
-  handler is inert outside a xezar run. A separate locked-run marker means a marked read-only run
-  whose allowlist variable is absent or malformed fails closed rather than becoming allow-all.
+  handler is inert outside a xezar run. Bootstrap writes a bounded session-id lock record under
+  `xezCacheDir()/codex-hook/locks/` before the first turn and removes it after the app-server exits;
+  an expired record is inert, so a crash cannot deny an unrelated later interactive session
+  forever. A matching record makes the hook fail closed when either the locked-run marker or the
+  allowlist is absent or malformed. The normal allowed path depends on Codex 0.155.1 passing the
+  app-server environment to hook processes, as live-verified on PR #885 and pinned by a spawned-hook
+  regression test.
   Codex itself computes the handler's normalized `currentHash`; xezar
   writes `hooks.state."<handler key>".trusted_hash = "<currentHash>"` to that same profile's
   `$CODEX_HOME/config.toml` through `config/batchWrite`. The grant is scoped to that exact handler
-  key and content hash, so changed handler bytes produce a new cache path, command and trust grant.
-  Before either write, a `CODEX_HOME` supplied by xezar must equal the `codexHome` reported by
-  `initialize`; `codex-home.mismatch` stops the step before the wrapper-selected profile can be
-  changed. This profile state outlives the run and loads in later interactive Codex sessions,
+  key and content hash, so handler changes xezar ships produce a new cache path, command and trust
+  grant. A same-user replacement at that path can run under the existing trust until the next
+  locked xezar run, which refuses it as `hook-cache.digest`; remove that cached file (or the
+  `codex-hook/` cache directory) before retrying. Before either profile write, the `CODEX_HOME` in
+  the environment actually passed to the child — including a host-exported value — must equal the
+  `codexHome` reported by `initialize`; `codex-home.mismatch` stops every Codex step before the
+  wrapper-selected profile can be used. That deliberately includes writing runs, which install no
+  hook but could otherwise run under the wrong account. This profile state outlives the run and loads in later interactive Codex sessions,
   where the marker keeps it inert. Remove it by deleting the `PreToolUse` entries whose commands
   end in `--xezar-read-only-hook`, deleting their corresponding `hooks.state` trust tables from
   `$CODEX_HOME/config.toml`, and optionally deleting `xezCacheDir()/codex-hook/`; the next locked

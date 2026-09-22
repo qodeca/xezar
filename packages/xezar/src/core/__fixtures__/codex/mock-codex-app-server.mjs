@@ -24,6 +24,7 @@
 // other `sandbox`, and `MOCK_CODEX_THREAD_LOG=<file>` appends each of those two
 // requests (method + params) to that file so a test can pin them whole.
 import { appendFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { createInterface } from 'node:readline';
 
 const emit = (obj) => process.stdout.write(`${JSON.stringify(obj)}\n`);
@@ -117,7 +118,9 @@ rl.on('line', (line) => {
   } else if (msg.method === 'initialize') {
     emit({ id: msg.id, result: {
       userAgent: 'mock-codex/0.0.0',
-      ...(process.env.MOCK_CODEX_HOME ? { codexHome: process.env.MOCK_CODEX_HOME } : {}),
+      ...((process.env.MOCK_CODEX_HOME ?? process.env.CODEX_HOME)
+        ? { codexHome: process.env.MOCK_CODEX_HOME ?? process.env.CODEX_HOME }
+        : {}),
     } });
   } else if (msg.method === 'config/read') {
     emit(process.env.MOCK_CODEX_CONFIG_READ_ERROR === '1'
@@ -180,6 +183,28 @@ rl.on('line', (line) => {
     emit({ id: msg.id, result: { turn: { id: 'turn_mock_1' } } });
     emit({ method: 'turn/started', params: { turn: { id: 'turn_mock_1', status: 'inProgress', items: [] } } });
     const turnText = msg.params?.input?.map?.((part) => part.text ?? '').join('\n') ?? '';
+    if (process.env.MOCK_CODEX_HOOK_LOG && registeredHook?.command) {
+      const match = registeredHook.command.match(/^'[^']+' '([^']+)' --xezar-read-only-hook$/);
+      const invoked = match
+        ? spawnSync(process.execPath, [match[1], '--xezar-read-only-hook'], {
+            input: JSON.stringify({
+              session_id: 'th_mock_1',
+              cwd: msg.params?.cwd ?? process.cwd(),
+              hook_event_name: 'PreToolUse',
+              model: 'mock',
+              permission_mode: 'dontAsk',
+              tool_name: 'Bash',
+              tool_input: { command: 'git status' },
+              tool_use_id: 'tool_mock_1',
+              transcript_path: null,
+              turn_id: 'turn_mock_1',
+            }),
+            encoding: 'utf8',
+            env: process.env,
+          })
+        : { status: -1, stdout: '', stderr: 'could not parse hook command' };
+      appendFileSync(process.env.MOCK_CODEX_HOOK_LOG, `${JSON.stringify(invoked)}\n`);
+    }
     if (turnText.includes('mock:quota')) {
       emit({ method: 'account/rateLimits/updated', params: {
         rateLimits: { primary: { usedPercent: 25, windowDurationMins: 300, resetsAt: 1790685902 } },
