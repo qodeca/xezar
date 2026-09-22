@@ -13,7 +13,13 @@ import {
   type UsageStore,
 } from './events'
 import { apiPath, getApiScope } from '@qodeca/xezar-api-client'
-import { ONBOARDING_WORKFLOW, queryKeys, useHealthSubscription, workspaceQueryKeys } from './queries'
+import {
+  ONBOARDING_WORKFLOW,
+  queryKeys,
+  useAgentQuotaSubscription,
+  useHealthSubscription,
+  workspaceQueryKeys,
+} from './queries'
 import type {
   ApiRun,
   HealthResponse,
@@ -164,6 +170,9 @@ function reconcile(queryClient: QueryClient): void {
   void queryClient.invalidateQueries({ queryKey: queryKeys.worktrees })
   void queryClient.invalidateQueries({ queryKey: workspaceQueryKeys.providerStatus })
   void queryClient.invalidateQueries({ queryKey: queryKeys.mcpLeader })
+  // Plan limits (#867 FR-11): a hosted cockpit has no push at all, so reconnect and visibility
+  // are two of its four re-reads; a local one catches up on anything its socket missed.
+  void queryClient.invalidateQueries({ queryKey: workspaceQueryKeys.agentQuota })
   // The setup state (#464 P2). Its query has no interval, no focus refetch and no reconnect
   // refetch, and its one reader is mounted for the life of the app — so if this list does not
   // carry it, a setup task that finished while the tab was away leaves the surface on
@@ -353,6 +362,16 @@ export function useGlobalEvents(usage: UsageStore, url: string = SSE_URL): void 
         })
       }
 
+      // The plan-limits change hint (#867 FR-2). A hint, never the answer: the server sends
+      // `{ changed: true }` and the reader asks GET for the rest. A LOCAL cockpit ignores it — its
+      // root `agent-quota` topic already pushed the full answer, and a refetch per change would
+      // double every update. Read from the health cache per event, like the topic's own switch.
+      source.addEventListener('agent-quota', () => {
+        const health = queryClient.getQueryData<HealthResponse>(queryKeys.health)
+        if (health?.capabilities?.localHandoff === true) return
+        void queryClient.invalidateQueries({ queryKey: workspaceQueryKeys.agentQuota })
+      })
+
       source.addEventListener('provider-status', (event) => {
         let payload: unknown
         try {
@@ -457,6 +476,9 @@ export function GlobalEventsProvider({ children }: { children: ReactNode }) {
   // mounted for the app's whole life, so health stays live continuously instead of flapping with
   // the lifecycles of the ~15 `useHealth` readers below.
   useHealthSubscription()
+  // The ONE `agent-quota` topic subscription (#867 AC-33): the limits chip is on every page, so
+  // its demand is the session's, exactly like health's.
+  useAgentQuotaSubscription()
   return <UsageContext.Provider value={usage}>{children}</UsageContext.Provider>
 }
 

@@ -109,6 +109,8 @@ import type {
   SkillsUpdateState,
   McpLeaderActionInput,
   McpLeaderStatus,
+  AgentQuotaQuery,
+  AgentQuotaResponse,
 } from '@qodeca/xezar-api-client'
 import { parseProviderStatusResponse } from '@/lib/provider-status'
 import {
@@ -118,6 +120,7 @@ import {
   getApiBaseUrl,
   getApiScope,
   queryScope,
+  agentQuotaResponseSchema,
   runHistoryContextSchema,
   runHistoryPageSchema,
 } from '@qodeca/xezar-api-client'
@@ -1851,6 +1854,40 @@ export async function getAgentAccountStatus(
     ),
     `/workspace/agent-profiles/${encodeURIComponent(routeId)}/status`,
   )
+}
+
+/** Plan limits of every Claude Code and Codex login (#867): the same answer the MCP's
+ *  `project_config` → `read_quota` returns, validated against the contract's reader schema. */
+export async function getAgentQuota(opts?: ReadOptions): Promise<AgentQuotaResponse> {
+  return unwrapValidated(
+    await xez.api.v1.workspace['agent-quota'].$get({ query: {} }, init(opts)),
+    '/workspace/agent-quota',
+    agentQuotaResponseSchema,
+  )
+}
+
+/**
+ * Ask for a fresh check of one login (`{ provider, accountId }`) or of every login (`{}`), and
+ * get the new answer back (#867 FR-2: the POST twin of MCP `check_quota`).
+ *
+ * Hand-written rather than typed on purpose, for now: the refresh route is built in #867 S3 and
+ * is not in `AppType` yet, so the typed client cannot name it. The body is the contract's own
+ * selector type and the answer is validated with the contract's reader schema, so the day the
+ * route lands this becomes one `xez.api.v1.workspace['agent-quota'].refresh.$post` call with no
+ * change to its callers.
+ */
+export async function refreshAgentQuota(input: AgentQuotaQuery): Promise<AgentQuotaResponse> {
+  const label = '/workspace/agent-quota/refresh'
+  const res = await send(label, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+  const body = await res.text()
+  if (!res.ok) throw errorFor(res.status, res.statusText, body)
+  const result = agentQuotaResponseSchema.safeParse(parseJson(body))
+  if (!result.success) throw new ApiError(res.status, `the xezar server answered ${label} with an unexpected body`)
+  return result.data
 }
 
 /** Who an account is signed in as (spec 2026-07-29-agent-profiles). Fetched only when the user

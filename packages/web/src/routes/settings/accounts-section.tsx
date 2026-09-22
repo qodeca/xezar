@@ -47,6 +47,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { nativeFieldClass } from '@/components/ui/input'
+import { quotaLoginName } from '@/lib/agent-quota'
 import { RUNNER_LABEL } from '@/lib/runner-label'
 import { StatusDot, type StatusDotTone } from '@/components/status-dot'
 import { toast } from '@/components/ui/toaster'
@@ -59,6 +60,7 @@ import { DefaultAgentPicker, agentPickerRows } from '@/components/default-agent-
 import { modelCatalogStatus, modelsForRunner, RUNNERS } from '@/routes/new-task-form'
 import { AddAccountDialog } from './add-account-dialog'
 import { AccountsImportBlock } from './accounts-import'
+import { AccountLimits, HostedQuotaRows, PlanLimitsBlock, type QuotaNameOf } from './account-limits'
 import { useReturnFocus } from './remove-project'
 
 /**
@@ -158,6 +160,17 @@ export function accountDisplayName(account: Pick<AgentProfile, 'isDefault' | 'la
   return looksLikeAccountIdentity(account.label) ? 'Name hidden' : account.label
 }
 
+/** Plan limits apply to these agents only (#867 FR-1); OpenCode and pi rows stay as they were. */
+const QUOTA_PROVIDERS: readonly ProviderId[] = ['claude', 'codex']
+
+/** A quota row's name from the answer alone — the hosted pane has no account listing to ask. */
+const hostedQuotaName: QuotaNameOf = (runner, accountId) => quotaLoginName(undefined, runner, accountId)
+
+/** A quota row's name as this pane already prints it, falling back to the answer's own id. */
+function quotaNameFrom(profiles: AgentProfile[]): QuotaNameOf {
+  return (runner, accountId) => quotaLoginName(profiles, runner, accountId)
+}
+
 function AccountsPane({ data }: { data: AgentProfilesResponse }) {
   const health = useHealth()
   const projectRoot = inSingleProjectRoot(health.data?.capabilities)
@@ -179,8 +192,12 @@ function AccountsPane({ data }: { data: AgentProfilesResponse }) {
         <h2 className="text-sm font-semibold text-foreground">Agent accounts</h2>
         <p data-slot="accounts-hosted" className="text-[13px] text-soft-foreground">
           Agent accounts are managed from the machine that owns the checkout — this cockpit runs in
-          hosted mode.
+          hosted mode. Their plan limits are below.
         </p>
+        {/* Plan limits are the one part of this pane a hosted cockpit may read (#867 FR-9): the
+            answer carries no folder, e-mail or organisation, by construction. */}
+        <PlanLimitsBlock nameOf={hostedQuotaName} hosted />
+        <HostedQuotaRows nameOf={hostedQuotaName} />
       </div>
     )
   }
@@ -202,6 +219,8 @@ function AccountsPane({ data }: { data: AgentProfilesResponse }) {
       {/* Single-project mode only, and only when the server sent the key: absent is not "unknown"
           (design § 6). The pane is already refused as a whole in hosted mode, above. */}
       {projectRoot && data.globalImport ? <AccountsImportBlock globalImport={data.globalImport} /> : null}
+
+      <PlanLimitsBlock nameOf={quotaNameFrom(data.profiles ?? [])} hosted={false} />
 
       {problems && problems.length > 0 ? <ProblemSummary problems={problems} /> : null}
 
@@ -879,6 +898,18 @@ function AccountRow({
           </Button>
         </div>
       </div>
+
+      {/* The limits half (#867 S5): Claude Code and Codex only. Its own "Plan limits in detail"
+          opens with the same Show details as the account half below it. */}
+      {QUOTA_PROVIDERS.includes(account.provider) ? (
+        <AccountLimits
+          runner={account.provider as 'claude' | 'codex'}
+          accountId={account.id}
+          name={accountDisplayName(account)}
+          showDetails={showDetails}
+          nameOf={() => accountDisplayName(account)}
+        />
+      ) : null}
 
       {showDetails ? (
         <AccountDetails account={account} routeId={routeId} onRemove={onRemove} />
