@@ -6473,6 +6473,32 @@ expect_ok "Parallel gate ordering, evidence and owned cancellation" node --test 
 
 expect_ok "Leader context hook: prints in a primary, silent for task agents" node --test "$SCRIPT_DIR/leader-context.test.mjs"
 
+# --- verdict-packet.sh: the one write a verdict role's bashAllowlist grants (#849 D) ---------------
+# The verdict roles' shells may not redirect or `mv`, so the atomic tmp-then-rename lives here. Pin
+# that it lands the packet under the final name only, leaves no .tmp behind, and refuses the three
+# inputs that would otherwise put a packet the engine can only refuse on disk.
+vp_dir="$WORK/verdict-packet"
+mkdir -p "$vp_dir"
+vp_handoff="$vp_dir/run.handoff.md"
+vp_write() { printf '%s' "$1" | XEZ_HANDOFF_FILE="$2" bash "$SCRIPT_DIR/verdict-packet.sh"; }
+expect_ok "verdict-packet: a JSON object from stdin is written under the final name" \
+  vp_write '{"verdict":"APPROVE"}' "$vp_handoff"
+if [ -f "$vp_handoff.verdict.json" ] && [ ! -e "$vp_handoff.verdict.json.tmp" ] \
+  && [ "$(cat "$vp_handoff.verdict.json")" = '{"verdict":"APPROVE"}' ]; then
+  ok "verdict-packet: the final file holds the input and no .tmp is left behind"
+else
+  bad "verdict-packet: the final file holds the input and no .tmp is left behind" "final or tmp file wrong"
+fi
+rm -f "$vp_handoff.verdict.json"
+expect_fail "verdict-packet: empty stdin is refused" "stdin was empty" vp_write '' "$vp_handoff"
+expect_fail "verdict-packet: a non-object is refused" "not one JSON object" vp_write '[1]' "$vp_handoff"
+expect_fail "verdict-packet: no XEZ_HANDOFF_FILE is refused" "XEZ_HANDOFF_FILE is not set" vp_write '{}' ""
+if [ ! -e "$vp_handoff.verdict.json" ] && [ ! -e "$vp_handoff.verdict.json.tmp" ]; then
+  ok "verdict-packet: a refused input leaves neither the packet nor its .tmp"
+else
+  bad "verdict-packet: a refused input leaves neither the packet nor its .tmp" "a file was left behind"
+fi
+
 # --- Signal handling: a real INT must TERMINATE -------------------------------------------------
 #
 # `trap cleanup EXIT INT TERM` tidied up on a signal and then RESUMED, so an interrupted run kept

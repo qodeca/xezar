@@ -168,6 +168,7 @@ one is the DeepSeek lane and is a normal lane of this table.
 | Every model – the handoff step (from 2026-09-21) | when `gh pr checks` shows NO checks at all on a fresh push, the brief's remedy is `gh workflow run ci.yml --ref <branch>`, never closing and reopening the pull request (leader, 2026-09-21) |
 | Every model – the completion marker in every step (from 2026-09-21) | every agent turn in EVERY step ends with `XEZ:DONE` as its very last line, not only the last step of a run (leader, 2026-09-21) |
 | Every model – a bug-fix brief's proofs (from 2026-09-21) | a bug-fix brief forbids background proofs outright: run `16d05de6` (the #812 fix, opus, 2026-09-21 10:50) failed at `investigate` on `XEZ:MONITORING` after starting its proofs in the background with the fix already committed, and one `continue` saying "re-run the proofs in the foreground" finished it – the #734 lesson again (leader, 2026-09-21; run `5495f83d`, 2026-09-20) |
+| Every model – dispatching `code-review`, `design-review`, `qa` or `business-analysis` to pi (from 2026-09-22) | the four kit read-only workflows carry a `bashAllowlist` since #849 (kit slice D). On Claude it NARROWS the shell to the named commands; it does not make the role read-only (what still writes is in `changelog.d/849.md` and § 13, 2026-09-22). On pi the shell is DROPPED entirely: pi has no per-command mechanism, so `piTools` removes the whole `bash` tool once a `bashAllowlist` is set, and a pi run of one of these four roles cannot run `gh`, `git` or a kit check. Dispatch these four to Claude or Codex until #856 (pi honouring a `bashAllowlist` command by command) lands; § 4 lane placements are unchanged and move only once #849's engine slice also lands, per the issue's ordering rule |
 
 The evidence behind these rows is in the findings log (§ 13): conditional wording cost two Codex
 integration chains on 2026-09-15, and a pi model posted its comment and then looped.
@@ -463,6 +464,36 @@ rows dated 2026-09-21 and the leader rules are in [leader-guide.md](leader-guide
   the leader cancelled CI re-run 35588702096, then refresh run `def330f3` merged `main` `22334449`
   (the #813 fixture fix) and CI went green. The rule it produced is in
   [leader-guide.md](leader-guide.md) (leader, 2026-09-21).
+
+### 2026-09-22
+
+- **The four read-only kit workflows carry a `bashAllowlist` (#849, kit slice D), proven against a
+  live Claude CLI.** The first version (PR #857 head `6fb4edc9`, sonnet, run `8a1dad0e`) was proven
+  only by the argv the engine BUILDS; the binding review (opus, run `876c6e1f`) ran that argv through
+  a real `claude` 2.1.278 and found the directory entry `bash .xezar/checks/` matched no command and
+  `sed`/`cp` rewrote tracked files. Claude Code reads `Bash(<entry>:*)` as the entry followed by a
+  space and anything, or by nothing, so each command is now its own entry (response run `c13d5e74`,
+  opus, head `124cf32e`). The proof: a `git archive` of `124cf32e` into a fresh remote-free
+  `git init`, a headless `XEZ_DRY_RUN=1` `xezar run --workflow code-review` whose mock recorded the
+  built `--allowedTools` (`Read,Grep,Glob` plus 43 `Bash(<entry>:*)` rules, no plain `Bash`), then
+  one fresh `claude -p` session per command under that exact list, `--permission-mode dontAsk`,
+  `--setting-sources project` over a project settings file with empty `permissions`. RAN:
+  `bash .xezar/checks/worktree-setup.sh --readonly-init`, `node .xezar/checks/catalog-check.mjs`,
+  bare `bash .xezar/checks/worktree-preflight.sh` and bare `gh pr view` (an entry matches with nothing
+  after it), `jq -n '…' | bash .xezar/checks/verdict-packet.sh` (the packet was written), and
+  `git diff --output=<file>` (a write a prefix cannot see). DENIED: `sed -i` and `sed -n 'w …'` on a
+  tracked file, `cp source AGENTS.md`, `mv a b`, `gh pr merge 1`, `gh api …`, `git commit`,
+  `git diff; rm -rf x`, `rg --pre`, `XEZ_DRY_RUN=1 npm test`, and `echo x > <file>` even inside an
+  `--add-dir` directory, which is why the verdict packet now goes through `verdict-packet.sh`. No
+  tracked file changed. Kit checks at `124cf32e`, in the task worktree after `npm ci` (with
+  `node_modules`): `node .xezar/checks/catalog-check.mjs` CATALOG OK (18 workflows, 20 skills),
+  `node .xezar/checks/xezar-contract.test.mjs` 35 of 35, `bash .xezar/checks/infra-tests.sh` 757
+  passed, 0 failed (751 plus six new `verdict-packet.sh` cases). The reviewer measured 735 passed,
+  1 failed for the same suite in a checkout without `node_modules`, at this PR and at `main` alike:
+  the gate-lease case needs a xezar CLI in the checkout. Not run: pi, Codex or OpenCode sessions;
+  on pi the `bashAllowlist` removes the shell (read from `pi-runner.ts` `piTools`), tracked as #856.
+  A reviewer's own run is not the QA for a workflow change unless its checkout carries the change —
+  the first version's claim to the contrary was wrong.
 
 ## Glossary
 
