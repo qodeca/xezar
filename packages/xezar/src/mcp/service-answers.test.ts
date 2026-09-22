@@ -282,18 +282,27 @@ describe('session/open push capability and the session key in the tool context (
     expect(JSON.stringify(answer)).not.toContain(opened[0]!);
   });
 
-  it('T-13: a known tool call tells the observer its session is active; an unknown one does not (#886)', async () => {
-    // RED against: never calling `called` (the push-not-seen blocker could never fire), or calling it
-    // for a call that never reached a tool.
+  it('T-13: a known tool call tells the observer its session is active, and which tool and action; an unknown one does not (#886)', async () => {
+    // RED against: never calling `called` (the push-not-seen blocker could never fire), calling it for
+    // a call that never reached a tool, or dropping the tool/action the delivery seam needs to tell a
+    // `leader_events` recovery read from other activity (#890 review, finding 1).
     const opened: string[] = [];
-    const called: string[] = [];
-    const svc = await twoConnections({ sessions: { opened: (key) => opened.push(key), closed: () => {}, called: (key) => called.push(key) } });
+    const called: Array<{ key: string; call: unknown }> = [];
+    const svc = await twoConnections({ sessions: { opened: (key) => opened.push(key), closed: () => {}, called: (key, call) => called.push({ key, call }) } });
     const c = await svc.open();
     await c.request(1, 'session/open');
     await c.request(2, 'tools/call', { name: 'no_such_tool', arguments: {} });
     expect(called).toEqual([]);
     await c.request(3, 'tools/call', { name: 'read_thing', arguments: {} });
-    expect(called).toEqual(opened);
+    await c.request(4, 'tools/call', { name: 'read_thing', arguments: { action: 'read', secret: 'never-forwarded' } });
+    await c.request(5, 'tools/call', { name: 'read_thing', arguments: { action: 7 } });
+    await c.request(6, 'tools/call', { name: 'read_thing', arguments: { action: 'x'.repeat(65) } });
+    expect(called).toEqual([
+      { key: opened[0], call: { tool: 'read_thing' } },
+      { key: opened[0], call: { tool: 'read_thing', action: 'read' } },
+      { key: opened[0], call: { tool: 'read_thing' } },
+      { key: opened[0], call: { tool: 'read_thing' } },
+    ]);
   });
 
   it('T-14: an activity observer that throws never fails the call (#886)', async () => {

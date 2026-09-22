@@ -161,8 +161,8 @@ export async function startMcpService(opts: StartMcpServiceOptions): Promise<Mcp
               codexAnnounced: (key, announcement) => delivery.codexAnnounced(key, announcement),
               // #450: answered in `session/open`, so the bridge registers the channel only when a push can arrive.
               pushCapability: (key, transport) => delivery.pushCapability(key, transport),
-              // #886: every tool call is the owner's activity signal for the push-not-seen blocker.
-              called: (key) => delivery.sessionCalled(key),
+              // #886: every tool call, with its tool and action, is the owner's activity signal for the push-not-seen blocker.
+              called: (key, call) => delivery.sessionCalled(key, call),
             },
           }
         : {}),

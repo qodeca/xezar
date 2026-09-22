@@ -33,7 +33,7 @@ import {
 } from './event-controller.ts';
 import type { EventJournal } from './event-journal.ts';
 import type { LeaderActResult, ProjectLeaderPort } from './project-leaders.ts';
-import type { McpSessionTransport } from './service.ts';
+import type { McpSessionTransport, McpToolCallActivity } from './service.ts';
 
 /**
  * Push delivery, connected (#309, Phase 6 of #73). Until this module, `EventController` (#107) and
@@ -144,6 +144,16 @@ const OPENCODE_BLOCKER_FIX = 'Check that `opencode serve` is running in this pro
  * Attach leader click with no answer at all.
  */
 const OPENCODE_ATTACH_CHECK_MS = 10_000;
+
+/**
+ * #886: the tool whose calls are the leader reading, checking or acknowledging events — never the
+ * "other activity" the push-not-seen blocker counts. The name, not the module: importing the tool here
+ * would pull the whole door into the delivery seam. A test pins it to `leaderEventsTool.name`.
+ */
+export const LEADER_EVENTS_TOOL_NAME = 'leader_events';
+
+/** #886: how many of the owner's other tool calls are kept; more than the blocker's threshold needs. */
+const OWNER_CALLS_KEPT = 16;
 
 /**
  * The attach-time wording for an unreachable server (#651 review, Minor 2). The adapter's own
@@ -498,8 +508,9 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
    */
   #ownerTransport: McpSessionTransport | undefined;
   #ownerSessionKey: string | undefined;
-  /** #886: when the owner session last called a xezar tool; the Claude Code adapter's activity signal. */
-  #ownerCalledAt: number | undefined;
+  /** #886: when the owner session last read events, and its recent calls to other tools (bounded). */
+  #ownerReadAt: number | undefined;
+  #ownerOtherCallsAt: number[] = [];
   /** The attached leader session and the facts observed against it. xezar never started it. */
   #leader: AttachedLeader | undefined;
   /** One `act` at a time: two concurrent attaches must not leave two adapters behind. */
@@ -534,7 +545,7 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
     // #374: this session's transport is now the one a Claude Code channel push travels down.
     this.#ownerTransport = transport;
     this.#ownerSessionKey = sessionKey;
-    this.#ownerCalledAt = undefined;
+    this.#forgetOwnerActivity();
     if (this.#leader?.client === 'claude-code' && transport) {
       const blocker = this.#channelEligibility(transport);
       if (blocker) this.#opts.warn(`[xez] ${blocker.code}: ${blocker.message} fix: ${blocker.fix}`);
@@ -563,20 +574,32 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
     if (this.#ownerSessionKey === sessionKey) {
       this.#ownerTransport = undefined;
       this.#ownerSessionKey = undefined;
-      this.#ownerCalledAt = undefined;
+      this.#forgetOwnerActivity();
     }
     this.#changed();
   }
 
   /**
    * #886: the owner session called a xezar tool. Only the owner counts — a lapsed session's call says
-   * nothing about the leader — and only a Claude Code leader reads it. It publishes nothing: status is
-   * computed when read, and the heartbeat republishes, so a late `ack` (noted just before it applies)
-   * never flashes the stronger blocker in the cockpit.
+   * nothing about the leader — and only a Claude Code leader reads it. A `leader_events` call is the
+   * leader recovering or checking events, never "unrelated activity" (#890 review, finding 1): a read
+   * is remembered as a read, and status, ack, attach and stop are not counted at all. It publishes
+   * nothing: status is computed when read, and the heartbeat republishes.
    */
-  sessionCalled(sessionKey: string): void {
+  sessionCalled(sessionKey: string, call: McpToolCallActivity): void {
     if (this.#closed || sessionKey !== this.#ownerSessionKey) return;
-    this.#ownerCalledAt = Date.now();
+    const at = Date.now();
+    if (call.tool === LEADER_EVENTS_TOOL_NAME) {
+      if (call.action === 'read') this.#ownerReadAt = at;
+      return;
+    }
+    this.#ownerOtherCallsAt.push(at);
+    if (this.#ownerOtherCallsAt.length > OWNER_CALLS_KEPT) this.#ownerOtherCallsAt.shift();
+  }
+
+  #forgetOwnerActivity(): void {
+    this.#ownerReadAt = undefined;
+    this.#ownerOtherCallsAt = [];
   }
 
   /** Metadata arrives from the owner bridge, never from the HTTP attach request. */
@@ -885,8 +908,11 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
           // push-unconfirmed blocker compares against is the leader's own acknowledgement.
           acknowledged: () => this.#opts.leaderRecord?.acknowledged() ?? 0,
           heartbeatMs: this.#opts.heartbeatMs ?? EVENT_CONTROLLER_HEARTBEAT_MS,
-          // #886: the owner session keeps calling tools yet never acknowledges → the plain blocker.
-          ownerCalledAt: () => this.#ownerCalledAt,
+          // #886: the owner session keeps calling other tools yet never reads or acknowledges → the plain blocker.
+          ownerActivity: () => ({
+            ...(this.#ownerReadAt === undefined ? {} : { readAt: this.#ownerReadAt }),
+            otherCallsAt: this.#ownerOtherCallsAt,
+          }),
           ...(this.#opts.pushNotSeenMs === undefined ? {} : { notSeenMs: this.#opts.pushNotSeenMs }),
         }),
         failingSince: null,

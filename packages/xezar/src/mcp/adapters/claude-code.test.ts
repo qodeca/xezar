@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import type { McpJournalRow } from '@qodeca/xezar-contract';
 
 import type { EventDispatch } from '../event-controller.ts';
-import { ClaudeCodeChannelAdapter, channelMeta, claudeCodeRoute, renderChannelContent, type ClaudeCodeChannelAdapterOptions } from './claude-code.ts';
+import { CLAUDE_CODE_PUSH_NOT_SEEN_CALLS, ClaudeCodeChannelAdapter, channelMeta, claudeCodeRoute, renderChannelContent, type ClaudeCodeChannelAdapterOptions } from './claude-code.ts';
 
 /**
  * #374 — the Claude Code channel reaction adapter, and the corrected verdict. It wakes a Claude Code
@@ -343,10 +343,11 @@ describe('oldest unacknowledged delivery (#404 finding 5)', () => {
 
 describe('a session that keeps calling tools but never acknowledges a push (#886 P3)', () => {
   const FIVE_MIN = 5 * 60_000;
-  function active(): Harness & { setCalledAt: (ms: number | undefined) => void } {
-    let calledAt: number | undefined;
-    const h = harness({ ownerCalledAt: () => calledAt });
-    return { ...h, setCalledAt: (ms) => (calledAt = ms) };
+  function active(over: Partial<ClaudeCodeChannelAdapterOptions> = {}): Harness & { call: (ms: number, n?: number) => void; read: (ms: number) => void } {
+    let readAt: number | undefined;
+    const otherCallsAt: number[] = [];
+    const h = harness({ ownerActivity: () => ({ ...(readAt === undefined ? {} : { readAt }), otherCallsAt }), ...over });
+    return { ...h, call: (ms, n = 1) => { for (let i = 0; i < n; i++) otherCallsAt.push(ms); }, read: (ms) => (readAt = ms) };
   }
 
   it('says plainly that the pushes are most likely not reaching the conversation', async () => {
@@ -355,8 +356,10 @@ describe('a session that keeps calling tools but never acknowledges a push (#886
     const h = active();
     h.setNow(0);
     await h.adapter.deliver(dispatch([row(1)]), signal());
-    h.setNow(FIVE_MIN + 1_000);
-    h.setCalledAt(FIVE_MIN + 1_000);
+    h.setNow(FIVE_MIN + 3_000);
+    h.call(FIVE_MIN + 1_000);
+    h.call(FIVE_MIN + 2_000);
+    h.call(FIVE_MIN + 3_000);
     const blocker = h.adapter.status().blocker;
     expect(blocker?.code).toBe('claude-code-push-not-seen');
     expect(blocker?.message).toContain('most likely not reaching the conversation');
@@ -366,13 +369,49 @@ describe('a session that keeps calling tools but never acknowledges a push (#886
     expect(blocker?.fix).toMatch(/leader_events action read/);
   });
 
-  it('keeps the soft blocker while the session only reads state before acknowledging (guard)', async () => {
-    // Guard, green both ways: the channel message asks the leader to read state first, so a call
-    // inside the bound is normal work, never evidence of a lost push.
+  it(`needs ${CLAUDE_CODE_PUSH_NOT_SEEN_CALLS} calls past the bound, not one (#890 review, finding 1)`, async () => {
+    // RED against: one call past the bound being enough — a single call may be the leader on its way
+    // to reading the events.
     const h = active();
     h.setNow(0);
     await h.adapter.deliver(dispatch([row(1)]), signal());
-    h.setCalledAt(FIVE_MIN - 1);
+    h.setNow(FIVE_MIN + 60_000);
+    h.call(FIVE_MIN, CLAUDE_CODE_PUSH_NOT_SEEN_CALLS - 1);
+    expect(h.adapter.status().blocker?.code).toBe('claude-code-push-unconfirmed');
+    h.call(FIVE_MIN + 60_000);
+    expect(h.adapter.status().blocker?.code).toBe('claude-code-push-not-seen');
+  });
+
+  it('keeps the soft blocker once the session has read events since the push, however busy it is (#890 review, finding 1)', async () => {
+    // RED against: ignoring `readAt` — the documented polling fallback (read, reconcile, ack) would be
+    // reported as broken in the gap before its ack.
+    const h = active();
+    h.setNow(0);
+    await h.adapter.deliver(dispatch([row(1)]), signal());
+    h.read(FIVE_MIN + 1);
+    h.call(FIVE_MIN + 2, 10);
+    h.setNow(FIVE_MIN + 60_000);
+    expect(h.adapter.status().blocker?.code).toBe('claude-code-push-unconfirmed');
+  });
+
+  it('does not let a read made BEFORE the push stand for it (#890 review, finding 1)', async () => {
+    // RED against: any read at all suppressing the blocker; a read before the push cannot have seen it.
+    const h = active();
+    h.setNow(1_000);
+    h.read(999);
+    await h.adapter.deliver(dispatch([row(1)]), signal());
+    h.call(1_000 + FIVE_MIN, CLAUDE_CODE_PUSH_NOT_SEEN_CALLS);
+    h.setNow(1_000 + FIVE_MIN);
+    expect(h.adapter.status().blocker?.code).toBe('claude-code-push-not-seen');
+  });
+
+  it('keeps the soft blocker while the session only reads state before acknowledging (guard)', async () => {
+    // Guard, green both ways: the channel message asks the leader to read state first, so calls
+    // inside the bound are normal work, never evidence of a lost push.
+    const h = active();
+    h.setNow(0);
+    await h.adapter.deliver(dispatch([row(1)]), signal());
+    h.call(FIVE_MIN - 1, 10);
     h.setNow(FIVE_MIN + 60_000);
     expect(h.adapter.status().blocker?.code).toBe('claude-code-push-unconfirmed');
   });
@@ -388,11 +427,10 @@ describe('a session that keeps calling tools but never acknowledges a push (#886
 
   it('clears once the leader acknowledges, and honours the configured bound', async () => {
     // RED against: ignoring `notSeenMs` (a fixed five minutes) or not pruning acknowledged rows first.
-    let calledAt: number | undefined;
-    const h = harness({ ownerCalledAt: () => calledAt, notSeenMs: 1_000 });
+    const h = active({ notSeenMs: 1_000 });
     h.setNow(0);
     await h.adapter.deliver(dispatch([row(1)]), signal());
-    calledAt = 1_000;
+    h.call(1_000, CLAUDE_CODE_PUSH_NOT_SEEN_CALLS);
     h.setNow(1_000);
     expect(h.adapter.status().blocker?.code).toBe('claude-code-push-not-seen');
     h.setAcked(1);

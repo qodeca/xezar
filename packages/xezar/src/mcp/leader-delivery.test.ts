@@ -9,7 +9,8 @@ import { mcpLeaderDoorResultSchema, mcpLeaderSelfStatusSchema, mcpLeaderStatusSc
 import { CodexAttachError } from './adapters/codex-link.ts';
 import { EchoGuard } from './echo-guard.ts';
 import { EventJournal } from './event-journal.ts';
-import { LeaderDelivery, leaderClientOf } from './leader-delivery.ts';
+import { LEADER_EVENTS_TOOL_NAME, LeaderDelivery, type LeaderDeliveryOptions, leaderClientOf } from './leader-delivery.ts';
+import { leaderEventsTool } from './tools/leader-events.ts';
 import { type FakeOpenCodeSession, fakeOpenCodeSession } from './leader-delivery.testkit.ts';
 
 /**
@@ -73,7 +74,7 @@ const neverAnsweringOpenCode = async (): Promise<FakeOpenCodeSession> => {
 };
 
 /** A journal of its own, and the owner slot answering as the case needs. */
-function delivery(owns: boolean, warnings: string[] = [], guard?: Pick<EchoGuard, 'isOwn'>, attachCheckMs?: number, pushNotSeenMs?: number) {
+function delivery(owns: boolean, warnings: string[] = [], guard?: Pick<EchoGuard, 'isOwn'>, attachCheckMs?: number, pushNotSeenMs?: number, extra: Partial<LeaderDeliveryOptions> = {}) {
   const dataDir = tmp();
   const journal = EventJournal.open({ dataDir, projectId: PROJECT, secretValues: [], warn: () => {} });
   journals.push(journal);
@@ -91,6 +92,7 @@ function delivery(owns: boolean, warnings: string[] = [], guard?: Pick<EchoGuard
     heartbeatMs: 200,
     ...(attachCheckMs === undefined ? {} : { opencodeAttachCheckMs: attachCheckMs }),
     ...(pushNotSeenMs === undefined ? {} : { pushNotSeenMs }),
+    ...extra,
   });
   deliveries.push(made);
   return { delivery: made, journal, warnings, dataDir };
@@ -664,9 +666,19 @@ describe('attaching Claude Code: the channel push travels down the owner session
     expect(blockerOf(made)?.fix).toMatch(/leader_events/);
   });
 
-  it('reports claude-code-push-not-seen when the owner keeps calling tools after an unacknowledged push (#886)', async () => {
+  /** #886: the owner's calls, as the service reports them — a tool name and its string `action`. */
+  const other = { tool: 'task_read' } as const;
+  const read = { tool: LEADER_EVENTS_TOOL_NAME, action: 'read' } as const;
+
+  it('names leader_events by the tool’s own name (#886)', () => {
+    // RED against: the delivery seam's copy of the name drifting from the tool it stands for, which
+    // would count every recovery read as "other activity" again.
+    expect(LEADER_EVENTS_TOOL_NAME).toBe(leaderEventsTool.name);
+  });
+
+  it('reports claude-code-push-not-seen when the owner keeps calling other tools after an unacknowledged push (#886)', async () => {
     // RED against: not wiring the owner's tool calls into the adapter (`sessionCalled` a no-op, or
-    // `ownerCalledAt` not passed), so an active leader that never saw its pushes stays "unconfirmed".
+    // `ownerActivity` not passed), so an active leader that never saw its pushes stays "unconfirmed".
     const { delivery: made, journal } = delivery(true, [], undefined, undefined, 300); // heartbeat 200, bound 300
     const t = channelTransport();
     made.sessionOpened('session-1', t.transport as never);
@@ -676,16 +688,75 @@ describe('attaching Claude Code: the channel push travels down the owner session
     await until('the unconfirmed blocker', () => blockerOf(made)?.code === 'claude-code-push-unconfirmed');
     await new Promise((r) => setTimeout(r, 320));
     // A call from a session that does not own the project says nothing about the leader.
-    made.sessionCalled('someone-else');
+    for (let i = 0; i < 3; i++) made.sessionCalled('someone-else', other);
     expect(blockerOf(made)?.code).toBe('claude-code-push-unconfirmed');
-    made.sessionCalled('session-1');
+    // One call, or two, is not sustained activity (#890 review, finding 1).
+    made.sessionCalled('session-1', other);
+    made.sessionCalled('session-1', other);
+    expect(blockerOf(made)?.code).toBe('claude-code-push-unconfirmed');
+    made.sessionCalled('session-1', other);
     expect(blockerOf(made)?.code).toBe('claude-code-push-not-seen');
     const own = made.sessionStatus('session-1');
     expect(own.available && own.blocker?.code).toBe('claude-code-push-not-seen');
   });
 
+  it('never reports a working polling fallback as not-seen: a read after the bound, a heartbeat, then ack clears (#890 review, finding 1)', async () => {
+    // RED against: counting a `leader_events` read, status or ack as unrelated activity (the reviewed
+    // head: every known tool call, recorded before it ran), so the documented read-then-ack fallback
+    // publishes the strong blocker at the next heartbeat, before its own ack lands.
+    let acked = 0;
+    const published: Array<string | null> = [];
+    let made: LeaderDelivery | undefined;
+    const made1 = delivery(true, [], undefined, undefined, 300, {
+      leaderRecord: { acknowledged: () => acked, owedAfter: () => ({ seq: acked, sameEpoch: true }) },
+      onStatusChange: () => {
+        const status = made?.status();
+        if (status?.available) published.push(status.blocker?.code ?? null);
+      },
+    });
+    made = made1.delivery;
+    const t = channelTransport();
+    made.sessionOpened('session-1', t.transport as never);
+    expect((await made.act({ action: 'attach', client: 'claude-code' })).ok).toBe(true);
+    row(made1.journal);
+    await until('the push', () => t.pushed.length === 1);
+    await new Promise((r) => setTimeout(r, 320)); // past the not-seen bound
+    // The fallback, exactly as documented: status, read, reconcile state with other tools, then ack.
+    made.sessionCalled('session-1', { tool: LEADER_EVENTS_TOOL_NAME, action: 'status' });
+    made.sessionCalled('session-1', read);
+    for (let i = 0; i < 4; i++) made.sessionCalled('session-1', other);
+    const before = published.length;
+    await until('a delivery heartbeat after the read', () => published.length >= before + 2, 3_000);
+    expect(published.slice(before)).not.toContain('claude-code-push-not-seen');
+    expect(blockerOf(made)?.code).toBe('claude-code-push-unconfirmed');
+    // The ack lands: the adapter prunes the row, and nothing is outstanding.
+    acked = 1;
+    made.sessionCalled('session-1', { tool: LEADER_EVENTS_TOOL_NAME, action: 'ack' });
+    expect(blockerOf(made) ?? null).toBeNull();
+    const afterAck = published.length;
+    await until('a heartbeat after the ack', () => published.length > afterAck, 3_000);
+    expect(published.slice(afterAck).every((code) => code === null)).toBe(true);
+    expect(published).not.toContain('claude-code-push-not-seen');
+  });
+
+  it('still fires for a leader that read BEFORE the push and then kept working without the new one (#890 review, finding 1)', async () => {
+    // RED against: letting any read, however old, suppress the blocker — a read made before the push
+    // cannot have seen it.
+    const { delivery: made, journal } = delivery(true, [], undefined, undefined, 300);
+    const t = channelTransport();
+    made.sessionOpened('session-1', t.transport as never);
+    expect((await made.act({ action: 'attach', client: 'claude-code' })).ok).toBe(true);
+    made.sessionCalled('session-1', read);
+    await new Promise((r) => setTimeout(r, 5));
+    row(journal);
+    await until('the push', () => t.pushed.length === 1);
+    await new Promise((r) => setTimeout(r, 320));
+    for (let i = 0; i < 3; i++) made.sessionCalled('session-1', other);
+    expect(blockerOf(made)?.code).toBe('claude-code-push-not-seen');
+  });
+
   it('forgets the owner’s activity when another session takes the project over (#886)', async () => {
-    // RED against: keeping the previous owner's last call when a new owner opens without the old one
+    // RED against: keeping the previous owner's calls when a new owner opens without the old one
     // closing (a lapsed lease), so the new session reads as active and silent before it did anything.
     const { delivery: made, journal } = delivery(true, [], undefined, undefined, 300);
     const t = channelTransport();
@@ -694,7 +765,7 @@ describe('attaching Claude Code: the channel push travels down the owner session
     row(journal);
     await until('the push', () => t.pushed.length === 1);
     await new Promise((r) => setTimeout(r, 320));
-    made.sessionCalled('session-1');
+    for (let i = 0; i < 3; i++) made.sessionCalled('session-1', other);
     expect(blockerOf(made)?.code).toBe('claude-code-push-not-seen');
     made.sessionOpened('session-2', t.transport as never);
     expect(blockerOf(made)?.code).toBe('claude-code-push-unconfirmed');

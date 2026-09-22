@@ -62,15 +62,28 @@ export interface ClaudeCodeChannelAdapterOptions {
   /** One heartbeat: how long a delivered-but-unacknowledged row waits before it is a blocker. */
   readonly heartbeatMs: number;
   /**
-   * #886: when the owner session last called a xezar tool (ms, the `now` clock), or undefined when it
-   * has not called one since it opened. The one activity signal xezar has: an active session that is
-   * silent about pushed rows is the plain evidence the pushes did not reach its conversation.
+   * #886: what the owner session has done since it opened (ms, the `now` clock). The one activity
+   * signal xezar has: an active session that is silent about pushed rows is the plain evidence the
+   * pushes did not reach its conversation.
    */
-  readonly ownerCalledAt?: () => number | undefined;
+  readonly ownerActivity?: () => ClaudeCodeOwnerActivity;
   /** #886: how long a pushed row may stay unacknowledged while the session keeps calling tools. */
   readonly notSeenMs?: number;
   /** Test seam. Production uses `Date.now`. */
   readonly now?: () => number;
+}
+
+/**
+ * #886: the owner session's tool calls, split the way the push-not-seen blocker needs them. A
+ * `leader_events` call is NOT activity here: a read, status or ack is the leader recovering events (the
+ * documented polling fallback), so counting it would report a working fallback as broken (#890 review,
+ * finding 1). `readAt` is kept apart because a read after a push means the leader has those events.
+ */
+export interface ClaudeCodeOwnerActivity {
+  /** When the owner session last called `leader_events` action `read`; undefined when it has not. */
+  readonly readAt?: number;
+  /** When it called tools OTHER than `leader_events`, oldest first. The producer may bound the list. */
+  readonly otherCallsAt: readonly number[];
 }
 
 /** A condition the person can resolve, in Claude Code's own words. Never a secret, never an account. */
@@ -100,12 +113,20 @@ export const CLAUDE_CODE_PUSH_UNCONFIRMED_FIX =
 export const CLAUDE_CODE_PUSH_NOT_SEEN_MS = 5 * 60_000;
 
 /**
+ * #886: how many calls to OTHER xezar tools, each made at or after that bound, make the activity
+ * sustained. One call is not a pattern — it may be the leader's first step on its way to reading the
+ * events (#890 review, finding 1) — so the stronger blocker waits for a session that plainly keeps
+ * working without them.
+ */
+export const CLAUDE_CODE_PUSH_NOT_SEEN_CALLS = 3;
+
+/**
  * The plain blocker for "pushed, still unacknowledged, and the session has called xezar tools well
  * after the push" (#886). It says what xezar saw and what it concludes, and never claims to know which
  * Claude Code condition dropped the rows — Claude Code writes that reason only to its own debug log.
  */
 export const CLAUDE_CODE_PUSH_NOT_SEEN_MESSAGE =
-  'xezar pushed events to the attached Claude Code session more than five minutes ago, and the session has called xezar tools since without acknowledging them. The pushed events are most likely not reaching the conversation. Claude Code does not confirm delivery, so this is what xezar can see, not a certainty. Nothing is lost: the events stay in the journal.';
+  'xezar pushed events to the attached Claude Code session more than five minutes ago, and the session has kept calling other xezar tools since without reading or acknowledging them. The pushed events are most likely not reaching the conversation. Claude Code does not confirm delivery, so this is what xezar can see, not a certainty. Nothing is lost: the events stay in the journal.';
 export const CLAUDE_CODE_PUSH_NOT_SEEN_FIX =
   'Read the events now with leader_events action read. To see why Claude Code dropped them, start Claude Code again with --dangerously-load-development-channels server:xezar --debug-file <a file path>, attach again, and look in that file for "Channel notifications registered" or for "Channel notifications skipped:" and the reason after it. Until then, read events with leader_events.';
 
@@ -168,8 +189,8 @@ export class ClaudeCodeChannelAdapter implements ReactionAdapter {
 
   /**
    * The blockers this adapter reports: rows pushed and confirmed, but not yet acknowledged for longer
-   * than a heartbeat — and, stronger (#886), still unacknowledged when the same session calls a xezar
-   * tool `notSeenMs` or more after the push. Delivery failures are the delivery seam's `deliveryFailing` /
+   * than a heartbeat — and, stronger (#886), still unacknowledged and unread while the same session
+   * keeps calling other xezar tools `notSeenMs` or more after the push. Delivery failures are the delivery seam's `deliveryFailing` /
    * `leaderNotAnswering` (a rejected push sets `failingSince` there), so this is only ever "delivered,
    * awaiting the leader".
    */
@@ -177,17 +198,27 @@ export class ClaudeCodeChannelAdapter implements ReactionAdapter {
     if (this.#closed) return {};
     this.#pruneAcknowledged();
     const oldest = this.#outstanding[0];
-    // #886: a call from the session made at least `notSeenMs` after the oldest unacknowledged push is
-    // the session being active and silent about it. Only a call AFTER that bound counts, so a leader
-    // that reads state before acknowledging, as the channel message asks, is never reported early.
-    const calledAt = this.#opts.ownerCalledAt?.();
-    if (oldest && calledAt !== undefined && calledAt - oldest.at >= (this.#opts.notSeenMs ?? CLAUDE_CODE_PUSH_NOT_SEEN_MS)) {
+    if (oldest && this.#notSeen(oldest.at)) {
       return { blocker: { code: 'claude-code-push-not-seen', message: CLAUDE_CODE_PUSH_NOT_SEEN_MESSAGE, fix: CLAUDE_CODE_PUSH_NOT_SEEN_FIX } };
     }
     if (oldest && this.#now() - oldest.at >= this.#opts.heartbeatMs) {
       return { blocker: { code: 'claude-code-push-unconfirmed', message: CLAUDE_CODE_PUSH_UNCONFIRMED_MESSAGE, fix: CLAUDE_CODE_PUSH_UNCONFIRMED_FIX } };
     }
     return {};
+  }
+
+  /**
+   * #886: the session is active and silent about the push made at `pushedAt` — it has not read events
+   * since, and it made at least `CLAUDE_CODE_PUSH_NOT_SEEN_CALLS` calls to other tools at or after
+   * `notSeenMs` past it. Calls inside the bound are the leader reading state before it acknowledges, as
+   * the channel message asks, and never count.
+   */
+  #notSeen(pushedAt: number): boolean {
+    const activity = this.#opts.ownerActivity?.();
+    if (activity === undefined) return false;
+    if (activity.readAt !== undefined && activity.readAt >= pushedAt) return false;
+    const bound = pushedAt + (this.#opts.notSeenMs ?? CLAUDE_CODE_PUSH_NOT_SEEN_MS);
+    return activity.otherCallsAt.filter((at) => at >= bound).length >= CLAUDE_CODE_PUSH_NOT_SEEN_CALLS;
   }
 }
 
