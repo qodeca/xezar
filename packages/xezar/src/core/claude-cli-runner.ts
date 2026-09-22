@@ -27,6 +27,9 @@ import {
   toolResultImageBlocks,
   type ClaudeUiMapping,
 } from './claude-ui-mapper.ts';
+import { claudeBashRules, isReadOnlyStep } from './read-only-lock.ts';
+
+export { isReadOnlyStep } from './read-only-lock.ts';
 
 /** Default wall-clock cap for a single run before SIGTERM → SIGKILL.
  *  Interactive sessions pass `timeoutMs: 0` to disable it entirely. */
@@ -70,7 +73,9 @@ export function resolveClaudeExecutable(override?: string): string {
  * `bashAllowlist` is set — the zero-config default has no allowlist, so `Bash`
  * is unrestricted shell access (#430). A read-only step (`isReadOnlyStep`) also
  * gets `--disallowedTools Edit,Write,NotebookEdit`, so those tools are removed,
- * not merely unapproved, under any permission mode (#849).
+ * not merely unapproved, under any permission mode (#849), and
+ * `--setting-sources user`, so project settings cannot widen Bash (#863). Claude's own matcher
+ * still decides at run time; the shared parser and argument table are not applied here yet.
  *
  * Session mechanics (multi-turn stdin, EOF watchdog, reopen window) follow
  * github-janitor's `claudeRunner.ts`; the original single-turn adaptation
@@ -413,6 +418,9 @@ export function buildClaudeArgs(
   // re-admitted it. A read-only step REMOVES the mutating tools instead, whatever the mode.
   if (isReadOnlyStep(spec.allowedTools)) {
     args.push('--disallowedTools', READ_ONLY_REMOVED_CLAUDE_TOOLS.join(','));
+    // #863: project/local Claude settings, hooks and skills can widen Bash after xezar builds the
+    // step rules. User settings remain available; the accepted compatibility cost is documented.
+    args.push('--setting-sources', 'user');
   }
   if (spec.model) {
     args.push('--model', spec.model);
@@ -426,16 +434,6 @@ export function buildClaudeArgs(
   // person's own — the same rule Codex runs have followed since #324.
   args.push('--strict-mcp-config', '--mcp-config', JSON.stringify(isolation.overlay));
   return args;
-}
-
-/**
- * #849 — the one read-only signal every runner reads: a step is read-only when its resolved
- * `allowedTools` names neither `Edit` nor `Write`. `undefined` is NOT read-only — it means the
- * caller resolved nothing, and the workflow engine always resolves a list
- * (`DEFAULT_ALLOWED_TOOLS` when the step sets none). An empty list IS read-only.
- */
-export function isReadOnlyStep(allowedTools: readonly string[] | undefined): boolean {
-  return allowedTools !== undefined && !allowedTools.includes('Edit') && !allowedTools.includes('Write');
 }
 
 /**
@@ -455,10 +453,7 @@ export function buildAllowedTools(allowedTools: string[], bashAllowlist?: string
   const out: string[] = [];
   for (const tool of allowedTools) {
     if (tool === 'Bash' && bashAllowlist && bashAllowlist.length > 0) {
-      for (const prefix of bashAllowlist) {
-        const p = prefix.trim();
-        if (p) out.push(`Bash(${p}:*)`);
-      }
+      out.push(...claudeBashRules(bashAllowlist));
     } else {
       out.push(tool);
     }

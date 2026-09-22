@@ -15,6 +15,6 @@
   // never compiled into `dist` and the build config (`rootDir: "src"`) cannot see it. It is named
   // here so the repository still typechecks it: a shipped file nothing typechecks is a file that
   // breaks in someone else's editor, not in CI.
-  "include": ["src/**/*.ts", "test/**/*.ts", "scripts/pi-leader-extension.ts", "vitest.config.ts", "vitest.mutation.config.ts"],
+  "include": ["src/**/*.ts", "test/**/*.ts", "scripts/pi-leader-extension.ts", "scripts/pi-worktree-guard.ts", "vitest.config.ts", "vitest.mutation.config.ts"],
   "exclude": []
 }
