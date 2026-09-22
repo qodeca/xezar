@@ -603,3 +603,148 @@ describe('pi linked-worktree tool guard (#537)', () => {
     });
   });
 });
+
+describe('pi honours a step bashAllowlist command by command (#856)', () => {
+  type GuardApi = Parameters<typeof extension>[0];
+  type Handler = Parameters<GuardApi['on']>[1];
+
+  function load(flags: Record<string, string | boolean | undefined>): Handler {
+    let handler: Handler | undefined;
+    extension({
+      registerFlag: () => undefined,
+      getFlag: (name) => flags[name],
+      on: (_event, next) => { handler = next; },
+    });
+    if (!handler) throw new Error('the extension registered no tool_call handler');
+    return handler;
+  }
+
+  /** A worktree run: both the worktree check and the allowlist apply. */
+  function worktreeRun(entries: string[]) {
+    const f = fixture();
+    const handler = load({
+      'xezar-worktree-root': f.worktree,
+      'xezar-primary-root': f.primary,
+      'xezar-bash-allowlist': JSON.stringify(entries),
+    });
+    return { f, run: (command: string) => handler(bash(command), { cwd: f.worktree }) };
+  }
+
+  /** A run with no worktree: the extension is loaded for the allowlist alone. */
+  function inPlaceRun(entries: string[]) {
+    const handler = load({ 'xezar-bash-allowlist': JSON.stringify(entries) });
+    return (command: string) => handler(bash(command), { cwd: tmpdir() });
+  }
+
+  it('allows a command that is an entry, or an entry followed by a space', () => {
+    const { run } = worktreeRun(['git diff']);
+    expect(run('git diff')).toBeUndefined();
+    expect(run('git diff --stat')).toBeUndefined();
+    // With no worktree the extension is loaded for the allowlist alone and must not fail closed.
+    expect(inPlaceRun(['git diff'])('git diff --stat')).toBeUndefined();
+  });
+
+  it('refuses a command whose prefix is no entry, including one that only shares its letters', () => {
+    const { run } = worktreeRun(['git diff']);
+    const refused = run('git difftool');
+    expect(refused).toMatchObject(BLOCK);
+    expect(refused?.reason).toContain('"git difftool"');
+    expect(run('rm -rf build')).toMatchObject(BLOCK);
+  });
+
+  it('allows `gh pr comment x --body y` with the entry `gh pr comment`', () => {
+    expect(inPlaceRun(['gh pr comment'])('gh pr comment x --body y')).toBeUndefined();
+    // a quoted operator is text the program receives, not a second command
+    expect(inPlaceRun(['gh pr comment'])('gh pr comment 12 --body "a; b | c > d"')).toBeUndefined();
+  });
+
+  it('refuses `git diff; rm x` with the entry `git diff`, naming the failing part and why', () => {
+    const refused = inPlaceRun(['git diff'])('git diff; rm x');
+    expect(refused).toMatchObject(BLOCK);
+    expect(refused?.reason).toContain('"rm x"');
+    expect(refused?.reason).toContain('every part of a compound command must match');
+  });
+
+  it.each(['git diff && rm x', 'git diff || rm x', 'git diff & rm x', 'git diff\nrm x'])(
+    'refuses the compound `%s` because one part matches no entry',
+    (command) => {
+      expect(inPlaceRun(['git diff'])(command)).toMatchObject(BLOCK);
+    },
+  );
+
+  it('refuses `gh pr view | tee out`: the `tee out` part matches no entry', () => {
+    const refused = inPlaceRun(['gh pr view'])('gh pr view | tee out');
+    expect(refused).toMatchObject(BLOCK);
+    expect(refused?.reason).toContain('"tee out"');
+  });
+
+  it('allows a pipe when every part matches: printf into the verdict-packet writer', () => {
+    const run = inPlaceRun(['printf', 'bash .xezar/checks/verdict-packet.sh']);
+    expect(run("printf '%s' x | bash .xezar/checks/verdict-packet.sh")).toBeUndefined();
+    // the same pipe with only one of the two entries is refused
+    expect(inPlaceRun(['printf'])("printf '%s' x | bash .xezar/checks/verdict-packet.sh")).toMatchObject(BLOCK);
+  });
+
+  it.each([
+    ['git diff $(rm x)', 'rm x'],
+    ['git diff `rm x`', 'rm x'],
+    ['git diff "$(rm x)"', 'rm x'],
+  ])('refuses the substitution in `%s` unless its command matches too', (command, part) => {
+    const refused = inPlaceRun(['git diff'])(command);
+    expect(refused).toMatchObject(BLOCK);
+    expect(refused?.reason).toContain(`"${part}"`);
+    expect(inPlaceRun(['git diff', 'rm'])(command)).toBeUndefined();
+  });
+
+  it.each(['git diff > out', 'git diff >> out', 'git diff 2>&1', 'git diff &> out', 'git diff $(git log > x)'])(
+    'refuses the output redirection in `%s` outright',
+    (command) => {
+      const refused = inPlaceRun(['git diff', 'git log'])(command);
+      expect(refused).toMatchObject(BLOCK);
+      expect(refused?.reason).toContain('redirects output');
+    },
+  );
+
+  it.each([
+    ['cat <<EOF\nx\nEOF', 'heredoc'],
+    ['git diff <(git log)', 'process substitution'],
+    ["git diff 'unclosed", 'unclosed quote'],
+    ['git diff $(git log', 'unclosed command substitution'],
+  ])('refuses `%s` it cannot read as plain commands (%s)', (command, why) => {
+    const refused = inPlaceRun(['git diff', 'git log', 'cat'])(command);
+    expect(refused).toMatchObject(BLOCK);
+    expect(refused?.reason).toContain(why);
+  });
+
+  it('does not let a comment\'s quote hide the next line\'s command', () => {
+    expect(inPlaceRun(['git diff'])("git diff # it's\nrm x\n'")).toMatchObject(BLOCK);
+  });
+
+  it('does not let an ANSI-C `\\\'` end the quote early', () => {
+    expect(inPlaceRun(['echo'])("echo $'a\\'b'")).toBeUndefined();
+    expect(inPlaceRun(['echo'])("echo $'a\\'; rm x'")).toBeUndefined();
+    expect(inPlaceRun(['echo'])("echo $'a\\''; rm x")).toMatchObject(BLOCK);
+  });
+
+  it('leaves the other tools alone, and still applies the worktree check to an allowed command', () => {
+    const { f, run } = worktreeRun(['git']);
+    const handler = load({ 'xezar-bash-allowlist': JSON.stringify(['git']) });
+    expect(handler(write(join(tmpdir(), 'x')), { cwd: tmpdir() })).toBeUndefined();
+    expect(run('git status')).toBeUndefined();
+    expect(run(`git -C ${f.primary} status`)).toMatchObject(BLOCK);
+  });
+
+  it('fails closed on an allowlist flag that is not a non-empty JSON list, for every tool', () => {
+    for (const flag of ['not-json', '[]', '[1]', '["  "]', true]) {
+      const handler = load({ 'xezar-bash-allowlist': flag });
+      expect(handler(bash('git diff'), { cwd: tmpdir() })).toMatchObject(BLOCK);
+      expect(handler(write('notes.md'), { cwd: tmpdir() })).toMatchObject(BLOCK);
+    }
+  });
+
+  it('keeps failing closed when only one worktree flag is present, allowlist or not', () => {
+    const f = fixture();
+    const handler = load({ 'xezar-primary-root': f.primary, 'xezar-bash-allowlist': '["git diff"]' });
+    expect(handler(bash('git diff'), { cwd: f.worktree })).toMatchObject(BLOCK);
+  });
+});
