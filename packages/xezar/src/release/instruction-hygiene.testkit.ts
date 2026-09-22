@@ -59,7 +59,7 @@ export const SOFTWARE_ONLY_FRAMING_RULE: ContentRule = {
 };
 
 /** Workflow names of xezar's own kit that are ordinary words elsewhere, so they are not banned. */
-const GENERIC_WORKFLOW_NAMES = new Set(['bug-fix', 'code-review', 'design', 'design-review', 'qa', 'research', 'integration', 'release', 'root-sync', 'business-analysis', 'testing-and-verification']);
+const GENERIC_WORKFLOW_NAMES = new Set(['bug-fix', 'code-review', 'design', 'design-review', 'qa', 'research', 'integration', 'release', 'root-sync', 'business-analysis', 'testing-and-verification', 'architecture-review']);
 
 /** Names that identify xezar's dogfooding kit even when a file is renamed. Always present. */
 const KIT_FALLBACK_NAMES = ['xezar-implementation', 'xezar-handoff-draft-pr', 'worktree-preflight', 'worktree-setup', 'resume-complete', 'integration-preflight', 'root-sync-preflight', 'merge-recovery', 'verify-evidence', 'feature-implementation', 'address-review-findings'];
