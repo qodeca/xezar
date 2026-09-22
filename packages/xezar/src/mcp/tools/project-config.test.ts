@@ -2999,17 +2999,70 @@ describe('project_config: every refusal names the next step (#819 item 8)', () =
     return { server, port: (server.address() as { port: number }).port };
   }
 
-  /** A next step is actionable when it names a command, a URL, or a tool call a leader can make. */
+  /**
+   * A next step is actionable when it names a real CLI invocation, a real cockpit settings page, or
+   * a real MCP action/tool word — never prose that merely happens to echo a backtick span or a URL.
+   * Break (#838 item G): the earlier version accepted ANY backtick span or ANY URL as proof, which
+   * "see the `settings` page for more information" satisfied without telling a caller anything it
+   * can run or open. The backtick branch is now anchored to a real `xez …` invocation (every
+   * backtick-only proof in `REFUSED_ACTIONS` is one), and the URL branch to a real cockpit settings
+   * path (every recorded address `cockpitLinks` hands out is one) — a JSON tool-call shape such as
+   * `` `{"action":"list_apps"}` `` still passes through the word branch below it, because it is
+   * always preceded by its plain tool name in the same string (`callShape` in project-config.ts).
+   */
   const KNOWN_CALLS = new Set<string>([...PROJECT_CONFIG_ACTIONS, ...tools.map((tool) => tool.name)]);
+  // `health` is deliberately absent from `KNOWN_CALLS` (#838 item G, acceptance criterion 3): it is
+  // the bridge's own built-in tool (`bridge.ts` `HEALTH_TOOL`), never added to the `tools/index.ts`
+  // registry `tools` is imported from above, and no `project_config` refusal ever names it as the
+  // next call to make.
   const actionable = (next: string): boolean =>
-    /`[^`]+`/.test(next) || /https?:\/\/\S+/.test(next) || next.split(/[^a-z_]+/).some((word) => KNOWN_CALLS.has(word));
+    /`xez(?:ar)?\b[^`]*`/.test(next) ||
+    /https?:\/\/\S+\/(?:p\/[^/\s]+\/settings\/|settings\/global\/)\S*/.test(next) ||
+    next.split(/[^a-z_]+/).some((word) => KNOWN_CALLS.has(word));
+
+  // Break (#838 item G): the pre-fix predicate accepted this — proof in the pull request body.
+  it('the actionable() predicate rejects prose that only echoes a backtick or a link', () => {
+    expect(actionable('see the `settings` page for more `information`')).toBe(false);
+    expect(actionable('see http://example.com/docs for more information')).toBe(false);
+  });
+
+  // Guard: every shape a real next step uses must keep passing.
+  it('the actionable() predicate accepts a real CLI command, tool call and settings URL', () => {
+    expect(actionable('Ask the person to run `xez providers connect <provider>` on the machine that runs xezar.')).toBe(true);
+    // The product ships both `xez` and `xezar` as `bin` (package.json), and project-config.ts
+    // already names the second spelling (`xezar accounts import-global`) in its own next steps.
+    expect(actionable('Ask the person to run `xezar accounts import-global` on the machine that runs xezar.')).toBe(true);
+    expect(actionable('Call local_handoff with `{"action":"list_apps"}` for the app ids.')).toBe(true);
+    expect(actionable('open it at http://127.0.0.1:4000/p/proj-a/settings/agents#providers')).toBe(true);
+  });
 
   const REFUSED_CALLS: Array<Record<string, unknown>> = [
     ...Object.keys(REFUSED_ACTIONS).map((action) => ({ action })),
     { action: 'get_config', projectId: 'proj-b' },
   ];
 
-  // Break: a refused action whose row has no next step, or one that is prose with nothing to act on.
+  /**
+   * The literal command, tool call or word each `REFUSED_CALLS` entry's next step must contain —
+   * copied verbatim from `REFUSED_ACTIONS` / `boundaryRefusal` in project-config.ts, never a generic
+   * shape (#838 item G, acceptance criterion 2). `actionable()` above only proves the next step
+   * LOOKS like a real instruction; this proves it is the SPECIFIC one this action promises, so a
+   * refusal that kept some other command in the string but dropped its own would still fail here.
+   */
+  const REFUSED_PROOF: Readonly<Record<string, string>> = {
+    connect_provider: '`xez providers connect <provider>`',
+    open_account_file: 'get_account and get_account_details',
+    browse_folders: 'set_workspace_config',
+    add_project: '`xez projects add <folder>`',
+    clone_project: '`xez projects add <folder>`',
+    remove_project: '`xez projects remove <id>`',
+    apply_skill_updates: 'project_config with `{"action":"set_workspace_config"',
+    get_launch_key: 'task_create',
+    open_in_app: 'local_handoff with `{"action":"list_apps"}`',
+    get_config: '`xez mcp`',
+  };
+
+  // Break: a refused action whose row has no next step, one that is prose with nothing to act on,
+  // or one that kept an unrelated command while dropping the one it actually promises.
   it('answers every refused action, on the first call, with an actionable next step and no guessed address', async () => {
     for (const args of REFUSED_CALLS) {
       const called = await invoke(args, { service: null });
@@ -3019,6 +3072,9 @@ describe('project_config: every refusal names the next step (#819 item 8)', () =
       const next: unknown = called.structured.nextStep;
       expect(typeof next, `${label} has no nextStep`).toBe('string');
       expect(actionable(next as string), `${label}: ${String(next)}`).toBe(true);
+      const proof = REFUSED_PROOF[args.action as string];
+      expect(proof, `${label} has no REFUSED_PROOF entry`).toBeDefined();
+      expect(next as string, `${label}: ${String(next)}`).toContain(proof);
       expect(called.text, label).toContain(`Next step: ${String(next)} Nothing was changed.`);
       // Nothing recorded an address, so none may appear — the in-process base above all.
       expect(called.text, label).not.toMatch(/https?:\/\//);

@@ -147,3 +147,36 @@ describe('serve --bind-host (#838 item A)', () => {
     }
   }, 25_000);
 });
+
+/**
+ * #838 item H: a repeated `--bind-host` is last-wins in the real server process, exercised through
+ * the observable no-auth warning (`bindHost && !['127.0.0.1','localhost','::1'].includes(bindHost)`
+ * in `index.ts`) rather than an actual connect probe to an arbitrary host. This is the "what does
+ * the server actually bind" half of the proof; `discovery.test.ts` pins that the MCP-side reader
+ * (`bindHostFromArgv`) agrees with this same last-wins rule for the same argv.
+ */
+describe('serve --bind-host repeated (#838 item H)', () => {
+  it('the LAST --bind-host wins when the second one is non-loopback', async () => {
+    const { proc, output } = await bootServe(freshRepo('repeated-last-non-loopback'), [
+      '--bind-host', '127.0.0.1',
+      '--bind-host', '0.0.0.0',
+    ]);
+    try {
+      expect(output).toContain('xezar has no built-in auth');
+    } finally {
+      await stop(proc);
+    }
+  }, 25_000);
+
+  it('the LAST --bind-host wins when the second one is loopback (no warning)', async () => {
+    const { proc, output } = await bootServe(freshRepo('repeated-last-loopback'), [
+      '--bind-host', '0.0.0.0',
+      '--bind-host', '127.0.0.1',
+    ]);
+    try {
+      expect(output).not.toContain('no built-in auth');
+    } finally {
+      await stop(proc);
+    }
+  }, 25_000);
+});

@@ -71,7 +71,7 @@ import { runProjectsCommand } from './workspace/projects-cli.ts';
 import { cliAudit, PROJECTS_SUBCOMMANDS, projectResource, type CliAudit } from './cli-audit.ts';
 import { WorkspaceSemaphore } from './workspace/semaphore.ts';
 import { discoverProjectCheck, fixAndVerifyWorkflow, PROJECT_CONVENTIONS_SKILL } from './init-kit.ts';
-import { resolveBindHost, resolveCapabilities } from './server/capabilities.ts';
+import { BIND_HOST_OPTION, resolveBindHost, resolveCapabilities } from './server/capabilities.ts';
 import { recordOwnListen } from './server/instance-liveness.ts';
 import {
   assertProjectStateUsable,
@@ -237,7 +237,9 @@ async function main(): Promise<void> {
       'no-open': { type: 'boolean', default: false },
       platform: { type: 'string' },
       domain: { type: 'string' },
-      'bind-host': { type: 'string' },
+      // Shared with `cockpit-address.ts`'s independent `bindHostFromArgv` scan (#838 item H
+      // finding 2) so a `short:`/`multiple:` added here cannot silently diverge from that reader.
+      'bind-host': BIND_HOST_OPTION,
       'external-proxy': { type: 'boolean', default: false },
       yes: { type: 'boolean', default: false },
       reconfigure: { type: 'string' },
