@@ -13,8 +13,10 @@ import {
   ClaudeCliRunner,
   EOF_KILL_GRACE_MS,
   EOF_TERM_GRACE_MS,
+  isReadOnlyStep,
   KILL_GRACE_MS,
 } from './claude-cli-runner.ts';
+import { DEFAULT_ALLOWED_TOOLS } from '../workflows/types.ts';
 import type { UiEvent } from './ui-events.ts';
 
 /** Only the escalation tests below swap the child out; every other test in this
@@ -64,6 +66,88 @@ describe('buildClaudeArgs approval gate', () => {
     const args = buildClaudeArgs(spec, { XEZ_APPROVAL_GATE: '1' });
     const idx = args.indexOf('--permission-mode');
     expect(args[idx + 1]).toBe('acceptEdits');
+  });
+});
+
+/**
+ * #849 A/B — a read-only step (its `allowedTools` names neither Edit nor Write) REMOVES the
+ * mutating tools with `--disallowedTools`, because `--allowedTools` only pre-approves: under
+ * `acceptEdits` or a project's `permissions.allow` an unlisted Edit/Write came straight back.
+ * The argv is pinned whole up to the MCP pair so a reordered or dropped flag fails by name.
+ */
+describe('buildClaudeArgs read-only steps (#849)', () => {
+  const base = { userPrompt: 'review it', cwd: '/tmp' };
+  const head = ['--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose'];
+  /** Everything before the variadic `--mcp-config` pair, which is always last. */
+  const beforeMcp = (args: string[]) => args.slice(0, args.indexOf('--strict-mcp-config'));
+
+  it('removes Edit, Write and NotebookEdit for the code-review list', () => {
+    const args = buildClaudeArgs({ ...base, allowedTools: ['Read', 'Grep', 'Glob', 'Bash'] }, {});
+    expect(beforeMcp(args)).toEqual([
+      ...head,
+      '--permission-mode',
+      'dontAsk',
+      '--allowedTools',
+      'Read,Grep,Glob,Bash',
+      '--disallowedTools',
+      'Edit,Write,NotebookEdit',
+    ]);
+  });
+
+  it('still removes them when XEZ_APPROVAL_GATE=1 switches the mode to acceptEdits', () => {
+    const args = buildClaudeArgs({ ...base, allowedTools: ['Read', 'Grep', 'Glob', 'Bash'] }, { XEZ_APPROVAL_GATE: '1' });
+    expect(beforeMcp(args)).toEqual([
+      ...head,
+      '--permission-mode',
+      'acceptEdits',
+      '--allowedTools',
+      'Read,Grep,Glob,Bash',
+      '--disallowedTools',
+      'Edit,Write,NotebookEdit',
+    ]);
+  });
+
+  it('passes no removal flag for the default writing list', () => {
+    const args = buildClaudeArgs({ ...base, allowedTools: [...DEFAULT_ALLOWED_TOOLS] }, {});
+    expect(beforeMcp(args)).toEqual([
+      ...head,
+      '--permission-mode',
+      'dontAsk',
+      '--allowedTools',
+      DEFAULT_ALLOWED_TOOLS.join(','),
+    ]);
+    expect(args).not.toContain('--disallowedTools');
+  });
+
+  it('treats a list that keeps only one of Edit/Write as a writing step', () => {
+    expect(buildClaudeArgs({ ...base, allowedTools: ['Read', 'Write'] }, {})).not.toContain('--disallowedTools');
+    expect(buildClaudeArgs({ ...base, allowedTools: ['Read', 'Edit'] }, {})).not.toContain('--disallowedTools');
+  });
+
+  it('passes no removal flag when no list was resolved at all', () => {
+    expect(buildClaudeArgs(base, {})).not.toContain('--disallowedTools');
+  });
+
+  it('turns a bashAllowlist into Bash(<prefix>:*) entries only, with no plain Bash', () => {
+    const args = buildClaudeArgs(
+      { ...base, allowedTools: ['Read', 'Grep', 'Glob', 'Bash'], bashAllowlist: ['git', ' gh ', ''] },
+      {},
+    );
+    const allowed = args[args.indexOf('--allowedTools') + 1]!.split(',');
+    expect(allowed).toEqual(['Read', 'Grep', 'Glob', 'Bash(git:*)', 'Bash(gh:*)']);
+    expect(allowed).not.toContain('Bash');
+    expect(args[args.indexOf('--disallowedTools') + 1]).toBe('Edit,Write,NotebookEdit');
+  });
+});
+
+describe('isReadOnlyStep (#849)', () => {
+  it('reads a step as read-only only when a resolved list names neither Edit nor Write', () => {
+    expect(isReadOnlyStep(['Read', 'Grep', 'Glob', 'Bash'])).toBe(true);
+    expect(isReadOnlyStep([])).toBe(true);
+    expect(isReadOnlyStep(undefined)).toBe(false);
+    expect(isReadOnlyStep([...DEFAULT_ALLOWED_TOOLS])).toBe(false);
+    expect(isReadOnlyStep(['Read', 'Edit'])).toBe(false);
+    expect(isReadOnlyStep(['Read', 'Write'])).toBe(false);
   });
 });
 

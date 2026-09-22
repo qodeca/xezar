@@ -955,6 +955,47 @@ run can reach is breaking under section 1's rule, so it is recorded here rather 
   `codex-app-server-runner.test.ts` (under `MOCK_CODEX_AMBIENT` / `MOCK_CODEX_CONFIG_READ_ERROR`)
   pins the default; it fails against a runner that starts the thread without asking.
 
+## Read-only steps: removed file editors on Claude Code, a confined sandbox on Codex (#849) — deliberate, 0.19.0
+
+A step whose resolved `allowedTools` names neither `Edit` nor `Write` — the kit's review, QA and
+analysis workflows use `[Read, Grep, Glob, Bash]` — was meant to be read-only and was not on any
+backend. Changing what a shipped run may do is recorded here rather than silently:
+
+- **Changed (Codex) — CONFINED, not read-only**: such a step used to run in
+  `sandbox: danger-full-access` and could write anywhere the user can. It now starts AND resumes
+  its thread in `sandbox: workspace-write` with
+  `config.sandbox_workspace_write = { network_access: true, writable_roots: <the run's own directories> }`.
+  In the user's terms: the agent can still change files in its own worktree and in the run's own
+  evidence, handoff and temporary folders, and nowhere else — not the primary checkout, not another
+  task's worktree, not the home directory. A workflow whose Codex step wrote outside those places
+  without listing `Edit` or `Write` must add one of them.
+- **Not changed (Codex)**: the network stays on, so `git fetch`, `gh pr comment` and package
+  installs keep working (`read-only` was rejected because it drops all network and every write
+  outside the worktree, so no review or QA step could post its verdict); the worktree stays
+  writable, so the branch is not protected on Codex; `bashAllowlist` and the individual tool names
+  are still ignored on Codex; `XEZ_CODEX_NETWORK=0` still wins and turns the network off for this
+  step too.
+- **Tightened (Claude Code) — ENFORCED**: such a step gets `--disallowedTools Edit,Write,NotebookEdit`
+  beside `--allowedTools`. Under the default `dontAsk` mode those tools were already denied, so
+  nothing observable changes there; under `XEZ_APPROVAL_GATE=1` (`acceptEdits`) or a project's own
+  `permissions.allow`, which used to re-admit them, they are now absent. Plain `Bash` in the list is
+  still a shell.
+- **Not broken**: every step whose list names `Edit` or `Write` — `DEFAULT_ALLOWED_TOOLS` included —
+  gets exactly the argv and sandbox it had; `XEZ_CODEX_NETWORK=0` keeps its meaning for those
+  steps; a spec with no resolved list (`allowedTools` absent) is treated as a writing step; the
+  Codex MCP scoping of #324 is unchanged and the sandbox does not cover MCP tools; pi and OpenCode
+  runs are unchanged (OpenCode still does NOT apply a read-only step); no `XEZ_*` variable or
+  step key was added. A run record from before #367 carries no `workflowDef`, so a Continue,
+  restart recovery or usage-limit auto-resume of its read-only step falls back to
+  `DEFAULT_ALLOWED_TOOLS` (`run.ts:3368`) and resumes as a writing step, without the Claude flag
+  and in Codex full access — a pre-existing fail-open (pre-rename issue 430), not introduced here.
+  The planner (`planner.ts:94`) and the task auto-namer (`runs/auto-name.ts:170`) pass
+  `allowedTools: []`, which reads as read-only, so they now start Codex confined and Claude with
+  the deny flag; both are text-only calls and write nothing.
+- **Pinned by**: `claude-cli-runner.test.ts` and `codex-app-server-runner.test.ts` (the whole argv
+  and the whole `thread/start` / `thread/resume` params, for a read-only and a writing list).
+  Released as part of a **minor** version.
+
 ## Claude Code, pi and OpenCode runs no longer load xezar's own MCP bridge (#342) — deliberate, 0.16.0
 
 #324 gave Codex runs this rule. The other three backends passed nothing, so a task client loaded

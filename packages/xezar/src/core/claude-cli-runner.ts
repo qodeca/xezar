@@ -68,7 +68,9 @@ export function resolveClaudeExecutable(override?: string): string {
  * `--allowedTools` (default-deny for anything not listed) + running inside the
  * repo `cwd`; `Bash` is narrowed to `Bash(<prefix>:*)` patterns only when
  * `bashAllowlist` is set — the zero-config default has no allowlist, so `Bash`
- * is unrestricted shell access (#430).
+ * is unrestricted shell access (#430). A read-only step (`isReadOnlyStep`) also
+ * gets `--disallowedTools Edit,Write,NotebookEdit`, so those tools are removed,
+ * not merely unapproved, under any permission mode (#849).
  *
  * Session mechanics (multi-turn stdin, EOF watchdog, reopen window) follow
  * github-janitor's `claudeRunner.ts`; the original single-turn adaptation
@@ -406,6 +408,12 @@ export function buildClaudeArgs(
   if (allowed.length > 0) {
     args.push('--allowedTools', allowed.join(','));
   }
+  // #849: `--allowedTools` only PRE-APPROVES. An unlisted Edit/Write was denied by the mode
+  // alone, so `acceptEdits` (XEZ_APPROVAL_GATE=1) or a project's own `permissions.allow`
+  // re-admitted it. A read-only step REMOVES the mutating tools instead, whatever the mode.
+  if (isReadOnlyStep(spec.allowedTools)) {
+    args.push('--disallowedTools', READ_ONLY_REMOVED_CLAUDE_TOOLS.join(','));
+  }
   if (spec.model) {
     args.push('--model', spec.model);
   }
@@ -419,6 +427,24 @@ export function buildClaudeArgs(
   args.push('--strict-mcp-config', '--mcp-config', JSON.stringify(isolation.overlay));
   return args;
 }
+
+/**
+ * #849 — the one read-only signal every runner reads: a step is read-only when its resolved
+ * `allowedTools` names neither `Edit` nor `Write`. `undefined` is NOT read-only — it means the
+ * caller resolved nothing, and the workflow engine always resolves a list
+ * (`DEFAULT_ALLOWED_TOOLS` when the step sets none). An empty list IS read-only.
+ */
+export function isReadOnlyStep(allowedTools: readonly string[] | undefined): boolean {
+  return allowedTools !== undefined && !allowedTools.includes('Edit') && !allowedTools.includes('Write');
+}
+
+/**
+ * What a read-only step removes on Claude Code (`--disallowedTools`). A deny list rather than
+ * `--tools <allowed set>`: `--tools` takes built-in names only, so an `mcp__…` entry or a
+ * `Bash(<prefix>:*)` pattern in `allowedTools` could not be expressed there, while a deny rule
+ * outranks every allow rule and every permission mode. `NotebookEdit` is the third file writer.
+ */
+export const READ_ONLY_REMOVED_CLAUDE_TOOLS = ['Edit', 'Write', 'NotebookEdit'] as const;
 
 /**
  * Map `allowedTools` onto claude's `--allowedTools` syntax. `Bash` with a

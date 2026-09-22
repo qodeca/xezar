@@ -172,9 +172,12 @@ Notable fields (full doc-comments in the source):
   `XEZ_HANDOFF_FILE` / `XEZ_TODOS_FILE` / `XEZ_TASK_ID`).
 - `allowedTools?` / `bashAllowlist?` / `additionalDirectories?` — tool access.
   **Caveat (pre-rename issue 430):** the zero-config default (`DEFAULT_ALLOWED_TOOLS`) includes
-  unrestricted `Bash`, and Codex/OpenCode do not honor `allowedTools` at all.
+  unrestricted `Bash`, and OpenCode does not honor `allowedTools` at all. Codex
+  honours one signal from it: a read-only step (neither `Edit` nor `Write`) runs
+  CONFINED, every other step keeps full access (§ 6, "Read-only steps").
   Treat the default `auto` permission mode as full shell access, not a
-  sandbox: Codex uses `danger-full-access` with `approvalPolicy: never`.
+  sandbox: a writing Codex step uses `danger-full-access` with
+  `approvalPolicy: never`.
   **OpenCode does NOT auto-approve every permission (#578 corrects the prior
   claim here).** It defaults `external_directory` (a tool touching a path
   outside the session directory — `$XEZ_HANDOFF_FILE`, pasted attachments,
@@ -520,6 +523,24 @@ or a new fixture set forgets one — a named row fails. The matrix:
   child work to a parent
 
 A new backend is not "done" until it produces every row.
+
+### Read-only steps — per backend (#849)
+
+Tool limits are the one place backends do NOT reach parity, so the difference is stated rather
+than hidden. A step is **read-only** when its resolved `allowedTools` names neither `Edit` nor
+`Write` (`isReadOnlyStep` in `claude-cli-runner.ts`; `undefined` is not read-only, an empty list
+is). That is the only signal: no step key, no `XEZ_*` variable.
+
+| Backend | Read-only step | Mechanism | Pinned by |
+| --- | --- | --- | --- |
+| Claude Code | **ENFORCED** (was MODE-DENIED before #849) | `--disallowedTools Edit,Write,NotebookEdit` beside `--allowedTools`: the tools are removed, so neither `--permission-mode acceptEdits` (`XEZ_APPROVAL_GATE=1`) nor a project's `permissions.allow` brings them back. Before #849 an unlisted Edit/Write was only denied by `dontAsk` | `claude-cli-runner.test.ts` |
+| Codex | **CONFINED** (was NOT APPLIED before #849) | `thread/start` and `thread/resume` carry `sandbox: 'workspace-write'` plus `config.sandbox_workspace_write = { network_access: true, writable_roots: spec.additionalDirectories }` (`codexPermissions`). Codex's file edits and shell may write only inside the worktree and the run's own evidence, handoff and tmp directories; the network stays on so a review can `git fetch` and post with `gh`, unless `XEZ_CODEX_NETWORK=0` turns it off. Not ENFORCED: the worktree, and so the branch, stays writable, individual tool names and `bashAllowlist` are still ignored, and MCP tools stay under the per-thread scoping of #324 (`codex-run-isolation.ts`), not the sandbox. `read-only` was rejected because it also drops all network and every write outside the worktree | `codex-app-server-runner.test.ts` |
+| pi | partly: edit/write absent | `--tools` from the mapped list (`Read,Grep,Glob,Bash` → `read,grep,find,bash`); `bash` is dropped only when a `bashAllowlist` is set, because pi has no command-prefix rule | `pi-runner.test.ts` |
+| OpenCode | **NOT APPLIED** | nothing derived from `allowedTools` reaches the server; the agent can edit, write and run any command | — |
+
+Plain `Bash` in a read-only list is still a shell on Claude Code and pi, and inside the worktree on
+Codex; a `bashAllowlist` narrows it on Claude Code and pi (Claude: `Bash(<prefix>:*)` entries only). A new runner states its row here, and a runner that
+cannot enforce a read-only step says NOT APPLIED rather than implying it.
 
 ## 7. The golden-fixture testing contract
 

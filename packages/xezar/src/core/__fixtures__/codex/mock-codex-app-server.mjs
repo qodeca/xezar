@@ -19,6 +19,11 @@
 // everything but the project's own server, plugins and apps included.
 // `MOCK_CODEX_CONFIG_READ_ERROR=1` answers `config/read` with an error, the
 // shape of a Codex CLI that cannot say which servers it would load.
+//
+// #849: `MOCK_CODEX_EXPECT_SANDBOX=<mode>` makes thread/start|resume refuse any
+// other `sandbox`, and `MOCK_CODEX_THREAD_LOG=<file>` appends each of those two
+// requests (method + params) to that file so a test can pin them whole.
+import { appendFileSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 
 const emit = (obj) => process.stdout.write(`${JSON.stringify(obj)}\n`);
@@ -116,7 +121,11 @@ rl.on('line', (line) => {
       emit({ id: msg.id, error: { code: -32602, message: problem } });
       return;
     }
-    const expectedSandbox = process.env.XEZ_CODEX_NETWORK === '0' ? 'workspace-write' : 'danger-full-access';
+    if (process.env.MOCK_CODEX_THREAD_LOG) {
+      appendFileSync(process.env.MOCK_CODEX_THREAD_LOG, `${JSON.stringify({ method: msg.method, params: msg.params })}\n`);
+    }
+    const expectedSandbox = process.env.MOCK_CODEX_EXPECT_SANDBOX
+      ?? (process.env.XEZ_CODEX_NETWORK === '0' ? 'workspace-write' : 'danger-full-access');
     if (msg.params?.sandbox !== expectedSandbox || msg.params?.approvalPolicy !== 'never') {
       emit({ id: msg.id, error: { code: -32602, message: `expected ${expectedSandbox} auto permissions` } });
       return;

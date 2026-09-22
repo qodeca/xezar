@@ -126,7 +126,7 @@ More → [Getting started](docs/guide/01-getting-started.md)
 | Backend | How xezar drives it | Tool access |
 |---|---|---|
 | **Claude Code** (default) | Headless `stream-json` mode | `allowedTools` (`bashAllowlist` scopes `Bash`); unapproved tools denied without prompting; the default list includes unrestricted `Bash` |
-| **Codex** | `codex app-server`, JSON-RPC over stdio | Ignores `allowedTools`; `danger-full-access` with no approvals (`XEZ_CODEX_NETWORK=0` for the network-blocked sandbox) |
+| **Codex** | `codex app-server`, JSON-RPC over stdio | Honours one signal from `allowedTools`: a step naming neither `Edit` nor `Write` runs confined – it may write only in its worktree and the run's own evidence, handoff and temporary folders, with the network on. Every other step runs `danger-full-access` with no approvals. `XEZ_CODEX_NETWORK=0` turns the network off for both. Individual tool names and `bashAllowlist` are ignored |
 | **OpenCode** _(experimental)_ | `opencode serve`, HTTP + SSE | Ignores `allowedTools`; permission asks are answered fail-closed: a directory ask inside the run's own directories is allowed once, every other ask is denied |
 | **pi** | `--mode rpc` over JSONL | `allowedTools` mapped onto pi's `--tools`; a `bashAllowlist` disables `Bash` |
 
@@ -195,7 +195,7 @@ agent accounts in later, without overwriting one this project already has. See
 | `XEZ_INSTANCE=workspace` | Which projects one xezar process serves: `workspace` (default — this cockpit opens every project you have registered) or `project` (this cockpit serves the project it started in, and your other projects appear as links to their own cockpit; they stay listed and you can still add and remove them). A saved `cli.instance` overrides it; `--instance` overrides both. `XEZ_SINGLE_PROJECT` and a folder that owns its xezar state already serve one project and win over it. |
 | `VITE_XEZ_API_BASE=http://localhost:4321` | Build-time API origin for a separately hosted cockpit; default is same-origin. A served `xez-api-base` meta tag overrides it. |
 | `XEZ_REMOTE=1` | Hide conveniences that open files or applications on the host machine. Off by default. |
-| `XEZ_CODEX_NETWORK=0` | Use Codex's network-blocked workspace-write sandbox; default is full access. |
+| `XEZ_CODEX_NETWORK=0` | Use Codex's network-blocked workspace-write sandbox; default is full access for a writing step and a confined sandbox with network for a read-only step. |
 | `XEZ_HOME=/path/to/state` | Move global state and the project registry from `~/.xezar`; empty uses the default. |
 
 Defaults and internal test variables: [`.env.example`](.env.example).

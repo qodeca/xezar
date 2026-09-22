@@ -264,6 +264,12 @@ describe('pi RPC argv', () => {
     ]);
   });
 
+  it('maps the read-only code-review list onto pi tools with no edit or write (#849)', () => {
+    expect(
+      buildPiArgs({ cwd: '/repo', userPrompt: 'task', allowedTools: ['Read', 'Grep', 'Glob', 'Bash'] }),
+    ).toEqual(['--mode', 'rpc', '--tools', 'read,grep,find,bash']);
+  });
+
   it('fails closed by disabling bash when a command-prefix allowlist cannot be represented', () => {
     expect(
       buildPiArgs({
