@@ -83,9 +83,9 @@ validates the file, `--rows` lists classification rows without lane data,
 `node .xezar/checks/route.mjs <row id>` prints that row's lane order, and `--table` prints a human
 view. `--file <path>` is only for onboarding before the first
 merge, and labels its output `source=unmerged`. Earlier kit versions used the prose
-routing guidance form. The kit's `.xezar/docs/account-limits.md` budget table records each
-runner/login pair as `ok`, `unknown`, or `out`, with its reset time; the leader reads it as described
-in the kit's `.xezar/docs/routing.md` § 3, and it will supply xezar's agent-quota status when that
+routing guidance form. The kit's account-limits table records each runner/login pair as `ok`,
+`unknown`, or `out`, with its reset time; the leader reads it as described in the kit's routing
+guide, and it will supply xezar's agent-quota status when that
 status ships.
 
 xezar 0.19.0 is the minimum engine for xezar-skills 3.0.0; projects that must stay on 0.18 stay on xezar-skills 2.1.1.

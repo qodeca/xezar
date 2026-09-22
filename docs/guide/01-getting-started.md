@@ -135,8 +135,8 @@ and lane routing. Its leader uses `node .xezar/checks/route.mjs --check` to vali
 classification rows without lane data, `node .xezar/checks/route.mjs <row id>` for that row's lane
 order, and `--table` for a human
 view; `--file <path>` is onboarding-only before the first merge and marks output `source=unmerged`.
-The kit's `.xezar/docs/account-limits.md` table records each runner/login budget as `ok`, `unknown`, or
-`out` with its reset time; its `.xezar/docs/routing.md` § 3 tells the leader to read it, and it will
+The kit's account-limits table records each runner/login budget as `ok`, `unknown`, or `out` with its
+reset time; the kit's routing guide tells the leader to read it, and it will
 feed xezar's agent-quota status when that status ships. Earlier kit versions used prose
 routing guidance.
 

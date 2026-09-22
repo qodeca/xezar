@@ -45,8 +45,8 @@ model and lane routing. Its leader reads it with <code>node .xezar/<wbr>checks/r
 `--check` validates, `--rows` lists classification rows without lane data,
 <code>node .xezar/<wbr>checks/route.mjs &lt;row id&gt;</code> prints one row's lane order, and `--table`
 prints a human view. `--file <path>` is for onboarding only, before the first merge, and marks output
-`source=unmerged`. The kit's `.xezar/docs/account-limits.md` table records each runner/login budget as
-`ok`, `unknown`, or `out` with its reset time; the leader reads it under `.xezar/docs/routing.md` § 3,
+`source=unmerged`. The kit's account-limits table records each runner/login budget as `ok`, `unknown`,
+or `out` with its reset time; the leader reads it under the kit's routing guide,
 and it will feed xezar's agent-quota status when that status ships. Earlier kit versions used prose
 routing guidance.
 
