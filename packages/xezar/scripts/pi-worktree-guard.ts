@@ -52,29 +52,14 @@
  * may sit under the primary checkout). Absolute temp and home paths outside the primary checkout
  * keep their historical behaviour.
  *
- * The same extension carries a step's `bashAllowlist` (#856), passed as `--xezar-bash-allowlist`,
- * a JSON list. pi has no command-prefix rule of its own, so this is where the rule Claude Code
- * applies to `Bash(<entry>:*)` lives for pi: a command is allowed only when it is an entry, or an
- * entry followed by whitespace and anything (`git diff` allows `git diff --stat`, never
- * `git difftool`). A compound command – `;`, `&&`, `||`, `|`, `&`, a newline, a `$(…)` or backtick
- * substitution – is allowed only when EVERY part matches on its own; redirection (any unquoted `>`
- * or `<`), a heredoc (`<<`) and process substitution (`<(`) are refused outright, and so is a part
- * whose program takes an argument that runs a command, deletes or writes a file (`find` with
- * `-exec`, `-execdir`, `-ok`, `-okdir`, `-delete` or `-fprint*`/`-fls`), because that argument
- * sits inside a part an entry matches. The check reads the text before the shell expands it, so in a
- * part whose program has such a row, a word the shell would still change – an unquoted `$`, a
- * backtick, `$'…'`, `{`, `}`, `~` or a glob character (`*`, `?`, `[`), or a `$` or backtick inside
- * double quotes – cannot be checked before expansion and is refused: `find sub -d${HOME:0:0}elete`
- * becomes `-delete` only in the shell. A quoted or escaped glob (`find . -name '*.ts'`) stays
- * allowed; an unquoted one (`find . -name *.ts`) is refused. The table is only as complete as its
- * rows: an allowlist entry must never name a program that can run a command or write a file from an
- * argument (`sed`, `awk`, `sort -o`, `dd`, `tee`, an interpreter), because nothing here reads that
- * program's arguments. An unquoted `(` or `)`, or a part led by `function`, `{` or `}`, groups
- * commands or defines a function (`find () ( rm x ); find` would make `find` run `rm`), so the
- * command is refused outright. A backslash that ends the input or a line is refused too: the shell
- * drops it or joins the next line, so `find sub -delete\` would run `find sub -delete` while the
- * guard read `-delete\`. Unlike the worktree check above this is a strict allowlist: anything the
- * splitter cannot read – an unclosed quote or substitution – is refused.
+ * The same extension carries a step's `bashAllowlist`, but its policy is shared in
+ * `core/read-only-lock.ts` (#863). pi has no native command-prefix rule or denial transport, so
+ * this adapter keeps only the flag registration/parsing and pi's `{ block, reason }` response.
+ * The shared policy accepts one simple command matching an entry and refuses shell composition,
+ * expansion, redirection, grouping/functions, leading assignments, trailing backslashes, unnamed
+ * command-running wrappers and the audited risky argument forms. Its sole compound exception is
+ * the verdict roles' two-part pipe into the exact packet writer. The separate worktree check above
+ * remains pi-specific because it validates pi tool paths and roots, not command policy.
  *
  * Xezar passes the flag whenever it loads this extension: `null` for a step without a
  * `bashAllowlist`, which keeps an unrestricted `bash`, and the list otherwise. `[]` (and a list of
@@ -87,6 +72,16 @@ import { existsSync, lstatSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, parse, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+// This extension ships as TypeScript under `scripts/`, while package source does not ship. In a
+// checkout it imports the source module for tests and development; in the npm package it imports
+// the same module's tsc output under `dist/`. The policy remains one authored implementation.
+const readOnlyLockSource = new URL('../src/core/read-only-lock.ts', import.meta.url);
+const readOnlyLockBuilt = new URL('../dist/core/read-only-lock.js', import.meta.url);
+const readOnlyLock = (await import(
+  existsSync(readOnlyLockSource) ? readOnlyLockSource.href : readOnlyLockBuilt.href
+)) as typeof import('../src/core/read-only-lock.ts');
+const { decideReadOnlyCommand, normalizeBashAllowlist } = readOnlyLock;
 
 interface ToolCall {
   toolName: string;
@@ -625,245 +620,12 @@ function guardToolCall(
 const ALLOWLIST_FLAG = 'xezar-bash-allowlist';
 const ALLOWLIST_REASON = 'Blocked by Xezar: this step allows only the shell commands in its bashAllowlist.';
 
-/** bash drops a backslash that ends the input and joins a line that ends in one to the next, so the
- *  word the guard would read (`-delete\`) is not the word the program receives (`-delete`). */
-const TRAILING_BACKSLASH = 'it ends a line with a backslash, which the shell would drop';
-/** An unquoted `(` or `)` is never an argument of a simple command: it is a subshell, a function
- *  definition (`find () ( rm x ); find`) or a syntax error. A part led by `function`, `{` or `}`
- *  defines a function or groups commands. Either way no entry can vouch for what it runs. */
-const GROUPING = 'it groups commands or defines a function, which is refused outright';
-const GROUPING_WORDS = new Set(['function', '{', '}']);
-
-/** The simple commands a command line runs, read the way the shell splits it, or why it cannot be. */
-interface CommandParts {
-  parts: string[];
-  problem?: string;
-  end: number;
-}
-
-/**
- * Split `command` from `start` into the simple commands it runs. Top-level parts are the raw text
- * between operators; a `$(…)` or backtick substitution stays in its part's text AND contributes its
- * own parts, so both have to match. `close` is the character that ends a substitution body.
- */
-function commandParts(command: string, start = 0, close?: ')' | '`', depth = 0): CommandParts {
-  if (depth > MAX_SCRIPT_DEPTH) return { parts: [], problem: 'it nests command substitutions too deeply to read', end: command.length };
-  const parts: string[] = [];
-  const nested: string[] = [];
-  let current = '';
-  const finish = () => {
-    const part = current.trim();
-    if (part.length > 0) parts.push(part);
-    current = '';
-  };
-  const substitution = (from: number, closing: ')' | '`'): CommandParts => {
-    const inner = commandParts(command, from, closing, depth + 1);
-    nested.push(...inner.parts);
-    return inner;
-  };
-  const fail = (problem: string, at: number): CommandParts => ({ parts: [...parts, ...nested], problem, end: at });
-
-  let i = start;
-  while (i < command.length) {
-    const char = command[i] as string;
-    const next = command[i + 1];
-    if (close === '`' && char === '`') {
-      finish();
-      return { parts: [...parts, ...nested], end: i };
-    }
-    if (close === ')' && char === ')') {
-      finish();
-      return { parts: [...parts, ...nested], end: i };
-    }
-    if (char === '\\') {
-      if (next === undefined || next === '\n') return fail(TRAILING_BACKSLASH, i);
-      current += command.slice(i, i + 2);
-      i += 2;
-      continue;
-    }
-    if (char === "'" || (char === '$' && next === "'")) {
-      // A single-quoted string is literal; `$'…'` honours backslash escapes, so `\'` does not end it.
-      const ansi = char === '$';
-      let j = i + (ansi ? 2 : 1);
-      while (j < command.length && command[j] !== "'") j += ansi && command[j] === '\\' ? 2 : 1;
-      if (j >= command.length) return fail('it has an unclosed quote', i);
-      current += command.slice(i, j + 1);
-      i = j + 1;
-      continue;
-    }
-    if (char === '"') {
-      let j = i + 1;
-      while (j < command.length && command[j] !== '"') {
-        if (command[j] === '\\') {
-          if (command[j + 1] === '\n') return fail(TRAILING_BACKSLASH, j);
-          j += 2;
-        }
-        else if (command[j] === '`' || (command[j] === '$' && command[j + 1] === '(')) {
-          const backtick = command[j] === '`';
-          const inner = substitution(j + (backtick ? 1 : 2), backtick ? '`' : ')');
-          if (inner.problem) return fail(inner.problem, inner.end);
-          if (inner.end >= command.length) return fail('it has an unclosed command substitution', j);
-          j = inner.end + 1;
-        } else j++;
-      }
-      if (j >= command.length) return fail('it has an unclosed quote', i);
-      current += command.slice(i, j + 1);
-      i = j + 1;
-      continue;
-    }
-    if (char === '`' || (char === '$' && next === '(')) {
-      const backtick = char === '`';
-      const inner = substitution(i + (backtick ? 1 : 2), backtick ? '`' : ')');
-      if (inner.problem) return fail(inner.problem, inner.end);
-      if (inner.end >= command.length) return fail('it has an unclosed command substitution', i);
-      current += command.slice(i, inner.end + 1);
-      i = inner.end + 1;
-      continue;
-    }
-    // A `#` that starts a word comments out the rest of the line; its text never runs, and reading
-    // a quote inside it as a real one could hide the next line's command.
-    if (char === '#' && (current.length === 0 || /\s/.test(current[current.length - 1] as string))) {
-      while (i < command.length && command[i] !== '\n') i++;
-      continue;
-    }
-    if (char === '>') return fail('it redirects output (">" or ">>"), which is refused outright', i);
-    if (char === '<' && next === '<') return fail('it uses a heredoc or here-string ("<<"), which is refused outright', i);
-    if (char === '<' && next === '(') return fail('it uses process substitution ("<("), which is refused outright', i);
-    if (char === '<') return fail('it redirects input ("<"), which is refused outright', i);
-    if (char === '(' || char === ')') return fail(GROUPING, i);
-    if (char === ';' || char === '&' || char === '|' || char === '\n') {
-      finish();
-      i++;
-      continue;
-    }
-    current += char;
-    i++;
-  }
-  if (close) return { parts: [...parts, ...nested], end: command.length };
-  finish();
-  return { parts: [...parts, ...nested], end: command.length };
-}
-
-/**
- * Arguments that make an allowed program run another command, delete, or write a file, by the
- * program they belong to. The splitter cannot see them – `find . -exec rm {} \;` is one part that
- * starts with `find` – so a part whose first word is the program is refused when any word is one of
- * these. A program whose LEADING word runs another command (`xargs`, `env`, `sh -c`, `eval`) needs
- * no row: its part starts with that word and is refused unless the list names it.
- */
-const COMMAND_RUNNING_ARGUMENTS: Record<string, readonly string[]> = {
-  find: ['-exec', '-execdir', '-ok', '-okdir', '-delete', '-fprint', '-fprint0', '-fprintf', '-fls'],
-};
-
-/**
- * A word of a part: its text with quotes and backslashes removed – how the program receives it when
- * the shell changes nothing else – its raw spelling, and whether the shell would still change it.
- */
-interface PartWord {
-  text: string;
-  raw: string;
-  expands: boolean;
-}
-
-/** Characters the shell still expands in an unquoted word: parameters and substitutions (`$`, a
- *  backtick, which covers `$'…'`), brace and tilde expansion, and globs. Inside double quotes only
- *  `$` and a backtick still expand; inside single quotes nothing does. */
-const UNQUOTED_EXPANSION = new Set(['$', '`', '{', '}', '~', '*', '?', '[']);
-
-function partWords(part: string): PartWord[] {
-  const words: PartWord[] = [];
-  let word = '';
-  let raw = '';
-  let expands = false;
-  let quote: "'" | '"' | undefined;
-  let started = false;
-  const push = () => {
-    if (started || word.length > 0) words.push({ text: word, raw, expands });
-    word = '';
-    raw = '';
-    expands = false;
-    started = false;
-  };
-  for (let i = 0; i < part.length; i++) {
-    const char = part[i] as string;
-    if (quote) {
-      raw += char;
-      if (char === quote) quote = undefined;
-      else if (char === '\\' && quote === '"' && i + 1 < part.length) {
-        raw += part[i + 1];
-        word += part[++i];
-      } else {
-        if (quote === '"' && (char === '$' || char === '`')) expands = true;
-        word += char;
-      }
-    } else if (char === "'" || char === '"') {
-      raw += char;
-      quote = char;
-      started = true;
-    } else if (char === '\\' && i + 1 < part.length) {
-      raw += char + part[i + 1];
-      word += part[++i];
-      started = true;
-    } else if (/\s/.test(char)) {
-      push();
-    } else {
-      if (UNQUOTED_EXPANSION.has(char)) expands = true;
-      raw += char;
-      word += char;
-      started = true;
-    }
-  }
-  push();
-  return words;
-}
-
-/**
- * Why `part` is refused when its program has a row: an argument that runs a command, deletes or
- * writes, or a word the shell would still expand. The guard reads the text before the shell does,
- * so `-e${HOME:0:0}xec`, `-e$(echo x)ec`, `-e$'x'ec` or `-{ex,}ec` would reach the program as
- * `-exec` without ever matching the row; such a word is refused rather than guessed. A quoted or
- * escaped glob (`-name '*.ts'`) is plain text and stays allowed; an unquoted one (`-name *.ts`) is
- * refused.
- */
-function commandRunningArgument(part: string): string | undefined {
-  const [program, ...args] = partWords(part);
-  const refused = program === undefined ? undefined : COMMAND_RUNNING_ARGUMENTS[program.text.slice(program.text.lastIndexOf('/') + 1)];
-  if (refused === undefined) return undefined;
-  const argument = args.find((arg) => refused.includes(arg.text));
-  if (argument !== undefined) return `its argument "${argument.text}" runs a command, deletes or writes a file, which is refused outright`;
-  const expanding = args.find((arg) => arg.expands);
-  return expanding === undefined
-    ? undefined
-    : `its word "${expanding.raw}" cannot be checked before expansion: the shell would still change it ($, a backtick, $'…', {, }, ~ or a glob character), so it could become an argument that runs a command, deletes or writes a file`;
-}
-
-/** Claude Code's `Bash(<entry>:*)`: the entry itself, or the entry followed by whitespace. */
-function matchesEntry(part: string, entry: string): boolean {
-  return part === entry || (part.startsWith(entry) && /\s/.test(part[entry.length] as string));
-}
-
 function allowlistRefusal(event: ToolCall, entries: string[]): ToolGuardResult | undefined {
   if (event.toolName !== 'bash') return undefined;
-  if (entries.length === 0) return { block: true, reason: `${ALLOWLIST_REASON} The list has no entry, so every shell command is refused.` };
   const command = typeof event.input.command === 'string' ? event.input.command : undefined;
   if (command === undefined) return { block: true, reason: `${ALLOWLIST_REASON} The bash call has no command.` };
-  const split = commandParts(command);
-  if (split.problem) return { block: true, reason: `${ALLOWLIST_REASON} The command was refused because ${split.problem}.` };
-  if (split.parts.length === 0) return { block: true, reason: `${ALLOWLIST_REASON} The command is empty.` };
-  for (const part of split.parts) {
-    const [first] = partWords(part);
-    if (first !== undefined && GROUPING_WORDS.has(first.raw)) {
-      return { block: true, reason: `${ALLOWLIST_REASON} The part "${part}" was refused: ${GROUPING}.` };
-    }
-    const why = commandRunningArgument(part);
-    if (why !== undefined) return { block: true, reason: `${ALLOWLIST_REASON} The part "${part}" was refused: ${why}.` };
-  }
-  const failing = split.parts.find((part) => !entries.some((entry) => matchesEntry(part, entry)));
-  if (failing === undefined) return undefined;
-  const why = split.parts.length > 1
-    ? 'every part of a compound command must match an entry on its own, and this part matches none'
-    : 'it does not start with any entry';
-  return { block: true, reason: `${ALLOWLIST_REASON} The part "${failing}" was refused: ${why}. Allowed: ${entries.join(', ')}.` };
+  const decision = decideReadOnlyCommand(command, entries);
+  return decision.allowed ? undefined : { block: true, reason: `${ALLOWLIST_REASON} ${decision.reason}` };
 }
 
 /**
@@ -879,7 +641,7 @@ function bashAllowlist(flag: boolean | string | undefined): string[] | null | 'a
     const parsed: unknown = JSON.parse(flag);
     if (parsed === null) return null;
     if (!Array.isArray(parsed) || !parsed.every((entry) => typeof entry === 'string')) return undefined;
-    return (parsed as string[]).map((entry) => entry.trim()).filter(Boolean);
+    return normalizeBashAllowlist(parsed as string[]);
   } catch {
     return undefined;
   }
