@@ -6476,16 +6476,48 @@ git_read="$git_read_root/.xezar/checks/git-read.sh"
 # the examples a role can copy; broader Git option acceptance is not an accidental requirement.
 expect_ok "git-read: diff runs" run_in "$git_read_root" bash "$git_read" diff --stat HEAD HEAD
 expect_ok "git-read: log runs" run_in "$git_read_root" bash "$git_read" log --oneline -1
+expect_ok "git-read: bare diff runs on macOS bash 3.2" run_in "$git_read_root" /bin/bash "$git_read" diff
+expect_ok "git-read: bare log runs on macOS bash 3.2" run_in "$git_read_root" /bin/bash "$git_read" log
 expect_ok "git-read: show runs" run_in "$git_read_root" bash "$git_read" show --stat HEAD
 expect_ok "git-read: rev-parse runs" run_in "$git_read_root" bash "$git_read" rev-parse --verify HEAD
 expect_ok "git-read: status runs" run_in "$git_read_root" bash "$git_read" status --short
+expect_ok "git-read: bare status runs on macOS bash 3.2" run_in "$git_read_root" /bin/bash "$git_read" status
 expect_ok "git-read: merge-base runs" run_in "$git_read_root" bash "$git_read" merge-base HEAD HEAD
 expect_ok "git-read: ls-files runs" run_in "$git_read_root" bash "$git_read" ls-files --cached
+expect_ok "git-read: ls-tree runs" run_in "$git_read_root" bash "$git_read" ls-tree -r --name-only --full-tree HEAD
 expect_ok "git-read: cat-file runs" run_in "$git_read_root" bash "$git_read" cat-file -t HEAD
 expect_ok "git-read: blame runs" run_in "$git_read_root" bash "$git_read" blame -- seed.ts
 expect_ok "git-read: describe runs" run_in "$git_read_root" bash "$git_read" describe --always HEAD
 expect_ok "git-read: rev-list runs" run_in "$git_read_root" bash "$git_read" rev-list --count HEAD
 expect_ok "git-read: diff-tree runs" run_in "$git_read_root" bash "$git_read" diff-tree --no-commit-id --name-only -r HEAD
+expect_ok "git-read: regex pickaxe accepts an anchored value" run_in "$git_read_root" bash "$git_read" diff '-G^foo$' HEAD
+expect_ok "git-read: regex pickaxe accepts grouping and alternation" run_in "$git_read_root" bash "$git_read" diff '-G(a|b)' HEAD
+expect_ok "git-read: root pathspec stays repository-contained" run_in "$git_read_root" bash "$git_read" log -1 -- ':/'
+
+# Capture the exact hardened invocation without asking a real Git process to interpret it.
+git_read_fake_bin="$WORK/git-read-fake-bin"
+mkdir -p "$git_read_fake_bin"
+printf '%s\n' '#!/usr/bin/env bash' \
+  'for argument in "$@"; do printf "arg=%s\\n" "$argument"; done' \
+  'for variable in GIT_TRACE GIT_TRACE2_EVENT GIT_ATTR_SOURCE GIT_REPLACE_REF_BASE; do eval "value=\${$variable-unset}"; printf "env:%s=%s\\n" "$variable" "$value"; done' \
+  > "$git_read_fake_bin/git"
+chmod +x "$git_read_fake_bin/git"
+git_read_hardening_out="$(run_in "$git_read_root" env PATH="$git_read_fake_bin:$PATH" \
+  GIT_TRACE="$WORK/trace" GIT_TRACE2_EVENT="$WORK/trace2" GIT_ATTR_SOURCE=HEAD \
+  GIT_REPLACE_REF_BASE=refs/replace bash "$git_read" log HEAD)"
+for needle in 'arg=core.excludesFile=' 'arg=log.showSignature=false' 'env:GIT_TRACE=unset' \
+  'env:GIT_TRACE2_EVENT=unset' 'env:GIT_ATTR_SOURCE=unset' 'env:GIT_REPLACE_REF_BASE=unset'; do
+  if printf '%s\n' "$git_read_hardening_out" | grep -qF "$needle"; then
+    ok "git-read hardening includes $needle"
+  else
+    bad "git-read hardening includes $needle" "captured invocation omitted it"
+  fi
+done
+if printf '%s\n' "$git_read_hardening_out" | grep -qF 'diff.*.textconv='; then
+  bad "git-read drops the ineffective wildcard textconv key" "captured invocation retained it"
+else
+  ok "git-read drops the ineffective wildcard textconv key"
+fi
 
 # Global options cannot precede the operation because argv[1] is always the operation enum.
 expect_fail "git-read: global -c is refused" "operation '-c'" run_in "$git_read_root" bash "$git_read" -c core.pager=cat diff
@@ -6514,23 +6546,45 @@ expect_fail "git-read: a path after -- cannot escape the repository" "escapes th
   run_in "$git_read_root" bash "$git_read" diff HEAD -- ../outside
 
 # Acquisition is its own trusted workflow check, never an operation or an allowlisted command. It
-# takes no argv and fetches only the configured base plus the fixed GitHub pull-request refspec.
+# takes no argv and fetches only the configured base plus one engine-owned PR number when present.
 git_read_remote="$WORK/git-read-remote.git"
 git init -q --bare "$git_read_remote"
 git -C "$git_read_root" remote add origin "$git_read_remote"
-git -C "$git_read_root" push -q origin main:main HEAD:refs/pull/7/head
-git -C "$git_read_root" update-ref -d refs/remotes/origin/main
-git -C "$git_read_root" update-ref -d refs/remotes/origin/pr/7
-expect_ok "git-read acquisition fetches its fixed refs" run_in "$git_read_root" \
-  bash "$git_read_root/.xezar/checks/git-read-acquire.sh"
-if git -C "$git_read_root" show-ref --verify --quiet refs/remotes/origin/main \
-  && git -C "$git_read_root" show-ref --verify --quiet refs/remotes/origin/pr/7; then
-  ok "git-read acquisition publishes origin/<base> and origin/pr/<n>"
+git -C "$git_read_root" push -q origin main:main HEAD:refs/pull/7/head HEAD:refs/pull/42/head
+git_read_task="$(add_worktree "$git_read_root" "$RUN_A")"
+mkdir -p "$git_read_root/.local/xezar"
+printf '[{"id":"%s","prNumber":42}]\n' "$RUN_A" > "$git_read_root/.local/xezar/runs.json"
+git -C "$git_read_task" update-ref -d refs/remotes/origin/main
+git -C "$git_read_task" update-ref -d refs/remotes/origin/pr/7
+git -C "$git_read_task" update-ref -d refs/remotes/origin/pr/42
+expect_ok "git-read acquisition fetches the engine-scoped refs" run_in "$git_read_task" \
+  bash "$git_read_task/.xezar/checks/git-read-acquire.sh"
+if git -C "$git_read_task" show-ref --verify --quiet refs/remotes/origin/main \
+  && git -C "$git_read_task" show-ref --verify --quiet refs/remotes/origin/pr/42 \
+  && ! git -C "$git_read_task" show-ref --verify --quiet refs/remotes/origin/pr/7; then
+  ok "git-read acquisition publishes only origin/<base> and engine-owned origin/pr/<n>"
 else
-  bad "git-read acquisition publishes origin/<base> and origin/pr/<n>" "one or both refs are absent"
+  bad "git-read acquisition publishes only origin/<base> and engine-owned origin/pr/<n>" "the scoped refs differed"
 fi
-expect_fail "git-read acquisition accepts no caller argv" "usage:" run_in "$git_read_root" \
-  bash "$git_read_root/.xezar/checks/git-read-acquire.sh" other
+expect_fail "git-read acquisition accepts no caller argv" "usage:" run_in "$git_read_task" \
+  bash "$git_read_task/.xezar/checks/git-read-acquire.sh" other
+
+git_read_no_origin="$(make_fixture git-read-no-origin)"
+git_read_no_origin_out="$(run_in "$git_read_no_origin" bash "$git_read_no_origin/.xezar/checks/git-read-acquire.sh" 2>&1)"
+if [ "$?" -eq 0 ] && [ "$(printf '%s\n' "$git_read_no_origin_out" | grep -cF 'WARNING: git-read-acquire: fetch failed; continuing with local refs only.')" -eq 1 ]; then
+  ok "git-read acquisition warns once and continues without origin"
+else
+  bad "git-read acquisition warns once and continues without origin" "$git_read_no_origin_out"
+fi
+
+git_read_offline="$(make_fixture git-read-offline)"
+git -C "$git_read_offline" remote add origin "$WORK/no-such-remote.git"
+git_read_offline_out="$(run_in "$git_read_offline" bash "$git_read_offline/.xezar/checks/git-read-acquire.sh" 2>&1)"
+if [ "$?" -eq 0 ] && [ "$(printf '%s\n' "$git_read_offline_out" | grep -cF 'WARNING: git-read-acquire: fetch failed; continuing with local refs only.')" -eq 1 ]; then
+  ok "git-read acquisition warns once and continues offline"
+else
+  bad "git-read acquisition warns once and continues offline" "$git_read_offline_out"
+fi
 
 # Run the maintained actual-repository checks once. They never invoke this suite.
 expect_ok "Actual repository catalog, changelog, links and contracts" bash "$SCRIPT_DIR/repository-checks.sh"

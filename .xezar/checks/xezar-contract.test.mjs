@@ -319,12 +319,18 @@ test('architecture-review is a read-only verdict role',()=>{
   assert.match(body,rule);
 });
 test('the five read-only roles acquire refs before the agent and allowlist only the git-read wrapper from this slice',()=>{
+ const keptGit=new Set(['git rev-parse','git cat-file','git merge-base','git status','git branch --show-current','git ls-files','git ls-tree','git rev-list','git blame','git checkout --detach']);
+ const removed=new Set(['git log','git diff','git show','git fetch','find']);
  for(const name of ['code-review','design-review','qa','architecture-review','business-analysis']){
   const flow=parseYaml(fs.readFileSync(path.join(kit,`workflows/${name}.yaml`),'utf8'));
   const acquire=flow.steps.find(step=>step.id==='git-read-acquire');
   assert.equal(acquire?.command,'bash .xezar/checks/git-read-acquire.sh',name);
   const agent=flow.steps.at(-1);
   assert.ok(agent.bashAllowlist.includes('bash .xezar/checks/git-read.sh'),name);
+  for(const entry of agent.bashAllowlist){
+   assert.ok(!removed.has(entry),`${name}: removed entry ${entry}`);
+   if(entry.startsWith('git '))assert.ok(keptGit.has(entry),`${name}: unexpected Git entry ${entry}`);
+  }
   assert.ok(flow.steps.indexOf(acquire)<flow.steps.indexOf(agent),name);
  }
 });

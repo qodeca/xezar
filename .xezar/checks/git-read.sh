@@ -3,12 +3,14 @@
 #
 # This is semantic least privilege, not an OS read-only boundary: the caller chooses only a
 # reading operation and that operation's deliberately small option grammar. Trusted workflow
-# acquisition populates origin/<base> and origin/pr/<n> before the agent starts; fetch is never an
-# operation here. The OS boundary that makes the whole process tree read-only is tracked in #879.
+# acquisition populates origin/<base> and, when the engine identifies one, origin/pr/<n> before
+# the agent starts; fetch is never an operation here. Repository-local filter drivers remain able
+# to run while Git refreshes work-tree content; the OS boundary that closes that residual is #879.
+# Host-global excludes are deliberately disabled with the rest of the global Git configuration.
 set -uo pipefail
 
 usage() {
-  printf 'usage: git-read.sh <diff|log|show|rev-parse|status|merge-base|ls-files|cat-file|blame|describe|rev-list|diff-tree> [args...]\n' >&2
+  printf 'usage: git-read.sh <diff|log|show|rev-parse|status|merge-base|ls-files|ls-tree|cat-file|blame|describe|rev-list|diff-tree> [args...]\n' >&2
   exit 2
 }
 
@@ -41,7 +43,7 @@ operation="$1"
 shift
 
 case "$operation" in
-  diff | log | show | rev-parse | status | merge-base | ls-files | cat-file | blame | \
+  diff | log | show | rev-parse | status | merge-base | ls-files | ls-tree | cat-file | blame | \
     describe | rev-list | diff-tree) ;;
   *) refuse "operation '$operation' is not allowlisted" ;;
 esac
@@ -56,12 +58,21 @@ expect_number=""
 for argument in "$@"; do
   # An argument array would not execute these as shell syntax, but refusing them keeps the wrapper's
   # contract narrow and makes a future implementation unable to accidentally reinterpret them.
-  case "$argument" in
-    *';'* | *'&'* | *'|'* | *'<'* | *'>'* | *'`'* | *'$'* | *'('* | *')'* | \
-      *$'\n'* | *$'\r'*)
-      refuse "shell composition or redirection is not accepted ('$argument')"
+  value_is_argv_only=0
+  case "$operation:$argument" in
+    diff:-S?* | diff:-G?* | log:-S?* | log:-G?* | show:-S?* | show:-G?* | \
+      diff-tree:-S?* | diff-tree:-G?* | describe:--match=?* | describe:--exclude=?*)
+      value_is_argv_only=1
       ;;
   esac
+  if [ "$value_is_argv_only" -eq 0 ]; then
+    case "$argument" in
+      *';'* | *'&'* | *'|'* | *'<'* | *'>'* | *'`'* | *'$'* | *'('* | *')'* | \
+        *$'\n'* | *$'\r'*)
+        refuse "shell composition or redirection is not accepted ('$argument')"
+        ;;
+    esac
+  fi
 
   if [ -n "$expect_number" ]; then
     is_uint "$argument" || refuse "$expect_number requires a non-negative integer"
@@ -97,6 +108,7 @@ for argument in "$@"; do
       merge-base:--is-ancestor | merge-base:--fork-point | merge-base:--all | merge-base:--octopus | \
       ls-files:--cached | ls-files:--modified | ls-files:--deleted | ls-files:--others | \
       ls-files:--exclude-standard | ls-files:--stage | ls-files:--error-unmatch | \
+      ls-tree:--name-only | ls-tree:--full-tree | \
       blame:--porcelain | blame:--line-porcelain | blame:--show-stats | blame:--first-parent | \
       describe:--tags | describe:--always | describe:--first-parent | describe:--exact-match | \
       describe:--all | describe:--long | \
@@ -134,6 +146,7 @@ for argument in "$@"; do
       log:-p | log:-w | log:-M | log:-C | \
       show:-p | show:-w | show:-M | show:-C | \
       cat-file:-e | cat-file:-t | cat-file:-s | cat-file:-p | \
+      ls-tree:-r | ls-tree:-l | \
       blame:-w | \
       diff-tree:-p | diff-tree:-w | diff-tree:-M | diff-tree:-C | diff-tree:-r | diff-tree:-m)
         allowed=1
@@ -172,7 +185,10 @@ done
 unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES
 unset GIT_CONFIG_SYSTEM GIT_CONFIG_COUNT GIT_CONFIG_PARAMETERS GIT_EXEC_PATH GIT_EXTERNAL_DIFF
 unset GIT_NAMESPACE GIT_INDEX_FILE GIT_SHALLOW_FILE GIT_CEILING_DIRECTORIES
-unset GIT_DISCOVERY_ACROSS_FILESYSTEM
+unset GIT_DISCOVERY_ACROSS_FILESYSTEM GIT_ATTR_SOURCE GIT_REPLACE_REF_BASE
+for variable in ${!GIT_TRACE*}; do
+  unset "$variable"
+done
 export GIT_PAGER=cat
 export GIT_CONFIG_NOSYSTEM=1
 export GIT_CONFIG_GLOBAL=/dev/null
@@ -187,16 +203,17 @@ fixed=(
   -c core.pager=cat
   -c core.hooksPath=/dev/null
   -c core.fsmonitor=
-  -c 'diff.*.textconv='
+  -c core.excludesFile=
+  -c log.showSignature=false
 )
 case "$operation" in
   diff | log | show | diff-tree)
-    exec "$git_bin" "${fixed[@]}" "$operation" --no-ext-diff --no-textconv "${validated[@]}"
+    exec "$git_bin" "${fixed[@]}" "$operation" --no-ext-diff --no-textconv ${validated[@]+"${validated[@]}"}
     ;;
   blame)
-    exec "$git_bin" "${fixed[@]}" blame --no-textconv "${validated[@]}"
+    exec "$git_bin" "${fixed[@]}" blame --no-textconv ${validated[@]+"${validated[@]}"}
     ;;
   *)
-    exec "$git_bin" "${fixed[@]}" "$operation" "${validated[@]}"
+    exec "$git_bin" "${fixed[@]}" "$operation" ${validated[@]+"${validated[@]}"}
     ;;
 esac

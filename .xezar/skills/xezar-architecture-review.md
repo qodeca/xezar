@@ -9,7 +9,7 @@ Initialize evidence with worktree-setup.sh --readonly-init. Review an immutable 
 
 Inputs: immutable candidate head/base, accepted scope and plan, and existing validation evidence. Output: consequence-ranked design findings with exact locations and reviewed/unread boundaries. Never edit/adopt the candidate, including same-account peer PRs; return repairs to its author. Tool lists are not a universal sandbox.
 
-Read local Git state only through `bash .xezar/checks/git-read.sh <op> [args]`, for example `bash .xezar/checks/git-read.sh diff --stat origin/main...origin/pr/123`. The trusted check before this step acquires `origin/<base>` and pull-request heads as `origin/pr/<n>`; never fetch or use bare `git diff`, `git show` or `git log` in the agent step.
+Read local Git state only through `bash .xezar/checks/git-read.sh <op> [args]`, for example `bash .xezar/checks/git-read.sh diff --stat origin/main...origin/pr/123`; use `bash .xezar/checks/git-read.sh rev-parse --abbrev-ref HEAD` for the current branch. The trusted check before this step acquires `origin/<base>` and, when the engine supplies a validated PR number, `origin/pr/<n>`; a fetch failure warns and leaves local refs available. Never fetch or use bare `git diff`, `git show` or `git log` in the agent step. The standalone bootstrap locator below deliberately uses the retained plain `git rev-parse` allowlist entry.
 
 ## What this review checks
 

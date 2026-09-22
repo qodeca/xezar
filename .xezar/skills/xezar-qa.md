@@ -9,7 +9,7 @@ Exercise the change this task names — check the PR's head out (or use the head
 
 Inputs: the PR or head to QA, and what it claims to fix. Output: a single `## QA` PR comment — reviewed sha, verdict (PASS / FAIL), what was exercised and how, and each finding with a disposition — plus the SDLC QA-gate labels this verdict authorizes. Post the comment before anything else in this task risks not finishing; a QA verdict that exists only in this transcript did not happen (this role has no `handoff` step, so the PR comment is the delivery).
 
-Read local Git state only through `bash .xezar/checks/git-read.sh <op> [args]`, for example `bash .xezar/checks/git-read.sh log --oneline origin/main..origin/pr/123`. The trusted check before this step acquires `origin/<base>` and pull-request heads as `origin/pr/<n>`; never fetch or use bare `git diff`, `git show` or `git log` in the agent step.
+Read local Git state only through `bash .xezar/checks/git-read.sh <op> [args]`, for example `bash .xezar/checks/git-read.sh log --oneline origin/main..origin/pr/123`; use `bash .xezar/checks/git-read.sh rev-parse --abbrev-ref HEAD` for the current branch. The trusted check before this step acquires `origin/<base>` and, when the engine supplies a validated PR number, `origin/pr/<n>`; a fetch failure warns and leaves local refs available. Never fetch or use bare `git diff`, `git show` or `git log` in the agent step. The standalone bootstrap locator below deliberately uses the retained plain `git rev-parse` allowlist entry.
 
 ## What a QA pass posts
 
