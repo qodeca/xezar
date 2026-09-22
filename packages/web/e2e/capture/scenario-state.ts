@@ -502,6 +502,13 @@ export const SCENARIOS: Record<string, Scenario> = {
 
   'settings-appearance-roomy': (ctx, theme) => {
     open(ctx, '/settings/global/appearance', theme)
+    // The density control mounts (and responds to the click below) before the sidebar's own
+    // data (project list, counts, the version chip) is guaranteed to have resolved, so a shot
+    // taken as soon as the density change lands can catch the sidebar half-rendered — reproduced
+    // on this state across more than one variant, not only the one shot right after the previous
+    // variant's resetAppearance. The version chip is sidebar-only and renders once its data is
+    // in, so waiting for it first is a proxy for "the sidebar finished loading".
+    wait(ctx.browser, exists('[data-slot="version-chip"]'))
     wait(ctx.browser, exists('[data-slot="appearance-density"] [data-value="roomy"]'))
     ctx.browser.click('[data-slot="appearance-density"] [data-value="roomy"]')
     wait(ctx.browser, `document.documentElement.dataset.density === 'roomy'`)
