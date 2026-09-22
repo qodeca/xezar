@@ -1013,17 +1013,32 @@ shipped step may run changes, so it is recorded here:
   (any unquoted `>` or `<`), a heredoc and process substitution are refused outright, and so is a
   `find` part carrying `-exec`, `-execdir`, `-ok`, `-okdir`, `-delete`, `-fprint`, `-fprint0`,
   `-fprintf` or `-fls` (an argument that runs, deletes or writes inside a part the entry `find`
-  matches), and so is a command the extension cannot split (an unclosed quote or substitution). A
+  matches). The check reads the text before the shell expands it, so in such a part a word the
+  shell would still change – an unquoted `$`, a backtick, `$'…'`, `{`, `}`, `~` or a glob character,
+  or a `$` or backtick inside double quotes – cannot be checked before expansion and is refused:
+  `find sub -d${HOME:0:0}elete` and `find . -name *.ts` are refused, `find . -name '*.ts'` is
+  allowed. A command the extension cannot split (an unclosed quote or substitution) is refused as
+  well. The `find` row is the only such table row: an entry must never name a program that can run
+  a command or write a file from an argument (`sed`, `awk`, `sort -o`, `dd`, `tee`, an
+  interpreter). A
   step that relied on "bash is dropped" now gets this restricted `bash`; a workflow that wants no
   shell on pi drops `Bash` from `allowedTools`, which works the same on every backend.
-- **Not changed**: a step without a `bashAllowlist`, or with an empty one, gets exactly the argv it
-  had (unrestricted `bash`, no new flag, the extension loaded only on a worktree run as before);
-  a list whose entries are all blank still removes `bash`, matching Claude Code, which emits no
-  `Bash` rule for it; the worktree check of #537 still runs, after the allowlist, on every worktree
-  run; Codex and OpenCode still ignore `bashAllowlist`. No `XEZ_*` variable or step key was added.
+- **Changed (pi, empty list)**: `bashAllowlist: []` used to leave pi's argv unchanged – an
+  unrestricted `bash`. It now removes `bash` exactly as a blanks-only list always did, and the
+  extension is told `[]`, which refuses every shell command. On Claude Code `[]` still leaves plain
+  `Bash`, unchanged by this entry.
+- **Changed (pi argv, no behaviour)**: every worktree run now also passes
+  `--xezar-bash-allowlist=null` when the step has no `bashAllowlist`, because the extension refuses
+  the shell when that flag is missing instead of reading its absence as "no allowlist".
+- **Not changed**: a step without a `bashAllowlist` keeps an unrestricted `bash`, and a run with no
+  worktree gets exactly the argv it had (no extension, no new flag); a list whose entries are all
+  blank still removes `bash`, matching Claude Code, which emits no `Bash` rule for it; the worktree
+  check of #537 still runs, after the allowlist, on every worktree run; Codex and OpenCode still
+  ignore `bashAllowlist`. No `XEZ_*` variable or step key was added.
 - **Pinned by**: `pi-runner.test.ts` (the argv with and without a list, on a worktree and an in-place
-  run) and `pi-worktree-guard.test.ts` (the prefix rule, compound, substitution, redirection and
-  `find` argument refusals). Released as part of a **minor** version.
+  run, `[]` and blanks-only lists, `null` for a step without one) and `pi-worktree-guard.test.ts`
+  (the prefix rule, compound, substitution, redirection, `find` argument and before-expansion
+  refusals, `[]`, `null` and a missing flag). Released as part of a **minor** version.
 
 ## Claude Code, pi and OpenCode runs no longer load xezar's own MCP bridge (#342) — deliberate, 0.16.0
 

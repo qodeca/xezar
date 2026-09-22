@@ -748,7 +748,39 @@ describe('pi honours a step bashAllowlist command by command (#856)', () => {
   it('allows a `find` that only reads, and a quoted `-exec` given to another program', () => {
     expect(inPlaceRun(['find'])('find . -name x')).toBeUndefined();
     expect(inPlaceRun(['find'])("find . -name '*.ts' -type f")).toBeUndefined();
+    expect(inPlaceRun(['find'])('find . -name "*.ts" -type f')).toBeUndefined();
+    expect(inPlaceRun(['find'])("find . -name '$HOME' -type f")).toBeUndefined();
+    expect(inPlaceRun(['find'])('find . -name \\*.ts')).toBeUndefined();
     expect(inPlaceRun(['gh pr comment'])('gh pr comment 1 --body "find -exec rm"')).toBeUndefined();
+  });
+
+  // The shell expands a word before `find` sees it, and the guard compares the text it can read.
+  // So under a program with a row, a word that the shell would still change – an unquoted `$`,
+  // a backtick, `$'…'`, `{`, `}`, `~` or a glob character, or a `$`/backtick inside double
+  // quotes – is refused before expansion rather than guessed. A quoted glob stays allowed; an
+  // unquoted one (`find . -name *.ts`) is refused (Fable's verification on #861, round 2).
+  it.each([
+    ['find . -e${HOME:0:0}xec rm -rf {} \\;', '-e${HOME:0:0}xec'],
+    ['find . -e$(echo x)ec rm -rf {} \\;', '-e$(echo'],
+    ["find . -e$'x'ec rm -rf {} \\;", "-e$'x'ec"],
+    ['find sub -d${HOME:0:0}elete', '-d${HOME:0:0}elete'],
+    ['find . -e`echo x`ec rm {} +', '-e`echo'],
+    ['find . "-e${X}xec" rm {} +', '"-e${X}xec"'],
+    ['find . -{ex,}ec rm {} +', '-{ex,}ec'],
+    ['find ~ -name x', '~'],
+    ['find . -name *.ts', '*.ts'],
+    ['find . -name x?', 'x?'],
+    ['find . -name [ab]', '[ab]'],
+  ])('refuses `%s` under the entry `find`: %s cannot be checked before expansion', (command, word) => {
+    const refused = inPlaceRun(['find', 'echo'])(command);
+    expect(refused).toMatchObject(BLOCK);
+    expect(refused?.reason).toContain(`"${word}"`);
+    expect(refused?.reason).toContain('cannot be checked before expansion');
+  });
+
+  it('leaves the expansion rule to programs with a row: `git diff $X` and `echo *` stay allowed', () => {
+    expect(inPlaceRun(['git diff'])('git diff $X')).toBeUndefined();
+    expect(inPlaceRun(['echo'])('echo *')).toBeUndefined();
   });
 
   it.each(['xargs rm', 'env rm x', 'nice rm x', 'timeout 5 rm x', 'sh -c "rm x"', 'bash -c "rm x"', 'eval "rm x"'])(
@@ -776,12 +808,42 @@ describe('pi honours a step bashAllowlist command by command (#856)', () => {
     expect(run(`git -C ${f.primary} status`)).toMatchObject(BLOCK);
   });
 
-  it('fails closed on an allowlist flag that is not a non-empty JSON list, for every tool', () => {
-    for (const flag of ['not-json', '[]', '[1]', '["  "]', true]) {
+  it('fails closed on an allowlist flag that is not `null` or a JSON list of strings, for every tool', () => {
+    for (const flag of ['not-json', '[1]', '{}', '"git"', true]) {
       const handler = load({ 'xezar-bash-allowlist': flag });
       expect(handler(bash('git diff'), { cwd: tmpdir() })).toMatchObject(BLOCK);
       expect(handler(write('notes.md'), { cwd: tmpdir() })).toMatchObject(BLOCK);
     }
+  });
+
+  // Fable's table on #861: `[]` must lock the shell down exactly as `["  "]` does, on a run with a
+  // worktree and on one without, and a missing flag must not read as "no allowlist".
+  it.each([
+    ['[]', '[]'],
+    ['["  "]', '["  "]'],
+  ])('refuses every bash command, and nothing else, with the list %s', (_name, flag) => {
+    const inPlace = load({ 'xezar-bash-allowlist': flag });
+    const refused = inPlace(bash('git diff'), { cwd: tmpdir() });
+    expect(refused).toMatchObject(BLOCK);
+    expect(refused?.reason).toContain('has no entry');
+    expect(inPlace(bash('rm -f sub/sentinel.txt'), { cwd: tmpdir() })).toMatchObject(BLOCK);
+    expect(inPlace(write(join(tmpdir(), 'x')), { cwd: tmpdir() })).toBeUndefined();
+    const f = fixture();
+    const worktree = load({ 'xezar-worktree-root': f.worktree, 'xezar-primary-root': f.primary, 'xezar-bash-allowlist': flag });
+    expect(worktree(bash('rm -f sub/sentinel.txt'), { cwd: f.worktree })).toMatchObject(BLOCK);
+    expect(worktree(write('notes.md'), { cwd: f.worktree })).toBeUndefined();
+  });
+
+  it('reads `null` as "this step has no allowlist" and refuses bash when the flag is absent', () => {
+    const f = fixture();
+    const roots = { 'xezar-worktree-root': f.worktree, 'xezar-primary-root': f.primary };
+    expect(load({ ...roots, 'xezar-bash-allowlist': 'null' })(bash('rm -f sub/sentinel.txt'), { cwd: f.worktree })).toBeUndefined();
+    const absent = load(roots);
+    const refused = absent(bash('rm -f sub/sentinel.txt'), { cwd: f.worktree });
+    expect(refused).toMatchObject(BLOCK);
+    expect(refused?.reason).toContain('flag is missing');
+    // the missing flag says nothing about the other tools, which keep the worktree check
+    expect(absent(write('notes.md'), { cwd: f.worktree })).toBeUndefined();
   });
 
   it('keeps failing closed when only one worktree flag is present, allowlist or not', () => {

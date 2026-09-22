@@ -61,10 +61,22 @@
  * or `<`), a heredoc (`<<`) and process substitution (`<(`) are refused outright, and so is a part
  * whose program takes an argument that runs a command, deletes or writes a file (`find` with
  * `-exec`, `-execdir`, `-ok`, `-okdir`, `-delete` or `-fprint*`/`-fls`), because that argument
- * sits inside a part an entry matches. Unlike the worktree check above this is a strict
- * allowlist: anything the splitter cannot read – an unclosed quote or substitution – is refused. The flag is loaded only with a non-empty list, so
- * a step without one keeps an unrestricted `bash`; when the run has no worktree the extension is
- * loaded for the allowlist alone and the worktree flags are absent.
+ * sits inside a part an entry matches. The check reads the text before the shell expands it, so in a
+ * part whose program has such a row, a word the shell would still change – an unquoted `$`, a
+ * backtick, `$'…'`, `{`, `}`, `~` or a glob character (`*`, `?`, `[`), or a `$` or backtick inside
+ * double quotes – cannot be checked before expansion and is refused: `find sub -d${HOME:0:0}elete`
+ * becomes `-delete` only in the shell. A quoted or escaped glob (`find . -name '*.ts'`) stays
+ * allowed; an unquoted one (`find . -name *.ts`) is refused. The table is only as complete as its
+ * rows: an allowlist entry must never name a program that can run a command or write a file from an
+ * argument (`sed`, `awk`, `sort -o`, `dd`, `tee`, an interpreter), because nothing here reads that
+ * program's arguments. Unlike the worktree check above this is a strict allowlist: anything the
+ * splitter cannot read – an unclosed quote or substitution – is refused.
+ *
+ * Xezar passes the flag whenever it loads this extension: `null` for a step without a
+ * `bashAllowlist`, which keeps an unrestricted `bash`, and the list otherwise. `[]` (and a list of
+ * blanks, the same list) refuses every shell command – xezar also removes `bash` from `--tools` for
+ * it. A MISSING flag refuses the shell rather than reading as "no allowlist". When the run has no
+ * worktree the extension is loaded only for a step with the key, and the worktree flags are absent.
  */
 
 import { existsSync, lstatSync, realpathSync } from 'node:fs';
@@ -728,42 +740,86 @@ const COMMAND_RUNNING_ARGUMENTS: Record<string, readonly string[]> = {
   find: ['-exec', '-execdir', '-ok', '-okdir', '-delete', '-fprint', '-fprint0', '-fprintf', '-fls'],
 };
 
-/** A part's words with their quotes and backslashes removed – how the program receives them. */
-function partWords(part: string): string[] {
-  const words: string[] = [];
+/**
+ * A word of a part: its text with quotes and backslashes removed – how the program receives it when
+ * the shell changes nothing else – its raw spelling, and whether the shell would still change it.
+ */
+interface PartWord {
+  text: string;
+  raw: string;
+  expands: boolean;
+}
+
+/** Characters the shell still expands in an unquoted word: parameters and substitutions (`$`, a
+ *  backtick, which covers `$'…'`), brace and tilde expansion, and globs. Inside double quotes only
+ *  `$` and a backtick still expand; inside single quotes nothing does. */
+const UNQUOTED_EXPANSION = new Set(['$', '`', '{', '}', '~', '*', '?', '[']);
+
+function partWords(part: string): PartWord[] {
+  const words: PartWord[] = [];
   let word = '';
+  let raw = '';
+  let expands = false;
   let quote: "'" | '"' | undefined;
   let started = false;
+  const push = () => {
+    if (started || word.length > 0) words.push({ text: word, raw, expands });
+    word = '';
+    raw = '';
+    expands = false;
+    started = false;
+  };
   for (let i = 0; i < part.length; i++) {
     const char = part[i] as string;
     if (quote) {
+      raw += char;
       if (char === quote) quote = undefined;
-      else if (char === '\\' && quote === '"' && i + 1 < part.length) word += part[++i];
-      else word += char;
+      else if (char === '\\' && quote === '"' && i + 1 < part.length) {
+        raw += part[i + 1];
+        word += part[++i];
+      } else {
+        if (quote === '"' && (char === '$' || char === '`')) expands = true;
+        word += char;
+      }
     } else if (char === "'" || char === '"') {
+      raw += char;
       quote = char;
       started = true;
     } else if (char === '\\' && i + 1 < part.length) {
+      raw += char + part[i + 1];
       word += part[++i];
       started = true;
     } else if (/\s/.test(char)) {
-      if (started || word.length > 0) words.push(word);
-      word = '';
-      started = false;
+      push();
     } else {
+      if (UNQUOTED_EXPANSION.has(char)) expands = true;
+      raw += char;
       word += char;
       started = true;
     }
   }
-  if (started || word.length > 0) words.push(word);
+  push();
   return words;
 }
 
-/** The argument of `part` that runs a command, deletes or writes, when its program has such a row. */
+/**
+ * Why `part` is refused when its program has a row: an argument that runs a command, deletes or
+ * writes, or a word the shell would still expand. The guard reads the text before the shell does,
+ * so `-e${HOME:0:0}xec`, `-e$(echo x)ec`, `-e$'x'ec` or `-{ex,}ec` would reach the program as
+ * `-exec` without ever matching the row; such a word is refused rather than guessed. A quoted or
+ * escaped glob (`-name '*.ts'`) is plain text and stays allowed; an unquoted one (`-name *.ts`) is
+ * refused.
+ */
 function commandRunningArgument(part: string): string | undefined {
   const [program, ...args] = partWords(part);
-  const refused = program === undefined ? undefined : COMMAND_RUNNING_ARGUMENTS[program.slice(program.lastIndexOf('/') + 1)];
-  return refused === undefined ? undefined : args.find((arg) => refused.includes(arg));
+  const refused = program === undefined ? undefined : COMMAND_RUNNING_ARGUMENTS[program.text.slice(program.text.lastIndexOf('/') + 1)];
+  if (refused === undefined) return undefined;
+  const argument = args.find((arg) => refused.includes(arg.text));
+  if (argument !== undefined) return `its argument "${argument.text}" runs a command, deletes or writes a file, which is refused outright`;
+  const expanding = args.find((arg) => arg.expands);
+  return expanding === undefined
+    ? undefined
+    : `its word "${expanding.raw}" cannot be checked before expansion: the shell would still change it ($, a backtick, $'…', {, }, ~ or a glob character), so it could become an argument that runs a command, deletes or writes a file`;
 }
 
 /** Claude Code's `Bash(<entry>:*)`: the entry itself, or the entry followed by whitespace. */
@@ -773,16 +829,15 @@ function matchesEntry(part: string, entry: string): boolean {
 
 function allowlistRefusal(event: ToolCall, entries: string[]): ToolGuardResult | undefined {
   if (event.toolName !== 'bash') return undefined;
+  if (entries.length === 0) return { block: true, reason: `${ALLOWLIST_REASON} The list has no entry, so every shell command is refused.` };
   const command = typeof event.input.command === 'string' ? event.input.command : undefined;
   if (command === undefined) return { block: true, reason: `${ALLOWLIST_REASON} The bash call has no command.` };
   const split = commandParts(command);
   if (split.problem) return { block: true, reason: `${ALLOWLIST_REASON} The command was refused because ${split.problem}.` };
   if (split.parts.length === 0) return { block: true, reason: `${ALLOWLIST_REASON} The command is empty.` };
   for (const part of split.parts) {
-    const argument = commandRunningArgument(part);
-    if (argument !== undefined) {
-      return { block: true, reason: `${ALLOWLIST_REASON} The part "${part}" was refused: its argument "${argument}" runs a command, deletes or writes a file, which is refused outright.` };
-    }
+    const why = commandRunningArgument(part);
+    if (why !== undefined) return { block: true, reason: `${ALLOWLIST_REASON} The part "${part}" was refused: ${why}.` };
   }
   const failing = split.parts.find((part) => !entries.some((entry) => matchesEntry(part, entry)));
   if (failing === undefined) return undefined;
@@ -792,14 +847,20 @@ function allowlistRefusal(event: ToolCall, entries: string[]): ToolGuardResult |
   return { block: true, reason: `${ALLOWLIST_REASON} The part "${failing}" was refused: ${why}. Allowed: ${entries.join(', ')}.` };
 }
 
-function bashAllowlist(flag: boolean | string | undefined): string[] | null | undefined {
-  if (flag === undefined) return null;
+/**
+ * The step's allowlist: `null` – the flag's JSON `null` – when the step has none, its usable
+ * entries otherwise (`[]` and a blanks-only list are the same list: no entry), `'absent'` when the
+ * flag is missing, and `undefined` when it cannot be read. Xezar always passes the flag when it
+ * loads this extension, so a missing one is not read as "no allowlist".
+ */
+function bashAllowlist(flag: boolean | string | undefined): string[] | null | 'absent' | undefined {
+  if (flag === undefined) return 'absent';
   if (typeof flag !== 'string') return undefined;
   try {
     const parsed: unknown = JSON.parse(flag);
+    if (parsed === null) return null;
     if (!Array.isArray(parsed) || !parsed.every((entry) => typeof entry === 'string')) return undefined;
-    const entries = (parsed as string[]).map((entry) => entry.trim()).filter(Boolean);
-    return entries.length > 0 ? entries : undefined;
+    return (parsed as string[]).map((entry) => entry.trim()).filter(Boolean);
   } catch {
     return undefined;
   }
@@ -827,8 +888,11 @@ export default function piWorktreeGuard(pi: ExtensionApiLike): void {
     const configured = pi.getFlag(ROOT_FLAG);
     const primary = pi.getFlag(PRIMARY_FLAG);
     const entries = bashAllowlist(pi.getFlag(ALLOWLIST_FLAG));
-    if (entries === undefined) return { block: true, reason: `${ALLOWLIST_REASON} The bashAllowlist flag is not a valid non-empty JSON list.` };
-    if (entries !== null) {
+    if (entries === undefined) return { block: true, reason: `${ALLOWLIST_REASON} The bashAllowlist flag is not null or a JSON list of strings.` };
+    if (entries === 'absent' && event.toolName === 'bash') {
+      return { block: true, reason: `${ALLOWLIST_REASON} The bashAllowlist flag is missing, so the shell is refused rather than left unrestricted.` };
+    }
+    if (entries !== null && entries !== 'absent') {
       const refusal = allowlistRefusal(event, entries);
       if (refusal) return refusal;
       // Loaded for the allowlist alone: a run with no worktree passes neither root flag. Either one

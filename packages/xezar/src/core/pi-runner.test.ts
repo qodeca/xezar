@@ -246,6 +246,8 @@ describe('pi RPC argv', () => {
       '--xezar-worktree-root=/repo/.local/xezar/worktrees/task',
       '--xezar-primary-root=/repo',
       '--xezar-allowed-roots=["/repo/.local/xezar/runs","/repo/.local/xezar/tmp/task"]',
+      // no bashAllowlist key: the guard is told so, and a missing flag would refuse bash (#856)
+      '--xezar-bash-allowlist=null',
     ]);
   });
 
@@ -296,16 +298,43 @@ describe('pi RPC argv', () => {
     expect(args.slice(-3)).toEqual(['--xezar-worktree-root=/wt', '--xezar-primary-root=/repo', '--xezar-bash-allowlist=["git diff"]']);
   });
 
-  it('still removes bash when a bashAllowlist has no usable entry, as Claude Code does', () => {
-    expect(
-      buildPiArgs({ cwd: '/repo', userPrompt: 'task', allowedTools: ['Read', 'Bash'], bashAllowlist: ['  ', ''] }),
-    ).toEqual(['--mode', 'rpc', '--tools', 'read']);
+  // Fable's table on #861, round 2: `[]` and a blanks-only list are the same list – no entry – so
+  // both remove bash and both still hand the guard `[]`, which refuses every bash command.
+  it.each([
+    ['[]', []],
+    ['["  ", ""]', ['  ', '']],
+  ])('removes bash and passes `[]` for the list %s, with no worktree', (_name, bashAllowlist) => {
+    const args = buildPiArgs({ cwd: '/repo', userPrompt: 'task', allowedTools: ['Read', 'Bash'], bashAllowlist });
+    expect(args.slice(0, 4)).toEqual(['--mode', 'rpc', '--tools', 'read']);
+    expect(args[4]).toBe('--extension');
+    expect(args[5]).toMatch(/pi-worktree-guard\.ts$/);
+    expect(args.slice(6)).toEqual(['--xezar-bash-allowlist=[]']);
   });
 
-  it('leaves the argv unchanged without a bashAllowlist, or with an empty one (#856 C)', () => {
-    const plain = ['--mode', 'rpc', '--tools', 'read,bash'];
-    expect(buildPiArgs({ cwd: '/repo', userPrompt: 'task', allowedTools: ['Read', 'Bash'] })).toEqual(plain);
-    expect(buildPiArgs({ cwd: '/repo', userPrompt: 'task', allowedTools: ['Read', 'Bash'], bashAllowlist: [] })).toEqual(plain);
+  it.each([
+    ['[]', []],
+    ['["  ", ""]', ['  ', '']],
+  ])('removes bash and passes `[]` for the list %s on a worktree run', (_name, bashAllowlist) => {
+    const args = buildPiArgs({
+      cwd: '/wt',
+      userPrompt: 'task',
+      allowedTools: ['Read', 'Bash'],
+      bashAllowlist,
+      worktreeRoot: '/wt',
+      primaryRoot: '/repo',
+    });
+    expect(args.slice(2, 4)).toEqual(['--tools', 'read']);
+    expect(args.slice(-3)).toEqual(['--xezar-worktree-root=/wt', '--xezar-primary-root=/repo', '--xezar-bash-allowlist=[]']);
+  });
+
+  it('leaves the in-place argv unchanged without a bashAllowlist key (#856 C)', () => {
+    expect(buildPiArgs({ cwd: '/repo', userPrompt: 'task', allowedTools: ['Read', 'Bash'] })).toEqual(['--mode', 'rpc', '--tools', 'read,bash']);
+  });
+
+  it('tells the guard `null` – no allowlist – on a worktree run without a bashAllowlist key', () => {
+    const args = buildPiArgs({ cwd: '/wt', userPrompt: 'task', allowedTools: ['Bash'], worktreeRoot: '/wt', primaryRoot: '/repo' });
+    expect(args.slice(2, 4)).toEqual(['--tools', 'bash']);
+    expect(args.at(-1)).toBe('--xezar-bash-allowlist=null');
   });
 });
 
