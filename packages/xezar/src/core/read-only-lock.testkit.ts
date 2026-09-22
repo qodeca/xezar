@@ -94,6 +94,7 @@ export const READ_ONLY_LOCK_FIXTURES: readonly ReadOnlyLockFixture[] = [
   { name: 'git checkout path mode writes the tree', command: 'git checkout --detach main -- packages', entries: ['git checkout --detach'], rule: 'command.git-checkout-path' },
   { name: 'verdict packet accepts its exact two-part pipe', command: "printf '%s' '{}' | bash .xezar/checks/verdict-packet.sh", entries: ['printf', 'bash .xezar/checks/verdict-packet.sh'] },
   { name: 'verdict packet pipe requires its left entry', command: "printf '%s' '{}' | bash .xezar/checks/verdict-packet.sh", entries: ['bash .xezar/checks/verdict-packet.sh'], rule: 'prefix.entry' },
+  { name: 'ordinary allowlisted bash script is not a packet pipe target', command: "printf '%s' '{}' | bash .xezar/checks/bootstrap.sh", entries: ['printf', 'bash .xezar/checks/bootstrap.sh'], rule: 'syntax.compound' },
   { name: 'quoted operators stay text', command: 'gh pr comment 1 --body "a; b | c > d"', entries: ['gh pr comment'] },
   { name: 'quoted glob stays text', command: "find . -name '*.ts' -type f", entries: ['find'] },
   { name: 'escaped glob stays text', command: 'find . -name \\*.ts', entries: ['find'] },

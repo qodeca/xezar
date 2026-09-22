@@ -274,11 +274,10 @@ function commandArgumentRefusal(words: readonly ReadOnlyShellWord[]): ReadOnlyCo
 export function decideReadOnlyCommand(command: string, entries: readonly string[]): ReadOnlyCommandDecision {
   const normalized = normalizeBashAllowlist(entries);
   if (normalized.length === 0) return refuse(ALLOWLIST_RULE, 'the bashAllowlist has no usable entry');
-  const verdictPipe = splitVerdictPacketPipe(command);
-  if (verdictPipe) {
-    const left = decideReadOnlyCommand(verdictPipe.left, normalized);
+  const packetPipe = splitPacketWriterPipe(command, normalized);
+  if (packetPipe) {
+    const left = decideReadOnlyCommand(packetPipe.left, normalized);
     if (!left.allowed) return left;
-    if (!normalized.includes(verdictPipe.right)) return refuse(ALLOWLIST_RULE, 'the verdict-packet writer is not a named allowlist entry');
     return { allowed: true };
   }
   const parsed = splitReadOnlyCommand(command);
@@ -300,10 +299,13 @@ export function decideReadOnlyCommand(command: string, entries: readonly string[
   return { allowed: true };
 }
 
-const VERDICT_PACKET_COMMAND = 'bash .xezar/checks/verdict-packet.sh';
-
-/** The sole compound shape retained for pi verdict delivery (#863 review response). */
-function splitVerdictPacketPipe(command: string): { left: string; right: typeof VERDICT_PACKET_COMMAND } | undefined {
+/**
+ * The sole compound shape retained for a read-only role's packet delivery: one pipe whose right
+ * side is an exact, explicitly allowlisted `bash <…-packet.sh>` command with no arguments. The
+ * filename suffix is the generic capability marker; ordinary allowlisted commands and other bash
+ * scripts do not become pipe consumers.
+ */
+function splitPacketWriterPipe(command: string, entries: readonly string[]): { left: string; right: string } | undefined {
   let quote: "'" | '"' | undefined;
   let escaped = false;
   let pipe = -1;
@@ -333,6 +335,10 @@ function splitVerdictPacketPipe(command: string): { left: string; right: typeof 
   if (pipe < 0) return undefined;
   const left = command.slice(0, pipe).trim();
   const right = command.slice(pipe + 1).trim();
-  if (left === '' || right !== VERDICT_PACKET_COMMAND) return undefined;
-  return { left, right: VERDICT_PACKET_COMMAND };
+  if (left === '' || !entries.includes(right)) return undefined;
+  const parsedRight = splitReadOnlyCommand(right);
+  if ('allowed' in parsedRight || parsedRight.words.length !== 2) return undefined;
+  const [program, script] = parsedRight.words.map((word) => word.text);
+  if (basename(program ?? '') !== 'bash' || !/(?:^|\/)[^/]+-packet\.sh$/.test(script ?? '')) return undefined;
+  return { left, right };
 }
