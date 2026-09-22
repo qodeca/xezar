@@ -62,7 +62,7 @@ describe('agent quota read surface', () => {
 
   it('honours the documented wait=true query', async () => {
     const checker = new AgentQuotaChecker({ store: quota, profiles: async () => [], dryRun: () => true });
-    const refresh = vi.spyOn(checker, 'refresh');
+    const refresh = vi.spyOn(checker, 'refreshStale');
     const response = await apiRequest(app({ agentQuotaChecker: checker }), '/api/v1/workspace/agent-quota?wait=true');
     expect(response.status).toBe(200);
     expect(refresh).toHaveBeenCalledWith({}, true);

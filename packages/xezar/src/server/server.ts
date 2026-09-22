@@ -2182,7 +2182,7 @@ export function createApp(deps: ServerDeps) {
       }
       agentQuotaChecker.noteRead();
       const answer = query.wait === 'true' || query.wait === '1'
-        ? await agentQuotaChecker.refresh(selector, true)
+        ? await agentQuotaChecker.refreshStale(selector, true)
         : await readAgentQuota(selector);
       return c.json(answer);
     })

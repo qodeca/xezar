@@ -1891,10 +1891,21 @@ the 0.16.0 shape rather than instead of it.
 - **Provider processes:** Claude Code uses fixed argv with `--safe-mode`,
   `--strict-mcp-config`, and a fresh temporary working directory; its experimental `get_usage`
   control request falls back to the zero-token `/usage` local command and reports that fallback.
+  The live Claude Code 2.1.280 capture answered the control request directly without an
+  `initialize` message, used zero model tokens, and is committed as the redacted test fixture.
+  Inactive `seven_day_opus` and `seven_day_sonnet` buckets are `null`, not absent. A `/usage`
+  reply with no recognised quota rows is a `format-changed` observation and logs once per login
+  and tool version.
   Codex uses only `initialize`, `account/read`, `account/rateLimits/read` and
   `account/usage/read` on an app-server started with read-only/no-approval flags; it starts no
   thread. Both receive the existing least-privilege agent environment plus only the selected
-  profile's home variable. Xezar invokes no shell and terminates only the saved child handle.
+  profile's home variable. Xezar invokes no shell, starts each check in a detached process group,
+  and terminates that saved group as soon as the reply arrives or the deadline expires before
+  removing its temporary directory.
+- **Accepted Codex first-run cost (D26):** a check against a never-used login can make the Codex
+  CLI bootstrap its own SQLite files, `installation_id`, `models_cache.json`, and
+  `skills/.system/`. That is Codex's own first-run behaviour, costs zero model tokens, and writes
+  only inside that login's `CODEX_HOME`; Xezar does not try to suppress it.
 - **Honest degradation:** the minimum versions are Claude Code `2.1.278` and Codex `0.155.1`.
   Missing or older tools, timeouts and strictly validated format changes produce an `unknown` row
   with a reason instead of failing the server. A format warning is logged once per login and tool
@@ -1902,5 +1913,8 @@ the 0.16.0 shape rather than instead of it.
   rows now say `source: "none"`; `source: "check"` means an active check actually ran.
 - **Additive account metadata:** checked rows may carry `stale`, `refreshing`, `nextCheckAt`,
   `toolVersion`, `minimumVersion`, `statusReason`, `warnings` and `unavailableReason`. The source
-  enum adds `check-text` and `none`. Older readers already ignore additive keys; removing an
-  existing value or changing the meaning of `live`, `failedRun` or `check` is breaking.
+  producer enum adds `check-text` and `none`; the producer schema keeps the closed source and
+  reason lists, while the reader accepts any non-empty string for either. A reader that meets an
+  unknown `source` or `statusReason` still acts only on `status`, and `unknown` never means budget.
+  Older readers already ignore additive keys; removing an existing value or changing the meaning
+  of `live`, `failedRun` or `check` is breaking.

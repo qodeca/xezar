@@ -26,6 +26,7 @@ export const AGENT_QUOTA_CHECK_TIMEOUT_MS = 20_000;
 export const AGENT_QUOTA_WAIT_MS = 20_000;
 const MAX_CONCURRENT_CHECKS = 2;
 const MAX_OUTPUT_BYTES = 1_000_000;
+const PROCESS_CLOSE_GRACE_MS = 1_000;
 
 const claudeTextReplySchema = z.object({
   type: z.literal('result').optional(),
@@ -53,8 +54,8 @@ const claudeUsageSchema = z.object({
   rate_limits: z.object({
     five_hour: claudeRateLimitSchema.optional(),
     seven_day: claudeRateLimitSchema.optional(),
-    seven_day_opus: claudeRateLimitSchema.optional(),
-    seven_day_sonnet: claudeRateLimitSchema.optional(),
+    seven_day_opus: claudeRateLimitSchema.nullable().optional(),
+    seven_day_sonnet: claudeRateLimitSchema.nullable().optional(),
   }).optional(),
 }).refine((value) => value.limits !== undefined || value.rate_limits !== undefined || value.rate_limits_available === false, {
   message: 'Claude usage reply carries no rate-limit fields',
@@ -126,49 +127,80 @@ function processFailure(message: string, code?: string): Error {
   return error;
 }
 
-/** Fixed-argv child runner. It never invokes a shell and signals only the saved child handle. */
+function signalSavedProcessGroup(child: ChildProcessWithoutNullStreams, signal: NodeJS.Signals): void {
+  if (child.pid === undefined) return;
+  try {
+    if (process.platform === 'win32') child.kill(signal);
+    else process.kill(-child.pid, signal);
+  } catch {
+    // The group may already have closed between the reply and the signal. Falling back to the
+    // saved child handle is safe and keeps a timer callback from becoming an uncaught exception.
+    try { child.kill(signal); } catch { /* already gone */ }
+  }
+}
+
+/** Fixed-argv child runner. It never invokes a shell and signals only the saved process group. */
 export const runQuotaProcess: RunQuotaProcess = (spec) => new Promise((resolve, reject) => {
   const remaining = Math.max(1, spec.deadline - Date.now());
   let child: ChildProcessWithoutNullStreams;
   try {
-    child = nodeSpawn(spec.executable, [...spec.args], { cwd: spec.cwd, env: spec.env, shell: false });
+    child = nodeSpawn(spec.executable, [...spec.args], {
+      cwd: spec.cwd,
+      env: spec.env,
+      shell: false,
+      detached: true,
+    });
   } catch (error) {
     reject(error);
     return;
   }
   let settled = false;
-  let exited = false;
-  let foundReply = false;
-  let reply: unknown;
+  let stopping = false;
+  let stopError: Error | undefined;
+  let stopValue: unknown;
   let stdout = '';
   let stderr = '';
   let lineBuffer = '';
+  let killTimer: NodeJS.Timeout | undefined;
+  let closeTimer: NodeJS.Timeout | undefined;
   const finish = (error?: Error, value?: unknown) => {
     if (settled) return;
     settled = true;
     clearTimeout(timer);
+    if (killTimer) clearTimeout(killTimer);
+    if (closeTimer) clearTimeout(closeTimer);
     if (error) reject(error);
     else resolve(value);
   };
-  const timer = setTimeout(() => {
-    child.kill('SIGTERM');
-    const killTimer = setTimeout(() => {
-      if (!exited) child.kill('SIGKILL');
-    }, 1_000);
+  const stop = (error?: Error, value?: unknown) => {
+    if (stopping || settled) return;
+    stopping = true;
+    stopError = error;
+    stopValue = value;
+    child.stdin.end();
+    signalSavedProcessGroup(child, 'SIGTERM');
+    killTimer = setTimeout(() => {
+      signalSavedProcessGroup(child, 'SIGKILL');
+      closeTimer = setTimeout(() => finish(stopError, stopValue), PROCESS_CLOSE_GRACE_MS);
+      closeTimer.unref?.();
+    }, PROCESS_CLOSE_GRACE_MS);
     killTimer.unref?.();
-    finish(processFailure('agent quota check timed out', 'ETIMEDOUT'));
+  };
+  const timer = setTimeout(() => {
+    stop(processFailure('agent quota check timed out', 'ETIMEDOUT'));
   }, remaining);
   timer.unref?.();
   child.once('error', (error) => finish(error));
-  child.stdin.on('error', (error) => finish(error));
+  child.stdin.on('error', (error) => {
+    if (!stopping) stop(error);
+  });
   child.stdout.on('data', (chunk: Buffer) => {
     stdout += chunk.toString('utf8');
     if (stdout.length > MAX_OUTPUT_BYTES) {
-      child.kill('SIGTERM');
-      finish(processFailure('agent quota check output exceeded its limit'));
+      stop(processFailure('agent quota check output exceeded its limit'));
       return;
     }
-    if (!spec.waitFor) return;
+    if (!spec.waitFor || stopping) return;
     lineBuffer += chunk.toString('utf8');
     for (;;) {
       const newline = lineBuffer.indexOf('\n');
@@ -186,14 +218,11 @@ export const runQuotaProcess: RunQuotaProcess = (spec) => new Promise((resolve, 
         for (const next of spec.nextInput?.(message) ?? []) child.stdin.write(`${JSON.stringify(next)}\n`);
         const found = spec.waitFor(message);
         if (found !== undefined) {
-          foundReply = true;
-          reply = found;
-          child.stdin.end();
+          stop(undefined, found);
           return;
         }
       } catch (error) {
-        child.kill('SIGTERM');
-        finish(error instanceof Error ? error : new Error(String(error)));
+        stop(error instanceof Error ? error : new Error(String(error)));
         return;
       }
     }
@@ -202,9 +231,8 @@ export const runQuotaProcess: RunQuotaProcess = (spec) => new Promise((resolve, 
     stderr = (stderr + chunk.toString('utf8')).slice(0, MAX_OUTPUT_BYTES);
   });
   child.once('close', (code) => {
-    exited = true;
     if (settled) return;
-    if (foundReply) return finish(undefined, reply);
+    if (stopping) return finish(stopError, stopValue);
     if (code !== 0) return finish(processFailure(stderr.trim() || `${spec.executable} exited ${code ?? 'without a code'}`));
     if (spec.waitFor) return finish(processFailure(`${spec.executable} exited before replying`));
     finish(undefined, stdout.trim());
@@ -342,8 +370,8 @@ async function runClaudeCheck(
         env,
         input: [{ type: 'control_request', request_id: requestId, request: { subtype: 'get_usage', skip_behaviors: true } }],
         waitFor: (message) => {
-          const row = message as { type?: unknown; request_id?: unknown };
-          return row.type === 'control_response' && (row.request_id === requestId || row.request_id === undefined)
+          const row = message as { type?: unknown; response?: { request_id?: unknown } };
+          return row.type === 'control_response' && row.response?.request_id === requestId
             ? message
             : undefined;
         },
@@ -360,6 +388,9 @@ async function runClaudeCheck(
       });
       const raw = claudeTextReplySchema.parse(JSON.parse(String(rawText)));
       const record = normalizeClaudeUsage(raw, profile.id, checkedAt);
+      if (record.shortWindow === null && record.weeklyWindow === null && record.modelWindows === null) {
+        throw new SyntaxError('Claude /usage reply carried no recognised quota rows');
+      }
       return agentQuotaProducerAccountSchema.parse({
         ...record,
         source: 'check-text',
@@ -533,6 +564,21 @@ export class AgentQuotaChecker {
 
   async refresh(selector: AgentQuotaSelector = {}, wait = true): Promise<AgentQuotaProducerResponse> {
     const profiles = await this.knownProfiles(selector);
+    return this.runChecks(selector, profiles, wait);
+  }
+
+  async refreshStale(selector: AgentQuotaSelector = {}, wait = true): Promise<AgentQuotaProducerResponse> {
+    const current = await this.answer(selector);
+    const stale = new Set(current.accounts.filter((row) => row.stale).map((row) => `${row.runner}:${row.accountId}`));
+    const profiles = (await this.knownProfiles(selector)).filter((profile) => stale.has(this.key(profile)));
+    return this.runChecks(selector, profiles, wait);
+  }
+
+  private async runChecks(
+    selector: AgentQuotaSelector,
+    profiles: QuotaProfile[],
+    wait: boolean,
+  ): Promise<AgentQuotaProducerResponse> {
     const checks = profiles.map((profile) => this.schedule(profile));
     if (wait && checks.length > 0) {
       let timer: NodeJS.Timeout | undefined;
@@ -554,13 +600,13 @@ export class AgentQuotaChecker {
   noteRead(): void {
     this.lastReadAt = this.now();
     this.ensureScheduler();
-    void this.refreshStale();
+    void this.refreshStaleInBackground();
   }
 
   viewerStarted(): () => void {
     this.viewers += 1;
     this.ensureScheduler();
-    void this.refreshStale();
+    void this.refreshStaleInBackground();
     return () => {
       this.viewers = Math.max(0, this.viewers - 1);
       this.stopSchedulerWhenIdle();
@@ -586,7 +632,7 @@ export class AgentQuotaChecker {
     if (this.scheduler || !this.looking()) return;
     this.scheduler = setInterval(() => {
       if (!this.looking()) return this.stopSchedulerWhenIdle();
-      void this.refreshStale();
+      void this.refreshStaleInBackground();
     }, 60_000);
     this.scheduler.unref?.();
   }
@@ -597,7 +643,7 @@ export class AgentQuotaChecker {
     this.scheduler = undefined;
   }
 
-  private async refreshStale(): Promise<void> {
+  private async refreshStaleInBackground(): Promise<void> {
     if (!this.looking()) return;
     const answer = await this.answer();
     const stale = new Set(answer.accounts.filter((row) => row.stale).map((row) => `${row.runner}:${row.accountId}`));
@@ -619,7 +665,9 @@ export class AgentQuotaChecker {
   }
 
   private async withSlot(work: () => Promise<void>): Promise<void> {
-    if (this.active >= MAX_CONCURRENT_CHECKS) await new Promise<void>((resolve) => this.slotWaiters.push(resolve));
+    while (this.active >= MAX_CONCURRENT_CHECKS) {
+      await new Promise<void>((resolve) => this.slotWaiters.push(resolve));
+    }
     this.active += 1;
     try {
       await work();

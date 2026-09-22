@@ -1,10 +1,13 @@
 import { readFileSync } from 'node:fs';
+import { access, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { describe, expect, it, vi } from 'vitest';
+import { basename, relative } from 'node:path';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ResolvedAgentProfile } from './agent-profiles.ts';
-import { AgentQuotaStore, normalizeLiveQuota } from './agent-quota.ts';
+import { AgentQuotaStore, normalizeClaudeUsage, normalizeLiveQuota } from './agent-quota.ts';
 import {
   AGENT_QUOTA_CHECK_GAP_MS,
+  AGENT_QUOTA_WAIT_MS,
   AgentQuotaChecker,
   MINIMUM_CLAUDE_QUOTA_VERSION,
   MINIMUM_CODEX_QUOTA_VERSION,
@@ -23,22 +26,19 @@ const profile = (provider: 'claude' | 'codex', id = 'default'): ResolvedAgentPro
 });
 
 describe('AgentQuotaChecker', () => {
-  it('prefers Claude get_usage and maps its strict control reply without invoking /usage', async () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('prefers Claude get_usage and maps the captured zero-token reply without invoking /usage', async () => {
     const calls: AgentQuotaProcessSpec[] = [];
+    const capture = JSON.parse(await readFile(
+      new URL('../__fixtures__/agent-quota/claude-get-usage-control-response.json', import.meta.url),
+      'utf8',
+    )) as { response: { request_id: string } };
+    capture.response.request_id = 'xezar-agent-quota';
     const run: RunQuotaProcess = async (spec) => {
       calls.push(spec);
       if (spec.args[0] === '--version') return `${MINIMUM_CLAUDE_QUOTA_VERSION} (Claude Code)`;
-      return {
-        type: 'control_response',
-        response: {
-          subtype: 'success', request_id: 'xezar-agent-quota',
-          response: {
-            subscription_type: 'max',
-            rate_limits_available: true,
-            limits: [{ kind: 'session', percent: 25, resets_at: '2026-09-22T17:10:00+02:00' }],
-          },
-        },
-      };
+      return capture;
     };
     const checker = new AgentQuotaChecker({
       store: new AgentQuotaStore({ now: () => Date.parse('2026-09-22T14:00:00Z') }),
@@ -52,7 +52,13 @@ describe('AgentQuotaChecker', () => {
     expect(calls[1]!.input).toEqual([{
       type: 'control_request', request_id: 'xezar-agent-quota', request: { subtype: 'get_usage', skip_behaviors: true },
     }]);
+    expect(calls[1]!.waitFor?.({ type: 'control_response', response: {} })).toBeUndefined();
+    expect(calls[1]!.waitFor?.({ type: 'control_response', response: { request_id: 'other' } })).toBeUndefined();
+    expect(calls[1]!.waitFor?.(capture)).toBe(capture);
+    // Claude Code 2.1.280 answered this live capture without an initialize message.
     expect(answer.accounts[0]).toMatchObject({ source: 'check', status: 'ok', planType: 'max', warnings: [] });
+    expect(answer.accounts[0]!.shortWindow?.usedPercent).toBe(7);
+    expect(answer.accounts[0]!.weeklyWindow?.usedPercent).toBe(29);
   });
 
   it('uses fixed isolated Claude argv and reports the /usage fallback in the row', async () => {
@@ -81,8 +87,10 @@ describe('AgentQuotaChecker', () => {
       '--output-format', 'stream-json', '--verbose',
     ]);
     expect(calls[2]!.args).toEqual(['-p', '/usage', '--safe-mode', '--strict-mcp-config', '--output-format', 'json']);
-    expect(calls[1]!.cwd).toMatch(/xez-agent-quota-/);
-    expect(calls[1]!.cwd).not.toContain(process.cwd());
+    expect(relative(tmpdir(), calls[1]!.cwd)).not.toMatch(/^\.\.(?:\/|$)/);
+    expect(basename(calls[1]!.cwd)).toMatch(/^xez-agent-quota-/);
+    expect(calls[2]!.cwd).toBe(calls[1]!.cwd);
+    await expect(access(calls[1]!.cwd)).rejects.toMatchObject({ code: 'ENOENT' });
     expect(answer.accounts[0]).toMatchObject({
       accountId: 'default', source: 'check-text', status: 'ok',
       warnings: ['Quota was read from the Claude Code /usage text fallback.'],
@@ -209,6 +217,50 @@ describe('AgentQuotaChecker', () => {
     expect(peak).toBe(2);
   });
 
+  it('does not over-admit when a released slot races a newly scheduled login', async () => {
+    let active = 0;
+    let peak = 0;
+    let completed = 0;
+    const releases: Array<() => void> = [];
+    const waits = Array.from({ length: 4 }, () => new Promise<void>((resolve) => releases.push(resolve)));
+    const checker = new AgentQuotaChecker({ store: new AgentQuotaStore(), profiles: async () => [] });
+    const withSlot = (checker as unknown as {
+      withSlot(work: () => Promise<void>): Promise<void>;
+    }).withSlot.bind(checker);
+    const work = (index: number) => async () => {
+      active += 1;
+      peak = Math.max(peak, active);
+      await waits[index];
+      active -= 1;
+      completed += 1;
+    };
+    const flush = async () => {
+      for (let index = 0; index < 8; index += 1) await Promise.resolve();
+    };
+    const initial = Promise.all([withSlot(work(0)), withSlot(work(1)), withSlot(work(2))]);
+    await flush();
+    expect(active).toBe(2);
+    const slotWaiters = (checker as unknown as { slotWaiters: Array<() => void> }).slotWaiters;
+    const originalWake = slotWaiters[0]!;
+    let late: Promise<void> | undefined;
+    slotWaiters[0] = () => {
+      originalWake();
+      late = withSlot(work(3));
+    };
+
+    releases[0]!();
+    await flush();
+    expect(late).toBeDefined();
+    expect(peak).toBe(2);
+    releases[1]!();
+    releases[3]!();
+    await flush();
+    releases[2]!();
+    await Promise.all([initial, late!]);
+    expect(completed).toBe(4);
+    expect(peak).toBe(2);
+  });
+
   it('logs one format warning per login and version and leaves other accounts unchanged', async () => {
     const warn = vi.fn();
     let now = Date.parse('2026-09-22T14:20:00Z');
@@ -229,6 +281,95 @@ describe('AgentQuotaChecker', () => {
     expect(warn).toHaveBeenCalledTimes(1);
     expect(answer.accounts.find((row) => row.accountId === 'a')).toMatchObject({ statusReason: 'format-changed' });
     expect(answer.accounts.find((row) => row.accountId === 'b')).toMatchObject({ source: 'none' });
+  });
+
+  it('classifies /usage text with zero recognised quota rows as one format change', async () => {
+    const warn = vi.fn();
+    const run: RunQuotaProcess = async (spec) => {
+      if (spec.args[0] === '--version') return `${MINIMUM_CLAUDE_QUOTA_VERSION} (Claude Code)`;
+      if (spec.args.includes('--input-format')) throw new Error('fallback');
+      return JSON.stringify({ result: 'You are using your subscription. No quota rows are present.' });
+    };
+    const checker = new AgentQuotaChecker({
+      store: new AgentQuotaStore(), profiles: async () => [profile('claude')],
+      runProcess: run, logger: { warn }, dryRun: () => false,
+    });
+
+    const answer = await checker.refresh();
+
+    expect(answer.accounts[0]).toMatchObject({ status: 'unknown', statusReason: 'format-changed' });
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('wait mode checks stale rows only', async () => {
+    const now = Date.parse('2026-09-22T14:20:00Z');
+    const store = new AgentQuotaStore({ now: () => now });
+    await store.put(normalizeClaudeUsage(
+      { result: 'Current session: 25% used · resets Sep 22 at 5:10pm (Europe/Warsaw)' },
+      'default', new Date(now),
+    ));
+    const run = vi.fn();
+    const checker = new AgentQuotaChecker({
+      store, now: () => now, profiles: async () => [profile('claude')], runProcess: run, dryRun: () => false,
+    });
+
+    const answer = await checker.refreshStale({}, true);
+
+    expect(run).not.toHaveBeenCalled();
+    expect(answer.accounts[0]).toMatchObject({ stale: false, refreshing: false });
+  });
+
+  it('starts the minute scheduler only while someone is looking', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-22T14:20:00Z'));
+    const store = new AgentQuotaStore({ now: Date.now });
+    const put = vi.spyOn(store, 'put');
+    const checker = new AgentQuotaChecker({
+      store, now: Date.now, profiles: async () => [profile('claude')], dryRun: () => true,
+    });
+
+    await vi.advanceTimersByTimeAsync(20 * 60_000);
+    expect(put).not.toHaveBeenCalled();
+    const stopLooking = checker.viewerStarted();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(put).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(15 * 60_000);
+    expect(put).toHaveBeenCalledTimes(2);
+    stopLooking();
+    await vi.advanceTimersByTimeAsync(20 * 60_000);
+    expect(put).toHaveBeenCalledTimes(2);
+    checker.close();
+  });
+
+  it('returns a still-stale row when a waited check exceeds twenty seconds', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-22T14:20:00Z'));
+    const now = Date.now();
+    const store = new AgentQuotaStore({ now: Date.now });
+    await store.put(normalizeClaudeUsage(
+      { result: 'Current session: 25% used · resets Sep 22 at 5:10pm (Europe/Warsaw)' },
+      'default', new Date(now - 16 * 60_000),
+    ));
+    let releaseVersion!: () => void;
+    const versionBlocked = new Promise<void>((resolve) => { releaseVersion = resolve; });
+    const run: RunQuotaProcess = vi.fn(async (spec) => {
+      if (spec.args[0] === '--version') {
+        await versionBlocked;
+        return `${MINIMUM_CLAUDE_QUOTA_VERSION} (Claude Code)`;
+      }
+      throw new Error('stop after the bounded caller has returned');
+    });
+    const checker = new AgentQuotaChecker({
+      store, now: Date.now, profiles: async () => [profile('claude')], runProcess: run, dryRun: () => false,
+    });
+
+    const pending = checker.refreshStale({}, true);
+    await vi.advanceTimersByTimeAsync(AGENT_QUOTA_WAIT_MS);
+    const answer = await pending;
+
+    expect(answer.accounts[0]).toMatchObject({ stale: true, refreshing: true });
+    releaseVersion();
+    await vi.advanceTimersByTimeAsync(0);
   });
 
   it('keeps Claude live task data when both active check formats fail', async () => {
@@ -283,6 +424,27 @@ describe('AgentQuotaChecker', () => {
       env: {},
       deadline: Date.now() + 50,
     })).rejects.toMatchObject({ code: 'ETIMEDOUT' });
+  });
+
+  it('kills the saved process group as soon as a matching reply arrives', async () => {
+    const reply = await runQuotaProcess({
+      executable: process.execPath,
+      args: ['-e', [
+        "const { spawn } = require('node:child_process');",
+        "const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });",
+        "console.log(JSON.stringify({ type: 'reply', parentPid: process.pid, childPid: child.pid }));",
+        'setInterval(() => {}, 1000);',
+      ].join(' ')],
+      cwd: tmpdir(),
+      env: process.env,
+      waitFor: (message) => (message as { type?: string }).type === 'reply' ? message : undefined,
+      deadline: Date.now() + 5_000,
+    }) as { parentPid: number; childPid: number };
+    const alive = (pid: number) => {
+      try { process.kill(pid, 0); return true; } catch { return false; }
+    };
+
+    await expect.poll(() => [alive(reply.parentPid), alive(reply.childPid)]).toEqual([false, false]);
   });
 
   it('startup is detached from a running check', async () => {

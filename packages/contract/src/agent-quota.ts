@@ -5,8 +5,10 @@ import { z } from 'zod';
  *
  * It is shared by `GET /api/v1/workspace/agent-quota` and the `project_config` actions
  * `read_quota` / `check_quota`. These objects deliberately remain non-strict: consumers must
- * ignore unknown keys and unknown `notReported` names so a later release can add facts without
- * breaking an older reader. Producers validate with `agentQuotaProducerResponseSchema`; the
+ * ignore unknown keys, unknown `notReported` names, and unknown non-empty `source` or
+ * `statusReason` values so a later release can add facts without breaking an older reader. A
+ * reader that meets an unknown `source` or `statusReason` still acts only on `status`, and
+ * `unknown` never means budget. Producers validate with `agentQuotaProducerResponseSchema`; the
  * committed fixture in `__fixtures__/agent-quota.expected.json` pins its known keys and canonical
  * order byte-for-byte. A Claude account is never `status: "ok"` when any reported window
  * (`shortWindow`, `weeklyWindow`, or `modelWindows[]`) has `usedPercent` greater than or equal to
@@ -70,7 +72,7 @@ export type AgentQuotaNotReportedField = z.infer<typeof agentQuotaNotReportedFie
 const agentQuotaConsumerAccountDetailShape = {
   checkedAt: isoTimestampSchema,
   ageSeconds: z.number().int().nonnegative(),
-  source: agentQuotaSourceSchema,
+  source: z.string().min(1),
   shortWindow: agentQuotaWindowSchema.nullable(),
   weeklyWindow: agentQuotaWindowSchema.nullable(),
   modelWindows: z.array(agentQuotaModelWindowSchema).nullable(),
@@ -84,7 +86,7 @@ const agentQuotaConsumerAccountDetailShape = {
   nextCheckAt: isoTimestampSchema.nullable().optional(),
   toolVersion: z.string().min(1).nullable().optional(),
   minimumVersion: z.string().min(1).optional(),
-  statusReason: agentQuotaCheckReasonSchema.nullable().optional(),
+  statusReason: z.string().min(1).nullable().optional(),
   warnings: z.array(z.string().min(1)).optional(),
   unavailableReason: z.string().min(1).nullable().optional(),
 } as const;
