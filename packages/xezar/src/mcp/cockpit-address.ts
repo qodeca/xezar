@@ -1,3 +1,4 @@
+import { parseArgs } from 'node:util';
 import type { McpDiscoveryCockpit } from '@qodeca/xezar-contract';
 import { resolveBindHost, resolveCapabilities } from '../server/capabilities.ts';
 import { ownCockpitOrigin } from '../server/instance-liveness.ts';
@@ -7,15 +8,28 @@ import { ownCockpitOrigin } from '../server/instance-liveness.ts';
  * bind is half of what makes the cockpit hosted; `McpToolContext` does not carry it yet (#89
  * widens that context), and reporting `localHandoff: true` on a hosted box would promise actions
  * the routes refuse.
+ *
+ * The rule for a REPEATED flag is last-wins, because that is what `node:util`'s `parseArgs`
+ * already does for every other flag on this same argv, in the same process, in `index.ts`'s own
+ * CLI parse (#838 item H). This reader used to be a hand-written first-match scanner, which
+ * quietly disagreed with that parse on `--bind-host a --bind-host b`: the server bound `b` while
+ * this told an MCP caller `a`, with no error either side. Going through `parseArgs` here too — the
+ * same function, not a second hand-rolled rule kept in step by a comment — makes the two parses of
+ * one argv agree by construction. `strict: false` lets this scan ignore every flag except
+ * `bind-host`, since this reader has no need to know the rest of the CLI's option table.
  */
 export function bindHostFromArgv(argv: readonly string[] = process.argv): string | undefined {
-  for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i]!;
-    // `resolveBindHost`: an empty value means the flag was absent, as it does for the CLI (#838 item A).
-    if (arg === '--bind-host') return resolveBindHost(argv[i + 1]);
-    if (arg.startsWith('--bind-host=')) return resolveBindHost(arg.slice('--bind-host='.length));
-  }
-  return undefined;
+  const { values } = parseArgs({
+    args: [...argv],
+    options: { 'bind-host': { type: 'string' } },
+    allowPositionals: true,
+    strict: false,
+  });
+  // `@types/node` widens every declared option's value to `string | boolean` once `strict: false`
+  // is set (it stops narrowing by `type` at that point) — a typings limitation, not a runtime one:
+  // `type: 'string'` still makes `parseArgs` itself only ever put a string here. `resolveBindHost`:
+  // an empty value means the flag was absent, as it does for the CLI (#838 item A).
+  return resolveBindHost(values['bind-host'] as string | undefined);
 }
 
 /**

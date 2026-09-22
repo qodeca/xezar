@@ -5,6 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { parseArgs } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mcpDiscoverySchema, type HealthResponse, type McpDiscovery } from '@qodeca/xezar-contract';
 import { BUNDLED_TEMPLATES_DIGEST } from '../../onboarding/status.ts';
@@ -570,6 +571,25 @@ describe('discover_project — the tool', () => {
     // An empty value is the flag being absent, as it is for the CLI (#838 item A).
     expect(bindHostFromArgv(['node', 'xezar', 'serve', '--bind-host', ''])).toBeUndefined();
     expect(bindHostFromArgv(['node', 'xezar', 'serve', '--bind-host='])).toBeUndefined();
+  });
+
+  it('resolves a repeated --bind-host the same way the CLI itself does: last-wins (#838 item H)', () => {
+    // Before the fix this reader was a hand-written FIRST-match scanner while `index.ts`'s own
+    // `parseArgs` call is last-wins, so the running server bound one host and this told an MCP
+    // caller a different one for the exact same argv. `parseArgs` here (independently, with only
+    // `bind-host` declared) is the reference for "what index.ts's parse would answer" — the two
+    // agreeing on an ad hoc option table is the property under test, not a hardcoded literal.
+    const argv = ['node', 'xezar', 'serve', '--bind-host', '10.0.0.1', '--bind-host', '10.0.0.2'];
+    const { values } = parseArgs({ args: argv, options: { 'bind-host': { type: 'string' } }, allowPositionals: true, strict: false });
+    expect(bindHostFromArgv(argv)).toBe(values['bind-host']);
+    expect(bindHostFromArgv(argv)).toBe('10.0.0.2');
+
+    // Both spellings, repeated.
+    expect(bindHostFromArgv(['node', 'xezar', '--bind-host=10.0.0.1', '--bind-host=10.0.0.2'])).toBe('10.0.0.2');
+    expect(bindHostFromArgv(['node', 'xezar', '--bind-host', '10.0.0.1', '--bind-host=10.0.0.2'])).toBe('10.0.0.2');
+
+    // A repeated flag ending on an empty value still reads as absent, exactly like a single one (#838 item A).
+    expect(bindHostFromArgv(['node', 'xezar', '--bind-host', '10.0.0.1', '--bind-host', ''])).toBeUndefined();
   });
 });
 
