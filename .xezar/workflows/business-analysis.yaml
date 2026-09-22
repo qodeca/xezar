@@ -14,3 +14,4 @@ steps:
     prompt: "{{task}}"
     skill: xezar-business-analysis
     allowedTools: [Read, Grep, Glob, Bash]
+    bashAllowlist: ["git log", "git diff", "git show", "git rev-parse", "git cat-file", "git merge-base", "git status", "git fetch", "git branch --show-current", "git ls-files", "git ls-tree", "git rev-list", "git blame", "gh issue view", "gh pr view", "gh pr diff", "bash .xezar/checks/bootstrap.sh", "bash .xezar/checks/worktree-setup.sh", "bash .xezar/checks/worktree-preflight.sh", "bash .xezar/checks/phase-record.sh", "bash .xezar/checks/security-scan.sh", "bash .xezar/checks/verify-evidence.sh", "node .xezar/checks/catalog-check.mjs", "node .xezar/checks/xezar-contract.test.mjs", pwd, ls, cat, echo, printf, grep, jq, wc, head, tail, find, diff, sha256sum, shasum]
