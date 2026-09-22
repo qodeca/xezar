@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { parse } from 'yaml';
 import { DEFAULT_ALLOWED_TOOLS } from '../workflows/types.ts';
 import {
   claudeBashRules,
   COMMAND_RUNNING_ARGUMENTS,
+  IMPLEMENTED_ARGUMENT_POLICY_PROGRAMS,
   decideReadOnlyCommand,
   isReadOnlyStep,
   matchesBashAllowlistEntry,
@@ -49,6 +52,38 @@ describe('shared read-only lock (#863)', () => {
       expect(row.rule).toMatch(/^command\./);
       expect(Array.isArray(row.argumentShapes)).toBe(true);
       expect(row.reason).toMatch(/\S/);
+    }
+  });
+
+  it('dispatches every argument row by program', () => {
+    expect([...IMPLEMENTED_ARGUMENT_POLICY_PROGRAMS].sort()).toEqual(
+      COMMAND_RUNNING_ARGUMENTS.map((row) => row.program).sort(),
+    );
+  });
+
+  it.each(COMMAND_RUNNING_ARGUMENTS)('applies the $enforcement branch for $program', (row) => {
+    const decision = decideReadOnlyCommand(row.program, [row.program]);
+    if (row.enforcement === 'never-named') {
+      expect(decision).toMatchObject({ allowed: false, rule: 'command.never-named' });
+    } else {
+      expect(decision).toEqual({ allowed: true });
+    }
+  });
+
+  it('audits every command shipped by the five read-only workflow lists', () => {
+    const workflows = ['code-review', 'design-review', 'qa', 'architecture-review', 'business-analysis'];
+    const covered = new Set(COMMAND_RUNNING_ARGUMENTS.map((row) => row.program));
+    for (const workflow of workflows) {
+      const text = readFileSync(new URL(`../../../../.xezar/workflows/${workflow}.yaml`, import.meta.url), 'utf8');
+      const document: unknown = parse(text);
+      expect(document).toBeTypeOf('object');
+      const steps = (document as { steps?: Array<{ bashAllowlist?: unknown }> }).steps ?? [];
+      const entries = steps.flatMap((step) => Array.isArray(step.bashAllowlist) ? step.bashAllowlist : []);
+      for (const entry of entries) {
+        expect(entry).toBeTypeOf('string');
+        const program = String(entry).trim().split(/\s+/, 1)[0] ?? '';
+        expect(covered, `${workflow}: ${String(entry)}`).toContain(program);
+      }
     }
   });
 

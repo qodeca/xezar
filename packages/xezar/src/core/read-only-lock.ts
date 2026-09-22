@@ -24,6 +24,7 @@ export type ReadOnlyCommandDecision = ReadOnlyCommandAllowed | ReadOnlyCommandRe
 
 export interface CommandArgumentPolicy {
   readonly program: string;
+  readonly enforcement: 'checked' | 'argument-safe' | 'never-named';
   readonly rule: string;
   readonly argumentShapes: readonly string[];
   readonly reason: string;
@@ -47,16 +48,20 @@ const FIND_ACTIONS = [
  * program. Matching code below implements the risky rows by their stable rule id.
  */
 export const COMMAND_RUNNING_ARGUMENTS = [
-  { program: 'git', rule: 'command.git-fetch-upload-pack', argumentShapes: ['fetch --upload-pack=<command>', 'fetch --upload-pack <command>', 'fetch --exec[=] <command>', 'fetch -u[=] <command>'], reason: 'git fetch can execute an upload-pack command supplied by an argument' },
-  { program: 'git', rule: 'command.git-config-execution', argumentShapes: ['-c core.sshCommand=', '-c core.pager=', '-c alias.', '-c core.fsmonitor='], reason: 'git configuration arguments can install shell commands, executable aliases, pagers or fsmonitor hooks' },
-  { program: 'git', rule: 'command.git-exec-path', argumentShapes: ['--exec-path=<directory>', '--exec-path <directory>'], reason: 'git --exec-path can select a directory containing executable git subcommands' },
-  { program: 'git', rule: 'command.git-output', argumentShapes: ['diff|show|log --output=<file>', 'diff|show|log --output <file>', 'diff|show|log -o <file>'], reason: 'git diff, show and log can write their output to a file named by an argument' },
-  { program: 'find', rule: 'command.find-action', argumentShapes: [...FIND_ACTIONS], reason: 'find actions can execute another command, delete a path or write a file' },
-  { program: 'rg', rule: 'command.rg-pre', argumentShapes: ['--pre=<command>', '--pre <command>'], reason: 'rg --pre executes a command for every searched file' },
-  { program: 'grep', rule: 'command.grep-reviewed', argumentShapes: [], reason: 'grep has no reviewed argument that executes another command or writes a file' },
-  { program: 'sed', rule: 'command.sed-write', argumentShapes: ['-i[SUFFIX]', '--in-place[=SUFFIX]', 'w <file>', 'W <file>'], reason: 'sed -i and sed w/W commands write files' },
-  { program: 'jq', rule: 'command.jq-reviewed', argumentShapes: [], reason: 'jq has no reviewed argument that executes another command or writes a file' },
-  { program: 'gh', rule: 'command.gh-template-reviewed', argumentShapes: [], reason: 'gh --template evaluates a Go template and does not execute a shell command' },
+  { program: 'git', enforcement: 'checked', rule: 'command.git-reviewed', argumentShapes: ['-c', '--config-env', '--exec-path', 'fetch --upload-pack|--exec', 'diff|show|log --output|-o', 'checkout ... -- <path>'], reason: 'git has reviewed arguments that can execute a command or write a file' },
+  { program: 'find', enforcement: 'checked', rule: 'command.find-action', argumentShapes: [...FIND_ACTIONS], reason: 'find actions can execute another command, delete a path or write a file' },
+  { program: 'rg', enforcement: 'checked', rule: 'command.rg-pre', argumentShapes: ['--pre=<command>', '--pre <command>'], reason: 'rg --pre executes a command for every searched file' },
+  { program: 'npm', enforcement: 'checked', rule: 'command.npm-prefix', argumentShapes: ['--prefix=<directory>', '--prefix <directory>'], reason: 'npm --prefix can select a different project and therefore a different script' },
+  { program: 'bash', enforcement: 'argument-safe', rule: 'command.argument-safe', argumentShapes: [], reason: 'each shipped bash entry fixes the script path before any caller arguments' },
+  { program: 'sed', enforcement: 'never-named', rule: 'command.never-named', argumentShapes: [], reason: 'sed programs can write files or execute commands and cannot be safely classified as shell words' },
+  { program: 'awk', enforcement: 'never-named', rule: 'command.never-named', argumentShapes: [], reason: 'awk programs can execute commands and cannot be safely classified as shell words' },
+  { program: 'grep', enforcement: 'argument-safe', rule: 'command.argument-safe', argumentShapes: [], reason: 'grep has no reviewed argument that executes another command or writes a file' },
+  { program: 'jq', enforcement: 'argument-safe', rule: 'command.argument-safe', argumentShapes: [], reason: 'jq reads its program as data and has no reviewed command-running argument' },
+  { program: 'gh', enforcement: 'argument-safe', rule: 'command.argument-safe', argumentShapes: [], reason: 'the shipped gh entries use API operations and templates without local command execution' },
+  { program: 'node', enforcement: 'argument-safe', rule: 'command.argument-safe', argumentShapes: [], reason: 'each shipped node entry fixes the script path before any caller arguments' },
+  { program: 'sh', enforcement: 'argument-safe', rule: 'command.argument-safe', argumentShapes: [], reason: 'each shipped sh entry fixes the script path before any caller arguments' },
+  { program: 'agent-browser', enforcement: 'argument-safe', rule: 'command.argument-safe', argumentShapes: [], reason: 'the browser harness operates through its own command grammar, not a shell program argument' },
+  ...['pwd', 'ls', 'cat', 'echo', 'printf', 'wc', 'head', 'tail', 'diff', 'sha256sum', 'shasum'].map((program) => ({ program, enforcement: 'argument-safe' as const, rule: 'command.argument-safe', argumentShapes: [], reason: `${program} has no reviewed argument that executes another command` })),
 ] as const satisfies readonly CommandArgumentPolicy[];
 
 const WRAPPER_COMMANDS = new Set([
@@ -147,7 +152,7 @@ export function splitReadOnlyCommand(command: string): SimpleReadOnlyCommand | R
         i++;
         continue;
       }
-      if (char === '`' || (char === '$' && next === '(')) return refuse('syntax.substitution', 'command substitution can run another command');
+      if (char === '`' || char === '$') return refuse('syntax.expansion', 'a word the shell still expands cannot be checked safely');
       text += char;
       continue;
     }
@@ -165,10 +170,17 @@ export function splitReadOnlyCommand(command: string): SimpleReadOnlyCommand | R
       i++;
       continue;
     }
-    if (char === '`' || (char === '$' && next === '(')) return refuse('syntax.substitution', 'command substitution can run another command');
+    if (char === '`' || char === '$' || char === '~' || char === '*' || char === '?' || char === '[' || char === '{' || char === '}') {
+      return refuse('syntax.expansion', 'a word the shell still expands cannot be checked safely');
+    }
     if ((char === '&' && next === '>') || char === '>' || char === '<') return refuse('syntax.redirection', `redirection beginning with "${char}${char === '&' ? '>' : ''}" can read from or write to a path`);
     if (char === ';' || char === '&' || char === '|' || char === '\n') return refuse('syntax.compound', `the shell operator ${JSON.stringify(char)} would run more than one simple command`);
-    if (char === '(' || char === ')' || char === '{' || char === '}') return refuse('syntax.grouping', `the unquoted token "${char}" can group commands or define a function`);
+    if (char === '(' || char === ')') return refuse('syntax.grouping', `the unquoted token "${char}" can group commands or define a function`);
+    if (char === '#' && !started) {
+      const newline = command.indexOf('\n', i + 1);
+      if (newline >= 0 && command.slice(newline + 1).trim() !== '') return refuse('syntax.compound', 'a command after a shell comment would run as another simple command');
+      break;
+    }
     if (/\s/.test(char)) {
       push();
       continue;
@@ -187,40 +199,31 @@ function basename(word: string): string {
   return word.slice(word.lastIndexOf('/') + 1);
 }
 
-function optionValue(words: readonly ReadOnlyShellWord[], index: number, names: readonly string[]): boolean {
-  const word = words[index]?.text;
-  if (word === undefined) return false;
-  return names.some((name) => word === name || word.startsWith(`${name}=`));
+function isLongOptionPrefix(argument: string, option: string): boolean {
+  const name = argument.split('=', 1)[0] ?? '';
+  return name.startsWith('--') && name.length > 2 && option.startsWith(name);
 }
 
 function gitRefusal(words: readonly ReadOnlyShellWord[]): ReadOnlyCommandRefusal | undefined {
   const args = words.slice(1).map((word) => word.text);
   for (let i = 0; i < args.length; i++) {
     const arg = args[i] as string;
-    if (arg === '-c') {
-      const config = args[i + 1] ?? '';
-      if (/^(?:core\.(?:sshCommand|pager|fsmonitor)|alias\.)/i.test(config)) {
-        return refuse('command.git-config-execution', `git -c ${JSON.stringify(config)} can execute a command`);
-      }
-      i++;
-      continue;
+    if (arg === '-c' || (arg.startsWith('-c') && arg.length > 2) || arg === '--config-env' || arg.startsWith('--config-env=')) {
+      return refuse('command.git-config-execution', `${JSON.stringify(arg)} can change Git configuration under a read-only prefix`);
     }
-    if (/^-c(?:core\.(?:sshCommand|pager|fsmonitor)|alias\.)/i.test(arg)) {
-      return refuse('command.git-config-execution', `${JSON.stringify(arg)} can execute a command`);
-    }
-    if (arg === '--exec-path' || arg.startsWith('--exec-path=')) {
+    if (isLongOptionPrefix(arg, '--exec-path')) {
       return refuse('command.git-exec-path', `${JSON.stringify(arg)} can select executable git subcommands`);
     }
   }
 
-  const guardedSubcommands = new Set(['fetch', 'diff', 'show', 'log']);
+  const guardedSubcommands = new Set(['fetch', 'diff', 'show', 'log', 'checkout']);
   const subcommandIndex = args.findIndex((arg) => guardedSubcommands.has(arg));
   const subcommand = subcommandIndex < 0 ? undefined : args[subcommandIndex];
   const tail = subcommandIndex < 0 ? [] : args.slice(subcommandIndex + 1);
   if (subcommand === 'fetch') {
-    for (let i = 0; i < tail.length; i++) {
-      if (optionValue(tail.map((text) => ({ text, raw: text })), i, ['--upload-pack', '--exec', '-u'])) {
-        return refuse('command.git-fetch-upload-pack', `${JSON.stringify(tail[i])} supplies a command for git fetch to execute`);
+    for (const argument of tail) {
+      if (isLongOptionPrefix(argument, '--upload-pack') || isLongOptionPrefix(argument, '--exec')) {
+        return refuse('command.git-fetch-upload-pack', `${JSON.stringify(argument)} supplies a command for git fetch to execute`);
       }
     }
   }
@@ -232,32 +235,52 @@ function gitRefusal(words: readonly ReadOnlyShellWord[]): ReadOnlyCommandRefusal
       }
     }
   }
+  if (subcommand === 'checkout') {
+    const separator = tail.indexOf('--');
+    if (separator >= 0 && separator < tail.length - 1) {
+      return refuse('command.git-checkout-path', 'git checkout with paths writes the working tree');
+    }
+  }
   return undefined;
 }
 
+function findRefusal(words: readonly ReadOnlyShellWord[]): ReadOnlyCommandRefusal | undefined {
+  const action = words.slice(1).map((word) => word.text).find((arg) => FIND_ACTIONS.some((name) => arg === name || arg.startsWith(`${name}=`)));
+  return action ? refuse('command.find-action', `${JSON.stringify(action)} can execute a command, delete a path or write a file`) : undefined;
+}
+
+function rgRefusal(words: readonly ReadOnlyShellWord[]): ReadOnlyCommandRefusal | undefined {
+  const pre = words.slice(1).map((word) => word.text).find((arg) => arg === '--pre' || arg.startsWith('--pre='));
+  return pre ? refuse('command.rg-pre', `${JSON.stringify(pre)} supplies a command for rg to execute`) : undefined;
+}
+
+function npmRefusal(words: readonly ReadOnlyShellWord[]): ReadOnlyCommandRefusal | undefined {
+  const prefix = words.slice(1).map((word) => word.text).find((arg) => arg === '--prefix' || arg.startsWith('--prefix='));
+  return prefix ? refuse('command.npm-prefix', `${JSON.stringify(prefix)} selects a different npm project`) : undefined;
+}
+
+const CHECKED_ARGUMENT_DISPATCHERS = { git: gitRefusal, find: findRefusal, rg: rgRefusal, npm: npmRefusal } as const;
+export const IMPLEMENTED_ARGUMENT_POLICY_PROGRAMS = Object.freeze(COMMAND_RUNNING_ARGUMENTS.map((row) => row.program));
+
 function commandArgumentRefusal(words: readonly ReadOnlyShellWord[]): ReadOnlyCommandRefusal | undefined {
   const program = basename(words[0]?.text ?? '');
-  const args = words.slice(1).map((word) => word.text);
-  if (program === 'git') return gitRefusal(words);
-  if (program === 'find') {
-    const action = args.find((arg) => FIND_ACTIONS.some((name) => arg === name || arg.startsWith(`${name}=`)));
-    if (action) return refuse('command.find-action', `${JSON.stringify(action)} can execute a command, delete a path or write a file`);
-  }
-  if (program === 'rg') {
-    const pre = args.find((arg) => arg === '--pre' || arg.startsWith('--pre='));
-    if (pre) return refuse('command.rg-pre', `${JSON.stringify(pre)} supplies a command for rg to execute`);
-  }
-  if (program === 'sed') {
-    const write = args.find((arg) => /^-(?:[A-Za-z]*i|i.+)$/.test(arg) || arg === '--in-place' || arg.startsWith('--in-place=') || /(?:^|[;}\s])[wW](?:\s|$)/.test(arg));
-    if (write) return refuse('command.sed-write', `${JSON.stringify(write)} makes sed write a file`);
-  }
-  return undefined;
+  const policy = COMMAND_RUNNING_ARGUMENTS.find((row) => row.program === program);
+  if (policy?.enforcement === 'never-named') return refuse('command.never-named', `${program} programs cannot be safely named by a read-only allowlist`);
+  if (policy?.enforcement !== 'checked') return undefined;
+  return CHECKED_ARGUMENT_DISPATCHERS[program as keyof typeof CHECKED_ARGUMENT_DISPATCHERS](words);
 }
 
 /** Decide one shell call under a read-only step's normalized `bashAllowlist`. */
 export function decideReadOnlyCommand(command: string, entries: readonly string[]): ReadOnlyCommandDecision {
   const normalized = normalizeBashAllowlist(entries);
   if (normalized.length === 0) return refuse(ALLOWLIST_RULE, 'the bashAllowlist has no usable entry');
+  const verdictPipe = splitVerdictPacketPipe(command);
+  if (verdictPipe) {
+    const left = decideReadOnlyCommand(verdictPipe.left, normalized);
+    if (!left.allowed) return left;
+    if (!normalized.includes(verdictPipe.right)) return refuse(ALLOWLIST_RULE, 'the verdict-packet writer is not a named allowlist entry');
+    return { allowed: true };
+  }
   const parsed = splitReadOnlyCommand(command);
   if ('allowed' in parsed) return parsed;
   const [programWord] = parsed.words;
@@ -275,4 +298,41 @@ export function decideReadOnlyCommand(command: string, entries: readonly string[
     return refuse(ALLOWLIST_RULE, `${JSON.stringify(parsed.command)} does not match an entry exactly or followed by a literal space`);
   }
   return { allowed: true };
+}
+
+const VERDICT_PACKET_COMMAND = 'bash .xezar/checks/verdict-packet.sh';
+
+/** The sole compound shape retained for pi verdict delivery (#863 review response). */
+function splitVerdictPacketPipe(command: string): { left: string; right: typeof VERDICT_PACKET_COMMAND } | undefined {
+  let quote: "'" | '"' | undefined;
+  let escaped = false;
+  let pipe = -1;
+  for (let i = 0; i < command.length; i++) {
+    const char = command[i] as string;
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === '\\' && quote !== "'") {
+      escaped = true;
+      continue;
+    }
+    if (quote) {
+      if (char === quote) quote = undefined;
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      quote = char;
+      continue;
+    }
+    if (char === '|') {
+      if (pipe >= 0 || command[i - 1] === '|' || command[i + 1] === '|') return undefined;
+      pipe = i;
+    }
+  }
+  if (pipe < 0) return undefined;
+  const left = command.slice(0, pipe).trim();
+  const right = command.slice(pipe + 1).trim();
+  if (left === '' || right !== VERDICT_PACKET_COMMAND) return undefined;
+  return { left, right: VERDICT_PACKET_COMMAND };
 }

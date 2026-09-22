@@ -4,6 +4,8 @@
   read-only signal, command-prefix rule, strict one-command parser and risky-argument table. pi
   applies the whole policy; Claude Code builds its Bash rules from the same entries and now loads
   user settings only on read-only steps, preventing project settings, hooks or skills from
-  re-widening Bash. The five read-only workflows temporarily omit `git fetch`, `git diff`,
+  re-widening Bash. The shared parser also refuses shell-expanded words for every command, rejects
+  unsafe Git/npm argument forms and never permits `sed` or `awk`; pi verdict roles retain one
+  narrowly checked two-part pipe whose right side is the packet writer. The five read-only workflows temporarily omit `git fetch`, `git diff`,
   `git show`, `git log` and `find`, whose risky arguments Claude cannot inspect until its hook
   adapter lands. Writing steps and zero-config defaults are unchanged. (#863)

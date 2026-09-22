@@ -1030,22 +1030,33 @@ empty-list compatibility statements remain in force.
 
 - **Changed (Claude Code)**: a read-only step now receives `--setting-sources user`. Project and
   local `.claude` settings, hooks, skills and commands no longer load for that step, so a project
-  `permissions.allow: ["Bash"]` cannot widen its shell. User settings still load. A workflow that
-  depended on project Claude settings from a read-only step must move that dependency into the
-  step prompt or make the step a writing step by naming `Edit` or `Write`. Writing steps receive no
-  `--setting-sources` flag and retain every prior source.
+  `permissions.allow: ["Bash"]` cannot widen its shell. User settings still load and a user-scope
+  `permissions.allow` (including one under the agent account's `CLAUDE_CONFIG_DIR`) can still
+  widen it. Project `permissions.deny` rules and project `PreToolUse` guard hooks that used to
+  narrow the step are dropped too. Whether project `CLAUDE.md` still loads is not established by
+  the CLI argv and remains a live-Claude QA question. A workflow that depended on project Claude
+  settings from a read-only step must move that dependency into the step prompt or make the step a
+  writing step by naming `Edit` or `Write`. Writing steps receive no `--setting-sources` flag and
+  retain every prior source.
 - **Changed (pi with `bashAllowlist`)**: one shared policy now accepts exactly one simple command.
   It refuses shell composition (`;`, `&&`, `||`, pipes, backgrounding and newlines), every
-  redirection, command substitution, grouping/function syntax, a trailing or line-ending
-  backslash, a leading assignment, and command-running wrappers unless the allowlist names the
-  wrapper itself. This deliberately removes #856's permission for a pipe whose individual parts
-  all matched. Each refusal carries the stable rule that made the decision.
+  redirection, grouping/function syntax, a trailing or line-ending backslash, a leading assignment,
+  and command-running wrappers unless the allowlist names the wrapper itself. It also refuses for
+  every command any unquoted `$`, backtick, `~`, glob or brace character, and any `$` or backtick
+  inside double quotes, under `syntax.expansion`; `$'…'` and `$"…"` words are refused by the same
+  rule. This preserves #856's before-expansion guarantee. The only compound exception is a
+  two-part verdict pipe: the left command must independently match an allowlist entry and the
+  right side must be exactly `bash .xezar/checks/verdict-packet.sh`. Every other pipe remains
+  refused. Each refusal carries the stable rule that made the decision.
 - **Changed (argument-bearing entries)**: `COMMAND_RUNNING_ARGUMENTS` refuses risky forms hidden
-  behind an otherwise allowed prefix: Git command/config hooks and `fetch --upload-pack`, Git
-  `diff`/`show`/`log` output files, `find` actions, `rg --pre`, and sed in-place/`w` writes. Rows for
-  grep, jq and `gh --template` record that the reviewed argument surface does not execute a command
-  or write a file. The five shipped read-only workflows therefore omit `git fetch`, `git diff`,
-  `git show`, `git log` and `find` until Claude has a hook that can apply this table.
+  behind an otherwise allowed prefix: every Git `-c`, `--config-env` and `--exec-path` form,
+  abbreviated `fetch --upload-pack`/`--exec`, Git `diff`/`show`/`log` output files, checkout path
+  mode, `find` actions, `rg --pre` and npm `--prefix`.
+  `sed` and `awk` are `command.never-named`: a read-only allowlist must never name either program,
+  preserving #856's rule that their program languages cannot be made safe with a shell-word regex.
+  Every checked row is reached through one program-keyed dispatcher; each command shipped in the
+  five read-only workflow lists has either such a row or an explicit argument-safe row with a
+  reason. The five lists themselves remain unchanged by this response.
 - **One policy, thin adapters**: `core/read-only-lock.ts` owns the read-only signal, normalized
   entry/prefix rule, simple-command parser and argument table. pi keeps only flag parsing, its
   `tool_call` denial shape and the separate worktree guard. Claude builds `Bash(<entry>:*)` entries
@@ -1083,9 +1094,11 @@ shipped step may run changes, so it is recorded here:
   the entry `find` run `rm`. A command with a backslash that ends the input or a line is refused
   outright, because the shell drops it or joins the next line and `find sub -delete\` would run
   `find sub -delete`. A command the extension cannot split (an unclosed quote or substitution) is
-  refused as well. The `find` row is the only such table row: an entry must never name a program that can run
-  a command or write a file from an argument (`sed`, `awk`, `sort -o`, `dd`, `tee`, an
-  interpreter). A
+  refused as well. The shared #863 successor applies the before-expansion refusal to every command,
+  not only a tabled program. An entry must never name a program whose argument language can run a
+  command or write a file without a closed checker; `sed` and `awk` are explicitly never-name
+  programs, preserving this #856 guarantee (`sort -o`, `dd`, `tee` and interpreters remain examples
+  a workflow must audit before naming). A
   step that relied on "bash is dropped" now gets this restricted `bash`; a workflow that wants no
   shell on pi drops `Bash` from `allowedTools`, which works the same on every backend.
 - **Changed (pi, empty list)**: `bashAllowlist: []` used to leave pi's argv unchanged – an

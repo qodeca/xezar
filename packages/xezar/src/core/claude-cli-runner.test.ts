@@ -134,6 +134,17 @@ describe('buildClaudeArgs read-only steps (#849)', () => {
     expect(buildClaudeArgs(base, {})).not.toContain('--setting-sources');
   });
 
+  it('keeps setting-source narrowing on resume only for a read-only step', () => {
+    const sessionId = '5f701b42-382a-4a6e-b831-0ab9e56eff58';
+    const readOnly = buildClaudeArgs({ ...base, sessionId, resume: true, allowedTools: ['Read', 'Bash'] }, {});
+    expect(readOnly.slice(readOnly.indexOf('--resume'), readOnly.indexOf('--resume') + 2)).toEqual(['--resume', sessionId]);
+    expect(readOnly).toContain('--setting-sources');
+
+    const writing = buildClaudeArgs({ ...base, sessionId, resume: true, allowedTools: ['Read', 'Edit'] }, {});
+    expect(writing.slice(writing.indexOf('--resume'), writing.indexOf('--resume') + 2)).toEqual(['--resume', sessionId]);
+    expect(writing).not.toContain('--setting-sources');
+  });
+
   it('turns a bashAllowlist into Bash(<prefix>:*) entries only, with no plain Bash', () => {
     const args = buildClaudeArgs(
       { ...base, allowedTools: ['Read', 'Grep', 'Glob', 'Bash'], bashAllowlist: ['git', ' gh ', ''] },

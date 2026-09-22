@@ -56,9 +56,10 @@
  * `core/read-only-lock.ts` (#863). pi has no native command-prefix rule or denial transport, so
  * this adapter keeps only the flag registration/parsing and pi's `{ block, reason }` response.
  * The shared policy accepts one simple command matching an entry and refuses shell composition,
- * redirection, substitution, grouping/functions, leading assignments, trailing backslashes,
- * unnamed command-running wrappers and the audited risky argument forms. The separate worktree
- * check above remains pi-specific because it validates pi tool paths and roots, not command policy.
+ * expansion, redirection, grouping/functions, leading assignments, trailing backslashes, unnamed
+ * command-running wrappers and the audited risky argument forms. Its sole compound exception is
+ * the verdict roles' two-part pipe into the exact packet writer. The separate worktree check above
+ * remains pi-specific because it validates pi tool paths and roots, not command policy.
  *
  * Xezar passes the flag whenever it loads this extension: `null` for a step without a
  * `bashAllowlist`, which keeps an unrestricted `bash`, and the list otherwise. `[]` (and a list of
