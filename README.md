@@ -34,6 +34,12 @@ That is the whole setup. If your `claude` CLI is logged in and `gh` is authentic
 else to configure. Runtime lives in `.local/xezar/` inside your repo – plain JSON, NDJSON and Markdown
 you can `cat` and fix by hand.
 
+Xezar and [xezar-skills](https://github.com/qodeca/xezar-skills) are two halves of one solution: xezar
+is the engine and cockpit, and xezar-skills is the skill collection it loads by default. Its
+`xez-onboard-opinionated` skill sets up a whole project around xezar – workflows, role skills, gates,
+labels, branch protection and a Claude Code leader – from a
+[one-prompt bootstrap](https://github.com/qodeca/xezar-skills/blob/main/docs/bootstrap-prompt.md).
+
 ## 60-second tour
 
 <a href="docs/screenshots/0.16.0/tour.gif"><img src="docs/screenshots/0.16.0/tour.gif" width="100%" alt="A short loop of the cockpit: tasks running in parallel, the queue starting, a live thread, review and a draft PR"></a>
