@@ -174,7 +174,7 @@ Runs the command holding one of this computer's gate slots, so several checkouts
 
 Put the command after `--`; everything there is passed through verbatim and run without a shell. The exit code is the command's own, and a command killed by a signal reads as killed rather than as exit 0. Standard error carries what happened to the lease: a notice while it waits, then which slot it took and how long it waited for it.
 
-It is deliberately fail-open, because a lock that cannot be taken must never become a reason not to check anything. Either way the line says so, in capitals, and the command runs unleased:
+It is deliberately fail-open, because a lock that cannot be taken must never become a reason not to check anything. Either way standard error carries one line saying it is running anyway, unleased, and the command runs without a slot:
 
 - After **20 minutes** of waiting with every slot still busy, it gives up the queueing and runs anyway.
 - A slot directory it cannot create or write does the same, naming the underlying reason.
