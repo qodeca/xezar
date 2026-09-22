@@ -126,6 +126,11 @@ This history lives in `<project>/.local/xezar/onboarding-state.json`. It is disp
 
 A project leader sees the same state through the MCP and can start the same setup or re-check task; see [MCP project leader](13-mcp-leader.md).
 
+For a fuller, opinionated setup on a clean GitHub project with a Claude Code leader – workflows,
+role skills, gates, labels and branch protection – xezar-skills' `xez-onboard-opinionated` skill
+does the same job end to end; see
+its [one-prompt bootstrap](https://github.com/qodeca/xezar-skills/blob/main/docs/bootstrap-prompt.md).
+
 ## To upgrade
 
 Stop the running cockpit before starting the new version. For a global installation:

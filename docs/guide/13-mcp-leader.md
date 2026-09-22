@@ -71,6 +71,12 @@ claude --dangerously-load-development-channels server:xezar
 
 Claude Code shows the development-channel warning on every launch. Accept it only when you intend to let xezar inject project events into this session. If `status` reports `claude-code-channel-not-advertised`, run `/mcp`, reconnect `xezar`, then attach again; restarting Claude Code while the cockpit is running does the same. Without the flag, read the journal instead of expecting a push.
 
+In a project set up by xezar-skills' `xez-onboard-opinionated` skill, start the leader with the
+launcher that kit installs at the project root, `scripts/xezar-leader.sh`, or by hand with
+`XEZAR_LEADER=1 claude --dangerously-load-development-channels server:xezar`. `XEZAR_LEADER` is that
+kit's own variable, not xezar's: its session-start hook loads the leader guide only when
+`XEZAR_LEADER=1` is set, so every other Claude Code session in the project stays ordinary.
+
 **First contact.** Call `health`, then `discover_project`. Call `leader_events` with action `attach` and a fresh operation ID, then action `status`. Check `self.attached`, `canPush` and any blocker; this is **attached**, not yet **delivery verified**.
 
 **What a push looks like.** A real event appears in the session as a `<channel source="xezar" …>` message. It identifies xezar as the source, distinguishes the event from user instruction or approval, and names the cursor to acknowledge. This is the delivery evidence; after accounting for it, call `leader_events` action `ack` with that cursor and a fresh operation ID.
@@ -342,6 +348,11 @@ too. Make the script print nothing unless it is the leader's own session: detect
 the environment xezar sets, from the working copy's git directory differing from the common git
 directory, or from a path under the worktree folder, and stay silent in all of them. Silence is the
 safe default; the guard is what makes committing the hook safe.
+
+xezar-skills' own onboarding kit goes one step further: its guard also requires a positive opt-in, a
+`XEZAR_LEADER=1` variable set by the launcher it installs (or by hand), so only the session actually started
+as the leader loads the guide rather than every session that merely sits outside a task worktree – a
+pattern worth copying for a hook of your own.
 
 **When the client has no hook.** Codex and pi do not run a session-start command. Start the guide
 with a short first section addressed to those sessions: read this guide and the live note
