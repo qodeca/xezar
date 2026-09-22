@@ -1,3 +1,167 @@
+# 0.18.0 (2026-09-22)
+
+## Highlights
+
+First-time project setup is this release: `xezar init`'s generated `fix-and-verify` workflow now ends
+with a `report` agent step, so a run stays interactive when the project has a check — and the
+generated file's fingerprint moved, so a tool that pins it by hash needs the new one. The one-time
+import of your machine-wide agent accounts can be answered with a flag, run later with `xezar
+accounts import-global`, and is remembered per project, and `init` no longer names an unscoped `npx
+xezar`. Settings → Agent accounts shows every agent, the login in use, saved choices that name a
+missing account and the import state, and a project leader reads and acts on the same facts through
+the MCP (`get_account`, `discover_project`, `list_models`, `import_global_accounts`), where every
+refusal now names the next step. The MCP bridge follows a folder's state layout on each session
+open, so a client started before `xezar --single-project` needs no `/mcp` reconnect, and a C1
+control character in an account folder is now refused rather than written to a terminal.
+
+## 🔒 Security
+
+- 🔒 **`xezar init` now names the package npm can actually resolve.** Its closing line said
+  `npx xezar`, an unscoped name nobody publishes — so anyone could publish it and a person following
+  our own instruction would run their code. Every line now names `npx @qodeca/xezar`, and `init`
+  also says that it does not copy your agent accounts and which command does. (#819, #825, #823)
+
+## ✨ Features
+
+- ✨ **Answer the one-time import of your global setup with a flag, or run it later with a
+  command.** `--import-global` and `--no-import-global` answer the first-run question without being
+  asked, so a script, a CI job or an IDE task can answer it too — nothing is read from standard
+  input, and giving both refuses the start before anything is read or written. `xezar accounts
+  import-global` copies your agent accounts into a project that already owns its setup: it merges
+  accounts only, never replaces one the project already has, never writes a default account that
+  names no account, and adds nothing on a second run. A default naming no account is skipped and
+  named on the first-run `--import-global` flag too, so both doors give the same guarantee. What
+  this machine decided is remembered in the
+  ignored `<project>/.local/xezar/machine-state.json`, so "declined", "nobody was asked" and
+  "imported" are no longer the same state on disk. Without a flag the prompt is exactly what it was.
+  (#819, #824, #823)
+- ✨ **A project leader can ask which models each agent tool can run.** The MCP `project_config`
+  tool gained the read `list_models` (optionally narrowed with `provider`): one row per tool with
+  every model id exactly as that tool's own `--model` flag takes it, whether the list could be read
+  and, when it could not, why. It reads the same list the composer's model picker offers, and
+  `get_capabilities` is unchanged. Model options on `GET /api/v1/models` may now also say `local`
+  and `vision`, but only where the tool's own data proves it – from Codex's input modalities and
+  pi's configuration; a missing value means unknown, never "no". (#819, #829)
+- ✨ **Every MCP refusal now says what to do instead.** A `project_config` action a leader may not
+  take – connecting a provider, opening an account folder or the project in a desktop application,
+  adding, cloning or removing a project, reading a home file – answers on the first call with
+  `Next step: …` (and `nextStep` in the answer): a tool call the leader can make, or a command or a
+  cockpit page to give the person. `discover_project` carries the cockpit's address as `cockpit`
+  (the project page plus the providers, agent accounts and MCP connection pages) and the `health`
+  tool as `cockpitUrl` – the running cockpit's real address, left out when it is not known, such as
+  in hosted mode. `GET /api/v1/health` is unchanged. Starting a task on an agent that is disabled
+  or not signed in names the fix the same way: `project_config set_provider_enabled` for a disabled
+  one, `xez providers connect <provider>` for one that is not signed in, and the install command for
+  one that is not installed. (#819, #833)
+- ✨ **`xezar providers connect <provider> [--account <id>]` signs an agent tool in from the
+  terminal.** It opens a login terminal on the machine that runs xezar, the same sequence as
+  **Connect** in the cockpit's Providers settings, and needs no running cockpit. It refuses in
+  hosted mode before it reads or opens anything, and names the agent's own login command to run on
+  the machine where it runs tasks. (#819, #833)
+- ✨ **Settings → Agent accounts shows every agent at once, which login each one uses, and any saved
+  choice that points at a missing account.** The four agents are stacked instead of tabbed, each
+  with a one-line heading (installed, version, how many logins). The login tasks run under is marked
+  "In use" in words ("Default" in the global layout, where it is the machine-wide choice); the
+  server decides which one, the same way a run does, through a new additive `selected` flag on
+  `GET /api/v1/workspace/agent-profiles`. The login each agent finds by itself is now called
+  "Built-in login" instead of "Default" / "discovered", in the pane and in the Defaults picker. A
+  saved default or project choice that names an account the list does not have is shown at the top
+  of the pane and in its agent's group, with what tasks do instead and a one-click "Use the built-in
+  login" fix. An account name that looks like an e-mail address is shown as "Name hidden" until you
+  press Show details. In single-project mode the pane also says whether the accounts of your
+  personal xezar setup were copied into the project and how many could still be — a count, never
+  their names — with a "Copy {n} accounts" button that runs the same merge as
+  `xezar accounts import-global`; it is refused in hosted mode. A project leader can run the same
+  copy through MCP with `project_config` action `import_global_accounts` (it needs only an
+  `operationId`), and `get_account` now reports the same import state. (#819, #831)
+- ✨ **A project leader can read every agent account, the one in use, and any saved account choice
+  that points at a missing account, through MCP.** `project_config` action `get_account` adds
+  `profiles` – every account per agent, the built-in login marked `builtIn: true` and exactly one
+  marked `selected: true`, the one this project's tasks run under – and `problems`, each stored
+  choice that names no account with its raw handle and a one-line `fix`. The existing `accounts`
+  list keeps its shape (one row per agent) and gains only `builtIn`; a saved choice that names no
+  account now reads as the built-in login, which is what tasks really use, instead of the missing
+  name. `discover_project` adds `onboarding.globalImport` (`state` done, declined or unknown, and
+  `importable`, a count) in single-project mode – the same values the Agent accounts pane shows. No
+  answer carries a label that looks like an e-mail address or an account's folder. (#819, #832)
+
+## 🐛 Fixes
+
+- 🐛 **The example workflow `xezar init` writes now ends with an agent step, so the run stays
+  interactive.** When the project already has a check, the generated `fix-and-verify` workflow ended
+  with its `verify` command step. The engine keeps a run interactive only when its last agent step
+  is also its last step, so XEZ:ASK and XEZ:DONE were silenced for the whole run and a task could
+  never report a result or ask a question. The example now appends a `report` agent step after
+  `verify` — it summarises what changed, states the check's result and what it did not cover, and
+  asks whether anything is still unclear. The `implement` step and the `verify` → `implement` retry
+  loop are unchanged, and the branch with no discovered check was already correct. The generated
+  file's bytes changed, so its content fingerprint moved — a tool that pins `fix-and-verify.yaml`
+  by hash needs the new one, and there are now three such fingerprints alive across releases (the
+  no-check branch, the with-check branch before this change, and this one). (#819, #820)
+- 🐛 **Deleting an agent account no longer leaves a dangling machine-wide default.**
+  `DELETE /api/v1/workspace/agent-profiles/:id` scrubbed every project's `selections` but walked
+  past `defaults`, so removing the account a provider defaulted to left `defaults.<provider>`
+  naming an account that no longer existed — served back by the listing forever after, and
+  silently ignored by every run. The scrub now clears that reference in the same atomic write.
+  (#819, #822)
+- 🐛 **A stored account reference that names no account is now reported instead of only ignored.**
+  `GET /api/v1/workspace/agent-profiles` answers a new `problems` array naming every dangling
+  `defaults.<provider>` and every project selection whose account is gone, with the provider and
+  the handle as stored. It is a report, never a rule: run resolution still falls back to the
+  discovered account, so zero-config behaviour is unchanged. (#819, #822)
+- 🐛 **A terminal command never carries a C1 control character.** An agent account folder holding
+  one – such as U+009B, which a terminal reads as an escape sequence – is now refused like any other
+  control character, so `xezar providers connect`, **Connect** and every other command xezar hands
+  to a terminal answer with a refusal instead of writing that character to the terminal. This is a
+  deliberate fail-closed tightening, not a regression. (#819, #833)
+- 🐛 **An MCP client session started before the cockpit no longer needs a `/mcp` reconnect.**
+  `xezar mcp` now re-resolves its folder's state layout each time it opens a session, so a bridge
+  started before `xezar --single-project` created the folder's `.xezar/workspace.json` reaches that
+  cockpit on its next call instead of answering "not a xezar project yet" until it is restarted.
+  An explicit global layout still wins, and the socket is still found from the bridge's own
+  folder. (#819, #821)
+
+## 🔧 Changed
+
+- 🔧 **`set_provider_enabled` says where it wrote.** Its answer adds `scope` – `machine`, or
+  `project` when the project keeps its own setup (single-project mode) and the switch is saved in the
+  project's own settings file – and `live: true`. Its argument descriptions no longer call the switch
+  machine-wide in every layout. (#819, #833)
+- 🔧 **An MCP refusal now outranks an unknown argument, and an argument error says what the action
+  takes.** A `project_config` action that is always refused (connecting a provider, the project
+  registry, applying skill updates, …) answers its refusal even when the call also carries a key the
+  tool does not know, instead of `Unrecognized key` – the refusal still dispatches nothing, never
+  offers an approval route and never echoes an argument. An unknown key on any other call now also
+  reports what the call was missing (`set_provider_enabled needs provider`) and ends with
+  `Accepted for <action>: … (required); … (optional).`, read from the tool's own argument table.
+  `leader_events` `status` and `read` accept an `operationId` and ignore it rather than refusing
+  it; they still file no receipt. `set_provider_enabled`'s `provider` and `enabled` arguments exist
+  from 0.17.0; on 0.16.0 the action was refused and had neither argument. (#819, #826)
+
+## 📝 Specs & Documentation
+
+- 📝 **The three browser checks #549 left NOT PERFORMED are re-attempted, with the root cause of
+  each now recorded.** `docs/testing/browser-manual-checks.md` keeps the bookmarklet (guide 07),
+  the notification delivery (guide 08) and the pi MCP approval (guide 13) as NOT PERFORMED, and
+  says why a headless `agent-browser` run cannot complete them: a fresh harness session carries
+  none of the owner's github.com sign-in, `Notification.permission` on the dev cockpit origin is
+  read from that same session, and a machine-wide pi extension denies every MCP approval request
+  when no interactive UI is attached. Every other row in the table is unchanged, and closing #549
+  needs a harness change or the owner running those three checks directly. (#816)
+- 📝 **A design for the Agent accounts pane that shows what onboarding needs.** A static mockup and
+  developer handoff in `designs/agent-accounts-onboarding/`: every account of all four agents on one
+  screen, the login tasks use marked "In use", the built-in login named as such, a saved choice that
+  names a missing account shown with its fix, and the import state with a person-only "Copy N
+  accounts" action that is absent in hosted mode. Design only – no cockpit change. (#819, #827)
+- 📝 **The 2026-09-21 leader lessons 17–20 are committed.** Every agent turn in every step now ends
+  with `XEZ:DONE` as its very last line, and a bug-fix brief forbids background proofs outright –
+  both are rows in `.xezar/docs/model-routing.md` § 6. The leader rules – dispatch the Claude review
+  of the changelog pull request at once, and refresh a pull request onto the fixed `main` instead of
+  re-running an unfixed flaky case – are in `.xezar/docs/leader-guide.md`. The incidents, run ids and
+  the 0.17.0 release record are a new dated entry in `model-routing.md` § 13. (#818)
+
+---
+
 # 0.17.0 (2026-09-21)
 
 ## Highlights
