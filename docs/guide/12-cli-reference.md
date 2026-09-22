@@ -202,6 +202,23 @@ With `XEZ_SINGLE_PROJECT=1`, listing is limited to the launch project and add/re
 
 Configure your agent to launch `xezar mcp` (or `npx -y @qodeca/xezar mcp`) in the project whose cockpit is already running. It is a stdio MCP bridge, not an interactive terminal command. It starts no cockpit server, opens no HTTP port, does not register projects and has no port setting: it finds the running cockpit through the project folder, whatever port that cockpit uses. Its standard output carries only MCP messages, whatever the output and colour settings say. Its tools are listed in the [MCP API reference](../features/mcp-server/mcp-api.md); setting up and attaching a leader is described in [MCP project leader](13-mcp-leader.md). The cockpit's terminal prints `mcp · ready` once the project's MCP service listens.
 
+## To list the names of the working-state folder: `state-names`
+
+```sh
+xezar state-names          # a listing to read
+xezar state-names --json   # the published form, for a program
+```
+
+xezar keeps a project's working files in `.local/xezar/`. This command says which names it may write at the **top level** of that folder — each name, whether it is a file or a directory, and whether it appears only when something is switched on (the follow-up inbox, automations, the pi backend, single-project mode) or may appear with nothing switched on at all.
+
+It exists for a check of your own. Projects that guard what appears in that folder used to keep a copy of the list by hand, and a copy goes stale the moment xezar adds a name. Reading it from the version you have installed keeps the two in step.
+
+- **`--json`** prints the published form: a schema version, the scope, the names with their kind and reason, the suffixes a name may carry (`.tmp`, `.lock`, `.takeover`, `.lock.takeover`, and the `.<pid>.<hex>.tmp` shape of a file being written), and the numbered rotations of the audit trail. There is no regular expression anywhere in it, so a shell script can match with ordinary patterns. Its **bytes are fixed**: see [backward compatibility](../../BACKWARD_COMPATIBILITY.md#1-cli-commands-flags-and-exit-codes-packagesxezarsrcindexts).
+- **Without `--json`** it prints a table for a person to read. That table is not a contract and its layout may change — parse the JSON instead.
+- It reads no project and writes nothing, so it works in any folder, inside a repository or not, and in either layout.
+- A global option before it, such as `xezar --repo <dir> state-names --json`, changes nothing: the listing names no project, so the answer is the same and still nothing is read or written. Standard output carries the listing and nothing else — no start-up line shares it.
+- Exit code 0 when it printed; 2 for a usage error (an unknown option, an extra word), with the usage line on standard error.
+
 ## To install, deploy or remove a hosted instance
 
 | Command | Purpose |
@@ -230,6 +247,7 @@ Use the [server-install guide](../server-install/README.md) for prerequisites an
 | `--import-global` | Every command, single-project layout: answer the first-run import question with yes, without being asked. Nothing is read from standard input. On a folder that is already set up it imports nothing and is quiet, so a bootstrap may pass it on every start. In the global layout it prints one line. |
 | `--no-import-global` | Every command: answer the same question with no. Giving both flags refuses the start with exit code 1, before anything is read or written. |
 | `--global-layout` | Every command: resolve the global layout for this launch, even in a folder that carries `.xezar/workspace.json`. The explicit counterpart of `--single-project`, and it outranks the marker; nothing is moved, renamed or written. `XEZ_GLOBAL_LAYOUT=1` says the same. See [above](#to-ask-for-the-global-layout---global-layout). |
+| `--json` | `state-names` only, and not a global flag: print the published form instead of the table for reading. See [above](#to-list-the-names-of-the-working-state-folder-state-names). |
 | `--status-file <path>` | `lease gates`: write one JSON line recording whether the slot was held, the outcome, which slot and how long it waited. A path that cannot be written is ignored. See [above](#to-stop-check-runs-competing-lease-gates). |
 | `--platform <id>` | Server commands: `ubuntu-vps` or `macosx-ngrok`. Required for install; optional for deploy/uninstall only when saved instance state supplies it. |
 | `--domain <host>` | `ubuntu-vps` server commands only: select the domain's instance; install can create a second independent one. |

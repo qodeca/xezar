@@ -131,6 +131,11 @@ Usage:
                             resources.gateSlots (default 1). Bounded: after 20
                             minutes of waiting, or if the slot folder cannot be
                             written, it says so and runs <cmd> anyway.
+  xezar state-names [--json]
+                            list the names this engine writes at the top of the
+                            project's working-state folder. With --json, the
+                            published form a project's own checks can read
+                            instead of keeping their own copy of the list
   xezar server-install      interactive wizard to host xezar on a server
   xezar server-deploy       redeploy a new version (reload the service) + verify
   xezar server-uninstall    reverse a server-install
@@ -207,65 +212,120 @@ Skills live in .ai/skills/, .xezar/skills/ and your team skills repo
 (default qodeca/xezar-skills; override via .xezar/config.json);
 workflows in .xezar/workflows/.`;
 
+/**
+ * The program's global options, shared by the one strict parse in `main` and by
+ * `stateNamesTail`, which must agree with it on which flags take a value.
+ */
+const GLOBAL_OPTIONS = {
+  // No `default` any more (#467): the fallback is no longer a constant but a
+  // precedence chain that needs the registry, so "the flag was not given" has to
+  // stay observable here. That also retires the argv sniff below.
+  port: { type: 'string', short: 'p' },
+  output: { type: 'string' },
+  color: { type: 'string' },
+  'log-level': { type: 'string' },
+  quiet: { type: 'boolean', short: 'q', default: false },
+  // Registered globally, like `--single-project`, because `parseArgs` is strict: a
+  // subcommand that does not use the setting — `xez mcp` — must still ACCEPT the flag
+  // rather than die on an unknown option (#467, spec § 3.3). PR 1 only resolves the
+  // value; nothing reads it yet, and the help text lands with the behaviour in PR 2.
+  instance: { type: 'string' },
+  repo: { type: 'string' },
+  // `xezar lease gates --status-file <path>` (#672). Registered globally for the same reason
+  // `instance` is: `parseArgs` is strict, so a flag only one subcommand uses must still be
+  // declared here or every other subcommand dies on it as an unknown option. Only
+  // `leaseCommand` reads it.
+  'status-file': { type: 'string' },
+  // `xezar providers connect <provider> --account <id>` (#819 item 8). Global for the same
+  // reason as `status-file`; only `runProvidersCommand` reads it.
+  account: { type: 'string' },
+  workflow: { type: 'string' },
+  model: { type: 'string' },
+  'no-open': { type: 'boolean', default: false },
+  platform: { type: 'string' },
+  domain: { type: 'string' },
+  // Shared with `cockpit-address.ts`'s independent `bindHostFromArgv` scan (#838 item H
+  // finding 2) so a `short:`/`multiple:` added here cannot silently diverge from that reader.
+  'bind-host': BIND_HOST_OPTION,
+  'external-proxy': { type: 'boolean', default: false },
+  yes: { type: 'boolean', default: false },
+  reconfigure: { type: 'string' },
+  reinstall: { type: 'boolean', default: false },
+  // Registered so `parseArgs` accepts and documents it; the VALUE is read
+  // from argv by `resolveStateLayout`, which owns the detection rule and
+  // stays a pure function of `(cwd, argv, env)` so it can be tested
+  // without a process. One source of truth for what the flag means, and
+  // this entry is only what keeps `xez --single-project` from being an
+  // unknown option.
+  'single-project': { type: 'boolean', default: false },
+  // The two answers to the first-run import question (#819 item 1a), registered globally for
+  // the same `parseArgs`-is-strict reason as the flags around them. Node has no notion of a
+  // negated boolean, so `--no-import-global` is its OWN option rather than the negation of the
+  // one above — which is also what lets both being given be refused instead of last-wins.
+  'import-global': { type: 'boolean', default: false },
+  'no-import-global': { type: 'boolean', default: false },
+  // The same arrangement for the flag that answers "global" (#657). The
+  // value is read from argv by `resolveStateLayout`, which owns the
+  // detection rule and stays a pure function of `(cwd, argv, env)`; this
+  // entry is only what keeps `xez --global-layout` from being an unknown
+  // option under `parseArgs`' strict default.
+  'global-layout': { type: 'boolean', default: false },
+  help: { type: 'boolean', short: 'h', default: false },
+  version: { type: 'boolean', short: 'v', default: false },
+} as const;
+
+/**
+ * The argument tail of a `state-names` launch, or `null` when this launch is not one (#852).
+ *
+ * The command is the first POSITIONAL word, not the first argument: `xezar --repo <dir>
+ * state-names --json` names it exactly as `xezar state-names --json` does, and an earlier version
+ * that looked only at `argv[0]` let that spelling fall through the whole boot — the mode line on
+ * stdout, the first-run import and `createProjectStateFiles` writing a single-project folder's
+ * state — before refusing (PR #858 review, F1). A lenient pass over the program's own option table
+ * finds that word, so a flag's value is never mistaken for it and the command's own `--json`
+ * after it is not an error here. The flags before it are then parsed strictly: a typo there is
+ * left to the ordinary parser, which refuses it with its usual message, and `--help` or
+ * `--version` keep their meaning. Every other global flag is accepted and changes nothing, because
+ * the listing is the engine's own and names no project.
+ */
+function stateNamesTail(argv: readonly string[]): string[] | null {
+  const { tokens } = parseArgs({
+    args: [...argv],
+    options: GLOBAL_OPTIONS,
+    allowPositionals: true,
+    strict: false,
+    tokens: true,
+  });
+  const word = tokens.find((token) => token.kind === 'positional');
+  if (word === undefined || word.value !== 'state-names') return null;
+  try {
+    const { values, positionals } = parseArgs({
+      args: argv.slice(0, word.index),
+      options: GLOBAL_OPTIONS,
+      allowPositionals: true,
+    });
+    if (positionals.length > 0 || values.help || values.version) return null;
+  } catch {
+    return null;
+  }
+  return argv.slice(word.index + 1);
+}
+
 async function main(): Promise<void> {
+  // `state-names` (#852) is answered before the shared parser runs, and that is the command rather
+  // than an optimisation. Its standard output is a CONTRACT a caller pipes into a JSON parser, so
+  // no mode line, no first-run notice and no repository lookup may reach that stream, and no state
+  // file may be written; and it owns its `--json` flag, so no other subcommand has to accept a
+  // flag it never uses and an unknown option here gets this command's own usage.
+  const stateNamesArgs = stateNamesTail(process.argv.slice(2));
+  if (stateNamesArgs !== null) {
+    const { runStateNamesCommand } = await import('./state-names-cli.ts');
+    process.exitCode = runStateNamesCommand(stateNamesArgs);
+    return;
+  }
+
   const { values, positionals } = parseArgs({
-    options: {
-      // No `default` any more (#467): the fallback is no longer a constant but a
-      // precedence chain that needs the registry, so "the flag was not given" has to
-      // stay observable here. That also retires the argv sniff below.
-      port: { type: 'string', short: 'p' },
-      output: { type: 'string' },
-      color: { type: 'string' },
-      'log-level': { type: 'string' },
-      quiet: { type: 'boolean', short: 'q', default: false },
-      // Registered globally, like `--single-project`, because `parseArgs` is strict: a
-      // subcommand that does not use the setting — `xez mcp` — must still ACCEPT the flag
-      // rather than die on an unknown option (#467, spec § 3.3). PR 1 only resolves the
-      // value; nothing reads it yet, and the help text lands with the behaviour in PR 2.
-      instance: { type: 'string' },
-      repo: { type: 'string' },
-      // `xezar lease gates --status-file <path>` (#672). Registered globally for the same reason
-      // `instance` is: `parseArgs` is strict, so a flag only one subcommand uses must still be
-      // declared here or every other subcommand dies on it as an unknown option. Only
-      // `leaseCommand` reads it.
-      'status-file': { type: 'string' },
-      // `xezar providers connect <provider> --account <id>` (#819 item 8). Global for the same
-      // reason as `status-file`; only `runProvidersCommand` reads it.
-      account: { type: 'string' },
-      workflow: { type: 'string' },
-      model: { type: 'string' },
-      'no-open': { type: 'boolean', default: false },
-      platform: { type: 'string' },
-      domain: { type: 'string' },
-      // Shared with `cockpit-address.ts`'s independent `bindHostFromArgv` scan (#838 item H
-      // finding 2) so a `short:`/`multiple:` added here cannot silently diverge from that reader.
-      'bind-host': BIND_HOST_OPTION,
-      'external-proxy': { type: 'boolean', default: false },
-      yes: { type: 'boolean', default: false },
-      reconfigure: { type: 'string' },
-      reinstall: { type: 'boolean', default: false },
-      // Registered so `parseArgs` accepts and documents it; the VALUE is read
-      // from argv by `resolveStateLayout`, which owns the detection rule and
-      // stays a pure function of `(cwd, argv, env)` so it can be tested
-      // without a process. One source of truth for what the flag means, and
-      // this entry is only what keeps `xez --single-project` from being an
-      // unknown option.
-      'single-project': { type: 'boolean', default: false },
-      // The two answers to the first-run import question (#819 item 1a), registered globally for
-      // the same `parseArgs`-is-strict reason as the flags around them. Node has no notion of a
-      // negated boolean, so `--no-import-global` is its OWN option rather than the negation of the
-      // one above — which is also what lets both being given be refused instead of last-wins.
-      'import-global': { type: 'boolean', default: false },
-      'no-import-global': { type: 'boolean', default: false },
-      // The same arrangement for the flag that answers "global" (#657). The
-      // value is read from argv by `resolveStateLayout`, which owns the
-      // detection rule and stays a pure function of `(cwd, argv, env)`; this
-      // entry is only what keeps `xez --global-layout` from being an unknown
-      // option under `parseArgs`' strict default.
-      'global-layout': { type: 'boolean', default: false },
-      help: { type: 'boolean', short: 'h', default: false },
-      version: { type: 'boolean', short: 'v', default: false },
-    },
+    options: GLOBAL_OPTIONS,
     allowPositionals: true,
   });
 

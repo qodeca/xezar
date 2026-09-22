@@ -97,6 +97,48 @@ test('the release tarball installs and runs the dry-run CLI workflow', { timeout
     assert.match(help.stdout, /xezar — local cockpit/);
     assert.match(help.stdout, /xezar run "<task>"/);
 
+    // `state-names --json` (#852) is read by a consumer's own check from an INSTALLED copy, so the
+    // tarball is where it has to be proven. The fixture that pins those bytes is test material and
+    // is deliberately not packed, which is also why the command generates them from the module: a
+    // version that read the file would answer nothing here.
+    assert.equal(
+      packagedPaths.has('dist/__fixtures__/local-xezar-top-level-names.expected.json'),
+      false,
+      'the fixture pinning the state-names bytes is test material and must not ship',
+    );
+    const stateNames = await execFile(process.execPath, [cliPath, 'state-names', '--json'], {
+      cwd: consumerDir,
+      maxBuffer: 10 * 1024 * 1024,
+    });
+    assert.equal(stateNames.stderr, '', 'state-names must leave stdout to the payload alone');
+    assert.equal(
+      stateNames.stdout,
+      await readFile(join(repoRoot, 'src/__fixtures__/local-xezar-top-level-names.expected.json'), 'utf8'),
+      'the installed CLI prints the published name list byte-for-byte',
+    );
+
+    // The same bytes behind a global flag, in the one folder shape where the ordinary boot WRITES:
+    // a git repository launched with `--single-project` (PR #858 review F1). An earlier build ran
+    // that boot before refusing, printing the mode line and creating `.xezar/` and `.local/xezar/`
+    // here; the empty tree diff is what makes "writes no file, in any layout" a tested claim.
+    const singleProject = join(root, 'state-names-single-project');
+    await mkdir(singleProject);
+    await execFile('git', ['init', '-q'], { cwd: singleProject });
+    const treeOf = async (dir: string) => (await readdir(dir, { recursive: true })).sort();
+    const treeBefore = await treeOf(singleProject);
+    const behindFlag = await execFile(
+      process.execPath,
+      [cliPath, '--repo', singleProject, '--single-project', 'state-names', '--json'],
+      {
+        cwd: consumerDir,
+        env: { ...process.env, XEZ_HOME: join(root, 'state-names-home') },
+        maxBuffer: 10 * 1024 * 1024,
+      },
+    );
+    assert.equal(behindFlag.stderr, '', 'a global flag before state-names adds nothing to stderr');
+    assert.equal(behindFlag.stdout, stateNames.stdout, 'a global flag before state-names changes no byte');
+    assert.deepEqual(await treeOf(singleProject), treeBefore, 'state-names wrote nothing into the project');
+
     const fixtureRepo = join(root, 'fixture-repo');
     await mkdir(fixtureRepo);
     await execFile('git', ['init', '--initial-branch=main'], { cwd: fixtureRepo });
