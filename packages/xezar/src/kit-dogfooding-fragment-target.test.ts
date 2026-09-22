@@ -34,6 +34,7 @@ const KIT_ROOT = resolve(process.env.KIT_GUARD_ROOT ?? DEFAULT_ROOT);
 const READ_ONLY_SKILLS = [
   'xezar-integration.md', // integration (merge-only), root-sync
   'xezar-code-review.md', // code-review
+  'xezar-architecture-review.md', // architecture-review
   'xezar-qa.md', // qa
   'xezar-ux-design.md', // design-review (review mode)
   'xezar-research.md', // research

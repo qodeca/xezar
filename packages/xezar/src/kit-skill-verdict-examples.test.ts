@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { TASK_VERDICT_FINDINGS_MAX, taskVerdictPacketSchema } from '@qodeca/xezar-contract';
 
 /**
- * The three reviewing kit skills show the reporting agent ONE verdict packet, and that example is
+ * The four reviewing kit skills show the reporting agent ONE verdict packet, and that example is
  * the whole specification it works from (#673). A skill is Markdown, so nothing else in this
  * repository would notice the day the example stopped matching the schema the engine parses it
  * with — and the failure that produces is silent in the worst way: the reviewer writes the packet
@@ -14,7 +14,7 @@ import { TASK_VERDICT_FINDINGS_MAX, taskVerdictPacketSchema } from '@qodeca/xeza
  * So the example is parsed here, through the shipped schema, exactly as the engine parses the real
  * thing. The `<…>` values are the skill's own placeholders for what the reviewer fills in at write
  * time; they are substituted with a conforming stand-in per key, and nothing else is touched. The
- * `findings` block carries REAL values in all three skills and is parsed as written.
+ * `findings` block carries REAL values in all four skills and is parsed as written.
  */
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -55,6 +55,7 @@ const SKILLS: ReadonlyArray<readonly [string, string]> = [
   ['xezar-code-review.md', 'code-review'],
   ['xezar-qa.md', 'qa'],
   ['xezar-ux-design.md', 'design-review'],
+  ['xezar-architecture-review.md', 'architecture-review'],
 ];
 
 describe('the kit skills’ verdict packet examples', () => {
