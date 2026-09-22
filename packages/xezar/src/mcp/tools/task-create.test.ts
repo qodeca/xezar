@@ -1258,6 +1258,19 @@ describe('task_create start fromFindings', () => {
     expect(sentTask(f)).toContain('1. [blocker] the second step never starts');
   });
 
+  it('lets `role` pick an architecture reviewer’s findings (#851)', async () => {
+    // Named break: drop `architecture-review` from `TASK_VERDICT_ROLES` — `fromFindings.role` then
+    // refuses the argument, and a leader cannot address that reviewer's findings at all.
+    const f = setup();
+    const ARCH: TaskVerdict = { ...CODE_REVIEW, id: 'report-arch-1', role: 'architecture-review', findings: [{ id: 'f1', severity: 'major', title: 'the seam leaks a backend type' }] };
+    const runId = await seedReview(f, { runner: 'codex', verdicts: [CODE_REVIEW, ARCH] });
+
+    const named = await callTool(f, { operationId: 'op-findings-arch', fromFindings: { runId, ids: ['f1'], role: 'architecture-review' } });
+    expect(json(named)).toMatchObject({ accepted: true });
+    expect(sentTask(f)).toContain(`Address the findings a architecture-review recorded on task ${runId}`);
+    expect(sentTask(f)).toContain('1. [major] the seam leaks a backend type');
+  });
+
   it('renders one block per reporting reviewer when the ids span two of them', async () => {
     const f = setup();
     const runId = await seedReview(f, { runner: 'codex', verdicts: [{ ...CODE_REVIEW, findings: [CODE_REVIEW.findings![1]!] }, QA] });

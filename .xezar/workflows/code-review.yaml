@@ -13,4 +13,5 @@ steps:
     name: Review
     prompt: "{{task}}"
     skill: xezar-code-review
+    verdictRole: code-review
     allowedTools: [Read, Grep, Glob, Bash]

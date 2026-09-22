@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { RunStore } from '../runs/store.ts';
 import { taskVerdictPacketPath } from '../runs/task-verdicts.ts';
 import { RunManager } from './run.ts';
-import type { WorkflowDef } from './types.ts';
+import { QUICK_TASK_WORKFLOW, type WorkflowDef } from './types.ts';
 
 const run = promisify(execFile);
 const GIT_ID = ['-c', 'user.name=test', '-c', 'user.email=test@local'];
@@ -25,6 +25,8 @@ const GIT_ID = ['-c', 'user.name=test', '-c', 'user.email=test@local'];
  *
  * Named break: omit the collection call from step settlement, or let a check step collect — and,
  * for the packet the mock builds from `$XEZ_STEP_ID` alone, omit `XEZ_STEP_ID` from the step env.
+ * For #851: drop the role check, or stop threading the step's declared `verdictRole` from the
+ * persisted definition to ingestion — the quick-task case below is then recorded again.
  */
 describe('a reviewer packet is collected at its own step (#460)', () => {
   let repoRoot: string;
@@ -33,16 +35,18 @@ describe('a reviewer packet is collected at its own step (#460)', () => {
   let manager: RunManager;
   const savedEnv: Record<string, string | undefined> = {};
 
-  const workflow: WorkflowDef = {
+  /** A reviewer chain whose reviewing step declares `verdictRole` (#851), as a kit verdict
+   *  workflow's does. The chain ends on a CHECK so the run settles without an interactive last
+   *  turn: the reviewing agent step is then an ordinary non-final step, which is what a reviewer
+   *  workflow's is. */
+  const reviewerWorkflow = (verdictRole: NonNullable<WorkflowDef['steps'][number]['verdictRole']>): WorkflowDef => ({
     name: 'verdict-collection-test',
     source: 'built-in',
-    // The chain ends on a CHECK so the run settles without an interactive last turn: the reviewing
-    // agent step is then an ordinary non-final step, which is what a reviewer workflow's is.
     steps: [
-      { id: 'review', prompt: '{{task}}' },
+      { id: 'review', prompt: '{{task}}', verdictRole },
       { id: 'gates', command: 'node -e "0"' },
     ],
-  };
+  });
 
   beforeAll(async () => {
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-460-'));
@@ -79,14 +83,14 @@ describe('a reviewer packet is collected at its own step (#460)', () => {
     }
   }
 
-  async function runToEnd(task: string): Promise<string> {
+  async function runToEnd(task: string, workflow: WorkflowDef = reviewerWorkflow('code-review')): Promise<string> {
     const record = manager.startRun(workflow, { task, worktree: false });
     await settle(record.id);
     return record.id;
   }
 
   it('records the packet the reviewing step wrote, in that step’s own words', async () => {
-    const id = await runToEnd('mock:done mock:verdict:qa:FAIL:review');
+    const id = await runToEnd('mock:done mock:verdict:qa:FAIL:review', reviewerWorkflow('qa'));
 
     const verdicts = store.getRun(id)?.verdicts ?? [];
     expect(verdicts).toHaveLength(1);
@@ -118,6 +122,39 @@ describe('a reviewer packet is collected at its own step (#460)', () => {
     expect(store.getRun(id)?.verdicts ?? []).toEqual([]);
     expect(store.getRun(id)?.verdictIssues ?? []).toHaveLength(1);
     expect(store.getRun(id)?.verdictIssues?.[0]?.stepId).toBe('review');
+  }, 45_000);
+
+  it('refuses a code-review packet from a quick-task, which declares no verdict role (#851)', async () => {
+    // The self-labelling loophole: any agent step of any task gets `XEZ_HANDOFF_FILE` and
+    // `XEZ_STEP_ID`, so an unrelated task could write a review and have it recorded as one.
+    const id = await runToEnd('mock:done mock:verdict:code-review:APPROVE', QUICK_TASK_WORKFLOW);
+
+    expect(store.getRun(id)?.verdicts ?? []).toEqual([]);
+    expect(store.getRun(id)?.verdictIssues).toHaveLength(1);
+    expect(store.getRun(id)?.verdictIssues?.[0]?.stepId).toBe('task');
+    expect(store.getRun(id)?.verdictIssues?.[0]?.reason).toBe(
+      'the step that settled declares no verdict role, so its code-review packet cannot be recorded',
+    );
+    expect(existsSync(taskVerdictPacketPath(dataDir, id))).toBe(false);
+  }, 45_000);
+
+  it('refuses a packet naming another role than the step declares (#851)', async () => {
+    const id = await runToEnd('mock:done mock:verdict:code-review:APPROVE', reviewerWorkflow('qa'));
+
+    expect(store.getRun(id)?.verdicts ?? []).toEqual([]);
+    expect(store.getRun(id)?.verdictIssues?.[0]?.reason).toBe(
+      'the reviewer packet reports a code-review verdict, but this step declares qa',
+    );
+  }, 45_000);
+
+  it('records an architecture-review packet from a step declaring that role (#851)', async () => {
+    const id = await runToEnd(
+      'mock:done mock:verdict:architecture-review:APPROVE',
+      reviewerWorkflow('architecture-review'),
+    );
+
+    expect(store.getRun(id)?.verdicts?.map((verdict) => verdict.role)).toEqual(['architecture-review']);
+    expect(store.getRun(id)?.verdictIssues).toBeUndefined();
   }, 45_000);
 
   it('leaves a task that reported nothing without a verdict, however it finished', async () => {

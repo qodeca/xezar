@@ -8,10 +8,16 @@ import {
   TASK_VERDICT_FINDING_ID_MAX,
   TASK_VERDICT_FINDING_SEVERITY,
   TASK_VERDICT_FINDING_TITLE_MAX,
+  TASK_VERDICT_APPROVING,
+  TASK_VERDICT_MAX_CURRENT,
+  TASK_VERDICT_ROLES,
   TASK_VERDICT_SEVERITY_ORDER,
+  TASK_VERDICT_VOCABULARY,
+  isApprovingTaskVerdict,
   taskVerdictPacketSchema,
   taskVerdictSchema,
   type TaskVerdictFinding,
+  type TaskVerdictOf,
 } from './task-verdict.ts';
 
 /**
@@ -217,7 +223,7 @@ describe('#673 — one finding is a pointer, and an absent field is never a valu
  */
 describe('#673 — the severity vocabulary (guard: passes with or without the per-role shape)', () => {
   it('gives every role the same four words today', () => {
-    for (const role of ['code-review', 'design-review', 'qa'] as const) {
+    for (const role of TASK_VERDICT_ROLES) {
       expect(TASK_VERDICT_FINDING_SEVERITY[role]).toEqual(['blocker', 'major', 'minor', 'nit']);
     }
   });
@@ -239,6 +245,7 @@ describe('#673 — the severity vocabulary (guard: passes with or without the pe
       { role: 'code-review', verdict: 'REQUEST CHANGES' },
       { role: 'design-review', verdict: 'PASS WITH FOLLOW-UPS' },
       { role: 'qa', verdict: 'FAIL' },
+      { role: 'architecture-review', verdict: 'REQUEST CHANGES' },
     ] as const;
 
     for (const { role, verdict } of roles) {
@@ -249,5 +256,57 @@ describe('#673 — the severity vocabulary (guard: passes with or without the pe
         expect(parsed.success).toBe(true);
       }
     }
+  });
+});
+
+/**
+ * #851 A — `TASK_VERDICT_ROLES` is the only declaration of the role set.
+ *
+ * Named break: spell either union's arms out by hand again. The per-role maps are compile-checked
+ * against the list; the unions were not, so a role added to the list and its maps alone
+ * type-checked and was then refused by both schemas. Every assertion here walks the LIST, so the
+ * proof is "add a role to the list and its maps, and nothing else" — red on the hand-spelled arms.
+ */
+describe('#851 A — the role list is the only declaration (break: hand-spell a union arm)', () => {
+  it.each(unions)('$name accepts every word of every role on the list', ({ schema, build }) => {
+    for (const role of TASK_VERDICT_ROLES) {
+      for (const verdict of TASK_VERDICT_VOCABULARY[role]) {
+        const parsed = schema.safeParse(build({ role, verdict }));
+        expect(parsed.success, `${role} ${verdict}`).toBe(true);
+      }
+    }
+  });
+
+  it.each(unions)('$name still refuses one role carrying another role’s word', ({ schema, build }) => {
+    expect(schema.safeParse(build({ role: 'qa', verdict: 'APPROVE' })).success).toBe(false);
+    expect(schema.safeParse(build({ role: 'architecture-review', verdict: 'PASS' })).success).toBe(false);
+    expect(schema.safeParse(build({ role: 'security-review', verdict: 'APPROVE' })).success).toBe(false);
+  });
+
+  it('keeps one current packet per role, so the bound is the length of the list', () => {
+    expect(TASK_VERDICT_MAX_CURRENT).toBe(TASK_VERDICT_ROLES.length);
+  });
+});
+
+describe('#851 B — architecture-review is a fourth role, speaking a code review’s words', () => {
+  it('is on the list', () => {
+    expect(TASK_VERDICT_ROLES).toEqual(['code-review', 'design-review', 'qa', 'architecture-review']);
+  });
+
+  it('mirrors code-review: its verdicts, its approving word and its severities', () => {
+    expect(TASK_VERDICT_VOCABULARY['architecture-review']).toEqual(TASK_VERDICT_VOCABULARY['code-review']);
+    expect(TASK_VERDICT_APPROVING['architecture-review']).toEqual(['APPROVE']);
+    expect(TASK_VERDICT_FINDING_SEVERITY['architecture-review']).toEqual(TASK_VERDICT_FINDING_SEVERITY['code-review']);
+    expect(isApprovingTaskVerdict({ role: 'architecture-review', verdict: 'APPROVE' })).toBe(true);
+    expect(isApprovingTaskVerdict({ role: 'architecture-review', verdict: 'REQUEST CHANGES' })).toBe(false);
+  });
+
+  it('keeps each arm’s own vocabulary in the inferred type', () => {
+    // A compile-time pin: were the arms widened to one shared verdict type, these would not assign.
+    const qa: TaskVerdictOf<'qa'>['verdict'][] = ['PASS', 'FAIL'];
+    const arch: TaskVerdictOf<'architecture-review'>['verdict'][] = ['APPROVE', 'REQUEST CHANGES'];
+    // @ts-expect-error — a QA verdict is never APPROVE
+    const wrong: TaskVerdictOf<'qa'>['verdict'] = 'APPROVE';
+    expect([qa, arch, wrong]).toHaveLength(3);
   });
 });

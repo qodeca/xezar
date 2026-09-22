@@ -157,6 +157,16 @@ describe('workflowYaml', () => {
     })
   })
 
+  it('keeps a reviewer step’s declared verdictRole when YAML is exported (#851)', () => {
+    const review: WorkflowStepDef = { id: 'review', name: 'review', skill: 'xez-review', prompt: '{{task}}', verdictRole: 'code-review' }
+    // Not the compact form, which cannot carry the role: dropping it would refuse every verdict.
+    expect(skillStack([review])).toBeNull()
+    expect(parse(workflowYaml('reviewer', '', [review]))).toEqual({
+      name: 'reviewer',
+      steps: [{ id: 'review', skill: 'xez-review', prompt: '{{task}}', verdictRole: 'code-review' }],
+    })
+  })
+
   it('quotes scalars YAML would mistype and keeps plain ones bare', () => {
     const text = workflowYaml('true', '', [stackStep('2fast', 'no')])
     // `true`, `no` and `2fast` would parse as boolean/number-ish — they must come back strings.
