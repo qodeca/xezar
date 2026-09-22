@@ -3,6 +3,7 @@
 import './mcp-test-home.testkit.ts';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer as createHttpServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,6 +13,7 @@ import { AGENT_MODELS_LOCKED_ERROR } from '../../core/agent-model-policy.ts';
 import { ProviderAuthService, PROVIDER_IDS } from '../../core/provider-auth.ts';
 import { RunStore } from '../../runs/store.ts';
 import { ProjectContexts, type ProjectContextSource } from '../../server/project-context.ts';
+import { recordOwnListen } from '../../server/instance-liveness.ts';
 import { createApp } from '../../server/server.ts';
 import type { RunManager } from '../../workflows/run.ts';
 import { WorkspaceSemaphore } from '../../workspace/semaphore.ts';
@@ -675,6 +677,30 @@ describe('task_create start: values the composer cannot express are refused, nev
     expect(error).toContain('project_config set_provider_enabled');
     expect(error).toContain('discover_project');
     expect(startBodies(f)).toEqual([]);
+  });
+
+  // #838 F. Break: this message reading the recorded address without the hosted re-check, so a
+  // process that turned hosted after it recorded a loopback listen still hands the link out.
+  it('names the recorded cockpit address only while this process is not hosted', async () => {
+    const listener = createHttpServer();
+    await new Promise<void>((resolve) => listener.listen(0, '127.0.0.1', resolve));
+    const savedRemote = process.env.XEZ_REMOTE;
+    try {
+      recordOwnListen(listener, true);
+      const port = (listener.address() as { port: number }).port;
+      const f = setup({ providers: connected() });
+      const local = String(json(await callTool(f, { operationId: 'op-noprov-local', prompt: 'x' })).error);
+      expect(local).toContain(`http://127.0.0.1:${port}/`);
+      process.env.XEZ_REMOTE = '1';
+      const hosted = String(json(await callTool(f, { operationId: 'op-noprov-hosted', prompt: 'x' })).error);
+      expect(hosted).not.toMatch(/https?:\/\//);
+      expect(hosted).toContain('in the running cockpit (no address is recorded here)');
+    } finally {
+      if (savedRemote === undefined) delete process.env.XEZ_REMOTE;
+      else process.env.XEZ_REMOTE = savedRemote;
+      recordOwnListen(null, true);
+      await new Promise<void>((resolve) => listener.close(() => resolve()));
+    }
   });
 
   it('needs an operationId (D-06 § 5.2)', async () => {

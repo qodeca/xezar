@@ -20,10 +20,9 @@ import { agentModelsLocked } from '../../core/agent-model-policy.ts';
 import { ProviderAuthService, providerInstallHint } from '../../core/provider-auth.ts';
 import { applyProviderEnablement } from '../../core/provider-availability.ts';
 import { detectEnvironment } from '../../core/backend-detect.ts';
-import { resolveBindHost, resolveCapabilities } from '../../server/capabilities.ts';
+import { resolveCapabilities } from '../../server/capabilities.ts';
 import { resolveForge } from '../../server/forge/index.ts';
 import { getRepoInfo } from '../../server/git.ts';
-import { ownCockpitOrigin } from '../../server/instance-liveness.ts';
 import { loadWorkspaceConfig } from '../../workspace/config.ts';
 import { findRegistryProject } from '../../workspace/projects.ts';
 import { globalImportSummary } from '../../workspace/import-global.ts';
@@ -33,6 +32,10 @@ import { discoverIssueFiling } from '../../onboarding/issue-filing.ts';
 import { observedIdentity, onboardingStatus } from '../../onboarding/status.ts';
 import { readOnboardingThroughService, type ServiceDispatch } from '../service-adapter.ts';
 import { defineTool, textResult, type McpToolContext } from '../tool.ts';
+import { bindHostFromArgv, cockpitLinks, cockpitOrigin } from '../cockpit-address.ts';
+
+// Re-exported: callers and tests reached these here before they moved (#838 F).
+export { bindHostFromArgv, cockpitLinks };
 
 /**
  * `discover_project` (#90, F-03, U-M06): which project this session is bound to, what it can do
@@ -61,25 +64,6 @@ export interface DiscoveryFacts {
   onboarding: McpDiscoveryOnboarding;
   /** Where the person opens this cockpit (#819 item 8); absent when the real address is unknown. */
   cockpit?: McpDiscoveryCockpit;
-}
-
-/**
- * The cockpit's links for `projectId` (#819 item 8), built on THIS process's recorded listen origin
- * (`ownCockpitOrigin`) — or `undefined` when there is none, so every caller omits the link rather
- * than guessing one. Shared by `discover_project` and `project_config`'s refusal next steps, so the
- * address a leader is given is the same in both.
- */
-export function cockpitLinks(projectId: string, origin: string | undefined = ownCockpitOrigin()): McpDiscoveryCockpit | undefined {
-  if (origin === undefined) return undefined;
-  const project = `${origin}/p/${encodeURIComponent(projectId)}/`;
-  return {
-    url: project,
-    pages: {
-      providers: `${project}settings/agents`,
-      accounts: `${origin}/settings/global/accounts`,
-      mcpConnection: `${project}settings/mcp-connection`,
-    },
-  };
 }
 
 /** `discover_project` reads the onboarding block through the service when it has one — see
@@ -270,22 +254,6 @@ function githubUnavailableReason(facts: DiscoveryFacts): string | null {
 let providerAuth: ProviderAuthService | undefined;
 
 /**
- * `--bind-host` of THIS process. The MCP socket lives inside `xezar serve`, and a non-loopback
- * bind is half of what makes the cockpit hosted; `McpToolContext` does not carry it yet (#89
- * widens that context), and reporting `localHandoff: true` on a hosted box would promise actions
- * the routes refuse.
- */
-export function bindHostFromArgv(argv: readonly string[] = process.argv): string | undefined {
-  for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i]!;
-    // `resolveBindHost`: an empty value means the flag was absent, as it does for the CLI (#838 item A).
-    if (arg === '--bind-host') return resolveBindHost(argv[i + 1]);
-    if (arg.startsWith('--bind-host=')) return resolveBindHost(arg.slice('--bind-host='.length));
-  }
-  return undefined;
-}
-
-/**
  * This project's setup state, read the same way the cockpit reads it (#464 P2, `AC-17`).
  *
  * When the tool has the service's in-process entry — which it does in every running xezar — this
@@ -374,9 +342,9 @@ export async function collectDiscoveryFacts(
       ...(await collectOnboarding(ctx, checks, capabilities.localHandoff)),
       ...collectGlobalImport(capabilities.localHandoff),
     },
-    // Hosted mode never has one: `serve` records no address there. Checked again here so a
-    // capability that changed after the listen cannot hand out a loopback link from a hosted box.
-    ...(capabilities.localHandoff ? optionalCockpit(ctx.project.id) : {}),
+    // Hosted mode never has one: `serve` records no address there, and `cockpitOrigin` checks
+    // again so a capability that changed after the listen cannot hand out a loopback link (#838 F).
+    ...optionalCockpit(ctx.project.id, env),
     config: { baseBranch: config.baseBranch ?? null, modelsLocked: agentModelsLocked(root, env) },
     providers,
     limits: {
@@ -399,8 +367,8 @@ export async function collectDiscoveryFacts(
   };
 }
 
-function optionalCockpit(projectId: string): { cockpit?: McpDiscoveryCockpit } {
-  const cockpit = cockpitLinks(projectId);
+function optionalCockpit(projectId: string, env: NodeJS.ProcessEnv): { cockpit?: McpDiscoveryCockpit } {
+  const cockpit = cockpitLinks(projectId, cockpitOrigin(env));
   return cockpit ? { cockpit } : {};
 }
 
@@ -468,7 +436,7 @@ export const discoverProjectTool = defineTool({
   name: 'discover_project',
   title: 'Discover the bound project',
   description:
-    'Read which xezar project this session is bound to, its effective capabilities and limits, and which actions are available. Every action that is unavailable or read-only says why. The answer also carries the project setup block: which identity is running, which was offered, which a finished check actually covered, whether setup can run here at all, the launch definition to name when dispatching one, and whether issue filing works here (the skill to select, or why not), and — when the project keeps its own setup (single-project mode) — globalImport: whether the agent accounts of the person’s machine-wide setup were copied into it (done, declined or unknown) and how many could still be copied, a count and never which. Reading it changes nothing and authorises nothing. Call it at the start of a session and again after a person changes settings. It takes no arguments: the project comes from the connection, never from a parameter. A project leader works through these tools only, never the cockpit UI and never the HTTP API. Whether this session is attached as leader is not part of this answer: call leader_events with action status.',
+    'Read which xezar project this session is bound to, its effective capabilities and limits, and which actions are available. Every action that is unavailable or read-only says why. The answer also carries the project setup block: which identity is running, which was offered, which a finished check actually covered, whether setup can run here at all, the launch definition to name when dispatching one, and whether issue filing works here (the skill to select, or why not), and — when the project keeps its own setup (single-project mode) — globalImport: whether the agent accounts of the person’s machine-wide setup were copied into it (done, declined or unknown) and how many could still be copied, a count and never which. It also carries cockpit: the address of this cockpit (url, plus the pages a person opens to connect providers, manage accounts and connect MCP clients) — give it to the person, never open it yourself; it is absent in hosted mode and whenever this process recorded no real address. Reading it changes nothing and authorises nothing. Call it at the start of a session and again after a person changes settings. It takes no arguments: the project comes from the connection, never from a parameter. A project leader works through these tools only, never the cockpit UI and never the HTTP API. Whether this session is attached as leader is not part of this answer: call leader_events with action status.',
   inputSchema: z.strictObject({}),
   annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
   async call(_args, ctx: DiscoveryContext) {
