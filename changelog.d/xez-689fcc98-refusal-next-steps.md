@@ -17,6 +17,13 @@
   hosted mode before it reads or opens anything, and names the agent's own login command to run on
   the machine where it runs tasks. (#819)
 
+## 🐛 Fixes
+
+- 🐛 **A terminal command never carries a C1 control character.** An agent account folder holding
+  one – such as U+009B, which a terminal reads as an escape sequence – is now refused like any other
+  control character, so `xezar providers connect`, **Connect** and every other command xezar hands
+  to a terminal answer with a refusal instead of writing that character to the terminal. (#819)
+
 ## 🔧 Changed
 
 - 🔧 **`set_provider_enabled` says where it wrote.** Its answer adds `scope` – `machine`, or

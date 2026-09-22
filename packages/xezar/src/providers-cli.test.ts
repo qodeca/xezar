@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import type { ProviderConnectionState } from './core/provider-auth.ts';
+import { ProviderAuthService, type ProviderConnectionState } from './core/provider-auth.ts';
 import { runProvidersCommand, type ProvidersCommandDeps } from './providers-cli.ts';
 import { mergeWriteAgentAccounts } from './workspace/agent-accounts.ts';
 
@@ -8,6 +8,15 @@ import { mergeWriteAgentAccounts } from './workspace/agent-accounts.ts';
  * refuses. Every case names the break it fails against; the collaborators are fakes that record
  * what was reached, so "refused before anything" is a fact, not a hope.
  */
+
+/**
+ * The REAL login-command renderer, on a fixed platform. The fake below records calls and delegates
+ * the answer here, never to a copy: its round-1 predecessor re-implemented the control-character
+ * refusal with a wider regex than the product had, so the test was green while the built CLI wrote
+ * a raw U+009B to the terminal (#833 review round 2). `loginCommand` spawns nothing.
+ */
+const realAuth = new ProviderAuthService({ platform: 'linux' });
+const LOGIN = realAuth.loginCommand('claude', null);
 
 function harness(state: ProviderConnectionState, opts: { opens?: boolean; env?: NodeJS.ProcessEnv; bindHost?: string } = {}) {
   const reached: string[] = [];
@@ -32,9 +41,7 @@ function harness(state: ProviderConnectionState, opts: { opens?: boolean; env?: 
       loginCommand: (provider, configDir) => {
         reached.push('loginCommand');
         loginDirs.push(configDir);
-        // Like the real one: a folder this shell cannot carry is `null`, never the bare command.
-        if (configDir && /[\u0000-\u001f\u007f-\u009f]/.test(configDir)) return null;
-        return configDir ? `CLAUDE_CONFIG_DIR=${configDir} ${provider} auth login` : `${provider} auth login`;
+        return realAuth.loginCommand(provider, configDir);
       },
       installHint: () => 'Install it first.',
       forgetProfileStatus: () => {
@@ -65,7 +72,7 @@ describe('xezar providers connect (#819 item 8)', () => {
   it('names the login command in its hosted-mode refusal', async () => {
     const h = harness('disconnected', { env: { XEZ_REMOTE: '1' } });
     expect(await runProvidersCommand(['connect', 'claude'], undefined, h.deps)).toBe(1);
-    expect(h.err.join('\n')).toMatch(/with its own login command: claude auth login$/);
+    expect(h.err.join('\n').endsWith(`with its own login command: ${LOGIN}`)).toBe(true);
   });
 
   // P7-AC5, the bind half. Break: `--bind-host` on a network interface not counting as hosted.
@@ -79,7 +86,7 @@ describe('xezar providers connect (#819 item 8)', () => {
   it('opens a login terminal on the host for a provider that is not signed in', async () => {
     const h = harness('disconnected');
     expect(await runProvidersCommand(['connect', 'claude'], undefined, h.deps)).toBe(0);
-    expect(h.reached).toEqual(['loginCommand', 'status', 'open:/work/project:claude auth login']);
+    expect(h.reached).toEqual(['loginCommand', 'status', `open:/work/project:${LOGIN}`]);
     expect(h.out.join('\n')).toContain('A login terminal opened for claude');
   });
 
@@ -99,11 +106,11 @@ describe('xezar providers connect (#819 item 8)', () => {
 
     const unknown = harness('unknown');
     expect(await runProvidersCommand(['connect', 'claude'], undefined, unknown.deps)).toBe(1);
-    expect(unknown.err.join('\n')).toContain('To sign in anyway, run: claude auth login');
+    expect(unknown.err.join('\n')).toContain(`To sign in anyway, run: ${LOGIN}`);
 
     const closed = harness('disconnected', { opens: false });
     expect(await runProvidersCommand(['connect', 'claude'], undefined, closed.deps)).toBe(1);
-    expect(closed.err.join('\n')).toContain('Run this command yourself: claude auth login');
+    expect(closed.err.join('\n')).toContain(`Run this command yourself: ${LOGIN}`);
   });
 
   // Break: an unknown account silently falling back to the built-in login (the wrong account signs in).
@@ -129,7 +136,7 @@ describe('xezar providers connect (#819 item 8)', () => {
       const h = harness('disconnected');
       expect(await runProvidersCommand(['connect', 'claude'], 'work', h.deps)).toBe(0);
       expect(h.loginDirs).toEqual(['/accounts/work']);
-      expect(h.reached).toContain('open:/work/project:CLAUDE_CONFIG_DIR=/accounts/work claude auth login');
+      expect(h.reached).toContain(`open:/work/project:export CLAUDE_CONFIG_DIR='/accounts/work'; ${LOGIN}`);
       expect(h.reached).toContain('profileStatus:work');
     });
 

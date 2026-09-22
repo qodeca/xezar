@@ -37,6 +37,20 @@ describe('renderEnvPrefix', () => {
     }
   });
 
+  // #833 review round 2. Break: a C0-only check — U+009B (8-bit CSI) survives single-quoting and a
+  // terminal honours it as an escape, so the "safe" command carried it to the terminal raw.
+  it('refuses C1 control characters and DEL on every platform, but not ordinary non-ASCII', () => {
+    for (const platform of ['linux', 'darwin', 'win32'] as const) {
+      for (const code of [0x7f, 0x80, 0x9b, 0x9f]) {
+        expect(renderEnvPrefix({ CLAUDE_CONFIG_DIR: `/home/u${String.fromCharCode(code)}31m` }, platform), `${platform} U+${code.toString(16)}`)
+          .toBeNull();
+      }
+      // The first character past the range, and an accented folder name, still render.
+      expect(renderEnvPrefix({ CLAUDE_CONFIG_DIR: '/home/u x' }, platform)).not.toBeNull();
+      expect(renderEnvPrefix({ CLAUDE_CONFIG_DIR: '/home/zoë' }, platform)).not.toBeNull();
+    }
+  });
+
   it('refuses cmd.exe metacharacters that have no escape inside a quoted `set`', () => {
     for (const bad of ['C:\\a"b', 'C:\\a%PATH%b', 'C:\\a!b!']) {
       expect(renderEnvPrefix({ CODEX_HOME: bad }, 'win32'), bad).toBeNull();
