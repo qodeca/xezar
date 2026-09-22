@@ -465,6 +465,28 @@ rows dated 2026-09-21 and the leader rules are in [leader-guide.md](leader-guide
   (the #813 fixture fix) and CI went green. The rule it produced is in
   [leader-guide.md](leader-guide.md) (leader, 2026-09-21).
 
+### 2026-09-22
+
+- **The four read-only kit workflows now carry a `bashAllowlist` (#849, kit slice D).** `code-review`,
+  `design-review`, `qa` and `business-analysis` granted plain `Bash` in `allowedTools` with no
+  `bashAllowlist`, so on every backend the step could write through the shell even though `Edit`/
+  `Write` were already absent from the tool list — `research.yaml` is untouched, its `Write` grant is
+  intentional. Verified offline: `node .xezar/checks/catalog-check.mjs` (18 workflows, 20 skills, "CATALOG
+  OK"), `bash .xezar/checks/infra-tests.sh` (751 passed, 0 failed) and `node --test
+  .xezar/checks/xezar-contract.test.mjs` (35 passed, 0 failed) all stayed green with the new field.
+  Real proof, not a claim: a headless `xezar run "…" --workflow code-review` with `XEZ_DRY_RUN=1` in a
+  throwaway scratch checkout (never the primary) recorded the actual argv the engine built for the
+  `review` step's Claude session via the mock's `XEZ_MOCK_ARGS_FILE` hook. The built `--allowedTools`
+  value was `Read,Grep,Glob,Bash(git:*),Bash(gh:*),Bash(bash .xezar/checks/:*),Bash(ls:*),Bash(cat:*),
+  Bash(sed:*),Bash(grep:*),Bash(rg:*),Bash(jq:*),Bash(wc:*),Bash(head:*),Bash(tail:*),Bash(find:*),
+  Bash(diff:*),Bash(sha256sum:*),Bash(shasum:*),Bash(mkdir:*),Bash(cp:*)` — plain `Bash` is gone, one
+  `Bash(<prefix>:*)` entry per allowlisted command, matching `buildAllowedTools` in
+  `claude-cli-runner.ts`. On pi the same `bashAllowlist` makes `piTools` drop the whole `bash` tool
+  (no command-prefix mechanism there), so a pi read-only task on one of these four roles cannot run
+  `gh`/`git` at all — recorded as the dated § 6 row above for dispatch. This review's own live run on
+  the new allowlist (its `bashAllowlist` list is derived from the four skills' own text, quoted in the
+  PR body) is the QA for this change; no separate `skip-qa` label applies.
+
 ## Glossary
 
 - **Leader** – the AI agent that hands out tasks and tracks them.
