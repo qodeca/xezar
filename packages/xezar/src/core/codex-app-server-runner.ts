@@ -530,6 +530,10 @@ class CodexSession implements AgentSession {
 
   private handleNotification(method: string, params: Record<string, unknown>): void {
     switch (method) {
+      case 'account/rateLimits/updated': {
+        this.emit({ type: 'account-quota', runner: 'codex', payload: params });
+        break;
+      }
       case 'turn/started': {
         if (this.isForeignThreadTurn(params)) break; // sub-agent child thread — not our turn (#600)
         this.activeTurnId = turnIdOf(params) ?? this.activeTurnId;

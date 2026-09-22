@@ -965,6 +965,8 @@ describe('G9 deterministic quota recovery', () => {
         const run = manager.startRun(SINGLE_STEP, { task: 'quota fixture', worktree: false });
         await terminal(store, run.id);
         expect(store.getRun(run.id)?.status).toBe('failed');
+        await expect.poll(() => manager.agentQuotaStore.answer().accounts.find(row => row.runner === 'claude'))
+          .toMatchObject({ accountId: 'default', status: 'out', source: 'failedRun' });
         const deadline = reset * 1000 + AUTO_RESUME_GRACE_MS;
         if (mode === 'disabled') expect(store.getRun(run.id)?.autoResumeAt).toBeUndefined();
         else expect(store.getRun(run.id)?.autoResumeAt).toBe(new Date(deadline).toISOString());

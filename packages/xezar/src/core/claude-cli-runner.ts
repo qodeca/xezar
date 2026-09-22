@@ -265,6 +265,10 @@ export class ClaudeCliRunner implements AgentRunner {
           const mappedMessage = normalizeIntentionalTeardownResult(msg, terminatedByXezar);
           emitUi((state) => mapClaudeMessage(mappedMessage, state));
 
+          if (msg.type === 'rate_limit_event') {
+            onEvent?.({ type: 'account-quota', runner: 'claude', payload: msg });
+          }
+
           let delta = 0;
           try {
             delta = handleClaudeMessage(mappedMessage, { toolCalls, textChunks, onEvent });
