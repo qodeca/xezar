@@ -14,3 +14,4 @@ steps:
     prompt: "{{task}}"
     skill: xezar-business-analysis
     allowedTools: [Read, Grep, Glob, Bash]
+    bashAllowlist: [git, "bash .xezar/checks/", ls, cat, sed, grep, rg, jq, wc, head, tail, find, diff, sha256sum, shasum, mkdir, cp]

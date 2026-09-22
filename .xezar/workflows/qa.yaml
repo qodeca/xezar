@@ -20,3 +20,4 @@ steps:
     prompt: "QA (see your skill for what to post and which labels to apply): {{task}}"
     skill: xezar-qa
     allowedTools: [Read, Grep, Glob, Bash]
+    bashAllowlist: [git, gh, npm, "bash .xezar/checks/", ls, cat, sed, grep, rg, jq, wc, head, tail, find, diff, sha256sum, shasum, mkdir, cp]

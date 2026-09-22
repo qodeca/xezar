@@ -18,3 +18,4 @@ steps:
     prompt: "Design review (see '## Review mode' in your skill): {{task}}. Follow docs/design-system/README.md through usage, recipes, verification, lifecycle and storage. Own only the read-only verdict and review evidence at the identified revision; the author owns mockup, README handoff and index updates. Preserve label authority and report unavailable checks honestly."
     skill: xezar-ux-design
     allowedTools: [Read, Grep, Glob, Bash]
+    bashAllowlist: [git, gh, npm, "bash .xezar/checks/", ls, cat, sed, grep, rg, jq, wc, head, tail, find, diff, sha256sum, shasum, mkdir, cp]
