@@ -666,7 +666,14 @@ describe('task_create start: values the composer cannot express are refused, nev
     const f = setup({ providers: connected() });
     const result = await callTool(f, { operationId: 'op-noprov-1', prompt: 'x' });
     expect(result.isError).toBeFalsy();
-    expect(json(result)).toMatchObject({ accepted: false, status: 'conflict', error: 'Connect an agent provider before starting a task.' });
+    expect(json(result)).toMatchObject({ accepted: false, status: 'conflict' });
+    // #819 item 8: the refusal names the next step — the person's command and the leader's tool
+    // call — because a leader cannot open the Providers settings the cockpit's sentence points at.
+    const error = String((json(result) as { error?: unknown }).error);
+    expect(error.startsWith('Connect an agent provider before starting a task.')).toBe(true);
+    expect(error).toContain('`xez providers connect <provider>`');
+    expect(error).toContain('project_config set_provider_enabled');
+    expect(error).toContain('discover_project');
     expect(startBodies(f)).toEqual([]);
   });
 

@@ -14,6 +14,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
+import { createServer as createHttpServer, type Server as HttpServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { basename, join, relative } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -25,6 +26,7 @@ import { ProjectContexts, type ProjectContextSource } from '../../server/project
 import { PROVIDER_IDS, ProviderAuthService, type ProviderId, type ProviderStatusResponse } from '../../core/provider-auth.ts';
 import { connectedProviderAuth } from '../../server/provider-auth.testkit.ts';
 import { createApp } from '../../server/server.ts';
+import { recordOwnListen } from '../../server/instance-liveness.ts';
 import type { SkillsUpdateService } from '../../skills-update.ts';
 import type { RunManager } from '../../workflows/run.ts';
 import { mergeWriteWorkspaceConfig } from '../../workspace/config.ts';
@@ -2973,5 +2975,130 @@ describe('project_config: nothing identifies an account or leaks a secret', () =
       expect(called.json, `${String(args.action)} carries the launch key`).not.toContain(launchKey);
       expect(called.json, `${String(args.action)} carries a user-scope file`).not.toContain(USER_MARKER);
     }
+  });
+});
+
+
+/**
+ * #819 item 8 — every refusal names the NEXT STEP: a command, a tool call, or (when this cockpit's
+ * real address is known) a URL the person opens. A refusal that stops at "not allowed here" is the
+ * failure #819 was filed for: the reader guesses, retries and asks questions it should not need to.
+ * Each case names the break it fails against.
+ */
+describe('project_config: every refusal names the next step (#819 item 8)', () => {
+  const servers: HttpServer[] = [];
+  afterEach(async () => {
+    recordOwnListen(null, true);
+    for (const server of servers.splice(0)) await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+  /** A REAL listening socket on a random port, so the recorded address is one the OS handed out. */
+  async function listening(): Promise<{ server: HttpServer; port: number }> {
+    const server = createHttpServer();
+    servers.push(server);
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    return { server, port: (server.address() as { port: number }).port };
+  }
+
+  /** A next step is actionable when it names a command, a URL, or a tool call a leader can make. */
+  const KNOWN_CALLS = new Set<string>([...PROJECT_CONFIG_ACTIONS, ...tools.map((tool) => tool.name)]);
+  const actionable = (next: string): boolean =>
+    /`[^`]+`/.test(next) || /https?:\/\/\S+/.test(next) || next.split(/[^a-z_]+/).some((word) => KNOWN_CALLS.has(word));
+
+  const REFUSED_CALLS: Array<Record<string, unknown>> = [
+    ...Object.keys(REFUSED_ACTIONS).map((action) => ({ action })),
+    { action: 'get_config', projectId: 'proj-b' },
+  ];
+
+  // Break: a refused action whose row has no next step, or one that is prose with nothing to act on.
+  it('answers every refused action, on the first call, with an actionable next step and no guessed address', async () => {
+    for (const args of REFUSED_CALLS) {
+      const called = await invoke(args, { service: null });
+      const label = JSON.stringify(args);
+      expect(called.result.isError, label).toBe(true);
+      expect(called.structured.refused, label).toBe(true);
+      const next: unknown = called.structured.nextStep;
+      expect(typeof next, `${label} has no nextStep`).toBe('string');
+      expect(actionable(next as string), `${label}: ${String(next)}`).toBe(true);
+      expect(called.text, label).toContain(`Next step: ${String(next)} Nothing was changed.`);
+      // Nothing recorded an address, so none may appear — the in-process base above all.
+      expect(called.text, label).not.toMatch(/https?:\/\//);
+    }
+  });
+
+  // Break: the in-process `http://127.0.0.1` base, or a requested port, standing in for the real one.
+  it('names the real listen address of this cockpit once one is recorded', async () => {
+    const { server, port } = await listening();
+    recordOwnListen(server, true);
+    const connect = await invoke({ action: 'connect_provider' }, { service: null });
+    expect(connect.structured.nextStep).toContain(`http://127.0.0.1:${port}/p/proj-a/settings/agents`);
+    expect(connect.structured.nextStep).toContain('`xez providers connect <provider>`');
+    const account = await invoke({ action: 'open_account_file' }, { service: null });
+    expect(account.structured.nextStep).toContain(`http://127.0.0.1:${port}/settings/global/accounts`);
+  });
+
+  // Break: a hosted cockpit handing out its bind address, which is not what a person's browser opens.
+  it('omits the address in hosted mode and still names a command', async () => {
+    const { server } = await listening();
+    recordOwnListen(server, false);
+    const connect = await invoke({ action: 'connect_provider' }, { service: null });
+    expect(connect.structured.nextStep).not.toMatch(/https?:\/\//);
+    expect(connect.structured.nextStep).toContain('`xez providers connect <provider>`');
+    // Review round 1 (F4). Break: sending the person to start a cockpit in exactly the state where
+    // one is already running — hosted mode is the only way this fallback is reached.
+    expect(connect.structured.nextStep).toContain('the Providers settings in the running cockpit (no address is recorded here)');
+    expect(connect.structured.nextStep).not.toContain('starts in the project folder');
+  });
+
+  // Break: a registry next step that sends a single-project leader to a command the narrowing refuses.
+  it('points a narrowed registry at a cockpit of the other project’s own, not at `projects add`', async () => {
+    process.env.XEZ_SINGLE_PROJECT = '1';
+    const add = await invoke({ action: 'add_project' }, { service: null });
+    expect(add.structured.nextStep).toContain('`xez`');
+    expect(add.structured.nextStep).not.toContain('projects add');
+    delete process.env.XEZ_SINGLE_PROJECT;
+    const wide = await invoke({ action: 'add_project' }, { service: null });
+    expect(wide.structured.nextStep).toContain('`xez projects add <folder>`');
+  });
+
+  // Break: the agent-config gate refusing without saying which files ARE served.
+  it('names list_agent_config after a user-scope file refusal', async () => {
+    const called = await invoke({ action: 'read_agent_config', fileId: USER_SCOPE_IDS[0]! });
+    expect(called.structured.boundary).toBe('home-file');
+    expect(called.structured.nextStep).toContain('list_agent_config');
+  });
+});
+
+/**
+ * #819 item 7 — `set_provider_enabled` says WHERE it wrote. The switch always followed the state
+ * layout (#677 B4); the answer and the argument text said "machine-wide" in every layout, which in
+ * single-project mode sent a leader to hand-edit a home file that was never read.
+ */
+describe('project_config: the provider switch answers scope and live (#819 item 7)', () => {
+  afterEach(() => setActiveStateLayout(null));
+  const homeConfig = (): string => join(process.env.XEZ_HOME!, 'config.json');
+
+  // Break: `scope` missing, or hard-coded to machine; the file half pins the write that already worked.
+  it('single-project mode: writes this project’s own settings file, not the home one, and answers scope project', async () => {
+    const homeBefore = existsSync(homeConfig()) ? readFileSync(homeConfig(), 'utf8') : null;
+    setActiveStateLayout(projectStateLayout(ws.roots.a));
+    const answer = value(await invoke({ action: 'set_provider_enabled', provider: 'claude', enabled: false }));
+    expect(answer.scope).toBe('project');
+    expect(answer.live).toBe(true);
+    expect(JSON.parse(readFileSync(join(ws.roots.a, '.xezar', 'workspace.json'), 'utf8')).disabledProviders).toEqual(['claude']);
+    expect(existsSync(homeConfig()) ? readFileSync(homeConfig(), 'utf8') : null).toBe(homeBefore);
+  });
+
+  // Guard: the global layout keeps its machine-wide meaning, and says so.
+  it('global layout: answers scope machine', async () => {
+    const answer = value(await invoke({ action: 'set_provider_enabled', provider: 'claude', enabled: false }));
+    expect(answer).toMatchObject({ scope: 'machine', live: true });
+  });
+
+  // Break: the argument text claiming a machine-wide switch in every layout.
+  it('describes the reach by layout, not as machine-wide everywhere', () => {
+    const listing = JSON.stringify(toolListing(projectConfigTool));
+    expect(listing).not.toMatch(/apply to EVERY project on this machine/);
+    expect(listing).not.toMatch(/it is a machine-wide switch/);
+    expect(listing).toContain('when this project keeps its own setup (single-project mode)');
   });
 });

@@ -4,13 +4,20 @@ import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { foreignWriterClaimIsLive } from '../runs/project-writer.ts';
+import { RunStore } from '../runs/store.ts';
+import type { RunManager } from '../workflows/run.ts';
+import { apiRequest } from './loopback-request.testkit.ts';
+import { createApp } from './server.ts';
 import {
   fetchHealth,
   InstanceLiveness,
   instanceOrigin,
   instanceStateOf,
   instanceUrl,
+  ownCockpitOrigin,
+  ownCockpitUrl,
   parseInstanceAddress,
+  recordOwnListen,
   type HealthProbe,
   type InstanceAddress,
   type ProbeAnswer,
@@ -467,5 +474,71 @@ describe('the writer-claim reader (#467, PR 3)', () => {
     const dir = dataDir();
     writeFileSync(join(dir, 'writer-claims', '1-00000000-0000-0000-0000-000000000000.json'), '{');
     expect(foreignWriterClaimIsLive(dir)).toBe(false);
+  });
+});
+
+
+/**
+ * #819 item 8 — this process's OWN address, recorded by `serve` after the bind and served to a leader
+ * through the MCP only (owner, 2026-09-21: "MCP only"). Each case names the break it fails against.
+ */
+describe('instance liveness: the own cockpit address (#819 item 8)', () => {
+  const servers: Server[] = [];
+  const dirs: string[] = [];
+  afterEach(async () => {
+    recordOwnListen(null, true);
+    for (const server of servers.splice(0)) await new Promise<void>((resolve) => server.close(() => resolve()));
+    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+  async function listening(host = '127.0.0.1'): Promise<{ server: Server; port: number }> {
+    const server = createServer();
+    servers.push(server);
+    await new Promise<void>((resolve) => server.listen(0, host, resolve));
+    return { server, port: (server.address() as { port: number }).port };
+  }
+
+  // Break: an address taken from anything but the socket that really listens.
+  it('reads the port the OS handed out, and shapes it like every other cockpit link', async () => {
+    const { server, port } = await listening();
+    expect(recordOwnListen(server, true)).toEqual({ host: '127.0.0.1', port });
+    expect(ownCockpitOrigin()).toBe(`http://127.0.0.1:${port}`);
+    expect(ownCockpitUrl('a b')).toBe(`http://127.0.0.1:${port}/p/a%20b/`);
+  });
+
+  // Break: a guessed address when nothing can vouch for one.
+  it('knows nothing before a listen, in hosted mode, or for a socket with no port', async () => {
+    expect(ownCockpitUrl('p')).toBeUndefined();
+    const { server } = await listening();
+    expect(recordOwnListen(server, false)).toBeNull();
+    expect(ownCockpitOrigin()).toBeUndefined();
+    expect(recordOwnListen({ address: () => '/tmp/some.sock' }, true)).toBeNull();
+    expect(recordOwnListen({ address: () => null }, true)).toBeNull();
+    expect(ownCockpitUrl('p')).toBeUndefined();
+  });
+
+  // P7-AC6. Break: the address reaching `GET /api/v1/health`, whose answer any web page can read
+  // through its CORS exception — the surface the owner kept it off.
+  it('never appears on HTTP /api/v1/health', async () => {
+    const { server, port } = await listening();
+    recordOwnListen(server, true);
+    const repoRoot = mkdtempSync(join(tmpdir(), 'xez-own-address-'));
+    dirs.push(repoRoot);
+    const store = RunStore.open(join(repoRoot, '.local/xezar'));
+    // Dry-run keeps the agent and forge probes of the health route off the network.
+    const savedDryRun = process.env.XEZ_DRY_RUN;
+    process.env.XEZ_DRY_RUN = '1';
+    try {
+      const app = createApp({ repoRoot, store, manager: {} as RunManager, version: '0.0.0-test' });
+      const res = await apiRequest(app, '/api/v1/health');
+      expect(res.status).toBe(200);
+      const raw = await res.text();
+      expect(raw).not.toContain(`:${port}`);
+      const body = JSON.parse(raw) as Record<string, unknown>;
+      for (const key of ['cockpit', 'cockpitUrl', 'url', 'address', 'listen']) expect(body).not.toHaveProperty(key);
+    } finally {
+      store.flush();
+      if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN;
+      else process.env.XEZ_DRY_RUN = savedDryRun;
+    }
   });
 });

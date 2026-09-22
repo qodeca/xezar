@@ -9,6 +9,7 @@ import { HEALTH_TOOL, runBridge, type ServiceTarget } from './bridge.ts';
 import { LineFramer, encodeFrame } from './ipc.ts';
 import { SERVER_CAPABILITIES } from './protocol.ts';
 import { listenMcpSocket, type McpServiceHandle } from './service.ts';
+import { recordOwnListen } from '../server/instance-liveness.ts';
 import { defineTool, textResult, type McpTool } from './tool.ts';
 
 // A short home under /tmp, never the per-worker sandbox: the sandbox sits under the task's
@@ -187,6 +188,24 @@ describe('bridge → service over the project socket', () => {
     });
     expect((res.result as { isError?: boolean }).isError).toBeUndefined();
     expect(text(res)).toBe('xezar 1.2.3 is running for project Alpha (alpha).');
+  });
+
+  // #819 item 8. Break: the health data dropping the address (the bridge's schema strips an unknown
+  // key), or the service sending one it never recorded.
+  it('carries the cockpit address the person opens, once the service recorded a real listen', async () => {
+    const listener = createServer();
+    await new Promise<void>((resolve) => listener.listen(0, '127.0.0.1', resolve));
+    try {
+      recordOwnListen(listener, true);
+      const port = (listener.address() as { port: number }).port;
+      const svc = await service();
+      const res = await bridge({ target: socketTarget(svc.path) }).request('tools/call', { name: 'health' });
+      expect(res.result).toMatchObject({ structuredContent: { status: 'running', cockpitUrl: `http://127.0.0.1:${port}/p/alpha/` } });
+      expect(text(res)).toBe(`xezar 1.2.3 is running for project Alpha (alpha). The person opens its cockpit at http://127.0.0.1:${port}/p/alpha/.`);
+    } finally {
+      recordOwnListen(null, true);
+      await new Promise<void>((resolve) => listener.close(() => resolve()));
+    }
   });
 
   it('runs registry tools in the service with the bound project, validating arguments first', async () => {

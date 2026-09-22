@@ -17,8 +17,10 @@
  */
 
 /** Values that cannot be embedded safely, per platform. Control characters are rejected
- *  everywhere (they would break the line-based launch script and are never a real path). */
-const CONTROL_CHARS_RE = /[\u0000-\u001f\u007f]/;
+ *  everywhere (they would break the line-based launch script and are never a real path) — C0,
+ *  DEL AND the C1 range: U+009B is an 8-bit CSI, which a terminal honours as an escape even inside
+ *  single quotes, so a C1 character passed through here reached the terminal raw (#833 review). */
+const CONTROL_CHARS_RE = /[\u0000-\u001f\u007f-\u009f]/;
 /** `cmd.exe` has no escape inside a quoted `set` argument: `"` ends the quote and `%`/`!` expand.
  *  A path containing one is pathological, so refusing is honest rather than limiting. */
 const WIN32_UNSAFE_RE = /["%!]/;

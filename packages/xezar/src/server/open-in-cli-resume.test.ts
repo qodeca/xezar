@@ -201,7 +201,7 @@ describe('POST /api/v1/runs/:id/open-in — agent CLI resume vs fresh launch', (
 
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({
-      error: 'Codex is disabled. Enable it in Settings → Agents → Providers.',
+      error: 'Codex is disabled. Enable it in Settings → Agents → Providers, or with project_config set_provider_enabled (provider codex, enabled true).',
     });
     expect(mockOpenInTerminal).not.toHaveBeenCalled();
   });
@@ -212,7 +212,7 @@ describe('POST /api/v1/runs/:id/open-in — agent CLI resume vs fresh launch', (
 
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({
-      error: 'Codex is disabled. Enable it in Settings → Agents → Providers.',
+      error: 'Codex is disabled. Enable it in Settings → Agents → Providers, or with project_config set_provider_enabled (provider codex, enabled true).',
     });
     expect(mockOpenInTerminal).not.toHaveBeenCalled();
   });
@@ -223,7 +223,7 @@ describe('POST /api/v1/runs/:id/open-in — agent CLI resume vs fresh launch', (
 
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({
-      error: 'Codex credentials are unavailable. Authorize it in Settings → Agents → Providers.',
+      error: 'Codex credentials are unavailable. Authorize it in Settings → Agents → Providers, or run `xez providers connect codex` on the machine that runs xezar.',
     });
     expect(mockOpenInTerminal).not.toHaveBeenCalled();
   });
@@ -234,7 +234,7 @@ describe('POST /api/v1/runs/:id/open-in — agent CLI resume vs fresh launch', (
 
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({
-      error: 'Codex credentials are unavailable. Authorize it in Settings → Agents → Providers.',
+      error: 'Codex credentials are unavailable. Authorize it in Settings → Agents → Providers, or run `xez providers connect codex` on the machine that runs xezar.',
     });
     expect(mockOpenInTerminal).not.toHaveBeenCalled();
   });

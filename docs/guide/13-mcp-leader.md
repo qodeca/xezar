@@ -236,8 +236,8 @@ The [tool registry](../../packages/xezar/src/mcp/tools/index.ts) has ten service
 
 | Tool | Use it for |
 | --- | --- |
-| `health` | Check whether the bound project's cockpit is running. |
-| `discover_project` | Read project identity, capabilities, limits and available actions. |
+| `health` | Check whether the bound project's cockpit is running, and read `cockpitUrl`, the address to give the person, when it is known. |
+| `discover_project` | Read project identity, capabilities, limits and available actions, and `cockpit`, the addresses of the pages a person uses, when they are known. |
 | `task_read` | Inspect tasks and their history. |
 | `task_create` | Create a task with explicit source and execution options; use action `start` with the project's issue-filing skill and `autonomous: false` to start the same approval-required issue draft as **New issue** on the GitHub tab. |
 | `execution_control` | Control execution and communicate with a task session. |
@@ -249,6 +249,18 @@ The [tool registry](../../packages/xezar/src/mcp/tools/index.ts) has ten service
 | `leader_events` | Attach or stop this session, check attachment status, read significant project events and acknowledge those handled. |
 
 Read `discover_project` before assuming an action is available. Inspect each mutation's result; requesting a task or operation is not proof that downstream work succeeded.
+
+### When an action is refused
+
+A refused action answers, on the first call, with what to do instead: the text says `Next step: …` and the answer carries the same sentence as `nextStep`. It is one of three things:
+
+- a tool call you can make yourself, such as `local_handoff` for opening the project in a desktop application;
+- a command for the person to run on the machine that runs xezar, such as `xez providers connect <provider>` to sign an agent tool in, or `xez projects add <folder>` to register another project;
+- a cockpit page for the person to open, with its address when xezar knows it.
+
+The cockpit's address comes from the MCP only: `discover_project` carries `cockpit` (the project page, and the providers, agent accounts and MCP connection pages), and `health` carries `cockpitUrl`. Both are the running cockpit's real address, and both are left out when it is not known, such as in hosted mode, where the public address is behind a reverse proxy. `GET /api/v1/health` never carries it. You still work through the tools only: an address is for the person.
+
+`project_config` `set_provider_enabled` answers `scope` and `live`. `scope` is `machine` when the switch applies to every project on this machine, and `project` when this project keeps its own setup (single-project mode) and the switch is saved in the project's own settings file, shared with everyone who works on the project. `live` is `true`: the next task sees the change with no restart.
 
 ## To recover with `leader_events`
 

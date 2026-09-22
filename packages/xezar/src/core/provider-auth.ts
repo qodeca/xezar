@@ -314,6 +314,11 @@ function profileCacheKey(provider: ProviderId, profileId: string): string {
   return `${provider}\u0000${profileId}`;
 }
 
+/** How to install `provider` and sign it in — static, so a caller with no service can name it. */
+export function providerInstallHint(provider: ProviderId): string {
+  return descriptorFor(provider).installHint;
+}
+
 function descriptorFor(provider: ProviderId): ProviderDescriptor {
   const descriptor = DESCRIPTORS.find(({ id }) => id === provider);
   if (!descriptor) throw new Error(`Unknown provider: ${provider}`);
@@ -455,7 +460,7 @@ export class ProviderAuthService {
   }
 
   installHint(provider: ProviderId): string {
-    return descriptorFor(provider).installHint;
+    return providerInstallHint(provider);
   }
 
   private withRuntimeFailures(response: ProviderStatusResponse): ProviderStatusResponse {

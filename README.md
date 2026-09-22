@@ -106,6 +106,10 @@ xezar init                                            # scaffold .xezar/
 npm install -g @qodeca/xezar@latest                   # upgrade
 ```
 
+To sign an agent tool in from a terminal on the machine that runs xezar, run
+`xezar providers connect <claude|codex|opencode|pi>` (add `--account <id>` for a second login): it opens
+a login terminal, and it refuses in hosted mode.
+
 The cockpit picks the next free port when 4321 is busy. **Try it offline:** `XEZ_DRY_RUN=1`
 runs a bundled mock instead of a real agent, so the whole cockpit works offline with no login.
 
@@ -227,6 +231,14 @@ events or 40 000 bytes. Anything older comes back as an explicit gap, never as s
 Only `ack` moves the position – reading an event or receiving it does not – and `ack` is
 cumulative, monotonic and idempotent, so an older or repeated cursor is a successful
 no-op.
+
+**Every refusal says what to do instead.** An action the leader may not take – connecting a
+provider, opening a desktop application, adding a project – answers with a next step: a tool call the
+leader can make, or a command or cockpit address to give the person (`nextStep` in the answer). The
+cockpit's address reaches the leader through the MCP only: `discover_project` carries it as `cockpit`
+(the project page plus the providers, accounts and MCP-connection pages) and the `health` tool as
+`cockpitUrl`. It is the running cockpit's real address and is left out when that is unknown, such as
+in hosted mode. It is never added to `GET /api/v1/health`.
 
 A person can still attach a leader with **Attach leader** under
 **Settings → MCP connection → Connection status**, and an OpenCode leader is attached

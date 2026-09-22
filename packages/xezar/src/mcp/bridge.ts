@@ -95,7 +95,7 @@ export const HEALTH_TOOL = {
   name: 'health',
   title: 'xezar health',
   description:
-    'Report whether the xezar cockpit is running for the project this session was started in, and which project that is. To see whether this session is attached as leader and can receive pushed events, call leader_events with action status.',
+    'Report whether the xezar cockpit is running for the project this session was started in, and which project that is. When it is known, the answer also carries cockpitUrl: the address to give the person when they need to act in the cockpit themselves — you keep working through these tools. To see whether this session is attached as leader and can receive pushed events, call leader_events with action status.',
   inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
 } as const;
@@ -309,7 +309,9 @@ export function runBridge(opts: BridgeOptions): Promise<void> {
       const h = healthResultSchema.safeParse(response.result);
       if (!h.success) return { result: errorResult('xezar answered health with an unexpected shape.') };
       return {
-        result: textResult(`xezar ${h.data.xezarVersion} is running for project ${h.data.project.name} (${h.data.project.id}).`, {
+        result: textResult(`xezar ${h.data.xezarVersion} is running for project ${h.data.project.name} (${h.data.project.id}).${
+          h.data.cockpitUrl ? ` The person opens its cockpit at ${h.data.cockpitUrl}.` : ''
+        }`, {
           status: 'running',
           ...h.data,
         }),

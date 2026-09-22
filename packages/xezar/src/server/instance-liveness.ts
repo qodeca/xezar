@@ -126,6 +126,50 @@ export function instanceUrl(address: InstanceAddress, projectId: string): string
 }
 
 /**
+ * THIS process's own cockpit address (#819 item 8) — what the MCP hands a leader so it can give a
+ * person a link, instead of a page name to hunt for.
+ *
+ * Recorded once, by `serve`, AFTER the bind really succeeded, from the listening socket's own
+ * `address()` — never from the requested port, which a busy port or `--port 0` makes wrong. A
+ * confidently wrong URL is worse than none, so every case that cannot vouch for the address
+ * records nothing and every reader then OMITS the URL:
+ *
+ * - before the listen (an MCP door opened while the server is still binding);
+ * - hosted mode (`localHandoff` false): the bind address is what a reverse proxy reaches, not what a
+ *   person's browser opens, and the public address is not this process's to know;
+ * - a socket that reports no port (a pipe, or a server that closed).
+ *
+ * The browser-facing shape is `instanceOrigin`'s, the same rule the sibling-instance links follow,
+ * so a wildcard bind reads as `localhost` and an IPv6 literal is bracketed.
+ *
+ * Never served on `GET /api/v1/health` (owner, 2026-09-21: "MCP only"): that answer is readable by
+ * any web page through its CORS exception, and the leader is the only reader who lacks the address.
+ */
+let ownListen: InstanceAddress | null = null;
+
+export function recordOwnListen(
+  server: { address(): unknown } | null,
+  localHandoff: boolean,
+): InstanceAddress | null {
+  const bound = server?.address();
+  ownListen =
+    localHandoff && bound && typeof bound === 'object' && typeof (bound as { port?: unknown }).port === 'number'
+      ? parseInstanceAddress({ host: (bound as { address?: unknown }).address, port: (bound as { port: number }).port })
+      : null;
+  return ownListen;
+}
+
+/** The recorded origin (`http://127.0.0.1:4321`), or `undefined` when none was recorded. */
+export function ownCockpitOrigin(): string | undefined {
+  return ownListen ? instanceOrigin(ownListen) : undefined;
+}
+
+/** The project's own page on this cockpit (`…/p/<id>/`), or `undefined` when the address is unknown. */
+export function ownCockpitUrl(projectId: string): string | undefined {
+  return ownListen ? instanceUrl(ownListen, projectId) : undefined;
+}
+
+/**
  * The state machine, as one pure function: two checked facts in, one answer out.
  *
  * Pure and exported so the five states can be tested without a socket, a clock or a cache — the

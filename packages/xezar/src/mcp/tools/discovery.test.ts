@@ -12,6 +12,8 @@ import { mergeWriteWorkspaceConfig } from '../../workspace/config.ts';
 import { globalImportSummary } from '../../workspace/import-global.ts';
 import { recordGlobalImportState } from '../../workspace/project-machine-state.ts';
 import { projectStateLayout, setActiveStateLayout } from '../../state-layout.ts';
+import { recordOwnListen } from '../../server/instance-liveness.ts';
+import { createServer as createHttpServer, type Server as HttpServer } from 'node:http';
 import { toolListing } from '../tool.ts';
 import { bindHostFromArgv, buildDiscovery, discoverProjectTool, discoveryText, type DiscoveryFacts } from './discovery.ts';
 
@@ -327,6 +329,11 @@ describe('discover_project — unavailable actions carry a reason', () => {
     expect(reason).toMatch(/Claude Code is installed but not signed in/);
     expect(reason).toMatch(/Codex is disabled/);
     expect(reason).toMatch(/OpenCode is not installed/);
+    // Review round 1 (F3). Break: a not-installed reason that names no way to install the agent.
+    expect(reason).toContain('OpenCode is not installed on this machine. Install OpenCode, then run `opencode auth login`.');
+    // Review round 1 (F4). Break: with no address, telling the person to start a cockpit — this
+    // fallback is reached only in hosted mode, where one is already running.
+    expect(reason).toContain('Settings → Agents → Providers in the running cockpit (no address is recorded here)');
     expect(none.agents.every((a) => !a.usable && a.reason)).toBe(true);
 
     const ready = buildDiscovery(facts());
@@ -557,5 +564,88 @@ describe('discover_project — the tool', () => {
     expect(bindHostFromArgv(['node', 'xezar', 'serve'])).toBeUndefined();
     expect(bindHostFromArgv(['node', 'xezar', '--bind-host', '0.0.0.0'])).toBe('0.0.0.0');
     expect(bindHostFromArgv(['node', 'xezar', 'serve', '--bind-host=10.0.0.5'])).toBe('10.0.0.5');
+  });
+});
+
+
+/**
+ * #819 item 8 — `discover_project.cockpit`: where the PERSON opens this cockpit, so a leader hands
+ * them a link instead of a page name. The URL is the running server's REAL listen origin, and the
+ * block is ABSENT when that is unknown. Each case names the break it fails against.
+ */
+describe('discover_project — the cockpit address (#819 item 8)', () => {
+  const dirs: string[] = [];
+  const servers: HttpServer[] = [];
+  const saved = { home: process.env.XEZ_HOME, dry: process.env.XEZ_DRY_RUN, remote: process.env.XEZ_REMOTE };
+  beforeEach(() => {
+    const home = realpathSync(mkdtempSync(join(tmpdir(), 'xez-discovery-cockpit-home-')));
+    dirs.push(home);
+    process.env.XEZ_HOME = home;
+    process.env.XEZ_DRY_RUN = '1';
+    delete process.env.XEZ_REMOTE;
+  });
+  afterEach(async () => {
+    recordOwnListen(null, true);
+    for (const server of servers.splice(0)) await new Promise<void>((resolve) => server.close(() => resolve()));
+    for (const [key, value] of [['XEZ_HOME', saved.home], ['XEZ_DRY_RUN', saved.dry], ['XEZ_REMOTE', saved.remote]] as const) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+  async function discover(): Promise<{ discovery: McpDiscovery; text: string }> {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'xez-discovery-cockpit-')));
+    dirs.push(root);
+    mkdirSync(join(root, '.xezar'), { recursive: true });
+    writeFileSync(join(root, '.xezar', 'config.json'), '{"skillsRepos": []}\n', 'utf8');
+    const result = await discoverProjectTool.call({}, { project: { id: 'proj a', name: 'Project A', root }, xezarVersion: '1.2.3' });
+    return { discovery: mcpDiscoverySchema.parse(result.structuredContent), text: result.content[0]!.text };
+  }
+  async function listening(): Promise<{ server: HttpServer; port: number }> {
+    const server = createHttpServer();
+    servers.push(server);
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    return { server, port: (server.address() as { port: number }).port };
+  }
+
+  // Break: the MCP layer's in-process base (`http://127.0.0.1`, no port) or a requested port leaking
+  // into the answer instead of the port the OS really handed out.
+  it('equals the real listen origin of a socket listening on a random port', async () => {
+    const { server, port } = await listening();
+    recordOwnListen(server, true);
+    const { discovery, text } = await discover();
+    const origin = `http://127.0.0.1:${port}`;
+    expect(discovery.cockpit).toEqual({
+      url: `${origin}/p/proj%20a/`,
+      pages: {
+        providers: `${origin}/p/proj%20a/settings/agents`,
+        accounts: `${origin}/settings/global/accounts`,
+        mcpConnection: `${origin}/p/proj%20a/settings/mcp-connection`,
+      },
+    });
+    expect(text).toContain(`Cockpit: ${origin}/p/proj%20a/ — the address to give the person`);
+  });
+
+  // Break: a made-up loopback URL when nothing recorded a listen.
+  it('is absent when no address was recorded', async () => {
+    const { discovery, text } = await discover();
+    expect(discovery).not.toHaveProperty('cockpit');
+    expect(text).not.toMatch(/https?:\/\//);
+  });
+
+  // Break: a hosted cockpit handing out a loopback link nobody's browser can open.
+  it('is absent in hosted mode, even with an address recorded', async () => {
+    const { server } = await listening();
+    recordOwnListen(server, true);
+    process.env.XEZ_REMOTE = '1';
+    const { discovery } = await discover();
+    expect(discovery).not.toHaveProperty('cockpit');
+  });
+
+  // Break: recording a hosted listen at all.
+  it('records nothing when the listen is not on the host', async () => {
+    const { server } = await listening();
+    expect(recordOwnListen(server, false)).toBeNull();
+    expect((await discover()).discovery).not.toHaveProperty('cockpit');
   });
 });

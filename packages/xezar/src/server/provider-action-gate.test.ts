@@ -44,7 +44,7 @@ describe('provider action gate', () => {
         { provider: 'codex', status: 'connected', enabled: false },
         { provider: 'opencode', status: 'not-installed', enabled: true },
       ],
-    })).toBe('Codex is disabled. Enable it in Settings → Agents → Providers.');
+    })).toBe('Codex is disabled. Enable it in Settings → Agents → Providers, or with project_config set_provider_enabled (provider codex, enabled true).');
   });
 
   it.each(['disconnected', 'unknown'] as const)(
@@ -52,13 +52,13 @@ describe('provider action gate', () => {
     (status) => {
       expect(unavailableProviderMessage(['codex'], {
         providers: [{ provider: 'codex', status, enabled: true }],
-      })).toBe('Codex credentials are unavailable. Authorize it in Settings → Agents → Providers.');
+      })).toBe('Codex credentials are unavailable. Authorize it in Settings → Agents → Providers, or run `xez providers connect codex` on the machine that runs xezar.');
     },
   );
 
   it('reports unavailable credentials when the provider status row is missing', () => {
     expect(unavailableProviderMessage(['opencode'], { providers: [] }))
-      .toBe('OpenCode credentials are unavailable. Authorize it in Settings → Agents → Providers.');
+      .toBe('OpenCode credentials are unavailable. Authorize it in Settings → Agents → Providers, or run `xez providers connect opencode` on the machine that runs xezar.');
   });
 
   it('uses an explicit override before the latest step backend', () => {
