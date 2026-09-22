@@ -9,6 +9,8 @@ Use the fifteen fields and semantic checklist in .xezar/docs/business-analysis.m
 
 Inputs: requested outcome and evidence. Output: the existing business-analysis checklist, falsifiable AC, recommendation and unresolved decisions. Preserve read-only scope; do not turn an analysis request into an implementation or published spec.
 
+Read local Git state only through `bash .xezar/checks/git-read.sh <op> [args]`, for example `bash .xezar/checks/git-read.sh log --oneline origin/main`; use `bash .xezar/checks/git-read.sh rev-parse --abbrev-ref HEAD` for the current branch. The trusted check before this step acquires `origin/<base>` and, when the engine supplies a validated PR number, `origin/pr/<n>`; a fetch failure warns and leaves local refs available. Never fetch or use bare `git diff`, `git show` or `git log` in the agent step. The standalone bootstrap locator below deliberately uses the retained plain `git rev-parse` allowlist entry.
+
 ## Shared contract
 
 Before reading kit files in a standalone skill run, if `.xezar/checks/bootstrap.sh` is absent, run `bash "$(git rev-parse --path-format=absolute --git-common-dir)/../.xezar/checks/bootstrap.sh"`. If unavailable or refused, stop with that specific blocker. Never fabricate commands or copy runtime. Workflow launches already perform this step.
