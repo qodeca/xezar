@@ -272,6 +272,13 @@ async function main(): Promise<void> {
   // parsed value answers that directly — no argv sniffing, and no `-p=` spelling to guess at.
   const portExplicit = values.port !== undefined;
 
+  // `--bind-host ""` behaves exactly like the flag being absent (owner decision, #838 item A):
+  // a script that passes an unset variable stays safe rather than exposing every interface.
+  // Normalised ONCE, here, where the flag is parsed — `serveCommand`, `providersCommand` and
+  // `serverCommand` below all read this same already-resolved value, so none of them re-decides
+  // what `''` means on its own.
+  const bindHost = values['bind-host'] === '' ? undefined : values['bind-host'];
+
   if (values.help) {
     console.log(HELP);
     return;
@@ -423,7 +430,7 @@ async function main(): Promise<void> {
 
   switch (command) {
     case 'serve':
-      await serveCommand(repoRoot, invocation, !values['no-open'], values['bind-host'], cliAudit('serve', repoRoot));
+      await serveCommand(repoRoot, invocation, !values['no-open'], bindHost, cliAudit('serve', repoRoot));
       return;
     case 'run':
       await runCommand(
@@ -476,7 +483,7 @@ async function main(): Promise<void> {
       const { runProvidersCommand } = await import('./providers-cli.ts');
       process.exitCode = await runProvidersCommand(positionals.slice(1), values.account, {
         cwd: repoRoot,
-        bindHost: values['bind-host'],
+        bindHost,
       });
       return;
     }
@@ -515,7 +522,7 @@ async function main(): Promise<void> {
         // here — a hosted instance's port belongs to its systemd unit and its nginx site.
         port: portExplicit ? invocation.flagPort : undefined,
         externalProxy: Boolean(values['external-proxy']),
-        bindHost: values['bind-host'],
+        bindHost,
       });
       return;
     case 'server-deploy':
