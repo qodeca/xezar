@@ -461,7 +461,7 @@ sh scripts/test-env-down.sh                                  # always, when fini
 `XEZ_DRY_RUN=1 npm run dev` still exercises the whole cockpit offline for manual
 verification.
 
-### Two rules the suite learned the hard way
+### Three rules the suite learned the hard way
 
 - **Never edit a spec — or anything it imports — while a run is in flight.** Files are
   loaded as the run reaches them, so an edit part-way through leaves the specs that have
@@ -473,6 +473,14 @@ verification.
   signal: a server still flushing its NDJSON races `rmSync` and throws `ENOTEMPTY` in a
   suite whose every test passed. The helpers await the exit and retry the removal, and
   still report a directory that genuinely cannot be deleted.
+- **A spec's own HTTP never reuses a connection.** `packages/web/e2e/fresh-connections.setup.ts`
+  (loaded through `setupFiles`) installs an undici `Agent({ pipelining: 0 })` as the spec
+  process's fetch dispatcher, so every `fetch` opens its own socket and sends
+  `connection: close`. A spec blocks its event loop in synchronous agent-browser calls, often
+  past the server's 5 s keep-alive window; with pooled sockets, whether the next request went
+  out on one the server had already closed was a race, lost as `fetch failed` →
+  `other side closed` (`UND_ERR_SOCKET`) once CI runners moved to Node 24.21.0 (#671). Do
+  not pass a keep-alive `dispatcher` to a spec's `fetch`.
 
 ### The user-guide flow package
 

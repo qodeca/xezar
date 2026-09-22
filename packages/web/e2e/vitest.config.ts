@@ -47,6 +47,9 @@ export default defineConfig({
     // gitignored `.local/qa/xez-home` decides whether the sidebar renders its flat or its grouped
     // shell, and every spec asserting flat-shell selectors becomes a coin flip. See the module.
     globalSetup: ['./workspace-registry.ts'],
+    // Every spec-side fetch opens its own connection and never reuses a pooled socket the server
+    // may already have closed while the spec was blocked in a browser call (#671). See the module.
+    setupFiles: ['./fresh-connections.setup.ts'],
     // A real browser is slower than jsdom, but a smoke test that needs more than this is broken.
     testTimeout: 60_000,
     hookTimeout: 60_000,

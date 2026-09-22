@@ -278,8 +278,9 @@ The pins are part of the reuse fingerprint (`environment.agentHome` in the descr
 instance booted with different pins is never reused — the same rule `environment.singleProject`
 already follows.
 
-Iterating on ONE spec, and the two rules this suite learned the hard way (never edit a spec while
-a run is in flight; tear a fixture server down through the shared helpers), are in
+Iterating on ONE spec, and the three rules this suite learned the hard way (never edit a spec while
+a run is in flight; tear a fixture server down through the shared helpers; a spec's own HTTP never
+reuses a connection), are in
 [docs/testing/agent-browser.md](docs/testing/agent-browser.md).
 
 ## Related documents
