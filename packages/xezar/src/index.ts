@@ -71,7 +71,7 @@ import { runProjectsCommand } from './workspace/projects-cli.ts';
 import { cliAudit, PROJECTS_SUBCOMMANDS, projectResource, type CliAudit } from './cli-audit.ts';
 import { WorkspaceSemaphore } from './workspace/semaphore.ts';
 import { discoverProjectCheck, fixAndVerifyWorkflow, PROJECT_CONVENTIONS_SKILL } from './init-kit.ts';
-import { resolveCapabilities } from './server/capabilities.ts';
+import { resolveBindHost, resolveCapabilities } from './server/capabilities.ts';
 import { recordOwnListen } from './server/instance-liveness.ts';
 import {
   assertProjectStateUsable,
@@ -274,10 +274,10 @@ async function main(): Promise<void> {
 
   // `--bind-host ""` behaves exactly like the flag being absent (owner decision, #838 item A):
   // a script that passes an unset variable stays safe rather than exposing every interface.
-  // Normalised ONCE, here, where the flag is parsed — `serveCommand`, `providersCommand` and
-  // `serverCommand` below all read this same already-resolved value, so none of them re-decides
-  // what `''` means on its own.
-  const bindHost = values['bind-host'] === '' ? undefined : values['bind-host'];
+  // Normalised ONCE, here, where the flag is parsed, by the shared `resolveBindHost` — `serveCommand`,
+  // `providersCommand` and `serverCommand` below all read this same already-resolved value, so none
+  // of them re-decides what `''` means on its own.
+  const bindHost = resolveBindHost(values['bind-host']);
 
   if (values.help) {
     console.log(HELP);

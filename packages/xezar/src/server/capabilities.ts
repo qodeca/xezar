@@ -127,6 +127,16 @@ function isLoopbackName(hostname: string): boolean {
   return hostname === 'localhost' || LOOPBACK_V4.test(hostname) || hostname === LOOPBACK_V6;
 }
 
+/** The one answer to "what does this `--bind-host` value mean" (#838 item A).
+ *  An empty value behaves exactly like the flag being absent (owner decision): a
+ *  script passing an unset variable binds loopback rather than every interface,
+ *  with no error and no warning. Every reader of a bind host — the CLI after
+ *  `parseArgs`, `startServer`'s own listen, the MCP's argv reader — goes through
+ *  this, so the guarantee does not depend on a caller remembering it. */
+export function resolveBindHost(raw: string | undefined): string | undefined {
+  return raw === '' ? undefined : raw;
+}
+
 /** True for bind hosts that only the local machine can reach. Undefined = the
  *  default bind (127.0.0.1), hence trusted — this is a *configuration* value we
  *  chose, not a request header. Do NOT use this on attacker-controlled input;

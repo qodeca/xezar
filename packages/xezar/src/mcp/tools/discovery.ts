@@ -20,7 +20,7 @@ import { agentModelsLocked } from '../../core/agent-model-policy.ts';
 import { ProviderAuthService, providerInstallHint } from '../../core/provider-auth.ts';
 import { applyProviderEnablement } from '../../core/provider-availability.ts';
 import { detectEnvironment } from '../../core/backend-detect.ts';
-import { resolveCapabilities } from '../../server/capabilities.ts';
+import { resolveBindHost, resolveCapabilities } from '../../server/capabilities.ts';
 import { resolveForge } from '../../server/forge/index.ts';
 import { getRepoInfo } from '../../server/git.ts';
 import { ownCockpitOrigin } from '../../server/instance-liveness.ts';
@@ -278,8 +278,9 @@ let providerAuth: ProviderAuthService | undefined;
 export function bindHostFromArgv(argv: readonly string[] = process.argv): string | undefined {
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]!;
-    if (arg === '--bind-host') return argv[i + 1];
-    if (arg.startsWith('--bind-host=')) return arg.slice('--bind-host='.length);
+    // `resolveBindHost`: an empty value means the flag was absent, as it does for the CLI (#838 item A).
+    if (arg === '--bind-host') return resolveBindHost(argv[i + 1]);
+    if (arg.startsWith('--bind-host=')) return resolveBindHost(arg.slice('--bind-host='.length));
   }
   return undefined;
 }

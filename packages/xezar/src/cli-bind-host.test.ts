@@ -111,6 +111,8 @@ describe('serve --bind-host (#838 item A)', () => {
     const { proc, port } = await bootServe(freshRepo('empty'), ['--bind-host', '']);
     try {
       expect(await canConnect('127.0.0.1', port)).toBe(true);
+      // Assumes an IPv6-enabled host: without IPv6, '' binds 0.0.0.0, '::1' is refused either way
+      // and this assertion passes whatever was bound (the in-process pin in server/bind-host.test.ts is not IPv6-dependent).
       expect(await canConnect('::1', port)).toBe(false); // would be true if bound to '::'
     } finally {
       await stop(proc);
