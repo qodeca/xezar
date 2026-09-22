@@ -17,6 +17,8 @@ const started = performance.now();
 let child, proxy, fixture, backend, authority;
 let childExited = false;
 const extraChildren = new Set();
+const groups = new Set(); // process-group ids of every CLI spawned (each leads its own)
+let fixtureRepo, fixtureEnv;
 let forwarded = 0;
 let lastForwardedHost;
 let bootOutput = '';
@@ -91,17 +93,63 @@ async function twoDistinctFreePorts() {
   }
 }
 
-async function stopChild(proc) {
-  if (proc.exitCode !== null || proc.signalCode !== null) { extraChildren.delete(proc); return; }
-  proc.kill('SIGTERM'); // exact saved ChildProcess PID, never a process-name search
-  const end = Date.now() + 5000;
-  while (proc.exitCode === null && proc.signalCode === null && Date.now() < end) await sleep(25);
-  if (proc.exitCode === null && proc.signalCode === null) {
-    proc.kill('SIGKILL');
-    await Promise.race([once(proc, 'exit'), sleep(2000)]);
+/**
+ * Every CLI this harness starts leads its OWN process group (`detached: true`), and nothing is
+ * removed from the scratch directory until the kernel says that group is empty (#876).
+ *
+ * The CLI's exit is not the end of what it started. `serve` exits on SIGTERM without waiting
+ * for its descendants: the background team-skills clone (unref'd by design, #249) keeps writing
+ * into the scratch home, and the dry-run agent of a run keeps writing into the scratch repo
+ * (`notes.md`, the handoff file) until it finishes its turn. Removing the directory while they
+ * run is what failed with ENOTEMPTY after every case had passed. Those descendants inherit the
+ * CLI's process group, so once the CLI's own `exit` event has fired, cleanup signals that exact
+ * group and removes the directory only when `kill(-pgid, 0)` answers ESRCH: nothing the system
+ * under test started can still write. That is a kernel answer, not an elapsed time; the bounds
+ * below only turn a descendant that will not die into a named failure instead of a wait.
+ */
+function spawnCli(args, extraEnv = {}) {
+  const proc = spawn(process.execPath, [cli, 'serve', '--repo', fixtureRepo, '--no-open', '--output', 'lines', '--color', 'never', ...args],
+    { cwd: fixtureRepo, env: { ...fixtureEnv, ...extraEnv }, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+  proc.exited = new Promise((done) => proc.once('exit', done)); // attached at spawn, so an early exit is never missed
+  if (proc.pid) groups.add(proc.pid); // a failed spawn has no pid and reports through 'error'
+  return proc;
+}
+const hasExited = (proc) => proc.exitCode !== null || proc.signalCode !== null;
+function groupAlive(pgid) {
+  try { process.kill(-pgid, 0); return true; } catch (error) {
+    if (error.code === 'ESRCH') return false;
+    throw error;
   }
+}
+/** Waits for a kernel fact; the bound only turns a leak into a named failure. */
+async function waitFor(predicate, bound) {
+  const end = Date.now() + bound;
+  while (!predicate() && Date.now() < end) await sleep(25);
+  return predicate();
+}
+/** SIGTERM the CLI itself (its own graceful shutdown is under test), then await its `exit` event. */
+async function stopCli(proc) {
+  if (hasExited(proc)) return false;
+  proc.kill('SIGTERM'); // exact saved ChildProcess PID, never a process-name search
+  if (await Promise.race([proc.exited.then(() => true), sleep(5000).then(() => false)])) return false;
+  proc.kill('SIGKILL');
+  await Promise.race([proc.exited, sleep(2000)]);
+  return true;
+}
+/** End what the CLI left behind — its own process group, by exact id — and await an empty group. */
+async function reapGroup(pgid) {
+  if (!groupAlive(pgid)) return;
+  process.kill(-pgid, 'SIGTERM'); // the exact group this harness created, never a process-name search
+  if (await waitFor(() => !groupAlive(pgid), 5000)) return;
+  process.kill(-pgid, 'SIGKILL');
+  await waitFor(() => !groupAlive(pgid), 2000);
+}
+
+async function stopChild(proc) {
+  await stopCli(proc);
   extraChildren.delete(proc);
-  assert.ok(proc.exitCode !== null || proc.signalCode !== null, 'A-PORT-01 auxiliary CLI survived teardown');
+  assert.ok(hasExited(proc), 'A-PORT-01 auxiliary CLI survived teardown');
+  await reapGroup(proc.pid);
 }
 
 function deny(req, res) {
@@ -144,26 +192,18 @@ async function cleanup() {
   for (const request of upstreams) request.destroy();
   for (const socket of sockets) socket.destroy();
   for (const proc of [...extraChildren]) {
-    if (proc.exitCode !== null || proc.signalCode !== null) { extraChildren.delete(proc); continue; }
-    proc.kill('SIGTERM'); // exact saved ChildProcess PID, never a process-name search
-    await Promise.race([once(proc, 'exit'), sleep(1000)]);
-    if (proc.exitCode === null && proc.signalCode === null) proc.kill('SIGKILL');
+    await stopCli(proc);
     extraChildren.delete(proc);
   }
   if (proxy?.listening) await new Promise((done) => proxy.close(done));
-  if (child && !childExited) {
-    child.kill('SIGTERM'); // exact saved ChildProcess PID, never a process-name search
-    const end = Date.now() + 5000;
-    while (!childExited && Date.now() < end) await sleep(25);
-    if (!childExited) {
-      child.kill('SIGKILL');
-      await Promise.race([once(child, 'exit'), sleep(2000)]);
-      forced = true;
-    }
-  }
+  if (child) forced = await stopCli(child);
   assert.ok(!child || childExited, 'BREAK-TEARDOWN-PID: backend survived cleanup');
   if (child?.pid) assert.throws(() => process.kill(child.pid, 0), { code: 'ESRCH' });
   assert.equal(proxy?.listening ?? false, false, 'proxy listener survived cleanup');
+  // Only once no process the system under test started can still write into it (#876).
+  for (const pgid of groups) await reapGroup(pgid);
+  const survivors = [...groups].filter(groupAlive);
+  assert.deepEqual(survivors, [], 'BREAK-TEARDOWN-TREE: a descendant of the CLI outlived teardown; the scratch directory is left in place');
   if (fixture) await rm(fixture, { recursive: true, force: true });
   assert.equal(forced, false, 'backend required SIGKILL; graceful teardown failed');
 }
@@ -184,6 +224,8 @@ try {
     if (key.includes('HOME') || key.endsWith('_DIR') || key === 'TMPDIR') await mkdir(value, { recursive: true });
   }
   const repo = join(fixture, 'repo');
+  fixtureRepo = repo;
+  fixtureEnv = env;
   await mkdir(repo);
   execFileSync('git', ['init', '--initial-branch=main'], { cwd: repo, env, stdio: 'ignore', timeout: 5000 });
   await writeFile(join(repo, '.gitignore'), '.local/\n');
@@ -197,7 +239,7 @@ try {
   // satisfy both assertions with one number.
   const [envPort, flagPort] = await twoDistinctFreePorts();
   const bootCliPort = async (args, extraEnv) => {
-    const proc = spawn(process.execPath, [cli, 'serve', '--repo', repo, '--no-open', '--output', 'lines', '--color', 'never', ...args], { cwd: repo, env: { ...env, ...extraEnv }, stdio: ['ignore', 'pipe', 'pipe'] });
+    const proc = spawnCli(args, extraEnv);
     extraChildren.add(proc);
     let output = '';
     let exited = false;
@@ -218,7 +260,7 @@ try {
   await stopChild(envOnly.proc);
   console.log('PASS A-PORT-01 documented port precedence through the built CLI (--port beats XEZ_PORT)');
 
-  child = spawn(process.execPath, [cli, 'serve', '--repo', repo, '--port', '0', '--bind-host', '127.0.0.1', '--no-open', '--output', 'lines', '--color', 'never'], { cwd: repo, env, stdio: ['ignore', 'pipe', 'pipe'] });
+  child = spawnCli(['--port', '0', '--bind-host', '127.0.0.1']);
   child.once('exit', () => { childExited = true; });
   child.once('error', (error) => abort.abort(error));
   for (const pipe of [child.stdout, child.stderr]) pipe.on('data', (chunk) => { bootOutput = (bootOutput + chunk).slice(-16_384); });
