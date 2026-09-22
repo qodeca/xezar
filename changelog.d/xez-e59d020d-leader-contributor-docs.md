@@ -11,6 +11,8 @@
 - 📝 **A new top-level file under `.local/xezar/` needs announcing.** AGENTS.md, the project
   layout, the local-data table and BACKWARD_COMPATIBILITY.md now say the git ignore settles git
   only: an external consumer checks the top-level file names there, so new state goes in a
-  subdirectory.
+  subdirectory. They also say those names are a shape, not a fixed list: with no feature turned
+  on, any of them may carry a `.lock`, `.tmp` or `.<pid>.<hex>.tmp` suffix or a rotation number
+  `.1`–`.4`.
 - 📝 The kit docs index lists every file in `.xezar/docs/`, and the docs map lists every testing
   document and the research folder.
