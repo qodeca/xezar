@@ -9,9 +9,13 @@ steps:
     name: Verify worktree isolation
     command: ".xezar/checks/worktree-preflight.sh"
     resultScope: routine
+  - id: git-read-acquire
+    name: Acquire git reads
+    command: "bash .xezar/checks/git-read-acquire.sh"
+    resultScope: routine
   - id: analyse
     name: Analyse, recommend and ask
     prompt: "{{task}}"
     skill: xezar-business-analysis
     allowedTools: [Read, Grep, Glob, Bash]
-    bashAllowlist: ["git rev-parse", "git cat-file", "git merge-base", "git status", "git branch --show-current", "git ls-files", "git ls-tree", "git rev-list", "git blame", "gh issue view", "gh pr view", "gh pr diff", "bash .xezar/checks/bootstrap.sh", "bash .xezar/checks/worktree-setup.sh", "bash .xezar/checks/worktree-preflight.sh", "bash .xezar/checks/phase-record.sh", "bash .xezar/checks/security-scan.sh", "bash .xezar/checks/verify-evidence.sh", "node .xezar/checks/catalog-check.mjs", "node .xezar/checks/xezar-contract.test.mjs", pwd, ls, cat, echo, printf, grep, jq, wc, head, tail, diff, sha256sum, shasum]
+    bashAllowlist: ["bash .xezar/checks/git-read.sh", "git rev-parse", "git cat-file", "git merge-base", "git status", "git branch --show-current", "git ls-files", "git ls-tree", "git rev-list", "git blame", "gh issue view", "gh pr view", "gh pr diff", "bash .xezar/checks/bootstrap.sh", "bash .xezar/checks/worktree-setup.sh", "bash .xezar/checks/worktree-preflight.sh", "bash .xezar/checks/phase-record.sh", "bash .xezar/checks/security-scan.sh", "bash .xezar/checks/verify-evidence.sh", "node .xezar/checks/catalog-check.mjs", "node .xezar/checks/xezar-contract.test.mjs", pwd, ls, cat, echo, printf, grep, jq, wc, head, tail, diff, sha256sum, shasum]
