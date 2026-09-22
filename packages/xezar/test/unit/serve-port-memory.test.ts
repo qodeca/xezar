@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { EventEmitter, once } from 'node:events';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:net';
-import { realpathSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -426,11 +426,13 @@ async function readRegistry(home: string): Promise<RegistryRow[]> {
 const MOVE_HEADROOM = 2;
 
 /**
- * Where sentinels come from: a band BELOW the operating system's ephemeral range (#874). The OS
- * hands out `listen(0)` and outgoing-connection ports only from that range — 49152–65535 on macOS
- * and Windows, 32768–60999 on Linux — so a port under 32768 is taken only by a program that asks
- * for that exact number. Nothing in this repository does, and every invocation of this file asks
- * only at the block boundaries below.
+ * Where sentinels come from: a band BELOW this host's automatic-assignment (ephemeral) range, read
+ * from the host when the file starts (#874). The OS hands out `listen(0)` and outgoing-connection
+ * ports only from that range, so a port below its low end is taken only by a program that asks for
+ * that exact number. Nothing in this repository does, and every invocation of this file asks only
+ * at the block boundaries below. The range is configurable on every OS, so it is read, never
+ * assumed; a host whose range cannot be read, or leaves no block below it, fails this file with a
+ * message saying so — there is no fallback band.
  *
  * The old sentinel was `listen(0)`, and macOS hands those ports out one after another: the sentinel
  * was the port the OS gave LAST, and the ports `serve` must move up into were exactly the ones it
@@ -438,14 +440,99 @@ const MOVE_HEADROOM = 2;
  * runs at once, 49 of them were taken before the child finished booting, and `serve` exited 1 with
  * `no free port in <sentinel>–<sentinel+49>`.
  */
-const SENTINEL_BAND_LOW = 20_000;
-const SENTINEL_BAND_HIGH = 32_767;
+const PREFERRED_BAND_LOW = 20_000;
+const PREFERRED_BAND_HIGH = 32_767;
+/** The lowest port an unprivileged process may bind everywhere. */
+const UNPRIVILEGED_LOW = 1_025;
 /** A sentinel owns a block: itself, `MOVE_HEADROOM` ports for the moves, and spares above them. */
 const SENTINEL_BLOCK = 8;
-const SENTINEL_BLOCKS = Math.floor((SENTINEL_BAND_HIGH - SENTINEL_BAND_LOW + 1) / SENTINEL_BLOCK);
-assert.ok(SENTINEL_BAND_HIGH < 32_768 && SENTINEL_BAND_LOW > 1_024 && SENTINEL_BLOCK > MOVE_HEADROOM);
+assert.ok(SENTINEL_BLOCK > MOVE_HEADROOM);
+
+interface PortRange {
+  low: number;
+  high: number;
+}
+
+/** A port range from the host's own text, refused unless it is a real, ordered pair of ports. */
+function portRange(low: number, high: number, source: string): PortRange {
+  assert.ok(
+    Number.isInteger(low) && Number.isInteger(high) && low >= 1 && low <= high && high <= 65_535,
+    `unreadable automatic-assignment port range from ${source}: ${String(low)}–${String(high)}`,
+  );
+  return { low, high };
+}
+
+/**
+ * Every range this host assigns ports from automatically. macOS has two (the default range and
+ * the `IP_PORTRANGE_HIGH` one), Linux one; any other platform is refused rather than guessed.
+ */
+function hostAutoAssignRanges(): PortRange[] {
+  if (process.platform === 'darwin') {
+    const read = (name: string): number =>
+      Number(execFileSync('sysctl', ['-n', `net.inet.ip.portrange.${name}`], { encoding: 'utf8' }).trim());
+    return [
+      portRange(read('first'), read('last'), 'sysctl net.inet.ip.portrange.first/last'),
+      portRange(read('hifirst'), read('hilast'), 'sysctl net.inet.ip.portrange.hifirst/hilast'),
+    ];
+  }
+  if (process.platform === 'linux') {
+    const source = '/proc/sys/net/ipv4/ip_local_port_range';
+    const [low, high] = readFileSync(source, 'utf8').trim().split(/\s+/).map(Number);
+    return [portRange(low ?? Number.NaN, high ?? Number.NaN, source)];
+  }
+  assert.fail(`this test reads the automatic-assignment port range only on macOS and Linux, not ${process.platform}`);
+}
+
+/**
+ * The sentinel band: every port in it lies strictly below the lowest automatic-assignment port
+ * and above the privileged ports. It prefers 20000–32767 and reaches down to 1025 only when the
+ * host's range leaves less than one block of that. No block fits → a hard failure, never a skip.
+ */
+function sentinelBand(ranges: readonly PortRange[]): PortRange {
+  assert.ok(ranges.length > 0, 'no automatic-assignment port range was read from this host');
+  const lowestAuto = Math.min(...ranges.map((range) => range.low));
+  const high = Math.min(PREFERRED_BAND_HIGH, lowestAuto - 1);
+  const low = high - PREFERRED_BAND_LOW + 1 >= SENTINEL_BLOCK ? PREFERRED_BAND_LOW : UNPRIVILEGED_LOW;
+  assert.ok(
+    high - low + 1 >= SENTINEL_BLOCK,
+    `no block of ${SENTINEL_BLOCK} ports lies between ${UNPRIVILEGED_LOW} and this host's automatic-assignment ` +
+      `range (lowest port ${lowestAuto}); ${ranges.map((range) => `${range.low}–${range.high}`).join(', ')}`,
+  );
+  return { low, high };
+}
+
+const SENTINEL_BAND = sentinelBand(hostAutoAssignRanges());
+const SENTINEL_BLOCKS = Math.floor((SENTINEL_BAND.high - SENTINEL_BAND.low + 1) / SENTINEL_BLOCK);
 /** The next block to try. Seeded from the pid so two concurrent invocations start apart. */
 let nextSentinelBlock = process.pid % SENTINEL_BLOCKS;
+
+test('the sentinel band lies below every automatic-assignment range the host reports', () => {
+  const inside = (port: number, ranges: readonly PortRange[]): boolean =>
+    ranges.some((range) => port >= range.low && port <= range.high);
+  const bandPorts = (band: PortRange): number[] =>
+    Array.from({ length: band.high - band.low + 1 }, (_, offset) => band.low + offset);
+  // The shipped defaults: macOS and Windows 49152–65535, Linux 32768–60999.
+  assert.deepEqual(sentinelBand([{ low: 49_152, high: 65_535 }, { low: 49_152, high: 65_535 }]), { low: 20_000, high: 32_767 });
+  assert.deepEqual(sentinelBand([{ low: 32_768, high: 60_999 }]), { low: 20_000, high: 32_767 });
+  // A reconfigured range that overlaps the preferred band: the band shrinks below it.
+  const overlapping = [{ low: 49_152, high: 65_535 }, { low: 24_000, high: 65_535 }];
+  const shrunk = sentinelBand(overlapping);
+  assert.deepEqual(shrunk, { low: 20_000, high: 23_999 });
+  assert.equal(bandPorts(shrunk).some((port) => inside(port, overlapping)), false);
+  // A range reaching below the preferred band entirely: the band moves down to the unprivileged floor.
+  const low = [{ low: 10_000, high: 65_535 }];
+  assert.deepEqual(sentinelBand(low), { low: 1_025, high: 9_999 });
+  // Less than one block left: a hard failure, never a fallback band.
+  assert.throws(() => sentinelBand([{ low: 1_030, high: 65_535 }]), /no block of 8 ports/);
+  assert.throws(() => sentinelBand([]), /no automatic-assignment port range/);
+  // The host this file is running on.
+  const host = hostAutoAssignRanges();
+  assert.equal(
+    bandPorts(SENTINEL_BAND).some((port) => inside(port, host)),
+    false,
+    `band ${SENTINEL_BAND.low}–${SENTINEL_BAND.high} overlaps ${JSON.stringify(host)}`,
+  );
+});
 
 /** Bind `port` on loopback: the held server, or undefined when something else has it. */
 async function tryHold(port: number): Promise<Server | undefined> {
@@ -467,17 +554,18 @@ async function tryHold(port: number): Promise<Server | undefined> {
 
 /**
  * A sentinel port `serve` can move up from, held until the assertion releases it. It is the first
- * port of a block in the non-ephemeral band whose other ports are free when it is taken; a block
- * with anything bound in it is skipped, never waited on. The check binds and closes each port above
- * the sentinel, and that is safe only here: below the ephemeral range no released port can be
- * handed to anyone who did not ask for that exact number, so the ports stay free for the boot.
+ * port of a block in the sentinel band whose other ports are free when it is taken; a block with
+ * anything bound in it is skipped, never waited on. The check binds and closes each port above the
+ * sentinel, and that is safe only here: the band lies below the automatic-assignment range this
+ * host reported, so no released port can be handed to anyone who did not ask for that exact
+ * number, and the ports stay free for the boot.
  * Other invocations of this file only ever take a whole block, so their sentinels and the ports
  * their boots move into never share a block with this one.
  */
 async function sentinel(): Promise<{ port: number; server: Server }> {
   for (let tried = 0; tried < SENTINEL_BLOCKS; tried += 1) {
     const block = (nextSentinelBlock + tried) % SENTINEL_BLOCKS;
-    const port = SENTINEL_BAND_LOW + block * SENTINEL_BLOCK;
+    const port = SENTINEL_BAND.low + block * SENTINEL_BLOCK;
     const server = await tryHold(port);
     if (!server) continue;
     let blockFree = true;
@@ -495,7 +583,7 @@ async function sentinel(): Promise<{ port: number; server: Server }> {
     }
     await release(server);
   }
-  assert.fail(`no free block of ${SENTINEL_BLOCK} ports in ${SENTINEL_BAND_LOW}–${SENTINEL_BAND_HIGH}`);
+  assert.fail(`no free block of ${SENTINEL_BLOCK} ports in ${SENTINEL_BAND.low}–${SENTINEL_BAND.high}`);
 }
 
 /**
