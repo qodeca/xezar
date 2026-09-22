@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  agentQuotaProducerResponseSchema,
   agentQuotaResponseSchema,
   agentQuotaStatusSchema,
   projectConfigQuotaInputSchema,
@@ -9,13 +10,29 @@ import {
 // @ts-expect-error Vitest supplies raw asset imports; production contract modules remain Node-free.
 import fixtureText from './__fixtures__/agent-quota.expected.json?raw';
 
+const AGENT_QUOTA_FIXTURE_SHA256 = '967b5b4c67401ad7c0fd49808d6526cae0fc4e430fd1038d709b05427f35d930';
+
+async function sha256(text: string): Promise<string> {
+  const runtime = globalThis as unknown as {
+    TextEncoder: new () => { encode(value: string): Uint8Array };
+    crypto: { subtle: { digest(algorithm: string, value: Uint8Array): Promise<ArrayBuffer> } };
+  };
+  const bytes = new runtime.TextEncoder().encode(text);
+  const digest = await runtime.crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
 /**
  * The fixture is the CONTRACT for the HTTP and project_config quota answers (#867 S1), not a
  * sample. A later implementation must produce these bytes for its deterministic fixture path.
  */
 describe('the agent-quota answer matches its committed fixture', () => {
-  it('parses and canonically serialises byte-for-byte to the fixture', () => {
-    const parsed = agentQuotaResponseSchema.parse(JSON.parse(fixtureText));
+  it('pins the fixture bytes to an independently reviewed SHA-256 digest', async () => {
+    expect(await sha256(fixtureText)).toBe(AGENT_QUOTA_FIXTURE_SHA256);
+  });
+
+  it('strictly parses and canonically serialises byte-for-byte to the fixture', () => {
+    const parsed = agentQuotaProducerResponseSchema.parse(JSON.parse(fixtureText));
 
     expect(`${JSON.stringify(parsed, null, 2)}\n`).toBe(fixtureText);
   });
@@ -37,6 +54,30 @@ describe('the agent-quota answer matches its committed fixture', () => {
 
     expect(parsed).not.toHaveProperty('futureTopLevelFact');
     expect(parsed.accounts[0]).not.toHaveProperty('futureAccountFact');
+  });
+
+  it('accepts an additive null fact and its notReported name only for consumers', () => {
+    const fixture = JSON.parse(fixtureText) as { accounts: Record<string, unknown>[] };
+    const first = fixture.accounts[0]!;
+    const additiveAnswer = {
+      ...fixture,
+      accounts: [
+        {
+          ...first,
+          futureFact: null,
+          notReported: [...(first.notReported as string[]), 'futureFact'],
+        },
+      ],
+    };
+
+    expect(agentQuotaResponseSchema.safeParse(additiveAnswer).success).toBe(true);
+    expect(agentQuotaProducerResponseSchema.safeParse(additiveAnswer).success).toBe(false);
+    expect(
+      agentQuotaResponseSchema.safeParse({
+        ...fixture,
+        accounts: [{ ...first, notReported: ['planType', 'futureFact'] }],
+      }).success,
+    ).toBe(false);
   });
 
   it('keeps the two project_config request and response actions on the same answer schema', () => {

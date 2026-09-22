@@ -362,10 +362,13 @@ explicit instruction rather than silently. It ships as a minor bump called out a
 
 The committed fixture added by #867 S1 is the byte-level contract for the future
 `GET /api/v1/workspace/agent-quota` response and for the result carried by the MCP
-`project_config` actions `read_quota` and `check_quota`. The sibling contract test parses it with
-`agentQuotaResponseSchema` and compares `JSON.stringify(parsed, null, 2) + "\n"` to the committed
-bytes. This section protects the fixture now; the HTTP route and MCP runtime actions do not exist in
-S1 and join their own protected inventories when they land.
+`project_config` actions `read_quota` and `check_quota`. Readers use the tolerant
+`agentQuotaResponseSchema`: it strips unknown object keys, accepts unknown `notReported` names and
+checks null pairing only for the five facts this version knows. Producers and the sibling fixture
+test use `agentQuotaProducerResponseSchema`, which rejects unknown keys and names; the test compares
+`JSON.stringify(parsed, null, 2) + "\n"` to the committed bytes and pins those bytes to an
+independently reviewed SHA-256 digest. This section protects the fixture now; the HTTP route and MCP
+runtime actions do not exist in S1 and join their own protected inventories when they land.
 
 The surface is **additive only**. A consumer must ignore unknown object keys. Adding a new key is
 compatible when every existing key keeps its meaning and representation; removing or renaming a
