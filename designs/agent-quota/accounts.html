@@ -129,10 +129,12 @@
                 <button class="btn" type="button" data-action="agent-quota-refresh-all"><svg class="icon sm" aria-hidden="true"><use href="#i-rerun"/></svg>Refresh all</button>
               </span>
             </div>
-            <ul class="summary-lines" role="status" aria-live="polite" aria-atomic="true">
-              <li><span class="dot pending" aria-hidden="true"></span><span>Claude Code: 3 of 5 logins can work. <a class="link jump" href="#acct-claude-personal">Personal</a> is out until 17:10 CEST (+02:00).</span></li>
-              <li><span class="dot success" aria-hidden="true"></span><span>Codex: 1 of 1 login can work.</span></li>
-            </ul>
+            <div class="summary-live" role="status" aria-live="polite" aria-atomic="true">
+              <ul class="summary-lines">
+                <li><span class="dot pending" aria-hidden="true"></span><span>Claude Code: 3 of 5 logins can work. <a class="link jump" href="#acct-claude-personal">Personal</a> is out until 17:10 CEST (+02:00).</span></li>
+                <li><span class="dot success" aria-hidden="true"></span><span>Codex: 1 of 1 login can work.</span></li>
+              </ul>
+            </div>
             <p class="fine">How much of each login’s short and weekly limits is used, as Claude Code and Codex report it, with the age of every reading. xezar only shows these facts — it never switches logins, holds a task back or changes auto-resume because of them. Times are in the server’s zone, Europe/Warsaw. OpenCode and pi do not report plan limits.</p>
             <p class="fine">Refresh all checks every login last checked 5 or more minutes ago, 2 at a time; the rest wait their turn.</p>
           </section>

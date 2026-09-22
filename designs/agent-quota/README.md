@@ -115,7 +115,8 @@ half.
 a card (`rounded-lg border border-border bg-card p-inset`) with the heading “Plan limits”, a Refresh
 all button, one line per applicable agent with its `StatusDot` and the server's summary sentence
 (`summaries[].text`), plus a jump link to the first login that is out; then two fine-print sentences
-(what this is and that it never acts; the refresh pace). The summary list is a polite live region.
+(what this is and that it never acts; the refresh pace). The summary list sits inside a polite live
+region (a `role="status"` wrapper, so the list keeps its list semantics).
 
 **Limits half of a row** (`data-slot="account-limits"`, `role="group"`, labelled “Plan limits of
 {name}, {agent}”): under the existing name/path/Connected and actions, full width, after a dashed
@@ -351,10 +352,11 @@ e2e phone-target and no-sideways-scroll checks at 375 px for the pane and the to
   full sentence with every count; each limits half is a `role="group"` named after its login.
 - Meaning never rides on colour: every dot and bar has the sentence or the number beside it; the
   bars are `aria-hidden`.
-- Changed counts are announced politely: the Plan limits summary list is `role="status"
-  aria-live="polite" aria-atomic="true"`, and the chip's count change is announced through the same
-  region when the pane is not open (one polite root announcer, as the nav badges do). First render is
-  not announced.
+- Changed counts are announced politely: the Plan limits summary list sits in a wrapper that is
+  `role="status" aria-live="polite" aria-atomic="true"` (never on the `<ul>` itself, which would drop
+  its list role), and the chip's count change is announced through the same region
+  when the pane is not open (one polite root announcer, as the nav badges do). First render is not
+  announced.
 - Refresh inside the 5-minute gap is `aria-disabled` (still focusable) with the reason as
   `aria-describedby` text on screen – no tooltip-only reason.
 - Light and dark through theme tokens only; checked in both (captures below). Amber and red appear
