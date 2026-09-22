@@ -23,6 +23,16 @@ test('real Xezar workflow loader and skill parser accept every local role withou
  const source=`import {loadWorkflows} from ${JSON.stringify(pathToFileURL(path.join(repo,'packages/xezar/src/workflows/load.ts')).href)};import {parseFrontmatter} from ${JSON.stringify(pathToFileURL(path.join(repo,'packages/xezar/src/skills.ts')).href)};import fs from 'node:fs';const r=await loadWorkflows(${JSON.stringify(repo)});if(r.issues.length)throw Error(JSON.stringify(r.issues));const own=r.workflows.filter(x=>x.source==='file');if(own.length!==18)throw Error('role count');for(const w of own){if(w.steps[0].id!=='kit')throw Error('bootstrap missing');if(w.steps.at(-1).command)throw Error('noninteractive final');for(const step of w.steps){if(step.model||step.runner)throw Error('foreign pin');if(step.skill){const f=${JSON.stringify(path.join(kit,'skills'))}+'/'+step.skill+'.md';const parsed=parseFrontmatter(fs.readFileSync(f,'utf8'));if(!parsed)throw Error('skill parse');}if(step.onFail&&step.onFail.max!==2)throw Error('retry changed');}} console.log(own.length);`;
  assert.equal(exec(process.execPath,['--import','tsx','--input-type=module','-e',source]),'18');
 });
+// #851: the kit transcribes the verdict role list because catalog-check runs without the engine's
+// modules; this is what keeps the copy equal to the one declaration, TASK_VERDICT_ROLES. Named break:
+// add a role to the contract only, and every kit workflow declaring it fails the catalog by name.
+test('catalog-check VERDICT_ROLES equals the contract TASK_VERDICT_ROLES',()=>{
+ const text=fs.readFileSync(path.join(checks,'catalog-check.mjs'),'utf8');
+ const match=text.match(/^const VERDICT_ROLES = new Set\((\[[^\]]*\])\);$/m);
+ assert.ok(match,'catalog-check.mjs declares VERDICT_ROLES as one Set literal');
+ const source=`import {TASK_VERDICT_ROLES} from ${JSON.stringify(pathToFileURL(path.join(repo,'packages/contract/src/task-verdict.ts')).href)};console.log(JSON.stringify(TASK_VERDICT_ROLES));`;
+ assert.deepEqual(JSON.parse(match[1]),JSON.parse(exec(process.execPath,['--import','tsx','--input-type=module','-e',source])));
+});
 test('canonical gates match the five actual validation commands in exact order',()=>{
  const list=JSON.parse(exec('bash',[path.join(checks,'repo-gates.sh'),'--list','--json']));
  const agreed=JSON.parse(fs.readFileSync(path.join(repo,'.xezar/pipeline/config.json'))).validation.commands;
