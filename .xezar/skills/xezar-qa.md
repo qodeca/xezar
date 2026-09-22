@@ -21,7 +21,7 @@ On PASS: apply `qa-approved` and remove `needs-qa`. On FAIL: remove `merge-queue
 
 After the `## QA` comment is posted and the labels above have been attempted, write ONE JSON packet to `${XEZ_HANDOFF_FILE}.verdict.json`. The engine reads it when this step settles and puts the verdict on the task record, where the leader reads it with `task_read view=task`. A verdict that exists only in a PR comment is one the leader must go and parse; this is the machine-readable half of the same report, never a replacement for it.
 
-Write it atomically — write `${XEZ_HANDOFF_FILE}.verdict.json.tmp`, then `mv` it onto the final name. Never redirect into the final path: a half-written packet is refused and costs you the report.
+Write it atomically — pipe the JSON to `bash .xezar/checks/verdict-packet.sh`, which writes `${XEZ_HANDOFF_FILE}.verdict.json.tmp` and then `mv`s it onto the final name (this role's shell allowlist grants no redirect and no `mv`, #849). Never redirect into the final path: a half-written packet is refused and costs you the report.
 
 Order matters: post the comment, then attempt the labels, then write the packet. The packet records what the labels actually DID, so it cannot honestly be written before they were tried.
 
