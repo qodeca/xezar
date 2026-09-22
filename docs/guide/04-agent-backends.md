@@ -25,7 +25,7 @@ Open project **Settings → Agents** to select the default agent and per-agent m
 
 To lock models to native agent settings, set `XEZ_AGENT_MODELS_LOCKED=1` or `"modelsLocked": true` in global `~/.xezar/config.json` or project `.xezar/config.json`. Project **Settings → Agents → Lock models** turns the project key on and off (off deletes it); the locked model then shows read-only. The switch cannot lift a lock set by the environment variable or the global key, and says so. While locked, requests that set a model override are refused with HTTP 409. The Agents section also has a shared system prompt and the planner and namer model controls. Those two background-model controls apply to Claude; their defaults are `sonnet` and `haiku` respectively. For Claude only, `ANTHROPIC_MODEL` supplies the native default when no cockpit preset is saved and the task model is left on **auto (default)**. A saved cockpit preset is layered over that default and the selected model is passed as `--model`.
 
-![Project Agents settings](../screenshots/0.16.0/settings-agents-dark-1280.png)
+![Project Agents settings](../screenshots/0.18.0/settings-agents-dark-1280.png)
 
 ## To use another agent account
 
@@ -55,7 +55,7 @@ Account registrations and selections live in a file of their own, never in xezar
 
 The second one can be committed, so a clone starts with the same account names and directories; the sign-ins themselves stay on each machine. In that layout the pane also says whether the accounts of your personal machine-wide setup were copied into this project and how many could still be — a count, never their names — with a **Copy _n_ accounts** button. That button is the only thing on the page that copies; nothing happens on load, and `xezar accounts import-global` runs the same merge from a terminal. An account whose directory does not exist on this machine reads **Unavailable** there, and a task that asks for it is refused before the agent starts rather than quietly run under another login.
 
-![Global Agent accounts settings](../screenshots/0.16.0/settings-accounts-dark-1280.png)
+![Global Agent accounts settings](../screenshots/0.18.0/settings-accounts-dark-1280.png)
 
 ## To pin an account's model and effort
 

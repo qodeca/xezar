@@ -24,7 +24,7 @@ The Settings overview shows the project folder, registry facts, status, branch w
 
 See [Agent backends](04-agent-backends.md), [Workflows](05-workflows.md), and [Skills](06-skills.md).
 
-![Project agent settings](../screenshots/0.16.0/settings-agents-dark-1280.png)
+![Project agent settings](../screenshots/0.18.0/settings-agents-dark-1280.png)
 
 ### To inspect or edit native files — Agent config
 
@@ -75,7 +75,7 @@ In [single-project mode](09-projects.md#to-keep-a-projects-xezar-setup-inside-th
 
 The controls apply directly. Accent, density, and reading width are saved in workspace UI state and mirrored in browser storage for the next page load. If a save fails, the cockpit restores the last server-confirmed choice.
 
-![Appearance with Roomy density](../screenshots/0.16.0/settings-appearance-roomy-dark-1280.png)
+![Appearance with Roomy density](../screenshots/0.18.0/settings-appearance-roomy-dark-1280.png)
 
 ### To notice tasks needing attention — Notifications
 
@@ -101,7 +101,7 @@ Open the project’s **Settings → Worktrees** table to inspect disk use and re
 
 Automations have no control here: start the server with `XEZ_AUTOMATIONS=1` to enable them.
 
-![Workspace resource settings](../screenshots/0.16.0/settings-resources-dark-1280.png)
+![Workspace resource settings](../screenshots/0.18.0/settings-resources-dark-1280.png)
 
 ### To choose how xezar starts in a terminal — Terminal
 
@@ -153,7 +153,7 @@ Keyboard is a hidden placeholder: there is no routed Keyboard settings page or s
 
 Press **⌘K / Ctrl+K** to open the palette. Search for a view, project, task, or skill, then select a result. The palette offers **New task** and **Toggle theme**. With an empty search, **Recently finished** lists finished tasks you have not opened since they finished. Project and **All tasks** results appear only with more than one registered project. Selecting a skill opens the new-task composer with that skill selected. With several projects, project and task results can take you into another project's scope; unavailable views are filtered by the cockpit's capabilities.
 
-![Command palette](../screenshots/0.16.0/command-palette-dark-1280.png)
+![Command palette](../screenshots/0.18.0/command-palette-dark-1280.png)
 
 ## Related settings / env / config
 

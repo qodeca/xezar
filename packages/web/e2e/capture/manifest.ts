@@ -1,5 +1,5 @@
 /**
- * The 0.16.0 screenshot contract — one row per cockpit state, with the theme × width variants
+ * The 0.18.0 screenshot contract — one row per cockpit state, with the theme × width variants
  * each state is captured in.
  *
  * Source: the #448 plan's § 3.2 table (19 states). The plan's prose says "40 files", but its own
@@ -18,7 +18,7 @@ export type Width = 1280 | 375
 export interface ShotState {
   /** File-name stem: `<name>-<theme>-<width>.png`. */
   name: string
-  /** What the picture shows, in words — copied into docs/screenshots/0.16.0/README.md. */
+  /** What the picture shows, in words — copied into docs/screenshots/0.18.0/README.md. */
   shows: string
   variants: ReadonlyArray<readonly [Theme, Width]>
   /**
@@ -75,7 +75,7 @@ export const SHOT_STATES: readonly ShotState[] = [
 ]
 
 /** Where the PNGs and the GIF live, relative to the repository root. */
-export const SCREENSHOT_DIR = 'docs/screenshots/0.16.0'
+export const SCREENSHOT_DIR = 'docs/screenshots/0.18.0'
 
 /** Per-file budget for a still, in bytes (the plan's "≤ 300 KB"). */
 export const SHOT_MAX_BYTES = 300 * 1024

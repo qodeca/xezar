@@ -12,7 +12,7 @@ import {
 } from '../e2e/capture/manifest'
 
 /**
- * The docs screenshots (#448 PR-1b, currently 0.16.0) are a contract other PRs build on: the README and
+ * The docs screenshots (#448 PR-1b, currently 0.18.0) are a contract other PRs build on: the README and
  * every guide part link them by name. This pins that each listed file is on disk, is a real PNG,
  * and stays inside its size budget — so a re-capture that drops a state, renames one or bloats
  * one fails the fast gate instead of a README link on github.com.
