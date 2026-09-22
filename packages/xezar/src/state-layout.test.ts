@@ -57,6 +57,7 @@ describe('resolveStateLayout', () => {
       workspacePath: join('/tmp/xez-global', 'config.json'),
       uiStatePath: join('/tmp/xez-global', 'ui-state.json'),
       accountsPath: join('/tmp/xez-global', 'agent-accounts.json'),
+      agentQuotaPath: join('/tmp/xez-global', 'agent-quota', 'quota.json'),
       dataDir: null,
       // The cache is `~/.cache/xez` and XEZ_HOME does not move it — the
       // behaviour `skills-remote.ts` already shipped, kept deliberately (#600
@@ -77,6 +78,7 @@ describe('resolveStateLayout', () => {
       workspacePath: join(project, '.xezar', 'workspace.json'),
       uiStatePath: join(project, '.xezar', 'workspace-ui.json'),
       accountsPath: join(project, '.xezar', 'agent-accounts.json'),
+      agentQuotaPath: join(project, '.xezar', 'agent-quota', 'quota.json'),
       dataDir: join(project, '.local', 'xezar'),
       // Working files, so `.local/xezar` rather than the committed `.xezar`.
       cacheDir: join(project, '.local', 'xezar', 'cache'),

@@ -35,10 +35,12 @@ import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { z } from 'zod';
 import {
   appearanceSchema,
+  agentQuotaRunnerSchema,
   isSafeSessionId,
   resumeCommand,
   setWorkspaceUiStateInputSchema,
   type AgentProfilesResponse,
+  type AgentQuotaResponse,
   type ImportGlobalAccountsResponse,
   type GroupResponse,
   type GroupVariant,
@@ -72,6 +74,7 @@ import {
   type WorkspaceConfigResponse,
 } from '@qodeca/xezar-contract';
 import { detectEnvironment } from '../core/backend-detect.ts';
+import { AgentQuotaStore } from '../workspace/agent-quota.ts';
 import { RUNNER_IDS } from '../core/agent-runner.ts';
 import type { ContentBlock, RunnerId } from '../core/agent-runner.ts';
 import { AGENT_MODELS_LOCKED_ERROR, agentModelsLocked } from '../core/agent-model-policy.ts';
@@ -343,6 +346,8 @@ export interface ServerDeps {
    *  Optional — createApp builds a private one; inject to emit from outside
    *  the app (tests, future CLI hooks). */
   workspaceEvents?: WorkspaceEventBus;
+  /** Shared quota store. Defaults to the boot RunManager's store so run observations are live. */
+  agentQuotaStore?: AgentQuotaStore;
   /** How `POST /api/projects/checkout` (step 4.3) actually clones. Defaults to
    *  `gh repo clone` (or the `XEZ_DRY_RUN=1` fake) — injected by tests so the
    *  route's guards, cleanup and error surfacing are exercised for real
@@ -656,7 +661,8 @@ export type WorkspaceEventName =
   | 'project-removed'
   | 'checkout-progress'
   | 'provider-status'
-  | 'automation-change';
+  | 'automation-change'
+  | 'agent-quota';
 
 /**
  * The in-process bus for workspace-level SSE events. The registry-mutating
@@ -1310,6 +1316,11 @@ export function createApp(deps: ServerDeps) {
   // Workspace-level SSE bus (step 2.8) — the registry mutators and the
   // checkout flow (Phase 4) emit here; /api/workspace/events relays.
   const workspaceEvents = deps.workspaceEvents ?? new WorkspaceEventBus();
+  const managerQuotaStore = deps.manager.agentQuotaStore;
+  const agentQuotaStore = deps.agentQuotaStore
+    ?? (managerQuotaStore instanceof AgentQuotaStore ? managerQuotaStore : new AgentQuotaStore());
+  void agentQuotaStore.load();
+  agentQuotaStore.subscribe(() => workspaceEvents.emit('agent-quota', { changed: true }));
   const emitAutomationChange = (
     project: ProjectContext,
     automationId: string,
@@ -2136,7 +2147,36 @@ export function createApp(deps: ServerDeps) {
     return null;
   };
 
+  const agentQuotaQuerySchema = z.strictObject({
+    provider: agentQuotaRunnerSchema.optional(),
+    accountId: z.string().min(1).max(64).optional(),
+  });
+  const readAgentQuota = async (
+    selector: { provider?: 'claude' | 'codex'; accountId?: string } = {},
+  ): Promise<AgentQuotaResponse> => {
+    await agentQuotaStore.load();
+    const accounts = await loadAgentAccounts().catch(() => defaultAgentAccountStore());
+    const known = listAgentProfiles(accounts, ['claude', 'codex']).map((profile) => ({
+      runner: profile.provider as 'claude' | 'codex',
+      accountId: profile.id,
+    }));
+    return agentQuotaStore.answer(selector, known);
+  };
+
+  deps.socketHub?.registerTopic('agent-quota', {
+    snapshot: () => readAgentQuota(),
+    start: (publish) => agentQuotaStore.subscribe((answer) => publish(answer)),
+  });
+
   const agentProfilesRoutes = new Hono<ProjectApiEnv>()
+    .get('/workspace/agent-quota', queryZodValidator(agentQuotaQuerySchema), async (c) => {
+      const selector = c.req.valid('query');
+      const answer = await readAgentQuota(selector);
+      if (selector.accountId !== undefined && answer.accounts.length === 0) {
+        return c.json({ error: `unknown account: ${selector.accountId}` }, 404);
+      }
+      return c.json(answer);
+    })
     .get('/workspace/agent-profiles', async (c) => {
       const editable = capabilities().localHandoff;
       // Hosted mode withholds the listing entirely rather than serving it read-only: the paths

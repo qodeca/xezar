@@ -82,6 +82,8 @@ export interface StateLayout {
   uiStatePath: string;
   /** Agent accounts. `<root>/agent-accounts.json` in both layouts. */
   accountsPath: string;
+  /** Agent quota observations. Kept in a subdirectory so no new top-level runtime file appears. */
+  agentQuotaPath: string;
   /** Project layout only: `<project>/.local/xezar` — the working files that are not committed. */
   dataDir: string | null;
   /**
@@ -205,6 +207,7 @@ export function globalStateLayout(env: NodeJS.ProcessEnv = process.env): StateLa
     workspacePath: join(root, 'config.json'),
     uiStatePath: join(root, 'ui-state.json'),
     accountsPath: join(root, 'agent-accounts.json'),
+    agentQuotaPath: join(root, 'agent-quota', 'quota.json'),
     dataDir: null,
     cacheDir: globalCacheRoot(),
     ipcDir: join(root, 'ipc'),
@@ -223,6 +226,7 @@ export function projectStateLayout(projectRoot: string): StateLayout {
     workspacePath: join(root, PROJECT_STATE_MARKER),
     uiStatePath: join(root, 'workspace-ui.json'),
     accountsPath: join(root, 'agent-accounts.json'),
+    agentQuotaPath: join(root, 'agent-quota', 'quota.json'),
     dataDir,
     cacheDir: join(dataDir, 'cache'),
     ipcDir: join(dataDir, 'ipc'),

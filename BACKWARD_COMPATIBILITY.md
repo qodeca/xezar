@@ -1785,3 +1785,27 @@ the 0.16.0 shape rather than instead of it.
   `onboarding.globalImport`; turning `accounts` into the full list; reporting a missing account as
   the one in use; adding a folder or an identity-looking label to any row; or serving any of it in
   hosted mode.
+
+## Agent quota read side (#867 S2) — additive, 0.19.0
+
+- **HTTP:** `GET /api/v1/workspace/agent-quota` is workspace-level and single-mount. Optional
+  `provider` and `accountId` query keys narrow the frozen `agentQuotaResponseSchema` answer. It is
+  readable in local and hosted mode and contains no account folder or identity. A known login with
+  no observation is an explicit `unknown` row.
+- **MCP:** `project_config read_quota` dispatches the GET, uses the same optional selectors, works
+  in hosted mode, and starts no check. `check_quota` remains reserved for S3.
+- **Live delivery:** trusted local clients may subscribe to the `agent-quota` WebSocket topic. Its
+  publisher starts on the first subscriber, stops on the last unsubscribe, snapshots the GET
+  answer, and publishes only after a stored observation changes. The workspace SSE stream emits an
+  `agent-quota` change hint for hosted clients to refetch the GET; hosted mode opens no WebSocket.
+- **State and producer rules:** observations are one strict producer record per runner and account,
+  atomically written below the state layout's `agent-quota/` subdirectory. A missing or corrupt
+  file degrades to empty; corruption warns once. Claude `/usage` replies with no percentage lines
+  are `unknown`, any reported window at or above 100 percent is `out`, and top-level `resetsAt`
+  appears only for `out`. Every machine time is ISO-8601 UTC. The consumer schema stays tolerant.
+- **Run events:** Claude `rate_limit_event` and Codex `account/rateLimits/updated` are internal
+  `account-quota` v1 signals consumed before run persistence; they do not enter run NDJSON or the
+  v2 UI stream. A failed-run limit reuses `parseUsageLimit` and marks that run's account `out`
+  without changing auto-resume behavior.
+- **Frozen anchor:** `packages/contract/src/__fixtures__/agent-quota.expected.json` remains anchored
+  by SHA-256 `967b5b4c67401ad7c0fd49808d6526cae0fc4e430fd1038d709b05427f35d930`.

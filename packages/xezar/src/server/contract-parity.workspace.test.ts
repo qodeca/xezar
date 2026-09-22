@@ -9,6 +9,7 @@ import type {
   agentProfileResponseSchema,
   agentProfileSelectionsResponseSchema,
   agentProfilesResponseSchema,
+  agentQuotaResponseSchema,
   openAgentAccountFileResponseSchema,
   importGlobalAccountsResponseSchema,
   removeAgentProfileResponseSchema,
@@ -131,6 +132,10 @@ describe('src/contract projects/workspace schemas match the routes exactly', () 
     (typeof client.api.v1.workspace)['agent-profiles']['$get'],
     200
   >;
+  type AgentQuota200 = InferResponseType<
+    (typeof client.api.v1.workspace)['agent-quota']['$get'],
+    200
+  >;
   type CreateAgentProfile201 = InferResponseType<
     (typeof client.api.v1.workspace)['agent-profiles']['$post'],
     201
@@ -177,6 +182,7 @@ describe('src/contract projects/workspace schemas match the routes exactly', () 
   type McpLeaderPostBody = Parameters<typeof client.api.v1.mcp.leader.$post>[0]['json'];
 
   type _Checks = [
+    Assert<Exact<z.infer<typeof agentQuotaResponseSchema>, AgentQuota200>>,
     Assert<ExactOpen<z.infer<typeof mcpApiReferenceSchema>, McpReference200>>,
     Assert<Exact<z.infer<typeof mcpLeaderStatusSchema>, McpLeader200>>,
     Assert<Exact<z.infer<typeof mcpLeaderStatusSchema>, McpLeaderPost200>>,

@@ -170,6 +170,8 @@ export type AgentEvent =
   | { type: 'image'; mediaType: string; data: string }
   | { type: 'token-usage'; tokensUsed: number }
   | { type: 'cost'; usd: number }
+  /** Internal quota observation. RunManager consumes it without persisting it. */
+  | { type: 'account-quota'; runner: 'claude' | 'codex'; payload: unknown }
   /** The backend's real session id, once known — codex threads and opencode
    *  sessions mint their own id, so the run manager persists this to enable
    *  resume ("Continue") and "open in CLI". Claude's equals `spec.sessionId`. */

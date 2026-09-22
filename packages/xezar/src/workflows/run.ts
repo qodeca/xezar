@@ -56,6 +56,7 @@ import { loadWorkflows } from './load.ts';
 import { ingestTaskVerdict } from '../runs/task-verdicts.ts';
 
 import type { QueuedMessage, RunRecord, RunStore, StepState } from '../runs/store.ts';
+import { AgentQuotaStore, normalizeLiveQuota } from '../workspace/agent-quota.ts';
 import { reclaimWorktrees, rematerializeReclaimedWorktree } from '../runs/retention.ts';
 import {
   AgentTempDirError,
@@ -978,6 +979,9 @@ export class RunManager {
    *  it; the private fallback keeps single-manager callers and tests working. */
   private readonly semaphore: WorkspaceSemaphore;
 
+  /** Shared quota observations consumed by the engine and workspace read surfaces. */
+  readonly agentQuotaStore: AgentQuotaStore;
+
   /** Unregister handle for this manager's semaphore membership — released by
    *  dispose() so a torn-down project stops counting against the cap. */
   private readonly offSemaphore: () => void;
@@ -985,7 +989,7 @@ export class RunManager {
   constructor(
     private readonly store: RunStore,
     private readonly repoRoot: string,
-    options: { semaphore?: WorkspaceSemaphore; resumeProofMs?: number; autoResumeTimer?: RunManager['autoResumeTimer'] } = {},
+    options: { semaphore?: WorkspaceSemaphore; resumeProofMs?: number; autoResumeTimer?: RunManager['autoResumeTimer']; agentQuotaStore?: AgentQuotaStore } = {},
   ) {
     this.autoResumeTimer = options.autoResumeTimer ?? {
       schedule: (callback, delay) => setTimeout(callback, delay),
@@ -993,6 +997,7 @@ export class RunManager {
     };
     this.dataDir = store.dataDir;
     this.semaphore = options.semaphore ?? new WorkspaceSemaphore();
+    this.agentQuotaStore = options.agentQuotaStore ?? new AgentQuotaStore();
     this.resumeProofMs = options.resumeProofMs ?? AUTO_RESUME_PROOF_MS;
     this.offSemaphore = this.semaphore.register({
       busySlots: () => this.busySlots(),
@@ -1013,6 +1018,23 @@ export class RunManager {
       QUEUE_WATCHDOG_MS,
     );
     this.queueWatchdog.unref?.();
+  }
+
+  /** Consume internal quota signals before the ordinary event persistence path. */
+  private observeAgentQuota(event: AgentEvent, runner: string, accountId: string): boolean {
+    if (event.type === 'account-quota') {
+      const record = normalizeLiveQuota(event.runner, event.payload, accountId, new Date());
+      if (record) void this.agentQuotaStore.put(record).catch(() => undefined);
+      return true;
+    }
+    if (event.type === 'error') {
+      const hit = parseUsageLimit(event.message);
+      if (hit && (runner === 'claude' || runner === 'claude-cli' || runner === 'codex')) {
+        void this.agentQuotaStore.markOut(runner === 'codex' ? 'codex' : 'claude', accountId, hit.resetAt)
+          .catch(() => undefined);
+      }
+    }
+    return false;
   }
 
   /**
@@ -1839,6 +1861,11 @@ export class RunManager {
     if (run.archived) return;
     const limit = parseUsageLimit(run.error);
     if (!limit) return;
+    if (run.runner === 'codex' || run.runner === 'claude') {
+      const quotaRunner = run.runner === 'codex' ? 'codex' : 'claude';
+      void this.agentQuotaStore.markOut(quotaRunner, run.agentProfile ?? 'default', limit.resetAt)
+        .catch(() => undefined);
+    }
     if (!this.semaphore.autoResumeOnUsageLimit()) return;
     // No session to resume = nothing this feature can do; `continueRun` would refuse anyway.
     if (!run.steps.some((step) => step.sessionId)) return;
@@ -3139,6 +3166,7 @@ export class RunManager {
     let sessionError: string | undefined;
     const sink = this.makeUiSink(runId, stepId);
     const onEvent = (event: AgentEvent) => {
+      if (this.observeAgentQuota(event, backend, continueProfile.profileId)) return;
       if (event.type === 'image') {
         const saved = this.persistAttachment(runId, event.mediaType, event.data);
         if (saved) this.store.appendEvent(runId, { type: 'image', stepId, ...saved });
@@ -4118,6 +4146,7 @@ export class RunManager {
     // both read this binding rather than capturing a value, so the swap reaches them.
     let sink = this.makeUiSink(runId, step.id);
     const onEvent = (event: AgentEvent) => {
+      if (this.observeAgentQuota(event, stepBackend, stepProfile.profileId)) return;
       if (event.type === 'image') {
         const saved = this.persistAttachment(runId, event.mediaType, event.data);
         if (saved) emit({ type: 'image', stepId: step.id, ...saved });
