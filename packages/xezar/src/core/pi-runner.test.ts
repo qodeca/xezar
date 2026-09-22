@@ -1,4 +1,4 @@
-import type { ChildProcessWithoutNullStreams } from 'node:child_process';
+import { spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -329,6 +329,20 @@ describe('pi RPC argv', () => {
 
   it('leaves the in-place argv unchanged without a bashAllowlist key (#856 C)', () => {
     expect(buildPiArgs({ cwd: '/repo', userPrompt: 'task', allowedTools: ['Read', 'Bash'] })).toEqual(['--mode', 'rpc', '--tools', 'read,bash']);
+  });
+
+  // The dry-run mock refuses an option it does not know, as the real CLI does (#548), so every
+  // flag `buildPiArgs` can emit must parse there – a worktree dry run carries the allowlist flag.
+  it.each([
+    ['without a bashAllowlist key', undefined],
+    ['with a bashAllowlist', ['git diff']],
+    ['with an empty bashAllowlist', []],
+  ])('emits an argv the dry-run mock accepts on a worktree run %s', (_name, bashAllowlist) => {
+    const args = buildPiArgs({ cwd: '/wt', userPrompt: 'task', allowedTools: ['Bash'], bashAllowlist, worktreeRoot: '/wt', primaryRoot: '/repo', additionalDirectories: ['/runs'] });
+    const mock = fileURLToPath(new URL('../../scripts/mock-pi-rpc.mjs', import.meta.url));
+    const result = spawnSync(process.execPath, [mock, ...args], { input: '', encoding: 'utf8' });
+    expect(result.stderr).toBe('');
+    expect(result.status).toBe(0);
   });
 
   it('tells the guard `null` – no allowlist – on a worktree run without a bashAllowlist key', () => {
