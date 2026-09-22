@@ -118,13 +118,28 @@ A command-line flag (`--instance`, `--output`, `--color`, `--log-level`) outrank
 
 ### To control installed skill updates — Skills
 
-Use **Update xezar-skills automatically** to save an on/off workspace override and read the installation/update status beneath it. **Use default** removes the override: `XEZ_SKILLS_AUTO_UPDATE` then supplies the inherited value, otherwise updates are on. The updater applies to tracked xezar-skills installations and leaves other skills and untracked folders alone. See [Skills](06-skills.md).
+The section opens with **Skill catalog**: which version of each team-skills source this machine has, and whether it is current. Per source it shows the repository, one state badge, the **Installed** and **Available** versions, and one sentence explaining the state:
+
+| Badge | What it means |
+| --- | --- |
+| **Up to date** | The installed version is the newest one this machine has seen. |
+| **Update available** | A newer version was seen upstream. **Refresh** on the Skills page starts serving it. |
+| **Check is stale** | The last upstream check is more than six hours old, so both versions are as of then. **Refresh** re-checks. |
+| **Not checked yet** | Both versions are known and identical, but no upstream check has succeeded, so xezar cannot say whether they are current. |
+| **Comparison unknown** | Only one of the two could be read, or the two share no history, so there is nothing to compare. |
+| **Version unknown** | There is no local copy yet, so there is no version to print. It fills in the first time these skills load. |
+
+A version reads as `v1.1.0 (de525c6, Sep 20, 2026)`, or as the distance from the nearest tag when the tag is not exact. **Available** is upstream as this machine last saw it, not a live reading: the block says "last checked …" and never claims to know upstream right now. With no team-skills source configured, it says so.
+
+Below it, use **Update xezar-skills automatically** to save an on/off workspace override and read the installation/update status beneath that. **Use default** removes the override: `XEZ_SKILLS_AUTO_UPDATE` then supplies the inherited value, otherwise updates are on. The updater applies to tracked xezar-skills installations and leaves other skills and untracked folders alone. See [Skills](06-skills.md).
 
 ### To manage logins and fallback models — Agent accounts
 
-Choose a provider tab to inspect installation, version, and accounts. Use its login controls or add an account with a label and separate configuration folder where supported. **Defaults for new projects** supplies the agent and models when a project has not chosen its own. Account records live separately in `~/.xezar/agent-accounts.json`; see [Agent backends](04-agent-backends.md).
+All four agents are shown at once, one group each rather than one tab at a time. A group's heading is the facts about the tool — installed or not, its version, how many logins it holds — and its rows are the logins, with the one your tasks run under marked **In use** (or **Default**, for the machine-wide choice). The login an agent finds by itself is **Built-in login**. **Connect** signs a login in, **Check again** re-probes it now instead of waiting for the cached answer, and **Show details** opens identity, config files, **Rename** and **Remove**. Use **Add account** where a second login is supported, with a label and its own configuration folder. **Defaults for new projects** supplies the agent, account and models when a project has not chosen its own. Account records live separately in `~/.xezar/agent-accounts.json`; see [Agent backends](04-agent-backends.md).
 
-In single-project mode, account records live in the project's `.xezar/agent-accounts.json`, and the defaults card reads **Defaults for this project**. An account the project names whose configuration folder does not exist on this machine reads **Unavailable — this account's folder does not exist on this machine: `<folder>`. Connect signs in and creates it, or pick another account for the task.** A task that asks for that account is refused before the agent starts, with the message `Agent account “<label>” is unavailable —` followed by the same sentence; xezar does not quietly use the default login instead. Outside single-project mode, a newly added account whose folder does not exist yet still reads **folder not created yet; Connect will make it**.
+A saved default or project choice that names an account this list does not have is reported at the top of the pane and again in its agent's group, with what tasks do instead — they run on the built-in login — and a one-click **Use the built-in login** fix. Nothing is broken while it stands; the pane only makes the saved choice say what already happens.
+
+In single-project mode, account records live in the project's `.xezar/agent-accounts.json`, and the defaults card reads **Defaults for this project**. The pane also says whether the accounts of your personal machine-wide setup were copied into this project and how many could still be — a count, never their names — with a **Copy _n_ accounts** button that runs the same merge as `xezar accounts import-global`, and nothing that copies on load. A project leader can run that same copy through the MCP. An account the project names whose configuration folder does not exist on this machine reads **Unavailable — this account's folder does not exist on this machine: `<folder>`. Connect signs in and creates it, or pick another account for the task.** A task that asks for that account is refused before the agent starts, with the message `Agent account “<label>” is unavailable —` followed by the same sentence; xezar does not quietly use the default login instead. Outside single-project mode, a newly added account whose folder does not exist yet still reads **folder not created yet; Connect will make it**.
 
 ### To manage registered folders — Projects
 
@@ -152,4 +167,4 @@ Press **⌘K / Ctrl+K** to open the palette. Search for a view, project, task, o
 
 Next: [Configuration reference](11-configuration-reference.md)
 
-Describes xezar 0.16.0.
+Describes xezar 0.18.0.

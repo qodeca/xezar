@@ -1,6 +1,8 @@
 # Getting started
 
-Use xezar to give coding tasks to an agent and follow its work in a browser. This page takes you from installing the command to opening your first task, with a mock-agent option for trying the cockpit before connecting an account.
+By the end of this page you will have a task running: you describe what you want in a browser on your own machine, an agent does it, and you watch every step as it happens. It takes installing the command, starting it in your project, and signing in to one agent CLI — there is nothing to configure first.
+
+If you would rather look before you sign anything in, [try it without a login](#to-try-without-a-login) — a bundled mock agent drives the whole cockpit offline.
 
 ## To check prerequisites
 
@@ -41,7 +43,7 @@ xezar --repo /path/to/project --port 4322 --no-open
 
 ## To log in to an agent CLI
 
-Run the login command for the CLI you installed in your own terminal, and complete its prompts:
+xezar uses the logins you already have; it never asks for an API key of its own. Run the login command for the CLI you installed, in your own terminal, and complete its prompts:
 
 | Agent | Login command |
 | --- | --- |
@@ -50,11 +52,35 @@ Run the login command for the CLI you installed in your own terminal, and comple
 | OpenCode | `opencode auth login` |
 | pi | `pi /login` |
 
+`xezar providers connect <claude|codex|opencode|pi>` does the same thing without you having to remember which command it is: it opens a terminal running that tool's own login on the machine that runs xezar. Add `--account <id>` for a second login. See the [CLI reference](12-cli-reference.md#to-sign-an-agent-tool-in-providers-connect).
+
 In the cockpit, open the project's **Settings → Agents** to check provider availability. Select the available agent in the new-task composer.
+
+## To start your first task
+
+1. Open **New task** in the project you want to work on.
+2. Describe a small, concrete result, for example: “Explain how this project's tests run. Do not change files.”
+3. Choose an available agent and model. Leave the skill/workflow selection empty for one plain agent step, or choose an existing workflow.
+4. In a Git repository, keep **Worktree** on for an isolated checkout. Leave **Autonomous** off if you want the agent to pause for your answers.
+5. Choose **Start** and send the task. Open its thread to follow the response.
+
+![New-task composer with task options](../screenshots/0.16.0/new-task-dark-1280.png)
+
+See [Tasks and runs](02-tasks-and-runs.md) for replies, review and task controls, and [Worktrees and Git](03-worktrees-and-git.md) for where changes go.
+
+## To try without a login
+
+In a POSIX shell, start the cockpit with the bundled mock agent:
+
+```sh
+XEZ_DRY_RUN=1 npx @qodeca/xezar
+```
+
+Create a task to see the mock event stream without invoking a real agent CLI. This exercises the cockpit, not a real model's ability to complete your task. Restart without `XEZ_DRY_RUN=1` when you want real agent work.
 
 ## To let an agent set up this project (optional)
 
-Setup is optional. You can create ordinary tasks without ever running it.
+Setup is optional. You can create ordinary tasks without ever running it, and everything above works with no setup at all. It exists for the case where you would rather have an agent read the project and prepare the files it needs than write them yourself.
 
 On a fresh project's Tasks page, xezar offers a guided setup: "New to this project? An agent can look at it and prepare the files it needs, and it shows you every change before anything is written." **Settings → Project setup** offers the same setup under **Guided setup**. Choose **Set up this project** to start it. Without an available agent backend the button stays disabled and xezar shows the reason: "Setup unavailable — no agent backend was found. Install Claude Code, Codex, OpenCode or pi, sign in, then open this page again."
 
@@ -100,28 +126,6 @@ This history lives in `<project>/.local/xezar/onboarding-state.json`. It is disp
 
 A project leader sees the same state through the MCP and can start the same setup or re-check task; see [MCP project leader](13-mcp-leader.md).
 
-## To start your first task
-
-1. Open **New task** in the project you want to work on.
-2. Describe a small, concrete result, for example: “Explain how this project's tests run. Do not change files.”
-3. Choose an available agent and model. Leave the skill/workflow selection empty for one plain agent step, or choose an existing workflow.
-4. In a Git repository, keep **Worktree** on for an isolated checkout. Leave **Autonomous** off if you want the agent to pause for your answers.
-5. Choose **Start** and send the task. Open its thread to follow the response.
-
-![New-task composer with task options](../screenshots/0.16.0/new-task-dark-1280.png)
-
-See [Tasks and runs](02-tasks-and-runs.md) for replies, review and task controls, and [Worktrees and Git](03-worktrees-and-git.md) for where changes go.
-
-## To try without a login
-
-In a POSIX shell, start the cockpit with the bundled mock agent:
-
-```sh
-XEZ_DRY_RUN=1 npx @qodeca/xezar
-```
-
-Create a task to see the mock event stream without invoking a real agent CLI. This exercises the cockpit, not a real model's ability to complete your task. Restart without `XEZ_DRY_RUN=1` when you want real agent work.
-
 ## To upgrade
 
 Stop the running cockpit before starting the new version. For a global installation:
@@ -162,4 +166,4 @@ For a workspace reset, remove the whole `~/.xezar/` directory, or the directory 
 
 Next: [Tasks and runs](02-tasks-and-runs.md)
 
-Describes xezar 0.16.0.
+Describes xezar 0.18.0.

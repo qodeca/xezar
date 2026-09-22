@@ -79,10 +79,11 @@ Use global Settings for the exposed controls. This file also holds the project r
 | `followups` | Optional boolean controlling the follow-up Inbox; stored value wins over `XEZ_FOLLOWUPS`, absent inherits it (default off). This is top-level, not inside `resources`. |
 | `agentEnvPassthrough` | Optional array of up to 64 extra host variable names, each 1–200 trimmed characters. Stored list wins over `XEZ_ENV_PASSTHROUGH`, including `[]`. Stores names, not secret values. Also top-level. |
 | `resources` | Resource controls in the next table. |
+| `cli` | Optional terminal defaults for `xezar serve`: `output`, `color`, `logLevel` and `instance`. Each is absent until you choose it, and absence is a real third state — a stored value beats the matching environment variable (`XEZ_OUTPUT`, `XEZ_COLOR`, `XEZ_LOG_LEVEL`, `XEZ_INSTANCE`), while an absent key follows it. A command-line flag beats both. Set them in global **Settings → Terminal**; a stored value xezar cannot make sense of degrades to absent with one warning naming the key. |
 | `composerDefaults` | Optional booleans `autonomous` and `worktree`, for New Task defaults. Each absent key inherits its exact `0`/`1` env seed; without one, Autonomous depends on the task source (skills default on, other sources off) and Worktree defaults on. Plan first, interactive skills and explicit task choices can alter those defaults. |
 | `disabledProviders` | Array of provider IDs (`claude`, `codex`, `opencode`, `pi`), default `[]`. Machine-wide provider preferences; installation and sign-in status are separate. |
 | `agentDefaults` | Optional `runner` and `models` object (the four backend keys, each model 1–200 trimmed characters). Supplies defaults where project configuration is silent. |
-| `projects` | Registry array, default `[]`. Each row has `id`, absolute `root`, display `name`, `addedAt`, `lastOpenedAt`, `source` (`local` or `checkout`), optional `maxParallel` (1–16) and optional `tags`. Invalid rows are dropped independently. |
+| `projects` | Registry array, default `[]`. Each row has `id`, absolute `root`, display `name`, `addedAt`, `lastOpenedAt`, `source` (`local` or `checkout`), optional `maxParallel` (1–16), optional `tags`, and its own optional `cli.port` — the port you pinned for that project with `xezar projects port`, which outranks `XEZ_PORT` and is never written by a start or by `--port`. A start may also record where that project's cockpit last listened; that is a hint for the next start, not a claim that anything is running. Invalid rows are dropped independently. |
 
 | `resources` key | Default and accepted values |
 | --- | --- |
@@ -93,6 +94,7 @@ Use global Settings for the exposed controls. This file also holds the project r
 | `idleTimeoutMinutes` | 15; integer 1–1440, or `null` to never close a waiting session for idleness. |
 | `memoryLimitMb` | When absent, `floor(host RAM in MiB × 0.6 / 2)`, clamped to 1024–8192 MiB. Integer 0–1,048,576 or `null`; zero and `null` mean no workspace memory ceiling. The divisor is 2, independent of your chosen parallel cap. |
 | `worktreeRetentionDefault` | 10; integer 0–1000. Used where the project has no retention override; zero disables automatic reclamation. |
+| `gateSlots` | When absent, **1**. Integer 1–16, and there is deliberately **no** `null`: unlike `memoryLimitMb`, this key has no "unlimited" spelling, so "effectively never waits" is a high number (up to 16) rather than an absence, and an absent key and an explicit `1` behave identically. It bounds how many `xezar lease gates` runs hold a slot at once on this **machine** — across every project, every checkout and every layout — so there is no project-level counterpart and none is planned. A change applies to the next gate run with no restart; a run already waiting keeps the count it started with. |
 
 `browseRoot` and `projectsDir` are special: startup registration/migration writes the resolved defaults into the workspace file. Once saved, changing the environment and restarting does not replace them. Change the stored settings in global **Settings → Projects**. In the single-project layout the writer omits `browseRoot`, `projectsDir` and `projects` — adding, cloning and browsing projects are refused there — so a committed `.xezar/workspace.json` carries none of the three; a file written before 0.17.0 that holds them still loads, and the next write drops them.
 
@@ -117,6 +119,7 @@ Export variables before starting xezar, for example `XEZ_REVIEW_GATE=1 xezar`. T
 | `XEZ_OUTPUT=auto` | How `xezar serve` presents its activity: `auto` (the default), `lines` or `rich`. A saved `cli.output` overrides this variable; `--output` overrides both. |
 | `XEZ_COLOR=auto` | Colour: `auto` (the default), `always` or `never`. `NO_COLOR` with any non-empty value is honoured and outranks both a saved `cli.color` and this variable; an explicit `--color` outranks `NO_COLOR`; and a transport that must stay byte-exact — the MCP's JSON-RPC stdout — outranks all of them. |
 | `XEZ_LOG_LEVEL=info` | Diagnostic threshold: `debug`, `info` (the default), `warn` or `error`. A saved `cli.logLevel` overrides this variable; `--log-level` overrides both. |
+| `XEZ_INSTANCE=workspace` | Which projects one xezar process serves: `workspace` (the default — this cockpit opens every project you have registered) or `project` (this cockpit serves the project it started in, and your other projects appear as links to their own cockpit; they stay listed, and you can still add and remove them). A saved `cli.instance` overrides this variable; `--instance` overrides both. `XEZ_SINGLE_PROJECT=1`, and a folder that owns its xezar state, already serve one project and win over it. |
 | `XEZ_QUIET=1` | Warnings and errors only; only the exact value `1` enables it, and `--quiet` is the flag. It raises the threshold but never lowers one you set higher. What the terminal shows in each mode is in the [CLI reference](12-cli-reference.md#live-activity-in-the-terminal). |
 | `XEZ_CLAUDE_BIN`, `XEZ_CODEX_BIN`, `XEZ_OPENCODE_BIN`, `XEZ_PI_BIN` | Override backend executable discovery on `PATH`. |
 | `XEZ_CODEX_REASONING` | `auto` (default), `concise`, `detailed` or `none`; unknown values use `auto`. |
@@ -153,13 +156,15 @@ Export variables before starting xezar, for example `XEZ_REVIEW_GATE=1 xezar`. T
 - For `agentEnvPassthrough`, `[]` means **no extra named variables**. It does not remove the normal agent environment allowlist. Remove the key to follow `XEZ_ENV_PASSTHROUGH` again.
 - For `composerDefaults`, resolve each key independently: stored boolean, then exact env `0`/`1`, then the built-in default. These are New Task composer defaults, not CLI `run` flags.
 - For workspace `resources.memoryLimitMb` and `resources.idleTimeoutMinutes`, absence chooses a limit; explicit `null` disables it. Deleting a key and setting it to `null` have different effects. A positive registered-project memory override still wins over a workspace `null`.
+- `resources.gateSlots` does not follow that rule, and the difference matters. It accepts no stored `null`, because there is no "unlimited" to express: clearing the field in **Settings → Resources**, or sending `null` from the MCP, **deletes** the key so the derived default applies again, rather than storing a number nobody chose. Absent and `1` are the same behaviour, so nothing is lost by not being able to tell them apart.
+- `cli.output`, `cli.color`, `cli.logLevel` and `cli.instance` follow the same stored-beats-environment rule as `followups` and `agentEnvPassthrough`, with a flag beating both. `NO_COLOR` is the one exception: any non-empty value turns colour off over a stored `cli.color`, and only an explicit `--color` beats it.
 - Model locking is an exception to simple override precedence: env `1`, global `modelsLocked: true`, **or** project `modelsLocked: true` enables it. A `false` in another place does not unlock it.
 
 ## Related settings / env / config
 
-- Project **Settings → Agents** and **Worktrees** expose project preferences; global **Resources**, **Projects**, **Skills** and **Agent accounts** expose workspace preferences.
+- Project **Settings → Agents** and **Worktrees** expose project preferences; global **Resources**, **Terminal**, **Projects**, **Skills** and **Agent accounts** expose workspace preferences.
 - [Full environment contract](../../.env.example), [project layout](../project-layout.md), [project schema](../../packages/xezar/src/config.ts), [workspace schema](../../packages/xezar/src/workspace/config.ts) and [account store](../../packages/xezar/src/workspace/agent-accounts.ts).
 
 Next: [CLI reference](12-cli-reference.md)
 
-Describes xezar 0.16.0.
+Describes xezar 0.18.0.

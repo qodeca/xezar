@@ -244,11 +244,25 @@ The [tool registry](../../packages/xezar/src/mcp/tools/index.ts) has ten service
 | `organise_work` | Organize tasks, including queue and archive operations. |
 | `handoff_git` | Supported repository, commit, push, PR and merge operations, subject to their checks. |
 | `read_results_evidence` | Read task results, changes and evidence. |
-| `project_config` | Read or change supported project configuration. |
+| `project_config` | Read or change supported project configuration, and read the shared settings as effective limits and capabilities. Its most-used reads are in [Actions a leader reaches for often](#actions-a-leader-reaches-for-often). |
 | `local_handoff` | Open supported task/project destinations on the xezar host. |
 | `leader_events` | Attach or stop this session, check attachment status, read significant project events and acknowledge those handled. |
 
 Read `discover_project` before assuming an action is available. Inspect each mutation's result; requesting a task or operation is not proof that downstream work succeeded.
+
+### Actions a leader reaches for often
+
+Five of them answer questions a leader asks before it dispatches anything — which models it may name, which login a task will run under, and whether this project's setup is complete. The [MCP API](../features/mcp-server/mcp-api.md) has their exact arguments:
+
+| Action | What it answers |
+| --- | --- |
+| `project_config` `list_models` | Per agent tool, every model id **exactly as that tool's own `--model` flag takes it**, whether the list could be read and, when it could not, why. Narrow it with `provider`, or omit that for every tool. It reads the same list the composer's model picker offers, so a model named from it is one xezar can actually dispatch to. `local` and `vision` appear only where the tool's own data proves them; a missing one means unknown, never "no". |
+| `project_config` `get_account` | `accounts` is one row per agent — the account this project's tasks use. `profiles` is every account per agent, with the login the tool finds by itself marked `builtIn` and exactly one marked `selected`: the one tasks really run under. `problems` is every stored account choice that names no account, with its raw handle and a one-line `fix`; tasks still run, on the built-in login. No answer carries a label that looks like an e-mail address, or an account's folder. |
+| `project_config` `import_global_accounts` | Copies the accounts of the person's machine-wide xezar setup into this project — the same merge as `xezar accounts import-global`. It only adds accounts the project lacks, never replaces one, answers how many were added and kept but never which, and works only where the project keeps its own setup. It needs an `operationId` and nothing else. |
+| `project_config` `check_skill_updates` | What team-skill updates are available. It reports; it does not apply. Updates apply by themselves while skills auto-update is on, which `set_workspace_config` with `skillsAutoUpdate: true` turns on. |
+| `discover_project` → `onboarding.globalImport` | In a project that keeps its own setup: whether those accounts were already copied in (`done`, `declined` or `unknown`) and how many could still be (`importable`, a count and never which). The same two facts the Agent accounts pane shows a person. |
+
+`import_global_accounts` is the one that changes something; the rest only read.
 
 ### When an action is refused
 
@@ -391,4 +405,4 @@ with no project MCP servers until the file is fixed.
 
 Next: [Remote access](14-remote-access.md)
 
-Describes xezar 0.16.0.
+Describes xezar 0.18.0.

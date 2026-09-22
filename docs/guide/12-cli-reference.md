@@ -1,6 +1,6 @@
 # CLI reference
 
-Use the CLI to start the cockpit, run a task in the terminal, scaffold a project kit, manage registered projects or connect a leader agent. This page describes the commands and flags accepted by the [CLI entry point](../../packages/xezar/src/index.ts).
+Use the CLI to start the cockpit, run a task in the terminal, scaffold a project kit, sign an agent tool in, manage registered projects, connect a leader agent or keep several check runs from competing. This page describes the commands and flags accepted by the [CLI entry point](../../packages/xezar/src/index.ts).
 
 ## To start the cockpit: `serve`
 
@@ -132,7 +132,11 @@ The terminal waiter ends on those four task statuses. A task parked at `waiting`
 xezar init --repo /path/to/project
 ```
 
-Creates `.xezar/workflows/fix-and-verify.yaml` and `.xezar/skills/project-conventions.md`, leaving existing examples untouched. Replace the example workflow's `echo` check with your real verification command. It also maintains `.local/.gitignore` for runtime state. See [Project layout](../project-layout.md).
+Creates `.xezar/workflows/fix-and-verify.yaml` and `.xezar/skills/project-conventions.md`, leaving existing examples untouched. It also maintains `.local/.gitignore` for runtime state. See [Project layout](../project-layout.md).
+
+The generated workflow runs as written — there is no placeholder command to replace. `init` looks for a verification command your project already declares and writes `implement` → `verify` → `report` around it, where `verify` is that command and a failure retries `implement` at most twice. Finding none, it writes `implement` → `verify` with `verify` as an agent step that reviews the result against the task's own criteria. Either way the last step is an agent step, which is what keeps the run open for your questions and answers.
+
+Anything that reads the generated file should key on that **step shape** — the step ids, and the last step being an agent step — and not on its bytes: the file's prose is reworded between releases, so its content hash moves. Adding, renaming or reordering a step is the change that breaks such a reader. [Project kit](15-project-kit.md#if-something-else-reads-this-file) says more.
 
 It ends by naming the package as npm resolves it (`npx @qodeca/xezar`), the command that copies agent accounts in — `init` never copies them — and, inside a repository, the start that keeps the setup in the project folder.
 
@@ -159,6 +163,24 @@ Opens a terminal window that runs the tool's own login command, on the machine t
 - When no terminal window can be opened, it prints the exact login command to run yourself and exits 1.
 - In hosted mode (`XEZ_REMOTE=1`, or a non-loopback `--bind-host`) it refuses before it reads or probes anything, and exits 1: nobody is sitting at that machine's screen.
 - An unknown verb, a missing or unknown tool, an extra argument or an account id that names no account is refused with exit code 1.
+
+## To stop check runs competing: `lease gates`
+
+```sh
+xezar lease gates -- npm test
+```
+
+Runs the command holding one of this computer's gate slots, so several checkouts do not start their full check suites at the same moment and starve each other. How many may run together is `resources.gateSlots` in your workspace settings — **1** unless you raise it, so by default a second gate run waits for the first. **Settings → Resources → Gate slots** sets it.
+
+Put the command after `--`; everything there is passed through verbatim and run without a shell. The exit code is the command's own, and a command killed by a signal reads as killed rather than as exit 0. Standard error carries what happened to the lease: a notice while it waits, then which slot it took and how long it waited for it.
+
+It is deliberately fail-open, because a lock that cannot be taken must never become a reason not to check anything. Either way standard error carries one line saying it is running anyway, unleased, and the command runs without a slot:
+
+- After **20 minutes** of waiting with every slot still busy, it gives up the queueing and runs anyway.
+- A slot directory it cannot create or write does the same, naming the underlying reason.
+- `--status-file <path>` writes one JSON line for a caller that holds the slot across its own work and wants to record the wait: `held`, `outcome` (`acquired`, `timeout` or `unavailable`), `slot`, `slots` and `waitedMs`. A path it cannot write is ignored — the file is diagnostics, never the lease.
+
+`gates` is the only lease. Naming another, or leaving the command out, is a usage error and exits 2. The slots live in `~/.cache/xez/gate-slots/` in every layout, including single-project mode, because the contention they bound belongs to one machine rather than to one project.
 
 ## To manage projects: `projects`
 
@@ -208,6 +230,7 @@ Use the [server-install guide](../server-install/README.md) for prerequisites an
 | `--import-global` | Every command, single-project layout: answer the first-run import question with yes, without being asked. Nothing is read from standard input. On a folder that is already set up it imports nothing and is quiet, so a bootstrap may pass it on every start. In the global layout it prints one line. |
 | `--no-import-global` | Every command: answer the same question with no. Giving both flags refuses the start with exit code 1, before anything is read or written. |
 | `--global-layout` | Every command: resolve the global layout for this launch, even in a folder that carries `.xezar/workspace.json`. The explicit counterpart of `--single-project`, and it outranks the marker; nothing is moved, renamed or written. `XEZ_GLOBAL_LAYOUT=1` says the same. See [above](#to-ask-for-the-global-layout---global-layout). |
+| `--status-file <path>` | `lease gates`: write one JSON line recording whether the slot was held, the outcome, which slot and how long it waited. A path that cannot be written is ignored. See [above](#to-stop-check-runs-competing-lease-gates). |
 | `--platform <id>` | Server commands: `ubuntu-vps` or `macosx-ngrok`. Required for install; optional for deploy/uninstall only when saved instance state supplies it. |
 | `--domain <host>` | `ubuntu-vps` server commands only: select the domain's instance; install can create a second independent one. |
 | `--bind-host <host>` | `serve` / `server-install`: bind host, default `127.0.0.1`. |
@@ -229,4 +252,4 @@ Flags are parsed globally, but only the command consumers listed above use them.
 
 Next: [MCP project leader](13-mcp-leader.md)
 
-Describes xezar 0.16.0.
+Describes xezar 0.18.0.

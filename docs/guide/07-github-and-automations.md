@@ -90,4 +90,4 @@ Choose **View log** on the automation. Each record shows its result and time, an
 
 Next: [Inbox, notifications, and prompt templates](08-inbox-notifications-templates.md)
 
-Describes xezar 0.16.0.
+Describes xezar 0.18.0.
