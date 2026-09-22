@@ -13,9 +13,9 @@ import {
   ClaudeCliRunner,
   EOF_KILL_GRACE_MS,
   EOF_TERM_GRACE_MS,
-  isReadOnlyStep,
   KILL_GRACE_MS,
 } from './claude-cli-runner.ts';
+import { isReadOnlyStep } from './read-only-lock.ts';
 import { DEFAULT_ALLOWED_TOOLS } from '../workflows/types.ts';
 import type { UiEvent } from './ui-events.ts';
 
@@ -91,6 +91,8 @@ describe('buildClaudeArgs read-only steps (#849)', () => {
       'Read,Grep,Glob,Bash',
       '--disallowedTools',
       'Edit,Write,NotebookEdit',
+      '--setting-sources',
+      'user',
     ]);
   });
 
@@ -104,6 +106,8 @@ describe('buildClaudeArgs read-only steps (#849)', () => {
       'Read,Grep,Glob,Bash',
       '--disallowedTools',
       'Edit,Write,NotebookEdit',
+      '--setting-sources',
+      'user',
     ]);
   });
 
@@ -117,6 +121,7 @@ describe('buildClaudeArgs read-only steps (#849)', () => {
       DEFAULT_ALLOWED_TOOLS.join(','),
     ]);
     expect(args).not.toContain('--disallowedTools');
+    expect(args).not.toContain('--setting-sources');
   });
 
   it('treats a list that keeps only one of Edit/Write as a writing step', () => {
@@ -126,6 +131,7 @@ describe('buildClaudeArgs read-only steps (#849)', () => {
 
   it('passes no removal flag when no list was resolved at all', () => {
     expect(buildClaudeArgs(base, {})).not.toContain('--disallowedTools');
+    expect(buildClaudeArgs(base, {})).not.toContain('--setting-sources');
   });
 
   it('turns a bashAllowlist into Bash(<prefix>:*) entries only, with no plain Bash', () => {
