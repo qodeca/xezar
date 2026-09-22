@@ -506,8 +506,12 @@ export const SCENARIOS: Record<string, Scenario> = {
     // data (project list, counts, the version chip) is guaranteed to have resolved, so a shot
     // taken as soon as the density change lands can catch the sidebar half-rendered — reproduced
     // on this state across more than one variant, not only the one shot right after the previous
-    // variant's resetAppearance. The version chip is sidebar-only and renders once its data is
-    // in, so waiting for it first is a proxy for "the sidebar finished loading".
+    // variant's resetAppearance. A role+name wait for the sidebar's Inbox link was tried first
+    // and timed out at both a 10s and a 20s budget on this exact route in the real capture flow,
+    // even though the link does render a little later once the shot proceeds — the accessibility
+    // snapshot this package's semantic waits poll did not pick it up in time here. Falling back
+    // to the DOM-level wait every other line in this file already uses for the same "did the
+    // sidebar's own data resolve" question: the version chip only renders once that data is in.
     wait(ctx.browser, exists('[data-slot="version-chip"]'))
     wait(ctx.browser, exists('[data-slot="appearance-density"] [data-value="roomy"]'))
     ctx.browser.click('[data-slot="appearance-density"] [data-value="roomy"]')

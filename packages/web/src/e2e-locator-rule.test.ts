@@ -86,12 +86,15 @@ export interface Exclusion {
 export const EXCLUSIONS: readonly Exclusion[] = [
   {
     file: 'capture/scenario-state.ts',
-    maxDataSlots: 61,
+    maxDataSlots: 62,
     reason:
       'The pre-existing `data-slot` waits/clicks the screenshot scenarios run are the DOM-ready ' +
       'steps the 0.15.0 capture plan has always used to know a page settled — relocated, not ' +
       'redesigned — and are not new locators the package adds (disclosed at ' +
-      'screenshot-states.e2e.ts:26-29).',
+      'screenshot-states.e2e.ts:26-29). One genuinely new occurrence: settings-appearance-roomy ' +
+      'shipped one 0.18.0 screenshot with a half-loaded sidebar (#842 review round 1); a semantic ' +
+      'role+name wait for the sidebar timed out in the real capture flow even though the element ' +
+      'does render, so the fix follows this file\'s own established DOM-wait idiom instead.',
   },
 ]
 
