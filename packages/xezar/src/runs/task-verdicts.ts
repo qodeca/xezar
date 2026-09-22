@@ -8,6 +8,7 @@ import {
   type TaskVerdict,
   type TaskVerdictIssue,
   type TaskVerdictPacket,
+  type TaskVerdictRole,
 } from '@qodeca/xezar-contract';
 
 import { collectSecretValues, redactDeep } from '../core/secret-redaction.ts';
@@ -41,6 +42,11 @@ import type { RunRecord, RunStore } from './store.ts';
  *    role's vocabulary, an abbreviated SHA, or `unavailable` label evidence with an observed list.
  *  - a packet naming another task, or another step of this one. That is the guard that stops an
  *    earlier step's leftover packet from being collected by whatever runs next.
+ *  - a packet whose `role` is not the role the settling step DECLARES (#851), including every
+ *    packet from a step that declares none. The declaration is the step's `verdictRole` in its
+ *    workflow definition, read by the engine — never the packet's word about itself. Without it
+ *    any agent step of any task could write a `code-review` packet and have it recorded over the
+ *    real reviewer's, a verdict on the record that no reviewer made.
  *  - a packet reusing an already-recorded id with DIFFERENT content. One report may be re-reported
  *    (a retry, a recovery) and stay one report; it may not quietly become a different one.
  *  - a packet that cannot even be LOOKED UP. `ENOENT` is the one lookup failure that means "this
@@ -152,21 +158,32 @@ function recordIssue(store: RunStore, run: RunRecord, stepId: string, reason: st
  * Called at every AGENT step's settlement; a step that wrote no packet costs one failed `lstat`.
  * Never throws: a reviewer report is evidence about a task, and no problem with it may fail the
  * task itself.
+ *
+ * `declaredRole` is the settling step's own `verdictRole` as the ENGINE read it from the workflow
+ * definition, `undefined` when the step declares none. It is a required parameter rather than an
+ * optional one on purpose: a caller that forgets it must not compile into "no role check".
  */
 export function ingestTaskVerdict(
   store: RunStore,
   dataDir: string,
   runId: string,
   stepId: string,
+  declaredRole: TaskVerdictRole | undefined,
 ): TaskVerdictIngestion | undefined {
   try {
-    return ingest(store, dataDir, runId, stepId);
+    return ingest(store, dataDir, runId, stepId, declaredRole);
   } catch {
     return undefined;
   }
 }
 
-function ingest(store: RunStore, dataDir: string, runId: string, stepId: string): TaskVerdictIngestion | undefined {
+function ingest(
+  store: RunStore,
+  dataDir: string,
+  runId: string,
+  stepId: string,
+  declaredRole: TaskVerdictRole | undefined,
+): TaskVerdictIngestion | undefined {
   const run = store.getRun(runId);
   if (!run) return undefined;
   const file = taskVerdictPacketPath(dataDir, runId);
@@ -204,6 +221,14 @@ function ingest(store: RunStore, dataDir: string, runId: string, stepId: string)
 
   if (packet.taskId !== runId) return refuse('the reviewer packet reports on a different task');
   if (packet.stepId !== stepId) return refuse('the reviewer packet reports on a different step of this task');
+  // The role check (#851). Both roles are schema-validated enum values, so naming them quotes
+  // nothing the task chose freely.
+  if (declaredRole === undefined) {
+    return refuse(`the step that settled declares no verdict role, so its ${packet.role} packet cannot be recorded`);
+  }
+  if (packet.role !== declaredRole) {
+    return refuse(`the reviewer packet reports a ${packet.role} verdict, but this step declares ${declaredRole}`);
+  }
 
   const existing = run.verdicts ?? [];
   const sameId = existing.find((candidate) => candidate.id === packet.id);

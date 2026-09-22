@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { runnerSchema } from './health.ts';
+import { taskVerdictRoleSchema } from './task-verdict.ts';
 
 /**
  * The WORKFLOWS family: the chain catalog, the save/parse routes, and the planner.
@@ -41,6 +42,9 @@ export const workflowStepDefSchema = z
      *  for what a user may author (workflow YAML and the inline chain on `POST /runs` both go
      *  through it). Restating the grammar here would be a second copy free to drift. */
     timeout: z.string().optional(),
+    /** The reviewer role this agent step reports a verdict as (#851). Absent: it reports none, and
+     *  a reviewer packet it leaves is refused. */
+    verdictRole: taskVerdictRoleSchema.optional(),
     // check step
     command: z.string().optional(),
     /** Absent preserves the historical behaviour: a successful check is a significant stage result. */
@@ -57,6 +61,9 @@ export const workflowStepDefSchema = z
   })
   .refine((s) => !(s.resultScope !== undefined && !s.command), {
     message: 'resultScope applies only to a check step (command)',
+  })
+  .refine((s) => !(s.command && s.verdictRole !== undefined), {
+    message: 'verdictRole applies to an agent step; a check step (command) reports no verdict',
   });
 export type WorkflowStepDef = z.infer<typeof workflowStepDefSchema>;
 

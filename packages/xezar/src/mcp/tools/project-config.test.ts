@@ -18,6 +18,7 @@ import { createServer as createHttpServer, type Server as HttpServer } from 'nod
 import { tmpdir } from 'node:os';
 import { basename, join, relative } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { parse as parseYaml } from 'yaml';
 import { CONFIG_FILES } from '../../agent-config/catalog.ts';
 import { loadConfig, resolveWorktreeRetention } from '../../config.ts';
 import { BUNDLED_TEMPLATES_DIGEST } from '../../onboarding/status.ts';
@@ -2274,6 +2275,19 @@ describe('project_config: workflows', () => {
     value(await invoke({ action: 'delete_workflow', name: 'Review chain' }));
     expect(value(await invoke({ action: 'list_workflows' })).workflows.map((w: { name: string }) => w.name)).toEqual(['project-setup', 'quick-task']);
     expect(snapshot(ws.roots.b)).toEqual(bBefore);
+  });
+
+  it('keeps a reviewer step’s declared verdictRole in the saved file (#851)', async () => {
+    // Named break: drop `verdictRole` from the agent step shape, or let the compact `skills:` form
+    // swallow it — the saved reviewer then declares nothing and every verdict it reports is refused.
+    const workflow = { name: 'Arch review', steps: [{ id: 'review', skill: 'arch', prompt: '{{task}}', verdictRole: 'architecture-review' }] };
+    value(await invoke({ action: 'save_workflow', workflow }));
+    const saved = parseYaml(readFileSync(join(ws.roots.a, '.xezar', 'workflows', 'arch-review.yaml'), 'utf8'));
+    expect(saved).toEqual({ name: 'Arch review', steps: [{ id: 'review', skill: 'arch', prompt: '{{task}}', verdictRole: 'architecture-review' }] });
+    value(await invoke({ action: 'delete_workflow', name: 'Arch review' }));
+
+    const unknown = await invoke({ action: 'save_workflow', workflow: { name: 'x', steps: [{ id: 'r', prompt: 'x', verdictRole: 'security-review' }] } });
+    expect(unknown.result.isError).toBe(true);
   });
 
   it('refuses a check step — a shell command run later — without dispatching or writing anything', async () => {

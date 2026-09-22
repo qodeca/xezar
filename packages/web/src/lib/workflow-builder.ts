@@ -28,6 +28,7 @@ export function skillStack(steps: readonly WorkflowStepDef[]): string[] | null {
     if (s.name !== undefined && s.name !== s.skill) return null
     if (s.model || s.runner || s.allowedTools || s.bashAllowlist || s.onFail || s.resultScope) return null
     if (s.timeout !== undefined) return null // the compact form cannot carry a per-step timeout
+    if (s.verdictRole !== undefined) return null // nor a declared reviewer role (#851)
     skills.push(s.skill)
   }
   return skills.length ? skills : null
@@ -121,6 +122,9 @@ export function workflowYaml(
       // #22: a pasted or planned chain can carry a per-step timeout the canvas has no editor
       // for. Round-tripping it out of the YAML would silently reset that step to 30 minutes.
       if (s.timeout) lines.push(`    timeout: ${yamlScalar(s.timeout)}`)
+      // #851: the same loss, with a sharper edge — a reviewer step saved without its declared role
+      // has every verdict it reports refused.
+      if (s.verdictRole) lines.push(`    verdictRole: ${s.verdictRole}`)
       if (s.command) lines.push(...yamlBlock('command', s.command, 4))
       if (s.resultScope) lines.push(`    resultScope: ${s.resultScope}`)
       if (s.onFail) {

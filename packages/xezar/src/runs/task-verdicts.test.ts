@@ -11,6 +11,8 @@ import {
   TASK_VERDICT_FINDING_ID_MAX,
   TASK_VERDICT_FINDING_TITLE_MAX,
   TASK_VERDICT_MAX_BYTES,
+  TASK_VERDICT_ROLES,
+  TASK_VERDICT_VOCABULARY,
   isApprovingTaskVerdict,
 } from '@qodeca/xezar-contract';
 
@@ -103,7 +105,7 @@ describe('T-1 — every role keeps its own words (break: omit packet persistence
     const run = startedRun();
     writePacket(run.id, packetFor(run.id, { role, verdict }));
 
-    const result = ingestTaskVerdict(store, dataDir, run.id, 'review');
+    const result = ingestTaskVerdict(store, dataDir, run.id, 'review', role);
 
     expect(result?.outcome).toBe('recorded');
     const [recorded] = verdictsOf(run.id);
@@ -120,7 +122,7 @@ describe('T-1 — every role keeps its own words (break: omit packet persistence
     // `APPROVE` is the code reviewer's word; QA has no such outcome.
     writePacket(run.id, packetFor(run.id, { role: 'qa', verdict: 'APPROVE' }));
 
-    expect(ingestTaskVerdict(store, dataDir, run.id, 'review')?.outcome).toBe('refused');
+    expect(ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review')?.outcome).toBe('refused');
     expect(verdictsOf(run.id)).toEqual([]);
   });
 
@@ -128,7 +130,7 @@ describe('T-1 — every role keeps its own words (break: omit packet persistence
     const run = startedRun();
     writePacket(run.id, packetFor(run.id, { role: 'qa', verdict: 'PASS WITH FOLLOW-UPS' }));
 
-    expect(ingestTaskVerdict(store, dataDir, run.id, 'review')?.outcome).toBe('refused');
+    expect(ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review')?.outcome).toBe('refused');
     expect(verdictsOf(run.id)).toEqual([]);
   });
 });
@@ -139,14 +141,14 @@ describe('T-2 — nothing unproven becomes an approval (break: accept unvalidate
   it('a run with no packet records nothing at all', () => {
     const run = startedRun();
 
-    expect(ingestTaskVerdict(store, dataDir, run.id, 'review')).toBeUndefined();
+    expect(ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review')).toBeUndefined();
     expect(verdictsOf(run.id)).toEqual([]);
     expect(issuesOf(run.id)).toEqual([]);
   });
 
   it('a run that finished done without a packet carries no verdict', () => {
     const run = startedRun();
-    ingestTaskVerdict(store, dataDir, run.id, 'review');
+    ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review');
     store.updateRun(run.id, { status: 'done', finishedAt: new Date().toISOString() });
 
     expect(store.getRun(run.id)?.status).toBe('done');
@@ -161,7 +163,7 @@ describe('T-2 — nothing unproven becomes an approval (break: accept unvalidate
     const run = startedRun();
     writePacket(run.id, content);
 
-    expect(ingestTaskVerdict(store, dataDir, run.id, 'review')?.outcome).toBe('refused');
+    expect(ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review')?.outcome).toBe('refused');
     expect(verdictsOf(run.id)).toEqual([]);
     expect(issuesOf(run.id)).toHaveLength(1);
   });
@@ -171,7 +173,7 @@ describe('T-2 — nothing unproven becomes an approval (break: accept unvalidate
     const other = startedRun();
     writePacket(run.id, packetFor(other.id));
 
-    expect(ingestTaskVerdict(store, dataDir, run.id, 'review')?.outcome).toBe('refused');
+    expect(ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review')?.outcome).toBe('refused');
     expect(verdictsOf(run.id)).toEqual([]);
     expect(verdictsOf(other.id)).toEqual([]);
   });
@@ -180,7 +182,7 @@ describe('T-2 — nothing unproven becomes an approval (break: accept unvalidate
     const run = startedRun(['review', 'handoff']);
     writePacket(run.id, packetFor(run.id, { stepId: 'review' }));
 
-    expect(ingestTaskVerdict(store, dataDir, run.id, 'handoff')?.outcome).toBe('refused');
+    expect(ingestTaskVerdict(store, dataDir, run.id, 'handoff', 'code-review')?.outcome).toBe('refused');
     expect(verdictsOf(run.id)).toEqual([]);
   });
 
@@ -192,7 +194,7 @@ describe('T-2 — nothing unproven becomes an approval (break: accept unvalidate
     mkdirSync(dirname(file), { recursive: true });
     symlinkSync(elsewhere, file);
 
-    expect(ingestTaskVerdict(store, dataDir, run.id, 'review')?.outcome).toBe('refused');
+    expect(ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review')?.outcome).toBe('refused');
     expect(verdictsOf(run.id)).toEqual([]);
     expect(issuesOf(run.id)[0]?.reason).toContain('regular file');
   });
@@ -203,7 +205,7 @@ describe('T-2 — nothing unproven becomes an approval (break: accept unvalidate
     padded.summary = 'x'.repeat(TASK_VERDICT_MAX_BYTES + 1_000);
     writePacket(run.id, padded);
 
-    expect(ingestTaskVerdict(store, dataDir, run.id, 'review')?.outcome).toBe('refused');
+    expect(ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review')?.outcome).toBe('refused');
     expect(verdictsOf(run.id)).toEqual([]);
     expect(issuesOf(run.id)[0]?.reason).toContain('larger than');
   });
@@ -217,7 +219,7 @@ describe('T-2 — nothing unproven becomes an approval (break: accept unvalidate
       }),
     );
 
-    ingestTaskVerdict(store, dataDir, run.id, 'review');
+    ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review');
 
     expect(verdictsOf(run.id)[0]?.labels.state).toBe('partial');
     expect(verdictsOf(run.id)[0]?.labels.observed).toEqual(['needs-qa']);
@@ -232,7 +234,7 @@ describe('T-2 — nothing unproven becomes an approval (break: accept unvalidate
       }),
     );
 
-    expect(ingestTaskVerdict(store, dataDir, run.id, 'review')?.outcome).toBe('refused');
+    expect(ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review')?.outcome).toBe('refused');
     expect(verdictsOf(run.id)).toEqual([]);
   });
 
@@ -245,7 +247,7 @@ describe('T-2 — nothing unproven becomes an approval (break: accept unvalidate
       }),
     );
 
-    ingestTaskVerdict(store, dataDir, run.id, 'review');
+    ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review');
 
     const [recorded] = verdictsOf(run.id);
     expect(recorded?.labels.state).toBe('unavailable');
@@ -257,7 +259,7 @@ describe('T-2 — nothing unproven becomes an approval (break: accept unvalidate
     const run = startedRun();
     writePacket(run.id, packetFor(run.id, { reviewedHeadSha: SHA_A.slice(0, 7) }));
 
-    expect(ingestTaskVerdict(store, dataDir, run.id, 'review')?.outcome).toBe('refused');
+    expect(ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review')?.outcome).toBe('refused');
     expect(verdictsOf(run.id)).toEqual([]);
   });
 
@@ -294,11 +296,11 @@ describe('T-3 — one report stays one report (break: clear pending before appen
   it('re-reporting the same id with the same content changes nothing', () => {
     const run = startedRun();
     writePacket(run.id, packetFor(run.id));
-    ingestTaskVerdict(store, dataDir, run.id, 'review');
+    ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review');
     const first = verdictsOf(run.id)[0];
 
     writePacket(run.id, packetFor(run.id));
-    const second = ingestTaskVerdict(store, dataDir, run.id, 'review');
+    const second = ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review');
 
     expect(second?.outcome).toBe('unchanged');
     expect(verdictsOf(run.id)).toHaveLength(1);
@@ -308,10 +310,10 @@ describe('T-3 — one report stays one report (break: clear pending before appen
   it('refuses a different report wearing an already-recorded id', () => {
     const run = startedRun();
     writePacket(run.id, packetFor(run.id));
-    ingestTaskVerdict(store, dataDir, run.id, 'review');
+    ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review');
 
     writePacket(run.id, packetFor(run.id, { verdict: 'REQUEST CHANGES' }));
-    const second = ingestTaskVerdict(store, dataDir, run.id, 'review');
+    const second = ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review');
 
     expect(second?.outcome).toBe('refused');
     expect(verdictsOf(run.id)).toHaveLength(1);
@@ -323,7 +325,7 @@ describe('T-3 — one report stays one report (break: clear pending before appen
     const run = startedRun();
     writePacket(run.id, packetFor(run.id));
 
-    ingestTaskVerdict(store, dataDir, run.id, 'review');
+    ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review');
 
     expect(verdictsOf(run.id)[0]?.publication).toBe('pending');
   });
@@ -331,7 +333,7 @@ describe('T-3 — one report stays one report (break: clear pending before appen
   it('a pending report survives a restart and is still pending, under the same id', () => {
     const run = startedRun();
     writePacket(run.id, packetFor(run.id));
-    ingestTaskVerdict(store, dataDir, run.id, 'review');
+    ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review');
     store.flush();
 
     const reopened = RunStore.open(dataDir);
@@ -345,7 +347,7 @@ describe('T-3 — one report stays one report (break: clear pending before appen
   it('marking announced is idempotent and only ever moves pending forward', () => {
     const run = startedRun();
     writePacket(run.id, packetFor(run.id));
-    ingestTaskVerdict(store, dataDir, run.id, 'review');
+    ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review');
 
     markTaskVerdictAnnounced(store, run.id, 'report-1');
     const announced = verdictsOf(run.id)[0];
@@ -363,13 +365,13 @@ describe('T-4 — a newer report supersedes its own role only (break: read the p
   it('a second role is added beside the first, not over it', () => {
     const run = startedRun(['review', 'qa']);
     writePacket(run.id, packetFor(run.id));
-    ingestTaskVerdict(store, dataDir, run.id, 'review');
+    ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review');
 
     writePacket(
       run.id,
       packetFor(run.id, { id: 'report-2', stepId: 'qa', role: 'qa', verdict: 'PASS' }),
     );
-    ingestTaskVerdict(store, dataDir, run.id, 'qa');
+    ingestTaskVerdict(store, dataDir, run.id, 'qa', 'qa');
 
     expect(verdictsOf(run.id).map((verdict) => verdict.role).sort()).toEqual(['code-review', 'qa']);
   });
@@ -377,15 +379,15 @@ describe('T-4 — a newer report supersedes its own role only (break: read the p
   it('a newer report for the same role replaces that role and leaves the others alone', () => {
     const run = startedRun(['review', 'qa']);
     writePacket(run.id, packetFor(run.id, { id: 'qa-1', stepId: 'qa', role: 'qa', verdict: 'FAIL' }));
-    ingestTaskVerdict(store, dataDir, run.id, 'qa');
+    ingestTaskVerdict(store, dataDir, run.id, 'qa', 'qa');
     writePacket(run.id, packetFor(run.id, { id: 'cr-1' }));
-    ingestTaskVerdict(store, dataDir, run.id, 'review');
+    ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review');
 
     writePacket(
       run.id,
       packetFor(run.id, { id: 'qa-2', stepId: 'qa', role: 'qa', verdict: 'PASS', reviewedHeadSha: SHA_B }),
     );
-    ingestTaskVerdict(store, dataDir, run.id, 'qa');
+    ingestTaskVerdict(store, dataDir, run.id, 'qa', 'qa');
 
     const byRole = new Map(verdictsOf(run.id).map((verdict) => [verdict.role, verdict]));
     expect(byRole.size).toBe(2);
@@ -398,13 +400,13 @@ describe('T-4 — a newer report supersedes its own role only (break: read the p
   it('an older report keeps its own reviewed sha — nothing restamps it', () => {
     const run = startedRun(['review', 'qa']);
     writePacket(run.id, packetFor(run.id, { reviewedHeadSha: SHA_A }));
-    ingestTaskVerdict(store, dataDir, run.id, 'review');
+    ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review');
 
     writePacket(
       run.id,
       packetFor(run.id, { id: 'qa-1', stepId: 'qa', role: 'qa', verdict: 'PASS', reviewedHeadSha: SHA_B }),
     );
-    ingestTaskVerdict(store, dataDir, run.id, 'qa');
+    ingestTaskVerdict(store, dataDir, run.id, 'qa', 'qa');
 
     const byRole = new Map(verdictsOf(run.id).map((verdict) => [verdict.role, verdict]));
     expect(byRole.get('code-review')?.reviewedHeadSha).toBe(SHA_A);
@@ -416,7 +418,7 @@ describe('T-4 — a newer report supersedes its own role only (break: read the p
     const run = startedRun();
     store.updateRun(run.id, { worktreePath: worktree });
     writePacket(run.id, packetFor(run.id));
-    ingestTaskVerdict(store, dataDir, run.id, 'review');
+    ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review');
 
     // Retention reclaims the directory (#483). The record is untouched by that.
     rmSync(worktree, { recursive: true, force: true });
@@ -446,7 +448,7 @@ describe('T-5 — evidence bounds hold (break: skip the redaction guard, or disc
       packetFor(run.id, { summary: 'the run failed with ghp_averysecrettokenvalue000000000000 in the log' }),
     );
 
-    ingestTaskVerdict(store, dataDir, run.id, 'review');
+    ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review');
 
     const summary = verdictsOf(run.id)[0]?.summary ?? '';
     expect(summary).not.toContain('ghp_averysecrettokenvalue000000000000');
@@ -464,7 +466,7 @@ describe('T-5 — evidence bounds hold (break: skip the redaction guard, or disc
       }),
     );
 
-    ingestTaskVerdict(store, dataDir, run.id, 'review');
+    ingestTaskVerdict(store, dataDir, run.id, 'review', 'qa');
 
     const [recorded] = verdictsOf(run.id);
     expect(recorded?.verdict).toBe('FAIL');
@@ -480,7 +482,7 @@ describe('T-5 — evidence bounds hold (break: skip the redaction guard, or disc
         labels: { requestedAdd: ['design-approved'], requestedRemove: [], observed: [], state: 'partial' },
       }),
     );
-    ingestTaskVerdict(store, dataDir, run.id, 'review');
+    ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review');
     store.flush();
 
     const reopened = RunStore.open(dataDir);
@@ -496,7 +498,7 @@ describe('T-5 — evidence bounds hold (break: skip the redaction guard, or disc
     writeFileSync(handoff, before, 'utf8');
     writePacket(run.id, packetFor(run.id));
 
-    ingestTaskVerdict(store, dataDir, run.id, 'review');
+    ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review');
 
     expect(readFileSync(handoff, 'utf8')).toBe(before);
   });
@@ -506,7 +508,7 @@ describe('T-5 — evidence bounds hold (break: skip the redaction guard, or disc
     const file = writePacket(run.id, packetFor(run.id));
     chmodSync(file, 0o000);
 
-    const result = ingestTaskVerdict(store, dataDir, run.id, 'review');
+    const result = ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review');
 
     // A root-run environment can still read a 000 file; the assertion that matters either way is
     // that nothing was invented — an unreadable packet is never an approval.
@@ -532,7 +534,7 @@ describe('T-6 — the record is durable before the packet is gone (break: drop t
     const run = startedRun();
     writePacket(run.id, packetFor(run.id));
 
-    expect(ingestTaskVerdict(store, dataDir, run.id, 'review')?.outcome).toBe('recorded');
+    expect(ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review')?.outcome).toBe('recorded');
 
     // No timer advanced, no flush by the test: the ordering claim in BACKWARD_COMPATIBILITY.md §2
     // is that the record is durable BEFORE anything announces it, and the announcer's journal
@@ -551,7 +553,7 @@ describe('T-6 — the record is durable before the packet is gone (break: drop t
 
     try {
       // Never throws at the caller — a reviewer report is evidence about a task, not the task.
-      expect(ingestTaskVerdict(store, dataDir, run.id, 'review')).toBeUndefined();
+      expect(ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review')).toBeUndefined();
     } finally {
       store.updateRun = realUpdate;
     }
@@ -566,7 +568,7 @@ describe('T-6 — the record is durable before the packet is gone (break: drop t
     const run = startedRun();
     const file = writePacket(run.id, 'not json at all');
 
-    expect(ingestTaskVerdict(store, dataDir, run.id, 'review')?.outcome).toBe('refused');
+    expect(ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review')?.outcome).toBe('refused');
 
     expect(existsSync(file)).toBe(false);
     expect(onDiskRun(run.id)?.verdictIssues).toHaveLength(1);
@@ -580,7 +582,7 @@ describe('T-6 — the record is durable before the packet is gone (break: drop t
     chmodSync(dir, 0o000);
     let result;
     try {
-      result = ingestTaskVerdict(store, dataDir, run.id, 'review');
+      result = ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review');
     } finally {
       chmodSync(dir, 0o700);
     }
@@ -632,7 +634,7 @@ describe('T-7 — findings reach the record whole or not at all (break: drop R1/
       labels: { requestedAdd: [], requestedRemove: [], observed: [], state: 'verified' },
     });
 
-    expect(ingestTaskVerdict(store, dataDir, run.id, 'review')?.outcome).toBe('recorded');
+    expect(ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review')?.outcome).toBe('recorded');
 
     const [recorded] = verdictsOf(run.id);
     expect(recorded?.verdict).toBe('APPROVE');
@@ -657,7 +659,7 @@ describe('T-7 — findings reach the record whole or not at all (break: drop R1/
       }),
     );
 
-    expect(ingestTaskVerdict(store, dataDir, run.id, 'review')?.outcome).toBe('recorded');
+    expect(ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review')?.outcome).toBe('recorded');
 
     const [recorded] = verdictsOf(run.id);
     expect(recorded?.findings).toEqual([
@@ -670,7 +672,7 @@ describe('T-7 — findings reach the record whole or not at all (break: drop R1/
   it('records a truncated list as truncated, and it survives a restart that way', () => {
     const run = startedRun();
     writePacket(run.id, packetFor(run.id, { findings: [finding()], findingsOmitted: 7 }));
-    ingestTaskVerdict(store, dataDir, run.id, 'review');
+    ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review');
     store.flush();
 
     const reopened = RunStore.open(dataDir);
@@ -683,7 +685,7 @@ describe('T-7 — findings reach the record whole or not at all (break: drop R1/
     const run = startedRun();
     writePacket(run.id, packetFor(run.id, { findings: [finding()] }));
 
-    expect(ingestTaskVerdict(store, dataDir, run.id, 'review')?.outcome).toBe('refused');
+    expect(ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review')?.outcome).toBe('refused');
     expect(verdictsOf(run.id)).toEqual([]);
     expect(issuesOf(run.id)[0]?.reason).toContain('findingsOmitted');
   });
@@ -695,7 +697,7 @@ describe('T-7 — findings reach the record whole or not at all (break: drop R1/
     expect(JSON.stringify(findings).length).toBeGreaterThan(TASK_VERDICT_FINDINGS_MAX_BYTES);
     writePacket(run.id, packetFor(run.id, { findings, findingsOmitted: 0 }));
 
-    expect(ingestTaskVerdict(store, dataDir, run.id, 'review')?.outcome).toBe('refused');
+    expect(ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review')?.outcome).toBe('refused');
     expect(verdictsOf(run.id)).toEqual([]);
     const reason = issuesOf(run.id)[0]?.reason ?? '';
     expect(reason).toContain('findings');
@@ -712,7 +714,7 @@ describe('T-7 — findings reach the record whole or not at all (break: drop R1/
     );
     writePacket(run.id, packetFor(run.id, { findings, findingsOmitted: 0 }));
 
-    expect(ingestTaskVerdict(store, dataDir, run.id, 'review')?.outcome).toBe('refused');
+    expect(ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review')?.outcome).toBe('refused');
     // Not "the first 20 recorded": a silent drop is exactly what `findingsOmitted` exists against.
     expect(verdictsOf(run.id)).toEqual([]);
   });
@@ -727,7 +729,7 @@ describe('T-7 — findings reach the record whole or not at all (break: drop R1/
       }),
     );
 
-    expect(ingestTaskVerdict(store, dataDir, run.id, 'review')?.outcome).toBe('refused');
+    expect(ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review')?.outcome).toBe('refused');
     expect(verdictsOf(run.id)).toEqual([]);
   });
 
@@ -747,7 +749,7 @@ describe('T-7 — findings reach the record whole or not at all (break: drop R1/
         }),
       );
 
-      ingestTaskVerdict(store, dataDir, run.id, 'review');
+      ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review');
 
       const body = verdictsOf(run.id)[0]?.findings?.[0]?.body ?? '';
       expect(body).not.toContain('ghp_asecretinsideafinding0000000000000');
@@ -766,7 +768,7 @@ describe('T-7 — findings reach the record whole or not at all (break: drop R1/
     expect(JSON.stringify([finding()]).length).toBeLessThan(TASK_VERDICT_FINDINGS_MAX_BYTES);
     writePacket(run.id, padded);
 
-    expect(ingestTaskVerdict(store, dataDir, run.id, 'review')?.outcome).toBe('refused');
+    expect(ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review')?.outcome).toBe('refused');
     expect(verdictsOf(run.id)).toEqual([]);
     expect(issuesOf(run.id)[0]?.reason).toContain('larger than');
   });
@@ -776,7 +778,7 @@ describe('T-7 — findings reach the record whole or not at all (break: drop R1/
     const run = startedRun();
     writePacket(run.id, packetFor(run.id, { verdict: 'APPROVE', findings: [], findingsOmitted: 0 }));
 
-    expect(ingestTaskVerdict(store, dataDir, run.id, 'review')?.outcome).toBe('recorded');
+    expect(ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review')?.outcome).toBe('recorded');
 
     const [recorded] = verdictsOf(run.id);
     expect(recorded?.findings).toEqual([]);
@@ -787,10 +789,10 @@ describe('T-7 — findings reach the record whole or not at all (break: drop R1/
   it('refuses a re-report that changed only a finding body', () => {
     const run = startedRun();
     writePacket(run.id, packetFor(run.id, { findings: [finding({ body: 'as written' })], findingsOmitted: 0 }));
-    ingestTaskVerdict(store, dataDir, run.id, 'review');
+    ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review');
 
     writePacket(run.id, packetFor(run.id, { findings: [finding({ body: 'as re-written' })], findingsOmitted: 0 }));
-    const second = ingestTaskVerdict(store, dataDir, run.id, 'review');
+    const second = ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review');
 
     expect(second?.outcome).toBe('refused');
     expect(verdictsOf(run.id)).toHaveLength(1);
@@ -802,11 +804,82 @@ describe('T-7 — findings reach the record whole or not at all (break: drop R1/
     const run = startedRun();
     const same = { findings: [finding({ body: 'as written' })], findingsOmitted: 0 };
     writePacket(run.id, packetFor(run.id, same));
-    ingestTaskVerdict(store, dataDir, run.id, 'review');
+    ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review');
 
     writePacket(run.id, packetFor(run.id, same));
 
-    expect(ingestTaskVerdict(store, dataDir, run.id, 'review')?.outcome).toBe('unchanged');
+    expect(ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review')?.outcome).toBe('unchanged');
     expect(verdictsOf(run.id)).toHaveLength(1);
+  });
+});
+
+// ---- #851 --------------------------------------------------------------------------------------
+
+describe('#851 C — a packet is recorded only as the role its step declares (break: drop the role check, or take the role from the packet)', () => {
+  it('refuses a packet from a step that declares no role, and journals why', () => {
+    // The loophole: a quick-task declares no role, and its packet used to be recorded as a review.
+    const run = startedRun();
+    const file = writePacket(run.id, packetFor(run.id));
+
+    const result = ingestTaskVerdict(store, dataDir, run.id, 'review', undefined);
+
+    expect(result?.outcome).toBe('refused');
+    expect(verdictsOf(run.id)).toEqual([]);
+    expect(issuesOf(run.id)).toHaveLength(1);
+    expect(issuesOf(run.id)[0]?.stepId).toBe('review');
+    expect(issuesOf(run.id)[0]?.reason).toBe(
+      'the step that settled declares no verdict role, so its code-review packet cannot be recorded',
+    );
+    // Consumed like every other refusal, so no later step is offered the same forged packet.
+    expect(existsSync(file)).toBe(false);
+  });
+
+  it('refuses a packet naming a role other than the declared one, and leaves the real slot alone', () => {
+    const run = startedRun(['review', 'qa']);
+    writePacket(run.id, packetFor(run.id, { id: 'real-review' }));
+    ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review');
+
+    // A QA step that tries to write over the code reviewer's slot.
+    writePacket(run.id, packetFor(run.id, { id: 'forged', stepId: 'qa', verdict: 'APPROVE' }));
+    const result = ingestTaskVerdict(store, dataDir, run.id, 'qa', 'qa');
+
+    expect(result).toEqual({
+      outcome: 'refused',
+      reason: 'the reviewer packet reports a code-review verdict, but this step declares qa',
+    });
+    expect(verdictsOf(run.id).map((verdict) => verdict.id)).toEqual(['real-review']);
+    expect(issuesOf(run.id)[0]?.stepId).toBe('qa');
+  });
+
+  it('records a packet whose role matches the step’s declaration', () => {
+    const run = startedRun();
+    writePacket(run.id, packetFor(run.id));
+
+    expect(ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review')?.outcome).toBe('recorded');
+    expect(issuesOf(run.id)).toEqual([]);
+  });
+});
+
+describe('#851 A/B — every role on the list is ingestable, architecture-review included (break: hand-spell a union arm)', () => {
+  it.each(TASK_VERDICT_ROLES)('records a %s packet from a step declaring that role', (role) => {
+    const run = startedRun();
+    const [verdict] = TASK_VERDICT_VOCABULARY[role];
+    writePacket(run.id, packetFor(run.id, { role, verdict }));
+
+    expect(ingestTaskVerdict(store, dataDir, run.id, 'review', role)?.outcome).toBe('recorded');
+    expect(verdictsOf(run.id)[0]?.role).toBe(role);
+  });
+
+  it('keeps an architecture review beside the code review rather than over it', () => {
+    const run = startedRun(['review', 'architecture']);
+    writePacket(run.id, packetFor(run.id, { id: 'cr' }));
+    ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review');
+    writePacket(
+      run.id,
+      packetFor(run.id, { id: 'ar', stepId: 'architecture', role: 'architecture-review', verdict: 'REQUEST CHANGES' }),
+    );
+    ingestTaskVerdict(store, dataDir, run.id, 'architecture', 'architecture-review');
+
+    expect(verdictsOf(run.id).map((verdict) => verdict.role).sort()).toEqual(['architecture-review', 'code-review']);
   });
 });

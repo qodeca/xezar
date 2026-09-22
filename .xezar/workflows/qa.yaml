@@ -19,4 +19,5 @@ steps:
     name: QA
     prompt: "QA (see your skill for what to post and which labels to apply): {{task}}"
     skill: xezar-qa
+    verdictRole: qa
     allowedTools: [Read, Grep, Glob, Bash]
