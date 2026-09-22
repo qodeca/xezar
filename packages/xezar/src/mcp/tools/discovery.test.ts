@@ -19,6 +19,7 @@ import { toolListing } from '../tool.ts';
 import { detectEnvironment } from '../../core/backend-detect.ts';
 import { providerInstallHint } from '../../core/provider-auth.ts';
 import { PROVIDER_INSTALL } from '../../core/provider-install.ts';
+import { BIND_HOST_OPTION } from '../../server/capabilities.ts';
 import { bindHostFromArgv, buildDiscovery, cockpitLinks, discoverProjectTool, discoveryText, type DiscoveryFacts } from './discovery.ts';
 
 // The bound project and one OTHER registered project whose name and id must never surface (N-01).
@@ -576,11 +577,12 @@ describe('discover_project — the tool', () => {
   it('resolves a repeated --bind-host the same way the CLI itself does: last-wins (#838 item H)', () => {
     // Before the fix this reader was a hand-written FIRST-match scanner while `index.ts`'s own
     // `parseArgs` call is last-wins, so the running server bound one host and this told an MCP
-    // caller a different one for the exact same argv. `parseArgs` here (independently, with only
-    // `bind-host` declared) is the reference for "what index.ts's parse would answer" — the two
-    // agreeing on an ad hoc option table is the property under test, not a hardcoded literal.
+    // caller a different one for the exact same argv. `parseArgs` here, given the same
+    // `BIND_HOST_OPTION` entry `index.ts`'s own table spreads in (#838 item H finding 2), is the
+    // actual reference for "what index.ts's parse would answer" for this one flag — the two
+    // agreeing is the property under test, not a hardcoded literal.
     const argv = ['node', 'xezar', 'serve', '--bind-host', '10.0.0.1', '--bind-host', '10.0.0.2'];
-    const { values } = parseArgs({ args: argv, options: { 'bind-host': { type: 'string' } }, allowPositionals: true, strict: false });
+    const { values } = parseArgs({ args: argv, options: { 'bind-host': BIND_HOST_OPTION }, allowPositionals: true, strict: false });
     expect(bindHostFromArgv(argv)).toBe(values['bind-host']);
     expect(bindHostFromArgv(argv)).toBe('10.0.0.2');
 
@@ -590,6 +592,14 @@ describe('discover_project — the tool', () => {
 
     // A repeated flag ending on an empty value still reads as absent, exactly like a single one (#838 item A).
     expect(bindHostFromArgv(['node', 'xezar', '--bind-host', '10.0.0.1', '--bind-host', ''])).toBeUndefined();
+  });
+
+  it('reads a bare trailing --bind-host (no value) as absent, not as boolean true (#838 item H finding 1)', () => {
+    // Under `strict: false`, `parseArgs` puts boolean `true` into a declared *string* option that
+    // is the last token with nothing after it. A cast used to hide that from the type checker;
+    // feeding the result to `resolveCapabilities` then threw `host.match is not a function`. This
+    // pins the honest answer: a value that isn't a string reads as absent, same as an empty one.
+    expect(bindHostFromArgv(['node', 'xezar', 'serve', '--bind-host'])).toBeUndefined();
   });
 });
 
