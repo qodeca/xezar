@@ -48,8 +48,6 @@ export const TASK_VERDICT_LABEL_MAX = 100;
 export const TASK_VERDICT_LABEL_LIST_MAX = 30;
 /** Characters of the stable report id. */
 export const TASK_VERDICT_ID_MAX = 200;
-/** Current packets kept on a run — one per role, and there are exactly three roles. */
-export const TASK_VERDICT_MAX_CURRENT = 3;
 /** Ingestion problems kept on a run. Oldest drop first: the newest failure is the useful one. */
 export const TASK_VERDICT_MAX_ISSUES = 10;
 /** Characters of one ingestion problem's reason. */
@@ -75,15 +73,30 @@ export const TASK_VERDICT_FINDING_BODY_MAX = 300;
 
 // ---- roles and their vocabularies ------------------------------------------------------------
 
-export const TASK_VERDICT_ROLES = ['code-review', 'design-review', 'qa'] as const;
+/**
+ * THE role list, and the only one (#851). Every per-role map below is compile-checked against it
+ * through `satisfies Record<TaskVerdictRole, …>`, and both packet unions are BUILT from it rather
+ * than spelled out, so a role added here reaches ingestion, the recorded shape, the MCP
+ * `fromFindings.role` argument and the per-run bound in one edit. Adding a role is additive;
+ * renaming or removing one is a break (`BACKWARD_COMPATIBILITY.md`).
+ *
+ * `architecture-review` (#851) is a review of the design of a change rather than its lines. It
+ * speaks a code review's words — APPROVE or REQUEST CHANGES — and is a role of its own so its
+ * report never overwrites the code reviewer's slot, which one-current-packet-per-role would do.
+ */
+export const TASK_VERDICT_ROLES = ['code-review', 'design-review', 'qa', 'architecture-review'] as const;
 export const taskVerdictRoleSchema = z.enum(TASK_VERDICT_ROLES);
 export type TaskVerdictRole = z.infer<typeof taskVerdictRoleSchema>;
+
+/** Current packets kept on a run — one per role, so exactly as many as there are roles. */
+export const TASK_VERDICT_MAX_CURRENT = TASK_VERDICT_ROLES.length;
 
 /** Each role's own words, declared once so nothing can widen one role with another's. */
 export const TASK_VERDICT_VOCABULARY = {
   'code-review': ['APPROVE', 'REQUEST CHANGES'],
   'design-review': ['PASS', 'PASS WITH FOLLOW-UPS', 'FAIL'],
   qa: ['PASS', 'FAIL'],
+  'architecture-review': ['APPROVE', 'REQUEST CHANGES'],
 } as const satisfies Record<TaskVerdictRole, readonly [string, ...string[]]>;
 
 /**
@@ -96,6 +109,7 @@ export const TASK_VERDICT_APPROVING: Readonly<Record<TaskVerdictRole, readonly s
   'code-review': ['APPROVE'],
   'design-review': ['PASS', 'PASS WITH FOLLOW-UPS'],
   qa: ['PASS'],
+  'architecture-review': ['APPROVE'],
 };
 
 // ---- finding severity (#673) --------------------------------------------------------------------
@@ -110,6 +124,7 @@ export const TASK_VERDICT_FINDING_SEVERITY = {
   'code-review': ['blocker', 'major', 'minor', 'nit'],
   'design-review': ['blocker', 'major', 'minor', 'nit'],
   qa: ['blocker', 'major', 'minor', 'nit'],
+  'architecture-review': ['blocker', 'major', 'minor', 'nit'],
 } as const satisfies Record<TaskVerdictRole, readonly [string, ...string[]]>;
 
 /** Most-serious first. The one derived reading this file offers, so no consumer re-invents it. */
@@ -275,8 +290,9 @@ function checkFindingRules(
 
 /**
  * The fields every arm of both unions carries. A FUNCTION of the role rather than a constant, so a
- * per-role field — `findings`, and whatever comes after it — is added in one place and reaches all
- * six arms. Adding a key to six arms by hand is the half-a-fix this shape exists to rule out.
+ * per-role field — `findings`, and whatever comes after it — is added in one place and reaches every
+ * arm of both unions. Adding a key to each arm by hand is the half-a-fix this shape exists to rule
+ * out.
  */
 const packetBase = <R extends TaskVerdictRole>(role: R) => ({
   /** Stable report id. Re-reporting it with the same content is a no-op; with different content
@@ -306,28 +322,41 @@ const packetBase = <R extends TaskVerdictRole>(role: R) => ({
   findingsOmitted: z.number().int().min(0).optional(),
 });
 
+/** One role's arm of the reported packet: its own verdict words and nothing else. */
+function packetArm<R extends TaskVerdictRole>(role: R) {
+  return z.object({
+    role: z.literal(role),
+    verdict: z.enum(TASK_VERDICT_VOCABULARY[role]),
+    ...packetBase(role),
+  });
+}
+
+/**
+ * One arm per role, IN `TASK_VERDICT_ROLES` ORDER, with each arm's type kept per role (#851).
+ *
+ * The arms used to be spelled out by hand, once per role and once per union. The per-role maps
+ * above were compile-checked against the list and the unions were not, so a role added to the list
+ * alone type-checked and was then refused at ingestion. Mapping over the list is what makes the
+ * list the only declaration. The mapped TUPLE type is what keeps each arm's inferred type exactly
+ * what the hand-spelled arm inferred, so the route types and the contract-parity checks see the
+ * same union they always did; the one cast is from `Array.map`'s widened array to that tuple.
+ */
+type PacketArms<T extends readonly TaskVerdictRole[]> = {
+  -readonly [K in keyof T]: T[K] extends TaskVerdictRole ? ReturnType<typeof packetArm<T[K]>> : never;
+};
+type RecordedArms<T extends readonly TaskVerdictRole[]> = {
+  -readonly [K in keyof T]: T[K] extends TaskVerdictRole ? ReturnType<typeof recordedArm<T[K]>> : never;
+};
+
 /**
  * The packet as a task reports it. A discriminated union on `role`, so each role's verdict enum
  * is the only one it can carry.
  */
 export const taskVerdictPacketSchema = z
-  .discriminatedUnion('role', [
-    z.object({
-      role: z.literal('code-review'),
-      verdict: z.enum(TASK_VERDICT_VOCABULARY['code-review']),
-      ...packetBase('code-review'),
-    }),
-    z.object({
-      role: z.literal('design-review'),
-      verdict: z.enum(TASK_VERDICT_VOCABULARY['design-review']),
-      ...packetBase('design-review'),
-    }),
-    z.object({
-      role: z.literal('qa'),
-      verdict: z.enum(TASK_VERDICT_VOCABULARY.qa),
-      ...packetBase('qa'),
-    }),
-  ])
+  .discriminatedUnion(
+    'role',
+    TASK_VERDICT_ROLES.map((role) => packetArm(role)) as unknown as PacketArms<typeof TASK_VERDICT_ROLES>,
+  )
   .superRefine(checkFindingRules);
 export type TaskVerdictPacket = z.infer<typeof taskVerdictPacketSchema>;
 
@@ -357,35 +386,29 @@ const recordedExtras = {
   publication: taskVerdictPublicationSchema,
 };
 
+/** One role's arm of the recorded verdict: the reported arm plus the engine's own stamps. */
+function recordedArm<R extends TaskVerdictRole>(role: R) {
+  return z.object({
+    role: z.literal(role),
+    verdict: z.enum(TASK_VERDICT_VOCABULARY[role]),
+    ...packetBase(role),
+    ...recordedExtras,
+  });
+}
+
 /**
  * A packet as the run record holds it: what the task reported, plus how it got here.
  *
- * Spelled out as its own three-armed union rather than `z.intersection(packet, extras)`. An
- * intersection of a UNION is a type every downstream inference step has to redistribute — the
- * route type, the parity check and hono's own walk over the response shape — and each of them
- * flattens it differently. Three arms cost three lines and infer as one plain discriminated union.
+ * Built as its own per-role union rather than `z.intersection(packet, extras)`. An intersection of
+ * a UNION is a type every downstream inference step has to redistribute — the route type, the
+ * parity check and hono's own walk over the response shape — and each of them flattens it
+ * differently. One arm per role infers as one plain discriminated union.
  */
 export const taskVerdictSchema = z
-  .discriminatedUnion('role', [
-    z.object({
-      role: z.literal('code-review'),
-      verdict: z.enum(TASK_VERDICT_VOCABULARY['code-review']),
-      ...packetBase('code-review'),
-      ...recordedExtras,
-    }),
-    z.object({
-      role: z.literal('design-review'),
-      verdict: z.enum(TASK_VERDICT_VOCABULARY['design-review']),
-      ...packetBase('design-review'),
-      ...recordedExtras,
-    }),
-    z.object({
-      role: z.literal('qa'),
-      verdict: z.enum(TASK_VERDICT_VOCABULARY.qa),
-      ...packetBase('qa'),
-      ...recordedExtras,
-    }),
-  ])
+  .discriminatedUnion(
+    'role',
+    TASK_VERDICT_ROLES.map((role) => recordedArm(role)) as unknown as RecordedArms<typeof TASK_VERDICT_ROLES>,
+  )
   .superRefine(checkFindingRules);
 export type TaskVerdict = z.infer<typeof taskVerdictSchema>;
 

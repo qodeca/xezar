@@ -504,6 +504,15 @@
               "timeout": {
                 "type": "string"
               },
+              "verdictRole": {
+                "type": "string",
+                "enum": [
+                  "code-review",
+                  "design-review",
+                  "qa",
+                  "architecture-review"
+                ]
+              },
               "command": {
                 "type": "string"
               },
@@ -603,7 +612,8 @@
               "enum": [
                 "code-review",
                 "design-review",
-                "qa"
+                "qa",
+                "architecture-review"
               ]
             }
           },
@@ -1666,6 +1676,15 @@
                   },
                   "timeout": {
                     "type": "string"
+                  },
+                  "verdictRole": {
+                    "type": "string",
+                    "enum": [
+                      "code-review",
+                      "design-review",
+                      "qa",
+                      "architecture-review"
+                    ]
                   }
                 },
                 "required": [

@@ -5049,15 +5049,38 @@ export class RunManager {
    * row already has it. Agent steps only — a check step runs a command and reports no review, and
    * letting one collect would hand it a packet a later agent step is the addressee of.
    *
+   * Only a step whose definition DECLARES a `verdictRole` can have a packet recorded, and only a
+   * packet of that role (#851); every other packet is refused into `verdictIssues`.
+   *
    * A FAILED step is collected from too. A reviewer that posted FAIL and then hit something else
    * still posted FAIL, and dropping the report on the way out is the one outcome
    * `BACKWARD_COMPATIBILITY.md` §3 calls out: a recorded failure must not be erasable by a later
    * unrelated problem.
    */
   private takeStepVerdict(runId: string, stepId: string): void {
-    const step = this.store.getRun(runId)?.steps.find((candidate) => candidate.id === stepId);
+    const run = this.store.getRun(runId);
+    const step = run?.steps.find((candidate) => candidate.id === stepId);
     if (step?.kind !== 'agent') return;
-    ingestTaskVerdict(this.store, this.dataDir, runId, stepId);
+    // The role this step reports AS (#851) is the workflow's declaration, read from the definition
+    // the run persisted at creation (`workflowDef`, #367), never from the packet. A first run and
+    // a gate-return re-entry settle under a record step that shares its id with
+    // `workflowDef.steps`. A Continue does NOT: it settles under a synthetic `continue-N` step no
+    // definition names, so its role is the OWNING step's — the definition step whose record step
+    // carries the same session id, exactly as the Continue's tools and account resolve
+    // (`runContinuation`). A continuation no definition step owns (a fresh session after a
+    // backend switch) extends the run's tail, so it answers with the definition's last agent
+    // step. A missing definition (a legacy record) or a step that declares nothing yields
+    // `undefined`, and ingestion refuses its packet: failing closed is the point.
+    const defSteps = run?.workflowDef?.steps;
+    let declaringStep = defSteps?.find((candidate) => candidate.id === stepId);
+    if (defSteps !== undefined && declaringStep === undefined) {
+      const owner = step.sessionId === undefined
+        ? undefined
+        : run?.steps.find((candidate) => candidate.sessionId === step.sessionId);
+      declaringStep = defSteps.find((candidate) => candidate.id === owner?.id)
+        ?? [...defSteps].reverse().find((candidate) => stepKind(candidate) === 'agent');
+    }
+    ingestTaskVerdict(this.store, this.dataDir, runId, stepId, declaringStep?.verdictRole);
   }
 }
 

@@ -52,6 +52,11 @@ const err = (where, message) => errors.push(`${where}: ${message}`);
 // supported `timeout` was rejected below as an unknown step key that "would do nothing" —
 // the exact opposite of the truth.
 //
+// The 2026-09-22 re-read (#851) added `verdictRole`, the agent-only reviewer role declared beside
+// `timeout` in both schemas (`z.enum(TASK_VERDICT_ROLES)`, refused on a check step). The engine
+// records a step's reviewer packet only when its role equals this declaration, so a verdict
+// workflow that this check refused the key on could not record a verdict at all.
+//
 // The lesson, for whoever adds the next engine field: a stale transcription of the schema
 // fails CLOSED. That is the safe direction — an invented key is still caught — but it also
 // silently blocks a real engine feature, and the refusal message argues confidently for the
@@ -70,7 +75,11 @@ const STEP_KEYS = new Set([
   "resultScope",
   "onFail",
   "timeout",
+  "verdictRole",
 ]);
+// `TASK_VERDICT_ROLES` in `packages/contract/src/task-verdict.ts`, transcribed for the same reason
+// the keys above are: this check runs without the engine's modules.
+const VERDICT_ROLES = new Set(["code-review", "design-review", "qa", "architecture-review"]);
 const ON_FAIL_KEYS = new Set(["retry", "max"]);
 const FILE_KEYS = new Set(["name", "description", "steps", "skills"]);
 
@@ -292,6 +301,12 @@ function checkWorkflow(file, doc) {
       if (!isCheck) err(at, "resultScope applies only to a check step (command)");
       if (step.resultScope !== "routine" && step.resultScope !== "stage") {
         err(at, `resultScope must be "routine" or "stage" (got "${step.resultScope}")`);
+      }
+    }
+    if (step.verdictRole !== undefined) {
+      if (isCheck) err(at, "verdictRole applies to an agent step; a check step (command) reports no verdict");
+      if (!VERDICT_ROLES.has(step.verdictRole)) {
+        err(at, `verdictRole must be one of ${[...VERDICT_ROLES].join(", ")} (got "${step.verdictRole}")`);
       }
     }
     if (step.onFail) {

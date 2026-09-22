@@ -226,6 +226,7 @@ Unknown arguments are rejected.
 | `steps[].allowedTools` | array of string | no |  |  |
 | `steps[].bashAllowlist` | array of string | no |  |  |
 | `steps[].timeout` | string | no |  |  |
+| `steps[].verdictRole` | `code-review` \| `design-review` \| `qa` \| `architecture-review` | no |  |  |
 | `steps[].command` | string | no |  |  |
 | `steps[].resultScope` | `routine` \| `stage` | no |  |  |
 | `steps[].onFail` | object | no |  |  |
@@ -242,7 +243,7 @@ Unknown arguments are rejected.
 | `fromFindings` | object | no |  | Build the task text from findings a reviewer recorded on another task (start). `runId` is that reviewing task and `ids` are its finding ids — read both with task_read view=task; `role` picks one reviewer when the task carries more than one. The text names the engine each reviewing STEP ran on, and a task — or any step of it — that would run on that same backend and model is refused. That refusal compares model NAMES: a tier alias and the pinned id it resolves to (`opus` and `claude-opus-5`), or a context-window variant (`opus[1m]`), are different names and pass, so name a different backend when you want certainty. |
 | `fromFindings.runId` | string | yes | min length 1 |  |
 | `fromFindings.ids` | array of string | yes | min items 1, max items 20 |  |
-| `fromFindings.role` | `code-review` \| `design-review` \| `qa` | no |  |  |
+| `fromFindings.role` | `code-review` \| `design-review` \| `qa` \| `architecture-review` | no |  |  |
 | `name` | string | no |  | Workflow name (save_plan, up to 80 chars). |
 | `description` | string | no |  | Workflow description (save_plan). |
 | `overwrite` | boolean | no |  | save_plan: replace an existing workflow of that name. Ask the user first. |
@@ -390,6 +391,7 @@ Unknown arguments are rejected.
 | `workflow.steps[].allowedTools` | array of string | no |  |  |
 | `workflow.steps[].bashAllowlist` | array of string | no |  |  |
 | `workflow.steps[].timeout` | string | no |  |  |
+| `workflow.steps[].verdictRole` | `code-review` \| `design-review` \| `qa` \| `architecture-review` | no |  |  |
 | `name` | string | no | min length 1, max length 200 | delete_workflow / get_skill: the workflow or skill name. |
 | `wait` | boolean | no |  | Skill reads: wait for a cold team-skill cache to load first. |
 | `refresh` | boolean | no |  | get_capabilities / check_account_status: probe now instead of serving the cached answer. On check_account_status it re-probes THAT account only, and every other account keeps the answer it already had. |

@@ -19,7 +19,8 @@ cheapest way for an automated reader to be wrong is to assume they are.
 
 A reviewing task writes ONE JSON packet at `${XEZ_HANDOFF_FILE}.verdict.json` after it has posted its
 review and attempted the labels it is authorized to move. The engine reads it at that step's settlement,
-proves it is about this task and this step, and records it on the run. Task agents gain **no new MCP write
+proves it is about this task and this step — and that the step DECLARES the role the packet names
+(#851) — and records it on the run. Task agents gain **no new MCP write
 capability**: the authority is exactly one file at one path, read at one moment.
 
 | Piece | Where |
@@ -31,12 +32,35 @@ capability**: the authority is exactly one file at one path, read at one moment.
 | The read | `task_read view=task`, unchanged except for its description |
 | The producer | the versioned reviewer instructions in `.xezar/skills/` (project files, not shipped code) |
 
-## The five rules that are load-bearing
+## The load-bearing rules
 
 **The vocabulary is per role and is never translated.** A code review APPROVEs or REQUESTs CHANGES; QA
-PASSes or FAILs; a design review has a third outcome, `PASS WITH FOLLOW-UPS`, which is neither. A shared
-pass/fail enum erases a design review's outstanding work and lets a QA PASS read as business acceptance,
-so the schema is a discriminated union and a role can only carry its own words.
+PASSes or FAILs; a design review has a third outcome, `PASS WITH FOLLOW-UPS`, which is neither; an
+architecture review (#851) speaks a code review's words, APPROVE or REQUEST CHANGES, and is a role of its
+own so its report never takes the code reviewer's slot. A shared pass/fail enum erases a design review's
+outstanding work and lets a QA PASS read as business acceptance, so the schema is a discriminated union and
+a role can only carry its own words.
+
+**The role list is declared once (#851).** `TASK_VERDICT_ROLES` is the only declaration of the four roles.
+The per-role maps (vocabulary, approving words, finding severities) are compile-checked against it, and
+both unions — the reported packet and the recorded verdict — are built by mapping over it, so a role added
+to the list reaches ingestion, the run record, the MCP `fromFindings.role` argument and the one-packet-per-
+role bound (`TASK_VERDICT_MAX_CURRENT`, its length) in one edit. Before this the unions were spelled out by
+hand, and a role added to the list alone type-checked and was then refused at ingestion.
+
+**A packet is recorded only as the role its step declares (#851).** Any agent step of any task receives
+`XEZ_HANDOFF_FILE` and `XEZ_STEP_ID`, so any step can write a packet. The engine therefore takes the role
+from the WORKFLOW, never from the packet: an agent step declares `verdictRole: <role>` in its definition,
+and at settlement the engine reads it from the definition the run persisted (`workflowDef`). A first run
+and a gate-return re-entry settle under the definition step's own id; a Continue settles under a synthetic
+`continue-N` step, so its role is the OWNING step's — the definition step whose record step holds the same
+session — or, for a continuation no definition step owns, the definition's last agent step. A
+packet whose `role` differs, and every packet from a step that declares none, is refused. Without this an
+unrelated `quick-task` could write a `code-review` packet and have it recorded over the real reviewer's — a
+verdict on the record that no reviewer made. The key was chosen over inferring the role from the step's
+skill name: a skill name is free text any workflow can reuse or rename, and a reviewer skill used in a
+non-reviewing step would then silently gain the authority; an explicit key is validated by the schema,
+visible in the workflow file, and absent by default. A check step may not carry it.
 
 **A verdict applies to the commit it was made against.** `reviewedHeadSha` is mandatory and full — an
 abbreviated sha is refused rather than expanded, because the packet is reported and nothing in it may be
@@ -73,8 +97,10 @@ Refusals go into `verdictIssues` as a bounded reason, never into silence: "the e
 "no reviewer ran" must not look alike. Refused: a non-regular file (a symlink is the attack the path sits
 in xezar's own data directory — `lstat` first, then a second check on the opened descriptor, so a file
 swapped between the two is still caught); anything over 40 KB; anything that is not valid JSON in the
-packet shape; a packet naming another task or another step of this one; and an already-recorded `id`
-carrying different content. A refused packet yields no verdict of any kind.
+packet shape; a packet naming another task or another step of this one; a packet from a step that declares
+no `verdictRole` (`the step that settled declares no verdict role, so its <role> packet cannot be
+recorded`) or whose `role` is not the declared one (`the reviewer packet reports a <role> verdict, but this
+step declares <role>`, #851); and an already-recorded `id` carrying different content. A refused packet yields no verdict of any kind.
 
 A packet that cannot even be LOOKED UP is refused too. Only `ENOENT` means "this task reported nothing";
 a permission error or an unreadable directory is a failure to look, and the whole point of the refusal

@@ -542,6 +542,20 @@ Plain `Bash` in a read-only list is still a shell on Claude Code and pi, and ins
 Codex; a `bashAllowlist` narrows it on Claude Code and pi (Claude: `Bash(<prefix>:*)` entries only). A new runner states its row here, and a runner that
 cannot enforce a read-only step says NOT APPLIED rather than implying it.
 
+### A reviewer's verdict packet — the step declares the role (#460, #851)
+
+Every agent step is spawned with `XEZ_TASK_ID`, `XEZ_STEP_ID` and `XEZ_HANDOFF_FILE`, on every
+backend alike, so any step CAN write a reviewer packet at `${XEZ_HANDOFF_FILE}.verdict.json`. What
+decides whether the engine records it is not the backend and not the packet: at the step's
+settlement the engine reads the step's `verdictRole` from the workflow definition the run persisted
+(`workflowDef`), and records the packet only when its `role` equals that declaration. A step with no
+`verdictRole` — every `quick-task`, every writing step — has any packet it leaves refused into
+`verdictIssues` with a named reason, and consumed. The roles are `TASK_VERDICT_ROLES` in
+`packages/contract/src/task-verdict.ts`, the only declaration: `code-review`, `design-review`, `qa`
+and `architecture-review`, each with its own words (`architecture-review` speaks a code review's,
+APPROVE or REQUEST CHANGES). A runner needs nothing for this beyond passing those three variables;
+the packet shape and the refusal rules are in `docs/features/mcp-server/mcp-reviewer-verdicts.md`.
+
 ## 7. The golden-fixture testing contract
 
 Each backend has, under `packages/xezar/src/core/__fixtures__/<backend>/`:

@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { TASK_VERDICT_ROLES, taskVerdictRoleSchema } from '@qodeca/xezar-contract';
 import { z } from 'zod';
 import { createRunner } from './core/runner-factory.ts';
 import { loadConfig } from './config.ts';
@@ -21,13 +22,15 @@ const PLANNER_TIMEOUT_MS = 60_000;
  *  software, a campaign, a paper — the plan follows the task and the checks this project really has. */
 export const PLANNER_SYSTEM_PROMPT =
   'You are a planning assistant that turns a task into a short chain of agent steps; the task may be any kind of project work (software, marketing, research, writing and more). Respond with ONLY a JSON object: ' +
-  '{"title":string,"steps":[{"skill"?:string,"name":string,"prompt"?:string,"command"?:string}],"rationale":string}. ' +
+  '{"title":string,"steps":[{"skill"?:string,"name":string,"prompt"?:string,"command"?:string,"verdictRole"?:string}],"rationale":string}. ' +
   'Rules: pick skills ONLY from the provided catalog; a step has either "prompt" (an agent step) or ' +
   '"command" (a shell verification check); a "command" must be one of the verification commands listed ' +
   'for this project — never invent one; when none are listed, verify with an agent step that inspects the ' +
   'deliverable against the criteria and sources the task supplied and reports anything it could not verify; ' +
   "include the {{task}} placeholder in agent prompts where " +
-  "the user's task text belongs; 1-5 steps; prefer fewer; \"title\" is a short kebab-case name for " +
+  "the user's task text belongs; an agent step whose job is to review the work may set \"verdictRole\" to the " +
+  `kind of verdict it reports (one of ${TASK_VERDICT_ROLES.map((role) => `"${role}"`).join(', ')}); omit it on every other step; ` +
+  "1-5 steps; prefer fewer; \"title\" is a short kebab-case name for " +
   'the whole workflow (2-4 words, e.g. "draft-and-review").';
 
 const plannerResponseSchema = z.object({
@@ -40,6 +43,7 @@ const plannerResponseSchema = z.object({
         name: z.string().min(1),
         prompt: z.string().optional(),
         command: z.string().optional(),
+        verdictRole: z.string().optional(),
       }),
     )
     .min(1)
@@ -181,7 +185,7 @@ async function detectVerifyCommands(repoRoot: string): Promise<string[]> {
  * are dropped — the caller falls back when nothing survives.
  */
 function sanitizeSteps(
-  raw: Array<{ skill?: string; name: string; prompt?: string; command?: string }>,
+  raw: Array<{ skill?: string; name: string; prompt?: string; command?: string; verdictRole?: string }>,
   skillNames: Set<string>,
 ): WorkflowStepDef[] {
   const out: WorkflowStepDef[] = [];
@@ -193,6 +197,10 @@ function sanitizeSteps(
     if (Boolean(prompt) === Boolean(command)) continue; // needs exactly one
     if (command) skill = undefined; // a shell check carries no skill
     if (skill && !skillNames.has(skill)) skill = undefined; // unknown skill → plain prompt
+    // The role a reviewing step reports as (#851) — without it the step's verdict is refused.
+    // Agent steps only, and an unknown role is stripped rather than costing the step.
+    const role = command ? undefined : taskVerdictRoleSchema.safeParse(s.verdictRole?.trim());
+    const verdictRole = role?.success ? role.data : undefined;
     const id = uniqueId(slugify(s.name) || 'step', usedIds);
     const candidate = workflowStepSchema.safeParse({
       id,
@@ -200,6 +208,7 @@ function sanitizeSteps(
       ...(skill ? { skill } : {}),
       ...(prompt ? { prompt } : {}),
       ...(command ? { command } : {}),
+      ...(verdictRole ? { verdictRole } : {}),
     });
     if (!candidate.success) continue;
     usedIds.add(id);

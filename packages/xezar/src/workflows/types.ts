@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { workflowResultScopeSchema } from '@qodeca/xezar-contract';
+import { taskVerdictRoleSchema, workflowResultScopeSchema } from '@qodeca/xezar-contract';
 import { RUNNER_IDS } from '../core/agent-runner.ts';
 import { leaderSetupFallbackInstructions } from '../onboarding/leader-setup.ts';
 
@@ -79,6 +79,13 @@ export const workflowStepSchema = z
      *  `DEFAULT_RUN_TIMEOUT_MS`. Non-final steps are what #22 is about: a long
      *  investigate/implement step was killed mid-work with nothing committed. */
     timeout: stepTimeoutSchema.optional(),
+    /** The reviewer role this agent step reports a verdict AS (#851). A step may only have a
+     *  reviewer packet recorded when it declares the role that packet names: the declaration is the
+     *  WORKFLOW's, read by the engine at settlement, and never the packet's own claim about itself.
+     *  ABSENT means the step reports no verdict, and a packet it leaves is refused and journalled —
+     *  which is what stops an unrelated task writing a `code-review` packet into the real
+     *  reviewer's slot. */
+    verdictRole: taskVerdictRoleSchema.optional(),
     // check step
     command: z.string().optional(),
     /** Successful routine checks stay in the journal but do not wake an attached leader. */
@@ -100,6 +107,11 @@ export const workflowStepSchema = z
   })
   .refine((s) => !(s.resultScope !== undefined && !s.command), {
     message: 'resultScope applies only to a check step (command)',
+  })
+  // A check step runs a command and never has a packet collected (`takeStepVerdict`), so a role on
+  // one would be a declaration nothing honours.
+  .refine((s) => !(s.command && s.verdictRole !== undefined), {
+    message: 'verdictRole applies to an agent step; a check step (command) reports no verdict',
   });
 
 /**
@@ -176,6 +188,7 @@ export function skillStackOf(steps: WorkflowStepDef[]): string[] | null {
     if (s.name !== undefined && s.name !== s.skill) return null;
     if (s.model || s.runner || s.allowedTools || s.bashAllowlist || s.onFail || s.resultScope) return null;
     if (s.timeout !== undefined) return null; // the compact form cannot carry it
+    if (s.verdictRole !== undefined) return null; // nor this — dropping it would refuse every verdict
     skills.push(s.skill);
   }
   return skills.length ? skills : null;
