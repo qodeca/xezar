@@ -350,7 +350,7 @@ directory, or from a path under the worktree folder, and stay silent in all of t
 safe default; the guard is what makes committing the hook safe.
 
 xezar-skills' own onboarding kit goes one step further: its guard also requires a positive opt-in, a
-`XEZAR_LEADER=1` variable set only by the launcher it installs, so only the session actually started
+`XEZAR_LEADER=1` variable set by the launcher it installs (or by hand), so only the session actually started
 as the leader loads the guide rather than every session that merely sits outside a task worktree – a
 pattern worth copying for a hook of your own.
 

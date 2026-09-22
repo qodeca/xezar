@@ -36,8 +36,8 @@ you can `cat` and fix by hand.
 
 Xezar and [xezar-skills](https://github.com/qodeca/xezar-skills) are two halves of one solution: xezar
 is the engine and cockpit, and xezar-skills is the skill collection it loads by default. Its
-`xez-onboard-opinionated` skill sets up a whole project around xezar – workflows, role skills, gates,
-labels, branch protection and a Claude Code leader – from a
+`xez-onboard-opinionated` skill sets up a whole project around xezar for a clean GitHub project with
+a Claude Code leader – workflows, role skills, gates, labels and branch protection – from a
 [one-prompt bootstrap](https://github.com/qodeca/xezar-skills/blob/main/docs/bootstrap-prompt.md).
 
 ## 60-second tour
