@@ -12,18 +12,25 @@ Phases and their records: `SDLC.md` § Task phases names the phases of one devel
 
 Start with ui-operations.md, worktrees.md, recovery.md and dogfooding.md. Files under docs are operational guidance; primary .local/xezar/tasks holds private runtime evidence. Never commit runtime. Root AGENTS/SDLC/review/backward compatibility rules continue to govern. Start with `.xezar/CLAUDE.md` for the complete directory guide. Maintained files here are versionable directly; only the paths in `.gitignore` are local runtime.
 
-model-routing.md – which model and runner the leader dispatches for each task kind, with the evidence
+## Files in this directory
 
-opencode-qualification-2026-09-19.md – the 2026-09-19 OpenCode qualification: the 11 read-only runs and the writing retrial, the two defects it found (#686 fixed by #688, #692 open) and the routing verdict
-
-account-limits.md – what usage cannot be read, how the leader probes an account for its limit, and how to recover a lane once it is hit
-
-campaign-notes.md – the default folder layout for a campaign note once SDLC.md's single-file template outgrows one comfortable load
-
-leader-guide.md – the project leader's own contract: who the leader is, session start and compaction recovery, the task lifecycle, review discipline, routing, brief rules and the release runbook; loaded automatically for a leader session and never for a task agent
-
-leader-context-loading.md – the committed leader guide and the SessionStart hook that reloads it, the guard that keeps it out of task agents, and the checklist for installing it in a new project
-
-fenced-quotes.md – the source marker for byte-checked fenced quotes and the maintained Markdown surfaces the repository check scans
-
-documented-output.md – the allowlisted script-output marker, isolated fixtures and fail-closed trust boundary
+| File | What it holds |
+| --- | --- |
+| leader-guide.md | The project leader's own contract: what it may decide, what it asks, how it dispatches, what to do when something refuses, the task lifecycle and the release runbook; loaded automatically for a leader session and never for a task agent |
+| leader-context-loading.md | The committed leader guide and the SessionStart hook that reloads it, the guard that keeps it out of task agents, and the checklist for installing it in a new project |
+| model-routing.md | Which model and runner the leader dispatches for each task kind, with the evidence |
+| account-limits.md | What account usage cannot be read, how the leader probes an account for its limit, and how to recover a lane once it is hit |
+| campaign-notes.md | The default folder layout for a campaign note once SDLC.md's single-file template outgrows one comfortable load |
+| ui-operations.md | Task operation and stage ownership: choosing a role workflow, questions and `BLOCKED`, issue triage versus issue filing, and the leader's delivery states |
+| worktrees.md | Worktree and setup discipline: task identity, bootstrap and what it copies |
+| recovery.md | Resume, integration, merge recovery and root sync |
+| parallel-tasks.md | Running tasks in parallel: what worktrees do not isolate, and who owns the plan |
+| phase-record.md | What each phase of a development task writes down, and where |
+| business-analysis.md | The fifteen fields an analysis and its reviewer share, and what acceptance needs |
+| close-out.md | The one disposition each scope item gets at the end of a piece of work |
+| installation.md | Where this kit came from, what was adapted, and the qualification status of each part |
+| enhancement-ideas.md | Improvement candidates for the kit, and what an entry needs before it counts |
+| dogfooding.md | The ledger of observations from real Xezar development tasks; new entries go in `dogfooding.d/<runId8>.md` and the release role folds them in |
+| opencode-qualification-2026-09-19.md | The 2026-09-19 OpenCode qualification: the 11 read-only runs and the writing retrial, the two defects it found (#686 fixed by #688; #692, open when it was written) and the routing verdict |
+| fenced-quotes.md | The source marker for byte-checked fenced quotes and the maintained Markdown surfaces the repository check scans |
+| documented-output.md | The allowlisted script-output marker, isolated fixtures and fail-closed trust boundary |

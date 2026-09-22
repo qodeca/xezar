@@ -1,12 +1,12 @@
 # Account limit probing and recovery
 
-Xezar can run tasks under several agent accounts (Settings → agent profiles). None of them expose current usage to a project leader. This page is the recipe for finding a dead account by probing it, and for recovering the lane once you know.
+Xezar can run tasks under several Agent accounts (Settings → Agent accounts). None of them expose current usage to a project leader. This page is the recipe for finding a dead account by probing it, and for recovering the lane once you know.
 
 ## What cannot be read
 
-- The MCP `project_config` tool's `get_account` action shows only the currently selected account for a provider. It has no list action and no usage field.
-- `check_account_status` and `get_account_details` are refused for a leader. Account identity is not served to a project leader; accounts are person-administered.
-- The cockpit's "Connected" / "Check again" state is a login check, not a quota check. An account can show "Connected" and still be over its limit.
+- The MCP `project_config` tool's `get_account` action lists the accounts, not their usage. It answers `accounts` (the account each backend uses in this project), `profiles` (every account per backend, the one in use marked `selected` and the backend's own login marked `builtIn`) and `problems` (every stored account choice that names no account, with the line that fixes it; tasks still run, on the built-in login).
+- `check_account_status` probes one account's sign-in state (`connected`, `disconnected`, `not-installed` or `unknown`) and `get_account_details` says who the account is signed in as. Both are served to a leader; neither carries a usage or quota field.
+- The cockpit's "Connected" / "Check again" state is the same login check, not a quota check. An account can show "Connected" and still be over its limit.
 - Claude Code itself only shows usage through the interactive `/usage` command, run per login, inside a terminal session. There is no headless command and no API for it.
 
 So the only working signal is: dispatch a task under the account and see whether it runs.
