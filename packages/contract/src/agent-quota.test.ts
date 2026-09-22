@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   agentQuotaProducerResponseSchema,
+  agentQuotaQuerySchema,
   agentQuotaResponseSchema,
   agentQuotaStatusSchema,
   projectConfigQuotaInputSchema,
@@ -10,7 +11,7 @@ import {
 // @ts-expect-error Vitest supplies raw asset imports; production contract modules remain Node-free.
 import fixtureText from './__fixtures__/agent-quota.expected.json?raw';
 
-const AGENT_QUOTA_FIXTURE_SHA256 = '967b5b4c67401ad7c0fd49808d6526cae0fc4e430fd1038d709b05427f35d930';
+const AGENT_QUOTA_FIXTURE_SHA256 = '96a21eb8ef383b734cfa8164c425d1ac5e89964cb301e4ddda4c199aee7e7acb';
 
 async function sha256(text: string): Promise<string> {
   const runtime = globalThis as unknown as {
@@ -27,6 +28,12 @@ async function sha256(text: string): Promise<string> {
  * sample. A later implementation must produce these bytes for its deterministic fixture path.
  */
 describe('the agent-quota answer matches its committed fixture', () => {
+  it('owns the strict workspace read query at the contract boundary', () => {
+    expect(agentQuotaQuerySchema.parse({ provider: 'claude', accountId: 'default' })).toEqual({
+      provider: 'claude', accountId: 'default',
+    });
+    expect(agentQuotaQuerySchema.safeParse({ provider: 'claude', extra: true }).success).toBe(false);
+  });
   it('pins the fixture bytes to an independently reviewed SHA-256 digest', async () => {
     expect(await sha256(fixtureText)).toBe(AGENT_QUOTA_FIXTURE_SHA256);
   });
@@ -113,7 +120,7 @@ describe('the agent-quota answer matches its committed fixture', () => {
     ).toBe(false);
   });
 
-  it('rejects ok when any reported window is at 100 percent', () => {
+  it('rejects ok Claude windows at 100 percent but accepts explicit-ok Codex windows', () => {
     const answer = JSON.parse(fixtureText) as { accounts: Record<string, unknown>[] };
     const ok = answer.accounts[0] as {
       shortWindow: Record<string, unknown>;
@@ -129,6 +136,10 @@ describe('the agent-quota answer matches its committed fixture', () => {
     for (const entry of entries) {
       expect(agentQuotaResponseSchema.safeParse({ ...answer, accounts: [entry] }).success).toBe(false);
     }
+    expect(agentQuotaResponseSchema.safeParse({
+      ...answer,
+      accounts: [{ ...entries[0], runner: 'codex' }],
+    }).success).toBe(true);
   });
 
   it('keeps status to exactly ok, out and unknown', () => {

@@ -80,6 +80,35 @@ describe('a teardown xezar initiated (codex app-server)', () => {
   }, 15_000);
 });
 
+describe('Codex quota telemetry', () => {
+  const mockBin = fileURLToPath(new URL('./__fixtures__/codex/mock-codex-app-server.mjs', import.meta.url));
+
+  it('emits account/rateLimits/updated as an internal account-quota event', async () => {
+    const events: AgentEvent[] = [];
+    const session = new CodexAppServerRunner({ bin: mockBin, timeoutMs: 0 }).startSession(
+      { userPrompt: 'mock:quota', cwd: process.cwd() },
+      (event) => events.push(event),
+      { autoEndAfterFirstTurn: true },
+    );
+    await session.result;
+    expect(events).toContainEqual(expect.objectContaining({ type: 'account-quota', runner: 'codex' }));
+  });
+
+  it('does not fail the run when a quota consumer rejects the payload', async () => {
+    const events: AgentEvent[] = [];
+    const session = new CodexAppServerRunner({ bin: mockBin, timeoutMs: 0 }).startSession(
+      { userPrompt: 'mock:quota', cwd: process.cwd() },
+      (event) => {
+        if (event.type === 'account-quota') throw new Error('producer schema rejected payload');
+        events.push(event);
+      },
+      { autoEndAfterFirstTurn: true },
+    );
+    await expect(session.result).resolves.toMatchObject({ text: 'Checking the working tree.' });
+    expect(events).not.toContainEqual(expect.objectContaining({ type: 'error' }));
+  });
+});
+
 /**
  * #462 — destroying stdout ends the read loop before the timeout's SIGKILL
  * grace period. The escalation must outlive that loop for a real app-server

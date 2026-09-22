@@ -8,9 +8,9 @@ import { z } from 'zod';
  * ignore unknown keys and unknown `notReported` names so a later release can add facts without
  * breaking an older reader. Producers validate with `agentQuotaProducerResponseSchema`; the
  * committed fixture in `__fixtures__/agent-quota.expected.json` pins its known keys and canonical
- * order byte-for-byte. An account is never `status: "ok"` when any reported window
+ * order byte-for-byte. A Claude account is never `status: "ok"` when any reported window
  * (`shortWindow`, `weeklyWindow`, or `modelWindows[]`) has `usedPercent` greater than or equal to
- * 100.
+ * 100. Codex status follows its explicit availability signals, not percentages alone (#867 FR-5).
  */
 
 export const agentQuotaRunnerSchema = z.enum(['claude', 'codex']);
@@ -167,6 +167,7 @@ export type AgentQuotaProducerAccount = z.infer<typeof agentQuotaProducerAccount
 
 type QuotaResponseForStatusRefinement = {
   accounts: Array<{
+    runner: AgentQuotaRunner;
     status: AgentQuotaStatus;
     shortWindow: AgentQuotaWindow | null;
     weeklyWindow: AgentQuotaWindow | null;
@@ -176,14 +177,14 @@ type QuotaResponseForStatusRefinement = {
 
 function refineOkAccountWindows(response: QuotaResponseForStatusRefinement, ctx: z.RefinementCtx): void {
   response.accounts.forEach((account, accountIndex) => {
-    if (account.status !== 'ok') return;
+    if (account.runner !== 'claude' || account.status !== 'ok') return;
 
     const windows = [account.shortWindow, account.weeklyWindow, ...(account.modelWindows ?? [])];
     if (windows.some((window) => window !== null && window.usedPercent >= 100)) {
       ctx.addIssue({
         code: 'custom',
         path: ['accounts', accountIndex, 'status'],
-        message: 'must not be ok when any reported window has usedPercent greater than or equal to 100',
+        message: 'Claude must not be ok when any reported window has usedPercent greater than or equal to 100',
       });
     }
   });
@@ -215,6 +216,10 @@ const projectConfigQuotaSelectorShape = {
   provider: agentQuotaRunnerSchema.optional(),
   accountId: z.string().min(1).max(64).optional(),
 } as const;
+
+/** Query accepted by the workspace quota read route. */
+export const agentQuotaQuerySchema = z.strictObject(projectConfigQuotaSelectorShape);
+export type AgentQuotaQuery = z.infer<typeof agentQuotaQuerySchema>;
 
 /** Request slices to be composed into `project_config` when the runtime actions land (#867 S1). */
 export const projectConfigReadQuotaInputSchema = z.strictObject({

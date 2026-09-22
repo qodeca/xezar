@@ -213,6 +213,7 @@ export const AUDIT_MCP_READS: readonly string[] = [
   // door either.
   'project_config:list_models',
   'project_config:get_account',
+  'project_config:read_quota',
   'project_config:list_agent_config',
   'project_config:read_agent_config',
   'project_config:list_workflows',

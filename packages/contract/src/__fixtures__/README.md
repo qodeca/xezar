@@ -4,6 +4,12 @@ Files in this directory are byte-level API contracts, not illustrative samples. 
 tests parse them through the strict producer Zod schema, compare canonical pretty-printed JSON with
 the committed bytes, and pin the bytes to an independently reviewed SHA-256 digest.
 
+`agent-quota.expected.json` is anchored by SHA-256
+`96a21eb8ef383b734cfa8164c425d1ac5e89964cb301e4ddda4c199aee7e7acb`. The previous anchor was
+`967b5b4c67401ad7c0fd49808d6526cae0fc4e430fd1038d709b05427f35d930`; it was corrected because
+the Codex S0 epoch `1790685902` normalises to `2026-09-29T12:45:02Z`. A deliberate fixture
+change updates this README anchor and the test constant together.
+
 Readers of `agent-quota` answers use `agentQuotaResponseSchema`, the tolerant consumer schema.
 It strips unknown object keys and accepts unknown `notReported` names while enforcing null pairing
 for the known facts. Producers and fixture checks use `agentQuotaProducerResponseSchema`, which

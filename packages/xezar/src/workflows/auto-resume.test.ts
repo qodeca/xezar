@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RunStore } from '../runs/store.ts';
 import { providerClock, scriptedRunner, SINGLE_STEP, terminal } from './engine-incidents.testkit.ts';
 import { WorkspaceSemaphore } from '../workspace/semaphore.ts';
@@ -961,10 +961,18 @@ describe('G9 deterministic quota recovery', () => {
         autoResumeTimer: clock.timer,
         semaphore: new WorkspaceSemaphore({ initial: { autoResumeOnUsageLimit: mode !== 'disabled' } }),
       });
+      const quotaUpdates = vi.fn();
+      manager.agentQuotaStore.subscribe(quotaUpdates);
+      const markOut = vi.spyOn(manager.agentQuotaStore, 'markOut');
       try {
         const run = manager.startRun(SINGLE_STEP, { task: 'quota fixture', worktree: false });
         await terminal(store, run.id);
         expect(store.getRun(run.id)?.status).toBe('failed');
+        await expect.poll(() => manager.agentQuotaStore.answer().accounts.find(row => row.runner === 'claude'))
+          .toMatchObject({ accountId: 'default', status: 'out', source: 'failedRun' });
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        expect(markOut).toHaveBeenCalledTimes(1);
+        expect(quotaUpdates).toHaveBeenCalledTimes(1);
         const deadline = reset * 1000 + AUTO_RESUME_GRACE_MS;
         if (mode === 'disabled') expect(store.getRun(run.id)?.autoResumeAt).toBeUndefined();
         else expect(store.getRun(run.id)?.autoResumeAt).toBe(new Date(deadline).toISOString());
@@ -988,6 +996,70 @@ describe('G9 deterministic quota recovery', () => {
       } finally { await manager.quiesce(); store.flush(); runner.restore(); clock.restore(); rmSync(root, { recursive: true, force: true }); }
     },
   );
+});
+
+describe('quota event consumption', () => {
+  it('consumes account-quota on initial and Continue paths without persisting it', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'xez-quota-events-'));
+    const store = RunStore.open(join(root, 'data'));
+    const quotaEvent = (usedPercent: number) => ({
+      type: 'account-quota' as const,
+      runner: 'claude' as const,
+      payload: { rate_limit_info: {
+        status: 'allowed', utilization: usedPercent / 100,
+        resetsAt: 1_790_685_902, rateLimitType: 'five_hour',
+      } },
+    });
+    const runner = scriptedRunner([
+      { events: [quotaEvent(25)] },
+      { events: [quotaEvent(50)] },
+    ]);
+    const manager = new RunManager(store, root);
+    try {
+      const run = manager.startRun(SINGLE_STEP, { task: 'quota events', worktree: false });
+      await terminal(store, run.id);
+      expect(manager.agentQuotaStore.answer().accounts[0]).toMatchObject({ shortWindow: { usedPercent: 25 } });
+      expect(store.readEvents(run.id).some((event) => event.type === 'account-quota')).toBe(false);
+
+      expect(manager.continueRun(run.id, { text: 'continue' })).toEqual({ ok: true });
+      await expect.poll(() => manager.agentQuotaStore.answer().accounts[0]?.shortWindow?.usedPercent).toBe(50);
+      await terminal(store, run.id);
+      expect(store.readEvents(run.id).some((event) => event.type === 'account-quota')).toBe(false);
+    } finally {
+      await manager.quiesce();
+      store.flush();
+      runner.restore();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('drops malformed quota telemetry with one warning and keeps the run running', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'xez-quota-malformed-'));
+    const store = RunStore.open(join(root, 'data'));
+    const malformed = {
+      type: 'account-quota' as const,
+      runner: 'codex' as const,
+      payload: { rateLimits: {
+        primary: { usedPercent: 140, windowDurationMins: -1, resetsAt: 1_790_685_902_000 },
+      } },
+    };
+    const runner = scriptedRunner([{ events: [malformed, malformed] }]);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const manager = new RunManager(store, root);
+    try {
+      const run = manager.startRun(SINGLE_STEP, { task: 'malformed quota', worktree: false });
+      await terminal(store, run.id);
+      expect(store.getRun(run.id)?.status).toBe('done');
+      expect(manager.agentQuotaStore.answer().accounts).toEqual([]);
+      expect(warn).toHaveBeenCalledTimes(1);
+    } finally {
+      warn.mockRestore();
+      await manager.quiesce();
+      store.flush();
+      runner.restore();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });
 
 

@@ -65,7 +65,7 @@
       "shortWindow": null,
       "weeklyWindow": {
         "usedPercent": 0,
-        "resetsAt": "2026-09-29T13:25:02Z",
+        "resetsAt": "2026-09-29T12:45:02Z",
         "windowMinutes": 10080
       },
       "modelWindows": null,
