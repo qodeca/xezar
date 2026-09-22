@@ -172,6 +172,13 @@ export const runQuotaProcess: RunQuotaProcess = (spec) => new Promise((resolve, 
     if (error) reject(error);
     else resolve(value);
   };
+  const finishAfterKill = (error?: Error, value?: unknown) => {
+    // `close` only proves that the group leader and its inherited stdio are gone. A grandchild
+    // may still occupy the saved process group, so every completion path escalates before it can
+    // clear the timer that would otherwise perform this kill (#892).
+    signalSavedProcessGroup(child, 'SIGKILL');
+    finish(error, value);
+  };
   const stop = (error?: Error, value?: unknown) => {
     if (stopping || settled) return;
     stopping = true;
@@ -181,7 +188,7 @@ export const runQuotaProcess: RunQuotaProcess = (spec) => new Promise((resolve, 
     signalSavedProcessGroup(child, 'SIGTERM');
     killTimer = setTimeout(() => {
       signalSavedProcessGroup(child, 'SIGKILL');
-      closeTimer = setTimeout(() => finish(stopError, stopValue), PROCESS_CLOSE_GRACE_MS);
+      closeTimer = setTimeout(() => finishAfterKill(stopError, stopValue), PROCESS_CLOSE_GRACE_MS);
       closeTimer.unref?.();
     }, PROCESS_CLOSE_GRACE_MS);
     killTimer.unref?.();
@@ -190,7 +197,7 @@ export const runQuotaProcess: RunQuotaProcess = (spec) => new Promise((resolve, 
     stop(processFailure('agent quota check timed out', 'ETIMEDOUT'));
   }, remaining);
   timer.unref?.();
-  child.once('error', (error) => finish(error));
+  child.once('error', (error) => finishAfterKill(error));
   child.stdin.on('error', (error) => {
     if (!stopping) stop(error);
   });
@@ -232,10 +239,10 @@ export const runQuotaProcess: RunQuotaProcess = (spec) => new Promise((resolve, 
   });
   child.once('close', (code) => {
     if (settled) return;
-    if (stopping) return finish(stopError, stopValue);
-    if (code !== 0) return finish(processFailure(stderr.trim() || `${spec.executable} exited ${code ?? 'without a code'}`));
-    if (spec.waitFor) return finish(processFailure(`${spec.executable} exited before replying`));
-    finish(undefined, stdout.trim());
+    if (stopping) return finishAfterKill(stopError, stopValue);
+    if (code !== 0) return finishAfterKill(processFailure(stderr.trim() || `${spec.executable} exited ${code ?? 'without a code'}`));
+    if (spec.waitFor) return finishAfterKill(processFailure(`${spec.executable} exited before replying`));
+    finishAfterKill(undefined, stdout.trim());
   });
   for (const message of spec.input ?? []) child.stdin.write(`${JSON.stringify(message)}\n`);
   if (!spec.waitFor) child.stdin.end();

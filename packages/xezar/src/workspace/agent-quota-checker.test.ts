@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
-import { access, readFile } from 'node:fs/promises';
+import { access, chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { basename, relative } from 'node:path';
+import { basename, join, relative } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ResolvedAgentProfile } from './agent-profiles.ts';
 import { AgentQuotaStore, normalizeClaudeUsage, normalizeLiveQuota } from './agent-quota.ts';
@@ -24,6 +24,80 @@ const profile = (provider: 'claude' | 'codex', id = 'default'): ResolvedAgentPro
   path: `/private/agent-home/${id}`,
   isDefault: id === 'default',
 });
+
+function processGroupAlive(pgid: number): boolean {
+  try {
+    process.kill(-pgid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function runHungClaudeCheck(ignoreTerm: boolean): Promise<{
+  pgids: number[];
+  sigkillPgids: number[];
+  cleanup: () => Promise<void>;
+}> {
+  const fixtureDir = await mkdtemp(join(tmpdir(), 'xez-agent-quota-group-'));
+  const pgidsPath = join(fixtureDir, 'pgids.txt');
+  const executable = join(fixtureDir, 'claude');
+  const child = ignoreTerm
+    ? "( trap '' TERM; exec sleep 999 ) </dev/null >/dev/null 2>&1 &"
+    : 'sleep 999 &';
+  await writeFile(executable, [
+    '#!/bin/bash',
+    'if [[ "$1" == "--version" ]]; then echo "2.1.280 (Claude Code)"; exit 0; fi',
+    `printf '%s\\n' "$$" >> ${JSON.stringify(pgidsPath)}`,
+    child,
+    'CHILD=$!',
+    'wait "$CHILD"',
+  ].join('\n'));
+  await chmod(executable, 0o755);
+
+  const previousExecutable = process.env.XEZ_CLAUDE_BIN;
+  process.env.XEZ_CLAUDE_BIN = executable;
+  const actualNow = Date.now.bind(Date);
+  const nowSpy = vi.spyOn(Date, 'now')
+    .mockImplementationOnce(() => actualNow() - 19_500)
+    .mockImplementation(actualNow);
+  const originalKill = process.kill.bind(process);
+  const killCalls: Array<[number, string | number | undefined]> = [];
+  const killSpy = vi.spyOn(process, 'kill').mockImplementation((pid, signal) => {
+    killCalls.push([pid, signal]);
+    return originalKill(pid, signal as NodeJS.Signals | number | undefined);
+  });
+  try {
+    const checker = new AgentQuotaChecker({
+      store: new AgentQuotaStore(),
+      now: () => Date.parse('2026-09-22T14:20:00Z'),
+      profiles: async () => [profile('claude')],
+      dryRun: () => false,
+    });
+    const answer = await checker.refresh();
+    expect(answer.accounts[0]).toMatchObject({ status: 'unknown', statusReason: 'check-failed' });
+  } finally {
+    killSpy.mockRestore();
+    nowSpy.mockRestore();
+    if (previousExecutable === undefined) delete process.env.XEZ_CLAUDE_BIN;
+    else process.env.XEZ_CLAUDE_BIN = previousExecutable;
+  }
+
+  const pgids = (await readFile(pgidsPath, 'utf8'))
+    .trim().split('\n').filter(Boolean).map(Number);
+  return {
+    pgids,
+    sigkillPgids: killCalls
+      .filter(([, signal]) => signal === 'SIGKILL')
+      .map(([pid]) => -pid),
+    cleanup: async () => {
+      for (const pgid of pgids) {
+        try { process.kill(-pgid, 'SIGKILL'); } catch { /* already gone */ }
+      }
+      await rm(fixtureDir, { recursive: true, force: true });
+    },
+  };
+}
 
 describe('AgentQuotaChecker', () => {
   afterEach(() => vi.useRealTimers());
@@ -445,6 +519,28 @@ describe('AgentQuotaChecker', () => {
     };
 
     await expect.poll(() => [alive(reply.parentPid), alive(reply.childPid)]).toEqual([false, false]);
+  });
+
+  it('kills every saved group after the full Claude checker times out on the QA hang shape', async () => {
+    const result = await runHungClaudeCheck(false);
+    try {
+      expect(result.pgids.length).toBeGreaterThan(0);
+      expect(result.sigkillPgids).toEqual(expect.arrayContaining(result.pgids));
+      await expect.poll(() => result.pgids.map(processGroupAlive)).toEqual(result.pgids.map(() => false));
+    } finally {
+      await result.cleanup();
+    }
+  });
+
+  it('kills every saved group when a full-checker grandchild ignores SIGTERM', async () => {
+    const result = await runHungClaudeCheck(true);
+    try {
+      expect(result.pgids.length).toBeGreaterThan(0);
+      expect(result.sigkillPgids).toEqual(expect.arrayContaining(result.pgids));
+      await expect.poll(() => result.pgids.map(processGroupAlive)).toEqual(result.pgids.map(() => false));
+    } finally {
+      await result.cleanup();
+    }
   });
 
   it('startup is detached from a running check', async () => {

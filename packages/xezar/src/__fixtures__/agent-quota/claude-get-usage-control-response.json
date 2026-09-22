@@ -55,20 +55,7 @@
         "juniper_tide": null,
         "cedar_ember": null,
         "amber_gauge": null,
-        "extra_usage": {
-          "is_enabled": false,
-          "monthly_limit": 10000,
-          "used_credits": 0,
-          "utilization": 0,
-          "currency": "EUR",
-          "decimal_places": 2,
-          "disabled_reason": "out_of_credits",
-          "user_disabled": false,
-          "spend_limit_reached": false,
-          "credits_ever_enabled": true,
-          "daily": null,
-          "weekly": null
-        },
+        "extra_usage": null,
         "limits": [
           {
             "kind": "session",
@@ -104,34 +91,9 @@
             "is_active": true
           }
         ],
-        "spend": {
-          "used": { "amount_minor": 0, "currency": "EUR", "exponent": 2 },
-          "limit": { "amount_minor": 10000, "currency": "EUR", "exponent": 2 },
-          "percent": 0,
-          "severity": "normal",
-          "enabled": false,
-          "disabled_reason": "out_of_credits",
-          "cap": {
-            "money": { "amount_minor": 10000, "currency": "EUR", "exponent": 2 },
-            "credits": null
-          },
-          "balance": null,
-          "auto_reload": null,
-          "disclaimer": "Usage credits cover you when you hit your plan limits. [Learn more](https://support.claude.com/articles/12429409)",
-          "can_purchase_credits": false,
-          "can_toggle": false
-        },
+        "spend": null,
         "member_dashboard_available": false,
-        "seven_day_breakdown": {
-          "as_of": "2026-09-22T21:51:22.937313+00:00",
-          "window_started_at": "2026-09-21T16:59:59.896250+00:00",
-          "rows": [
-            { "key": "claude_code", "display_name": "Claude Code", "percent": 100 },
-            { "key": "chat", "display_name": "Chats", "percent": 0 },
-            { "key": "cowork", "display_name": "Cowork", "percent": 0 },
-            { "key": "other", "display_name": "Other", "percent": 0 }
-          ]
-        },
+        "seven_day_breakdown": null,
         "model_scoped": [
           {
             "display_name": "Fable",
