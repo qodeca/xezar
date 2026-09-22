@@ -85,6 +85,7 @@ const FILE_KEYS = new Set(["name", "description", "steps", "skills"]);
 
 // Maintained project roles require the shared contract; custom skills remain standalone.
 const MAINTAINED_SKILLS = new Set([
+  "xezar-architecture-review",
   "xezar-bug-investigation",
   "xezar-business-analysis",
   "xezar-code-review",

@@ -20,8 +20,8 @@ function bootstrap(root,wt){return spawnSync('bash',[path.join(root,'.xezar/chec
 function fp(wt){return exec('bash',['-c','. .xezar/checks/lib/common.sh; resolve_task_paths; deps_fingerprint'],wt);}
 test.after(()=>{for(const root of roots){for(const line of git(root,'worktree','list','--porcelain').split('\n'))if(line.startsWith('worktree ')){const wt=line.slice(9);if(wt!==root){assert.ok(wt.startsWith(root+path.sep));git(root,'worktree','remove','--force',wt);}}}const real=fs.realpathSync(owned);assert.ok(real.startsWith(fs.realpathSync(scratch)+path.sep));assert.notEqual(real,fs.realpathSync(repo));fs.rmSync(owned,{recursive:true});});
 test('real Xezar workflow loader and skill parser accept every local role without provider pins',()=>{
- const source=`import {loadWorkflows} from ${JSON.stringify(pathToFileURL(path.join(repo,'packages/xezar/src/workflows/load.ts')).href)};import {parseFrontmatter} from ${JSON.stringify(pathToFileURL(path.join(repo,'packages/xezar/src/skills.ts')).href)};import fs from 'node:fs';const r=await loadWorkflows(${JSON.stringify(repo)});if(r.issues.length)throw Error(JSON.stringify(r.issues));const own=r.workflows.filter(x=>x.source==='file');if(own.length!==18)throw Error('role count');for(const w of own){if(w.steps[0].id!=='kit')throw Error('bootstrap missing');if(w.steps.at(-1).command)throw Error('noninteractive final');for(const step of w.steps){if(step.model||step.runner)throw Error('foreign pin');if(step.skill){const f=${JSON.stringify(path.join(kit,'skills'))}+'/'+step.skill+'.md';const parsed=parseFrontmatter(fs.readFileSync(f,'utf8'));if(!parsed)throw Error('skill parse');}if(step.onFail&&step.onFail.max!==2)throw Error('retry changed');}} console.log(own.length);`;
- assert.equal(exec(process.execPath,['--import','tsx','--input-type=module','-e',source]),'18');
+ const source=`import {loadWorkflows} from ${JSON.stringify(pathToFileURL(path.join(repo,'packages/xezar/src/workflows/load.ts')).href)};import {parseFrontmatter} from ${JSON.stringify(pathToFileURL(path.join(repo,'packages/xezar/src/skills.ts')).href)};import fs from 'node:fs';const r=await loadWorkflows(${JSON.stringify(repo)});if(r.issues.length)throw Error(JSON.stringify(r.issues));const own=r.workflows.filter(x=>x.source==='file');if(own.length!==19)throw Error('role count');for(const w of own){if(w.steps[0].id!=='kit')throw Error('bootstrap missing');if(w.steps.at(-1).command)throw Error('noninteractive final');for(const step of w.steps){if(step.model||step.runner)throw Error('foreign pin');if(step.skill){const f=${JSON.stringify(path.join(kit,'skills'))}+'/'+step.skill+'.md';const parsed=parseFrontmatter(fs.readFileSync(f,'utf8'));if(!parsed)throw Error('skill parse');}if(step.onFail&&step.onFail.max!==2)throw Error('retry changed');}} console.log(own.length);`;
+ assert.equal(exec(process.execPath,['--import','tsx','--input-type=module','-e',source]),'19');
 });
 // #851: the kit transcribes the verdict role list because catalog-check runs without the engine's
 // modules; this is what keeps the copy equal to the one declaration, TASK_VERDICT_ROLES. Named break:
@@ -141,7 +141,7 @@ test('optional config discovery and malformed supplied config have distinct outc
 });
 test('runtime remains ignored including unknown future state; all maintained roles/docs exist',()=>{
  for(const file of ['.local/xezar/launch-key','.local/xezar/runs/a.json','.local/xezar/worktrees/a/file','.local/xezar/tasks/a/result.json','.local/xezar-tasks/a/result.json'])assert.equal(spawnSync('git',['check-ignore','-q','--',file],{cwd:repo}).status,0,file);
- assert.equal(fs.readdirSync(path.join(kit,'skills')).filter(x=>x.endsWith('.md')).length,20);
+ assert.equal(fs.readdirSync(path.join(kit,'skills')).filter(x=>x.endsWith('.md')).length,21);
  for(const f of ['README.md','business-analysis.md','close-out.md','enhancement-ideas.md','parallel-tasks.md','recovery.md','ui-operations.md','worktrees.md','dogfooding.md'])assert.ok(fs.existsSync(path.join(kit,'docs',f)));
 });
 test('SDLC policy never maps unknown labels, failed QA or a missing design approval to merge eligibility',async()=>{
@@ -177,7 +177,7 @@ test('guidance covers semantic analysis, stage ownership, squash policy and evid
 test('guidance bans unscoped pattern kills and names the safe forms',()=>{
  const surfaces=[fs.readFileSync(path.join(kit,'CLAUDE.md'),'utf8'),
   ...fs.readdirSync(path.join(kit,'skills')).map((s)=>fs.readFileSync(path.join(kit,'skills',s),'utf8'))];
- assert.equal(surfaces.length,21);
+ assert.equal(surfaces.length,22);
  for(const body of surfaces){
   assert.match(body,/pkill -f/);            // the trap is named, not implied
   assert.match(body,/--append-system-prompt/); // and so is WHY it reaches peers
@@ -298,6 +298,23 @@ test('design-review is a read-only role',()=>{
  assert.equal(last.skill,'xezar-ux-design');assert.equal(last.command,undefined);assert.equal(last.timeout,undefined);
  assert.deepEqual(last.allowedTools,['Read','Grep','Glob','Bash']);
  for(const step of flow.steps)assert.equal(step.interactive,undefined,step.id);
+});
+// #851: the fourth verdict role. It has the code-review shape and allowlist, declares its role (the
+// engine refuses its packet otherwise), and never touches `merge-queue`, which stays with code review.
+test('architecture-review is a read-only verdict role',()=>{
+ const flow=parseYaml(fs.readFileSync(path.join(kit,'workflows/architecture-review.yaml'),'utf8'));
+ const review=parseYaml(fs.readFileSync(path.join(kit,'workflows/code-review.yaml'),'utf8'));
+ assert.deepEqual(flow.steps.map(s=>s.id),['kit','preflight','review']);
+ assert.match(flow.steps[1].command,/--allow-root/);
+ const last=flow.steps.at(-1);
+ assert.equal(last.skill,'xezar-architecture-review');assert.equal(last.verdictRole,'architecture-review');
+ assert.equal(last.command,undefined);assert.equal(last.timeout,undefined);
+ assert.deepEqual(last.allowedTools,['Read','Grep','Glob','Bash']);
+ assert.deepEqual(last.bashAllowlist,review.steps.at(-1).bashAllowlist);
+ const body=fs.readFileSync(path.join(kit,'skills/xezar-architecture-review.md'),'utf8');
+ for(const rule of [/## Architecture review/,/APPROVE/,/REQUEST CHANGES/,/verdict-packet\.sh/,/"role": "architecture-review"/,
+  /§ The HTTP API/,/§ Changing a mechanism that already works/,/never merges/,/merge-queue/])
+  assert.match(body,rule);
 });
 test('design is a writing role',()=>{
  const flow=parseYaml(fs.readFileSync(path.join(kit,'workflows/design.yaml'),'utf8'));
