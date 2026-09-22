@@ -142,11 +142,10 @@ describe('health topic + cache (live-server path)', () => {
     return ((await res.json()) as { defaultRunner?: string }).defaultRunner;
   };
 
-  it('registers exactly one `health` topic, beside the other two', () => {
+  it('registers exactly one `health` topic, beside the other three', () => {
     const { topics } = build();
-    // `mcp-leader` (#374, round 5 on #403) and `project-instances` (#796) each have their own
-    // suite, `mcp-leader-topic.test.ts` and `project-instances-topic.test.ts`.
-    expect([...topics.keys()].sort()).toEqual(['health', 'mcp-leader', 'project-instances']);
+    // The other topics each have their own focused suite.
+    expect([...topics.keys()].sort()).toEqual(['agent-quota', 'health', 'mcp-leader', 'project-instances']);
   });
 
   it('pre-warms the cache at boot so the first GET is already warm', async () => {

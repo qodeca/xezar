@@ -396,6 +396,27 @@ describe('project_config: registration', () => {
   });
 });
 
+describe('project_config: read_quota', () => {
+  it('reads all quota rows or filters them without starting a check', async () => {
+    const all = value(await invoke({ action: 'read_quota' }));
+    expect(all).toMatchObject({ schemaVersion: 1, scope: 'agent-quota' });
+    expect(all.accounts.map((row: { runner: string }) => row.runner)).toEqual(['claude', 'codex']);
+
+    const one = value(await invoke({ action: 'read_quota', provider: 'claude', accountId: 'default' }));
+    expect(one.accounts).toEqual([
+      expect.objectContaining({ runner: 'claude', accountId: 'default', status: 'unknown' }),
+    ]);
+  });
+
+  it('rejects unsupported providers and remains readable through a hosted service', async () => {
+    expect(projectConfigTool.inputSchema.safeParse({ action: 'read_quota', provider: 'pi' }).success).toBe(false);
+    const hosted = hotCockpit('0.0.0.0').app;
+    const answer = value(await invoke({ action: 'read_quota' }, { service: hosted }));
+    expect(answer.accounts).toHaveLength(2);
+    expect(JSON.stringify(answer)).not.toContain(ws.home);
+  });
+});
+
 // ---- acceptance: every project key through MCP, seen by the cockpit, B untouched ------------------
 
 describe('project_config: project writes (acceptance)', () => {

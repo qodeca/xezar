@@ -126,6 +126,8 @@ export const TOOL_ACTION_COVERAGE: Readonly<Record<string, ActionCoverage>> = {
   // #819 item 4: the list the composer's model picker offers (I-007 "choose runner/account/model"),
   // read from the same `GET /api/v1/models` so a leader can choose a model it can dispatch to.
   'project_config:list_models': { serves: ['I-007'] },
+  // Agent/account/model routing input: the leader reads stored quota without starting a probe.
+  'project_config:read_quota': { serves: ['I-007'] },
   // I-122 was this action's `reads` while the selection was global-read-only. #677 B5 made
   // `select_account` a real write, so the record is `covered` and this read serves it beside it —
   // the same move I-115 made in B4 and I-117 … I-121 in B1.

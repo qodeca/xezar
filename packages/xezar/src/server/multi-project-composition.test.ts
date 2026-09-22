@@ -10,6 +10,7 @@ import { clearProjectProbeCache, listProjects, registerProject } from '../worksp
 import { ProjectContexts } from './project-context.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { WorkspaceEventBus, createApp } from './server.ts';
+import { AgentQuotaStore } from '../workspace/agent-quota.ts';
 
 /**
  * One route-level A/B product-composition transition that no focused suite owns end to end: a
@@ -31,6 +32,7 @@ describe('multi-project composition: late B build through removal and re-add, A 
   let bus: WorkspaceEventBus;
   let app: Hono;
   let idA: string;
+  let agentQuotaStore: AgentQuotaStore;
   const closers: Array<() => Promise<void>> = [];
 
   beforeEach(async () => {
@@ -41,7 +43,8 @@ describe('multi-project composition: late B build through removal and re-add, A 
     process.env.XEZ_DRY_RUN = '1';
     clearProjectProbeCache();
     storeA = RunStore.open(join(rootA, '.local/xezar'), { keepLive: true });
-    contexts = new ProjectContexts({ listProjects });
+    agentQuotaStore = new AgentQuotaStore();
+    contexts = new ProjectContexts({ listProjects, agentQuotaStore });
     bus = new WorkspaceEventBus();
     idA = (await registerProject(rootA)).id;
     app = createApp({
@@ -118,6 +121,7 @@ describe('multi-project composition: late B build through removal and re-add, A 
     expect((await apiRequest(app, `/api/v1/p/${idB}/runs`)).status).toBe(200);
     const bCtx1 = contexts.peek(idB);
     expect(bCtx1).toBeDefined();
+    expect(bCtx1!.manager.agentQuotaStore).toBe(agentQuotaStore);
 
     const bRun1 = bCtx1!.store.createRun({ title: 'b-1', workflow: 'quick-task', task: 'b1', steps: [] });
     bCtx1!.store.updateRun(bRun1.id, { status: 'done' });
