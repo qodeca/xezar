@@ -239,3 +239,26 @@ test('planChain returns a real plan when the answer is usable', async () => {
   assert.equal(plan.steps[2]?.skill, undefined);
   assert.equal(plan.steps[2]?.prompt, undefined);
 });
+
+test('planChain keeps a reviewing step’s verdictRole, and only a known role on an agent step (#851)', async () => {
+  // A plan's reviewing step that lost its role would have every verdict it reports refused.
+  // Named break: drop `verdictRole` from the planner's answer schema or from the step it builds.
+  const plan = await planWithFakeAgent(
+    'fix the login bug',
+    JSON.stringify({
+      title: 'fix-and-review',
+      steps: [
+        { name: 'Implement', prompt: 'Do {{task}}' },
+        { name: 'Review', prompt: 'Review {{task}}', verdictRole: 'code-review' },
+        { name: 'Judge', prompt: 'Judge {{task}}', verdictRole: 'no-such-role' },
+        { name: 'Verify', command: 'npm test', verdictRole: 'qa' },
+      ],
+      rationale: 'implement, review, verify',
+    }),
+  );
+  assert.equal(plan.fallback, false);
+  assert.deepEqual(
+    plan.steps.map((s) => [s.id, s.verdictRole]),
+    [['implement', undefined], ['review', 'code-review'], ['judge', undefined], ['verify', undefined]],
+  );
+});
