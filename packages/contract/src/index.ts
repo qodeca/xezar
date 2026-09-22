@@ -17,6 +17,7 @@ export * from './workflows.ts';
 export * from './skills.ts';
 export * from './agent-config.ts';
 export * from './agent-profiles.ts';
+export * from './agent-quota.ts';
 export * from './automations.ts';
 export * from './onboarding.ts';
 export * from './mcp-idempotency.ts';

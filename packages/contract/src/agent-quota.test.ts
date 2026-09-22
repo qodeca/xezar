@@ -1,0 +1,72 @@
+import { describe, expect, it } from 'vitest';
+
+import {
+  agentQuotaResponseSchema,
+  agentQuotaStatusSchema,
+  projectConfigQuotaInputSchema,
+  projectConfigQuotaResponseSchema,
+} from './agent-quota.ts';
+// @ts-expect-error Vitest supplies raw asset imports; production contract modules remain Node-free.
+import fixtureText from './__fixtures__/agent-quota.expected.json?raw';
+
+/**
+ * The fixture is the CONTRACT for the HTTP and project_config quota answers (#867 S1), not a
+ * sample. A later implementation must produce these bytes for its deterministic fixture path.
+ */
+describe('the agent-quota answer matches its committed fixture', () => {
+  it('parses and canonically serialises byte-for-byte to the fixture', () => {
+    const parsed = agentQuotaResponseSchema.parse(JSON.parse(fixtureText));
+
+    expect(`${JSON.stringify(parsed, null, 2)}\n`).toBe(fixtureText);
+  });
+
+  it('ignores additive unknown keys for older consumers', () => {
+    const fixture = JSON.parse(fixtureText) as Record<string, unknown>;
+    const parsed = agentQuotaResponseSchema.parse({
+      ...fixture,
+      futureTopLevelFact: true,
+      accounts: [{ ...(fixture.accounts as Record<string, unknown>[])[0], futureAccountFact: true }],
+    });
+
+    expect(parsed).not.toHaveProperty('futureTopLevelFact');
+    expect(parsed.accounts[0]).not.toHaveProperty('futureAccountFact');
+  });
+
+  it('keeps the two project_config request and response actions on the same answer schema', () => {
+    const answer = agentQuotaResponseSchema.parse(JSON.parse(fixtureText));
+
+    expect(projectConfigQuotaInputSchema.parse({ action: 'read_quota', provider: 'claude' })).toEqual({
+      action: 'read_quota',
+      provider: 'claude',
+    });
+    expect(projectConfigQuotaInputSchema.parse({ action: 'check_quota', accountId: 'default' })).toEqual({
+      action: 'check_quota',
+      accountId: 'default',
+    });
+    expect(
+      projectConfigQuotaResponseSchema.parse({ action: 'read_quota', origin: 'mcp', result: answer }).result,
+    ).toEqual(answer);
+    expect(projectConfigQuotaInputSchema.safeParse({ action: 'read_quota', runner: 'claude' }).success).toBe(false);
+  });
+
+  it('requires resetsAt only for an out account', () => {
+    const answer = JSON.parse(fixtureText) as { accounts: Record<string, unknown>[] };
+    const ok = answer.accounts[0];
+    const out = answer.accounts[3];
+
+    expect(
+      agentQuotaResponseSchema.safeParse({
+        ...answer,
+        accounts: [{ ...ok, resetsAt: '2026-09-22T15:10:00Z' }],
+      }).success,
+    ).toBe(false);
+    expect(
+      agentQuotaResponseSchema.safeParse({ ...answer, accounts: [{ ...out, resetsAt: undefined }] }).success,
+    ).toBe(false);
+  });
+
+  it('keeps status to exactly ok, out and unknown', () => {
+    expect(agentQuotaStatusSchema.options).toEqual(['ok', 'out', 'unknown']);
+    expect(agentQuotaStatusSchema.safeParse('warning').success).toBe(false);
+  });
+});
