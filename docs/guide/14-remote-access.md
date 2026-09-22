@@ -4,7 +4,7 @@ Use this page to reach a cockpit running on another machine. Choose a deployment
 
 ## To choose local or hosted mode
 
-A normal `xezar` launch binds to `127.0.0.1`. The port is the one you pinned for the project if there is one, else `XEZ_PORT`, else the port it last listened on, else `4321` — then the next free port from there; an explicit `--port` outranks all of them. The [CLI reference](12-cli-reference.md#which-port-a-project-starts-from) has the full order. Local mode reports `capabilities.localHandoff: true`. Setting `XEZ_REMOTE=1` or choosing a non-loopback `--bind-host` changes that capability to `false` and enables hosted mode. `XEZ_REMOTE` does not itself change the listening address.
+A normal `xezar` launch binds to `127.0.0.1`. The starting port is the one you pinned for the project if there is one, else `XEZ_PORT`, else the saved port this project last listened on, else `4321` — then the next free port from there; an explicit `--port` outranks all of them. The [CLI reference](12-cli-reference.md#which-port-a-project-starts-from) has the full order. Local mode reports `capabilities.localHandoff: true`. Setting `XEZ_REMOTE=1` or choosing a non-loopback `--bind-host` changes that capability to `false` and enables hosted mode. `XEZ_REMOTE` does not itself change the listening address.
 
 For example, when an authenticated reverse proxy runs on the same host, keep the server on loopback:
 
@@ -69,6 +69,13 @@ xezar server-uninstall --platform macosx-ngrok
 ```
 
 For a named Ubuntu instance, include its `--domain`. Uninstall reverses the instance's owned setup; shared tools are listed for manual removal. External-proxy mode leaves your proxy alone. The Mac uninstall removes both owned launchd agents, but leaves the ngrok authtoken in ngrok's configuration. Follow the provider's uninstall section to see exactly what is removed.
+
+## How two claims on this page are checked
+
+You do not need this section to set a host up. Two statements above are not editorial: each was reconciled against an observation of the built CLI behind an authenticated hop, and each names the case that observes it, so neither claim can drift away from the behaviour without the reconciliation turning red.
+
+- **The starting port.** Observed: an explicit `--port` outranks `XEZ_PORT` and that `XEZ_PORT` decides when no `--port` is given (harness case `A-PORT-01`). The full precedence chain, including a port pinned per project, is in the [CLI reference](12-cli-reference.md#which-port-a-project-starts-from).
+- **The authenticated front.** Observed through a throwaway Basic-Auth proxy: anonymous and wrong credentials are challenged with `401` before the backend is reached, and valid credentials reach it (harness case `A-AUTH`). That is the contract the bundled Ubuntu installer configures against real nginx — and an observation of the gate's shape, never a substitute for installing and testing your own.
 
 ## Related settings / env / config
 
