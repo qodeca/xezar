@@ -40,6 +40,18 @@ is the engine and cockpit, and xezar-skills is the skill collection it loads by 
 a Claude Code leader – workflows, role skills, gates, labels and branch protection – from a
 [one-prompt bootstrap](https://github.com/qodeca/xezar-skills/blob/main/docs/bootstrap-prompt.md).
 
+For a project that this kit onboards, `.xezar/routing.json` (schema `.xezar/routing.schema.json`) keeps
+model and lane routing. Its leader reads it with <code>node .xezar/<wbr>checks/route.mjs</code>:
+`--check` validates, `--rows` lists classification rows without lane data,
+<code>node .xezar/<wbr>checks/route.mjs &lt;row id&gt;</code> prints one row's lane order, and `--table`
+prints a human view. `--file <path>` is for onboarding only, before the first merge, and marks output
+`source=unmerged`. The kit's account-limits table records each runner/login budget as `ok`, `unknown`,
+or `out` with its reset time; the leader reads it under the kit's routing guide,
+and it will feed xezar's agent-quota status when that status ships. Earlier kit versions used prose
+routing guidance.
+
+xezar 0.19.0 is the minimum engine for xezar-skills 3.0.0; projects that must stay on 0.18 stay on xezar-skills 2.1.1.
+
 ## 60-second tour
 
 <a href="docs/screenshots/0.18.0/tour.gif"><img src="docs/screenshots/0.18.0/tour.gif" width="100%" alt="A short loop of the cockpit: tasks running in parallel, the queue starting, a live thread, review and a draft PR"></a>
