@@ -35,7 +35,7 @@ import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { z } from 'zod';
 import {
   appearanceSchema,
-  agentQuotaRunnerSchema,
+  agentQuotaQuerySchema,
   isSafeSessionId,
   resumeCommand,
   setWorkspaceUiStateInputSchema,
@@ -1299,6 +1299,9 @@ export function createApp(deps: ServerDeps) {
   });
   // Non-boot projects build lazily on first scoped request; their managers
   // count against the same workspace semaphore as the boot manager (step 2.5).
+  const managerQuotaStore = deps.manager.agentQuotaStore;
+  const agentQuotaStore = deps.agentQuotaStore
+    ?? (managerQuotaStore instanceof AgentQuotaStore ? managerQuotaStore : new AgentQuotaStore());
   const contexts = deps.contexts ?? new ProjectContexts({
     listProjects: async () => {
       const selector = singleProjectRegistry()
@@ -1307,6 +1310,7 @@ export function createApp(deps: ServerDeps) {
       return listProjects(selector);
     },
     semaphore: deps.semaphore,
+    agentQuotaStore,
     // #467, PR 2: in `project` mode a non-boot project is refused BEFORE its writer claim. The
     // boot id comes from the one resolver this file already has, which falls back to the boot
     // root's would-be slug and so keeps answering when the registry cannot be read.
@@ -1316,10 +1320,6 @@ export function createApp(deps: ServerDeps) {
   // Workspace-level SSE bus (step 2.8) — the registry mutators and the
   // checkout flow (Phase 4) emit here; /api/workspace/events relays.
   const workspaceEvents = deps.workspaceEvents ?? new WorkspaceEventBus();
-  const managerQuotaStore = deps.manager.agentQuotaStore;
-  const agentQuotaStore = deps.agentQuotaStore
-    ?? (managerQuotaStore instanceof AgentQuotaStore ? managerQuotaStore : new AgentQuotaStore());
-  void agentQuotaStore.load();
   agentQuotaStore.subscribe(() => workspaceEvents.emit('agent-quota', { changed: true }));
   const emitAutomationChange = (
     project: ProjectContext,
@@ -2147,14 +2147,9 @@ export function createApp(deps: ServerDeps) {
     return null;
   };
 
-  const agentQuotaQuerySchema = z.strictObject({
-    provider: agentQuotaRunnerSchema.optional(),
-    accountId: z.string().min(1).max(64).optional(),
-  });
   const readAgentQuota = async (
     selector: { provider?: 'claude' | 'codex'; accountId?: string } = {},
   ): Promise<AgentQuotaResponse> => {
-    await agentQuotaStore.load();
     const accounts = await loadAgentAccounts().catch(() => defaultAgentAccountStore());
     const known = listAgentProfiles(accounts, ['claude', 'codex']).map((profile) => ({
       runner: profile.provider as 'claude' | 'codex',
@@ -2165,7 +2160,9 @@ export function createApp(deps: ServerDeps) {
 
   deps.socketHub?.registerTopic('agent-quota', {
     snapshot: () => readAgentQuota(),
-    start: (publish) => agentQuotaStore.subscribe((answer) => publish(answer)),
+    start: (publish) => agentQuotaStore.subscribe(() => {
+      void readAgentQuota().then(publish).catch(() => undefined);
+    }),
   });
 
   const agentProfilesRoutes = new Hono<ProjectApiEnv>()
@@ -6489,6 +6486,7 @@ export function startServer(deps: ServerDeps, port: number): ServerType {
   const sharedContexts = deps.contexts ?? new ProjectContexts({
     listProjects,
     semaphore: deps.semaphore,
+    agentQuotaStore: deps.agentQuotaStore ?? deps.manager.agentQuotaStore,
     automationStore: (projectId, root) => automationCoordinator.store(projectId, root)!,
     // The SECOND construction site of this map, and it gets the same two deps as the one inside
     // `createApp` — a guard installed at one site only is half a guard (AGENTS.md § *Find every

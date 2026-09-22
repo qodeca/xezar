@@ -1800,13 +1800,17 @@ the 0.16.0 shape rather than instead of it.
   answer, and publishes only after a stored observation changes. The workspace SSE stream emits an
   `agent-quota` change hint for hosted clients to refetch the GET; hosted mode opens no WebSocket.
 - **State and producer rules:** observations are one strict producer record per runner and account,
-  atomically written below the state layout's `agent-quota/` subdirectory. A missing or corrupt
-  file degrades to empty; corruption warns once. Claude `/usage` replies with no percentage lines
-  are `unknown`, any reported window at or above 100 percent is `out`, and top-level `resetsAt`
-  appears only for `out`. Every machine time is ISO-8601 UTC. The consumer schema stays tolerant.
+  held in one workspace-level in-memory store for the server's lifetime. Nothing is written under
+  `.xezar/` or `.local/xezar/`; a restart begins with `unknown` rows. A headless `xezar run`
+  process has its own in-memory store, which ends with that process. Removed accounts disappear
+  from answers. Claude `/usage` replies with no percentage lines are `unknown`, any reported
+  window at or above 100 percent is `out`, and top-level `resetsAt` appears only for `out`. Every
+  machine time is ISO-8601 UTC. The consumer schema stays tolerant.
 - **Run events:** Claude `rate_limit_event` and Codex `account/rateLimits/updated` are internal
   `account-quota` v1 signals consumed before run persistence; they do not enter run NDJSON or the
   v2 UI stream. A failed-run limit reuses `parseUsageLimit` and marks that run's account `out`
   without changing auto-resume behavior.
-- **Frozen anchor:** `packages/contract/src/__fixtures__/agent-quota.expected.json` remains anchored
-  by SHA-256 `967b5b4c67401ad7c0fd49808d6526cae0fc4e430fd1038d709b05427f35d930`.
+- **Frozen anchor:** `packages/contract/src/__fixtures__/agent-quota.expected.json` is anchored by
+  SHA-256 `96a21eb8ef383b734cfa8164c425d1ac5e89964cb301e4ddda4c199aee7e7acb` (formerly
+  `967b5b4c67401ad7c0fd49808d6526cae0fc4e430fd1038d709b05427f35d930`). The only sample-value
+  correction is Codex's weekly reset: S0 epoch `1790685902` is `2026-09-29T12:45:02Z`.

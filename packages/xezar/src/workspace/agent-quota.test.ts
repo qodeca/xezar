@@ -1,6 +1,3 @@
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { agentQuotaProducerResponseSchema, agentQuotaResponseSchema } from '@qodeca/xezar-contract';
 // @ts-expect-error Vitest supplies raw asset imports in tests.
@@ -66,45 +63,74 @@ describe('agent quota normalisers', () => {
     expect(codex).toMatchObject({ source: 'live', status: 'ok', shortWindow: { usedPercent: 25 } });
     expect(codex).not.toHaveProperty('resetsAt');
   });
+
+  it('maps Claude live window kinds and ignores empty Codex updates', () => {
+    const weekly = normalizeLiveQuota('claude', {
+      rate_limit_info: { utilization: 0.4, resetsAt: 1_790_685_902, rateLimitType: 'seven_day' },
+    }, 'default', at('2026-09-22T14:22:00Z'));
+    const opus = normalizeLiveQuota('claude', {
+      rate_limit_info: { utilization: 0.5, resetsAt: 1_790_685_902, rateLimitType: 'seven_day_opus' },
+    }, 'default', at('2026-09-22T14:22:00Z'));
+    expect(weekly).toMatchObject({ shortWindow: null, weeklyWindow: { windowMinutes: 10080 } });
+    expect(opus).toMatchObject({ modelWindows: [{ model: 'Opus', windowMinutes: 10080 }] });
+    expect(normalizeLiveQuota('claude', {
+      rate_limit_info: { utilization: 0.5, resetsAt: 1_790_685_902, rateLimitType: 'overage' },
+    }, 'default', at('2026-09-22T14:22:00Z'))).toBeNull();
+    expect(normalizeLiveQuota('codex', { rateLimits: { planType: 'pro' } }, 'default', at('2026-09-22T14:22:00Z'))).toBeNull();
+  });
+
+  it('clamps live Codex percentages and drops malformed windows', () => {
+    expect(normalizeLiveQuota('codex', {
+      rateLimits: { primary: { usedPercent: 140, windowDurationMins: 300, resetsAt: 1_790_685_902 } },
+    }, 'default', at('2026-09-22T14:22:00Z'))).toMatchObject({ shortWindow: { usedPercent: 100 } });
+    expect(() => normalizeLiveQuota('codex', {
+      rateLimits: { primary: { usedPercent: 10, windowDurationMins: -1, resetsAt: 1_790_685_902_000 } },
+    }, 'default', at('2026-09-22T14:22:00Z'))).toThrow('invalid duration');
+  });
+
+  it('honours Codex blocking signals and chooses the latest blocking reset', () => {
+    const row = normalizeCodexRateLimits({ ordinaryUsageAllowed: false, rateLimits: {
+      rateLimitReachedType: 'rate_limit_reached',
+      primary: { usedPercent: 10, windowDurationMins: 300, resetsAt: 1_790_685_902 },
+      secondary: { usedPercent: 100, windowDurationMins: 10080, resetsAt: 1_790_600_000 },
+    } }, 'default', at('2026-09-22T14:22:00Z'));
+    expect(row).toMatchObject({ status: 'out', resetsAt: '2026-09-28T12:53:20Z' });
+    expect(normalizeCodexRateLimits({ ordinaryUsageAllowed: false, rateLimits: {
+      resetsAt: 1_790_685_902,
+    } }, 'default', at('2026-09-22T14:22:00Z'))).toMatchObject({
+      status: 'out', resetsAt: '2026-09-29T12:45:02Z', shortWindow: null, weeklyWindow: null,
+    });
+  });
+
+  it('never reports ok when an exhausted Claude row has an unreadable reset', () => {
+    const row = normalizeClaudeUsage({
+      result: 'Current session: 100% used · resets definitely not a date\nCurrent week (all models): 20% used · resets Sep 28 at 7:00pm (Europe/Warsaw)',
+    }, 'default', at('2026-09-22T14:20:00Z'));
+    expect(row.status).toBe('out');
+  });
 });
 
 describe('AgentQuotaStore', () => {
-  it('degrades absent state to an empty answer', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'xez-quota-'));
-    const store = new AgentQuotaStore({ path: join(root, 'quota', 'quota.json'), now: () => Date.parse('2026-09-22T14:24:00Z') });
-    await store.load();
-    expect(store.answer().accounts).toEqual([]);
+  it('has no persistence path; observations exist only for this instance', async () => {
+    const first = new AgentQuotaStore();
+    await first.put(normalizeClaudeUsage(claudeDefault, 'default', at('2026-09-22T14:20:00Z')));
+    expect(first).not.toHaveProperty('path');
+    expect(new AgentQuotaStore().answer().accounts).toEqual([]);
   });
 
-  it('degrades corrupt state to empty and warns once', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'xez-quota-'));
-    const path = join(root, 'quota.json');
-    await writeFile(path, '{bad');
-    const warn = vi.fn();
-    const store = new AgentQuotaStore({ path, warn });
-    await store.load();
-    await store.load();
-    expect(store.answer().accounts).toEqual([]);
-    expect(warn).toHaveBeenCalledTimes(1);
-  });
-
-  it('writes atomically, parses through the strict producer, and publishes only changes', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'xez-quota-'));
-    const path = join(root, 'agent-quota', 'quota.json');
-    const store = new AgentQuotaStore({ path, now: () => Date.parse('2026-09-22T14:24:00Z') });
+  it('keeps observations in memory, parses through the strict producer, and publishes only changes', async () => {
+    const store = new AgentQuotaStore({ now: () => Date.parse('2026-09-22T14:24:00Z') });
     const publish = vi.fn();
     store.subscribe(publish);
     const record = normalizeClaudeUsage(claudeDefault, 'default', at('2026-09-22T14:20:00Z'));
     await store.put(record);
     await store.put(record);
     expect(publish).toHaveBeenCalledTimes(1);
-    expect(JSON.parse(await readFile(path, 'utf8')).records).toHaveLength(1);
     expect(agentQuotaResponseSchema.parse(store.answer()).accounts).toHaveLength(1);
   });
 
   it('orders known profiles before stored-only rows regardless of observation arrival order', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'xez-quota-'));
-    const store = new AgentQuotaStore({ path: join(root, 'quota.json'), now: () => Date.parse('2026-09-22T14:24:00Z') });
+    const store = new AgentQuotaStore({ now: () => Date.parse('2026-09-22T14:24:00Z') });
     await store.put(normalizeClaudeUsage(claudeDefault, 'named', at('2026-09-22T14:20:00Z')));
     await store.put(normalizeCodexRateLimits(codexDefault, 'removed', at('2026-09-22T14:22:00Z')));
     await store.put(normalizeClaudeUsage(claudeDefault, 'default', at('2026-09-22T14:20:00Z')));
@@ -117,14 +143,36 @@ describe('AgentQuotaStore', () => {
       'claude:default',
       'claude:named',
       'codex:default',
-      'codex:removed',
     ]);
   });
 
-  it('reproduces the frozen documented sample and the consumer accepts the full answer', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'xez-quota-'));
-    const store = new AgentQuotaStore({ path: join(root, 'quota.json'), now: () => Date.parse(frozen.generatedAt) });
-    for (const row of frozen.accounts) await store.put(row);
+  it('expires reset facts and recomputes status from remaining windows', async () => {
+    const now = Date.parse('2026-09-30T00:00:00Z');
+    const store = new AgentQuotaStore({ now: () => now });
+    await store.markOut('claude', 'default', at('2026-09-29T00:00:00Z'), at('2026-09-22T00:00:00Z'));
+    expect(store.answer().accounts[0]).toMatchObject({ status: 'unknown' });
+    expect(store.answer().accounts[0]).not.toHaveProperty('resetsAt');
+  });
+
+  it('merges sparse live windows without erasing checked facts', async () => {
+    const store = new AgentQuotaStore({ now: () => Date.parse('2026-09-22T14:24:00Z') });
+    await store.put(normalizeCodexRateLimits(codexDefault, 'default', at('2026-09-22T14:22:00Z')));
+    await store.put(normalizeLiveQuota('codex', { rateLimits: {
+      primary: { usedPercent: 25, windowDurationMins: 300, resetsAt: 1_790_685_902 },
+    } }, 'default', at('2026-09-22T14:23:00Z'))!);
+    expect(store.answer().accounts[0]).toMatchObject({
+      shortWindow: { usedPercent: 25 }, weeklyWindow: { usedPercent: 0 }, planType: 'pro',
+      credits: { balance: '0' },
+    });
+  });
+
+  it('reproduces the frozen sample from the S0 inputs through normalisers and store', async () => {
+    const store = new AgentQuotaStore({ now: () => Date.parse(frozen.generatedAt) });
+    await store.put(normalizeClaudeUsage(claudeDefault, 'default', at('2026-09-22T14:20:00Z')));
+    await store.put(normalizeClaudeUsage(claudeUnknown, 'qodeca-priv', at('2026-09-22T14:21:00Z')));
+    await store.put(normalizeCodexRateLimits(codexDefault, 'default', at('2026-09-22T14:22:00Z')));
+    await store.markOut('claude', 'quota-exhausted', at('2026-09-22T15:10:00Z'), at('2026-09-22T14:19:00Z'));
+    await store.put(frozen.accounts.find((row) => row.runner === 'codex' && row.accountId === 'api-key')!);
     const answer = store.answer();
     expect(agentQuotaResponseSchema.parse(answer)).toEqual(frozen);
     expect(answer).toEqual(frozen);

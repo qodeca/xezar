@@ -531,7 +531,11 @@ class CodexSession implements AgentSession {
   private handleNotification(method: string, params: Record<string, unknown>): void {
     switch (method) {
       case 'account/rateLimits/updated': {
-        this.emit({ type: 'account-quota', runner: 'codex', payload: params });
+        try {
+          this.emit({ type: 'account-quota', runner: 'codex', payload: params });
+        } catch {
+          // Quota telemetry is advisory and must never disturb the run stream.
+        }
         break;
       }
       case 'turn/started': {

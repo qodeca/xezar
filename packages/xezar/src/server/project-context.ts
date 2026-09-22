@@ -10,6 +10,7 @@ import { RunStore, type RunStatus } from '../runs/store.ts';
 import { ownProjectData } from '../runs/project-writer.ts';
 import type { InstanceModeInForce } from '../workspace/projects.ts';
 import { WorkspaceSemaphore } from '../workspace/semaphore.ts';
+import { AgentQuotaStore } from '../workspace/agent-quota.ts';
 import { RunManager } from '../workflows/run.ts';
 import { ensureLaunchKey } from './launch-key.ts';
 import { getRepoInfo } from './git.ts';
@@ -98,6 +99,8 @@ export interface ProjectContextDeps {
    *  When omitted, the map still shares one private instance across the
    *  managers it builds (workspace defaults, never refreshed). */
   semaphore?: WorkspaceSemaphore;
+  /** One process-lifetime quota store shared by every project manager. */
+  agentQuotaStore?: AgentQuotaStore;
   /** What the instance mode IS for this process (#467, PR 2) — `instanceModeInForce`'s answer,
    *  read per call so a test can flip it between requests. Absent reads as `workspace`, which
    *  is the default and what every legacy caller gets: no guard, nothing changed. */
@@ -639,7 +642,10 @@ export class ProjectContexts {
       ?? AutomationStore.open(dataDir);
     reconcileAutomationReceipts(automationStore, store);
     this.notifyStoreCreated(store, project.id, generation);
-    const manager = new RunManager(store, project.root, { semaphore: this.semaphore });
+    const manager = new RunManager(store, project.root, {
+      semaphore: this.semaphore,
+      agentQuotaStore: this.deps.agentQuotaStore,
+    });
     try {
       const launchKey = ensureLaunchKey(dataDir);
       // Startup reconcile (spec 006) + count-based retention (#483) — the same

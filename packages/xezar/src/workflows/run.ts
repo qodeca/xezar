@@ -981,6 +981,7 @@ export class RunManager {
 
   /** Shared quota observations consumed by the engine and workspace read surfaces. */
   readonly agentQuotaStore: AgentQuotaStore;
+  private readonly agentQuotaWarnings = new Set<string>();
 
   /** Unregister handle for this manager's semaphore membership — released by
    *  dispose() so a torn-down project stops counting against the cap. */
@@ -1021,18 +1022,19 @@ export class RunManager {
   }
 
   /** Consume internal quota signals before the ordinary event persistence path. */
-  private observeAgentQuota(event: AgentEvent, runner: string, accountId: string): boolean {
+  private observeAgentQuota(event: AgentEvent, accountId: string): boolean {
     if (event.type === 'account-quota') {
-      const record = normalizeLiveQuota(event.runner, event.payload, accountId, new Date());
-      if (record) void this.agentQuotaStore.put(record).catch(() => undefined);
-      return true;
-    }
-    if (event.type === 'error') {
-      const hit = parseUsageLimit(event.message);
-      if (hit && (runner === 'claude' || runner === 'claude-cli' || runner === 'codex')) {
-        void this.agentQuotaStore.markOut(runner === 'codex' ? 'codex' : 'claude', accountId, hit.resetAt)
-          .catch(() => undefined);
+      try {
+        const record = normalizeLiveQuota(event.runner, event.payload, accountId, new Date());
+        if (record) void this.agentQuotaStore.put(record).catch(() => undefined);
+      } catch (error) {
+        const key = `${event.runner}:${accountId}`;
+        if (!this.agentQuotaWarnings.has(key)) {
+          this.agentQuotaWarnings.add(key);
+          console.warn(`ignored malformed ${event.runner} quota observation for ${accountId}: ${error instanceof Error ? error.message : String(error)}`);
+        }
       }
+      return true;
     }
     return false;
   }
@@ -1861,9 +1863,11 @@ export class RunManager {
     if (run.archived) return;
     const limit = parseUsageLimit(run.error);
     if (!limit) return;
-    if (run.runner === 'codex' || run.runner === 'claude') {
-      const quotaRunner = run.runner === 'codex' ? 'codex' : 'claude';
-      void this.agentQuotaStore.markOut(quotaRunner, run.agentProfile ?? 'default', limit.resetAt)
+    const failedStep = [...run.steps].reverse().find((step) => step.status === 'failed');
+    const failedBackend = failedStep?.backend;
+    if (failedStep && (failedBackend === 'codex' || failedBackend === 'claude')) {
+      const quotaRunner = failedBackend === 'codex' ? 'codex' : 'claude';
+      void this.agentQuotaStore.markOut(quotaRunner, failedStep.profileId ?? 'default', limit.resetAt)
         .catch(() => undefined);
     }
     if (!this.semaphore.autoResumeOnUsageLimit()) return;
@@ -3166,7 +3170,7 @@ export class RunManager {
     let sessionError: string | undefined;
     const sink = this.makeUiSink(runId, stepId);
     const onEvent = (event: AgentEvent) => {
-      if (this.observeAgentQuota(event, backend, continueProfile.profileId)) return;
+      if (this.observeAgentQuota(event, continueProfile.profileId)) return;
       if (event.type === 'image') {
         const saved = this.persistAttachment(runId, event.mediaType, event.data);
         if (saved) this.store.appendEvent(runId, { type: 'image', stepId, ...saved });
@@ -4146,7 +4150,7 @@ export class RunManager {
     // both read this binding rather than capturing a value, so the swap reaches them.
     let sink = this.makeUiSink(runId, step.id);
     const onEvent = (event: AgentEvent) => {
-      if (this.observeAgentQuota(event, stepBackend, stepProfile.profileId)) return;
+      if (this.observeAgentQuota(event, stepProfile.profileId)) return;
       if (event.type === 'image') {
         const saved = this.persistAttachment(runId, event.mediaType, event.data);
         if (saved) emit({ type: 'image', stepId: step.id, ...saved });

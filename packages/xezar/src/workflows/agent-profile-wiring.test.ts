@@ -29,6 +29,7 @@ describe('RunManager agent-profile resolution', () => {
       backend: 'claude' | 'codex' | 'opencode',
       options?: { generateFollowups?: boolean; recordedProfileId?: string },
     ): Promise<{ env: Record<string, string>; profileId: string }>;
+    scheduleAutoResumeIfLimited(runId: string): void;
   };
   const seam = () => manager as unknown as Seam;
 
@@ -124,6 +125,36 @@ describe('RunManager agent-profile resolution', () => {
     expect(claudeStep.env.CODEX_HOME).toBeUndefined();
     expect(codexStep.env).toMatchObject({ CODEX_HOME: join(home, 'codex-klaudiusz') });
     expect(codexStep.env.CLAUDE_CONFIG_DIR).toBeUndefined();
+  });
+
+  it('marks the project-selected named login that the failed step recorded', async () => {
+    await addAccount('work', 'claude', join(home, 'claude-klaudiusz'));
+    await selectAccount('claude', 'work');
+    const run = newRun();
+    const resolved = await seam().agentEnvForStep(run.id, 'claude');
+    store.updateStep(run.id, 'work', { status: 'failed', backend: 'claude', profileId: resolved.profileId });
+    store.updateRun(run.id, { status: 'failed', error: 'Claude AI usage limit reached|1790685902' });
+    seam().scheduleAutoResumeIfLimited(run.id);
+    await expect.poll(() => manager.agentQuotaStore.answer().accounts[0]).toMatchObject({
+      runner: 'claude', accountId: 'work', status: 'out',
+    });
+  });
+
+  it('attributes a mixed-backend failure to the failed step, not the run runner', async () => {
+    const run = store.createRun({
+      title: 'mixed', workflow: 'mixed', task: 'mixed', runner: 'claude',
+      steps: [
+        { id: 'author', name: 'author', kind: 'agent' },
+        { id: 'review', name: 'review', kind: 'agent' },
+      ],
+    });
+    store.updateStep(run.id, 'author', { status: 'done', backend: 'claude', profileId: 'default' });
+    store.updateStep(run.id, 'review', { status: 'failed', backend: 'codex', profileId: 'cx' });
+    store.updateRun(run.id, { status: 'failed', error: 'usage limit reached; resets 2026-09-29T12:45:02Z' });
+    seam().scheduleAutoResumeIfLimited(run.id);
+    await expect.poll(() => manager.agentQuotaStore.answer().accounts[0]).toMatchObject({
+      runner: 'codex', accountId: 'cx', status: 'out',
+    });
   });
 
   it('lets the composer override the project — but only for the run\'s OWN runner', async () => {

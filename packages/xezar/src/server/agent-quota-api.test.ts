@@ -21,7 +21,7 @@ describe('agent quota read surface', () => {
     home = mkdtempSync(join(realpathSync(tmpdir()), 'xez-quota-home-'));
     process.env.XEZ_HOME = home;
     runs = RunStore.open(join(root, '.local/xezar'));
-    quota = new AgentQuotaStore({ path: join(home, 'agent-quota', 'quota.json'), now: () => Date.parse('2026-09-22T14:24:00Z') });
+    quota = new AgentQuotaStore({ now: () => Date.parse('2026-09-22T14:24:00Z') });
   });
 
   afterEach(() => {
@@ -77,7 +77,7 @@ describe('agent quota read surface', () => {
     const bus = new WorkspaceEventBus();
     const hints: string[] = [];
     bus.on((event) => hints.push(event));
-    app({ socketHub: hub, workspaceEvents: bus });
+    const service = app({ socketHub: hub, workspaceEvents: bus });
     const topic = topics.get('agent-quota');
     expect(topic).toBeDefined();
     const publish = vi.fn();
@@ -88,7 +88,9 @@ describe('agent quota read surface', () => {
       new Date('2026-09-22T14:20:00Z'),
     );
     await quota.put(row);
-    expect(publish).toHaveBeenCalledTimes(1);
+    await expect.poll(() => publish.mock.calls.length).toBe(1);
+    const getBody = await (await apiRequest(service, '/api/v1/workspace/agent-quota')).json();
+    expect(publish).toHaveBeenLastCalledWith(getBody);
     expect(hints).toEqual(['agent-quota']);
     stop();
     await quota.put({ ...row, checkedAt: '2026-09-22T14:21:00Z' });

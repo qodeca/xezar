@@ -1,20 +1,13 @@
-import { chmod, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
-import { dirname } from 'node:path';
 import {
   agentQuotaProducerAccountSchema,
   agentQuotaProducerResponseSchema,
   type AgentQuotaProducerAccount,
   type AgentQuotaProducerResponse,
   type AgentQuotaRunner,
+  type AgentQuotaModelWindow,
   type AgentQuotaWindow,
 } from '@qodeca/xezar-contract';
-import { activeStateLayout } from '../state-layout.ts';
 import { parseUsageLimit } from '../core/usage-limit.ts';
-import { atomicTmpPath } from './config.ts';
-
-interface PersistedQuota {
-  records: AgentQuotaProducerAccount[];
-}
 
 function isoUtc(value: Date | number): string {
   return new Date(value).toISOString().replace('.000Z', 'Z');
@@ -26,69 +19,30 @@ export interface AgentQuotaSelector {
 }
 
 export interface AgentQuotaStoreOptions {
-  path?: string;
   now?: () => number;
-  warn?: (message: string) => void;
 }
 
-/** File-backed, process-coherent quota observations keyed by runner and account id. */
+/** Process-lifetime quota observations keyed by runner and account id. */
 export class AgentQuotaStore {
-  readonly path: string;
   private readonly now: () => number;
-  private readonly warn: (message: string) => void;
-  private warnedCorrupt = false;
   private records = new Map<string, AgentQuotaProducerAccount>();
-  private loaded = false;
   private listeners = new Set<(answer: AgentQuotaProducerResponse) => void>();
 
   constructor(options: AgentQuotaStoreOptions = {}) {
-    this.path = options.path ?? activeStateLayout().agentQuotaPath;
     this.now = options.now ?? Date.now;
-    this.warn = options.warn ?? ((message) => console.warn(message));
   }
 
   private key(runner: AgentQuotaRunner, accountId: string): string {
     return `${runner}:${accountId}`;
   }
 
-  async load(): Promise<void> {
-    if (this.loaded) return;
-    this.loaded = true;
-    let raw: string;
-    try {
-      raw = await readFile(this.path, 'utf8');
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
-      this.warnCorrupt(error);
-      return;
-    }
-    try {
-      const parsed = JSON.parse(raw) as PersistedQuota;
-      if (!parsed || !Array.isArray(parsed.records)) throw new Error('records must be an array');
-      for (const value of parsed.records) {
-        const record = agentQuotaProducerAccountSchema.parse(value);
-        this.records.set(this.key(record.runner, record.accountId), record);
-      }
-    } catch (error) {
-      this.records.clear();
-      this.warnCorrupt(error);
-    }
-  }
-
-  private warnCorrupt(error: unknown): void {
-    if (this.warnedCorrupt) return;
-    this.warnedCorrupt = true;
-    this.warn(`agent quota state is unreadable; starting empty (${error instanceof Error ? error.message : String(error)})`);
-  }
-
   async put(input: AgentQuotaProducerAccount): Promise<void> {
-    await this.load();
-    const record = agentQuotaProducerAccountSchema.parse(input);
+    let record = agentQuotaProducerAccountSchema.parse(input);
     const key = this.key(record.runner, record.accountId);
     const previous = this.records.get(key);
+    if (previous && record.source === 'live') record = mergeLiveRecord(previous, record);
     if (previous && JSON.stringify(previous) === JSON.stringify(record)) return;
     this.records.set(key, record);
-    await this.persist();
     const answer = this.answer();
     for (const listener of [...this.listeners]) listener(answer);
   }
@@ -136,19 +90,14 @@ export class AgentQuotaStore {
         notReported: ['shortWindow', 'weeklyWindow', 'modelWindows', 'credits', 'planType'],
       }));
     }
-    // `listAgentProfiles` supplies the public ordering contract (default first,
-    // then named logins). Stored observations arrive in runtime order, so put
-    // known rows first and retain stored-only rows afterward for forward-safe
-    // reads of observations whose account registration has since disappeared.
-    const orderedKeys = [...knownKeys, ...[...records.keys()].filter((key) => !knownKeys.includes(key))];
+    // When the caller supplies the current account registry it is authoritative:
+    // observations for removed accounts disappear from the public answer.
+    const orderedKeys = knownAccounts.length > 0 ? knownKeys : [...records.keys()];
     const accounts = orderedKeys
       .map((key) => records.get(key)!)
       .filter((record) => selector.provider === undefined || record.runner === selector.provider)
       .filter((record) => selector.accountId === undefined || record.accountId === selector.accountId)
-      .map((record) => ({
-        ...record,
-        ageSeconds: Math.max(0, Math.floor((now - Date.parse(record.checkedAt)) / 1_000)),
-      }));
+      .map((record) => currentRecord(record, now));
     return agentQuotaProducerResponseSchema.parse({
       schemaVersion: 1,
       scope: 'agent-quota',
@@ -161,14 +110,76 @@ export class AgentQuotaStore {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   }
+}
 
-  private async persist(): Promise<void> {
-    await mkdir(dirname(this.path), { recursive: true, mode: 0o700 });
-    const tmp = atomicTmpPath(this.path);
-    await writeFile(tmp, `${JSON.stringify({ records: [...this.records.values()] }, null, 2)}\n`, { mode: 0o600 });
-    await chmod(tmp, 0o600);
-    await rename(tmp, this.path);
-  }
+function notReportedFor(record: Pick<AgentQuotaProducerAccount, 'shortWindow' | 'weeklyWindow' | 'modelWindows' | 'credits' | 'planType'>) {
+  return [
+    ...(record.shortWindow ? [] : ['shortWindow' as const]),
+    ...(record.weeklyWindow ? [] : ['weeklyWindow' as const]),
+    ...(record.modelWindows?.length ? [] : ['modelWindows' as const]),
+    ...(record.credits ? [] : ['credits' as const]),
+    ...(record.planType ? [] : ['planType' as const]),
+  ];
+}
+
+function mergeModelWindows(previous: AgentQuotaModelWindow[] | null, incoming: AgentQuotaModelWindow[] | null) {
+  if (!incoming?.length) return previous;
+  const merged = new Map((previous ?? []).map((window) => [window.model, window]));
+  for (const window of incoming) merged.set(window.model, window);
+  return [...merged.values()];
+}
+
+function mergeLiveRecord(previous: AgentQuotaProducerAccount, incoming: AgentQuotaProducerAccount): AgentQuotaProducerAccount {
+  const detail = {
+    ...incoming,
+    shortWindow: incoming.shortWindow ?? previous.shortWindow,
+    weeklyWindow: incoming.weeklyWindow ?? previous.weeklyWindow,
+    modelWindows: mergeModelWindows(previous.modelWindows, incoming.modelWindows),
+    credits: incoming.credits ?? previous.credits,
+    planType: incoming.planType ?? previous.planType,
+  };
+  const windows = [detail.shortWindow, detail.weeklyWindow, ...(detail.modelWindows ?? [])].filter(
+    (window): window is AgentQuotaWindow | AgentQuotaModelWindow => window !== null,
+  );
+  const exhausted = windows.find((window) => window.usedPercent >= 100);
+  const status = incoming.status === 'out' || exhausted ? 'out' : windows.length ? 'ok' : 'unknown';
+  const { resetsAt: _resetsAt, ...withoutReset } = detail;
+  return agentQuotaProducerAccountSchema.parse({
+    ...withoutReset,
+    status,
+    ...(status === 'out'
+      ? { resetsAt: incoming.status === 'out' ? incoming.resetsAt : exhausted!.resetsAt }
+      : {}),
+    notReported: notReportedFor(detail),
+  });
+}
+
+function currentRecord(record: AgentQuotaProducerAccount, now: number): AgentQuotaProducerAccount {
+  const alive = <T extends AgentQuotaWindow | AgentQuotaModelWindow>(window: T | null): T | null =>
+    window && Date.parse(window.resetsAt) > now ? window : null;
+  const detail = {
+    ...record,
+    shortWindow: alive(record.shortWindow),
+    weeklyWindow: alive(record.weeklyWindow),
+    modelWindows: record.modelWindows?.map((window) => alive(window)).filter((window): window is AgentQuotaModelWindow => window !== null) ?? null,
+  };
+  if (detail.modelWindows?.length === 0) detail.modelWindows = null;
+  const windows = [detail.shortWindow, detail.weeklyWindow, ...(detail.modelWindows ?? [])].filter(
+    (window): window is AgentQuotaWindow | AgentQuotaModelWindow => window !== null,
+  );
+  const exhausted = windows.find((window) => window.usedPercent >= 100);
+  const topLevelOut = record.status === 'out' && Date.parse(record.resetsAt) > now;
+  const status = topLevelOut || exhausted ? 'out' : windows.length ? 'ok' : 'unknown';
+  const { resetsAt: _resetsAt, ...withoutReset } = detail;
+  return agentQuotaProducerAccountSchema.parse({
+    ...withoutReset,
+    status,
+    ...(status === 'out'
+      ? { resetsAt: topLevelOut ? record.resetsAt : exhausted!.resetsAt }
+      : {}),
+    ageSeconds: Math.max(0, Math.floor((now - Date.parse(record.checkedAt)) / 1_000)),
+    notReported: notReportedFor(detail),
+  });
 }
 
 function windowFromPercent(usedPercent: number, resetsAt: Date, windowMinutes: number): AgentQuotaWindow {
@@ -192,10 +203,14 @@ export function normalizeClaudeUsage(
   let shortWindow: AgentQuotaWindow | null = null;
   let weeklyWindow: AgentQuotaWindow | null = null;
   const modelWindows: Array<AgentQuotaWindow & { model: string }> = [];
+  let unreadableExhausted = false;
   for (const row of rows) {
-    const reset = claudeReset(row[4]!, checkedAt.getTime());
-    if (!reset) continue;
     const usedPercent = Number(row[3]);
+    const reset = claudeReset(row[4]!, checkedAt.getTime());
+    if (!reset) {
+      if (usedPercent >= 100) unreadableExhausted = true;
+      continue;
+    }
     if (row[1] === 'session') shortWindow = windowFromPercent(usedPercent, reset, 300);
     else if (row[1] === 'week (all models)') weeklyWindow = windowFromPercent(usedPercent, reset, 10080);
     else modelWindows.push({ model: row[2]!, ...windowFromPercent(usedPercent, reset, 10080) });
@@ -206,8 +221,8 @@ export function normalizeClaudeUsage(
   return agentQuotaProducerAccountSchema.parse({
     runner: 'claude',
     accountId,
-    status: unknown ? 'unknown' : exhausted ? 'out' : 'ok',
-    ...(exhausted ? { resetsAt: exhausted.resetsAt } : {}),
+    status: exhausted || unreadableExhausted ? 'out' : unknown ? 'unknown' : 'ok',
+    ...(exhausted || unreadableExhausted ? { resetsAt: exhausted?.resetsAt ?? isoUtc(checkedAt) } : {}),
     checkedAt: isoUtc(checkedAt),
     ageSeconds: 0,
     source: 'check',
@@ -231,8 +246,16 @@ type CodexWindow = { usedPercent?: unknown; windowDurationMins?: unknown; resets
 function codexWindow(raw: unknown): AgentQuotaWindow | null {
   if (!raw || typeof raw !== 'object') return null;
   const value = raw as CodexWindow;
-  if (typeof value.usedPercent !== 'number' || typeof value.windowDurationMins !== 'number' || typeof value.resetsAt !== 'number') return null;
-  return windowFromPercent(value.usedPercent, new Date(value.resetsAt * 1_000), value.windowDurationMins);
+  if (typeof value.usedPercent !== 'number' || typeof value.windowDurationMins !== 'number' || typeof value.resetsAt !== 'number') {
+    throw new Error('Codex quota window has an invalid shape');
+  }
+  if (!Number.isFinite(value.usedPercent) || !Number.isInteger(value.windowDurationMins) || value.windowDurationMins <= 0) {
+    throw new Error('Codex quota window has an invalid duration');
+  }
+  if (!Number.isFinite(value.resetsAt) || value.resetsAt > 10_000_000_000) {
+    throw new Error('Codex quota reset must be epoch seconds');
+  }
+  return windowFromPercent(Math.min(100, Math.max(0, value.usedPercent)), new Date(value.resetsAt * 1_000), value.windowDurationMins);
 }
 
 /** Normalise the Codex app-server `account/rateLimits/read` result. */
@@ -248,15 +271,23 @@ export function normalizeCodexRateLimits(raw: unknown, accountId: string, checke
     && (typeof creditsRaw.balance === 'string' || typeof creditsRaw.balance === 'number')
     ? { hasCredits: creditsRaw.hasCredits, unlimited: creditsRaw.unlimited, balance: String(creditsRaw.balance) }
     : null;
-  const exhausted = result.ordinaryUsageAllowed === false
-    ? candidates[0]
-    : candidates.find((window) => window.usedPercent >= 100);
+  const reached = typeof snapshot.rateLimitReachedType === 'string' && snapshot.rateLimitReachedType.length > 0;
+  const resetCandidates = candidates.filter((window) => Date.parse(window.resetsAt) > checkedAt.getTime());
+  const exhaustedCandidates = resetCandidates.filter((window) => window.usedPercent >= 100);
+  const blockingCandidates = exhaustedCandidates.length ? exhaustedCandidates : resetCandidates;
+  const blocking = blockingCandidates.reduce<AgentQuotaWindow | undefined>((latest, window) =>
+    !latest || Date.parse(window.resetsAt) > Date.parse(latest.resetsAt) ? window : latest, undefined);
+  const resetValue = snapshot.resetsAt ?? result.resetsAt;
+  const explicitReset = typeof resetValue === 'number' && resetValue <= 10_000_000_000
+    ? isoUtc(resetValue * 1_000)
+    : undefined;
+  const exhausted = result.ordinaryUsageAllowed === false || reached;
   const unknown = candidates.length === 0;
   return agentQuotaProducerAccountSchema.parse({
     runner: 'codex',
     accountId,
-    status: exhausted ? 'out' : unknown ? 'unknown' : 'ok',
-    ...(exhausted ? { resetsAt: exhausted.resetsAt } : {}),
+    status: exhausted && (blocking || explicitReset) ? 'out' : unknown ? 'unknown' : 'ok',
+    ...(exhausted && (blocking || explicitReset) ? { resetsAt: blocking?.resetsAt ?? explicitReset } : {}),
     checkedAt: isoUtc(checkedAt),
     ageSeconds: 0,
     source: 'check',
@@ -284,7 +315,8 @@ export function normalizeLiveQuota(
 ): AgentQuotaProducerAccount | null {
   if (runner === 'codex') {
     const record = normalizeCodexRateLimits({ result: raw }, accountId, observedAt);
-    return { ...record, source: 'live' };
+    if (!record.shortWindow && !record.weeklyWindow && !record.modelWindows) return null;
+    return agentQuotaProducerAccountSchema.parse({ ...record, source: 'live' });
   }
   if (!raw || typeof raw !== 'object') return null;
   const info = ((raw as Record<string, unknown>).rate_limit_info ?? (raw as Record<string, unknown>).rateLimitInfo) as Record<string, unknown> | undefined;
@@ -294,11 +326,23 @@ export function normalizeLiveQuota(
   const reset = typeof resetValue === 'number' ? new Date(resetValue * 1_000) : null;
   if (utilization === null || !reset) return null;
   const out = info.status === 'rejected' || utilization >= 100;
+  const rateLimitType = typeof info.rateLimitType === 'string' ? info.rateLimitType : 'five_hour';
+  const window = windowFromPercent(utilization, reset, rateLimitType === 'five_hour' ? 300 : 10080);
+  const model = rateLimitType.startsWith('seven_day_') && rateLimitType !== 'seven_day_overage_included'
+    ? rateLimitType.slice('seven_day_'.length).replace(/(^|_)([a-z])/g, (_match, prefix, letter: string) => `${prefix ? ' ' : ''}${letter.toUpperCase()}`)
+    : null;
+  const detail = {
+    shortWindow: rateLimitType === 'five_hour' ? window : null,
+    weeklyWindow: rateLimitType === 'seven_day' ? window : null,
+    modelWindows: model ? [{ model, ...window }] : null,
+    credits: null,
+    planType: null,
+  };
+  if (!detail.shortWindow && !detail.weeklyWindow && !detail.modelWindows) return null;
   return agentQuotaProducerAccountSchema.parse({
     runner: 'claude', accountId, status: out ? 'out' : 'ok', ...(out ? { resetsAt: isoUtc(reset) } : {}),
     checkedAt: isoUtc(observedAt), ageSeconds: 0, source: 'live',
-    shortWindow: windowFromPercent(utilization, reset, 300), weeklyWindow: null, modelWindows: null,
-    credits: null, planType: null,
-    notReported: ['weeklyWindow', 'modelWindows', 'credits', 'planType'],
+    ...detail,
+    notReported: notReportedFor(detail),
   });
 }
