@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import test from 'node:test';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 
 const execFile = promisify(execFileCallback);
@@ -63,7 +63,7 @@ test('the release tarball installs and runs the dry-run CLI workflow', { timeout
     assert.ok(record, 'npm pack should describe the generated tarball');
 
     const packagedPaths = new Set(record.files.map((file) => file.path));
-    for (const requiredPath of ['dist/index.js', 'web/dist/index.html', 'scripts/mock-claude.mjs', 'README.md']) {
+    for (const requiredPath of ['dist/index.js', 'dist/core/read-only-lock.js', 'web/dist/index.html', 'scripts/mock-claude.mjs', 'scripts/pi-worktree-guard.ts', 'README.md']) {
       assert.ok(packagedPaths.has(requiredPath), `release tarball should contain ${requiredPath}`);
     }
     assert.equal(packagedPaths.has('src/index.ts'), false, 'release tarball should not contain TypeScript sources');
@@ -89,6 +89,29 @@ test('the release tarball installs and runs the dry-run CLI workflow', { timeout
     // put a command on a consumer's PATH that nothing publishes.
     assert.deepEqual(Object.keys(manifest.bin).sort(), ['xez', 'xezar']);
     const cliPath = join(packageRoot, manifest.bin.xezar);
+
+    // #863: the pi extension ships as TS while package source does not. Import the INSTALLED copy
+    // in this test process (which already has the tsx loader) and drive its real adapter once; this
+    // proves its source→dist fallback resolves rather than merely proving both files were packed.
+    const installedGuardModule = await import(
+      `${pathToFileURL(join(packageRoot, 'scripts', 'pi-worktree-guard.ts')).href}?package-e2e`
+    ) as { default: (api: {
+      registerFlag: () => void;
+      getFlag: (name: string) => string | undefined;
+      on: (_event: 'tool_call', next: (call: { toolName: string; input: Record<string, unknown> }, context: { cwd: string }) => { block: true; reason: string } | undefined) => void;
+    }) => void };
+    let installedHandler: ((call: { toolName: string; input: Record<string, unknown> }, context: { cwd: string }) => { block: true; reason: string } | undefined) | undefined;
+    installedGuardModule.default({
+      registerFlag: () => undefined,
+      getFlag: (name) => name === 'xezar-bash-allowlist' ? '["git status"]' : undefined,
+      on: (_event, next) => { installedHandler = next; },
+    });
+    assert.ok(installedHandler, 'the installed pi extension should register its tool-call adapter');
+    assert.equal(installedHandler({ toolName: 'bash', input: { command: 'git status --short' } }, { cwd: consumerDir }), undefined);
+    assert.match(
+      installedHandler({ toolName: 'bash', input: { command: 'git status > out' } }, { cwd: consumerDir })?.reason ?? '',
+      /Rule syntax\.redirection/,
+    );
 
     const help = await execFile(process.execPath, [cliPath, '--help'], {
       cwd: consumerDir,

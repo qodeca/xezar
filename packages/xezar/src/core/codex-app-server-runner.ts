@@ -18,9 +18,9 @@ import {
 import {
   AUTO_END_DELAY_MS,
   DEFAULT_RUN_TIMEOUT_MS,
-  isReadOnlyStep,
   KILL_GRACE_MS,
 } from './claude-cli-runner.ts';
+import { isReadOnlyStep } from './read-only-lock.ts';
 import { parseAskRequest, type AskQuestion } from './ask.ts';
 import { readNdjson } from './ndjson.ts';
 import { V1TextCoalescer } from './v1-text-coalescer.ts';

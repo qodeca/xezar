@@ -116,8 +116,10 @@ export const REQUIRED_ARCHIVE_ENTRIES = [
   'package/package.json',
   'package/README.md',
   'package/dist/index.js',
+  'package/dist/core/read-only-lock.js',
   'package/web/dist/index.html',
   'package/scripts/mock-claude.mjs',
+  'package/scripts/pi-worktree-guard.ts',
 ];
 
 /** Problems that make the archive itself unfit to judge: empty, or missing what it must ship. */

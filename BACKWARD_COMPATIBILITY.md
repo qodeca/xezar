@@ -999,6 +999,45 @@ backend. Changing what a shipped run may do is recorded here rather than silentl
   and the whole `thread/start` / `thread/resume` params, for a read-only and a writing list).
   Released as part of a **minor** version.
 
+## Shared read-only command lock and Claude setting-source narrowing (#863) — deliberate, 0.19.0, 2026-09-22
+
+The owner decided on 2026-09-22 that Claude Code, Codex and pi ship one read-only policy wherever
+their runner interfaces permit it, and explicitly accepted closing Claude's project-settings gap.
+This entry supersedes the command-matching details in the #856 entry below; its no-allowlist and
+empty-list compatibility statements remain in force.
+
+- **Changed (Claude Code)**: a read-only step now receives `--setting-sources user`. Project and
+  local `.claude` settings, hooks, skills and commands no longer load for that step, so a project
+  `permissions.allow: ["Bash"]` cannot widen its shell. User settings still load. A workflow that
+  depended on project Claude settings from a read-only step must move that dependency into the
+  step prompt or make the step a writing step by naming `Edit` or `Write`. Writing steps receive no
+  `--setting-sources` flag and retain every prior source.
+- **Changed (pi with `bashAllowlist`)**: one shared policy now accepts exactly one simple command.
+  It refuses shell composition (`;`, `&&`, `||`, pipes, backgrounding and newlines), every
+  redirection, command substitution, grouping/function syntax, a trailing or line-ending
+  backslash, a leading assignment, and command-running wrappers unless the allowlist names the
+  wrapper itself. This deliberately removes #856's permission for a pipe whose individual parts
+  all matched. Each refusal carries the stable rule that made the decision.
+- **Changed (argument-bearing entries)**: `COMMAND_RUNNING_ARGUMENTS` refuses risky forms hidden
+  behind an otherwise allowed prefix: Git command/config hooks and `fetch --upload-pack`, Git
+  `diff`/`show`/`log` output files, `find` actions, `rg --pre`, and sed in-place/`w` writes. Rows for
+  grep, jq and `gh --template` record that the reviewed argument surface does not execute a command
+  or write a file. The five shipped read-only workflows therefore omit `git fetch`, `git diff`,
+  `git show`, `git log` and `find` until Claude has a hook that can apply this table.
+- **One policy, thin adapters**: `core/read-only-lock.ts` owns the read-only signal, normalized
+  entry/prefix rule, simple-command parser and argument table. pi keeps only flag parsing, its
+  `tool_call` denial shape and the separate worktree guard. Claude builds `Bash(<entry>:*)` entries
+  from the same normalized list, but Claude's own matcher still decides at run time: the shared
+  parser and argument table do **not** protect Claude in this slice. Codex continues with #849's
+  confined sandbox; its hook adapter is a separate slice.
+- **Not changed**: no `XEZ_*` variable, config key, workflow field or persisted shape was added;
+  a step without `bashAllowlist`, a writing Claude step, Codex confinement and OpenCode behavior
+  are unchanged. The source and built-module fallback in `scripts/pi-worktree-guard.ts` keeps the
+  published extension loading from the same authored policy implementation.
+- **Pinned by**: `read-only-lock.test.ts` (one fixture table covering every refusal class and every
+  argument row), `pi-worktree-guard.test.ts` (the same fixtures through pi's adapter),
+  `claude-cli-runner.test.ts` (setting sources only on read-only argv), and the package test.
+
 ## pi keeps a restricted `bash` under a `bashAllowlist` instead of dropping it (#856) — deliberate, 0.19.0
 
 Until #856 a pi step with a non-empty `bashAllowlist` ran with no `bash` tool at all, because pi
