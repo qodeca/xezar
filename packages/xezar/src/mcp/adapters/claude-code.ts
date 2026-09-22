@@ -198,7 +198,7 @@ export class ClaudeCodeChannelAdapter implements ReactionAdapter {
     if (this.#closed) return {};
     this.#pruneAcknowledged();
     const oldest = this.#outstanding[0];
-    if (oldest && this.#notSeen(oldest.at)) {
+    if (this.#notSeen()) {
       return { blocker: { code: 'claude-code-push-not-seen', message: CLAUDE_CODE_PUSH_NOT_SEEN_MESSAGE, fix: CLAUDE_CODE_PUSH_NOT_SEEN_FIX } };
     }
     if (oldest && this.#now() - oldest.at >= this.#opts.heartbeatMs) {
@@ -208,16 +208,19 @@ export class ClaudeCodeChannelAdapter implements ReactionAdapter {
   }
 
   /**
-   * #886: the session is active and silent about the push made at `pushedAt` — it has not read events
-   * since, and it made at least `CLAUDE_CODE_PUSH_NOT_SEEN_CALLS` calls to other tools at or after
-   * `notSeenMs` past it. Calls inside the bound are the leader reading state before it acknowledges, as
-   * the channel message asks, and never count.
+   * #886: the session is active and silent about an outstanding push — the oldest one it has NOT read
+   * events since (a read covers every push made before it, and only those), followed by at least
+   * `CLAUDE_CODE_PUSH_NOT_SEEN_CALLS` calls to other tools at or after `notSeenMs` past that push.
+   * Calls inside the bound are the leader reading state before it acknowledges, as the channel message
+   * asks, and never count.
    */
-  #notSeen(pushedAt: number): boolean {
+  #notSeen(): boolean {
     const activity = this.#opts.ownerActivity?.();
     if (activity === undefined) return false;
-    if (activity.readAt !== undefined && activity.readAt >= pushedAt) return false;
-    const bound = pushedAt + (this.#opts.notSeenMs ?? CLAUDE_CODE_PUSH_NOT_SEEN_MS);
+    const readAt = activity.readAt;
+    const unread = this.#outstanding.find((row) => readAt === undefined || readAt < row.at);
+    if (unread === undefined) return false;
+    const bound = unread.at + (this.#opts.notSeenMs ?? CLAUDE_CODE_PUSH_NOT_SEEN_MS);
     return activity.otherCallsAt.filter((at) => at >= bound).length >= CLAUDE_CODE_PUSH_NOT_SEEN_CALLS;
   }
 }

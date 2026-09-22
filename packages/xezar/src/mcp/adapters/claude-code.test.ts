@@ -405,6 +405,20 @@ describe('a session that keeps calling tools but never acknowledges a push (#886
     expect(h.adapter.status().blocker?.code).toBe('claude-code-push-not-seen');
   });
 
+  it('does not let a read of an earlier push stand for a later one (#890 review round 1, self-review)', async () => {
+    // RED against: judging only the OLDEST outstanding push — one early read would then hide every
+    // later push that never reached the conversation, for as long as the first stays unacknowledged.
+    const h = active();
+    h.setNow(0);
+    await h.adapter.deliver(dispatch([row(1)]), signal());
+    h.read(10);
+    h.setNow(20);
+    await h.adapter.deliver(dispatch([row(2)]), signal());
+    h.call(20 + FIVE_MIN, CLAUDE_CODE_PUSH_NOT_SEEN_CALLS);
+    h.setNow(20 + FIVE_MIN);
+    expect(h.adapter.status().blocker?.code).toBe('claude-code-push-not-seen');
+  });
+
   it('keeps the soft blocker while the session only reads state before acknowledging (guard)', async () => {
     // Guard, green both ways: the channel message asks the leader to read state first, so calls
     // inside the bound are normal work, never evidence of a lost push.
