@@ -138,7 +138,7 @@ view; `--file <path>` is onboarding-only before the first merge and marks output
 The kit's `.xezar/docs/account-limits.md` table records each runner/login budget as `ok`, `unknown`, or
 `out` with its reset time; its `.xezar/docs/routing.md` § 3 tells the leader to read it, and it will
 feed xezar's agent-quota status when that status ships. Earlier kit versions used prose
-`model-routing.md` for routing.
+routing guidance.
 
 ## To upgrade
 

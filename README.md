@@ -48,7 +48,7 @@ prints a human view. `--file <path>` is for onboarding only, before the first me
 `source=unmerged`. The kit's `.xezar/docs/account-limits.md` table records each runner/login budget as
 `ok`, `unknown`, or `out` with its reset time; the leader reads it under `.xezar/docs/routing.md` § 3,
 and it will feed xezar's agent-quota status when that status ships. Earlier kit versions used prose
-`model-routing.md` for routing.
+routing guidance.
 
 xezar 0.19.0 is the minimum engine for xezar-skills 3.0.0; projects that must stay on 0.18 stay on xezar-skills 2.1.1.
 
