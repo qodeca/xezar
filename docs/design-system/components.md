@@ -362,6 +362,16 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Accessibility**: a real `<a href>`, so the keyboard, the modifier-click and the context menu all behave; the `title` names the project and the address.
 - **Where used**: 2 files (the shell container passes the band; the command palette reuses `otherProjectRow`).
 
+### AgentQuotaChip
+
+- **Purpose**: the plan-limits chip (#867, `designs/agent-quota/` § 5.5): how many Claude Code and Codex logins can work now, per agent, on every page. It only shows facts; it never starts a check.
+- **Source**: `packages/web/src/components/agent-quota-chip.tsx`. Exports `AgentQuotaChip`, prop `variant` `band | phone`. Reads `useAgentQuota()` (a pure cache read) and `useHealth()` (which agents are installed); the words come from `lib/agent-quota.ts`.
+- **Look**: `chipClass` from PickerPill grown to wrap (`h-auto flex-wrap gap-x-row gap-y-1 py-1 text-[11.5px] text-foreground`). Desktop (`band`): a `pb-row` row inside `sidebar-footer`, above its one-row controls, the chip full width, one segment per agent — `StatusDot` + product name + `canWork/total` in `font-mono tabular-nums`, segments separated by a `text-soft-foreground` `·`. Phone (`phone`): in the top bar's `mobile-status` slot, one combined count with the worst tone, `2/5 can work`. `stale` in `text-muted-foreground` when every reading is over 15 minutes old.
+- **Expanded**: a `Popover` (`w-80 p-list gap-stack`, `side="right"` from the band, `bottom` on a phone) titled "Logins that can work now": each agent's summary line, the logins that are out (with the reset) or unknown under it, the age range of the readings with "xezar shows these limits and never acts on them.", the hosted sentence in hosted mode, and an `outline` "Open agent accounts" link to `/settings/global/accounts#limits`.
+- **States**: ABSENT (renders no element) while the answer or health is unknown, after a failed load, and when no agent applies — installed, and at least one login that reported a window, credits, a plan or a definite `out` (#867 D38). One dot per agent on a desktop (OD-2): success when every login can work, pending when some cannot, danger when none can and one is out, neutral when nothing is known.
+- **Accessibility**: a real button (`PopoverTrigger`) with a full-sentence name — "Logins that can work now: Claude Code 1 of 3, Codex 1 of 2. Show details" ("Hide details" while open; the stale clause when stale); Escape closes the Popover and returns focus to the chip. The dots are `aria-hidden`; the counts carry the meaning.
+- **Where used**: 1 file (`app-shell-container.tsx` passes both forms into AppShell's `agentQuota` and `agentQuotaCompact` slots).
+
 ### NavItems
 
 - **Purpose**: the nav model shared by the sidebar and the command palette.
@@ -455,6 +465,15 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **States**: `Loading diff…`; a load error as `role="alert"` in `text-danger`, never as empty; the server's own sentence (`(no worktree — …)`, `(diff failed …)`) or `(no changes)` in mono; "The server cut this diff short — the counts cover only the part shown." above the engine when the whole-diff cap was hit; then every `Diff` state.
 - **Rules**: keep the `runId`-only API; a new diff surface uses `Diff` directly. Never parse hunks or render lines here – `design-debt-b6.test.tsx` fails on a highlighter, parser or clamp in this file.
 - **Where used**: 2 files.
+
+### UsageBar
+
+- **Purpose**: a usage bar beside a percentage (#867 plan limits, `designs/agent-quota/` OD-4). Decorative: the number it draws is always printed next to it.
+- **Source**: `packages/web/src/components/usage-bar.tsx`. Exports `UsageBar`, props `usedPercent` (0–100, clamped for the fill only) and `className`.
+- **Look**: the step rail's track grown to 6 px — `relative block h-1.5 overflow-hidden rounded-full bg-muted` — with a `rounded-full` fill whose width is the percentage: `bg-muted-foreground` below 80 %, `bg-pending` from 80 %, `bg-danger` at 100 % (`data-tone` `neutral | pending | danger`).
+- **Rules**: DO print the number beside it; the bar never stands alone (writing.md rule: words carry the meaning). `pending` and `danger` appear only as fills, never as text (G-23).
+- **Accessibility**: `aria-hidden="true"`.
+- **Where used**: 1 file (`routes/settings/account-limits.tsx`).
 
 ### RouteErrorBoundary
 

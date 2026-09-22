@@ -191,6 +191,7 @@ Form dialogs use a plain phrase, no question mark: "Commit changes", "Add agent 
   above; nothing when not measured. CPU: `42%`.
 - Missing values print `—`. Diff counts use the minus sign U+2212: `+128 −14`.
 - Dates go through `Intl` with the reader's locale (`{ month: 'short', day: 'numeric' }` plus time).
+- Plan-limit times (#867 D32) always name the zone and its offset: `17:10 CEST (+02:00)` today, `Sep 28, 19:00 CEST (+02:00)` on another day, 24-hour clock (`formatQuotaTime`, `lib/agent-quota.ts`). Percentages print as the answer sends them, `92% used`, never rounded or recomputed.
 - Durations in the composer read `m:ss`.
 
 ## 13. Toasts and notifications

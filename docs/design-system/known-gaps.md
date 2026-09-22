@@ -37,9 +37,9 @@ small fix, and **G-14**'s `useIsDesktop()` query is the one item with a real use
 
 Ids are never reused: a deleted entry retires its number, so a new entry takes the next number after
 the highest ever used. **G-06, G-14, G-15, G-16, G-20, G-23, G-26, G-27, G-28, G-30, G-31, G-32, G-33,
-G-35, G-36, G-37, G-38, G-39, G-41, G-42, G-45, G-46 and G-47 are live** (23 rows); **G-01 to G-05, G-07 to
+G-35, G-36, G-37, G-38, G-39, G-41, G-42, G-45, G-46, G-47 and G-49 are live** (24 rows); **G-01 to G-05, G-07 to
 G-13, G-17 to G-19, G-21, G-22, G-24, G-25, G-29, G-34, G-40, G-43, G-44 and G-48 are retired** (25
-numbers); and **the next free id is G-49**. G-43 was retired by decision
+numbers); and **the next free id is G-50**. G-43 was retired by decision
 [D-09](decisions.md#d-09-compares-pick-confirm-keeps-the-ordinary-contrast-action) (the B7 design
 review) rather than by a fix: the pick confirm keeps its ordinary `contrast` action on purpose.
 **G-48** (the Tasks desktop header did not fit below about 896 px at comfortable density – density-
@@ -261,6 +261,19 @@ is gone says so and keeps its line so the history reads.
 - **Rule**: the shipped behaviour above; a change to any of the five updates this row or the mockup.
 - **Fix**: none planned — these are deliberate. Bring the mockup's README into line when the design is next revised.
 - **Final disposition (#611, 2026-09-18)**: kept, with a reason — each deviation is accepted on #611's `## Design review`; the fifth on #612's `## Design review (scoped, PR5 copy items)`.
+
+### G-49 The plan-limits cockpit differs from its mockup where the merged contract is slimmer
+
+- **Differs**: `designs/agent-quota/` was drawn against #867's first-draft answer; the merged contract (`packages/contract/src/agent-quota.ts`, frozen fixture approved under D33) carries `status` `ok | out | unknown`, three window slots, Codex's `credits`, `planType`, `source` `check | live | failedRun`, `checkedAt`/`ageSeconds` and `notReported` — and none of `summaries[]`, `warning`/`statusReason`, `stale`, `refreshing`, `nextCheckAt`, `warnings[]`, `serverTimeZone`, `loginKind`, Claude's extra-credit detail, spend or member limits, limit-reset credits or Codex token totals. The cockpit (#867 S5) therefore:
+  - derives the per-agent summary line from the rows' `status`, and "Stale" from the age past 15 minutes, and the refresh gap from `checkedAt` + 5 minutes for a reading that came from a check (`lib/agent-quota.ts`, one named helper each);
+  - shows no "Can work — near a limit" / "using extra credits" sentence and no pending status dot: the bar alone turns amber from 80 %, beside its number;
+  - shows no warnings, no "Checking…" row state (only its own "Refreshing…"), and none of the credit, spend, member, reset-credit or token lines the answer does not carry;
+  - prints times in the READER's zone with its name and offset (the contract's times are UTC and it names no server zone), and the fine print says "Times are in this browser's zone";
+  - names a login in the chip's Popover by the pane's own account name when the account listing is available (read only while the Popover is open), and in hosted mode — which has no listing — by the answer's id (`Built-in login` for `default`, "Name hidden" for an identity-shaped id);
+  - places the desktop band INSIDE `sidebar-footer`, above its controls, rather than as a sibling band above it: the same look (one hairline above the band, none between), and a cockpit with no chip keeps the footer byte-for-byte.
+- **Rule**: the shipped behaviour above; each item returns to the mockup's form when the contract grows the field it needs.
+- **Fix**: a contract revision (a new `schemaVersion`) that adds the missing facts, then the matching mockup behaviour; or revise the mockup to the slimmer answer.
+- **Final disposition (#867 S5, 2026-09-23)**: kept, with a reason — the merged contract wins over the spec and the mockup (the leader's brief for S5); every difference is listed in the S5 pull request.
 
 ## Comment vs code
 

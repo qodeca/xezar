@@ -170,6 +170,7 @@ Each entry maps a utility name to a theme token. Listed in foundations.md §1.7;
 | Source | Export(s) | Documented in | Status |
 | --- | --- | --- | --- |
 | `packages/web/src/components/add-project-dialog.tsx` | AddProjectDialog | components.md §2 AddProjectDialog and CloneProjectDialog | Documented |
+| `packages/web/src/components/agent-quota-chip.tsx` | AgentQuotaChip | components.md §2 AgentQuotaChip; patterns.md §2, §9 | Documented (G-49: mockup departures from the slimmer contract) |
 | `packages/web/src/components/app-shell-container.tsx` | AppShellContainer | components.md §2 AppShellContainer | Documented |
 | `packages/web/src/components/app-shell.tsx` | AppShell | components.md §2 AppShell | Documented with known gap (G-14) |
 | `packages/web/src/components/app-shell.tsx` | BrandTile development-build badge (private, #442) | components.md §2 AppShell, Brand tile and development-build badge; decisions.md D-08 | Documented |
@@ -217,6 +218,7 @@ Each entry maps a utility name to a theme token. Listed in foundations.md §1.7;
 | `packages/web/src/components/theme-provider.tsx` | ThemeProvider | components.md §2 ThemeProvider and ThemeToggle | Not applicable – context only, no markup (components.md §2 ThemeProvider and ThemeToggle). |
 | `packages/web/src/components/theme-toggle.tsx` | ThemeToggle | components.md §2 ThemeProvider and ThemeToggle | Documented |
 | `packages/web/src/components/tools-menu.tsx` | ToolsMenu | components.md §2 ToolsMenu | Documented |
+| `packages/web/src/components/usage-bar.tsx` | UsageBar | components.md §2 UsageBar | Documented |
 | `packages/web/src/components/zoomable-image.tsx` | ZoomableImage | components.md §2 ZoomableImage | Documented |
 | `packages/web/src/components/composer/composer.tsx` | Composer | components.md §2 Composer | Documented (G-21 retired) |
 | `packages/web/src/components/composer/composer-attachments.ts` | Composer attachments helpers | components.md §2 Composer | Not applicable – pure helpers for the Composer (components.md §2 Composer). |
