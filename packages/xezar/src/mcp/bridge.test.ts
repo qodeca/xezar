@@ -208,6 +208,28 @@ describe('bridge → service over the project socket', () => {
     }
   });
 
+  // #838 F. Break: `health` reading the recorded address without the hosted re-check the other
+  // three readers apply, so a process that turned hosted after its listen still hands it out.
+  it('omits the cockpit address once this process runs hosted, even with one recorded', async () => {
+    const listener = createServer();
+    await new Promise<void>((resolve) => listener.listen(0, '127.0.0.1', resolve));
+    const savedRemote = process.env.XEZ_REMOTE;
+    try {
+      recordOwnListen(listener, true);
+      process.env.XEZ_REMOTE = '1';
+      const svc = await service();
+      const res = await bridge({ target: socketTarget(svc.path) }).request('tools/call', { name: 'health' });
+      expect(res.result).toMatchObject({ structuredContent: { status: 'running' } });
+      expect((res.result as { structuredContent: Record<string, unknown> }).structuredContent).not.toHaveProperty('cockpitUrl');
+      expect(text(res)).toBe('xezar 1.2.3 is running for project Alpha (alpha).');
+    } finally {
+      if (savedRemote === undefined) delete process.env.XEZ_REMOTE;
+      else process.env.XEZ_REMOTE = savedRemote;
+      recordOwnListen(null, true);
+      await new Promise<void>((resolve) => listener.close(() => resolve()));
+    }
+  });
+
   it('runs registry tools in the service with the bound project, validating arguments first', async () => {
     const svc = await service([echoProject, boom]);
     const b = bridge({ tools: [echoProject, boom], target: socketTarget(svc.path) });

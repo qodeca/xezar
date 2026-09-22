@@ -15,7 +15,10 @@ import { projectStateLayout, setActiveStateLayout } from '../../state-layout.ts'
 import { recordOwnListen } from '../../server/instance-liveness.ts';
 import { createServer as createHttpServer, type Server as HttpServer } from 'node:http';
 import { toolListing } from '../tool.ts';
-import { bindHostFromArgv, buildDiscovery, discoverProjectTool, discoveryText, type DiscoveryFacts } from './discovery.ts';
+import { detectEnvironment } from '../../core/backend-detect.ts';
+import { providerInstallHint } from '../../core/provider-auth.ts';
+import { PROVIDER_INSTALL } from '../../core/provider-install.ts';
+import { bindHostFromArgv, buildDiscovery, cockpitLinks, discoverProjectTool, discoveryText, type DiscoveryFacts } from './discovery.ts';
 
 // The bound project and one OTHER registered project whose name and id must never surface (N-01).
 const BOUND = { id: 'alpha-app', name: 'alpha-app', root: '/work/alpha-app' };
@@ -330,7 +333,7 @@ describe('discover_project — unavailable actions carry a reason', () => {
     expect(reason).toMatch(/Codex is disabled/);
     expect(reason).toMatch(/OpenCode is not installed/);
     // Review round 1 (F3). Break: a not-installed reason that names no way to install the agent.
-    expect(reason).toContain('OpenCode is not installed on this machine. Install OpenCode, then run `opencode auth login`.');
+    expect(reason).toContain('OpenCode is not installed on this machine. Install OpenCode (from https://opencode.ai), then run `opencode auth login`.');
     // Review round 1 (F4). Break: with no address, telling the person to start a cockpit — this
     // fallback is reached only in hosted mode, where one is already running.
     expect(reason).toContain('Settings → Agents → Providers in the running cockpit (no address is recorded here)');
@@ -618,7 +621,7 @@ describe('discover_project — the cockpit address (#819 item 8)', () => {
     expect(discovery.cockpit).toEqual({
       url: `${origin}/p/proj%20a/`,
       pages: {
-        providers: `${origin}/p/proj%20a/settings/agents`,
+        providers: `${origin}/p/proj%20a/settings/agents#providers`,
         accounts: `${origin}/settings/global/accounts`,
         mcpConnection: `${origin}/p/proj%20a/settings/mcp-connection`,
       },
@@ -647,5 +650,80 @@ describe('discover_project — the cockpit address (#819 item 8)', () => {
     const { server } = await listening();
     expect(recordOwnListen(server, false)).toBeNull();
     expect((await discover()).discovery).not.toHaveProperty('cockpit');
+  });
+});
+
+/**
+ * #838 E1, E2 and E5 — what `discover_project` tells a leader about reaching the person's cockpit
+ * and about installing an agent. Each case names the break it fails against.
+ */
+const RUNNERS_ALL = ['claude', 'codex', 'opencode', 'pi'] as const;
+const BIN_VARS = ['XEZ_CLAUDE_BIN', 'XEZ_CODEX_BIN', 'XEZ_OPENCODE_BIN', 'XEZ_PI_BIN'] as const;
+const PROBE_VARS = [...BIN_VARS, 'XEZ_DRY_RUN'] as const;
+
+describe('discover_project — links, description and install text (#838)', () => {
+  // E1. Break: the Providers link without the card's anchor, landing the person at the top of the
+  // Agents page instead of on the Providers card every cockpit link already points at.
+  it('links the Providers page to the Providers card itself', () => {
+    const links = cockpitLinks('p', 'http://127.0.0.1:4321');
+    expect(links?.pages.providers).toBe('http://127.0.0.1:4321/p/p/settings/agents#providers');
+    expect(links?.pages.providers.endsWith('/settings/agents#providers')).toBe(true);
+  });
+
+  // E2. Break: a description that never names the field, so a leader learning the tools from their
+  // descriptions does not know the address is there, or expects it in hosted mode.
+  it('names the cockpit field in its description, and says it is absent in hosted mode', () => {
+    expect(discoverProjectTool.description).toMatch(/\bcockpit\b: the address of this cockpit/);
+    expect(discoverProjectTool.description).toContain('absent in hosted mode');
+  });
+
+  // E5. Break: a not-installed reason naming a login but no way to install, or a second copy of
+  // the install text that has drifted from the health checks' copy.
+  it.each([
+    ['claude', 'Claude Code', '`npm i -g @anthropic-ai/claude-code`'],
+    ['codex', 'Codex', '`npm i -g @openai/codex`'],
+    ['opencode', 'OpenCode', 'from https://opencode.ai'],
+  ] as const)('names the install command or page for %s when it is not installed', (runner, label, how) => {
+    const discovery = buildDiscovery(facts({
+      providers: { providers: RUNNERS_ALL.map((provider) => ({ provider, status: provider === runner ? 'not-installed' : 'connected', enabled: true })) },
+    }));
+    const agent = discovery.agents.find((a) => a.runner === runner)!;
+    expect(agent.reason).toContain(`${label} is not installed on this machine.`);
+    expect(agent.reason).toContain(how);
+    const install = PROVIDER_INSTALL[runner]!;
+    expect(agent.reason).toContain(install.value);
+  });
+
+  it('says plainly that no install command is known for pi, rather than leaving it blank or inventing one', () => {
+    expect(PROVIDER_INSTALL.pi).toBeNull();
+    const discovery = buildDiscovery(facts());
+    const reason = discovery.agents.find((a) => a.runner === 'pi')!.reason!;
+    expect(reason).toContain('pi is not installed on this machine.');
+    expect(reason).toContain('xezar knows no install command for it');
+    expect(reason).not.toMatch(/npm i|https?:\/\//);
+  });
+
+  // E5. Break: two sources of install text. The health checks' hints must carry exactly the
+  // command or page the sign-in rows carry, both read from the one table.
+  it('gives the health checks the same install text the sign-in rows use', async () => {
+    const saved = Object.fromEntries(PROBE_VARS.map((key) => [key, process.env[key]]));
+    // Every CLI missing, so every health check takes its not-installed branch.
+    delete process.env.XEZ_DRY_RUN;
+    for (const key of BIN_VARS) process.env[key] = '/nonexistent/xez-838-no-such-cli';
+    try {
+      const checks = await detectEnvironment();
+      for (const runner of RUNNERS_ALL) {
+        const hint = checks.find((c) => c.name === runner)?.hint ?? '';
+        const install = PROVIDER_INSTALL[runner];
+        if (install) expect(hint, runner).toContain(`(${install.value})`);
+        else expect(hint, runner).not.toContain('(');
+        expect(providerInstallHint(runner), runner).toContain(install ? install.value : 'xezar knows no install command');
+      }
+    } finally {
+      for (const [key, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
   });
 });

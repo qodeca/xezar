@@ -76,7 +76,7 @@ import type { AppType } from '../../server/app-type.ts';
 import { MCP_ORIGIN, type ServiceDispatch } from '../service-adapter.ts';
 import { staleRejectionIn } from '../stale-write.ts';
 import { defineTool, errorResult, textResult, type McpToolContext, type McpToolResult } from '../tool.ts';
-import { cockpitLinks } from './discovery.ts';
+import { cockpitLinks, localHandoffNow } from '../cockpit-address.ts';
 
 /**
  * Project configuration for the bound project (#97, F-05, F-12, F-16; D-03 in
@@ -261,6 +261,20 @@ export interface RefusalNextStepContext {
   readonly cockpit?: McpDiscoveryCockpit | undefined;
   /** The registry holds this project alone (single-project mode or `XEZ_SINGLE_PROJECT`). */
   readonly narrowed: boolean;
+  /** This xezar can open applications on the host (`capabilities.localHandoff`); false when hosted. */
+  readonly localHandoff: boolean;
+}
+
+/**
+ * A fresh-key placeholder for a copy-ready call (#838 E3). Deliberately NOT a valid operation key
+ * (`<`, `>` and spaces are refused), so a leader that pastes it unchanged is told to supply one
+ * instead of silently replaying some earlier operation that reused the same example key.
+ */
+export const NEW_OPERATION_ID = '<new operation id, 8-128 characters>';
+
+/** One copy-ready tool call, in the shape a next step names it: the tool, then its exact arguments. */
+function callShape(tool: string, args: Record<string, unknown>): string {
+  return `${tool} with \`${JSON.stringify(args)}\``;
 }
 
 /** How the PERSON reaches one cockpit page: its address when known. The address is unknown only in
@@ -334,7 +348,7 @@ export const REFUSED_ACTIONS = {
     reason:
       'applying skill updates rewrites globally installed skills every project reads.',
     next: () =>
-      'check_skill_updates reports what is available. Updates apply by themselves while skills auto-update is on: turn it on with set_workspace_config and skillsAutoUpdate true.',
+      `check_skill_updates reports what is available. Updates apply by themselves while skills auto-update is on: turn it on by calling ${callShape('project_config', { action: 'set_workspace_config', workspaceConfig: { skillsAutoUpdate: true }, operationId: NEW_OPERATION_ID })}.`,
   },
   get_launch_key: {
     boundary: 'secret',
@@ -344,7 +358,12 @@ export const REFUSED_ACTIONS = {
   open_in_app: {
     boundary: 'host-process',
     reason: 'opening the project launches a desktop application on the host machine.',
-    next: () => 'Call local_handoff with action open_project_in_app; its action list_apps names the applications it can open.',
+    // #838 E4: only offered where it can work. In hosted mode `local_handoff` answers every action
+    // `unavailable`, so pointing at it would cost the leader a call that cannot succeed.
+    next: (ctx: RefusalNextStepContext) =>
+      ctx.localHandoff
+        ? `Call ${callShape('local_handoff', { action: 'list_apps' })} for the app ids, then ${callShape('local_handoff', { action: 'open_project_in_app', target: '<app id from list_apps>', operationId: NEW_OPERATION_ID })}.`
+        : 'This xezar runs in hosted mode, so no tool opens an application on the host machine. Ask the person to open the project folder themselves on a machine that has the checkout.',
   },
 } as const satisfies Record<
   string,
@@ -885,7 +904,7 @@ function refused(action: string, boundary: ConfigBoundary, reason: string, next:
 
 /** What the next steps of THIS call may use: the cockpit's address when known, and the narrowing. */
 function refusalContext(projectId: string): RefusalNextStepContext {
-  return { cockpit: cockpitLinks(projectId), narrowed: singleProjectNarrowing() !== null };
+  return { cockpit: cockpitLinks(projectId), narrowed: singleProjectNarrowing() !== null, localHandoff: localHandoffNow() };
 }
 
 /** The next legitimate action after a quality-gate refusal. It offers no waiver, to anyone (A-22). */
