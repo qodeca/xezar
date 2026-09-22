@@ -51,8 +51,10 @@ hand, and a role added to the list alone type-checked and was then refused at in
 **A packet is recorded only as the role its step declares (#851).** Any agent step of any task receives
 `XEZ_HANDOFF_FILE` and `XEZ_STEP_ID`, so any step can write a packet. The engine therefore takes the role
 from the WORKFLOW, never from the packet: an agent step declares `verdictRole: <role>` in its definition,
-and at settlement the engine reads it from the definition the run persisted (`workflowDef`) — the same
-record every settlement path (a first run, a Continue, a gate-return re-entry) resolves its steps from. A
+and at settlement the engine reads it from the definition the run persisted (`workflowDef`). A first run
+and a gate-return re-entry settle under the definition step's own id; a Continue settles under a synthetic
+`continue-N` step, so its role is the OWNING step's — the definition step whose record step holds the same
+session — or, for a continuation no definition step owns, the definition's last agent step. A
 packet whose `role` differs, and every packet from a step that declares none, is refused. Without this an
 unrelated `quick-task` could write a `code-review` packet and have it recorded over the real reviewer's — a
 verdict on the record that no reviewer made. The key was chosen over inferring the role from the step's

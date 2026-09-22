@@ -157,6 +157,31 @@ describe('a reviewer packet is collected at its own step (#460)', () => {
     expect(store.getRun(id)?.verdictIssues).toBeUndefined();
   }, 45_000);
 
+  it('records the packet a Continue of the reviewing step wrote, under the owning step’s role (#851)', async () => {
+    // A Continue ("Send back", the usage-limit auto-resume, restart recovery) settles under a
+    // synthetic `continue-N` step that no workflow step is called. The role it reports as is the
+    // OWNING step's declaration; resolving it by the synthetic id refused and consumed the packet.
+    const id = await runToEnd('no completion marker on the first turn');
+    expect(store.getRun(id)?.status).toBe('failed');
+
+    expect(manager.continueRun(id, { text: 'mock:done mock:verdict:code-review:APPROVE' })).toEqual({ ok: true });
+    // The continued run is still `failed` until the continuation starts, so settling waits on
+    // the continuation's own step reaching a terminal status first — no fixed delay.
+    const deadline = Date.now() + 30_000;
+    while (!['done', 'failed'].includes(store.getRun(id)?.steps.find((s) => s.id === 'continue-1')?.status ?? '')) {
+      if (Date.now() > deadline) throw new Error('the continuation did not settle in time');
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    await settle(id);
+
+    expect(store.getRun(id)?.status).toBe('done');
+    const verdicts = store.getRun(id)?.verdicts ?? [];
+    expect(verdicts.map((verdict) => [verdict.role, verdict.verdict, verdict.stepId])).toEqual([
+      ['code-review', 'APPROVE', 'continue-1'],
+    ]);
+    expect(store.getRun(id)?.verdictIssues ?? []).toEqual([]);
+  }, 60_000);
+
   it('leaves a task that reported nothing without a verdict, however it finished', async () => {
     const id = await runToEnd('mock:done');
 

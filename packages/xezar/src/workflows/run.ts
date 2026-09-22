@@ -5062,13 +5062,25 @@ export class RunManager {
     const step = run?.steps.find((candidate) => candidate.id === stepId);
     if (step?.kind !== 'agent') return;
     // The role this step reports AS (#851) is the workflow's declaration, read from the definition
-    // the run persisted at creation (`workflowDef`, #367) — the same record every settlement path
-    // (a first run, a Continue, a gate-return re-entry) resolves its steps from, so all three
-    // collection sites above get one answer through this one helper. Record steps share ids with
-    // `workflowDef.steps`. A definition that is missing (a legacy record) or a step that declares
-    // nothing yields `undefined`, and ingestion refuses its packet: failing closed is the point.
-    const declaredRole = run?.workflowDef?.steps.find((candidate) => candidate.id === stepId)?.verdictRole;
-    ingestTaskVerdict(this.store, this.dataDir, runId, stepId, declaredRole);
+    // the run persisted at creation (`workflowDef`, #367), never from the packet. A first run and
+    // a gate-return re-entry settle under a record step that shares its id with
+    // `workflowDef.steps`. A Continue does NOT: it settles under a synthetic `continue-N` step no
+    // definition names, so its role is the OWNING step's — the definition step whose record step
+    // carries the same session id, exactly as the Continue's tools and account resolve
+    // (`runContinuation`). A continuation no definition step owns (a fresh session after a
+    // backend switch) extends the run's tail, so it answers with the definition's last agent
+    // step. A missing definition (a legacy record) or a step that declares nothing yields
+    // `undefined`, and ingestion refuses its packet: failing closed is the point.
+    const defSteps = run?.workflowDef?.steps;
+    let declaringStep = defSteps?.find((candidate) => candidate.id === stepId);
+    if (defSteps !== undefined && declaringStep === undefined) {
+      const owner = step.sessionId === undefined
+        ? undefined
+        : run?.steps.find((candidate) => candidate.sessionId === step.sessionId);
+      declaringStep = defSteps.find((candidate) => candidate.id === owner?.id)
+        ?? [...defSteps].reverse().find((candidate) => stepKind(candidate) === 'agent');
+    }
+    ingestTaskVerdict(this.store, this.dataDir, runId, stepId, declaringStep?.verdictRole);
   }
 }
 
