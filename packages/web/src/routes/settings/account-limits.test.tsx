@@ -51,11 +51,12 @@ const RAW = fixtureJson as unknown as {
 const NOW = Date.parse(FIXTURE.generatedAt)
 const AGENT = { claude: 'Claude Code', codex: 'Codex' } as const
 const nameOf: QuotaNameOf = (_runner, accountId) => (accountId === 'default' ? 'Built-in login' : accountId)
-const LOGIN_KIND: Record<string, string> = {
-  subscription: 'Subscription',
-  'api-key': 'API key — plan limits do not apply',
-  unknown: 'Unknown — the agent did not say',
-}
+const LOGIN_KIND = (kind: string, runner: 'claude' | 'codex'): string =>
+  ({
+    subscription: 'Subscription',
+    'api-key': 'API key — plan limits do not apply',
+    unknown: `Unknown — ${AGENT[runner]} did not say`,
+  })[kind] ?? ''
 const NOT_REPORTED: Record<string, string> = {
   shortWindow: 'short window',
   weeklyWindow: 'weekly window',
@@ -263,7 +264,7 @@ describe('AC-37: for one answer, the cockpit renders exactly its fields and valu
 
       // loginKind — the details panel names it; `unknown` is never worded as a subscription.
       const kind = within(el.querySelector('[data-slot="account-limits-details"]') as HTMLElement).getByText('Login kind')
-      expect(kind.nextElementSibling?.textContent).toBe(LOGIN_KIND[raw.loginKind])
+      expect(kind.nextElementSibling?.textContent).toBe(LOGIN_KIND(raw.loginKind, raw.runner))
 
       // every notReported field, in words, under "Not reported by <agent>".
       const details = within(el.querySelector('[data-slot="account-limits-details"]') as HTMLElement)

@@ -161,9 +161,20 @@ export function nextCheckAllowedAt(account: AgentQuotaAccount): number | null {
  *  or the login is an API key. Refresh is not offered for them (the mockup's AQ-4). */
 const UNCHECKABLE_REASONS = new Set(['version-too-old', 'not-installed', 'api-key'])
 
+/** An `api-key` reason means the tool reported no plan limits. Only a login whose own `loginKind`
+ *  is `api-key` is an API key; any other kind keeps its own words and Refresh (#908 B-1). */
+function apiKeyReasonFromApiKeyLogin(account: AgentQuotaAccount): boolean {
+  return account.statusReason !== 'api-key' || account.loginKind === 'api-key'
+}
+
 /** Can a check of this login tell anything new? Only an `unknown` row carries a reason. */
 export function quotaCanRefresh(account: AgentQuotaAccount): boolean {
-  return !(account.status === 'unknown' && account.statusReason && UNCHECKABLE_REASONS.has(account.statusReason))
+  return !(
+    account.status === 'unknown' &&
+    account.statusReason &&
+    UNCHECKABLE_REASONS.has(account.statusReason) &&
+    apiKeyReasonFromApiKeyLogin(account)
+  )
 }
 
 /** The server's warnings, minus one that only repeats the row's `unavailableReason` (which the
@@ -251,7 +262,14 @@ export function quotaStatusSentence(account: AgentQuotaAccount, ageSeconds: numb
   const version = account.toolVersion ? ` ${account.toolVersion}` : ''
   switch (account.statusReason) {
     case 'api-key':
-      return { tone: 'neutral', word: 'Limits not reported', reason: '— API-key logins do not report plan limits.', note: null }
+      return {
+        tone: 'neutral',
+        word: 'Limits not reported',
+        reason: apiKeyReasonFromApiKeyLogin(account)
+          ? '— API-key logins do not report plan limits.'
+          : `— ${agent} reported no plan limits for this login.`,
+        note: null,
+      }
     case 'version-too-old':
       return unknown(
         `update ${agent} to at least ${account.minimumVersion ?? 'a newer version'} to report limits.`,
@@ -413,7 +431,7 @@ export function loginKindText(account: AgentQuotaAccount): string {
     case 'api-key':
       return 'API key — plan limits do not apply'
     case 'unknown':
-      return 'Unknown — the agent did not say'
+      return `Unknown — ${RUNNER_LABEL[account.runner]} did not say`
     default:
       return `“${account.loginKind}”, a kind this version of the cockpit does not know`
   }

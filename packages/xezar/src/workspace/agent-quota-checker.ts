@@ -356,10 +356,26 @@ function usageObject(value: unknown): unknown | undefined {
   return undefined;
 }
 
-function normalizeClaudeControl(raw: unknown, profile: QuotaProfile, checkedAt: Date): AgentQuotaProducerAccount {
+/**
+ * The words for a login whose tool reported no plan limits. `get_usage` and `auth status` are two
+ * processes that can disagree, so the API-key sentence is used only when the login kind itself is
+ * `api-key`; any other kind gets a sentence that claims nothing about the credentials (#908 B-1).
+ */
+function noPlanLimitsWarning(provider: AgentQuotaRunner, loginKind: AgentQuotaLoginKind): string {
+  return loginKind === 'api-key'
+    ? 'API-key logins do not report plan limits.'
+    : `${provider === 'claude' ? 'Claude Code' : 'Codex'} reported no plan limits for this login.`;
+}
+
+function normalizeClaudeControl(
+  raw: unknown,
+  profile: QuotaProfile,
+  checkedAt: Date,
+  loginKind: AgentQuotaLoginKind,
+): AgentQuotaProducerAccount {
   const usage = claudeUsageSchema.parse(usageObject(raw));
   if (usage.rate_limits_available === false) {
-    return unknownRecord(profile, checkedAt, 'api-key', null, 'API-key logins do not report plan limits.');
+    return unknownRecord(profile, checkedAt, 'api-key', null, noPlanLimitsWarning('claude', loginKind), loginKind);
   }
   const lines: string[] = [];
   const add = (label: string, percent: number, reset: string) => {
@@ -421,6 +437,7 @@ async function runClaudeCheck(
   checkedAt: Date,
   deadline: number,
   run: RunQuotaProcess,
+  loginKind: AgentQuotaLoginKind,
 ): Promise<AgentQuotaProducerAccount> {
   const cwd = await mkdtemp(join(tmpdir(), 'xez-agent-quota-'));
   const env = profileProcessEnv(profile);
@@ -442,7 +459,7 @@ async function runClaudeCheck(
         },
         deadline: Math.min(deadline, Date.now() + 8_000),
       });
-      return normalizeClaudeControl(raw, profile, checkedAt);
+      return normalizeClaudeControl(raw, profile, checkedAt, loginKind);
     } catch {
       const rawText = await run({
         executable,
@@ -524,13 +541,16 @@ async function runCodexCheck(
   checkedAt: Date,
   deadline: number,
   run: RunQuotaProcess,
+  onLoginKind: (kind: AgentQuotaLoginKind) => void,
 ): Promise<AgentQuotaProducerAccount> {
   const raw = await runCodexRpc(profile, deadline, run);
   codexInitializeSchema.parse(raw.initialize);
   const account = codexAccountSchema.parse(raw.account);
   const loginKind = codexLoginKind(account);
+  // Reported before the rate-limit steps, so a kind already read survives their failure.
+  onLoginKind(loginKind);
   if (account.account?.type === 'apiKey') {
-    return unknownRecord(profile, checkedAt, 'api-key', null, 'API-key logins do not report plan limits.', loginKind);
+    return unknownRecord(profile, checkedAt, 'api-key', null, noPlanLimitsWarning('codex', loginKind), loginKind);
   }
   const limits = codexRateLimitsSchema.parse(raw.limits);
   codexUsageSchema.parse(raw.usage);
@@ -780,9 +800,9 @@ export class AgentQuotaChecker {
         }
         if (profile.provider === 'claude') {
           loginKind = await readClaudeLoginKind(profile, deadline, this.runProcess);
-          record = { ...await runClaudeCheck(profile, checkedAt, deadline, this.runProcess), loginKind };
+          record = { ...await runClaudeCheck(profile, checkedAt, deadline, this.runProcess, loginKind), loginKind };
         } else {
-          record = await runCodexCheck(profile, checkedAt, deadline, this.runProcess);
+          record = await runCodexCheck(profile, checkedAt, deadline, this.runProcess, (kind) => { loginKind = kind; });
         }
       }
       this.versions.set(this.key(profile), toolVersion);

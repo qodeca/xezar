@@ -24,6 +24,11 @@ export type AgentQuotaStatus = z.infer<typeof agentQuotaStatusSchema>;
 export const agentQuotaSourceSchema = z.enum(['live', 'failedRun', 'check', 'check-text', 'none']);
 export type AgentQuotaSource = z.infer<typeof agentQuotaSourceSchema>;
 
+/**
+ * Why a check left a row `unknown`. `api-key` means the tool reported that this login has no plan
+ * limits; it names an API-key login only together with `loginKind: "api-key"` — Claude Code's usage
+ * and login-kind answers come from two processes and can disagree (#908 B-1).
+ */
 export const agentQuotaCheckReasonSchema = z.enum([
   'check-failed',
   'format-changed',

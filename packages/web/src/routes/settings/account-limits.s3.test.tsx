@@ -399,6 +399,60 @@ describe('S3 answer (#888): the cockpit reads what the server sends', () => {
   })
 })
 
+/**
+ * #908 B-1: `get_usage` (no plan limits) and `auth status` (the login kind) are two processes that
+ * can disagree. The row is worded from the login kind, so a subscription or unknown login never
+ * calls itself an API key and keeps its Refresh. The rows are what the checker sends for that pair.
+ */
+const NO_LIMITS = (accountId: string, loginKind: 'subscription' | 'unknown') => ({
+  runner: 'claude' as const,
+  accountId,
+  status: 'unknown' as const,
+  loginKind,
+  observedAt: '2026-09-22T14:17:00Z',
+  ageSeconds: 420,
+  source: 'check' as const,
+  ...empty,
+  ...s3,
+  nextCheckAt: '2026-09-22T14:22:00Z',
+  statusReason: 'api-key' as const,
+  warnings: ['Claude Code reported no plan limits for this login.'],
+  unavailableReason: 'Claude Code reported no plan limits for this login.',
+})
+const MISMATCHED: AgentQuotaResponse = agentQuotaResponseSchema.parse(
+  agentQuotaProducerResponseSchema.parse({
+    schemaVersion: 1,
+    scope: 'agent-quota',
+    generatedAt: GENERATED,
+    accounts: [NO_LIMITS('sub-no-limits', 'subscription'), NO_LIMITS('unknown-no-limits', 'unknown')],
+  }),
+)
+
+describe('a login that reported no plan limits is worded from its login kind (#908 B-1)', () => {
+  it('never calls a subscription or unknown login an API key, and keeps its Refresh', () => {
+    renderRows(MISMATCHED)
+    for (const [accountId, kind] of [
+      ['sub-no-limits', 'Subscription'],
+      ['unknown-no-limits', 'Unknown — Claude Code did not say'],
+    ] as const) {
+      const el = row(MISMATCHED, accountId)
+      expect(statusOf(el)).toBe('Limits not reported — Claude Code reported no plan limits for this login.')
+      expect(detail(el, 'Login kind')).toBe(kind)
+      expect(detail(el, 'Why the limits are unknown')).toBe('Claude Code reported no plan limits for this login.')
+      expect(el.textContent).not.toMatch(/API.key/i)
+      expect(refreshOf(el)).not.toBeNull()
+    }
+  })
+
+  it('keeps the API-key words and withholds Refresh only for an api-key login', () => {
+    renderRows(S3_ANSWER)
+    const key = row(S3_ANSWER, 'key')
+    expect(detail(key, 'Login kind')).toBe('API key — plan limits do not apply')
+    expect(statusOf(key)).toBe('Limits not reported — API-key logins do not report plan limits.')
+    expect(refreshOf(key)).toBeNull()
+  })
+})
+
 describe('an unknown source or statusReason renders as unknown and acts only on status', () => {
   it('keeps Can work for status ok and Limits unknown for status unknown', () => {
     renderRows(FUTURE)
@@ -409,6 +463,12 @@ describe('an unknown source or statusReason renders as unknown and acts only on 
 
     const unknown = row(FUTURE, 'future-unknown')
     expect(statusOf(unknown)).toBe('Limits unknown — Claude Code did not say whether this login can work.')
+  })
+
+  it('names a loginKind this cockpit does not know as sent, never as a subscription', () => {
+    renderRows(FUTURE)
+    expect(detail(row(FUTURE, 'future-ok'), 'Login kind')).toBe('“org-seat”, a kind this version of the cockpit does not know')
+    expect(detail(row(FUTURE, 'future-unknown'), 'Login kind')).toBe('Unknown — Claude Code did not say')
   })
 
   it('does not guess at an unknown statusReason on a known source', () => {

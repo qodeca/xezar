@@ -625,6 +625,44 @@ describe('login kind (#867 AC-36)', () => {
     expect(answer.accounts[0]).toMatchObject({ status: 'unknown', statusReason: 'check-failed', loginKind: 'subscription' });
   });
 
+  it('never words a subscription login as an API key when get_usage reports no rate limits (#908 B-1)', async () => {
+    // The mismatched pair: auth status says a claude.ai login, get_usage says no rate limits.
+    const run: RunQuotaProcess = async (spec) => {
+      if (spec.args[0] === '--version') return `${MINIMUM_CLAUDE_QUOTA_VERSION} (Claude Code)`;
+      if (spec.args[0] === 'auth') return JSON.stringify({ loggedIn: true, authMethod: 'claude.ai', apiProvider: 'firstParty' });
+      return { type: 'control_response', response: { response: { rate_limits_available: false } } };
+    };
+    const checker = new AgentQuotaChecker({
+      store: new AgentQuotaStore(), profiles: async () => [profile('claude')], runProcess: run, dryRun: () => false,
+    });
+    const row = (await checker.refresh()).accounts[0]!;
+    // `statusReason: api-key` still says "the tool reported no plan limits"; the words follow the kind.
+    expect(row).toMatchObject({
+      status: 'unknown',
+      loginKind: 'subscription',
+      unavailableReason: 'Claude Code reported no plan limits for this login.',
+      warnings: ['Claude Code reported no plan limits for this login.'],
+    });
+    expect([row.unavailableReason, ...(row.warnings ?? [])].join(' ')).not.toMatch(/API.key/i);
+  });
+
+  it('keeps a Codex login kind read by account/read when a later step of the check fails', async () => {
+    const run: RunQuotaProcess = async (spec) => {
+      if (spec.args[0] === '--version') return `codex-cli ${MINIMUM_CODEX_QUOTA_VERSION}`;
+      return {
+        initialize: {},
+        account: { account: { type: 'chatgpt', planType: 'pro' }, requiresOpenaiAuth: true },
+        limits: { ordinaryUsageAllowed: true, rateLimits: null },
+        usage: { summary: { lifetimeTokens: 1, peakDailyTokens: 1 }, dailyUsageBuckets: [], threadUsage: null },
+      };
+    };
+    const checker = new AgentQuotaChecker({
+      store: new AgentQuotaStore(), profiles: async () => [profile('codex')], runProcess: run, dryRun: () => false,
+    });
+    const answer = await checker.refresh();
+    expect(answer.accounts[0]).toMatchObject({ status: 'unknown', statusReason: 'check-failed', loginKind: 'subscription' });
+  });
+
   it('reports every login as unknown kind before its first check', async () => {
     const checker = new AgentQuotaChecker({
       store: new AgentQuotaStore(), profiles: async () => [profile('claude'), profile('codex')], dryRun: () => false,
