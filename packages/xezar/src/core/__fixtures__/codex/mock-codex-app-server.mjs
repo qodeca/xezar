@@ -217,6 +217,40 @@ rl.on('line', (line) => {
       } });
       return;
     }
+    if (turnText.includes('mock:hook-blocked') && !turnText.includes('mock:hook-blocked-long')) {
+      for (const [eventName, reason] of [
+        ['preToolUse', 'Rule prefix.entry refused the command: it did not match any bashAllowlist entry.'],
+        ['preToolUse', 'Rule payload.tool-name refused the command: tool "apply_patch" is not the Bash shell tool.'],
+        ['stop', 'token expired in a third-party Stop hook'],
+      ]) {
+        emit({ method: 'hook/completed', params: {
+          threadId: 'th_mock_1',
+          turnId: 'turn_mock_1',
+          run: {
+            id: `pre-tool-use:0:mock:exec-${reason.includes('apply_patch') ? 'patch' : 'bash'}`,
+            eventName,
+            status: 'blocked',
+            entries: [{ kind: 'feedback', text: reason }],
+          },
+        } });
+      }
+      emit({ method: 'turn/completed', params: { turn: { id: 'turn_mock_1', status: 'completed' } } });
+      return;
+    }
+    if (turnText.includes('mock:hook-blocked-long')) {
+      emit({ method: 'hook/completed', params: {
+        threadId: 'th_mock_1',
+        turnId: 'turn_mock_1',
+        run: {
+          id: 'pre-tool-use:0:mock:long',
+          eventName: 'preToolUse',
+          status: 'blocked',
+          entries: [{ kind: 'feedback', text: `Rule prefix.entry refused the command: ${'x'.repeat(2_100)}` }],
+        },
+      } });
+      emit({ method: 'turn/completed', params: { turn: { id: 'turn_mock_1', status: 'completed' } } });
+      return;
+    }
     if (turnText.includes('mock:subagent-activity')) {
       emit({ method: 'item/started', params: { item: { type: 'subAgentActivity', id: 'activity_1', kind: 'started', agentThreadId: 'th_child', agentPath: '/root/scope_review' } } });
       emit({ method: 'item/completed', params: { item: { type: 'subAgentActivity', id: 'activity_1', kind: 'started', agentThreadId: 'th_child', agentPath: '/root/scope_review' } } });

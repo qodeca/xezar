@@ -7,6 +7,7 @@ import {
 import type { RunEvent, RunStore } from '../runs/store.ts';
 
 const AUTH_ERROR_EVENT_TYPES = new Set(['error', 'session.error', 'note']);
+const CODEX_BLOCKED_HOOK_NOTE_PREFIX = 'codex: PreToolUse blocked:';
 
 export function watchProviderRuntimeAuthFailures(
   store: RunStore,
@@ -16,7 +17,9 @@ export function watchProviderRuntimeAuthFailures(
   const onEvent = ({ runId, event }: { runId: string; event: RunEvent }): void => {
     if (!AUTH_ERROR_EVENT_TYPES.has(event.type)) return;
     const message = event.message;
-    if (typeof message !== 'string' || !isRuntimeProviderAuthFailure(message)) return;
+    if (typeof message !== 'string'
+      || message.startsWith(CODEX_BLOCKED_HOOK_NOTE_PREFIX)
+      || !isRuntimeProviderAuthFailure(message)) return;
 
     const run = store.getRun(runId);
     if (!run) return;

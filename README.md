@@ -138,9 +138,9 @@ More → [Getting started](docs/guide/01-getting-started.md)
 | Backend | How xezar drives it | Tool access |
 |---|---|---|
 | **Claude Code** (default) | Headless `stream-json` mode | `allowedTools` (`bashAllowlist` scopes `Bash`); unapproved tools denied without prompting; the default list includes unrestricted `Bash` |
-| **Codex** | `codex app-server`, JSON-RPC over stdio | A step naming neither `Edit` nor `Write` runs confined – it may write only in its worktree and the run's own evidence, handoff and temporary folders, with the network on. When that read-only step also has a `bashAllowlist`, a trusted `PreToolUse` hook applies the shared command-prefix lock to every shell call. Every other step runs `danger-full-access` with no approvals. `XEZ_CODEX_NETWORK=0` turns the network off for both. Other individual tool names are ignored |
+| **Codex** | `codex app-server`, JSON-RPC over stdio | A step naming neither `Edit` nor `Write` runs confined – it may write only in its worktree and the run's own evidence, handoff and temporary folders, with the network on. When that read-only step also has a `bashAllowlist`, a trusted `PreToolUse` hook applies the shared command-prefix lock to every shell call and refuses `apply_patch`; its reason appears in the run events. Every other step runs `danger-full-access` with no approvals. `XEZ_CODEX_NETWORK=0` turns the network off for both. Other individual non-shell tool names are ignored |
 | **OpenCode** _(experimental)_ | `opencode serve`, HTTP + SSE | Ignores `allowedTools`; permission asks are answered fail-closed: a directory ask inside the run's own directories is allowed once, every other ask is denied |
-| **pi** | `--mode rpc` over JSONL | `allowedTools` mapped onto pi's `--tools`; a `bashAllowlist` disables `Bash` |
+| **pi** | `--mode rpc` over JSONL | `allowedTools` mapped onto pi's `--tools`; a non-empty `bashAllowlist` keeps a restricted Bash and an empty list removes it |
 
 For the Codex command lock, xezar writes a persistent `PreToolUse` entry to the active profile's
 `$CODEX_HOME/hooks.json` and its `hooks.state."<handler key>".trusted_hash` grant to

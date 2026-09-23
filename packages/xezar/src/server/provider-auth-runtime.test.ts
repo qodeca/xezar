@@ -166,6 +166,31 @@ describe('watchProviderRuntimeAuthFailures', () => {
     },
   );
 
+  it.each(['unauthorized', 'token expired'])(
+    'ignores blocked PreToolUse notes containing %s',
+    async (authPhrase) => {
+      const onInvalidated = watch();
+      const run = store.createRun({
+        title: 'read-only denial',
+        workflow: 'code-review',
+        task: 'work',
+        runner: 'codex',
+        steps: [],
+      });
+
+      store.appendEvent(run.id, {
+        type: 'note',
+        message: `codex: PreToolUse blocked: Rule prefix.entry refused the command: "rg ${authPhrase} src" does not match an entry.`,
+      });
+
+      expect(onInvalidated).not.toHaveBeenCalled();
+      expect(store.readEvents(run.id).filter(({ type }) => type === 'provider-auth-required')).toEqual([]);
+      await expect(providerAuth.status().then(({ providers }) =>
+        providers.find(({ provider }) => provider === 'codex')))
+        .resolves.toMatchObject({ provider: 'codex', status: 'connected' });
+    },
+  );
+
   it('ignores unrelated errors and non-message events', () => {
     const onInvalidated = watch();
     const run = store.createRun({

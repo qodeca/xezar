@@ -1053,7 +1053,11 @@ empty-list compatibility statements remain in force.
   would execute the piped standard input; every other pipe remains refused. Each refusal carries
   the stable rule that made the decision.
 - **Changed (Codex with `bashAllowlist`)**: a read-only step now starts and resumes with a
-  `PreToolUse` Bash hook that sends the complete command through that same shared policy. An
+  `PreToolUse` `Bash|apply_patch` hook. Bash sends the complete command through that same shared
+  policy; `apply_patch` reaches its existing `payload.tool-name` refusal, so both are denied with a
+  shared reason rather than a second policy. Feedback from a blocked `PreToolUse` hook is persisted
+  as a bounded v1 `note`, making the reason visible in the run event stream for either tool without
+  feeding command text into provider-auth detection; feedback from other hook events is ignored. An
   allowed prefix normally runs inside #849's confined `workspace-write` sandbox. One Codex
   exec-policy exception remains: when the hook allows a command that also matches a user or
   trusted-project `prefix_rule(..., decision="allow")`, Codex runs its first attempt outside the
@@ -1094,6 +1098,12 @@ empty-list compatibility statements remain in force.
   `$CODEX_HOME/config.toml`, and optionally deleting `xezCacheDir()/codex-hook/`; the next locked
   run recreates the current entry. This is profile configuration, not project configuration: no
   project trust or tracked file is added.
+  The 0.19.0-pre handler matched only `Bash`. On the next locked run xezar recognizes its own
+  registrations by the `--xezar-read-only-hook` marker and a script directly inside the
+  `codex-hook` cache, keeps exactly one current `Bash|apply_patch` entry even when old and current
+  digests coexist, asks Codex for the changed normalized hash, and overwrites the exact handler
+  key's trust hash before turn 1. Marked hook commands outside that cache remain subject to the
+  existing live-script pruning rule rather than being treated as this registration.
 - **Changed (argument-bearing entries)**: `COMMAND_RUNNING_ARGUMENTS` refuses risky forms hidden
   behind an otherwise allowed prefix: every Git `-c`, `--config-env` and `--exec-path` form,
   abbreviated `fetch --upload-pack`/`--exec`, Git `diff`/`show`/`log` output files, checkout path

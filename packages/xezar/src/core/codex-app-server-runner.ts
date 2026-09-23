@@ -88,8 +88,9 @@ export interface CodexRunnerOptions {
  * worktree, so a review or QA step could read a diff and then not post, label or
  * record its verdict (#850 review). Nothing finer either: Codex has no per-tool
  * allowlist. When a read-only step also declares `spec.bashAllowlist`, a trusted
- * PreToolUse hook applies the shared command lock before each Bash call. The individual
- * non-shell tool names remain ignored, the worktree itself stays writable, and the sandbox
+ * `Bash|apply_patch` PreToolUse hook sends both tools through the shared policy: Bash is checked
+ * command by command and apply_patch is refused by its tool-name rule. Other individual non-shell
+ * tool names remain ignored, the worktree itself stays writable, and the sandbox
  * does not cover MCP tools — what a
  * run may reach there is the per-thread MCP scoping of `codex-run-isolation.ts`
  * (#324), which applies to every run, read-only or not.
@@ -128,12 +129,18 @@ export interface CodexReadOnlyHook {
   readonly command: string;
   readonly config: {
     readonly PreToolUse: readonly [{
-      readonly matcher: 'Bash';
+      readonly matcher: typeof CODEX_READ_ONLY_HOOK_MATCHER;
       readonly hooks: readonly [{ readonly type: 'command'; readonly command: string }];
     }];
   };
   readonly entries: string[];
 }
+
+const CODEX_READ_ONLY_HOOK_MATCHER = 'Bash|apply_patch' as const;
+const LEGACY_CODEX_READ_ONLY_HOOK_MATCHER = 'Bash';
+const BLOCKED_HOOK_NOTE_PREFIX = 'codex: PreToolUse blocked: ';
+const BLOCKED_HOOK_REASON_LIMIT = 2_000;
+const BLOCKED_HOOK_TRUNCATION_MARKER = '… [truncated]';
 
 /**
  * The vendor-specific registration only. Codex ignores request-body hooks until their content
@@ -149,7 +156,7 @@ export function codexReadOnlyHook(spec: AgentRunSpec): CodexReadOnlyHook | undef
     script,
     command,
     config: {
-      PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command }] }],
+      PreToolUse: [{ matcher: CODEX_READ_ONLY_HOOK_MATCHER, hooks: [{ type: 'command', command }] }],
     },
     entries: normalizeBashAllowlist(spec.bashAllowlist),
   };
@@ -589,7 +596,7 @@ class CodexSession implements AgentSession {
     try {
       const before = await this.rpc.request('hooks/list', { cwds: [this.spec.cwd] });
       const metadata = findCodexHook(before, hook.command);
-      if (!metadata) throw new Error('hooks/list did not discover the registered Bash handler');
+      if (!metadata) throw new Error('hooks/list did not discover the registered Bash|apply_patch handler');
       if (!metadata.key || !metadata.currentHash) {
         throw new Error('hooks/list returned no handler key or current hash');
       }
@@ -753,6 +760,14 @@ class CodexSession implements AgentSession {
         }
         break;
       }
+      case 'hook/completed': {
+        for (const reason of blockedHookFeedback(params)) {
+          // v1 notes are persisted in the run NDJSON and replayed by the run event stream. The
+          // hook's feedback is the exact shared-policy reason for Bash and apply_patch (#863 AC4).
+          this.emit({ type: 'note', message: `${BLOCKED_HOOK_NOTE_PREFIX}${reason}` });
+        }
+        break;
+      }
       case 'thread/tokenUsage/updated': {
         const total = tokenTotal(params);
         if (total > 0) {
@@ -868,28 +883,41 @@ async function ensureCodexReadOnlyHookFile(codexHome: string, hook: CodexReadOnl
       }
       const handlers: unknown[] = [];
       let currentInstalled = false;
+      let profileChanged = false;
       for (const entry of existing ?? []) {
         const script = xezarCodexHookScript(entry);
         if (!script) {
           handlers.push(entry);
           continue;
         }
-        if (hookEntryCommands(entry).includes(hook.command)) {
-          currentInstalled = true;
-          handlers.push(entry);
+        if (!isXezarCodexHookCacheScript(script)) {
+          try {
+            await lstat(script);
+            handlers.push(entry);
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== 'ENOENT') handlers.push(entry);
+            else profileChanged = true;
+          }
           continue;
         }
-        try {
-          await lstat(script);
-          handlers.push(entry); // another live xezar installation/profile command coexists
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') handlers.push(entry);
+        if (currentInstalled) {
+          profileChanged = true;
+          continue;
+        }
+        currentInstalled = true;
+        if (hookEntryCommands(entry).includes(hook.command)
+          && (entry as { matcher?: unknown }).matcher === CODEX_READ_ONLY_HOOK_MATCHER) {
+          handlers.push(entry);
+        } else {
+          profileChanged = true;
+          handlers.push(hook.config.PreToolUse[0]);
         }
       }
       if (!currentInstalled) {
-        handlers.push({ matcher: 'Bash', hooks: [{ type: 'command', command: hook.command }] });
+        profileChanged = true;
+        handlers.push(hook.config.PreToolUse[0]);
       }
-      if (currentInstalled && handlers.length === (existing ?? []).length) return;
+      if (!profileChanged) return;
       const next = { ...document, hooks: { ...hooks, PreToolUse: handlers } };
       const temporary = `${path}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`;
       await writeFile(temporary, `${JSON.stringify(next, null, 2)}\n`, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
@@ -903,7 +931,7 @@ async function ensureCodexReadOnlyHookFile(codexHome: string, hook: CodexReadOnl
 
 async function ensureCodexReadOnlyHookCache(hook: CodexReadOnlyHook): Promise<void> {
   const source = fileURLToPath(new URL('../../scripts/codex-read-only-hook.mjs', import.meta.url));
-  const target = xezarCodexHookScript({ matcher: 'Bash', hooks: [{ command: hook.command }] });
+  const target = xezarCodexHookScript(hook.config.PreToolUse[0]);
   if (!target) throw new Error('hook-cache.command could not resolve the generated handler path');
   const content = readFileSync(source);
   await mkdir(join(xezCacheDir(), 'codex-hook'), { recursive: true, mode: 0o700 });
@@ -940,12 +968,18 @@ async function ensureCodexReadOnlyHookCache(hook: CodexReadOnlyHook): Promise<vo
 }
 
 function xezarCodexHookScript(entry: unknown): string | undefined {
-  if (!entry || typeof entry !== 'object' || (entry as { matcher?: unknown }).matcher !== 'Bash') return undefined;
+  if (!entry || typeof entry !== 'object') return undefined;
+  const matcher = (entry as { matcher?: unknown }).matcher;
+  if (matcher !== CODEX_READ_ONLY_HOOK_MATCHER && matcher !== LEGACY_CODEX_READ_ONLY_HOOK_MATCHER) return undefined;
   const commands = hookEntryCommands(entry);
   const command = commands.length === 1 ? commands[0] : undefined;
   if (!command) return undefined;
   const words = shellQuotedWords(command);
   return words?.marker === '--xezar-read-only-hook' ? words.script : undefined;
+}
+
+function isXezarCodexHookCacheScript(script: string): boolean {
+  return dirname(resolve(script)) === resolve(join(xezCacheDir(), 'codex-hook'));
 }
 
 function shellQuotedWords(command: string): { executable: string; script: string; marker: string } | undefined {
@@ -1013,12 +1047,31 @@ function findCodexHook(response: Record<string, unknown>, command: string): Code
     for (const hook of hooks) {
       if (!hook || typeof hook !== 'object') continue;
       const metadata = hook as CodexHookMetadata;
-      if (metadata.command === command && metadata.matcher === 'Bash' && metadata.enabled !== false) {
+      if (metadata.command === command
+        && metadata.matcher === CODEX_READ_ONLY_HOOK_MATCHER
+        && metadata.enabled !== false) {
         return metadata;
       }
     }
   }
   return undefined;
+}
+
+function blockedHookFeedback(params: Record<string, unknown>): string[] {
+  const run = params.run && typeof params.run === 'object' ? params.run as Record<string, unknown> : {};
+  if (run.eventName !== 'preToolUse' || run.status !== 'blocked' || !Array.isArray(run.entries)) return [];
+  return run.entries.flatMap((entry) => {
+    if (!entry || typeof entry !== 'object') return [];
+    const record = entry as Record<string, unknown>;
+    return record.kind === 'feedback' && typeof record.text === 'string' && record.text.trim() !== ''
+      ? [truncateBlockedHookReason(record.text)]
+      : [];
+  });
+}
+
+function truncateBlockedHookReason(reason: string): string {
+  if (reason.length <= BLOCKED_HOOK_REASON_LIMIT) return reason;
+  return `${reason.slice(0, BLOCKED_HOOK_REASON_LIMIT - BLOCKED_HOOK_TRUNCATION_MARKER.length)}${BLOCKED_HOOK_TRUNCATION_MARKER}`;
 }
 
 function codexAskQuestions(value: unknown): AskQuestion[] | null {
