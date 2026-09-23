@@ -53,7 +53,7 @@ Then verify attachment and push capability:
 
 ### Claude Code
 
-**Prerequisites.** Run Claude Code and the cockpit on the same machine. Channels need a claude.ai or Anthropic Console API-key login, do not work on Bedrock, Vertex or Foundry, must be enabled by a Team or Enterprise administrator, and are off while `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` is set. Pull with `leader_events` when Channels are unavailable.
+**Prerequisites.** Run Claude Code and the cockpit on the same machine. Channels need a claude.ai or Anthropic Console API-key login, do not work on Bedrock, Vertex or Foundry, and are off while `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` is set. On Team or Enterprise plans, an administrator with the Owner role can enable Channels under **Admin settings → Claude Code → Channels** or set `channelsEnabled: true` in **Admin Settings → Claude Code → Managed settings**; see [Enterprise controls](https://code.claude.com/docs/en/channels.md) and [server-managed settings](https://code.claude.com/docs/en/server-managed-settings.md). Restart Claude Code afterwards. Pull with `leader_events` when Channels are unavailable.
 
 **Register `xezar mcp`.** From the project root, local scope keeps the entry outside the repository:
 
@@ -106,7 +106,9 @@ ignore unrecognised keys; the human-readable `usage:` text is not a contract.
 3. Look in the debug file. `MCP server "xezar": Channel notifications registered` means Claude Code will turn xezar's pushes into turns. `Channel notifications skipped:` is followed by Claude Code's own reason, for example `server did not declare claude/channel capability`, `channels are not available on third-party providers`, `channels not enabled by org policy`, or `server xezar not in --channels list for this session`. Claude Code writes that reason only to its debug file; xezar never sees it.
 4. Wait for a real event, such as a task finishing. It must appear as a `<channel source="xezar" …>` message, and the debug file shows a `notifications/claude/channel` line for it. Only then is the session **delivery verified**.
 
-This was checked in isolated sessions of Claude Code 2.1.278 and 2.1.280 (a synthetic API-key mode with a dummy key and a scripted model endpoint, not a real account; a xezar cockpit in a scratch project): both registered the channel and received every pushed event, idle and after a `stop` and a new `attach`, with the bridge started from the published package or from a source checkout. A real Console API-key account, a claude.ai subscription login, an organisation policy and Remote Control were not checked there.
+`channels not enabled by org policy` is fixed by setting `channelsEnabled: true` as above and restarting Claude Code.
+
+This was checked in isolated sessions of Claude Code 2.1.278 and 2.1.280 (a synthetic API-key mode with a dummy key and a scripted model endpoint, not a real account; a xezar cockpit in a scratch project): both registered the channel and received every pushed event, idle and after a `stop` and a new `attach`, with the bridge started from the published package or from a source checkout. On 2026-09-23, a real claude.ai organisation login was also checked: delivery was red with the policy off and green after an Owner enabled it and the session restarted. A real Console API-key account, a personal claude.ai subscription login outside an organisation, and Remote Control have not yet been checked.
 
 **Restart and compaction recovery.** After a cockpit restart, call a real tool, check `status`, attach with a new operation ID, then call `read` with no cursor. After a client restart or context compaction, also begin with `read` and no cursor. Page with `nextCursor` while `hasMore` is true, deduplicate by `eventId`, reconcile current task state, and acknowledge only the processed cursor. Historical counters do not prove current delivery.
 
@@ -296,6 +298,12 @@ Five of them answer questions a leader asks before it dispatches anything — wh
 | `discover_project` → `onboarding.globalImport` | In a project that keeps its own setup: whether those accounts were already copied in (`done`, `declined` or `unknown`) and how many could still be (`importable`, a count and never which). The same two facts the Agent accounts pane shows a person. |
 
 `import_global_accounts` is the one that changes something; the rest only read.
+
+### To read quota before dispatch
+
+Call `project_config` with action `read_quota`, optionally narrowed by `provider` (`claude` or `codex`) and `accountId`. Its `result.accounts` rows use `status: "ok"` when a login can work, `status: "out"` with `resetsAt` when a plan limit is exhausted, and `status: "unknown"` when xezar could not read the answer. Treat `unknown` as “could not read”, never as “has budget”; API-key logins are unknown because they do not report plan limits. Route away from an `out` login until `resetsAt`.
+
+`read_quota` waits briefly when a stored reading is stale. To explicitly request the same bounded, zero-token check, call action `check_quota` with the same optional selectors. A login is checked at most once every five minutes. Both actions return the same quota answer that **Settings → Agent accounts** and the plan-limits chip display; see [Settings reference](10-settings-reference.md#to-read-and-refresh-plan-limits).
 
 ### When an action is refused
 

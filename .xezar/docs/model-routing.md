@@ -12,7 +12,7 @@ expiry; the leader re-checks them at session start.
 A plain summary. The rules themselves live in the numbered sections.
 
 - **Who does what, in normal times:** DeepSeek and the small local models do the procedural work (tracker chores, merges, mechanical docs, bounded fixes). GPT models do the routine and judgement work (docs, QA, reviews). Claude Opus builds cockpit screens and checks the hardest claims. The strongest GPT model (astra) does security reviews, the hardest work and all generated images.
-- **Today (2026-09-18 evening):** GPT (Codex) is back Sun 2026-09-20 16:02. Claude: `westagilelabs-priv` works; `qodeca-priv` is out until Sun 21 Sep 19:00; `gmail-priv` reset Fri 18 Sep 21:00 (probe it before you count on it); `eqamana-priv` Sat 19 Sep 18:00. At most 4 Claude tasks at once.
+- **Today (2026-09-18 evening):** GPT (Codex) is back Sun 2026-09-20 16:02. Claude: `westagilelabs-priv` works; `qodeca-priv` is out until Sun 21 Sep 19:00; `gmail-priv` reset Fri 18 Sep 21:00 (read it with `read_quota` before you count on it); `eqamana-priv` Sat 19 Sep 18:00. At most 4 Claude tasks at once.
 - **DeepSeek:** DeepSeek V4.1 Flash through pi is a normal lane now, not a backup. It is the first choice for procedural work – tracker chores, merges, mechanical docs, scoped re-checks, bounded fixes, evidence passes, the release role – and its quota is its own, so a Claude or Codex limit does not move it. When neither Claude nor Codex has quota (state 3), three things it would otherwise get wait for a strong model instead: a merge to `main`, repairing a conflict and the release role. It is never used for security reviews, judging screens or pictures, cockpit UI, checking a big claim, or reviewing anything it wrote itself. Anything it writes still gets a full Claude review before it merges.
 - **Never allowed:**
   1. A model approving its own work.
@@ -64,11 +64,11 @@ here only so their history is readable.
 
 ## 3. How the leader picks a model for one task
 
-1. **Pick the state:** (1) normal, (2) Codex out, (3) Claude and Codex both out. Read the account table in the campaign README. The DeepSeek lane is available in every state: it has its own quota (the DeepSeek API, paid per token, no session window observed), so a Claude or Codex limit does not move it.
+1. **Pick the state:** (1) normal, (2) Codex out, (3) Claude and Codex both out. Read the current Claude and Codex rows with `project_config` action `read_quota`; `unknown` is not evidence of budget. The DeepSeek lane is available in every state: it has its own quota (the DeepSeek API, paid per token, no session window observed), so a Claude or Codex limit does not move it.
 2. **Find the task row** in section 4 and read the column for that state.
 3. **Apply section 2.** An owner rule beats the table. Since the owner's 21:3x rule of 2026-09-18 the table is the guideline again, so a dispatch that departs from it needs a rule to cite.
 4. **Independence check:** the reviewer, QA or verifier model is never the author's model – confirmed by the owner on 2026-09-18 17:23. For `risk-high` work it runs on a different account, and on a different vendor when one has quota. What the DeepSeek lane writes is reviewed by a Claude task. The verifier of a claim differs from both the author and the claimant. The verdict names the author model and the reviewer model.
-5. **Pick the account.** For Claude and Codex always pass `agentProfile` (the login name). One lane of work per account, so one limit stops only part of the work. Never `default` (the leader's own login). A pi task takes no `agentProfile`.
+5. **Pick the account.** For Claude and Codex always pass `agentProfile` (the login name). Use `read_quota` before dispatch and route away from an `out` login until its `resetsAt`; `unknown` means the quota could not be read. One lane of work per account, so one limit stops only part of the work. Never `default` (the leader's own login). A pi task takes no `agentProfile`.
 6. **Write the brief** from the brief template (section 6).
 7. **After the task:** read the result; after any pi task check the primary checkout is clean; log failures in the timeline; if a failure changes a row, change this file.
 
@@ -103,7 +103,7 @@ on this machine. They are different lanes with different rules; do not read one 
 | Review response, one verdict | DeepSeek → sol; terra for a docs-only response | DeepSeek → sonnet | DeepSeek | – |
 | Review response folding several verdicts | astra → opus | opus | wait | terra, local models |
 | Kit / checks refactor | astra → sol | opus | wait | local models |
-| Generated images | astra | probe the astra login; if out, ask the owner | ask the owner | every other model |
+| Generated images | astra | read the astra login with `read_quota`; if out, ask the owner | ask the owner | every other model |
 | Analysis, specs, research | sol → astra; fable for work larger than one sitting; DeepSeek second, advisory | opus; DeepSeek second, advisory | DeepSeek, advisory | luna |
 | Verifying a Major claim from a weaker model | opus → astra or sol | opus | wait | the author, the claimant, DeepSeek |
 | Release role | only on the owner's word; then DeepSeek first – it ran 0.16.0 end to end in state 2 (§ 13) | the same | wait | – |
@@ -140,10 +140,10 @@ one is the DeepSeek lane and is a normal lane of this table.
 ## 5. Accounts and quota
 
 - Claude logins: `qodeca-priv`, `westagilelabs-priv`, `gmail-priv`, `eqamana-priv`. `default` is the leader – no tasks. Opus costs about 2.5 times Sonnet per token, so Sonnet protects the weekly limit.
-- No tool reads the quota. The leader learns a limit from a failed task or from one tiny probe task per account. Never probe in a loop; always cancel the auto-resume of a probe.
+- Read quota before dispatch: `project_config` action `read_quota` (optionally `provider`/`accountId`) returns one row per Claude/Codex login with `status` ok/out/unknown and `resetsAt` when out. Route away from an `out` login until `resetsAt`. `unknown` means 'could not read', never 'has budget'. `check_quota` forces a fresh check, at most once per 5 minutes per login. Probe tasks are retired; a failed run still marks its login out.
 - One 5-hour window plus weekly caps cover ALL Claude models of a login. Two accounts that show the same reset minute probably share one login window.
-- On a limit: read the reset time from the error text; cancel the engine's auto-resume when it is wrong (weekly resets are scheduled one day early, #581); send the same brief to another account; update the account table.
-- Codex: several 2-second empty turns mean a usage limit; probe with `codex exec`. Codex quota is separate from Claude.
+- On a limit: read the login's `resetsAt` with `read_quota`, cancel an incorrect auto-resume, route the same brief to a login that is not `out`, and update the account table.
+- Codex: read its rows with `read_quota`; its quota is separate from Claude.
 - DeepSeek API: no `agentProfile` is passed – a pi task takes none. Cost is per token on the owner's own DeepSeek account, so it is not bound by any Claude or Codex window, and no limit was hit in the 46 runs of 2026-09-18 (§ 13). It still occupies a pi worker slot.
 - pi pacing: one task per local model at a time; at most 4 per model server.
 - Runaway cost: watch every `execution_control continue` for its first 10 minutes (one continue burned $144 on 2026-09-18, #613). After a continue, check the whole chain resumed – on 2026-09-15 a continue resumed only the agent step of one run, leaving a `done` run with commits but no push, PR or gates (§ 13).
@@ -168,7 +168,7 @@ one is the DeepSeek lane and is a normal lane of this table.
 | Every model – the handoff step (from 2026-09-21) | when `gh pr checks` shows NO checks at all on a fresh push, the brief's remedy is `gh workflow run ci.yml --ref <branch>`, never closing and reopening the pull request (leader, 2026-09-21) |
 | Every model – the completion marker in every step (from 2026-09-21) | every agent turn in EVERY step ends with `XEZ:DONE` as its very last line, not only the last step of a run (leader, 2026-09-21) |
 | Every model – a bug-fix brief's proofs (from 2026-09-21) | a bug-fix brief forbids background proofs outright: run `16d05de6` (the #812 fix, opus, 2026-09-21 10:50) failed at `investigate` on `XEZ:MONITORING` after starting its proofs in the background with the fix already committed, and one `continue` saying "re-run the proofs in the foreground" finished it – the #734 lesson again (leader, 2026-09-21; run `5495f83d`, 2026-09-20) |
-| Every model – dispatching `code-review`, `design-review`, `qa`, `architecture-review` or `business-analysis` to pi (from 2026-09-22) | the five kit read-only workflows carry a `bashAllowlist` since #849 (kit slice D; `architecture-review` since #851). On Claude it NARROWS the shell to the named commands; it does not make the role read-only (what still writes is in `changelog.d/849.md` and § 13, 2026-09-22). On pi the shell is DROPPED entirely: pi has no per-command mechanism, so `piTools` removes the whole `bash` tool once a `bashAllowlist` is set, and a pi run of one of these five roles cannot run `gh`, `git` or a kit check. Dispatch these five to Claude or Codex until #856 (pi honouring a `bashAllowlist` command by command) lands; § 4 lane placements are unchanged and move only once #849's engine slice also lands, per the issue's ordering rule |
+| Every model – read-only workflow enforcement by runner (from 2026-09-23) | Claude Code ENFORCED (no Edit/Write; allowlist narrows Bash); Codex CONFINED (worktree + run roots, network on) and, on a step with a `bashAllowlist`, allowlist-narrowed by a PreToolUse hook that runs before any exec-policy `allow` rule; a step without a `bashAllowlist` gets no hook, so a user or project `allow` rule can still run a command outside the sandbox; pi allowlist-narrowed by xezar's extension; OpenCode NOT APPLIED. |
 
 The evidence behind these rows is in the findings log (§ 13): conditional wording cost two Codex
 integration chains on 2026-09-15, and a pi model posted its comment and then looped.
