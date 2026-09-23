@@ -111,6 +111,13 @@ export type AppShellProps = {
    *  own bordered band, and only when the container passes one — in the default `workspace` mode
    *  the slot is absent and the sidebar is byte-for-byte the one that shipped before it existed. */
   otherProjects?: ReactNode
+  /** The plan-limits chip (#867 S5) as a row of its own inside the sidebar footer, above its
+   *  one-row controls. The desktop sidebar renders it; the phone drawer does not, because on a
+   *  phone the chip is `agentQuotaCompact` in the top bar. The chip renders nothing when no agent
+   *  applies, so an absent or empty slot leaves the footer exactly as it was. */
+  agentQuota?: ReactNode
+  /** The same chip's phone form, in the top bar's `mobile-status` slot. */
+  agentQuotaCompact?: ReactNode
 }
 
 /**
@@ -170,6 +177,8 @@ export function AppShell({
   banner,
   projectGroups,
   otherProjects,
+  agentQuota,
+  agentQuotaCompact,
 }: AppShellProps) {
   const { pathname } = useLocation()
   // The nav's area rules reason about the flat route map — strip any `/p/:projectId` prefix
@@ -232,6 +241,7 @@ export function AppShell({
     toolsMenu,
     projectGroups,
     otherProjects,
+    agentQuota,
     singleProject,
     singleProjectRoot,
   }
@@ -250,7 +260,11 @@ export function AppShell({
         <MobileNavDrawer {...nav} onNavigate={() => setMenuOpen(false)} />
 
         <div className="grid min-w-0 flex-1 grid-rows-[auto_auto_1fr_auto] overflow-hidden">
-          <MobileTopBar title={current?.label ?? 'xezar'} singleProjectRoot={singleProjectRoot} />
+          <MobileTopBar
+            title={current?.label ?? 'xezar'}
+            singleProjectRoot={singleProjectRoot}
+            agentQuota={agentQuotaCompact}
+          />
 
           {banner ? (
             <div data-slot="banner-slot" className="row-start-2">
@@ -291,6 +305,7 @@ type NavProps = {
   toolsMenu?: ReactNode
   projectGroups?: ReactNode
   otherProjects?: ReactNode
+  agentQuota?: ReactNode
   singleProject: boolean
   singleProjectRoot: boolean
 }
@@ -478,6 +493,7 @@ function SidebarContent({
   toolsMenu,
   projectGroups,
   otherProjects,
+  agentQuota,
   singleProject,
   singleProjectRoot,
   onNavigate,
@@ -636,6 +652,12 @@ function SidebarContent({
        *  toggle on a line of its own. The ⌘K search launcher that owned a row above it is gone
        *  (#546) — the palette opens from the keyboard on every route. */}
       <div data-slot="sidebar-footer" className="border-t border-border px-3.5 py-2.5">
+        {/* The plan-limits band (#867, designs/agent-quota OD-1): a row of its own ABOVE the
+            controls rather than a second elastic item in them (#702). Inside the footer, under its
+            one hairline, so a cockpit with no chip renders this footer byte-for-byte as before —
+            the chip renders no element at all when no agent applies. Desktop only: `onNavigate`
+            is the drawer's, and on a phone the chip lives in the top bar instead. */}
+        {onNavigate === undefined ? agentQuota : null}
         <div data-slot="sidebar-footer-controls" className="flex items-center gap-2">
           {/* SLOT — Step 4.2 mounts the Tools dropdown (aggregate status dot + tool versions) here. */}
           <div data-slot="tools-menu" className="shrink-0">
@@ -863,7 +885,15 @@ function ModeBadge() {
 }
 
 /** Mobile chrome (<md): the sidebar's replacement. Its menu button opens `MobileNavDrawer`. */
-function MobileTopBar({ title, singleProjectRoot }: { title: string; singleProjectRoot: boolean }) {
+function MobileTopBar({
+  title,
+  singleProjectRoot,
+  agentQuota,
+}: {
+  title: string
+  singleProjectRoot: boolean
+  agentQuota?: ReactNode
+}) {
   return (
     <header
       data-slot="mobile-top-bar"
@@ -891,6 +921,7 @@ function MobileTopBar({ title, singleProjectRoot }: { title: string; singleProje
             legible without opening it. */}
         <div data-slot="mobile-status" className="ml-auto flex items-center gap-2">
           {singleProjectRoot ? <ModeBadge /> : null}
+          {agentQuota}
         </div>
       </div>
     </header>

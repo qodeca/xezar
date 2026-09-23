@@ -787,6 +787,8 @@ describe('useGlobalEvents — reconcile doctrine', () => {
       queryKeys.worktrees, // the Resources panel's list/total (#483)
       workspaceQueryKeys.providerStatus,
       queryKeys.mcpLeader, // the MCP leader status: its topic may have missed a change (#374, round 5 on #403)
+      // Plan limits (#867 FR-11): two of a hosted cockpit's four re-reads, and a local one's catch-up.
+      workspaceQueryKeys.agentQuota,
       // The setup state (#464 P2). It has no interval, no focus refetch and no reconnect refetch
       // of its own, and its reader never remounts — so a setup task that finished while this
       // client was away is invisible until a reload unless this list carries it.
@@ -814,6 +816,7 @@ describe('useGlobalEvents — reconcile doctrine', () => {
       queryKeys.worktrees,
       workspaceQueryKeys.providerStatus,
       queryKeys.mcpLeader,
+      workspaceQueryKeys.agentQuota, // #867 — see the reconnect case above
       queryKeys.onboarding, // #464 P2 — see the reconnect case above
     ])
   })

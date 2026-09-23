@@ -109,6 +109,8 @@ import type {
   SkillsUpdateState,
   McpLeaderActionInput,
   McpLeaderStatus,
+  AgentQuotaRefreshInput,
+  AgentQuotaResponse,
 } from '@qodeca/xezar-api-client'
 import { parseProviderStatusResponse } from '@/lib/provider-status'
 import {
@@ -118,6 +120,7 @@ import {
   getApiBaseUrl,
   getApiScope,
   queryScope,
+  agentQuotaResponseSchema,
   runHistoryContextSchema,
   runHistoryPageSchema,
 } from '@qodeca/xezar-api-client'
@@ -1850,6 +1853,30 @@ export async function getAgentAccountStatus(
       init(opts),
     ),
     `/workspace/agent-profiles/${encodeURIComponent(routeId)}/status`,
+  )
+}
+
+/** Plan limits of every Claude Code and Codex login (#867): the same answer the MCP's
+ *  `project_config` → `read_quota` returns, validated against the contract's reader schema. */
+export async function getAgentQuota(opts?: ReadOptions): Promise<AgentQuotaResponse> {
+  return unwrapValidated(
+    await xez.api.v1.workspace['agent-quota'].$get({ query: {} }, init(opts)),
+    '/workspace/agent-quota',
+    agentQuotaResponseSchema,
+  )
+}
+
+/**
+ * Ask for a fresh check of one login (`{ provider, accountId }`) or of every login (`{}`), and
+ * get the new answer back (#867 FR-2: the POST twin of MCP `check_quota`). The body is the
+ * contract's strict refresh selector — never the GET route's query type, whose `wait` key this
+ * route rejects — and the answer is validated with the contract's reader schema.
+ */
+export async function refreshAgentQuota(input: AgentQuotaRefreshInput): Promise<AgentQuotaResponse> {
+  return unwrapValidated(
+    await xez.api.v1.workspace['agent-quota'].refresh.$post({ json: input }),
+    '/workspace/agent-quota/refresh',
+    agentQuotaResponseSchema,
   )
 }
 

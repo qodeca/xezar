@@ -3,10 +3,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { mergeProviderStatusResponse } from '@/lib/provider-status'
 import type {
+  AgentQuotaRefreshInput,
+  AgentQuotaResponse,
   CreateRunResponse,
   McpLeaderActionInput,
   McpLeaderStatus,
 } from '@qodeca/xezar-api-client'
+import { agentQuotaResponseSchema } from '@qodeca/xezar-api-client'
+import { QUOTA_HOSTED_REFETCH_MS } from '@/lib/agent-quota'
 
 import {
   ApiError,
@@ -22,6 +26,8 @@ import {
   getAgentAccountDetails,
   getAgentAccountStatus,
   getAgentProfiles,
+  getAgentQuota,
+  refreshAgentQuota,
   getConfig,
   getGithub,
   getGithubChecks,
@@ -270,6 +276,10 @@ export const workspaceQueryKeys = {
   /** One account's auth state — a child of `agentProfiles`, so removing an account drops it too. */
   agentAccountStatus: (routeId: string) =>
     ['workspace', 'agent-profiles', 'status', routeId] as const,
+  /** Plan limits of every Claude Code and Codex login (#867). Workspace-led and NOT a child of
+   *  `agentProfiles`: an account edit must not throw away the limits answer, and the answer also
+   *  lists logins a hosted cockpit is never shown the account listing for. */
+  agentQuota: ['workspace', 'agent-quota'] as const,
   skillsUpdate: (projectId: string) => ['workspace', 'skills-update', projectId] as const,
   /** One directory listing from `GET /api/fs/browse` (step 4.2's folder picker). Keyed by the
    *  browsed path — `null` is the browse root, whose absolute location only the server knows.
@@ -815,6 +825,92 @@ export function useHealthSubscription(): void {
       releaseTopic?.()
     }
   }, [queryClient])
+}
+
+/**
+ * The ONE session-long `agent-quota` topic subscription (#867 FR-11, AC-33). Call it exactly once,
+ * at the app root (`GlobalEventsProvider`), beside `useHealthSubscription` and for the same
+ * reasons: the limits chip is on every page, so the answer's demand is the whole session, and a
+ * subscription per reader would flap the server's publisher with every mount. An open local tab
+ * subscribing IS what tells the server someone is looking (#867 D36), so stale rows get re-checked
+ * only while one is open.
+ *
+ * Local mode only, decided from the health cache exactly like health's own topic: a hosted
+ * cockpit opens no WebSocket (it cannot carry the reverse proxy's credentials) and instead
+ * re-reads the answer over authenticated HTTP — on the SSE `agent-quota` hint and on reconnect or
+ * visibility (global-events.tsx), and every 15 minutes while visible (`useAgentQuota`).
+ *
+ * A pushed frame that is not a valid answer is dropped rather than cached: the readers render
+ * every field of it, and a malformed one would take the settings pane down mid-render.
+ */
+export function useAgentQuotaSubscription(): void {
+  const queryClient = useQueryClient()
+  useEffect(() => {
+    let releaseTopic: (() => void) | undefined
+
+    const syncTransport = (): void => {
+      const health = queryClient.getQueryData<HealthResponse>(queryKeys.health)
+      const local = health?.capabilities?.localHandoff === true
+      if (local && releaseTopic === undefined) {
+        releaseTopic = subscribeTopic('agent-quota', (data) => {
+          const parsed = agentQuotaResponseSchema.safeParse(data)
+          if (parsed.success) queryClient.setQueryData(workspaceQueryKeys.agentQuota, parsed.data)
+        })
+      } else if (!local && releaseTopic !== undefined) {
+        releaseTopic()
+        releaseTopic = undefined
+      }
+    }
+
+    syncTransport()
+    const releaseCache = queryClient.getQueryCache().subscribe(syncTransport)
+    return () => {
+      releaseCache()
+      releaseTopic?.()
+    }
+  }, [queryClient])
+}
+
+/**
+ * The plan-limits answer — a pure cache read for the settings pane and the chip alike. The HTTP
+ * read is the bootstrap; a local cockpit is then kept current by the root subscription above, and
+ * a hosted one by the SSE hint plus this 15-minute interval, which TanStack pauses while the tab
+ * is hidden (`refetchIntervalInBackground` stays false) — "every 15 minutes while visible".
+ */
+export function useAgentQuota() {
+  const local = useHealth().data?.capabilities?.localHandoff === true
+  return useQuery({
+    queryKey: workspaceQueryKeys.agentQuota,
+    queryFn: ({ signal }) => getAgentQuota({ signal }),
+    // Local: the socket pushes every change, so a remount has nothing to ask the server.
+    staleTime: local ? Infinity : 60_000,
+    refetchInterval: local ? false : QUOTA_HOSTED_REFETCH_MS,
+    refetchIntervalInBackground: false,
+  })
+}
+
+/** Refresh one login (`{ provider, accountId }`) or every login (`{}`); the answer the server
+ *  sends back replaces the cache, so both the pane and the chip show it at once. */
+export function useRefreshAgentQuota() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: AgentQuotaRefreshInput) => refreshAgentQuota(input),
+    retry: false,
+    onSuccess: (answer: AgentQuotaResponse) => {
+      // A whole answer replaces the cache. A single-login refresh may come back filtered to that
+      // login, and splicing its row into an older answer would mix two `generatedAt` clocks (every
+      // other row's age is relative to its own answer) — so that case asks for the whole answer
+      // again instead, which already carries the fresh row.
+      const cached = queryClient.getQueryData<AgentQuotaResponse>(workspaceQueryKeys.agentQuota)
+      const complete =
+        cached === undefined ||
+        cached.accounts.every((row) =>
+          answer.accounts.some((fresh) => fresh.runner === row.runner && fresh.accountId === row.accountId),
+        )
+      if (complete) queryClient.setQueryData(workspaceQueryKeys.agentQuota, answer)
+      else void queryClient.invalidateQueries({ queryKey: workspaceQueryKeys.agentQuota })
+    },
+  })
 }
 
 /** Version + update check + repo/branch + tool probes. Feeds the sidebar's repo and version

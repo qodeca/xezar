@@ -11,6 +11,7 @@ import {
   useTodos,
 } from '@/api/queries'
 import type { HealthResponse, SkillsUpdateState } from '@qodeca/xezar-api-client'
+import { AgentQuotaChip } from '@/components/agent-quota-chip'
 import { AppShell, type RepoChip } from '@/components/app-shell'
 import { CommandPalette } from '@/components/command-palette'
 import { ListViewProvider } from '@/components/list-view'
@@ -209,6 +210,9 @@ export function AppShellContainer({ children }: { children: ReactNode }) {
           ) : undefined
         }
         otherProjects={otherProjects}
+        // The plan-limits chip (#867 S5). Each form renders nothing until an agent applies.
+        agentQuota={<AgentQuotaChip variant="band" />}
+        agentQuotaCompact={<AgentQuotaChip variant="phone" />}
         toolsMenu={<ToolsMenu health={health.data} />}
       >
         {children}

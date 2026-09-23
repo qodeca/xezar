@@ -87,6 +87,23 @@ describe('the agent-quota answer matches its committed fixture', () => {
     ).toBe(false);
   });
 
+  it('lets readers preserve status when source and statusReason values are newer', () => {
+    const fixture = JSON.parse(fixtureText) as { accounts: Record<string, unknown>[] };
+    const unknown = fixture.accounts[4]!;
+    const answer = agentQuotaResponseSchema.parse({
+      ...fixture,
+      accounts: [{ ...unknown, source: 'future-source', statusReason: 'future-reason' }],
+    });
+
+    expect(answer.accounts[0]).toMatchObject({
+      status: 'unknown', source: 'future-source', statusReason: 'future-reason',
+    });
+    expect(agentQuotaProducerResponseSchema.safeParse({
+      ...fixture,
+      accounts: [{ ...unknown, source: 'future-source', statusReason: 'future-reason' }],
+    }).success).toBe(false);
+  });
+
   it('keeps the two project_config request and response actions on the same answer schema', () => {
     const answer = agentQuotaResponseSchema.parse(JSON.parse(fixtureText));
 
