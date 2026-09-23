@@ -6,10 +6,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { queryKeys, workspaceQueryKeys } from '@/api/queries'
 import { createQueryClient } from '@/api/query-client'
 import {
+  agentQuotaResponseSchema,
   unavailableAgentAccountRefusal,
   type AgentProfile,
   type AgentProfilesResponse,
+  type AgentQuotaResponse,
 } from '@qodeca/xezar-api-client'
+// A test-only reach into the contract package for its committed fixture (AGENTS.md: ugly on purpose).
+import quotaFixtureJson from '../../../../contract/src/__fixtures__/agent-quota.expected.json'
 import { Toaster, resetToasts } from '@/components/ui/toaster'
 import { AppRoutes } from '@/routes'
 import { agentPickerRows } from '@/components/default-agent-picker'
@@ -183,8 +187,14 @@ function serve(
   )
 }
 
-function renderAccounts({ singleProjectRoot = false }: { singleProjectRoot?: boolean } = {}) {
+function renderAccounts({
+  singleProjectRoot = false,
+  quota,
+}: { singleProjectRoot?: boolean; quota?: AgentQuotaResponse } = {}) {
   const client = createQueryClient()
+  // Plan limits (#867 S5) are a cache read here: seeded when a case is about them, and otherwise
+  // left to the stub's never-answering GET, which keeps every older case exactly as it was.
+  if (quota) client.setQueryData(workspaceQueryKeys.agentQuota, quota)
   client.setDefaultOptions({ queries: { ...client.getDefaultOptions().queries, retry: false } })
   client.setQueryData(queryKeys.health, {
     bootProject: 'boot',
@@ -1392,5 +1402,44 @@ describe('the accounts pane – the global-import block (#819 PR 9)', () => {
     expect(block()).toBeNull()
     expect(copyButton()).toBeNull()
     expect(document.body.textContent).not.toContain('import-global')
+  })
+})
+
+describe('plan limits in the account rows (#867 S5)', () => {
+  const QUOTA = agentQuotaResponseSchema.parse(quotaFixtureJson)
+  const limitsOf = (provider: string) =>
+    document.querySelector(
+      `[data-slot="accounts-provider"][data-provider="${provider}"] [data-slot="account-row"][data-account="default"] [data-slot="account-limits"]`,
+    )
+
+  // Break: the limits half not wired into AccountRow, or wired into every agent's rows.
+  it('gives the Claude Code and Codex rows their limits half, and leaves pi alone', async () => {
+    serve({ editable: true, profileCapableProviders: ['claude', 'codex'], defaults: {}, selections: {},
+      profiles: [...DEFAULTS, PI_DEFAULT] })
+    renderAccounts({ quota: QUOTA })
+
+    await waitFor(() => expect(limitsOf('claude')).not.toBeNull())
+    expect(limitsOf('claude')?.getAttribute('aria-label')).toBe('Plan limits of Built-in login, Claude Code')
+    expect(limitsOf('claude')?.textContent).toContain('92% used')
+    expect(limitsOf('codex')?.textContent).toContain('Credits: none — balance 0.')
+    expect(limitsOf('pi')).toBeNull()
+    // The Plan limits block sits above the groups, with one line per agent.
+    expect(document.querySelector('[data-slot="agent-quota-summary"]')?.textContent).toContain('Claude Code: 1 of 3 logins can work.')
+
+    // The row's own Show details opens its "Plan limits in detail" half too.
+    const row = await openDetails('default')
+    expect(row.querySelector('[data-slot="account-limits-details"]')?.textContent).toContain('Not reported by Claude Code')
+  })
+
+  // Break: hosted mode kept refusing the whole pane, so its limits never showed.
+  it('shows names and limits in hosted mode, with no folder anywhere', async () => {
+    serve({ editable: false, profileCapableProviders: ['claude', 'codex'], defaults: {}, selections: {}, profiles: [] })
+    renderAccounts({ quota: QUOTA })
+
+    await waitFor(() => expect(document.querySelector('[data-slot="agent-quota-hosted-rows"]')).not.toBeNull())
+    expect(document.querySelector('[data-slot="accounts-hosted"]')?.textContent).toContain('Their plan limits are below.')
+    expect(rows()).toHaveLength(QUOTA.accounts.length)
+    expect(document.querySelector('[data-slot="account-path"]')).toBeNull()
+    expect(document.querySelector('[data-action="accounts-add"]')).toBeNull()
   })
 })

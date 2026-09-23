@@ -257,14 +257,19 @@ describe('<App /> — the boot shell', () => {
     // The subscription opens only after health confirms a LOCAL cockpit, and the sync callback
     // re-runs on every query-cache event — a busy boot is exactly where a missing guard shows up
     // as a second subscribe.
-    await waitFor(() => expect(topics.subscribeTopic).toHaveBeenCalledTimes(1))
-    expect(topics.subscribeTopic.mock.calls[0]?.[0]).toBe('health')
+    // Two session-long topics live at the root: `health` and, since #867, `agent-quota` (the
+    // limits chip is on every page). Each is subscribed exactly once.
+    const calls = (topic: string) => topics.subscribeTopic.mock.calls.filter(([name]) => name === topic)
+    await waitFor(() => expect(calls('health')).toHaveLength(1))
+    await waitFor(() => expect(calls('agent-quota')).toHaveLength(1))
     await waitFor(() => expect(document.querySelector('[data-route="tasks"]')).not.toBeNull())
-    expect(topics.subscribeTopic).toHaveBeenCalledTimes(1)
+    expect(calls('health')).toHaveLength(1)
+    expect(calls('agent-quota')).toHaveLength(1)
+    expect(topics.subscribeTopic).toHaveBeenCalledTimes(2)
     expect(topics.release).not.toHaveBeenCalled()
 
     view.unmount()
-    expect(topics.release).toHaveBeenCalledTimes(1)
+    expect(topics.release).toHaveBeenCalledTimes(2)
   })
 
   it('contains a routed child error and can retry without remounting the shell subscriptions', async () => {
@@ -273,7 +278,7 @@ describe('<App /> — the boot shell', () => {
     try {
       const view = renderApp(`/p/${BOOT}/probe-hole`)
       await screen.findByText('Healthy route')
-      await waitFor(() => expect(topics.subscribeTopic).toHaveBeenCalledTimes(1))
+      await waitFor(() => expect(topics.subscribeTopic.mock.calls.filter(([topic]) => topic === 'health')).toHaveLength(1))
       routeHole.renderNode = () => { throw new Error('a routed child exploded') }
       view.rerender(<App />)
       await screen.findByRole('alert')
