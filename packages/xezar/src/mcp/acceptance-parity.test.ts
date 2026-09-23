@@ -97,7 +97,11 @@ function blocked(id: string, acceptance: readonly string[], records: readonly st
 
 const A_API = `/api/v1/p/${PROJECT_A}`;
 const OK_COMMAND = `node -e "process.stdout.write('ok')"`;
-const HOLD_COMMAND = `node -e "setTimeout(() => {}, 30000)"`;
+// A hold ends only when it is signalled – a cancel, or the world's dispose – never on a clock of
+// its own (#915). It used to be a 30 s timer, which made "the hold is still there when the case
+// acts on it" a bet on the case finishing in time. `exec` puts node in bash's place, so the
+// SIGTERM a cancel sends reaches the holder itself, whatever the login shell does.
+const HOLD_COMMAND = `exec node -e "setInterval(() => {}, 1 << 30)"`;
 // A four-variant group used to carry its own 75 s budget here, because every variant creates a
 // worktree and a child process and a loaded machine made that slower than the wait helper's 30 s
 // default (#630). Both budgets are gone: `until` awaits the store's change signal now, so no inner
@@ -261,6 +265,22 @@ afterEach(() => {
 
 const run = (w: AbWorld, id: string): RunRecord | undefined => w.a.store.getRun(id);
 
+/** The cockpit's terminal set (`work-organisation.ts` `TERMINAL_STATUSES`): nothing leaves it. */
+const TERMINAL = new Set(['done', 'failed', 'review', 'cancelled']);
+const ended = (w: AbWorld, id: string): boolean => TERMINAL.has(run(w, id)?.status ?? '');
+
+/**
+ * The task has reached its hold: its `hold` check step is `running`. The engine marks that step in
+ * the same synchronous stretch that spawns the holder and wires `interrupt` to it
+ * (`runWorkflowSteps` → `runCheckStep`), so from here a cancel stops a live process. The RECORD's
+ * `running` is not that signal: it is written before the worktree exists (#915).
+ */
+const holding = (w: AbWorld, id: string): boolean =>
+  run(w, id)?.status === 'running' && run(w, id)?.steps.find((s) => s.id === 'hold')?.status === 'running';
+
+/** A task's status and error, for the message of an assertion on a state it should not be in. */
+const outcome = (w: AbWorld, id: string): string => `${id}: ${run(w, id)?.status}${run(w, id)?.error ? ` — ${run(w, id)!.error}` : ''}`;
+
 /** Start a task through the cockpit (the human's door) and answer its ids. */
 async function uiStart(w: AbWorld, payload: Record<string, unknown>): Promise<string[]> {
   const res = await ui(w, '/runs', 'POST', payload);
@@ -274,7 +294,10 @@ async function holdBothSlots(w: AbWorld): Promise<string[]> {
     ...(await uiStart(w, { task: 'hold one', steps: [{ id: 'hold', name: 'Hold', command: HOLD_COMMAND }] })),
     ...(await uiStart(w, { task: 'hold two', steps: [{ id: 'hold', name: 'Hold', command: HOLD_COMMAND }] })),
   ];
-  await until(w, () => ids.every((id) => run(w, id)?.status === 'running'), 'both holds to take the two slots');
+  // Resolves on the holds being in place OR on either one ending, so a task that stops during its
+  // start-up fails here, by name, instead of leaving the case to wait out its own timeout.
+  await until(w, () => ids.every((id) => holding(w, id)) || ids.some((id) => ended(w, id)), 'both holds to take the two slots');
+  expect(ids.map((id) => (holding(w, id) ? 'holding' : outcome(w, id)))).toEqual(ids.map(() => 'holding'));
   return ids;
 }
 
@@ -729,16 +752,21 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
           expect(answer).toMatchObject({ status: 'conflict', applied: false });
           answer = await mcp(w, 'execution_control', { action: 'cancel', runId: one });
         }
-        await until(w, () => run(w, one!)?.status === 'cancelled', 'the MCP-cancelled task to stop');
+        // Any terminal state ends the wait; which one it is, is the assertion below (#915). A
+        // cancel that was refused, or a task that ended some other way, fails by name at once.
+        expect(answer, JSON.stringify(answer)).toMatchObject({ accepted: true });
+        await until(w, () => ended(w, one!), 'the MCP-cancelled task to stop');
         return answer;
       });
       assertIsolated(w, seen);
       expect(seen.response).toMatchObject({ accepted: true, subject: { type: 'run', id: one } });
-      // Only the named task: its sibling in the same project keeps running.
-      expect(run(w, two!)?.status).toBe('running');
+      expect(run(w, one!)?.status, outcome(w, one!)).toBe('cancelled');
+      // Only the named task: its sibling in the same project is still holding.
+      expect(holding(w, two!), outcome(w, two!)).toBe(true);
       expect(w.contextA.manager.isActive(two!)).toBe(true);
       expect((await ui(w, `/runs/${two}/cancel`, 'POST')).status).toBe(200);
-      await until(w, () => run(w, two!)?.status === 'cancelled', 'the cockpit-cancelled task to stop');
+      await until(w, () => ended(w, two!), 'the cockpit-cancelled task to stop');
+      expect(run(w, two!)?.status, outcome(w, two!)).toBe('cancelled');
       for (const id of [one!, two!]) expect(existsSync(run(w, id)!.worktreePath!)).toBe(true);
 
       // No tool takes a process id, a signal, a command or a host path (F-08, M-04).
