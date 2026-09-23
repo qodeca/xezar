@@ -400,7 +400,10 @@ describe('project_config: read_quota', () => {
   it('waits for bounded stale checks and filters the resulting rows', async () => {
     const all = value(await invoke({ action: 'read_quota' }));
     expect(all).toMatchObject({ schemaVersion: 1, scope: 'agent-quota' });
-    expect(all.accounts.map((row: { runner: string }) => row.runner)).toEqual(['claude', 'codex']);
+    // Dry run answers with the frozen fixture's rows (#867 AC-4, AC-27), the same as HTTP.
+    expect(all.accounts.map((row: { runner: string; accountId: string }) => `${row.runner}:${row.accountId}`)).toEqual([
+      'claude:default', 'claude:qodeca-priv', 'codex:default', 'claude:quota-exhausted', 'codex:api-key',
+    ]);
 
     const one = value(await invoke({ action: 'read_quota', provider: 'claude', accountId: 'default' }));
     expect(one.accounts).toEqual([
@@ -422,7 +425,7 @@ describe('project_config: read_quota', () => {
     expect(projectConfigTool.inputSchema.safeParse({ action: 'check_quota', provider: 'pi' }).success).toBe(false);
     const hosted = hotCockpit('0.0.0.0').app;
     const answer = value(await invoke({ action: 'read_quota' }, { service: hosted }));
-    expect(answer.accounts).toHaveLength(2);
+    expect(answer.accounts).toHaveLength(5);
     expect(JSON.stringify(answer)).not.toContain(ws.home);
   });
 });

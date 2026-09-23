@@ -1,0 +1,27 @@
+{
+  "type": "control_response",
+  "response": {
+    "subtype": "success",
+    "request_id": "xezar-agent-quota",
+    "response": {
+      "session": { "total_cost_usd": 0, "total_api_duration_ms": 0, "total_duration_ms": 4664, "total_lines_added": 0, "total_lines_removed": 0, "model_usage": {} },
+      "subscription_type": "max",
+      "rate_limits_available": true,
+      "rate_limits": {
+        "five_hour": { "utilization": 9, "resets_at": "2026-09-23T09:49:59.956245+00:00", "limit_dollars": null, "used_dollars": null, "remaining_dollars": null, "locked_reason": null },
+        "seven_day": { "utilization": 23, "resets_at": "2026-09-25T18:59:59.956267+00:00", "limit_dollars": null, "used_dollars": null, "remaining_dollars": null, "locked_reason": null },
+        "seven_day_opus": null,
+        "seven_day_sonnet": null,
+        "limits": [
+          { "kind": "session", "group": "session", "percent": 9, "severity": "normal", "resets_at": "2026-09-23T09:49:59.956245+00:00", "scope": null, "is_active": false },
+          { "kind": "weekly_all", "group": "weekly", "percent": 23, "severity": "normal", "resets_at": "2026-09-25T18:59:59.956267+00:00", "scope": null, "is_active": true },
+          { "kind": "weekly_scoped", "group": "weekly", "percent": 4, "severity": "normal", "resets_at": "2026-09-25T18:59:59.956452+00:00", "scope": { "model": { "id": null, "display_name": "Fable" }, "surface": null }, "is_active": false }
+        ],
+        "extra_usage": { "is_enabled": false, "monthly_limit": null, "used_credits": null, "utilization": null, "currency": null, "user_disabled": true, "spend_limit_reached": false, "credits_ever_enabled": true },
+        "spend": { "used": { "amount_minor": 0, "currency": "USD", "exponent": 2 }, "limit": null, "percent": 0, "enabled": false, "can_purchase_credits": false, "can_toggle": false },
+        "model_scoped": [ { "display_name": "Fable", "utilization": 4, "resets_at": "2026-09-25T18:59:59.956452+00:00" } ]
+      },
+      "behaviors": null
+    }
+  }
+}

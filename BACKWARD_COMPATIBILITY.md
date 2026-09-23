@@ -1960,11 +1960,24 @@ the 0.16.0 shape rather than instead of it.
   CLI bootstrap its own SQLite files, `installation_id`, `models_cache.json`, and
   `skills/.system/`. That is Codex's own first-run behaviour, costs zero model tokens, and writes
   only inside that login's `CODEX_HOME`; Xezar does not try to suppress it.
-- **Honest degradation:** the minimum versions are Claude Code `2.1.278` and Codex `0.155.1`.
-  Missing or older tools, timeouts and strictly validated format changes produce an `unknown` row
-  with a reason instead of failing the server. A format warning is logged once per login and tool
-  version. `XEZ_DRY_RUN=1` starts no process and returns deterministic mock observations. Placeholder
-  rows now say `source: "none"`; `source: "check"` means an active check actually ran.
+- **Honest degradation:** the minimum versions are Claude Code `2.1.280` and Codex `0.155.1`,
+  the versions of the D18 live proof (raised from `2.1.278` in 0.19.0, before any release carried
+  the checks). Missing or older tools, timeouts and strictly validated format changes produce an
+  `unknown` row with a reason instead of failing the server. A format warning is logged once per
+  login and tool version. A Claude Code `/usage` reply that is a usage-composition report with no
+  limit rows is `check-failed`, not `format-changed`, and logs no format warning (#893).
+  `XEZ_DRY_RUN=1` starts no process and answers with the frozen fixture `agent-quota.expected.json`
+  itself (filtered by the selector), whatever the clock: its rows carry none of the operational
+  keys below and the unfiltered answer, pretty-printed in the fixture's canonical form, equals the
+  fixture byte for byte (the HTTP body itself is compact JSON). Placeholder rows now say
+  `source: "none"`; `source: "check"` means an active check actually ran.
+- **Machine times:** every time the answer emits is UTC in whole seconds (`…:ssZ`); a fraction of
+  a second from a clock or a provider reply is truncated.
+- **Claude `get_usage` limit list:** the typed `limits[]` list is read where Claude Code 2.1.280
+  sends it, nested under `rate_limits`, and entries with `scope: null` are accepted, so per-model
+  weekly windows reach `modelWindows` (#906). The field set of the answer is unchanged.
+- **Latest reset wins:** when a live or failed-run limit arrives for a login that is already `out`
+  until a later time, the later reset is kept. A fresh check still replaces the row outright.
 - **Additive account metadata:** checked rows may carry `stale`, `refreshing`, `nextCheckAt`,
   `toolVersion`, `minimumVersion`, `statusReason`, `warnings` and `unavailableReason`. The source
   producer enum adds `check-text` and `none`; the producer schema keeps the closed source and
