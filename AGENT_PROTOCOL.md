@@ -301,9 +301,15 @@ reach the NDJSON file or the v2 stream (#867).
 - `{ type: 'account-limit'; runner; resetAt; reason }` — the backend's structured
   error said the session's login is out of plan quota until `resetAt`. Codex emits
   it for a `turn/completed` whose `turn.status` is `failed` and whose
-  `turn.error.codexErrorInfo` is `usageLimitExceeded` or `rateLimitExceeded`, and
-  then fails the turn with a v1 `error` that names the limit and the UTC reset
-  (#565). A failed turn with any other `codexErrorInfo` is unchanged.
+  `turn.error.codexErrorInfo` is `usageLimitExceeded`, or `rateLimitExceeded` when
+  the session's latest ordinary-bucket rate-limit snapshot has a non-null
+  `rateLimitReachedType`, and then fails the turn with a v1 `error` that names the
+  limit and the UTC reset (#565). The reset comes from Codex's message first, then
+  from a snapshot window at 100 %, never from a window that did not reach the
+  limit; without either, the error says the reset is unknown and no
+  `account-limit` is emitted. The schema does not say that `rateLimitExceeded` is a
+  plan limit rather than a short rate limit, so without `rateLimitReachedType` it
+  is an ordinary failed turn, like any other `codexErrorInfo`, which is unchanged.
 
 ### Xezar-owned run metadata events
 

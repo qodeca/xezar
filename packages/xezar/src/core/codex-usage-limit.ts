@@ -6,8 +6,11 @@
  *
  *  - `turn/completed` carries `turn: Turn`, whose `error: TurnError | null` is "only populated when
  *    the Turn's status is failed". `TurnError.codexErrorInfo` is `CodexErrorInfo | null`; its
- *    string variants include `usageLimitExceeded` and `rateLimitExceeded`. Neither variant carries
- *    a reset time — only `TurnError.message` and the account's rate-limit snapshot do.
+ *    string variants include `usageLimitExceeded` and `rateLimitExceeded`, listed separately and
+ *    with no description. Neither variant carries a reset time — only `TurnError.message` and the
+ *    account's rate-limit snapshot do. The schema does not say that `rateLimitExceeded` is a plan
+ *    limit rather than a short HTTP rate limit, so it counts as one only when the snapshot's own
+ *    `rateLimitReachedType` says a limit was reached.
  *  - `account/rateLimits/updated` carries one `RateLimitSnapshot`, a "sparse rolling rate-limit
  *    update": a `null` does not clear a previously observed value. Its `limitId` names the metered
  *    bucket (`codex` for the account's ordinary bucket) and `normalModelSlug` names the "normal
@@ -18,7 +21,7 @@ import { parseUsageLimit } from './usage-limit.ts';
 /** The ordinary bucket's `limit_id` in every Codex answer observed so far. */
 export const CODEX_DEFAULT_LIMIT_ID = 'codex';
 
-/** The `CodexErrorInfo` variants that mean the account is out of plan quota, not that the work failed. */
+/** The `CodexErrorInfo` variants that can mean the account is out of plan quota, not that the work failed. */
 export type CodexLimitErrorInfo = 'usageLimitExceeded' | 'rateLimitExceeded';
 
 export interface CodexTurnLimit {
@@ -55,21 +58,23 @@ export function mergeCodexSnapshot(previous: Record<string, unknown> | undefined
 }
 
 /**
- * The reset a snapshot gives for an exhausted account: the latest future reset among its windows
- * at 100 %, or — when Codex says a limit was reached (`rateLimitReachedType`) without saying which
- * window — the latest future reset of any window. Anything else is `null`: a snapshot that does not
- * show the limit does not get to date it.
+ * The reset a snapshot gives for an exhausted account: the latest future reset among the windows
+ * that reached the limit (at 100 %). Anything else is `null`: a window that did not reach the limit
+ * does not get to date it, even when `rateLimitReachedType` says some limit was reached.
  */
 function snapshotReset(snapshot: unknown, now: number): Date | null {
   if (!isRecord(snapshot)) return null;
-  const windows = [snapshot.primary, snapshot.secondary]
+  const exhausted = [snapshot.primary, snapshot.secondary]
     .filter(isRecord)
-    .filter((window) => typeof window.resetsAt === 'number' && window.resetsAt <= 10_000_000_000 && window.resetsAt * 1_000 > now);
-  const exhausted = windows.filter((window) => typeof window.usedPercent === 'number' && window.usedPercent >= 100);
-  const reached = typeof snapshot.rateLimitReachedType === 'string' && snapshot.rateLimitReachedType.length > 0;
-  const candidates = exhausted.length ? exhausted : reached ? windows : [];
-  const latest = candidates.reduce<number | null>((max, window) => Math.max(max ?? 0, (window.resetsAt as number) * 1_000), null);
+    .filter((window) => typeof window.resetsAt === 'number' && window.resetsAt <= 10_000_000_000 && window.resetsAt * 1_000 > now)
+    .filter((window) => typeof window.usedPercent === 'number' && window.usedPercent >= 100);
+  const latest = exhausted.reduce<number | null>((max, window) => Math.max(max ?? 0, (window.resetsAt as number) * 1_000), null);
   return latest === null ? null : new Date(latest);
+}
+
+/** True when the session's merged snapshot says Codex itself reached a limit (`rateLimitReachedType`). */
+function snapshotReachedLimit(snapshot: unknown): boolean {
+  return isRecord(snapshot) && typeof snapshot.rateLimitReachedType === 'string' && snapshot.rateLimitReachedType.length > 0;
 }
 
 /**
@@ -77,13 +82,18 @@ function snapshotReset(snapshot: unknown, now: number): Date | null {
  * that did not fail on a plan limit — a completed turn, a failed turn with another error, or a
  * failed turn with no error object — so those keep exactly the handling they had.
  *
+ * `usageLimitExceeded` is a plan limit. `rateLimitExceeded` is one only when the session's last
+ * ordinary-bucket snapshot carries a non-null `rateLimitReachedType`; without it the turn is an
+ * ordinary failed turn, so a short rate limit never holds a working login out.
+ *
  * The reset comes from Codex's own message first (`…try again at Sep 20th, 2026 4:02 PM`, the one
- * statement about THIS failure), then from the session's last ordinary-bucket snapshot.
+ * statement about THIS failure), then from the snapshot window that reached the limit.
  */
 export function codexTurnLimit(turn: unknown, lastSnapshot: unknown, now = Date.now()): CodexTurnLimit | null {
   if (!isRecord(turn) || turn.status !== 'failed' || !isRecord(turn.error)) return null;
   const kind = turn.error.codexErrorInfo;
   if (kind !== 'usageLimitExceeded' && kind !== 'rateLimitExceeded') return null;
+  if (kind === 'rateLimitExceeded' && !snapshotReachedLimit(lastSnapshot)) return null;
   const codexMessage = typeof turn.error.message === 'string' ? turn.error.message.trim() : '';
   const resetAt = parseUsageLimit(codexMessage, now)?.resetAt ?? snapshotReset(lastSnapshot, now);
   const label = kind === 'usageLimitExceeded' ? 'usage limit' : 'rate limit';

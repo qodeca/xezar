@@ -177,6 +177,37 @@ describe('Codex quota telemetry', () => {
     expect(error).toBeLessThan(events.findIndex((event) => event.type === 'turn-end'));
   });
 
+  it('fails a rateLimitExceeded turn as a limit only when the snapshot says a limit was reached', async () => {
+    const events: AgentEvent[] = [];
+    const session = new CodexAppServerRunner({ bin: mockBin, timeoutMs: 0 }).startSession(
+      { userPrompt: 'mock:rate-limit-reached', cwd: process.cwd() },
+      (event) => events.push(event),
+      { autoEndAfterFirstTurn: true },
+    );
+    await session.result;
+    // Dated from the 5-hour window at 100 %, never from the later weekly window at 40 %.
+    expect(events).toContainEqual({
+      type: 'account-limit', runner: 'codex', resetAt: '2030-01-01T00:00:00.000Z', reason: 'rateLimitExceeded',
+    });
+    expect(events).toContainEqual({
+      type: 'error',
+      message: 'Codex rate limit reached (rateLimitExceeded) — resets at 2030-01-01T00:00:00.000Z. Rate limit reached.',
+    });
+  });
+
+  it('leaves a rateLimitExceeded turn without rateLimitReachedType an ordinary failed turn', async () => {
+    const events: AgentEvent[] = [];
+    const session = new CodexAppServerRunner({ bin: mockBin, timeoutMs: 0 }).startSession(
+      { userPrompt: 'mock:rate-limit', cwd: process.cwd() },
+      (event) => events.push(event),
+      { autoEndAfterFirstTurn: true },
+    );
+    await session.result;
+    // No account-limit: the login is not marked out and no reset reaches auto-resume.
+    expect(events.some((event) => event.type === 'error' || event.type === 'account-limit')).toBe(false);
+    expect(events).toContainEqual({ type: 'turn-end' });
+  });
+
   it('leaves a failed turn with a non-quota codexErrorInfo exactly as before', async () => {
     const events: AgentEvent[] = [];
     const session = new CodexAppServerRunner({ bin: mockBin, timeoutMs: 0 }).startSession(

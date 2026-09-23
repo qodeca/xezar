@@ -210,10 +210,11 @@ rl.on('line', (line) => {
         rateLimits: { primary: { usedPercent: 25, windowDurationMins: 300, resetsAt: 1790685902 } },
       } });
     }
-    if (turnText.includes('mock:usage-limit') || turnText.includes('mock:context-window')) {
+    if (turnText.includes('mock:usage-limit') || turnText.includes('mock:context-window') || turnText.includes('mock:rate-limit')) {
       // Codex 0.156.0 schema shape (#565): a failed turn is `turn/completed` with `turn.status:
       // "failed"` and a structured `turn.error.codexErrorInfo`; there is no `turn/failed`.
       const usage = turnText.includes('mock:usage-limit');
+      const rate = turnText.includes('mock:rate-limit');
       if (usage) {
         emit({ method: 'account/rateLimits/updated', params: { rateLimits: {
           limitId: 'codex', normalModelSlug: null, rateLimitReachedType: 'rate_limit_reached',
@@ -221,11 +222,24 @@ rl.on('line', (line) => {
           secondary: null,
         } } });
       }
+      if (rate) {
+        // `mock:rate-limit-reached` says the plan limit was reached; `mock:rate-limit` alone does
+        // not, which is how a short HTTP rate limit would look. The later weekly window is below
+        // 100 %, so it must never date the limit.
+        emit({ method: 'account/rateLimits/updated', params: { rateLimits: {
+          limitId: 'codex', normalModelSlug: null,
+          rateLimitReachedType: turnText.includes('mock:rate-limit-reached') ? 'rate_limit_reached' : null,
+          primary: { usedPercent: 100, windowDurationMins: 300, resetsAt: 1893456000 },
+          secondary: { usedPercent: 40, windowDurationMins: 10080, resetsAt: 1893801600 },
+        } } });
+      }
       emit({ method: 'turn/completed', params: { threadId: 'th_mock_1', turn: {
         id: 'turn_mock_1', status: 'failed', items: [],
         error: usage
           ? { message: "You've hit your usage limit. Try again later.", codexErrorInfo: 'usageLimitExceeded', additionalDetails: null }
-          : { message: 'Context window exceeded.', codexErrorInfo: 'contextWindowExceeded', additionalDetails: null },
+          : rate
+            ? { message: 'Rate limit reached.', codexErrorInfo: 'rateLimitExceeded', additionalDetails: null }
+            : { message: 'Context window exceeded.', codexErrorInfo: 'contextWindowExceeded', additionalDetails: null },
       } } });
       return;
     }

@@ -227,7 +227,8 @@ class CodexSession implements AgentSession {
   });
   private tokensUsed = 0;
   /** This session's ordinary-bucket rate-limit snapshot, merged from sparse updates — the reset a
-   *  failed `usageLimitExceeded` turn falls back to when Codex's message names none (#565). */
+   *  failed plan-limit turn falls back to when Codex's message names none, and the
+   *  `rateLimitReachedType` that decides whether `rateLimitExceeded` is a plan limit (#565). */
   private lastRateLimits: Record<string, unknown> | undefined;
   private ready!: Promise<void>;
   private autoEndTimer: NodeJS.Timeout | undefined;

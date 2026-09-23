@@ -33,14 +33,39 @@ describe('codexTurnLimit', () => {
     expect(limit?.resetAt).toEqual(local);
   });
 
-  it('dates a reached limit from the latest window when Codex does not say which one', () => {
+  it('classifies rateLimitExceeded as a plan limit when the snapshot says a limit was reached', () => {
     const limit = codexTurnLimit(failed('rateLimitExceeded', 'Rate limit reached.'), {
       rateLimitReachedType: 'rate_limit_reached',
-      primary: { usedPercent: 80, windowDurationMins: 300, resetsAt: now / 1_000 + 600 },
-      secondary: { usedPercent: 20, windowDurationMins: 10080, resetsAt: now / 1_000 - 60 },
+      primary: { usedPercent: 100, windowDurationMins: 300, resetsAt: now / 1_000 + 600 },
+      secondary: { usedPercent: 20, windowDurationMins: 10080, resetsAt: now / 1_000 + 7_200 },
     }, now);
-    expect(limit).toMatchObject({ kind: 'rateLimitExceeded', resetAt: new Date(now + 600_000) });
-    expect(limit?.message).toMatch(/^Codex rate limit reached \(rateLimitExceeded\) — resets at /);
+    // The window that reached the limit dates it; the later weekly window at 20 % does not.
+    expect(limit).toEqual({
+      kind: 'rateLimitExceeded',
+      resetAt: new Date(now + 600_000),
+      message: 'Codex rate limit reached (rateLimitExceeded) — resets at 2026-09-20T12:10:00.000Z. Rate limit reached.',
+    });
+  });
+
+  it.each([
+    ['no snapshot', undefined],
+    ['a snapshot without rateLimitReachedType', { primary: { usedPercent: 100, windowDurationMins: 300, resetsAt: now / 1_000 + 600 } }],
+    ['a snapshot whose rateLimitReachedType is null', { rateLimitReachedType: null, primary: { usedPercent: 100, windowDurationMins: 300, resetsAt: now / 1_000 + 600 } }],
+  ])('leaves rateLimitExceeded an ordinary failed turn with %s', (_label, snapshot) => {
+    expect(codexTurnLimit(failed('rateLimitExceeded', 'Rate limit reached.'), snapshot, now)).toBeNull();
+  });
+
+  it('never dates a reached limit from a window that did not reach it', () => {
+    const limit = codexTurnLimit(failed('rateLimitExceeded', 'Rate limit reached.'), {
+      rateLimitReachedType: 'workspace_owner_usage_limit_reached',
+      primary: { usedPercent: 80, windowDurationMins: 300, resetsAt: now / 1_000 + 600 },
+      secondary: { usedPercent: 20, windowDurationMins: 10080, resetsAt: now / 1_000 + 7_200 },
+    }, now);
+    expect(limit).toEqual({
+      kind: 'rateLimitExceeded',
+      resetAt: null,
+      message: 'Codex rate limit reached (rateLimitExceeded); Codex did not report when it lifts. Rate limit reached.',
+    });
   });
 
   it('keeps an undated limit undated instead of guessing a window', () => {
