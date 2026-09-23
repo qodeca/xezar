@@ -14,6 +14,7 @@ import {
   normalizeCodexRateLimits,
   normalizeLiveQuota,
 } from './agent-quota.ts';
+import { dryRunQuotaAnswer } from './agent-quota-sample.ts';
 
 const at = (value: string) => new Date(value);
 const frozen = agentQuotaProducerResponseSchema.parse(JSON.parse(frozenText));
@@ -208,6 +209,77 @@ describe('AgentQuotaStore', () => {
     });
   });
 
+  // #867 AC-12 / D22: when two blocking facts are both still in the future, the later reset wins.
+  const weeklyReset = '2026-09-28T17:00:00Z';
+  const shortReset = '2026-09-22T15:10:00Z';
+  const liveOut = (reset: string, observedAt: string) => normalizeLiveQuota('claude', {
+    rate_limit_info: { utilization: 1, resetsAt: Date.parse(reset) / 1_000, rateLimitType: 'five_hour', status: 'rejected' },
+  }, 'default', at(observedAt))!;
+  it.each([
+    ['a failed-run out, then a live out with an earlier reset', async (store: AgentQuotaStore) => {
+      await store.markOut('claude', 'default', at(weeklyReset), at('2026-09-22T14:20:00Z'));
+      await store.put(liveOut(shortReset, '2026-09-22T14:23:00Z'));
+    }],
+    ['a live out, then a failed-run out with an earlier reset', async (store: AgentQuotaStore) => {
+      await store.put(normalizeLiveQuota('claude', {
+        rate_limit_info: { utilization: 1, resetsAt: Date.parse(weeklyReset) / 1_000, rateLimitType: 'seven_day', status: 'rejected' },
+      }, 'default', at('2026-09-22T14:20:00Z'))!);
+      await store.markOut('claude', 'default', at(shortReset), at('2026-09-22T14:23:00Z'));
+    }],
+    ['a live weekly window at 100 percent, then a live out with an earlier reset', async (store: AgentQuotaStore) => {
+      await store.put(normalizeLiveQuota('claude', {
+        rate_limit_info: { utilization: 1, resetsAt: Date.parse(weeklyReset) / 1_000, rateLimitType: 'seven_day' },
+      }, 'default', at('2026-09-22T14:20:00Z'))!);
+      await store.put(liveOut(shortReset, '2026-09-22T14:23:00Z'));
+    }],
+  ])('keeps the later still-future reset after %s', async (_case, arrange) => {
+    let now = Date.parse('2026-09-22T14:24:00Z');
+    const store = new AgentQuotaStore({ now: () => now });
+    await arrange(store);
+    expect(store.answer().accounts[0]).toMatchObject({ status: 'out', resetsAt: weeklyReset });
+    now = Date.parse('2026-09-22T15:30:00Z');
+    expect(store.answer().accounts[0]).toMatchObject({ status: 'out', resetsAt: weeklyReset });
+  });
+
+  it('lets a later live out replace an earlier retained out, and an expired one never wins', async () => {
+    const store = new AgentQuotaStore({ now: () => Date.parse('2026-09-22T16:00:00Z') });
+    await store.markOut('claude', 'default', at(shortReset), at('2026-09-22T14:20:00Z'));
+    await store.put(liveOut(weeklyReset, '2026-09-22T15:30:00Z'));
+    expect(store.answer().accounts[0]).toMatchObject({ status: 'out', resetsAt: weeklyReset });
+  });
+
+  it('lets a fresh check replace a retained out outright', async () => {
+    const store = new AgentQuotaStore({ now: () => Date.parse('2026-09-22T14:24:00Z') });
+    await store.markOut('claude', 'default', at(weeklyReset), at('2026-09-22T14:19:00Z'));
+    await store.put(normalizeClaudeUsage(claudeDefault, 'default', at('2026-09-22T14:20:00Z')));
+    expect(store.answer().accounts[0]).toMatchObject({ status: 'ok', source: 'check' });
+  });
+
+  // #867 AC-7: every machine time is whole seconds, `…:ssZ`, whatever the source's precision.
+  it('emits every time in whole UTC seconds', async () => {
+    const machineTime = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/;
+    const store = new AgentQuotaStore({ now: () => Date.parse('2026-09-22T14:24:00.448Z') });
+    await store.put(normalizeClaudeUsage(claudeDefault, 'default', at('2026-09-22T14:20:00.448Z')));
+    await store.put(normalizeCodexRateLimits(codexDefault, 'codex', at('2026-09-22T14:22:00.448Z')));
+    await store.markOut('claude', 'limited', at('2026-09-22T15:10:00.999Z'), at('2026-09-22T14:19:00.001Z'));
+    await store.put(normalizeLiveQuota('claude', {
+      rate_limit_info: { utilization: 0.4, resetsAt: 1_790_685_902.5, rateLimitType: 'five_hour' },
+    }, 'live', at('2026-09-22T14:23:00.448Z'))!);
+    const answer = store.answer({}, [{ runner: 'codex', accountId: 'none' }, { runner: 'claude', accountId: 'default' },
+      { runner: 'codex', accountId: 'codex' }, { runner: 'claude', accountId: 'limited' }, { runner: 'claude', accountId: 'live' }]);
+    const times: string[] = [answer.generatedAt];
+    for (const row of answer.accounts) {
+      times.push(row.checkedAt, ...(row.status === 'out' ? [row.resetsAt] : []));
+      for (const window of [row.shortWindow, row.weeklyWindow, ...(row.modelWindows ?? [])]) {
+        if (window) times.push(window.resetsAt);
+      }
+    }
+    expect(times.length).toBeGreaterThan(8);
+    expect(times.filter((time) => !machineTime.test(time))).toEqual([]);
+    expect(answer.generatedAt).toBe('2026-09-22T14:24:00Z');
+    expect(answer.accounts.find((row) => row.accountId === 'limited')).toMatchObject({ resetsAt: '2026-09-22T15:10:00Z' });
+  });
+
   it('reproduces the frozen sample from the S0 inputs through normalisers and store', async () => {
     const store = new AgentQuotaStore({ now: () => Date.parse(frozen.generatedAt) });
     await store.put(normalizeClaudeUsage(claudeDefault, 'default', at('2026-09-22T14:20:00Z')));
@@ -218,5 +290,10 @@ describe('AgentQuotaStore', () => {
     const answer = store.answer();
     expect(agentQuotaResponseSchema.parse(answer)).toEqual(frozen);
     expect(answer).toEqual(frozen);
+  });
+
+  it('bundles the frozen sample as the dry-run answer', () => {
+    expect(`${JSON.stringify(dryRunQuotaAnswer(), null, 2)}\n`).toBe(frozenText);
+    expect(dryRunQuotaAnswer({ provider: 'codex', accountId: 'api-key' }).accounts).toEqual([frozen.accounts[4]]);
   });
 });

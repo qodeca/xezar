@@ -9,8 +9,24 @@ import {
 } from '@qodeca/xezar-contract';
 import { parseUsageLimit } from '../core/usage-limit.ts';
 
-function isoUtc(value: Date | number): string {
-  return new Date(value).toISOString().replace('.000Z', 'Z');
+/**
+ * The one machine-time format of the quota answer (#867 AC-7): UTC, whole seconds, `…:ssZ`.
+ * Sub-second precision from any source (a clock, a provider reply) is truncated.
+ */
+export function isoUtc(value: Date | number): string {
+  const ms = new Date(value).getTime();
+  return new Date(ms - (((ms % 1_000) + 1_000) % 1_000)).toISOString().replace('.000Z', 'Z');
+}
+
+/** The versions the D18 live QA proved the checks on (#867 D29); raised only with a new proof. */
+export const MINIMUM_CLAUDE_QUOTA_VERSION = '2.1.280';
+export const MINIMUM_CODEX_QUOTA_VERSION = '0.155.1';
+
+/** The latest of the given reset instants, or undefined when there is none. */
+function latestReset(candidates: readonly (string | undefined)[]): string | undefined {
+  return candidates.reduce<string | undefined>((latest, candidate) =>
+    candidate !== undefined && (latest === undefined || Date.parse(candidate) > Date.parse(latest)) ? candidate : latest,
+  undefined);
 }
 
 export interface AgentQuotaSelector {
@@ -41,6 +57,7 @@ export class AgentQuotaStore {
     const key = this.key(record.runner, record.accountId);
     const previous = this.records.get(key);
     if (previous && record.source === 'live') record = mergeLiveRecord(previous, record);
+    else if (previous && record.source === 'failedRun') record = keepLaterOut(previous, record);
     if (previous && JSON.stringify(previous) === JSON.stringify(record)) return;
     this.records.set(key, record);
     const answer = this.answer();
@@ -92,7 +109,7 @@ export class AgentQuotaStore {
         refreshing: false,
         nextCheckAt: null,
         toolVersion: null,
-        minimumVersion: known.runner === 'claude' ? '2.1.278' : '0.155.1',
+        minimumVersion: known.runner === 'claude' ? MINIMUM_CLAUDE_QUOTA_VERSION : MINIMUM_CODEX_QUOTA_VERSION,
         statusReason: null,
         warnings: [],
         unavailableReason: 'No quota check has completed yet.',
@@ -152,22 +169,35 @@ function mergeLiveRecord(previous: AgentQuotaProducerAccount, incoming: AgentQuo
   // #867 FR-5: percentages are a blocking signal for Claude only. Codex
   // availability comes from its explicit ordinary-usage/rate-limit facts.
   const exhausted = detail.runner === 'claude'
-    ? windows.find((window) => window.usedPercent >= 100)
-    : undefined;
+    ? windows.filter((window) => window.usedPercent >= 100)
+    : [];
   // A newer live snapshot may omit a failed-run/check limit. Preserve that
   // observed fact until its reset instead of treating omission as recovery.
   const previousOut = previous.status === 'out'
     && Date.parse(previous.resetsAt) > Date.parse(incoming.checkedAt);
-  const status = incoming.status === 'out' || previousOut || exhausted ? 'out' : windows.length ? 'ok' : 'unknown';
+  const status = incoming.status === 'out' || previousOut || exhausted.length ? 'out' : windows.length ? 'ok' : 'unknown';
   const { resetsAt: _resetsAt, ...withoutReset } = detail;
+  // D22: of several blocking facts the latest reset wins, so a shorter limit ending never
+  // reads as availability while a longer one still holds (#867 AC-12).
   return agentQuotaProducerAccountSchema.parse({
     ...withoutReset,
     status,
     ...(status === 'out'
-      ? { resetsAt: incoming.status === 'out' ? incoming.resetsAt : previousOut ? previous.resetsAt : exhausted!.resetsAt }
+      ? { resetsAt: latestReset([
+        incoming.status === 'out' ? incoming.resetsAt : undefined,
+        previousOut ? previous.resetsAt : undefined,
+        ...exhausted.map((window) => window.resetsAt),
+      ]) }
       : {}),
     notReported: notReportedFor(detail),
   });
+}
+
+/** A failed-run limit never shortens a later out that is already stored (#867 AC-12). */
+function keepLaterOut(previous: AgentQuotaProducerAccount, incoming: AgentQuotaProducerAccount): AgentQuotaProducerAccount {
+  if (previous.status !== 'out' || incoming.status !== 'out') return incoming;
+  if (Date.parse(previous.resetsAt) <= Date.parse(incoming.resetsAt)) return incoming;
+  return agentQuotaProducerAccountSchema.parse({ ...incoming, resetsAt: previous.resetsAt });
 }
 
 function currentRecord(record: AgentQuotaProducerAccount, now: number): AgentQuotaProducerAccount {
@@ -185,16 +215,16 @@ function currentRecord(record: AgentQuotaProducerAccount, now: number): AgentQuo
   );
   // #867 FR-5: Codex percentages are descriptive, never a status decision.
   const exhausted = record.runner === 'claude'
-    ? windows.find((window) => window.usedPercent >= 100)
-    : undefined;
+    ? windows.filter((window) => window.usedPercent >= 100)
+    : [];
   const topLevelOut = record.status === 'out' && Date.parse(record.resetsAt) > now;
-  const status = topLevelOut || exhausted ? 'out' : windows.length ? 'ok' : 'unknown';
+  const status = topLevelOut || exhausted.length ? 'out' : windows.length ? 'ok' : 'unknown';
   const { resetsAt: _resetsAt, ...withoutReset } = detail;
   return agentQuotaProducerAccountSchema.parse({
     ...withoutReset,
     status,
     ...(status === 'out'
-      ? { resetsAt: topLevelOut ? record.resetsAt : exhausted!.resetsAt }
+      ? { resetsAt: latestReset([topLevelOut ? record.resetsAt : undefined, ...exhausted.map((window) => window.resetsAt)]) }
       : {}),
     ageSeconds: Math.max(0, Math.floor((now - Date.parse(record.checkedAt)) / 1_000)),
     notReported: notReportedFor(detail),
