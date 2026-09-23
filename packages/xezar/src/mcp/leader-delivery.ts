@@ -12,10 +12,11 @@ import type {
   McpPushCapability,
   McpPushUnavailableCode,
 } from '@qodeca/xezar-contract';
+import { z } from 'zod';
 
 import { projectDataDir } from '../project-data-paths.ts';
 import type { ProjectOwnership } from '../workspace/project-owner.ts';
-import { ClaudeCodeChannelAdapter } from './adapters/claude-code.ts';
+import { ClaudeCodeChannelAdapter, type ClaudeCodeReplayedRange } from './adapters/claude-code.ts';
 import { OpenCodeDeliveryBlocked, OpenCodeReactionAdapter } from './adapters/opencode.ts';
 import { CodexAttachError, codexControlHome, connectCodexLeader, type CodexLeaderAnnouncement, type ConnectedCodexLeader } from './adapters/codex-link.ts';
 import { codexBlocker, type CodexReactionAdapter, type CodexReactionTarget, codexReactionTarget, type CodexUnreachableReason } from './adapters/codex.ts';
@@ -33,7 +34,8 @@ import {
 } from './event-controller.ts';
 import type { EventJournal } from './event-journal.ts';
 import type { LeaderActResult, ProjectLeaderPort } from './project-leaders.ts';
-import type { McpSessionTransport } from './service.ts';
+import type { McpSessionTransport, McpToolCallActivity } from './service.ts';
+import type { McpToolResult } from './tool.ts';
 
 /**
  * Push delivery, connected (#309, Phase 6 of #73). Until this module, `EventController` (#107) and
@@ -144,6 +146,58 @@ const OPENCODE_BLOCKER_FIX = 'Check that `opencode serve` is running in this pro
  * Attach leader click with no answer at all.
  */
 const OPENCODE_ATTACH_CHECK_MS = 10_000;
+
+/**
+ * #886: the tool whose calls are the leader reading, checking or acknowledging events — never the
+ * "other activity" the push-not-seen blocker counts. The name, not the module: importing the tool here
+ * would pull the whole door into the delivery seam. A test pins it to `leaderEventsTool.name`.
+ */
+export const LEADER_EVENTS_TOOL_NAME = 'leader_events';
+
+/** #886: how many of the owner's other tool calls are kept; more than the blocker's threshold needs. */
+const OWNER_CALLS_KEPT = 16;
+
+/**
+ * #890 round 3: how many disjoint replayed ranges are kept. Reads normally start at the acknowledged
+ * position and page forward, so ranges merge into one; past the bound the LOWEST goes first — it is
+ * the likeliest to be acknowledged already, and forgetting a range can only report a blocker, never
+ * hide one.
+ */
+const OWNER_REPLAYED_KEPT = 16;
+
+/** The `structuredContent` of a `leader_events` read that replayed rows; anything else covers nothing. */
+const replayedReadSchema = z.object({
+  status: z.literal('ok'),
+  events: z.array(z.object({ journalSeq: z.number().int().nonnegative() })).min(1),
+});
+
+/**
+ * #890 round 3: the journal rows one successful `leader_events` read replayed, inclusive — the rows its
+ * answer actually carried, never the position it was asked from. A journal page is contiguous in
+ * `journalSeq` (the journal replays every retained row after the cursor, in order), so its first and
+ * last rows bound it. A gap answer, an empty page or an answer of any other shape covers nothing.
+ */
+export function replayedRange(result: McpToolResult): ClaudeCodeReplayedRange | undefined {
+  const parsed = replayedReadSchema.safeParse(result.structuredContent);
+  if (!parsed.success) return undefined;
+  const seqs = parsed.data.events.map((event) => event.journalSeq);
+  return { fromSeq: Math.min(...seqs), throughSeq: Math.max(...seqs) };
+}
+
+/** Add one replayed range, merging overlapping and adjacent ones; ascending, at most `OWNER_REPLAYED_KEPT`. */
+export function mergeReplayed(ranges: readonly ClaudeCodeReplayedRange[], added: ClaudeCodeReplayedRange): ClaudeCodeReplayedRange[] {
+  const sorted = [...ranges, added].sort((a, b) => a.fromSeq - b.fromSeq);
+  const merged: ClaudeCodeReplayedRange[] = [];
+  for (const range of sorted) {
+    const last = merged.at(-1);
+    if (last !== undefined && range.fromSeq <= last.throughSeq + 1) {
+      merged[merged.length - 1] = { fromSeq: last.fromSeq, throughSeq: Math.max(last.throughSeq, range.throughSeq) };
+    } else {
+      merged.push(range);
+    }
+  }
+  return merged.slice(-OWNER_REPLAYED_KEPT);
+}
 
 /**
  * The attach-time wording for an unreachable server (#651 review, Minor 2). The adapter's own
@@ -414,6 +468,8 @@ export interface LeaderDeliveryOptions {
   readonly warn: (message: string) => void;
   /** Test seam. Production uses the controller's 30 s. */
   readonly heartbeatMs?: number;
+  /** #886 test seam: how long an unacknowledged push may be followed by tool calls. Production: five minutes. */
+  readonly pushNotSeenMs?: number;
   /**
    * Test seam for the attach-time OpenCode check (#703). Production uses the 10 s
    * `OPENCODE_ATTACH_CHECK_MS` bound above; a case that needs a server which accepts a connection and
@@ -496,6 +552,9 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
    */
   #ownerTransport: McpSessionTransport | undefined;
   #ownerSessionKey: string | undefined;
+  /** #886: the journal rows the owner session's reads replayed (merged ranges), and its recent calls to other tools (bounded). */
+  #ownerReplayed: ClaudeCodeReplayedRange[] = [];
+  #ownerOtherCallsAt: number[] = [];
   /** The attached leader session and the facts observed against it. xezar never started it. */
   #leader: AttachedLeader | undefined;
   /** One `act` at a time: two concurrent attaches must not leave two adapters behind. */
@@ -530,6 +589,7 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
     // #374: this session's transport is now the one a Claude Code channel push travels down.
     this.#ownerTransport = transport;
     this.#ownerSessionKey = sessionKey;
+    this.#forgetOwnerActivity();
     if (this.#leader?.client === 'claude-code' && transport) {
       const blocker = this.#channelEligibility(transport);
       if (blocker) this.#opts.warn(`[xez] ${blocker.code}: ${blocker.message} fix: ${blocker.fix}`);
@@ -558,8 +618,45 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
     if (this.#ownerSessionKey === sessionKey) {
       this.#ownerTransport = undefined;
       this.#ownerSessionKey = undefined;
+      this.#forgetOwnerActivity();
     }
     this.#changed();
+  }
+
+  /**
+   * #886: the owner session called a xezar tool. Only the owner counts — a lapsed session's call says
+   * nothing about the leader — and only a Claude Code leader reads it. A `leader_events` call is the
+   * leader recovering or checking events, never "unrelated activity" (#890 review, finding 1): read,
+   * status, ack, attach and stop are not counted here at all. This edge fires on ARRIVAL, before the
+   * arguments are validated, so it never records a read — a rejected read returned no events (#890
+   * re-check); `sessionSucceeded` does. It publishes nothing: status is computed when read, and the
+   * heartbeat republishes.
+   */
+  sessionCalled(sessionKey: string, call: McpToolCallActivity): void {
+    if (this.#closed || sessionKey !== this.#ownerSessionKey) return;
+    if (call.tool === LEADER_EVENTS_TOOL_NAME) return;
+    this.#ownerOtherCallsAt.push(Date.now());
+    if (this.#ownerOtherCallsAt.length > OWNER_CALLS_KEPT) this.#ownerOtherCallsAt.shift();
+  }
+
+  /**
+   * #886: the owner's call validated and answered without an error. Only a `leader_events` read counts
+   * here, and only for the journal rows its answer REPLAYED (#890 round 3): a gap answer replayed
+   * nothing, and a page that stops short — or an explicit cursor past a row — did not replay that row,
+   * so neither may read as the leader having it. A push made while the read ran is covered only if the
+   * page carried it. Coverage only grows. An ack needs nothing: the adapter prunes by the durable
+   * acknowledged position, which only a successful ack moves.
+   */
+  sessionSucceeded(sessionKey: string, call: McpToolCallActivity, result: McpToolResult): void {
+    if (this.#closed || sessionKey !== this.#ownerSessionKey) return;
+    if (call.tool !== LEADER_EVENTS_TOOL_NAME || call.action !== 'read') return;
+    const replayed = replayedRange(result);
+    if (replayed !== undefined) this.#ownerReplayed = mergeReplayed(this.#ownerReplayed, replayed);
+  }
+
+  #forgetOwnerActivity(): void {
+    this.#ownerReplayed = [];
+    this.#ownerOtherCallsAt = [];
   }
 
   /** Metadata arrives from the owner bridge, never from the HTTP attach request. */
@@ -868,6 +965,9 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
           // push-unconfirmed blocker compares against is the leader's own acknowledgement.
           acknowledged: () => this.#opts.leaderRecord?.acknowledged() ?? 0,
           heartbeatMs: this.#opts.heartbeatMs ?? EVENT_CONTROLLER_HEARTBEAT_MS,
+          // #886: the owner session keeps calling other tools yet never reads or acknowledges → the plain blocker.
+          ownerActivity: () => ({ replayed: this.#ownerReplayed, otherCallsAt: this.#ownerOtherCallsAt }),
+          ...(this.#opts.pushNotSeenMs === undefined ? {} : { notSeenMs: this.#opts.pushNotSeenMs }),
         }),
         failingSince: null,
         settledThrough: 0,

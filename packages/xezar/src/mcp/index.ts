@@ -69,7 +69,7 @@ export interface StartMcpServiceOptions {
   readonly platform?: NodeJS.Platform;
   readonly warn?: (message: string) => void;
   /** Test seam: the event controller's heartbeat (#309). Production uses its 30 s. */
-  readonly leader?: { readonly heartbeatMs?: number };
+  readonly leader?: { readonly heartbeatMs?: number; readonly pushNotSeenMs?: number };
   readonly localHandoff?: () => boolean;
   /**
    * Every journal row as it is durably appended — the terminal's activity lines (#467). Live rows
@@ -119,6 +119,7 @@ export async function startMcpService(opts: StartMcpServiceOptions): Promise<Mcp
         ...(parts.cursors ? { leaderRecord: parts.cursors } : {}),
         warn,
         ...(opts.leader?.heartbeatMs === undefined ? {} : { heartbeatMs: opts.leader.heartbeatMs }),
+        ...(opts.leader?.pushNotSeenMs === undefined ? {} : { pushNotSeenMs: opts.leader.pushNotSeenMs }),
         ...(opts.localHandoff === undefined ? {} : { localHandoff: opts.localHandoff }),
         // Where a Codex leader's shared app-server is looked for: THIS process's Codex home.
         codexLeader: { home: () => codexControlHome(opts.env ?? process.env) },
@@ -161,6 +162,10 @@ export async function startMcpService(opts: StartMcpServiceOptions): Promise<Mcp
               codexAnnounced: (key, announcement) => delivery.codexAnnounced(key, announcement),
               // #450: answered in `session/open`, so the bridge registers the channel only when a push can arrive.
               pushCapability: (key, transport) => delivery.pushCapability(key, transport),
+              // #886: every tool call, with its tool and action, is the owner's activity signal for the push-not-seen blocker.
+              called: (key, call) => delivery.sessionCalled(key, call),
+              // #886: a read counts only once it validated and answered (#890 re-check), and only for the rows it replayed (round 3).
+              succeeded: (key, call, result) => delivery.sessionSucceeded(key, call, result),
             },
           }
         : {}),

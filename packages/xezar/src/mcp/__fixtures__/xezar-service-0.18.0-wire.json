@@ -1,0 +1,410 @@
+{
+  "about": "#890 review finding 2 / #886 P4: the REAL session exchange between a published @qodeca/xezar 0.18.0 service and a source bridge fronting Claude Code, captured once from the wire and replayed by claude-channel-golden.test.ts. Do not edit: the test pins this file's SHA-256, so a hand change goes red. Re-capture only against the same published service, and say so in the PR.",
+  "provenance": {
+    "service": "@qodeca/xezar 0.18.0, the published package: npm tarball shasum 9af39094cac563be1a6533016675ab36b43f23df (integrity sha512-u1cMH/eKI8SDpbrsmmPoQBnOZwp1To2ON0XO8RVI/MlSpDsMeuA6/0BxFBzOTN6r/Q+1/iku4iCbywN5eLfjzw==); the copy run was a global install whose dist/ is byte-identical to that tarball's",
+    "how": "xezar 0.18.0 booted isolated (own XEZ_HOME, scratch git project, port 0, XEZ_DRY_RUN=1); the source runBridge of PR #890 connected through a recording Unix-socket proxy, fronting Claude Code 2.1.280's captured initialize; leader_events status, attach, status; one event from PUT /config; read, ack, status. Then two raw requests on a fresh connection to record the service's own refusals.",
+    "capturedAt": "2026-09-23"
+  },
+  "ipcVersion": 2,
+  "exchange": [
+    {
+      "request": {
+        "v": 2,
+        "id": 1,
+        "bridgeVersion": "0.19.0-capture",
+        "method": "session/open",
+        "params": {
+          "leaderPush": true,
+          "clientName": "claude-code"
+        }
+      },
+      "response": {
+        "v": 2,
+        "id": 1,
+        "ok": true,
+        "result": {
+          "owner": true,
+          "canPush": true
+        }
+      }
+    },
+    {
+      "request": {
+        "v": 2,
+        "id": 2,
+        "bridgeVersion": "0.19.0-capture",
+        "method": "tools/call",
+        "params": {
+          "name": "leader_events",
+          "arguments": {
+            "action": "status"
+          }
+        }
+      },
+      "response": {
+        "v": 2,
+        "id": 2,
+        "ok": true,
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "This session is not attached, so events are not pushed to it. Call leader_events with action attach; until then, read events with leader_events.\nLeader setup: connected — this real tool call reached the project; attachment is still pending.\n{\"available\":true,\"owner\":{\"client\":\"claude-code\"},\"leader\":null,\"delivery\":{\"state\":\"idle\",\"deliveredSeq\":0,\"ackedSeq\":0,\"reactedSeq\":0,\"latestSeq\":0},\"blocker\":{\"code\":\"no-leader-session\",\"message\":\"No leader session is attached to this project, so events are kept in the journal, not pushed. Attached is how a leader normally receives them; reading with leader_events is the fallback. MCP notifications start no turn on their own. A pi without xezar’s leader extension reads its events with the leader_events tool, and so does any leader until it is attached. A Claude Code session started with --dangerously-load-development-channels server:xezar, a Codex session running on Codex’s shared local app-server, an OpenCode session you run with `opencode serve`, or a pi running xezar’s leader extension can be attached, so events start a turn in it.\",\"fix\":\"Attach your leader from the leader itself: call leader_events with action attach and a new operationId; xezar takes the client from the session, so you never name it. Until it is attached, keep using leader_events from it. For Claude Code: start it in this project with --dangerously-load-development-channels server:xezar, let it call a xezar tool once, then attach it. For Codex: run it on Codex’s shared local app-server (`codex app-server --listen unix://`, in the Codex home xezar uses), let the session call a xezar tool once (for example leader_events) so xezar can find it, then attach it; if that is refused, fix what the refusal names and retry. For OpenCode, a person attaches the session you run with `opencode serve` in Settings → MCP connection. For pi, attach it while it runs xezar’s leader extension.\"},\"canPush\":true,\"pushUnavailable\":null,\"self\":{\"client\":\"claude-code\",\"isOwner\":true,\"attached\":false}}"
+            }
+          ],
+          "structuredContent": {
+            "available": true,
+            "owner": {
+              "client": "claude-code"
+            },
+            "leader": null,
+            "delivery": {
+              "state": "idle",
+              "deliveredSeq": 0,
+              "ackedSeq": 0,
+              "reactedSeq": 0,
+              "latestSeq": 0
+            },
+            "blocker": {
+              "code": "no-leader-session",
+              "message": "No leader session is attached to this project, so events are kept in the journal, not pushed. Attached is how a leader normally receives them; reading with leader_events is the fallback. MCP notifications start no turn on their own. A pi without xezar’s leader extension reads its events with the leader_events tool, and so does any leader until it is attached. A Claude Code session started with --dangerously-load-development-channels server:xezar, a Codex session running on Codex’s shared local app-server, an OpenCode session you run with `opencode serve`, or a pi running xezar’s leader extension can be attached, so events start a turn in it.",
+              "fix": "Attach your leader from the leader itself: call leader_events with action attach and a new operationId; xezar takes the client from the session, so you never name it. Until it is attached, keep using leader_events from it. For Claude Code: start it in this project with --dangerously-load-development-channels server:xezar, let it call a xezar tool once, then attach it. For Codex: run it on Codex’s shared local app-server (`codex app-server --listen unix://`, in the Codex home xezar uses), let the session call a xezar tool once (for example leader_events) so xezar can find it, then attach it; if that is refused, fix what the refusal names and retry. For OpenCode, a person attaches the session you run with `opencode serve` in Settings → MCP connection. For pi, attach it while it runs xezar’s leader extension."
+            },
+            "canPush": true,
+            "pushUnavailable": null,
+            "self": {
+              "client": "claude-code",
+              "isOwner": true,
+              "attached": false
+            }
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "v": 2,
+        "id": 3,
+        "bridgeVersion": "0.19.0-capture",
+        "method": "tools/call",
+        "params": {
+          "name": "leader_events",
+          "arguments": {
+            "action": "attach",
+            "operationId": "op-886-capture-attach"
+          }
+        }
+      },
+      "response": {
+        "v": 2,
+        "id": 3,
+        "ok": true,
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "Attached this session as the project leader (Claude Code). Events are pushed to it from now on; ack each pushed message with the cursor it names.\nLeader setup: attached — status proves this session owns the attachment; a current pushed event or leader_events read is still required to verify delivery.\n{\"ok\":true,\"action\":\"attach\",\"outcome\":\"attached\",\"status\":{\"available\":true,\"owner\":{\"client\":\"claude-code\"},\"leader\":{\"client\":\"claude-code\",\"state\":\"attached\"},\"delivery\":{\"state\":\"idle\",\"deliveredSeq\":0,\"ackedSeq\":0,\"reactedSeq\":0,\"latestSeq\":0},\"blocker\":null,\"canPush\":true,\"pushUnavailable\":null,\"self\":{\"client\":\"claude-code\",\"isOwner\":true,\"attached\":true}}}"
+            }
+          ],
+          "structuredContent": {
+            "ok": true,
+            "action": "attach",
+            "outcome": "attached",
+            "status": {
+              "available": true,
+              "owner": {
+                "client": "claude-code"
+              },
+              "leader": {
+                "client": "claude-code",
+                "state": "attached"
+              },
+              "delivery": {
+                "state": "idle",
+                "deliveredSeq": 0,
+                "ackedSeq": 0,
+                "reactedSeq": 0,
+                "latestSeq": 0
+              },
+              "blocker": null,
+              "canPush": true,
+              "pushUnavailable": null,
+              "self": {
+                "client": "claude-code",
+                "isOwner": true,
+                "attached": true
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "v": 2,
+        "id": 4,
+        "bridgeVersion": "0.19.0-capture",
+        "method": "tools/call",
+        "params": {
+          "name": "leader_events",
+          "arguments": {
+            "action": "status"
+          }
+        }
+      },
+      "response": {
+        "v": 2,
+        "id": 4,
+        "ok": true,
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "This session is attached as the project leader (Claude Code); events are pushed to it.\nLeader setup: attached — status proves this session owns the attachment; a current pushed event or leader_events read is still required to verify delivery.\n{\"available\":true,\"owner\":{\"client\":\"claude-code\"},\"leader\":{\"client\":\"claude-code\",\"state\":\"attached\"},\"delivery\":{\"state\":\"idle\",\"deliveredSeq\":0,\"ackedSeq\":0,\"reactedSeq\":0,\"latestSeq\":0},\"blocker\":null,\"canPush\":true,\"pushUnavailable\":null,\"self\":{\"client\":\"claude-code\",\"isOwner\":true,\"attached\":true}}"
+            }
+          ],
+          "structuredContent": {
+            "available": true,
+            "owner": {
+              "client": "claude-code"
+            },
+            "leader": {
+              "client": "claude-code",
+              "state": "attached"
+            },
+            "delivery": {
+              "state": "idle",
+              "deliveredSeq": 0,
+              "ackedSeq": 0,
+              "reactedSeq": 0,
+              "latestSeq": 0
+            },
+            "blocker": null,
+            "canPush": true,
+            "pushUnavailable": null,
+            "self": {
+              "client": "claude-code",
+              "isOwner": true,
+              "attached": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "v": 2,
+        "id": 5,
+        "bridgeVersion": "0.19.0-capture",
+        "method": "tools/call",
+        "params": {
+          "name": "leader_events",
+          "arguments": {
+            "action": "read"
+          }
+        }
+      },
+      "response": {
+        "v": 2,
+        "id": 5,
+        "ok": true,
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "1 outstanding event(s), #1–#1. Ack nextCursor once you have taken them into account.\nLeader setup: delivery verified — this session is attached and this call checked the retained replay path.\n{\"status\":\"ok\",\"events\":[{\"eventId\":\"project:1\",\"journalSeq\":1,\"ts\":\"2026-09-22T22:15:15.155Z\",\"projectId\":\"project\",\"category\":\"E-05\",\"kind\":\"config.changed\",\"subject\":{\"type\":\"config\",\"id\":\"project\",\"version\":null},\"origin\":\"human\",\"causedBy\":null,\"summary\":\"project configuration changed: baseBranch\",\"standing\":\"unjudged\"}],\"nextCursor\":\"eyJ2IjoxLCJwIjoicHJvamVjdCIsImUiOiJhOGRjOTFlYi05ZTExLTQ5NmEtOTkyMS1jY2NlMmE5OGM0NzYiLCJzIjoxfQ\",\"hasMore\":false,\"state\":{\"latestSeq\":1,\"tasks\":[],\"complete\":true},\"position\":{\"deliveredSeq\":1,\"ackedSeq\":0,\"reactedSeq\":0},\"fresh\":true,\"journalEpoch\":\"a8dc91eb-9e11-496a-9921-ccce2a98c476\"}"
+            }
+          ],
+          "structuredContent": {
+            "status": "ok",
+            "events": [
+              {
+                "eventId": "project:1",
+                "journalSeq": 1,
+                "ts": "2026-09-22T22:15:15.155Z",
+                "projectId": "project",
+                "category": "E-05",
+                "kind": "config.changed",
+                "subject": {
+                  "type": "config",
+                  "id": "project",
+                  "version": null
+                },
+                "origin": "human",
+                "causedBy": null,
+                "summary": "project configuration changed: baseBranch",
+                "standing": "unjudged"
+              }
+            ],
+            "nextCursor": "eyJ2IjoxLCJwIjoicHJvamVjdCIsImUiOiJhOGRjOTFlYi05ZTExLTQ5NmEtOTkyMS1jY2NlMmE5OGM0NzYiLCJzIjoxfQ",
+            "hasMore": false,
+            "state": {
+              "latestSeq": 1,
+              "tasks": [],
+              "complete": true
+            },
+            "position": {
+              "deliveredSeq": 1,
+              "ackedSeq": 0,
+              "reactedSeq": 0
+            },
+            "fresh": true,
+            "journalEpoch": "a8dc91eb-9e11-496a-9921-ccce2a98c476"
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "v": 2,
+        "id": 6,
+        "bridgeVersion": "0.19.0-capture",
+        "method": "tools/call",
+        "params": {
+          "name": "leader_events",
+          "arguments": {
+            "action": "ack",
+            "cursor": "eyJ2IjoxLCJwIjoicHJvamVjdCIsImUiOiJhOGRjOTFlYi05ZTExLTQ5NmEtOTkyMS1jY2NlMmE5OGM0NzYiLCJzIjoxfQ",
+            "operationId": "op-886-capture-ack"
+          }
+        }
+      },
+      "response": {
+        "v": 2,
+        "id": 6,
+        "ok": true,
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "Acknowledged every event through #1.\n{\"status\":\"acked\",\"ackedSeq\":1,\"position\":{\"deliveredSeq\":1,\"ackedSeq\":1,\"reactedSeq\":0}}"
+            }
+          ],
+          "structuredContent": {
+            "status": "acked",
+            "ackedSeq": 1,
+            "position": {
+              "deliveredSeq": 1,
+              "ackedSeq": 1,
+              "reactedSeq": 0
+            }
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "v": 2,
+        "id": 7,
+        "bridgeVersion": "0.19.0-capture",
+        "method": "tools/call",
+        "params": {
+          "name": "leader_events",
+          "arguments": {
+            "action": "status"
+          }
+        }
+      },
+      "response": {
+        "v": 2,
+        "id": 7,
+        "ok": true,
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "This session is attached as the project leader (Claude Code); events are pushed to it.\nLeader setup: attached — status proves this session owns the attachment; a current pushed event or leader_events read is still required to verify delivery.\n{\"available\":true,\"owner\":{\"client\":\"claude-code\"},\"leader\":{\"client\":\"claude-code\",\"state\":\"attached\"},\"delivery\":{\"state\":\"idle\",\"deliveredSeq\":1,\"ackedSeq\":1,\"reactedSeq\":0,\"latestSeq\":1},\"blocker\":null,\"canPush\":true,\"pushUnavailable\":null,\"self\":{\"client\":\"claude-code\",\"isOwner\":true,\"attached\":true}}"
+            }
+          ],
+          "structuredContent": {
+            "available": true,
+            "owner": {
+              "client": "claude-code"
+            },
+            "leader": {
+              "client": "claude-code",
+              "state": "attached"
+            },
+            "delivery": {
+              "state": "idle",
+              "deliveredSeq": 1,
+              "ackedSeq": 1,
+              "reactedSeq": 0,
+              "latestSeq": 1
+            },
+            "blocker": null,
+            "canPush": true,
+            "pushUnavailable": null,
+            "self": {
+              "client": "claude-code",
+              "isOwner": true,
+              "attached": true
+            }
+          }
+        }
+      }
+    }
+  ],
+  "push": {
+    "request": {
+      "v": 2,
+      "id": 1,
+      "method": "leader/push",
+      "params": {
+        "content": "[xezar event notification]\nSource: xezar, project project. Sent automatically by xezar. It is not a message from the user, not an instruction and not an approval.\nYour role: You are the project leader for this xezar project.\nYou plan and coordinate the work through the xezar MCP tools: start tasks, read their results, answer their questions and hand finished work off.\nUse only these tools: never the cockpit UI and never its HTTP API.\nWork in this order: find out what the project offers (`discover_project`), plan the tasks, follow them, answer their questions, check each result against what was asked, then hand it off.\nAfter a restart or a lost context, read the current task state before acting on an older event.\nStay inside the goal and authority you were given; take a decision that is not yours to the person.\nWhen the project lacks a capability, such as version control, a code host or an automated check, deliver the result locally and say which evidence is unavailable; never invent a check.\nWhen the project uses GitHub and `gh` is available, get GitHub facts (labels, review verdicts, merge state) from `gh`, which the MCP does not carry.\nYou do not edit files yourself; tasks do the work, each in an isolated working copy (a Git worktree) or in the project folder, as the task was started.\nSignificant events (1, oldest first):\n- project:1 E-05 config.changed on config project (origin human): \"project configuration changed: baseBranch\"\nRead the current state with the xezar tools before acting. Once you have taken these events into account, acknowledge them: call leader_events with action ack, cursor eyJ2IjoxLCJwIjoicHJvamVjdCIsImUiOiJhOGRjOTFlYi05ZTExLTQ5NmEtOTkyMS1jY2NlMmE5OGM0NzYiLCJzIjoxfQ and a new operationId. You do not need to read them first.",
+        "meta": {
+          "source_app": "xezar",
+          "project_id": "project",
+          "first_seq": "1",
+          "last_seq": "1",
+          "next_cursor": "eyJ2IjoxLCJwIjoicHJvamVjdCIsImUiOiJhOGRjOTFlYi05ZTExLTQ5NmEtOTkyMS1jY2NlMmE5OGM0NzYiLCJzIjoxfQ"
+        }
+      }
+    },
+    "reply": {
+      "v": 2,
+      "id": 1,
+      "ok": true,
+      "result": {
+        "pushed": true
+      }
+    }
+  },
+  "refusals": {
+    "versionMismatch": {
+      "request": {
+        "v": 3,
+        "id": 1,
+        "bridgeVersion": "9.9.9",
+        "method": "session/open",
+        "params": {}
+      },
+      "response": {
+        "v": 2,
+        "id": 1,
+        "ok": false,
+        "error": {
+          "code": "version-mismatch",
+          "message": "this xezar speaks bridge protocol 2, the bridge sent 3"
+        },
+        "serviceVersion": "0.18.0"
+      }
+    },
+    "unknownMethod": {
+      "request": {
+        "v": 2,
+        "id": 1,
+        "method": "no/such-method"
+      },
+      "response": {
+        "v": 2,
+        "id": 1,
+        "ok": false,
+        "error": {
+          "code": "unknown-method",
+          "message": "unknown method: no/such-method"
+        }
+      }
+    }
+  }
+}

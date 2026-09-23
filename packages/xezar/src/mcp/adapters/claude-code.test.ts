@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import type { McpJournalRow } from '@qodeca/xezar-contract';
 
 import type { EventDispatch } from '../event-controller.ts';
-import { ClaudeCodeChannelAdapter, channelMeta, claudeCodeRoute, renderChannelContent, type ClaudeCodeChannelAdapterOptions } from './claude-code.ts';
+import { CLAUDE_CODE_PUSH_NOT_SEEN_CALLS, ClaudeCodeChannelAdapter, channelMeta, claudeCodeRoute, renderChannelContent, type ClaudeCodeChannelAdapterOptions } from './claude-code.ts';
 
 /**
  * #374 — the Claude Code channel reaction adapter, and the corrected verdict. It wakes a Claude Code
@@ -337,6 +337,132 @@ describe('oldest unacknowledged delivery (#404 finding 5)', () => {
     h.setAcked(3);
     expect(h.adapter.status()).toEqual({});
     await h.adapter.deliver(dispatch([row(4)]), signal());
+    expect(h.adapter.status()).toEqual({});
+  });
+});
+
+describe('a session that keeps calling tools but never acknowledges a push (#886 P3)', () => {
+  const FIVE_MIN = 5 * 60_000;
+  /** `read(from, through)`: a `leader_events` read whose answer replayed journal rows `from`–`through`. */
+  function active(over: Partial<ClaudeCodeChannelAdapterOptions> = {}): Harness & { call: (ms: number, n?: number) => void; read: (fromSeq: number, throughSeq: number) => void } {
+    const replayed: Array<{ fromSeq: number; throughSeq: number }> = [];
+    const otherCallsAt: number[] = [];
+    const h = harness({ ownerActivity: () => ({ replayed, otherCallsAt }), ...over });
+    return { ...h, call: (ms, n = 1) => { for (let i = 0; i < n; i++) otherCallsAt.push(ms); }, read: (fromSeq, throughSeq) => replayed.push({ fromSeq, throughSeq }) };
+  }
+
+  it('says plainly that the pushes are most likely not reaching the conversation', async () => {
+    // RED against: status() reading only the heartbeat age, so an active, silent session stays the
+    // soft "if the leader is working, nothing is needed" blocker forever (the #886 incident).
+    const h = active();
+    h.setNow(0);
+    await h.adapter.deliver(dispatch([row(1)]), signal());
+    h.setNow(FIVE_MIN + 3_000);
+    h.call(FIVE_MIN + 1_000);
+    h.call(FIVE_MIN + 2_000);
+    h.call(FIVE_MIN + 3_000);
+    const blocker = h.adapter.status().blocker;
+    expect(blocker?.code).toBe('claude-code-push-not-seen');
+    expect(blocker?.message).toContain('most likely not reaching the conversation');
+    expect(blocker?.message).toContain('Nothing is lost');
+    expect(blocker?.fix).toContain('--debug-file');
+    expect(blocker?.fix).toContain('Channel notifications skipped:');
+    expect(blocker?.fix).toMatch(/leader_events action read/);
+  });
+
+  it(`needs ${CLAUDE_CODE_PUSH_NOT_SEEN_CALLS} calls past the bound, not one (#890 review, finding 1)`, async () => {
+    // RED against: one call past the bound being enough — a single call may be the leader on its way
+    // to reading the events.
+    const h = active();
+    h.setNow(0);
+    await h.adapter.deliver(dispatch([row(1)]), signal());
+    h.setNow(FIVE_MIN + 60_000);
+    h.call(FIVE_MIN, CLAUDE_CODE_PUSH_NOT_SEEN_CALLS - 1);
+    expect(h.adapter.status().blocker?.code).toBe('claude-code-push-unconfirmed');
+    h.call(FIVE_MIN + 60_000);
+    expect(h.adapter.status().blocker?.code).toBe('claude-code-push-not-seen');
+  });
+
+  it('keeps the soft blocker once a read replayed the pushed row, however busy the session is (#890 review, finding 1)', async () => {
+    // RED against: ignoring the replayed rows — the documented polling fallback (read, reconcile, ack)
+    // would be reported as broken in the gap before its ack.
+    const h = active();
+    h.setNow(0);
+    await h.adapter.deliver(dispatch([row(1)]), signal());
+    h.read(1, 1);
+    h.call(FIVE_MIN + 2, 10);
+    h.setNow(FIVE_MIN + 60_000);
+    expect(h.adapter.status().blocker?.code).toBe('claude-code-push-unconfirmed');
+  });
+
+  it('does not let a read that replayed OTHER rows stand for the pushed one (#890 review, finding 1; round 3)', async () => {
+    // RED against: any read at all suppressing the blocker; a read whose answer did not carry the
+    // pushed row — earlier rows, or a gap that replayed nothing — cannot have seen it.
+    const h = active();
+    h.setNow(1_000);
+    h.read(0, 0);
+    h.read(2, 5);
+    await h.adapter.deliver(dispatch([row(1)]), signal());
+    h.call(1_000 + FIVE_MIN, CLAUDE_CODE_PUSH_NOT_SEEN_CALLS);
+    h.setNow(1_000 + FIVE_MIN);
+    expect(h.adapter.status().blocker?.code).toBe('claude-code-push-not-seen');
+  });
+
+  it('does not let a read of an earlier push stand for a later one (#890 review round 1, self-review)', async () => {
+    // RED against: judging only the OLDEST outstanding push — one early read would then hide every
+    // later push that never reached the conversation, for as long as the first stays unacknowledged.
+    const h = active();
+    h.setNow(0);
+    await h.adapter.deliver(dispatch([row(1)]), signal());
+    h.read(1, 1);
+    h.setNow(20);
+    await h.adapter.deliver(dispatch([row(2)]), signal());
+    h.call(20 + FIVE_MIN, CLAUDE_CODE_PUSH_NOT_SEEN_CALLS);
+    h.setNow(20 + FIVE_MIN);
+    expect(h.adapter.status().blocker?.code).toBe('claude-code-push-not-seen');
+  });
+
+  it('counts a row the leader read BEFORE it was pushed as seen (#890 round 3)', async () => {
+    // RED against: judging by time instead of by the rows a read replayed — a read that already carried
+    // the row, answered before a lagging push of it, would still leave that push "not seen".
+    const h = active();
+    h.setNow(0);
+    h.read(1, 1);
+    await h.adapter.deliver(dispatch([row(1)]), signal());
+    h.call(FIVE_MIN, CLAUDE_CODE_PUSH_NOT_SEEN_CALLS);
+    h.setNow(FIVE_MIN);
+    expect(h.adapter.status().blocker?.code).toBe('claude-code-push-unconfirmed');
+  });
+
+  it('keeps the soft blocker while the session only reads state before acknowledging (guard)', async () => {
+    // Guard, green both ways: the channel message asks the leader to read state first, so calls
+    // inside the bound are normal work, never evidence of a lost push.
+    const h = active();
+    h.setNow(0);
+    await h.adapter.deliver(dispatch([row(1)]), signal());
+    h.call(FIVE_MIN - 1, 10);
+    h.setNow(FIVE_MIN + 60_000);
+    expect(h.adapter.status().blocker?.code).toBe('claude-code-push-unconfirmed');
+  });
+
+  it('keeps the soft blocker for an idle session, however old the push (guard)', async () => {
+    // Guard: no call since the push is a leader that is away, not one that is ignoring events.
+    const h = active();
+    h.setNow(0);
+    await h.adapter.deliver(dispatch([row(1)]), signal());
+    h.setNow(10 * FIVE_MIN);
+    expect(h.adapter.status().blocker?.code).toBe('claude-code-push-unconfirmed');
+  });
+
+  it('clears once the leader acknowledges, and honours the configured bound', async () => {
+    // RED against: ignoring `notSeenMs` (a fixed five minutes) or not pruning acknowledged rows first.
+    const h = active({ notSeenMs: 1_000 });
+    h.setNow(0);
+    await h.adapter.deliver(dispatch([row(1)]), signal());
+    h.call(1_000, CLAUDE_CODE_PUSH_NOT_SEEN_CALLS);
+    h.setNow(1_000);
+    expect(h.adapter.status().blocker?.code).toBe('claude-code-push-not-seen');
+    h.setAcked(1);
     expect(h.adapter.status()).toEqual({});
   });
 });

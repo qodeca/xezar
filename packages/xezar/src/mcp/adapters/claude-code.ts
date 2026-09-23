@@ -61,13 +61,43 @@ export interface ClaudeCodeChannelAdapterOptions {
   readonly acknowledged: () => number;
   /** One heartbeat: how long a delivered-but-unacknowledged row waits before it is a blocker. */
   readonly heartbeatMs: number;
+  /**
+   * #886: what the owner session has done since it opened (ms, the `now` clock). The one activity
+   * signal xezar has: an active session that is silent about pushed rows is the plain evidence the
+   * pushes did not reach its conversation.
+   */
+  readonly ownerActivity?: () => ClaudeCodeOwnerActivity;
+  /** #886: how long a pushed row may stay unacknowledged while the session keeps calling tools. */
+  readonly notSeenMs?: number;
   /** Test seam. Production uses `Date.now`. */
   readonly now?: () => number;
 }
 
+/** #890 round 3: journal rows one or more `leader_events` reads replayed, `fromSeq`–`throughSeq` inclusive. */
+export interface ClaudeCodeReplayedRange {
+  readonly fromSeq: number;
+  readonly throughSeq: number;
+}
+
+/**
+ * #886: the owner session's tool calls, split the way the push-not-seen blocker needs them. A
+ * `leader_events` call is NOT activity here: a read, status or ack is the leader recovering events (the
+ * documented polling fallback), so counting it would report a working fallback as broken (#890 review,
+ * finding 1). `replayed` is kept apart because a read that carried a pushed row means the leader has it.
+ */
+export interface ClaudeCodeOwnerActivity {
+  /**
+   * The journal rows the owner session's successful `leader_events` reads actually replayed (#890 round
+   * 3). A gap answer, an empty page, or a page that stopped before a pushed row does not cover that row.
+   */
+  readonly replayed: readonly ClaudeCodeReplayedRange[];
+  /** When it called tools OTHER than `leader_events`, oldest first. The producer may bound the list. */
+  readonly otherCallsAt: readonly number[];
+}
+
 /** A condition the person can resolve, in Claude Code's own words. Never a secret, never an account. */
 export interface ClaudeCodeChannelBlocker {
-  readonly code: 'claude-code-push-unconfirmed';
+  readonly code: 'claude-code-push-unconfirmed' | 'claude-code-push-not-seen';
   readonly message: string;
   readonly fix: string;
 }
@@ -82,6 +112,32 @@ export const CLAUDE_CODE_PUSH_UNCONFIRMED_MESSAGE =
   'xezar pushed events to the attached Claude Code session, and they are not acknowledged yet. Claude Code does not confirm delivery, so xezar cannot tell a leader that is still working from one that never received them. Nothing is lost: the events stay in the journal.';
 export const CLAUDE_CODE_PUSH_UNCONFIRMED_FIX =
   'If the leader is working, nothing is needed. Otherwise check that Claude Code was started with --dangerously-load-development-channels server:xezar and that its startup notice says channels from server:xezar inject into the session. Channels need a claude.ai or Console API-key login, do not work on Bedrock, Vertex or Foundry, must be enabled by a Team or Enterprise admin, and are off while CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC is set. Until then, read events with leader_events.';
+
+/**
+ * #886: the bounded time after which an unacknowledged push, followed by a xezar tool call from the
+ * same session, stops reading as "the leader is still working". A leader that received an event reads
+ * state and acknowledges it within minutes; one that keeps calling xezar tools for five minutes and
+ * never mentions the pushed rows most likely never saw them.
+ */
+export const CLAUDE_CODE_PUSH_NOT_SEEN_MS = 5 * 60_000;
+
+/**
+ * #886: how many calls to OTHER xezar tools, each made at or after that bound, make the activity
+ * sustained. One call is not a pattern — it may be the leader's first step on its way to reading the
+ * events (#890 review, finding 1) — so the stronger blocker waits for a session that plainly keeps
+ * working without them.
+ */
+export const CLAUDE_CODE_PUSH_NOT_SEEN_CALLS = 3;
+
+/**
+ * The plain blocker for "pushed, still unacknowledged, and the session has called xezar tools well
+ * after the push" (#886). It says what xezar saw and what it concludes, and never claims to know which
+ * Claude Code condition dropped the rows — Claude Code writes that reason only to its own debug log.
+ */
+export const CLAUDE_CODE_PUSH_NOT_SEEN_MESSAGE =
+  'xezar pushed events to the attached Claude Code session more than five minutes ago, and the session has kept calling other xezar tools since without reading or acknowledging them. The pushed events are most likely not reaching the conversation. Claude Code does not confirm delivery, so this is what xezar can see, not a certainty. Nothing is lost: the events stay in the journal.';
+export const CLAUDE_CODE_PUSH_NOT_SEEN_FIX =
+  'Read the events now with leader_events action read. To see why Claude Code dropped them, start Claude Code again with --dangerously-load-development-channels server:xezar --debug-file <a file path>, attach again, and look in that file for "Channel notifications registered" or for "Channel notifications skipped:" and the reason after it. Until then, read events with leader_events.';
 
 export class ClaudeCodeChannelAdapter implements ReactionAdapter {
   readonly projectId: string;
@@ -141,8 +197,9 @@ export class ClaudeCodeChannelAdapter implements ReactionAdapter {
   }
 
   /**
-   * The one blocker this adapter reports: rows pushed and confirmed, but not yet acknowledged for
-   * longer than a heartbeat. Delivery failures are the delivery seam's `deliveryFailing` /
+   * The blockers this adapter reports: rows pushed and confirmed, but not yet acknowledged for longer
+   * than a heartbeat — and, stronger (#886), still unacknowledged and unread while the same session
+   * keeps calling other xezar tools `notSeenMs` or more after the push. Delivery failures are the delivery seam's `deliveryFailing` /
    * `leaderNotAnswering` (a rejected push sets `failingSince` there), so this is only ever "delivered,
    * awaiting the leader".
    */
@@ -150,10 +207,31 @@ export class ClaudeCodeChannelAdapter implements ReactionAdapter {
     if (this.#closed) return {};
     this.#pruneAcknowledged();
     const oldest = this.#outstanding[0];
+    if (this.#notSeen()) {
+      return { blocker: { code: 'claude-code-push-not-seen', message: CLAUDE_CODE_PUSH_NOT_SEEN_MESSAGE, fix: CLAUDE_CODE_PUSH_NOT_SEEN_FIX } };
+    }
     if (oldest && this.#now() - oldest.at >= this.#opts.heartbeatMs) {
       return { blocker: { code: 'claude-code-push-unconfirmed', message: CLAUDE_CODE_PUSH_UNCONFIRMED_MESSAGE, fix: CLAUDE_CODE_PUSH_UNCONFIRMED_FIX } };
     }
     return {};
+  }
+
+  /**
+   * #886: the session is active and silent about an outstanding push — the oldest one no read of its
+   * REPLAYED (#890 round 3: a read covers exactly the rows its answer carried, so a gap answer or a
+   * page that stops short covers none of the rest), followed by at least
+   * `CLAUDE_CODE_PUSH_NOT_SEEN_CALLS` calls to other tools at or after `notSeenMs` past that push.
+   * Calls inside the bound are the leader reading state before it acknowledges, as the channel message
+   * asks, and never count.
+   */
+  #notSeen(): boolean {
+    const activity = this.#opts.ownerActivity?.();
+    if (activity === undefined) return false;
+    const covered = (seq: number): boolean => activity.replayed.some((range) => range.fromSeq <= seq && seq <= range.throughSeq);
+    const unread = this.#outstanding.find((row) => !covered(row.seq));
+    if (unread === undefined) return false;
+    const bound = unread.at + (this.#opts.notSeenMs ?? CLAUDE_CODE_PUSH_NOT_SEEN_MS);
+    return activity.otherCallsAt.filter((at) => at >= bound).length >= CLAUDE_CODE_PUSH_NOT_SEEN_CALLS;
   }
 }
 

@@ -1,0 +1,17 @@
+{
+  "about": "#886 golden fixture: what a real Claude Code 2.1.280 sends a channel MCP server, and what it consumes back. Captured 2026-09-22 from a live, isolated run (the bridge's stdio frames, scratch config, dummy API key, scripted model endpoint). The consumer half is read from the Claude Code 2.1.280 binary; the gate half is the list of reasons that binary logs when it skips a channel server.",
+  "claudeCodeVersion": "2.1.280",
+  "initializeRequest": {"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{"roots":{"listChanged":true},"elicitation":{}},"clientInfo":{"name":"claude-code","title":"Claude Code","version":"2.1.280","description":"Anthropic's agentic coding tool","websiteUrl":"https://claude.com/claude-code"}},"jsonrpc":"2.0","id":0},
+  "consumer": {
+    "source": "Claude Code 2.1.280 binary: u({method:R(\"notifications/claude/channel\"),params:u({content:o(),meta:pe(o(),o()).optional()})})",
+    "method": "notifications/claude/channel",
+    "params": { "content": "string", "meta": "optional record of string to string" },
+    "metaKeyPattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+  },
+  "gate": {
+    "capability": "experimental[\"claude/channel\"] in the initialize result, else: server did not declare claude/channel capability",
+    "protocolVersion": "not the modern revision 2026-07-28, else: connection negotiated a modern protocol revision with no unsolicited notification path",
+    "registeredLogLine": "Channel notifications registered",
+    "skippedLogPrefix": "Channel notifications skipped: "
+  }
+}

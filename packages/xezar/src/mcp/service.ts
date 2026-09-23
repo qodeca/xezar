@@ -94,6 +94,28 @@ export interface McpSessionObserver {
   codexAnnounced?(sessionKey: string, announcement: { threadId: string }): void;
   /** #450: whether xezar can push to this session's client, answered in `session/open`. */
   pushCapability?(sessionKey: string, transport: McpSessionTransport): McpPushCapability;
+  /**
+   * #886: the session called a known tool, and which one. The one activity signal the delivery seam
+   * has for a client that confirms nothing (Claude Code): an active session that never acknowledges
+   * pushed rows is the plain evidence they are not reaching it. The tool and its `action` travel with
+   * it because a `leader_events` read, status or ack is the leader RECOVERING events, not evidence of
+   * missing them (#890 review, finding 1). Optional, and like the other edges it may never fail a call.
+   */
+  called?(sessionKey: string, call: McpToolCallActivity): void;
+  /**
+   * #886: the same call, told again only once its arguments validated and it answered without an error
+   * (#890 re-check). `called` fires on arrival, before validation, so it is the fail-safe activity
+   * signal; only this edge may be read as the leader HAVING done something. `result` is the answer the
+   * client received, so the delivery seam can tell which journal rows a read actually replayed — a gap
+   * answer or a page that stops short replayed nothing, or not the row that was pushed (#890 round 3).
+   */
+  succeeded?(sessionKey: string, call: McpToolCallActivity, result: McpToolResult): void;
+}
+
+/** #886: which tool a session called, and its `action` argument when it passed a string one. Never the arguments. */
+export interface McpToolCallActivity {
+  readonly tool: string;
+  readonly action?: string;
 }
 
 /** No observer, or one that cannot say: no journal, so no delivery (#450). */
@@ -364,8 +386,11 @@ async function answer(
       if (announcement) opts.sessions?.codexAnnounced?.(sessionKey, announcement);
       const tool = opts.tools.find((t) => t.name === params.data.name);
       if (!tool) return failure(request.id, 'unknown-tool', `unknown tool: ${params.data.name}`);
+      const activity = toolCallActivity(tool.name, params.data.arguments);
+      noteCall(opts, sessionKey, activity);
       const outcome = await callTool(tool, params.data.arguments, ctx, opts.door, () => ownership.checkMutation(token).ok);
       if (outcome === 'fenced') return expired(request.id, opts.project.id);
+      if (outcome.isError !== true) noteSuccess(opts, sessionKey, activity, outcome);
       return { v: IPC_PROTOCOL_VERSION, id: request.id, ok: true, result: outcome };
     }
     default:
@@ -386,6 +411,30 @@ function observe(opts: McpServiceOptions, edge: 'opened' | 'closed', sessionKey:
   try {
     if (edge === 'opened') opts.sessions?.opened(sessionKey, transport);
     else opts.sessions?.closed(sessionKey);
+  } catch (err) {
+    console.warn(`[xez] MCP event delivery hook failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+/** #886: the tool's name and a bounded string `action`, nothing else of what the caller sent. */
+function toolCallActivity(tool: string, args: Record<string, unknown> | undefined): McpToolCallActivity {
+  const action = args?.action;
+  return typeof action === 'string' && action.length > 0 && action.length <= 64 ? { tool, action } : { tool };
+}
+
+/** #886: tell the delivery seam this session is active. A throw is one warning and the call carries on (N-07). */
+function noteCall(opts: McpServiceOptions, sessionKey: string, call: McpToolCallActivity): void {
+  try {
+    opts.sessions?.called?.(sessionKey, call);
+  } catch (err) {
+    console.warn(`[xez] MCP event delivery hook failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+/** #886: the call validated and answered without an error. Guarded the same way (N-07). */
+function noteSuccess(opts: McpServiceOptions, sessionKey: string, call: McpToolCallActivity, result: McpToolResult): void {
+  try {
+    opts.sessions?.succeeded?.(sessionKey, call, result);
   } catch (err) {
     console.warn(`[xez] MCP event delivery hook failed: ${err instanceof Error ? err.message : String(err)}`);
   }

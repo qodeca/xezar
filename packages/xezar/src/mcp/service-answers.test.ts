@@ -7,7 +7,7 @@ import { ProjectOwnership, sessionExpiredError } from '../workspace/project-owne
 import { startMcpService } from './index.ts';
 import { IPC_PROTOCOL_VERSION, LineFramer, encodeFrame, type IpcResponse } from './ipc.ts';
 import { listenMcpSocket } from './service.ts';
-import { defineTool, textResult, type McpTool } from './tool.ts';
+import { defineTool, errorResult, textResult, type McpTool } from './tool.ts';
 
 /**
  * The service's answers to frames the bridge never sends on its good path (#333): a frame that is
@@ -280,5 +280,83 @@ describe('session/open push capability and the session key in the tool context (
     expect(new Set(seen).size).toBe(2);
     expect(seen).not.toContain('chosen-by-client');
     expect(JSON.stringify(answer)).not.toContain(opened[0]!);
+  });
+
+  it('T-13: a known tool call tells the observer its session is active, and which tool and action; an unknown one does not (#886)', async () => {
+    // RED against: never calling `called` (the push-not-seen blocker could never fire), calling it for
+    // a call that never reached a tool, or dropping the tool/action the delivery seam needs to tell a
+    // `leader_events` recovery read from other activity (#890 review, finding 1).
+    const opened: string[] = [];
+    const called: Array<{ key: string; call: unknown }> = [];
+    const svc = await twoConnections({ sessions: { opened: (key) => opened.push(key), closed: () => {}, called: (key, call) => called.push({ key, call }) } });
+    const c = await svc.open();
+    await c.request(1, 'session/open');
+    await c.request(2, 'tools/call', { name: 'no_such_tool', arguments: {} });
+    expect(called).toEqual([]);
+    await c.request(3, 'tools/call', { name: 'read_thing', arguments: {} });
+    await c.request(4, 'tools/call', { name: 'read_thing', arguments: { action: 'read', secret: 'never-forwarded' } });
+    await c.request(5, 'tools/call', { name: 'read_thing', arguments: { action: 7 } });
+    await c.request(6, 'tools/call', { name: 'read_thing', arguments: { action: 'x'.repeat(65) } });
+    expect(called).toEqual([
+      { key: opened[0], call: { tool: 'read_thing' } },
+      { key: opened[0], call: { tool: 'read_thing', action: 'read' } },
+      { key: opened[0], call: { tool: 'read_thing' } },
+      { key: opened[0], call: { tool: 'read_thing' } },
+    ]);
+  });
+
+  it('T-15: `succeeded` fires only for a call whose arguments validated and whose answer is not an error, with that answer (#890 re-check, round 3)', async () => {
+    // RED against: telling the delivery seam a call succeeded before validation (a rejected
+    // `leader_events` read would suppress the push-not-seen blocker again), or for an error result.
+    const strict = defineTool({
+      name: 'strict_thing',
+      description: 'A strict tool: rejects an unknown key, and answers an error for action "fail".',
+      inputSchema: z.object({ action: z.enum(['read', 'fail']) }).strict(),
+      annotations: { readOnlyHint: true },
+      async call(args) {
+        return args.action === 'fail' ? errorResult('failed') : textResult('ok');
+      },
+    });
+    const opened: string[] = [];
+    const called: unknown[] = [];
+    const succeeded: Array<{ key: string; call: unknown; result: unknown }> = [];
+    const svc = await twoConnections({
+      tools: [strict],
+      sessions: {
+        opened: (key) => opened.push(key),
+        closed: () => {},
+        called: (_key, call) => called.push(call),
+        succeeded: (key, call, result) => succeeded.push({ key, call, result }),
+      },
+    });
+    const c = await svc.open();
+    await c.request(1, 'session/open');
+    expect(await c.request(2, 'tools/call', { name: 'strict_thing', arguments: { action: 'read', unexpected: true } })).toMatchObject({ ok: true, result: { isError: true } });
+    expect(await c.request(3, 'tools/call', { name: 'strict_thing', arguments: { action: 'fail' } })).toMatchObject({ ok: true, result: { isError: true } });
+    expect(succeeded).toEqual([]);
+    // The arrival edge is still the fail-safe one: both rejected calls were reported as activity.
+    expect(called).toEqual([{ tool: 'strict_thing', action: 'read' }, { tool: 'strict_thing', action: 'fail' }]);
+    await c.request(4, 'tools/call', { name: 'strict_thing', arguments: { action: 'read' } });
+    // #890 round 3: the answer the client received travels with it, so the seam can tell what a read replayed.
+    expect(succeeded).toEqual([{ key: opened[0], call: { tool: 'strict_thing', action: 'read' }, result: { content: [{ type: 'text', text: 'ok' }] } }]);
+  });
+
+  it('T-14: an activity observer that throws never fails the call (#886)', async () => {
+    // RED against: letting the observer's throw escape into the tool call (N-07).
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const svc = await twoConnections({ sessions: { opened: () => {}, closed: () => {}, called: () => { throw new Error('boom'); } } });
+    const c = await svc.open();
+    await c.request(1, 'session/open');
+    expect(await c.request(2, 'tools/call', { name: 'read_thing', arguments: {} })).toMatchObject({ ok: true });
+  });
+
+  it('T-16: a success observer that throws never fails the call (#890 re-check)', async () => {
+    // RED against: letting the success observer's throw escape into the tool call (N-07).
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const svc = await twoConnections({ sessions: { opened: () => {}, closed: () => {}, succeeded: () => { throw new Error('boom'); } } });
+    const c = await svc.open();
+    await c.request(1, 'session/open');
+    expect(await c.request(2, 'tools/call', { name: 'read_thing', arguments: {} })).toMatchObject({ ok: true, result: { content: [{ text: 'read' }] } });
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('boom'));
   });
 });

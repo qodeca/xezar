@@ -319,6 +319,15 @@ it('documents every Channels eligibility condition and recovery remedy on all re
   }
 });
 
+it('documents the claude-code-push-not-seen recovery and the debug-file check on the maintained doc surfaces (#886)', () => {
+  // Like #450's code, the cockpit's own remedy list is left to a design-gated follow-up; the live
+  // blocker reaches the cockpit through the connection status regardless.
+  for (const path of ['docs/guide/13-mcp-leader.md', 'docs/features/mcp-server/mcp-adapter-evidence-claude-code.md']) {
+    const source = readFileSync(new URL(path, REPO_ROOT), 'utf8');
+    for (const phrase of ['claude-code-push-not-seen', '--debug-file', 'Channel notifications registered', 'Channel notifications skipped:']) expect(source, path).toContain(phrase);
+  }
+});
+
 it('documents the claude-code-channel-not-advertised recovery on the maintained doc surfaces (#450)', () => {
   // The cockpit's own remedy list (`mcp-connection-section.tsx`) is not among them yet: adding the row
   // there is a UI copy change, left to its own design-gated follow-up. The server's live blocker still
