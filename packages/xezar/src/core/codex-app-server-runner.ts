@@ -138,6 +138,9 @@ export interface CodexReadOnlyHook {
 
 const CODEX_READ_ONLY_HOOK_MATCHER = 'Bash|apply_patch' as const;
 const LEGACY_CODEX_READ_ONLY_HOOK_MATCHER = 'Bash';
+const BLOCKED_HOOK_NOTE_PREFIX = 'codex: PreToolUse blocked: ';
+const BLOCKED_HOOK_REASON_LIMIT = 2_000;
+const BLOCKED_HOOK_TRUNCATION_MARKER = '… [truncated]';
 
 /**
  * The vendor-specific registration only. Codex ignores request-body hooks until their content
@@ -761,7 +764,7 @@ class CodexSession implements AgentSession {
         for (const reason of blockedHookFeedback(params)) {
           // v1 notes are persisted in the run NDJSON and replayed by the run event stream. The
           // hook's feedback is the exact shared-policy reason for Bash and apply_patch (#863 AC4).
-          this.emit({ type: 'note', message: `codex: PreToolUse blocked: ${reason}` });
+          this.emit({ type: 'note', message: `${BLOCKED_HOOK_NOTE_PREFIX}${reason}` });
         }
         break;
       }
@@ -887,27 +890,27 @@ async function ensureCodexReadOnlyHookFile(codexHome: string, hook: CodexReadOnl
           handlers.push(entry);
           continue;
         }
+        if (!isXezarCodexHookCacheScript(script)) {
+          try {
+            await lstat(script);
+            handlers.push(entry);
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== 'ENOENT') handlers.push(entry);
+            else profileChanged = true;
+          }
+          continue;
+        }
+        if (currentInstalled) {
+          profileChanged = true;
+          continue;
+        }
+        currentInstalled = true;
         if (hookEntryCommands(entry).includes(hook.command)
           && (entry as { matcher?: unknown }).matcher === CODEX_READ_ONLY_HOOK_MATCHER) {
-          currentInstalled = true;
           handlers.push(entry);
-          continue;
-        }
-        if (hookEntryCommands(entry).includes(hook.command)) {
-          // 0.19.0-pre registered this same content-addressed command for Bash only. Replace that
-          // entry in place so the matcher change gets a fresh Codex hash/trust grant, never a
-          // duplicate handler that leaves apply_patch outside the lock (#863 AC4).
-          currentInstalled = true;
+        } else {
           profileChanged = true;
           handlers.push(hook.config.PreToolUse[0]);
-          continue;
-        }
-        try {
-          await lstat(script);
-          handlers.push(entry); // another live xezar installation/profile command coexists
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') handlers.push(entry);
-          else profileChanged = true;
         }
       }
       if (!currentInstalled) {
@@ -973,6 +976,10 @@ function xezarCodexHookScript(entry: unknown): string | undefined {
   if (!command) return undefined;
   const words = shellQuotedWords(command);
   return words?.marker === '--xezar-read-only-hook' ? words.script : undefined;
+}
+
+function isXezarCodexHookCacheScript(script: string): boolean {
+  return dirname(resolve(script)) === resolve(join(xezCacheDir(), 'codex-hook'));
 }
 
 function shellQuotedWords(command: string): { executable: string; script: string; marker: string } | undefined {
@@ -1052,14 +1059,19 @@ function findCodexHook(response: Record<string, unknown>, command: string): Code
 
 function blockedHookFeedback(params: Record<string, unknown>): string[] {
   const run = params.run && typeof params.run === 'object' ? params.run as Record<string, unknown> : {};
-  if (run.status !== 'blocked' || !Array.isArray(run.entries)) return [];
+  if (run.eventName !== 'preToolUse' || run.status !== 'blocked' || !Array.isArray(run.entries)) return [];
   return run.entries.flatMap((entry) => {
     if (!entry || typeof entry !== 'object') return [];
     const record = entry as Record<string, unknown>;
     return record.kind === 'feedback' && typeof record.text === 'string' && record.text.trim() !== ''
-      ? [record.text]
+      ? [truncateBlockedHookReason(record.text)]
       : [];
   });
+}
+
+function truncateBlockedHookReason(reason: string): string {
+  if (reason.length <= BLOCKED_HOOK_REASON_LIMIT) return reason;
+  return `${reason.slice(0, BLOCKED_HOOK_REASON_LIMIT - BLOCKED_HOOK_TRUNCATION_MARKER.length)}${BLOCKED_HOOK_TRUNCATION_MARKER}`;
 }
 
 function codexAskQuestions(value: unknown): AskQuestion[] | null {

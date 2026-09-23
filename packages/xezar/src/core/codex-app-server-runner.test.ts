@@ -115,8 +115,30 @@ describe('a teardown xezar initiated (codex app-server)', () => {
     });
     expect(events).toContainEqual({
       type: 'note',
-      message: 'codex: PreToolUse blocked: Rule payload.tool-name refused the command: tool "apply_patch" is not Bash.',
+      message: 'codex: PreToolUse blocked: Rule payload.tool-name refused the command: tool "apply_patch" is not the Bash shell tool.',
     });
+    expect(events).not.toContainEqual(expect.objectContaining({
+      type: 'note',
+      message: expect.stringContaining('third-party Stop hook'),
+    }));
+  }, 15_000);
+
+  it('caps each blocked PreToolUse reason with a truncation marker', async () => {
+    const events: AgentEvent[] = [];
+    const session = new CodexAppServerRunner({ bin: mockBin, timeoutMs: 0 }).startSession(
+      { userPrompt: 'mock:hook-blocked-long', cwd: process.cwd() },
+      (event) => events.push(event),
+      { autoEndAfterFirstTurn: true },
+    );
+
+    await session.result;
+
+    const note = events.find((event) => event.type === 'note' && event.message.startsWith('codex: PreToolUse blocked:'));
+    expect(note).toEqual(expect.objectContaining({ type: 'note' }));
+    if (!note || note.type !== 'note') throw new Error('blocked-hook note was not emitted');
+    const reason = note.message.slice('codex: PreToolUse blocked: '.length);
+    expect(reason).toHaveLength(2_000);
+    expect(reason).toMatch(/\[truncated\]$/);
   }, 15_000);
 });
 
@@ -754,6 +776,62 @@ describe('a read-only step runs Codex confined to its worktree and its own roots
       const methods = readFileSync(log, 'utf8').trim().split('\n').map((line) => JSON.parse(line).method as string);
       expect(methods.indexOf('hooks/list')).toBeLessThan(methods.indexOf('config/batchWrite'));
       expect(methods.indexOf('config/batchWrite')).toBeLessThan(methods.indexOf('turn/start'));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 15_000);
+
+  it.each([
+    ['current then legacy', ['current', 'legacy']],
+    ['legacy then current', ['legacy', 'current']],
+    ['legacy with a different cache digest', ['legacy-different-digest']],
+  ] as const)('keeps exactly one current xezar entry from %s', async (_name, entryKinds) => {
+    const dir = mkdtempSync(join(tmpdir(), 'xez-863-matcher-dedupe-'));
+    const hook = codexReadOnlyHook({
+      userPrompt: 'review it',
+      cwd: dir,
+      allowedTools: REVIEW,
+      bashAllowlist: ['git status'],
+    })!;
+    const currentScript = hook.command.match(/^'[^']+' '([^']+)' --xezar-read-only-hook$/)?.[1];
+    if (!currentScript) throw new Error('current hook command has no cache script path');
+    const differentDigestScript = join(dirname(currentScript), `${'0'.repeat(64)}.mjs`);
+    if (entryKinds.includes('legacy-different-digest')) {
+      mkdirSync(dirname(differentDigestScript), { recursive: true });
+      writeFileSync(differentDigestScript, 'legacy xezar hook');
+    }
+    const legacyCommand = (kind: typeof entryKinds[number]): string => {
+      if (kind !== 'legacy-different-digest') return hook.command;
+      return `'${process.execPath}' '${differentDigestScript}' --xezar-read-only-hook`;
+    };
+    writeFileSync(join(dir, 'hooks.json'), JSON.stringify({
+      hooks: {
+        PreToolUse: entryKinds.map((kind) => ({
+          matcher: kind === 'current' ? 'Bash|apply_patch' : 'Bash',
+          hooks: [{ type: 'command', command: legacyCommand(kind) }],
+        })),
+      },
+    }));
+    try {
+      const session = new CodexAppServerRunner({ bin: mockBin, timeoutMs: 0 }).startSession(
+        {
+          userPrompt: 'review it',
+          cwd: dir,
+          allowedTools: REVIEW,
+          bashAllowlist: ['git status'],
+          env: { MOCK_CODEX_EXPECT_SANDBOX: 'workspace-write', MOCK_CODEX_HOME: dir },
+        },
+        undefined,
+        { autoEndAfterFirstTurn: true },
+      );
+      await expect(session.result).resolves.toMatchObject({ sessionId: 'th_mock_1' });
+      const installed = JSON.parse(readFileSync(join(dir, 'hooks.json'), 'utf8')) as {
+        hooks: { PreToolUse: Array<{ matcher: string; hooks: Array<{ command: string }> }> };
+      };
+      expect(installed.hooks.PreToolUse).toEqual([{
+        matcher: 'Bash|apply_patch',
+        hooks: [{ type: 'command', command: hook.command }],
+      }]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

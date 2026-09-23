@@ -217,22 +217,37 @@ rl.on('line', (line) => {
       } });
       return;
     }
-    if (turnText.includes('mock:hook-blocked')) {
-      for (const reason of [
-        'Rule prefix.entry refused the command: it did not match any bashAllowlist entry.',
-        'Rule payload.tool-name refused the command: tool "apply_patch" is not Bash.',
+    if (turnText.includes('mock:hook-blocked') && !turnText.includes('mock:hook-blocked-long')) {
+      for (const [eventName, reason] of [
+        ['preToolUse', 'Rule prefix.entry refused the command: it did not match any bashAllowlist entry.'],
+        ['preToolUse', 'Rule payload.tool-name refused the command: tool "apply_patch" is not the Bash shell tool.'],
+        ['stop', 'token expired in a third-party Stop hook'],
       ]) {
         emit({ method: 'hook/completed', params: {
           threadId: 'th_mock_1',
           turnId: 'turn_mock_1',
           run: {
             id: `pre-tool-use:0:mock:exec-${reason.includes('apply_patch') ? 'patch' : 'bash'}`,
-            eventName: 'preToolUse',
+            eventName,
             status: 'blocked',
             entries: [{ kind: 'feedback', text: reason }],
           },
         } });
       }
+      emit({ method: 'turn/completed', params: { turn: { id: 'turn_mock_1', status: 'completed' } } });
+      return;
+    }
+    if (turnText.includes('mock:hook-blocked-long')) {
+      emit({ method: 'hook/completed', params: {
+        threadId: 'th_mock_1',
+        turnId: 'turn_mock_1',
+        run: {
+          id: 'pre-tool-use:0:mock:long',
+          eventName: 'preToolUse',
+          status: 'blocked',
+          entries: [{ kind: 'feedback', text: `Rule prefix.entry refused the command: ${'x'.repeat(2_100)}` }],
+        },
+      } });
       emit({ method: 'turn/completed', params: { turn: { id: 'turn_mock_1', status: 'completed' } } });
       return;
     }

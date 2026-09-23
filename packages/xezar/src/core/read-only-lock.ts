@@ -333,7 +333,10 @@ export function decideReadOnlyShellCall(
   entries: readonly string[],
 ): ReadOnlyCommandDecision {
   if (call.toolName !== 'Bash') {
-    return refuse('payload.tool-name', 'the hook payload does not name the Bash shell tool');
+    const subject = typeof call.toolName === 'string'
+      ? `tool ${JSON.stringify(call.toolName)} is not the Bash shell tool`
+      : 'the hook payload does not name the Bash shell tool';
+    return refuse('payload.tool-name', subject);
   }
   if (typeof call.command !== 'string') {
     return refuse('payload.command', 'the Bash hook payload has no string command');

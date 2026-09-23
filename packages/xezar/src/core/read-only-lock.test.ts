@@ -7,6 +7,7 @@ import {
   COMMAND_RUNNING_ARGUMENTS,
   IMPLEMENTED_ARGUMENT_POLICY_PROGRAMS,
   decideReadOnlyCommand,
+  decideReadOnlyShellCall,
   isReadOnlyStep,
   matchesBashAllowlistEntry,
 } from './read-only-lock.ts';
@@ -43,6 +44,17 @@ describe('shared read-only lock (#863)', () => {
         expect(decision.reason).toContain(`Rule ${rule}`);
       }
     }
+  });
+
+  it('names a non-Bash tool in the shared payload refusal', () => {
+    expect(decideReadOnlyShellCall(
+      { toolName: 'apply_patch', command: '*** Begin Patch' },
+      ['git status'],
+    )).toEqual({
+      allowed: false,
+      rule: 'payload.tool-name',
+      reason: 'Rule payload.tool-name refused the command: tool "apply_patch" is not the Bash shell tool.',
+    });
   });
 
   it('documents a reason for every command-argument audit row', () => {
