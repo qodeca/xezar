@@ -1052,6 +1052,48 @@ empty-list compatibility statements remain in force.
   `sh <path>`, where the path is not an option. A bare interpreter remains refused because it
   would execute the piped standard input; every other pipe remains refused. Each refusal carries
   the stable rule that made the decision.
+- **Changed (Codex with `bashAllowlist`)**: a read-only step now starts and resumes with a
+  `PreToolUse` Bash hook that sends the complete command through that same shared policy. An
+  allowed prefix normally runs inside #849's confined `workspace-write` sandbox. One Codex
+  exec-policy exception remains: when the hook allows a command that also matches a user or
+  trusted-project `prefix_rule(..., decision="allow")`, Codex runs its first attempt outside the
+  sandbox. The allow rule does not skip the hook — a non-matching command is still denied by the
+  hook before it runs (live-verified by PR #885 Q9). Compounds, redirects, unsafe arguments and
+  non-matching commands are denied with the shared reason code.
+  The trust grant completes before the first turn on both paths. If Codex cannot discover the
+  handler, refuses `config/batchWrite`, or does not report the resulting handler trusted, the
+  step fails closed instead of starting with an unenforced allowlist. `XEZ_CODEX_NETWORK=0`
+  still takes precedence and changes only the outer sandbox's network access.
+- **Codex profile state written by the adapter**: Codex 0.155.1 does not discover a hook supplied
+  only in a thread config override, so xezar idempotently adds its shipped generic handler to the
+  active Codex profile's user-layer `$CODEX_HOME/hooks.json`, preserving existing keys and handlers
+  under a bounded cross-process lock and atomic write; a symlinked `hooks.json` is refused with
+  `hooks-file.symlink`. The command points to a content-addressed, mode-`0444` bundle under
+  `xezCacheDir()/codex-hook/<sha256>.mjs`, never to the checkout or installed package. Different
+  live xezar commands coexist; only an entry whose script is absent is pruned. The persistent
+  handler is inert outside a xezar run. Bootstrap writes a bounded session-id lock record under
+  `xezCacheDir()/codex-hook/locks/` before the first turn and removes it after the app-server exits;
+  an expired record is inert, so a crash cannot deny an unrelated later interactive session
+  forever. A matching record makes the hook fail closed when either the locked-run marker or the
+  allowlist is absent or malformed. The normal allowed path depends on Codex 0.155.1 passing the
+  app-server environment to hook processes, as live-verified on PR #885 and pinned by a spawned-hook
+  regression test.
+  Codex itself computes the handler's normalized `currentHash`; xezar
+  writes `hooks.state."<handler key>".trusted_hash = "<currentHash>"` to that same profile's
+  `$CODEX_HOME/config.toml` through `config/batchWrite`. The grant is scoped to that exact handler
+  key and content hash, so handler changes xezar ships produce a new cache path, command and trust
+  grant. A same-user replacement at that path can run under the existing trust until the next
+  locked xezar run, which refuses it as `hook-cache.digest`; remove that cached file (or the
+  `codex-hook/` cache directory) before retrying. Before either profile write, the `CODEX_HOME` in
+  the environment actually passed to the child — including a host-exported value — must equal the
+  `codexHome` reported by `initialize`; `codex-home.mismatch` stops every Codex step before the
+  wrapper-selected profile can be used. That deliberately includes writing runs, which install no
+  hook but could otherwise run under the wrong account. This profile state outlives the run and loads in later interactive Codex sessions,
+  where the marker keeps it inert. Remove it by deleting the `PreToolUse` entries whose commands
+  end in `--xezar-read-only-hook`, deleting their corresponding `hooks.state` trust tables from
+  `$CODEX_HOME/config.toml`, and optionally deleting `xezCacheDir()/codex-hook/`; the next locked
+  run recreates the current entry. This is profile configuration, not project configuration: no
+  project trust or tracked file is added.
 - **Changed (argument-bearing entries)**: `COMMAND_RUNNING_ARGUMENTS` refuses risky forms hidden
   behind an otherwise allowed prefix: every Git `-c`, `--config-env` and `--exec-path` form,
   abbreviated `fetch --upload-pack`/`--exec`, Git `diff`/`show`/`log` output files, checkout path
@@ -1068,15 +1110,17 @@ empty-list compatibility statements remain in force.
   entry/prefix rule, simple-command parser and argument table. pi keeps only flag parsing, its
   `tool_call` denial shape and the separate worktree guard. Claude builds `Bash(<entry>:*)` entries
   from the same normalized list, but Claude's own matcher still decides at run time: the shared
-  parser and argument table do **not** protect Claude in this slice. Codex continues with #849's
-  confined sandbox; its hook adapter is a separate slice.
+  parser and argument table do **not** protect Claude. Codex's shipped hook only adapts its
+  `tool_name` / `tool_input.command` payload and denial JSON; the shared module makes the decision.
 - **Not changed**: no `XEZ_*` variable, config key, workflow field or persisted shape was added;
-  a step without `bashAllowlist`, a writing Claude step, Codex confinement and OpenCode behavior
+  a step without `bashAllowlist`, any writing step, Codex's outer confinement and OpenCode behavior
   are unchanged. The source and built-module fallback in `scripts/pi-worktree-guard.ts` keeps the
   published extension loading from the same authored policy implementation.
 - **Pinned by**: `read-only-lock.test.ts` (one fixture table covering every refusal class and every
   argument row), `pi-worktree-guard.test.ts` (the same fixtures through pi's adapter),
-  `claude-cli-runner.test.ts` (setting sources only on read-only argv), and the package test.
+  `claude-cli-runner.test.ts` (setting sources only on read-only argv),
+  `codex-read-only-hook.test.ts` (the same fixtures through Codex payloads),
+  `codex-app-server-runner.test.ts` (start, resume and fail-closed trust), and the package test.
 
 ## pi keeps a restricted `bash` under a `bashAllowlist` instead of dropping it (#856) — deliberate, 0.19.0
 

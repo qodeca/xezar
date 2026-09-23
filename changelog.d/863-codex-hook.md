@@ -1,0 +1,4 @@
+## 🔒 Security
+
+- Read-only Codex steps with a `bashAllowlist` now apply the shared command lock through a headlessly trusted `PreToolUse` hook on both start and resume, failing closed when Codex cannot grant that exact handler trust. Xezar persists the hook entry in `$CODEX_HOME/hooks.json` and its exact trust hash in `$CODEX_HOME/config.toml`; those entries outlive the run and load inertly in interactive sessions. Their command points to a read-only content-addressed copy in the xezar cache. Remove the integration by deleting xezar's `--xezar-read-only-hook` entries and corresponding `hooks.state` trust tables (and optionally the cache's `codex-hook/` directory).
+- `codex-home.mismatch` now compares the `CODEX_HOME` actually passed to Codex, including a host-exported value, and stops both read-only and writing runs before a home-changing wrapper can use the wrong account.

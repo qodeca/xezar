@@ -173,8 +173,10 @@ Notable fields (full doc-comments in the source):
 - `allowedTools?` / `bashAllowlist?` / `additionalDirectories?` — tool access.
   **Caveat (pre-rename issue 430):** the zero-config default (`DEFAULT_ALLOWED_TOOLS`) includes
   unrestricted `Bash`, and OpenCode does not honor `allowedTools` at all. Codex
-  honours one signal from it: a read-only step (neither `Edit` nor `Write`) runs
-  CONFINED, every other step keeps full access (§ 6, "Read-only steps").
+  honours the read-only signal (neither `Edit` nor `Write`) by running CONFINED;
+  when that step also has a `bashAllowlist`, a trusted PreToolUse hook applies the
+  shared command lock before Bash (§ 6, "Read-only steps"); a bounded session record keeps that
+  run fail-closed if Codex strips the hook environment. Every other step keeps full access.
   Treat the default `auto` permission mode as full shell access, not a
   sandbox: a writing Codex step uses `danger-full-access` with
   `approvalPolicy: never`.
@@ -534,13 +536,13 @@ That shared module is the only signal: no step key, no `XEZ_*` variable.
 | Backend | Read-only step | Mechanism | Pinned by |
 | --- | --- | --- | --- |
 | Claude Code | **ENFORCED** (was MODE-DENIED before #849) | `--disallowedTools Edit,Write,NotebookEdit` removes the file tools, and `--setting-sources user` prevents project/local settings, hooks and skills from re-widening Bash (#863). `Bash(<entry>:*)` rules are built from the shared normalized entries, but Claude Code's OWN matcher decides at run time: the shared simple-command parser and `COMMAND_RUNNING_ARGUMENTS` table do not apply until a hook can call them | `claude-cli-runner.test.ts` |
-| Codex | **CONFINED** (was NOT APPLIED before #849) | `thread/start` and `thread/resume` carry `sandbox: 'workspace-write'` plus `config.sandbox_workspace_write = { network_access: true, writable_roots: spec.additionalDirectories }` (`codexPermissions`). Codex's file edits and shell may write only inside the worktree and the run's own evidence, handoff and tmp directories; the network stays on so a review can `git fetch` and post with `gh`, unless `XEZ_CODEX_NETWORK=0` turns it off. Not ENFORCED: the worktree, and so the branch, stays writable, individual tool names and `bashAllowlist` are still ignored, and MCP tools stay under the per-thread scoping of #324 (`codex-run-isolation.ts`), not the sandbox. `read-only` was rejected because it also drops all network and every write outside the worktree | `codex-app-server-runner.test.ts` |
+| Codex | **CONFINED + command-locked** (was NOT APPLIED before #849) | `thread/start` and `thread/resume` carry `sandbox: 'workspace-write'` plus `config.sandbox_workspace_write = { network_access: true, writable_roots: spec.additionalDirectories }` (`codexPermissions`). Codex's file edits and shell may write only inside the worktree and the run's own evidence, handoff and tmp directories; the network stays on unless `XEZ_CODEX_NETWORK=0` turns it off. On a read-only step with `bashAllowlist` present, both paths also register the shipped `PreToolUse` Bash handler, discover Codex's normalized handler hash, and grant that exact key/hash through `config/batchWrite` before turn 1; discovery, grant or verification failure stops the step. The hook is a thin payload adapter over `read-only-lock.ts`, so it applies the same parser, checked arguments and reason codes as pi. Codex 0.155.1 does not discover request-body hooks alone, so xezar idempotently registers a content-addressed, mode-`0444` copy from `xezCacheDir()` in the active profile's user `hooks.json`; trust is stored under its exact handler key/current hash in that profile's `config.toml`. A bounded cache record keyed by the hook payload's session id keeps a matching run fail-closed if Codex strips the marker or allowlist environment; normal completion removes it and expiry makes crash leftovers inert. Not fully ENFORCED: the worktree and branch stay writable to non-shell Codex tools, individual non-shell names are ignored, and MCP tools stay under #324 scoping, not the sandbox | `codex-app-server-runner.test.ts`, `codex-read-only-hook.test.ts` |
 | pi | partly: edit/write absent | `--tools` removes edit/write. With a `bashAllowlist`, `scripts/pi-worktree-guard.ts` is a thin adapter over `read-only-lock.ts`: one simple command must match an entry; expansion, compounds, redirects, grouping/functions, leading assignments, trailing backslashes and unnamed wrappers are refused. The sole compound exception is the exact two-part verdict-packet pipe. `COMMAND_RUNNING_ARGUMENTS` generically dispatches checked Git, find, rg and npm rows, marks reviewed argument-safe programs, and never permits `sed` or `awk`. The adapter alone owns pi flag parsing, the `tool_call` denial shape and the separate worktree guard. `[]` removes bash and refuses every command; absent/null retain #856's distinction | `read-only-lock.test.ts`, `pi-worktree-guard.test.ts`, `pi-runner.test.ts` |
 | OpenCode | **NOT APPLIED** | nothing derived from `allowedTools` reaches the server; the agent can edit, write and run any command | — |
 
-Plain `Bash` in a read-only list is still a shell on Claude Code and pi, and inside the worktree on
-Codex; a `bashAllowlist` narrows it on Claude Code and pi by the same prefix rule, while only pi
-applies the shared parser and argument table in this slice. A new runner states its row here, and a runner that
+Plain `Bash` in a read-only list is still a shell on Claude Code, pi and Codex; a
+`bashAllowlist` narrows all three by the same prefix rule, while pi and Codex apply the shared
+parser and argument table. A new runner states its row here, and a runner that
 cannot enforce a read-only step says NOT APPLIED rather than implying it.
 
 ### A reviewer's verdict packet — the step declares the role (#460, #851)

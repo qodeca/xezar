@@ -1,14 +1,33 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { projectStateLayout, setActiveStateLayout } from '../state-layout.ts';
 import type { AgentEvent } from './agent-runner.js';
 import { KILL_GRACE_MS } from './claude-cli-runner.js';
-import { CodexAppServerRunner, codexPermissions } from './codex-app-server-runner.js';
+import { CodexAppServerRunner, codexPermissions, codexReadOnlyHook } from './codex-app-server-runner.js';
+
+const hostCodexHome = process.env.CODEX_HOME;
+beforeEach(() => {
+  delete process.env.CODEX_HOME;
+});
+afterEach(() => {
+  if (hostCodexHome === undefined) delete process.env.CODEX_HOME;
+  else process.env.CODEX_HOME = hostCodexHome;
+});
 
 /** Only the escalation tests below swap the child out; every other test in this
  *  file keeps spawning the real mock app-server through the untouched `spawn`. */
@@ -367,8 +386,19 @@ describe('a read-only step runs Codex confined to its worktree and its own roots
     ...noServers,
     sandbox_workspace_write: { network_access: true, writable_roots: ROOTS },
   };
+  let cacheProject: string;
 
-  async function threadRequest(opts: { allowedTools: string[]; expect: string; resume?: boolean }) {
+  beforeEach(() => {
+    cacheProject = mkdtempSync(join(tmpdir(), 'xez-863-cache-'));
+    setActiveStateLayout(projectStateLayout(cacheProject));
+  });
+
+  afterEach(() => {
+    setActiveStateLayout(null);
+    rmSync(cacheProject, { recursive: true, force: true });
+  });
+
+  async function threadRequest(opts: { allowedTools: string[]; expect: string; resume?: boolean; bashAllowlist?: string[] }) {
     const dir = mkdtempSync(join(tmpdir(), 'xez-849-'));
     const log = join(dir, 'thread.ndjson');
     try {
@@ -378,9 +408,10 @@ describe('a read-only step runs Codex confined to its worktree and its own roots
           userPrompt: 'review it',
           cwd: dir,
           allowedTools: opts.allowedTools,
+          ...(opts.bashAllowlist === undefined ? {} : { bashAllowlist: opts.bashAllowlist }),
           additionalDirectories: ROOTS,
           ...(opts.resume ? { resume: true, sessionId: 'th_mock_1' } : {}),
-          env: { MOCK_CODEX_EXPECT_SANDBOX: opts.expect, MOCK_CODEX_THREAD_LOG: log },
+          env: { MOCK_CODEX_EXPECT_SANDBOX: opts.expect, MOCK_CODEX_THREAD_LOG: log, MOCK_CODEX_HOME: dir },
         },
         undefined,
         { autoEndAfterFirstTurn: true },
@@ -406,6 +437,293 @@ describe('a read-only step runs Codex confined to its worktree and its own roots
         params: { threadId: 'th_mock_1', cwd: '<cwd>', sandbox: 'workspace-write', approvalPolicy: 'never', config: confined },
       },
     ]);
+  }, 15_000);
+
+  it.each([
+    ['starts', false],
+    ['resumes', true],
+  ] as const)('%s with the Bash hook registered and trusted before turn 1', async (_name, resume) => {
+    const spec = { userPrompt: 'review it', cwd: '/repo', allowedTools: REVIEW, bashAllowlist: [' git status ', ''] };
+    const hook = codexReadOnlyHook(spec)!;
+    const requests = await threadRequest({
+      allowedTools: REVIEW,
+      bashAllowlist: spec.bashAllowlist,
+      expect: 'workspace-write',
+      resume,
+    });
+    expect(requests).toEqual([{
+      method: resume ? 'thread/resume' : 'thread/start',
+      params: {
+        ...(resume ? { threadId: 'th_mock_1' } : {}),
+        cwd: '<cwd>',
+        sandbox: 'workspace-write',
+        approvalPolicy: 'never',
+        config: { ...confined, hooks: hook.config },
+      },
+    }]);
+  }, 15_000);
+
+  it('fails closed before turn/start when the headless hook trust grant is refused', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'xez-863-trust-'));
+    const log = join(dir, 'rpc.ndjson');
+    try {
+      const session = new CodexAppServerRunner({ bin: mockBin, timeoutMs: 0 }).startSession(
+        {
+          userPrompt: 'review it',
+          cwd: dir,
+          allowedTools: REVIEW,
+          bashAllowlist: ['git status'],
+          env: {
+            MOCK_CODEX_EXPECT_SANDBOX: 'workspace-write',
+            MOCK_CODEX_HOME: dir,
+            MOCK_CODEX_REJECT_HOOK_TRUST: '1',
+            MOCK_CODEX_RPC_LOG: log,
+          },
+        },
+        undefined,
+        { autoEndAfterFirstTurn: true },
+      );
+      await expect(session.result).rejects.toThrow(/read-only hook trust grant failed.*mock trust store is read-only/);
+      const methods = readFileSync(log, 'utf8').trim().split('\n').map((line) => JSON.parse(line).method as string);
+      expect(methods).toContain('config/batchWrite');
+      expect(methods).not.toContain('turn/start');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 15_000);
+
+  it('fails closed before any profile write when initialize reports a different CODEX_HOME', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'xez-863-home-'));
+    const requested = join(dir, 'requested');
+    const reported = join(dir, 'wrapper-selected');
+    const log = join(dir, 'rpc.ndjson');
+    mkdirSync(requested);
+    mkdirSync(reported);
+    try {
+      const session = new CodexAppServerRunner({ bin: mockBin, timeoutMs: 0 }).startSession(
+        {
+          userPrompt: 'review it',
+          cwd: dir,
+          allowedTools: REVIEW,
+          bashAllowlist: ['git status'],
+          env: { CODEX_HOME: requested, MOCK_CODEX_HOME: reported, MOCK_CODEX_RPC_LOG: log },
+        },
+        undefined,
+        { autoEndAfterFirstTurn: true },
+      );
+      await expect(session.result).rejects.toThrow(/codex-home\.mismatch.*did not start the step or write hook trust/);
+      const methods = readFileSync(log, 'utf8').trim().split('\n').map((line) => JSON.parse(line).method as string);
+      expect(methods).toEqual(['initialize', 'initialized']);
+      expect(readFileSync(log, 'utf8')).not.toContain('config/batchWrite');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 15_000);
+
+  it.each([
+    ['read-only', REVIEW, ['git status']],
+    ['writing', DEFAULT, undefined],
+  ] as const)('compares a host-exported CODEX_HOME for a %s run', async (_name, allowedTools, bashAllowlist) => {
+    const dir = mkdtempSync(join(tmpdir(), 'xez-863-host-home-'));
+    const requested = join(dir, 'host-exported');
+    const reported = join(dir, 'wrapper-selected');
+    const log = join(dir, 'rpc.ndjson');
+    mkdirSync(requested);
+    mkdirSync(reported);
+    const previous = process.env.CODEX_HOME;
+    process.env.CODEX_HOME = requested;
+    try {
+      const session = new CodexAppServerRunner({ bin: mockBin, timeoutMs: 0 }).startSession(
+        {
+          userPrompt: 'review it',
+          cwd: dir,
+          allowedTools,
+          ...(bashAllowlist ? { bashAllowlist: [...bashAllowlist] } : {}),
+          env: {
+            MOCK_CODEX_HOME: reported,
+            MOCK_CODEX_RPC_LOG: log,
+            ...(bashAllowlist ? { MOCK_CODEX_EXPECT_SANDBOX: 'workspace-write' } : {}),
+          },
+        },
+        undefined,
+        { autoEndAfterFirstTurn: true },
+      );
+      await expect(session.result).rejects.toThrow(/codex-home\.mismatch.*did not start the step or write hook trust/);
+      const methods = readFileSync(log, 'utf8').trim().split('\n').map((line) => JSON.parse(line).method as string);
+      expect(methods).toEqual(['initialize', 'initialized']);
+    } finally {
+      if (previous === undefined) delete process.env.CODEX_HOME;
+      else process.env.CODEX_HOME = previous;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 15_000);
+
+  it('passes the locked-run marker and allowlist through Codex to the hook process', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'xez-863-hook-env-'));
+    const hookLog = join(dir, 'hook.ndjson');
+    try {
+      const session = new CodexAppServerRunner({ bin: mockBin, timeoutMs: 0 }).startSession(
+        {
+          userPrompt: 'review it',
+          cwd: dir,
+          allowedTools: REVIEW,
+          bashAllowlist: ['git status'],
+          env: {
+            MOCK_CODEX_EXPECT_SANDBOX: 'workspace-write',
+            MOCK_CODEX_HOME: dir,
+            MOCK_CODEX_HOOK_LOG: hookLog,
+          },
+        },
+        undefined,
+        { autoEndAfterFirstTurn: true },
+      );
+      await expect(session.result).resolves.toMatchObject({ sessionId: 'th_mock_1' });
+      const invocation = JSON.parse(readFileSync(hookLog, 'utf8').trim()) as {
+        status: number;
+        stdout: string;
+        stderr: string;
+      };
+      expect(invocation).toMatchObject({ status: 0, stdout: '', stderr: '' });
+      const hook = codexReadOnlyHook({ cwd: dir, userPrompt: '', allowedTools: REVIEW, bashAllowlist: ['git status'] });
+      expect(readdirSync(join(dirname(hook!.script), 'locks'))).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 15_000);
+
+  it('accepts two CODEX_HOME spellings that resolve to the same directory', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'xez-863-home-alias-'));
+    const realHome = join(dir, 'real');
+    const aliasHome = join(dir, 'alias');
+    mkdirSync(realHome);
+    symlinkSync(realHome, aliasHome);
+    try {
+      const session = new CodexAppServerRunner({ bin: mockBin, timeoutMs: 0 }).startSession(
+        {
+          userPrompt: 'review it',
+          cwd: dir,
+          allowedTools: REVIEW,
+          bashAllowlist: ['git status'],
+          env: {
+            CODEX_HOME: aliasHome,
+            MOCK_CODEX_HOME: realHome,
+            MOCK_CODEX_EXPECT_SANDBOX: 'workspace-write',
+          },
+        },
+        undefined,
+        { autoEndAfterFirstTurn: true },
+      );
+      await expect(session.result).resolves.toMatchObject({ sessionId: 'th_mock_1' });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 15_000);
+
+  it('preserves existing user hooks and grants trust before the first turn', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'xez-863-install-'));
+    const log = join(dir, 'rpc.ndjson');
+    writeFileSync(join(dir, 'hooks.json'), JSON.stringify({
+      owner: 'user',
+      hooks: { PreToolUse: [{ matcher: 'Read', hooks: [{ type: 'command', command: 'existing-hook' }] }] },
+    }));
+    try {
+      const session = new CodexAppServerRunner({ bin: mockBin, timeoutMs: 0 }).startSession(
+        {
+          userPrompt: 'review it',
+          cwd: dir,
+          allowedTools: REVIEW,
+          bashAllowlist: ['git status'],
+          env: {
+            MOCK_CODEX_EXPECT_SANDBOX: 'workspace-write',
+            MOCK_CODEX_HOME: dir,
+            MOCK_CODEX_RPC_LOG: log,
+          },
+        },
+        undefined,
+        { autoEndAfterFirstTurn: true },
+      );
+      await expect(session.result).resolves.toMatchObject({ sessionId: 'th_mock_1' });
+      const installed = JSON.parse(readFileSync(join(dir, 'hooks.json'), 'utf8')) as {
+        owner: string;
+        hooks: { PreToolUse: Array<{ matcher: string; hooks: Array<{ command: string }> }> };
+      };
+      expect(installed.owner).toBe('user');
+      expect(installed.hooks.PreToolUse[0]?.hooks[0]?.command).toBe('existing-hook');
+      expect(installed.hooks.PreToolUse.filter((entry) => entry.matcher === 'Bash')).toHaveLength(1);
+      const command = installed.hooks.PreToolUse.find((entry) => entry.matcher === 'Bash')?.hooks[0]?.command;
+      expect(command).toBeTypeOf('string');
+      if (!command) throw new Error('installed Bash hook has no command');
+      const script = command.match(/^'[^']+' '([^']+)' --xezar-read-only-hook$/)?.[1];
+      expect(script).toMatch(new RegExp(`${cacheProject.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&')}/\\.local/xezar/cache/codex-hook/[a-f0-9]{64}\\.mjs$`));
+      if (!script) throw new Error('installed Bash hook command has no cache script path');
+      expect(statSync(script).mode & 0o777).toBe(0o444);
+      const methods = readFileSync(log, 'utf8').trim().split('\n').map((line) => JSON.parse(line).method as string);
+      expect(methods.indexOf('hooks/list')).toBeLessThan(methods.indexOf('config/batchWrite'));
+      expect(methods.indexOf('config/batchWrite')).toBeLessThan(methods.indexOf('turn/start'));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 15_000);
+
+  it('keeps two live xezar commands and prunes only the entry whose script is gone', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'xez-863-prune-'));
+    const live = join(dir, 'other-live.mjs');
+    const missing = join(dir, 'other-missing.mjs');
+    writeFileSync(live, '');
+    const command = (script: string) => `'${process.execPath}' '${script}' --xezar-read-only-hook`;
+    writeFileSync(join(dir, 'hooks.json'), JSON.stringify({
+      hooks: { PreToolUse: [live, missing].map((script) => ({
+        matcher: 'Bash',
+        hooks: [{ type: 'command', command: command(script) }],
+      })) },
+    }));
+    try {
+      const session = new CodexAppServerRunner({ bin: mockBin, timeoutMs: 0 }).startSession(
+        {
+          userPrompt: 'review it',
+          cwd: dir,
+          allowedTools: REVIEW,
+          bashAllowlist: ['git status'],
+          env: { MOCK_CODEX_EXPECT_SANDBOX: 'workspace-write', MOCK_CODEX_HOME: dir },
+        },
+        undefined,
+        { autoEndAfterFirstTurn: true },
+      );
+      await expect(session.result).resolves.toMatchObject({ sessionId: 'th_mock_1' });
+      const installed = JSON.parse(readFileSync(join(dir, 'hooks.json'), 'utf8')) as {
+        hooks: { PreToolUse: Array<{ hooks: Array<{ command: string }> }> };
+      };
+      const commands = installed.hooks.PreToolUse.map((entry) => entry.hooks[0]?.command ?? '');
+      expect(commands).toContain(command(live));
+      expect(commands).not.toContain(command(missing));
+      expect(commands).toHaveLength(2);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 15_000);
+
+  it('refuses a symlinked hooks.json with a named reason and leaves its target untouched', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'xez-863-symlink-'));
+    const target = join(dir, 'dotfiles-hooks.json');
+    writeFileSync(target, '{"owner":"user"}\n');
+    symlinkSync(target, join(dir, 'hooks.json'));
+    try {
+      const session = new CodexAppServerRunner({ bin: mockBin, timeoutMs: 0 }).startSession(
+        {
+          userPrompt: 'review it',
+          cwd: dir,
+          allowedTools: REVIEW,
+          bashAllowlist: ['git status'],
+          env: { MOCK_CODEX_EXPECT_SANDBOX: 'workspace-write', MOCK_CODEX_HOME: dir },
+        },
+        undefined,
+        { autoEndAfterFirstTurn: true },
+      );
+      await expect(session.result).rejects.toThrow(/hooks-file\.symlink refused/);
+      expect(readFileSync(target, 'utf8')).toBe('{"owner":"user"}\n');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   }, 15_000);
 
   it('keeps danger-full-access and no workspace-write policy for the default writing list, on start and on resume', async () => {

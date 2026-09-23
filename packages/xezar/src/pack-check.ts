@@ -119,6 +119,7 @@ export const REQUIRED_ARCHIVE_ENTRIES = [
   'package/dist/core/read-only-lock.js',
   'package/web/dist/index.html',
   'package/scripts/mock-claude.mjs',
+  'package/scripts/codex-read-only-hook.mjs',
   'package/scripts/pi-worktree-guard.ts',
 ];
 
