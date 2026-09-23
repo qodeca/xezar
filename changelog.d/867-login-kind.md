@@ -9,5 +9,6 @@
   alias; no released version carried the old name, so `schemaVersion` stays `1`. The plan-limits
   chip now shows an agent only when one of its logins is a subscription, and Show details names the
   login kind. A login whose tool reported no plan limits is called an API-key login only when its
-  login kind is `api-key`; any other login reads "Claude Code reported no plan limits for this
-  login." and keeps its Refresh. (#867)
+  login kind is `api-key`; any other login reads "Claude Code said this login has no plan
+  limits.", says to sign in again and Refresh, and keeps its Refresh. A login whose answer carried
+  no limit lines says so and says to Refresh. (#867)

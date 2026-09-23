@@ -327,7 +327,8 @@ describe('row states', () => {
   it('says why a login with no limit lines has none, and draws no bar', () => {
     renderEveryRow(FIXTURE, false)
     const el = group({ runner: 'claude', accountId: 'work' })
-    expect(el.textContent).toContain('Claude Code reported no limits for this login.')
+    expect(el.textContent).toContain('Claude Code answered without any limit lines for this login.')
+    expect(el.textContent).toContain('Refresh to ask again.')
     expect(el.textContent).toContain('Tasks can still start under this login.')
     expect(el.querySelector('[data-slot="usage-bar"]')).toBeNull()
   })

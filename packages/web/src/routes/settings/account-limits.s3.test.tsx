@@ -436,7 +436,10 @@ describe('a login that reported no plan limits is worded from its login kind (#9
       ['unknown-no-limits', 'Unknown — Claude Code did not say'],
     ] as const) {
       const el = row(MISMATCHED, accountId)
-      expect(statusOf(el)).toBe('Limits not reported — Claude Code reported no plan limits for this login.')
+      expect(statusOf(el)).toBe('Limits not reported — Claude Code said this login has no plan limits.')
+      expect(el.textContent).toContain(
+        "That is Claude Code's answer, not a failed check. If this login should have a plan, sign in to it again in Claude Code, then Refresh.",
+      )
       expect(detail(el, 'Login kind')).toBe(kind)
       expect(detail(el, 'Why the limits are unknown')).toBe('Claude Code reported no plan limits for this login.')
       expect(el.textContent).not.toMatch(/API.key/i)

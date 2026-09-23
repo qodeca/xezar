@@ -92,7 +92,8 @@ describe('status sentence, credits, source and not reported', () => {
     expect(quotaStatusSentence(row('claude', 'work'), 180, NOW)).toMatchObject({
       tone: 'neutral',
       word: 'Limits unknown',
-      reason: '— Claude Code reported no limits for this login.',
+      reason: '— Claude Code answered without any limit lines for this login.',
+      note: 'The check worked, but its answer had no session or weekly lines, so xezar cannot say how much is left. Refresh to ask again. Tasks can still start under this login.',
     })
   })
 

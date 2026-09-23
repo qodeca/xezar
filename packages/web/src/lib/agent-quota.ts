@@ -262,14 +262,16 @@ export function quotaStatusSentence(account: AgentQuotaAccount, ageSeconds: numb
   const version = account.toolVersion ? ` ${account.toolVersion}` : ''
   switch (account.statusReason) {
     case 'api-key':
-      return {
-        tone: 'neutral',
-        word: 'Limits not reported',
-        reason: apiKeyReasonFromApiKeyLogin(account)
-          ? '— API-key logins do not report plan limits.'
-          : `— ${agent} reported no plan limits for this login.`,
-        note: null,
-      }
+      // NB-1 (#908): this state and the no-lines state below each say what sets them apart —
+      // here the tool answered that the login has no plan limits; below it answered without any.
+      return apiKeyReasonFromApiKeyLogin(account)
+        ? { tone: 'neutral', word: 'Limits not reported', reason: '— API-key logins do not report plan limits.', note: null }
+        : {
+            tone: 'neutral',
+            word: 'Limits not reported',
+            reason: `— ${agent} said this login has no plan limits.`,
+            note: `That is ${agent}'s answer, not a failed check. If this login should have a plan, sign in to it again in ${agent}, then Refresh. Tasks can still start under this login.`,
+          }
     case 'version-too-old':
       return unknown(
         `update ${agent} to at least ${account.minimumVersion ?? 'a newer version'} to report limits.`,
@@ -294,8 +296,8 @@ export function quotaStatusSentence(account: AgentQuotaAccount, ageSeconds: numb
     return {
       tone: 'neutral',
       word: 'Limits unknown',
-      reason: `— ${agent} reported no limits for this login.`,
-      note: 'Its answer had no session or weekly lines, so xezar cannot say how much is left. Tasks can still start under this login.',
+      reason: `— ${agent} answered without any limit lines for this login.`,
+      note: 'The check worked, but its answer had no session or weekly lines, so xezar cannot say how much is left. Refresh to ask again. Tasks can still start under this login.',
     }
   }
   return { tone: 'neutral', word: 'Limits unknown', reason: `— ${agent} did not say whether this login can work.`, note: null }
