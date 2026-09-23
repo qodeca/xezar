@@ -126,6 +126,7 @@ describe('agent quota normalisers', () => {
       weeklyWindow: { usedPercent: 27, resetsAt: '2026-09-25T18:59:00Z', windowMinutes: 10080 },
       modelWindows: [{ model: 'Fable', usedPercent: 8 }],
     });
+    expect(row.warnings).toBeUndefined();
   });
 
   it('reads the real 2.1.280 /usage reply whose session has not started', () => {
@@ -137,6 +138,11 @@ describe('agent quota normalisers', () => {
       weeklyWindow: { usedPercent: 100, resetsAt: '2026-09-26T15:59:00Z', windowMinutes: 10080 },
     });
     expect(row.notReported).not.toContain('shortWindow');
+    // The session reset is xezar's assumption, not a time Claude Code reported, and says so.
+    expect(row.warnings).toEqual([
+      'Claude Code reported no reset time for the unused session window; '
+        + 'the reset shown is an assumption of one window length after this check, not a reported time.',
+    ]);
   });
 
   it('still fails closed on a row without a reset that is neither unused nor exhausted', () => {

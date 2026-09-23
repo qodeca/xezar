@@ -262,13 +262,16 @@ export function normalizeClaudeUsage(
   let weeklyWindow: AgentQuotaWindow | null = null;
   const modelWindows: Array<AgentQuotaWindow & { model: string }> = [];
   let unreadableExhaustedReset: Date | null = null;
+  const warnings: string[] = [];
   for (const row of rows) {
     const usedPercent = Number(row[3]);
     const windowMinutes = row[1] === 'session' ? 300 : 10080;
     // #893: Claude Code 2.1.280 prints `0% used` with no reset clause for a window that has not
     // started. Nothing is used, so it resets one window length after it starts, at the earliest now.
+    // That reset is xezar's assumption, not the provider's, so a warning says so.
+    const assumedReset = row[4] === undefined && usedPercent === 0;
     const reset = row[4] === undefined
-      ? (usedPercent === 0 ? new Date(observedAt.getTime() + windowMinutes * 60_000) : null)
+      ? (assumedReset ? new Date(observedAt.getTime() + windowMinutes * 60_000) : null)
       : claudeReset(row[4], observedAt.getTime());
     if (!reset) {
       if (usedPercent >= 100) {
@@ -280,6 +283,10 @@ export function normalizeClaudeUsage(
         }
       }
       continue;
+    }
+    if (assumedReset) {
+      warnings.push(`Claude Code reported no reset time for the unused ${row[1]!} window; `
+        + 'the reset shown is an assumption of one window length after this check, not a reported time.');
     }
     if (row[1] === 'session') shortWindow = windowFromPercent(usedPercent, reset, 300);
     else if (row[1] === 'week (all models)') weeklyWindow = windowFromPercent(usedPercent, reset, 10080);
@@ -315,6 +322,7 @@ export function normalizeClaudeUsage(
       'credits',
       'planType',
     ],
+    ...(warnings.length ? { warnings } : {}),
   });
 }
 
