@@ -796,7 +796,7 @@ describe('a read-only step runs Codex confined to its worktree and its own roots
     const currentScript = hook.command.match(/^'[^']+' '([^']+)' --xezar-read-only-hook$/)?.[1];
     if (!currentScript) throw new Error('current hook command has no cache script path');
     const differentDigestScript = join(dirname(currentScript), `${'0'.repeat(64)}.mjs`);
-    if (entryKinds.includes('legacy-different-digest')) {
+    if (entryKinds.some((kind) => kind === 'legacy-different-digest')) {
       mkdirSync(dirname(differentDigestScript), { recursive: true });
       writeFileSync(differentDigestScript, 'legacy xezar hook');
     }
