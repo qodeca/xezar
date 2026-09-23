@@ -1972,6 +1972,9 @@ the 0.16.0 shape rather than instead of it.
   `source: "none"`; `source: "check"` means an active check actually ran.
 - **Machine times:** every time the answer emits is UTC in whole seconds (`…:ssZ`); a fraction of
   a second from a clock or a provider reply is truncated.
+- **Claude `get_usage` limit list:** the typed `limits[]` list is read where Claude Code 2.1.280
+  sends it, nested under `rate_limits`, and entries with `scope: null` are accepted, so per-model
+  weekly windows reach `modelWindows` (#906). The field set of the answer is unchanged.
 - **Latest reset wins:** when a live or failed-run limit arrives for a login that is already `out`
   until a later time, the later reset is kept. A fresh check still replaces the row outright.
 - **Additive account metadata:** checked rows may carry `stale`, `refreshing`, `nextCheckAt`,

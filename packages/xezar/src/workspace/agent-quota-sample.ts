@@ -8,9 +8,9 @@ import type { AgentQuotaSelector } from './agent-quota.ts';
 const none = ['shortWindow', 'weeklyWindow', 'modelWindows', 'credits', 'planType'] as const;
 
 /**
- * The dry-run sample (#867 AC-4, AC-27): the answer time and rows of the approved frozen fixture
- * `packages/contract/src/__fixtures__/agent-quota.expected.json`, bundled so the published CLI
- * carries them. `agent-quota.test.ts` fails when this copy and the fixture differ.
+ * The dry-run sample (#867 AC-4, AC-27): the answer time and rows of the contract's approved
+ * frozen fixture `agent-quota.expected.json`, bundled so the published CLI carries them.
+ * `agent-quota.test.ts` fails when this copy and the fixture differ.
  */
 export const DRY_RUN_QUOTA_GENERATED_AT = '2026-09-22T14:24:00Z';
 

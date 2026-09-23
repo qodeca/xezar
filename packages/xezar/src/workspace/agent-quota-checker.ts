@@ -47,7 +47,8 @@ const claudeLimitSchema = z.object({
   kind: z.enum(['session', 'weekly_all', 'weekly_scoped']),
   percent: z.number().min(0).max(100),
   resets_at: z.string().datetime({ offset: true }),
-  scope: z.object({ model: z.object({ display_name: z.string().min(1) }).optional() }).optional(),
+  // The live reply sends `scope: null` for the session and all-models entries (#906).
+  scope: z.object({ model: z.object({ display_name: z.string().min(1) }).nullish() }).nullish(),
 });
 
 const claudeRateLimitSchema = z.object({
@@ -64,6 +65,8 @@ const claudeUsageSchema = z.object({
     seven_day: claudeRateLimitSchema.optional(),
     seven_day_opus: claudeRateLimitSchema.nullable().optional(),
     seven_day_sonnet: claudeRateLimitSchema.nullable().optional(),
+    // Claude Code 2.1.280 nests the typed limit list here, beside the fixed windows (#906).
+    limits: z.array(claudeLimitSchema).optional(),
   }).optional(),
 }).refine((value) => value.limits !== undefined || value.rate_limits !== undefined || value.rate_limits_available === false, {
   message: 'Claude usage reply carries no rate-limit fields',
@@ -351,8 +354,9 @@ function normalizeClaudeControl(raw: unknown, profile: QuotaProfile, checkedAt: 
     const text = `${part('month')} ${part('day')} at ${part('hour')}:${part('minute')}${part('dayPeriod').toLowerCase()} (${timeZone})`;
     lines.push(`Current ${label}: ${percent}% used · resets ${text}`);
   };
-  if (usage.limits) {
-    for (const limit of usage.limits) {
+  const limits = usage.limits ?? usage.rate_limits?.limits;
+  if (limits) {
+    for (const limit of limits) {
       const label = limit.kind === 'session' ? 'session'
         : limit.kind === 'weekly_all' ? 'week (all models)'
         : `week (${limit.scope?.model?.display_name ?? 'model'})`;

@@ -135,6 +135,31 @@ describe('AgentQuotaChecker', () => {
     expect(answer.accounts[0]!.weeklyWindow?.usedPercent).toBe(29);
   });
 
+  // #906: the live Claude Code 2.1.280 get_usage reply (issue 867, "AC-38 re-proof (get_usage,
+  // live)") nests `limits[]` under `rate_limits`, and its session and weekly entries carry
+  // `scope: null`. The per-model weekly window (Fable) must reach the answer.
+  it('reads the per-model window from the limits nested under rate_limits in the live reply', async () => {
+    const capture: unknown = JSON.parse(await readFile(
+      new URL('../__fixtures__/agent-quota/claude-get-usage-nested-limits.json', import.meta.url), 'utf8',
+    ));
+    const run: RunQuotaProcess = async (spec) => (spec.args[0] === '--version' ? '2.1.280 (Claude Code)' : capture);
+    const checker = new AgentQuotaChecker({
+      store: new AgentQuotaStore({ now: () => Date.parse('2026-09-23T07:00:00Z') }),
+      now: () => Date.parse('2026-09-23T07:00:00Z'),
+      profiles: async () => [profile('claude')], runProcess: run, dryRun: () => false,
+    });
+
+    const answer = await checker.refresh();
+
+    expect(answer.accounts[0]).toMatchObject({
+      source: 'check', status: 'ok', planType: 'max', statusReason: null, warnings: [],
+      shortWindow: { usedPercent: 9, windowMinutes: 300 },
+      weeklyWindow: { usedPercent: 23, windowMinutes: 10080 },
+      modelWindows: [{ model: 'Fable', usedPercent: 4, windowMinutes: 10080 }],
+    });
+    expect(answer.accounts[0]!.notReported).toEqual(['credits']);
+  });
+
   it('uses fixed isolated Claude argv and reports the /usage fallback in the row', async () => {
     const calls: AgentQuotaProcessSpec[] = [];
     const run: RunQuotaProcess = vi.fn(async (spec) => {
