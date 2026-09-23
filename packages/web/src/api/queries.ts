@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { mergeProviderStatusResponse } from '@/lib/provider-status'
 import type {
-  AgentQuotaQuery,
+  AgentQuotaRefreshInput,
   AgentQuotaResponse,
   CreateRunResponse,
   McpLeaderActionInput,
@@ -894,7 +894,7 @@ export function useAgentQuota() {
 export function useRefreshAgentQuota() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (input: AgentQuotaQuery) => refreshAgentQuota(input),
+    mutationFn: (input: AgentQuotaRefreshInput) => refreshAgentQuota(input),
     retry: false,
     onSuccess: (answer: AgentQuotaResponse) => {
       // A whole answer replaces the cache. A single-login refresh may come back filtered to that

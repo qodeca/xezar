@@ -11,19 +11,22 @@ import { toast } from '@/components/ui/toaster'
 import { UsageBar } from '@/components/usage-bar'
 import {
   QUOTA_RUNNERS,
+  accountIsStale,
   ageText,
   creditsText,
   findQuotaAccount,
   formatQuotaTime,
-  isQuotaStale,
   nextCheckAllowedAt,
   notReportedWords,
   quotaAgeSeconds,
+  quotaCanRefresh,
   quotaStatusSentence,
+  quotaWarnings,
   quotaWindowLines,
   sourceDetail,
   sourceText,
   summarizeAgent,
+  toolVersionText,
 } from '@/lib/agent-quota'
 import { useNow } from '@/lib/use-now'
 import { RUNNER_LABEL } from '@/lib/runner-label'
@@ -36,8 +39,8 @@ import { cn } from '@/lib/utils'
  * Claude Code / Codex account row, and that half's "Plan limits in detail" inside the row's
  * existing Show details panel. All of them read `useAgentQuota()` — a pure cache read, kept live
  * by the root subscription — and render the answer's fields as sent (D1, D37). What the cockpit
- * derives on top (the summary counts, "Stale", the refresh gap, the reader's zone) is named in
- * `lib/agent-quota.ts`.
+ * derives on top (the summary counts, the reader's zone, and the fallbacks for an answer older
+ * than #888) is named in `lib/agent-quota.ts`.
  *
  * Nothing here acts on the facts (D2): no login is switched and no task is held back.
  */
@@ -51,6 +54,15 @@ export const limitsAnchorId = (runner: AgentQuotaRunner, accountId: string) =>
 
 /** The block the chip's "Open agent accounts" lands on (`#limits`). */
 export const PLAN_LIMITS_ID = 'limits'
+
+/**
+ * A Refresh that is unavailable but stays focusable (`aria-disabled`, so its reason is still read
+ * out): tertiary ink `--soft-foreground`, which clears 4.5:1 on every surface it prints on, and no
+ * hover fill. Never an opacity — `opacity-55` put the label at 2.45:1 (#889 review, Major 5).
+ * components.md § Button, States, "unavailable but focusable".
+ */
+const HELD_BUTTON =
+  'aria-disabled:cursor-not-allowed aria-disabled:text-soft-foreground aria-disabled:hover:bg-transparent aria-disabled:hover:text-soft-foreground'
 
 function useRefreshToast(nameOf: QuotaNameOf) {
   const refresh = useRefreshAgentQuota()
@@ -139,14 +151,17 @@ export function PlanLimitsBlock({ nameOf, hosted }: { nameOf: QuotaNameOf; hoste
   const answer = quota.data
   const summaries = QUOTA_RUNNERS.map((runner) => summarizeAgent(answer, runner, now)).filter((s) => s !== null)
   const refreshingAll = refresh.pending && refresh.variables?.accountId === undefined
+  // A login no check can help (tool missing or too old, API key) neither holds Refresh all back
+  // nor keeps it open.
+  const checkable = answer.accounts.filter(quotaCanRefresh)
   const allHeld =
-    answer.accounts.length > 0 &&
-    answer.accounts.every((row) => {
+    checkable.length > 0 &&
+    checkable.every((row) => {
       const next = nextCheckAllowedAt(row)
       return next !== null && now < next
     })
   const firstAllowed = allHeld
-    ? Math.min(...answer.accounts.map((row) => nextCheckAllowedAt(row) ?? Infinity))
+    ? Math.min(...checkable.map((row) => nextCheckAllowedAt(row) ?? Infinity))
     : null
 
   return frame(
@@ -163,7 +178,7 @@ export function PlanLimitsBlock({ nameOf, hosted }: { nameOf: QuotaNameOf; hoste
             data-action="agent-quota-refresh-all"
             aria-disabled={allHeld || refresh.pending ? true : undefined}
             aria-describedby={allHeld ? 'agent-quota-refresh-all-held' : undefined}
-            className="w-full aria-disabled:cursor-not-allowed aria-disabled:opacity-55 md:ml-auto md:w-auto"
+            className={cn('w-full md:ml-auto md:w-auto', HELD_BUTTON)}
             onClick={() => {
               if (allHeld || refresh.pending) return
               refresh.run()
@@ -290,7 +305,7 @@ export function AccountLimitsView({
   const reasonId = useId()
   const agent = RUNNER_LABEL[account.runner]
   const age = quotaAgeSeconds(account, answer.generatedAt, now)
-  const stale = isQuotaStale(age)
+  const stale = accountIsStale(account, age)
   const status = quotaStatusSentence(account, age, now)
   const windows = quotaWindowLines(account)
   const credits = creditsText(account)
@@ -298,6 +313,10 @@ export function AccountLimitsView({
   const held = next !== null && now < next
   const refreshing =
     refresh.pending && refresh.variables?.accountId === account.accountId && refresh.variables.provider === account.runner
+  // A check the server is already running for this login (a background re-check, or another tab).
+  const checking = !refreshing && account.refreshing === true
+  const canRefresh = quotaCanRefresh(account)
+  const warnings = quotaWarnings(account)
   const noShortWindow = account.shortWindow === null && account.notReported.includes('shortWindow') && windows.length > 0
 
   return (
@@ -351,6 +370,17 @@ export function AccountLimitsView({
         </p>
       ) : null}
 
+      {warnings.length > 0 ? (
+        <ul data-slot="limit-warnings" className="flex flex-col gap-1">
+          {warnings.map((warning) => (
+            <li key={warning} data-slot="limit-warning" className="flex items-baseline gap-2 text-xs leading-normal text-foreground">
+              <StatusDot tone="pending" className="mt-1.25 self-start" aria-hidden="true" />
+              <span>{warning}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
       <div data-slot="limit-meta" className="flex flex-wrap items-center gap-x-row gap-y-1 text-xs leading-normal text-muted-foreground">
         {stale ? (
           <Badge variant="outline" data-slot="limit-stale">
@@ -362,23 +392,25 @@ export function AccountLimitsView({
           {stale ? ' — the numbers may have moved since' : ''}
           {held && next !== null ? ` · next check allowed at ${formatQuotaTime(new Date(next).toISOString(), now)}` : ''}
         </span>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          data-action="agent-quota-refresh"
-          aria-label={`Refresh limits of ${name}, ${agent}`}
-          aria-disabled={held || refresh.pending ? true : undefined}
-          aria-describedby={held ? reasonId : undefined}
-          className="w-full aria-disabled:cursor-not-allowed aria-disabled:opacity-55 md:w-auto"
-          onClick={() => {
-            if (held || refresh.pending) return
-            refresh.run(account)
-          }}
-        >
-          <RefreshCwIcon aria-hidden="true" className={cn('size-3.5', refreshing && 'motion-safe:animate-spin')} />
-          {refreshing ? 'Refreshing…' : 'Refresh'}
-        </Button>
+        {canRefresh ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            data-action="agent-quota-refresh"
+            aria-label={`Refresh limits of ${name}, ${agent}`}
+            aria-disabled={held || checking || refresh.pending ? true : undefined}
+            aria-describedby={held ? reasonId : undefined}
+            className={cn('w-full md:w-auto', HELD_BUTTON)}
+            onClick={() => {
+              if (held || checking || refresh.pending) return
+              refresh.run(account)
+            }}
+          >
+            <RefreshCwIcon aria-hidden="true" className={cn('size-3.5', (refreshing || checking) && 'motion-safe:animate-spin')} />
+            {refreshing ? 'Refreshing…' : checking ? 'Checking…' : 'Refresh'}
+          </Button>
+        ) : null}
       </div>
 
       {showDetails ? <AccountLimitsDetails account={account} ageSeconds={age} now={now} held={held ? next : null} /> : null}
@@ -412,6 +444,9 @@ function AccountLimitsDetails({
       } · balance ${account.credits.balance}`,
     ])
   }
+  const version = toolVersionText(account)
+  if (version) rows.push(['Tool version', version])
+  if (account.status === 'unknown' && account.unavailableReason) rows.push(['Why the limits are unknown', account.unavailableReason])
   if (held !== null) rows.push(['Next check allowed', formatQuotaTime(new Date(held).toISOString(), now)])
   if (missing.length > 0) rows.push([`Not reported by ${agent}`, missing.join(', ')])
   return (

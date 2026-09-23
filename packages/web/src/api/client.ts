@@ -109,7 +109,7 @@ import type {
   SkillsUpdateState,
   McpLeaderActionInput,
   McpLeaderStatus,
-  AgentQuotaQuery,
+  AgentQuotaRefreshInput,
   AgentQuotaResponse,
 } from '@qodeca/xezar-api-client'
 import { parseProviderStatusResponse } from '@/lib/provider-status'
@@ -1868,26 +1868,16 @@ export async function getAgentQuota(opts?: ReadOptions): Promise<AgentQuotaRespo
 
 /**
  * Ask for a fresh check of one login (`{ provider, accountId }`) or of every login (`{}`), and
- * get the new answer back (#867 FR-2: the POST twin of MCP `check_quota`).
- *
- * Hand-written rather than typed on purpose, for now: the refresh route is built in #867 S3 and
- * is not in `AppType` yet, so the typed client cannot name it. The body is the contract's own
- * selector type and the answer is validated with the contract's reader schema, so the day the
- * route lands this becomes one `xez.api.v1.workspace['agent-quota'].refresh.$post` call with no
- * change to its callers.
+ * get the new answer back (#867 FR-2: the POST twin of MCP `check_quota`). The body is the
+ * contract's strict refresh selector — never the GET route's query type, whose `wait` key this
+ * route rejects — and the answer is validated with the contract's reader schema.
  */
-export async function refreshAgentQuota(input: AgentQuotaQuery): Promise<AgentQuotaResponse> {
-  const label = '/workspace/agent-quota/refresh'
-  const res = await send(label, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(input),
-  })
-  const body = await res.text()
-  if (!res.ok) throw errorFor(res.status, res.statusText, body)
-  const result = agentQuotaResponseSchema.safeParse(parseJson(body))
-  if (!result.success) throw new ApiError(res.status, `the xezar server answered ${label} with an unexpected body`)
-  return result.data
+export async function refreshAgentQuota(input: AgentQuotaRefreshInput): Promise<AgentQuotaResponse> {
+  return unwrapValidated(
+    await xez.api.v1.workspace['agent-quota'].refresh.$post({ json: input }),
+    '/workspace/agent-quota/refresh',
+    agentQuotaResponseSchema,
+  )
 }
 
 /** Who an account is signed in as (spec 2026-07-29-agent-profiles). Fetched only when the user

@@ -26,7 +26,11 @@ import { AccountLimitsView, HostedQuotaRows, PlanLimitsBlock, type QuotaNameOf }
  */
 
 const FIXTURE: AgentQuotaResponse = agentQuotaResponseSchema.parse(fixtureJson)
+type RawWindow = { usedPercent: number; resetsAt: string; windowMinutes: number }
 const RAW = fixtureJson as unknown as {
+  schemaVersion: number
+  scope: string
+  generatedAt: string
   accounts: Array<{
     runner: 'claude' | 'codex'
     accountId: string
@@ -35,9 +39,9 @@ const RAW = fixtureJson as unknown as {
     checkedAt: string
     ageSeconds: number
     source: string
-    shortWindow: { usedPercent: number; resetsAt: string } | null
-    weeklyWindow: { usedPercent: number; resetsAt: string } | null
-    modelWindows: Array<{ model: string; usedPercent: number; resetsAt: string }> | null
+    shortWindow: RawWindow | null
+    weeklyWindow: RawWindow | null
+    modelWindows: Array<RawWindow & { model: string }> | null
     credits: { hasCredits: boolean; unlimited: boolean; balance: string } | null
     planType: string | null
     notReported: string[]
@@ -104,6 +108,65 @@ const group = (account: { runner: 'claude' | 'codex'; accountId: string }) =>
 
 const ageWords = (seconds: number) => `${Math.floor(seconds / 60)}m`
 
+/** The window's length in words, from the RAW `windowMinutes` (the mockup's copy deck § 7). */
+const LENGTH_WORDS: Record<number, string> = { 300: '5-hour window', 10080: 'Weekly' }
+function windowLabel(runner: 'claude' | 'codex', kind: 'short' | 'weekly' | 'model', window: RawWindow & { model?: string }) {
+  const base = LENGTH_WORDS[window.windowMinutes]
+  if (base === undefined) throw new Error(`the oracle has no words for ${window.windowMinutes} minutes; add them`)
+  if (kind === 'model') return `${base}, ${window.model}`
+  return kind === 'weekly' && runner === 'claude' && base === 'Weekly' ? 'Weekly, all models' : base
+}
+
+/**
+ * Every key the frozen fixture carries, by path, and what the cockpit does with it. `rendered`
+ * keys are asserted on screen below; `transport` keys are the envelope's own identity, which the
+ * reader schema pins and the cockpit refuses when they differ (asserted in their own case). A key
+ * the fixture gains without a line here fails the suite, so "every field is accounted for" stays
+ * true by construction rather than by review.
+ */
+const FIELD_USE: Record<string, 'rendered' | 'transport' | 'age'> = {
+  schemaVersion: 'transport',
+  scope: 'transport',
+  generatedAt: 'age',
+  'accounts[].runner': 'rendered',
+  'accounts[].accountId': 'rendered',
+  'accounts[].status': 'rendered',
+  'accounts[].resetsAt': 'rendered',
+  'accounts[].checkedAt': 'rendered',
+  'accounts[].ageSeconds': 'age',
+  'accounts[].source': 'rendered',
+  'accounts[].shortWindow': 'rendered',
+  'accounts[].weeklyWindow': 'rendered',
+  'accounts[].modelWindows': 'rendered',
+  'accounts[].credits': 'rendered',
+  'accounts[].planType': 'rendered',
+  'accounts[].notReported': 'rendered',
+  'accounts[].*Window.usedPercent': 'rendered',
+  'accounts[].*Window.resetsAt': 'rendered',
+  'accounts[].*Window.windowMinutes': 'rendered',
+  'accounts[].*Window.model': 'rendered',
+  'accounts[].credits.hasCredits': 'rendered',
+  'accounts[].credits.unlimited': 'rendered',
+  'accounts[].credits.balance': 'rendered',
+}
+
+function fixturePaths(): Set<string> {
+  const paths = new Set<string>()
+  const raw = fixtureJson as unknown as Record<string, unknown>
+  for (const key of Object.keys(raw)) if (key !== 'accounts') paths.add(key)
+  for (const account of raw.accounts as Array<Record<string, unknown>>) {
+    for (const [key, value] of Object.entries(account)) {
+      paths.add(`accounts[].${key}`)
+      const nested = Array.isArray(value) ? value : value && typeof value === 'object' ? [value] : []
+      const prefix = /Window|Windows$/.test(key) ? 'accounts[].*Window' : `accounts[].${key}`
+      for (const item of nested) {
+        if (item && typeof item === 'object') for (const inner of Object.keys(item)) paths.add(`${prefix}.${inner}`)
+      }
+    }
+  }
+  return paths
+}
+
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(NOW)
@@ -154,7 +217,16 @@ describe('AC-37: for one answer, the cockpit renders exactly its fields and valu
       const windows = [raw.shortWindow, raw.weeklyWindow, ...(raw.modelWindows ?? [])].filter((w) => w !== null)
       const lines = [...el.querySelectorAll('[data-slot="limit-window"]')]
       expect(lines).toHaveLength(windows.length)
+      const kinds = [
+        ...(raw.shortWindow ? (['short'] as const) : []),
+        ...(raw.weeklyWindow ? (['weekly'] as const) : []),
+        ...(raw.modelWindows ?? []).map(() => 'model' as const),
+      ]
       windows.forEach((window, index) => {
+        // windowMinutes decides the label: 300 is the 5-hour window, 10 080 the weekly one.
+        expect(lines[index]?.querySelector('[data-slot="limit-window-label"]')?.textContent).toBe(
+          windowLabel(raw.runner, kinds[index]!, window),
+        )
         expect(lines[index]?.querySelector('[data-slot="limit-window-used"]')?.textContent).toBe(`${window.usedPercent}% used`)
         expect(lines[index]?.querySelector('[data-slot="limit-window-reset"]')?.textContent).toBe(
           `resets ${formatQuotaTime(window.resetsAt, NOW)}`,
@@ -190,6 +262,28 @@ describe('AC-37: for one answer, the cockpit renders exactly its fields and valu
       // Fresh fixture: no row is stale.
       expect(el.querySelector('[data-slot="limit-stale"]')).toBeNull()
     }
+  })
+
+  it('accounts for every key of the fixture: rendered, used for the age, or transport identity', () => {
+    const unclassified = [...fixturePaths()].filter((path) => !(path in FIELD_USE))
+    expect(unclassified).toEqual([])
+  })
+
+  it('uses generatedAt for every age: a minute after the answer was built, every row is a minute older', () => {
+    vi.setSystemTime(Date.parse(RAW.generatedAt) + 60_000)
+    renderEveryRow(FIXTURE, false)
+    for (const raw of RAW.accounts) {
+      const meta = group(raw).querySelector('[data-slot="limit-meta-text"]')?.textContent ?? ''
+      expect(meta).toContain(`${ageWords(raw.ageSeconds + 60)} ago`)
+    }
+  })
+
+  it('refuses an answer whose schemaVersion or scope is not the one it reads (transport identity)', () => {
+    expect(RAW.schemaVersion).toBe(1)
+    expect(RAW.scope).toBe('agent-quota')
+    expect(agentQuotaResponseSchema.safeParse({ ...fixtureJson, schemaVersion: 2 }).success).toBe(false)
+    expect(agentQuotaResponseSchema.safeParse({ ...fixtureJson, scope: 'agent-usage' }).success).toBe(false)
+    expect(agentQuotaResponseSchema.safeParse({ ...fixtureJson, generatedAt: 'yesterday' }).success).toBe(false)
   })
 
   it('shows one D30 summary line per agent, from the rows’ status, with a jump to the login that is out', () => {
@@ -246,6 +340,10 @@ describe('Refresh', () => {
     expect(reason?.textContent).toContain(`next check allowed at ${formatQuotaTime('2026-09-22T14:25:00Z', NOW)}`)
     fireEvent.click(button)
     expect(requests.filter((r) => r.method === 'POST')).toEqual([])
+    // Unavailable, not faded (#889 review Major 5): opacity took the label to 2.45:1. The held
+    // button keeps a text token that clears 4.5:1 and drops its hover fill instead.
+    expect(button.className).not.toMatch(/aria-disabled:opacity/)
+    expect(button.className).toContain('aria-disabled:text-soft-foreground')
   })
 
   it('posts the contract selector for one login and reports what came back', async () => {

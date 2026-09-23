@@ -18,16 +18,19 @@ import { RUNNER_LABEL } from '@/lib/runner-label'
  *
  * Everything here FORMATS the answer; nothing re-decides it. `status`, every percentage and every
  * reset come verbatim from `GET /api/v1/workspace/agent-quota` (D1, D37: the cockpit shows what the
- * MCP returns). The merged contract is slimmer than the spec's first draft — it carries no
- * `summaries[]`, `stale`, `nextCheckAt`, `warnings[]` or zone name — so the few facts the design
- * needs on top are derived from the answer's own fields, each in one named helper below, and the
- * PR that introduced them lists every such difference:
+ * MCP returns). Since #888 (S3) the answer also carries `stale`, `refreshing`, `nextCheckAt`,
+ * `statusReason`, `warnings`, `toolVersion`/`minimumVersion` and `unavailableReason`, and those are
+ * read as sent. They are additive (optional on the reader schema), so an OLDER answer without them
+ * still renders: only then does a helper below fall back to a value derived from the row itself.
+ * What stays derived either way:
  *
- * - the per-agent summary line (D30) counts the rows' `status`;
- * - "Stale" is the row's age past 15 minutes (the spec's staleness rule, D16);
- * - the refresh gap is `checkedAt` + 5 minutes for a row whose reading came from a check (FR-7);
+ * - the per-agent summary line (D30) counts the rows' `status` — the answer has no `summaries[]`;
  * - times are shown in the reader's zone with its abbreviation and offset, because the contract's
  *   times are UTC and it names no server zone (D32 asked for the server's zone).
+ *
+ * The answer's `source` and `statusReason` are open strings on the reader side: a value this
+ * cockpit does not know renders as unknown, and the row is then read by its `status` alone —
+ * `unknown` never means budget.
  */
 
 /** Past this age a reading is marked stale (#867 D16: the background re-check threshold). */
@@ -128,15 +131,45 @@ export function isQuotaStale(ageSeconds: number): boolean {
   return ageSeconds > QUOTA_STALE_SECONDS
 }
 
+/** Is this row stale? The server's `stale` when it sends one; the age rule for an older answer. */
+export function accountIsStale(account: AgentQuotaAccount, ageSeconds: number): boolean {
+  return typeof account.stale === 'boolean' ? account.stale : isQuotaStale(ageSeconds)
+}
+
+/** The sources that are a limit check (the direct request, or its /usage text fallback). */
+const CHECK_SOURCES = new Set(['check', 'check-text'])
+
 /**
- * When the next check of this login is allowed, or null when nothing holds it back. Only a
- * reading that came from a CHECK starts the 5-minute gap; a live reading or a failed task says
- * nothing about when the last check ran.
+ * When the next check of this login is allowed, or null when nothing holds it back. The server's
+ * `nextCheckAt` decides whenever the answer carries the key — `null` there means it holds nothing
+ * back, even right after a check. Only an older answer without the key falls back to `checkedAt` +
+ * 5 minutes for a reading that came from a check; a live reading or a failed task says nothing
+ * about when the last check ran.
  */
 export function nextCheckAllowedAt(account: AgentQuotaAccount): number | null {
-  if (account.source !== 'check') return null
+  if (account.nextCheckAt !== undefined) {
+    if (account.nextCheckAt === null) return null
+    const next = Date.parse(account.nextCheckAt)
+    return Number.isNaN(next) ? null : next
+  }
+  if (!CHECK_SOURCES.has(account.source)) return null
   const checked = Date.parse(account.checkedAt)
   return Number.isNaN(checked) ? null : checked + QUOTA_CHECK_GAP_MS
+}
+
+/** The `statusReason` values a new check cannot change: the tool must be installed or updated,
+ *  or the login is an API key. Refresh is not offered for them (the mockup's AQ-4). */
+const UNCHECKABLE_REASONS = new Set(['version-too-old', 'not-installed', 'api-key'])
+
+/** Can a check of this login tell anything new? Only an `unknown` row carries a reason. */
+export function quotaCanRefresh(account: AgentQuotaAccount): boolean {
+  return !(account.status === 'unknown' && account.statusReason && UNCHECKABLE_REASONS.has(account.statusReason))
+}
+
+/** The server's warnings, minus one that only repeats the row's `unavailableReason` (which the
+ *  status sentence already words and the details panel quotes). */
+export function quotaWarnings(account: AgentQuotaAccount): string[] {
+  return (account.warnings ?? []).filter((warning) => warning !== account.unavailableReason)
 }
 
 // ---- windows -------------------------------------------------------------------------------
@@ -197,6 +230,12 @@ export type QuotaStatusSentence ={ tone: StatusDotTone; word: string; reason: st
 /** The bold status word and its muted reason, from `status` alone plus the row's own facts. */
 export function quotaStatusSentence(account: AgentQuotaAccount, ageSeconds: number, now: number): QuotaStatusSentence {
   const agent = RUNNER_LABEL[account.runner]
+  const unknown = (reason: string, note: string | null = null): QuotaStatusSentence => ({
+    tone: 'neutral',
+    word: 'Limits unknown',
+    reason: `— ${reason}`,
+    note,
+  })
   if (account.status === 'ok') return { tone: 'success', word: 'Can work', reason: null, note: null }
   if (account.status === 'out') {
     const spent = quotaWindowLines(account).find((line) => line.usedPercent >= 100)
@@ -207,6 +246,31 @@ export function quotaStatusSentence(account: AgentQuotaAccount, ageSeconds: numb
           ? `— the ${limitPhrase(spent.label)} is used up.`
           : '— a plan limit is used up.'
     return { tone: 'danger', word: `Out until ${formatQuotaTime(account.resetsAt, now)}`, reason, note: null }
+  }
+  // `unknown` from here on. A reason names why; one this cockpit does not know is not guessed at.
+  const version = account.toolVersion ? ` ${account.toolVersion}` : ''
+  switch (account.statusReason) {
+    case 'api-key':
+      return { tone: 'neutral', word: 'Limits not reported', reason: '— API-key logins do not report plan limits.', note: null }
+    case 'version-too-old':
+      return unknown(
+        `update ${agent} to at least ${account.minimumVersion ?? 'a newer version'} to report limits.`,
+        account.toolVersion ? `${agent} ${account.toolVersion} is installed.` : null,
+      )
+    case 'not-installed':
+      return unknown(`${agent} is not installed on this machine.`)
+    case 'format-changed':
+      return unknown(`${agent}${version} changed how it reports usage, so xezar cannot read it.`)
+    case 'check-failed':
+      return unknown('the last check failed.')
+  }
+  if (account.source === 'none') {
+    return account.refreshing
+      ? { tone: 'neutral', word: 'Checking the limits…', reason: null, note: null }
+      : unknown('this login has not been checked yet.')
+  }
+  if (account.statusReason || !KNOWN_SOURCES.has(account.source)) {
+    return unknown(`${agent} did not say whether this login can work.`)
   }
   if (!reportsAnyPlanFact(account)) {
     return {
@@ -230,20 +294,58 @@ export function creditsText(account: AgentQuotaAccount): string | null {
   return `none — balance ${credits.balance}.`
 }
 
+/** Every `source` this cockpit has words for; any other value is shown as an unknown source. */
+const KNOWN_SOURCES = new Set(['live', 'failedRun', 'check', 'check-text', 'none'])
+
+/** A check that ran and got no reading back: its time is when it was TRIED, not when it read. */
+function triedOnly(account: AgentQuotaAccount): boolean {
+  return account.status === 'unknown' && !!account.statusReason && !reportsAnyPlanFact(account)
+}
+
 /** Where the reading came from, with its age: the meta line's words. */
 export function sourceText(account: AgentQuotaAccount, ageSeconds: number): string {
   const age = ageText(ageSeconds)
-  if (account.source === 'live') return `seen ${age} ago in a running task`
-  if (account.source === 'failedRun') return `from a failed task ${age} ago`
-  return `checked ${age} ago`
+  switch (account.source) {
+    case 'live':
+      return `seen ${age} ago in a running task`
+    case 'failedRun':
+      return `from a failed task ${age} ago`
+    case 'none':
+      return 'Not checked yet'
+    case 'check':
+    case 'check-text':
+      return triedOnly(account) ? `tried ${age} ago` : `checked ${age} ago`
+    default:
+      return `read ${age} ago, from a source this cockpit does not know`
+  }
 }
 
 /** The details panel's longer sentence for the same fact. */
 export function sourceDetail(account: AgentQuotaAccount, ageSeconds: number): string {
   const age = ageText(ageSeconds)
-  if (account.source === 'live') return `A running task under this login, ${age} ago.`
-  if (account.source === 'failedRun') return `A task under this login that stopped on the usage limit, ${age} ago.`
-  return `A limit check, ${age} ago. It uses no model tokens.`
+  switch (account.source) {
+    case 'live':
+      return `A running task under this login, ${age} ago.`
+    case 'failedRun':
+      return `A task under this login that stopped on the usage limit, ${age} ago.`
+    case 'none':
+      return 'No check has run for this login yet.'
+    case 'check':
+      return triedOnly(account)
+        ? `A limit check tried ${age} ago, with no reading back.`
+        : `A limit check, ${age} ago. It uses no model tokens.`
+    case 'check-text':
+      return `A limit check, ${age} ago, read from the tool's /usage text. It uses no model tokens.`
+    default:
+      return `A source this version of the cockpit does not know (“${account.source}”), ${age} ago.`
+  }
+}
+
+/** `Codex 0.160.0 (limits need 0.155.1 or later)`; null when the answer read no version. */
+export function toolVersionText(account: AgentQuotaAccount): string | null {
+  if (!account.toolVersion) return null
+  const installed = `${RUNNER_LABEL[account.runner]} ${account.toolVersion}`
+  return account.minimumVersion ? `${installed} (limits need ${account.minimumVersion} or later)` : installed
 }
 
 const NOT_REPORTED_WORDS: Record<string, string> = {

@@ -10,7 +10,7 @@ import {
   ageText,
   chipSummaries,
   formatQuotaTime,
-  isQuotaStale,
+  accountIsStale,
   quotaAgeSeconds,
   quotaLoginName,
   worstTone,
@@ -44,12 +44,12 @@ export function AgentQuotaChip({ variant }: { variant: 'band' | 'phone' }) {
   if (!quota.data || summaries.length === 0) return null
 
   const answer = quota.data
-  const ages = summaries
-    .flatMap((summary) => answer.accounts.filter((row) => row.runner === summary.runner))
-    .map((row) => quotaAgeSeconds(row, answer.generatedAt, now))
+  const rows = summaries.flatMap((summary) => answer.accounts.filter((row) => row.runner === summary.runner))
+  const ages = rows.map((row) => quotaAgeSeconds(row, answer.generatedAt, now))
   const youngest = Math.min(...ages)
   const oldest = Math.max(...ages)
-  const stale = isQuotaStale(youngest)
+  // "Every reading is stale": the server's per-row `stale` when it sends one (#888), else the age.
+  const stale = rows.every((row, index) => accountIsStale(row, ages[index]!))
   const hosted = health.data?.capabilities?.localHandoff !== true
   const sentence = summaries.map((s) => `${RUNNER_LABEL[s.runner]} ${s.canWork} of ${s.total}`).join(', ')
   const canWork = summaries.reduce((sum, s) => sum + s.canWork, 0)
