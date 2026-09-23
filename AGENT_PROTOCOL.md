@@ -290,6 +290,21 @@ applies:
 The classification is accounting behavior, not a display preference: classifying a
 cumulative runner as per-execution double-counts pre-resume tokens on the step.
 
+### Internal quota events (never persisted)
+
+Two further variants exist in `agent-runner.ts` and are deliberately absent from
+the union above: the run manager consumes them before persistence, so they never
+reach the NDJSON file or the v2 stream (#867).
+
+- `{ type: 'account-quota'; runner; payload }` — a live plan-limit observation
+  (Claude `rate_limit_event`, Codex `account/rateLimits/updated`).
+- `{ type: 'account-limit'; runner; resetAt; reason }` — the backend's structured
+  error said the session's login is out of plan quota until `resetAt`. Codex emits
+  it for a `turn/completed` whose `turn.status` is `failed` and whose
+  `turn.error.codexErrorInfo` is `usageLimitExceeded` or `rateLimitExceeded`, and
+  then fails the turn with a v1 `error` that names the limit and the UTC reset
+  (#565). A failed turn with any other `codexErrorInfo` is unchanged.
+
 ### Xezar-owned run metadata events
 
 `provider-auth-required` is not emitted by a backend runner. The server derives it

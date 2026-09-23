@@ -12,7 +12,8 @@
  *     puts it in an `is_error` result frame, which reaches xezar verbatim as the run's `error`.
  *     Exact, no locale, no parsing of prose. This is the one that matters in practice.
  *  2. An explicit reset instant in the prose (`try again at 2026-08-03T18:00:00Z`) — how Codex and
- *     OpenCode phrase the same thing when they carry a timestamp at all.
+ *     OpenCode phrase the same thing when they carry a timestamp at all. Codex's own usage-limit
+ *     text names a full local date instead (`try again at Sep 20th, 2026 4:02 PM`).
  *  3. A clock-only reset in prose (`resets 8:10pm (Europe/Warsaw)`) — how Claude Code phrases
  *     session windows in some interactive output.
  *  4. A relative delay (`try again in 42 minutes`, `retry-after: 3600`).
@@ -63,6 +64,15 @@ const RESET_CLOCK_RE =
  */
 const RESET_DATE_RE =
   /(?:resets?|reset[s]?\s+at|try\s+again|retry|available\s+again|unlocks?)\b[^\n]{0,24}?\b([A-Za-z]{3,9})\.?\s+(\d{1,2})\s+at\s+(\d{1,2})(?:(?::(\d{2}))\s*([ap]\.?m\.?)?|\s*([ap]\.?m\.?))(?:\s*\(([^)]+)\))?/i;
+
+/**
+ * `...or try again at Sep 20th, 2026 4:02 PM.` — Codex's usage-limit phrasing (`%b %-d<suffix>, %Y
+ * %-I:%M %p` in the Codex 0.156.0 binary, #565), in the machine's local time and with no zone.
+ * It names the year, so no year is inferred; it MUST be tried before `RESET_CLOCK_RE`, which would
+ * read only `4:02 PM` and guess the day.
+ */
+const RESET_DATE_YEAR_RE =
+  /(?:resets?|reset[s]?\s+at|try\s+again|retry|available\s+again|unlocks?)\b[^\n]{0,24}?\b([A-Za-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4}),?\s+(\d{1,2}):(\d{2})\s*([ap]\.?m\.?)?/i;
 
 const MONTH_NAMES: Record<string, number> = {
   jan: 1, january: 1,
@@ -120,6 +130,12 @@ export function parseUsageLimit(message: string | undefined, now = Date.now()): 
     if (Number.isFinite(parsed)) return settle(parsed, now, 'timestamp');
   }
 
+  const datedYear = RESET_DATE_YEAR_RE.exec(message);
+  if (datedYear) {
+    const parsed = parseDateYearReset(datedYear);
+    if (parsed !== null) return settle(parsed, now, 'date');
+  }
+
   const dated = RESET_DATE_RE.exec(message);
   if (dated) {
     const parsed = parseDateReset(dated, now);
@@ -141,6 +157,30 @@ export function parseUsageLimit(message: string | undefined, now = Date.now()): 
   if (header) return settle(now + Number(header[1]) * 1_000, now, 'delay');
 
   return null;
+}
+
+/** `Sep 20th, 2026 4:02 PM` — a full local date and time; nothing is inferred. */
+function parseDateYearReset(match: RegExpExecArray): number | null {
+  const month = MONTH_NAMES[match[1]!.toLowerCase()];
+  if (!month) return null;
+  const day = Number(match[2]);
+  const year = Number(match[3]);
+  const hourRaw = Number(match[4]);
+  const minute = Number(match[5]);
+  const meridiem = match[6]?.toLowerCase().replaceAll('.', '');
+  if (!Number.isInteger(day) || day < 1 || day > 31 || minute > 59) return null;
+  let hour = hourRaw;
+  if (meridiem) {
+    if (hour < 1 || hour > 12) return null;
+    if (meridiem === 'am') hour = hour === 12 ? 0 : hour;
+    else hour = hour === 12 ? 12 : hour + 12;
+  } else if (hour > 23) {
+    return null;
+  }
+  const candidate = new Date(year, month - 1, day, hour, minute, 0, 0);
+  // `new Date` rolls an impossible date (Feb 31st) forward; a rolled date is not what Codex said.
+  if (candidate.getMonth() !== month - 1 || candidate.getDate() !== day) return null;
+  return candidate.getTime();
 }
 
 /**

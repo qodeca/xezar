@@ -5,6 +5,8 @@ import { basename, join, relative } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ResolvedAgentProfile } from './agent-profiles.ts';
 import { AgentQuotaStore, normalizeClaudeUsage, normalizeLiveQuota } from './agent-quota.ts';
+// @ts-expect-error Vitest supplies raw asset imports in tests.
+import codexByLimitIdText from '../__fixtures__/agent-quota/codex-rateLimits-by-limit-id.schema-shaped.json?raw';
 import {
   AGENT_QUOTA_CHECK_GAP_MS,
   AGENT_QUOTA_WAIT_MS,
@@ -215,6 +217,33 @@ describe('AgentQuotaChecker', () => {
     expect(answer.accounts[0]).toMatchObject({ runner: 'codex', accountId: 'work', status: 'out' });
     expect(JSON.stringify(answer)).not.toContain('foreign-vendor-id');
     expect(JSON.stringify(answer)).not.toContain('must-not-leak');
+  });
+
+  it('carries Codex model buckets through the check into per-model weekly windows (#867 AC-9)', async () => {
+    // Schema-shaped per the Codex 0.156.0 `GetAccountRateLimitsResponse`; not captured live.
+    const byLimitId = JSON.parse(codexByLimitIdText) as { result: unknown };
+    const run: RunQuotaProcess = async (spec) => {
+      if (spec.args[0] === '--version') return `codex-cli ${MINIMUM_CODEX_QUOTA_VERSION}`;
+      return {
+        initialize: { userAgent: 'mock-codex/0.156.0' },
+        account: { account: { type: 'chatgpt', planType: 'pro' }, requiresOpenaiAuth: true },
+        limits: byLimitId.result,
+        usage: { summary: { lifetimeTokens: 1, peakDailyTokens: 1 }, dailyUsageBuckets: [], threadUsage: null },
+      };
+    };
+    const checker = new AgentQuotaChecker({
+      store: new AgentQuotaStore({ now: () => Date.parse('2026-09-22T14:20:00Z') }),
+      now: () => Date.parse('2026-09-22T14:20:00Z'),
+      profiles: async () => [profile('codex')],
+      runProcess: run,
+      dryRun: () => false,
+    });
+    const answer = await checker.refresh();
+    expect(answer.accounts[0]).toMatchObject({
+      runner: 'codex', status: 'ok', source: 'check',
+      modelWindows: [{ model: 'gpt-5.6-sol', usedPercent: 55 }, { model: 'gpt-6-astra', usedPercent: 100 }],
+    });
+    expect(answer.accounts[0]?.notReported).not.toContain('modelWindows');
   });
 
   it('stops after account/read for a Codex API-key login and reports no plan limits', async () => {

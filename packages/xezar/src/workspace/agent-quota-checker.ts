@@ -85,15 +85,30 @@ const codexCreditsSchema = z.object({
   balance: z.union([z.string(), z.number()]),
 });
 const codexSnapshotSchema = z.object({
+  limitId: z.string().nullable().optional(),
   primary: codexWindowSchema.nullable(),
   secondary: codexWindowSchema.nullable(),
   credits: codexCreditsSchema.optional(),
   planType: z.string().nullable().optional(),
   rateLimitReachedType: z.string().nullable().optional(),
 });
+/** A model bucket in `rateLimitsByLimitId` (#867 AC-9). The Codex 0.156.0 schema makes each
+ *  window's `resetsAt` and `windowDurationMins` nullable; the normaliser skips such a window. */
+const codexBucketWindowSchema = z.object({
+  usedPercent: z.number(),
+  windowDurationMins: z.number().int().positive().nullable().optional(),
+  resetsAt: z.number().nullable().optional(),
+});
+const codexBucketSchema = z.object({
+  limitId: z.string().nullable().optional(),
+  normalModelSlug: z.string().nullable().optional(),
+  primary: codexBucketWindowSchema.nullable().optional(),
+  secondary: codexBucketWindowSchema.nullable().optional(),
+});
 const codexRateLimitsSchema = z.object({
   ordinaryUsageAllowed: z.boolean(),
   rateLimits: codexSnapshotSchema.nullable(),
+  rateLimitsByLimitId: z.record(z.string(), codexBucketSchema).nullable().optional(),
   accountId: z.string().optional(),
 });
 const codexUsageSchema = z.object({

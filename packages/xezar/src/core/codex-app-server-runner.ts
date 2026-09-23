@@ -37,6 +37,7 @@ import { isReadOnlyStep, normalizeBashAllowlist } from './read-only-lock.ts';
 import { parseAskRequest, type AskQuestion } from './ask.ts';
 import { readNdjson } from './ndjson.ts';
 import { V1TextCoalescer } from './v1-text-coalescer.ts';
+import { codexTurnLimit, isCodexModelBucket, mergeCodexSnapshot } from './codex-usage-limit.ts';
 import {
   CodexAppServerRpc,
   buildCodexAppServerEnv,
@@ -225,6 +226,9 @@ class CodexSession implements AgentSession {
     this.emit({ type: 'text', text });
   });
   private tokensUsed = 0;
+  /** This session's ordinary-bucket rate-limit snapshot, merged from sparse updates — the reset a
+   *  failed `usageLimitExceeded` turn falls back to when Codex's message names none (#565). */
+  private lastRateLimits: Record<string, unknown> | undefined;
   private ready!: Promise<void>;
   private autoEndTimer: NodeJS.Timeout | undefined;
   private eofTermTimer: NodeJS.Timeout | undefined;
@@ -714,6 +718,9 @@ class CodexSession implements AgentSession {
   private handleNotification(method: string, params: Record<string, unknown>): void {
     switch (method) {
       case 'account/rateLimits/updated': {
+        if (!isCodexModelBucket(params.rateLimits)) {
+          this.lastRateLimits = mergeCodexSnapshot(this.lastRateLimits, params.rateLimits);
+        }
         try {
           this.emit({ type: 'account-quota', runner: 'codex', payload: params });
         } catch {
@@ -788,6 +795,22 @@ class CodexSession implements AgentSession {
           const error = params.error as Record<string, unknown> | undefined;
           const message = stringField(error ?? {}, 'message') ?? 'codex turn failed';
           this.emit({ type: 'error', message });
+        }
+        // #565: Codex 0.156.0 reports a failed turn as `turn/completed` with `turn.status:
+        // "failed"` and a structured `turn.error.codexErrorInfo`. A plan limit is classified from
+        // that field, never from the prose; every other failed turn keeps its old handling.
+        const limit = method === 'turn/completed' && !this.terminatedByXezar
+          ? codexTurnLimit(params.turn, this.lastRateLimits)
+          : null;
+        if (limit) {
+          if (limit.resetAt) {
+            try {
+              this.emit({ type: 'account-limit', runner: 'codex', resetAt: limit.resetAt.toISOString(), reason: limit.kind });
+            } catch {
+              // Quota telemetry is advisory; the error below still fails the turn.
+            }
+          }
+          this.emit({ type: 'error', message: limit.message });
         }
         this.emit({ type: 'turn-end' });
         if (this.opts.autoEndAfterFirstTurn && this.stdinOpen && !this.autoEndTimer) {

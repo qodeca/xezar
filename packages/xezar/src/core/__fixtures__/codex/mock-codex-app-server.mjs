@@ -210,6 +210,25 @@ rl.on('line', (line) => {
         rateLimits: { primary: { usedPercent: 25, windowDurationMins: 300, resetsAt: 1790685902 } },
       } });
     }
+    if (turnText.includes('mock:usage-limit') || turnText.includes('mock:context-window')) {
+      // Codex 0.156.0 schema shape (#565): a failed turn is `turn/completed` with `turn.status:
+      // "failed"` and a structured `turn.error.codexErrorInfo`; there is no `turn/failed`.
+      const usage = turnText.includes('mock:usage-limit');
+      if (usage) {
+        emit({ method: 'account/rateLimits/updated', params: { rateLimits: {
+          limitId: 'codex', normalModelSlug: null, rateLimitReachedType: 'rate_limit_reached',
+          primary: { usedPercent: 100, windowDurationMins: 300, resetsAt: 1893456000 },
+          secondary: null,
+        } } });
+      }
+      emit({ method: 'turn/completed', params: { threadId: 'th_mock_1', turn: {
+        id: 'turn_mock_1', status: 'failed', items: [],
+        error: usage
+          ? { message: "You've hit your usage limit. Try again later.", codexErrorInfo: 'usageLimitExceeded', additionalDetails: null }
+          : { message: 'Context window exceeded.', codexErrorInfo: 'contextWindowExceeded', additionalDetails: null },
+      } } });
+      return;
+    }
     if (turnText.includes('mock:turn-failed')) {
       emit({ method: 'turn/failed', params: {
         turn: { id: 'turn_mock_1', status: 'failed' },

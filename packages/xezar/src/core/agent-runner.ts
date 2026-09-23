@@ -172,6 +172,9 @@ export type AgentEvent =
   | { type: 'cost'; usd: number }
   /** Internal quota observation. RunManager consumes it without persisting it. */
   | { type: 'account-quota'; runner: 'claude' | 'codex'; payload: unknown }
+  /** Internal failed-turn quota fact: the backend's STRUCTURED error said the login is out of
+   *  plan quota until `resetAt` (ISO). RunManager consumes it without persisting it (#867 AC-17). */
+  | { type: 'account-limit'; runner: 'claude' | 'codex'; resetAt: string; reason: string }
   /** The backend's real session id, once known — codex threads and opencode
    *  sessions mint their own id, so the run manager persists this to enable
    *  resume ("Continue") and "open in CLI". Claude's equals `spec.sessionId`. */

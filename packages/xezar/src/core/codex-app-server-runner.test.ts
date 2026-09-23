@@ -156,6 +156,39 @@ describe('Codex quota telemetry', () => {
     expect(events).toContainEqual(expect.objectContaining({ type: 'account-quota', runner: 'codex' }));
   });
 
+  it('fails a usageLimitExceeded turn as a dated usage limit instead of a silent turn end (#565)', async () => {
+    const events: AgentEvent[] = [];
+    const session = new CodexAppServerRunner({ bin: mockBin, timeoutMs: 0 }).startSession(
+      { userPrompt: 'mock:usage-limit', cwd: process.cwd() },
+      (event) => events.push(event),
+      { autoEndAfterFirstTurn: true },
+    );
+    await session.result;
+    const limit = events.findIndex((event) => event.type === 'account-limit');
+    const error = events.findIndex((event) => event.type === 'error');
+    expect(events[limit]).toEqual({
+      type: 'account-limit', runner: 'codex', resetAt: '2030-01-01T00:00:00.000Z', reason: 'usageLimitExceeded',
+    });
+    expect(events[error]).toEqual({
+      type: 'error',
+      message: "Codex usage limit reached (usageLimitExceeded) — resets at 2030-01-01T00:00:00.000Z. You've hit your usage limit. Try again later.",
+    });
+    expect(limit).toBeLessThan(error);
+    expect(error).toBeLessThan(events.findIndex((event) => event.type === 'turn-end'));
+  });
+
+  it('leaves a failed turn with a non-quota codexErrorInfo exactly as before', async () => {
+    const events: AgentEvent[] = [];
+    const session = new CodexAppServerRunner({ bin: mockBin, timeoutMs: 0 }).startSession(
+      { userPrompt: 'mock:context-window', cwd: process.cwd() },
+      (event) => events.push(event),
+      { autoEndAfterFirstTurn: true },
+    );
+    await session.result;
+    expect(events.some((event) => event.type === 'error' || event.type === 'account-limit')).toBe(false);
+    expect(events).toContainEqual({ type: 'turn-end' });
+  });
+
   it('does not fail the run when a quota consumer rejects the payload', async () => {
     const events: AgentEvent[] = [];
     const session = new CodexAppServerRunner({ bin: mockBin, timeoutMs: 0 }).startSession(
