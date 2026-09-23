@@ -209,7 +209,8 @@ export function quotaWindowLines(account: AgentQuotaAccount): QuotaWindowLine[] 
   if (account.weeklyWindow) {
     const base = lengthLabel(account.weeklyWindow.windowMinutes)
     // Claude Code's weekly window covers every model and it also reports per-model ones, so the
-    // plain word would be ambiguous there; Codex has only the one.
+    // plain word would be ambiguous there. Codex's per-model limits are separate metered buckets and
+    // Codex never says its ordinary one covers every model, so its weekly window keeps the plain word.
     add('weekly', account.runner === 'claude' && base === 'Weekly' ? 'Weekly, all models' : base, account.weeklyWindow)
   }
   for (const [index, window] of (account.modelWindows ?? []).entries()) {

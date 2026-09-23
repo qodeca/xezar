@@ -190,3 +190,26 @@ describe('parseUsageLimit', () => {
     expect(parseUsageLimit('429 {"type":"rate_limit_error"}', NOW)).toBeNull();
   });
 });
+
+describe('parseUsageLimit — Codex usage-limit text (#565)', () => {
+  // The format string `%b %-d<suffix>, %Y %-I:%M %p` is read from the Codex 0.156.0 binary; the
+  // message is local time with no zone, so the expectation is built in local time too.
+  const now = new Date(2026, 8, 20, 10, 0).getTime();
+
+  it('reads the full local date Codex names instead of guessing a day from its clock', () => {
+    const hit = parseUsageLimit(
+      "You've hit your usage limit. Upgrade to Pro (https://chatgpt.com/explore/pro), visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at Sep 21st, 2026 4:02 PM.",
+      now,
+    );
+    expect(hit).toEqual({ resetAt: new Date(2026, 8, 21, 16, 2), evidence: 'date' });
+  });
+
+  it('refuses a date the calendar does not have', () => {
+    expect(parseUsageLimit("You've hit your usage limit. Try again at Feb 30th, 2027 4:02 PM.", new Date(2027, 1, 27).getTime()))
+      .not.toMatchObject({ evidence: 'date' });
+  });
+
+  it('keeps "try again later" as no reset at all', () => {
+    expect(parseUsageLimit("You've hit your usage limit. Try again later.", now)).toBeNull();
+  });
+});

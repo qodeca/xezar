@@ -12,6 +12,8 @@ import claudeStartedText from '../__fixtures__/agent-quota/claude-usage-2.1.280-
 import claudeUnstartedText from '../__fixtures__/agent-quota/claude-usage-2.1.280-session-unstarted.json?raw';
 // @ts-expect-error Vitest supplies raw asset imports in tests.
 import codexDefaultText from '../__fixtures__/agent-quota/codex-account-rateLimits-read.json?raw';
+// @ts-expect-error Vitest supplies raw asset imports in tests.
+import codexByLimitIdText from '../__fixtures__/agent-quota/codex-rateLimits-by-limit-id.schema-shaped.json?raw';
 import {
   AgentQuotaStore,
   normalizeClaudeUsage,
@@ -371,5 +373,67 @@ describe('AgentQuotaStore', () => {
   it('bundles the frozen sample as the dry-run answer', () => {
     expect(`${JSON.stringify(dryRunQuotaAnswer(), null, 2)}\n`).toBe(frozenText);
     expect(dryRunQuotaAnswer({ provider: 'codex', accountId: 'api-key' }).accounts).toEqual([frozen.accounts[4]]);
+  });
+});
+
+// #867 AC-9. The input is SCHEMA-SHAPED, not captured: it validates against the Codex 0.156.0
+// `GetAccountRateLimitsResponse` schema (`codex app-server generate-json-schema`), but no live
+// account with model buckets was available when it was written (the proving account was out of
+// credits). The captured `codexDefault` reading has `rateLimitsByLimitId: {}`.
+describe('Codex per-model weekly windows', () => {
+  const byLimitId: unknown = JSON.parse(codexByLimitIdText);
+
+  it('names each model bucket by normalModelSlug and keeps only its weekly window', () => {
+    const row = normalizeCodexRateLimits(byLimitId, 'default', at('2026-09-22T14:22:00Z'));
+    expect(row.modelWindows).toEqual([
+      { model: 'gpt-5.6-sol', usedPercent: 55, resetsAt: '2026-09-29T12:45:02Z', windowMinutes: 10080 },
+      { model: 'gpt-6-astra', usedPercent: 100, resetsAt: '2026-09-29T12:45:02Z', windowMinutes: 10080 },
+    ]);
+    expect(row.notReported).not.toContain('modelWindows');
+    // The ordinary bucket stays the login's own windows; it is not repeated as a model window.
+    expect(row).toMatchObject({
+      shortWindow: { usedPercent: 12, windowMinutes: 300 },
+      weeklyWindow: { usedPercent: 40, windowMinutes: 10080 },
+    });
+  });
+
+  it('never lets an exhausted model bucket decide whether the login can work', async () => {
+    const row = normalizeCodexRateLimits(byLimitId, 'default', at('2026-09-22T14:22:00Z'));
+    expect(row.status).toBe('ok');
+    expect(row).not.toHaveProperty('resetsAt');
+    const store = new AgentQuotaStore({ now: () => Date.parse('2026-09-22T14:24:00Z') });
+    await store.put(row);
+    expect(store.answer().accounts[0]).toMatchObject({ status: 'ok', modelWindows: [{}, { usedPercent: 100 }] });
+  });
+
+  it('keeps reporting modelWindows as not reported when Codex sends no model bucket', () => {
+    const row = normalizeCodexRateLimits(codexDefault, 'default', at('2026-09-22T14:22:00Z'));
+    expect(row.modelWindows).toBeNull();
+    expect(row.notReported).toContain('modelWindows');
+  });
+
+  it('files a live model-bucket update as that model window without touching the login windows', async () => {
+    const store = new AgentQuotaStore({ now: () => Date.parse('2026-09-22T14:24:00Z') });
+    await store.put(normalizeCodexRateLimits(codexDefault, 'default', at('2026-09-22T14:22:00Z')));
+    await store.put(normalizeLiveQuota('codex', { rateLimits: {
+      limitId: 'codex_astra', normalModelSlug: 'gpt-6-astra', rateLimitReachedType: 'rate_limit_reached',
+      primary: null, secondary: { usedPercent: 60, windowDurationMins: 10080, resetsAt: 1_790_685_902 },
+    } }, 'default', at('2026-09-22T14:23:00Z'))!);
+    expect(store.answer().accounts[0]).toMatchObject({
+      status: 'ok', shortWindow: null,
+      weeklyWindow: { usedPercent: 0, resetsAt: '2026-09-29T12:45:02Z' },
+      modelWindows: [{ model: 'gpt-6-astra', usedPercent: 60 }],
+    });
+  });
+
+  it('does not call a login able to work from a lone model-bucket update', async () => {
+    const store = new AgentQuotaStore({ now: () => Date.parse('2026-09-22T14:24:00Z') });
+    await store.put(normalizeLiveQuota('codex', { rateLimits: {
+      limitId: 'codex_sol', normalModelSlug: 'gpt-5.6-sol',
+      primary: { usedPercent: 10, windowDurationMins: 10080, resetsAt: 1_790_685_902 },
+    } }, 'default', at('2026-09-22T14:23:00Z'))!);
+    expect(store.answer().accounts[0]).toMatchObject({
+      status: 'unknown', modelWindows: [{ model: 'gpt-5.6-sol' }], shortWindow: null, weeklyWindow: null,
+    });
   });
 });

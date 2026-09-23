@@ -1,0 +1,83 @@
+{
+  "id": 3,
+  "result": {
+    "ordinaryUsageAllowed": true,
+    "rateLimits": {
+      "limitId": "codex",
+      "limitName": null,
+      "normalModelSlug": null,
+      "primary": { "usedPercent": 12, "windowDurationMins": 300, "resetsAt": 1790613720 },
+      "secondary": { "usedPercent": 40, "windowDurationMins": 10080, "resetsAt": 1790685902 },
+      "credits": { "hasCredits": false, "unlimited": false, "balance": "0" },
+      "individualLimit": null,
+      "spendControlReached": false,
+      "planType": "pro",
+      "rateLimitReachedType": null
+    },
+    "rateLimitsByLimitId": {
+      "codex": {
+        "limitId": "codex",
+        "limitName": null,
+        "normalModelSlug": null,
+        "primary": { "usedPercent": 12, "windowDurationMins": 300, "resetsAt": 1790613720 },
+        "secondary": { "usedPercent": 40, "windowDurationMins": 10080, "resetsAt": 1790685902 },
+        "credits": null,
+        "individualLimit": null,
+        "spendControlReached": null,
+        "planType": null,
+        "rateLimitReachedType": null
+      },
+      "codex_astra": {
+        "limitId": "codex_astra",
+        "limitName": "GPT-6 Astra",
+        "normalModelSlug": "gpt-6-astra",
+        "primary": { "usedPercent": 30, "windowDurationMins": 300, "resetsAt": 1790613720 },
+        "secondary": { "usedPercent": 100, "windowDurationMins": 10080, "resetsAt": 1790685902 },
+        "credits": null,
+        "individualLimit": null,
+        "spendControlReached": null,
+        "planType": null,
+        "rateLimitReachedType": "rate_limit_reached"
+      },
+      "codex_sol": {
+        "limitId": "codex_sol",
+        "limitName": "GPT-5.6 Sol",
+        "normalModelSlug": "gpt-5.6-sol",
+        "primary": { "usedPercent": 55, "windowDurationMins": 10080, "resetsAt": 1790685902 },
+        "secondary": null,
+        "credits": null,
+        "individualLimit": null,
+        "spendControlReached": null,
+        "planType": null,
+        "rateLimitReachedType": null
+      },
+      "codex_luna": {
+        "limitId": "codex_luna",
+        "limitName": "GPT-5.6 Luna",
+        "normalModelSlug": "gpt-5.6-luna",
+        "primary": { "usedPercent": 5, "windowDurationMins": null, "resetsAt": null },
+        "secondary": null,
+        "credits": null,
+        "individualLimit": null,
+        "spendControlReached": null,
+        "planType": null,
+        "rateLimitReachedType": null
+      },
+      "code_review": {
+        "limitId": "code_review",
+        "limitName": "Code review",
+        "normalModelSlug": null,
+        "primary": { "usedPercent": 70, "windowDurationMins": 10080, "resetsAt": 1790685902 },
+        "secondary": null,
+        "credits": null,
+        "individualLimit": null,
+        "spendControlReached": null,
+        "planType": null,
+        "rateLimitReachedType": null
+      }
+    },
+    "rateLimitResetCredits": { "availableCount": 0, "credits": null },
+    "accountId": "00000000-0000-4000-8000-000000000000",
+    "rateLimitUpsell": null
+  }
+}

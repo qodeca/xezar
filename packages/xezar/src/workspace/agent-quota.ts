@@ -8,6 +8,7 @@ import {
   type AgentQuotaWindow,
 } from '@qodeca/xezar-contract';
 import { parseUsageLimit } from '../core/usage-limit.ts';
+import { CODEX_DEFAULT_LIMIT_ID, isCodexModelBucket } from '../core/codex-usage-limit.ts';
 
 /**
  * The one machine-time format of the quota answer (#867 AC-7): UTC, whole seconds, `…:ssZ`.
@@ -154,6 +155,15 @@ function notReportedFor(record: Pick<AgentQuotaProducerAccount, 'shortWindow' | 
   ];
 }
 
+/**
+ * The windows that can make a row `ok`. A Codex model bucket describes one model only, so it never
+ * says the login can work (#867 FR-5); a Claude per-model window keeps counting as it always has.
+ */
+function statusWindows(record: Pick<AgentQuotaProducerAccount, 'runner' | 'shortWindow' | 'weeklyWindow' | 'modelWindows'>) {
+  return [record.shortWindow, record.weeklyWindow, ...(record.runner === 'claude' ? record.modelWindows ?? [] : [])]
+    .filter((window) => window !== null);
+}
+
 function mergeModelWindows(previous: AgentQuotaModelWindow[] | null, incoming: AgentQuotaModelWindow[] | null) {
   if (!incoming?.length) return previous;
   const merged = new Map((previous ?? []).map((window) => [window.model, window]));
@@ -182,7 +192,7 @@ function mergeLiveRecord(previous: AgentQuotaProducerAccount, incoming: AgentQuo
   // observed fact until its reset instead of treating omission as recovery.
   const previousOut = previous.status === 'out'
     && Date.parse(previous.resetsAt) > Date.parse(incoming.observedAt);
-  const status = incoming.status === 'out' || previousOut || exhausted.length ? 'out' : windows.length ? 'ok' : 'unknown';
+  const status = incoming.status === 'out' || previousOut || exhausted.length ? 'out' : statusWindows(detail).length ? 'ok' : 'unknown';
   const { resetsAt: _resetsAt, ...withoutReset } = detail;
   // D22: of several blocking facts the latest reset wins, so a shorter limit ending never
   // reads as availability while a longer one still holds (#867 AC-12).
@@ -227,7 +237,7 @@ function currentRecord(record: AgentQuotaProducerAccount, now: number): AgentQuo
     ? windows.filter((window) => window.usedPercent >= 100)
     : [];
   const topLevelOut = record.status === 'out' && Date.parse(record.resetsAt) > now;
-  const status = topLevelOut || exhausted.length ? 'out' : windows.length ? 'ok' : 'unknown';
+  const status = topLevelOut || exhausted.length ? 'out' : statusWindows(detail).length ? 'ok' : 'unknown';
   const { resetsAt: _resetsAt, ...withoutReset } = detail;
   return agentQuotaProducerAccountSchema.parse({
     ...withoutReset,
@@ -343,11 +353,56 @@ function codexWindow(raw: unknown): AgentQuotaWindow | null {
   return windowFromPercent(Math.min(100, Math.max(0, value.usedPercent)), new Date(value.resetsAt * 1_000), value.windowDurationMins);
 }
 
+/**
+ * A model bucket's weekly window, or `null`. The Codex 0.156.0 schema lets `resetsAt` and
+ * `windowDurationMins` be `null`, so a bucket window that lacks either is skipped rather than
+ * failing the whole reading: model windows are extra detail on top of the ordinary bucket.
+ */
+function codexModelWeeklyWindow(raw: unknown): AgentQuotaWindow | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const value = raw as CodexWindow;
+  if (typeof value.usedPercent !== 'number' || !Number.isFinite(value.usedPercent)) return null;
+  if (value.windowDurationMins !== 10_080) return null;
+  if (typeof value.resetsAt !== 'number' || !Number.isFinite(value.resetsAt) || value.resetsAt > 10_000_000_000) return null;
+  return windowFromPercent(Math.min(100, Math.max(0, value.usedPercent)), new Date(value.resetsAt * 1_000), 10_080);
+}
+
+/**
+ * #867 AC-9: per-model weekly windows. Codex reports them as extra buckets in
+ * `rateLimitsByLimitId` ("multi-bucket view keyed by metered `limit_id`"), each a
+ * `RateLimitSnapshot` whose `normalModelSlug` names the model the bucket is for. The ordinary
+ * bucket (the one `rateLimits` mirrors) is not a model window; a bucket with no model slug has no
+ * model to name and is left out. Only 7-day windows become model windows, the same meaning Claude's
+ * per-model rows have; a short model window has no place in the answer shape.
+ */
+function codexModelWindows(result: Record<string, unknown>, defaultLimitId: string): AgentQuotaModelWindow[] | null {
+  const buckets = result.rateLimitsByLimitId && typeof result.rateLimitsByLimitId === 'object'
+    ? result.rateLimitsByLimitId as Record<string, unknown>
+    : {};
+  const byModel = new Map<string, AgentQuotaModelWindow>();
+  for (const [limitId, bucket] of Object.entries(buckets)) {
+    if (limitId === defaultLimitId || !bucket || typeof bucket !== 'object') continue;
+    const snapshot = bucket as Record<string, unknown>;
+    const model = typeof snapshot.normalModelSlug === 'string' ? snapshot.normalModelSlug : '';
+    if (!model) continue;
+    for (const window of [codexModelWeeklyWindow(snapshot.primary), codexModelWeeklyWindow(snapshot.secondary)]) {
+      if (!window) continue;
+      // Two buckets for one model: show the more constrained one rather than an arbitrary one.
+      const seen = byModel.get(model);
+      if (!seen || window.usedPercent > seen.usedPercent) byModel.set(model, { model, ...window });
+    }
+  }
+  const windows = [...byModel.values()].sort((a, b) => a.model.localeCompare(b.model));
+  return windows.length ? windows : null;
+}
+
 /** Normalise the Codex app-server `account/rateLimits/read` result. */
 export function normalizeCodexRateLimits(raw: unknown, accountId: string, observedAt: Date): AgentQuotaProducerAccount {
   const envelope = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
   const result = envelope.result && typeof envelope.result === 'object' ? envelope.result as Record<string, unknown> : envelope;
   const snapshot = result.rateLimits && typeof result.rateLimits === 'object' ? result.rateLimits as Record<string, unknown> : {};
+  const defaultLimitId = typeof snapshot.limitId === 'string' && snapshot.limitId ? snapshot.limitId : CODEX_DEFAULT_LIMIT_ID;
+  const modelWindows = codexModelWindows(result, defaultLimitId);
   const candidates = [codexWindow(snapshot.primary), codexWindow(snapshot.secondary)].filter((value): value is AgentQuotaWindow => value !== null);
   const shortWindow = candidates.find((window) => window.windowMinutes <= 1_440) ?? null;
   const weeklyWindow = candidates.find((window) => window.windowMinutes === 10_080) ?? null;
@@ -367,6 +422,8 @@ export function normalizeCodexRateLimits(raw: unknown, accountId: string, observ
     ? isoUtc(resetValue * 1_000)
     : undefined;
   const exhausted = result.ordinaryUsageAllowed === false || reached;
+  // A model bucket describes one model, never whether the login can work (#867 FR-5), so it
+  // neither decides the status nor makes an otherwise empty reading `ok`.
   const unknown = candidates.length === 0;
   return agentQuotaProducerAccountSchema.parse({
     runner: 'codex',
@@ -380,13 +437,13 @@ export function normalizeCodexRateLimits(raw: unknown, accountId: string, observ
     source: 'check',
     shortWindow,
     weeklyWindow,
-    modelWindows: null,
+    modelWindows,
     credits,
     planType: typeof snapshot.planType === 'string' && snapshot.planType ? snapshot.planType : null,
     notReported: [
       ...(shortWindow ? [] : ['shortWindow' as const]),
       ...(weeklyWindow ? [] : ['weeklyWindow' as const]),
-      'modelWindows',
+      ...(modelWindows ? [] : ['modelWindows' as const]),
       ...(credits ? [] : ['credits' as const]),
       ...(typeof snapshot.planType === 'string' && snapshot.planType ? [] : ['planType' as const]),
     ],
@@ -401,7 +458,13 @@ export function normalizeLiveQuota(
   observedAt: Date,
 ): AgentQuotaProducerAccount | null {
   if (runner === 'codex') {
-    const record = normalizeCodexRateLimits({ result: raw }, accountId, observedAt);
+    // A live update carries ONE snapshot. A model bucket's update fills that model's window only;
+    // read as the ordinary bucket it would overwrite the login's own short/weekly windows.
+    const snapshot = raw && typeof raw === 'object' ? (raw as Record<string, unknown>).rateLimits : undefined;
+    const result = isCodexModelBucket(snapshot)
+      ? { rateLimits: {}, rateLimitsByLimitId: { [snapshot.limitId]: snapshot } }
+      : raw;
+    const record = normalizeCodexRateLimits({ result }, accountId, observedAt);
     if (!record.shortWindow && !record.weeklyWindow && !record.modelWindows) return null;
     return agentQuotaProducerAccountSchema.parse({ ...record, source: 'live' });
   }

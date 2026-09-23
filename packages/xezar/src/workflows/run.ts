@@ -1036,6 +1036,15 @@ export class RunManager {
       }
       return true;
     }
+    if (event.type === 'account-limit') {
+      // #867 AC-17: the backend classified the failure itself (Codex `codexErrorInfo`), so the
+      // login is marked out now, attributed to this session's account, without reading prose.
+      const resetAt = new Date(event.resetAt);
+      if (Number.isFinite(resetAt.getTime())) {
+        void this.agentQuotaStore.markOut(event.runner, accountId, resetAt).catch(() => undefined);
+      }
+      return true;
+    }
     return false;
   }
 
