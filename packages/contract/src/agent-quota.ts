@@ -5,8 +5,10 @@ import { z } from 'zod';
  *
  * It is shared by `GET /api/v1/workspace/agent-quota` and the `project_config` actions
  * `read_quota` / `check_quota`. These objects deliberately remain non-strict: consumers must
- * ignore unknown keys and unknown `notReported` names so a later release can add facts without
- * breaking an older reader. Producers validate with `agentQuotaProducerResponseSchema`; the
+ * ignore unknown keys, unknown `notReported` names, and unknown non-empty `source` or
+ * `statusReason` values so a later release can add facts without breaking an older reader. A
+ * reader that meets an unknown `source` or `statusReason` still acts only on `status`, and
+ * `unknown` never means budget. Producers validate with `agentQuotaProducerResponseSchema`; the
  * committed fixture in `__fixtures__/agent-quota.expected.json` pins its known keys and canonical
  * order byte-for-byte. A Claude account is never `status: "ok"` when any reported window
  * (`shortWindow`, `weeklyWindow`, or `modelWindows[]`) has `usedPercent` greater than or equal to
@@ -19,8 +21,17 @@ export type AgentQuotaRunner = z.infer<typeof agentQuotaRunnerSchema>;
 export const agentQuotaStatusSchema = z.enum(['ok', 'out', 'unknown']);
 export type AgentQuotaStatus = z.infer<typeof agentQuotaStatusSchema>;
 
-export const agentQuotaSourceSchema = z.enum(['live', 'failedRun', 'check']);
+export const agentQuotaSourceSchema = z.enum(['live', 'failedRun', 'check', 'check-text', 'none']);
 export type AgentQuotaSource = z.infer<typeof agentQuotaSourceSchema>;
+
+export const agentQuotaCheckReasonSchema = z.enum([
+  'check-failed',
+  'format-changed',
+  'version-too-old',
+  'not-installed',
+  'api-key',
+]);
+export type AgentQuotaCheckReason = z.infer<typeof agentQuotaCheckReasonSchema>;
 
 const isoTimestampSchema = z.string().datetime({ offset: true });
 const utcTimestampSchema = isoTimestampSchema.regex(/Z$/, 'must be an ISO 8601 UTC timestamp');
@@ -61,7 +72,7 @@ export type AgentQuotaNotReportedField = z.infer<typeof agentQuotaNotReportedFie
 const agentQuotaConsumerAccountDetailShape = {
   checkedAt: isoTimestampSchema,
   ageSeconds: z.number().int().nonnegative(),
-  source: agentQuotaSourceSchema,
+  source: z.string().min(1),
   shortWindow: agentQuotaWindowSchema.nullable(),
   weeklyWindow: agentQuotaWindowSchema.nullable(),
   modelWindows: z.array(agentQuotaModelWindowSchema).nullable(),
@@ -70,6 +81,14 @@ const agentQuotaConsumerAccountDetailShape = {
   notReported: z
     .array(z.string().min(1))
     .refine((fields) => new Set(fields).size === fields.length, { message: 'must not contain duplicates' }),
+  stale: z.boolean().optional(),
+  refreshing: z.boolean().optional(),
+  nextCheckAt: isoTimestampSchema.nullable().optional(),
+  toolVersion: z.string().min(1).nullable().optional(),
+  minimumVersion: z.string().min(1).optional(),
+  statusReason: z.string().min(1).nullable().optional(),
+  warnings: z.array(z.string().min(1)).optional(),
+  unavailableReason: z.string().min(1).nullable().optional(),
 } as const;
 
 const agentQuotaProducerAccountDetailShape = {
@@ -84,6 +103,14 @@ const agentQuotaProducerAccountDetailShape = {
   notReported: z
     .array(agentQuotaNotReportedFieldSchema)
     .refine((fields) => new Set(fields).size === fields.length, { message: 'must not contain duplicates' }),
+  stale: z.boolean().optional(),
+  refreshing: z.boolean().optional(),
+  nextCheckAt: isoTimestampSchema.nullable().optional(),
+  toolVersion: z.string().min(1).nullable().optional(),
+  minimumVersion: z.string().min(1).optional(),
+  statusReason: agentQuotaCheckReasonSchema.nullable().optional(),
+  warnings: z.array(z.string().min(1)).optional(),
+  unavailableReason: z.string().min(1).nullable().optional(),
 } as const;
 
 type KnownQuotaFacts = {
@@ -217,9 +244,20 @@ const projectConfigQuotaSelectorShape = {
   accountId: z.string().min(1).max(64).optional(),
 } as const;
 
-/** Query accepted by the workspace quota read route. */
-export const agentQuotaQuerySchema = z.strictObject(projectConfigQuotaSelectorShape);
+const quotaWaitQuerySchema = z
+  .union([z.string(), z.array(z.string()).transform((values) => values[0] as string)])
+  .optional();
+
+/** Query accepted by the workspace quota read route. `wait=true` is the documented waiting form. */
+export const agentQuotaQuerySchema = z.strictObject({
+  ...projectConfigQuotaSelectorShape,
+  wait: quotaWaitQuerySchema,
+});
 export type AgentQuotaQuery = z.infer<typeof agentQuotaQuerySchema>;
+
+/** Body accepted by the explicit workspace quota refresh route. */
+export const agentQuotaRefreshInputSchema = z.strictObject(projectConfigQuotaSelectorShape);
+export type AgentQuotaRefreshInput = z.infer<typeof agentQuotaRefreshInputSchema>;
 
 /** Request slices to be composed into `project_config` when the runtime actions land (#867 S1). */
 export const projectConfigReadQuotaInputSchema = z.strictObject({

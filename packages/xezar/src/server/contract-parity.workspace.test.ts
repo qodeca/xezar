@@ -136,6 +136,10 @@ describe('src/contract projects/workspace schemas match the routes exactly', () 
     (typeof client.api.v1.workspace)['agent-quota']['$get'],
     200
   >;
+  type AgentQuotaRefresh200 = InferResponseType<
+    (typeof client.api.v1.workspace)['agent-quota']['refresh']['$post'],
+    200
+  >;
   type CreateAgentProfile201 = InferResponseType<
     (typeof client.api.v1.workspace)['agent-profiles']['$post'],
     201
@@ -183,6 +187,7 @@ describe('src/contract projects/workspace schemas match the routes exactly', () 
 
   type _Checks = [
     Assert<Exact<z.infer<typeof agentQuotaResponseSchema>, AgentQuota200>>,
+    Assert<Exact<z.infer<typeof agentQuotaResponseSchema>, AgentQuotaRefresh200>>,
     Assert<ExactOpen<z.infer<typeof mcpApiReferenceSchema>, McpReference200>>,
     Assert<Exact<z.infer<typeof mcpLeaderStatusSchema>, McpLeader200>>,
     Assert<Exact<z.infer<typeof mcpLeaderStatusSchema>, McpLeaderPost200>>,
