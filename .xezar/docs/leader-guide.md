@@ -319,26 +319,7 @@ because a head that moved since the brief makes the brief's exact-head guard sta
 - Always pass `agentProfile`. Never dispatch to the leader's own `default` login, and run one lane of
   work per account so one limit stops part of the campaign, not all of it
   (`.xezar/docs/model-routing.md` § 3, § 5).
-- **Usage limits cannot be read; probe instead.** The MCP tells you which Agent accounts exist and
-  whether each is signed in, never how much quota is left. `project_config` `get_account` answers
-  `accounts` (the account each backend uses in this project), `profiles` (every account per
-  backend, the one in use marked `selected`, the backend's own login marked `builtIn`) and
-  `problems` (stored account choices that name no account, each with the line that fixes it);
-  `check_account_status` probes one account's sign-in state and `get_account_details` says who it
-  is signed in as. None of them carries a usage field, and "connected" is a login check, not a
-  quota check (`.xezar/docs/account-limits.md`).
-- Probe recipe: one tiny `quick-task` per account, all in one message so they run in parallel, with
-  `runner`, `model`, `agentProfile`, `worktree: false`, `autonomous: true`,
-  `generateFollowups: false` and a two-line prompt ending `XEZ:DONE`. Cancel the auto-resume of every
-  failed probe, read the reset time from the error text, write the account table into the campaign
-  note, and never probe in a loop (`.xezar/docs/account-limits.md`). Codex quota is not readable
-  either: "empty" 1–2-second turns, or identical turns replayed, mean a quota or credits problem, not
-  a stuck prompt, so probe with
-  `codex exec --model gpt-5.6-luna --skip-git-repo-check "reply with the single word ok"`. On
-  2026-09-21 a `codex exec` probe answered "Your workspace is out of credits. Add credits to
-  continue.", a credits problem and not a window limit, and routing moved to state 2
-  (timeline-2026-09-21.md 02:27). The exact probe command and the rule are the leader's dated
-  rule, not verified evidence (leader, 2026-09-21; `.xezar/docs/model-routing.md` § 5).
+- Read quota before dispatch: `project_config` action `read_quota` (optionally `provider`/`accountId`) returns one row per Claude/Codex login with `status` ok/out/unknown and `resetsAt` when out. Route away from an `out` login until `resetsAt`. `unknown` means 'could not read', never 'has budget'. `check_quota` forces a fresh check, at most once per 5 minutes per login. Probe tasks are retired; a failed run still marks its login out.
 - Watch every `execution_control continue` for its first ten minutes. One continue burned $144 on
   2026-09-18 by re-prompting itself (`.xezar/docs/model-routing.md` § 5). Not every continue is
   expensive: one on run `9395bcfb` merely supplied a missing `XEZ:DONE` and cost nothing extra
