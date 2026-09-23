@@ -1,4 +1,4 @@
-## 🐛 Bug fixes
+## 🐛 Fixes
 
 - 🐛 **A shorter limit no longer hides a longer one.** When a login is limited twice, the quota answer keeps the later reset time, so it never reads as ready while the longer limit still holds. (#867)
 - 🐛 **Quota times are whole seconds.** Every time in the quota answer now has the form `2026-09-22T14:20:00Z`, without fractions of a second. (#867)
