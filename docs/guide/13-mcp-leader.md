@@ -299,6 +299,12 @@ Five of them answer questions a leader asks before it dispatches anything — wh
 
 `import_global_accounts` is the one that changes something; the rest only read.
 
+### To read quota before dispatch
+
+Call `project_config` with action `read_quota`, optionally narrowed by `provider` (`claude` or `codex`) and `accountId`. Its `result.accounts` rows use `status: "ok"` when a login can work, `status: "out"` with `resetsAt` when a plan limit is exhausted, and `status: "unknown"` when xezar could not read the answer. Treat `unknown` as “could not read”, never as “has budget”; API-key logins are unknown because they do not report plan limits. Route away from an `out` login until `resetsAt`.
+
+`read_quota` waits briefly when a stored reading is stale. To explicitly request the same bounded, zero-token check, call action `check_quota` with the same optional selectors. A login is checked at most once every five minutes. Both actions return the same quota answer that **Settings → Agent accounts** and the plan-limits chip display; see [Settings reference](10-settings-reference.md#to-read-and-refresh-plan-limits).
+
 ### When an action is refused
 
 A refused action answers, on the first call, with what to do instead: the text says `Next step: …` and the answer carries the same sentence as `nextStep`. It is one of three things:
