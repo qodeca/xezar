@@ -10,6 +10,8 @@ import {
   AGENT_QUOTA_WAIT_MS,
   AgentQuotaChecker,
   MINIMUM_CLAUDE_QUOTA_VERSION,
+  claudeLoginKind,
+  codexLoginKind,
   MINIMUM_CODEX_QUOTA_VERSION,
   runQuotaProcess,
   type AgentQuotaProcessSpec,
@@ -112,6 +114,7 @@ describe('AgentQuotaChecker', () => {
     const run: RunQuotaProcess = async (spec) => {
       calls.push(spec);
       if (spec.args[0] === '--version') return `${MINIMUM_CLAUDE_QUOTA_VERSION} (Claude Code)`;
+      if (spec.args[0] === 'auth') return JSON.stringify({ loggedIn: true, authMethod: 'claude.ai', apiProvider: 'firstParty' });
       return capture;
     };
     const checker = new AgentQuotaChecker({
@@ -122,15 +125,18 @@ describe('AgentQuotaChecker', () => {
 
     const answer = await checker.refresh();
 
-    expect(calls).toHaveLength(2);
-    expect(calls[1]!.input).toEqual([{
+    expect(calls).toHaveLength(3);
+    expect(calls[1]!.args).toEqual(['auth', 'status', '--json']);
+    expect(calls[2]!.input).toEqual([{
       type: 'control_request', request_id: 'xezar-agent-quota', request: { subtype: 'get_usage', skip_behaviors: true },
     }]);
-    expect(calls[1]!.waitFor?.({ type: 'control_response', response: {} })).toBeUndefined();
-    expect(calls[1]!.waitFor?.({ type: 'control_response', response: { request_id: 'other' } })).toBeUndefined();
-    expect(calls[1]!.waitFor?.(capture)).toBe(capture);
+    expect(calls[2]!.waitFor?.({ type: 'control_response', response: {} })).toBeUndefined();
+    expect(calls[2]!.waitFor?.({ type: 'control_response', response: { request_id: 'other' } })).toBeUndefined();
+    expect(calls[2]!.waitFor?.(capture)).toBe(capture);
     // Claude Code 2.1.280 answered this live capture without an initialize message.
-    expect(answer.accounts[0]).toMatchObject({ source: 'check', status: 'ok', planType: 'max', warnings: [] });
+    expect(answer.accounts[0]).toMatchObject({
+      source: 'check', status: 'ok', planType: 'max', warnings: [], loginKind: 'subscription',
+    });
     expect(answer.accounts[0]!.shortWindow?.usedPercent).toBe(7);
     expect(answer.accounts[0]!.weeklyWindow?.usedPercent).toBe(29);
   });
@@ -203,15 +209,16 @@ describe('AgentQuotaChecker', () => {
 
     const answer = await checker.refresh();
 
-    expect(calls[1]!.args).toEqual([
+    expect(calls[1]!.args).toEqual(['auth', 'status', '--json']);
+    expect(calls[2]!.args).toEqual([
       '-p', '--safe-mode', '--strict-mcp-config', '--input-format', 'stream-json',
       '--output-format', 'stream-json', '--verbose',
     ]);
-    expect(calls[2]!.args).toEqual(['-p', '/usage', '--safe-mode', '--strict-mcp-config', '--output-format', 'json']);
-    expect(relative(tmpdir(), calls[1]!.cwd)).not.toMatch(/^\.\.(?:\/|$)/);
-    expect(basename(calls[1]!.cwd)).toMatch(/^xez-agent-quota-/);
-    expect(calls[2]!.cwd).toBe(calls[1]!.cwd);
-    await expect(access(calls[1]!.cwd)).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(calls[3]!.args).toEqual(['-p', '/usage', '--safe-mode', '--strict-mcp-config', '--output-format', 'json']);
+    expect(relative(tmpdir(), calls[2]!.cwd)).not.toMatch(/^\.\.(?:\/|$)/);
+    expect(basename(calls[2]!.cwd)).toMatch(/^xez-agent-quota-/);
+    expect(calls[3]!.cwd).toBe(calls[2]!.cwd);
+    await expect(access(calls[2]!.cwd)).rejects.toMatchObject({ code: 'ENOENT' });
     expect(answer.accounts[0]).toMatchObject({
       accountId: 'default', source: 'check-text', status: 'ok',
       warnings: ['Quota was read from the Claude Code /usage text fallback.'],
@@ -259,7 +266,7 @@ describe('AgentQuotaChecker', () => {
     ].map((message) => (message as { method?: string }).method);
     expect(methods).toEqual(['initialize', 'initialized', 'account/read', 'account/rateLimits/read', 'account/usage/read']);
     expect(JSON.stringify(methods)).not.toContain('thread/');
-    expect(answer.accounts[0]).toMatchObject({ runner: 'codex', accountId: 'work', status: 'out' });
+    expect(answer.accounts[0]).toMatchObject({ runner: 'codex', accountId: 'work', status: 'out', loginKind: 'subscription' });
     expect(JSON.stringify(answer)).not.toContain('foreign-vendor-id');
     expect(JSON.stringify(answer)).not.toContain('must-not-leak');
   });
@@ -275,7 +282,7 @@ describe('AgentQuotaChecker', () => {
       store: new AgentQuotaStore(), profiles: async () => [profile('codex')], runProcess: run, dryRun: () => false,
     });
     const answer = await checker.refresh();
-    expect(answer.accounts[0]).toMatchObject({ status: 'unknown', statusReason: 'api-key' });
+    expect(answer.accounts[0]).toMatchObject({ status: 'unknown', statusReason: 'api-key', loginKind: 'api-key' });
     expect(calls[1]!.nextInput?.({ id: 2, result: { account: { type: 'apiKey' }, requiresOpenaiAuth: true } })).toEqual([]);
   });
 
@@ -284,14 +291,15 @@ describe('AgentQuotaChecker', () => {
     const run: RunQuotaProcess = async (spec) => {
       calls.push(spec);
       if (spec.args[0] === '--version') return `${MINIMUM_CLAUDE_QUOTA_VERSION} (Claude Code)`;
+      if (spec.args[0] === 'auth') return JSON.stringify({ loggedIn: true, authMethod: 'api_key', apiProvider: 'firstParty' });
       return { type: 'control_response', response: { response: { rate_limits_available: false } } };
     };
     const checker = new AgentQuotaChecker({
       store: new AgentQuotaStore(), profiles: async () => [profile('claude')], runProcess: run, dryRun: () => false,
     });
     const answer = await checker.refresh();
-    expect(answer.accounts[0]).toMatchObject({ status: 'unknown', statusReason: 'api-key' });
-    expect(calls).toHaveLength(2);
+    expect(answer.accounts[0]).toMatchObject({ status: 'unknown', statusReason: 'api-key', loginKind: 'api-key' });
+    expect(calls).toHaveLength(3);
   });
 
   it('gates old versions before a quota process and honours the five-minute per-login gap', async () => {
@@ -329,7 +337,7 @@ describe('AgentQuotaChecker', () => {
     expect(answer.accounts[0]).toMatchObject({ status: 'unknown', statusReason: 'version-too-old', minimumVersion: minimum });
   });
 
-  // #867 AC-7: the checker's own times (`checkedAt`, `nextCheckAt`) are whole seconds too.
+  // #867 AC-7: the checker's own times (`observedAt`, `nextCheckAt`) are whole seconds too.
   it('emits whole-second times on a check that started inside a second', async () => {
     const machineTime = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/;
     const run: RunQuotaProcess = async () => {
@@ -343,7 +351,7 @@ describe('AgentQuotaChecker', () => {
     const answer = await checker.refresh();
     const row = answer.accounts[0]!;
     expect(row).toMatchObject({ statusReason: 'not-installed' });
-    expect([answer.generatedAt, row.checkedAt, row.nextCheckAt]).toEqual([
+    expect([answer.generatedAt, row.observedAt, row.nextCheckAt]).toEqual([
       expect.stringMatching(machineTime), expect.stringMatching(machineTime), expect.stringMatching(machineTime),
     ]);
   });
@@ -354,6 +362,7 @@ describe('AgentQuotaChecker', () => {
     const releases: Array<() => void> = [];
     const run: RunQuotaProcess = async (spec) => {
       if (spec.args[0] === '--version') return `${MINIMUM_CLAUDE_QUOTA_VERSION} (Claude Code)`;
+      if (spec.args[0] === 'auth') throw new Error('no auth status');
       if (spec.args.includes('--input-format')) throw new Error('fallback');
       active += 1;
       peak = Math.max(peak, active);
@@ -630,11 +639,11 @@ describe('AgentQuotaChecker', () => {
     expect(put).not.toHaveBeenCalled();
     for (const answer of answers) {
       expect(answer.accounts.map((row) => `${row.runner}:${row.accountId}:${row.status}`)).toEqual([
-        'claude:default:ok', 'claude:qodeca-priv:unknown', 'codex:default:ok', 'claude:quota-exhausted:out', 'codex:api-key:unknown',
+        'claude:default:ok', 'claude:work:unknown', 'codex:default:ok', 'claude:quota-exhausted:out', 'codex:api-key:unknown',
       ]);
     }
     expect((await checker.answer({ provider: 'codex', accountId: 'api-key' })).accounts).toHaveLength(1);
-    expect((await checker.answer({ accountId: 'work' })).accounts).toEqual([]);
+    expect((await checker.answer({ accountId: 'no-such-login' })).accounts).toEqual([]);
     checker.close();
     const later = new AgentQuotaChecker({
       store, now: () => Date.parse('2026-10-30T09:00:00.500Z'), profiles: async () => [], runProcess: run, dryRun: () => true,
@@ -711,5 +720,113 @@ describe('AgentQuotaChecker', () => {
     expect(checker.startup()).toBeUndefined();
     await expect.poll(() => typeof release).toBe('function');
     release();
+  });
+});
+
+describe('login kind (#867 AC-36)', () => {
+  it('reads Claude Code auth status: claude.ai and setup-token logins are subscriptions, an API key is an API key', () => {
+    // The shapes `claude auth status --json` printed on Claude Code 2.1.280 (identity keys dropped).
+    expect(claudeLoginKind({ loggedIn: true, authMethod: 'claude.ai', apiProvider: 'firstParty', email: 'x@example.test' })).toBe('subscription');
+    expect(claudeLoginKind({ loggedIn: true, authMethod: 'oauth_token', apiProvider: 'firstParty' })).toBe('subscription');
+    expect(claudeLoginKind({ loggedIn: true, authMethod: 'api_key', apiProvider: 'firstParty', apiKeySource: 'ANTHROPIC_API_KEY' })).toBe('api-key');
+  });
+
+  it('never reads a Claude login it cannot place as a subscription', () => {
+    expect(claudeLoginKind({ loggedIn: false, authMethod: 'none', apiProvider: 'firstParty' })).toBe('unknown');
+    expect(claudeLoginKind({ loggedIn: true, authMethod: 'third_party', apiProvider: 'bedrock' })).toBe('unknown');
+    expect(claudeLoginKind({ loggedIn: true, authMethod: 'claude.ai', apiProvider: 'vertex' })).toBe('unknown');
+    expect(claudeLoginKind({ loggedIn: true, authMethod: 'claude.ai' })).toBe('unknown');
+    expect(claudeLoginKind({ loggedIn: true, authMethod: 'future_method', apiProvider: 'firstParty' })).toBe('unknown');
+    expect(claudeLoginKind({ subscriptionType: 'max' })).toBe('unknown');
+    expect(claudeLoginKind(undefined)).toBe('unknown');
+  });
+
+  it('reads Codex account/read: ChatGPT is a subscription, an API key is an API key, anything else is unknown', () => {
+    expect(codexLoginKind({ account: { type: 'chatgpt', planType: 'pro' }, requiresOpenaiAuth: true })).toBe('subscription');
+    expect(codexLoginKind({ account: { type: 'apiKey' }, requiresOpenaiAuth: true })).toBe('api-key');
+    expect(codexLoginKind({ account: { type: 'amazonBedrock' }, requiresOpenaiAuth: false })).toBe('unknown');
+    expect(codexLoginKind({ account: null, requiresOpenaiAuth: true })).toBe('unknown');
+  });
+
+  it('keeps a Claude login unknown when auth status fails, even though its quota reply names a plan', async () => {
+    const capture = JSON.parse(await readFile(
+      new URL('../__fixtures__/agent-quota/claude-get-usage-control-response.json', import.meta.url),
+      'utf8',
+    )) as { response: { request_id: string } };
+    capture.response.request_id = 'xezar-agent-quota';
+    const run: RunQuotaProcess = async (spec) => {
+      if (spec.args[0] === '--version') return `${MINIMUM_CLAUDE_QUOTA_VERSION} (Claude Code)`;
+      if (spec.args[0] === 'auth') throw new Error("error: unknown command 'auth'");
+      return capture;
+    };
+    const checker = new AgentQuotaChecker({
+      store: new AgentQuotaStore({ now: () => Date.parse('2026-09-22T14:00:00Z') }),
+      now: () => Date.parse('2026-09-22T14:00:00Z'),
+      profiles: async () => [profile('claude')], runProcess: run, dryRun: () => false,
+    });
+
+    const answer = await checker.refresh();
+
+    // The reply carries `subscription_type: "max"` and real windows; neither decides the kind.
+    expect(answer.accounts[0]).toMatchObject({ status: 'ok', planType: 'max', loginKind: 'unknown' });
+  });
+
+  it('keeps the login kind read before a Claude quota check that then fails', async () => {
+    const run: RunQuotaProcess = async (spec) => {
+      if (spec.args[0] === '--version') return `${MINIMUM_CLAUDE_QUOTA_VERSION} (Claude Code)`;
+      if (spec.args[0] === 'auth') return JSON.stringify({ loggedIn: true, authMethod: 'claude.ai', apiProvider: 'firstParty' });
+      throw new Error('check failed');
+    };
+    const checker = new AgentQuotaChecker({
+      store: new AgentQuotaStore(), profiles: async () => [profile('claude')], runProcess: run, dryRun: () => false,
+    });
+    const answer = await checker.refresh();
+    expect(answer.accounts[0]).toMatchObject({ status: 'unknown', statusReason: 'check-failed', loginKind: 'subscription' });
+  });
+
+  it('never words a subscription login as an API key when get_usage reports no rate limits (#908 B-1)', async () => {
+    // The mismatched pair: auth status says a claude.ai login, get_usage says no rate limits.
+    const run: RunQuotaProcess = async (spec) => {
+      if (spec.args[0] === '--version') return `${MINIMUM_CLAUDE_QUOTA_VERSION} (Claude Code)`;
+      if (spec.args[0] === 'auth') return JSON.stringify({ loggedIn: true, authMethod: 'claude.ai', apiProvider: 'firstParty' });
+      return { type: 'control_response', response: { response: { rate_limits_available: false } } };
+    };
+    const checker = new AgentQuotaChecker({
+      store: new AgentQuotaStore(), profiles: async () => [profile('claude')], runProcess: run, dryRun: () => false,
+    });
+    const row = (await checker.refresh()).accounts[0]!;
+    // `statusReason: api-key` still says "the tool reported no plan limits"; the words follow the kind.
+    expect(row).toMatchObject({
+      status: 'unknown',
+      loginKind: 'subscription',
+      unavailableReason: 'Claude Code reported no plan limits for this login.',
+      warnings: ['Claude Code reported no plan limits for this login.'],
+    });
+    expect([row.unavailableReason, ...(row.warnings ?? [])].join(' ')).not.toMatch(/API.key/i);
+  });
+
+  it('keeps a Codex login kind read by account/read when a later step of the check fails', async () => {
+    const run: RunQuotaProcess = async (spec) => {
+      if (spec.args[0] === '--version') return `codex-cli ${MINIMUM_CODEX_QUOTA_VERSION}`;
+      return {
+        initialize: {},
+        account: { account: { type: 'chatgpt', planType: 'pro' }, requiresOpenaiAuth: true },
+        limits: { ordinaryUsageAllowed: true, rateLimits: null },
+        usage: { summary: { lifetimeTokens: 1, peakDailyTokens: 1 }, dailyUsageBuckets: [], threadUsage: null },
+      };
+    };
+    const checker = new AgentQuotaChecker({
+      store: new AgentQuotaStore(), profiles: async () => [profile('codex')], runProcess: run, dryRun: () => false,
+    });
+    const answer = await checker.refresh();
+    expect(answer.accounts[0]).toMatchObject({ status: 'unknown', statusReason: 'check-failed', loginKind: 'subscription' });
+  });
+
+  it('reports every login as unknown kind before its first check', async () => {
+    const checker = new AgentQuotaChecker({
+      store: new AgentQuotaStore(), profiles: async () => [profile('claude'), profile('codex')], dryRun: () => false,
+    });
+    const answer = await checker.answer();
+    expect(answer.accounts.map((row) => row.loginKind)).toEqual(['unknown', 'unknown']);
   });
 });

@@ -5,7 +5,7 @@ import frozenText from '../../../contract/src/__fixtures__/agent-quota.expected.
 // @ts-expect-error Vitest supplies raw asset imports in tests.
 import claudeDefaultText from '../__fixtures__/agent-quota/claude-default-usage.json?raw';
 // @ts-expect-error Vitest supplies raw asset imports in tests.
-import claudeUnknownText from '../__fixtures__/agent-quota/claude-qodeca-priv-usage.json?raw';
+import claudeUnknownText from '../__fixtures__/agent-quota/claude-work-usage.json?raw';
 // @ts-expect-error Vitest supplies raw asset imports in tests.
 import claudeStartedText from '../__fixtures__/agent-quota/claude-usage-2.1.280-session-started.json?raw';
 // @ts-expect-error Vitest supplies raw asset imports in tests.
@@ -40,7 +40,7 @@ describe('agent quota normalisers', () => {
   });
 
   it('treats a successful Claude reply with no percent lines as unknown, never ok', () => {
-    expect(normalizeClaudeUsage(claudeUnknown, 'qodeca-priv', at('2026-09-22T14:21:00Z')).status).toBe('unknown');
+    expect(normalizeClaudeUsage(claudeUnknown, 'work', at('2026-09-22T14:21:00Z')).status).toBe('unknown');
   });
 
   it('marks every reported window at or above 100 percent out and emits resetsAt only then', () => {
@@ -305,7 +305,7 @@ describe('AgentQuotaStore', () => {
       { runner: 'codex', accountId: 'codex' }, { runner: 'claude', accountId: 'limited' }, { runner: 'claude', accountId: 'live' }]);
     const times: string[] = [answer.generatedAt];
     for (const row of answer.accounts) {
-      times.push(row.checkedAt, ...(row.status === 'out' ? [row.resetsAt] : []));
+      times.push(row.observedAt, ...(row.status === 'out' ? [row.resetsAt] : []));
       for (const window of [row.shortWindow, row.weeklyWindow, ...(row.modelWindows ?? [])]) {
         if (window) times.push(window.resetsAt);
       }
@@ -318,14 +318,48 @@ describe('AgentQuotaStore', () => {
 
   it('reproduces the frozen sample from the S0 inputs through normalisers and store', async () => {
     const store = new AgentQuotaStore({ now: () => Date.parse(frozen.generatedAt) });
-    await store.put(normalizeClaudeUsage(claudeDefault, 'default', at('2026-09-22T14:20:00Z')));
-    await store.put(normalizeClaudeUsage(claudeUnknown, 'qodeca-priv', at('2026-09-22T14:21:00Z')));
-    await store.put(normalizeCodexRateLimits(codexDefault, 'default', at('2026-09-22T14:22:00Z')));
+    // The normalisers read quota replies, which say nothing about credentials; the checker adds the
+    // login kind it read from the tool's own auth report (#867 AC-36).
+    await store.put({ ...normalizeClaudeUsage(claudeDefault, 'default', at('2026-09-22T14:20:00Z')), loginKind: 'subscription' });
+    await store.put(normalizeClaudeUsage(claudeUnknown, 'work', at('2026-09-22T14:21:00Z')));
+    await store.put({ ...normalizeCodexRateLimits(codexDefault, 'default', at('2026-09-22T14:22:00Z')), loginKind: 'subscription' });
     await store.markOut('claude', 'quota-exhausted', at('2026-09-22T15:10:00Z'), at('2026-09-22T14:19:00Z'));
     await store.put(frozen.accounts.find((row) => row.runner === 'codex' && row.accountId === 'api-key')!);
     const answer = store.answer();
     expect(agentQuotaResponseSchema.parse(answer)).toEqual(frozen);
     expect(answer).toEqual(frozen);
+  });
+
+  it('keeps the checked login kind across a live event and a failed run, but not across a new check', async () => {
+    const now = Date.parse('2026-09-22T14:00:00Z');
+    const store = new AgentQuotaStore({ now: () => now });
+    const checked = { ...normalizeClaudeUsage(claudeDefault, 'work', at('2026-09-22T13:59:00Z')), loginKind: 'subscription' as const };
+    await store.put(checked);
+    const live = normalizeLiveQuota('claude', {
+      rate_limit_info: { utilization: 0.5, resets_at: Math.floor((now + 60 * 60_000) / 1_000), rateLimitType: 'five_hour' },
+    }, 'work', at('2026-09-22T14:00:00Z'));
+    expect(live?.loginKind).toBe('unknown');
+    await store.put(live!);
+    expect(store.answer().accounts[0]).toMatchObject({ source: 'live', loginKind: 'subscription' });
+    await store.markOut('claude', 'work', at('2026-09-22T15:00:00Z'), at('2026-09-22T14:00:00Z'));
+    expect(store.answer().accounts[0]).toMatchObject({ source: 'failedRun', loginKind: 'subscription' });
+    await store.put(normalizeClaudeUsage(claudeDefault, 'work', at('2026-09-22T14:00:00Z')));
+    expect(store.answer().accounts[0]).toMatchObject({ source: 'check', loginKind: 'unknown' });
+  });
+
+  it('marks a row stale by observedAt: 15 minutes after the observation, not before', async () => {
+    let now = Date.parse('2026-09-22T14:00:00Z');
+    const store = new AgentQuotaStore({ now: () => now });
+    const { AgentQuotaChecker, AGENT_QUOTA_STALE_MS } = await import('./agent-quota-checker.ts');
+    const checker = new AgentQuotaChecker({
+      store, now: () => now, dryRun: () => false,
+      profiles: async () => [{ provider: 'claude', id: 'default', isDefault: true } as never],
+    });
+    await store.put({ ...normalizeClaudeUsage(claudeDefault, 'default', new Date(now)), loginKind: 'subscription' });
+    now += AGENT_QUOTA_STALE_MS - 1_000;
+    expect((await checker.answer()).accounts[0]).toMatchObject({ stale: false });
+    now += 1_000;
+    expect((await checker.answer()).accounts[0]).toMatchObject({ stale: true });
   });
 
   it('bundles the frozen sample as the dry-run answer', () => {

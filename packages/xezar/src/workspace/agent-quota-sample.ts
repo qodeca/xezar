@@ -16,18 +16,18 @@ export const DRY_RUN_QUOTA_GENERATED_AT = '2026-09-22T14:24:00Z';
 
 export const DRY_RUN_QUOTA_ACCOUNTS: readonly AgentQuotaProducerAccount[] = [
   {
-    runner: 'claude', accountId: 'default', status: 'ok', checkedAt: '2026-09-22T14:20:00Z', ageSeconds: 240, source: 'check',
+    runner: 'claude', accountId: 'default', status: 'ok', loginKind: 'subscription', observedAt: '2026-09-22T14:20:00Z', ageSeconds: 240, source: 'check',
     shortWindow: { usedPercent: 92, resetsAt: '2026-09-22T15:10:00Z', windowMinutes: 300 },
     weeklyWindow: { usedPercent: 26, resetsAt: '2026-09-28T17:00:00Z', windowMinutes: 10080 },
     modelWindows: [{ model: 'Fable', usedPercent: 29, resetsAt: '2026-09-28T17:00:00Z', windowMinutes: 10080 }],
     credits: null, planType: null, notReported: ['credits', 'planType'],
   },
   {
-    runner: 'claude', accountId: 'qodeca-priv', status: 'unknown', checkedAt: '2026-09-22T14:21:00Z', ageSeconds: 180, source: 'check',
+    runner: 'claude', accountId: 'work', status: 'unknown', loginKind: 'unknown', observedAt: '2026-09-22T14:21:00Z', ageSeconds: 180, source: 'check',
     shortWindow: null, weeklyWindow: null, modelWindows: null, credits: null, planType: null, notReported: [...none],
   },
   {
-    runner: 'codex', accountId: 'default', status: 'ok', checkedAt: '2026-09-22T14:22:00Z', ageSeconds: 120, source: 'check',
+    runner: 'codex', accountId: 'default', status: 'ok', loginKind: 'subscription', observedAt: '2026-09-22T14:22:00Z', ageSeconds: 120, source: 'check',
     shortWindow: null,
     weeklyWindow: { usedPercent: 0, resetsAt: '2026-09-29T12:45:02Z', windowMinutes: 10080 },
     modelWindows: null,
@@ -36,11 +36,11 @@ export const DRY_RUN_QUOTA_ACCOUNTS: readonly AgentQuotaProducerAccount[] = [
   },
   {
     runner: 'claude', accountId: 'quota-exhausted', status: 'out', resetsAt: '2026-09-22T15:10:00Z',
-    checkedAt: '2026-09-22T14:19:00Z', ageSeconds: 300, source: 'failedRun',
+    loginKind: 'unknown', observedAt: '2026-09-22T14:19:00Z', ageSeconds: 300, source: 'failedRun',
     shortWindow: null, weeklyWindow: null, modelWindows: null, credits: null, planType: null, notReported: [...none],
   },
   {
-    runner: 'codex', accountId: 'api-key', status: 'unknown', checkedAt: '2026-09-22T14:18:00Z', ageSeconds: 360, source: 'check',
+    runner: 'codex', accountId: 'api-key', status: 'unknown', loginKind: 'api-key', observedAt: '2026-09-22T14:18:00Z', ageSeconds: 360, source: 'check',
     shortWindow: null, weeklyWindow: null, modelWindows: null, credits: null, planType: null, notReported: [...none],
   },
 ];

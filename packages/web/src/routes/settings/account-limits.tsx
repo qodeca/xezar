@@ -16,6 +16,7 @@ import {
   creditsText,
   findQuotaAccount,
   formatQuotaTime,
+  loginKindText,
   nextCheckAllowedAt,
   notReportedWords,
   quotaAgeSeconds,
@@ -76,7 +77,7 @@ function useRefreshToast(nameOf: QuotaNameOf) {
         const name = nameOf(target.runner, target.accountId)
         const fresh = findQuotaAccount(answer, target.runner, target.accountId)
         // A reading that did not move means the server held the check back (FR-7's gap).
-        if (fresh && fresh.checkedAt === target.checkedAt) {
+        if (fresh && fresh.observedAt === target.observedAt) {
           const next = nextCheckAllowedAt(fresh)
           toast(
             `Not checked — ${name} was checked ${ageText(fresh.ageSeconds)} ago.${
@@ -434,7 +435,8 @@ function AccountLimitsDetails({
   const missing = notReportedWords(account)
   const rows: Array<[string, string]> = [
     ['Where the numbers came from', sourceDetail(account, ageSeconds)],
-    ['Read at', formatQuotaTime(account.checkedAt, now)],
+    ['Read at', formatQuotaTime(account.observedAt, now)],
+    ['Login kind', loginKindText(account)],
   ]
   if (account.credits) {
     rows.push([

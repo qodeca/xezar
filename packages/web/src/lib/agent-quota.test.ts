@@ -77,7 +77,7 @@ describe('window lines', () => {
       { key: 'model-0', label: 'Weekly, Fable', usedPercent: 29, resetsAt: '2026-09-28T17:00:00Z' },
     ])
     expect(quotaWindowLines(row('codex', 'default')).map((l) => l.label)).toEqual(['Weekly'])
-    expect(quotaWindowLines(row('claude', 'qodeca-priv'))).toEqual([])
+    expect(quotaWindowLines(row('claude', 'work'))).toEqual([])
   })
 })
 
@@ -89,10 +89,11 @@ describe('status sentence, credits, source and not reported', () => {
     expect(out.tone).toBe('danger')
     expect(out.word).toBe(`Out until ${formatQuotaTime('2026-09-22T15:10:00Z', NOW)}`)
     expect(out.reason).toBe('— a task under this login stopped on the usage limit 5m ago.')
-    expect(quotaStatusSentence(row('claude', 'qodeca-priv'), 180, NOW)).toMatchObject({
+    expect(quotaStatusSentence(row('claude', 'work'), 180, NOW)).toMatchObject({
       tone: 'neutral',
       word: 'Limits unknown',
-      reason: '— Claude Code reported no limits for this login.',
+      reason: '— Claude Code answered without any limit lines for this login.',
+      note: 'The check worked, but its answer had no session or weekly lines, so xezar cannot say how much is left. Refresh to ask again. Tasks can still start under this login.',
     })
   })
 
@@ -136,13 +137,26 @@ describe('the per-agent summary (D30) and the chip (D38)', () => {
     })
   })
 
-  it('shows an agent only when it is installed and a login reported a plan', () => {
+  it('shows an agent only when it is installed and has a subscription login (#867 AC-36)', () => {
     const both = [check('claude', true), check('codex', true)]
     expect(chipSummaries(FIXTURE, both, NOW).map((s) => s.runner)).toEqual(['claude', 'codex'])
     expect(chipSummaries(FIXTURE, [check('claude', true), check('codex', false)], NOW).map((s) => s.runner)).toEqual(['claude'])
-    // Every Codex login reported nothing (an API-key login looks exactly like this): no segment.
-    const noPlan: AgentQuotaResponse = { ...FIXTURE, accounts: [row('codex', 'api-key')] }
-    expect(chipSummaries(noPlan, both, NOW)).toEqual([])
+    // An API-key login: no segment.
+    const apiKey: AgentQuotaResponse = { ...FIXTURE, accounts: [row('codex', 'api-key')] }
+    expect(chipSummaries(apiKey, both, NOW)).toEqual([])
+    // A login of unknown kind is never read as a subscription — even one that is out or reports a
+    // plan (the old rule inferred a subscription from exactly those facts).
+    const unknownKind: AgentQuotaResponse = {
+      ...FIXTURE,
+      accounts: [row('claude', 'quota-exhausted'), { ...row('codex', 'default'), loginKind: 'unknown' }],
+    }
+    expect(chipSummaries(unknownKind, both, NOW)).toEqual([])
+    // A subscription login that reported nothing yet still counts: the kind decides, not the facts.
+    const quietSubscription: AgentQuotaResponse = {
+      ...FIXTURE,
+      accounts: [{ ...row('claude', 'work'), loginKind: 'subscription' }],
+    }
+    expect(chipSummaries(quietSubscription, both, NOW)).toMatchObject([{ runner: 'claude', total: 1, canWork: 0 }])
     // Unknown answer or unknown install state: no chip rather than a guess.
     expect(chipSummaries(undefined, both, NOW)).toEqual([])
     expect(chipSummaries(FIXTURE, undefined, NOW)).toEqual([])

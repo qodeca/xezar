@@ -147,7 +147,7 @@ describe('agent quota read surface', () => {
     expect(publish).toHaveBeenLastCalledWith(getBody);
     expect(hints).toEqual(['agent-quota']);
     stop();
-    await quota.put({ ...row, checkedAt: '2026-09-22T14:21:00Z' });
+    await quota.put({ ...row, observedAt: '2026-09-22T14:21:00Z' });
     expect(publish).toHaveBeenCalledTimes(1);
   });
 
