@@ -47,14 +47,16 @@ const claudeTextReplySchema = z.object({
 const claudeLimitSchema = z.object({
   kind: z.enum(['session', 'weekly_all', 'weekly_scoped']),
   percent: z.number().min(0).max(100),
-  resets_at: z.string().datetime({ offset: true }),
+  // A window that has not started yet carries `resets_at: null` (#893); the normaliser applies its
+  // no-reset rules to it, exactly as it does to a `/usage` text row with no reset clause.
+  resets_at: z.string().datetime({ offset: true }).nullable(),
   // The live reply sends `scope: null` for the session and all-models entries (#906).
   scope: z.object({ model: z.object({ display_name: z.string().min(1) }).nullish() }).nullish(),
 });
 
 const claudeRateLimitSchema = z.object({
   utilization: z.number().min(0).max(100),
-  resets_at: z.string().datetime({ offset: true }),
+  resets_at: z.string().datetime({ offset: true }).nullable(),
 });
 
 const claudeUsageSchema = z.object({
@@ -413,7 +415,11 @@ function normalizeClaudeControl(
     return unknownRecord(profile, checkedAt, 'api-key', null, noPlanLimitsWarning('claude', loginKind), loginKind);
   }
   const lines: string[] = [];
-  const add = (label: string, percent: number, reset: string) => {
+  const add = (label: string, percent: number, reset: string | null) => {
+    if (reset === null) {
+      lines.push(`Current ${label}: ${percent}% used`);
+      return;
+    }
     const date = new Date(reset);
     const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     const parts = new Intl.DateTimeFormat('en-US', {
@@ -514,7 +520,7 @@ async function runClaudeCheck(
       return agentQuotaProducerAccountSchema.parse({
         ...record,
         source: 'check-text',
-        warnings: ['Quota was read from the Claude Code /usage text fallback.'],
+        warnings: [...(record.warnings ?? []), 'Quota was read from the Claude Code /usage text fallback.'],
       });
     }
   } finally {

@@ -7,6 +7,10 @@ import claudeDefaultText from '../__fixtures__/agent-quota/claude-default-usage.
 // @ts-expect-error Vitest supplies raw asset imports in tests.
 import claudeUnknownText from '../__fixtures__/agent-quota/claude-work-usage.json?raw';
 // @ts-expect-error Vitest supplies raw asset imports in tests.
+import claudeStartedText from '../__fixtures__/agent-quota/claude-usage-2.1.280-session-started.json?raw';
+// @ts-expect-error Vitest supplies raw asset imports in tests.
+import claudeUnstartedText from '../__fixtures__/agent-quota/claude-usage-2.1.280-session-unstarted.json?raw';
+// @ts-expect-error Vitest supplies raw asset imports in tests.
 import codexDefaultText from '../__fixtures__/agent-quota/codex-account-rateLimits-read.json?raw';
 // @ts-expect-error Vitest supplies raw asset imports in tests.
 import codexByLimitIdText from '../__fixtures__/agent-quota/codex-rateLimits-by-limit-id.schema-shaped.json?raw';
@@ -22,6 +26,8 @@ const at = (value: string) => new Date(value);
 const frozen = agentQuotaProducerResponseSchema.parse(JSON.parse(frozenText));
 const claudeDefault: unknown = JSON.parse(claudeDefaultText);
 const claudeUnknown: unknown = JSON.parse(claudeUnknownText);
+const claudeStarted: unknown = JSON.parse(claudeStartedText);
+const claudeUnstarted: unknown = JSON.parse(claudeUnstartedText);
 const codexDefault: unknown = JSON.parse(codexDefaultText);
 
 describe('agent quota normalisers', () => {
@@ -110,6 +116,42 @@ describe('agent quota normalisers', () => {
       result: 'Current session: 100% used · resets definitely not a date\nCurrent week (all models): 20% used · resets Sep 28 at 7:00pm (Europe/Warsaw)',
     }, 'default', at('2026-09-22T14:20:00Z'));
     expect(row).toMatchObject({ status: 'out', resetsAt: '2026-09-22T19:20:00Z' });
+  });
+
+  // #893: real `claude -p /usage --output-format json` replies from Claude Code 2.1.280, captured
+  // 2026-09-23. A session that has not started prints `0% used` with no reset clause.
+  it('reads the real 2.1.280 /usage reply with a started session', () => {
+    const row = normalizeClaudeUsage(claudeStarted, 'default', at('2026-09-23T11:05:00Z'));
+    expect(row).toMatchObject({
+      status: 'ok',
+      shortWindow: { usedPercent: 14, resetsAt: '2026-09-23T14:49:00Z', windowMinutes: 300 },
+      weeklyWindow: { usedPercent: 27, resetsAt: '2026-09-25T18:59:00Z', windowMinutes: 10080 },
+      modelWindows: [{ model: 'Fable', usedPercent: 8 }],
+    });
+    expect(row.warnings).toBeUndefined();
+  });
+
+  it('reads the real 2.1.280 /usage reply whose session has not started', () => {
+    const row = normalizeClaudeUsage(claudeUnstarted, 'default', at('2026-09-23T11:05:00Z'));
+    expect(row).toMatchObject({
+      status: 'out',
+      resetsAt: '2026-09-26T15:59:00Z',
+      shortWindow: { usedPercent: 0, resetsAt: '2026-09-23T16:05:00Z', windowMinutes: 300 },
+      weeklyWindow: { usedPercent: 100, resetsAt: '2026-09-26T15:59:00Z', windowMinutes: 10080 },
+    });
+    expect(row.notReported).not.toContain('shortWindow');
+    // The session reset is xezar's assumption, not a time Claude Code reported, and says so.
+    expect(row.warnings).toEqual([
+      'Claude Code reported no reset time for the unused session window; '
+        + 'the reset shown is an assumption of one window length after this check, not a reported time.',
+    ]);
+  });
+
+  it('still fails closed on a row without a reset that is neither unused nor exhausted', () => {
+    const row = normalizeClaudeUsage({ result: 'Current session: 14% used' }, 'default', at('2026-09-23T11:05:00Z'));
+    expect(row).toMatchObject({ status: 'unknown', shortWindow: null });
+    const exhausted = normalizeClaudeUsage({ result: 'Current week (all models): 100% used' }, 'default', at('2026-09-23T11:05:00Z'));
+    expect(exhausted).toMatchObject({ status: 'out', resetsAt: '2026-09-30T11:05:00Z' });
   });
 });
 

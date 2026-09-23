@@ -1958,6 +1958,9 @@ the 0.16.0 shape rather than instead of it.
   Inactive `seven_day_opus` and `seven_day_sonnet` buckets are `null`, not absent. A `/usage`
   reply with no recognised quota rows is a `format-changed` observation and logs once per login
   and tool version.
+  A 0 % window with no reset time – a `/usage` row with no reset clause, or a `get_usage` window
+  whose `resets_at` is `null` – is stored as a window resetting one window length after the
+  observation, and the row's `warnings` says that this reset is assumed, not reported (#893).
   Codex uses only `initialize`, `account/read`, `account/rateLimits/read` and
   `account/usage/read` on an app-server started with read-only/no-approval flags; it starts no
   thread. Both receive the existing least-privilege agent environment plus only the selected

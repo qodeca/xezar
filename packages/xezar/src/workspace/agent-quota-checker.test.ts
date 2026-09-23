@@ -524,6 +524,98 @@ describe('AgentQuotaChecker', () => {
     expect(warn).not.toHaveBeenCalled();
   });
 
+  // #893: the real 2.1.280 /usage reply for a login whose session has not started, read when
+  // `get_usage` itself fails. The unused session row has no reset clause.
+  it('reads session and weekly windows from the real 2.1.280 /usage fallback reply', async () => {
+    const warn = vi.fn();
+    const reply = await readFile(
+      new URL('../__fixtures__/agent-quota/claude-usage-2.1.280-session-unstarted.json', import.meta.url), 'utf8',
+    );
+    const run: RunQuotaProcess = async (spec) => {
+      if (spec.args[0] === '--version') return '2.1.280 (Claude Code)';
+      if (spec.args[0] === 'auth') return JSON.stringify({ loggedIn: true, authMethod: 'claude.ai', apiProvider: 'firstParty' });
+      if (spec.args.includes('--input-format')) throw new Error('get_usage failed');
+      return reply;
+    };
+    const checker = new AgentQuotaChecker({
+      store: new AgentQuotaStore(), profiles: async () => [profile('claude')],
+      runProcess: run, logger: { warn }, dryRun: () => false,
+    });
+
+    const answer = await checker.refresh();
+
+    expect(answer.accounts[0]).toMatchObject({
+      status: 'out', source: 'check-text',
+      shortWindow: { usedPercent: 0, windowMinutes: 300 },
+      weeklyWindow: { usedPercent: 100, windowMinutes: 10080 },
+      loginKind: 'subscription',
+    });
+    expect(answer.accounts[0]!.warnings).toEqual([
+      'Claude Code reported no reset time for the unused session window; '
+        + 'the reset shown is an assumption of one window length after this check, not a reported time.',
+      'Quota was read from the Claude Code /usage text fallback.',
+    ]);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  // #893: `get_usage` answers `five_hour.resets_at: null` for a session that has not started. That
+  // reply is read as it is, without falling back to the `/usage` text, and the assumed reset is
+  // marked as an assumption.
+  it('reads an unstarted session with a null reset from get_usage, without the /usage fallback', async () => {
+    const calls: AgentQuotaProcessSpec[] = [];
+    const capture = JSON.parse(await readFile(
+      new URL('../__fixtures__/agent-quota/claude-get-usage-control-response.json', import.meta.url), 'utf8',
+    )) as { response: { request_id: string; response: { rate_limits: {
+      five_hour: { utilization: number; resets_at: string | null };
+      limits: Array<{ kind: string; percent: number; resets_at: string | null }>;
+    } } } };
+    capture.response.request_id = 'xezar-agent-quota';
+    // Both places the reply names the session carry the unstarted shape: 0 % and a null reset.
+    const fixed = capture.response.response.rate_limits;
+    fixed.five_hour.utilization = 0;
+    fixed.five_hour.resets_at = null;
+    const session = fixed.limits.find((limit) => limit.kind === 'session')!;
+    session.percent = 0;
+    session.resets_at = null;
+    const run: RunQuotaProcess = async (spec) => {
+      calls.push(spec);
+      if (spec.args[0] === '--version') return '2.1.280 (Claude Code)';
+      if (spec.args[0] === 'auth') return JSON.stringify({ loggedIn: true, authMethod: 'claude.ai', apiProvider: 'firstParty' });
+      return capture;
+    };
+    const checker = new AgentQuotaChecker({
+      store: new AgentQuotaStore({ now: () => Date.parse('2026-09-23T11:05:00Z') }),
+      now: () => Date.parse('2026-09-23T11:05:00Z'),
+      profiles: async () => [profile('claude')], runProcess: run, dryRun: () => false,
+    });
+
+    const answer = await checker.refresh();
+
+    expect(calls.some((spec) => spec.args.includes('/usage'))).toBe(false);
+    expect(answer.accounts[0]).toMatchObject({
+      source: 'check', status: 'ok', planType: 'max',
+      shortWindow: { usedPercent: 0, resetsAt: '2026-09-23T16:05:00Z', windowMinutes: 300 },
+      weeklyWindow: { usedPercent: 29, windowMinutes: 10080 },
+    });
+    expect(answer.accounts[0]!.warnings).toEqual([
+      'Claude Code reported no reset time for the unused session window; '
+        + 'the reset shown is an assumption of one window length after this check, not a reported time.',
+    ]);
+
+    // The fixed windows alone, with no limit list beside them, read the same way.
+    fixed.limits = [];
+    calls.length = 0;
+    const fixedOnly = await new AgentQuotaChecker({
+      store: new AgentQuotaStore({ now: () => Date.parse('2026-09-23T11:05:00Z') }),
+      now: () => Date.parse('2026-09-23T11:05:00Z'),
+      profiles: async () => [profile('claude')], runProcess: run, dryRun: () => false,
+    }).refresh();
+    expect(calls.some((spec) => spec.args.includes('/usage'))).toBe(false);
+    expect(fixedOnly.accounts[0]).toMatchObject({
+      source: 'check', shortWindow: { usedPercent: 0, resetsAt: '2026-09-23T16:05:00Z', windowMinutes: 300 },
+    });
+  });
+
   it('wait mode checks stale rows only', async () => {
     const now = Date.parse('2026-09-22T14:20:00Z');
     const store = new AgentQuotaStore({ now: () => now });
