@@ -24,12 +24,15 @@
 // other `sandbox`, and `MOCK_CODEX_THREAD_LOG=<file>` appends each of those two
 // requests (method + params) to that file so a test can pin them whole.
 import { appendFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { createInterface } from 'node:readline';
 
 const emit = (obj) => process.stdout.write(`${JSON.stringify(obj)}\n`);
 const rl = createInterface({ input: process.stdin });
 
 const ambient = process.env.MOCK_CODEX_AMBIENT === '1';
+let registeredHook;
+let hookTrusted = false;
 
 function configReadResult() {
   if (!ambient) return { config: { mcp_servers: {} }, origins: {} };
@@ -103,6 +106,9 @@ rl.on('line', (line) => {
   } catch {
     return;
   }
+  if (process.env.MOCK_CODEX_RPC_LOG && msg.method) {
+    appendFileSync(process.env.MOCK_CODEX_RPC_LOG, `${JSON.stringify({ method: msg.method, params: msg.params })}\n`);
+  }
   if (msg.id === 'ask-1' && msg.result) {
     const answer = msg.result.answers?.library?.answers;
     const freeText = msg.result.answers?.first?.answers;
@@ -110,11 +116,35 @@ rl.on('line', (line) => {
       ? { method: 'turn/completed', params: { turn: { id: 'turn_mock_1', status: 'completed' } } }
       : { method: 'turn/failed', params: { turn: { id: 'turn_mock_1', status: 'failed' }, error: { message: 'bad answer' } } });
   } else if (msg.method === 'initialize') {
-    emit({ id: msg.id, result: { userAgent: 'mock-codex/0.0.0' } });
+    emit({ id: msg.id, result: {
+      userAgent: 'mock-codex/0.0.0',
+      ...(process.env.MOCK_CODEX_OMIT_HOME !== '1' && (process.env.MOCK_CODEX_HOME ?? process.env.CODEX_HOME)
+        ? { codexHome: process.env.MOCK_CODEX_HOME ?? process.env.CODEX_HOME }
+        : {}),
+    } });
   } else if (msg.method === 'config/read') {
     emit(process.env.MOCK_CODEX_CONFIG_READ_ERROR === '1'
       ? { id: msg.id, error: { code: -32601, message: 'Method not found: config/read' } }
       : { id: msg.id, result: configReadResult() });
+  } else if (msg.method === 'hooks/list') {
+    const hook = registeredHook
+      ? [{
+          key: 'session:pre_tool_use:0:0',
+          command: registeredHook.command,
+          matcher: registeredHook.matcher,
+          enabled: true,
+          currentHash: 'sha256:mock-hook',
+          trustStatus: hookTrusted ? 'trusted' : 'untrusted',
+        }]
+      : [];
+    emit({ id: msg.id, result: { data: [{ cwd: msg.params?.cwds?.[0], hooks: hook, warnings: [], errors: [] }] } });
+  } else if (msg.method === 'config/batchWrite') {
+    if (process.env.MOCK_CODEX_REJECT_HOOK_TRUST === '1') {
+      emit({ id: msg.id, error: { code: -32603, message: 'mock trust store is read-only' } });
+    } else {
+      hookTrusted = true;
+      emit({ id: msg.id, result: { status: 'ok', filePath: '/mock/config.toml' } });
+    }
   } else if (msg.method === 'thread/start' || msg.method === 'thread/resume') {
     const problem = isolationProblem(msg.params?.config);
     if (problem) {
@@ -124,6 +154,12 @@ rl.on('line', (line) => {
     if (process.env.MOCK_CODEX_THREAD_LOG) {
       appendFileSync(process.env.MOCK_CODEX_THREAD_LOG, `${JSON.stringify({ method: msg.method, params: msg.params })}\n`);
     }
+    registeredHook = msg.params?.config?.hooks?.PreToolUse?.[0]?.hooks?.[0]
+      ? {
+          command: msg.params.config.hooks.PreToolUse[0].hooks[0].command,
+          matcher: msg.params.config.hooks.PreToolUse[0].matcher,
+        }
+      : undefined;
     const expectedSandbox = process.env.MOCK_CODEX_EXPECT_SANDBOX
       ?? (process.env.XEZ_CODEX_NETWORK === '0' ? 'workspace-write' : 'danger-full-access');
     if (msg.params?.sandbox !== expectedSandbox || msg.params?.approvalPolicy !== 'never') {
@@ -147,6 +183,28 @@ rl.on('line', (line) => {
     emit({ id: msg.id, result: { turn: { id: 'turn_mock_1' } } });
     emit({ method: 'turn/started', params: { turn: { id: 'turn_mock_1', status: 'inProgress', items: [] } } });
     const turnText = msg.params?.input?.map?.((part) => part.text ?? '').join('\n') ?? '';
+    if (process.env.MOCK_CODEX_HOOK_LOG && registeredHook?.command) {
+      const match = registeredHook.command.match(/^'[^']+' '([^']+)' --xezar-read-only-hook$/);
+      const invoked = match
+        ? spawnSync(process.execPath, [match[1], '--xezar-read-only-hook'], {
+            input: JSON.stringify({
+              session_id: 'th_mock_1',
+              cwd: msg.params?.cwd ?? process.cwd(),
+              hook_event_name: 'PreToolUse',
+              model: 'mock',
+              permission_mode: 'dontAsk',
+              tool_name: 'Bash',
+              tool_input: { command: 'git status' },
+              tool_use_id: 'tool_mock_1',
+              transcript_path: null,
+              turn_id: 'turn_mock_1',
+            }),
+            encoding: 'utf8',
+            env: process.env,
+          })
+        : { status: -1, stdout: '', stderr: 'could not parse hook command' };
+      appendFileSync(process.env.MOCK_CODEX_HOOK_LOG, `${JSON.stringify(invoked)}\n`);
+    }
     if (turnText.includes('mock:quota')) {
       emit({ method: 'account/rateLimits/updated', params: {
         rateLimits: { primary: { usedPercent: 25, windowDurationMins: 300, resetsAt: 1790685902 } },

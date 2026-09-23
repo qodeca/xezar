@@ -138,9 +138,21 @@ More → [Getting started](docs/guide/01-getting-started.md)
 | Backend | How xezar drives it | Tool access |
 |---|---|---|
 | **Claude Code** (default) | Headless `stream-json` mode | `allowedTools` (`bashAllowlist` scopes `Bash`); unapproved tools denied without prompting; the default list includes unrestricted `Bash` |
-| **Codex** | `codex app-server`, JSON-RPC over stdio | Honours one signal from `allowedTools`: a step naming neither `Edit` nor `Write` runs confined – it may write only in its worktree and the run's own evidence, handoff and temporary folders, with the network on. Every other step runs `danger-full-access` with no approvals. `XEZ_CODEX_NETWORK=0` turns the network off for both. Individual tool names and `bashAllowlist` are ignored |
+| **Codex** | `codex app-server`, JSON-RPC over stdio | A step naming neither `Edit` nor `Write` runs confined – it may write only in its worktree and the run's own evidence, handoff and temporary folders, with the network on. When that read-only step also has a `bashAllowlist`, a trusted `PreToolUse` hook applies the shared command-prefix lock to every shell call. Every other step runs `danger-full-access` with no approvals. `XEZ_CODEX_NETWORK=0` turns the network off for both. Other individual tool names are ignored |
 | **OpenCode** _(experimental)_ | `opencode serve`, HTTP + SSE | Ignores `allowedTools`; permission asks are answered fail-closed: a directory ask inside the run's own directories is allowed once, every other ask is denied |
 | **pi** | `--mode rpc` over JSONL | `allowedTools` mapped onto pi's `--tools`; a `bashAllowlist` disables `Bash` |
+
+For the Codex command lock, xezar writes a persistent `PreToolUse` entry to the active profile's
+`$CODEX_HOME/hooks.json` and its `hooks.state."<handler key>".trusted_hash` grant to
+`$CODEX_HOME/config.toml`. The entry points to a read-only content-addressed program under the
+xezar cache (`~/.cache/xez/codex-hook/<sha256>.mjs`, or the project-local cache in single-project
+mode). Content addressing protects against handler changes xezar ships; a same-user replacement is
+refused as `hook-cache.digest` at the next locked run, after which deleting that cached file or the
+cache's `codex-hook/` directory is the repair. These profile entries outlive the run and Codex loads them in later interactive sessions;
+the handler is inert there because only a marked xezar read-only run activates it. To remove the
+integration, delete the `PreToolUse` entries whose command ends in `--xezar-read-only-hook`, delete
+their corresponding `hooks.state` trust tables from `config.toml`, and delete the cache's
+`codex-hook/` directory. A later read-only xezar run recreates the current entry and grant.
 
 Backends are detected locally, with Claude offered when none is found. Model choices come from
 local discovery and configuration, with fallback choices when discovery is unavailable.

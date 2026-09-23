@@ -29,11 +29,12 @@ export function spawnCodexAppServer(
   bin: string,
   cwd: string,
   extraEnv?: Record<string, string>,
+  preparedEnv?: NodeJS.ProcessEnv,
 ): ChildProcessWithoutNullStreams {
   try {
     return nodeSpawn(bin, ['app-server'], {
       cwd,
-      env: buildCodexAppServerEnv(extraEnv),
+      env: preparedEnv ?? buildCodexAppServerEnv(extraEnv),
     });
   } catch (error) {
     throw codexSpawnError(error, bin);
@@ -78,12 +79,13 @@ export class CodexAppServerRpc {
     return true;
   }
 
-  async initialize(): Promise<void> {
-    await this.request('initialize', {
+  async initialize(): Promise<Record<string, unknown>> {
+    const initialized = await this.request('initialize', {
       clientInfo: { name: 'xezar', title: 'xezar', version: '0.1.0' },
       capabilities: { experimentalApi: true },
     });
     this.notify('initialized', {});
+    return initialized;
   }
 
   rejectPending(message = 'codex app-server exited'): void {

@@ -1,4 +1,9 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
+import { createHash, randomBytes } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { chmod, lstat, mkdir, readFile, realpath, rename, unlink, writeFile } from 'node:fs/promises';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type {
   AgentEvent,
   AgentRunResult,
@@ -20,12 +25,21 @@ import {
   DEFAULT_RUN_TIMEOUT_MS,
   KILL_GRACE_MS,
 } from './claude-cli-runner.ts';
-import { isReadOnlyStep } from './read-only-lock.ts';
+import {
+  CODEX_READ_ONLY_ALLOWLIST_ENV,
+  CODEX_READ_ONLY_LOCK_MAX_AGE_MS,
+  CODEX_READ_ONLY_RUN_ENV,
+  codexReadOnlyLockPath,
+  type CodexReadOnlyLockRecord,
+} from './codex-read-only-hook.ts';
+import { acquireFileLock, queueByLockPath } from './file-lock.ts';
+import { isReadOnlyStep, normalizeBashAllowlist } from './read-only-lock.ts';
 import { parseAskRequest, type AskQuestion } from './ask.ts';
 import { readNdjson } from './ndjson.ts';
 import { V1TextCoalescer } from './v1-text-coalescer.ts';
 import {
   CodexAppServerRpc,
+  buildCodexAppServerEnv,
   codexSpawnError,
   endCodexAppServer,
   resolveCodexExecutable,
@@ -41,6 +55,7 @@ import {
   type CodexUiMapping,
   type CodexUiMapperState,
 } from './codex-ui-mapper.ts';
+import { xezCacheDir } from '../paths.ts';
 
 export interface CodexRunnerOptions {
   /** Override the binary name/path; defaults to `codex` on PATH. */
@@ -72,8 +87,10 @@ export interface CodexRunnerOptions {
  * Not `read-only`: that sandbox also drops all network and every write outside the
  * worktree, so a review or QA step could read a diff and then not post, label or
  * record its verdict (#850 review). Nothing finer either: Codex has no per-tool
- * allowlist, so the individual names and `spec.bashAllowlist` are ignored, the
- * worktree itself stays writable, and the sandbox does not cover MCP tools — what a
+ * allowlist. When a read-only step also declares `spec.bashAllowlist`, a trusted
+ * PreToolUse hook applies the shared command lock before each Bash call. The individual
+ * non-shell tool names remain ignored, the worktree itself stays writable, and the sandbox
+ * does not cover MCP tools — what a
  * run may reach there is the per-thread MCP scoping of `codex-run-isolation.ts`
  * (#324), which applies to every run, read-only or not.
  */
@@ -104,6 +121,38 @@ export function codexPermissions(
     };
   }
   return { sandbox: networkOff ? 'workspace-write' : 'danger-full-access' };
+}
+
+export interface CodexReadOnlyHook {
+  readonly script: string;
+  readonly command: string;
+  readonly config: {
+    readonly PreToolUse: readonly [{
+      readonly matcher: 'Bash';
+      readonly hooks: readonly [{ readonly type: 'command'; readonly command: string }];
+    }];
+  };
+  readonly entries: string[];
+}
+
+/**
+ * The vendor-specific registration only. Codex ignores request-body hooks until their content
+ * hash is in its trust store, so bootstrap discovers and grants this exact handler before turn 1.
+ */
+export function codexReadOnlyHook(spec: AgentRunSpec): CodexReadOnlyHook | undefined {
+  if (!isReadOnlyStep(spec.allowedTools) || spec.bashAllowlist === undefined) return undefined;
+  const source = fileURLToPath(new URL('../../scripts/codex-read-only-hook.mjs', import.meta.url));
+  const digest = createHash('sha256').update(readFileSync(source)).digest('hex');
+  const script = join(xezCacheDir(), 'codex-hook', `${digest}.mjs`);
+  const command = `${shellQuote(process.execPath)} ${shellQuote(script)} --xezar-read-only-hook`;
+  return {
+    script,
+    command,
+    config: {
+      PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command }] }],
+    },
+    entries: normalizeBashAllowlist(spec.bashAllowlist),
+  };
 }
 
 export class CodexAppServerRunner implements AgentRunner {
@@ -175,6 +224,9 @@ class CodexSession implements AgentSession {
   private eofKillTimer: NodeJS.Timeout | undefined;
   private spawnFailed: Error | null = null;
   private timedOut = false;
+  private readonly hook: CodexReadOnlyHook | undefined;
+  private readonly requestedCodexHome: string | undefined;
+  private hookLockPath: string | undefined;
   /** Set the moment WE signal the child (EOF watchdog, cancel, kill switch).
    *  codex handles the signal and exits 143, so without this the runner reads
    *  its own teardown as a codex failure (#703). */
@@ -195,8 +247,20 @@ class CodexSession implements AgentSession {
     private readonly onEvent: ((event: AgentEvent) => void) | undefined,
     private readonly opts: SessionOptions,
   ) {
+    const hook = codexReadOnlyHook(spec);
+    this.hook = hook;
     try {
-      this.child = spawnCodexAppServer(bin, spec.cwd, spec.env);
+      const childEnv = buildCodexAppServerEnv(
+        hook
+          ? {
+              ...spec.env,
+              [CODEX_READ_ONLY_RUN_ENV]: 'locked',
+              [CODEX_READ_ONLY_ALLOWLIST_ENV]: JSON.stringify(hook.entries),
+            }
+          : spec.env,
+      );
+      this.requestedCodexHome = childEnv.CODEX_HOME;
+      this.child = spawnCodexAppServer(bin, spec.cwd, undefined, childEnv);
       this.rpc = new CodexAppServerRpc(this.child);
     } catch (err) {
       throw codexSpawnError(err, bin);
@@ -277,6 +341,7 @@ class CodexSession implements AgentSession {
       // Destroying stdout ends the read loop before the timeout escalation's
       // grace period. Keep that escalation armed until the child is gone.
       const exitCode = await waitForCodexAppServerExit(this.child);
+      await this.removeReadOnlyLock();
       if (killTimer) clearTimeout(killTimer);
       if (this.eofTermTimer) clearTimeout(this.eofTermTimer);
       if (this.eofKillTimer) clearTimeout(this.eofKillTimer);
@@ -400,11 +465,45 @@ class CodexSession implements AgentSession {
   // ---- protocol -----------------------------------------------------------
 
   private async bootstrap(): Promise<void> {
-    await this.rpc.initialize();
+    const initialized = await this.rpc.initialize();
+    const requestedCodexHome = this.requestedCodexHome;
+    const reportedCodexHome = stringField(initialized, 'codexHome');
+    if (requestedCodexHome && reportedCodexHome
+      && await canonicalPath(requestedCodexHome) !== await canonicalPath(reportedCodexHome)) {
+      throw new Error(
+        `Codex profile mismatch (codex-home.mismatch: xezar requested ${requestedCodexHome}, ` +
+          `but initialize reported ${JSON.stringify(reportedCodexHome ?? 'missing')}); ` +
+          'xezar did not start the step or write hook trust to an unexpected profile.',
+      );
+    }
     const isolation = await this.readIsolation();
 
     // `codexPermissions` owns the choice; start and resume both carry it (#849).
     const permissions = codexPermissions(this.spec.allowedTools, this.spec.additionalDirectories);
+    const hook = this.hook;
+    if (hook) {
+      const codexHome = stringField(initialized, 'codexHome');
+      if (!codexHome) {
+        throw new Error(
+          'Codex read-only hook installation failed (initialize returned no codexHome); ' +
+          'xezar did not start the step because its bashAllowlist could not be enforced.',
+        );
+      }
+      try {
+        await ensureCodexReadOnlyHookCache(hook);
+        await ensureCodexReadOnlyHookFile(codexHome, hook);
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        throw new Error(
+          `Codex read-only hook installation failed (${reason}); xezar did not start the step because its bashAllowlist could not be enforced.`,
+        );
+      }
+    }
+    const config = {
+      ...isolation.config,
+      ...(permissions.workspaceWrite ? { sandbox_workspace_write: permissions.workspaceWrite } : {}),
+      ...(hook ? { hooks: hook.config } : {}),
+    };
     const overrides = {
       model: this.spec.model,
       cwd: this.spec.cwd,
@@ -413,9 +512,7 @@ class CodexSession implements AgentSession {
       // Only the project's own MCP servers; no home-config server, plugin, app or leader bridge
       // (#324, #323). Resume carries it too: a stored thread reloads its servers on reopen. A
       // confined read-only step adds its workspace-write policy to the same override.
-      config: permissions.workspaceWrite
-        ? { ...isolation.config, sandbox_workspace_write: permissions.workspaceWrite }
-        : isolation.config,
+      config,
     };
     if (this.spec.resume && this.spec.sessionId) {
       await this.rpc.request('thread/resume', { threadId: this.spec.sessionId, ...clean(overrides) });
@@ -424,6 +521,8 @@ class CodexSession implements AgentSession {
       const res = await this.rpc.request('thread/start', clean(overrides));
       this.threadId = threadIdOf(res) ?? this.spec.sessionId;
     }
+    if (hook) await this.trustReadOnlyHook(hook);
+    if (hook && this.threadId) await this.createReadOnlyLock(hook, this.threadId);
     if (this.threadId) {
       this.emit({ type: 'session', sessionId: this.threadId });
       // The result path (thread/start response, or thread/resume which sends
@@ -439,6 +538,83 @@ class CodexSession implements AgentSession {
     // of the opening message.
     const first = prependSystemPrompt(this.spec.systemPrompt, this.spec.userPrompt);
     await this.startOrSteerTurn(first);
+  }
+
+  private async createReadOnlyLock(hook: CodexReadOnlyHook, sessionId: string): Promise<void> {
+    const path = codexReadOnlyLockPath(hook.script, sessionId);
+    const createdAt = Date.now();
+    const configuredLifetime = this.spec.timeoutMs ?? DEFAULT_RUN_TIMEOUT_MS;
+    const lifetime = configuredLifetime > 0
+      ? Math.min(CODEX_READ_ONLY_LOCK_MAX_AGE_MS, Math.max(configuredLifetime + 60_000, 10 * 60_000))
+      : CODEX_READ_ONLY_LOCK_MAX_AGE_MS;
+    const record: CodexReadOnlyLockRecord = {
+      version: 1,
+      sessionId,
+      cwd: await canonicalPath(this.spec.cwd),
+      createdAt,
+      expiresAt: createdAt + lifetime,
+    };
+    try {
+      await mkdir(join(dirname(hook.script), 'locks'), { recursive: true, mode: 0o700 });
+      const temporary = `${path}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`;
+      await writeFile(temporary, `${JSON.stringify(record)}\n`, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+      await chmod(temporary, 0o600);
+      await rename(temporary, path);
+      this.hookLockPath = path;
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new Error(`Codex read-only lock record failed (${reason}); xezar did not start the turn.`);
+    }
+  }
+
+  private async removeReadOnlyLock(): Promise<void> {
+    const path = this.hookLockPath;
+    if (!path) return;
+    this.hookLockPath = undefined;
+    try {
+      await unlink(path);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        this.emit({ type: 'note', message: `codex: bounded read-only lock cleanup deferred (${String(error)})` });
+      }
+    }
+  }
+
+  /**
+   * Codex owns the normalized hook hash; xezar must ask for it rather than hashing hooks JSON.
+   * The grant is scoped by Codex's handler key and current hash in the active profile's
+   * `config.toml`. Any discovery/write/verification gap fails before `turn/start`.
+   */
+  private async trustReadOnlyHook(hook: CodexReadOnlyHook): Promise<void> {
+    try {
+      const before = await this.rpc.request('hooks/list', { cwds: [this.spec.cwd] });
+      const metadata = findCodexHook(before, hook.command);
+      if (!metadata) throw new Error('hooks/list did not discover the registered Bash handler');
+      if (!metadata.key || !metadata.currentHash) {
+        throw new Error('hooks/list returned no handler key or current hash');
+      }
+      const grant = await this.rpc.request('config/batchWrite', {
+        edits: [{
+          keyPath: `hooks.state.${JSON.stringify(metadata.key)}.trusted_hash`,
+          mergeStrategy: 'upsert',
+          value: metadata.currentHash,
+        }],
+        reloadUserConfig: true,
+      });
+      if (grant.status !== 'ok') throw new Error(`config/batchWrite returned status ${JSON.stringify(grant.status)}`);
+      const after = findCodexHook(
+        await this.rpc.request('hooks/list', { cwds: [this.spec.cwd] }),
+        hook.command,
+      );
+      if (after?.trustStatus !== 'trusted' && after?.trustStatus !== 'managed') {
+        throw new Error(`hooks/list reported trust status ${JSON.stringify(after?.trustStatus ?? 'missing')}`);
+      }
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `Codex read-only hook trust grant failed (${reason}); xezar did not start the step because its bashAllowlist could not be enforced.`,
+      );
+    }
   }
 
   /**
@@ -630,6 +806,220 @@ class CodexSession implements AgentSession {
 }
 
 // ---- helpers --------------------------------------------------------------
+
+interface CodexHookMetadata {
+  readonly key?: string;
+  readonly command?: string;
+  readonly matcher?: string;
+  readonly currentHash?: string;
+  readonly trustStatus?: string;
+  readonly enabled?: boolean;
+}
+
+interface CodexHooksFile {
+  hooks?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+/**
+ * Codex 0.155.1 does not discover hooks supplied only in `thread/start`/`thread/resume` config.
+ * Install the content-addressed handler in the active profile's user-layer hooks.json, the
+ * thinnest unavoidable vendor adapter proven by #863 S0b/S0c. Its environment marker plus
+ * bounded session record leave ordinary sessions inert while making a matching run fail closed
+ * when Codex strips either the marker or the allowlist.
+ */
+async function ensureCodexReadOnlyHookFile(codexHome: string, hook: CodexReadOnlyHook): Promise<void> {
+  await mkdir(codexHome, { recursive: true, mode: 0o700 });
+  const path = join(codexHome, 'hooks.json');
+  const lockPath = `${path}.lock`;
+  await queueByLockPath(lockPath, async () => {
+    const acquisition = await acquireFileLock(lockPath, { waitMs: 5_000 });
+    if (!acquisition.acquired) throw new Error(`could not lock ${path} for hook registration`);
+    try {
+      try {
+        if ((await lstat(path)).isSymbolicLink()) {
+          throw new Error(`hooks-file.symlink refused: ${path} is a symbolic link`);
+        }
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      }
+      let document: CodexHooksFile = {};
+      try {
+        const parsed: unknown = JSON.parse(await readFile(path, 'utf8'));
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          throw new Error('the file root is not an object');
+        }
+        document = parsed as CodexHooksFile;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+          const reason = error instanceof Error ? error.message : String(error);
+          throw new Error(`could not read ${path} without losing existing hooks (${reason})`);
+        }
+      }
+      const hooks = document.hooks && typeof document.hooks === 'object' && !Array.isArray(document.hooks)
+        ? document.hooks
+        : {};
+      if (document.hooks !== undefined && hooks !== document.hooks) {
+        throw new Error(`could not update ${path} because "hooks" is not an object`);
+      }
+      const existing = hooks.PreToolUse;
+      if (existing !== undefined && !Array.isArray(existing)) {
+        throw new Error(`could not update ${path} because hooks.PreToolUse is not an array`);
+      }
+      const handlers: unknown[] = [];
+      let currentInstalled = false;
+      for (const entry of existing ?? []) {
+        const script = xezarCodexHookScript(entry);
+        if (!script) {
+          handlers.push(entry);
+          continue;
+        }
+        if (hookEntryCommands(entry).includes(hook.command)) {
+          currentInstalled = true;
+          handlers.push(entry);
+          continue;
+        }
+        try {
+          await lstat(script);
+          handlers.push(entry); // another live xezar installation/profile command coexists
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') handlers.push(entry);
+        }
+      }
+      if (!currentInstalled) {
+        handlers.push({ matcher: 'Bash', hooks: [{ type: 'command', command: hook.command }] });
+      }
+      if (currentInstalled && handlers.length === (existing ?? []).length) return;
+      const next = { ...document, hooks: { ...hooks, PreToolUse: handlers } };
+      const temporary = `${path}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`;
+      await writeFile(temporary, `${JSON.stringify(next, null, 2)}\n`, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+      await chmod(temporary, 0o600);
+      await rename(temporary, path);
+    } finally {
+      await acquisition.release();
+    }
+  });
+}
+
+async function ensureCodexReadOnlyHookCache(hook: CodexReadOnlyHook): Promise<void> {
+  const source = fileURLToPath(new URL('../../scripts/codex-read-only-hook.mjs', import.meta.url));
+  const target = xezarCodexHookScript({ matcher: 'Bash', hooks: [{ command: hook.command }] });
+  if (!target) throw new Error('hook-cache.command could not resolve the generated handler path');
+  const content = readFileSync(source);
+  await mkdir(join(xezCacheDir(), 'codex-hook'), { recursive: true, mode: 0o700 });
+  const lockPath = `${target}.lock`;
+  await queueByLockPath(lockPath, async () => {
+    const acquisition = await acquireFileLock(lockPath, { waitMs: 5_000 });
+    if (!acquisition.acquired) throw new Error(`hook-cache.lock could not lock ${target}`);
+    try {
+      try {
+        const entry = await lstat(target);
+        if (!entry.isFile() || entry.isSymbolicLink()) {
+          throw new Error(`hook-cache.type refused non-regular cache entry ${target}`);
+        }
+        const existing = await readFile(target);
+        if (!existing.equals(content)) {
+          throw new Error(
+            `hook-cache.digest found changed content at ${target}; ` +
+            'remove that file (or the codex-hook cache directory) and retry',
+          );
+        }
+        await chmod(target, 0o444);
+        return;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      }
+      const temporary = `${target}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`;
+      await writeFile(temporary, content, { mode: 0o600, flag: 'wx' });
+      await chmod(temporary, 0o444);
+      await rename(temporary, target);
+    } finally {
+      await acquisition.release();
+    }
+  });
+}
+
+function xezarCodexHookScript(entry: unknown): string | undefined {
+  if (!entry || typeof entry !== 'object' || (entry as { matcher?: unknown }).matcher !== 'Bash') return undefined;
+  const commands = hookEntryCommands(entry);
+  const command = commands.length === 1 ? commands[0] : undefined;
+  if (!command) return undefined;
+  const words = shellQuotedWords(command);
+  return words?.marker === '--xezar-read-only-hook' ? words.script : undefined;
+}
+
+function shellQuotedWords(command: string): { executable: string; script: string; marker: string } | undefined {
+  const words: string[] = [];
+  let offset = 0;
+  while (words.length < 2) {
+    if (command[offset] !== "'") return undefined;
+    offset += 1;
+    let word = '';
+    while (offset < command.length) {
+      if (command.startsWith("'\\''", offset)) {
+        word += "'";
+        offset += 4;
+      } else if (command[offset] === "'") {
+        offset += 1;
+        break;
+      } else {
+        word += command[offset];
+        offset += 1;
+      }
+    }
+    words.push(word);
+    if (words.length < 2) {
+      if (command[offset] !== ' ') return undefined;
+      offset += 1;
+    }
+  }
+  if (command[offset] !== ' ') return undefined;
+  const marker = command.slice(offset + 1);
+  const [executable, script] = words;
+  return executable !== undefined && script !== undefined ? { executable, script, marker } : undefined;
+}
+
+async function canonicalPath(path: string): Promise<string> {
+  try {
+    return await realpath(path);
+  } catch {
+    return resolve(path);
+  }
+}
+
+/** Codex executes hook commands through a shell, so every generated path must be one shell word. */
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+function hookEntryCommands(entry: unknown): string[] {
+  if (!entry || typeof entry !== 'object') return [];
+  const commands = (entry as { hooks?: unknown }).hooks;
+  if (!Array.isArray(commands)) return [];
+  return commands.flatMap((handler) => {
+    if (!handler || typeof handler !== 'object') return [];
+    const command = (handler as { command?: unknown }).command;
+    return typeof command === 'string' ? [command] : [];
+  });
+}
+
+function findCodexHook(response: Record<string, unknown>, command: string): CodexHookMetadata | undefined {
+  const rows = Array.isArray(response.data) ? response.data : [];
+  for (const row of rows) {
+    if (!row || typeof row !== 'object') continue;
+    const hooks = Array.isArray((row as { hooks?: unknown }).hooks)
+      ? (row as { hooks: unknown[] }).hooks
+      : [];
+    for (const hook of hooks) {
+      if (!hook || typeof hook !== 'object') continue;
+      const metadata = hook as CodexHookMetadata;
+      if (metadata.command === command && metadata.matcher === 'Bash' && metadata.enabled !== false) {
+        return metadata;
+      }
+    }
+  }
+  return undefined;
+}
 
 function codexAskQuestions(value: unknown): AskQuestion[] | null {
   if (!Array.isArray(value) || value.length < 1 || value.length > 4) return null;
