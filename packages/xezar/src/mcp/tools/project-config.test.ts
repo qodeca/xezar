@@ -402,7 +402,7 @@ describe('project_config: read_quota', () => {
     expect(all).toMatchObject({ schemaVersion: 1, scope: 'agent-quota' });
     // Dry run answers with the frozen fixture's rows (#867 AC-4, AC-27), the same as HTTP.
     expect(all.accounts.map((row: { runner: string; accountId: string }) => `${row.runner}:${row.accountId}`)).toEqual([
-      'claude:default', 'claude:qodeca-priv', 'codex:default', 'claude:quota-exhausted', 'codex:api-key',
+      'claude:default', 'claude:work', 'codex:default', 'claude:quota-exhausted', 'codex:api-key',
     ]);
 
     const one = value(await invoke({ action: 'read_quota', provider: 'claude', accountId: 'default' }));
