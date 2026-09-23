@@ -7,7 +7,7 @@ export const CODEX_READ_ONLY_HOOK_FIXTURES = [
     payload: { tool_name: 'Bash', tool_input: { command: fixture.command } },
   })),
   {
-    name: 'wrong tool payload',
+    name: 'apply_patch is refused by the shared tool-name policy',
     command: '',
     entries: ['git status'],
     payload: { tool_name: 'apply_patch', tool_input: { command: 'git status' } },

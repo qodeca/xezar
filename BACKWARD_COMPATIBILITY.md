@@ -1053,7 +1053,10 @@ empty-list compatibility statements remain in force.
   would execute the piped standard input; every other pipe remains refused. Each refusal carries
   the stable rule that made the decision.
 - **Changed (Codex with `bashAllowlist`)**: a read-only step now starts and resumes with a
-  `PreToolUse` Bash hook that sends the complete command through that same shared policy. An
+  `PreToolUse` `Bash|apply_patch` hook. Bash sends the complete command through that same shared
+  policy; `apply_patch` reaches its existing `payload.tool-name` refusal, so both are denied with a
+  shared reason rather than a second policy. A blocked `hook/completed` feedback entry is persisted
+  as a v1 `note`, making the exact reason visible in the run event stream for either tool. An
   allowed prefix normally runs inside #849's confined `workspace-write` sandbox. One Codex
   exec-policy exception remains: when the hook allows a command that also matches a user or
   trusted-project `prefix_rule(..., decision="allow")`, Codex runs its first attempt outside the
@@ -1094,6 +1097,10 @@ empty-list compatibility statements remain in force.
   `$CODEX_HOME/config.toml`, and optionally deleting `xezCacheDir()/codex-hook/`; the next locked
   run recreates the current entry. This is profile configuration, not project configuration: no
   project trust or tracked file is added.
+  The 0.19.0-pre handler matched only `Bash`. On the next locked run xezar replaces that entry in
+  place with `Bash|apply_patch`, asks Codex for the changed normalized hash, and overwrites the
+  exact handler key's trust hash before turn 1. It does not keep or duplicate the Bash-only entry;
+  other live content-addressed xezar commands still coexist under the existing pruning rules.
 - **Changed (argument-bearing entries)**: `COMMAND_RUNNING_ARGUMENTS` refuses risky forms hidden
   behind an otherwise allowed prefix: every Git `-c`, `--config-env` and `--exec-path` form,
   abbreviated `fetch --upload-pack`/`--exec`, Git `diff`/`show`/`log` output files, checkout path

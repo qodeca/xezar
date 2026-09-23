@@ -97,6 +97,27 @@ describe('a teardown xezar initiated (codex app-server)', () => {
     expect(events).toContainEqual({ type: 'error', message: 'model unavailable' });
     expect(events).toContainEqual({ type: 'turn-end' });
   }, 15_000);
+
+  it('persists blocked Bash and apply_patch hook feedback as run-event notes', async () => {
+    const runner = new CodexAppServerRunner({ bin: mockBin, timeoutMs: 0 });
+    const events: AgentEvent[] = [];
+    const session = runner.startSession(
+      { userPrompt: 'mock:hook-blocked', cwd: process.cwd() },
+      (event) => events.push(event),
+      { autoEndAfterFirstTurn: true },
+    );
+
+    await session.result;
+
+    expect(events).toContainEqual({
+      type: 'note',
+      message: 'codex: PreToolUse blocked: Rule prefix.entry refused the command: it did not match any bashAllowlist entry.',
+    });
+    expect(events).toContainEqual({
+      type: 'note',
+      message: 'codex: PreToolUse blocked: Rule payload.tool-name refused the command: tool "apply_patch" is not Bash.',
+    });
+  }, 15_000);
 });
 
 describe('Codex quota telemetry', () => {
@@ -678,14 +699,58 @@ describe('a read-only step runs Codex confined to its worktree and its own roots
       };
       expect(installed.owner).toBe('user');
       expect(installed.hooks.PreToolUse[0]?.hooks[0]?.command).toBe('existing-hook');
-      expect(installed.hooks.PreToolUse.filter((entry) => entry.matcher === 'Bash')).toHaveLength(1);
-      const command = installed.hooks.PreToolUse.find((entry) => entry.matcher === 'Bash')?.hooks[0]?.command;
+      expect(installed.hooks.PreToolUse.filter((entry) => entry.matcher === 'Bash|apply_patch')).toHaveLength(1);
+      const command = installed.hooks.PreToolUse.find((entry) => entry.matcher === 'Bash|apply_patch')?.hooks[0]?.command;
       expect(command).toBeTypeOf('string');
       if (!command) throw new Error('installed Bash hook has no command');
       const script = command.match(/^'[^']+' '([^']+)' --xezar-read-only-hook$/)?.[1];
       expect(script).toMatch(new RegExp(`${cacheProject.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&')}/\\.local/xezar/cache/codex-hook/[a-f0-9]{64}\\.mjs$`));
       if (!script) throw new Error('installed Bash hook command has no cache script path');
       expect(statSync(script).mode & 0o777).toBe(0o444);
+      const methods = readFileSync(log, 'utf8').trim().split('\n').map((line) => JSON.parse(line).method as string);
+      expect(methods.indexOf('hooks/list')).toBeLessThan(methods.indexOf('config/batchWrite'));
+      expect(methods.indexOf('config/batchWrite')).toBeLessThan(methods.indexOf('turn/start'));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 15_000);
+
+  it('replaces the legacy Bash-only xezar entry before rediscovery and trust', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'xez-863-matcher-migration-'));
+    const log = join(dir, 'rpc.ndjson');
+    const hook = codexReadOnlyHook({
+      userPrompt: 'review it',
+      cwd: dir,
+      allowedTools: REVIEW,
+      bashAllowlist: ['git status'],
+    })!;
+    writeFileSync(join(dir, 'hooks.json'), JSON.stringify({
+      hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: hook.command }] }] },
+    }));
+    try {
+      const session = new CodexAppServerRunner({ bin: mockBin, timeoutMs: 0 }).startSession(
+        {
+          userPrompt: 'review it',
+          cwd: dir,
+          allowedTools: REVIEW,
+          bashAllowlist: ['git status'],
+          env: {
+            MOCK_CODEX_EXPECT_SANDBOX: 'workspace-write',
+            MOCK_CODEX_HOME: dir,
+            MOCK_CODEX_RPC_LOG: log,
+          },
+        },
+        undefined,
+        { autoEndAfterFirstTurn: true },
+      );
+      await expect(session.result).resolves.toMatchObject({ sessionId: 'th_mock_1' });
+      const installed = JSON.parse(readFileSync(join(dir, 'hooks.json'), 'utf8')) as {
+        hooks: { PreToolUse: Array<{ matcher: string; hooks: Array<{ command: string }> }> };
+      };
+      expect(installed.hooks.PreToolUse).toEqual([{
+        matcher: 'Bash|apply_patch',
+        hooks: [{ type: 'command', command: hook.command }],
+      }]);
       const methods = readFileSync(log, 'utf8').trim().split('\n').map((line) => JSON.parse(line).method as string);
       expect(methods.indexOf('hooks/list')).toBeLessThan(methods.indexOf('config/batchWrite'));
       expect(methods.indexOf('config/batchWrite')).toBeLessThan(methods.indexOf('turn/start'));
