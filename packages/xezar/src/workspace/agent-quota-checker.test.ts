@@ -160,6 +160,28 @@ describe('AgentQuotaChecker', () => {
     expect(answer.accounts[0]!.notReported).toEqual(['credits']);
   });
 
+  // An empty limit list carries no rows; the fixed windows beside it still hold the numbers.
+  it.each(['top-level', 'nested'] as const)('reads the fixed windows when the %s limits list is empty', async (where) => {
+    const capture = JSON.parse(await readFile(
+      new URL('../__fixtures__/agent-quota/claude-get-usage-control-response.json', import.meta.url), 'utf8',
+    )) as { response: { request_id: string; response: { limits?: unknown[]; rate_limits: { limits?: unknown[] } } } };
+    capture.response.request_id = 'xezar-agent-quota';
+    if (where === 'top-level') capture.response.response.limits = [];
+    else capture.response.response.rate_limits.limits = [];
+    const run: RunQuotaProcess = async (spec) => (spec.args[0] === '--version' ? '2.1.280 (Claude Code)' : capture);
+    const checker = new AgentQuotaChecker({
+      store: new AgentQuotaStore({ now: () => Date.parse('2026-09-22T14:00:00Z') }),
+      now: () => Date.parse('2026-09-22T14:00:00Z'),
+      profiles: async () => [profile('claude')], runProcess: run, dryRun: () => false,
+    });
+
+    const answer = await checker.refresh();
+
+    expect(answer.accounts[0]).toMatchObject({
+      source: 'check', status: 'ok', shortWindow: { usedPercent: 7 }, weeklyWindow: { usedPercent: 29 },
+    });
+  });
+
   it('uses fixed isolated Claude argv and reports the /usage fallback in the row', async () => {
     const calls: AgentQuotaProcessSpec[] = [];
     const run: RunQuotaProcess = vi.fn(async (spec) => {

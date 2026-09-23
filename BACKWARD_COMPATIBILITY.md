@@ -1968,7 +1968,8 @@ the 0.16.0 shape rather than instead of it.
   limit rows is `check-failed`, not `format-changed`, and logs no format warning (#893).
   `XEZ_DRY_RUN=1` starts no process and answers with the frozen fixture `agent-quota.expected.json`
   itself (filtered by the selector), whatever the clock: its rows carry none of the operational
-  keys below and the unfiltered answer equals the fixture byte for byte. Placeholder rows now say
+  keys below and the unfiltered answer, pretty-printed in the fixture's canonical form, equals the
+  fixture byte for byte (the HTTP body itself is compact JSON). Placeholder rows now say
   `source: "none"`; `source: "check"` means an active check actually ran.
 - **Machine times:** every time the answer emits is UTC in whole seconds (`…:ssZ`); a fraction of
   a second from a clock or a provider reply is truncated.

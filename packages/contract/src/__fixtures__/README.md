@@ -21,5 +21,8 @@ The S0 check succeeded but returned no quota percentage lines, so it proved neit
 capacity (`ok`) nor exhaustion (`out`). Treating a successful read with no quota facts as `ok`
 would turn “could not determine” into a routing promise.
 
+With `XEZ_DRY_RUN=1` the cockpit answers with this fixture's sample logins, not the logins
+registered on the machine, so a registered login with no limits row there is expected, not a bug.
+
 An account is never `status: "ok"` when any reported `shortWindow`, `weeklyWindow`, or
 `modelWindows[]` entry has `usedPercent` greater than or equal to 100.

@@ -196,6 +196,8 @@ function mergeLiveRecord(previous: AgentQuotaProducerAccount, incoming: AgentQuo
 /** A failed-run limit never shortens a later out that is already stored (#867 AC-12). */
 function keepLaterOut(previous: AgentQuotaProducerAccount, incoming: AgentQuotaProducerAccount): AgentQuotaProducerAccount {
   if (previous.status !== 'out' || incoming.status !== 'out') return incoming;
+  // As in mergeLiveRecord, only a reset still ahead of the new observation is retained.
+  if (Date.parse(previous.resetsAt) <= Date.parse(incoming.checkedAt)) return incoming;
   if (Date.parse(previous.resetsAt) <= Date.parse(incoming.resetsAt)) return incoming;
   return agentQuotaProducerAccountSchema.parse({ ...incoming, resetsAt: previous.resetsAt });
 }

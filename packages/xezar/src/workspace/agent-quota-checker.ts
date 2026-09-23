@@ -355,7 +355,8 @@ function normalizeClaudeControl(raw: unknown, profile: QuotaProfile, checkedAt: 
     lines.push(`Current ${label}: ${percent}% used · resets ${text}`);
   };
   const limits = usage.limits ?? usage.rate_limits?.limits;
-  if (limits) {
+  // An empty list reports nothing, so the fixed windows below are read instead.
+  if (limits?.length) {
     for (const limit of limits) {
       const label = limit.kind === 'session' ? 'session'
         : limit.kind === 'weekly_all' ? 'week (all models)'
