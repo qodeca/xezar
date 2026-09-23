@@ -305,7 +305,7 @@ describe('session/open push capability and the session key in the tool context (
     ]);
   });
 
-  it('T-15: `succeeded` fires only for a call whose arguments validated and whose answer is not an error, with its arrival time (#890 re-check)', async () => {
+  it('T-15: `succeeded` fires only for a call whose arguments validated and whose answer is not an error, with that answer (#890 re-check, round 3)', async () => {
     // RED against: telling the delivery seam a call succeeded before validation (a rejected
     // `leader_events` read would suppress the push-not-seen blocker again), or for an error result.
     const strict = defineTool({
@@ -319,28 +319,26 @@ describe('session/open push capability and the session key in the tool context (
     });
     const opened: string[] = [];
     const called: unknown[] = [];
-    const succeeded: Array<{ key: string; call: unknown; calledAt: number }> = [];
+    const succeeded: Array<{ key: string; call: unknown; result: unknown }> = [];
     const svc = await twoConnections({
       tools: [strict],
       sessions: {
         opened: (key) => opened.push(key),
         closed: () => {},
         called: (_key, call) => called.push(call),
-        succeeded: (key, call, calledAt) => succeeded.push({ key, call, calledAt }),
+        succeeded: (key, call, result) => succeeded.push({ key, call, result }),
       },
     });
     const c = await svc.open();
     await c.request(1, 'session/open');
-    const before = Date.now();
     expect(await c.request(2, 'tools/call', { name: 'strict_thing', arguments: { action: 'read', unexpected: true } })).toMatchObject({ ok: true, result: { isError: true } });
     expect(await c.request(3, 'tools/call', { name: 'strict_thing', arguments: { action: 'fail' } })).toMatchObject({ ok: true, result: { isError: true } });
     expect(succeeded).toEqual([]);
     // The arrival edge is still the fail-safe one: both rejected calls were reported as activity.
     expect(called).toEqual([{ tool: 'strict_thing', action: 'read' }, { tool: 'strict_thing', action: 'fail' }]);
     await c.request(4, 'tools/call', { name: 'strict_thing', arguments: { action: 'read' } });
-    expect(succeeded).toEqual([{ key: opened[0], call: { tool: 'strict_thing', action: 'read' }, calledAt: expect.any(Number) }]);
-    expect(succeeded[0]!.calledAt).toBeGreaterThanOrEqual(before);
-    expect(succeeded[0]!.calledAt).toBeLessThanOrEqual(Date.now());
+    // #890 round 3: the answer the client received travels with it, so the seam can tell what a read replayed.
+    expect(succeeded).toEqual([{ key: opened[0], call: { tool: 'strict_thing', action: 'read' }, result: { content: [{ type: 'text', text: 'ok' }] } }]);
   });
 
   it('T-14: an activity observer that throws never fails the call (#886)', async () => {

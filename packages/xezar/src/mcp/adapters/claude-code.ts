@@ -73,15 +73,24 @@ export interface ClaudeCodeChannelAdapterOptions {
   readonly now?: () => number;
 }
 
+/** #890 round 3: journal rows one or more `leader_events` reads replayed, `fromSeq`–`throughSeq` inclusive. */
+export interface ClaudeCodeReplayedRange {
+  readonly fromSeq: number;
+  readonly throughSeq: number;
+}
+
 /**
  * #886: the owner session's tool calls, split the way the push-not-seen blocker needs them. A
  * `leader_events` call is NOT activity here: a read, status or ack is the leader recovering events (the
  * documented polling fallback), so counting it would report a working fallback as broken (#890 review,
- * finding 1). `readAt` is kept apart because a read after a push means the leader has those events.
+ * finding 1). `replayed` is kept apart because a read that carried a pushed row means the leader has it.
  */
 export interface ClaudeCodeOwnerActivity {
-  /** When the owner session last called `leader_events` action `read`; undefined when it has not. */
-  readonly readAt?: number;
+  /**
+   * The journal rows the owner session's successful `leader_events` reads actually replayed (#890 round
+   * 3). A gap answer, an empty page, or a page that stopped before a pushed row does not cover that row.
+   */
+  readonly replayed: readonly ClaudeCodeReplayedRange[];
   /** When it called tools OTHER than `leader_events`, oldest first. The producer may bound the list. */
   readonly otherCallsAt: readonly number[];
 }
@@ -208,8 +217,9 @@ export class ClaudeCodeChannelAdapter implements ReactionAdapter {
   }
 
   /**
-   * #886: the session is active and silent about an outstanding push — the oldest one it has NOT read
-   * events since (a read covers every push made before it, and only those), followed by at least
+   * #886: the session is active and silent about an outstanding push — the oldest one no read of its
+   * REPLAYED (#890 round 3: a read covers exactly the rows its answer carried, so a gap answer or a
+   * page that stops short covers none of the rest), followed by at least
    * `CLAUDE_CODE_PUSH_NOT_SEEN_CALLS` calls to other tools at or after `notSeenMs` past that push.
    * Calls inside the bound are the leader reading state before it acknowledges, as the channel message
    * asks, and never count.
@@ -217,8 +227,8 @@ export class ClaudeCodeChannelAdapter implements ReactionAdapter {
   #notSeen(): boolean {
     const activity = this.#opts.ownerActivity?.();
     if (activity === undefined) return false;
-    const readAt = activity.readAt;
-    const unread = this.#outstanding.find((row) => readAt === undefined || readAt < row.at);
+    const covered = (seq: number): boolean => activity.replayed.some((range) => range.fromSeq <= seq && seq <= range.throughSeq);
+    const unread = this.#outstanding.find((row) => !covered(row.seq));
     if (unread === undefined) return false;
     const bound = unread.at + (this.#opts.notSeenMs ?? CLAUDE_CODE_PUSH_NOT_SEEN_MS);
     return activity.otherCallsAt.filter((at) => at >= bound).length >= CLAUDE_CODE_PUSH_NOT_SEEN_CALLS;

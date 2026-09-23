@@ -9,7 +9,8 @@ import { mcpLeaderDoorResultSchema, mcpLeaderSelfStatusSchema, mcpLeaderStatusSc
 import { CodexAttachError } from './adapters/codex-link.ts';
 import { EchoGuard } from './echo-guard.ts';
 import { EventJournal } from './event-journal.ts';
-import { LEADER_EVENTS_TOOL_NAME, LeaderDelivery, type LeaderDeliveryOptions, leaderClientOf } from './leader-delivery.ts';
+import { LEADER_EVENTS_TOOL_NAME, LeaderDelivery, type LeaderDeliveryOptions, leaderClientOf, mergeReplayed, replayedRange } from './leader-delivery.ts';
+import { textResult } from './tool.ts';
 import { leaderEventsTool } from './tools/leader-events.ts';
 import { type FakeOpenCodeSession, fakeOpenCodeSession } from './leader-delivery.testkit.ts';
 
@@ -669,11 +670,12 @@ describe('attaching Claude Code: the channel push travels down the owner session
   /** #886: the owner's calls, as the service reports them — a tool name and its string `action`. */
   const other = { tool: 'task_read' } as const;
   const read = { tool: LEADER_EVENTS_TOOL_NAME, action: 'read' } as const;
-  /** A read as the service reports one that validated and answered: arrival, then success (#890 re-check). */
-  const readOk = (made: LeaderDelivery, key: string): void => {
-    const calledAt = Date.now();
+  /** A read's answer as the client got it, replaying journal rows `seqs` — none is an empty page (#890 round 3). */
+  const page = (seqs: readonly number[] = []) => textResult('read', { status: 'ok', events: seqs.map((journalSeq) => ({ journalSeq })), hasMore: false });
+  /** A read as the service reports one that validated and answered: arrival, then success with its answer (#890 re-check). */
+  const readOk = (made: LeaderDelivery, key: string, seqs: readonly number[] = []): void => {
     made.sessionCalled(key, read);
-    made.sessionSucceeded(key, read, calledAt);
+    made.sessionSucceeded(key, read, page(seqs));
   };
 
   it('names leader_events by the tool’s own name (#886)', () => {
@@ -724,12 +726,12 @@ describe('attaching Claude Code: the channel push travels down the owner session
     const t = channelTransport();
     made.sessionOpened('session-1', t.transport as never);
     expect((await made.act({ action: 'attach', client: 'claude-code' })).ok).toBe(true);
-    row(made1.journal);
+    const pushed = row(made1.journal)!.journalSeq;
     await until('the push', () => t.pushed.length === 1);
     await new Promise((r) => setTimeout(r, 320)); // past the not-seen bound
     // The fallback, exactly as documented: status, read, reconcile state with other tools, then ack.
     made.sessionCalled('session-1', { tool: LEADER_EVENTS_TOOL_NAME, action: 'status' });
-    readOk(made, 'session-1');
+    readOk(made, 'session-1', [pushed]);
     for (let i = 0; i < 4; i++) made.sessionCalled('session-1', other);
     const before = published.length;
     await until('a delivery heartbeat after the read', () => published.length >= before + 2, 3_000);
@@ -761,28 +763,47 @@ describe('attaching Claude Code: the channel push travels down the owner session
     expect(blockerOf(made)?.code).toBe('claude-code-push-not-seen');
   });
 
-  it('counts a read only once it succeeded, for the owner, and only as of when it arrived (#890 re-check)', async () => {
+  it('counts a read only once it succeeded, for the owner, and only for the rows its answer replayed (#890 re-check, round 3)', async () => {
     // RED against: recording a read on arrival (a rejected read would suppress the blocker), taking a
-    // success from another session or another tool, or dating the read at completion so a push made
-    // while it ran reads as seen.
+    // success from another session or another tool, or counting a read whose answer did not carry the
+    // pushed row — a gap, an empty page, or a page of other rows — as having seen it.
     const { delivery: made, journal } = delivery(true, [], undefined, undefined, 300);
     const t = channelTransport();
     made.sessionOpened('session-1', t.transport as never);
     expect((await made.act({ action: 'attach', client: 'claude-code' })).ok).toBe(true);
-    row(journal);
+    const pushed = row(journal)!.journalSeq;
     await until('the push', () => t.pushed.length === 1);
     await new Promise((r) => setTimeout(r, 320));
     made.sessionCalled('session-1', read); // arrived, then rejected: no success edge
-    made.sessionSucceeded('someone-else', read, Date.now());
-    made.sessionSucceeded('session-1', { tool: LEADER_EVENTS_TOOL_NAME, action: 'status' }, Date.now());
-    made.sessionSucceeded('session-1', { tool: 'task_read', action: 'read' }, Date.now());
-    made.sessionSucceeded('session-1', read, Date.now() - 10_000); // arrived before the push
+    made.sessionSucceeded('someone-else', read, page([pushed]));
+    made.sessionSucceeded('session-1', { tool: LEADER_EVENTS_TOOL_NAME, action: 'status' }, page([pushed]));
+    made.sessionSucceeded('session-1', { tool: 'task_read', action: 'read' }, page([pushed]));
+    made.sessionSucceeded('session-1', read, textResult('GAP', { status: 'gap', gap: { oldestSeq: pushed, latestSeq: pushed } }));
+    made.sessionSucceeded('session-1', read, page());
+    made.sessionSucceeded('session-1', read, page([pushed + 1]));
     for (let i = 0; i < 3; i++) made.sessionCalled('session-1', other);
     expect(blockerOf(made)?.code).toBe('claude-code-push-not-seen');
-    // A later success never moves the read back in time.
-    made.sessionSucceeded('session-1', read, Date.now());
-    made.sessionSucceeded('session-1', read, Date.now() - 10_000);
+    // A read that replayed the row covers it, and a later read of other rows never takes that back.
+    made.sessionSucceeded('session-1', read, page([pushed]));
+    made.sessionSucceeded('session-1', read, page());
     expect(blockerOf(made)?.code).toBe('claude-code-push-unconfirmed');
+  });
+
+  it('merges replayed ranges and keeps only the newest when there are too many (#890 round 3)', () => {
+    // RED against: an unbounded list, or merging that loses a range — a lost range can only report a
+    // blocker, but a wrongly widened one would hide a row no read replayed.
+    expect(replayedRange(page([4, 5, 6]))).toEqual({ fromSeq: 4, throughSeq: 6 });
+    expect(replayedRange(page())).toBeUndefined();
+    expect(replayedRange(textResult('GAP', { status: 'gap' }))).toBeUndefined();
+    expect(replayedRange(textResult('no structured answer'))).toBeUndefined();
+    let ranges = mergeReplayed([], { fromSeq: 4, throughSeq: 6 });
+    ranges = mergeReplayed(ranges, { fromSeq: 7, throughSeq: 8 });
+    ranges = mergeReplayed(ranges, { fromSeq: 10, throughSeq: 10 });
+    ranges = mergeReplayed(ranges, { fromSeq: 1, throughSeq: 2 });
+    expect(ranges).toEqual([{ fromSeq: 1, throughSeq: 2 }, { fromSeq: 4, throughSeq: 8 }, { fromSeq: 10, throughSeq: 10 }]);
+    for (let seq = 20; seq < 60; seq += 2) ranges = mergeReplayed(ranges, { fromSeq: seq, throughSeq: seq });
+    expect(ranges).toHaveLength(16);
+    expect(ranges.at(-1)).toEqual({ fromSeq: 58, throughSeq: 58 });
   });
 
   it('forgets the owner’s activity when another session takes the project over (#886)', async () => {

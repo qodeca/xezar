@@ -164,8 +164,8 @@ export async function startMcpService(opts: StartMcpServiceOptions): Promise<Mcp
               pushCapability: (key, transport) => delivery.pushCapability(key, transport),
               // #886: every tool call, with its tool and action, is the owner's activity signal for the push-not-seen blocker.
               called: (key, call) => delivery.sessionCalled(key, call),
-              // #886: a read counts only once it validated and answered (#890 re-check).
-              succeeded: (key, call, calledAt) => delivery.sessionSucceeded(key, call, calledAt),
+              // #886: a read counts only once it validated and answered (#890 re-check), and only for the rows it replayed (round 3).
+              succeeded: (key, call, result) => delivery.sessionSucceeded(key, call, result),
             },
           }
         : {}),

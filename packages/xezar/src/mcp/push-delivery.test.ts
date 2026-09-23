@@ -945,6 +945,73 @@ describe('#309 — push delivery in the running service (A-19 delivery, A-20 no-
     expect(blocker(await c.status())).toBe('claude-code-push-unconfirmed');
   }, 60_000);
 
+  /** #890 round 3: a Claude Code leader with rows pushed past the not-seen bound, ready to read. */
+  async function pushedPastNotSeen(changes: readonly string[]) {
+    const c = await cockpit();
+    const handle = await startMcpService({ projectId: c.id, version: VERSION, service: c.app, store: c.store, warn: () => {}, leader: { heartbeatMs: 500, pushNotSeenMs: 1_000 } });
+    closers.push(() => handle.close());
+    const leader = claudeAgent(c.root);
+    await leader.initialize();
+    await until('the owner session’s controller', async () => ((await c.status()) as { delivery: unknown }).delivery !== null || undefined);
+    okResult(await leader.call('leader_events', { action: 'attach' }));
+    const frames: Array<{ content: string; meta?: Record<string, string> }> = [];
+    for (const baseBranch of changes) {
+      expect((await c.human('PUT', '/config', { baseBranch })).status).toBe(200);
+      const change = await until(`the ${baseBranch} row`, () =>
+        journalRows(c.dataDir).find((row) => row.kind === 'config.changed' && row.origin === 'human' && !frames.some((f) => f.content.includes(row.eventId))),
+      );
+      frames.push(await until(`the ${baseBranch} push`, () => leader.channels.find((f) => f.content.includes(change.eventId))));
+    }
+    await new Promise((r) => setTimeout(r, 1_100)); // past the not-seen bound
+    const blocker = async (): Promise<string | undefined> => ((await c.status()) as { blocker?: { code?: string } | null }).blocker?.code;
+    const busy = async (): Promise<void> => {
+      for (let i = 0; i < 3; i++) okResult(await leader.call('discover_project', {}));
+    };
+    return { leader, frames, blocker, busy };
+  }
+
+  it('#886 (#890 round 3): a leader_events read that answers GAP replayed nothing, so it does not hide claude-code-push-not-seen', async () => {
+    // RED against: counting every non-error read as a recovery (`d9a67c29`) — a stale cursor answers
+    // `status: "gap"`, "Nothing was replayed", yet the pushed row read as recovered and the session
+    // stayed on push-unconfirmed however long it kept working.
+    const { leader, frames, blocker, busy } = await pushedPastNotSeen(['develop']);
+    // A cursor from an earlier journal (another epoch): the journal's own stale-cursor answer.
+    const real = JSON.parse(Buffer.from(frames[0]!.meta!.next_cursor!, 'base64url').toString('utf8')) as Record<string, unknown>;
+    const stale = Buffer.from(JSON.stringify({ ...real, e: 'an-older-journal-epoch' }), 'utf8').toString('base64url');
+    const gap = okResult(await leader.call('leader_events', { action: 'read', cursor: stale }));
+    expect(gap.structuredContent).toMatchObject({ status: 'gap' });
+    await busy();
+    expect(await blocker()).toBe('claude-code-push-not-seen');
+
+    // A read that replays the pushed row still clears it.
+    okResult(await leader.call('leader_events', { action: 'read' }));
+    expect(await blocker()).toBe('claude-code-push-unconfirmed');
+  }, 60_000);
+
+  it('#886 (#890 round 3): a partial leader_events page covers only the rows it replayed; a pushed row past it is still not seen', async () => {
+    // RED against: counting every non-error read as a recovery (`d9a67c29`) — a one-row page replayed
+    // the older push only, yet the newer pushed row read as recovered too.
+    const { leader, frames, blocker, busy } = await pushedPastNotSeen(['develop', 'release']);
+    const newest = Number(frames[1]!.meta!.last_seq);
+    const page = okResult(await leader.call('leader_events', { action: 'read', limit: 1 }));
+    const replayed = (page.structuredContent as { events: Array<{ journalSeq: number }>; hasMore: boolean }).events.map((e) => e.journalSeq);
+    expect(replayed).toHaveLength(1);
+    expect(replayed[0]).toBeLessThan(newest);
+    expect(page.structuredContent).toMatchObject({ status: 'ok', hasMore: true });
+    await busy();
+    expect(await blocker()).toBe('claude-code-push-not-seen');
+
+    // An explicit cursor past both rows replays nothing, so it covers nothing either.
+    const past = okResult(await leader.call('leader_events', { action: 'read', cursor: frames[1]!.meta!.next_cursor! }));
+    expect((past.structuredContent as { events: unknown[] }).events).toHaveLength(0);
+    await busy();
+    expect(await blocker()).toBe('claude-code-push-not-seen');
+
+    // Paging on from where the first page stopped replays the newer row: now it is read.
+    okResult(await leader.call('leader_events', { action: 'read', cursor: (page.structuredContent as { nextCursor: string }).nextCursor }));
+    expect(await blocker()).toBe('claude-code-push-unconfirmed');
+  }, 60_000);
+
   it('#450 T-22: in hosted mode the MCP door refuses attach and stop, and status says xezar cannot push', async () => {
     // RED against: skipping the hosted check in `attachSession`.
     const c = await cockpit();

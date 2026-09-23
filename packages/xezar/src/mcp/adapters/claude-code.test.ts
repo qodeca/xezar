@@ -343,11 +343,12 @@ describe('oldest unacknowledged delivery (#404 finding 5)', () => {
 
 describe('a session that keeps calling tools but never acknowledges a push (#886 P3)', () => {
   const FIVE_MIN = 5 * 60_000;
-  function active(over: Partial<ClaudeCodeChannelAdapterOptions> = {}): Harness & { call: (ms: number, n?: number) => void; read: (ms: number) => void } {
-    let readAt: number | undefined;
+  /** `read(from, through)`: a `leader_events` read whose answer replayed journal rows `from`–`through`. */
+  function active(over: Partial<ClaudeCodeChannelAdapterOptions> = {}): Harness & { call: (ms: number, n?: number) => void; read: (fromSeq: number, throughSeq: number) => void } {
+    const replayed: Array<{ fromSeq: number; throughSeq: number }> = [];
     const otherCallsAt: number[] = [];
-    const h = harness({ ownerActivity: () => ({ ...(readAt === undefined ? {} : { readAt }), otherCallsAt }), ...over });
-    return { ...h, call: (ms, n = 1) => { for (let i = 0; i < n; i++) otherCallsAt.push(ms); }, read: (ms) => (readAt = ms) };
+    const h = harness({ ownerActivity: () => ({ replayed, otherCallsAt }), ...over });
+    return { ...h, call: (ms, n = 1) => { for (let i = 0; i < n; i++) otherCallsAt.push(ms); }, read: (fromSeq, throughSeq) => replayed.push({ fromSeq, throughSeq }) };
   }
 
   it('says plainly that the pushes are most likely not reaching the conversation', async () => {
@@ -382,23 +383,25 @@ describe('a session that keeps calling tools but never acknowledges a push (#886
     expect(h.adapter.status().blocker?.code).toBe('claude-code-push-not-seen');
   });
 
-  it('keeps the soft blocker once the session has read events since the push, however busy it is (#890 review, finding 1)', async () => {
-    // RED against: ignoring `readAt` — the documented polling fallback (read, reconcile, ack) would be
-    // reported as broken in the gap before its ack.
+  it('keeps the soft blocker once a read replayed the pushed row, however busy the session is (#890 review, finding 1)', async () => {
+    // RED against: ignoring the replayed rows — the documented polling fallback (read, reconcile, ack)
+    // would be reported as broken in the gap before its ack.
     const h = active();
     h.setNow(0);
     await h.adapter.deliver(dispatch([row(1)]), signal());
-    h.read(FIVE_MIN + 1);
+    h.read(1, 1);
     h.call(FIVE_MIN + 2, 10);
     h.setNow(FIVE_MIN + 60_000);
     expect(h.adapter.status().blocker?.code).toBe('claude-code-push-unconfirmed');
   });
 
-  it('does not let a read made BEFORE the push stand for it (#890 review, finding 1)', async () => {
-    // RED against: any read at all suppressing the blocker; a read before the push cannot have seen it.
+  it('does not let a read that replayed OTHER rows stand for the pushed one (#890 review, finding 1; round 3)', async () => {
+    // RED against: any read at all suppressing the blocker; a read whose answer did not carry the
+    // pushed row — earlier rows, or a gap that replayed nothing — cannot have seen it.
     const h = active();
     h.setNow(1_000);
-    h.read(999);
+    h.read(0, 0);
+    h.read(2, 5);
     await h.adapter.deliver(dispatch([row(1)]), signal());
     h.call(1_000 + FIVE_MIN, CLAUDE_CODE_PUSH_NOT_SEEN_CALLS);
     h.setNow(1_000 + FIVE_MIN);
@@ -411,12 +414,24 @@ describe('a session that keeps calling tools but never acknowledges a push (#886
     const h = active();
     h.setNow(0);
     await h.adapter.deliver(dispatch([row(1)]), signal());
-    h.read(10);
+    h.read(1, 1);
     h.setNow(20);
     await h.adapter.deliver(dispatch([row(2)]), signal());
     h.call(20 + FIVE_MIN, CLAUDE_CODE_PUSH_NOT_SEEN_CALLS);
     h.setNow(20 + FIVE_MIN);
     expect(h.adapter.status().blocker?.code).toBe('claude-code-push-not-seen');
+  });
+
+  it('counts a row the leader read BEFORE it was pushed as seen (#890 round 3)', async () => {
+    // RED against: judging by time instead of by the rows a read replayed — a read that already carried
+    // the row, answered before a lagging push of it, would still leave that push "not seen".
+    const h = active();
+    h.setNow(0);
+    h.read(1, 1);
+    await h.adapter.deliver(dispatch([row(1)]), signal());
+    h.call(FIVE_MIN, CLAUDE_CODE_PUSH_NOT_SEEN_CALLS);
+    h.setNow(FIVE_MIN);
+    expect(h.adapter.status().blocker?.code).toBe('claude-code-push-unconfirmed');
   });
 
   it('keeps the soft blocker while the session only reads state before acknowledging (guard)', async () => {
