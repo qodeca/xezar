@@ -141,6 +141,53 @@ describe('AgentQuotaChecker', () => {
     expect(answer.accounts[0]!.weeklyWindow?.usedPercent).toBe(29);
   });
 
+  // #906: the live Claude Code 2.1.280 get_usage reply (issue 867, "AC-38 re-proof (get_usage,
+  // live)") nests `limits[]` under `rate_limits`, and its session and weekly entries carry
+  // `scope: null`. The per-model weekly window (Fable) must reach the answer.
+  it('reads the per-model window from the limits nested under rate_limits in the live reply', async () => {
+    const capture: unknown = JSON.parse(await readFile(
+      new URL('../__fixtures__/agent-quota/claude-get-usage-nested-limits.json', import.meta.url), 'utf8',
+    ));
+    const run: RunQuotaProcess = async (spec) => (spec.args[0] === '--version' ? '2.1.280 (Claude Code)' : capture);
+    const checker = new AgentQuotaChecker({
+      store: new AgentQuotaStore({ now: () => Date.parse('2026-09-23T07:00:00Z') }),
+      now: () => Date.parse('2026-09-23T07:00:00Z'),
+      profiles: async () => [profile('claude')], runProcess: run, dryRun: () => false,
+    });
+
+    const answer = await checker.refresh();
+
+    expect(answer.accounts[0]).toMatchObject({
+      source: 'check', status: 'ok', planType: 'max', statusReason: null, warnings: [],
+      shortWindow: { usedPercent: 9, windowMinutes: 300 },
+      weeklyWindow: { usedPercent: 23, windowMinutes: 10080 },
+      modelWindows: [{ model: 'Fable', usedPercent: 4, windowMinutes: 10080 }],
+    });
+    expect(answer.accounts[0]!.notReported).toEqual(['credits']);
+  });
+
+  // An empty limit list carries no rows; the fixed windows beside it still hold the numbers.
+  it.each(['top-level', 'nested'] as const)('reads the fixed windows when the %s limits list is empty', async (where) => {
+    const capture = JSON.parse(await readFile(
+      new URL('../__fixtures__/agent-quota/claude-get-usage-control-response.json', import.meta.url), 'utf8',
+    )) as { response: { request_id: string; response: { limits?: unknown[]; rate_limits: { limits?: unknown[] } } } };
+    capture.response.request_id = 'xezar-agent-quota';
+    if (where === 'top-level') capture.response.response.limits = [];
+    else capture.response.response.rate_limits.limits = [];
+    const run: RunQuotaProcess = async (spec) => (spec.args[0] === '--version' ? '2.1.280 (Claude Code)' : capture);
+    const checker = new AgentQuotaChecker({
+      store: new AgentQuotaStore({ now: () => Date.parse('2026-09-22T14:00:00Z') }),
+      now: () => Date.parse('2026-09-22T14:00:00Z'),
+      profiles: async () => [profile('claude')], runProcess: run, dryRun: () => false,
+    });
+
+    const answer = await checker.refresh();
+
+    expect(answer.accounts[0]).toMatchObject({
+      source: 'check', status: 'ok', shortWindow: { usedPercent: 7 }, weeklyWindow: { usedPercent: 29 },
+    });
+  });
+
   it('uses fixed isolated Claude argv and reports the /usage fallback in the row', async () => {
     const calls: AgentQuotaProcessSpec[] = [];
     const run: RunQuotaProcess = vi.fn(async (spec) => {
@@ -271,6 +318,44 @@ describe('AgentQuotaChecker', () => {
     expect(run).toHaveBeenCalledTimes(2);
   });
 
+  // #867 AC-26 / D29: the minimums are the versions the D18 live QA ran on (PR 888 QA:
+  // Claude Code 2.1.280, codex-cli 0.155.1); a version below them is gated, and the unchecked
+  // store row names the same minimum as the checker.
+  it.each([
+    ['claude', '2.1.279 (Claude Code)', '2.1.280'],
+    ['codex', 'codex-cli 0.155.0', '0.155.1'],
+  ] as const)('gates %s below the D18 proof version %s', async (provider, reply, minimum) => {
+    const run = vi.fn(async () => reply);
+    const store = new AgentQuotaStore({ now: () => Date.parse('2026-09-22T14:20:00Z') });
+    expect(store.answer({}, [{ runner: provider, accountId: 'unchecked' }]).accounts[0]!.minimumVersion).toBe(minimum);
+    const checker = new AgentQuotaChecker({
+      store, now: () => Date.parse('2026-09-22T14:20:00Z'),
+      profiles: async () => [profile(provider)], runProcess: run, dryRun: () => false,
+    });
+    const answer = await checker.refresh();
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(answer.accounts[0]).toMatchObject({ status: 'unknown', statusReason: 'version-too-old', minimumVersion: minimum });
+  });
+
+  // #867 AC-7: the checker's own times (`observedAt`, `nextCheckAt`) are whole seconds too.
+  it('emits whole-second times on a check that started inside a second', async () => {
+    const machineTime = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/;
+    const run: RunQuotaProcess = async () => {
+      throw Object.assign(new Error('missing'), { code: 'ENOENT' });
+    };
+    const checker = new AgentQuotaChecker({
+      store: new AgentQuotaStore({ now: () => Date.parse('2026-09-22T14:20:00.448Z') }),
+      now: () => Date.parse('2026-09-22T14:20:00.448Z'),
+      profiles: async () => [profile('claude')], runProcess: run, dryRun: () => false,
+    });
+    const answer = await checker.refresh();
+    const row = answer.accounts[0]!;
+    expect(row).toMatchObject({ statusReason: 'not-installed' });
+    expect([answer.generatedAt, row.observedAt, row.nextCheckAt]).toEqual([
+      expect.stringMatching(machineTime), expect.stringMatching(machineTime), expect.stringMatching(machineTime),
+    ]);
+  });
+
   it('never runs more than two login checks concurrently', async () => {
     let active = 0;
     let peak = 0;
@@ -384,6 +469,32 @@ describe('AgentQuotaChecker', () => {
     expect(warn).toHaveBeenCalledTimes(1);
   });
 
+  // #893: the real `claude -p "/usage"` reply from Claude Code 2.1.280 on a max-plan login is a
+  // usage-composition report with no limit rows. It is not a format change: the fallback simply
+  // has no limits to read, so the row says the check failed and nothing logs a format warning.
+  // The fixture is the reply quoted in #893 (captured at PR 888 head f823b97b).
+  it('reports the #893 usage-composition reply as a failed check, not a format change', async () => {
+    const warn = vi.fn();
+    const composition = await readFile(
+      new URL('../__fixtures__/agent-quota/claude-usage-composition.json', import.meta.url), 'utf8',
+    );
+    const run: RunQuotaProcess = async (spec) => {
+      if (spec.args[0] === '--version') return '2.1.280 (Claude Code)';
+      if (spec.args.includes('--input-format')) throw new Error('get_usage failed');
+      return composition;
+    };
+    const checker = new AgentQuotaChecker({
+      store: new AgentQuotaStore(), profiles: async () => [profile('claude')],
+      runProcess: run, logger: { warn }, dryRun: () => false,
+    });
+
+    const answer = await checker.refresh();
+
+    expect(answer.accounts[0]).toMatchObject({ status: 'unknown', statusReason: 'check-failed', source: 'check' });
+    expect(answer.accounts[0]!.warnings).toEqual(['Claude Code did not report plan limits.']);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
   it('wait mode checks stale rows only', async () => {
     const now = Date.parse('2026-09-22T14:20:00Z');
     const store = new AgentQuotaStore({ now: () => now });
@@ -407,8 +518,11 @@ describe('AgentQuotaChecker', () => {
     vi.setSystemTime(new Date('2026-09-22T14:20:00Z'));
     const store = new AgentQuotaStore({ now: Date.now });
     const put = vi.spyOn(store, 'put');
+    const run: RunQuotaProcess = async () => {
+      throw Object.assign(new Error('missing'), { code: 'ENOENT' });
+    };
     const checker = new AgentQuotaChecker({
-      store, now: Date.now, profiles: async () => [profile('claude')], dryRun: () => true,
+      store, now: Date.now, profiles: async () => [profile('claude')], runProcess: run, dryRun: () => false,
     });
 
     await vi.advanceTimersByTimeAsync(20 * 60_000);
@@ -480,16 +594,34 @@ describe('AgentQuotaChecker', () => {
     ]);
   });
 
-  it('dry-run starts no process and returns deterministic rows for both providers', async () => {
+  // #867 AC-27: dry run starts no process on any path and answers with the frozen sample's rows.
+  it('dry-run starts no process and returns the frozen sample rows', async () => {
     const run = vi.fn();
+    const store = new AgentQuotaStore({ now: () => Date.parse('2026-09-22T14:24:00Z') });
+    const put = vi.spyOn(store, 'put');
     const checker = new AgentQuotaChecker({
-      store: new AgentQuotaStore({ now: () => Date.parse('2026-09-22T14:20:00Z') }),
-      now: () => Date.parse('2026-09-22T14:20:00Z'), profiles: async () => [profile('claude'), profile('codex')],
+      store, now: () => Date.parse('2026-09-22T14:24:00Z'), profiles: async () => [profile('claude'), profile('codex')],
       runProcess: run, dryRun: () => true,
     });
-    const answer = await checker.refresh();
+    checker.startup();
+    const answers = [await checker.refresh(), await checker.refreshStale({}, true), await checker.answer()];
+    checker.viewerStarted()();
+    checker.noteRead();
+    await new Promise((resolve) => setImmediate(resolve));
     expect(run).not.toHaveBeenCalled();
-    expect(answer.accounts.map((row) => [row.runner, row.status])).toEqual([['claude', 'ok'], ['codex', 'ok']]);
+    expect(put).not.toHaveBeenCalled();
+    for (const answer of answers) {
+      expect(answer.accounts.map((row) => `${row.runner}:${row.accountId}:${row.status}`)).toEqual([
+        'claude:default:ok', 'claude:work:unknown', 'codex:default:ok', 'claude:quota-exhausted:out', 'codex:api-key:unknown',
+      ]);
+    }
+    expect((await checker.answer({ provider: 'codex', accountId: 'api-key' })).accounts).toHaveLength(1);
+    expect((await checker.answer({ accountId: 'no-such-login' })).accounts).toEqual([]);
+    checker.close();
+    const later = new AgentQuotaChecker({
+      store, now: () => Date.parse('2026-10-30T09:00:00.500Z'), profiles: async () => [], runProcess: run, dryRun: () => true,
+    });
+    expect(await later.answer()).toEqual(answers[2]);
   });
 
   it('contains no forbidden credential or private endpoint reads', () => {

@@ -77,7 +77,7 @@ describe('window lines', () => {
       { key: 'model-0', label: 'Weekly, Fable', usedPercent: 29, resetsAt: '2026-09-28T17:00:00Z' },
     ])
     expect(quotaWindowLines(row('codex', 'default')).map((l) => l.label)).toEqual(['Weekly'])
-    expect(quotaWindowLines(row('claude', 'qodeca-priv'))).toEqual([])
+    expect(quotaWindowLines(row('claude', 'work'))).toEqual([])
   })
 })
 
@@ -89,7 +89,7 @@ describe('status sentence, credits, source and not reported', () => {
     expect(out.tone).toBe('danger')
     expect(out.word).toBe(`Out until ${formatQuotaTime('2026-09-22T15:10:00Z', NOW)}`)
     expect(out.reason).toBe('— a task under this login stopped on the usage limit 5m ago.')
-    expect(quotaStatusSentence(row('claude', 'qodeca-priv'), 180, NOW)).toMatchObject({
+    expect(quotaStatusSentence(row('claude', 'work'), 180, NOW)).toMatchObject({
       tone: 'neutral',
       word: 'Limits unknown',
       reason: '— Claude Code reported no limits for this login.',
@@ -153,7 +153,7 @@ describe('the per-agent summary (D30) and the chip (D38)', () => {
     // A subscription login that reported nothing yet still counts: the kind decides, not the facts.
     const quietSubscription: AgentQuotaResponse = {
       ...FIXTURE,
-      accounts: [{ ...row('claude', 'qodeca-priv'), loginKind: 'subscription' }],
+      accounts: [{ ...row('claude', 'work'), loginKind: 'subscription' }],
     }
     expect(chipSummaries(quietSubscription, both, NOW)).toMatchObject([{ runner: 'claude', total: 1, canWork: 0 }])
     // Unknown answer or unknown install state: no chip rather than a guess.

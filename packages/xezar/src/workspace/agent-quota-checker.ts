@@ -15,12 +15,20 @@ import { buildChildEnv } from '../core/agent-env.ts';
 import { profileEnv } from '../core/agent-profiles.ts';
 import { defaultAgentAccountStore, loadAgentAccounts } from './agent-accounts.ts';
 import { listAgentProfiles, type ResolvedAgentProfile } from './agent-profiles.ts';
-import { AgentQuotaStore, normalizeClaudeUsage, normalizeCodexRateLimits, type AgentQuotaSelector } from './agent-quota.ts';
+import {
+  AgentQuotaStore,
+  isoUtc,
+  MINIMUM_CLAUDE_QUOTA_VERSION,
+  MINIMUM_CODEX_QUOTA_VERSION,
+  normalizeClaudeUsage,
+  normalizeCodexRateLimits,
+  type AgentQuotaSelector,
+} from './agent-quota.ts';
+import { dryRunQuotaAnswer } from './agent-quota-sample.ts';
 
 type QuotaProfile = Omit<ResolvedAgentProfile, 'provider'> & { provider: AgentQuotaRunner };
 
-export const MINIMUM_CLAUDE_QUOTA_VERSION = '2.1.278';
-export const MINIMUM_CODEX_QUOTA_VERSION = '0.155.1';
+export { MINIMUM_CLAUDE_QUOTA_VERSION, MINIMUM_CODEX_QUOTA_VERSION };
 export const AGENT_QUOTA_CHECK_GAP_MS = 5 * 60_000;
 export const AGENT_QUOTA_STALE_MS = 15 * 60_000;
 export const AGENT_QUOTA_CHECK_TIMEOUT_MS = 20_000;
@@ -40,7 +48,8 @@ const claudeLimitSchema = z.object({
   kind: z.enum(['session', 'weekly_all', 'weekly_scoped']),
   percent: z.number().min(0).max(100),
   resets_at: z.string().datetime({ offset: true }),
-  scope: z.object({ model: z.object({ display_name: z.string().min(1) }).optional() }).optional(),
+  // The live reply sends `scope: null` for the session and all-models entries (#906).
+  scope: z.object({ model: z.object({ display_name: z.string().min(1) }).nullish() }).nullish(),
 });
 
 const claudeRateLimitSchema = z.object({
@@ -57,6 +66,8 @@ const claudeUsageSchema = z.object({
     seven_day: claudeRateLimitSchema.optional(),
     seven_day_opus: claudeRateLimitSchema.nullable().optional(),
     seven_day_sonnet: claudeRateLimitSchema.nullable().optional(),
+    // Claude Code 2.1.280 nests the typed limit list here, beside the fixed windows (#906).
+    limits: z.array(claudeLimitSchema).optional(),
   }).optional(),
 }).refine((value) => value.limits !== undefined || value.rate_limits !== undefined || value.rate_limits_available === false, {
   message: 'Claude usage reply carries no rate-limit fields',
@@ -145,6 +156,15 @@ export interface AgentQuotaProcessSpec {
 }
 
 export type RunQuotaProcess = (spec: AgentQuotaProcessSpec) => Promise<unknown>;
+
+/** A reply that is well-formed but carries no plan limits: the check failed, the format did not change. */
+class QuotaNotReportedError extends Error {}
+
+/**
+ * The heading of the usage-composition report Claude Code prints for `/usage` when it shows no
+ * limit rows (the #893 capture, Claude Code 2.1.280). It is a known reply with nothing to read.
+ */
+const CLAUDE_USAGE_COMPOSITION = /^What[’']s contributing to your limits usage\?$/m;
 
 function processFailure(message: string, code?: string): Error {
   const error = new Error(message) as NodeJS.ErrnoException;
@@ -325,7 +345,7 @@ function unknownRecord(
     accountId: profile.id,
     status: 'unknown',
     loginKind,
-    observedAt: checkedAt.toISOString(),
+    observedAt: isoUtc(checkedAt),
     ageSeconds: 0,
     source: 'check',
     shortWindow: null,
@@ -336,7 +356,7 @@ function unknownRecord(
     notReported: ['shortWindow', 'weeklyWindow', 'modelWindows', 'credits', 'planType'],
     stale: false,
     refreshing: false,
-    nextCheckAt: new Date(checkedAt.getTime() + AGENT_QUOTA_CHECK_GAP_MS).toISOString(),
+    nextCheckAt: isoUtc(checkedAt.getTime() + AGENT_QUOTA_CHECK_GAP_MS),
     toolVersion,
     minimumVersion: minimumFor(profile.provider),
     statusReason: reason,
@@ -388,8 +408,10 @@ function normalizeClaudeControl(
     const text = `${part('month')} ${part('day')} at ${part('hour')}:${part('minute')}${part('dayPeriod').toLowerCase()} (${timeZone})`;
     lines.push(`Current ${label}: ${percent}% used · resets ${text}`);
   };
-  if (usage.limits) {
-    for (const limit of usage.limits) {
+  const limits = usage.limits ?? usage.rate_limits?.limits;
+  // An empty list reports nothing, so the fixed windows below are read instead.
+  if (limits?.length) {
+    for (const limit of limits) {
       const label = limit.kind === 'session' ? 'session'
         : limit.kind === 'weekly_all' ? 'week (all models)'
         : `week (${limit.scope?.model?.display_name ?? 'model'})`;
@@ -471,6 +493,7 @@ async function runClaudeCheck(
       const raw = claudeTextReplySchema.parse(JSON.parse(String(rawText)));
       const record = normalizeClaudeUsage(raw, profile.id, checkedAt);
       if (record.shortWindow === null && record.weeklyWindow === null && record.modelWindows === null) {
+        if (CLAUDE_USAGE_COMPOSITION.test(raw.result)) throw new QuotaNotReportedError('Claude Code did not report plan limits.');
         throw new SyntaxError('Claude /usage reply carried no recognised quota rows');
       }
       return agentQuotaProducerAccountSchema.parse({
@@ -558,27 +581,6 @@ async function runCodexCheck(
   return { ...normalizeCodexRateLimits({ result: limits }, profile.id, checkedAt), loginKind };
 }
 
-function dryRunRecord(profile: QuotaProfile, checkedAt: Date): AgentQuotaProducerAccount {
-  if (profile.provider === 'claude') {
-    return {
-      ...normalizeClaudeUsage({
-        result: 'Current session: 25% used · resets Sep 22 at 5:10pm (Europe/Warsaw)\nCurrent week (all models): 40% used · resets Sep 28 at 7:00pm (Europe/Warsaw)',
-      }, profile.id, checkedAt),
-      loginKind: 'subscription',
-    };
-  }
-  return { ...normalizeCodexRateLimits({ result: {
-    ordinaryUsageAllowed: true,
-    rateLimits: {
-      primary: { usedPercent: 20, windowDurationMins: 300, resetsAt: Math.floor((checkedAt.getTime() + 300 * 60_000) / 1_000) },
-      secondary: { usedPercent: 35, windowDurationMins: 10080, resetsAt: Math.floor((checkedAt.getTime() + 10080 * 60_000) / 1_000) },
-      credits: { hasCredits: false, unlimited: false, balance: '0' },
-      planType: 'mock',
-      rateLimitReachedType: null,
-    },
-  } }, profile.id, checkedAt), loginKind: 'subscription' };
-}
-
 export interface AgentQuotaCheckerOptions {
   store: AgentQuotaStore;
   now?: () => number;
@@ -628,6 +630,8 @@ export class AgentQuotaChecker {
   }
 
   async answer(selector: AgentQuotaSelector = {}): Promise<AgentQuotaProducerResponse> {
+    // #867 AC-4 / AC-27: dry run answers with the approved sample and never checks.
+    if (this.dryRun()) return dryRunQuotaAnswer(selector);
     const profiles = await this.knownProfiles();
     const base = this.options.store.answer(selector, profiles.map((profile) => ({ runner: profile.provider, accountId: profile.id })));
     const now = this.now();
@@ -640,7 +644,7 @@ export class AgentQuotaChecker {
           ...account,
           stale: account.source === 'none' || now - Date.parse(account.observedAt) >= AGENT_QUOTA_STALE_MS,
           refreshing: this.inFlight.has(key),
-          nextCheckAt: attempted === undefined ? null : new Date(attempted + AGENT_QUOTA_CHECK_GAP_MS).toISOString(),
+          nextCheckAt: attempted === undefined ? null : isoUtc(attempted + AGENT_QUOTA_CHECK_GAP_MS),
           toolVersion: this.versions.get(key) ?? account.toolVersion ?? null,
           minimumVersion: minimumFor(account.runner),
           statusReason: account.statusReason ?? null,
@@ -742,6 +746,7 @@ export class AgentQuotaChecker {
   }
 
   private schedule(profile: QuotaProfile): Promise<void> {
+    if (this.dryRun()) return Promise.resolve();
     const key = this.key(profile);
     const existing = this.inFlight.get(key);
     if (existing) return existing;
@@ -773,44 +778,38 @@ export class AgentQuotaChecker {
     let toolVersion: string | null = null;
     let loginKind: AgentQuotaLoginKind = 'unknown';
     try {
-      let record: AgentQuotaProducerAccount;
-      if (this.dryRun()) {
-        toolVersion = minimumFor(profile.provider);
-        record = dryRunRecord(profile, checkedAt);
-      } else {
-        const rawVersion = String(await this.runProcess({
-          executable: executableFor(profile.provider),
-          args: ['--version'],
-          cwd: tmpdir(),
-          env: profileProcessEnv(profile),
-          deadline,
-        }));
-        toolVersion = versionNumber(rawVersion);
-        if (!toolVersion) throw new Error('tool version could not be read');
-        this.versions.set(this.key(profile), toolVersion);
-        if (!versionAtLeast(toolVersion, minimumFor(profile.provider))) {
-          await this.options.store.put(unknownRecord(
-            profile,
-            checkedAt,
-            'version-too-old',
-            toolVersion,
-            `Update ${profile.provider === 'claude' ? 'Claude Code' : 'Codex'} to at least ${minimumFor(profile.provider)} to report limits.`,
-          ));
-          return;
-        }
-        if (profile.provider === 'claude') {
-          loginKind = await readClaudeLoginKind(profile, deadline, this.runProcess);
-          record = { ...await runClaudeCheck(profile, checkedAt, deadline, this.runProcess, loginKind), loginKind };
-        } else {
-          record = await runCodexCheck(profile, checkedAt, deadline, this.runProcess, (kind) => { loginKind = kind; });
-        }
-      }
+      const rawVersion = String(await this.runProcess({
+        executable: executableFor(profile.provider),
+        args: ['--version'],
+        cwd: tmpdir(),
+        env: profileProcessEnv(profile),
+        deadline,
+      }));
+      toolVersion = versionNumber(rawVersion);
+      if (!toolVersion) throw new Error('tool version could not be read');
       this.versions.set(this.key(profile), toolVersion);
+      if (!versionAtLeast(toolVersion, minimumFor(profile.provider))) {
+        await this.options.store.put(unknownRecord(
+          profile,
+          checkedAt,
+          'version-too-old',
+          toolVersion,
+          `Update ${profile.provider === 'claude' ? 'Claude Code' : 'Codex'} to at least ${minimumFor(profile.provider)} to report limits.`,
+        ));
+        return;
+      }
+      let record: AgentQuotaProducerAccount;
+      if (profile.provider === 'claude') {
+        loginKind = await readClaudeLoginKind(profile, deadline, this.runProcess);
+        record = { ...await runClaudeCheck(profile, checkedAt, deadline, this.runProcess, loginKind), loginKind };
+      } else {
+        record = await runCodexCheck(profile, checkedAt, deadline, this.runProcess, (kind) => { loginKind = kind; });
+      }
       await this.options.store.put(agentQuotaProducerAccountSchema.parse({
         ...record,
         stale: false,
         refreshing: false,
-        nextCheckAt: new Date(checkedAt.getTime() + AGENT_QUOTA_CHECK_GAP_MS).toISOString(),
+        nextCheckAt: isoUtc(checkedAt.getTime() + AGENT_QUOTA_CHECK_GAP_MS),
         toolVersion,
         minimumVersion: minimumFor(profile.provider),
         statusReason: record.statusReason ?? null,
@@ -829,7 +828,9 @@ export class AgentQuotaChecker {
         ? `${label} is not installed.`
         : format
           ? `${label}${toolVersion ? ` ${toolVersion}` : ''} changed its quota format.`
-          : `${label} quota check failed.`;
+          : error instanceof QuotaNotReportedError
+            ? error.message
+            : `${label} quota check failed.`;
       if (format) {
         const logKey = `${this.key(profile)}:${toolVersion ?? 'unknown'}`;
         if (!this.loggedFormats.has(logKey)) {
@@ -842,7 +843,7 @@ export class AgentQuotaChecker {
           ...previous,
           stale: true,
           refreshing: false,
-          nextCheckAt: new Date(checkedAt.getTime() + AGENT_QUOTA_CHECK_GAP_MS).toISOString(),
+          nextCheckAt: isoUtc(checkedAt.getTime() + AGENT_QUOTA_CHECK_GAP_MS),
           toolVersion,
           minimumVersion: MINIMUM_CLAUDE_QUOTA_VERSION,
           statusReason: null,

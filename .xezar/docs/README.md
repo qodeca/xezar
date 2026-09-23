@@ -19,7 +19,7 @@ Start with ui-operations.md, worktrees.md, recovery.md and dogfooding.md. Files 
 | leader-guide.md | The project leader's own contract: what it may decide, what it asks, how it dispatches, what to do when something refuses, the task lifecycle and the release runbook; loaded automatically for a leader session and never for a task agent |
 | leader-context-loading.md | The committed leader guide and the SessionStart hook that reloads it, the guard that keeps it out of task agents, and the checklist for installing it in a new project |
 | model-routing.md | Which model and runner the leader dispatches for each task kind, with the evidence |
-| account-limits.md | What account usage cannot be read, how the leader probes an account for its limit, and how to recover a lane once it is hit |
+| account-limits.md | How the leader reads an account's quota before dispatch, what that still cannot tell you, and how to recover a lane once a limit is hit |
 | campaign-notes.md | The default folder layout for a campaign note once SDLC.md's single-file template outgrows one comfortable load |
 | ui-operations.md | Task operation and stage ownership: choosing a role workflow, questions and `BLOCKED`, issue triage versus issue filing, and the leader's delivery states |
 | worktrees.md | Worktree and setup discipline: task identity, bootstrap and what it copies |

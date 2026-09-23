@@ -5,7 +5,9 @@ tests parse them through the strict producer Zod schema, compare canonical prett
 the committed bytes, and pin the bytes to an independently reviewed SHA-256 digest.
 
 `agent-quota.expected.json` is anchored by SHA-256
-`7ee28074676cd1344f6bb17a061a41f49f145e1f66b44d3a31420ebd0669e74a`. The previous anchor,
+`0b764f2bc77965f88ffd12d791846c74041558b63ab8edddbd808071848f798e`. The previous anchor,
+`7ee28074676cd1344f6bb17a061a41f49f145e1f66b44d3a31420ebd0669e74a`, differs only in one sample
+login name, now `work` (owner decision D33, 2026-09-23). The anchor before that,
 `96a21eb8ef383b734cfa8164c425d1ac5e89964cb301e4ddda4c199aee7e7acb`, predates #867 AC-14 and AC-36: every row's
 `checkedAt` became `observedAt` (a rename with no alias, because no released version carried the
 field) and every row gained `loginKind`. The anchor before that,
@@ -19,10 +21,13 @@ for the known facts. Producers and fixture checks use `agentQuotaProducerRespons
 rejects unknown keys and names. New keys are additive; an older consumer must not reject a newer
 response merely because it carries facts that version does not know yet.
 
-For `agent-quota.expected.json`, the `claude` / `qodeca-priv` row is intentionally `unknown`.
+For `agent-quota.expected.json`, the `claude` / `work` row is intentionally `unknown`.
 The S0 check succeeded but returned no quota percentage lines, so it proved neither available
 capacity (`ok`) nor exhaustion (`out`). Treating a successful read with no quota facts as `ok`
 would turn “could not determine” into a routing promise.
+
+With `XEZ_DRY_RUN=1` the cockpit answers with this fixture's sample logins, not the logins
+registered on the machine, so a registered login with no limits row there is expected, not a bug.
 
 An account is never `status: "ok"` when any reported `shortWindow`, `weeklyWindow`, or
 `modelWindows[]` entry has `usedPercent` greater than or equal to 100.

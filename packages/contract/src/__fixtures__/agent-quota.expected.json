@@ -38,7 +38,7 @@
     },
     {
       "runner": "claude",
-      "accountId": "qodeca-priv",
+      "accountId": "work",
       "status": "unknown",
       "loginKind": "unknown",
       "observedAt": "2026-09-22T14:21:00Z",
