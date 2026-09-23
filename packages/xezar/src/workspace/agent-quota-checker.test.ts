@@ -12,6 +12,8 @@ import {
   AGENT_QUOTA_WAIT_MS,
   AgentQuotaChecker,
   MINIMUM_CLAUDE_QUOTA_VERSION,
+  claudeLoginKind,
+  codexLoginKind,
   MINIMUM_CODEX_QUOTA_VERSION,
   runQuotaProcess,
   type AgentQuotaProcessSpec,
@@ -114,6 +116,7 @@ describe('AgentQuotaChecker', () => {
     const run: RunQuotaProcess = async (spec) => {
       calls.push(spec);
       if (spec.args[0] === '--version') return `${MINIMUM_CLAUDE_QUOTA_VERSION} (Claude Code)`;
+      if (spec.args[0] === 'auth') return JSON.stringify({ loggedIn: true, authMethod: 'claude.ai', apiProvider: 'firstParty' });
       return capture;
     };
     const checker = new AgentQuotaChecker({
@@ -124,17 +127,67 @@ describe('AgentQuotaChecker', () => {
 
     const answer = await checker.refresh();
 
-    expect(calls).toHaveLength(2);
-    expect(calls[1]!.input).toEqual([{
+    expect(calls).toHaveLength(3);
+    expect(calls[1]!.args).toEqual(['auth', 'status', '--json']);
+    expect(calls[2]!.input).toEqual([{
       type: 'control_request', request_id: 'xezar-agent-quota', request: { subtype: 'get_usage', skip_behaviors: true },
     }]);
-    expect(calls[1]!.waitFor?.({ type: 'control_response', response: {} })).toBeUndefined();
-    expect(calls[1]!.waitFor?.({ type: 'control_response', response: { request_id: 'other' } })).toBeUndefined();
-    expect(calls[1]!.waitFor?.(capture)).toBe(capture);
+    expect(calls[2]!.waitFor?.({ type: 'control_response', response: {} })).toBeUndefined();
+    expect(calls[2]!.waitFor?.({ type: 'control_response', response: { request_id: 'other' } })).toBeUndefined();
+    expect(calls[2]!.waitFor?.(capture)).toBe(capture);
     // Claude Code 2.1.280 answered this live capture without an initialize message.
-    expect(answer.accounts[0]).toMatchObject({ source: 'check', status: 'ok', planType: 'max', warnings: [] });
+    expect(answer.accounts[0]).toMatchObject({
+      source: 'check', status: 'ok', planType: 'max', warnings: [], loginKind: 'subscription',
+    });
     expect(answer.accounts[0]!.shortWindow?.usedPercent).toBe(7);
     expect(answer.accounts[0]!.weeklyWindow?.usedPercent).toBe(29);
+  });
+
+  // #906: the live Claude Code 2.1.280 get_usage reply (issue 867, "AC-38 re-proof (get_usage,
+  // live)") nests `limits[]` under `rate_limits`, and its session and weekly entries carry
+  // `scope: null`. The per-model weekly window (Fable) must reach the answer.
+  it('reads the per-model window from the limits nested under rate_limits in the live reply', async () => {
+    const capture: unknown = JSON.parse(await readFile(
+      new URL('../__fixtures__/agent-quota/claude-get-usage-nested-limits.json', import.meta.url), 'utf8',
+    ));
+    const run: RunQuotaProcess = async (spec) => (spec.args[0] === '--version' ? '2.1.280 (Claude Code)' : capture);
+    const checker = new AgentQuotaChecker({
+      store: new AgentQuotaStore({ now: () => Date.parse('2026-09-23T07:00:00Z') }),
+      now: () => Date.parse('2026-09-23T07:00:00Z'),
+      profiles: async () => [profile('claude')], runProcess: run, dryRun: () => false,
+    });
+
+    const answer = await checker.refresh();
+
+    expect(answer.accounts[0]).toMatchObject({
+      source: 'check', status: 'ok', planType: 'max', statusReason: null, warnings: [],
+      shortWindow: { usedPercent: 9, windowMinutes: 300 },
+      weeklyWindow: { usedPercent: 23, windowMinutes: 10080 },
+      modelWindows: [{ model: 'Fable', usedPercent: 4, windowMinutes: 10080 }],
+    });
+    expect(answer.accounts[0]!.notReported).toEqual(['credits']);
+  });
+
+  // An empty limit list carries no rows; the fixed windows beside it still hold the numbers.
+  it.each(['top-level', 'nested'] as const)('reads the fixed windows when the %s limits list is empty', async (where) => {
+    const capture = JSON.parse(await readFile(
+      new URL('../__fixtures__/agent-quota/claude-get-usage-control-response.json', import.meta.url), 'utf8',
+    )) as { response: { request_id: string; response: { limits?: unknown[]; rate_limits: { limits?: unknown[] } } } };
+    capture.response.request_id = 'xezar-agent-quota';
+    if (where === 'top-level') capture.response.response.limits = [];
+    else capture.response.response.rate_limits.limits = [];
+    const run: RunQuotaProcess = async (spec) => (spec.args[0] === '--version' ? '2.1.280 (Claude Code)' : capture);
+    const checker = new AgentQuotaChecker({
+      store: new AgentQuotaStore({ now: () => Date.parse('2026-09-22T14:00:00Z') }),
+      now: () => Date.parse('2026-09-22T14:00:00Z'),
+      profiles: async () => [profile('claude')], runProcess: run, dryRun: () => false,
+    });
+
+    const answer = await checker.refresh();
+
+    expect(answer.accounts[0]).toMatchObject({
+      source: 'check', status: 'ok', shortWindow: { usedPercent: 7 }, weeklyWindow: { usedPercent: 29 },
+    });
   });
 
   it('uses fixed isolated Claude argv and reports the /usage fallback in the row', async () => {
@@ -158,15 +211,16 @@ describe('AgentQuotaChecker', () => {
 
     const answer = await checker.refresh();
 
-    expect(calls[1]!.args).toEqual([
+    expect(calls[1]!.args).toEqual(['auth', 'status', '--json']);
+    expect(calls[2]!.args).toEqual([
       '-p', '--safe-mode', '--strict-mcp-config', '--input-format', 'stream-json',
       '--output-format', 'stream-json', '--verbose',
     ]);
-    expect(calls[2]!.args).toEqual(['-p', '/usage', '--safe-mode', '--strict-mcp-config', '--output-format', 'json']);
-    expect(relative(tmpdir(), calls[1]!.cwd)).not.toMatch(/^\.\.(?:\/|$)/);
-    expect(basename(calls[1]!.cwd)).toMatch(/^xez-agent-quota-/);
-    expect(calls[2]!.cwd).toBe(calls[1]!.cwd);
-    await expect(access(calls[1]!.cwd)).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(calls[3]!.args).toEqual(['-p', '/usage', '--safe-mode', '--strict-mcp-config', '--output-format', 'json']);
+    expect(relative(tmpdir(), calls[2]!.cwd)).not.toMatch(/^\.\.(?:\/|$)/);
+    expect(basename(calls[2]!.cwd)).toMatch(/^xez-agent-quota-/);
+    expect(calls[3]!.cwd).toBe(calls[2]!.cwd);
+    await expect(access(calls[2]!.cwd)).rejects.toMatchObject({ code: 'ENOENT' });
     expect(answer.accounts[0]).toMatchObject({
       accountId: 'default', source: 'check-text', status: 'ok',
       warnings: ['Quota was read from the Claude Code /usage text fallback.'],
@@ -214,7 +268,7 @@ describe('AgentQuotaChecker', () => {
     ].map((message) => (message as { method?: string }).method);
     expect(methods).toEqual(['initialize', 'initialized', 'account/read', 'account/rateLimits/read', 'account/usage/read']);
     expect(JSON.stringify(methods)).not.toContain('thread/');
-    expect(answer.accounts[0]).toMatchObject({ runner: 'codex', accountId: 'work', status: 'out' });
+    expect(answer.accounts[0]).toMatchObject({ runner: 'codex', accountId: 'work', status: 'out', loginKind: 'subscription' });
     expect(JSON.stringify(answer)).not.toContain('foreign-vendor-id');
     expect(JSON.stringify(answer)).not.toContain('must-not-leak');
   });
@@ -257,7 +311,7 @@ describe('AgentQuotaChecker', () => {
       store: new AgentQuotaStore(), profiles: async () => [profile('codex')], runProcess: run, dryRun: () => false,
     });
     const answer = await checker.refresh();
-    expect(answer.accounts[0]).toMatchObject({ status: 'unknown', statusReason: 'api-key' });
+    expect(answer.accounts[0]).toMatchObject({ status: 'unknown', statusReason: 'api-key', loginKind: 'api-key' });
     expect(calls[1]!.nextInput?.({ id: 2, result: { account: { type: 'apiKey' }, requiresOpenaiAuth: true } })).toEqual([]);
   });
 
@@ -266,14 +320,15 @@ describe('AgentQuotaChecker', () => {
     const run: RunQuotaProcess = async (spec) => {
       calls.push(spec);
       if (spec.args[0] === '--version') return `${MINIMUM_CLAUDE_QUOTA_VERSION} (Claude Code)`;
+      if (spec.args[0] === 'auth') return JSON.stringify({ loggedIn: true, authMethod: 'api_key', apiProvider: 'firstParty' });
       return { type: 'control_response', response: { response: { rate_limits_available: false } } };
     };
     const checker = new AgentQuotaChecker({
       store: new AgentQuotaStore(), profiles: async () => [profile('claude')], runProcess: run, dryRun: () => false,
     });
     const answer = await checker.refresh();
-    expect(answer.accounts[0]).toMatchObject({ status: 'unknown', statusReason: 'api-key' });
-    expect(calls).toHaveLength(2);
+    expect(answer.accounts[0]).toMatchObject({ status: 'unknown', statusReason: 'api-key', loginKind: 'api-key' });
+    expect(calls).toHaveLength(3);
   });
 
   it('gates old versions before a quota process and honours the five-minute per-login gap', async () => {
@@ -292,12 +347,51 @@ describe('AgentQuotaChecker', () => {
     expect(run).toHaveBeenCalledTimes(2);
   });
 
+  // #867 AC-26 / D29: the minimums are the versions the D18 live QA ran on (PR 888 QA:
+  // Claude Code 2.1.280, codex-cli 0.155.1); a version below them is gated, and the unchecked
+  // store row names the same minimum as the checker.
+  it.each([
+    ['claude', '2.1.279 (Claude Code)', '2.1.280'],
+    ['codex', 'codex-cli 0.155.0', '0.155.1'],
+  ] as const)('gates %s below the D18 proof version %s', async (provider, reply, minimum) => {
+    const run = vi.fn(async () => reply);
+    const store = new AgentQuotaStore({ now: () => Date.parse('2026-09-22T14:20:00Z') });
+    expect(store.answer({}, [{ runner: provider, accountId: 'unchecked' }]).accounts[0]!.minimumVersion).toBe(minimum);
+    const checker = new AgentQuotaChecker({
+      store, now: () => Date.parse('2026-09-22T14:20:00Z'),
+      profiles: async () => [profile(provider)], runProcess: run, dryRun: () => false,
+    });
+    const answer = await checker.refresh();
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(answer.accounts[0]).toMatchObject({ status: 'unknown', statusReason: 'version-too-old', minimumVersion: minimum });
+  });
+
+  // #867 AC-7: the checker's own times (`observedAt`, `nextCheckAt`) are whole seconds too.
+  it('emits whole-second times on a check that started inside a second', async () => {
+    const machineTime = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/;
+    const run: RunQuotaProcess = async () => {
+      throw Object.assign(new Error('missing'), { code: 'ENOENT' });
+    };
+    const checker = new AgentQuotaChecker({
+      store: new AgentQuotaStore({ now: () => Date.parse('2026-09-22T14:20:00.448Z') }),
+      now: () => Date.parse('2026-09-22T14:20:00.448Z'),
+      profiles: async () => [profile('claude')], runProcess: run, dryRun: () => false,
+    });
+    const answer = await checker.refresh();
+    const row = answer.accounts[0]!;
+    expect(row).toMatchObject({ statusReason: 'not-installed' });
+    expect([answer.generatedAt, row.observedAt, row.nextCheckAt]).toEqual([
+      expect.stringMatching(machineTime), expect.stringMatching(machineTime), expect.stringMatching(machineTime),
+    ]);
+  });
+
   it('never runs more than two login checks concurrently', async () => {
     let active = 0;
     let peak = 0;
     const releases: Array<() => void> = [];
     const run: RunQuotaProcess = async (spec) => {
       if (spec.args[0] === '--version') return `${MINIMUM_CLAUDE_QUOTA_VERSION} (Claude Code)`;
+      if (spec.args[0] === 'auth') throw new Error('no auth status');
       if (spec.args.includes('--input-format')) throw new Error('fallback');
       active += 1;
       peak = Math.max(peak, active);
@@ -404,6 +498,32 @@ describe('AgentQuotaChecker', () => {
     expect(warn).toHaveBeenCalledTimes(1);
   });
 
+  // #893: the real `claude -p "/usage"` reply from Claude Code 2.1.280 on a max-plan login is a
+  // usage-composition report with no limit rows. It is not a format change: the fallback simply
+  // has no limits to read, so the row says the check failed and nothing logs a format warning.
+  // The fixture is the reply quoted in #893 (captured at PR 888 head f823b97b).
+  it('reports the #893 usage-composition reply as a failed check, not a format change', async () => {
+    const warn = vi.fn();
+    const composition = await readFile(
+      new URL('../__fixtures__/agent-quota/claude-usage-composition.json', import.meta.url), 'utf8',
+    );
+    const run: RunQuotaProcess = async (spec) => {
+      if (spec.args[0] === '--version') return '2.1.280 (Claude Code)';
+      if (spec.args.includes('--input-format')) throw new Error('get_usage failed');
+      return composition;
+    };
+    const checker = new AgentQuotaChecker({
+      store: new AgentQuotaStore(), profiles: async () => [profile('claude')],
+      runProcess: run, logger: { warn }, dryRun: () => false,
+    });
+
+    const answer = await checker.refresh();
+
+    expect(answer.accounts[0]).toMatchObject({ status: 'unknown', statusReason: 'check-failed', source: 'check' });
+    expect(answer.accounts[0]!.warnings).toEqual(['Claude Code did not report plan limits.']);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
   it('wait mode checks stale rows only', async () => {
     const now = Date.parse('2026-09-22T14:20:00Z');
     const store = new AgentQuotaStore({ now: () => now });
@@ -427,8 +547,11 @@ describe('AgentQuotaChecker', () => {
     vi.setSystemTime(new Date('2026-09-22T14:20:00Z'));
     const store = new AgentQuotaStore({ now: Date.now });
     const put = vi.spyOn(store, 'put');
+    const run: RunQuotaProcess = async () => {
+      throw Object.assign(new Error('missing'), { code: 'ENOENT' });
+    };
     const checker = new AgentQuotaChecker({
-      store, now: Date.now, profiles: async () => [profile('claude')], dryRun: () => true,
+      store, now: Date.now, profiles: async () => [profile('claude')], runProcess: run, dryRun: () => false,
     });
 
     await vi.advanceTimersByTimeAsync(20 * 60_000);
@@ -500,16 +623,34 @@ describe('AgentQuotaChecker', () => {
     ]);
   });
 
-  it('dry-run starts no process and returns deterministic rows for both providers', async () => {
+  // #867 AC-27: dry run starts no process on any path and answers with the frozen sample's rows.
+  it('dry-run starts no process and returns the frozen sample rows', async () => {
     const run = vi.fn();
+    const store = new AgentQuotaStore({ now: () => Date.parse('2026-09-22T14:24:00Z') });
+    const put = vi.spyOn(store, 'put');
     const checker = new AgentQuotaChecker({
-      store: new AgentQuotaStore({ now: () => Date.parse('2026-09-22T14:20:00Z') }),
-      now: () => Date.parse('2026-09-22T14:20:00Z'), profiles: async () => [profile('claude'), profile('codex')],
+      store, now: () => Date.parse('2026-09-22T14:24:00Z'), profiles: async () => [profile('claude'), profile('codex')],
       runProcess: run, dryRun: () => true,
     });
-    const answer = await checker.refresh();
+    checker.startup();
+    const answers = [await checker.refresh(), await checker.refreshStale({}, true), await checker.answer()];
+    checker.viewerStarted()();
+    checker.noteRead();
+    await new Promise((resolve) => setImmediate(resolve));
     expect(run).not.toHaveBeenCalled();
-    expect(answer.accounts.map((row) => [row.runner, row.status])).toEqual([['claude', 'ok'], ['codex', 'ok']]);
+    expect(put).not.toHaveBeenCalled();
+    for (const answer of answers) {
+      expect(answer.accounts.map((row) => `${row.runner}:${row.accountId}:${row.status}`)).toEqual([
+        'claude:default:ok', 'claude:work:unknown', 'codex:default:ok', 'claude:quota-exhausted:out', 'codex:api-key:unknown',
+      ]);
+    }
+    expect((await checker.answer({ provider: 'codex', accountId: 'api-key' })).accounts).toHaveLength(1);
+    expect((await checker.answer({ accountId: 'no-such-login' })).accounts).toEqual([]);
+    checker.close();
+    const later = new AgentQuotaChecker({
+      store, now: () => Date.parse('2026-10-30T09:00:00.500Z'), profiles: async () => [], runProcess: run, dryRun: () => true,
+    });
+    expect(await later.answer()).toEqual(answers[2]);
   });
 
   it('contains no forbidden credential or private endpoint reads', () => {
@@ -581,5 +722,113 @@ describe('AgentQuotaChecker', () => {
     expect(checker.startup()).toBeUndefined();
     await expect.poll(() => typeof release).toBe('function');
     release();
+  });
+});
+
+describe('login kind (#867 AC-36)', () => {
+  it('reads Claude Code auth status: claude.ai and setup-token logins are subscriptions, an API key is an API key', () => {
+    // The shapes `claude auth status --json` printed on Claude Code 2.1.280 (identity keys dropped).
+    expect(claudeLoginKind({ loggedIn: true, authMethod: 'claude.ai', apiProvider: 'firstParty', email: 'x@example.test' })).toBe('subscription');
+    expect(claudeLoginKind({ loggedIn: true, authMethod: 'oauth_token', apiProvider: 'firstParty' })).toBe('subscription');
+    expect(claudeLoginKind({ loggedIn: true, authMethod: 'api_key', apiProvider: 'firstParty', apiKeySource: 'ANTHROPIC_API_KEY' })).toBe('api-key');
+  });
+
+  it('never reads a Claude login it cannot place as a subscription', () => {
+    expect(claudeLoginKind({ loggedIn: false, authMethod: 'none', apiProvider: 'firstParty' })).toBe('unknown');
+    expect(claudeLoginKind({ loggedIn: true, authMethod: 'third_party', apiProvider: 'bedrock' })).toBe('unknown');
+    expect(claudeLoginKind({ loggedIn: true, authMethod: 'claude.ai', apiProvider: 'vertex' })).toBe('unknown');
+    expect(claudeLoginKind({ loggedIn: true, authMethod: 'claude.ai' })).toBe('unknown');
+    expect(claudeLoginKind({ loggedIn: true, authMethod: 'future_method', apiProvider: 'firstParty' })).toBe('unknown');
+    expect(claudeLoginKind({ subscriptionType: 'max' })).toBe('unknown');
+    expect(claudeLoginKind(undefined)).toBe('unknown');
+  });
+
+  it('reads Codex account/read: ChatGPT is a subscription, an API key is an API key, anything else is unknown', () => {
+    expect(codexLoginKind({ account: { type: 'chatgpt', planType: 'pro' }, requiresOpenaiAuth: true })).toBe('subscription');
+    expect(codexLoginKind({ account: { type: 'apiKey' }, requiresOpenaiAuth: true })).toBe('api-key');
+    expect(codexLoginKind({ account: { type: 'amazonBedrock' }, requiresOpenaiAuth: false })).toBe('unknown');
+    expect(codexLoginKind({ account: null, requiresOpenaiAuth: true })).toBe('unknown');
+  });
+
+  it('keeps a Claude login unknown when auth status fails, even though its quota reply names a plan', async () => {
+    const capture = JSON.parse(await readFile(
+      new URL('../__fixtures__/agent-quota/claude-get-usage-control-response.json', import.meta.url),
+      'utf8',
+    )) as { response: { request_id: string } };
+    capture.response.request_id = 'xezar-agent-quota';
+    const run: RunQuotaProcess = async (spec) => {
+      if (spec.args[0] === '--version') return `${MINIMUM_CLAUDE_QUOTA_VERSION} (Claude Code)`;
+      if (spec.args[0] === 'auth') throw new Error("error: unknown command 'auth'");
+      return capture;
+    };
+    const checker = new AgentQuotaChecker({
+      store: new AgentQuotaStore({ now: () => Date.parse('2026-09-22T14:00:00Z') }),
+      now: () => Date.parse('2026-09-22T14:00:00Z'),
+      profiles: async () => [profile('claude')], runProcess: run, dryRun: () => false,
+    });
+
+    const answer = await checker.refresh();
+
+    // The reply carries `subscription_type: "max"` and real windows; neither decides the kind.
+    expect(answer.accounts[0]).toMatchObject({ status: 'ok', planType: 'max', loginKind: 'unknown' });
+  });
+
+  it('keeps the login kind read before a Claude quota check that then fails', async () => {
+    const run: RunQuotaProcess = async (spec) => {
+      if (spec.args[0] === '--version') return `${MINIMUM_CLAUDE_QUOTA_VERSION} (Claude Code)`;
+      if (spec.args[0] === 'auth') return JSON.stringify({ loggedIn: true, authMethod: 'claude.ai', apiProvider: 'firstParty' });
+      throw new Error('check failed');
+    };
+    const checker = new AgentQuotaChecker({
+      store: new AgentQuotaStore(), profiles: async () => [profile('claude')], runProcess: run, dryRun: () => false,
+    });
+    const answer = await checker.refresh();
+    expect(answer.accounts[0]).toMatchObject({ status: 'unknown', statusReason: 'check-failed', loginKind: 'subscription' });
+  });
+
+  it('never words a subscription login as an API key when get_usage reports no rate limits (#908 B-1)', async () => {
+    // The mismatched pair: auth status says a claude.ai login, get_usage says no rate limits.
+    const run: RunQuotaProcess = async (spec) => {
+      if (spec.args[0] === '--version') return `${MINIMUM_CLAUDE_QUOTA_VERSION} (Claude Code)`;
+      if (spec.args[0] === 'auth') return JSON.stringify({ loggedIn: true, authMethod: 'claude.ai', apiProvider: 'firstParty' });
+      return { type: 'control_response', response: { response: { rate_limits_available: false } } };
+    };
+    const checker = new AgentQuotaChecker({
+      store: new AgentQuotaStore(), profiles: async () => [profile('claude')], runProcess: run, dryRun: () => false,
+    });
+    const row = (await checker.refresh()).accounts[0]!;
+    // `statusReason: api-key` still says "the tool reported no plan limits"; the words follow the kind.
+    expect(row).toMatchObject({
+      status: 'unknown',
+      loginKind: 'subscription',
+      unavailableReason: 'Claude Code reported no plan limits for this login.',
+      warnings: ['Claude Code reported no plan limits for this login.'],
+    });
+    expect([row.unavailableReason, ...(row.warnings ?? [])].join(' ')).not.toMatch(/API.key/i);
+  });
+
+  it('keeps a Codex login kind read by account/read when a later step of the check fails', async () => {
+    const run: RunQuotaProcess = async (spec) => {
+      if (spec.args[0] === '--version') return `codex-cli ${MINIMUM_CODEX_QUOTA_VERSION}`;
+      return {
+        initialize: {},
+        account: { account: { type: 'chatgpt', planType: 'pro' }, requiresOpenaiAuth: true },
+        limits: { ordinaryUsageAllowed: true, rateLimits: null },
+        usage: { summary: { lifetimeTokens: 1, peakDailyTokens: 1 }, dailyUsageBuckets: [], threadUsage: null },
+      };
+    };
+    const checker = new AgentQuotaChecker({
+      store: new AgentQuotaStore(), profiles: async () => [profile('codex')], runProcess: run, dryRun: () => false,
+    });
+    const answer = await checker.refresh();
+    expect(answer.accounts[0]).toMatchObject({ status: 'unknown', statusReason: 'check-failed', loginKind: 'subscription' });
+  });
+
+  it('reports every login as unknown kind before its first check', async () => {
+    const checker = new AgentQuotaChecker({
+      store: new AgentQuotaStore(), profiles: async () => [profile('claude'), profile('codex')], dryRun: () => false,
+    });
+    const answer = await checker.answer();
+    expect(answer.accounts.map((row) => row.loginKind)).toEqual(['unknown', 'unknown']);
   });
 });

@@ -119,7 +119,7 @@ describe('AgentQuotaChip', () => {
     expect(pop).not.toBeNull()
     expect(pop.textContent).toContain('Claude Code: 1 of 3 logins can work.')
     expect(pop.textContent).toContain('quota-exhausted — out until')
-    expect(pop.textContent).toContain('qodeca-priv — limits unknown')
+    expect(pop.textContent).toContain('work — limits unknown')
     expect(pop.textContent).toContain('api-key — limits unknown')
     expect(pop.textContent).toContain('xezar shows these limits and never acts on them.')
     expect(chip()?.getAttribute('aria-label')).toMatch(/Hide details$/)
@@ -134,7 +134,7 @@ describe('AgentQuotaChip', () => {
       answer: FIXTURE,
       profiles: [
         { provider: 'claude', id: 'quota-exhausted', label: 'Personal', isDefault: false },
-        { provider: 'claude', id: 'qodeca-priv', label: 'me@example.com', isDefault: false },
+        { provider: 'claude', id: 'work', label: 'me@example.com', isDefault: false },
       ],
     })
     fireEvent.click(chip()!)

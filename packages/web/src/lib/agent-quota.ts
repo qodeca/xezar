@@ -142,7 +142,7 @@ const CHECK_SOURCES = new Set(['check', 'check-text'])
 /**
  * When the next check of this login is allowed, or null when nothing holds it back. The server's
  * `nextCheckAt` decides whenever the answer carries the key — `null` there means it holds nothing
- * back, even right after a check. Only an older answer without the key falls back to `checkedAt` +
+ * back, even right after a check. Only an older answer without the key falls back to `observedAt` +
  * 5 minutes for a reading that came from a check; a live reading or a failed task says nothing
  * about when the last check ran.
  */
@@ -153,7 +153,7 @@ export function nextCheckAllowedAt(account: AgentQuotaAccount): number | null {
     return Number.isNaN(next) ? null : next
   }
   if (!CHECK_SOURCES.has(account.source)) return null
-  const checked = Date.parse(account.checkedAt)
+  const checked = Date.parse(account.observedAt)
   return Number.isNaN(checked) ? null : checked + QUOTA_CHECK_GAP_MS
 }
 
@@ -161,9 +161,20 @@ export function nextCheckAllowedAt(account: AgentQuotaAccount): number | null {
  *  or the login is an API key. Refresh is not offered for them (the mockup's AQ-4). */
 const UNCHECKABLE_REASONS = new Set(['version-too-old', 'not-installed', 'api-key'])
 
+/** An `api-key` reason means the tool reported no plan limits. Only a login whose own `loginKind`
+ *  is `api-key` is an API key; any other kind keeps its own words and Refresh (#908 B-1). */
+function apiKeyReasonFromApiKeyLogin(account: AgentQuotaAccount): boolean {
+  return account.statusReason !== 'api-key' || account.loginKind === 'api-key'
+}
+
 /** Can a check of this login tell anything new? Only an `unknown` row carries a reason. */
 export function quotaCanRefresh(account: AgentQuotaAccount): boolean {
-  return !(account.status === 'unknown' && account.statusReason && UNCHECKABLE_REASONS.has(account.statusReason))
+  return !(
+    account.status === 'unknown' &&
+    account.statusReason &&
+    UNCHECKABLE_REASONS.has(account.statusReason) &&
+    apiKeyReasonFromApiKeyLogin(account)
+  )
 }
 
 /** The server's warnings, minus one that only repeats the row's `unavailableReason` (which the
@@ -252,7 +263,16 @@ export function quotaStatusSentence(account: AgentQuotaAccount, ageSeconds: numb
   const version = account.toolVersion ? ` ${account.toolVersion}` : ''
   switch (account.statusReason) {
     case 'api-key':
-      return { tone: 'neutral', word: 'Limits not reported', reason: '— API-key logins do not report plan limits.', note: null }
+      // NB-1 (#908): this state and the no-lines state below each say what sets them apart —
+      // here the tool answered that the login has no plan limits; below it answered without any.
+      return apiKeyReasonFromApiKeyLogin(account)
+        ? { tone: 'neutral', word: 'Limits not reported', reason: '— API-key logins do not report plan limits.', note: null }
+        : {
+            tone: 'neutral',
+            word: 'Limits not reported',
+            reason: `— ${agent} said this login has no plan limits.`,
+            note: `That is ${agent}'s answer, not a failed check. If this login should have a plan, sign in to it again in ${agent}, then Refresh. Tasks can still start under this login.`,
+          }
     case 'version-too-old':
       return unknown(
         `update ${agent} to at least ${account.minimumVersion ?? 'a newer version'} to report limits.`,
@@ -277,8 +297,8 @@ export function quotaStatusSentence(account: AgentQuotaAccount, ageSeconds: numb
     return {
       tone: 'neutral',
       word: 'Limits unknown',
-      reason: `— ${agent} reported no limits for this login.`,
-      note: 'Its answer had no session or weekly lines, so xezar cannot say how much is left. Tasks can still start under this login.',
+      reason: `— ${agent} answered without any limit lines for this login.`,
+      note: 'The check worked, but its answer had no session or weekly lines, so xezar cannot say how much is left. Refresh to ask again. Tasks can still start under this login.',
     }
   }
   return { tone: 'neutral', word: 'Limits unknown', reason: `— ${agent} did not say whether this login can work.`, note: null }
@@ -399,11 +419,32 @@ export function summarizeAgent(answer: AgentQuotaResponse, runner: AgentQuotaRun
   return { runner, total: rows.length, canWork, out, unknown, firstFreeAt: firstFree, tone, text }
 }
 
+/** Is this row a subscription login? Only the answer's own `loginKind: "subscription"` says so:
+ *  `unknown`, `api-key` and any value this cockpit does not know are not (#867 AC-36). */
+export function isSubscriptionLogin(account: AgentQuotaAccount): boolean {
+  return account.loginKind === 'subscription'
+}
+
+/** The details panel's words for the row's `loginKind`; a value this cockpit does not know is
+ *  shown as sent, never as a subscription. */
+export function loginKindText(account: AgentQuotaAccount): string {
+  switch (account.loginKind) {
+    case 'subscription':
+      return 'Subscription'
+    case 'api-key':
+      return 'API key — plan limits do not apply'
+    case 'unknown':
+      return `Unknown — ${RUNNER_LABEL[account.runner]} did not say`
+    default:
+      return `“${account.loginKind}”, a kind this version of the cockpit does not know`
+  }
+}
+
 /**
- * Which agents the chip shows (#867 D38): installed, and with at least one login that reported a
- * plan — a window, credits or a plan name, or a definite `out`. The contract carries no login kind,
- * so an API-key login and a subscription login that reported nothing look the same; an agent whose
- * every login reported nothing is left out rather than shown as "0 of n".
+ * Which agents the chip shows (#867 D38, AC-36): installed, and with at least one login whose
+ * `loginKind` is `subscription`. The kind comes from the login's own credentials as the agent
+ * reports them, never from the plan facts it happened to report; a login of `unknown` kind is never
+ * counted as a subscription, so an agent with none is left out rather than shown as "0 of n".
  */
 export function chipSummaries(
   answer: AgentQuotaResponse | undefined,
@@ -415,7 +456,7 @@ export function chipSummaries(
     const installed = checks.some((check) => check.name === runner && check.available === true)
     if (!installed) return []
     const rows = accountsOf(answer, runner)
-    if (!rows.some((row) => row.status === 'out' || reportsAnyPlanFact(row))) return []
+    if (!rows.some(isSubscriptionLogin)) return []
     const summary = summarizeAgent(answer, runner, now)
     return summary ? [summary] : []
   })

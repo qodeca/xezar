@@ -10,8 +10,24 @@ import {
 import { parseUsageLimit } from '../core/usage-limit.ts';
 import { CODEX_DEFAULT_LIMIT_ID, isCodexModelBucket } from '../core/codex-usage-limit.ts';
 
-function isoUtc(value: Date | number): string {
-  return new Date(value).toISOString().replace('.000Z', 'Z');
+/**
+ * The one machine-time format of the quota answer (#867 AC-7): UTC, whole seconds, `…:ssZ`.
+ * Sub-second precision from any source (a clock, a provider reply) is truncated.
+ */
+export function isoUtc(value: Date | number): string {
+  const ms = new Date(value).getTime();
+  return new Date(ms - (((ms % 1_000) + 1_000) % 1_000)).toISOString().replace('.000Z', 'Z');
+}
+
+/** The versions the D18 live QA proved the checks on (#867 D29); raised only with a new proof. */
+export const MINIMUM_CLAUDE_QUOTA_VERSION = '2.1.280';
+export const MINIMUM_CODEX_QUOTA_VERSION = '0.155.1';
+
+/** The latest of the given reset instants, or undefined when there is none. */
+function latestReset(candidates: readonly (string | undefined)[]): string | undefined {
+  return candidates.reduce<string | undefined>((latest, candidate) =>
+    candidate !== undefined && (latest === undefined || Date.parse(candidate) > Date.parse(latest)) ? candidate : latest,
+  undefined);
 }
 
 export interface AgentQuotaSelector {
@@ -42,19 +58,26 @@ export class AgentQuotaStore {
     const key = this.key(record.runner, record.accountId);
     const previous = this.records.get(key);
     if (previous && record.source === 'live') record = mergeLiveRecord(previous, record);
+    else if (previous && record.source === 'failedRun') record = keepLaterOut(previous, record);
+    // A live event or a failed run says nothing about the login's credentials, so it keeps the
+    // kind the last check read rather than overwriting it with `unknown` (#867 AC-36).
+    if (previous && record.loginKind === 'unknown' && (record.source === 'live' || record.source === 'failedRun')) {
+      record = { ...record, loginKind: previous.loginKind };
+    }
     if (previous && JSON.stringify(previous) === JSON.stringify(record)) return;
     this.records.set(key, record);
     const answer = this.answer();
     for (const listener of [...this.listeners]) listener(answer);
   }
 
-  async markOut(runner: AgentQuotaRunner, accountId: string, resetsAt: Date, checkedAt = new Date(this.now())): Promise<void> {
+  async markOut(runner: AgentQuotaRunner, accountId: string, resetsAt: Date, observedAt = new Date(this.now())): Promise<void> {
     await this.put({
       runner,
       accountId,
       status: 'out',
       resetsAt: isoUtc(resetsAt),
-      checkedAt: isoUtc(checkedAt),
+      loginKind: 'unknown',
+      observedAt: isoUtc(observedAt),
       ageSeconds: 0,
       source: 'failedRun',
       shortWindow: null,
@@ -80,7 +103,8 @@ export class AgentQuotaStore {
       records.set(key, agentQuotaProducerAccountSchema.parse({
         ...known,
         status: 'unknown',
-        checkedAt: isoUtc(now),
+        loginKind: 'unknown',
+        observedAt: isoUtc(now),
         ageSeconds: 0,
         source: 'none',
         shortWindow: null,
@@ -93,7 +117,7 @@ export class AgentQuotaStore {
         refreshing: false,
         nextCheckAt: null,
         toolVersion: null,
-        minimumVersion: known.runner === 'claude' ? '2.1.278' : '0.155.1',
+        minimumVersion: known.runner === 'claude' ? MINIMUM_CLAUDE_QUOTA_VERSION : MINIMUM_CODEX_QUOTA_VERSION,
         statusReason: null,
         warnings: [],
         unavailableReason: 'No quota check has completed yet.',
@@ -162,22 +186,37 @@ function mergeLiveRecord(previous: AgentQuotaProducerAccount, incoming: AgentQuo
   // #867 FR-5: percentages are a blocking signal for Claude only. Codex
   // availability comes from its explicit ordinary-usage/rate-limit facts.
   const exhausted = detail.runner === 'claude'
-    ? windows.find((window) => window.usedPercent >= 100)
-    : undefined;
+    ? windows.filter((window) => window.usedPercent >= 100)
+    : [];
   // A newer live snapshot may omit a failed-run/check limit. Preserve that
   // observed fact until its reset instead of treating omission as recovery.
   const previousOut = previous.status === 'out'
-    && Date.parse(previous.resetsAt) > Date.parse(incoming.checkedAt);
-  const status = incoming.status === 'out' || previousOut || exhausted ? 'out' : statusWindows(detail).length ? 'ok' : 'unknown';
+    && Date.parse(previous.resetsAt) > Date.parse(incoming.observedAt);
+  const status = incoming.status === 'out' || previousOut || exhausted.length ? 'out' : statusWindows(detail).length ? 'ok' : 'unknown';
   const { resetsAt: _resetsAt, ...withoutReset } = detail;
+  // D22: of several blocking facts the latest reset wins, so a shorter limit ending never
+  // reads as availability while a longer one still holds (#867 AC-12).
   return agentQuotaProducerAccountSchema.parse({
     ...withoutReset,
     status,
     ...(status === 'out'
-      ? { resetsAt: incoming.status === 'out' ? incoming.resetsAt : previousOut ? previous.resetsAt : exhausted!.resetsAt }
+      ? { resetsAt: latestReset([
+        incoming.status === 'out' ? incoming.resetsAt : undefined,
+        previousOut ? previous.resetsAt : undefined,
+        ...exhausted.map((window) => window.resetsAt),
+      ]) }
       : {}),
     notReported: notReportedFor(detail),
   });
+}
+
+/** A failed-run limit never shortens a later out that is already stored (#867 AC-12). */
+function keepLaterOut(previous: AgentQuotaProducerAccount, incoming: AgentQuotaProducerAccount): AgentQuotaProducerAccount {
+  if (previous.status !== 'out' || incoming.status !== 'out') return incoming;
+  // As in mergeLiveRecord, only a reset still ahead of the new observation is retained.
+  if (Date.parse(previous.resetsAt) <= Date.parse(incoming.observedAt)) return incoming;
+  if (Date.parse(previous.resetsAt) <= Date.parse(incoming.resetsAt)) return incoming;
+  return agentQuotaProducerAccountSchema.parse({ ...incoming, resetsAt: previous.resetsAt });
 }
 
 function currentRecord(record: AgentQuotaProducerAccount, now: number): AgentQuotaProducerAccount {
@@ -195,18 +234,18 @@ function currentRecord(record: AgentQuotaProducerAccount, now: number): AgentQuo
   );
   // #867 FR-5: Codex percentages are descriptive, never a status decision.
   const exhausted = record.runner === 'claude'
-    ? windows.find((window) => window.usedPercent >= 100)
-    : undefined;
+    ? windows.filter((window) => window.usedPercent >= 100)
+    : [];
   const topLevelOut = record.status === 'out' && Date.parse(record.resetsAt) > now;
-  const status = topLevelOut || exhausted ? 'out' : statusWindows(detail).length ? 'ok' : 'unknown';
+  const status = topLevelOut || exhausted.length ? 'out' : statusWindows(detail).length ? 'ok' : 'unknown';
   const { resetsAt: _resetsAt, ...withoutReset } = detail;
   return agentQuotaProducerAccountSchema.parse({
     ...withoutReset,
     status,
     ...(status === 'out'
-      ? { resetsAt: topLevelOut ? record.resetsAt : exhausted!.resetsAt }
+      ? { resetsAt: latestReset([topLevelOut ? record.resetsAt : undefined, ...exhausted.map((window) => window.resetsAt)]) }
       : {}),
-    ageSeconds: Math.max(0, Math.floor((now - Date.parse(record.checkedAt)) / 1_000)),
+    ageSeconds: Math.max(0, Math.floor((now - Date.parse(record.observedAt)) / 1_000)),
     notReported: notReportedFor(detail),
   });
 }
@@ -223,7 +262,7 @@ function claudeReset(text: string, now: number): Date | null {
 export function normalizeClaudeUsage(
   raw: unknown,
   accountId: string,
-  checkedAt: Date,
+  observedAt: Date,
 ): AgentQuotaProducerAccount {
   const result = typeof raw === 'object' && raw !== null && typeof (raw as { result?: unknown }).result === 'string'
     ? (raw as { result: string }).result
@@ -235,13 +274,13 @@ export function normalizeClaudeUsage(
   let unreadableExhaustedReset: Date | null = null;
   for (const row of rows) {
     const usedPercent = Number(row[3]);
-    const reset = claudeReset(row[4]!, checkedAt.getTime());
+    const reset = claudeReset(row[4]!, observedAt.getTime());
     if (!reset) {
       if (usedPercent >= 100) {
         const windowMinutes = row[1] === 'session' ? 300 : 10080;
         // An unreadable reset must not turn exhaustion into availability. The
         // window length supplies a conservative, finite bound for this fact.
-        const conservativeReset = new Date(checkedAt.getTime() + windowMinutes * 60_000);
+        const conservativeReset = new Date(observedAt.getTime() + windowMinutes * 60_000);
         if (!unreadableExhaustedReset || conservativeReset > unreadableExhaustedReset) {
           unreadableExhaustedReset = conservativeReset;
         }
@@ -265,7 +304,9 @@ export function normalizeClaudeUsage(
     accountId,
     status: exhaustedReset ? 'out' : unknown ? 'unknown' : 'ok',
     ...(exhaustedReset ? { resetsAt: exhaustedReset } : {}),
-    checkedAt: isoUtc(checkedAt),
+    // The /usage text says nothing about credentials; the checker supplies the real kind.
+    loginKind: 'unknown',
+    observedAt: isoUtc(observedAt),
     ageSeconds: 0,
     source: 'check',
     shortWindow,
@@ -344,7 +385,7 @@ function codexModelWindows(result: Record<string, unknown>, defaultLimitId: stri
 }
 
 /** Normalise the Codex app-server `account/rateLimits/read` result. */
-export function normalizeCodexRateLimits(raw: unknown, accountId: string, checkedAt: Date): AgentQuotaProducerAccount {
+export function normalizeCodexRateLimits(raw: unknown, accountId: string, observedAt: Date): AgentQuotaProducerAccount {
   const envelope = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
   const result = envelope.result && typeof envelope.result === 'object' ? envelope.result as Record<string, unknown> : envelope;
   const snapshot = result.rateLimits && typeof result.rateLimits === 'object' ? result.rateLimits as Record<string, unknown> : {};
@@ -359,7 +400,7 @@ export function normalizeCodexRateLimits(raw: unknown, accountId: string, checke
     ? { hasCredits: creditsRaw.hasCredits, unlimited: creditsRaw.unlimited, balance: String(creditsRaw.balance) }
     : null;
   const reached = typeof snapshot.rateLimitReachedType === 'string' && snapshot.rateLimitReachedType.length > 0;
-  const resetCandidates = candidates.filter((window) => Date.parse(window.resetsAt) > checkedAt.getTime());
+  const resetCandidates = candidates.filter((window) => Date.parse(window.resetsAt) > observedAt.getTime());
   const exhaustedCandidates = resetCandidates.filter((window) => window.usedPercent >= 100);
   const blockingCandidates = exhaustedCandidates.length ? exhaustedCandidates : resetCandidates;
   const blocking = blockingCandidates.reduce<AgentQuotaWindow | undefined>((latest, window) =>
@@ -377,7 +418,9 @@ export function normalizeCodexRateLimits(raw: unknown, accountId: string, checke
     accountId,
     status: exhausted && (blocking || explicitReset) ? 'out' : unknown ? 'unknown' : 'ok',
     ...(exhausted && (blocking || explicitReset) ? { resetsAt: blocking?.resetsAt ?? explicitReset } : {}),
-    checkedAt: isoUtc(checkedAt),
+    // A rate-limit snapshot says nothing about credentials; the checker supplies the real kind.
+    loginKind: 'unknown',
+    observedAt: isoUtc(observedAt),
     ageSeconds: 0,
     source: 'check',
     shortWindow,
@@ -436,7 +479,7 @@ export function normalizeLiveQuota(
   if (!detail.shortWindow && !detail.weeklyWindow && !detail.modelWindows) return null;
   return agentQuotaProducerAccountSchema.parse({
     runner: 'claude', accountId, status: out ? 'out' : 'ok', ...(out ? { resetsAt: isoUtc(reset) } : {}),
-    checkedAt: isoUtc(observedAt), ageSeconds: 0, source: 'live',
+    loginKind: 'unknown', observedAt: isoUtc(observedAt), ageSeconds: 0, source: 'live',
     ...detail,
     notReported: notReportedFor(detail),
   });

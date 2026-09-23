@@ -278,10 +278,11 @@ ran first.
 ### Runtime ceilings
 
 The suite's two runtime ceilings are anchored to one measured run and rounded up from it, not to a
-target. Both use the same run: CI run 35512713688 (head `ce02630c`, 2026-09-20), the whole suite at
-**66 `*.e2e.ts` files**, reporting `Test Files 66 passed (66)`,
+target. Both use the same run: CI run 35512713688 (head `ce02630c`, 2026-09-20), the whole suite as it
+stood then (66 spec files), reporting `Test Files 66 passed (66)`,
 `Tests 453 passed | 6 skipped (459)` and `Duration 996.22s` — 17 min 26 s of its job's 30-minute
-budget.
+budget. The directory now holds **67 `*.e2e.ts` files**: `account-limits-details.e2e.ts` (#908)
+was added after that run and takes about 3 s locally, so the ceilings below still stand.
 
 - **Whole suite: 1 200 s.** 996.22 s measured on the GitHub-hosted x64 runner times 1.2 —
   996.22 × 1.2 = 1 195.5, rounded up to 1 200. The 20 % is a chosen margin, not a measured spread:
@@ -432,8 +433,9 @@ regex literal whose trailing `//` blinds the rest of its own line. `capture/scen
 relocated from the 0.15.0 capture plan rather than new locators, and the guard records that file
 as an explicit exclusion with its reason and an upper bound on its `data-slot` count, so a new
 locator there goes red instead of hiding behind the exclusion — an auditable exclusion list, never
-a silent skip. The 50 pre-existing specs outside this package predate the rule and are out of its
-scope, which is why the guard scans the package's 16 files and not every `*.e2e.ts`.
+a silent skip. The 51 pre-existing specs outside this package are out of its scope — 50 predate the rule, and
+`account-limits-details.e2e.ts` (#908) is a design-evidence spec that measures the rendered details
+panel through the DOM — which is why the guard scans the package's 16 files and not every `*.e2e.ts`.
 
 **A `role="status"` loading line needs an `aria-label`, or the wait on it is silently vacuous.**
 `status` is not a name-from-content role, so a `<p role="status">Loading …</p>` computes an EMPTY

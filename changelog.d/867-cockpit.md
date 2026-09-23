@@ -15,7 +15,7 @@
   limits too, with the names only. (#867)
 - ✨ **A plan-limits chip on every page.** Above the sidebar footer on a desktop (`Claude Code 1/3 ·
   Codex 1/2`) and in the top bar on a phone (`2/5 can work`), one dot and count per agent that is
-  installed and reports a plan; it opens a short list of the logins that are out or unknown and a
+  installed and has a subscription login; it opens a short list of the logins that are out or unknown and a
   link to the Plan limits block. With no such agent, no answer yet or a failed load there is no
   chip, and the sidebar is exactly as before. A local cockpit is kept current by one live
   subscription for the whole tab; a hosted one re-reads on the server's change hint, on reconnect,
