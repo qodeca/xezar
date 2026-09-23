@@ -486,6 +486,33 @@ describe('AgentQuotaChecker', () => {
     expect(warn).not.toHaveBeenCalled();
   });
 
+  // #893: the real 2.1.280 reply for a login whose session has not started. Its `get_usage` answer
+  // carries `five_hour.resets_at: null`, so the check reaches this text fallback on real logins.
+  it('reads session and weekly windows from the real 2.1.280 /usage fallback reply', async () => {
+    const warn = vi.fn();
+    const reply = await readFile(
+      new URL('../__fixtures__/agent-quota/claude-usage-2.1.280-session-unstarted.json', import.meta.url), 'utf8',
+    );
+    const run: RunQuotaProcess = async (spec) => {
+      if (spec.args[0] === '--version') return '2.1.280 (Claude Code)';
+      if (spec.args.includes('--input-format')) throw new Error('get_usage failed');
+      return reply;
+    };
+    const checker = new AgentQuotaChecker({
+      store: new AgentQuotaStore(), profiles: async () => [profile('claude')],
+      runProcess: run, logger: { warn }, dryRun: () => false,
+    });
+
+    const answer = await checker.refresh();
+
+    expect(answer.accounts[0]).toMatchObject({
+      status: 'out', source: 'check-text',
+      shortWindow: { usedPercent: 0, windowMinutes: 300 },
+      weeklyWindow: { usedPercent: 100, windowMinutes: 10080 },
+    });
+    expect(warn).not.toHaveBeenCalled();
+  });
+
   it('wait mode checks stale rows only', async () => {
     const now = Date.parse('2026-09-22T14:20:00Z');
     const store = new AgentQuotaStore({ now: () => now });

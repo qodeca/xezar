@@ -250,17 +250,21 @@ export function normalizeClaudeUsage(
   const result = typeof raw === 'object' && raw !== null && typeof (raw as { result?: unknown }).result === 'string'
     ? (raw as { result: string }).result
     : '';
-  const rows = [...result.matchAll(/^Current (session|week \(all models\)|week \(([^)]+)\)):\s*(\d+(?:\.\d+)?)% used · (resets .+)$/gmi)];
+  const rows = [...result.matchAll(/^Current (session|week \(all models\)|week \(([^)]+)\)):\s*(\d+(?:\.\d+)?)% used(?: · (resets .+))?$/gmi)];
   let shortWindow: AgentQuotaWindow | null = null;
   let weeklyWindow: AgentQuotaWindow | null = null;
   const modelWindows: Array<AgentQuotaWindow & { model: string }> = [];
   let unreadableExhaustedReset: Date | null = null;
   for (const row of rows) {
     const usedPercent = Number(row[3]);
-    const reset = claudeReset(row[4]!, checkedAt.getTime());
+    const windowMinutes = row[1] === 'session' ? 300 : 10080;
+    // #893: Claude Code 2.1.280 prints `0% used` with no reset clause for a window that has not
+    // started. Nothing is used, so it resets one window length after it starts, at the earliest now.
+    const reset = row[4] === undefined
+      ? (usedPercent === 0 ? new Date(checkedAt.getTime() + windowMinutes * 60_000) : null)
+      : claudeReset(row[4], checkedAt.getTime());
     if (!reset) {
       if (usedPercent >= 100) {
-        const windowMinutes = row[1] === 'session' ? 300 : 10080;
         // An unreadable reset must not turn exhaustion into availability. The
         // window length supplies a conservative, finite bound for this fact.
         const conservativeReset = new Date(checkedAt.getTime() + windowMinutes * 60_000);
