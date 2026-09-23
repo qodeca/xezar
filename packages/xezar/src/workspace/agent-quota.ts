@@ -41,19 +41,25 @@ export class AgentQuotaStore {
     const key = this.key(record.runner, record.accountId);
     const previous = this.records.get(key);
     if (previous && record.source === 'live') record = mergeLiveRecord(previous, record);
+    // A live event or a failed run says nothing about the login's credentials, so it keeps the
+    // kind the last check read rather than overwriting it with `unknown` (#867 AC-36).
+    if (previous && record.loginKind === 'unknown' && (record.source === 'live' || record.source === 'failedRun')) {
+      record = { ...record, loginKind: previous.loginKind };
+    }
     if (previous && JSON.stringify(previous) === JSON.stringify(record)) return;
     this.records.set(key, record);
     const answer = this.answer();
     for (const listener of [...this.listeners]) listener(answer);
   }
 
-  async markOut(runner: AgentQuotaRunner, accountId: string, resetsAt: Date, checkedAt = new Date(this.now())): Promise<void> {
+  async markOut(runner: AgentQuotaRunner, accountId: string, resetsAt: Date, observedAt = new Date(this.now())): Promise<void> {
     await this.put({
       runner,
       accountId,
       status: 'out',
       resetsAt: isoUtc(resetsAt),
-      checkedAt: isoUtc(checkedAt),
+      loginKind: 'unknown',
+      observedAt: isoUtc(observedAt),
       ageSeconds: 0,
       source: 'failedRun',
       shortWindow: null,
@@ -79,7 +85,8 @@ export class AgentQuotaStore {
       records.set(key, agentQuotaProducerAccountSchema.parse({
         ...known,
         status: 'unknown',
-        checkedAt: isoUtc(now),
+        loginKind: 'unknown',
+        observedAt: isoUtc(now),
         ageSeconds: 0,
         source: 'none',
         shortWindow: null,
@@ -157,7 +164,7 @@ function mergeLiveRecord(previous: AgentQuotaProducerAccount, incoming: AgentQuo
   // A newer live snapshot may omit a failed-run/check limit. Preserve that
   // observed fact until its reset instead of treating omission as recovery.
   const previousOut = previous.status === 'out'
-    && Date.parse(previous.resetsAt) > Date.parse(incoming.checkedAt);
+    && Date.parse(previous.resetsAt) > Date.parse(incoming.observedAt);
   const status = incoming.status === 'out' || previousOut || exhausted ? 'out' : windows.length ? 'ok' : 'unknown';
   const { resetsAt: _resetsAt, ...withoutReset } = detail;
   return agentQuotaProducerAccountSchema.parse({
@@ -196,7 +203,7 @@ function currentRecord(record: AgentQuotaProducerAccount, now: number): AgentQuo
     ...(status === 'out'
       ? { resetsAt: topLevelOut ? record.resetsAt : exhausted!.resetsAt }
       : {}),
-    ageSeconds: Math.max(0, Math.floor((now - Date.parse(record.checkedAt)) / 1_000)),
+    ageSeconds: Math.max(0, Math.floor((now - Date.parse(record.observedAt)) / 1_000)),
     notReported: notReportedFor(detail),
   });
 }
@@ -213,7 +220,7 @@ function claudeReset(text: string, now: number): Date | null {
 export function normalizeClaudeUsage(
   raw: unknown,
   accountId: string,
-  checkedAt: Date,
+  observedAt: Date,
 ): AgentQuotaProducerAccount {
   const result = typeof raw === 'object' && raw !== null && typeof (raw as { result?: unknown }).result === 'string'
     ? (raw as { result: string }).result
@@ -225,13 +232,13 @@ export function normalizeClaudeUsage(
   let unreadableExhaustedReset: Date | null = null;
   for (const row of rows) {
     const usedPercent = Number(row[3]);
-    const reset = claudeReset(row[4]!, checkedAt.getTime());
+    const reset = claudeReset(row[4]!, observedAt.getTime());
     if (!reset) {
       if (usedPercent >= 100) {
         const windowMinutes = row[1] === 'session' ? 300 : 10080;
         // An unreadable reset must not turn exhaustion into availability. The
         // window length supplies a conservative, finite bound for this fact.
-        const conservativeReset = new Date(checkedAt.getTime() + windowMinutes * 60_000);
+        const conservativeReset = new Date(observedAt.getTime() + windowMinutes * 60_000);
         if (!unreadableExhaustedReset || conservativeReset > unreadableExhaustedReset) {
           unreadableExhaustedReset = conservativeReset;
         }
@@ -255,7 +262,9 @@ export function normalizeClaudeUsage(
     accountId,
     status: exhaustedReset ? 'out' : unknown ? 'unknown' : 'ok',
     ...(exhaustedReset ? { resetsAt: exhaustedReset } : {}),
-    checkedAt: isoUtc(checkedAt),
+    // The /usage text says nothing about credentials; the checker supplies the real kind.
+    loginKind: 'unknown',
+    observedAt: isoUtc(observedAt),
     ageSeconds: 0,
     source: 'check',
     shortWindow,
@@ -291,7 +300,7 @@ function codexWindow(raw: unknown): AgentQuotaWindow | null {
 }
 
 /** Normalise the Codex app-server `account/rateLimits/read` result. */
-export function normalizeCodexRateLimits(raw: unknown, accountId: string, checkedAt: Date): AgentQuotaProducerAccount {
+export function normalizeCodexRateLimits(raw: unknown, accountId: string, observedAt: Date): AgentQuotaProducerAccount {
   const envelope = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
   const result = envelope.result && typeof envelope.result === 'object' ? envelope.result as Record<string, unknown> : envelope;
   const snapshot = result.rateLimits && typeof result.rateLimits === 'object' ? result.rateLimits as Record<string, unknown> : {};
@@ -304,7 +313,7 @@ export function normalizeCodexRateLimits(raw: unknown, accountId: string, checke
     ? { hasCredits: creditsRaw.hasCredits, unlimited: creditsRaw.unlimited, balance: String(creditsRaw.balance) }
     : null;
   const reached = typeof snapshot.rateLimitReachedType === 'string' && snapshot.rateLimitReachedType.length > 0;
-  const resetCandidates = candidates.filter((window) => Date.parse(window.resetsAt) > checkedAt.getTime());
+  const resetCandidates = candidates.filter((window) => Date.parse(window.resetsAt) > observedAt.getTime());
   const exhaustedCandidates = resetCandidates.filter((window) => window.usedPercent >= 100);
   const blockingCandidates = exhaustedCandidates.length ? exhaustedCandidates : resetCandidates;
   const blocking = blockingCandidates.reduce<AgentQuotaWindow | undefined>((latest, window) =>
@@ -320,7 +329,9 @@ export function normalizeCodexRateLimits(raw: unknown, accountId: string, checke
     accountId,
     status: exhausted && (blocking || explicitReset) ? 'out' : unknown ? 'unknown' : 'ok',
     ...(exhausted && (blocking || explicitReset) ? { resetsAt: blocking?.resetsAt ?? explicitReset } : {}),
-    checkedAt: isoUtc(checkedAt),
+    // A rate-limit snapshot says nothing about credentials; the checker supplies the real kind.
+    loginKind: 'unknown',
+    observedAt: isoUtc(observedAt),
     ageSeconds: 0,
     source: 'check',
     shortWindow,
@@ -373,7 +384,7 @@ export function normalizeLiveQuota(
   if (!detail.shortWindow && !detail.weeklyWindow && !detail.modelWindows) return null;
   return agentQuotaProducerAccountSchema.parse({
     runner: 'claude', accountId, status: out ? 'out' : 'ok', ...(out ? { resetsAt: isoUtc(reset) } : {}),
-    checkedAt: isoUtc(observedAt), ageSeconds: 0, source: 'live',
+    loginKind: 'unknown', observedAt: isoUtc(observedAt), ageSeconds: 0, source: 'live',
     ...detail,
     notReported: notReportedFor(detail),
   });

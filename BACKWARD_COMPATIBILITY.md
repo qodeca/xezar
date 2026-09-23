@@ -381,6 +381,13 @@ are exactly `ok`, `out` and `unknown`; only an `out` row carries the account-lev
 because its successful S0 reply contained no quota percentages and therefore established neither
 capacity nor exhaustion.
 
+One deliberate pre-release change, before any version carrying this shape was published (#867
+AC-14 and AC-36, 0.19.0): every row's `checkedAt` was renamed to `observedAt` with no alias, and
+every row gained the required `loginKind` (`subscription`, `api-key` or `unknown`). `schemaVersion`
+stays `1` because no released reader of version 1 exists. From 0.19.0 on, the rule above applies
+unchanged: renaming `observedAt` or `loginKind`, or reading a `loginKind` of `unknown` (or any value
+other than `subscription`) as a subscription, is breaking.
+
 ## Follow-up inbox default flip (pre-rename issue 471) — deliberate, 2026-07-17
 
 The global follow-up inbox shipped enabled (spec 007; pre-rename issue 444 added the per-run `generateFollowups`
@@ -1923,7 +1930,8 @@ the 0.16.0 shape rather than instead of it.
   v2 UI stream. A failed-run limit reuses `parseUsageLimit` and marks that run's account `out`
   without changing auto-resume behavior.
 - **Frozen anchor:** `packages/contract/src/__fixtures__/agent-quota.expected.json` is anchored by
-  SHA-256 `96a21eb8ef383b734cfa8164c425d1ac5e89964cb301e4ddda4c199aee7e7acb` (formerly
+  SHA-256 `7ee28074676cd1344f6bb17a061a41f49f145e1f66b44d3a31420ebd0669e74a` (formerly
+  `96a21eb8ef383b734cfa8164c425d1ac5e89964cb301e4ddda4c199aee7e7acb`, and before that
   `967b5b4c67401ad7c0fd49808d6526cae0fc4e430fd1038d709b05427f35d930`). The only sample-value
   correction is Codex's weekly reset: S0 epoch `1790685902` is `2026-09-29T12:45:02Z`.
 

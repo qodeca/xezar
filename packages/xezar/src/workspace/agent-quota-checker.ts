@@ -6,6 +6,7 @@ import { z } from 'zod';
 import {
   agentQuotaProducerAccountSchema,
   agentQuotaProducerResponseSchema,
+  type AgentQuotaLoginKind,
   type AgentQuotaProducerAccount,
   type AgentQuotaProducerResponse,
   type AgentQuotaRunner,
@@ -60,6 +61,30 @@ const claudeUsageSchema = z.object({
 }).refine((value) => value.limits !== undefined || value.rate_limits !== undefined || value.rate_limits_available === false, {
   message: 'Claude usage reply carries no rate-limit fields',
 });
+
+/**
+ * `claude auth status --json`: Claude Code's own statement of the credentials this login uses. Only
+ * these three keys are read; the e-mail, organisation and folders it also prints are never kept.
+ */
+const claudeAuthStatusSchema = z.object({
+  loggedIn: z.boolean(),
+  authMethod: z.string(),
+  apiProvider: z.string().optional(),
+});
+
+/**
+ * The login kind from Claude Code's auth status (#867 AC-36). A claude.ai login and a
+ * `claude setup-token` OAuth token are subscription logins; `api_key` is an API key. Logged out, a
+ * cloud provider (Bedrock, Vertex, `third_party`), a missing provider or a method this version does
+ * not know is `unknown` — never a subscription.
+ */
+export function claudeLoginKind(raw: unknown): AgentQuotaLoginKind {
+  const status = claudeAuthStatusSchema.safeParse(raw);
+  if (!status.success || !status.data.loggedIn || status.data.apiProvider !== 'firstParty') return 'unknown';
+  if (status.data.authMethod === 'claude.ai' || status.data.authMethod === 'oauth_token') return 'subscription';
+  if (status.data.authMethod === 'api_key') return 'api-key';
+  return 'unknown';
+}
 
 const codexAccountSchema = z.object({
   account: z.discriminatedUnion('type', [
@@ -269,6 +294,17 @@ function executableFor(provider: AgentQuotaRunner): string {
   return provider === 'claude' ? (process.env.XEZ_CLAUDE_BIN ?? 'claude') : (process.env.XEZ_CODEX_BIN ?? 'codex');
 }
 
+/**
+ * The login kind from Codex's `account/read` reply, the app-server's own statement of the
+ * credentials in use (#867 AC-36): a ChatGPT login is a subscription, an API key is an API key, and
+ * no login or a cloud-provider login (`amazonBedrock`) is `unknown`.
+ */
+export function codexLoginKind(account: z.infer<typeof codexAccountSchema>): AgentQuotaLoginKind {
+  if (account.account?.type === 'chatgpt') return 'subscription';
+  if (account.account?.type === 'apiKey') return 'api-key';
+  return 'unknown';
+}
+
 function profileProcessEnv(profile: QuotaProfile): NodeJS.ProcessEnv {
   return buildChildEnv({
     backend: profile.provider,
@@ -282,12 +318,14 @@ function unknownRecord(
   reason: 'check-failed' | 'format-changed' | 'version-too-old' | 'not-installed' | 'api-key',
   toolVersion: string | null,
   warning: string,
+  loginKind: AgentQuotaLoginKind = 'unknown',
 ): AgentQuotaProducerAccount {
   return agentQuotaProducerAccountSchema.parse({
     runner: profile.provider,
     accountId: profile.id,
     status: 'unknown',
-    checkedAt: checkedAt.toISOString(),
+    loginKind,
+    observedAt: checkedAt.toISOString(),
     ageSeconds: 0,
     source: 'check',
     shortWindow: null,
@@ -356,6 +394,26 @@ function normalizeClaudeControl(raw: unknown, profile: QuotaProfile, checkedAt: 
       ? record.notReported.filter((field) => field !== 'planType')
       : record.notReported,
   });
+}
+
+/** Ask Claude Code which credentials this login uses. Any failure is `unknown`, never a guess. */
+async function readClaudeLoginKind(
+  profile: QuotaProfile,
+  deadline: number,
+  run: RunQuotaProcess,
+): Promise<AgentQuotaLoginKind> {
+  try {
+    const raw = await run({
+      executable: executableFor('claude'),
+      args: ['auth', 'status', '--json'],
+      cwd: tmpdir(),
+      env: profileProcessEnv(profile),
+      deadline: Math.min(deadline, Date.now() + 5_000),
+    });
+    return claudeLoginKind(typeof raw === 'string' ? JSON.parse(raw) : raw);
+  } catch {
+    return 'unknown';
+  }
 }
 
 async function runClaudeCheck(
@@ -470,22 +528,26 @@ async function runCodexCheck(
   const raw = await runCodexRpc(profile, deadline, run);
   codexInitializeSchema.parse(raw.initialize);
   const account = codexAccountSchema.parse(raw.account);
+  const loginKind = codexLoginKind(account);
   if (account.account?.type === 'apiKey') {
-    return unknownRecord(profile, checkedAt, 'api-key', null, 'API-key logins do not report plan limits.');
+    return unknownRecord(profile, checkedAt, 'api-key', null, 'API-key logins do not report plan limits.', loginKind);
   }
   const limits = codexRateLimitsSchema.parse(raw.limits);
   codexUsageSchema.parse(raw.usage);
   if (limits.rateLimits === null) throw new Error('Codex did not report a rate-limit snapshot');
-  return normalizeCodexRateLimits({ result: limits }, profile.id, checkedAt);
+  return { ...normalizeCodexRateLimits({ result: limits }, profile.id, checkedAt), loginKind };
 }
 
 function dryRunRecord(profile: QuotaProfile, checkedAt: Date): AgentQuotaProducerAccount {
   if (profile.provider === 'claude') {
-    return normalizeClaudeUsage({
-      result: 'Current session: 25% used · resets Sep 22 at 5:10pm (Europe/Warsaw)\nCurrent week (all models): 40% used · resets Sep 28 at 7:00pm (Europe/Warsaw)',
-    }, profile.id, checkedAt);
+    return {
+      ...normalizeClaudeUsage({
+        result: 'Current session: 25% used · resets Sep 22 at 5:10pm (Europe/Warsaw)\nCurrent week (all models): 40% used · resets Sep 28 at 7:00pm (Europe/Warsaw)',
+      }, profile.id, checkedAt),
+      loginKind: 'subscription',
+    };
   }
-  return normalizeCodexRateLimits({ result: {
+  return { ...normalizeCodexRateLimits({ result: {
     ordinaryUsageAllowed: true,
     rateLimits: {
       primary: { usedPercent: 20, windowDurationMins: 300, resetsAt: Math.floor((checkedAt.getTime() + 300 * 60_000) / 1_000) },
@@ -494,7 +556,7 @@ function dryRunRecord(profile: QuotaProfile, checkedAt: Date): AgentQuotaProduce
       planType: 'mock',
       rateLimitReachedType: null,
     },
-  } }, profile.id, checkedAt);
+  } }, profile.id, checkedAt), loginKind: 'subscription' };
 }
 
 export interface AgentQuotaCheckerOptions {
@@ -556,7 +618,7 @@ export class AgentQuotaChecker {
         const attempted = this.lastAttempt.get(key);
         return {
           ...account,
-          stale: account.source === 'none' || now - Date.parse(account.checkedAt) >= AGENT_QUOTA_STALE_MS,
+          stale: account.source === 'none' || now - Date.parse(account.observedAt) >= AGENT_QUOTA_STALE_MS,
           refreshing: this.inFlight.has(key),
           nextCheckAt: attempted === undefined ? null : new Date(attempted + AGENT_QUOTA_CHECK_GAP_MS).toISOString(),
           toolVersion: this.versions.get(key) ?? account.toolVersion ?? null,
@@ -689,6 +751,7 @@ export class AgentQuotaChecker {
     const deadline = Date.now() + AGENT_QUOTA_CHECK_TIMEOUT_MS;
     const previous = this.options.store.answer({ provider: profile.provider, accountId: profile.id }).accounts[0];
     let toolVersion: string | null = null;
+    let loginKind: AgentQuotaLoginKind = 'unknown';
     try {
       let record: AgentQuotaProducerAccount;
       if (this.dryRun()) {
@@ -715,9 +778,12 @@ export class AgentQuotaChecker {
           ));
           return;
         }
-        record = profile.provider === 'claude'
-          ? await runClaudeCheck(profile, checkedAt, deadline, this.runProcess)
-          : await runCodexCheck(profile, checkedAt, deadline, this.runProcess);
+        if (profile.provider === 'claude') {
+          loginKind = await readClaudeLoginKind(profile, deadline, this.runProcess);
+          record = { ...await runClaudeCheck(profile, checkedAt, deadline, this.runProcess), loginKind };
+        } else {
+          record = await runCodexCheck(profile, checkedAt, deadline, this.runProcess);
+        }
       }
       this.versions.set(this.key(profile), toolVersion);
       await this.options.store.put(agentQuotaProducerAccountSchema.parse({
@@ -765,7 +831,7 @@ export class AgentQuotaChecker {
         }));
         return;
       }
-      await this.options.store.put(unknownRecord(profile, checkedAt, reason, toolVersion, warning));
+      await this.options.store.put(unknownRecord(profile, checkedAt, reason, toolVersion, warning, loginKind));
     }
   }
 }

@@ -136,13 +136,26 @@ describe('the per-agent summary (D30) and the chip (D38)', () => {
     })
   })
 
-  it('shows an agent only when it is installed and a login reported a plan', () => {
+  it('shows an agent only when it is installed and has a subscription login (#867 AC-36)', () => {
     const both = [check('claude', true), check('codex', true)]
     expect(chipSummaries(FIXTURE, both, NOW).map((s) => s.runner)).toEqual(['claude', 'codex'])
     expect(chipSummaries(FIXTURE, [check('claude', true), check('codex', false)], NOW).map((s) => s.runner)).toEqual(['claude'])
-    // Every Codex login reported nothing (an API-key login looks exactly like this): no segment.
-    const noPlan: AgentQuotaResponse = { ...FIXTURE, accounts: [row('codex', 'api-key')] }
-    expect(chipSummaries(noPlan, both, NOW)).toEqual([])
+    // An API-key login: no segment.
+    const apiKey: AgentQuotaResponse = { ...FIXTURE, accounts: [row('codex', 'api-key')] }
+    expect(chipSummaries(apiKey, both, NOW)).toEqual([])
+    // A login of unknown kind is never read as a subscription — even one that is out or reports a
+    // plan (the old rule inferred a subscription from exactly those facts).
+    const unknownKind: AgentQuotaResponse = {
+      ...FIXTURE,
+      accounts: [row('claude', 'quota-exhausted'), { ...row('codex', 'default'), loginKind: 'unknown' }],
+    }
+    expect(chipSummaries(unknownKind, both, NOW)).toEqual([])
+    // A subscription login that reported nothing yet still counts: the kind decides, not the facts.
+    const quietSubscription: AgentQuotaResponse = {
+      ...FIXTURE,
+      accounts: [{ ...row('claude', 'qodeca-priv'), loginKind: 'subscription' }],
+    }
+    expect(chipSummaries(quietSubscription, both, NOW)).toMatchObject([{ runner: 'claude', total: 1, canWork: 0 }])
     // Unknown answer or unknown install state: no chip rather than a guess.
     expect(chipSummaries(undefined, both, NOW)).toEqual([])
     expect(chipSummaries(FIXTURE, undefined, NOW)).toEqual([])

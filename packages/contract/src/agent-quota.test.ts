@@ -11,7 +11,7 @@ import {
 // @ts-expect-error Vitest supplies raw asset imports; production contract modules remain Node-free.
 import fixtureText from './__fixtures__/agent-quota.expected.json?raw';
 
-const AGENT_QUOTA_FIXTURE_SHA256 = '96a21eb8ef383b734cfa8164c425d1ac5e89964cb301e4ddda4c199aee7e7acb';
+const AGENT_QUOTA_FIXTURE_SHA256 = '7ee28074676cd1344f6bb17a061a41f49f145e1f66b44d3a31420ebd0669e74a';
 
 async function sha256(text: string): Promise<string> {
   const runtime = globalThis as unknown as {

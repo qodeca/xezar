@@ -36,7 +36,8 @@ const RAW = fixtureJson as unknown as {
     accountId: string
     status: 'ok' | 'out' | 'unknown'
     resetsAt?: string
-    checkedAt: string
+    loginKind: string
+    observedAt: string
     ageSeconds: number
     source: string
     shortWindow: RawWindow | null
@@ -50,6 +51,11 @@ const RAW = fixtureJson as unknown as {
 const NOW = Date.parse(FIXTURE.generatedAt)
 const AGENT = { claude: 'Claude Code', codex: 'Codex' } as const
 const nameOf: QuotaNameOf = (_runner, accountId) => (accountId === 'default' ? 'Built-in login' : accountId)
+const LOGIN_KIND: Record<string, string> = {
+  subscription: 'Subscription',
+  'api-key': 'API key — plan limits do not apply',
+  unknown: 'Unknown — the agent did not say',
+}
 const NOT_REPORTED: Record<string, string> = {
   shortWindow: 'short window',
   weeklyWindow: 'weekly window',
@@ -132,7 +138,8 @@ const FIELD_USE: Record<string, 'rendered' | 'transport' | 'age'> = {
   'accounts[].accountId': 'rendered',
   'accounts[].status': 'rendered',
   'accounts[].resetsAt': 'rendered',
-  'accounts[].checkedAt': 'rendered',
+  'accounts[].loginKind': 'rendered',
+  'accounts[].observedAt': 'rendered',
   'accounts[].ageSeconds': 'age',
   'accounts[].source': 'rendered',
   'accounts[].shortWindow': 'rendered',
@@ -252,7 +259,11 @@ describe('AC-37: for one answer, the cockpit renders exactly its fields and valu
       const sourceWords =
         raw.source === 'failedRun' ? `from a failed task ${ageWords(raw.ageSeconds)} ago` : `checked ${ageWords(raw.ageSeconds)} ago`
       expect(meta).toContain(sourceWords)
-      expect(text).toContain(formatQuotaTime(raw.checkedAt, NOW))
+      expect(text).toContain(formatQuotaTime(raw.observedAt, NOW))
+
+      // loginKind — the details panel names it; `unknown` is never worded as a subscription.
+      const kind = within(el.querySelector('[data-slot="account-limits-details"]') as HTMLElement).getByText('Login kind')
+      expect(kind.nextElementSibling?.textContent).toBe(LOGIN_KIND[raw.loginKind])
 
       // every notReported field, in words, under "Not reported by <agent>".
       const details = within(el.querySelector('[data-slot="account-limits-details"]') as HTMLElement)
@@ -348,7 +359,7 @@ describe('Refresh', () => {
 
   it('posts the contract selector for one login and reports what came back', async () => {
     const moved = FIXTURE.accounts.map((a) =>
-      a.accountId === 'quota-exhausted' ? { ...a, checkedAt: '2026-09-22T14:24:00Z', ageSeconds: 0 } : a,
+      a.accountId === 'quota-exhausted' ? { ...a, observedAt: '2026-09-22T14:24:00Z', ageSeconds: 0 } : a,
     )
     refreshAnswer = { ...FIXTURE, accounts: moved as AgentQuotaAccount[] }
     renderEveryRow(FIXTURE, false)

@@ -54,7 +54,8 @@ const S3_ANSWER: AgentQuotaResponse = agentQuotaResponseSchema.parse(
         runner: 'claude',
         accountId: 'text-row',
         status: 'ok',
-        checkedAt: '2026-09-22T14:22:00Z',
+        loginKind: 'subscription',
+        observedAt: '2026-09-22T14:22:00Z',
         ageSeconds: 120,
         source: 'check-text',
         shortWindow: window5h,
@@ -72,7 +73,8 @@ const S3_ANSWER: AgentQuotaResponse = agentQuotaResponseSchema.parse(
         runner: 'claude',
         accountId: 'never',
         status: 'unknown',
-        checkedAt: GENERATED,
+        loginKind: 'unknown',
+        observedAt: GENERATED,
         ageSeconds: 0,
         source: 'none',
         ...empty,
@@ -83,12 +85,13 @@ const S3_ANSWER: AgentQuotaResponse = agentQuotaResponseSchema.parse(
         unavailableReason: 'No quota check has completed yet.',
       },
       // A check 1 minute ago whose gap the server no longer holds (nextCheckAt: null, e.g. after a
-      // restart): the cockpit must not invent a 5-minute hold from checkedAt.
+      // restart): the cockpit must not invent a 5-minute hold from observedAt.
       {
         runner: 'claude',
         accountId: 'no-hold',
         status: 'ok',
-        checkedAt: '2026-09-22T14:23:00Z',
+        loginKind: 'subscription',
+        observedAt: '2026-09-22T14:23:00Z',
         ageSeconds: 60,
         source: 'check',
         shortWindow: window5h,
@@ -105,7 +108,8 @@ const S3_ANSWER: AgentQuotaResponse = agentQuotaResponseSchema.parse(
         runner: 'claude',
         accountId: 'server-stale',
         status: 'ok',
-        checkedAt: '2026-09-22T14:22:00Z',
+        loginKind: 'subscription',
+        observedAt: '2026-09-22T14:22:00Z',
         ageSeconds: 120,
         source: 'live',
         shortWindow: window5h,
@@ -123,7 +127,8 @@ const S3_ANSWER: AgentQuotaResponse = agentQuotaResponseSchema.parse(
         runner: 'claude',
         accountId: 'too-old',
         status: 'unknown',
-        checkedAt: '2026-09-22T14:23:00Z',
+        loginKind: 'unknown',
+        observedAt: '2026-09-22T14:23:00Z',
         ageSeconds: 60,
         source: 'check',
         ...empty,
@@ -138,7 +143,8 @@ const S3_ANSWER: AgentQuotaResponse = agentQuotaResponseSchema.parse(
         runner: 'claude',
         accountId: 'format',
         status: 'unknown',
-        checkedAt: '2026-09-22T14:23:00Z',
+        loginKind: 'unknown',
+        observedAt: '2026-09-22T14:23:00Z',
         ageSeconds: 60,
         source: 'check',
         ...empty,
@@ -152,7 +158,8 @@ const S3_ANSWER: AgentQuotaResponse = agentQuotaResponseSchema.parse(
         runner: 'codex',
         accountId: 'failed',
         status: 'unknown',
-        checkedAt: '2026-09-22T14:23:00Z',
+        loginKind: 'unknown',
+        observedAt: '2026-09-22T14:23:00Z',
         ageSeconds: 60,
         source: 'check',
         ...empty,
@@ -168,7 +175,8 @@ const S3_ANSWER: AgentQuotaResponse = agentQuotaResponseSchema.parse(
         runner: 'codex',
         accountId: 'missing',
         status: 'unknown',
-        checkedAt: '2026-09-22T14:23:00Z',
+        loginKind: 'unknown',
+        observedAt: '2026-09-22T14:23:00Z',
         ageSeconds: 60,
         source: 'check',
         ...empty,
@@ -184,7 +192,8 @@ const S3_ANSWER: AgentQuotaResponse = agentQuotaResponseSchema.parse(
         runner: 'codex',
         accountId: 'key',
         status: 'unknown',
-        checkedAt: '2026-09-22T14:23:00Z',
+        loginKind: 'api-key',
+        observedAt: '2026-09-22T14:23:00Z',
         ageSeconds: 60,
         source: 'check',
         ...empty,
@@ -209,7 +218,8 @@ const FUTURE: AgentQuotaResponse = agentQuotaResponseSchema.parse({
       runner: 'claude',
       accountId: 'future-ok',
       status: 'ok',
-      checkedAt: '2026-09-22T14:23:00Z',
+      loginKind: 'org-seat',
+      observedAt: '2026-09-22T14:23:00Z',
       ageSeconds: 60,
       source: 'telepathy',
       shortWindow: window5h,
@@ -225,7 +235,8 @@ const FUTURE: AgentQuotaResponse = agentQuotaResponseSchema.parse({
       runner: 'claude',
       accountId: 'future-unknown',
       status: 'unknown',
-      checkedAt: '2026-09-22T14:23:00Z',
+      loginKind: 'unknown',
+      observedAt: '2026-09-22T14:23:00Z',
       ageSeconds: 60,
       source: 'telepathy',
       ...empty,
@@ -294,7 +305,7 @@ const detail = (el: HTMLElement, term: string) =>
   within(el.querySelector('[data-slot="account-limits-details"]') as HTMLElement).queryByText(term)?.nextElementSibling?.textContent
 
 describe('S3 answer (#888): the cockpit reads what the server sends', () => {
-  it('holds Refresh until the server’s nextCheckAt, not a gap derived from checkedAt', () => {
+  it('holds Refresh until the server’s nextCheckAt, not a gap derived from observedAt', () => {
     renderRows(S3_ANSWER, false)
     const text = row(S3_ANSWER, 'text-row')
     // check-text is a check: its hold comes from nextCheckAt (14:27), and it is described as one.
@@ -410,7 +421,10 @@ describe('an unknown source or statusReason renders as unknown and acts only on 
 
   it('never counts unknown as a login that can work', () => {
     const checks = [{ name: 'claude', available: true }] as BackendCheck[]
-    expect(chipSummaries(FUTURE, checks, NOW)[0]).toMatchObject({ total: 2, canWork: 1 })
+    // A loginKind this cockpit does not know is never a subscription (#867 AC-36): no chip for it.
+    expect(chipSummaries(FUTURE, checks, NOW)).toEqual([])
+    const subscribed = { ...FUTURE, accounts: FUTURE.accounts.map((row) => ({ ...row, loginKind: 'subscription' })) }
+    expect(chipSummaries(subscribed, checks, NOW)[0]).toMatchObject({ total: 2, canWork: 1 })
     expect(chipSummaries(S3_ANSWER, checks, NOW)[0]).toMatchObject({ canWork: 3 })
   })
 })

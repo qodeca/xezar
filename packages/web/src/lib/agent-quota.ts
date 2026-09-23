@@ -142,7 +142,7 @@ const CHECK_SOURCES = new Set(['check', 'check-text'])
 /**
  * When the next check of this login is allowed, or null when nothing holds it back. The server's
  * `nextCheckAt` decides whenever the answer carries the key — `null` there means it holds nothing
- * back, even right after a check. Only an older answer without the key falls back to `checkedAt` +
+ * back, even right after a check. Only an older answer without the key falls back to `observedAt` +
  * 5 minutes for a reading that came from a check; a live reading or a failed task says nothing
  * about when the last check ran.
  */
@@ -153,7 +153,7 @@ export function nextCheckAllowedAt(account: AgentQuotaAccount): number | null {
     return Number.isNaN(next) ? null : next
   }
   if (!CHECK_SOURCES.has(account.source)) return null
-  const checked = Date.parse(account.checkedAt)
+  const checked = Date.parse(account.observedAt)
   return Number.isNaN(checked) ? null : checked + QUOTA_CHECK_GAP_MS
 }
 
@@ -398,11 +398,32 @@ export function summarizeAgent(answer: AgentQuotaResponse, runner: AgentQuotaRun
   return { runner, total: rows.length, canWork, out, unknown, firstFreeAt: firstFree, tone, text }
 }
 
+/** Is this row a subscription login? Only the answer's own `loginKind: "subscription"` says so:
+ *  `unknown`, `api-key` and any value this cockpit does not know are not (#867 AC-36). */
+export function isSubscriptionLogin(account: AgentQuotaAccount): boolean {
+  return account.loginKind === 'subscription'
+}
+
+/** The details panel's words for the row's `loginKind`; a value this cockpit does not know is
+ *  shown as sent, never as a subscription. */
+export function loginKindText(account: AgentQuotaAccount): string {
+  switch (account.loginKind) {
+    case 'subscription':
+      return 'Subscription'
+    case 'api-key':
+      return 'API key — plan limits do not apply'
+    case 'unknown':
+      return 'Unknown — the agent did not say'
+    default:
+      return `“${account.loginKind}”, a kind this version of the cockpit does not know`
+  }
+}
+
 /**
- * Which agents the chip shows (#867 D38): installed, and with at least one login that reported a
- * plan — a window, credits or a plan name, or a definite `out`. The contract carries no login kind,
- * so an API-key login and a subscription login that reported nothing look the same; an agent whose
- * every login reported nothing is left out rather than shown as "0 of n".
+ * Which agents the chip shows (#867 D38, AC-36): installed, and with at least one login whose
+ * `loginKind` is `subscription`. The kind comes from the login's own credentials as the agent
+ * reports them, never from the plan facts it happened to report; a login of `unknown` kind is never
+ * counted as a subscription, so an agent with none is left out rather than shown as "0 of n".
  */
 export function chipSummaries(
   answer: AgentQuotaResponse | undefined,
@@ -414,7 +435,7 @@ export function chipSummaries(
     const installed = checks.some((check) => check.name === runner && check.available === true)
     if (!installed) return []
     const rows = accountsOf(answer, runner)
-    if (!rows.some((row) => row.status === 'out' || reportsAnyPlanFact(row))) return []
+    if (!rows.some(isSubscriptionLogin)) return []
     const summary = summarizeAgent(answer, runner, now)
     return summary ? [summary] : []
   })

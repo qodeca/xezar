@@ -5,10 +5,10 @@ import { z } from 'zod';
  *
  * It is shared by `GET /api/v1/workspace/agent-quota` and the `project_config` actions
  * `read_quota` / `check_quota`. These objects deliberately remain non-strict: consumers must
- * ignore unknown keys, unknown `notReported` names, and unknown non-empty `source` or
+ * ignore unknown keys, unknown `notReported` names, and unknown non-empty `source`, `loginKind` or
  * `statusReason` values so a later release can add facts without breaking an older reader. A
  * reader that meets an unknown `source` or `statusReason` still acts only on `status`, and
- * `unknown` never means budget. Producers validate with `agentQuotaProducerResponseSchema`; the
+ * `unknown` never means budget; a `loginKind` other than `subscription` is never a subscription. Producers validate with `agentQuotaProducerResponseSchema`; the
  * committed fixture in `__fixtures__/agent-quota.expected.json` pins its known keys and canonical
  * order byte-for-byte. A Claude account is never `status: "ok"` when any reported window
  * (`shortWindow`, `weeklyWindow`, or `modelWindows[]`) has `usedPercent` greater than or equal to
@@ -32,6 +32,14 @@ export const agentQuotaCheckReasonSchema = z.enum([
   'api-key',
 ]);
 export type AgentQuotaCheckReason = z.infer<typeof agentQuotaCheckReasonSchema>;
+
+/**
+ * What kind of login a row is (#867 AC-36, D38), read from the login's own credentials as the
+ * tool reports them — never from plan facts such as `planType` or a window. `unknown` is a
+ * first-class answer ("could not tell") and is never read as `subscription`.
+ */
+export const agentQuotaLoginKindSchema = z.enum(['subscription', 'api-key', 'unknown']);
+export type AgentQuotaLoginKind = z.infer<typeof agentQuotaLoginKindSchema>;
 
 const isoTimestampSchema = z.string().datetime({ offset: true });
 const utcTimestampSchema = isoTimestampSchema.regex(/Z$/, 'must be an ISO 8601 UTC timestamp');
@@ -70,7 +78,8 @@ export const agentQuotaNotReportedFieldSchema = z.enum([
 export type AgentQuotaNotReportedField = z.infer<typeof agentQuotaNotReportedFieldSchema>;
 
 const agentQuotaConsumerAccountDetailShape = {
-  checkedAt: isoTimestampSchema,
+  loginKind: z.string().min(1),
+  observedAt: isoTimestampSchema,
   ageSeconds: z.number().int().nonnegative(),
   source: z.string().min(1),
   shortWindow: agentQuotaWindowSchema.nullable(),
@@ -92,7 +101,8 @@ const agentQuotaConsumerAccountDetailShape = {
 } as const;
 
 const agentQuotaProducerAccountDetailShape = {
-  checkedAt: isoTimestampSchema,
+  loginKind: agentQuotaLoginKindSchema,
+  observedAt: isoTimestampSchema,
   ageSeconds: z.number().int().nonnegative(),
   source: agentQuotaSourceSchema,
   shortWindow: agentQuotaWindowSchema.strict().nullable(),
