@@ -15,6 +15,7 @@ import {
   RunManager,
 } from './run.ts';
 import type { WorkflowDef } from './types.ts';
+import { codexTurnLimit } from '../core/codex-usage-limit.ts';
 
 const run = promisify(execFile);
 const GIT_ID = ['-c', 'user.name=test', '-c', 'user.email=test@local'];
@@ -1031,6 +1032,68 @@ describe('quota event consumption', () => {
       runner.restore();
       rmSync(root, { recursive: true, force: true });
     }
+  });
+
+  it('marks the session login out from a structured account-limit on initial and Continue paths (#867 AC-17)', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'xez-quota-limit-'));
+    const store = RunStore.open(join(root, 'data'));
+    const limitEvent = (resetAt: string) => ({
+      type: 'account-limit' as const, runner: 'codex' as const, resetAt, reason: 'usageLimitExceeded',
+    });
+    // The run itself ends done: only the structured event can have marked the login out.
+    const runner = scriptedRunner([
+      { events: [limitEvent('2030-01-01T00:00:00.000Z')] },
+      { events: [limitEvent('2030-01-02T00:00:00.000Z')] },
+    ]);
+    const manager = new RunManager(store, root);
+    try {
+      const run = manager.startRun(SINGLE_STEP, { task: 'structured limit', worktree: false });
+      await terminal(store, run.id);
+      expect(store.getRun(run.id)?.status).toBe('done');
+      await expect.poll(() => manager.agentQuotaStore.answer().accounts)
+        .toEqual([expect.objectContaining({
+          runner: 'codex', accountId: 'default', status: 'out', source: 'failedRun', resetsAt: '2030-01-01T00:00:00Z',
+        })]);
+      expect(store.readEvents(run.id).some((event) => event.type === 'account-limit')).toBe(false);
+
+      expect(manager.continueRun(run.id, { text: 'continue' })).toEqual({ ok: true });
+      await expect.poll(() => manager.agentQuotaStore.answer().accounts[0]?.resetsAt).toBe('2030-01-02T00:00:00Z');
+      await terminal(store, run.id);
+      expect(store.readEvents(run.id).some((event) => event.type === 'account-limit')).toBe(false);
+    } finally {
+      await manager.quiesce();
+      store.flush();
+      runner.restore();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('fails a Codex usageLimitExceeded turn as a limit and schedules the unchanged auto-resume (#565)', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'xez-codex-limit-'));
+    const store = RunStore.open(join(root, 'data'));
+    const clock = providerClock();
+    const reset = clock.reset(600);
+    // Schema-shaped (Codex 0.156.0 `Turn` + `TurnError`), not captured: see codex-usage-limit.test.ts.
+    const limit = codexTurnLimit({
+      id: 'turn_1', status: 'failed', items: [],
+      error: { message: "You've hit your usage limit. Try again later.", codexErrorInfo: 'usageLimitExceeded' },
+    }, { limitId: 'codex', primary: { usedPercent: 100, windowDurationMins: 300, resetsAt: reset } }, Date.now())!;
+    const runner = scriptedRunner([{
+      events: [{ type: 'account-limit', runner: 'codex', resetAt: limit.resetAt!.toISOString(), reason: limit.kind }],
+      error: limit.message,
+    }]);
+    const manager = new RunManager(store, root, { autoResumeTimer: clock.timer });
+    try {
+      const run = manager.startRun(SINGLE_STEP, { task: 'codex limit', worktree: false });
+      await terminal(store, run.id);
+      expect(store.getRun(run.id)).toMatchObject({
+        status: 'failed',
+        error: expect.stringContaining(`Codex usage limit reached (usageLimitExceeded) — resets at ${new Date(reset * 1000).toISOString()}.`),
+        autoResumeAt: new Date(reset * 1000 + AUTO_RESUME_GRACE_MS).toISOString(),
+      });
+      await expect.poll(() => manager.agentQuotaStore.answer().accounts.find((row) => row.runner === 'codex'))
+        .toMatchObject({ accountId: 'default', status: 'out', source: 'failedRun' });
+    } finally { await manager.quiesce(); store.flush(); runner.restore(); clock.restore(); rmSync(root, { recursive: true, force: true }); }
   });
 
   it('drops malformed quota telemetry with one warning and keeps the run running', async () => {
