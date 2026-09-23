@@ -397,19 +397,29 @@ describe('project_config: registration', () => {
 });
 
 describe('project_config: read_quota', () => {
-  it('reads all quota rows or filters them without starting a check', async () => {
+  it('waits for bounded stale checks and filters the resulting rows', async () => {
     const all = value(await invoke({ action: 'read_quota' }));
     expect(all).toMatchObject({ schemaVersion: 1, scope: 'agent-quota' });
     expect(all.accounts.map((row: { runner: string }) => row.runner)).toEqual(['claude', 'codex']);
 
     const one = value(await invoke({ action: 'read_quota', provider: 'claude', accountId: 'default' }));
     expect(one.accounts).toEqual([
-      expect.objectContaining({ runner: 'claude', accountId: 'default', status: 'unknown' }),
+      expect.objectContaining({ runner: 'claude', accountId: 'default', status: 'ok' }),
+    ]);
+  });
+
+  it('check_quota dispatches the POST refresh and accepts the same optional filters', async () => {
+    const service = spyService();
+    const checked = value(await invoke({ action: 'check_quota', provider: 'codex', accountId: 'default' }, { service }));
+    expect(service.requests).toContain('POST /api/v1/workspace/agent-quota/refresh');
+    expect(checked.accounts).toEqual([
+      expect.objectContaining({ runner: 'codex', accountId: 'default', status: 'ok' }),
     ]);
   });
 
   it('rejects unsupported providers and remains readable through a hosted service', async () => {
     expect(projectConfigTool.inputSchema.safeParse({ action: 'read_quota', provider: 'pi' }).success).toBe(false);
+    expect(projectConfigTool.inputSchema.safeParse({ action: 'check_quota', provider: 'pi' }).success).toBe(false);
     const hosted = hotCockpit('0.0.0.0').app;
     const answer = value(await invoke({ action: 'read_quota' }, { service: hosted }));
     expect(answer.accounts).toHaveLength(2);

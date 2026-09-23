@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { AgentQuotaStore, normalizeClaudeUsage } from '../workspace/agent-quota.ts';
+import { AgentQuotaChecker } from '../workspace/agent-quota-checker.ts';
 import type { SocketHub, TopicPublisher } from './ws.ts';
 import { createApp, WorkspaceEventBus } from './server.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
@@ -44,10 +45,10 @@ describe('agent quota read surface', () => {
   it('answers unknown rows for every known Claude/Codex login when no observation is stored', async () => {
     const response = await apiRequest(app(), '/api/v1/workspace/agent-quota');
     expect(response.status).toBe(200);
-    const body = await response.json() as { accounts: Array<{ runner: string; accountId: string; status: string }> };
+    const body = await response.json() as { accounts: Array<{ runner: string; accountId: string; status: string; source: string }> };
     expect(body.accounts).toEqual([
-      expect.objectContaining({ runner: 'claude', accountId: 'default', status: 'unknown' }),
-      expect.objectContaining({ runner: 'codex', accountId: 'default', status: 'unknown' }),
+      expect.objectContaining({ runner: 'claude', accountId: 'default', status: 'unknown', source: 'none' }),
+      expect.objectContaining({ runner: 'codex', accountId: 'default', status: 'unknown', source: 'none' }),
     ]);
   });
 
@@ -59,12 +60,59 @@ describe('agent quota read surface', () => {
     expect((await apiRequest(app(), '/api/v1/workspace/agent-quota?accountId=missing')).status).toBe(404);
   });
 
+  it('honours the documented wait=true query', async () => {
+    const checker = new AgentQuotaChecker({ store: quota, profiles: async () => [], dryRun: () => true });
+    const refresh = vi.spyOn(checker, 'refreshStale');
+    const response = await apiRequest(app({ agentQuotaChecker: checker }), '/api/v1/workspace/agent-quota?wait=true');
+    expect(response.status).toBe(200);
+    expect(refresh).toHaveBeenCalledWith({}, true);
+  });
+
   it('remains readable in hosted mode without exposing a home path', async () => {
     const response = await app({ bindHost: '0.0.0.0' }).request('http://server/api/v1/workspace/agent-quota', {
       headers: { host: 'server' },
     });
     expect(response.status).toBe(200);
     expect(await response.text()).not.toContain(home);
+  });
+
+  it('refreshes through POST in hosted mode, validates the body, and exposes no identity or path', async () => {
+    const checker = new AgentQuotaChecker({
+      store: quota,
+      now: () => Date.parse('2026-09-22T14:24:00Z'),
+      profiles: async () => [{
+        provider: 'claude', id: 'work', label: 'person@example.test', configDir: home,
+        path: home, isDefault: false,
+      }],
+      dryRun: () => true,
+    });
+    const hosted = app({ bindHost: '0.0.0.0', agentQuotaChecker: checker });
+    const response = await hosted.request('http://server/api/v1/workspace/agent-quota/refresh', {
+      method: 'POST',
+      headers: { host: 'server', origin: 'http://server', 'content-type': 'application/json' },
+      body: JSON.stringify({ provider: 'claude', accountId: 'work' }),
+    });
+    expect(response.status).toBe(200);
+    const text = await response.text();
+    expect(text).not.toContain(home);
+    expect(text).not.toContain('person@example.test');
+    expect((await hosted.request('http://server/api/v1/workspace/agent-quota/refresh', {
+      method: 'POST', headers: { host: 'server', origin: 'http://server', 'content-type': 'application/json' },
+      body: JSON.stringify({ provider: 'pi' }),
+    })).status).toBe(400);
+    expect((await hosted.request('http://server/api/v1/workspace/agent-quota/refresh', {
+      method: 'POST', headers: { host: 'server', origin: 'http://server', 'content-type': 'application/json' },
+      body: JSON.stringify({ accountId: 'missing' }),
+    })).status).toBe(404);
+  });
+
+  it('rejects a cross-origin refresh through the existing origin guard', async () => {
+    const response = await app().request('http://127.0.0.1/api/v1/workspace/agent-quota/refresh', {
+      method: 'POST',
+      headers: { host: '127.0.0.1', origin: 'https://evil.example', 'content-type': 'application/json' },
+      body: '{}',
+    });
+    expect(response.status).toBe(403);
   });
 
   it('registers a demand-driven agent-quota topic and emits WS + SSE only after a change', async () => {
@@ -77,7 +125,11 @@ describe('agent quota read surface', () => {
     const bus = new WorkspaceEventBus();
     const hints: string[] = [];
     bus.on((event) => hints.push(event));
-    const service = app({ socketHub: hub, workspaceEvents: bus });
+    const service = app({
+      socketHub: hub,
+      workspaceEvents: bus,
+      agentQuotaChecker: new AgentQuotaChecker({ store: quota, profiles: async () => [] }),
+    });
     const topic = topics.get('agent-quota');
     expect(topic).toBeDefined();
     const publish = vi.fn();

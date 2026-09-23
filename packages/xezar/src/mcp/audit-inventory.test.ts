@@ -82,7 +82,7 @@ describe('the shared audit action inventory (#306 part 2, spec § 6)', () => {
     expect(coverageKeys.length).toBeGreaterThan(100);
     // Sixty mutations plus three read-like POSTs, as the spec counted them — 63 until #819 PR 9
     // added `POST /workspace/agent-profiles/import-global` (`account.importGlobal`).
-    expect(routes.size).toBe(64);
+    expect(routes.size).toBe(65);
   });
 
   it('every action id is unique and a valid v2 action', () => {

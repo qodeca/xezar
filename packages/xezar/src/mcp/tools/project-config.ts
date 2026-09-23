@@ -16,6 +16,8 @@ import {
   operationIdSchema,
   projectConfigReadQuotaInputSchema,
   projectConfigReadQuotaResponseSchema,
+  projectConfigCheckQuotaInputSchema,
+  projectConfigCheckQuotaResponseSchema,
   providerIdSchema,
   runIdParamSchema,
   saveWorkflowInputSchema,
@@ -188,6 +190,7 @@ export const PROJECT_CONFIG_ACTIONS = [
   'retry_provider',
   'get_account',
   'read_quota',
+  'check_quota',
   'create_account',
   'update_account',
   'remove_account',
@@ -483,8 +486,9 @@ export const ACTION_FIELDS: Record<ProjectConfigAction, { required: readonly Fie
   // stale one with its own 409.
   retry_provider: { required: ['provider', 'operationId'], optional: [] },
   get_account: none,
-  // Read-only in both local and hosted mode. S3 adds the separate checking action.
+  // Both are read-only in local and hosted mode; check_quota invokes the bounded active probe.
   read_quota: { required: [], optional: ['provider', 'accountId'] },
+  check_quota: { required: [], optional: ['provider', 'accountId'] },
   // THE ACCOUNT ACTIONS (#677 B5). Four writes and two reads, and the split is the route's own:
   // the writes go through `POST`/`PATCH`/`DELETE`/`PUT` of the `workspace/agent-profiles` family
   // and carry an operation key; the two reads are that family's own `GET`s, which record no audit
@@ -755,7 +759,7 @@ export const projectConfigInputSchema = z
     provider: providerIdSchema
       .optional()
       .describe(
-        'list_models: the one agent backend to list the models of; omit it for every backend. set_provider_enabled / retry_provider / select_account / check_account_status / get_account_details: which agent backend. The two provider actions apply to every project that shares these settings, not only this one: every project on this machine, or only this project when it keeps its own setup (single-project mode). set_provider_enabled answers scope — machine or project — to say which. Turning a provider off stops it being offered for new tasks there, and clearing an authentication incident clears the warning every project sees. Read the current state with get_capabilities first. For the account actions it names which backend the account signs in to, and it is required beside accountId because every account xezar discovered by itself is called default. On check_account_status it must be the account’s OWN backend: naming a different one is refused rather than answered, so the answer always says which login was really read.',
+        'list_models: the one agent backend to list the models of; omit it for every backend. read_quota / check_quota: optionally limit the quota answer or active check to Claude Code or Codex. set_provider_enabled / retry_provider / select_account / check_account_status / get_account_details: which agent backend. The two provider actions apply to every project that shares these settings, not only this one: every project on this machine, or only this project when it keeps its own setup (single-project mode). set_provider_enabled answers scope — machine or project — to say which. Turning a provider off stops it being offered for new tasks there, and clearing an authentication incident clears the warning every project sees. Read the current state with get_capabilities first. For the account actions it names which backend the account signs in to, and it is required beside accountId because every account xezar discovered by itself is called default. On check_account_status it must be the account’s OWN backend: naming a different one is refused rather than answered, so the answer always says which login was really read.',
       ),
     enabled: setProviderEnabledInputSchema.shape.enabled
       .optional()
@@ -783,7 +787,7 @@ export const projectConfigInputSchema = z
       .nullable()
       .optional()
       .describe(
-        'update_account / remove_account / select_account / check_account_status / get_account_details: which account, as get_account reports it (its handle) or as create_account allocated it. `default` is the account xezar discovered from the environment, which is why the provider is asked for beside it. On select_account only, `null` (like `default`) points this project back at the discovered account.',
+        'read_quota / check_quota: optionally limit the answer or check to one account. update_account / remove_account / select_account / check_account_status / get_account_details: which account, as get_account reports it (its handle) or as create_account allocated it. `default` is the account xezar discovered from the environment, which is why the provider is asked for beside it. On select_account only, `null` (like `default`) points this project back at the discovered account.',
       ),
     automationId: z.string().min(1).max(128).optional(),
     automation: automationCreateFormSchema
@@ -816,8 +820,9 @@ export const projectConfigInputSchema = z
     // A refusal is answered whatever else was sent — it must never become a schema essay.
     if (isRefused(args.action)) return;
     const allowed = ACTION_FIELDS[args.action];
-    if (args.action === 'read_quota') {
-      const quotaInput = projectConfigReadQuotaInputSchema.safeParse({
+    if (args.action === 'read_quota' || args.action === 'check_quota') {
+      const schema = args.action === 'read_quota' ? projectConfigReadQuotaInputSchema : projectConfigCheckQuotaInputSchema;
+      const quotaInput = schema.safeParse({
         action: args.action,
         ...(args.provider !== undefined ? { provider: args.provider } : {}),
         ...(args.accountId !== undefined ? { accountId: args.accountId } : {}),
@@ -1785,11 +1790,24 @@ async function run(args: ProjectConfigInput & { action: ProjectConfigAction }, s
         ...(typeof args.accountId === 'string' ? { accountId: args.accountId } : {}),
       };
       const answer = await settle<AgentQuotaResponse>(
-        s.api.workspace['agent-quota'].$get({ query }),
+        s.api.workspace['agent-quota'].$get({ query: { ...query, wait: '1' } }),
         [200],
       );
       if (!answer.ok) return fail(answer);
       const payload = projectConfigReadQuotaResponseSchema.parse({ action, origin: MCP_ORIGIN, result: answer.value });
+      return textResult(JSON.stringify(payload, null, 2), payload);
+    }
+    case 'check_quota': {
+      const body = {
+        ...(args.provider === 'claude' || args.provider === 'codex' ? { provider: args.provider } : {}),
+        ...(typeof args.accountId === 'string' ? { accountId: args.accountId } : {}),
+      };
+      const answer = await settle<AgentQuotaResponse>(
+        s.api.workspace['agent-quota'].refresh.$post({ json: body }),
+        [200],
+      );
+      if (!answer.ok) return fail(answer);
+      const payload = projectConfigCheckQuotaResponseSchema.parse({ action, origin: MCP_ORIGIN, result: answer.value });
       return textResult(JSON.stringify(payload, null, 2), payload);
     }
 
@@ -2355,7 +2373,7 @@ export const projectConfigTool = defineTool({
   name: 'project_config',
   title: 'Project configuration',
   description:
-    "Read and change THIS project's own configuration: its settings (agent, models, system prompt, review gate, base branch, worktree retention, memory limit), its registry entry (concurrency cap and tags), prompt templates, in-repo agent config files, workflows, skills, GitHub automations and worktrees. It also reads the shared settings as effective limits and capabilities (get_limits, get_capabilities, get_account, read_quota) and CHANGES them with set_workspace_config — the shared limits, composer defaults, follow-up inbox and environment passthrough, skills auto-update and the machine-wide agent defaults, which apply to every project on this machine, the terminal settings (the instance mode — which projects one xezar serves — and how its terminal prints; all are settled at start, so a change applies the next time one starts) and the two workspace folder paths — the folder the file picker may browse and the folder new checkouts land in, each checked for real before anything is saved. read_quota reports stored Claude and Codex quota observations for known logins, may filter by provider and accountId, starts no check, and is available in local and hosted mode. The shared presentation preferences are read with get_workspace_ui_state and changed with set_workspace_ui_state (appearance, notifications, task-table columns, dismissed provider incidents) and import_skills (the curated list of default skills); an object-valued preference is replaced whole, so read it before you change one key of it. The colour theme is not among them — the browser stores that itself. The models each agent backend can run are read with list_models: per backend, every model id exactly as that backend's own --model flag takes it, whether the list could be read and why not when it could not, and local and vision only where the backend's own data proves them – a missing one means unknown, not no. The agent backends can be switched off and on with set_provider_enabled — for the whole machine, or for this project alone when it keeps its own setup; the answer’s scope says which — and their authentication incidents cleared with retry_provider. The agent ACCOUNTS — the separate logins a backend can run under — are read with get_account — the account each backend uses in this project (accounts), every account per backend with the one in use marked selected and the login the backend finds by itself marked builtIn (profiles), and every stored account choice that names no account, with the line that fixes it (problems; tasks still run, on the built-in login) — added with create_account, edited with update_account, removed with remove_account and pointed at this project with select_account; check_account_status probes one account's sign-in state and get_account_details reports who it is signed in as. import_global_accounts copies the accounts of the person's machine-wide xezar setup into this project — the same merge as the `xezar accounts import-global` command: it only adds accounts the project does not have, never replaces one, answers how many were added and kept (never which), and works only when the project keeps its own setup (single-project mode); get_account reports whether that was done and how many could still be copied. Connecting a provider, opening an account's folder in a desktop application, home files, the project registry and host folders are outside this boundary and are refused with the reason.",
+    "Read and change THIS project's own configuration: its settings (agent, models, system prompt, review gate, base branch, worktree retention, memory limit), its registry entry (concurrency cap and tags), prompt templates, in-repo agent config files, workflows, skills, GitHub automations and worktrees. It also reads the shared settings as effective limits and capabilities (get_limits, get_capabilities, get_account, read_quota, check_quota) and CHANGES them with set_workspace_config — the shared limits, composer defaults, follow-up inbox and environment passthrough, skills auto-update and the machine-wide agent defaults, which apply to every project on this machine, the terminal settings (the instance mode — which projects one xezar serves — and how its terminal prints; all are settled at start, so a change applies the next time one starts) and the two workspace folder paths — the folder the file picker may browse and the folder new checkouts land in, each checked for real before anything is saved. read_quota waits briefly for stale Claude and Codex quota observations; check_quota explicitly requests the same bounded zero-token check. Both may filter by provider and accountId and are available in local and hosted mode. The shared presentation preferences are read with get_workspace_ui_state and changed with set_workspace_ui_state (appearance, notifications, task-table columns, dismissed provider incidents) and import_skills (the curated list of default skills); an object-valued preference is replaced whole, so read it before you change one key of it. The colour theme is not among them — the browser stores that itself. The models each agent backend can run are read with list_models: per backend, every model id exactly as that backend's own --model flag takes it, whether the list could be read and why not when it could not, and local and vision only where the backend's own data proves them – a missing one means unknown, not no. The agent backends can be switched off and on with set_provider_enabled — for the whole machine, or for this project alone when it keeps its own setup; the answer’s scope says which — and their authentication incidents cleared with retry_provider. The agent ACCOUNTS — the separate logins a backend can run under — are read with get_account — the account each backend uses in this project (accounts), every account per backend with the one in use marked selected and the login the backend finds by itself marked builtIn (profiles), and every stored account choice that names no account, with the line that fixes it (problems; tasks still run, on the built-in login) — added with create_account, edited with update_account, removed with remove_account and pointed at this project with select_account; check_account_status probes one account's sign-in state and get_account_details reports who it is signed in as. import_global_accounts copies the accounts of the person's machine-wide xezar setup into this project — the same merge as the `xezar accounts import-global` command: it only adds accounts the project does not have, never replaces one, answers how many were added and kept (never which), and works only when the project keeps its own setup (single-project mode); get_account reports whether that was done and how many could still be copied. Connecting a provider, opening an account's folder in a desktop application, home files, the project registry and host folders are outside this boundary and are refused with the reason.",
   inputSchema: projectConfigInputSchema,
   annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
   // #819 item 6: the refusals stand whatever else was sent. Without this, a refused action carrying

@@ -7,6 +7,7 @@ import { hc } from 'hono/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { z } from 'zod';
 import type {
+  agentQuotaRefreshInputSchema,
   createAgentProfileInputSchema,
   openAgentAccountFileInputSchema,
   retryProviderInputSchema,
@@ -92,6 +93,11 @@ describe('the settings routes validate with the CONTRACT request schemas', () =>
   type OpenAgentAccountFileBody = InferRequestType<(typeof client.api.v1.workspace['agent-profiles'])[':id']['open']['$post']>['json'];
   type OpenAgentAccountFileSchema = z.input<typeof openAgentAccountFileInputSchema>;
   type _OpenAgentAccountFileExact = Assert<Mutual<OpenAgentAccountFileSchema, OpenAgentAccountFileBody>>;
+
+  // ---- POST /api/v1/workspace/agent-quota/refresh (#867 S3) -------------------------------
+  type AgentQuotaRefreshBody = InferRequestType<(typeof client.api.v1.workspace)['agent-quota']['refresh']['$post']>['json'];
+  type AgentQuotaRefreshSchema = z.input<typeof agentQuotaRefreshInputSchema>;
+  type _AgentQuotaRefreshExact = Assert<Mutual<AgentQuotaRefreshSchema, AgentQuotaRefreshBody>>;
 
   const savedHome = process.env.XEZ_HOME;
   let home: string;

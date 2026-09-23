@@ -20,7 +20,9 @@ describe('T-15 — bundled workflow check significance', () => {
     expect(checks.length).toBeGreaterThan(0);
     expect(checks.filter((step) => step.resultScope === undefined)).toEqual([]);
     for (const check of checks) {
-      if (['kit', 'preflight', 'setup'].includes(check.id)) expect(check.resultScope, `${check.file}:${check.id}`).toBe('routine');
+      // Acquisition prepares immutable inputs for a later agent verdict; success is setup progress,
+      // not the conclusion the workflow exists to deliver (#863).
+      if (['kit', 'preflight', 'setup', 'git-read-acquire'].includes(check.id)) expect(check.resultScope, `${check.file}:${check.id}`).toBe('routine');
       // `ci-watch` (#667) is the integration workflow's bounded, token-free observation of merge CI on the
       // base branch. Its pass is the answer to "did what we just merged stay green", which is exactly the
       // kind of conclusion the leader is waiting for — `stage`, not `routine`.

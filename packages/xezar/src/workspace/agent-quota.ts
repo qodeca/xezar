@@ -81,13 +81,21 @@ export class AgentQuotaStore {
         status: 'unknown',
         checkedAt: isoUtc(now),
         ageSeconds: 0,
-        source: 'check',
+        source: 'none',
         shortWindow: null,
         weeklyWindow: null,
         modelWindows: null,
         credits: null,
         planType: null,
         notReported: ['shortWindow', 'weeklyWindow', 'modelWindows', 'credits', 'planType'],
+        stale: true,
+        refreshing: false,
+        nextCheckAt: null,
+        toolVersion: null,
+        minimumVersion: known.runner === 'claude' ? '2.1.278' : '0.155.1',
+        statusReason: null,
+        warnings: [],
+        unavailableReason: 'No quota check has completed yet.',
       }));
     }
     // When the caller supplies the current account registry it is authoritative:
