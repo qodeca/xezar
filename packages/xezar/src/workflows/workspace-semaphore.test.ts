@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -59,6 +59,26 @@ const INSTANT: WorkflowDef = {
   source: 'built-in',
   steps: [{ id: 'noop', command: 'node -e ""' }],
 };
+/**
+ * Holds a workspace slot until the TEST opens its gate — no wall clock
+ * decides when the slot frees (issue 902). The check step's child exits only
+ * once `gate` exists; its poll interval sets how soon it notices, never
+ * whether it can exit early. `SLOW`'s fixed 3 s hold raced the test's own
+ * waits: a runner starved for ~3 s let the holder expire before the test
+ * asserted the queued run was still queued.
+ */
+function gatedHolder(gate: string): WorkflowDef {
+  return {
+    name: 'gated-hold',
+    source: 'built-in',
+    steps: [
+      {
+        id: 'hold',
+        command: `node -e "const f=require('fs');const t=setInterval(()=>{if(f.existsSync('${gate}'))clearInterval(t)},20)"`,
+      },
+    ],
+  };
+}
 /** One interactive agent step — the mock parks at `waiting` after its turn. */
 const AGENT: WorkflowDef = {
   name: 'quick-task',
@@ -167,12 +187,21 @@ describe('workspace semaphore across RunManagers (step 2.5)', () => {
     // another — it only ever started if B happened to start or finish a run of
     // its own. The fix routes every slot-freeing transition through
     // `WorkspaceSemaphore.release()`, which pumps every manager.
+    //
+    // Issue 902: every ordering below comes from the system under test, never
+    // from a sleep. The holders free their slots only when the test opens
+    // their gates, and "B declined to start" is read after B's own scheduling
+    // sweep has finished, not after a fixed wait.
     const semaphore = new WorkspaceSemaphore({ initial: { maxParallel: 2 } });
     const a = project('xez-wsem-cross-a-', semaphore);
     const b = project('xez-wsem-cross-b-', semaphore);
+    const gates = mkdtempSync(join(tmpdir(), 'xez-wsem-cross-gates-'));
+    roots.push(gates);
+    const gate1 = join(gates, 'open-1');
+    const gate2 = join(gates, 'open-2');
 
-    const slow1 = a.manager.startRun(SLOW, { task: 'saturate 1' });
-    const slow2 = a.manager.startRun(SLOW, { task: 'saturate 2' });
+    const slow1 = a.manager.startRun(gatedHolder(gate1), { task: 'saturate 1' });
+    const slow2 = a.manager.startRun(gatedHolder(gate2), { task: 'saturate 2' });
     await waitFor(
       () =>
         a.store.getRun(slow1.id)?.status === 'running' &&
@@ -181,16 +210,29 @@ describe('workspace semaphore across RunManagers (step 2.5)', () => {
     );
 
     const queued = b.manager.startRun(INSTANT, { task: 'queued in the OTHER project' });
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    // `startRun` floats B's own `pump()`, which sets `pumping` before its first
+    // await. Once it clears, B has evaluated capacity against A's two held
+    // slots — and both gates are still closed, so the answer cannot change
+    // however long that took.
+    const bScheduler = b.manager as unknown as { pumping: boolean };
+    expect(bScheduler.pumping).toBe(true);
+    await waitFor(() => !bScheduler.pumping, "B's own scheduling sweep to finish");
     expect(b.store.getRun(queued.id)?.status).toBe('queued');
 
-    // Nothing else happens in B — the only event is A's runs settling.
+    // Free exactly ONE of A's slots. Nothing else happens in B — the only
+    // event is A's run settling, and B's run must take that slot.
+    writeFileSync(gate1, '');
     await waitFor(
       () => settled.includes(b.store.getRun(queued.id)?.status ?? ''),
       "B's queued run to start once A frees a slot",
       30_000,
     );
     expect(b.store.getRun(queued.id)?.status).toBe('done');
+    expect(a.store.getRun(slow1.id)?.status).toBe('done');
+    // Gate 2 is still closed, so B ran in the slot slow1 freed — not in one
+    // the second holder gave up.
+    expect(a.store.getRun(slow2.id)?.status).toBe('running');
+    writeFileSync(gate2, '');
   }, 45_000);
 
   it('a freed slot goes to the longest-waiting run across projects', async () => {
