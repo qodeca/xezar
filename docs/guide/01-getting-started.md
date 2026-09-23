@@ -136,9 +136,9 @@ classification rows without lane data, `node .xezar/checks/route.mjs <row id>` f
 order, and `--table` for a human
 view; `--file <path>` is onboarding-only before the first merge and marks output `source=unmerged`.
 The kit's account-limits table records each runner/login budget as `ok`, `unknown`, or `out` with its
-reset time; the kit's routing guide tells the leader to read it, and it will
-feed xezar's agent-quota status when that status ships. Earlier kit versions used prose
-routing guidance.
+reset time; the kit's routing guide tells the leader to read it. Xezar reports that same status
+natively – see [Settings reference](10-settings-reference.md#to-read-and-refresh-plan-limits). Earlier
+kit versions used prose routing guidance.
 
 ## To upgrade
 
