@@ -1,3 +1,342 @@
+# 0.19.0 (2026-09-23)
+
+## Highlights
+
+Agent quota is this release's headline: xezar performs bounded, zero-token Claude Code and Codex
+plan-limit checks, serves one shared answer to HTTP, the MCP `read_quota` and `check_quota` actions
+and the cockpit, and shows each login's windows in Settings → Agent accounts behind a plan-limits
+chip on every page. Read-only steps are now enforced per backend, and each backend does it
+differently: Claude Code loses Edit and Write and runs with `--setting-sources user`, so a step no
+longer loads the project's `.claude` settings, hooks and skills; Codex runs confined and, on a step
+with a `bashAllowlist`, installs a `PreToolUse` hook into the person's own Codex profile; pi honours
+that allowlist command by command; and OpenCode applies no limit at all. Two CLI reads — `xezar
+lease gates --probe` and `xezar state-names --json` — replace grepping a usage text and a
+hand-copied name list, and the kit gains an `architecture-review` verdict role and workflow.
+xezar 0.19.0 is the minimum engine for xezar-skills 3.0.0; projects that must stay on 0.18 stay on
+xezar-skills 2.1.1.
+
+## 🔒 Security
+
+- 🔒 **The four read-only kit workflows now run with a narrowed shell on Claude Code — narrowed, not
+  sealed.** `code-review`, `design-review`, `qa` and `business-analysis` granted plain `Bash` in
+  `allowedTools` with no `bashAllowlist`, so the step could run any shell command. Each now carries
+  a `bashAllowlist` of the exact commands its own skill runs: each kit check script by name, the
+  read subcommands of `git`, the `gh` subcommands the role needs (no `gh pr merge`, no `gh api`), and
+  for `qa`/`design-review` the named `npm` scripts and the browser harness. `sed`, `rg`, `cp`,
+  `mkdir` and bare `git`/`gh`/`npm` are gone. What that means per backend:
+  - **Claude Code:** the step gets one `Bash(<entry>:*)` rule per entry, judged by Claude Code's own
+    permission matcher. `:*` means "a space and anything, or nothing" after the entry, so a
+    multi-word entry needs the literal space (`bash .xezar/checks/` matched nothing, which is why
+    each script is now named). A compound command is split on `&&`, `||`, `;`, `|`, `|&`, `&` and
+    newlines, and every part must match (`git diff; rm -rf x` is refused). A redirect target is
+    checked separately, against `Edit` rules these steps do not have, so `> file` is refused even
+    inside an allowed directory; so is a command that starts with an assignment such as
+    `XEZ_DRY_RUN=1 …` (Claude Code strips only a few known-safe variables). Writes that remain,
+    by design or because a prefix cannot see an argument: `gh pr comment`/`gh pr edit` (and `gh issue create` in `qa`), `git fetch`, `git diff/log/show
+    --output=<file>`, the `npm` scripts and harness `qa`/`design-review` must run, `git checkout
+    --detach` there, and the kit scripts writing their own evidence.
+  - **pi:** no per-command mechanism yet, so a `bashAllowlist` removes the shell entirely; a pi run
+    of these four roles has no shell until #856.
+  - **Codex and OpenCode:** `bashAllowlist` is not applied; see #850 for what the engine enforces there.
+  The three verdict roles now write their machine-readable packet with
+  `bash .xezar/checks/verdict-packet.sh` (JSON on stdin, written to a `.tmp` and renamed), because
+  their shell can no longer redirect. `research.yaml` is unchanged. (#849, #857)
+- 🔒 **pi honours a step's `bashAllowlist` command by command instead of removing the shell.** A pi
+  step with a `bashAllowlist` used to run with no `bash` at all, so a pi review or triage role could
+  not run `gh` or post its verdict. pi now keeps `bash`, and xezar's pi extension allows a command
+  only when it is an allowlist entry or an entry followed by a space — the rule Claude Code applies
+  to `Bash(<entry>:*)`. Every part of a compound command (`;`, `&&`, `||`, `|`, `&`, `$(…)`,
+  backticks) must match on its own, and redirection with `>`, `>>` or `<` is refused outright, as is a
+  `find` that runs, deletes or writes (`-exec`, `-execdir`, `-ok`, `-okdir`, `-delete`, `-fprint*`,
+  `-fls`), so `git diff; rm x`, `gh pr view | tee out` and `find . -exec rm {} \;` are refused while
+  `printf '%s' x | bash .xezar/checks/verdict-packet.sh` passes when both are entries. The shell
+  expands a word after the check, so a `find` word it would still change – an unquoted `$`, a
+  backtick, `$'…'`, `{`, `}`, `~` or a glob character, or a `$` or backtick inside double quotes –
+  cannot be checked and is refused too (`find sub -d${HOME:0:0}elete`, and also `find . -name *.ts`;
+  a quoted `find . -name '*.ts'` stays allowed). A command that defines a shell function or groups
+  commands (an unquoted `(` or `)`, or a part led by `function`, `{` or `}`) is refused, because
+  `find () ( rm x ); find` would make an allowed name run something else, and so is a command with
+  a backslash that ends the input or a line, which the shell would drop (`find sub -delete\` runs
+  `find sub -delete`). An empty `bashAllowlist: []` now locks the shell
+  down exactly as a blanks-only list does: `bash` is removed and the extension refuses every shell
+  command. An allowlist entry must never name a program that can run a command or write a file from
+  an argument (`sed`, `awk`, `sort -o`, `dd`, `tee`, an interpreter): only `find`'s arguments are
+  checked. A step without a `bashAllowlist` keeps an unrestricted shell. (#849, #856, #861)
+- Read-only Codex steps with a `bashAllowlist` now apply the shared command lock through a headlessly trusted `PreToolUse` hook on both start and resume, failing closed when Codex cannot grant that exact handler trust. Xezar persists the hook entry in `$CODEX_HOME/hooks.json` and its exact trust hash in `$CODEX_HOME/config.toml` — an owner-approved write into the person's own Codex profile, made because Codex does not discover request-body hooks by itself; those entries outlive the run and load inertly in interactive sessions. Their command points to a read-only content-addressed copy in the xezar cache. Remove the integration by deleting xezar's `--xezar-read-only-hook` entries and corresponding `hooks.state` trust tables (and optionally the cache's `codex-hook/` directory). (#885)
+- `codex-home.mismatch` now compares the `CODEX_HOME` actually passed to Codex, including a host-exported value, and stops both read-only and writing runs before a home-changing wrapper can use the wrong account. (#885)
+- Read-only Codex steps with a `bashAllowlist` now intercept `apply_patch` as well as Bash through
+  the same shared command policy, and persist bounded `PreToolUse` denial reasons in the run event
+  stream without treating their command text as provider-auth failures. Xezar hook registrations
+  marked inside the `codex-hook` cache are consolidated to one current entry and re-trusted. (#903)
+- Maintained backend documentation now spells out compound-command behavior and the intentional
+  difference between Claude Code's wrapper handling and the shared Codex/pi matcher. (#849, #863, #903)
+- Added a per-operation Git read allowlist for the five read-only kit roles, with hardened Git configuration and no fetch or writing operations. (#884)
+- Moved base and pull-request ref acquisition into a trusted workflow check, while documenting that full no-write enforcement still depends on the planned OS boundary. (#884)
+- 🔒 **Read-only shell policy is shared by Claude Code and pi adapters.** One module now owns the
+  read-only signal, command-prefix rule, strict one-command parser and risky-argument table. pi
+  applies the whole policy; Claude Code builds its Bash rules from the same entries and now loads
+  user settings only on read-only steps, preventing project settings, hooks or skills from
+  re-widening Bash. The shared parser also refuses shell-expanded words for every command, rejects
+  unsafe Git/npm argument forms and never permits `sed` or `awk`; pi retains one narrowly checked
+  two-part pipe whose right side is an exact, argument-free allowlisted Bash or sh script. The five read-only workflows temporarily omit `git fetch`, `git diff`,
+  `git show`, `git log` and `find`, whose risky arguments Claude cannot inspect until its hook
+  adapter lands. Writing steps and zero-config defaults are unchanged. (#863, #871)
+- 🔒 **A task can no longer record a reviewer's verdict it was not asked to give.** A reviewer packet is now recorded only when the step that wrote it declares that role with the new `verdictRole` step key; a forged-role packet — say a `code-review` packet left by an ordinary `quick-task` — is refused with a named reason on the task's `verdictIssues` instead of overwriting the real reviewer's verdict. A custom workflow whose reviewing step should record a verdict must add `verdictRole: code-review` (or `design-review`, `qa`, `architecture-review`) to that step (`BACKWARD_COMPATIBILITY.md`); a Continue of that step — a Send back or a usage-limit resume — records under the same role. (#851, #859)
+- 🔒 **A read-only step can no longer edit files on Claude Code and is confined on Codex.** A step whose tool list names neither `Edit` nor `Write` — the review, QA and analysis shape `[Read, Grep, Glob, Bash]` — now removes `Edit`, `Write` and `NotebookEdit` on Claude Code with `--disallowedTools`, so neither `XEZ_APPROVAL_GATE=1` nor a project's own `permissions.allow` brings them back. On Codex it no longer runs with full access: on start and on resume it may write only in its own worktree and the run's own evidence, handoff and temporary folders, while the network stays on so it can still fetch and post its verdict (`XEZ_CODEX_NETWORK=0` still turns the network off). The worktree stays writable on Codex and `bashAllowlist` is still ignored there. Writing steps are unchanged. OpenCode still does not apply a read-only step, and plain `Bash` in the list remains a shell on Claude Code and pi until a `bashAllowlist` narrows it; the per-backend table is in `AGENT_PROTOCOL.md`. Breaking for a Codex workflow that wrote outside those folders from a step listing neither tool (`BACKWARD_COMPATIBILITY.md`). (#849, #850)
+
+## ✨ Features
+
+- ✨ **`xezar lease gates --probe` tells a script whether this xezar can lease gate slots, without
+  reading the usage text.** It prints one JSON line on standard output —
+  `{"lease":{"gates":true},"slots":1}`, where `slots` is `resources.gateSlots` as this launch
+  resolves it, in the global and the single-project layout alike — and exits 0. It takes no slot,
+  touches no slot directory and writes no file, so a missing or unwritable slot directory gives the
+  same answer: it reports what this xezar can do, not the state of the machine. Every other
+  `lease gates` invocation is unchanged, including a `--probe` after `--`, which still belongs to
+  the command. The JSON is a protected surface in `BACKWARD_COMPATIBILITY.md`; the
+  `usage: xezar lease gates …` text is now declared NOT a contract and may be reworded in a later
+  release. It is unchanged in this one. (#838, #866)
+- ✨ **`xezar state-names` tells you which names xezar writes at the top of a project's
+  `.local/xezar/` folder.** Run it plain for a table to read, or `xezar state-names --json` for the
+  published form a check of your own can parse — the names with their kind, the suffixes a name may
+  carry and the audit trail's numbered rotations, with no regular expression in it, so an ordinary
+  shell pattern is enough. A project that guarded that folder with a hand-copied list can now read
+  the list from the version it has installed, and stop copying. Standard output carries the listing
+  and nothing else, it reads no project and writes no file, and the `--json` bytes are a fixed
+  surface recorded in `BACKWARD_COMPATIBILITY.md`. (#852, #858)
+- ✨ **Agent quota can now be refreshed safely.** Xezar performs bounded, zero-token Claude Code and Codex quota checks after startup, refreshes stale observations only while they are being viewed, and exposes the same hosted-safe answer through HTTP and `project_config check_quota`. (#867, #888)
+- 📝 **Quota checks document their real provider costs and compatibility.** Readers keep acting only on `status` when a future source or reason appears; a first Codex check may bootstrap that login's own local CLI state inside `CODEX_HOME`, without spending model tokens. (#867, #888)
+- ✨ **Agent quota observations are now readable by clients and project leaders.** Xezar stores Claude Code and Codex quota observations per login, learns live and failed-run limits, and serves the shared contract through `GET /api/v1/workspace/agent-quota`, `project_config read_quota`, a local WebSocket topic, and a hosted SSE change hint. Active checks and refresh remain follow-up work; this read side starts no new process. (#867, #877)
+- ✨ **Global settings → Agent accounts shows each Claude Code and Codex login's plan limits.** Every
+  account row gains a limits half: whether the login can work now (and until when it cannot), one
+  line per short, weekly and per-model window with a bar, the percentage and the reset time with its
+  zone and offset, Codex credits, the plan, where the reading came from and how old it is, "Stale"
+  when the server marks the reading stale, the server's warnings (such as a reading taken from the
+  `/usage` text), why the limits are unknown (not checked yet, the last check failed, the tool is
+  missing, too old or changed its format, or the login uses an API key), and — under Show details —
+  the tool version and every fact the tool does not report, in words. A Plan limits block at the top
+  of the pane says, per agent, how many logins can work, with Refresh all; each row has its own
+  Refresh, unavailable until the server's next allowed check with that time beside it, "Checking…"
+  while the server is already checking it, and absent where a check cannot help. The cockpit shows exactly the answer the leader reads through the MCP and
+  never acts on it: no login is switched and no task is held back. A hosted cockpit shows the
+  limits too, with the names only. (#867, #889)
+- ✨ **A plan-limits chip on every page.** Above the sidebar footer on a desktop (`Claude Code 1/3 ·
+  Codex 1/2`) and in the top bar on a phone (`2/5 can work`), one dot and count per agent that is
+  installed and has a subscription login; it opens a short list of the logins that are out or unknown and a
+  link to the Plan limits block. With no such agent, no answer yet or a failed load there is no
+  chip, and the sidebar is exactly as before. A local cockpit is kept current by one live
+  subscription for the whole tab; a hosted one re-reads on the server's change hint, on reconnect,
+  when the tab comes back and every 15 minutes while it is visible. (#867, #889)
+- ✨ **Codex per-model weekly limits are shown.** A Codex login's plan limits now list each model's own weekly window, named by the model slug Codex reports, beside the login's own windows. A per-model limit never changes whether the login can work. (#867, #907)
+- ✨ **`architecture-review` is a fourth verdict role.** It speaks a code review's words — APPROVE or REQUEST CHANGES — with the same finding severities, and keeps its own slot on the task beside the code review. The role list is now declared once in the contract and every verdict shape is built from it, so the MCP `task_create` `fromFindings.role` argument and the step `verdictRole` key accept it too. (#851, #859)
+
+## 🐛 Fixes
+
+- 🐛 **Every name the engine writes at the top of `.local/xezar/` now follows the documented
+  shape, and a test refuses a new one.** The pi leader extension staged `pi-leader.json` as
+  `pi-leader.json.tmp-<pid>`; it now uses the documented `.<pid>.<hex>.tmp` form. The documented
+  shape now also names `.lock.takeover`, the short-lived guard file every lock release creates
+  (for example `audit.ndjson.lock.takeover`), so a consumer that checks those names no longer
+  rejects it at random. A source scan fails when shipped code builds a top-level name outside
+  the allowed list or the documented suffixes. (#838, #841)
+- 🐛 **The OpenCode attach-bound test no longer asserts a wall-clock lower bound.** `leader-delivery.test.ts`'s "refuses a server that accepts the connection and never answers, within the injected bound" case (#703) measured the injected bound with `Date.now()` around the `attach` call and asserted `elapsed >= 150`; a Node timer can fire a tick before the clock reads the bound it was given, so CI read `149` (#846). It now spies on `AbortSignal.timeout` and asserts the exact value passed is the injected bound (150), never the shipped 10 s default — a deterministic signal from the system under test instead of a timing measurement. Test-only; `leader-delivery.ts` is unchanged. (#848)
+- 🐛 **A shorter limit no longer hides a longer one.** When a login is limited twice, the quota answer keeps the later reset time, so it never reads as ready while the longer limit still holds. (#867, #909)
+- 🐛 **Quota times are whole seconds.** Every time in the quota answer now has the form `2026-09-22T14:20:00Z`, without fractions of a second. (#867, #909)
+- 🐛 **Dry run returns the published sample.** With `XEZ_DRY_RUN=1` the quota answer is the committed sample answer and no check process starts. (#867, #909)
+- 🐛 **Quota checks need Claude Code 2.1.280.** The minimum is now the version the checks were proven on; Codex stays at 0.155.1. (#867, #909)
+- 🐛 **A Claude Code usage report without limits is not a format change.** When the fallback usage report lists no limits, the row says the check failed instead of warning that Claude Code changed its format. (#867, #909)
+- 🐛 **Per-model weekly limits from Claude Code reach the answer.** Claude Code 2.1.280 lists its limits inside its rate-limit report, and some entries have no model; Xezar now reads that list, so a per-model weekly window such as Fable is shown. (#867, #906, #909)
+- 🐛 **A Codex usage limit is reported as a usage limit.** A Codex turn that fails with the structured `usageLimitExceeded` error, or with `rateLimitExceeded` while Codex's own rate-limit report says a limit was reached, now fails the task with the limit and its reset time instead of "ended its turn without XEZ:DONE", marks that login out until the reset, and lets the existing auto-resume setting act on it. The reset is Codex's stated time, or else the end of the window that reached the limit. A `rateLimitExceeded` turn without that report, and every other failed Codex turn, is unchanged: it never marks a working login out. (#565, #867, #907)
+- 🐛 **The port-memory test no longer runs out of ports when several test suites run at once.** Its
+  "busy" sentinel came from `listen(0)`, and macOS hands those ports out one after another, so the
+  ports `serve` had to move up into were exactly the ones the OS gave next to every other suite's
+  servers; with four or five gate runs on one machine all 50 were taken and `serve` exited with
+  `no free port` (#874). The test now reads the host's automatic-assignment port range when it
+  starts (`sysctl` on macOS, `/proc/sys/net/ipv4/ip_local_port_range` on Linux) and takes sentinels
+  from a block of ports strictly below it, so the OS never hands them out; a block with anything
+  bound in it is skipped. A host whose range cannot be read, or leaves no free block below it, fails
+  the test with a message saying so instead of falling back. Test-only; `serve` is unchanged. (#874, #878)
+- 🐛 **The hosted-server harness no longer deletes its scratch folder while the server's own
+  descendants still write into it.** `npm run test:server-mode` failed with `ENOTEMPTY` in cleanup
+  after all eight cases had passed (#876): `serve` exits on SIGTERM without waiting for what it
+  started, so the background team-skills clone and a run's dry-run agent kept writing into the
+  scratch home and repo while the harness removed them. Every CLI the harness starts now leads its
+  own process group; cleanup awaits the CLI's `exit` event, ends that exact group, and removes the
+  folder only once the kernel reports the group empty. A descendant that outlives teardown is now a
+  named failure (`BREAK-TEARDOWN-TREE`) instead of a racy one. Test-only; no server code changed. (#876, #880)
+- 🐛 **A Claude Code leader that keeps working but never sees its pushed events is now reported plainly (#886).** When xezar pushed events to an attached Claude Code session more than five minutes ago and that same session has kept calling other xezar tools since (three calls or more) without reading or acknowledging them, `leader_events` `status` and the connection status now say `claude-code-push-not-seen`: the pushes are most likely not reaching the conversation, nothing is lost, read them with `leader_events` `read`. Before, the only blocker was the soft `claude-code-push-unconfirmed` ("if the leader is working, nothing is needed") for as long as the leader worked. The soft blocker is unchanged. A leader reading its events with `leader_events` `read`, the documented fallback, is never reported this way — for the rows that read actually returned: a read that answers a gap, or a page that stops before a pushed row, does not count as having seen it. (#886, #890)
+- 🐛 **The leader guide has a real check for Claude Code pushes (#886).** Start Claude Code with `--debug-file`, then look for `Channel notifications registered` or for `Channel notifications skipped:` and the reason Claude Code gives; a `<channel source="xezar">` message in the session is the only proof of delivery. The reported drop on Claude Code 2.1.280 was not reproduced in isolated sessions of 2.1.278 and 2.1.280, which all received every push; the cause in the affected session is still unknown. (#886, #890)
+- 🐛 **The Claude Code `/usage` quota fallback reads an unused session again (#893).** Claude Code 2.1.280 prints `Current session: 0% used` with no reset time when the five-hour session has not started. The fallback required a reset time on every row, so it dropped the session and showed only the weekly limits. That row now reads as 0 % used, resetting five hours after the check, and its warning says the reset time is assumed, not reported by Claude Code. The main `get_usage` check reads the same unstarted session (a `null` reset time) directly, instead of falling back to the slower `/usage` text. A row without a reset time that is neither 0 % nor 100 % is still skipped, and a reply with no rows still shows as unknown, never available. Real captures from five logins, all 2.1.280, are kept as test fixtures. None of them reproduced the reply with no limit rows that #893 first reported; that reply still reads as a failed check. (#893, #913)
+- 🐛 **An MCP next step now works on the first call.** A refused `apply_skill_updates` or
+  `open_in_app` shows the exact arguments of the call to make instead, with a placeholder for the
+  fresh operation key, so a leader no longer spends one refused call learning the argument shape.
+  `open_in_app` no longer points a hosted xezar at `local_handoff`, which cannot open anything
+  there. (#838, #840)
+- 🐛 **The Providers link opens the Providers card.** The address the MCP tools hand a leader for
+  the person now ends in `#providers`, the anchor every cockpit link already uses. (#838, #840)
+- 🐛 **"Not installed" says how to install.** `discover_project`, `xez providers connect` and the
+  providers API name the install command (`npm i -g @anthropic-ai/claude-code`,
+  `npm i -g @openai/codex`) or page (https://opencode.ai), read from the same table as the health
+  checks, and say plainly when none is known (pi). (#838, #840)
+- 🐛 **The browser suite's own HTTP no longer reuses a socket the server may have closed.** Every spec blocks its event loop in synchronous agent-browser calls, often past the server's 5 s keep-alive window, and whether its next `fetch` went out on a pooled socket the server had already closed was a race. It started failing 7–15 files per CI run with `fetch failed` → `other side closed` (`UND_ERR_SOCKET`) once runners moved to Node 24.21.0, whose undici 7.29.1 checks an idle socket with a `setImmediate` instead of a `setTimeout(0)`; a restore that failed in one spec's `afterAll` then showed up as a wrong value in a later spec (`guide-11-configuration`). A `setupFiles` entry now installs an undici `Agent({ pipelining: 0 })`, so every spec-side request opens its own connection and sends `connection: close`: no socket is ever idle between two requests, so the timing cannot matter. Test-only; no product code changed. (#671, #869)
+- 🐛 **An empty `--bind-host ""` now binds loopback, like a missing flag.** Three places each reached
+  their own conclusion about the empty string: `index.ts` passed `''` straight to `listen`, which
+  binds `::` (every interface, dual-stack); the non-loopback warning never printed because `''` is
+  falsy; and `isLoopbackHost('')` kept `localHandoff` on. One resolver now normalises the empty value
+  once, immediately after `parseArgs`, and the CLI, `startServer` and the MCP argv reader all read
+  it, so the empty case binds `127.0.0.1` silently — by the owner's decision, so an unset variable in
+  a script stays safe instead of exposing every interface. (#838, #839)
+- 🐛 **The two `--bind-host` readers now agree on a repeated flag.** `index.ts` parsed it through
+  `node:util`'s `parseArgs` (last-wins) while the MCP cockpit-address reader was a hand-written
+  scanner that returned the first match, so the same argv could have the server bind one host while
+  a leader was told another. The MCP reader now goes through `parseArgs` too, with one shared option
+  entry, so both derive the answer the same way; the empty-value-means-loopback rule is preserved and
+  re-pinned for a repeated flag. (#838, #844)
+- 🐛 **The MCP next-step guard no longer accepts bare prose.** The `actionable()` helper in
+  `project-config.test.ts` treated any backtick span or URL as proof that a refusal named something a
+  caller could run or open, so "see the `settings` page for more information" passed. It now requires
+  a real `xez …` invocation or a real cockpit settings path, and each refused action is asserted
+  against the specific substring its own next step must carry. Test-only; no product code changed.
+  (#838, #843)
+
+## 🔧 Changed
+
+- 🔧 **The agent-quota answer now has a frozen, shared contract before its runtime surfaces land.**
+  Claude Code and Codex quota entries use one Zod-defined shape for the planned HTTP and MCP
+  readers, with a committed byte fixture covering known, exhausted and unavailable quota data.
+  This change adds the answer shape only; it does not add a route, a check process or cockpit UI.
+  (#867, #868)
+- 🔧 **Each agent-quota row now says what kind of login it is, and names its time `observedAt`.**
+  The answer that the HTTP route, the MCP `read_quota` / `check_quota` actions and the cockpit share
+  carries `loginKind` on every row: `subscription`, `api-key` or `unknown`, read from the login's
+  own credentials as Claude Code (`claude auth status`) or Codex (`account/read`) reports them,
+  never from the plan facts. `unknown` means xezar could not tell and is never read as a
+  subscription. The row's observation time is renamed from `checkedAt` to `observedAt`, with no
+  alias; no released version carried the old name, so `schemaVersion` stays `1`. The plan-limits
+  chip now shows an agent only when one of its logins is a subscription, and Show details names the
+  login kind. A login whose tool reported no plan limits is called an API-key login only when its
+  login kind is `api-key`; any other login reads "Claude Code said this login has no plan
+  limits.", says to sign in again and Refresh, and keeps its Refresh. A login whose answer carried
+  no limit lines says so and says to Refresh. (#867, #908)
+- 🔧 **`discover_project`'s description names its `cockpit` field** and says it is absent in hosted
+  mode. Every MCP reader of the cockpit address now goes through one accessor that re-checks hosted
+  mode, so the four cannot disagree. (#838, #840)
+- 🔧 **The `.local/xezar/` top-level name list is now shared, non-test data.** The 27 allowed
+  names, their file-vs-directory kind, and the documented suffix/rotation shapes used to live only
+  as module-local consts inside `local-xezar-top-level-scan.test.ts`, so nothing outside that test
+  could read them — the reason the `xezar-skills` kit still keeps its own hand-copied list and
+  goes stale against it. They now live in `packages/xezar/src/local-xezar-top-level-names.ts`,
+  which the scan test imports rather than re-declaring, and a committed fixture
+  (`local-xezar-top-level-names.expected.json`) pins the exact JSON a future
+  `xezar state-names --json` must print. This lands the data and its binding fixture only; the
+  CLI subcommand that serves it is a follow-up. (#838, #845)
+
+## 📝 Specs & Documentation
+
+- 📝 **The user guide describes 0.18.0, and the two places it was most wrong are fixed.** All 17
+  parts and the index said they described 0.16.0, two releases after the fact, which is why the
+  drift below went unnoticed. `xezar init`'s generated workflow no longer has a placeholder `echo`
+  check to replace — the guide and the CLI reference had a reader hunting for a block that does not
+  exist — so both now describe what `init` actually writes, in both branches: `implement` → `verify`
+  → `report` around a check it discovered (a real `test` script in `package.json`, or a `test`/
+  `check` target in a `Makefile`), and `implement` → `verify` with `verify` as an agent review when
+  it found none. Both pages also state the contract a consumer needs: the generated file is
+  recognised by its step shape — the step ids, and the last step being an agent step — never by its
+  bytes, so rewording its prose is safe and adding, renaming or reordering a step is a break. (#837)
+- 📝 **The configuration reference documents `resources.gateSlots`, the `cli.*` keys and
+  `XEZ_INSTANCE`.** `gateSlots` gets its range, the 1 an absent key derives, why it has no `null`
+  where `memoryLimitMb` does (clearing it deletes the key rather than storing a number nobody
+  chose), and that the lease it bounds is machine-wide across every project, checkout and layout —
+  which is also why it appears in the project kit's list of settings that belong to the machine.
+  The workspace `cli` keys and a registry row's own `cli.port` are described with their
+  stored-beats-environment rule, and the CLI reference gains `xezar lease gates -- <command>` with
+  `--status-file`, its 20-minute bound and its fail-open behaviour. (#837)
+- 📝 **Agent accounts, the Skill catalog and 0.18.0's new leader reads are documented.** The agent
+  backends and settings pages describe the pane as it now is — every agent stacked rather than
+  tabbed, the login in use named in words, a saved choice pointing at a missing account reported
+  with its one-click fix, and the single-project copy of your machine-wide accounts — and give both
+  locations of `agent-accounts.json`. The skills and settings pages describe the Skill catalog
+  block and each of its six states. The project-leader guide names `project_config` `list_models`,
+  `get_account`'s `profiles` and `problems`, `import_global_accounts` and `check_skill_updates`, and
+  `discover_project`'s `onboarding.globalImport`. (#837)
+- 📝 **Getting started leads with the reader's outcome, and a release-checking trap is written
+  down.** The first task now comes before the optional guided-setup material instead of behind 45
+  lines of it, and the login section names `xezar providers connect`. Troubleshooting explains why
+  "the tag exists but npm still shows the old version" is a normal publish rather than a failed
+  one: npm's `latest` can lag the tag and the GitHub release, and a repository whose release stamps
+  its own version keeps naming the previous one until the follow-up bump lands. Internal
+  test-harness case ids and an HTTP-endpoint pointer are gone from the remote-access and workflows
+  pages, and the README says outright that its upgrade sections stop at the release they name. (#837)
+- 📝 **xezar 0.19.0 is the minimum engine for xezar-skills 3.0.0; projects that must stay on 0.18 stay on xezar-skills 2.1.1.** (#873)
+- 📝 **Claude Code channel setup now documents the Team and Enterprise policy.** An organisation Owner enables `channelsEnabled: true` in Claude Code managed settings, then restarts Claude Code. The leader guide also explains that `channels not enabled by org policy` means this setting is off, and records the 2026-09-23 live red/green check. (#899)
+- 📝 **The leader guide answers a new leader's first questions up front.** A quick-answers table
+  (what to decide alone, what to ask, how to dispatch, what the gates mean) and a table of common
+  refusals with what to do about each. It now says the four single-project files are tracked,
+  that gate runs queue on the gate lease by themselves, and how a question travels each way
+  (`XEZ:ASK` from a task; `AskUserQuestion` from a Claude Code leader to the owner). (#836)
+- 📝 **Account docs describe what the MCP really answers.** `get_account` returns `accounts`,
+  `profiles` and `problems`; `check_account_status` and `get_account_details` are served. Usage
+  still cannot be read, so the probe recipe stays. (#836)
+- 📝 **A new top-level file under `.local/xezar/` needs announcing.** AGENTS.md, the project
+  layout, the local-data table and BACKWARD_COMPATIBILITY.md now say the git ignore settles git
+  only: an external consumer checks the top-level file names there, so new state goes in a
+  subdirectory. They also say those names are a shape, not a fixed list: with no feature turned
+  on, any of them may carry a `.lock`, `.tmp` or `.<pid>.<hex>.tmp` suffix or a rotation number
+  `.1`–`.4`. (#836)
+- 📝 The kit docs index lists every file in `.xezar/docs/`, and the docs map lists every testing
+  document and the research folder. (#836)
+- 📝 **OpenCode is never routed to a kit read-only role, and the account-limits docs catch up.**
+  OpenCode applies no tool limit at all, so the five read-only roles — code-review, design-review,
+  qa, architecture-review and business-analysis — never run there; the old wording had OpenCode
+  "re-entering for read-only rows first". `.xezar/docs/account-limits.md` replaces the retired
+  probe-task recipe with the `project_config` `read_quota` method, where `unknown` means "could not
+  read" and never "has budget", and the getting-started guide describes agent quota in the present
+  tense, pointing at the settings guide section that documents it. (#905)
+- 📝 **The routing guide reads plan limits through the MCP instead of a probe task.** The user guide
+  documents the plan-limit status, the Refresh controls and the cockpit chip; the leader guide names
+  `project_config` `read_quota` as the way to read Claude Code and Codex rows before dispatch and to
+  route away from an `out` login until its `resetsAt`; and the retired probe-task recipe is gone from
+  `model-routing.md` in favour of the dated per-runner read-only statement. (#900)
+- 📝 **A design for the agent-quota cockpit surface.** A static mockup and developer handoff in
+  `designs/agent-quota/`: the limits half of each Claude Code and Codex account row in every state
+  (fresh, stale, checking, out, unknown, not reported, hosted and empty), the Plan limits block with
+  Refresh all, and the plan-limits chip in its desktop band and phone top bar. Design only — no
+  cockpit change. (#870)
+- 📝 **The user guide's screenshots are re-captured at 0.18.0.** Every image was still from 0.16.0
+  after the guide text had moved on, so the capture harness now writes `docs/screenshots/0.18.0/`
+  (41 files), all 27 embeds point at it, and the old folder is deleted. The capture script's generated
+  README title had been hardcoded to `0.16.0` and now interpolates the computed version. (#842)
+- 📝 **The README and the leader guide present xezar and xezar-skills as one solution.** The README
+  names xezar-skills as the default skill collection and `xez-onboard-opinionated` as its
+  full-project setup skill; getting-started points from the built-in `xez-onboard` to that fuller
+  alternative; and the leader guide names the kit's own launcher, `scripts/xezar-leader.sh` at the
+  project root, saying plainly that `XEZAR_LEADER` is the kit's variable, not xezar's. (#847)
+
+## 🚀 CI/CD & Infrastructure
+
+- 🚀 **The project kit gains an `architecture-review` workflow and skill.** A read-only role with the
+  `code-review` shape and shell allowlist: it reviews the design of a change – responsibilities,
+  boundaries, coupling, contract shape and whether a replaced mechanism kept its guarantees – posts
+  one `## Architecture review` comment with APPROVE or REQUEST CHANGES and a per-finding table, and
+  records its packet as the `architecture-review` verdict role. Its step declares
+  `verdictRole: architecture-review`, which is what lets the engine record that packet at all; it
+  never merges and never moves `merge-queue`. The kit now has 19 workflows and 21 skills. (#851, #865)
+- 🚀 **The MCP acceptance case that cancels a live hold no longer races a task's start-up.**
+  `acceptance-parity.test.ts` P-13 treated a task record's `running` status as proof its hold was in
+  place, but the engine writes that status before the task's worktree exists — so the cancel landed
+  inside the start-up window and the case depended on the whole of it ending `cancelled`, timing out
+  at 90 s on `main` CI run 35860782737. A hold now counts only once its own check step is `running`,
+  and every wait ends on a terminal state the store reports. Test-only; no product code changed.
+  (#916)
+- 🚀 **The cross-project semaphore test no longer depends on two wall clocks.** Its "a slot freed in
+  one project starts the run queued in ANOTHER project" case held slots with a fixed 3 s timer and
+  asserted after a fixed 300 ms sleep, so a CI runner starved for three seconds let the hold expire
+  first and the case failed with `expected 'running' to be 'queued'` (issue #902). A holder now frees
+  its slot only when the test writes that holder's gate file, and "B declined to start" is read after
+  B's own scheduling sweep finishes. Test-only; no product code changed. (#904)
+
+---
+
 # 0.18.0 (2026-09-22)
 
 ## Highlights

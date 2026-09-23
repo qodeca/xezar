@@ -1,3 +1,0 @@
-## 🐛 Fixes
-
-- 🐛 **The OpenCode attach-bound test no longer asserts a wall-clock lower bound.** `leader-delivery.test.ts`'s "refuses a server that accepts the connection and never answers, within the injected bound" case (#703) measured the injected bound with `Date.now()` around the `attach` call and asserted `elapsed >= 150`; a Node timer can fire a tick before the clock reads the bound it was given, so CI read `149` (#846). It now spies on `AbortSignal.timeout` and asserts the exact value passed is the injected bound (150), never the shipped 10 s default — a deterministic signal from the system under test instead of a timing measurement. Test-only; `leader-delivery.ts` is unchanged.
