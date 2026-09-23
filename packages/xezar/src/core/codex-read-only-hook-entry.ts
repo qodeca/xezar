@@ -3,8 +3,8 @@ import { fileURLToPath } from 'node:url';
 import {
   CODEX_READ_ONLY_ALLOWLIST_ENV,
   CODEX_READ_ONLY_RUN_ENV,
-  activeCodexReadOnlyLock,
   codexReadOnlyLockPath,
+  codexReadOnlyLockState,
   codexHookOutput,
   decideCodexPreToolUse,
 } from './codex-read-only-hook.ts';
@@ -35,7 +35,8 @@ async function main(): Promise<void> {
     const normalizedPayload = payload && typeof payload === 'object' && typeof (payload as { cwd?: unknown }).cwd === 'string'
       ? { ...payload, cwd: realpathSync((payload as { cwd: string }).cwd) }
       : payload;
-    if (!activeCodexReadOnlyLock(normalizedPayload, record)) {
+    const lockState = codexReadOnlyLockState(normalizedPayload, record);
+    if (lockState === 'expired-or-malformed') {
       try {
         unlinkSync(lockPath);
       } catch {
@@ -43,6 +44,8 @@ async function main(): Promise<void> {
       }
       return;
     }
+    // A live record belongs to a locked xezar run. If its payload no longer matches, keep the
+    // record and fail closed below rather than turning every later hook call into an inert one.
   }
 
   let entries: string[] = [];

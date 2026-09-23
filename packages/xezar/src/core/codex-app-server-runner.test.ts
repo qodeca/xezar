@@ -558,6 +558,35 @@ describe('a read-only step runs Codex confined to its worktree and its own roots
     }
   }, 15_000);
 
+  it('allows a writing run when CODEX_HOME is exported but initialize omits codexHome', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'xez-863-writing-home-'));
+    const requested = join(dir, 'host-exported');
+    const log = join(dir, 'rpc.ndjson');
+    mkdirSync(requested);
+    const previous = process.env.CODEX_HOME;
+    process.env.CODEX_HOME = requested;
+    try {
+      const session = new CodexAppServerRunner({ bin: mockBin, timeoutMs: 0 }).startSession(
+        {
+          userPrompt: 'write it',
+          cwd: dir,
+          allowedTools: DEFAULT,
+          env: { MOCK_CODEX_OMIT_HOME: '1', MOCK_CODEX_RPC_LOG: log },
+        },
+        undefined,
+        { autoEndAfterFirstTurn: true },
+      );
+      await expect(session.result).resolves.toMatchObject({ sessionId: 'th_mock_1' });
+      const methods = readFileSync(log, 'utf8').trim().split('\n').map((line) => JSON.parse(line).method as string);
+      expect(methods).toContain('turn/start');
+      expect(methods).not.toContain('config/batchWrite');
+    } finally {
+      if (previous === undefined) delete process.env.CODEX_HOME;
+      else process.env.CODEX_HOME = previous;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 15_000);
+
   it('passes the locked-run marker and allowlist through Codex to the hook process', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'xez-863-hook-env-'));
     const hookLog = join(dir, 'hook.ndjson');

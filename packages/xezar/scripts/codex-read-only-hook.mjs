@@ -302,11 +302,13 @@ function codexReadOnlyLockPath(hookScript, sessionId) {
   const key = createHash("sha256").update(sessionId).digest("hex");
   return join(dirname(hookScript), "locks", `${key}.json`);
 }
-function activeCodexReadOnlyLock(payload, record, now = Date.now()) {
+function codexReadOnlyLockState(payload, record, now = Date.now()) {
   const input = payload && typeof payload === "object" ? payload : {};
-  if (!record || typeof record !== "object") return false;
+  if (!record || typeof record !== "object") return "expired-or-malformed";
   const lock = record;
-  return lock.version === 1 && typeof input.session_id === "string" && lock.sessionId === input.session_id && typeof input.cwd === "string" && lock.cwd === input.cwd && typeof lock.createdAt === "number" && typeof lock.expiresAt === "number" && lock.createdAt <= now && lock.expiresAt > now && lock.expiresAt - lock.createdAt <= CODEX_READ_ONLY_LOCK_MAX_AGE_MS;
+  const validRecord = lock.version === 1 && typeof lock.sessionId === "string" && typeof lock.cwd === "string" && typeof lock.createdAt === "number" && Number.isFinite(lock.createdAt) && typeof lock.expiresAt === "number" && Number.isFinite(lock.expiresAt) && lock.createdAt <= now && lock.expiresAt > now && lock.expiresAt - lock.createdAt <= CODEX_READ_ONLY_LOCK_MAX_AGE_MS;
+  if (!validRecord) return "expired-or-malformed";
+  return typeof input.session_id === "string" && lock.sessionId === input.session_id && typeof input.cwd === "string" && lock.cwd === input.cwd ? "active" : "live-mismatch";
 }
 function decideCodexPreToolUse(payload, entries) {
   const record = payload && typeof payload === "object" ? payload : {};
@@ -344,7 +346,8 @@ async function main() {
       return;
     }
     const normalizedPayload = payload && typeof payload === "object" && typeof payload.cwd === "string" ? { ...payload, cwd: realpathSync(payload.cwd) } : payload;
-    if (!activeCodexReadOnlyLock(normalizedPayload, record)) {
+    const lockState = codexReadOnlyLockState(normalizedPayload, record);
+    if (lockState === "expired-or-malformed") {
       try {
         unlinkSync(lockPath);
       } catch {

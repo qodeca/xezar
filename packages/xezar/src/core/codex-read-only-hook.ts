@@ -28,20 +28,37 @@ export function codexReadOnlyLockPath(hookScript: string, sessionId: string): st
   return join(dirname(hookScript), 'locks', `${key}.json`);
 }
 
-export function activeCodexReadOnlyLock(payload: unknown, record: unknown, now = Date.now()): boolean {
+export type CodexReadOnlyLockState = 'active' | 'live-mismatch' | 'expired-or-malformed';
+
+export function codexReadOnlyLockState(
+  payload: unknown,
+  record: unknown,
+  now = Date.now(),
+): CodexReadOnlyLockState {
   const input = payload && typeof payload === 'object' ? payload as CodexPreToolUsePayload : {};
-  if (!record || typeof record !== 'object') return false;
+  if (!record || typeof record !== 'object') return 'expired-or-malformed';
   const lock = record as Partial<CodexReadOnlyLockRecord>;
-  return lock.version === 1
-    && typeof input.session_id === 'string'
-    && lock.sessionId === input.session_id
-    && typeof input.cwd === 'string'
-    && lock.cwd === input.cwd
+  const validRecord = lock.version === 1
+    && typeof lock.sessionId === 'string'
+    && typeof lock.cwd === 'string'
     && typeof lock.createdAt === 'number'
+    && Number.isFinite(lock.createdAt)
     && typeof lock.expiresAt === 'number'
+    && Number.isFinite(lock.expiresAt)
     && lock.createdAt <= now
     && lock.expiresAt > now
     && lock.expiresAt - lock.createdAt <= CODEX_READ_ONLY_LOCK_MAX_AGE_MS;
+  if (!validRecord) return 'expired-or-malformed';
+  return typeof input.session_id === 'string'
+    && lock.sessionId === input.session_id
+    && typeof input.cwd === 'string'
+    && lock.cwd === input.cwd
+    ? 'active'
+    : 'live-mismatch';
+}
+
+export function activeCodexReadOnlyLock(payload: unknown, record: unknown, now = Date.now()): boolean {
+  return codexReadOnlyLockState(payload, record, now) === 'active';
 }
 
 export interface CodexHookOutput {

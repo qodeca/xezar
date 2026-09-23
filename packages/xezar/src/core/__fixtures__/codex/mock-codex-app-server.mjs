@@ -118,7 +118,7 @@ rl.on('line', (line) => {
   } else if (msg.method === 'initialize') {
     emit({ id: msg.id, result: {
       userAgent: 'mock-codex/0.0.0',
-      ...((process.env.MOCK_CODEX_HOME ?? process.env.CODEX_HOME)
+      ...(process.env.MOCK_CODEX_OMIT_HOME !== '1' && (process.env.MOCK_CODEX_HOME ?? process.env.CODEX_HOME)
         ? { codexHome: process.env.MOCK_CODEX_HOME ?? process.env.CODEX_HOME }
         : {}),
     } });

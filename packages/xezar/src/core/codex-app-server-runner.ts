@@ -468,9 +468,8 @@ class CodexSession implements AgentSession {
     const initialized = await this.rpc.initialize();
     const requestedCodexHome = this.requestedCodexHome;
     const reportedCodexHome = stringField(initialized, 'codexHome');
-    if (requestedCodexHome && (
-      !reportedCodexHome || await canonicalPath(requestedCodexHome) !== await canonicalPath(reportedCodexHome)
-    )) {
+    if (requestedCodexHome && reportedCodexHome
+      && await canonicalPath(requestedCodexHome) !== await canonicalPath(reportedCodexHome)) {
       throw new Error(
         `Codex profile mismatch (codex-home.mismatch: xezar requested ${requestedCodexHome}, ` +
           `but initialize reported ${JSON.stringify(reportedCodexHome ?? 'missing')}); ` +

@@ -114,4 +114,41 @@ describe('Codex PreToolUse adapter for the shared read-only lock (#863 S2)', () 
     expect(expired).toMatchObject({ status: 0, stdout: '', stderr: '' });
     expect(() => readFileSync(lock)).toThrow();
   });
+
+  it('denies on a live mismatched lock record without deleting it', () => {
+    const sessionId = 'th_live_mismatch';
+    const cwd = process.cwd();
+    const locks = join(dirname(hook), 'locks');
+    const lock = join(locks, `${createHash('sha256').update(sessionId).digest('hex')}.json`);
+    mkdirSync(locks, { recursive: true });
+    const createdAt = Date.now();
+    writeFileSync(lock, `${JSON.stringify({
+      version: 1,
+      sessionId,
+      cwd,
+      createdAt,
+      expiresAt: createdAt + 60_000,
+    })}\n`);
+
+    const mismatched = spawnSync(process.execPath, [hook, '--xezar-read-only-hook'], {
+      input: JSON.stringify({
+        session_id: sessionId,
+        cwd: dirname(cwd),
+        tool_name: 'Bash',
+        tool_input: { command: 'git status' },
+      }),
+      encoding: 'utf8',
+      env: {},
+    });
+    expect(mismatched.status).toBe(0);
+    expect(mismatched.stderr).toBe('');
+    expect(JSON.parse(mismatched.stdout)).toEqual({
+      hookSpecificOutput: {
+        hookEventName: 'PreToolUse',
+        permissionDecision: 'deny',
+        permissionDecisionReason: expect.stringContaining('Rule prefix.entry'),
+      },
+    });
+    expect(JSON.parse(readFileSync(lock, 'utf8'))).toMatchObject({ sessionId, cwd });
+  });
 });
