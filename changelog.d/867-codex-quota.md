@@ -1,7 +1,0 @@
-## ✨ Features
-
-- ✨ **Codex per-model weekly limits are shown.** A Codex login's plan limits now list each model's own weekly window, named by the model slug Codex reports, beside the login's own windows. A per-model limit never changes whether the login can work. (#867)
-
-## 🐛 Fixes
-
-- 🐛 **A Codex usage limit is reported as a usage limit.** A Codex turn that fails with the structured `usageLimitExceeded` error, or with `rateLimitExceeded` while Codex's own rate-limit report says a limit was reached, now fails the task with the limit and its reset time instead of "ended its turn without XEZ:DONE", marks that login out until the reset, and lets the existing auto-resume setting act on it. The reset is Codex's stated time, or else the end of the window that reached the limit. A `rateLimitExceeded` turn without that report, and every other failed Codex turn, is unchanged: it never marks a working login out. (#565, #867)
