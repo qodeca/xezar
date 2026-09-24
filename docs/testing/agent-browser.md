@@ -582,7 +582,7 @@ test disagreeing about what the state shows.
 ## Repository validation guidance
 
 The UI smoke suite is a **separate** command — it boots the real app and drives it in a real
-Chrome through the `agent-browser` provider (`docs/testing/agent-browser.md`):
+Chrome through the `agent-browser` provider:
 
 ```bash
 npm run test:e2e    # scripts/e2e.sh → test-env-up.sh + vitest (packages/web/e2e/)
