@@ -37,7 +37,7 @@ locations to keep them out of the walk.
 
 This excerpt is checked against the task-agent guard in the maintained hook script:
 
-<!-- from: .xezar/checks/leader-context.sh#L30-L43 -->
+<!-- from: .xezar/checks/leader-context.sh#L31-L45 -->
 ```sh
 # A xezar task agent, even one running in the primary checkout with Worktree off.
 [ -z "${XEZ_HANDOFF_FILE:-}" ] || silent
@@ -51,6 +51,7 @@ git_dir="$(git -C "$REPO_ROOT" rev-parse --path-format=absolute --git-dir 2>/dev
 common_dir="$(git -C "$REPO_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
 [ -n "$git_dir" ] && [ "$git_dir" = "$common_dir" ] || silent
 
-# Without the guide there is nothing to load.
+# Without either leader-only guidance file there is no complete context to load.
 [ -f "$GUIDE" ] || silent
+[ -f "$ROUTING" ] || silent
 ```

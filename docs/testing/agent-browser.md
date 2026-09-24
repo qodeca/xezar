@@ -578,3 +578,54 @@ package above follows). `docs-screenshots.capture.ts` calls `SCENARIOS` immediat
 `shoot()`; `screenshot-states.e2e.ts` calls the identical `SCENARIOS` and shoots nothing. One
 scenario, two callers, so a preparation change can never leave a picture and its own visible-fact
 test disagreeing about what the state shows.
+
+## Repository validation guidance
+
+The UI smoke suite is a **separate** command — it boots the real app and drives it in a real
+Chrome through the `agent-browser` provider (`docs/testing/agent-browser.md`):
+
+```bash
+npm run test:e2e    # scripts/e2e.sh → test-env-up.sh + vitest (packages/web/e2e/)
+```
+
+It boots the app on a free port with `XEZ_DRY_RUN=1` (agent CLIs mocked — no login, no
+network), reuses an already-healthy instance instead of double-booting, and writes
+`.local/qa/test-env.json` so QA skills attach to the same instance. Stop it with
+`scripts/test-env-down.sh`. Exit contract:
+
+| Exit     | Marker                    | Meaning                                                                                                           |
+| -------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| 0        | `TEST_E2E_STATUS=passed`  | every spec passed                                                                                                 |
+| 0        | `TEST_E2E_STATUS=skipped` | agent-browser could not be provisioned (no network / unsupported platform); prints a loud banner — **not** a pass |
+| non-zero | `TEST_E2E_STATUS=failed`  | a spec failed, or the env could not boot                                                                          |
+
+**The boot isolates the agents' USER-SCOPE config, and a spec may rely on exactly that much.**
+`XEZ_HOME` pins what xezar *writes*; `CLAUDE_CONFIG_DIR`, `CODEX_HOME` and `OPENCODE_CONFIG_DIR`
+pin the user-scope files it *reads*, and `ANTHROPIC_MODEL` is unset because it outranks every
+settings file. What each pin is for, and what it costs to drop one, is in
+[docs/testing/agent-browser.md](agent-browser.md#running-this-repositorys-suite) § Running this repository's suite.
+
+Four limits are deliberate, and a spec must not assume past them:
+
+- **Project and local scope are NOT isolated.** `<repo>/.claude/settings.local.json` (the highest
+  model priority of all), `<repo>/opencode.json` and `<repo>/.codex/config.toml` resolve from the
+  repo root, not from any home, so no pin reaches them. A model key in one of those still leaks in.
+- **Credential discovery is NOT isolated.** Keychain and `XDG_DATA_HOME` are untouched, so the
+  cockpit still reports "credentials found". That is the safe direction — it means no credential
+  can be written into the tree — but the boot is not a blank host.
+- **pi's home is NOT isolated.** pi honours `PI_CODING_AGENT_DIR`, but `scripts/test-env-up.sh` does not
+  set it, so the boot starts pi from the developer's own `~/.pi/agent` and a spec must not assume a
+  blank pi config. What closing that takes is in [docs/testing/agent-browser.md](agent-browser.md).
+- **OpenCode is pinned through `OPENCODE_CONFIG_DIR`, never `XDG_CONFIG_HOME`.** The XDG variable
+  is machine-wide: pinning it deauthenticated `gh` inside the boot and hid the developer's global
+  git config. If a future boot-path tool stores tokens under `$XDG_CONFIG_HOME` (`gcloud`, `op`,
+  `helm`, `flyctl`), pinning that variable would write them inside the repo.
+
+The pins are part of the reuse fingerprint (`environment.agentHome` in the descriptor), so an
+instance booted with different pins is never reused — the same rule `environment.singleProject`
+already follows.
+
+Iterating on ONE spec, and the three rules this suite learned the hard way (never edit a spec while
+a run is in flight; tear a fixture server down through the shared helpers; a spec's own HTTP never
+reuses a connection), are in
+[docs/testing/agent-browser.md](agent-browser.md).

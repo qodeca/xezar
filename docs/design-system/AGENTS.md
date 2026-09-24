@@ -1,0 +1,7 @@
+# Guidance for `docs/design-system/`
+
+These rules are the full task-routing guidance moved from the repository root. Root `AGENTS.md` retains the routing index and canonical cross-repository rules.
+
+## Design system and UI design (a new mockup in `designs/<feature>/`, any new or changed cockpit UI in `packages/web`, a UX/UI review)
+
+The design system documents the cockpit's current UX/UI: every token in `index.css` with both theme values, every `src/components/ui` primitive and shared component, the page patterns, states, behaviour and copy conventions. Follow it; do not invent a token, prop or pattern it does not name. Mockups link `docs/design-system/cockpit.css` and keep only feature-specific CSS locally. Static specimens in `docs/design-system/specimens/` show every token, component and pattern with states. `packages/web/src/design-system-drift.test.ts` fails when an `index.css` token has no entry, when a component has no row in `coverage.md`, or when `cockpit.css` token values differ from `index.css` — update the docs and the stylesheet in the same commit as the UI change. Inconsistencies are recorded in `known-gaps.md`, not fixed silently. The Claude Code skill `.claude/skills/design-system/SKILL.md` tells an agent when and how to apply it. UI in scope carries `needs-design` and merges only with `design-approved` (SDLC.md § The design gate); the evidence is the `## Design review` PR comment. `design` (mockup + draft PR) and `design-review` (read-only verdict) are the kit workflows.

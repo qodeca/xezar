@@ -208,6 +208,7 @@ function setupLeaderContextFixture(row, scratch) {
     throw new FixtureSetupError(`could not copy ${row.script}: ${error.message}`);
   }
   writeFileSync(path.join(root, '.xezar/docs/leader-guide.md'), '# Fixture leader guide\n');
+  writeFileSync(path.join(root, '.xezar/docs/model-routing.md'), '# Fixture model routing\n');
   for (const args of [
     ['init', '-q', '-b', 'main'],
     ['-c', 'user.email=fixture@example.invalid', '-c', 'user.name=fixture', 'add', '-A'],
@@ -286,6 +287,7 @@ function produceLeaderContextOutput(root, row, scratch) {
   mkdirSync(path.join(noGit, '.xezar/docs'), { recursive: true });
   cpSync(path.join(root, row.script), path.join(noGit, row.script));
   writeFileSync(path.join(noGit, '.xezar/docs/leader-guide.md'), '# Fixture leader guide\n');
+  writeFileSync(path.join(noGit, '.xezar/docs/model-routing.md'), '# Fixture model routing\n');
   assertSilent(
     executeFixtureScript(noGit, row, {
       env: { ...cleanEnvironment(), GIT_CEILING_DIRECTORIES: scratch },
@@ -295,6 +297,9 @@ function produceLeaderContextOutput(root, row, scratch) {
 
   rmSync(path.join(root, '.xezar/docs/leader-guide.md'));
   assertSilent(executeFixtureScript(root, row), 'missing-guide guard');
+  writeFileSync(path.join(root, '.xezar/docs/leader-guide.md'), '# Fixture leader guide\n');
+  rmSync(path.join(root, '.xezar/docs/model-routing.md'));
+  assertSilent(executeFixtureScript(root, row), 'missing-routing guard');
   return output;
 }
 

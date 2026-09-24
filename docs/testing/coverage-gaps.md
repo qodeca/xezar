@@ -1292,3 +1292,27 @@ a duplicate is exactly the kind of copy that goes stale.
 
 Every group's status is therefore re-derivable by running `gap-group-inventory.test.ts` rather than
 trusting this table after the next slice lands.
+
+## Repository validation guidance
+
+`npm run test:coverage` measures the four vitest projects with the v8 provider and writes to
+`.local/coverage/`. It is a **measurement, not a gate** – it is absent from the list above, CI does
+not run it, and it sees neither the node:test suites nor the browser suite, so a module the
+packaged-CLI tests exercise still reads as uncovered there. Before concluding that a behaviour is
+tested, read [docs/testing/coverage-gaps.md](coverage-gaps.md): it maps behaviours to
+the suite that actually covers them, and records where high line coverage sits on top of an
+untested behaviour.
+
+One scoped exception is a requirement rather than a measurement: `npm run test:coverage:mcp` holds
+every MCP source file to 80 % lines and 80 % branches, and CI runs it in its own required job on
+every pull request. A PR on the MCP scope must also show each new test failing against a named break.
+Neither half passes alone – see
+[SDLC.md § The MCP test floor](../../SDLC.md#the-mcp-test-floor). Its slower counterpart is
+`npm run test:mutation:mcp`: StrykerJS over the same code and the same suites, never run by
+`npm test` or by per-PR CI because a full run takes hours. **It runs nightly against `main`** in
+`.github/workflows/mutation.yml` (#377), split across nine jobs, balanced on measured per-file cost
+rather than byte size (#443), whose counts are summed before the one floor is applied, and a red
+night files or updates a `mutation-nightly` issue, which also gets a
+note when new survivors appear on a green night. Same scope,
+same 80 % floor
+([coverage-gaps.md § 10.8](coverage-gaps.md#108-the-nightly-gate-stryker-over-the-mcp-code)).

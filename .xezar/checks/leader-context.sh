@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# SessionStart hook for the project leader session: load the leader guide and the live campaign
-# notes into the session at start and after every context compaction.
+# SessionStart hook for the project leader session: load the leader guide, model routing, and the
+# live campaign notes into the session at start and after every context compaction.
 #
 # Prints exactly one JSON hook payload, or nothing at all. The hook is for the LEADER session in
 # the primary checkout; a xezar task agent must never receive it, because the guide is irrelevant
@@ -13,8 +13,8 @@
 #     that is unconditional and always non-empty; `XEZ_TODOS_FILE` is set to an EMPTY string when
 #     follow-ups are off (`run.ts` `agentEnv`), and an empty value reads as absent here, so it is
 #     not a signal on its own;
-#   - when the guide file is missing, so an older checkout degrades to no output rather than an
-#     error.
+#   - when either leader-only guidance file is missing, so an older checkout degrades to no output
+#     rather than an error.
 #
 # Exit status is always 0: a hook that fails must not break session start. The escaping is done
 # by node, so no guide or note text can produce malformed JSON.
@@ -23,6 +23,7 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd -P)"
 GUIDE="$REPO_ROOT/.xezar/docs/leader-guide.md"
+ROUTING="$REPO_ROOT/.xezar/docs/model-routing.md"
 CAMPAIGNS="$REPO_ROOT/.local/xezar/campaigns"
 
 silent() { exit 0; }
@@ -39,8 +40,9 @@ git_dir="$(git -C "$REPO_ROOT" rev-parse --path-format=absolute --git-dir 2>/dev
 common_dir="$(git -C "$REPO_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
 [ -n "$git_dir" ] && [ "$git_dir" = "$common_dir" ] || silent
 
-# Without the guide there is nothing to load.
+# Without either leader-only guidance file there is no complete context to load.
 [ -f "$GUIDE" ] || silent
+[ -f "$ROUTING" ] || silent
 
 # The newest campaign folder under .local/xezar/campaigns, if one exists. Chosen by NAME, not by
 # modification time: a restore or a `cp -r` can make an old folder look newest, while the slugs
@@ -70,6 +72,8 @@ note_tail() {
 {
   printf '%s\n\n' '=== .xezar/docs/leader-guide.md (project leader guide) ==='
   cat "$GUIDE"
+  printf '\n\n%s\n\n' '=== .xezar/docs/model-routing.md (model routing) ==='
+  cat "$ROUTING"
   if [ -n "$campaign" ] && [ -d "$campaign" ]; then
     [ -f "${campaign}README.md" ] && note_tail "${campaign}README.md" "${campaign}README.md (campaign live state)"
     [ -f "${campaign}decisions.md" ] && note_tail "${campaign}decisions.md" "${campaign}decisions.md (owner decisions, exact words)"
