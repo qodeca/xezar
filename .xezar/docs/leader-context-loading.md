@@ -1,8 +1,8 @@
-# Leader-context loading: the committed guide a leader session reloads itself from
+# Leader-context loading: the committed guidance a leader session reloads itself from
 
 This is the standard for giving the AI session that **leads** a project its own durable context: a
-committed **leader guide**, loaded automatically by a committed client hook, together with the live
-campaign notes the guide points at. It exists because a leader's rules and current state must
+committed **leader guide and model-routing guide**, loaded automatically by a committed client hook,
+together with the live campaign notes the guide points at. It exists because a leader's rules and current state must
 survive a new session and a context-window compaction, and because the same mechanism has to be
 installable in any project xezar leads — this repository is the dogfooding case, not the target.
 
@@ -29,14 +29,15 @@ be re-established without a person retyping them:
 - **Owner decisions** — the exact words that authorize a deviation, kept so a later session can
   quote the authority instead of paraphrasing it.
 
-The guide holds the first and third as durable text; the campaign notes hold the second. The hook
-is what makes the client reload both without a prompt.
+The two committed guides hold the first and third as durable text; the campaign notes hold the
+second. The hook is what makes the client reload all three without a prompt.
 
 ## The moving parts
 
 | Path | What it is | Committed? |
 | --- | --- | --- |
 | `.xezar/docs/leader-guide.md` | The leader guide: rules, patterns, recovery steps, owner-only decisions, brief rules and a checklist. 377 lines in this repository. | yes |
+| `.xezar/docs/model-routing.md` | The current model and runner routing rules; dated findings and history stay linked rather than eagerly loaded. | yes |
 | `.claude/settings.json` | The Claude Code `SessionStart` hook that runs the loader. Un-ignored by `.gitignore`, alongside the committed `.claude/skills/design-system/` skill. | yes |
 | `.xezar/checks/leader-context.sh` | The loader. Prints one JSON object when it should; prints nothing when it should not. | yes |
 | `.xezar/checks/leader-context.test.mjs` | The fixture case: loud in the primary, silent in each agent shape. | yes |
@@ -44,7 +45,7 @@ is what makes the client reload both without a prompt.
 | `.local/xezar/campaigns/<release>/decisions.md` | Owner decisions in the owner's exact words, append-only. | no — runtime |
 
 The loader's documented JSON shape is checked by its allowlisted fixture. Values can vary with the
-guide and campaign notes, while these keys are its stable output contract:
+guides and campaign notes, while these keys are its stable output contract:
 
 <!-- documented-output:leader-context -->
 ```json
@@ -56,9 +57,9 @@ guide and campaign notes, while these keys are its stable output contract:
 }
 ```
 
-The loader is deliberately tiny and dependency-free: a shell script that reads the guide and the
+The loader is deliberately tiny and dependency-free: a shell script that reads both guides and the
 newest campaign folder, checks the guard, and prints one JSON object. It reads no configuration, so
-a project that has the three committed files needs nothing else. The newest folder is chosen by
+a project that has the four committed files needs nothing else. The newest folder is chosen by
 **name**, not by modification time: a restore or a `cp -r` can make an old folder look newest, while
 slugs (`release-<version>`, dated names) sort stably in reverse.
 
@@ -87,8 +88,8 @@ to mute it.)
    equal: when follow-ups are off the engine sets it to an **empty string**, and an empty value reads
    as absent, so that variable alone is not a signal. The loader tests all three with
    `[ -z "${VAR:-}" ]`, which silences a non-empty value and lets the empty one fall through.
-4. **The guide is missing** — a project without a guide gets silence, not an error and not a
-   half-loaded block.
+4. **Either leader-only guide is missing** — a project without a complete guidance pair gets
+   silence, not an error and not a half-loaded block.
 
 Everything else is loud. The silent cases matter as much as the loud one: they are what makes it safe
 to commit the hook at all, and the test pins each of them.
@@ -103,13 +104,13 @@ Claude Code session opened on that branch — including a reviewer's own task wo
 A `SessionStart` hook prints nothing on stdout in the silent cases, and one line of JSON otherwise:
 
 ```json
-{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"=== .xezar/docs/leader-guide.md (project leader guide) ===\n\n# Leader guide\n…\n\n=== /…/.local/xezar/campaigns/v0.16.0/README.md (campaign live state) ===\n…"}}
+{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"=== .xezar/docs/leader-guide.md (project leader guide) ===\n\n# Leader guide\n…\n\n=== .xezar/docs/model-routing.md (model routing) ===\n\n# Model routing\n…\n\n=== /…/.local/xezar/campaigns/v0.16.0/README.md (campaign live state) ===\n…"}}
 ```
 
-`additionalContext` is one string holding three labelled blocks in a fixed order: the guide, the
-newest campaign `README.md`, then its `decisions.md`. Order matters — a rule that a decision
-overrides is read after the rule, and the live state is read last, nearest to the work. The guide's
-block heading is the literal relative path; each campaign block heading is the file's absolute path,
+`additionalContext` is one string holding four labelled blocks in a fixed order: the leader guide,
+model routing, the newest campaign `README.md`, then its `decisions.md`. Order matters — routing
+follows the leader contract, a decision that overrides a rule is read after the rule, and the live
+state is read last, nearest to the work. Each committed guide's block heading is its literal relative path; each campaign block heading is the file's absolute path,
 which is also how a truncated note names itself (see the cost model below). The hook is
 registered in `.claude/settings.json` with the four matchers a leader has to survive:
 
@@ -141,17 +142,17 @@ compaction.
 
 ## The test
 
-`leader-context.test.mjs` builds a primary-shaped checkout with a guide and both campaign files, then
+`leader-context.test.mjs` builds a primary-shaped checkout with both guides and both campaign files, then
 runs the loader in the primary, in every agent shape, and in the degraded cases, and asserts the
 outcome:
 
-- the **primary** prints one parseable object whose `additionalContext` contains the guide and both
-  campaign files, guide first;
+- the **primary** prints one parseable object whose `additionalContext` contains both guides and
+  both campaign files, with model routing immediately after the leader guide;
 - the committed `.claude/settings.json` command **run from a subdirectory** with `CLAUDE_PROJECT_DIR`
   set still prints the payload — the case the `$CLAUDE_PROJECT_DIR` form exists for;
 - a **linked worktree**, a **path under `.local/xezar/worktrees/`**, and a primary with
   **`XEZ_HANDOFF_FILE`**, **`XEZ_TODOS_FILE`** or **`XEZ_TASK_ID`** set each print **nothing at all**;
-- a **missing guide** and a **checkout git cannot resolve** print nothing;
+- either **missing guide** and a **checkout git cannot resolve** print nothing;
 - an oversized `decisions.md` loses its head and carries the truncation line, and the newest campaign
   folder is picked **by name** when an older one has a newer mtime.
 
@@ -169,9 +170,9 @@ The hook runs on `startup`, `resume`, `clear` **and** `compact`. Compaction is t
 context window, so a large block loaded at compaction makes the next compaction come sooner and the
 guide's size compounds. Three caps follow, and all are requirements rather than style:
 
-- The guide stays bounded — **377 lines** in this repository. Everything durable and leader-only
-  belongs there; anything that is really project documentation belongs in a linked file the guide
-  names.
+- The leader guide stays bounded — **377 lines** in this repository — and model routing stays below
+  **40 000 bytes**. Detailed dated findings remain linked rather than loaded. Anything that is
+  really project documentation belongs in a linked file the guidance names.
 - The campaign `README.md` stays at about **120 lines** (see [campaign-notes.md](campaign-notes.md)),
   and the loader loads only the newest folder's `README.md` and `decisions.md`. A plan, a timeline or
   an archive is never loaded; the leader reads its tail on demand.
@@ -180,10 +181,10 @@ guide's size compounds. Three caps follow, and all are requirements rather than 
   append-only by contract — while the leader reads the tail anyway. A note over the cap is preceded
   by a visible line naming the file and its size:
   `[note truncated: <file> is <size> bytes; showing only its last 8000 bytes]`, so a partial note is
-  never mistaken for the whole. The guide itself is **not** capped; it is always loaded in full.
+  never mistaken for the whole. Neither guide is runtime-truncated; each is loaded in full.
 
-A silent case costs one process spawn and no tokens. A loud case costs the guide plus the two bounded
-campaign files.
+A silent case costs one process spawn and no tokens. A loud case costs both guides plus the two
+bounded campaign files.
 
 ## The Codex and pi fallback
 
@@ -233,17 +234,21 @@ cron cannot reach into the session. The guide's re-create order is the only dura
 
 1. **Copy the loader.** Put `leader-context.sh` at the project's own kit path (`.xezar/checks/` in a
    xezar kit) and keep its guard logic unchanged. Change only the paths it reads if the project uses
-   different ones; the four guard rules are the mechanism and travel as they are.
+   different ones; the four guard rules are the mechanism and travel as they are. Supply both the
+   leader guide and its concise model-routing guide, because a missing half deliberately stays silent.
 2. **Add the hook.** Create `.claude/settings.json` with the `SessionStart` block above: the four
    matchers `startup|resume|clear|compact`, and a command that runs the loader through
    `$CLAUDE_PROJECT_DIR`, so a session opened in a subdirectory still finds it.
 3. **Un-ignore exactly that one file.** The project's `.gitignore` ignores `.claude/*`; add
    `!.claude/settings.json` and nothing else, so per-machine `.claude/` state (locks, worktrees,
    `settings.local.json`) stays uncommitted while the hook travels with a clone.
-4. **Write the guide from the template outline.** Start with the Codex/pi first section, then:
+4. **Write the two guides from the template outline.** Start the leader guide with the Codex/pi
+   first section, then:
    standing rules and patterns; recovery steps for a restart or a compaction; owner-only decisions;
    how to write a task brief; and a short pre-dispatch checklist. Cite the source of every rule
    (issue number, dated decision) instead of asserting it, and keep the whole file under the cap.
+   Keep current dispatch rules in the concise routing guide and link dated evidence rather than
+   loading it eagerly.
 5. **Put campaign notes under `.local/xezar/campaigns/<release>/`.** `README.md` is live state,
    rewritten at every milestone; `decisions.md` is append-only owner words with date and channel.
    Both are runtime and stay uncommitted.

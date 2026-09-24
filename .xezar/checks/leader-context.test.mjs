@@ -1,9 +1,9 @@
 // Behaviour tests for `.xezar/checks/leader-context.sh`, the committed SessionStart hook that
-// loads the leader guide and the live campaign notes into a project leader session.
+// loads the leader guide, model routing, and the live campaign notes into a project leader session.
 //
 // The contract has two halves, and both are load-bearing:
-//   - the leader session in the primary checkout gets ONE JSON payload holding the guide and the
-//     newest campaign folder's README and decisions, bounded to each note's last bytes;
+//   - the leader session in the primary checkout gets ONE JSON payload holding the guide, routing,
+//     and newest campaign folder's README and decisions, bounded to each note's last bytes;
 //   - a xezar task agent gets NOTHING, because the guide is irrelevant to it. Every way a task can
 //     present itself is pinned here: a linked worktree, a path under `.local/xezar/worktrees/`,
 //     and the `XEZ_HANDOFF_FILE` / `XEZ_TODOS_FILE` / `XEZ_TASK_ID` variables xezar sets for the
@@ -36,6 +36,7 @@ const dirs = [];
 test.after(() => { for (const dir of dirs) rmSync(dir, { recursive: true, force: true }); });
 
 const GUIDE_SENTINEL = 'GUIDE-SENTINEL: the leader coordinates tasks through the MCP only.';
+const ROUTING_SENTINEL = 'ROUTING-SENTINEL: choose the model for the task.';
 const README_SENTINEL = 'CAMPAIGN-README-SENTINEL: main = deadbeef.';
 const DECISIONS_SENTINEL = 'DECISIONS-SENTINEL: "all new tasks run on pi" (owner 2026-09-18).';
 
@@ -55,7 +56,7 @@ const cleanEnv = () => {
   return env;
 };
 
-function fixture({ withGuide = true, withGit = true } = {}) {
+function fixture({ withGuide = true, withRouting = true, withGit = true } = {}) {
   const root = mkdtempSync(join(scratch, 'leader-context-'));
   dirs.push(root);
   writeFileSync(join(root, '.gitignore'), '.local/\n');
@@ -63,9 +64,14 @@ function fixture({ withGuide = true, withGit = true } = {}) {
   cpSync(hook, join(root, '.xezar/checks/leader-context.sh'));
   mkdirSync(join(root, '.claude'), { recursive: true });
   cpSync(settings, join(root, '.claude/settings.json'));
-  if (withGuide) {
+  if (withGuide || withRouting) {
     mkdirSync(join(root, '.xezar/docs'), { recursive: true });
+  }
+  if (withGuide) {
     writeFileSync(join(root, '.xezar/docs/leader-guide.md'), `${GUIDE_SENTINEL}\n`);
+  }
+  if (withRouting) {
+    writeFileSync(join(root, '.xezar/docs/model-routing.md'), `${ROUTING_SENTINEL}\n`);
   }
   mkdirSync(join(root, '.local/xezar/campaigns/release-9.9.9'), { recursive: true });
   writeFileSync(join(root, '.local/xezar/campaigns/release-9.9.9/README.md'), `${README_SENTINEL}\n`);
@@ -86,7 +92,7 @@ const hookCommand = (root) => {
   return parsed.hooks.SessionStart[0].hooks[0].command;
 };
 
-test('prints one JSON payload with the guide and the newest campaign folder in a primary checkout', () => {
+test('prints one JSON payload with leader guidance and the newest campaign folder in a primary checkout', () => {
   const root = fixture();
   const result = run(root);
   assert.equal(result.status, 0, result.stderr);
@@ -95,10 +101,14 @@ test('prints one JSON payload with the guide and the newest campaign folder in a
   assert.equal(payload.hookSpecificOutput.hookEventName, 'SessionStart');
   const context = payload.hookSpecificOutput.additionalContext;
   assert.match(context, /GUIDE-SENTINEL/);
+  assert.match(context, /ROUTING-SENTINEL/);
   assert.match(context, /CAMPAIGN-README-SENTINEL/);
   assert.match(context, /DECISIONS-SENTINEL/);
-  // The campaign files are appended after the guide, and the guide is named.
-  assert.ok(context.indexOf('leader-guide.md') < context.indexOf('CAMPAIGN-README-SENTINEL'));
+  // Routing follows the guide; campaign files follow both, and each source is named.
+  assert.ok(context.indexOf('leader-guide.md') < context.indexOf('GUIDE-SENTINEL'));
+  assert.ok(context.indexOf('GUIDE-SENTINEL') < context.indexOf('model-routing.md'));
+  assert.ok(context.indexOf('model-routing.md') < context.indexOf('ROUTING-SENTINEL'));
+  assert.ok(context.indexOf('ROUTING-SENTINEL') < context.indexOf('CAMPAIGN-README-SENTINEL'));
   assert.ok(context.indexOf('CAMPAIGN-README-SENTINEL') < context.indexOf('DECISIONS-SENTINEL'));
 });
 
@@ -119,16 +129,18 @@ test('runs from a subdirectory of the primary checkout, as Claude Code invokes i
   assert.equal(result.status, 0, result.stderr);
   const context = JSON.parse(result.stdout).hookSpecificOutput.additionalContext;
   assert.match(context, /GUIDE-SENTINEL/);
+  assert.match(context, /ROUTING-SENTINEL/);
   assert.match(context, /CAMPAIGN-README-SENTINEL/);
 });
 
-test('prints only the guide when no campaign folder exists', () => {
+test('prints only the leader guidance when no campaign folder exists', () => {
   const root = fixture();
   rmSync(join(root, '.local/xezar/campaigns'), { recursive: true, force: true });
   const result = run(root);
   assert.equal(result.status, 0, result.stderr);
   const context = JSON.parse(result.stdout).hookSpecificOutput.additionalContext;
   assert.match(context, /GUIDE-SENTINEL/);
+  assert.match(context, /ROUTING-SENTINEL/);
   assert.doesNotMatch(context, /CAMPAIGN-README-SENTINEL/);
 });
 
@@ -208,6 +220,13 @@ test('chooses the newest campaign folder by name, not by modification time', () 
 
 test('stays silent when the guide file is missing', () => {
   const root = fixture({ withGuide: false });
+  const result = run(root);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, '');
+});
+
+test('stays silent when the model-routing file is missing', () => {
+  const root = fixture({ withRouting: false });
   const result = run(root);
   assert.equal(result.status, 0, result.stderr);
   assert.equal(result.stdout, '');
