@@ -251,4 +251,3 @@ rows dated 2026-09-21 and the leader rules are in [leader-guide.md](leader-guide
   on pi the `bashAllowlist` removes the shell (read from `pi-runner.ts` `piTools`), tracked as #856.
   A reviewer's own run is not the QA for a workflow change unless its checkout carries the change —
   the first version's claim to the contrary was wrong.
-
