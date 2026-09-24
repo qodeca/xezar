@@ -1296,12 +1296,12 @@ trusting this table after the next slice lands.
 ## Repository validation guidance
 
 `npm run test:coverage` measures the four vitest projects with the v8 provider and writes to
-`.local/coverage/`. It is a **measurement, not a gate** – it is absent from the list above, CI does
+`.local/coverage/`. It is a **measurement, not a gate** – it is absent from the canonical list in
+`AGENTS.md` § Validation, CI does
 not run it, and it sees neither the node:test suites nor the browser suite, so a module the
 packaged-CLI tests exercise still reads as uncovered there. Before concluding that a behaviour is
-tested, read [docs/testing/coverage-gaps.md](coverage-gaps.md): it maps behaviours to
-the suite that actually covers them, and records where high line coverage sits on top of an
-untested behaviour.
+tested, identify the suite that actually covers it and check whether high line coverage sits on
+top of an untested behaviour.
 
 One scoped exception is a requirement rather than a measurement: `npm run test:coverage:mcp` holds
 every MCP source file to 80 % lines and 80 % branches, and CI runs it in its own required job on
