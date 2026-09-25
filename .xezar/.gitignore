@@ -19,6 +19,7 @@
 /automation-poll.lock
 /ui-state.json
 /ui-state.json.tmp
+/workspace.json.bak
 /cache/
 /.cache/
 /credentials/
