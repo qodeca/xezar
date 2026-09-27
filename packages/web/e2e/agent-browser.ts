@@ -5,8 +5,8 @@ import { dirname, resolve } from 'node:path'
 
 /**
  * The agent-browser provider seam. Every e2e spec drives the app through this module and
- * never through a browser library directly, because `.xezar/pipeline/config.json` names the
- * provider (`browser.provider`) and `docs/testing/agent-browser.md` defines the operations.
+ * never through a browser library directly, because `docs/testing/agent-browser.md` defines the
+ * operations.
  * Swapping providers must mean rewriting this file only.
  *
  * Each exported function maps to one operation in that descriptor: open, snapshot, eval/get

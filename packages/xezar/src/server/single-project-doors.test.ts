@@ -26,7 +26,7 @@ import { apiRequest } from './loopback-request.testkit.ts';
  * Two narrowings run through the same table:
  *
  * - `env-flag` — `XEZ_SINGLE_PROJECT=1`, which is the SHIPPED behaviour and is
- *   pinned here byte for byte because `BACKWARD_COMPATIBILITY.md` § Single-project
+ *   pinned here byte for byte because the backward-compatibility promise
  *   workspace mode promises those exact statuses, sentences and exit codes.
  *   Those rows are GUARD tests: they pass with and without this change, and that
  *   is the point of them.

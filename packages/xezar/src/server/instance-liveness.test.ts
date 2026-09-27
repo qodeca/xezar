@@ -27,7 +27,7 @@ import {
  * The liveness checker behind `instance?` (#467, PR 3, spec § 5).
  *
  * Every case here is about ONE promise: a remembered address is a question, never an answer.
- * `BACKWARD_COMPATIBILITY.md` § 9 says `lastListen` must never be rendered as running without a
+ * the backward-compatibility promise says `lastListen` must never be rendered as running without a
  * liveness check, so the three named breaks of the spec are each pinned by a case below:
  * `probe-trusts-lastListen`, `wrong-project-accepted` and `port-zero-reads-as-stopped`.
  */

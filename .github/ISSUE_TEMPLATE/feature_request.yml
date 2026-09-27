@@ -1,6 +1,6 @@
 name: Feature request
 description: Suggest a change to what xezar does.
-labels: ["enhancement"]
+labels: ["feature"]
 body:
   - type: textarea
     id: problem

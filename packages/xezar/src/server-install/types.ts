@@ -59,7 +59,7 @@ export type StepOutcome = z.infer<typeof stepOutcomeSchema>;
 /**
  * `~/.xezar/server.json` — host-level, install-once. Additive-safe: every new
  * field is optional / defaulted so an older xezar still parses a newer file
- * (BACKWARD_COMPATIBILITY cross-version-state rule). No secrets live here.
+ * (the backward-compatibility cross-version-state rule). No secrets live here.
  */
 export const serverStateSchema = z
   .object({

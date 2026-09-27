@@ -168,7 +168,7 @@ describe('per-step timeout wiring', () => {
    * #676 B7 — the cheap repair turn is an execution of the SAME step, so it takes that step's
    * own wall clock. Copying the Continue path's `timeoutMs: 0` here would silently uncap a
    * step whose workflow deliberately leaves `timeout` absent (`release.yaml`'s author step),
-   * and BACKWARD_COMPATIBILITY.md §4 makes changing what an absent `timeout` does a break.
+   * and the backward-compatibility promise makes changing what an absent `timeout` does a break.
    */
   it.each([
     { name: 'timeout: 2h', timeout: '2h', expected: 7_200_000 },

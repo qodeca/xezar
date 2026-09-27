@@ -85,7 +85,7 @@ export const GATE_LEASE_HEARTBEAT_MS = 10_000;
  * apart before taking over a lock whose pid is alive) lives in `file-lock.ts`, which two other
  * callers share and whose holds are measured in milliseconds, and it would buy a rarer version of
  * a failure that is already the old normal. Stated rather than silently carried, per
- * BACKWARD_COMPATIBILITY.md § 9.
+ * the backward-compatibility promise.
  */
 export const GATE_LEASE_STALE_MS = 6 * GATE_LEASE_HEARTBEAT_MS;
 
@@ -157,7 +157,7 @@ export interface GateLease {
  *
  * The precedent is the skills updater's machine-wide half at `~/.agents/.xez-skills-update.lock`,
  * "taken in every layout because that mirror never moves with the project"
- * (BACKWARD_COMPATIBILITY.md § 9). Unlike that one, this directory IS created on demand: a slot
+ * (the backward-compatibility promise). Unlike that one, this directory IS created on demand: a slot
  * file is xezar's own working state, not a third-party mirror whose absence means something.
  */
 export function gateLeaseDir(): string {

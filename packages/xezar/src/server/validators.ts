@@ -19,7 +19,7 @@ import type { z } from 'zod';
  * behaviours at the JSON boundary — and both are wrong for this server:
  *
  *   - a malformed body answers Hono's PLAIN-TEXT `400 Malformed JSON in request body`, and the
- *     error hook never runs, so the `{error}` shape BACKWARD_COMPATIBILITY.md §2 protects (and
+ *     error hook never runs, so the `{error}` shape the backward-compatibility promise protects (and
  *     the cockpit renders verbatim in a toast) is bypassed entirely;
  *   - a body sent WITHOUT a JSON content-type is silently discarded and the handler runs against
  *     `{}` — a 200 that applied an empty update, which is worse than a rejection.
@@ -56,7 +56,7 @@ type JsonOptions = ErrorOptions & {
 };
 
 /**
- * `{ error }`, the one 400 shape this API answers (BACKWARD_COMPATIBILITY.md §2).
+ * `{ error }`, the one 400 shape this API answers (the backward-compatibility promise).
  *
  * Each issue is prefixed with the field path, because zod's own message never names the field:
  * `"Invalid input: expected array, received undefined"` on its own does not tell the cockpit user

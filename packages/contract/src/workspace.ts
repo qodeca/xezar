@@ -287,7 +287,7 @@ const taskTableUiStateSchema = z.looseObject({
 /**
  * `GET/PUT /api/v1/ui-state` — the per-repo GUI prefs in `.local/xezar/ui-state.json`.
  *
- * An OPEN bag on purpose (BACKWARD_COMPATIBILITY.md §3): unknown keys round-trip untouched, so a
+ * An OPEN bag on purpose (the backward-compatibility promise): unknown keys round-trip untouched, so a
  * newer cockpit's prefs survive an older server and a future pref needs no server change. Hence
  * `z.looseObject`, not a closed object — the keys below are the ones the server's schema *names*,
  * never the ones it *permits*. The write side caps the TOP-LEVEL key count at 200 (#429); that cap

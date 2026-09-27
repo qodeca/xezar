@@ -16,7 +16,7 @@ import { runnerSchema } from './health.ts';
  * numeric `diffStat` (#389), and before the directional token counters split `tokensUsed` into
  * `inputTokens`/`outputTokens`. Every one of those arrived optional precisely so this object
  * keeps parsing — `src/runs/store.ts` `safeParse`s the WHOLE array, so one record that fails
- * takes every other run in the file with it (BACKWARD_COMPATIBILITY.md §3).
+ * takes every other run in the file with it (the backward-compatibility promise).
  */
 const legacyRecord: unknown = {
   id: 'r-2024',

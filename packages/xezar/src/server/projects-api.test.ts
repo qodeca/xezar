@@ -775,7 +775,7 @@ describe('workspace projects API', () => {
       const boot = await registerProject(repoRoot);
       const other = await registerProject(otherRoot);
       const body = await getHealth();
-      // The exact key set: every pre-existing field (BACKWARD_COMPATIBILITY.md
+      // The exact key set: every pre-existing field (the backward-compatibility promise
       // §2 — the bookmarklet contract) plus the two new additive fields, and
       // nothing else. `latestVersion` is absent while no update is known.
       expect(Object.keys(body).sort()).toEqual(

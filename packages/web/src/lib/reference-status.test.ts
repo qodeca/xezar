@@ -26,7 +26,7 @@ const TONES: ReferenceStatusTone[] = [
 ]
 
 describe('REFERENCE_STATUS', () => {
-  // A REVIEW TRIP-WIRE, not a contract. `BACKWARD_COMPATIBILITY.md` §2 makes this vocabulary
+  // A REVIEW TRIP-WIRE, not a contract. the backward-compatibility promise makes this vocabulary
   // additive on purpose — a twelfth status is a sanctioned, non-breaking change, and an unknown
   // one already renders neutral (see `isReferenceStatus` below, which is the promise that matters).
   // Adding a value here is therefore meant to fail this one case, so that whoever adds it also

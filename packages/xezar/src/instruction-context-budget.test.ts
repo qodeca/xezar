@@ -32,9 +32,4 @@ describe('always-loaded agent instruction budgets', () => {
     expect(characters, 'root CLAUDE.md plus its eager imports must stay below 100,000 characters')
       .toBeLessThan(100_000);
   });
-
-  it('keeps model routing below the leader context budget', () => {
-    const bytes = Buffer.byteLength(readRootFile('.xezar/docs/model-routing.md'));
-    expect(bytes, 'model-routing.md must stay below 40,000 bytes').toBeLessThan(40_000);
-  });
 });

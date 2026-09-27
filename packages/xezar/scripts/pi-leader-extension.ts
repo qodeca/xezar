@@ -395,7 +395,7 @@ function findProjectDataDir(cwd: string): string | undefined {
 /**
  * Atomic (tmp + rename) at 0600, like every other descriptor xezar writes. The tmp name matches
  * the `.<pid>.<hex>.tmp` shape documented for `.local/xezar/` top-level entries (AGENTS.md,
- * BACKWARD_COMPATIBILITY.md §3) — this file deliberately carries no dependency of its own (see the
+ * the backward-compatibility promise) — this file deliberately carries no dependency of its own (see the
  * file header), so it reproduces that shape inline with `node:crypto` rather than importing
  * `atomicTmpPath` from `src/workspace/config.ts`, which would pull in zod and the contract package.
  */

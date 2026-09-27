@@ -40,7 +40,7 @@ export function inSingleProjectRoot(capabilities: Partial<ProjectModeCapabilitie
  * `projectsLocked` asks "can this workspace hold a second project?" and the answer in this mode is
  * YES. Every registered project stays listed and stays manageable (add, clone, remove all keep
  * working), which is the whole difference between this mode and `XEZ_SINGLE_PROJECT`, and
- * `BACKWARD_COMPATIBILITY.md` § Instance mode calls hiding one or refusing project management a
+ * the backward-compatibility promise calls hiding one or refusing project management a
  * BREAK. What this predicate asks instead is "does a row for another project LINK OUT, or open in
  * place?" — and only the link-out surfaces (the sidebar's Other projects group, the palette's
  * Projects group, the global Tasks note) ever ask it.

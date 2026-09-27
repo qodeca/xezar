@@ -113,8 +113,7 @@ Coverage is measured separately, and is not part of the validation gate:
 numbers to `.local/coverage/`. The behaviour-led gap analysis built from it lives in
 [docs/testing/coverage-gaps.md](docs/testing/coverage-gaps.md).
 The MCP server is the one scope held to a floor: `npm run test:coverage:mcp` measures it alone
-and fails any file under 80 % lines or branches – see
-[SDLC.md § The MCP test floor](SDLC.md#the-mcp-test-floor).
+and fails any file under 80 % lines or branches.
 
 ### Stack and layout
 
@@ -151,13 +150,11 @@ own instruction file as a capability is allowed; asking users to adopt Xezar's k
 Commit messages and pull-request titles follow [Conventional Commits](https://www.conventionalcommits.org/):
 `feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `chore:`, `ci:`. Pull requests are squash-merged, so the title becomes the commit on `main`.
 
-A good pull-request body says what changed, why, how you verified it, and whether it is risky. The template asks for exactly that. Put `Closes #<n>` in the body when it fixes an issue. For a user-visible change you may add a bullet to a file under [`changelog.d/`](changelog.d/README.md) instead of editing `CHANGELOG.md` (two pull requests editing its `# Unreleased` section conflict on every merge, and `changelog-check.sh` refuses a direct edit); a maintainer will write it otherwise.
+A good pull-request body says what changed, why, how you verified it, and whether it is risky. The template asks for exactly that. Put `Closes #<n>` in the body when it fixes an issue. For a user-visible change you may add a bullet to a file under [`changelog.d/`](changelog.d/README.md) instead of editing `CHANGELOG.md` (two pull requests editing its `# Unreleased` section conflict on every merge); a maintainer will write it otherwise.
 
-## You do not need the kit workflows
+## The human path
 
-[SDLC.md](SDLC.md) names the kit workflows in `.xezar/workflows/` and their `xezar-*` roles (`bug-fix`, `code-review`, `integration`, …) as the actor at each stage. They are this project's internal automation, run through xezar itself, and an outside contributor does not need them. The human path through the same stages is:
-
-| SDLC stage | What you do |
+| Stage | What you do |
 |---|---|
 | Intake, triage | Open an issue, or comment on an existing one. |
 | Claim | Comment on the issue that you are working on it. |
@@ -170,7 +167,4 @@ You never apply labels yourself.
 ## Deeper reading
 
 - [AGENTS.md](AGENTS.md) – how the code is organised and the rules each area keeps.
-- [SDLC.md](SDLC.md) – the full delivery process, labels and the two merge gates: QA and design.
-- [CODE_REVIEW.md](CODE_REVIEW.md) – what reviewers check.
-- [BACKWARD_COMPATIBILITY.md](BACKWARD_COMPATIBILITY.md) – the public surfaces a change must not break silently.
 - [docs/design-system/](docs/design-system/README.md) – the cockpit's tokens, components and patterns; read it before you design or change any UI.

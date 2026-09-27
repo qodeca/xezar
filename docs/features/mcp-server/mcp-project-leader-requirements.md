@@ -223,7 +223,7 @@ the record names the exception and evidence.
 4. D-01–D-09 are resolved as needed for the released version. Documentation states the actual transport, startup method, connection file, supported clients, project/owner enforcement model, limitations, and setup without secrets in conversation.
 5. The settings-field matrix removes project/global ambiguity. Engineering proves A operations do not affect B through accounts, skills, or files. Negative tests cover each resource family, not just `projectId`.
 6. Demonstrate the complete human/leader flow: configuration → delegation → question/answer → completed result with evidence → next stage or corrections → further UI work. No global administration, newly added release engine, or built-in leader implementation is hidden in this MCP deliverable; existing UI merge/publication is explicitly in scope autonomously. The companion leader feature has its own acceptance gate.
-7. Implementation meets the repository quality gate in [AGENTS.md](../../../AGENTS.md) and [SDLC.md](../../../SDLC.md); MCP integration tests and UI/MCP evidence are reviewable. This applies to future implementation, not builds for this documentation change.
+7. Implementation meets the repository quality gate in [AGENTS.md](../../../AGENTS.md) and SDLC.md (removed); MCP integration tests and UI/MCP evidence are reviewable. This applies to future implementation, not builds for this documentation change.
 8. Product approves leader-action coverage and the responsible engineer approves technical evidence. Known limitations contradict no obligatory criterion.
 
 ## 10. Decisions

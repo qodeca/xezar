@@ -113,7 +113,7 @@ import { PlanReview } from './plan-review'
  * In plan-first mode (#383, the `Start | Plan first` segment) submit runs `POST /api/plan`
  * and opens the review overlay (plan-review.tsx) instead of starting a run.
  *
- * This route also owns the saved-bookmarklet contract (spec 011, BACKWARD_COMPATIBILITY.md):
+ * This route also owns the saved-bookmarklet contract (spec 011, the backward-compatibility promise):
  * a full document load of `/new?skill=&ref=&auto=1&key=` auto-starts a run unattended when the
  * key matches `GET /api/launch-key`, and only prefills otherwise — `handleDeepLink()` in
  * web/app.js, verbatim (see new-task-autostart.ts for the verified semantics).

@@ -6,8 +6,8 @@ import { createServer } from 'node:net';
 import { join, relative, resolve } from 'node:path';
 import { afterEach, test } from 'node:test';
 
-// The scripts under test are the REPO's, not this package's: `.xezar/pipeline/` is agent-pipeline
-// tooling that spans every workspace, so it stays at the root.
+// The scripts under test are the REPO's, not this package's: test-env tooling spans every
+// workspace, so it stays at the root.
 const repoRoot = resolve(import.meta.dirname, '../../../..');
 const fixtures: string[] = [];
 const launchedPids = new Set<number>();

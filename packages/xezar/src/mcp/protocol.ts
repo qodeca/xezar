@@ -4,7 +4,7 @@ import { z } from 'zod';
  * The client-facing half of MCP that the bridge speaks: JSON-RPC 2.0, newline-framed
  * on stdio. Hand-rolled on purpose — D-09 (qodeca/xezar#206) measured the official
  * SDK at 94 installed packages and rejected it for version one, and the server
- * runtime dependency budget in CODE_REVIEW.md is exhaustive. The surface is small:
+ * runtime dependency budget is deliberately small. The surface is small:
  * `initialize`, `ping`, `tools/list`, `tools/call`; everything else is -32601.
  */
 

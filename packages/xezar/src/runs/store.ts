@@ -55,7 +55,7 @@ const usageCounterSchema = z.number().finite().nonnegative();
  *
  * `claude-cli` is the legacy spelling of `claude` — still a member of
  * `AgentBackend` and still accepted by `createRunner`, and named by
- * `BACKWARD_COMPATIBILITY.md` §3 as an id `runs.json` keeps parseable. The enum
+ * the backward-compatibility promise as an id `runs.json` keeps parseable. The enum
  * here did not accept it, so that promise was false: the loader `safeParse`s the
  * WHOLE array, so one record carrying it would have dropped every run in the
  * file — the exact failure mode §3 exists to warn about.
@@ -1521,7 +1521,7 @@ export class RunStore extends EventEmitter {
     for (const stale of stalePool) {
       this.runs.delete(stale.id);
       this.decisionProjections.delete(stale.id);
-      // Count-based, silent, oldest-first eviction — BACKWARD_COMPATIBILITY.md § 3 (`runs.json`, #679).
+      // Count-based, silent, oldest-first eviction — the backward-compatibility promise (`runs.json`, #679).
       try {
         rmSync(this.eventsPath(stale.id), { force: true });
         rmSync(this.handoffPath(stale.id), { force: true });

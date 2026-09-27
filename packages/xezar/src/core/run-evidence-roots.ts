@@ -16,8 +16,8 @@ import { projectDataDir } from '../project-data-paths.ts';
  *
  * The two roots:
  *
- * - `<project>/.local/xezar/tasks/<runId>/`, where the kit writes evidence
- *   today (`.xezar/checks/lib/common.sh`, `task_evidence_dir`). Granted
+ * - `<project>/.local/xezar/tasks/<runId>/`, where task evidence is
+ *   written today. Granted
  *   unconditionally: it is where the run's evidence must be creatable.
  * - the frozen historical root `<project>/.local/xezar-tasks/<runId>/`, which a
  *   run that ALREADY has a directory there keeps writing to for its whole life

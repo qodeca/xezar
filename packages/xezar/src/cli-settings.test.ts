@@ -28,7 +28,7 @@ describe('port precedence', () => {
     expect(settings.port.value).toBe(4321);
     expect(settings.port.source).toBe('flag');
     // `--port 4321` is the documented way back to the old start point, so this case is also
-    // the compatibility promise of the BACKWARD_COMPATIBILITY entry.
+    // the backward-compatibility promise.
     expect(settings.port.explicit).toBe(true);
   });
 

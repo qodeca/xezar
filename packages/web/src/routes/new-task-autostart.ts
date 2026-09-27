@@ -5,7 +5,7 @@ import type { NewTaskParams } from './new-task-params'
 
 /**
  * Bookmarklet auto-start (spec 011) — the React half of `handleDeepLink()` in web/app.js,
- * protected by BACKWARD_COMPATIBILITY.md: `/new?skill=&ref=&auto=1&key=` from a saved
+ * protected by the backward-compatibility promise: `/new?skill=&ref=&auto=1&key=` from a saved
  * bookmarklet must behave EXACTLY as it did on the legacy page.
  *
  * Legacy semantics, verified against `web/app.js`:

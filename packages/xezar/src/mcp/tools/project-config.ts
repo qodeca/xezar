@@ -1934,7 +1934,7 @@ async function run(args: ProjectConfigInput & { action: ProjectConfigAction }, s
      * F-12 and N-01 said account identity is never served to a project leader, and this module
      * said so in its own header. The owner's decision of 2026-09-20 07:41 — accounts are "Writes
      * and identity read" — reverses that, explicitly and against this programme's own
-     * recommendation (spec § 4 Q3), and it has its own entry in BACKWARD_COMPATIBILITY.md because
+     * recommendation (spec § 4 Q3), and it has its own entry in the backward-compatibility promise because
      * of it. What the leader gets is EXACTLY what the cockpit's "Show details" gets, from the same
      * route: `available`, its `reason` when it is false, and the labelled `fields` the agents'
      * own auth files carry. No join, no second source, and still nothing persisted or logged —

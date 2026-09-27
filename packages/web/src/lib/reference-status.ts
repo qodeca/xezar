@@ -121,7 +121,7 @@ export const REFERENCE_CONFLICT: ReferenceStatusPresentation = {
  * Is this one of the eleven statuses this bundle knows how to paint?
  *
  * The guard exists because the vocabulary is documented as ADDITIVE
- * (`BACKWARD_COMPATIBILITY.md`, `/github/ref-status`): a newer server may answer with a value
+ * (the backward-compatibility promise, `/github/ref-status`): a newer server may answer with a value
  * added after this bundle was built, and a `sessionStorage` payload written by a newer bundle
  * outlives a rollback in the same tab. Both must land on the neutral chip the cockpit painted
  * before statuses existed — the promise the compatibility entry makes — rather than on a

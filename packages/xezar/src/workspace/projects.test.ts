@@ -513,7 +513,7 @@ describe('instanceModeInForce (#467, spec § 2.3–2.4)', () => {
 
   describe('AC-1.5 the env-flag narrowing wins over both requests', () => {
     it('named break `narrowing-loses`: an explicit workspace cannot re-widen it', () => {
-      // The promise BACKWARD_COMPATIBILITY.md § Single-project workspace mode makes to
+      // The promise the backward-compatibility promise makes to
       // someone who set the variable on purpose: nothing re-widens it.
       expect(
         instanceModeInForce({ instance: 'workspace' }, { XEZ_SINGLE_PROJECT: '1' }),

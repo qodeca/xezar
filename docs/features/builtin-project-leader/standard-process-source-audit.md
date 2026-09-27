@@ -1,7 +1,7 @@
 # Standard process source audit and transfer register
 
 > **Status update — 2026-09-15:** The audited baseline was adapted for this repository’s own kit; see
-> [installation qualification](../../../.xezar/docs/installation.md). Product-wide kit distribution is not
+> installation qualification (`installation.md`, removed). Product-wide kit distribution is not
 > implemented. The original three-client qualification recommendation is dated evidence; the separate built-in
 > pi decision remains #336.
 

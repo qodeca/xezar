@@ -38,7 +38,7 @@ import { loadConfig } from '../config.ts';
  * workspace cap plus each registry entry's own `maxParallel` is the running ceiling).
  * The per-repo `memoryLimitMb` key is NOT ignored any more (B2): it used to save
  * successfully and then do nothing, which is the one outcome a setting must never have,
- * and `BACKWARD_COMPATIBILITY.md` §2 promises the route keeps accepting it. It is now
+ * and the backward-compatibility promise promises the route keeps accepting it. It is now
  * cached here alongside the registry's `maxParallel` overrides — same lookup shape
  * (`projectMemoryLimitMb`), same no-per-tick-file-read invariant — so the more specific
  * value wins for runs in that repo, exactly as per-project `maxParallel` already does.
@@ -281,9 +281,8 @@ export class WorkspaceSemaphore {
    * `maxParallel` above 16 or a `memoryLimitMb` above 1 048 576 never reaches
    * this class as written: `.catch()` in `workspace/config.ts` substitutes the
    * shipped default and the host derivation respectively, silently. That is
-   * validation, not host reconciliation — but it IS a substitution, so the kit
-   * check (`.xezar/checks/catalog-check.mjs`) refuses a committed value outside
-   * those ranges rather than letting a file promise a number nothing applies.
+   * validation, not host reconciliation — but it IS a substitution, so a committed
+   * value outside those ranges promises a number nothing applies.
    */
   maxParallel(): number {
     return this.limits.maxParallel;

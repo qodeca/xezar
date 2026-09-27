@@ -434,7 +434,7 @@ ensure_browser() {
 # (`port_free`/`free_port`), which is exactly the shape #238 removed from the product: a peer
 # process can take the port between the probe and the real bind, and a boot that trusts the
 # probed port then polls a URL with nobody behind it. `--port` is a request, not a promise — a
-# taken port makes the app move to the next one (BACKWARD_COMPATIBILITY.md §1/§3) and print the
+# taken port makes the app move to the next one (the backward-compatibility promise) and print the
 # port it really holds, and this reads that line. No port is probed and released here.
 app_port_from_log() {
   [ -f "$APP_LOG" ] || return 1

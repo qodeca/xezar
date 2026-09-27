@@ -6,7 +6,7 @@ Method: the `erfana:grill-me` interview skill – one question at a time, a 16-d
 
 ## Context that triggered the interview
 
-The 2026-09-13 leader campaign ([leader-dogfooding-2026-09-13.md § 14.2](../mcp-server/leader-dogfooding-2026-09-13.md)) shipped a cockpit control that no issue had asked for. It passed the design review, manual QA twice, three code reviews and the kit's gate seal. Nobody asked the owner. A design for an owner-only decision gate was drafted the same day; five reviewers found that, as drafted, the gate would not have caught that case. The interview was run before any rewrite.
+The 2026-09-13 leader campaign (leader-dogfooding-2026-09-13.md § 14.2 (removed)) shipped a cockpit control that no issue had asked for. It passed the design review, manual QA twice, three code reviews and the kit's gate seal. Nobody asked the owner. A design for an owner-only decision gate was drafted the same day; five reviewers found that, as drafted, the gate would not have caught that case. The interview was run before any rewrite.
 
 ## The owner's account (verbatim)
 

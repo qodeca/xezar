@@ -4,7 +4,7 @@
  * the API, so the moment an agent runs a command whose output contains a
  * secret (`printenv`, `cat ~/.aws/credentials`, …) that secret would land in
  * `.local/xezar/` — violating the "No secrets in state files" invariant
- * (AGENTS.md / CODE_REVIEW.md).
+ * (AGENTS.md).
  *
  * Two complementary strategies:
  *   1. Value-based — the concrete values of the host's own secret-named env

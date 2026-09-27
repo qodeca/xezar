@@ -10,7 +10,7 @@ import { loadWorkflows, projectWorkflowsDir, WORKFLOWS_DIR } from './load.ts';
  * `packages/xezar/test/unit/workflow-types.test.ts` (node:test) and is not
  * re-asserted here.
  *
- * `BACKWARD_COMPATIBILITY.md` §"Workflow YAML" protects this format and names
+ * the backward-compatibility promise protects this format and names
  * the exact failure these cases guard: a bad file must be reported in `issues`
  * and skipped, never thrown — a throw makes every OTHER committed workflow
  * disappear from the user's cockpit at once, with no crash to notice.

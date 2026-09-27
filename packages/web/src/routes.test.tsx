@@ -388,7 +388,7 @@ describe('the global settings area (/settings/global)', () => {
 
   // #600: single-project mode keeps every global Settings URL landing — only the STORE behind
   // them changes (project files instead of the home directory) — and drops Projects like the
-  // XEZ_SINGLE_PROJECT narrowing does (BACKWARD_COMPATIBILITY.md §2).
+  // XEZ_SINGLE_PROJECT narrowing does (the backward-compatibility promise).
   it('keeps the global Settings URLs in single-project mode and omits only Projects', () => {
     const health = { ...HEALTH, capabilities: { ...HEALTH.capabilities, singleProjectRoot: true } }
     for (const id of ['appearance', 'notifications', 'resources', 'terminal', 'skills', 'accounts']) {
@@ -433,7 +433,7 @@ describe('the global settings area (/settings/global)', () => {
   }
 })
 
-/** Legacy flat URLs (BACKWARD_COMPATIBILITY.md): every pre-multi-project path redirects to the
+/** Legacy flat URLs (the backward-compatibility promise): every pre-multi-project path redirects to the
  *  boot project's scoped twin with params intact — old bookmarks keep landing. */
 describe('legacy flat URLs redirect to the boot project', () => {
   it('restores the last settled project page from the exact bare root', () => {
@@ -750,7 +750,7 @@ describe('unknown project ids', () => {
   })
 })
 
-/** The bookmarklet contract (spec 011), protected by BACKWARD_COMPATIBILITY.md:
+/** The bookmarklet contract (spec 011), protected by the backward-compatibility promise:
  *  `/new?skill=&ref=&auto=1&key=`. Since R4 Step 1.3 `auto=1` arms the real unattended start
  *  (the full matrix lives in routes/new-task.test.tsx); this file keeps the URL contract —
  *  through the legacy redirect, exactly as a saved bookmarklet arrives. */

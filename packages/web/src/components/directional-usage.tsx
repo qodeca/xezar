@@ -5,7 +5,7 @@ interface DirectionalUsageProps {
   inputTokens?: number
   outputTokens?: number
   /** The legacy combined counter (`RunRecord.tokensUsed`). Runs recorded before the split
-   *  counters landed (#737) carry only this, and BACKWARD_COMPATIBILITY.md keeps them valid:
+   *  counters landed (#737) carry only this, and the backward-compatibility promise keeps them valid:
    *  show the total they do know rather than a `— / —` that reads as "nothing was spent". */
   totalTokens?: number
   /** Compact prose (`IN … · OUT …`) or the desktop table's denser (`… / …`) form. */

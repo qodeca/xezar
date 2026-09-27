@@ -40,7 +40,7 @@ import {
  *
  * - `XEZ_SINGLE_PROJECT=1` — today's opt-in flag, unchanged. One project, no
  *   project management, GLOBAL state. Strict activation: only the exact string
- *   `1` (`BACKWARD_COMPATIBILITY.md` § Single-project workspace mode).
+ *   `1` (the backward-compatibility promise).
  * - The PROJECT state layout (#600) — the folder owns its own xezar state, so
  *   its registry is that folder and there is no second project to manage.
  *
@@ -50,7 +50,7 @@ import {
  * happen by two predicates drifting apart. It widens each guard's CONDITION and
  * never its EFFECT: an `XEZ_SINGLE_PROJECT=1` refusal keeps its exact status
  * code, message text and exit code, which `single-project-doors.test.ts` pins
- * byte for byte because `BACKWARD_COMPATIBILITY.md` promises them.
+ * byte for byte because the backward-compatibility promise promises them.
  */
 export type SingleProjectNarrowing = 'env-flag' | 'project-root';
 
@@ -86,7 +86,7 @@ export function singleProjectRegistry(env: NodeJS.ProcessEnv = process.env): boo
  * - `--instance workspace` under a narrowing can never RE-WIDEN it. Letting it would give
  *   `singleProjectNarrowing` a second, contradicting reader, which is the drift that
  *   function's own comment exists to prevent, and it would make `--instance workspace` a way
- *   to defeat `XEZ_SINGLE_PROJECT` — a promise `BACKWARD_COMPATIBILITY.md` § Single-project
+ *   to defeat `XEZ_SINGLE_PROJECT` — a promise the backward-compatibility promise
  *   workspace mode makes to someone who set that variable on purpose.
  *
  * Nothing refuses: two compatible-in-spirit settings meeting is not a typo, and AGENTS.md
@@ -172,7 +172,7 @@ export function instanceBootLine(args: {
  * The one sentence every door refuses with, for one narrowing and one action.
  *
  * The `env-flag` half is the promised text, byte for byte
- * (`BACKWARD_COMPATIBILITY.md` § Single-project workspace mode); the
+ * (the backward-compatibility promise); the
  * `project-root` half is its own sentence because "the flag is enabled" would
  * be a lie about a folder that carries no flag. Both name the mode, both are
  * one plain sentence, and both ride the unchanged `{ error }` / stderr shape.

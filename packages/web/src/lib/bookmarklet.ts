@@ -15,7 +15,7 @@
  * free (each cockpit stamps its own origin).
  *
  * The `/new?skill=&auto=&key=&ref=` deep-link grammar is a PROTECTED contract
- * (BACKWARD_COMPATIBILITY.md §1) and is unchanged — only the client-side discovery is.
+ * (the backward-compatibility promise) and is unchanged — only the client-side discovery is.
  *
  * Multi-project (spec, step 3.6): a generated launcher now names the project it was generated
  * from — `<origin>/p/<projectId>/new?…` — carrying that project's own launch key (each repo

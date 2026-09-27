@@ -775,7 +775,7 @@ describe('B1 overlays at 375px: 44px of pointer region that belongs to nobody el
 
 describe('B1 layout at 375px: the 44px floors cost no horizontal overflow', () => {
   it.each(DENSITIES)('no route scrolls sideways at %s density', (density) => {
-    // CODE_REVIEW.md § Severity makes sideways scroll at 375px a Major, and `min-w-tap` on every
+    // Sideways scroll at 375px is a Major defect, and `min-w-tap` on every
     // Button size below `md:` is exactly the change that could cause it.
     const wide = sweepOf(density)
       .overflow.filter((view) => view.scrollWidth > view.innerWidth)

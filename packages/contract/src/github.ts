@@ -17,7 +17,7 @@ const checksGlyphSchema = z.enum(['passing', 'failing', 'pending']).nullable();
 
 /**
  * One issue or pull request, flattened for the cockpit (`ForgeItem` server-side).
- * A protected shape — BACKWARD_COMPATIBILITY.md §2 forbids reshaping it.
+ * A protected shape — the backward-compatibility promise forbids reshaping it.
  */
 export const githubItemSchema = z.object({
   kind: z.enum(['issue', 'pr']),

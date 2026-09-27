@@ -1511,7 +1511,7 @@ describe('project_config: the provider switch (#677 B4)', () => {
     expect(called.result.isError, called.text).toBeFalsy();
     expect(value(called).providers.find((row: { provider: string }) => row.provider === 'claude')).toMatchObject({ enabled: false });
 
-    // BOTH provider writes, because BACKWARD_COMPATIBILITY.md claims hosted mode for both and one
+    // BOTH provider writes, because the backward-compatibility promise claims hosted mode for both and one
     // of them was all this case exercised (#760 review, Nit 2). The retry needs an incident to
     // clear, so it runs against a hosted cockpit that has one.
     const auth = new IncidentProviderAuth();

@@ -620,7 +620,7 @@ these events get persisted as NDJSON), and asserts `toStrictEqual` against the
   error text or credentials.
 - **SSE** — the server replays from NDJSON then streams live, deduped by `seq`.
   Event names: `run-event` (v1) and `ui-event` (v2 dotted types). These names are
-  a protected contract (see `BACKWARD_COMPATIBILITY.md` §2).
+  a protected contract: renaming one is a breaking change.
 
 ---
 
@@ -722,12 +722,10 @@ value, `cancelled` — see §3.
 
 ## Compatibility
 
-The agent event protocol is a protected surface: see `BACKWARD_COMPATIBILITY.md`
-§7. In short — v1 `AgentEvent` `type` strings and v2 `UiEvent` dotted types are
+The agent event protocol is a protected surface. v1 `AgentEvent` `type` strings and v2 `UiEvent` dotted types are
 additive-only; removing/renaming one, or breaking the parity requirement, is a
 breaking change requiring the documented deprecation path.
 
 ## Related documents
 
 - `AGENTS.md` — repo working rules; the "Agent runners / backends" routing row.
-- `BACKWARD_COMPATIBILITY.md` — §7 (this protocol) and §2/§3 (SSE names, NDJSON).

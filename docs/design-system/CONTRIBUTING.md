@@ -1,6 +1,6 @@
 # How the design system changes
 
-The rest of this folder describes the cockpit as it is. This file describes how it moves: what earns a place in it, how a request is sorted, what a small change needs and what a large one needs, how a part is retired, and how the recorded gaps become work. The labels and the review evidence it names are defined in `SDLC.md` § The design gate; the two kit workflows are `design` (mockup plus draft PR) and `design-review` (a read-only verdict). Both run `.xezar/skills/xezar-ux-design.md`.
+The rest of this folder describes the cockpit as it is. This file describes how it moves: what earns a place in it, how a request is sorted, what a small change needs and what a large one needs, how a part is retired, and how the recorded gaps become work.
 
 ## 1. Criteria for a new token, component or pattern
 
@@ -24,7 +24,7 @@ Every design request is one of four things, after Brad Frost's design-system gov
 | --- | --- | --- | --- |
 | **Bug** | A documented rule or component behaves wrongly: broken focus ring, a state that does not render, a token used where the docs say another. | `bug` + `design-debt` | Fixed on a PR. Design review on the diff. |
 | **Visual discrepancy** | The code does one thing two ways, or a surface departs from the documented rule without a reason. | `design-debt` | Aligned to the rule on a PR, or recorded in [known-gaps.md](known-gaps.md) with paths, the chosen rule and why. Never fixed silently. |
-| **Feature** | A new screen, surface, component or pattern. | `enhancement` + `needs-design` | The Design stage: a mockup in `designs/<feature>/` through the `design` workflow, reviewed by `design-review`, Approved before code. |
+| **Feature** | A new screen, surface, component or pattern. | `feature` + `needs-design` | The Design stage: a mockup in `designs/<feature>/`, reviewed by a design reviewer, Approved before code. |
 | **Recipe** | A composition of existing parts that solves a recurring job with nothing new. | `documentation` | A section in [patterns.md](patterns.md), with the components it composes named and a specimen if the look is not already shown. |
 
 When a request straddles two buckets, split it: the discrepancy is fixed on its own PR and the feature waits for its design.
