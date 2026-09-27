@@ -47,10 +47,10 @@ model and lane routing. Its leader reads it with <code>node .xezar/<wbr>checks/r
 prints a human view. `--file <path>` is for onboarding only, before the first merge, and marks output
 `source=unmerged`. The kit's account-limits table records each runner/login budget as `ok`, `unknown`,
 or `out` with its reset time; the leader reads it under the kit's routing guide,
-and it will feed xezar's agent-quota status when that status ships. Earlier kit versions used prose
-routing guidance.
+and it will feed xezar's agent-quota status when that status ships.
 
-xezar 0.19.0 is the minimum engine for xezar-skills 3.0.0; projects that must stay on 0.18 stay on xezar-skills 2.1.1.
+xezar supports projects onboarded with xezar-skills 3.0.3, which needs xezar 0.19.0 or later. A project
+still on kit 2.x moves to 3.0.3 first.
 
 ## 60-second tour
 
