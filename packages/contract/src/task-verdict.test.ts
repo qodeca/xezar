@@ -246,6 +246,9 @@ describe('#673 — the severity vocabulary (guard: passes with or without the pe
       { role: 'design-review', verdict: 'PASS WITH FOLLOW-UPS' },
       { role: 'qa', verdict: 'FAIL' },
       { role: 'architecture-review', verdict: 'REQUEST CHANGES' },
+      { role: 'architecture-review', verdict: 'CONFORMS WITH FOLLOW-UPS' },
+      { role: 'security-review', verdict: 'BLOCKING FINDINGS' },
+      { role: 'acceptance-verification', verdict: 'CRITERIA NOT MET' },
     ] as const;
 
     for (const { role, verdict } of roles) {
@@ -288,14 +291,16 @@ describe('#851 A — the role list is the only declaration (break: hand-spell a 
   });
 });
 
-describe('#851 B — architecture-review is a fourth role, speaking a code review’s words', () => {
+describe('#851 B — architecture-review is a role of its own, still speaking a code review’s words', () => {
   it('is on the list', () => {
-    expect(TASK_VERDICT_ROLES).toEqual(['code-review', 'design-review', 'qa', 'architecture-review']);
+    expect(TASK_VERDICT_ROLES).toContain('architecture-review');
   });
 
-  it('mirrors code-review: its verdicts, its approving word and its severities', () => {
-    expect(TASK_VERDICT_VOCABULARY['architecture-review']).toEqual(TASK_VERDICT_VOCABULARY['code-review']);
-    expect(TASK_VERDICT_APPROVING['architecture-review']).toEqual(['APPROVE']);
+  it('keeps code-review’s verdicts, its approving word and its severities', () => {
+    for (const word of TASK_VERDICT_VOCABULARY['code-review']) {
+      expect(TASK_VERDICT_VOCABULARY['architecture-review']).toContain(word);
+    }
+    expect(TASK_VERDICT_APPROVING['architecture-review']).toContain('APPROVE');
     expect(TASK_VERDICT_FINDING_SEVERITY['architecture-review']).toEqual(TASK_VERDICT_FINDING_SEVERITY['code-review']);
     expect(isApprovingTaskVerdict({ role: 'architecture-review', verdict: 'APPROVE' })).toBe(true);
     expect(isApprovingTaskVerdict({ role: 'architecture-review', verdict: 'REQUEST CHANGES' })).toBe(false);
@@ -304,9 +309,61 @@ describe('#851 B — architecture-review is a fourth role, speaking a code revie
   it('keeps each arm’s own vocabulary in the inferred type', () => {
     // A compile-time pin: were the arms widened to one shared verdict type, these would not assign.
     const qa: TaskVerdictOf<'qa'>['verdict'][] = ['PASS', 'FAIL'];
-    const arch: TaskVerdictOf<'architecture-review'>['verdict'][] = ['APPROVE', 'REQUEST CHANGES'];
+    const arch: TaskVerdictOf<'architecture-review'>['verdict'][] = ['APPROVE', 'REQUEST CHANGES', 'CONFORMS'];
     // @ts-expect-error — a QA verdict is never APPROVE
     const wrong: TaskVerdictOf<'qa'>['verdict'] = 'APPROVE';
     expect([qa, arch, wrong]).toHaveLength(3);
+  });
+});
+
+/**
+ * The 3.0.3 kit's review words. Named break: drop a word or a role — the kit's architecture review
+ * then has every CONFORMS / CONTRADICTS packet refused into `verdictIssues`, and a security review
+ * or an acceptance verification has no role to declare, so its verdict is never recorded.
+ */
+describe('3.0.3 kit verdicts — every review the kit runs has its own words recorded', () => {
+  it('lists the two new roles after the four old ones, so the old order is untouched', () => {
+    expect(TASK_VERDICT_ROLES).toEqual([
+      'code-review',
+      'design-review',
+      'qa',
+      'architecture-review',
+      'security-review',
+      'acceptance-verification',
+    ]);
+  });
+
+  it('architecture-review speaks the kit’s words beside the old ones', () => {
+    expect(TASK_VERDICT_VOCABULARY['architecture-review']).toEqual([
+      'APPROVE',
+      'REQUEST CHANGES',
+      'CONFORMS',
+      'CONFORMS WITH FOLLOW-UPS',
+      'CONTRADICTS',
+    ]);
+    expect(isApprovingTaskVerdict({ role: 'architecture-review', verdict: 'CONFORMS' })).toBe(true);
+    expect(isApprovingTaskVerdict({ role: 'architecture-review', verdict: 'CONFORMS WITH FOLLOW-UPS' })).toBe(true);
+    expect(isApprovingTaskVerdict({ role: 'architecture-review', verdict: 'CONTRADICTS' })).toBe(false);
+  });
+
+  it('security-review never says "secure", and only blocking findings refuse', () => {
+    expect(TASK_VERDICT_VOCABULARY['security-review']).toEqual(['NO FINDINGS AT THIS HEAD', 'FINDINGS', 'BLOCKING FINDINGS']);
+    expect(isApprovingTaskVerdict({ role: 'security-review', verdict: 'NO FINDINGS AT THIS HEAD' })).toBe(true);
+    expect(isApprovingTaskVerdict({ role: 'security-review', verdict: 'FINDINGS' })).toBe(true);
+    expect(isApprovingTaskVerdict({ role: 'security-review', verdict: 'BLOCKING FINDINGS' })).toBe(false);
+    expect(TASK_VERDICT_FINDING_SEVERITY['security-review']).toEqual(TASK_VERDICT_SEVERITY_ORDER);
+  });
+
+  it('acceptance-verification approves only when every criterion is met', () => {
+    expect(TASK_VERDICT_VOCABULARY['acceptance-verification']).toEqual(['ALL CRITERIA MET', 'CRITERIA NOT MET']);
+    expect(isApprovingTaskVerdict({ role: 'acceptance-verification', verdict: 'ALL CRITERIA MET' })).toBe(true);
+    expect(isApprovingTaskVerdict({ role: 'acceptance-verification', verdict: 'CRITERIA NOT MET' })).toBe(false);
+    expect(TASK_VERDICT_FINDING_SEVERITY['acceptance-verification']).toEqual(TASK_VERDICT_SEVERITY_ORDER);
+  });
+
+  it.each(unions)('$name refuses a new role carrying another role’s word', ({ schema, build }) => {
+    expect(schema.safeParse(build({ role: 'security-review', verdict: 'PASS' })).success).toBe(false);
+    expect(schema.safeParse(build({ role: 'acceptance-verification', verdict: 'APPROVE' })).success).toBe(false);
+    expect(schema.safeParse(build({ role: 'code-review', verdict: 'CONFORMS' })).success).toBe(false);
   });
 });

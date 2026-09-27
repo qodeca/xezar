@@ -216,7 +216,7 @@ Unknown arguments are rejected.
 | `source` | object or null | no |  | What the task runs (start): a skill or a workflow by name. Omit or null for the plain built-in `quick-task`. |
 | `source.source` | `skill` \| `workflow` | yes |  |  |
 | `source.ref` | string | yes | min length 1 |  |
-| `steps` | array of object | no | min items 1, max items 8 | An inline step list (start from a reviewed plan, or save_plan). Not combined with `source`. |
+| `steps` | array of object | no | min items 1, max items 12 | An inline step list (start from a reviewed plan, or save_plan). Not combined with `source`. |
 | `steps[].id` | string | yes | min length 1 |  |
 | `steps[].name` | string | no |  |  |
 | `steps[].prompt` | string | no |  |  |
@@ -226,7 +226,7 @@ Unknown arguments are rejected.
 | `steps[].allowedTools` | array of string | no |  |  |
 | `steps[].bashAllowlist` | array of string | no |  |  |
 | `steps[].timeout` | string | no |  |  |
-| `steps[].verdictRole` | `code-review` \| `design-review` \| `qa` \| `architecture-review` | no |  |  |
+| `steps[].verdictRole` | `code-review` \| `design-review` \| `qa` \| `architecture-review` \| `security-review` \| `acceptance-verification` | no |  |  |
 | `steps[].command` | string | no |  |  |
 | `steps[].resultScope` | `routine` \| `stage` | no |  |  |
 | `steps[].onFail` | object | no |  |  |
@@ -243,7 +243,7 @@ Unknown arguments are rejected.
 | `fromFindings` | object | no |  | Build the task text from findings a reviewer recorded on another task (start). `runId` is that reviewing task and `ids` are its finding ids — read both with task_read view=task; `role` picks one reviewer when the task carries more than one. The text names the engine each reviewing STEP ran on, and a task — or any step of it — that would run on that same backend and model is refused. That refusal compares model NAMES: a tier alias and the pinned id it resolves to (`opus` and `claude-opus-5`), or a context-window variant (`opus[1m]`), are different names and pass, so name a different backend when you want certainty. |
 | `fromFindings.runId` | string | yes | min length 1 |  |
 | `fromFindings.ids` | array of string | yes | min items 1, max items 20 |  |
-| `fromFindings.role` | `code-review` \| `design-review` \| `qa` \| `architecture-review` | no |  |  |
+| `fromFindings.role` | `code-review` \| `design-review` \| `qa` \| `architecture-review` \| `security-review` \| `acceptance-verification` | no |  |  |
 | `name` | string | no |  | Workflow name (save_plan, up to 80 chars). |
 | `description` | string | no |  | Workflow description (save_plan). |
 | `overwrite` | boolean | no |  | save_plan: replace an existing workflow of that name. Ask the user first. |
@@ -379,9 +379,9 @@ Unknown arguments are rejected.
 | `workflow` | object | no |  | save_workflow: name plus exactly one of steps (agent steps: prompt or skill) or skills. Check steps (shell commands) are not accepted. An existing file is refused unless overwrite is true. |
 | `workflow.name` | string | yes | min length 1, max length 80 |  |
 | `workflow.description` | string | no | max length 2000 |  |
-| `workflow.skills` | array of string | no | min items 1, max items 8 |  |
+| `workflow.skills` | array of string | no | min items 1, max items 12 |  |
 | `workflow.overwrite` | boolean | no |  |  |
-| `workflow.steps` | array of object | no | min items 1, max items 8 |  |
+| `workflow.steps` | array of object | no | min items 1, max items 12 |  |
 | `workflow.steps[].id` | string | yes | min length 1 |  |
 | `workflow.steps[].name` | string | no |  |  |
 | `workflow.steps[].prompt` | string | no |  |  |
@@ -391,7 +391,7 @@ Unknown arguments are rejected.
 | `workflow.steps[].allowedTools` | array of string | no |  |  |
 | `workflow.steps[].bashAllowlist` | array of string | no |  |  |
 | `workflow.steps[].timeout` | string | no |  |  |
-| `workflow.steps[].verdictRole` | `code-review` \| `design-review` \| `qa` \| `architecture-review` | no |  |  |
+| `workflow.steps[].verdictRole` | `code-review` \| `design-review` \| `qa` \| `architecture-review` \| `security-review` \| `acceptance-verification` | no |  |  |
 | `name` | string | no | min length 1, max length 200 | delete_workflow / get_skill: the workflow or skill name. |
 | `wait` | boolean | no |  | Skill reads: wait for a cold team-skill cache to load first. |
 | `refresh` | boolean | no |  | get_capabilities / check_account_status: probe now instead of serving the cached answer. On check_account_status it re-probes THAT account only, and every other account keeps the answer it already had. |

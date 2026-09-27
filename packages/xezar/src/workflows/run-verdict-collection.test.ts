@@ -157,6 +157,37 @@ describe('a reviewer packet is collected at its own step (#460)', () => {
     expect(store.getRun(id)?.verdictIssues).toBeUndefined();
   }, 45_000);
 
+  it('records the 3.0.3 kit’s own architecture word, CONFORMS WITH FOLLOW-UPS', async () => {
+    const id = await runToEnd(
+      'mock:done mock:verdict:architecture-review:CONFORMS WITH FOLLOW-UPS',
+      reviewerWorkflow('architecture-review'),
+    );
+
+    expect(store.getRun(id)?.verdicts?.map((verdict) => verdict.verdict)).toEqual(['CONFORMS WITH FOLLOW-UPS']);
+    expect(store.getRun(id)?.verdictIssues).toBeUndefined();
+  }, 45_000);
+
+  it('records a security-review packet from a step declaring that role', async () => {
+    const id = await runToEnd('mock:done mock:verdict:security-review:BLOCKING FINDINGS', reviewerWorkflow('security-review'));
+
+    expect(store.getRun(id)?.verdicts?.map((verdict) => [verdict.role, verdict.verdict])).toEqual([
+      ['security-review', 'BLOCKING FINDINGS'],
+    ]);
+    expect(store.getRun(id)?.verdictIssues).toBeUndefined();
+  }, 45_000);
+
+  it('records an acceptance-verification packet from a step declaring that role', async () => {
+    const id = await runToEnd(
+      'mock:done mock:verdict:acceptance-verification:ALL CRITERIA MET',
+      reviewerWorkflow('acceptance-verification'),
+    );
+
+    expect(store.getRun(id)?.verdicts?.map((verdict) => [verdict.role, verdict.verdict])).toEqual([
+      ['acceptance-verification', 'ALL CRITERIA MET'],
+    ]);
+    expect(store.getRun(id)?.verdictIssues).toBeUndefined();
+  }, 45_000);
+
   it('records the packet a Continue of the reviewing step wrote, under the owning step’s role (#851)', async () => {
     // A Continue ("Send back", the usage-limit auto-resume, restart recovery) settles under a
     // synthetic `continue-N` step that no workflow step is called. The role it reports as is the

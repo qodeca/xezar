@@ -36,12 +36,16 @@ capability**: the authority is exactly one file at one path, read at one moment.
 
 **The vocabulary is per role and is never translated.** A code review APPROVEs or REQUESTs CHANGES; QA
 PASSes or FAILs; a design review has a third outcome, `PASS WITH FOLLOW-UPS`, which is neither; an
-architecture review (#851) speaks a code review's words, APPROVE or REQUEST CHANGES, and is a role of its
-own so its report never takes the code reviewer's slot. A shared pass/fail enum erases a design review's
+architecture review (#851) is a role of its own so its report never takes the code reviewer's slot, and
+accepts both a code review's words, APPROVE or REQUEST CHANGES, and the 3.0.3 kit's own, CONFORMS,
+`CONFORMS WITH FOLLOW-UPS` or CONTRADICTS. The kit's two other read-only reviews have roles of their own
+too: a `security-review` reports `NO FINDINGS AT THIS HEAD`, FINDINGS (non-blocking, so approving) or
+`BLOCKING FINDINGS`, and an `acceptance-verification` reports `ALL CRITERIA MET` or `CRITERIA NOT MET`,
+its per-criterion verdicts staying in its comment. A shared pass/fail enum erases a design review's
 outstanding work and lets a QA PASS read as business acceptance, so the schema is a discriminated union and
 a role can only carry its own words.
 
-**The role list is declared once (#851).** `TASK_VERDICT_ROLES` is the only declaration of the four roles.
+**The role list is declared once (#851).** `TASK_VERDICT_ROLES` is the only declaration of the six roles.
 The per-role maps (vocabulary, approving words, finding severities) are compile-checked against it, and
 both unions — the reported packet and the recorded verdict — are built by mapping over it, so a role added
 to the list reaches ingestion, the run record, the MCP `fromFindings.role` argument and the one-packet-per-

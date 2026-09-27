@@ -67,7 +67,7 @@ An agent at the very end can remain open for conversation; `XEZ:DONE` signals th
 
 ## To build a workflow in the cockpit
 
-Open **Workflows**, create a new workflow or select an existing one, and add skills from the palette to the canvas. Drag cards to reorder them; with the keyboard, focus a drag grip, press Space, move with arrow keys, then press Space again. The builder allows up to eight steps.
+Open **Workflows**, create a new workflow or select an existing one, and add skills from the palette to the canvas. Drag cards to reorder them; with the keyboard, focus a drag grip, press Space, move with arrow keys, then press Space again. The builder allows up to twelve steps.
 
 Name the workflow and review the YAML preview before choosing **Save**. Saving asks for overwrite confirmation when the generated `<slug>.yaml` file already exists; different names can produce the same filename. Creating a file that shadows built-in `quick-task` needs no overwrite confirmation unless that file already exists. Choose **Auto** to propose a sequence from a brief, then review and edit it before saving. A planner fallback is shown as a one-step proposal.
 

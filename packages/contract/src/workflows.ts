@@ -19,6 +19,15 @@ export const workflowResultScopeSchema = z.enum(['routine', 'stage']);
 export type WorkflowResultScope = z.infer<typeof workflowResultScopeSchema>;
 
 /**
+ * The most steps one chain may hold when it is saved or run: `POST /workflows`, an inline
+ * `POST /runs` chain, the MCP `workflow_save` tool and the cockpit builder all read this one number.
+ * It was 8, which refused a re-save of the 3.0.3 kit's nine-step `localisation` and `performance`
+ * workflows; 12 covers every kit workflow with room to spare. Raising it is additive; lowering it
+ * would refuse files that save today, so it is a break.
+ */
+export const WORKFLOW_MAX_STEPS = 12;
+
+/**
  * One step of a chain: either an agent step (`prompt`/`skill`) or a check step (`command`).
  *
  * `onFail.max` carries a `.default(2)`, exactly as `src/workflows/types.ts` declares it, so the
@@ -102,8 +111,8 @@ export const saveWorkflowInputSchema = z
   .object({
     name: z.string().trim().min(1).max(80),
     description: z.string().max(2_000, 'must be at most 2000 characters').optional(),
-    steps: z.array(workflowStepDefSchema).min(1).max(8).optional(),
-    skills: z.array(z.string().trim().min(1)).min(1).max(8).optional(),
+    steps: z.array(workflowStepDefSchema).min(1).max(WORKFLOW_MAX_STEPS).optional(),
+    skills: z.array(z.string().trim().min(1)).min(1).max(WORKFLOW_MAX_STEPS).optional(),
     overwrite: z.boolean().optional(),
   })
   .refine((b) => Boolean(b.steps) !== Boolean(b.skills), {
