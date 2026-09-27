@@ -6,6 +6,7 @@ import { projectDataDir } from '../project-data-paths.ts';
 import { registerProject } from '../workspace/projects.ts';
 import { mcpConnectionDescriptorSchema, mcpConnectionPath, writeMcpConnectionFile } from './connection-file.ts';
 import { startMcpService } from './index.ts';
+import { onWindows } from '../../test/helpers/platform.ts';
 
 /**
  * D-04's connection file (#262, A-01): the running service writes
@@ -51,7 +52,8 @@ async function start(projectId: string, warnings: string[], env: NodeJS.ProcessE
 
 const aboutTheFile = (warnings: string[]) => warnings.filter((w) => w.includes('connection file'));
 
-describe('D-04: the running service writes the MCP connection file (A-01, #262)', () => {
+// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – every test here starts the project MCP service on its socket
+describe.skipIf(onWindows)('D-04: the running service writes the MCP connection file (A-01, #262)', () => {
   it('names this project, this process and the socket that really listens; mode 0600, ignored by git, no secret', async () => {
     const p = await project();
     const secret = `ghp_${'Z9y8X7w6V5u4T3s2R1q0'.repeat(2)}`;

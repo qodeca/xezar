@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Hono } from 'hono';
@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { workspaceConfigPath } from '../paths.ts';
 import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
+import { linkDir, onWindows } from '../../test/helpers/platform.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { createApp } from './server.ts';
 import type { FsBrowseResponse } from './fs-browse.ts';
@@ -23,6 +24,7 @@ import type { FsBrowseResponse } from './fs-browse.ts';
  */
 describe('GET /api/v1/fs/browse (step 4.1)', () => {
   const savedHome = process.env.HOME;
+  const savedUserProfile = process.env.USERPROFILE;
   const savedXezHome = process.env.XEZ_HOME;
   const savedRemote = process.env.XEZ_REMOTE;
   const savedBrowseRoot = process.env.XEZ_BROWSE_ROOT;
@@ -37,6 +39,8 @@ describe('GET /api/v1/fs/browse (step 4.1)', () => {
     home = realpathSync(mkdtempSync(join(tmpdir(), 'xez-fs-browse-home-')));
     outside = realpathSync(mkdtempSync(join(tmpdir(), 'xez-fs-browse-outside-')));
     process.env.HOME = home;
+    // os.homedir() reads USERPROFILE, not HOME, on Windows (#963).
+    if (onWindows) process.env.USERPROFILE = home;
     process.env.XEZ_HOME = join(home, '.xezar');
     delete process.env.XEZ_REMOTE; // local mode is the default under test
     delete process.env.XEZ_BROWSE_ROOT;
@@ -47,8 +51,8 @@ describe('GET /api/v1/fs/browse (step 4.1)', () => {
     mkdirSync(join(outside, 'secrets'), { recursive: true });
     writeFileSync(join(home, 'notes.txt'), 'not a directory', 'utf8');
     // The two links that make or break the containment rule.
-    symlinkSync(outside, join(home, 'link-outside'));
-    symlinkSync(join(home, 'projects/repo'), join(home, 'link-inside'));
+    linkDir(outside, join(home, 'link-outside'));
+    linkDir(join(home, 'projects/repo'), join(home, 'link-inside'));
 
     const repoRoot = join(home, 'boot');
     mkdirSync(join(repoRoot, '.local/xezar'), { recursive: true });
@@ -65,6 +69,7 @@ describe('GET /api/v1/fs/browse (step 4.1)', () => {
     store.flush();
     for (const [key, value] of [
       ['HOME', savedHome],
+      ['USERPROFILE', savedUserProfile],
       ['XEZ_HOME', savedXezHome],
       ['XEZ_REMOTE', savedRemote],
       ['XEZ_BROWSE_ROOT', savedBrowseRoot],

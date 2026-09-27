@@ -300,7 +300,8 @@ describe('a resumed session keeps its workflow step tools', () => {
     expect(manager!.continueRun(id).ok).toBe(true);
     const spec = await specAt(0);
     // macOS may canonicalize /var to /private/var; compare the actual file, not that spelling.
-    expect(readFileSync(join(spec.cwd, 'a.txt'), 'utf8')).toBe('task-only content\n');
+    // git's checkout writes these bytes, and core.autocrlf on a Windows host turns LF into CRLF (#963).
+    expect(readFileSync(join(spec.cwd, 'a.txt'), 'utf8').replace(/\r\n/g, '\n')).toBe('task-only content\n');
     expect((await run('git', ['branch', '--show-current'], { cwd: spec.cwd })).stdout.trim()).toBe(branch);
     expect(spec.cwd).not.toBe(repoRoot);
     expect(store.getRun(id)?.worktreeReclaimedAt).toBeUndefined();

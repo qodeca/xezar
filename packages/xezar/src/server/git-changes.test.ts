@@ -1,9 +1,10 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { linkDir, onWindows } from '../../test/helpers/platform.ts';
 import { worktreePathFor } from '../git-worktree.ts';
 import { RunStore, type RunRecord } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
@@ -440,16 +441,19 @@ describe('readWorktreePath — Files tab browsing', () => {
     expect((await readWorktreePath(dir, '.git')).kind).toBe('invalid');
     expect((await readWorktreePath(dir, '.git/config')).kind).toBe('invalid');
     expect((await readWorktreePath(dir, 'a\0.txt')).kind).toBe('invalid');
-    symlinkSync('/etc', join(dir, 'link'));
+    // POSIX links the system directory; Windows junctions to the test's own outside directory (#963).
+    const outsideTarget = onWindows ? mkdtempSync(join(tmpdir(), 'xez-outside-')) : '/etc';
+    linkDir(outsideTarget, join(dir, 'link'));
     expect((await readWorktreePath(dir, 'link')).kind).toBe('invalid');
     expect((await readWorktreePath(dir, 'nope.txt')).kind).toBe('missing');
+    if (onWindows) rmSync(outsideTarget, { recursive: true, force: true });
   });
 
   it('rejects reads THROUGH an intermediate symlinked directory (#blocker-symlink-traversal)', async () => {
     // A secret file outside the worktree, reached via a symlinked directory inside it.
     const outside = mkdtempSync(join(tmpdir(), 'xez-secret-'));
     writeFileSync(join(outside, 'credentials.txt'), 'SECRET\n');
-    symlinkSync(outside, join(dir, 'linkdir'));
+    linkDir(outside, join(dir, 'linkdir'));
 
     // Before the fix this returned the file's contents from OUTSIDE the worktree.
     const viaLink = await readWorktreePath(dir, 'linkdir/credentials.txt');

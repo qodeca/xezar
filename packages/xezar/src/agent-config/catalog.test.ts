@@ -1,3 +1,4 @@
+import { join, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { CONFIG_FILES, findConfigFile, listConfigFiles, type AgentHomePaths } from './catalog.ts';
 
@@ -30,15 +31,15 @@ describe('agent-config catalog', () => {
 
   it('resolves repo-relative paths under the repo root', () => {
     const proj = findConfigFile('claude.project.settings')!;
-    expect(proj.resolve('/repo', HOME)).toBe('/repo/.claude/settings.json');
+    expect(proj.resolve('/repo', HOME)).toBe(join('/repo', '.claude', 'settings.json'));
   });
 
   it('honours the injected home dirs (so $CODEX_HOME / $XDG_CONFIG_HOME flow through)', () => {
-    expect(findConfigFile('codex.user.config')!.resolve('/repo', HOME)).toBe('/home/u/.codex/config.toml');
+    expect(findConfigFile('codex.user.config')!.resolve('/repo', HOME)).toBe(join('/home/u', '.codex', 'config.toml'));
     expect(findConfigFile('opencode.user.config')!.resolve('/repo', HOME)).toBe(
-      '/home/u/.config/opencode/opencode.json',
+      join('/home/u', '.config', 'opencode', 'opencode.json'),
     );
-    expect(findConfigFile('claude.user.settings')!.resolve('/repo', HOME)).toBe('/home/u/.claude/settings.json');
+    expect(findConfigFile('claude.user.settings')!.resolve('/repo', HOME)).toBe(join('/home/u', '.claude', 'settings.json'));
   });
 
   /**
@@ -48,19 +49,19 @@ describe('agent-config catalog', () => {
    */
   describe('pi', () => {
     it('catalogs pi’s settings, MCP and global-instruction files, resolved in pi’s own home', () => {
-      expect(findConfigFile('pi.user.settings')!.resolve('/repo', HOME)).toBe('/home/u/.pi/agent/settings.json');
-      expect(findConfigFile('pi.user.mcp')!.resolve('/repo', HOME)).toBe('/home/u/.pi/agent/mcp.json');
-      expect(findConfigFile('pi.user.memory')!.resolve('/repo', HOME)).toBe('/home/u/.pi/agent/AGENTS.md');
-      expect(findConfigFile('pi.project.settings')!.resolve('/repo', HOME)).toBe('/repo/.pi/settings.json');
-      expect(findConfigFile('pi.project.mcp')!.resolve('/repo', HOME)).toBe('/repo/.pi/mcp.json');
+      expect(findConfigFile('pi.user.settings')!.resolve('/repo', HOME)).toBe(join('/home/u', '.pi', 'agent', 'settings.json'));
+      expect(findConfigFile('pi.user.mcp')!.resolve('/repo', HOME)).toBe(join('/home/u', '.pi', 'agent', 'mcp.json'));
+      expect(findConfigFile('pi.user.memory')!.resolve('/repo', HOME)).toBe(join('/home/u', '.pi', 'agent', 'AGENTS.md'));
+      expect(findConfigFile('pi.project.settings')!.resolve('/repo', HOME)).toBe(join('/repo', '.pi', 'settings.json'));
+      expect(findConfigFile('pi.project.mcp')!.resolve('/repo', HOME)).toBe(join('/repo', '.pi', 'mcp.json'));
     });
 
     it('catalogs NO file in pi’s home that holds a credential', () => {
       // The control the "no secret" claim needs: pi's home IS catalogued (so an empty result
       // would not be why this passes), and these two names are absent from it by name.
-      const piHomeFiles = CONFIG_FILES.filter((f) => f.resolve('/repo', HOME).startsWith('/home/u/.pi/agent/'));
+      const piHomeFiles = CONFIG_FILES.filter((f) => f.resolve('/repo', HOME).startsWith(join('/home/u', '.pi', 'agent') + sep));
       expect(piHomeFiles.length).toBeGreaterThan(0);
-      const names = piHomeFiles.map((f) => f.resolve('/repo', HOME).split('/').pop());
+      const names = piHomeFiles.map((f) => f.resolve('/repo', HOME).split(sep).pop());
       expect(names).not.toContain('auth.json');
       expect(names).not.toContain('models.json');
       expect(names).not.toContain('models-store.json');
@@ -117,7 +118,7 @@ describe('agent-config catalog', () => {
 
   it('every seeded/gitignored file is a repo-relative path (never in $HOME)', () => {
     for (const f of CONFIG_FILES) {
-      if (f.tracked === 'gitignored') expect(f.resolve('/repo', HOME).startsWith('/repo/')).toBe(true);
+      if (f.tracked === 'gitignored') expect(f.resolve('/repo', HOME).startsWith(join('/repo') + sep)).toBe(true);
     }
   });
 

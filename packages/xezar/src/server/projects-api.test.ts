@@ -5,13 +5,13 @@ import {
   readdirSync,
   realpathSync,
   rmSync,
-  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { linkDir } from '../../test/helpers/platform.ts';
 import { PROJECT_TAGS_MAX, PROJECT_TAG_MAX_LENGTH } from '@qodeca/xezar-contract';
 import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
@@ -418,7 +418,7 @@ describe('workspace projects API', () => {
         config.browseRoot = checkoutRoot;
       });
       const escape = join(checkoutRoot, 'escape');
-      symlinkSync(otherRoot, escape);
+      linkDir(otherRoot, escape);
       process.env.XEZ_REMOTE = '1';
       const answer = await post({ root: escape });
       expect(answer.status).toBe(400);

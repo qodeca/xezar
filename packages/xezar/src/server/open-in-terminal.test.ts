@@ -1,7 +1,8 @@
 import { EventEmitter } from 'node:events';
 import { existsSync, readFileSync, rmSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { dirname, sep } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { onWindows } from '../../test/helpers/platform.ts';
 
 import { createLaunchScript, openInTerminal, refuseSpawnUnderTest, wslTerminalLaunchers } from './open-in-terminal.ts';
 
@@ -365,7 +366,8 @@ describe('the platform launch lines', () => {
         spawnMock.mock.calls.map((call) => (call[1] as string[]).at(-1)),
       );
       expect(scripts.size).toBe(1);
-      expect([...scripts][0]).toMatch(/xez-term-[^/]+\/launch\.sh$/);
+      // The script is a native temp file; its separator is the host's (#963).
+      expect([...scripts][0]).toMatch(sep === '/' ? /xez-term-[^/]+\/launch\.sh$/ : /xez-term-[^\\]+\\launch\.sh$/);
     });
 
     it('writes the cd, the env and the command into the script the emulator runs', async () => {
@@ -405,7 +407,9 @@ describe('the platform launch lines', () => {
       // Re-enters THIS distro: the script path stays POSIX because wsl.exe reads its command
       // line inside the distro, not on the Windows side.
       expect(args.slice(0, 4)).toEqual(['wsl.exe', '-d', 'Ubuntu-24.04', '--']);
-      expect(args.at(-1)).toMatch(/^\/.*xez-term-[^/]+\/launch\.sh$/);
+      // win32-skip(#963): the stubbed WSL platform on a Windows host writes the script under the Windows
+      // temp directory, so the POSIX spelling only exists inside a real distro
+      if (!onWindows) expect(args.at(-1)).toMatch(/^\/.*xez-term-[^/]+\/launch\.sh$/);
       rmSync(dirname(args.at(-1) as string), { recursive: true, force: true });
     });
 

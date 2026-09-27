@@ -3,6 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { npmCommand } from '../../test/helpers/platform.ts';
 
 /**
  * Structural guard over the whole publishing surface.
@@ -125,10 +126,12 @@ describe('publishing surface', () => {
     }
     // What the tarball holds is npm's answer, not a reading of `files`: an entry like "." or a
     // glob ships the run's config without naming it.
+    const npm = npmCommand(['pack', '--dry-run', '--json', '--ignore-scripts']);
     const packed = JSON.parse(
-      execFileSync('npm', ['pack', '--dry-run', '--json', '--ignore-scripts'], {
+      execFileSync(npm.file, npm.args, {
         cwd: join(repoRoot, 'packages', 'xezar'),
         encoding: 'utf8',
+        ...(npm.shell ? { shell: true } : {}),
       }),
     ) as Array<{ files: Array<{ path: string }> }>;
     const runFiles = ['stryker.config.mjs', 'vitest.mutation.config.ts'];

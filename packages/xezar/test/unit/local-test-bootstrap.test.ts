@@ -4,14 +4,19 @@ import { copyFileSync, mkdirSync, mkdtempSync, realpathSync, rmSync, statSync } 
 import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import { test } from 'node:test';
+import { pathToFileURL } from 'node:url';
+import { onWindows } from '../helpers/platform.ts';
 const root = resolve(import.meta.dirname, '../../../..');
 const bootstrap = resolve(root, 'scripts/test-local-state.mjs');
 const marker = `${sep}.local${sep}xezar${sep}worktrees${sep}`;
+/** `--import` takes a specifier: a drive-letter path reads as a `c:` URL scheme on Windows, so it
+ *  goes as a file URL there. POSIX passes the plain path, as before. */
+const importArg = (path: string): string => (onWindows ? pathToFileURL(path).href : path);
 
 /** Load `script` the way the npm scripts do and report the scratch root it pinned. */
 function pinnedScratch(script: string, env: NodeJS.ProcessEnv = process.env): string {
   return execFileSync(process.execPath, [
-    '--import', script, '--input-type=module', '-e',
+    '--import', importArg(script), '--input-type=module', '-e',
     'import { tmpdir } from "node:os"; console.log(tmpdir());',
   ], { cwd: root, env, encoding: 'utf8' }).trim();
 }
@@ -19,16 +24,18 @@ function pinnedScratch(script: string, env: NodeJS.ProcessEnv = process.env): st
 test('project-local temporary fixtures cannot discover or mutate their parent Git repository', () => {
   const before = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' });
   const result = JSON.parse(execFileSync(process.execPath, [
-    '--import', bootstrap, '--input-type=module', '-e', `
+    '--import', importArg(bootstrap), '--input-type=module', '-e', `
       import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
       import { tmpdir } from 'node:os';
-      import { join } from 'node:path';
+      import { join, resolve } from 'node:path';
       import { execFileSync, spawnSync } from 'node:child_process';
       const fixture = mkdtempSync(join(tmpdir(), 'git-boundary-'));
       try {
         const absent = spawnSync('git', ['rev-parse', '--show-toplevel'], { cwd: fixture });
         execFileSync('git', ['init', '-q'], { cwd: fixture });
-        const present = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: fixture, encoding: 'utf8' }).trim();
+        const printed = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: fixture, encoding: 'utf8' }).trim();
+        // Git for Windows prints C:/…: bring it to the native form realpathSync uses. POSIX: as printed.
+        const present = process.platform === 'win32' ? resolve(printed) : printed;
         console.log(JSON.stringify({ scratch: tmpdir(), absent: absent.status, ownRepo: present === realpathSync(fixture) }));
       } finally { rmSync(fixture, { recursive: true, force: true }); }
     `,
@@ -55,7 +62,7 @@ test('a child spawned with the inherited environment never sees the parent task 
     XEZ_ENV_PASSTHROUGH: 'PARENT_ONLY_VAR',
   };
   const seen = JSON.parse(execFileSync(process.execPath, [
-    '--import', bootstrap, '--input-type=module', '-e', `
+    '--import', importArg(bootstrap), '--input-type=module', '-e', `
       import { execFileSync } from 'node:child_process';
       const child = execFileSync(process.execPath, ['-e', 'console.log(JSON.stringify(process.env))'], {
         env: { ...process.env, XEZ_DRY_RUN: '1' },
@@ -90,7 +97,8 @@ test('a checkout that is itself a task worktree pins scratch outside the worktre
     assert.ok(!`${scratch}${sep}`.includes(marker), `scratch ${scratch} must not sit under a task-worktree ancestor`);
     assert.ok(!`${realpathSync(scratch)}${sep}`.includes(marker), 'nor may its realpath');
     assert.match(scratch, /[\\/]xezar-test-tmp-[0-9a-f]{12}$/, 'one hash-named directory per checkout');
-    if (process.platform !== 'win32') assert.equal(statSync(scratch).mode & 0o777, 0o700);
+    // win32-skip(#963): Windows ignores POSIX mode bits; the rest of this test runs there.
+    if (!onWindows) assert.equal(statSync(scratch).mode & 0o777, 0o700);
 
     // A worker spawned with the moved TMPDIR reuses the directory instead of nesting one per level.
     const nested = pinnedScratch(script, { ...process.env, TMPDIR: scratch, TMP: scratch, TEMP: scratch });

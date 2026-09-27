@@ -37,6 +37,7 @@ import {
   type AbWorld,
   type AbWorldOptions,
 } from '../helpers/ab-fixture.ts';
+import { FILE_SYMLINKS } from '../helpers/platform.ts';
 
 /**
  * #115 — the ISOLATION half of the whole-feature acceptance suite, at the CORE-MODULE level: the
@@ -52,7 +53,11 @@ import {
  * the answer itself, because an error code alone proves nothing.
  */
 
-const skip = process.platform === 'win32';
+/** The hostile world links a FILE across projects (leak.txt → B's notes.txt); on Windows that needs
+ *  Developer Mode or elevation. Directory links are junctions and need neither. */
+const skipHostile = FILE_SYMLINKS
+  ? false
+  : 'win32-skip(#963): the hostile A/B world seeds a file symlink – symlinkSync fails EPERM without Developer Mode or elevation';
 
 async function inWorld(options: AbWorldOptions, body: (world: AbWorld) => Promise<void>): Promise<void> {
   const world = await createAbWorld({ sockets: false, ...options });
@@ -70,7 +75,7 @@ function scopeOf(world: AbWorld, side: 'a' | 'b', audit: OwnershipAuditEntry[] =
 
 const REFUSED = { ok: false, code: 'not_found', message: 'not found in this project' } as const;
 
-test('A-02 — no spelling of a project binds a session, and the A binding refuses every B id before acting', { skip }, async () => {
+test('A-02 — no spelling of a project binds a session, and the A binding refuses every B id before acting', async () => {
   await inWorld({}, async (world) => {
     const spellings = ['default', 'Default', 'default ', `${PROJECT_B}/`, `./${PROJECT_B}`, world.b.root, `p/${PROJECT_B}`, ''];
     let operations = 0;
@@ -121,7 +126,7 @@ test('A-02 — no spelling of a project binds a session, and the A binding refus
   });
 });
 
-test('A-03 — the partial-success policy: a mixed A/B list, validated whole before any effect', { skip }, async () => {
+test('A-03 — the partial-success policy: a mixed A/B list, validated whole before any effect', async () => {
   await inWorld({}, async (world) => {
     const audit: OwnershipAuditEntry[] = [];
     const nowhere = nowhereId();
@@ -179,7 +184,7 @@ test('A-03 — the partial-success policy: a mixed A/B list, validated whole bef
   });
 });
 
-test('A-03 — a group with a member reaching into B is refused whole, and so is the reclaim sweep', { skip }, async () => {
+test('A-03 — a group with a member reaching into B is refused whole, and so is the reclaim sweep', { skip: skipHostile }, async () => {
   await inWorld({ hostile: true }, async (world) => {
     const h = world.hostile!;
     const audit: OwnershipAuditEntry[] = [];
@@ -214,7 +219,7 @@ test('A-03 — a group with a member reaching into B is refused whole, and so is
 
 // Removing the path the stray A record names is what the sweep did before #288 made the enforcer
 // prove each path first; doing it directly keeps this control able to hurt B.
-test('A-03 control — without the ownership check, removing the worktree a stray A record names deletes B’s', { skip }, async () => {
+test('A-03 control — without the ownership check, removing the worktree a stray A record names deletes B’s', { skip: skipHostile }, async () => {
   await inWorld({ hostile: true }, async (world) => {
     const before = world.snapshot('b');
     await removeWorktree(world.a.root, world.a.store.getRun(world.hostile!.stray)!.worktreePath!);
@@ -223,7 +228,7 @@ test('A-03 control — without the ownership check, removing the worktree a stra
   });
 });
 
-test('A-04 — a B cursor, a B journal cursor and a forged B trail line give A nothing', { skip }, async () => {
+test('A-04 — a B cursor, a B journal cursor and a forged B trail line give A nothing', async () => {
   await inWorld({}, async (world) => {
     const bScope = scopeOf(world, 'b');
     const sealed = [sealCursor(bScope, 'tasks', 'page-2'), sealCursor(bScope, `run:${world.b.ids.done}:history`, 'page-2')];
@@ -259,7 +264,7 @@ test('A-04 — a B cursor, a B journal cursor and a forged B trail line give A n
   });
 });
 
-test('A-04 — A’s event controller delivers A’s journal only, while B keeps appending', { skip }, async () => {
+test('A-04 — A’s event controller delivers A’s journal only, while B keeps appending', async () => {
   await inWorld({}, async (world) => {
     const owner = new ProjectOwnership({ dataDir: world.a.dataDir, projectId: PROJECT_A, autoRenew: false });
     assert.equal((await owner.acquire('ab-core-session')).outcome, 'owner');
@@ -296,7 +301,7 @@ test('A-04 — A’s event controller delivers A’s journal only, while B keeps
   });
 });
 
-test('A-12 — the connection file stays out of Git, and its secrets out of the journal and the trail', { skip }, async () => {
+test('A-12 — the connection file stays out of Git, and its secrets out of the journal and the trail', async () => {
   await inWorld({ connection: true }, async (world) => {
     const c = world.connection!;
     const seen = await world.observe(async () => {

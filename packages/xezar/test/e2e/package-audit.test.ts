@@ -8,10 +8,16 @@ import test from 'node:test';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { npmCommand } from '../helpers/platform.ts';
 
 const execFile = promisify(execFileCallback);
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+/** npm through the #963 platform helper: POSIX runs `npm` exactly as before; Windows runs npm's own
+ *  CLI through node, because `npm.cmd` cannot be spawned without a shell (EINVAL). */
+function execNpm(args: string[], options: { cwd: string; maxBuffer: number }) {
+  const c = npmCommand(args);
+  return execFile(c.file, c.args, { ...options, ...(c.shell ? { shell: true } : {}) });
+}
 
 /**
  * #306 part 2 — every valid command-line subcommand, from the PACKED tarball, writes exactly one
@@ -59,7 +65,7 @@ test('every command-line subcommand of the packed CLI writes one cli audit recor
   try {
     const packDir = join(root, 'pack');
     await mkdir(packDir);
-    const packed = await execFile(npm, ['pack', '--json', '--ignore-scripts', '--pack-destination', packDir], {
+    const packed = await execNpm(['pack', '--json', '--ignore-scripts', '--pack-destination', packDir], {
       cwd: packageRoot,
       maxBuffer: 10 * 1024 * 1024,
     });
@@ -68,7 +74,7 @@ test('every command-line subcommand of the packed CLI writes one cli audit recor
     const consumer = join(root, 'consumer');
     await mkdir(consumer);
     await writeFile(join(consumer, 'package.json'), '{"private":true}\n', 'utf8');
-    await execFile(npm, ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--no-package-lock', join(packDir, record.filename)], {
+    await execNpm(['install', '--ignore-scripts', '--no-audit', '--no-fund', '--no-package-lock', join(packDir, record.filename)], {
       cwd: consumer,
       maxBuffer: 10 * 1024 * 1024,
     });
@@ -88,6 +94,7 @@ test('every command-line subcommand of the packed CLI writes one cli audit recor
     const added = async (before: number, where = repo) => (await auditOf(where)).slice(before);
 
     // `run` registers the repo and creates its data folder; every later row appends to it.
+    // win32-r9(#963): exits 1 – step "task" failed: spawn EFTYPE (the dry-run runner spawns the shebang script scripts/mock-claude.mjs directly).
     await exec(['run', 'mock:done', '--repo', repo]);
     let seen = 0;
     const expectRows = async (rows: Array<[string, string, string?]>, where = repo) => {
@@ -198,7 +205,7 @@ test('a fresh, never-run git folder still gets its cli.init and refusal records'
   try {
     const packDir = join(root, 'pack');
     await mkdir(packDir);
-    const packed = await execFile(npm, ['pack', '--json', '--ignore-scripts', '--pack-destination', packDir], {
+    const packed = await execNpm(['pack', '--json', '--ignore-scripts', '--pack-destination', packDir], {
       cwd: packageRoot,
       maxBuffer: 10 * 1024 * 1024,
     });
@@ -207,7 +214,7 @@ test('a fresh, never-run git folder still gets its cli.init and refusal records'
     const consumer = join(root, 'consumer');
     await mkdir(consumer);
     await writeFile(join(consumer, 'package.json'), '{"private":true}\n', 'utf8');
-    await execFile(npm, ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--no-package-lock', join(packDir, record.filename)], {
+    await execNpm(['install', '--ignore-scripts', '--no-audit', '--no-fund', '--no-package-lock', join(packDir, record.filename)], {
       cwd: consumer,
       maxBuffer: 10 * 1024 * 1024,
     });

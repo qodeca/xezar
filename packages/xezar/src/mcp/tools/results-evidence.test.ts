@@ -3,6 +3,7 @@
 import './mcp-test-home.testkit.ts';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { FILE_SYMLINKS, linkDir } from '../../../test/helpers/platform.ts';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -580,9 +581,11 @@ describe('files: distinct states, bounded pages, refused paths', () => {
     const task = await finishedTask(ws);
     const outside = makeDir('xez-evidence-outside-');
     writeFileSync(join(outside, 'secret.txt'), 'outside the worktree\n');
-    symlinkSync(join(outside, 'secret.txt'), join(task.worktree, 'link.txt'));
-    symlinkSync(outside, join(task.worktree, 'linkdir'));
-    for (const path of ['/etc/passwd', '../README.md', 'a/../../x', '.git/config', 'link.txt', 'linkdir/secret.txt']) {
+    // win32-skip(#963): a file symlink needs Developer Mode or elevation on Windows (EPERM); the directory and traversal cases still run
+    if (FILE_SYMLINKS) symlinkSync(join(outside, 'secret.txt'), join(task.worktree, 'link.txt'));
+    linkDir(outside, join(task.worktree, 'linkdir'));
+    const refused = ['/etc/passwd', '../README.md', 'a/../../x', '.git/config', ...(FILE_SYMLINKS ? ['link.txt'] : []), 'linkdir/secret.txt'];
+    for (const path of refused) {
       const result = await call(ws, { read: 'files', runId: task.id, path });
       expect(result.isError, path).toBe(true);
       expect(result.text, path).not.toContain('outside the worktree');

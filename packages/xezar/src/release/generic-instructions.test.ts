@@ -243,6 +243,6 @@ describe('generic instructions (#466)', () => {
     for (const marker of ['XEZ_HANDOFF_FILE', '## Progress log', '## Resume notes', 'XEZ:DONE', 'XEZ:MONITORING', 'XEZ:ASK <json>', 'XEZ:PR=<number>', 'XEZ:ISSUE=<number>', 'XEZ:TITLE=', '{"questions":[{"header":"≤12-char label","question":"a clear question ending in ?","multiSelect":false,"options":[{"label":"short choice","description":"what it means / the trade-off"}]}]}']) {
       expect(HANDOFF_ONLY_INSTRUCTIONS).toContain(marker);
     }
-    expect(relative(repoRoot, packageRoot)).toBe('packages/xezar');
+    expect(relative(repoRoot, packageRoot)).toBe(join('packages', 'xezar'));
   });
 });

@@ -10,6 +10,7 @@ import {
   piLeaderPath,
   readPiLeaderDescriptor,
 } from './pi-link.ts';
+import { shortTmpRoot, onWindows } from '../../../test/helpers/platform.ts';
 
 /**
  * The producer that was missing. These cases drive a REAL Unix socket with a real server on the
@@ -25,7 +26,7 @@ const servers: Server[] = [];
 const links: { close(): void }[] = [];
 
 const tmp = (): string => {
-  const dir = realpathSync(mkdtempSync('/tmp/xzpl-'));
+  const dir = realpathSync(mkdtempSync(join(shortTmpRoot(), 'xzpl-')));
   dirs.push(dir);
   return dir;
 };
@@ -136,7 +137,8 @@ describe('reading the descriptor the pi leader extension writes', () => {
     expect(found.ok === false && found.reason).toMatch(/is not a socket/);
   });
 
-  it('accepts a live socket, and reads it from the project data directory only', async () => {
+  // win32-skip(#963): Node cannot listen on a Unix socket path on Windows (listen EACCES), and the pi leader stand-in listens on one
+  it.skipIf(onWindows)('accepts a live socket, and reads it from the project data directory only', async () => {
     const leader = fakeLeader();
     await listening(leader.server);
     const dir = tmp();
@@ -149,7 +151,8 @@ describe('reading the descriptor the pi leader extension writes', () => {
   });
 });
 
-describe('the link itself, over a real socket', () => {
+// win32-skip(#963): Node cannot listen on a Unix socket path on Windows (listen EACCES), and the pi leader stand-in listens on one
+describe.skipIf(onWindows)('the link itself, over a real socket', () => {
   it('carries a command and resolves with pi\'s own response frame', async () => {
     const leader = fakeLeader({
       onCommand: (command, reply) => {

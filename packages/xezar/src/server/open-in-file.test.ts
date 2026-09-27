@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { FILE_SYMLINKS } from '../../test/helpers/platform.ts';
 import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { createApp, type ServerDeps } from './server.ts';
@@ -98,7 +99,8 @@ describe("POST /api/v1/runs/:id/open-in — target 'default' (local-mode file op
     }
   });
 
-  it('rejects a symlink pointing outside the worktree', async () => {
+  // win32-skip(#963): creating a file symlink needs Developer Mode or elevation (EPERM)
+  it.skipIf(!FILE_SYMLINKS)('rejects a symlink pointing outside the worktree', async () => {
     const outside = mkdtempSync(join(tmpdir(), 'xez-openfile-link-'));
     try {
       writeFileSync(join(outside, 'real.png'), 'x');

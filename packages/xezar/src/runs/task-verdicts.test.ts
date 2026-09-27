@@ -2,6 +2,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, sy
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { FILE_SYMLINKS, onWindows } from '../../test/helpers/platform.ts';
 
 import {
   TASK_VERDICT_FINDINGS_MAX,
@@ -186,7 +187,8 @@ describe('T-2 — nothing unproven becomes an approval (break: accept unvalidate
     expect(verdictsOf(run.id)).toEqual([]);
   });
 
-  it('refuses a symlink rather than following it out of the data directory', () => {
+  // win32-skip(#963): creating a file symlink needs Developer Mode or elevation (EPERM)
+  it.skipIf(!FILE_SYMLINKS)('refuses a symlink rather than following it out of the data directory', () => {
     const run = startedRun();
     const elsewhere = join(dataDir, 'planted.json');
     writeFileSync(elsewhere, JSON.stringify(packetFor(run.id)), 'utf8');
@@ -574,7 +576,8 @@ describe('T-6 — the record is durable before the packet is gone (break: drop t
     expect(onDiskRun(run.id)?.verdictIssues).toHaveLength(1);
   });
 
-  it('refuses when the packet cannot even be looked up, rather than reading it as "nothing reported"', () => {
+  // win32-skip(#963): Windows ignores POSIX mode bits, so a chmod 000 directory stays traversable
+  it.skipIf(onWindows)('refuses when the packet cannot even be looked up, rather than reading it as "nothing reported"', () => {
     const run = startedRun();
     const file = taskVerdictPacketPath(dataDir, run.id);
     const dir = dirname(file);

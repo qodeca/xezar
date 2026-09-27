@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, sym
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { FILE_SYMLINKS } from '../../test/helpers/platform.ts';
 import { seedAgentConfigLocalLayer } from './seed.ts';
 
 let repo: string;
@@ -50,7 +51,8 @@ describe('seedAgentConfigLocalLayer', () => {
     }
   });
 
-  it.each(['source', 'destination'])('never seeds through a %s file symlink (#363)', async (side) => {
+  // win32-skip(#963): creating a file symlink needs Developer Mode or elevation (EPERM)
+  it.skipIf(!FILE_SYMLINKS).each(['source', 'destination'])('never seeds through a %s file symlink (#363)', async (side) => {
     mkdirSync(join(repo, '.claude'), { recursive: true });
     const wt = makeWorktree();
     const credential = join(repo, 'sentinel-credential');

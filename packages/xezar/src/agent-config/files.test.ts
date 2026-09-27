@@ -1,7 +1,8 @@
-import { mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync, readFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, realpathSync, rmSync, writeFileSync, readFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { linkDir } from '../../test/helpers/platform.ts';
 import { readConfigFile, writeConfigFile } from './files.ts';
 
 let repo: string;
@@ -96,7 +97,7 @@ describe('writeConfigFile', () => {
   it('writes THROUGH a symlink instead of replacing it', async () => {
     // ~/.claude → a dotfiles dir; writing claude.user.settings must not clobber the link
     const dotfiles = realpathSync(mkdtempSync(join(tmpdir(), 'xez-dot-')));
-    symlinkSync(dotfiles, join(home, '.claude'));
+    linkDir(dotfiles, join(home, '.claude'));
     const out = await writeConfigFile('claude.user.settings', '{"x":1}', null, repo, env);
     expect(out).toMatchObject({ ok: true });
     // the real file landed in the dotfiles target, and ~/.claude is still a symlink

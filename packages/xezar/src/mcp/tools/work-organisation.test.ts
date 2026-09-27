@@ -2,7 +2,8 @@
 // that reaches `skills.ts` (#671).
 import './mcp-test-home.testkit.ts';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { linkDir } from '../../../test/helpers/platform.ts';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -591,7 +592,7 @@ describe('business validation still refuses an invalid transition', () => {
     const linked = finishedRecord(storeA, 'done', 'linked into b');
     const linkPath = join(ws.roots.a, '.local/xezar/worktrees', linked.id);
     mkdirSync(join(ws.roots.a, '.local/xezar/worktrees'), { recursive: true });
-    symlinkSync(bTree, linkPath);
+    linkDir(bTree, linkPath);
     storeA.updateRun(linked.id, { worktreePath: linkPath });
     // A variant group with one clean member and the linked one.
     const clean = finishedRecord(storeA, 'done', 'clean variant');

@@ -4,7 +4,7 @@ import './tools/mcp-test-home.testkit.ts';
 import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, relative } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { RunStore } from '../runs/store.ts';
 import { ProjectContexts, type ProjectContextSource } from '../server/project-context.ts';
@@ -126,7 +126,8 @@ function snapshot(dir: string): Map<string, string> {
       const path = join(current, entry.name);
       if (entry.isDirectory()) walk(path);
       else if (statSync(path).isFile()) {
-        files.set(relative(dir, path), createHash('sha256').update(readFileSync(path)).digest('hex'));
+        // Keys are compared as POSIX paths (the claim regex below); `sep` is '/' on POSIX, so this is a no-op there.
+        files.set(relative(dir, path).split(sep).join('/'), createHash('sha256').update(readFileSync(path)).digest('hex'));
       }
     }
   };

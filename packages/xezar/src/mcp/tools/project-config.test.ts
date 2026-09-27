@@ -11,7 +11,6 @@ import {
   realpathSync,
   rmSync,
   statSync,
-  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { createServer as createHttpServer, type Server as HttpServer } from 'node:http';
@@ -20,6 +19,7 @@ import { basename, join, relative } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { parse as parseYaml } from 'yaml';
 import { WORKFLOW_MAX_STEPS } from '@qodeca/xezar-contract';
+import { linkDir } from '../../../test/helpers/platform.ts';
 import { CONFIG_FILES } from '../../agent-config/catalog.ts';
 import { loadConfig, resolveWorktreeRetention } from '../../config.ts';
 import { BUNDLED_TEMPLATES_DIGEST } from '../../onboarding/status.ts';
@@ -2201,7 +2201,7 @@ describe('project_config: agent config', () => {
 
   it('refuses a project file that a symlink carries outside the project, and writes nothing there', async () => {
     const outside = makeDir('xez-pc-outside-');
-    symlinkSync(outside, join(ws.roots.a, '.claude'));
+    linkDir(outside, join(ws.roots.a, '.claude'));
     const spy = spyService();
     const read = await invoke({ action: 'read_agent_config', fileId: 'claude.project.settings' }, { service: spy });
     const write = await invoke({ action: 'write_agent_config', fileId: 'claude.local.settings', content: '{"hooks":{}}', version: null }, { service: spy });

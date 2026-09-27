@@ -24,6 +24,7 @@ import { defineTool, toolListing, type McpTool, type McpToolContext } from '../t
 import { QUALITY_BLOCKER_NEXT_ACTION, handoffGitTool, qualityBlockers, readyBlockers } from './handoff-git.ts';
 import { tools } from './index.ts';
 import { withOperationId } from './operation-id.testkit.ts';
+import { onWindows } from '../../../test/helpers/platform.ts';
 
 /**
  * `handoff_git` (#96) driven the way a leader drives it: a `tools/call` frame over the project's own
@@ -34,7 +35,6 @@ import { withOperationId } from './operation-id.testkit.ts';
  * it over the way the service will.
  */
 
-const isWindows = process.platform === 'win32';
 const COCKPIT_HOST = '127.0.0.1:4321';
 const REMOTE_URL = 'https://github.com/acme/demo.git';
 /** The head sha the dry-run forge reports for every pull request (`fetchPrMergeState`). */
@@ -44,7 +44,8 @@ type Body = Record<string, unknown>;
 
 const sh = (cwd: string, ...args: string[]): string => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
 
-describe.skipIf(isWindows)('handoff_git — commit, push, draft PR, merge and branches (#96)', () => {
+// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – every test here opens the project MCP socket (observed: "not supported on Windows yet" in beforeEach)
+describe.skipIf(onWindows)('handoff_git — commit, push, draft PR, merge and branches (#96)', () => {
   const savedEnv: Record<string, string | undefined> = {};
   const ENV_KEYS = [
     'XEZ_HOME',

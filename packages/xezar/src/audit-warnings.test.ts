@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { shortTmpRoot } from '../test/helpers/platform.ts';
 import { automationAudit } from './automations/audit.ts';
 import type { AutomationDefinition } from './automations/types.ts';
 import { cliAudit } from './cli-audit.ts';
@@ -41,7 +42,7 @@ afterEach(() => {
 });
 
 function temp(prefix: string): string {
-  const dir = realpathSync(mkdtempSync(`/tmp/${prefix}`));
+  const dir = realpathSync(mkdtempSync(join(shortTmpRoot(), prefix)));
   dirs.push(dir);
   return dir;
 }

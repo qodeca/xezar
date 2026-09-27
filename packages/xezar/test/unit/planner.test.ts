@@ -224,6 +224,7 @@ test('planChain returns a real plan when the answer is usable', async () => {
       }) +
       '\n```',
   );
+  // win32-r9(#963): fallback is true – the planner spawns XEZ_CLAUDE_BIN (a shebang .mjs stub) directly, which Windows cannot execute.
   assert.equal(plan.fallback, false);
   assert.equal(plan.name, 'fix-and-review');
   assert.equal(plan.rationale, 'implement then verify');
@@ -256,6 +257,7 @@ test('planChain keeps a reviewing step’s verdictRole, and only a known role on
       rationale: 'implement, review, verify',
     }),
   );
+  // win32-r9(#963): fallback is true – the planner spawns XEZ_CLAUDE_BIN (a shebang .mjs stub) directly, which Windows cannot execute.
   assert.equal(plan.fallback, false);
   assert.deepEqual(
     plan.steps.map((s) => [s.id, s.verdictRole]),

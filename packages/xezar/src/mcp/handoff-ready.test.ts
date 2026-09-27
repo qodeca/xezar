@@ -23,6 +23,7 @@ import { runVersion } from './stale-write.ts';
 import { QUALITY_BLOCKER_NEXT_ACTION } from './tools/handoff-git.ts';
 import { tools } from './tools/index.ts';
 import { withOperationId } from './tools/operation-id.testkit.ts';
+import { onWindows } from '../../test/helpers/platform.ts';
 
 /**
  * #262 — a leader marks its own draft pull request ready, through the REAL composed service: the
@@ -32,7 +33,6 @@ import { withOperationId } from './tools/operation-id.testkit.ts';
  * pull request as already ready, so it could not show a draft becoming ready.
  */
 
-const isWindows = process.platform === 'win32';
 const VERSION = '9.9.9-ready';
 const REPO = 'acme/demo';
 const REMOTE_URL = `https://github.com/${REPO}.git`;
@@ -181,7 +181,8 @@ function leader(root: string) {
   return { call, act };
 }
 
-describe.skipIf(isWindows)('handoff_git ready — a leader moves its own draft pull request forward (#262)', () => {
+// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – every test here starts the project MCP service on its socket (observed first: "project … is not in the workspace registry", the Windows-root registry defect)
+describe.skipIf(onWindows)('handoff_git ready — a leader moves its own draft pull request forward (#262)', () => {
   it('opens a draft PR through MCP, marks it ready through MCP, and the forge reports it ready', async () => {
     const c = await cockpit();
     const mcp = leader(c.root);

@@ -30,6 +30,7 @@ import { IPC_PROTOCOL_VERSION, LineFramer, encodeFrame, type McpToolResult } fro
 import { runVersion } from './stale-write.ts';
 import { tools } from './tools/index.ts';
 import { withOperationId } from './tools/operation-id.testkit.ts';
+import { onWindows } from '../../test/helpers/platform.ts';
 
 /**
  * #302 — exclusive ownership over a LIVE MCP session (A-17, A-18, the exclusivity half of A-23).
@@ -205,7 +206,8 @@ async function startSlowTask(c: Cockpit, owner: ReturnType<typeof agent>): Promi
   return runId;
 }
 
-describe('A-17 — only the competing owner is refused', () => {
+// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – every test here starts the project MCP service on its socket
+describe.skipIf(onWindows)('A-17 — only the competing owner is refused', () => {
   it('refuses a second logical client with the occupied error, gives it no tool access, and tells it nothing about the owner', async () => {
     const c = await cockpit();
     await serve(c);
@@ -255,7 +257,8 @@ describe('A-17 — only the competing owner is refused', () => {
   });
 });
 
-describe('A-18 — liveness, fencing and restart', () => {
+// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – every test here starts the project MCP service on its socket
+describe.skipIf(onWindows)('A-18 — liveness, fencing and restart', () => {
   it('model silence keeps ownership: an idle owner outlives many leases because the service renews it, not the model', async () => {
     const c = await cockpit();
     let clock = Date.now();
@@ -407,7 +410,8 @@ describe('A-18 — liveness, fencing and restart', () => {
   });
 });
 
-describe('N-05 — a started task keeps running through every ownership change', () => {
+// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – every test here starts the project MCP service on its socket
+describe.skipIf(onWindows)('N-05 — a started task keeps running through every ownership change', () => {
   it('survives its owner leaving, a successor, a refused client, fencing and a service restart; nothing calls the run manager', async () => {
     const c = await cockpit();
     let service = await serve(c);

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -6,10 +6,12 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import extension, { __internals } from '../../scripts/pi-worktree-guard.ts';
 import { agentDirectories } from '../workflows/run.ts';
+import { linkDir, onWindows } from '../../test/helpers/platform.ts';
 import { READ_ONLY_LOCK_FIXTURES } from './read-only-lock.testkit.ts';
 
 const roots: string[] = [];
 const originalHome = process.env.HOME;
+const originalUserProfile = process.env.USERPROFILE;
 
 function tempDir(prefix: string): string {
   const dir = realpathSync.native(mkdtempSync(join(tmpdir(), prefix)));
@@ -30,6 +32,8 @@ interface Fixture {
 function fixture(primaryName = 'repo'): Fixture {
   const home = tempDir('xez-pi-guard-home-');
   process.env.HOME = home;
+  // os.homedir() reads USERPROFILE, not HOME, on Windows (#963).
+  if (onWindows) process.env.USERPROFILE = home;
   const primary = join(home, 'Projects', primaryName);
   const worktree = join(primary, '.local', 'xezar', 'worktrees', 'task');
   const runs = join(primary, '.local', 'xezar', 'runs');
@@ -42,6 +46,8 @@ function fixture(primaryName = 'repo'): Fixture {
 
 type ToolCall = Parameters<typeof __internals.guardToolCall>[2];
 
+// win32-r9(#963): the bash-command checks do not block a Windows-path `cd`/`git -C`/redirect into the
+// primary checkout (35 cases answer undefined instead of { block: true }) – scripts/pi-worktree-guard.ts
 function guard(f: Fixture, event: ToolCall, allowed: string[] = []) {
   return __internals.guardToolCall(f.worktree, f.worktree, event, f.primary, allowed);
 }
@@ -59,6 +65,8 @@ const caseInsensitiveFs = (() => {
 afterEach(() => {
   if (originalHome === undefined) delete process.env.HOME;
   else process.env.HOME = originalHome;
+  if (originalUserProfile === undefined) delete process.env.USERPROFILE;
+  else process.env.USERPROFILE = originalUserProfile;
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
@@ -79,7 +87,7 @@ describe('pi linked-worktree tool guard (#537)', () => {
 
   it('blocks a write through a symlink that escapes the worktree', () => {
     const f = fixture();
-    symlinkSync(f.outside, join(f.worktree, 'escape'));
+    linkDir(f.outside, join(f.worktree, 'escape'));
     expect(guard(f, write('escape/tracked.md'))).toMatchObject(BLOCK);
   });
 
@@ -166,7 +174,7 @@ describe('pi linked-worktree tool guard (#537)', () => {
       ['a relative git -C out of the worktree', (f: Fixture) => `git -C ${relative(f.worktree, f.primary)} commit -am x`],
       ['a relative redirect out of the worktree', (f: Fixture) => `echo x > ${relative(f.worktree, join(f.primary, 'tracked.md'))}`],
       ['a symlink to the primary', (f: Fixture) => {
-        symlinkSync(f.primary, join(f.outside, 'link'));
+        linkDir(f.primary, join(f.outside, 'link'));
         return `cd ${join(f.outside, 'link')} && git status`;
       }],
       ['an unknown variable as the cd target', () => 'cd "$XEZ_GUARD_UNSET_VARIABLE" && git status'],
@@ -185,7 +193,7 @@ describe('pi linked-worktree tool guard (#537)', () => {
       ['git -C the worktree itself', (f: Fixture) => `git -C ${f.worktree} status`],
       ['git ranges and grep -C', () => 'git log origin/main..HEAD && grep -C 3 foo README.md'],
       ['cd through a worktree symlink that points outside the primary', (f: Fixture) => {
-        symlinkSync(f.outside, join(f.worktree, 'linked-cache'));
+        linkDir(f.outside, join(f.worktree, 'linked-cache'));
         return 'cd linked-cache && ls';
       }],
     ])('allows %s', (_name, command) => {
@@ -208,7 +216,7 @@ describe('pi linked-worktree tool guard (#537)', () => {
     /** `pk` is an in-worktree symlink to the primary checkout's `packages` folder. */
     const linkPackages = (f: Fixture) => {
       mkdirSync(join(f.primary, 'packages'), { recursive: true });
-      symlinkSync(join(f.primary, 'packages'), join(f.worktree, 'pk'));
+      linkDir(join(f.primary, 'packages'), join(f.worktree, 'pk'));
     };
 
     it.each([
@@ -246,7 +254,7 @@ describe('pi linked-worktree tool guard (#537)', () => {
       ['~+ as the cd target', () => 'cd ~+ && git status'],
       ['cd ~/… after HOME is reassigned in the command', (f: Fixture) => `HOME=${f.home}/Projects; cd ~/xezar && git commit -am x`],
       ['a relative .. after an allowed symlink cd', (f: Fixture) => {
-        symlinkSync(f.outside, join(f.worktree, 'linked-cache'));
+        linkDir(f.outside, join(f.worktree, 'linked-cache'));
         return 'cd linked-cache && cd ../x && ls';
       }],
       ['a glob redirect whose literal directory holds the primary', () => 'echo x >> ~/Projects/xeza?/tracked.md'],
@@ -302,7 +310,7 @@ describe('pi linked-worktree tool guard (#537)', () => {
       ['N3: a relative glob from an ancestor', () => 'cd ~/Projects && cat */tracked.md'],
       ['N5: a relative redirect through an existing worktree symlink', (f: Fixture) => {
         mkdirSync(join(f.primary, 'packages'), { recursive: true });
-        symlinkSync(join(f.primary, 'packages'), join(f.worktree, 'pk'));
+        linkDir(join(f.primary, 'packages'), join(f.worktree, 'pk'));
         return 'echo n5 >> pk/tracked.md';
       }],
       ['a relative mention after the guard lost the directory', () => 'pushd packages && pushd +1 && echo x >> tracked.md'],

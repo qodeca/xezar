@@ -1,8 +1,9 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { linkDir } from '../../test/helpers/platform.ts';
 import { loadWorkspaceConfig } from './config.ts';
 import { clearProjectProbeCache, registerProject } from './projects.ts';
 import { runProjectsCommand, type ProjectsCommandIo } from './projects-cli.ts';
@@ -116,7 +117,7 @@ describe('xezar projects CLI', () => {
     it('dedupes a symlinked spelling and says the project is already registered', async () => {
       const root = makeRepo('web');
       const link = join(repos, 'web-link');
-      symlinkSync(root, link);
+      linkDir(root, link);
       await run('add', root);
       expect(await run('add', link)).toBe(0);
       expect(io.out.join('\n')).toContain('= web (already registered)');

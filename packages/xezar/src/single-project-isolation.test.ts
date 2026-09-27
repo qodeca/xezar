@@ -1,8 +1,9 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { onWindows } from '../test/helpers/platform.ts';
 import { buildChildEnv } from './core/agent-env.ts';
 import { mcpSocketDir, mcpSocketLocation } from './mcp/ipc.ts';
 import {
@@ -33,15 +34,22 @@ import { globalStateLayout, projectStateLayout, setActiveStateLayout } from './s
 
 let home: string;
 let project: string;
+const originalUserProfile = process.env.USERPROFILE;
 
 beforeEach(() => {
   home = mkdtempSync(join(tmpdir(), 'xez-sp-home-'));
   project = mkdtempSync(join(tmpdir(), 'xez-sp-project-'));
   process.env.HOME = home;
+  // os.homedir() reads USERPROFILE, not HOME, on Windows (#963).
+  if (onWindows) process.env.USERPROFILE = home;
   setActiveStateLayout(null);
 });
 
 afterEach(() => {
+  if (onWindows) {
+    if (originalUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = originalUserProfile;
+  }
   setActiveStateLayout(null);
   rmSync(home, { recursive: true, force: true });
   rmSync(project, { recursive: true, force: true });
@@ -84,7 +92,7 @@ describe('the skills cache follows the layout (SP-2.2, AC-5)', () => {
     try {
       enterMode();
       const cached = bareDirFor(source);
-      expect(cached.startsWith(join(project, '.local', 'xezar', 'cache') + '/')).toBe(true);
+      expect(cached.startsWith(join(project, '.local', 'xezar', 'cache') + sep)).toBe(true);
 
       const { created } = await ensureBareClone(source);
       expect(created).toBe(true);
@@ -104,7 +112,7 @@ describe('the skills cache follows the layout (SP-2.2, AC-5)', () => {
     const source = skillsRepo();
     try {
       const cached = bareDirFor(source);
-      expect(cached.startsWith(join(home, '.cache', 'xez', 'skills') + '/')).toBe(true);
+      expect(cached.startsWith(join(home, '.cache', 'xez', 'skills') + sep)).toBe(true);
       await ensureBareClone(source);
       expect(existsSync(join(cached, 'HEAD'))).toBe(true);
     } finally {

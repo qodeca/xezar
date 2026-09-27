@@ -22,6 +22,7 @@ import {
   type OperationRequest,
   type Reconciler,
 } from './operation-receipts.ts';
+import { onWindows } from '../../test/helpers/platform.ts';
 
 /**
  * Issue #101 — durable operation-key idempotency (decision D-06). The four acceptance cases come
@@ -597,15 +598,14 @@ describe('storage (D-06 § 7)', () => {
     expect(wire(await reopened.execute(createRequest(tasks, 'op-00000003', 't3')))).toMatchObject({ replayed: true });
   });
 
-  it('snapshot files are private to the user', async () => {
+  // win32-skip(#963): Windows ignores POSIX mode bits – the only assertions here are the 0600 modes
+  it.skipIf(onWindows)('snapshot files are private to the user', async () => {
     const tasks = taskStore();
     await open().execute(createRequest(tasks, 'op-00000001', 'x'));
     open().close();
     const { statSync } = await import('node:fs');
-    if (process.platform !== 'win32') {
-      expect(statSync(join(dataDir, RECEIPT_JOURNAL_FILE)).mode & 0o777).toBe(0o600);
-      expect(statSync(join(dataDir, RECEIPT_SNAPSHOT_FILE)).mode & 0o777).toBe(0o600);
-    }
+    expect(statSync(join(dataDir, RECEIPT_JOURNAL_FILE)).mode & 0o777).toBe(0o600);
+    expect(statSync(join(dataDir, RECEIPT_SNAPSHOT_FILE)).mode & 0o777).toBe(0o600);
   });
 });
 

@@ -3,6 +3,7 @@ import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { onWindows } from '../../test/helpers/platform.ts';
 
 import {
   acquireGateLease,
@@ -256,7 +257,8 @@ describe('acquireGateLease', () => {
     expect(GATE_LEASE_STALE_MS / GATE_LEASE_HEARTBEAT_MS).toBeGreaterThanOrEqual(3);
   });
 
-  it('(d) an unwritable lock directory reports itself and takes nothing', async () => {
+  // win32-skip(#963): Windows ignores POSIX mode bits, so a chmod'd read-only directory stays writable
+  it.skipIf(onWindows)('(d) an unwritable lock directory reports itself and takes nothing', async () => {
     const readOnly = join(dir, 'read-only');
     await mkdir(readOnly);
     await chmod(readOnly, 0o500);
@@ -409,7 +411,8 @@ describe('runUnderGateLease', () => {
     }
   });
 
-  it('an unusable directory runs the command anyway, loudly', async () => {
+  // win32-skip(#963): Windows ignores POSIX mode bits, so a chmod'd read-only directory stays writable
+  it.skipIf(onWindows)('an unusable directory runs the command anyway, loudly', async () => {
     const readOnly = join(dir, 'ro');
     await mkdir(readOnly);
     await chmod(readOnly, 0o500);

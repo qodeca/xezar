@@ -1,7 +1,8 @@
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { linkDir } from '../../test/helpers/platform.ts';
 import { DEFAULT_MEMORY_LIMIT_MB } from './config.ts';
 import { WorkspaceSemaphore, type SemaphoreParticipant } from './semaphore.ts';
 
@@ -397,7 +398,7 @@ describe('WorkspaceSemaphore', () => {
     const real = join(dirs, 'real-root');
     const link = join(dirs, 'link-root'); // a symlink pointing at real-root
     mkdirSync(real, { recursive: true });
-    symlinkSync(real, link);
+    linkDir(real, link);
     try {
       // Registry keys by the realpath'd root (what registerProject stores)…
       const sem = new WorkspaceSemaphore({

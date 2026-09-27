@@ -14,6 +14,7 @@ import { EventJournal } from '../event-journal.ts';
 import { LeaderCursors, type StateReader } from '../reconnect.ts';
 import type { McpToolContext, McpToolResult } from '../tool.ts';
 import { type LeaderControlPort, leaderEventsInputSchema, leaderEventsTool } from './leader-events.ts';
+import { shortTmpRoot } from '../../../test/helpers/platform.ts';
 
 /**
  * #450 — `leader_events` `attach`, `stop` and `status`: the arguments the schema refuses, the answer
@@ -182,7 +183,7 @@ describe('leader setup verification and restart recovery (#464 P3, ONB-04/13/14)
       { leaderControl: attachPort.control, sessionKey: 's' },
     ))).toContain('Leader setup: attached');
 
-    const dir = realpathSync(mkdtempSync('/tmp/xzle-onboard-'));
+    const dir = realpathSync(mkdtempSync(join(shortTmpRoot(), 'xzle-onboard-')));
     const journal = EventJournal.open({ dataDir: dir, projectId: 'alpha', secretValues: [], warn: () => {} });
     const cursors = LeaderCursors.open({ dataDir: dir, projectId: 'alpha', journal, warn: () => {} });
     const leaderEvents = {
@@ -239,7 +240,7 @@ describe('#460 § 4 — reading after a compaction, over a real journal', () => 
 
   /** One project's journal, cursors and a stub state reader — the three parts the tool composes. */
   function wired(projectId = 'alpha', now?: () => number) {
-    const dataDir = realpathSync(mkdtempSync('/tmp/xzle-'));
+    const dataDir = realpathSync(mkdtempSync(join(shortTmpRoot(), 'xzle-')));
     dirs.push(dataDir);
     const journal = EventJournal.open({ dataDir, projectId, secretValues: [], warn: () => {}, ...(now ? { now } : {}) });
     journals.push(journal);

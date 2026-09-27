@@ -21,6 +21,7 @@ import { resolveMcpTarget, startMcpService } from './index.ts';
 import { LineFramer, encodeFrame, type McpToolResult } from './ipc.ts';
 import { tools } from './tools/index.ts';
 import { withOperationId } from './tools/operation-id.testkit.ts';
+import { onWindows } from '../../test/helpers/platform.ts';
 
 /**
  * #251 and #252, against the REAL composed service: the real `runBridge` over the real project
@@ -184,7 +185,8 @@ const e05 = (dataDir: string): McpJournalRow[] => journalRows(dataDir).filter((r
 
 const STEPS = [{ id: 'do', prompt: 'do it' }];
 
-describe('#251 — a reconnecting leader reads the events it missed (A-15, A-21)', () => {
+// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – every test here starts the project MCP service on its socket
+describe.skipIf(onWindows)('#251 — a reconnecting leader reads the events it missed (A-15, A-21)', () => {
   it('delivers the outstanding events and current state, again until acknowledged, then an explicit gap when events were dropped', async () => {
     const c = await cockpit();
     let handle = await serve(c);
@@ -280,7 +282,8 @@ describe('#251 — a reconnecting leader reads the events it missed (A-15, A-21)
   });
 });
 
-describe('#252 — a human change to config, a workflow or agent config reaches the leader as E-05', () => {
+// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – every test here starts the project MCP service on its socket
+describe.skipIf(onWindows)('#252 — a human change to config, a workflow or agent config reaches the leader as E-05', () => {
   it('writes exactly one row per real change, as the human’s, and none for a refused or empty write', async () => {
     const c = await cockpit();
     await serve(c);

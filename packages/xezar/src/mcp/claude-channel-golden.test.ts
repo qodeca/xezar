@@ -14,6 +14,7 @@ import { LineFramer, encodeFrame } from './ipc.ts';
 import { CHANNEL_INCOMPATIBLE_PROTOCOL_VERSION } from './protocol.ts';
 import { listenMcpSocket, type McpSessionTransport } from './service.ts';
 import { tools } from './tools/index.ts';
+import { shortTmpRoot, onWindows } from '../../test/helpers/platform.ts';
 
 /**
  * #886 — the channel contract with Claude Code, pinned against what a REAL Claude Code sends and
@@ -47,7 +48,7 @@ const claudeChannelNotification = z.strictObject({
 let home: string;
 const handles: Array<{ close(): void }> = [];
 beforeEach(() => {
-  home = mkdtempSync('/tmp/xz886-');
+  home = mkdtempSync(join(shortTmpRoot(), 'xz886-'));
 });
 afterEach(() => {
   for (const h of handles.splice(0)) h.close();
@@ -98,7 +99,8 @@ async function world() {
   return { input, messages, done, until, transport: () => transport };
 }
 
-describe(`the Claude Code channel contract, against a real Claude Code ${FIXTURE.claudeCodeVersion} (#886)`, () => {
+// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – this opens the project MCP socket
+describe.skipIf(onWindows)(`the Claude Code channel contract, against a real Claude Code ${FIXTURE.claudeCodeVersion} (#886)`, () => {
   it('answers the captured initialize with the channel capability and a revision Claude Code delivers over', async () => {
     // RED against: dropping `experimental["claude/channel"]` (Claude Code logs "server did not declare
     // claude/channel capability"), or negotiating 2026-07-28 (no unsolicited notification path).
@@ -207,7 +209,8 @@ describe('a bridge from this tree against the published xezar 0.18.0 service (#8
     expect(createHash('sha256').update(readFileSync(WIRE_FILE)).digest('hex')).toBe(WIRE_SHA256);
   });
 
-  it('opens its session, registers the channel, relays every tool answer and delivers 0.18.0’s own push', async () => {
+  // win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – this opens the project MCP socket
+  it.skipIf(onWindows)('opens its session, registers the channel, relays every tool answer and delivers 0.18.0’s own push', async () => {
     const svc = await replay018();
     const input = new PassThrough();
     const output = new PassThrough();

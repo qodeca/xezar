@@ -1,6 +1,6 @@
 import { MCP_EVENT_KIND_CATEGORY, type McpEventKind, type McpJournalRow } from '@qodeca/xezar-contract';
 import { describe, expect, it, vi } from 'vitest';
-import { DELIVERY_CLIENTS, deliveryHarness } from './leader-delivery.testkit.ts';
+import { DELIVERY_CLIENTS, deliveryHarness, deliveryPeerUnavailable } from './leader-delivery.testkit.ts';
 import { withEventOrigin } from './event-catalog.ts';
 
 // #532 G12: the executable-completeness inventory assertion over this matrix (every variant here ×
@@ -56,7 +56,8 @@ function produce(h: Harness, variant: string) {
   return row as McpJournalRow;
 }
 
-for (const client of DELIVERY_CLIENTS) describe(`#532 production event matrix / ${client}`, () => {
+// win32-skip(#963): claude-code, codex and pi peers listen on a Unix socket path (the xezar MCP service, Codex's control socket, pi's leader socket) – listen EACCES / "not supported on Windows yet" (ipc.ts); opencode (HTTP) still runs
+for (const client of DELIVERY_CLIENTS) describe.skipIf(deliveryPeerUnavailable(client))(`#532 production event matrix / ${client}`, () => {
   // Named breaks: omit catalog subscriptions, hide task.failed, suppress all leader-origin rows.
   it.each(variants)('%s reaches the receiving peer with exact identity and cursor', async variant => {
     const h = await deliveryHarness(client);
@@ -91,7 +92,8 @@ for (const client of DELIVERY_CLIENTS) describe(`#532 production event matrix / 
   });
 });
 
-for (const client of DELIVERY_CLIENTS) describe(`#532 significance and ordering / ${client}`, () => {
+// win32-skip(#963): claude-code, codex and pi peers listen on a Unix socket path (the xezar MCP service, Codex's control socket, pi's leader socket) – listen EACCES / "not supported on Windows yet" (ipc.ts); opencode (HTTP) still runs
+for (const client of DELIVERY_CLIENTS) describe.skipIf(deliveryPeerUnavailable(client))(`#532 significance and ordering / ${client}`, () => {
   it('scans all-routine pages before failure, retains raw rows and never covers an unseen tail', async () => {
     // Named breaks: only Claude filters significance; task.failed is routine; cursor uses page tail.
     const h = await deliveryHarness(client);
@@ -157,7 +159,8 @@ it.each(variants.filter(variant => !['config.changed', 'workflow.saved', 'workfl
   } finally { await h.close(); }
 });
 
-for (const client of DELIVERY_CLIENTS) it(`#532 legacy gate without routing metadata remains significant / ${client}`, async () => {
+// win32-skip(#963): claude-code, codex and pi peers listen on a Unix socket path (the xezar MCP service, Codex's control socket, pi's leader socket) – listen EACCES / "not supported on Windows yet" (ipc.ts); opencode (HTTP) still runs
+for (const client of DELIVERY_CLIENTS) it.skipIf(deliveryPeerUnavailable(client))(`#532 legacy gate without routing metadata remains significant / ${client}`, async () => {
   const h = await deliveryHarness(client);
   try {
     // Persisted pre-metadata rows cannot be produced by today's catalog, which defaults to stage.

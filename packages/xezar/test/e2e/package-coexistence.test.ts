@@ -8,10 +8,20 @@ import test from 'node:test';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { npmCommand, onWindows } from '../helpers/platform.ts';
 
 const execFile = promisify(execFileCallback);
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+/** Every case here goes through the xezar MCP Unix socket. `/tmp` stays the POSIX socket root. */
+const NO_MCP_SOCKET = onWindows
+  ? 'win32-skip(#963): xezar MCP bridge is not supported on Windows yet – the cockpit logs event=mcp.unavailable (mcp/ipc.ts)'
+  : false;
+/** npm through the #963 platform helper: POSIX runs `npm` exactly as before; Windows runs npm's own
+ *  CLI through node, because `npm.cmd` cannot be spawned without a shell (EINVAL). */
+function execNpm(args: string[], options: { cwd: string; maxBuffer: number }) {
+  const c = npmCommand(args);
+  return execFile(c.file, c.args, { ...options, ...(c.shell ? { shell: true } : {}) });
+}
 const COCKPIT_LINE = /cockpit → http:\/\/localhost:(\d+)/;
 
 /**
@@ -135,7 +145,7 @@ async function askMcp(
   return answer;
 }
 
-test('two projects run at once on one machine, each on its own port and its own MCP', { timeout: 600_000 }, async () => {
+test('two projects run at once on one machine, each on its own port and its own MCP', { timeout: 600_000, skip: NO_MCP_SOCKET }, async () => {
   // `/tmp` explicitly: a task worktree's own TMPDIR sits inside the repository, and a fixture
   // under `.local/xezar/worktrees/` is refused registration, so it could never get a row.
   const root = await mkdtemp(join(realpathSync('/tmp'), 'xez-coexist-'));
@@ -143,8 +153,7 @@ test('two projects run at once on one machine, each on its own port and its own 
   try {
     const packDir = join(root, 'pack');
     await mkdir(packDir);
-    const packed = await execFile(
-      npm,
+    const packed = await execNpm(
       ['pack', '--json', '--ignore-scripts', '--pack-destination', packDir],
       { cwd: repoRoot, maxBuffer: 10 * 1024 * 1024 },
     );
@@ -154,8 +163,7 @@ test('two projects run at once on one machine, each on its own port and its own 
     const consumerDir = join(root, 'consumer');
     await mkdir(consumerDir);
     await writeFile(join(consumerDir, 'package.json'), '{"private":true}\n', 'utf8');
-    await execFile(
-      npm,
+    await execNpm(
       ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--no-package-lock', join(packDir, record.filename)],
       { cwd: consumerDir, maxBuffer: 10 * 1024 * 1024 },
     );

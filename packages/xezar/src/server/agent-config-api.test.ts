@@ -8,6 +8,7 @@ import { hashBytes } from '../agent-config/files.ts';
 import { listConfigFiles } from '../agent-config/catalog.ts';
 import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
+import { FILE_SYMLINKS, linkDir } from '../../test/helpers/platform.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { createApp } from './server.ts';
 
@@ -85,7 +86,8 @@ describe('the agent-config API', () => {
     },
   );
 
-  it.each(listConfigFiles().flatMap((def) =>
+  // win32-skip(#963): creating a file symlink needs Developer Mode or elevation (EPERM)
+  it.skipIf(!FILE_SYMLINKS).each(listConfigFiles().flatMap((def) =>
     (['read', 'write', 'list'] as const).map((operation) => [def.id, operation, def] as const),
   ))('refuses a credential symlink at %s on %s (#363)', async (id, operation, def) => {
     const target = join(repoRoot, 'sentinel-credential');
@@ -119,7 +121,8 @@ describe('the agent-config API', () => {
     }
   });
 
-  it('withholds Claude MCP names when its state file is a symlink', async () => {
+  // win32-skip(#963): creating a file symlink needs Developer Mode or elevation (EPERM)
+  it.skipIf(!FILE_SYMLINKS)('withholds Claude MCP names when its state file is a symlink', async () => {
     const credential = join(repoRoot, 'sentinel-state');
     writeFileSync(credential, '{"mcpServers":{"FAKE-STATE-CREDENTIAL":{}}}');
     symlinkSync(credential, join(process.env.CLAUDE_CONFIG_DIR!, '.claude.json'));
@@ -134,7 +137,7 @@ describe('the agent-config API', () => {
     const outside = mkdtempSync(join(tmpdir(), 'xez-outside-'));
     try {
       writeFileSync(join(outside, 'settings.json'), '{"key":"FAKE-PARENT-CREDENTIAL"}');
-      symlinkSync(outside, join(repoRoot, '.claude'));
+      linkDir(outside, join(repoRoot, '.claude'));
       const res = await apiRequest(app, '/api/v1/agent-config/claude.project.settings');
       expect(await res.text()).not.toContain('FAKE-PARENT-CREDENTIAL');
       expect(res.status).toBe(409);

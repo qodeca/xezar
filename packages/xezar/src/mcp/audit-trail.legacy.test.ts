@@ -3,6 +3,7 @@ import { appendFileSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readF
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { onWindows } from '../../test/helpers/platform.ts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AuditActionRecord, AuditEntry } from '@qodeca/xezar-contract';
 import {
@@ -135,7 +136,8 @@ describe('P1-A4: writing never touches the legacy file', () => {
     for (let i = 0; i < 3; i += 1) await mcp.record({ action: 'organiseWork.pin', operationId: `op-legacy-000${i}` }, { outcome: 'applied' });
 
     expect(fileState(legacyAuditTrailPath(dir))).toEqual(before);
-    expect(statSync(auditTrailPath(dir)).mode & 0o777).toBe(0o600);
+    // win32-skip(#963): Windows ignores POSIX mode bits (observed: every file stats 0o666)
+    if (!onWindows) expect(statSync(auditTrailPath(dir)).mode & 0o777).toBe(0o600);
     const lines = readFileSync(auditTrailPath(dir), 'utf8').trim().split('\n');
     expect(lines.map((line) => (JSON.parse(line) as { v: number; seq: number }).seq)).toEqual([1, 2, 3]);
   });

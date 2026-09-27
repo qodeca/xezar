@@ -1,9 +1,9 @@
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { detectInstallChannel } from './install-channel.ts';
 
-const pkgRoot = join('/opt', 'xezar-pkg');
+const pkgRoot = resolve('/opt', 'xezar-pkg');
 const builtEntry = pathToFileURL(join(pkgRoot, 'dist', 'index.js')).href;
 const sourceEntry = pathToFileURL(join(pkgRoot, 'src', 'index.ts')).href;
 const marker = join(pkgRoot, 'src', 'index.ts');

@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { onWindows } from '../../test/helpers/platform.ts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AUDIT_ROTATE_BYTES, AuditTrail, auditLockPath, auditTrailPath, rotatedAuditTrailPath } from './audit-trail.ts';
 
@@ -98,7 +99,8 @@ describe('AC-P3-03: chmod and rename failures', () => {
     failures.chmod = undefined;
     const record = await trail.channel('mcp').record({ action: 'run.cancel' }, { outcome: 'applied' });
     expect(record?.seq).toBe(2);
-    expect(fs.statSync(live).mode & 0o777).toBe(0o600);
+    // win32-skip(#963): Windows ignores POSIX mode bits (observed: every file stats 0o666)
+    if (!onWindows) expect(fs.statSync(live).mode & 0o777).toBe(0o600);
   });
 
   it('named break `B-FAIL-CLOSED`: a rename refused mid-rotation leaves the live history in place, and the next writer rotates it', async () => {

@@ -18,9 +18,13 @@ import { listenMcpSocket } from './service.ts';
 import { runBridge } from './bridge.ts';
 import { LineFramer, encodeFrame } from './ipc.ts';
 import { tools } from './tools/index.ts';
+import { onWindows, shortTmpRoot } from '../../test/helpers/platform.ts';
 
 export const DELIVERY_CLIENTS = ['claude-code', 'codex', 'opencode', 'pi'] as const;
 export type DeliveryClient = typeof DELIVERY_CLIENTS[number];
+/** True where this client's peer cannot be built: every peer but OpenCode's (HTTP) listens on a Unix socket path,
+ *  which Node cannot do on Windows (#963). Always false on POSIX. */
+export const deliveryPeerUnavailable = (client: DeliveryClient): boolean => onWindows && client !== 'opencode';
 const SESSION = 'ses_matrix0000000000000001';
 interface Submission { parts: Array<{ text: string; metadata?: { xezar?: { rows: string[] } } }> }
 
@@ -28,7 +32,7 @@ interface Submission { parts: Array<{ text: string; metadata?: { xezar?: { rows:
 // Claude additionally crosses the real IPC service and stdio bridge, recording channel stdout.
 export async function deliveryHarness(client: DeliveryClient) {
   // Short socket home is essential on macOS; never use a real agent's config/home.
-  const root = realpathSync(mkdtempSync('/tmp/xz-matrix-'));
+  const root = realpathSync(mkdtempSync(join(shortTmpRoot(), 'xz-matrix-')));
   const closers: Array<() => unknown> = [];
   const store = RunStore.open(join(root, 'data'));
   const journal = EventJournal.open({ dataDir: store.dataDir, projectId: 'matrix', secretValues: [] });

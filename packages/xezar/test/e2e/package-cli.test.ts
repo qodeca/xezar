@@ -9,10 +9,16 @@ import test from 'node:test';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
+import { npmCommand } from '../helpers/platform.ts';
 
 const execFile = promisify(execFileCallback);
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+/** npm through the #963 platform helper: POSIX runs `npm` exactly as before; Windows runs npm's own
+ *  CLI through node, because `npm.cmd` cannot be spawned without a shell (EINVAL). */
+function execNpm(args: string[], options: { cwd: string; maxBuffer: number }) {
+  const c = npmCommand(args);
+  return execFile(c.file, c.args, { ...options, ...(c.shell ? { shell: true } : {}) });
+}
 
 /**
  * Every file in a tree keyed by its relative path, so two states of the same
@@ -50,8 +56,7 @@ test('the release tarball installs and runs the dry-run CLI workflow', { timeout
   try {
     const packDir = join(root, 'pack');
     await mkdir(packDir);
-    const packed = await execFile(
-      npm,
+    const packed = await execNpm(
       ['pack', '--json', '--ignore-scripts', '--pack-destination', packDir],
       { cwd: repoRoot, maxBuffer: 10 * 1024 * 1024 },
     );
@@ -73,8 +78,7 @@ test('the release tarball installs and runs the dry-run CLI workflow', { timeout
     await mkdir(consumerDir);
     await writeFile(join(consumerDir, 'package.json'), '{"private":true}\n', 'utf8');
     const tarball = join(packDir, record.filename);
-    await execFile(
-      npm,
+    await execNpm(
       ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--no-package-lock', tarball],
       { cwd: consumerDir, maxBuffer: 10 * 1024 * 1024 },
     );
@@ -177,6 +181,7 @@ test('the release tarball installs and runs the dry-run CLI workflow', { timeout
     // server.json) to a temp dir — booting the real CLI must never touch the
     // developer's real ~/.xezar.
     const xezHome = join(root, 'xez-home');
+    // win32-r9(#963): exits 1 – step "task" failed: spawn EFTYPE (the dry-run runner spawns the shebang script scripts/mock-claude.mjs directly).
     const run = await execFile(process.execPath, [cliPath, 'run', 'mock:done', '--repo', fixtureRepo], {
       cwd: consumerDir,
       env: { ...process.env, XEZ_DRY_RUN: '1', XEZ_HOME: xezHome },

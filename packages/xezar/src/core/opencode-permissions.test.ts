@@ -1,7 +1,8 @@
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { linkDir } from '../../test/helpers/platform.ts';
 import {
   decideOpencodePermission,
   MAX_PERMISSION_DENIALS,
@@ -61,7 +62,7 @@ describe('external_directory asks', () => {
 
   it('compares symlink-resolved paths on both sides (m2)', () => {
     const link = join(base, 'link-to-wt');
-    symlinkSync(work, link);
+    linkDir(work, link);
     // The root given through the link, the ask through the real path…
     expect(decideOpencodePermission('external_directory', [`${work}/*`], resolveAllowedRoots([link])).reply).toBe(
       'once',
@@ -69,7 +70,7 @@ describe('external_directory asks', () => {
     // …and the other way round, including a tail that does not exist yet.
     expect(reply('external_directory', [join(link, 'src', 'new.ts')])).toBe('once');
     // A link inside the root that points out of it is outside.
-    symlinkSync(join(base, 'wt-evil'), join(work, 'escape'));
+    linkDir(join(base, 'wt-evil'), join(work, 'escape'));
     expect(reply('external_directory', [join(work, 'escape', 'x')])).toBe('reject');
   });
 

@@ -2,8 +2,9 @@ import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
+import { FILE_SYMLINKS, linkDir } from '../../test/helpers/platform.ts';
 
 import { AutomationStore } from '../automations/store.ts';
 import { branchFor, removeWorktree, worktreeDiffStat, worktreePathFor } from '../git-worktree.ts';
@@ -66,7 +67,7 @@ const git = (cwd: string, ...args: string[]): string =>
 function initRepo(root: string): void {
   mkdirSync(root, { recursive: true });
   git(root, 'init', '-q', '-b', 'main');
-  writeFileSync(join(root, 'README.md'), `# ${root.split('/').pop()}\n`);
+  writeFileSync(join(root, 'README.md'), `# ${basename(root)}\n`);
   git(root, 'add', 'README.md');
   git(root, 'commit', '-q', '-m', 'init');
 }
@@ -127,8 +128,9 @@ function buildFixture() {
   writeFileSync(join(alphaWorktree, 'notes.txt'), 'alpha notes\n');
   mkdirSync(join(alphaWorktree, 'sub'));
   writeFileSync(join(alphaWorktree, 'sub', 'deep.txt'), 'alpha deep\n');
-  symlinkSync(join(bravoWorktree, 'secret.txt'), join(alphaWorktree, 'leak.txt'));
-  symlinkSync(rootB, join(alphaWorktree, 'bravo'));
+  // win32-skip(#963): a file symlink needs Developer Mode or elevation on Windows (EPERM); the directory and traversal cases still run
+  if (FILE_SYMLINKS) symlinkSync(join(bravoWorktree, 'secret.txt'), join(alphaWorktree, 'leak.txt'));
+  linkDir(rootB, join(alphaWorktree, 'bravo'));
 
   const alphaInPlace = storeA.createRun({ title: 'alpha in place', workflow: 'quick-task', task: 't', worktree: false, steps: [] });
   storeA.updateRun(alphaInPlace.id, { status: 'running' });
@@ -155,7 +157,7 @@ function buildFixture() {
   const alphaLinked = newRun(storeA, 'alpha linked', { groupId: 'group-linked', variant: 'a' });
   const alphaLinkedMate = newRun(storeA, 'alpha linked mate', { groupId: 'group-linked', variant: 'b' });
   const linkedPath = worktreePathFor(rootA, alphaLinked.id);
-  symlinkSync(bravoWorktree, linkedPath);
+  linkDir(bravoWorktree, linkedPath);
   storeA.updateRun(alphaLinked.id, { status: 'running', worktreePath: linkedPath });
   finished(storeA, alphaLinkedMate.id, '2026-09-02T14:00:00.000Z');
 
@@ -400,14 +402,16 @@ describe('resource ownership (#88)', () => {
     const seen = await attempt(async () => [
       await fileFlow(f.alphaRun.id, join(f.bravoWorktree, 'secret.txt')),
       await fileFlow(f.alphaRun.id, dotdot),
-      await fileFlow(f.alphaRun.id, 'leak.txt'),
+      // win32-skip(#963): a file symlink needs Developer Mode or elevation on Windows (EPERM); the directory and traversal cases still run
+      ...(FILE_SYMLINKS ? [await fileFlow(f.alphaRun.id, 'leak.txt')] : []),
       await fileFlow(f.alphaRun.id, 'bravo/README.md'),
       await fileFlow(f.alphaRun.id, '.git/config'),
       await fileFlow(f.alphaRun.id, 'sub\\..\\..\\x'),
     ]);
     const forbidden = { ok: false, code: 'forbidden_path', message: expect.stringContaining('path not allowed') };
-    expect(seen.response).toEqual(Array(6).fill(forbidden));
-    expect(seen.audit).toEqual(Array(6).fill({ check: 'file', code: 'forbidden_path' }));
+    const refused = FILE_SYMLINKS ? 6 : 5;
+    expect(seen.response).toEqual(Array(refused).fill(forbidden));
+    expect(seen.audit).toEqual(Array(refused).fill({ check: 'file', code: 'forbidden_path' }));
     expect(seen.eventsA).toEqual([]);
     expect(seen.log).toEqual([]);
   });
@@ -553,7 +557,7 @@ describe('resource ownership (#88)', () => {
 
   it('binds to the project, not to the spelling of its root (the `default` alias problem)', () => {
     const alias = join(f.base, 'alpha-alias');
-    symlinkSync(f.rootA, alias);
+    linkDir(f.rootA, alias);
     const aliased = ownershipScope({ root: alias, store: f.storeA, automationStore: f.autoStoreA });
     expect(aliased.root).toBe(scope.root);
     const cursor = sealCursor(aliased, 'tasks', 'p2');
@@ -659,6 +663,7 @@ describe('resource ownership — an absent worktree passes, an unreadable one fa
     try {
       // `lstat(<data>/worktrees/<id>)` now fails with ENOTDIR, not ENOENT: unknown is never ours.
       writeFileSync(join(projectDataDir(root), 'worktrees'), 'not a directory\n');
+      // win32-r9(#963): Windows lstat under a file answers ENOENT, not ENOTDIR, so the group is admitted (ok: true) instead of refused
       expect(await ownGroup(scope, 'group-r')).toMatchObject({ ok: false, code: 'not_found' });
     } finally {
       store.flush();

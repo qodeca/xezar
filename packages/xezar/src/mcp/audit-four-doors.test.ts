@@ -25,6 +25,7 @@ import { runBridge } from './bridge.ts';
 import { resolveMcpTarget, startMcpService } from './index.ts';
 import { LineFramer, encodeFrame, type McpToolResult } from './ipc.ts';
 import { tools } from './tools/index.ts';
+import { shortTmpRoot, onWindows } from '../../test/helpers/platform.ts';
 
 /**
  * #306 part 2 — THE SAVED FOUR-DOOR HARNESS (spec
@@ -65,7 +66,7 @@ const saved = {
 
 // Under /tmp, not the per-worker sandbox: the MCP socket path must stay under 104 bytes on macOS.
 const tmp = (prefix: string): string => {
-  const dir = realpathSync(mkdtempSync(`/tmp/${prefix}`));
+  const dir = realpathSync(mkdtempSync(join(shortTmpRoot(), prefix)));
   tempDirs.push(dir);
   return dir;
 };
@@ -180,7 +181,8 @@ interface Expected {
 }
 
 describe('the saved four-door audit harness (#306 part 2)', () => {
-  it('ui and mcp write one applied and one refused record per family, with the same action ids', async () => {
+  // win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – this opens the project MCP socket
+  it.skipIf(onWindows)('ui and mcp write one applied and one refused record per family, with the same action ids', async () => {
     const c = await cockpit();
     const handle = await startMcpService({ projectId: c.id, version: VERSION, service: c.app, store: c.store });
     closers.push(() => handle.close());
@@ -506,7 +508,8 @@ describe('the saved four-door audit harness (#306 part 2)', () => {
    * `handoff_git`, `applied` (its refusal is not an MCP error). Named break `B-573-NOT-FOUND`:
    * remove `notFoundRefusalOf` from the door and every case fails.
    */
-  describe('mcp: a target this project does not have is refused as not_found (#573)', () => {
+  // win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – this opens the project MCP socket
+  describe.skipIf(onWindows)('mcp: a target this project does not have is refused as not_found (#573)', () => {
     const ghost = 'no-such-run-0000';
     const version = 'rev1:run:no-such-run-0000:1:0123456789ab';
     const cases: Array<[tool: string, args: Record<string, unknown>, action: string]> = [
@@ -575,7 +578,8 @@ describe('the saved four-door audit harness (#306 part 2)', () => {
       ['task_create', { action: 'start_from_inbox', todoId: 'any-inbox-item' }, 'run.startFromInbox', 'conflict'],
     ];
 
-    it.each(inboxOff)('inbox off: %s %o → %s', async (tool, args, action, reason) => {
+    // win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – this opens the project MCP socket
+    it.skipIf(onWindows).each(inboxOff)('inbox off: %s %o → %s', async (tool, args, action, reason) => {
       process.env.XEZ_FOLLOWUPS = '0';
       const c = await cockpit();
       const handle = await startMcpService({ projectId: c.id, version: VERSION, service: c.app, store: c.store });
@@ -587,7 +591,8 @@ describe('the saved four-door audit harness (#306 part 2)', () => {
       expect(all[0]).toMatchObject({ origin: 'mcp', action, outcome: { status: 'refused', reason } });
     });
 
-    it('execution_control: a state the action does not allow, and a hand-off refused by policy', async () => {
+    // win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – this opens the project MCP socket
+    it.skipIf(onWindows)('execution_control: a state the action does not allow, and a hand-off refused by policy', async () => {
       const c = await cockpit();
       const handle = await startMcpService({ projectId: c.id, version: VERSION, service: c.app, store: c.store });
       closers.push(() => handle.close());
@@ -628,7 +633,8 @@ describe('the saved four-door audit harness (#306 part 2)', () => {
     });
   });
 
-  it('a caller-supplied origin or actor never changes a record', async () => {
+  // win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – this opens the project MCP socket
+  it.skipIf(onWindows)('a caller-supplied origin or actor never changes a record', async () => {
     const c = await cockpit();
     const handle = await startMcpService({ projectId: c.id, version: VERSION, service: c.app, store: c.store });
     closers.push(() => handle.close());

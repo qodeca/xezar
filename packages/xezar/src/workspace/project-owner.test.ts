@@ -4,6 +4,7 @@ import { existsSync, ftruncateSync, mkdirSync, mkdtempSync, readFileSync, readdi
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { onWindows } from '../../test/helpers/platform.ts';
 
 // Passthrough, so one case can interleave a peer's reap inside a renewal write.
 vi.mock('node:fs', async (importOriginal) => {
@@ -400,7 +401,8 @@ describe('ProjectOwnership — one owner per project (#99)', () => {
       const owner = ownership({ dataDir, now: clock.now });
       const token = tokenOf(await owner.acquire('leader'));
       const path = join(dataDir, OWNER_CLAIM_DIR, claims(dataDir)[0]!);
-      expect(statSync(path).mode & 0o777).toBe(0o600);
+      // win32-skip(#963): Windows ignores POSIX mode bits
+      if (!onWindows) expect(statSync(path).mode & 0o777).toBe(0o600);
       clock.advance(OWNER_RENEW_INTERVAL_MS);
       owner.renewalTick();
       const body = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;

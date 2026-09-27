@@ -37,6 +37,7 @@ import {
 import { McpServiceAdapter } from './service-adapter.ts';
 import { McpScopeError, bindMcpSession } from './session-binding.ts';
 import { tools } from './tools/index.ts';
+import { onWindows } from '../../test/helpers/platform.ts';
 
 /**
  * #115 — the ISOLATION half of the whole-feature acceptance suite (requirements § 9): A-02, A-03,
@@ -131,7 +132,8 @@ function scopeA(world: AbWorld, audit: OwnershipAuditEntry[]): OwnershipScope {
   return ownershipScope({ root: world.a.root, store: world.a.store, automationStore: world.a.automations }, (e) => audit.push(e));
 }
 
-describe.skipIf(process.platform === 'win32')('#115 isolation acceptance — A/B world', { timeout: 120_000 }, () => {
+// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – every test here opens the project MCP socket (observed: "not supported on Windows yet" in the world setup)
+describe.skipIf(onWindows)('#115 isolation acceptance — A/B world', { timeout: 120_000 }, () => {
   // ---- A-02: bound to A, B supplied through a parameter, an alias or call content -------------
 
   describe('A-02 — no variation changes scope, reveals B or acts on B', () => {

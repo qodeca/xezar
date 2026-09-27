@@ -22,6 +22,7 @@ import { LineFramer, encodeFrame, type McpToolResult } from './ipc.ts';
 import { OperationReceiptStore, RECEIPT_JOURNAL_FILE } from './operation-receipts.ts';
 import type { ServiceDispatch } from './service-adapter.ts';
 import { tools } from './tools/index.ts';
+import { onWindows } from '../../test/helpers/platform.ts';
 
 /**
  * #264 — A REPLAY RETURNS THE FIRST ANSWER AND REPEATS NO EFFECT, for every mutating tool.
@@ -219,7 +220,8 @@ async function queuedTask(client: Client, operationId: string, prompt = 'a brief
 const versionOf = async (client: Client, taskId: string): Promise<string> =>
   body(await client.call('task_read', { view: 'task', taskId })).version as string;
 
-describe('#264 — a replay under the same operationId returns the first answer and repeats no effect', () => {
+// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – every test here starts the project MCP service on its socket
+describe.skipIf(onWindows)('#264 — a replay under the same operationId returns the first answer and repeats no effect', () => {
   it('execution_control: a resent message is queued ONCE, and the resend answers with the first call’s receipt', async () => {
     const c = await cockpit();
     const rec = recording(c.app);
@@ -353,7 +355,8 @@ describe('#264 — a replay under the same operationId returns the first answer 
 
 // #536: known refusals must remain rejected across retries and service reopen.
 // The companion controls pin non-repetition independently of receipt classification.
-describe('#532 structured stale refusal through the composed MCP door', () => {
+// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – every test here starts the project MCP service on its socket
+describe.skipIf(onWindows)('#532 structured stale refusal through the composed MCP door', () => {
   for (const action of ['cancel', 'send_message'] as const) {
     async function scenario() {
       const c = await cockpit();
@@ -404,7 +407,8 @@ describe('#532 structured stale refusal through the composed MCP door', () => {
  * it pins the behaviour the fix must NOT change, that a call which really runs the effect still
  * writes its one row.
  */
-describe('#743 — a replayed operation writes no second audit row', () => {
+// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – every test here starts the project MCP service on its socket
+describe.skipIf(onWindows)('#743 — a replayed operation writes no second audit row', () => {
   const auditRecords = (dataDir: string): AuditActionRecord[] => {
     const path = join(dataDir, AUDIT_TRAIL_FILE);
     if (!existsSync(path)) return [];

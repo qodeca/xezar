@@ -164,10 +164,10 @@ describe('RunManager — task-scoped agent TMPDIR (#785)', () => {
 describe('agentDirectories (#785)', () => {
   it('grants the run’s temp directory alongside the run-state folder', () => {
     expect(agentDirectories('/repo', '/data', { TMPDIR: '/data/tmp/run-1' }))
-      .toEqual(['/data/runs', '/data/tmp/run-1']);
+      .toEqual([join('/data', 'runs'), '/data/tmp/run-1']);
   });
 
   it('is exactly the pre-#785 list when the run has no temp directory', () => {
-    expect(agentDirectories('/repo', '/data', {})).toEqual(['/data/runs']);
+    expect(agentDirectories('/repo', '/data', {})).toEqual([join('/data', 'runs')]);
   });
 });

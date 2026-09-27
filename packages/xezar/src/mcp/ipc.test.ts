@@ -9,7 +9,7 @@ describe('mcpSocketLocation (D-01 § 1.3–1.4)', () => {
   const project = { id: 'shop', root: '/work/shop' };
 
   it('is <XEZ_HOME>/ipc/<projectId>.sock when it fits', () => {
-    expect(mcpSocketLocation(project, { XEZ_HOME: '/h' }, 'darwin')).toEqual({ kind: 'socket', path: '/h/ipc/shop.sock' });
+    expect(mcpSocketLocation(project, { XEZ_HOME: '/h' }, 'darwin')).toEqual({ kind: 'socket', path: join('/h', 'ipc', 'shop.sock') });
   });
 
   it('falls back to 12 hex characters of SHA-256(root) past the OS limit', () => {

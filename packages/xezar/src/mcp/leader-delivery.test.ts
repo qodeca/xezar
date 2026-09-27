@@ -13,6 +13,7 @@ import { LEADER_EVENTS_TOOL_NAME, LeaderDelivery, type LeaderDeliveryOptions, le
 import { textResult } from './tool.ts';
 import { leaderEventsTool } from './tools/leader-events.ts';
 import { type FakeOpenCodeSession, fakeOpenCodeSession } from './leader-delivery.testkit.ts';
+import { shortTmpRoot } from '../../test/helpers/platform.ts';
 
 /**
  * #309 — the two answers `LeaderDelivery` gives about things it did not choose: a session that turns
@@ -30,7 +31,7 @@ const journals: EventJournal[] = [];
 const deliveries: LeaderDelivery[] = [];
 
 const tmp = (): string => {
-  const dir = realpathSync(mkdtempSync('/tmp/xzld-'));
+  const dir = realpathSync(mkdtempSync(join(shortTmpRoot(), 'xzld-')));
   dirs.push(dir);
   return dir;
 };
@@ -1174,7 +1175,7 @@ describe('attaching Codex (#374)', () => {
   });
 
   it('a missing daemon is refused by the REAL connector, and the log names the reason, not the path', async () => {
-    const home = realpathSync(mkdtempSync('/tmp/xzld-codex-'));
+    const home = realpathSync(mkdtempSync(join(shortTmpRoot(), 'xzld-codex-')));
     dirs.push(home);
     const { delivery: made, warnings } = codexDelivery({ home });
     await expect(made.act({ action: 'attach', client: 'codex' })).resolves.toMatchObject({ ok: false, error: expect.stringContaining('cannot reach') });
@@ -1251,7 +1252,7 @@ describe('attaching Codex (#374)', () => {
   });
 
   it('the REAL connector’s refusals carry their reason: a missing socket gets the app-server fix, an unreadable home the home fix', async () => {
-    const home = realpathSync(mkdtempSync('/tmp/xzld-codex-'));
+    const home = realpathSync(mkdtempSync(join(shortTmpRoot(), 'xzld-codex-')));
     dirs.push(home);
     const withHome = codexDelivery({ home }).delivery;
     await withHome.act({ action: 'attach', client: 'codex' });

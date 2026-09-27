@@ -28,6 +28,7 @@ import { toolListing, type McpToolContext, type McpToolResult } from './tool.ts'
 import { handoffGitTool, QUALITY_BLOCKER_NEXT_ACTION } from './tools/handoff-git.ts';
 import { tools } from './tools/index.ts';
 import { withOperationId } from './tools/operation-id.testkit.ts';
+import { onWindows } from '../../test/helpers/platform.ts';
 
 /**
  * #116 — the PARITY AND COLLABORATION half of the whole-feature acceptance suite (requirements § 9):
@@ -424,9 +425,8 @@ function addForgeRemote(w: AbWorld): void {
   git(w.a.root, 'config', `url.${bare}.pushInsteadOf`, GITHUB_REMOTE);
 }
 
-const isWindows = process.platform === 'win32';
-
-describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B world', { timeout: 180_000 }, () => {
+// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – every test here opens the project MCP socket (observed: "not supported on Windows yet" in the world setup)
+describe.skipIf(onWindows)('#116 parity and collaboration acceptance — A/B world', { timeout: 180_000 }, () => {
   // =============================================================================================
   // A-06 — choose workflow, runner and model; create; edit a queued brief; organise; variants.
   // =============================================================================================
