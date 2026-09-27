@@ -82,13 +82,13 @@ That kit-onboarded project keeps its model and lane routing in `.xezar/routing.j
 validates the file, `--rows` lists classification rows without lane data,
 `node .xezar/checks/route.mjs <row id>` prints that row's lane order, and `--table` prints a human
 view. `--file <path>` is only for onboarding before the first
-merge, and labels its output `source=unmerged`. Earlier kit versions used the prose
-routing guidance form. The kit's account-limits table records each runner/login pair as `ok`,
+merge, and labels its output `source=unmerged`. The kit's account-limits table records each runner/login pair as `ok`,
 `unknown`, or `out`, with its reset time; the leader reads it as described in the kit's routing
 guide, and it will supply xezar's agent-quota status when that
 status ships.
 
-xezar 0.19.0 is the minimum engine for xezar-skills 3.0.0; projects that must stay on 0.18 stay on xezar-skills 2.1.1.
+xezar supports projects onboarded with xezar-skills 3.0.3, which needs xezar 0.19.0 or later. A project
+still on kit 2.x moves to 3.0.3 first.
 
 From 0.19.0, `xezar lease gates --probe` is the supported check for gate serialisation: it prints one
 JSON line such as `{"lease":{"gates":true},"slots":1}` and exits 0 when the lease is available.

@@ -86,32 +86,19 @@ On a fresh project's Tasks page, xezar offers a guided setup: "New to this proje
 
 The button creates an ordinary task from the built-in `project-setup` workflow. It appears in the task list, and you can open or cancel it like any other task. Nothing starts it except your click or a project leader's request.
 
-**What it inspects.** The task first reads what is already in the project: existing guidance, conventions and decisions, the agent clients available, Git metadata when there is a repository, and any checks the project already defines. It adapts to that material and never replaces a policy the project already states.
+**What it runs.** The task runs the `xez-onboard-opinionated` skill from xezar-skills 3.0.3, the default team-skills source. That skill sets up the whole project around xezar: a Claude Code project leader, workflows and role skills, gates, labels and branch protection. The same skill also runs from the kit's [one-prompt bootstrap](https://github.com/qodeca/xezar-skills/blob/main/docs/bootstrap-prompt.md).
 
-**What it asks.** It asks only what it cannot tell from the project itself:
+**Its limits.** Before it touches anything, it checks three limits: Claude Code only, GitHub only, and clean projects only – it never merges into a setup the project already has. A project outside them gets a stop that writes nothing and names the alternative.
 
-1. Your domain: software, a campaign or marketing work, research, or something else.
-2. The outputs you want.
-3. Whether you work independently or with a project leader.
-4. Which agent client to configure, only when that is ambiguous.
-5. A base branch, only in a Git project where the intent is ambiguous.
-6. Which team-skills source to use: the default, a custom one, or none.
+**What it asks.** It first reads the repository: the branching model, the checks the build files declare, and the agent tools, accounts and models on this machine. It then shows what it found as proposals for you to confirm or correct, never as decisions already taken, and asks about routing: which tool and model does which kind of work. Your answers are saved as you give them, so an interrupted setup resumes where it stopped.
 
-Each question offers two options, the recommended one first, and you can always type your own answer. A required question you leave unanswered blocks the writes that depend on it.
+**The preview.** Before it writes anything, it shows every file it will create, delete or leave alone. You approve the whole set or nothing. If a file changes after the preview, that preview is refused and a new one is needed.
 
-**The preview.** Before it writes anything, the task shows a per-file preview of every change. It writes only what you accept, and it keeps your own content and unrelated lines as they are. If a file changes after the preview, that preview is refused and a new one is needed.
+**The apply step.** It commits the approved files on a setup branch and opens one pull request. It merges that pull request only when you say so, and only when its checks are green. After the merge it protects the base branch, runs a small smoke test to prove a task can run, and changes engine settings for this project only. It writes nothing under `~/.xezar/`.
 
-**The apply step.** Like any task, a setup task in a Git project works in its own isolated working copy (Git worktree) by default, so your checkout stays untouched until you integrate the result — see [Worktrees and Git](03-worktrees-and-git.md). In a folder without Git it works in place and keeps the originals under `.local/` so you can recover them. It writes only project files:
+**The report.** The task ends with a report: what changed, which checks passed, failed or were not run, what it did not do and why, and what is left for you. Running the leader is covered in [MCP project leader](13-mcp-leader.md). A prepared file alone does not prove a leader is connected.
 
-- `.xezar/config.json`, with real supported settings only (see [Project kit](15-project-kit.md#to-add-optional-project-configuration)).
-- `.xezar/pipeline/config.json`, only if you opt in (see [Project kit](15-project-kit.md#to-add-an-optional-agent-pipeline)).
-- One agent instruction file for the project, such as `AGENTS.md` or `CLAUDE.md`.
-- In a Git project, a `.local/` entry in the root `.gitignore`.
-- If you work with a project leader, that client's project MCP file: `.mcp.json` for Claude Code, `.codex/config.toml` for Codex, or `.pi/mcp.json` for pi.
-
-It never changes your home-folder settings, trusts a project, signs you in, installs an adapter or attaches a leader for you.
-
-**The report.** The task ends with a report: which files changed, which checks passed, failed, were unavailable or were not run, what it did not do and why, and a numbered list of what is left for you. That list can include integrating the change, signing in to a client, starting it and attaching a project leader. Running a leader is covered in [MCP project leader](13-mcp-leader.md). A prepared file alone does not prove a leader is connected.
+**Without the skill.** When the skill cannot be loaded – offline, or with no team-skills source – the task runs xezar's own built-in setup prompt instead. That prompt only inspects the project, asks what it cannot tell, shows a per-file preview, writes what you accept and reports the result.
 
 ## To re-check after an update
 
@@ -126,19 +113,18 @@ This history lives in `<project>/.local/xezar/onboarding-state.json`. It is disp
 
 A project leader sees the same state through the MCP and can start the same setup or re-check task; see [MCP project leader](13-mcp-leader.md).
 
-For a fuller, opinionated setup on a clean GitHub project with a Claude Code leader – workflows,
-role skills, gates, labels and branch protection – xezar-skills' `xez-onboard-opinionated` skill
-does the same job end to end; see
-its [one-prompt bootstrap](https://github.com/qodeca/xezar-skills/blob/main/docs/bootstrap-prompt.md).
-In a project that kit onboards, `.xezar/routing.json` (schema `.xezar/routing.schema.json`) holds model
+In a project that xezar-skills onboards, `.xezar/routing.json` (schema `.xezar/routing.schema.json`) holds model
 and lane routing. Its leader uses `node .xezar/checks/route.mjs --check` to validate it, `--rows` for
 classification rows without lane data, `node .xezar/checks/route.mjs <row id>` for that row's lane
 order, and `--table` for a human
 view; `--file <path>` is onboarding-only before the first merge and marks output `source=unmerged`.
 The kit's account-limits table records each runner/login budget as `ok`, `unknown`, or `out` with its
 reset time; the kit's routing guide tells the leader to read it. Xezar reports that same status
-natively – see [Settings reference](10-settings-reference.md#to-read-and-refresh-plan-limits). Earlier
-kit versions used prose routing guidance.
+natively – see [Settings reference](10-settings-reference.md#to-read-and-refresh-plan-limits).
+
+xezar supports projects onboarded with xezar-skills 3.0.3, which needs xezar 0.19.0 or later. A project
+still on kit 2.x moves to 3.0.3 first; the kit's
+[upgrade notes](https://github.com/qodeca/xezar-skills/blob/main/UPGRADE_NOTES.md) list the steps.
 
 ## To upgrade
 

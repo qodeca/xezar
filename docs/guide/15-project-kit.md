@@ -57,7 +57,7 @@ A local definition can therefore hide a team skill with the same name. Missing d
 
 ## To add optional project configuration
 
-`.xezar/config.json` holds this project's own choices, such as the base branch or the default agent. It travels with the project, so everyone who opens the project gets the same choices. You do not need it to start: a missing file behaves like the defaults below, and an unreadable or invalid file falls back to them without blocking startup. Add only the keys you want to change. [Guided setup](01-getting-started.md#to-let-an-agent-set-up-this-project-optional) writes only these real keys; your domain, outputs and way of working go into the instruction file instead.
+`.xezar/config.json` holds this project's own choices, such as the base branch or the default agent. It travels with the project, so everyone who opens the project gets the same choices. You do not need it to start: a missing file behaves like the defaults below, and an unreadable or invalid file falls back to them without blocking startup. Add only the keys you want to change. [Guided setup](01-getting-started.md#to-let-an-agent-set-up-this-project-optional) writes only these real keys.
 
 The [project configuration schema](../../packages/xezar/src/config.ts) defines these keys:
 
@@ -99,21 +99,25 @@ Its keys and defaults are listed in the [Configuration reference](11-configurati
 
 ## To add an optional agent pipeline
 
-A software project can add an agent delivery pipeline: a configuration file, `.xezar/pipeline/config.json`, that describes the project's delivery stages. Most projects do not need one, and xezar works without it.
+A software project on GitHub can add a full agent delivery pipeline: a project leader on Claude Code, workflows with their role skills, gates, labels and branch protection. Most projects do not need one, and xezar works without it.
 
-To add one, accept the pipeline option during [guided setup](01-getting-started.md#to-let-an-agent-set-up-this-project-optional). Setup then uses the public `xez-setup-agent-pipeline` skill from the default team-skills source, `qodeca/xezar-skills`. That skill, not xezar, owns the file's shape.
+The pipeline comes from xezar-skills 3.0.3, the default team-skills source (`qodeca/xezar-skills`). Its `xez-onboard-opinionated` skill installs it: run [guided setup](01-getting-started.md#to-let-an-agent-set-up-this-project-optional), or start the skill from the kit's [one-prompt bootstrap](https://github.com/qodeca/xezar-skills/blob/main/docs/bootstrap-prompt.md). It works on clean GitHub projects with a Claude Code leader, and stops without writing anything on any other project.
 
 Setup itself uses the public `xez-onboard-opinionated` skill (Xezar Skills 3.0.3) from your team-skills source; it is the only setup xezar offers. A project it has finished carries its install record, `.xezar/onboarding.json`, and xezar reports any project with that record as set up – also when the skill ran outside the cockpit – without offering first-time setup or prompting for a re-check (Re-check now stays available). xezar records which release of the setup templates it bundles, but only to know when to offer a re-check; it does not load the skill at that release. A project last checked against an older kit is offered one re-check, which runs the 3.0.3 onboarding; older kits' own setup skills are no longer started.
 
-xezar also bundles its own setup prompt as a fallback, so setup still runs offline or without a team-skills source. That prompt only inspects the project, asks what it cannot tell, shows a per-file preview, writes what you accept and reports the result. It has no pipeline step of its own.
+The kit it installs has 38 workflows under `.xezar/workflows/`, each with its role skill under `.xezar/skills/`, plus the project's checks, `.xezar/routing.json` for model and lane routing, and the pipeline configuration under `.xezar/pipeline/`. The kit, not xezar, owns the shape of those files. After setup they are ordinary project files that you review and version with the rest of the project.
 
-To skip it, decline the option. Setup then writes no pipeline file, and the rest of setup still applies. You can add the pipeline later with another setup or re-check task.
+xezar records which reviewed revision of the setup templates it bundles, but only to know when to offer a re-check; it does not load the skill at that revision.
+
+xezar also bundles its own setup prompt as a fallback, so setup still runs offline or without a team-skills source. That prompt only inspects the project, asks what it cannot tell, shows a per-file preview, writes what you accept and reports the result. It installs no pipeline.
+
+xezar supports projects onboarded with xezar-skills 3.0.3, which needs xezar 0.19.0 or later. A project still on kit 2.x moves to 3.0.3 first; the kit's [upgrade notes](https://github.com/qodeca/xezar-skills/blob/main/UPGRADE_NOTES.md) list the steps.
 
 ## Related settings / env / config
 
 - `.xezar/workflows/` and `.xezar/skills/`: project-maintained workflow and instruction files.
 - `.xezar/config.json`: optional project settings; [schema](../../packages/xezar/src/config.ts).
-- `.xezar/pipeline/config.json`: optional agent-pipeline configuration added by [guided setup](01-getting-started.md#to-let-an-agent-set-up-this-project-optional); shape owned by the `xez-setup-agent-pipeline` skill.
+- `.xezar/pipeline/`, `.xezar/routing.json`: optional agent-pipeline files installed by [guided setup](01-getting-started.md#to-let-an-agent-set-up-this-project-optional); shape owned by xezar-skills.
 - `~/.xezar/config.json`: separate workspace settings and project registry.
 - `XEZ_REVIEW_GATE`, `XEZ_SKILLS_AUTO_UPDATE`, `XEZ_HOME`: see the [environment contract](../../.env.example), including stored-setting precedence.
 
