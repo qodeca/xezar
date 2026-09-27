@@ -1,11 +1,12 @@
 import { spawn, execFileSync, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
-import { existsSync, openSync, closeSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, openSync, closeSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { linkDir } from '../../test/helpers/platform.ts';
 import { ownProjectData } from './project-writer.ts';
 import { localMachineId } from '../machine-identity.ts';
 import { RunStore } from './store.ts';
@@ -83,7 +84,7 @@ function peer(pid: number, body = JSON.stringify({ pid, host: hostname() })): st
 it('keeps one process claim across repeat access and canonical symlink aliases', () => {
   ownProjectData(root);
   const alias = `${root}-alias`;
-  symlinkSync(root, alias, process.platform === 'win32' ? 'junction' : 'dir');
+  linkDir(root, alias);
   try {
     ownProjectData(alias);
     expect(readdirSync(join(root, 'writer-claims'))).toHaveLength(1);

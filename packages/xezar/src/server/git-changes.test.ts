@@ -443,10 +443,13 @@ describe('readWorktreePath — Files tab browsing', () => {
     expect((await readWorktreePath(dir, 'a\0.txt')).kind).toBe('invalid');
     // POSIX links the system directory; Windows junctions to the test's own outside directory (#963).
     const outsideTarget = onWindows ? mkdtempSync(join(tmpdir(), 'xez-outside-')) : '/etc';
-    linkDir(outsideTarget, join(dir, 'link'));
-    expect((await readWorktreePath(dir, 'link')).kind).toBe('invalid');
-    expect((await readWorktreePath(dir, 'nope.txt')).kind).toBe('missing');
-    if (onWindows) rmSync(outsideTarget, { recursive: true, force: true });
+    try {
+      linkDir(outsideTarget, join(dir, 'link'));
+      expect((await readWorktreePath(dir, 'link')).kind).toBe('invalid');
+      expect((await readWorktreePath(dir, 'nope.txt')).kind).toBe('missing');
+    } finally {
+      if (onWindows) rmSync(outsideTarget, { recursive: true, force: true });
+    }
   });
 
   it('rejects reads THROUGH an intermediate symlinked directory (#blocker-symlink-traversal)', async () => {

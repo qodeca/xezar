@@ -17,9 +17,9 @@ import {
 } from './state.ts';
 import { freshServerState } from './types.ts';
 
-
 /** A live process that is not this worker: pid 1 on POSIX; Windows has no pid 1, so the parent (#963). */
 const liveForeignPid = onWindows ? process.ppid : process.pid === 1 ? 2 : 1;
+
 describe('server state', () => {
   let home: string;
   const original = process.env.XEZ_HOME;

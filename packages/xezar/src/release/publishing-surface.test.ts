@@ -131,7 +131,6 @@ describe('publishing surface', () => {
       execFileSync(npm.file, npm.args, {
         cwd: join(repoRoot, 'packages', 'xezar'),
         encoding: 'utf8',
-        ...(npm.shell ? { shell: true } : {}),
       }),
     ) as Array<{ files: Array<{ path: string }> }>;
     const runFiles = ['stryker.config.mjs', 'vitest.mutation.config.ts'];

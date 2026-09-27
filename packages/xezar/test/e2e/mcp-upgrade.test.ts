@@ -21,7 +21,7 @@ const NO_MCP_SOCKET = onWindows
  *  CLI through node, because `npm.cmd` cannot be spawned without a shell (EINVAL). */
 function execNpm(args: string[], options: { cwd: string; maxBuffer: number }) {
   const c = npmCommand(args);
-  return execFile(c.file, c.args, { ...options, ...(c.shell ? { shell: true } : {}) });
+  return execFile(c.file, c.args, options);
 }
 
 /**

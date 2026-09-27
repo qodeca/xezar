@@ -110,6 +110,8 @@ describe('a headless run survives its own first-team-skills wait (#793)', () => 
       // Both pinned at the fixture: single-project mode never opens `~/.xezar`, and the child
       // must not reach the developer's real home for either half.
       HOME: home,
+      // os.homedir() reads USERPROFILE, not HOME, on Windows (#963).
+      ...(onWindows ? { USERPROFILE: home } : {}),
       XEZ_HOME: home,
       // A real run, deliberately: `XEZ_DRY_RUN=1` passes a ZERO bound and never reaches the wait
       // this case exists for. The backend is mocked at the binary instead, so no token is spent.

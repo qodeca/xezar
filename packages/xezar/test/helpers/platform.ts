@@ -40,15 +40,17 @@ function probeFileSymlink(): boolean {
 export const FILE_SYMLINKS: boolean = !onWindows || probeFileSymlink();
 
 /** POSIX: `npm` from PATH, unchanged. Windows: npm's own CLI through node (the
- *  `scripts/check-pack.mjs` pattern) – `npm.cmd` cannot be spawned without a shell.
- *  Call sites spread `shell` only when set, so the POSIX options object stays byte-identical:
- *  `execFile(c.file, c.args, { ...opts, ...(c.shell ? { shell: true } : {}) })`. */
-export function npmCommand(args: readonly string[]): { file: string; args: string[]; shell?: true } {
+ *  `scripts/check-pack.mjs` pattern) – `npm.cmd` cannot be spawned without a shell, and a shell
+ *  fallback would re-parse every argument, so a missing npm CLI is an error instead. */
+export function npmCommand(args: readonly string[]): { file: string; args: string[] } {
   if (!onWindows) return { file: 'npm', args: [...args] };
   const fromEnv = process.env.npm_execpath;
   // Only npm's own CLI counts: under npx, pnpm or yarn the variable names something else.
   if (fromEnv && basename(fromEnv) === 'npm-cli.js') return { file: process.execPath, args: [fromEnv, ...args] };
   const bundled = join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
   if (existsSync(bundled)) return { file: process.execPath, args: [bundled, ...args] };
-  return { file: 'npm.cmd', args: [...args], shell: true }; // last resort
+  throw new Error(
+    `npmCommand: npm's CLI was not found – npm_execpath does not name npm-cli.js (${fromEnv ?? 'unset'}) ` +
+      `and ${bundled} does not exist`,
+  );
 }

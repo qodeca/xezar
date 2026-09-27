@@ -26,6 +26,12 @@ test('win32: temp root is tmpdir() and npm runs through node', { skip: onWindows
   assert.equal(Object.hasOwn(c, 'shell'), false);
 });
 
+test('win32 CI: file symlinks are available, so no FILE_SYMLINKS-gated suite is silently skipped', { skip: onWindows && process.env.CI ? false : 'Windows CI only' }, () => {
+  // GitHub's Windows runners run elevated; a false here means every FILE_SYMLINKS-gated suite
+  // skipped on CI without anyone seeing it.
+  assert.equal(FILE_SYMLINKS, true);
+});
+
 test('npmCommand copies its arguments instead of aliasing them', () => {
   const input = ['pack', '--dry-run'] as const;
   const c = npmCommand(input);

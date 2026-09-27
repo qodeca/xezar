@@ -121,6 +121,15 @@ WSL works today: inside it, follow the Linux steps above. To work on Windows its
 Some suites still fail or skip on Windows today, mainly because the xezar MCP bridge needs Unix
 sockets. The Windows CI runs report them without blocking a merge.
 
+Every such test carries one of two markers, so the gaps stay searchable:
+
+- `win32-skip(#963): <reason>` – the test cannot run on Windows for an environment reason, stated
+  inline (for example, a POSIX-only tool). The test is skipped there.
+- `win32-r9(#963): <symptom>` – the test runs on Windows and fails because of a known product bug
+  tracked in #963. It is not skipped, so the fix turns it green.
+
+A platform skip without a marker is not allowed.
+
 ### In-checkout scripts
 
 ```bash
