@@ -1265,7 +1265,7 @@ Registration metadata identifies the existing handler guards; valid fixtures rea
 
 ### Reuse for #306 QA (no browser required)
 
-1. Use a POSIX checkout with Node 20+ and run `npm ci`.
+1. Use a POSIX checkout with Node 22+ and run `npm ci`.
 2. Run `npm run test:server-mode` (builds `packages/xezar/dist/index.js` first).
 3. Require all named `PASS` lines, including exact-PID teardown, and exit status zero.
 4. Run it again to check fresh homes, OS-assigned ports and cleanup.

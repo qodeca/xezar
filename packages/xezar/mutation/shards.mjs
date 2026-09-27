@@ -167,7 +167,8 @@ function literalPrefix(glob) {
 /**
  * Every regular file below `dir`, as absolute paths. A plain recursion rather than
  * `readdirSync(…, { recursive: true })`, whose `Dirent.parentPath` only exists from Node 20.12
- * and whose predecessor `Dirent.path` is deprecated — the repository's floor is Node 20.
+ * and whose predecessor `Dirent.path` is deprecated — kept as a plain recursion; the repository's
+ * floor is now Node 22.
  * @param {string} dir
  * @returns {string[]}
  */
