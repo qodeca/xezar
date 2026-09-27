@@ -9,6 +9,11 @@
 
 ## ✨ Features
 
+- ✨ **A project onboarded outside the cockpit reads as set up.** When a project carries the 3.0.3
+  install record, `.xezar/onboarding.json`, the cockpit's Project setup card and the MCP's
+  onboarding answer report it as set up and offer neither first-time setup nor a re-check. A
+  missing or malformed record changes nothing.
+
 - ✨ **A 3.0.3 project can file issues through its own kit role.** The issue-filing check now
   accepts any skill named by the `-issue-create` convention – the project's own role first, then
   the shared `xez-issue-create` – or the project's `issue-filing` workflow, and reports the skill a

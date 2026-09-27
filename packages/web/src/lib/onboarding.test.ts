@@ -150,6 +150,14 @@ describe('the Settings card', () => {
     expect(setupBody(status({ state: 'unknown' }))).toContain('it cannot tell your own edits')
   })
 
+  it('a project set up outside the cockpit reads as set up, and never claims a check it did not run', () => {
+    const installed = status({ state: 'set-up', provenance: 'recorded' })
+    expect(setupHeading(installed)).toBe('Set up')
+    expect(setupBody(installed)).toContain('records a finished setup')
+    expect(setupBody(installed)).not.toMatch(/last check finished|undefined/i)
+    expect(setupMode(installed)).toBe('recheck')
+  })
+
   it('offers setup where there is nothing to re-check, and a re-check otherwise', () => {
     expect(setupMode(status({ state: 'never' }))).toBe('setup')
     expect(setupMode(status({ state: 'unknown' }))).toBe('setup')

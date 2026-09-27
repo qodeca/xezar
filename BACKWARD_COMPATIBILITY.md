@@ -63,5 +63,7 @@ Each entry names the release, the surface it breaks, the symptom a user sees and
   `xez-onboard-opinionated` instead of `xez-onboard`, and the bundled templates pin moves from
   `2c20c60` to `ec856f8` (3.0.3). *Symptom:* a project last checked against the old pin shows a
   one-time re-check offer, and the re-check runs the 3.0.3 onboarding; a project set up with an
-  older kit no longer gets the old setup skill. *Way forward:* set the project up with the 3.0.3
-  onboarding; its install record is `.xezar/onboarding.json`.
+  older kit no longer gets the old setup skill. A project with a committed `.xezar/onboarding.json`
+  (the 3.0.3 install record) now reads as set up, with no setup or re-check offer, even when the
+  onboarding ran outside the cockpit. *Way forward:* set the project up with the 3.0.3 onboarding;
+  its install record is `.xezar/onboarding.json`.

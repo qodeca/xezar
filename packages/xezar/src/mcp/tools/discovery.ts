@@ -29,6 +29,7 @@ import { globalImportSummary } from '../../workspace/import-global.ts';
 import { activeStateLayout } from '../../state-layout.ts';
 import { projectDataDir } from '../../project-data-paths.ts';
 import { discoverIssueFiling } from '../../onboarding/issue-filing.ts';
+import { readInstallRecord } from '../../onboarding/install-record.ts';
 import { observedIdentity, onboardingStatus } from '../../onboarding/status.ts';
 import { readOnboardingThroughService, type ServiceDispatch } from '../service-adapter.ts';
 import { defineTool, textResult, type McpToolContext } from '../tool.ts';
@@ -284,6 +285,7 @@ export async function collectOnboarding(
     localHandoff,
     checkingRunId: null,
     issueFiling: await discoverIssueFiling(ctx.project.root, checks),
+    installRecord: await readInstallRecord(ctx.project.root),
   });
 }
 
