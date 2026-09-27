@@ -1,4 +1,4 @@
-import type { CreateRunInput, GithubItem, WorkflowStepDef } from '@qodeca/xezar-api-client'
+import { WORKFLOW_MAX_STEPS, type CreateRunInput, type GithubItem, type WorkflowStepDef } from '@qodeca/xezar-api-client'
 
 /**
  * The GitHub tab's hand-to-agent contract, ported verbatim from the legacy tab
@@ -8,8 +8,8 @@ import type { CreateRunInput, GithubItem, WorkflowStepDef } from '@qodeca/xezar-
  * worth pinning independently of any dropdown.
  */
 
-/** A skills-as-chain run carries at most 8 steps — the workflow builder's own limit. */
-export const MAX_CHAIN_STEPS = 8
+/** A skills-as-chain run carries at most the server's save/run step limit, as the builder does. */
+export const MAX_CHAIN_STEPS = WORKFLOW_MAX_STEPS
 
 /**
  * The item's IDENTITY alone — verb, `#N`, title, URL — with no body quoted (#524). This is the

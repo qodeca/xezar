@@ -582,9 +582,10 @@ settlement the engine reads the step's `verdictRole` from the workflow definitio
 (`workflowDef`), and records the packet only when its `role` equals that declaration. A step with no
 `verdictRole` — every `quick-task`, every writing step — has any packet it leaves refused into
 `verdictIssues` with a named reason, and consumed. The roles are `TASK_VERDICT_ROLES` in
-`packages/contract/src/task-verdict.ts`, the only declaration: `code-review`, `design-review`, `qa`
-and `architecture-review`, each with its own words (`architecture-review` speaks a code review's,
-APPROVE or REQUEST CHANGES). A runner needs nothing for this beyond passing those three variables;
+`packages/contract/src/task-verdict.ts`, the only declaration: `code-review`, `design-review`, `qa`,
+`architecture-review`, `security-review` and `acceptance-verification`, each with its own words
+(`architecture-review` accepts a code review's, APPROVE or REQUEST CHANGES, beside its own CONFORMS,
+CONFORMS WITH FOLLOW-UPS and CONTRADICTS). A runner needs nothing for this beyond passing those three variables;
 the packet shape and the refusal rules are in `docs/features/mcp-server/mcp-reviewer-verdicts.md`.
 
 ## 7. The golden-fixture testing contract

@@ -883,3 +883,50 @@ describe('#851 A/B — every role on the list is ingestable, architecture-review
     expect(verdictsOf(run.id).map((verdict) => verdict.role).sort()).toEqual(['architecture-review', 'code-review']);
   });
 });
+
+/**
+ * The 3.0.3 kit's review words reach the run record. Named break: drop `CONFORMS` (or a new role)
+ * from the contract — the kit's architecture, security or acceptance packet is then refused into
+ * `verdictIssues` instead of recorded, and the leader sees no verdict at all.
+ */
+describe('3.0.3 kit verdicts — every word of the kit’s reviews is recorded as the reviewer said it', () => {
+  const words = [
+    ['architecture-review', 'CONFORMS'],
+    ['architecture-review', 'CONFORMS WITH FOLLOW-UPS'],
+    ['architecture-review', 'CONTRADICTS'],
+    ['architecture-review', 'APPROVE'],
+    ['security-review', 'NO FINDINGS AT THIS HEAD'],
+    ['security-review', 'FINDINGS'],
+    ['security-review', 'BLOCKING FINDINGS'],
+    ['acceptance-verification', 'ALL CRITERIA MET'],
+    ['acceptance-verification', 'CRITERIA NOT MET'],
+  ] as const;
+
+  it.each(words)('records %s %s untranslated', (role, verdict) => {
+    const run = startedRun();
+    writePacket(run.id, packetFor(run.id, { role, verdict }));
+
+    expect(ingestTaskVerdict(store, dataDir, run.id, 'review', role)?.outcome).toBe('recorded');
+    expect(verdictsOf(run.id)[0]).toMatchObject({ role, verdict });
+    expect(issuesOf(run.id)).toEqual([]);
+  });
+
+  it('keeps the security review and the acceptance verification beside the code review', () => {
+    const run = startedRun(['review', 'security', 'acceptance']);
+    writePacket(run.id, packetFor(run.id, { id: 'cr' }));
+    ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review');
+    writePacket(run.id, packetFor(run.id, { id: 'sr', stepId: 'security', role: 'security-review', verdict: 'FINDINGS' }));
+    ingestTaskVerdict(store, dataDir, run.id, 'security', 'security-review');
+    writePacket(
+      run.id,
+      packetFor(run.id, { id: 'av', stepId: 'acceptance', role: 'acceptance-verification', verdict: 'ALL CRITERIA MET' }),
+    );
+    ingestTaskVerdict(store, dataDir, run.id, 'acceptance', 'acceptance-verification');
+
+    expect(verdictsOf(run.id).map((verdict) => verdict.role).sort()).toEqual([
+      'acceptance-verification',
+      'code-review',
+      'security-review',
+    ]);
+  });
+});

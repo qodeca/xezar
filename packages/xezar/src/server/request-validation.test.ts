@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { WORKFLOW_MAX_STEPS } from '@qodeca/xezar-contract';
 import { RunStore } from '../runs/store.ts';
 import type { RunManager, StartRunInput } from '../workflows/run.ts';
 import type { WorkflowDef } from '../workflows/types.ts';
@@ -128,6 +129,30 @@ describe('request validation bounds (#429)', () => {
     });
     expect(res.status).toBe(400);
     expect(((await res.json()) as { error: string }).error).toContain('description');
+  });
+
+  // ---- saveWorkflowSchema step cap -----------------------------------------
+  // Named break: put the cap back at 8 — the 3.0.3 kit's nine-step localisation and performance
+  // workflows then load but answer 400 when the cockpit or the API saves them again.
+  it('saves a nine-step workflow, as the 3.0.3 kit ships', async () => {
+    const res = await postJson('/api/v1/workflows', {
+      name: 'wf-nine',
+      steps: Array.from({ length: 9 }, (_, i) => ({ id: `s${i}`, prompt: '{{task}}' })),
+    });
+    expect(res.status).toBe(201);
+  });
+
+  it('saves up to WORKFLOW_MAX_STEPS steps and refuses one more with a 400', async () => {
+    const full = await postJson('/api/v1/workflows', {
+      name: 'wf-full',
+      skills: Array.from({ length: WORKFLOW_MAX_STEPS }, (_, i) => `skill-${i}`),
+    });
+    expect(full.status).toBe(201);
+    const over = await postJson('/api/v1/workflows', {
+      name: 'wf-over',
+      skills: Array.from({ length: WORKFLOW_MAX_STEPS + 1 }, (_, i) => `skill-${i}`),
+    });
+    expect(over.status).toBe(400);
   });
 
   // ---- archive schema ------------------------------------------------------

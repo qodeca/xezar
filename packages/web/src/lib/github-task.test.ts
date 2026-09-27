@@ -72,7 +72,7 @@ describe('skillChainSteps', () => {
   })
 
   it(`caps the chain at ${MAX_CHAIN_STEPS} steps`, () => {
-    const names = Array.from({ length: 12 }, (_, i) => `skill-${i}`)
+    const names = Array.from({ length: MAX_CHAIN_STEPS + 3 }, (_, i) => `skill-${i}`)
     expect(skillChainSteps(names)).toHaveLength(MAX_CHAIN_STEPS)
   })
 })

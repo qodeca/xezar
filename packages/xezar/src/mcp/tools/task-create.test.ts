@@ -595,7 +595,7 @@ const INVALID: InvalidRow[] = [
   { name: 'generateFollowups: not a boolean', args: { generateFollowups: 1 }, wire: { ...BASE_WIRE, generateFollowups: 1 } },
   { name: 'todoId: empty', args: { todoId: '' }, wire: { ...BASE_WIRE, todoId: '' } },
   { name: 'todoId: over 200 characters', args: { todoId: 't'.repeat(201) }, wire: { ...BASE_WIRE, todoId: 't'.repeat(201) } },
-  { name: 'steps: nine', args: { steps: Array.from({ length: 9 }, (_, i) => ({ id: `s${i}`, prompt: 'p' })) }, wire: { task: DRAFT.text, steps: Array.from({ length: 9 }, (_, i) => ({ id: `s${i}`, prompt: 'p' })) } },
+  { name: 'steps: thirteen', args: { steps: Array.from({ length: 13 }, (_, i) => ({ id: `s${i}`, prompt: 'p' })) }, wire: { task: DRAFT.text, steps: Array.from({ length: 13 }, (_, i) => ({ id: `s${i}`, prompt: 'p' })) } },
   { name: 'steps: a retry that points forward', args: { steps: [{ id: 'a', command: 'true', onFail: { retry: 'b' } }, { id: 'b', prompt: 'p' }] }, wire: { task: DRAFT.text, steps: [{ id: 'a', command: 'true', onFail: { retry: 'b' } }, { id: 'b', prompt: 'p' }] } },
 ];
 
