@@ -60,7 +60,11 @@
   "qaGate": true,
   "ci": {
     "requiredChecks": [
-      "Typecheck, unit tests, build, and package"
+      "Typecheck, unit tests, build, and package",
+      "MCP per-file coverage",
+      "Hosted server boundary and proxy",
+      "Two-project product harness",
+      "Cockpit browser e2e"
     ],
     "maxWaitMinutes": 40
   },

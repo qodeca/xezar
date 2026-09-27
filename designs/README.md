@@ -25,7 +25,7 @@ A design folder moves through five statuses: **Draft → In review → Approved 
 | --- | --- | --- |
 | **Draft** | The folder exists and its README has open decisions or no review yet. | The `design` workflow, or the author. |
 | **In review** | The `design-review` run or a human reviewer posts the `## Design review` comment on the PR. | Whoever posts the comment. |
-| **Approved** | The README's own `## Design review` section links that comment and every finding has a disposition: fixed, filed as a `design-debt` issue, or accepted with a reason. No finding may be left blank. | The PR that fills the section. |
+| **Approved** | The README's own `## Design review` section links that comment and every finding has a disposition: fixed, filed as a `bug` issue labelled `needs-design`, or accepted with a reason. No finding may be left blank. | The PR that fills the section. |
 | **Implemented (PR #n)** | The PR that ships the surface is merged; the row names it. Post-merge housekeeping, not a gate. | The implementing PR, or the next PR that touches this file. |
 | **Archived** | A Draft or In review design untouched for 90 days. The row stays and the folder stays; the README's Status line says Archived and why. | Release prep, or whoever notices. |
 
