@@ -69,3 +69,10 @@ skills-lock.json
 
 # Legacy QA contains only local data; new producers use .local/qa.
 /.ai/qa/
+
+# xezar-onboarding: start — the xez-* skills are installed per machine, never committed.
+# No trailing slash: the .claude/skills entries are links, and a slash pattern does not match a link.
+/.agents/skills/xez-*
+/.claude/skills/xez-*
+/skills-lock.json
+# xezar-onboarding: end
