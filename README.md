@@ -9,7 +9,7 @@
 [![CI](https://github.com/qodeca/xezar/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/qodeca/xezar/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/@qodeca/xezar?color=cb3837&logo=npm)](https://www.npmjs.com/package/@qodeca/xezar)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-![Node 20+](https://img.shields.io/badge/Node-20%2B-339933)
+![Node 22+](https://img.shields.io/badge/Node-22%2B-339933)
 
 [Tour](#60-second-tour) · [Features](#features) · [How it works](#how-it-works) · [User guide](#user-guide) · [Backends](#agent-backends) · [Contributing](#contributing)
 
@@ -113,9 +113,15 @@ More → [Worktrees and git](docs/guide/03-worktrees-and-git.md)
 
 ## Quick start
 
-**Prerequisites:** Node 20+ and at least one logged-in agent CLI – [`claude`](https://github.com/anthropics/claude-code),
-[`codex`](https://github.com/openai/codex), [OpenCode](https://opencode.ai) or [pi](https://github.com/badlogic/pi-mono) –
-plus, optionally, `git` and `gh`. The package installs both the `xezar` and `xez` commands.
+**Prerequisites**
+
+| System | What you need |
+|---|---|
+| Every system | Node.js 22 or newer with npm, and at least one signed-in agent CLI – [`claude`](https://github.com/anthropics/claude-code), [`codex`](https://github.com/openai/codex), [OpenCode](https://opencode.ai) or [pi](https://github.com/badlogic/pi-mono). Optional: `git` for isolated working copies (Git worktrees) and the Git views, and `gh` for GitHub issues and pull requests. |
+| macOS, Linux | Nothing more. |
+| Windows | Native Windows support is still in progress. Under WSL, xezar works as it does on Linux. On Windows itself, install [Git for Windows](https://gitforwindows.org/) for the Git features, and install each agent CLI as its own Windows instructions describe. The MCP leader bridge (`xezar mcp`) is not available on Windows itself yet. |
+
+The package installs both the `xezar` and `xez` commands.
 
 ```bash
 npx @qodeca/xezar                                     # no install: fetched on demand

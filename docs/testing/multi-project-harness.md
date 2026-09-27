@@ -4,7 +4,7 @@ This POSIX-only harness checks one built cockpit with two registered scratch Git
 
 ## Run it
 
-1. Use Node 20+ on macOS or Linux with Git available.
+1. Use Node 22+ on macOS or Linux with Git available. Windows is not supported: the harness needs local Unix sockets and POSIX signals (#963).
 2. Run `npm run build:server`.
 3. Run `npm run test:multi-project`.
 4. Read the printed `result.json` path; logs and `state.json` are beside it.
