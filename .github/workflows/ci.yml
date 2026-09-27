@@ -348,3 +348,73 @@ jobs:
             .local/qa/test-env.json
           if-no-files-found: ignore
           retention-days: 7
+
+  # Cross-platform signal (#963). A NEW, non-required job: the five required checks are read by exact
+  # name, so none is renamed or folded in. ubuntu-latest on Node 22 (the engines floor) must pass;
+  # windows-latest and macos-latest on Node 22 and lts/* are informational until #963 lands
+  # (`continue-on-error`, `fail-fast: false`). Steps after install run even if an earlier one failed,
+  # so one red leg still reports every step. Step commands run in bash on every OS (Git Bash on
+  # Windows); npm itself still runs package scripts through cmd.exe there.
+  cross-platform:
+    name: Cross-platform verify (${{ matrix.os }}, Node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    # 20 mirrors `verify`; 45 (Windows) and 30 (macOS) are first estimates, not measurements –
+    # replace them with measured values after the first runs.
+    timeout-minutes: ${{ matrix.timeout }}
+    continue-on-error: ${{ matrix.informational }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, node: '22', informational: false, timeout: 20 }
+          - { os: windows-latest, node: '22', informational: true, timeout: 45 }
+          - { os: windows-latest, node: 'lts/*', informational: true, timeout: 45 }
+          - { os: macos-latest, node: '22', informational: true, timeout: 30 }
+          - { os: macos-latest, node: 'lts/*', informational: true, timeout: 30 }
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      # Worktrees and node_modules nest deep. Set before checkout so the checkout uses it too.
+      - name: Allow long paths in Git (Windows)
+        if: runner.os == 'Windows'
+        run: git config --global core.longpaths true
+
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: Install dependencies
+        id: install
+        run: npm ci
+
+      - name: Typecheck
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run typecheck
+
+      - name: Run server and cockpit unit suites
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm test
+
+      - name: Run unit tests
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run test:unit
+
+      - name: Build application
+        id: build
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run build
+
+      - name: Run packaged CLI E2E tests
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: npm run test:package
+
+      - name: Verify the release package packs
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: npm pack --dry-run --ignore-scripts -w @qodeca/xezar
