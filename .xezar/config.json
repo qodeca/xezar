@@ -1,0 +1,4 @@
+{
+  "baseBranch": "main",
+  "systemPrompt": "You are working in the xezar repository: a strict TypeScript, npm-workspaces monorepo (packages/xezar is the service and CLI, packages/contract the zod HTTP contract, packages/api-client the typed client, packages/web the React cockpit). Read AGENTS.md before you change anything, and the AGENTS.md of the area you touch. Process: SDLC.md; review rules: CODE_REVIEW.md; public surfaces you must not break: BACKWARD_COMPATIBILITY.md; security promises: SECURITY.md. The base branch is main. The gate is bash .xezar/checks/repo-gates.sh, run in the foreground. Run vitest through npm, never npx. Keep scratch, evidence and QA output under .local/xezar/, never in the tracked tree. Text the published package ships must stay generic: never name this repository's own files, people or process in it."
+}

@@ -210,3 +210,25 @@ Browser-suite execution and isolation detail lives in [docs/testing/agent-browse
 - `docs/lessons/changing-working-mechanisms.md` — the worked examples behind § Changing a mechanism that already works.
 
 Bare `#n` means `qodeca/xezar`.
+
+<!-- xezar-onboarding: start — added by the opinionated setup; edit freely, keep the markers -->
+## Project leader and task pipeline
+
+This repository is run by a project leader on the xezar engine. The process is in `SDLC.md`,
+review rules in `CODE_REVIEW.md`, protected public surfaces in `BACKWARD_COMPATIBILITY.md`, and
+the kit itself (workflows, checks, role skills, routing) in `.xezar/`.
+
+- **The gate** is one command, run in the foreground: `bash .xezar/checks/repo-gates.sh` — `npm ci`,
+  the security scan, `npm run typecheck`, `npm test`, `npm run test:unit`, `npm run build`,
+  `npm run test:package`, then the repository checks.
+- **Changing a mechanism that already works** is the rule of that name above; it applies to the
+  kit's own checks and workflows exactly as it applies to the product.
+- **The leader** starts only through `scripts/xezar-leader.sh`, which sets `XEZAR_LEADER=1`. Any
+  other session in this checkout is an ordinary session and gets no leader guide.
+- **Get the skills.** The `xez-*` skills are installed per machine and never committed. From the
+  repository root:
+
+  ```bash
+  DISABLE_TELEMETRY=1 npx -y skills add qodeca/xezar-skills --skill '*' --agent claude-code --agent codex --yes
+  ```
+<!-- xezar-onboarding: end -->

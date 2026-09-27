@@ -1,0 +1,97 @@
+{
+  "baseBranch": "main",
+  "tracker": "github",
+  "browser": {
+    "provider": "chrome-devtools"
+  },
+  "validation": {
+    "commands": [
+      "npm run typecheck",
+      "npm test",
+      "npm run test:unit",
+      "npm run build",
+      "npm run test:package"
+    ]
+  },
+  "labels": {
+    "enabled": true,
+    "pipeline": [
+      "review",
+      "changes-requested",
+      "qa",
+      "qa-failed",
+      "merge-queue",
+      "blocked",
+      "do-not-merge",
+      "design",
+      "design-failed"
+    ],
+    "category": [
+      "bug",
+      "feature",
+      "refactor",
+      "security",
+      "dependencies",
+      "documentation"
+    ],
+    "meta": [
+      "needs-qa",
+      "skip-qa",
+      "qa-approved",
+      "qa-self-verified",
+      "in-progress",
+      "ci-monitoring",
+      "needs-design",
+      "design-approved",
+      "skip-design"
+    ],
+    "priority": [
+      "priority-low",
+      "priority-medium",
+      "priority-high",
+      "priority-extreme"
+    ],
+    "risk": [
+      "risk-low",
+      "risk-medium",
+      "risk-high"
+    ]
+  },
+  "qaGate": true,
+  "ci": {
+    "requiredChecks": [
+      "Typecheck, unit tests, build, and package"
+    ],
+    "maxWaitMinutes": 40
+  },
+  "gates": {
+    "requireVerdictHead": true,
+    "designGate": true
+  },
+  "toolchain": {
+    "providers": [
+      "npm"
+    ]
+  },
+  "paths": {
+    "qa": ".local/xezar/qa",
+    "designSystem": "docs/design-system",
+    "designs": "designs",
+    "architecture": "docs/architecture",
+    "spikes": "docs/spikes",
+    "runbooks": "docs/runbooks",
+    "deprecations": "docs/deprecations",
+    "performance": "docs/performance",
+    "migrations": "docs/migrations"
+  },
+  "deploy": {
+    "environments": [],
+    "rollback": []
+  },
+  "performance": {
+    "budgets": []
+  },
+  "localisation": {
+    "locales": []
+  }
+}
