@@ -32,4 +32,12 @@ describe('always-loaded agent instruction budgets', () => {
     expect(characters, 'root CLAUDE.md plus its eager imports must stay below 100,000 characters')
       .toBeLessThan(100_000);
   });
+
+  // The 3.0.3 kit splits routing in two: `.xezar/routing.json` holds the lanes and is read only
+  // through `.xezar/checks/route.mjs`, never into a context, so its size costs no context; the prose
+  // the leader reads is `.xezar/docs/routing.md`, which carries the budget model-routing.md had.
+  it('keeps the leader routing guide below the leader context budget', () => {
+    const bytes = Buffer.byteLength(readRootFile('.xezar/docs/routing.md'));
+    expect(bytes, 'routing.md must stay below 40,000 bytes').toBeLessThan(40_000);
+  });
 });
