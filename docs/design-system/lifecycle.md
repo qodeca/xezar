@@ -22,7 +22,7 @@ edits either file, even though the index describes posting the verdict as the In
 | New feature design | Author, through `design` or human work | Accepted task criteria; `designs/<feature>/index.html`, feature pages and README; open decisions; `## Design review` reads `Pending` | Set **Draft** in both status locations. Commit the complete mockup; handoff opens a draft PR with `needs-design`. |
 | Review requested, then verdict posted | Requester starts `design-review`; reviewer inspects the identified PR head | One PR comment headed `## Design review`: SHA, reviewer role, themes, widths, verdict and numbered B-n / NB-n findings | Author links it and sets **In review** in both places. A request alone is not a verdict. |
 | FAIL or missing required browser evidence | Reviewer reports failure / verification not run; author owns repair | Findings and missing checks; `design-approved` removed if applied in error; `merge-queue` removed on failure by an authorized actor | Remain **In review**. Return findings to the original author; re-review the repaired head. Disposing every finding does not turn FAIL into approval. |
-| PASS or PASS WITH FOLLOW-UPS | Reviewer judges content; author records dispositions; authorized reviewer applies approval label | Identified reviewed SHA and comment; every finding exactly one of fixed in a SHA, filed as a `design-debt` issue, or accepted with a reason | Set **Approved** only with the passing verdict and dispositions. Keep `needs-design`, add `design-approved`. Evidence-only reviewers leave labels to an authorized actor. |
+| PASS or PASS WITH FOLLOW-UPS | Reviewer judges content; author records dispositions; authorized reviewer applies approval label | Identified reviewed SHA and comment; every finding exactly one of fixed in a SHA, filed as a `bug` issue labelled `needs-design`, or accepted with a reason | Set **Approved** only with the passing verdict and dispositions. Keep `needs-design`, add `design-approved`. Evidence-only reviewers leave labels to an authorized actor. |
 | Only part of an approved design ships | Implementing author | Merged PR and implemented AC/screens/states; explicit remaining scope and follow-up references in the handoff | Keep the whole design **Approved** while scope remains. Describe partial implementation in prose, not a new status or label. Re-review changes to the accepted design. |
 | All intended scope ships | Implementing author / post-merge housekeeping, or next PR touching the index | Merged implementation PR(s), exact revision, affected-flow verification and any remaining debt | Reconcile both statuses to **Implemented (PR #n)** after merge. An implementation PR does not merge itself by changing this row; code review, QA and design gates still apply. |
 | Draft or In review untouched for 90 days | Release prep or whoever notices, through an authoring change | Last activity date and archive reason | Set **Archived** in both locations; retain row, folder and evidence. |
@@ -62,7 +62,7 @@ gh pr diff "$PR" --repo qodeca/xezar
 | FAIL | Reviewer runs `gh pr comment "$PR" --repo qodeca/xezar --body-file "$REVIEW"` with a `## Design review` FAIL. Authorized actor removes present stale labels with `gh pr edit "$PR" --repo qodeca/xezar --remove-label design-approved --remove-label merge-queue`. | Author records In review and findings. Requester continues the author as above; no application implementation based on this FAIL. If a decision holds the work, `gh pr ready "$PR" --repo qodeca/xezar --undo` makes it draft and a comment explains the hold. |
 | Approval | Reviewer posts PASS / PASS WITH FOLLOW-UPS through the same comment command. Author links it with all dispositions. Authorized reviewer runs `gh pr edit "$PR" --repo qodeca/xezar --add-label design-approved` and comments why. | Approved refers to reviewed content; `needs-design` remains. Any later rendered change gets review at its new head. Neither draft removal nor merge is implied. |
 | Partial implementation | Author checks `gh pr view "$IMPLEMENTATION_PR" --repo qodeca/xezar --json state,mergedAt,mergeCommit,url`; updates implemented and remaining AC in the handoff. | A merged subset is recorded as partial, while status remains Approved. Remaining work returns to its assigned author; changed design assumptions return to review. No `partial` label. |
-| Reviewer unavailable | Keep the PR draft pending capacity, or use only the self-verification exception below. | No reviewer/browser capacity is not PASS. With all exception evidence present, apply `design-approved` and `design-self-verified`; without it, approval remains missing. |
+| Reviewer unavailable | Keep the PR draft until a reviewer has capacity. | No reviewer or browser capacity is not PASS, and the author never approves their own design ([SDLC.md](../../SDLC.md) § The design gate). |
 | Post-merge | Author verifies merge using the command above and exercises the implemented flow using [verification](verification.md); reconciles both status locations in the implementing PR's housekeeping or the next touching PR. | All intended scope delivered → Implemented (PR #n). Record results and follow-ups; complete a deferred post-merge design review through `design-review`. A merge record alone proves no browser result. |
 | Expiry | Author/maintainer checks `git log -1 --format=%cI -- "designs/$FEATURE"` against recorded review/activity dates and release history. | Inactive Draft/In review at 90 days → Archived; Approved with no implementing PR in two releases → Draft. Record date/release evidence and reason in both status locations. These are prose edits, with no expiry label or automatic timer. |
 | Revival | Requester starts `design` for the retained folder, naming the archived history and changed criteria. | Author sets Draft, refreshes evidence, then follows the Draft review path. No revival label and no inherited approval. |
@@ -71,23 +71,13 @@ Remove labels only when present; explain automated meta/pipeline label changes i
 For review-only work without a PR, the reviewer returns the same verdict text in its final message;
 the requester places it, and the author links it. The reviewer still does not edit the tree.
 
-## Unavailable reviewer and explicit exceptions
+## Unavailable reviewer
 
-The design gate permits author self-verification only when no design
-reviewer has capacity in time: attach the same review comment **with screenshots of every
-state in both themes and at 375 px**, file a `design-debt` issue for post-merge review and link
-it in that comment. Only then apply both labels:
-
-```sh
-gh issue create --repo qodeca/xezar --title "$TITLE" --body-file "$BODY" --label design-debt
-gh pr comment "$PR" --repo qodeca/xezar --body-file "$REVIEW"
-gh pr edit "$PR" --repo qodeca/xezar --add-label design-approved --add-label design-self-verified
-```
-
-An unavailable browser prevents collecting that evidence; it is not an exception to verification.
-A release definition of done does not count `design-self-verified` as a review. Use the
-[verification matrix](verification.md), including 44 × 44 CSS px phone targets at every density
-and the separate 24 px chip floor; do not replace measurements with class names.
+The design gate has no self-approval: `design-approved` needs a reviewer other than the author
+([SDLC.md](../../SDLC.md) § The design gate). When no reviewer or browser is available, the PR
+stays draft and waits; an unavailable browser prevents collecting evidence and is never a pass.
+Use the [verification matrix](verification.md), including 44 × 44 CSS px phone targets at every
+density and the separate 24 px chip floor; do not replace measurements with class names.
 
 `skip-design` needs a written reason and is never combined with `needs-design`. For a qualifying
 unchanged-output case (pure refactor, test/type-only change, writing-rule copy fix or

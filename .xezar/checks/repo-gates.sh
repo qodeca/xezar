@@ -74,7 +74,7 @@ GATE_COMMANDS=(
 # separated by `;`, gates inside a lane by `,` and run in that order. A gate that needs another's
 # output (a package test that needs the build) goes after it in the same lane. Empty means one
 # lane, every application gate in list order — slower, and never wrong.
-GATE_APPLICATION_LANES="${GATE_APPLICATION_LANES-}"
+GATE_APPLICATION_LANES="${GATE_APPLICATION_LANES-3,6,7;4;5}"
 export GATE_APPLICATION_LANES
 
 # The list as JSON, and its digest. Both derived from the arrays above, so they cannot drift

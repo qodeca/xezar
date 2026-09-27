@@ -82,7 +82,7 @@ body:
     id: visual
     attributes:
       label: Visual discrepancy
-      description: Tick this when the cockpit looks different from what `docs/design-system/` documents. A maintainer labels it `design-debt` at triage.
+      description: Tick this when the cockpit looks different from what `docs/design-system/` documents. A maintainer adds `needs-design` at triage.
       options:
         - label: Visual discrepancy – it looks different from `docs/design-system/`
   - type: textarea

@@ -60,10 +60,10 @@ If a review finds the code inconsistent, that is a gap. If a review chooses betw
 
 ## 6. The debt loop
 
-A `G-nn` entry is a record until one of three triggers turns it into a `design-debt` issue:
+A `G-nn` entry is a record until one of three triggers turns it into a `bug` issue labelled `needs-design`:
 
 - a PR touches the files the entry names (the author applies the rule or files the issue, and says which in the PR);
 - two design reviews cite the same entry;
 - release prep reaches it.
 
-Release prep triages the whole list once per release. Each entry ends in one of three states: **fixed** (entry deleted, `(G-nn)` references removed), **filed** (a `design-debt` issue linked from the entry), or **kept** with a date and one line on why it waits. An entry with no date and no issue after a release is a triage miss, and the next release prep starts there.
+Release prep triages the whole list once per release. Each entry ends in one of three states: **fixed** (entry deleted, `(G-nn)` references removed), **filed** (a `bug` issue labelled `needs-design`, linked from the entry), or **kept** with a date and one line on why it waits. An entry with no date and no issue after a release is a triage miss, and the next release prep starts there.

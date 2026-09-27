@@ -51,9 +51,11 @@ skills-lock.json
 .ai/qa/agent-home/
 
 # Claude Code keeps per-machine state under .claude/ (locks, worktrees, checkpoints, settings.local.json).
-# Only a shared .claude/settings.json may be tracked; everything else stays local.
+# Only the shared .claude/settings.json and the project's own skills are tracked; everything else
+# stays local. Installed xez-* skills stay ignored by the rule further down.
 .claude/*
 !.claude/settings.json
+!.claude/skills
 
 # mock-agent output from dry-run e2e (scripts/mock-claude.mjs appends here)
 /notes.md
