@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { runRecordSchema } from './runs.ts';
+import { createRunInputSchema, runRecordSchema } from './runs.ts';
 import { runnerSchema } from './health.ts';
+import { WORKFLOW_MAX_STEPS, saveWorkflowInputSchema } from './workflows.ts';
 
 /**
  * The contract package's first own suite (#61).
@@ -100,5 +101,32 @@ describe('runRecordSchema', () => {
       .toBe(false);
     const folded = runRecordSchema.parse({ ...(legacyRecord as object), runner: 'claude' });
     expect(folded.runner).toBe('claude');
+  });
+});
+
+/**
+ * The one step cap every save and run path reads. Named break: put `WORKFLOW_MAX_STEPS` back at 8,
+ * or spell a literal 8 into either schema — the 3.0.3 kit's nine-step `localisation` and
+ * `performance` workflows then load but cannot be saved again or run as an inline chain.
+ */
+describe('WORKFLOW_MAX_STEPS — every 3.0.3 kit workflow can be saved and run inline', () => {
+  const steps = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `s${i}`, prompt: '{{task}}' }));
+
+  it('is 12, above the kit’s longest workflow (9 steps)', () => {
+    expect(WORKFLOW_MAX_STEPS).toBe(12);
+  });
+
+  it('saves nine steps, and up to the cap, and refuses one more', () => {
+    expect(saveWorkflowInputSchema.safeParse({ name: 'localisation', steps: steps(9) }).success).toBe(true);
+    expect(saveWorkflowInputSchema.safeParse({ name: 'w', steps: steps(WORKFLOW_MAX_STEPS) }).success).toBe(true);
+    expect(saveWorkflowInputSchema.safeParse({ name: 'w', steps: steps(WORKFLOW_MAX_STEPS + 1) }).success).toBe(false);
+    const skills = (n: number) => Array.from({ length: n }, (_, i) => `skill-${i}`);
+    expect(saveWorkflowInputSchema.safeParse({ name: 'w', skills: skills(WORKFLOW_MAX_STEPS) }).success).toBe(true);
+    expect(saveWorkflowInputSchema.safeParse({ name: 'w', skills: skills(WORKFLOW_MAX_STEPS + 1) }).success).toBe(false);
+  });
+
+  it('runs an inline chain of nine steps, and refuses one past the cap', () => {
+    expect(createRunInputSchema.safeParse({ task: 't', steps: steps(9) }).success).toBe(true);
+    expect(createRunInputSchema.safeParse({ task: 't', steps: steps(WORKFLOW_MAX_STEPS + 1) }).success).toBe(false);
   });
 });

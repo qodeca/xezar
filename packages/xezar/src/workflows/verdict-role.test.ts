@@ -1,8 +1,11 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { parse as parseYaml } from 'yaml';
 
 import { workflowStepDefSchema } from '@qodeca/xezar-contract';
 
-import { skillStackOf, workflowStepSchema } from './types.ts';
+import { skillStackOf, workflowFileSchema, workflowStepSchema } from './types.ts';
 
 /**
  * #851 C — `verdictRole` is the step's declaration of the reviewer role it reports as, and the
@@ -25,7 +28,7 @@ describe('#851 — the verdictRole step key', () => {
   });
 
   it.each(schemas)('$name refuses a role that is not on the list', ({ schema }) => {
-    expect(schema.safeParse({ id: 'review', prompt: '{{task}}', verdictRole: 'security-review' }).success).toBe(false);
+    expect(schema.safeParse({ id: 'review', prompt: '{{task}}', verdictRole: 'performance-review' }).success).toBe(false);
   });
 
   it.each(schemas)('$name refuses a role on a check step, which never has a packet collected', ({ schema }) => {
@@ -41,4 +44,23 @@ describe('#851 — the verdictRole step key', () => {
     expect(skillStackOf([{ id: 'x', name: 'x', skill: 'x', prompt: '{{task}}' }])).toEqual(['x']);
     expect(skillStackOf([{ id: 'x', name: 'x', skill: 'x', prompt: '{{task}}', verdictRole: 'qa' }])).toBeNull();
   });
+
+  it.each([
+    ['code-review.yaml', 'code-review'],
+    ['design-review.yaml', 'design-review'],
+    ['qa.yaml', 'qa'],
+  ] as const)('the kit verdict workflow %s declares %s on its verdict step', (file, role) => {
+    const workflow = workflowFileSchema.parse(
+      parseYaml(readFileSync(join(process.cwd(), '.xezar', 'workflows', file), 'utf8')),
+    );
+    const declared = (workflow.steps ?? []).filter((step) => step.verdictRole !== undefined);
+
+    expect(declared.map((step) => [step.id, step.verdictRole])).toEqual([['review', role]]);
+  });
+
+  // Gap in the 3.0.3 kit: `.xezar/workflows/architecture-review.yaml` declares no `verdictRole` on its
+  // review step, and its verdict words (CONFORMS / CONTRADICTS) are not the engine's
+  // architecture-review vocabulary, so no architecture packet can be recorded yet. The engine side is
+  // a separate change; this case returns with it.
+  it.todo('the kit verdict workflow architecture-review.yaml declares architecture-review on its verdict step');
 });

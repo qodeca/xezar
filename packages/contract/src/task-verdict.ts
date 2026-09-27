@@ -80,11 +80,25 @@ export const TASK_VERDICT_FINDING_BODY_MAX = 300;
  * `fromFindings.role` argument and the per-run bound in one edit. Adding a role is additive;
  * renaming or removing one is a break (the backward-compatibility promise).
  *
- * `architecture-review` (#851) is a review of the design of a change rather than its lines. It
- * speaks a code review's words — APPROVE or REQUEST CHANGES — and is a role of its own so its
- * report never overwrites the code reviewer's slot, which one-current-packet-per-role would do.
+ * `architecture-review` (#851) is a review of the design of a change rather than its lines, and a
+ * role of its own so its report never overwrites the code reviewer's slot, which
+ * one-current-packet-per-role would do. It first spoke a code review's words — APPROVE or REQUEST
+ * CHANGES — and still accepts them; the 3.0.3 kit's architecture review speaks its own — CONFORMS,
+ * CONFORMS WITH FOLLOW-UPS or CONTRADICTS — which are added beside them, never in place of them.
+ *
+ * `security-review` and `acceptance-verification` are the 3.0.3 kit's two other read-only
+ * reviews, named after the workflows that run them. A security review reports NO FINDINGS AT THIS
+ * HEAD, FINDINGS or BLOCKING FINDINGS — never "secure". An acceptance verification judges each
+ * criterion on its own and reports one overall line: ALL CRITERIA MET, or CRITERIA NOT MET.
  */
-export const TASK_VERDICT_ROLES = ['code-review', 'design-review', 'qa', 'architecture-review'] as const;
+export const TASK_VERDICT_ROLES = [
+  'code-review',
+  'design-review',
+  'qa',
+  'architecture-review',
+  'security-review',
+  'acceptance-verification',
+] as const;
 export const taskVerdictRoleSchema = z.enum(TASK_VERDICT_ROLES);
 export type TaskVerdictRole = z.infer<typeof taskVerdictRoleSchema>;
 
@@ -96,20 +110,26 @@ export const TASK_VERDICT_VOCABULARY = {
   'code-review': ['APPROVE', 'REQUEST CHANGES'],
   'design-review': ['PASS', 'PASS WITH FOLLOW-UPS', 'FAIL'],
   qa: ['PASS', 'FAIL'],
-  'architecture-review': ['APPROVE', 'REQUEST CHANGES'],
+  'architecture-review': ['APPROVE', 'REQUEST CHANGES', 'CONFORMS', 'CONFORMS WITH FOLLOW-UPS', 'CONTRADICTS'],
+  'security-review': ['NO FINDINGS AT THIS HEAD', 'FINDINGS', 'BLOCKING FINDINGS'],
+  'acceptance-verification': ['ALL CRITERIA MET', 'CRITERIA NOT MET'],
 } as const satisfies Record<TaskVerdictRole, readonly [string, ...string[]]>;
 
 /**
  * Which verdicts COUNT AS APPROVING for their role — the one derived reading this file offers,
  * because every consumer would otherwise write it themselves and one of them would get
  * `PASS WITH FOLLOW-UPS` wrong. It is approving: the design gate lets it through with the
- * follow-ups recorded. `REQUEST CHANGES` and `FAIL` are not.
+ * follow-ups recorded. `CONFORMS WITH FOLLOW-UPS` reads the same way, and so does a security
+ * review's `FINDINGS`, whose findings are the non-blocking ones — `BLOCKING FINDINGS` is the other
+ * word. `REQUEST CHANGES`, `FAIL`, `CONTRADICTS`, `BLOCKING FINDINGS` and `CRITERIA NOT MET` are not.
  */
 export const TASK_VERDICT_APPROVING: Readonly<Record<TaskVerdictRole, readonly string[]>> = {
   'code-review': ['APPROVE'],
   'design-review': ['PASS', 'PASS WITH FOLLOW-UPS'],
   qa: ['PASS'],
-  'architecture-review': ['APPROVE'],
+  'architecture-review': ['APPROVE', 'CONFORMS', 'CONFORMS WITH FOLLOW-UPS'],
+  'security-review': ['NO FINDINGS AT THIS HEAD', 'FINDINGS'],
+  'acceptance-verification': ['ALL CRITERIA MET'],
 };
 
 // ---- finding severity (#673) --------------------------------------------------------------------
@@ -125,6 +145,8 @@ export const TASK_VERDICT_FINDING_SEVERITY = {
   'design-review': ['blocker', 'major', 'minor', 'nit'],
   qa: ['blocker', 'major', 'minor', 'nit'],
   'architecture-review': ['blocker', 'major', 'minor', 'nit'],
+  'security-review': ['blocker', 'major', 'minor', 'nit'],
+  'acceptance-verification': ['blocker', 'major', 'minor', 'nit'],
 } as const satisfies Record<TaskVerdictRole, readonly [string, ...string[]]>;
 
 /** Most-serious first. The one derived reading this file offers, so no consumer re-invents it. */

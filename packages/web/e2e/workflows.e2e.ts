@@ -183,15 +183,15 @@ describe('workflow builder against the live dry-run server', () => {
     browser.screenshot(`${artifactsDir}/workflows-imported.png`)
   })
 
-  it('refuses the 9th step with the legacy limit message', () => {
-    // 2 imported steps on the canvas — fill up to the server's cap of 8, then one more.
-    for (let i = 0; i < 6; i++) browser.click(addButton(ALPHA))
-    browser.waitForFunction(`document.querySelectorAll('[data-slot="wb-step"]').length === 8`)
+  it('refuses the 13th step with the legacy limit message', () => {
+    // 2 imported steps on the canvas — fill up to the server's cap of 12, then one more.
+    for (let i = 0; i < 10; i++) browser.click(addButton(ALPHA))
+    browser.waitForFunction(`document.querySelectorAll('[data-slot="wb-step"]').length === 12`)
 
     browser.click(addButton(ALPHA))
     browser.waitForFunction(
-      `document.querySelector('[data-slot="toaster"]')?.textContent.includes('at most 8 steps')`,
+      `document.querySelector('[data-slot="toaster"]')?.textContent.includes('at most 12 steps')`,
     )
-    expect(browser.count('[data-slot="wb-step"]')).toBe(8)
+    expect(browser.count('[data-slot="wb-step"]')).toBe(12)
   })
 })

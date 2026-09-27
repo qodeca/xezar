@@ -135,12 +135,12 @@ describe('bumpSkillUsage (#408: the ui-state skillUsage reducer)', () => {
 
 describe('fuzzyMatch', () => {
   const table: Array<{ candidate: string; query: string; hit: boolean }> = [
-    { candidate: 'xez-fix-issue', query: '', hit: true },
-    { candidate: 'xez-fix-issue', query: 'fix', hit: true },
-    { candidate: 'xez-fix-issue', query: 'xzfx', hit: true }, // subsequence
-    { candidate: 'xez-fix-issue', query: 'XZFX', hit: true }, // case-insensitive
-    { candidate: 'xez-fix-issue', query: 'qz', hit: false },
-    { candidate: 'xez-fix-issue', query: 'issuefix', hit: false }, // order matters
+    { candidate: 'xez-auto-fix-issue', query: '', hit: true },
+    { candidate: 'xez-auto-fix-issue', query: 'fix', hit: true },
+    { candidate: 'xez-auto-fix-issue', query: 'xzfx', hit: true }, // subsequence
+    { candidate: 'xez-auto-fix-issue', query: 'XZFX', hit: true }, // case-insensitive
+    { candidate: 'xez-auto-fix-issue', query: 'qz', hit: false },
+    { candidate: 'xez-auto-fix-issue', query: 'issuefix', hit: false }, // order matters
     { candidate: 'src/server/server.ts', query: 'srvts', hit: true },
   ]
   for (const { candidate, query, hit } of table) {
@@ -191,9 +191,9 @@ describe('multiWordFilter (#411: multi-keyword search for cmdk)', () => {
     expect(multiWordFilter('skill xez-auto-review-pr /path', 'auto review')).toBeGreaterThan(0)
   })
 
-  it('"verify ui" matches via keywords (name parts)', () => {
+  it('"ux review" matches via keywords (name parts)', () => {
     expect(
-      multiWordFilter('skill xez-auto-verify-pr-ui', 'verify ui', ['om', 'auto', 'verify', 'pr', 'ui']),
+      multiWordFilter('skill xez-ux-review-pr', 'ux review', ['xez', 'ux', 'review', 'pr']),
     ).toBeGreaterThan(0)
   })
 
@@ -211,11 +211,11 @@ describe('matchScore (#484: exact > prefix > word-boundary > substring > subsequ
     expect(matchScore('review', 'review')).toBeGreaterThan(matchScore('review-prs', 'review')) // exact > prefix
     expect(matchScore('review-prs', 'review')).toBeGreaterThan(matchScore('xez-code-review', 'review')) // prefix > boundary
     expect(matchScore('xez-code-review', 'review')).toBeGreaterThan(matchScore('previewer', 'review')) // boundary > buried
-    expect(matchScore('previewer', 'review')).toBeGreaterThan(matchScore('xez-fix-issue', 'xzfx')) // buried > subsequence
+    expect(matchScore('previewer', 'review')).toBeGreaterThan(matchScore('xez-auto-fix-issue', 'xzfx')) // buried > subsequence
   })
 
   it('0 when the query cannot even be found as a subsequence', () => {
-    expect(matchScore('xez-fix-issue', 'zzz')).toBe(0)
+    expect(matchScore('xez-auto-fix-issue', 'zzz')).toBe(0)
   })
 
   it('empty query is a neutral match', () => {
@@ -243,10 +243,10 @@ describe('#484: an (almost-)exact match sorts to the top', () => {
 
   it('filterSkills ranks a prefix match above a word-boundary match', () => {
     const skills = [
-      skill({ name: 'xez-auto-deploy', source: 'ai' }), // boundary hit
+      skill({ name: 'xezar-deploy', source: 'ai' }), // boundary hit
       skill({ name: 'deploy-app', source: 'ai' }), // prefix hit
     ]
-    expect(filterSkills(skills, 'deploy').map((s) => s.name)).toEqual(['deploy-app', 'xez-auto-deploy'])
+    expect(filterSkills(skills, 'deploy').map((s) => s.name)).toEqual(['deploy-app', 'xezar-deploy'])
   })
 
   it('filterSkills keeps project-first order when matches are equally good', () => {

@@ -1,4 +1,4 @@
-import type { PlanResponse, SaveWorkflowInput, WorkflowStepDef } from '@qodeca/xezar-api-client'
+import { WORKFLOW_MAX_STEPS, type PlanResponse, type SaveWorkflowInput, type WorkflowStepDef } from '@qodeca/xezar-api-client'
 
 /**
  * The workflow builder's pure rules (R6 Step 1.6, spec §"Skills, Workflows, Inbox"), ported
@@ -7,12 +7,13 @@ import type { PlanResponse, SaveWorkflowInput, WorkflowStepDef } from '@qodeca/x
  * route, the invariants stay testable without a DOM.
  *
  * The server owns the real validation (`src/workflows/types.ts`): a step is agent XOR check,
- * a file is `steps` XOR the portable `skills` shorthand, and at most 8 steps save/run. The
+ * a file is `steps` XOR the portable `skills` shorthand, and at most `WORKFLOW_MAX_STEPS` (12)
+ * steps save/run. The
  * mirrors here exist so the GUI can speak before the round-trip, never instead of it.
  */
 
-/** The server's save/run step limit (`saveWorkflowSchema` `.max(8)`). */
-export const WB_MAX_STEPS = 8
+/** The server's save/run step limit — the contract's `WORKFLOW_MAX_STEPS`, not a copy of it. */
+export const WB_MAX_STEPS = WORKFLOW_MAX_STEPS
 
 /**
  * Client mirror of the server's `skillStackOf()`: when every step is a plain "apply this

@@ -59,6 +59,7 @@ export type { ProjectsResponse };
 // A contract VALUE, like `workspaceUiStateSchema` in workspace/migrations.ts — the request
 // schema this route validates with is the same one the client compiles against.
 import {
+  WORKFLOW_MAX_STEPS,
   attachmentInputSchema,
   createAgentProfileInputSchema,
   MODEL_DISCOVERY_RUNNERS,
@@ -135,6 +136,7 @@ import {
 } from '../onboarding/status.ts';
 import { activeSetupRunId } from '../onboarding/active.ts';
 import { discoverIssueFiling } from '../onboarding/issue-filing.ts';
+import { readInstallRecord } from '../onboarding/install-record.ts';
 import { recordOffered } from '../onboarding/state.ts';
 import { watchSetupCompletion } from '../onboarding/watch.ts';
 import {
@@ -710,7 +712,7 @@ const streamSSENoBuffer: typeof streamSSE = (c, cb, onError) => {
 const startRunSchema = z
   .object({
     workflow: z.string().min(1).optional(),
-    steps: z.array(workflowStepSchema).min(1).max(8).optional(),
+    steps: z.array(workflowStepSchema).min(1).max(WORKFLOW_MAX_STEPS).optional(),
     // The primary agent prompt handed to the spawned runner. Bounded like the
     // other prompt fields (`systemPrompt` 20k, message `text` 100k) so an
     // unbounded body can't be piped into a spawned process (#429). 100k chars
@@ -775,8 +777,8 @@ const saveWorkflowSchema = z
     // Written into a YAML file on disk (#429) — a workflow description is a
     // short blurb, so a 2k cap is generous without allowing a file-bloat write.
     description: z.string().max(2_000, 'must be at most 2000 characters').optional(),
-    steps: z.array(workflowStepSchema).min(1).max(8).optional(),
-    skills: z.array(z.string().trim().min(1)).min(1).max(8).optional(),
+    steps: z.array(workflowStepSchema).min(1).max(WORKFLOW_MAX_STEPS).optional(),
+    skills: z.array(z.string().trim().min(1)).min(1).max(WORKFLOW_MAX_STEPS).optional(),
     overwrite: z.boolean().optional(),
   })
   .refine((b) => Boolean(b.steps) !== Boolean(b.skills), {
@@ -5184,6 +5186,7 @@ export function createApp(deps: ServerDeps) {
       localHandoff: capabilities().localHandoff,
       checkingRunId: activeSetupRun(project),
       issueFiling: await discoverIssueFiling(project.root, checks),
+      installRecord: await readInstallRecord(project.root),
     });
   };
 

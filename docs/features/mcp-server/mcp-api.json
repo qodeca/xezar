@@ -459,7 +459,7 @@
         "steps": {
           "description": "An inline step list (start from a reviewed plan, or save_plan). Not combined with `source`.",
           "minItems": 1,
-          "maxItems": 8,
+          "maxItems": 12,
           "type": "array",
           "items": {
             "type": "object",
@@ -510,7 +510,9 @@
                   "code-review",
                   "design-review",
                   "qa",
-                  "architecture-review"
+                  "architecture-review",
+                  "security-review",
+                  "acceptance-verification"
                 ]
               },
               "command": {
@@ -613,7 +615,9 @@
                 "code-review",
                 "design-review",
                 "qa",
-                "architecture-review"
+                "architecture-review",
+                "security-review",
+                "acceptance-verification"
               ]
             }
           },
@@ -1622,7 +1626,7 @@
             },
             "skills": {
               "minItems": 1,
-              "maxItems": 8,
+              "maxItems": 12,
               "type": "array",
               "items": {
                 "type": "string",
@@ -1634,7 +1638,7 @@
             },
             "steps": {
               "minItems": 1,
-              "maxItems": 8,
+              "maxItems": 12,
               "type": "array",
               "items": {
                 "type": "object",
@@ -1685,7 +1689,9 @@
                       "code-review",
                       "design-review",
                       "qa",
-                      "architecture-review"
+                      "architecture-review",
+                      "security-review",
+                      "acceptance-verification"
                     ]
                   }
                 },

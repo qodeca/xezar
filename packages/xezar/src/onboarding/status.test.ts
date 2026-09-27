@@ -11,6 +11,7 @@ import {
   ONBOARDING_MODES,
   ONBOARDING_WORKFLOW_ID,
 } from './status.ts';
+import { PROJECT_SETUP_WORKFLOW } from '../workflows/types.ts';
 
 /**
  * Every state of the onboarding surface (#464 P2, `states.html`), driven through the pure half.
@@ -44,14 +45,73 @@ const ok = (record: OnboardingRead['record']): OnboardingRead => ({ status: 'ok'
 const absent: OnboardingRead = { status: 'absent', record: null };
 const corrupt: OnboardingRead = { status: 'corrupt', record: null };
 
-const derive = (read: OnboardingRead, over: { checks?: BackendCheck[]; localHandoff?: boolean; checkingRunId?: string | null } = {}) =>
+const INSTALLED = { skill: 'xez-onboard-opinionated', date: '2026-09-27T09:11:23Z' };
+
+const derive = (
+  read: OnboardingRead,
+  over: { checks?: BackendCheck[]; localHandoff?: boolean; checkingRunId?: string | null; installRecord?: typeof INSTALLED | null } = {},
+) =>
   deriveOnboardingStatus(read, {
     observed: OBSERVED,
     checks: over.checks ?? AGENT,
     localHandoff: over.localHandoff ?? true,
     checkingRunId: over.checkingRunId ?? null,
     issueFiling: ISSUE_FILING,
+    installRecord: over.installRecord ?? null,
   });
+
+describe('the bundled templates pin (0.20.0)', () => {
+  it('pins the 3.0.3 onboarding, not the retired xez-onboard revision', () => {
+    expect(BUNDLED_TEMPLATES_DIGEST).toBe('ec856f8');
+  });
+
+  it('a project last checked against the old xez-onboard pin is offered one re-check', () => {
+    const at = '2026-09-14T09:12:00.000Z';
+    const status = derive(
+      ok({
+        engineVersion: '0.15.0',
+        kitDigest: '2c20c60',
+        lastOfferedAt: null,
+        lastCheckedAt: at,
+        checked: { engineVersion: '0.15.0', kitDigest: '2c20c60', at },
+      }),
+    );
+    expect(status.state).toBe('changed');
+    expect(status.offerPending).toBe(true);
+    expect(status.launch.workflowId).toBe('project-setup');
+  });
+
+  it('the launch definition runs the 3.0.3 onboarding skill, and only that one', () => {
+    expect(PROJECT_SETUP_WORKFLOW.name).toBe(ONBOARDING_WORKFLOW_ID);
+    expect(PROJECT_SETUP_WORKFLOW.steps.map((step) => step.skill)).toEqual(['xez-onboard-opinionated']);
+  });
+});
+
+describe('the committed 3.0.3 install record', () => {
+  it('a project onboarded outside the cockpit reads as set up, with no first-time or re-check offer', () => {
+    const status = derive(absent, { installRecord: INSTALLED });
+    expect(status.state).toBe('set-up');
+    expect(status.provenance).toBe('recorded');
+    expect(status.offerPending).toBe(false);
+    expect(status.lastChecked).toBeNull();
+  });
+
+  it('outranks an older cockpit check and an unreadable scratch record, but not a running check', () => {
+    const at = '2026-09-14T09:12:00.000Z';
+    const older = ok({ ...OLD, lastOfferedAt: null, lastCheckedAt: at, checked: { ...OLD, at } });
+    expect(derive(older, { installRecord: INSTALLED }).state).toBe('set-up');
+    expect(derive(older, { installRecord: INSTALLED }).offerPending).toBe(false);
+    expect(derive(corrupt, { installRecord: INSTALLED }).state).toBe('set-up');
+    expect(derive(absent, { installRecord: INSTALLED, checkingRunId: 'run-1' }).state).toBe('checking');
+  });
+
+  it('without the record, the cockpit-run detection is unchanged', () => {
+    expect(derive(absent, { installRecord: null }).state).toBe('never');
+    const at = '2026-09-14T09:12:00.000Z';
+    const current = ok({ ...OBSERVED, lastOfferedAt: null, lastCheckedAt: at, checked: { ...OBSERVED, at } });
+    expect(derive(current, { installRecord: null }).state).toBe('set-up');
+  });
+});
 
 describe('the five states', () => {
   it('a project with no record is “never set up”, with no offer', () => {
@@ -179,6 +239,7 @@ describe('issue filing (#468)', () => {
         localHandoff: false,
         checkingRunId: 'run-1',
         issueFiling: closed,
+        installRecord: null,
       });
       expect(status.issueFiling).toEqual(closed);
     }

@@ -4,7 +4,7 @@ import { referenceStatusSchema } from './github.ts';
 import { mcpVersionTokenSchema } from './mcp-versioning.ts';
 // The chain shapes belong to the workflows family; the run record embeds one, so this file
 // consumes them rather than redeclaring. One-way on purpose — see the header of `./workflows.ts`.
-import { workflowDefSchema, workflowStepDefSchema } from './workflows.ts';
+import { WORKFLOW_MAX_STEPS, workflowDefSchema, workflowStepDefSchema } from './workflows.ts';
 // Reviewer reports (#460). Declared in their own file because they are a shape in their own
 // right — the run record merely CARRIES them, and the persistence schema imports the same one.
 import { taskVerdictIssueSchema, taskVerdictSchema } from './task-verdict.ts';
@@ -768,7 +768,7 @@ export const createRunInputBaseSchema = z
     workflow: z.string().min(1).optional(),
     /** An inline chain (spec 008 — an approved plan runs as an ad-hoc workflow, never written to
      *  a file). The catalog's own step shape, not a copy of it. */
-    steps: z.array(workflowStepDefSchema).min(1).max(8).optional(),
+    steps: z.array(workflowStepDefSchema).min(1).max(WORKFLOW_MAX_STEPS).optional(),
     task: z.string().min(1).max(100_000, 'must be at most 100000 characters'),
     model: z.string().optional(),
     runner: runnerSchema.optional(),

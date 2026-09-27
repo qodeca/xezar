@@ -21,6 +21,7 @@ import {
   providerIdSchema,
   runIdParamSchema,
   saveWorkflowInputSchema,
+  WORKFLOW_MAX_STEPS,
   setAgentConfigInputSchema,
   setConfigInputSchema,
   setProviderEnabledInputSchema,
@@ -668,7 +669,7 @@ const agentStepSchema = z.strictObject(agentStepShape).refine((step) => Boolean(
 });
 const { steps: _steps, ...saveWorkflowShape } = saveWorkflowInputSchema.shape;
 const agentWorkflowSchema = z
-  .strictObject({ ...saveWorkflowShape, steps: z.array(agentStepSchema).min(1).max(8).optional() })
+  .strictObject({ ...saveWorkflowShape, steps: z.array(agentStepSchema).min(1).max(WORKFLOW_MAX_STEPS).optional() })
   .refine((body) => Boolean(body.steps) !== Boolean(body.skills), { message: 'provide either "steps" or "skills", not both' });
 
 /** The cockpit form's fixed values (`automations.tsx` `AutomationEditor`, create). D-97: matched, never widened. */

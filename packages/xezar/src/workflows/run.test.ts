@@ -798,7 +798,7 @@ describe('a chain of 2 selected skills runs BOTH steps, in order (#410)', () => 
       source: 'built-in',
       steps: [
         { id: 'xez-auto-review-pr', name: 'xez-auto-review-pr', skill: 'xez-auto-review-pr', prompt: '{{task}}' },
-        { id: 'xez-auto-verify-pr-ui', name: 'xez-auto-verify-pr-ui', skill: 'xez-auto-verify-pr-ui', prompt: '{{task}}' },
+        { id: 'xez-ux-review-pr', name: 'xez-ux-review-pr', skill: 'xez-ux-review-pr', prompt: '{{task}}' },
       ],
     };
     // `mock:done` makes the mock's turn end with XEZ:DONE — needed so the
@@ -823,7 +823,7 @@ describe('a chain of 2 selected skills runs BOTH steps, in order (#410)', () => 
     // `notes.md` is what actually distinguishes a real run from a no-op one.
     expect(finished?.steps.map((s) => ({ id: s.id, status: s.status }))).toEqual([
       { id: 'xez-auto-review-pr', status: 'done' },
-      { id: 'xez-auto-verify-pr-ui', status: 'done' },
+      { id: 'xez-ux-review-pr', status: 'done' },
     ]);
 
     // The mock leaves a `notes.md` trace on its first turn, once per spawned

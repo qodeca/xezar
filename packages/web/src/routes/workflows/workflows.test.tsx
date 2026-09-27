@@ -46,7 +46,7 @@ const FULL: WorkflowDef = {
   name: 'crowded',
   source: 'file',
   path: '.xezar/workflows/crowded.yaml',
-  steps: Array.from({ length: 8 }, (_, i) => ({
+  steps: Array.from({ length: 12 }, (_, i) => ({
     id: `s${i + 1}`,
     name: 'xez-fix',
     skill: 'xez-fix',
@@ -134,7 +134,7 @@ describe('canvas seeding', () => {
     stubFetch({}, [QUICK, SHIP, FULL])
     renderAt('/workflows/crowded')
 
-    await waitFor(() => expect(stepCards()).toHaveLength(8))
+    await waitFor(() => expect(stepCards()).toHaveLength(12))
     expect(nameInput().value).toBe('crowded')
   })
 
@@ -172,14 +172,14 @@ describe('palette add / remove / the 8-step limit', () => {
     expect(screen.getByText('1 skill')).toBeTruthy()
   })
 
-  it('the 9th step is refused with the legacy message', async () => {
+  it('the 13th step is refused with the legacy message', async () => {
     stubFetch({}, [FULL])
     renderAt('/workflows')
-    await waitFor(() => expect(stepCards()).toHaveLength(8))
+    await waitFor(() => expect(stepCards()).toHaveLength(12))
 
     fireEvent.click(addButton('xez-review'))
-    expect(stepCards()).toHaveLength(8)
-    await screen.findByText('A workflow holds at most 8 steps.')
+    expect(stepCards()).toHaveLength(12)
+    await screen.findByText('A workflow holds at most 12 steps.')
   })
 
   // #374: the palette's empty state must mention the same discovery dirs as the Skills tab's,

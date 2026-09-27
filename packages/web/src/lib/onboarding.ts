@@ -117,6 +117,8 @@ export function setupBody(status: OnboardingStatus): string {
     case 'checking':
       return 'A task is comparing this project’s files against the pinned defaults. It may ask you a question, and it writes nothing until you accept its preview.'
     case 'set-up':
+      // Set up with no check of its own: the project carries a finished onboarding's install record.
+      if (!status.lastChecked) return `This project records a finished setup in its own files. ${RECHECK_SENTENCE}`
       return `The last check finished against xezar ${status.lastChecked?.engineVersion} and templates ${shortDigest(status.lastChecked?.kitDigest ?? '')}. ${RECHECK_SENTENCE}`
     case 'changed':
       return `${changedClause(status)} ${

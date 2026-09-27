@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { readdirSync, readFileSync } from 'node:fs';
+import { parse } from 'yaml';
 import { DEFAULT_ALLOWED_TOOLS } from '../workflows/types.ts';
 import {
   claudeBashRules,
@@ -78,6 +80,30 @@ describe('shared read-only lock (#863)', () => {
     } else {
       expect(decision).toEqual({ allowed: true });
     }
+  });
+
+  it('audits every command shipped by a kit workflow’s read-only command list', () => {
+    const dir = new URL('../../../../.xezar/workflows/', import.meta.url);
+    const covered = COMMAND_RUNNING_ARGUMENTS.map((row) => row.program);
+    // A never-named program is refused by the lock whatever the list says, so shipping one is a dead entry.
+    const neverNamed = COMMAND_RUNNING_ARGUMENTS.filter((row) => row.enforcement === 'never-named').map((row) => row.program);
+    let audited = 0;
+    for (const file of readdirSync(dir).filter((name) => name.endsWith('.yaml'))) {
+      const document: unknown = parse(readFileSync(new URL(file, dir), 'utf8'));
+      expect(document).toBeTypeOf('object');
+      const steps = (document as { steps?: Array<{ bashAllowlist?: unknown }> }).steps ?? [];
+      const entries = steps.flatMap((step) => Array.isArray(step.bashAllowlist) ? step.bashAllowlist : []);
+      for (const entry of entries) {
+        expect(entry).toBeTypeOf('string');
+        const program = String(entry).trim().split(/\s+/, 1)[0] ?? '';
+        expect(covered, `${file}: ${String(entry)}`).toContain(program);
+        expect(neverNamed, `${file}: ${String(entry)}`).not.toContain(program);
+        audited += 1;
+      }
+    }
+    // The 3.0.3 kit ships lists on code-review, architecture-review, business-analysis, issue-triage
+    // and security-review; a kit with none would make this audit pass on nothing.
+    expect(audited).toBeGreaterThan(0);
   });
 
   it.each(['env', 'timeout', 'xargs', 'nohup', 'exec', 'eval', 'command', 'bash', 'sh', 'zsh', 'nice', 'caffeinate'])(
