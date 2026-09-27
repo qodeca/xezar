@@ -41,6 +41,7 @@ import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, renameSync, 
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomBytes } from 'node:crypto';
+import { Buffer } from 'node:buffer';
 
 // The extension API types are pi's, resolved from the pi installation that loads this file. They are
 // imported as types only, so this file needs no dependency of its own and no `package.json`.
@@ -74,6 +75,29 @@ const XEZAR_DATA_DIR = join('.local', 'xezar');
 const SOCKET_PREFIX = 'xez-pi-';
 const SOCKET_FILE = 'leader.sock';
 
+/** `sizeof(sockaddr_un.sun_path)` where it is known; elsewhere Node's own bind decides, as before. */
+const SUN_PATH_BYTES: Partial<Record<string, number>> = {
+  linux: 108,
+  android: 108,
+  darwin: 104,
+  freebsd: 104,
+  openbsd: 104,
+  netbsd: 104,
+};
+
+/**
+ * Whether `path` fits a Unix socket address, counted the way libuv counts it: UTF-8 bytes.
+ *
+ * Node 22 does not refuse a longer path. It binds the path TRUNCATED to that size, so `listen`
+ * succeeds on a socket somewhere else — possibly outside the private directory — and the
+ * descriptor would name a path nothing listens on. Node 23 and later refuse the same path with
+ * EINVAL (nodejs/node#52347, `UV_PIPE_NO_TRUNCATE`); this makes Node 22 refuse it at the same count.
+ */
+function fitsSocketAddress(path: string): boolean {
+  const limit = SUN_PATH_BYTES[process.platform];
+  return limit === undefined || Buffer.byteLength(path, 'utf8') <= limit;
+}
+
 /**
  * A private `0700` directory to put the socket in, or `undefined` if we cannot have one.
  *
@@ -99,6 +123,9 @@ const SOCKET_FILE = 'leader.sock';
  */
 function makePrivateSocketDir(sessionId: string): { dir: string; socket: string } | undefined {
   const dir = join(tmpdir(), `${SOCKET_PREFIX}${sessionId}`);
+  const socket = join(dir, SOCKET_FILE);
+  // A socket that cannot be bound where it is named is no socket at all: fail closed now.
+  if (!fitsSocketAddress(socket)) return undefined;
   try {
     rmSync(dir, { recursive: true, force: true });
     mkdirSync(dir, { mode: 0o700 });
@@ -107,7 +134,7 @@ function makePrivateSocketDir(sessionId: string): { dir: string; socket: string 
     const stat = lstatSync(dir);
     if (!stat.isDirectory()) return undefined;
     if ((stat.mode & 0o077) !== 0) return undefined;
-    return { dir, socket: join(dir, SOCKET_FILE) };
+    return { dir, socket };
   } catch {
     // No private directory, no socket. Failing closed here costs push delivery and nothing else:
     // the events stay in xezar's journal and the leader still reads them with `leader_events`.
@@ -420,7 +447,7 @@ function writeDescriptor(path: string, input: { socket: string; sessionId: strin
 }
 
 /** Exported for xezar's own tests; pi only ever uses the default export. */
-export const __internals = { conversation, textOf, handle, findProjectDataDir, writeDescriptor, readDescriptor, makePrivateSocketDir, safeSessionId, serve };
+export const __internals = { conversation, textOf, handle, findProjectDataDir, writeDescriptor, readDescriptor, makePrivateSocketDir, fitsSocketAddress, safeSessionId, serve };
 
 function readDescriptor(path: string): unknown {
   return JSON.parse(readFileSync(path, 'utf8'));

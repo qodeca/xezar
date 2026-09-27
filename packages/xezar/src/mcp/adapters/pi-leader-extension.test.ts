@@ -585,6 +585,18 @@ describe('when it cannot open its socket at all', () => {
     expect(existsSync(join(harness.dataDir, 'pi-leader.json'))).toBe(false);
   });
 
+  // win32-skip(#963): Windows has no sun_path limit to pin – Node's own bind decides there
+  it.skipIf(onWindows)('refuses a socket path at the byte count Node 23+ refuses it, not one earlier', () => {
+    // Node 22 binds a longer path truncated instead of failing (nodejs/node#52347). The limit must
+    // be exactly sun_path's size: one byte stricter would refuse paths Node 24 binds today.
+    const limit = process.platform === 'linux' || process.platform === 'android' ? 108 : 104;
+    const path = (bytes: number): string => `/${'a'.repeat(bytes - 1)}`;
+    expect(__internals.fitsSocketAddress(path(limit))).toBe(true);
+    expect(__internals.fitsSocketAddress(path(limit + 1))).toBe(false);
+    // Bytes, not characters: 'é' is two bytes in UTF-8.
+    expect(__internals.fitsSocketAddress(`${path(limit - 1)}é`)).toBe(false);
+  });
+
   // win32-skip(#963): pi's leader socket is a Unix socket path, which Node cannot listen on under Windows (listen EACCES), so no descriptor is written
   it.skipIf(onWindows)('drops a peer that sends an endless line instead of growing its buffer for ever', async () => {
     const harness = await boot();
