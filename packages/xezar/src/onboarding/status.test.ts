@@ -11,6 +11,7 @@ import {
   ONBOARDING_MODES,
   ONBOARDING_WORKFLOW_ID,
 } from './status.ts';
+import { PROJECT_SETUP_WORKFLOW } from '../workflows/types.ts';
 
 /**
  * Every state of the onboarding surface (#464 P2, `states.html`), driven through the pure half.
@@ -52,6 +53,33 @@ const derive = (read: OnboardingRead, over: { checks?: BackendCheck[]; localHand
     checkingRunId: over.checkingRunId ?? null,
     issueFiling: ISSUE_FILING,
   });
+
+describe('the bundled templates pin (0.20.0)', () => {
+  it('pins the 3.0.3 onboarding, not the retired xez-onboard revision', () => {
+    expect(BUNDLED_TEMPLATES_DIGEST).toBe('ec856f8');
+  });
+
+  it('a project last checked against the old xez-onboard pin is offered one re-check', () => {
+    const at = '2026-09-14T09:12:00.000Z';
+    const status = derive(
+      ok({
+        engineVersion: '0.15.0',
+        kitDigest: '2c20c60',
+        lastOfferedAt: null,
+        lastCheckedAt: at,
+        checked: { engineVersion: '0.15.0', kitDigest: '2c20c60', at },
+      }),
+    );
+    expect(status.state).toBe('changed');
+    expect(status.offerPending).toBe(true);
+    expect(status.launch.workflowId).toBe('project-setup');
+  });
+
+  it('the launch definition runs the 3.0.3 onboarding skill, and only that one', () => {
+    expect(PROJECT_SETUP_WORKFLOW.name).toBe(ONBOARDING_WORKFLOW_ID);
+    expect(PROJECT_SETUP_WORKFLOW.steps.map((step) => step.skill)).toEqual(['xez-onboard-opinionated']);
+  });
+});
 
 describe('the five states', () => {
   it('a project with no record is “never set up”, with no offer', () => {

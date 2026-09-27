@@ -19,15 +19,19 @@ import {
 /**
  * The pinned setup-template revision this engine bundles.
  *
- * It is the reviewed `xez-onboard` revision of the public `qodeca/xezar-skills` collection
- * (merged as `2c20c60`) that P1 delivered and P2 pins. It moves when the bundled templates move
- * and at no other time — which is what makes "the templates changed" a fact rather than a guess.
+ * It is the `xez-onboard-opinionated` release of the public `qodeca/xezar-skills` collection
+ * this engine supports: 3.0.3, tagged `v3.0.3` and merged as `ec856f8`. It moves when the
+ * supported onboarding moves and at no other time — which is what makes "the templates changed" a
+ * fact rather than a guess. It replaced the old `xez-onboard` pin (`2c20c60`) in 0.20.0, so a
+ * project last checked against that kit is offered one re-check, and the re-check runs the 3.0.3
+ * onboarding (`PROJECT_SETUP_WORKFLOW`). A finished 3.0.3 project carries the onboarding's own
+ * install record, `.xezar/onboarding.json`; this pin is only the engine's side of the pair.
  * A user never sets it, never sees the field name, and has no file to author (§ Zero config).
  *
  * In user-facing copy this is "setup templates", never "kit" (OQ-5, and the release-hygiene rule
  * of #466: xezar's own internal vocabulary is not something a user adopts).
  */
-export const BUNDLED_TEMPLATES_DIGEST = '2c20c60';
+export const BUNDLED_TEMPLATES_DIGEST = 'ec856f8';
 
 /** The bundled launch definition both the cockpit buttons and `task_create` name. */
 export const ONBOARDING_WORKFLOW_ID = 'project-setup';
