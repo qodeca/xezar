@@ -33,3 +33,5 @@ the shipped MCP tools. Its tables are generated from the code and `npm test` che
   and [CHANGELOG.md](../CHANGELOG.md).
 - [designs/](../designs/README.md): UI designs, one folder per feature – static mockups on the shared
   design-system stylesheet plus a handoff README. Its § Lifecycle carries the status of every design.
+
+<!-- onboarding smoke test: throwaway line -->
