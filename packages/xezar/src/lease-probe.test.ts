@@ -44,7 +44,7 @@ describe('xezar lease gates --probe (#838 B)', () => {
   const cli = (args: readonly string[], cwd: string = base): Run => {
     const result = spawnSync(process.execPath, ['--import', tsxLoader, entry, ...args], {
       cwd,
-      // // os.homedir() reads USERPROFILE, not HOME, on Windows (#963).
+      // os.homedir() reads USERPROFILE, not HOME, on Windows (#963).
       env: { ...process.env, HOME: home, ...(onWindows ? { USERPROFILE: home } : {}), XEZ_HOME: xezarHome, VITEST: '', NO_COLOR: '1' },
       stdio: ['ignore', 'pipe', 'pipe'],
       encoding: 'utf8',
@@ -170,7 +170,7 @@ describe('xezar lease gates -- <command> is unchanged by the probe (#838 B)', ()
   const cli = (args: readonly string[]): Run => {
     const result = spawnSync(process.execPath, ['--import', tsxLoader, entry, ...args], {
       cwd: base,
-      // // os.homedir() reads USERPROFILE, not HOME, on Windows (#963).
+      // os.homedir() reads USERPROFILE, not HOME, on Windows (#963).
       env: { ...process.env, HOME: home, ...(onWindows ? { USERPROFILE: home } : {}), XEZ_HOME: join(base, 'xezar-home'), VITEST: '', NO_COLOR: '1' },
       stdio: ['ignore', 'pipe', 'pipe'],
       encoding: 'utf8',

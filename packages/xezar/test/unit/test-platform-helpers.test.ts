@@ -7,7 +7,7 @@ import { FILE_SYMLINKS, linkDir, npmCommand, onWindows, shortTmpRoot } from '../
 
 // POSIX identity: these pass both before and after #963 by design – they pin that adopting the
 // helpers changes nothing on Linux or macOS.
-test('POSIX: every helper returns the pre-#963 literal', { skip: onWindows ? 'POSIX-only identity pin' : false }, () => {
+test('POSIX: every helper returns the pre-#963 literal', { skip: onWindows ? 'win32-skip(#963): POSIX-only identity pin – the Windows branch is pinned by the next test' : false }, () => {
   assert.equal(onWindows, false);
   assert.equal(shortTmpRoot(), '/tmp');
   assert.equal(FILE_SYMLINKS, true);

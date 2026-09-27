@@ -566,6 +566,9 @@ describe.skipIf(onWindows)('the events it forwards', () => {
   });
 });
 
+/** The platforms in the extension's `SUN_PATH_BYTES` table; anywhere else the length guard is off. */
+const SUN_PATH_PLATFORMS: string[] = ['linux', 'android', 'darwin', 'freebsd', 'openbsd', 'netbsd'];
+
 describe('when it cannot open its socket at all', () => {
   it('announces nothing rather than a descriptor naming a socket that does not listen', async () => {
     // A Unix socket path is capped at ~104 bytes, so a deep enough temporary directory makes the
@@ -585,8 +588,27 @@ describe('when it cannot open its socket at all', () => {
     expect(existsSync(join(harness.dataDir, 'pi-leader.json'))).toBe(false);
   });
 
+  // win32-skip(#963): Windows has no sun_path limit, so the length guard never refuses there;
+  // other platforms outside linux/android/darwin are skipped because this suite is not run on them
+  it.skipIf(!['linux', 'android', 'darwin'].includes(process.platform))(
+    'refuses at the real call site when TMPDIR makes the socket path too long, and creates no directory',
+    () => {
+      const root = tmp('xzext-cap-');
+      const deep = join(root, 'a'.repeat(60), 'b'.repeat(60));
+      mkdirSync(deep, { recursive: true });
+      pinTmpDir(deep); // os.tmpdir() reads TMPDIR on every call; afterEach restores it
+      const dir = join(deep, 'xez-pi-too-long');
+      // The precondition that makes this case mean something: the socket path really is over the cap.
+      expect(Buffer.byteLength(join(dir, 'leader.sock'), 'utf8')).toBeGreaterThan(108);
+
+      expect(__internals.makePrivateSocketDir('too-long')).toBeUndefined();
+      // Fail closed BEFORE touching the disk – no directory left behind for a socket that cannot bind.
+      expect(existsSync(dir)).toBe(false);
+    },
+  );
+
   // win32-skip(#963): Windows has no sun_path limit to pin – Node's own bind decides there
-  it.skipIf(onWindows)('refuses a socket path at the byte count Node 23+ refuses it, not one earlier', () => {
+  it.skipIf(!SUN_PATH_PLATFORMS.includes(process.platform))('refuses a socket path at the byte count Node 23+ refuses it, not one earlier', () => {
     // Node 22 binds a longer path truncated instead of failing (nodejs/node#52347). The limit must
     // be exactly sun_path's size: one byte stricter would refuse paths Node 24 binds today.
     const limit = process.platform === 'linux' || process.platform === 'android' ? 108 : 104;

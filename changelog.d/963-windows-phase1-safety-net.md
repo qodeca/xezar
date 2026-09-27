@@ -5,6 +5,13 @@
   `EBADENGINE` at install, or refuses with `engine-strict` set. Upgrade to Node 22 or the current
   LTS. (#963)
 
+## 🐛 Fixes
+
+- 🐛 **The pi leader no longer announces a socket that does not exist on Node 22.** Node 22
+  silently shortens a Unix socket path that is longer than the system allows and listens on the
+  shortened path; the pi extension now refuses such a path up front (108 bytes on Linux, 104 on
+  macOS and the BSDs), as Node 23 and later already do. (#963)
+
 ## 📝 Specs & Documentation
 
 - 📝 **Prerequisites per operating system.** The README's Quick start and the getting-started

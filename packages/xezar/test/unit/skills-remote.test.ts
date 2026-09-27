@@ -128,9 +128,15 @@ function holdEventLoop(t: TestContext): void {
   t.after(() => clearInterval(keepAlive));
 }
 
+/**
+ * Every test that calls `holdEventLoop` carries this per-test timeout: the held loop means a promise
+ * that never settles would otherwise hang the file for ever instead of failing the one test.
+ */
+const HELD_LOOP_TIMEOUT_MS = 120_000;
+
 // ---- integration: local clone still works, SHA pins, bad ref degrades --------
 
-test('listRemoteSkills clones a local repo, pins the SHA, and refuses a bad ref', async (t) => {
+test('listRemoteSkills clones a local repo, pins the SHA, and refuses a bad ref', { timeout: HELD_LOOP_TIMEOUT_MS }, async (t) => {
   holdEventLoop(t);
   const home = mkdtempSync(join(tmpdir(), 'xez-home-'));
   const srcDir = mkdtempSync(join(tmpdir(), 'xez-src-'));
@@ -193,7 +199,7 @@ test('listRemoteSkills clones a local repo, pins the SHA, and refuses a bad ref'
 
 // ---- per-project team-skills cache isolation (multi-project workspace, 2.6) --
 
-test('team-skills cache is keyed by repoRoot — projects never see each other\'s skills', async (t) => {
+test('team-skills cache is keyed by repoRoot — projects never see each other\'s skills', { timeout: HELD_LOOP_TIMEOUT_MS }, async (t) => {
   holdEventLoop(t);
   const home = mkdtempSync(join(tmpdir(), 'xez-home-'));
   const prevHome = process.env.HOME;
@@ -461,7 +467,7 @@ async function waitFor(predicate: () => boolean, what: string, timeoutMs = 10_00
   }
 }
 
-test('a failed fetch degrades to the cached clone instead of throwing', { skip: NO_GIT_SHIM }, async (t) => {
+test('a failed fetch degrades to the cached clone instead of throwing', { skip: NO_GIT_SHIM, timeout: HELD_LOOP_TIMEOUT_MS }, async (t) => {
   const box = sandbox(t);
   const src = box.skillsRepo('cached-skill');
   const root = box.projectRoot([{ repo: src, ref: 'main' }]);
@@ -482,7 +488,7 @@ test('a failed fetch degrades to the cached clone instead of throwing', { skip: 
   );
 });
 
-test('a failed fetch with no cache returns an empty catalog and never throws', async (t) => {
+test('a failed fetch with no cache returns an empty catalog and never throws', { timeout: HELD_LOOP_TIMEOUT_MS }, async (t) => {
   const box = sandbox(t);
   // A source that cannot be cloned and was never cached: an absent local path
   // fails instantly and offline, exactly like an unreachable remote.
@@ -499,7 +505,7 @@ test('a failed fetch with no cache returns an empty catalog and never throws', a
   assert.deepEqual(await listRemoteSkills({ repo: missing, ref: 'main' }), []);
 });
 
-test('a clone that hangs never blocks the catalog read, and a killed git degrades', { skip: NO_GIT_SHIM }, async (t) => {
+test('a clone that hangs never blocks the catalog read, and a killed git degrades', { skip: NO_GIT_SHIM, timeout: HELD_LOOP_TIMEOUT_MS }, async (t) => {
   const box = sandbox(t);
   const src = box.skillsRepo('slow-skill');
   const root = box.projectRoot([{ repo: src, ref: 'main' }]);
@@ -533,7 +539,7 @@ const ONE_SHOT_START_DEADLINE_MS = 5_000;
 const PACKAGE_ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const SKILLS_REMOTE_MODULE = new URL('../../src/skills-remote.ts', import.meta.url).href;
 
-test('a hung network clone never holds a one-shot process open (#249)', { skip: NO_GIT_SHIM }, async (t) => {
+test('a hung network clone never holds a one-shot process open (#249)', { skip: NO_GIT_SHIM, timeout: HELD_LOOP_TIMEOUT_MS }, async (t) => {
   const box = sandbox(t);
   const src = box.skillsRepo('one-shot-skill');
   const root = box.projectRoot([{ repo: src, ref: 'main' }]);
@@ -602,7 +608,7 @@ test('a hung network clone never holds a one-shot process open (#249)', { skip: 
   );
 });
 
-test('a corrupt or truncated cache degrades to empty, and a missing one re-clones', async (t) => {
+test('a corrupt or truncated cache degrades to empty, and a missing one re-clones', { timeout: HELD_LOOP_TIMEOUT_MS }, async (t) => {
   const box = sandbox(t);
   const src = box.skillsRepo('fragile-skill');
   const root = box.projectRoot([{ repo: src, ref: 'main' }]);
@@ -627,7 +633,7 @@ test('a corrupt or truncated cache degrades to empty, and a missing one re-clone
   assert.deepEqual((await refreshTeamSkills(root)).skills.map((s) => s.name), ['fragile-skill']);
 });
 
-test('all three configured source shapes resolve, and unsafe ones never reach git', { skip: NO_GIT_SHIM }, async (t) => {
+test('all three configured source shapes resolve, and unsafe ones never reach git', { skip: NO_GIT_SHIM, timeout: HELD_LOOP_TIMEOUT_MS }, async (t) => {
   const box = sandbox(t);
   const local = box.skillsRepo('local-skill');
   const unsafeRepo = "ext::sh -c 'touch /tmp/xez-issue-57-pwn'";
@@ -673,6 +679,7 @@ test('all three configured source shapes resolve, and unsafe ones never reach gi
 
 test('a read-only cache directory degrades instead of failing the boot', {
   skip: onWindows ? 'win32-skip(#963): Windows ignores POSIX mode bits – chmod 0500 leaves the directory writable' : false,
+  timeout: HELD_LOOP_TIMEOUT_MS,
 }, async (t) => {
   const box = sandbox(t);
   const src = box.skillsRepo('unwritable-skill');

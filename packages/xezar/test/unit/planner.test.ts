@@ -124,6 +124,8 @@ async function planWithFakeAgent(
       bin,
       `#!${process.execPath}\n` +
         "import { createInterface } from 'node:readline';\n" +
+        "import { writeFileSync } from 'node:fs';\n" +
+        `writeFileSync(${JSON.stringify(marker)}, '');\n` +
         `const REPLY = ${JSON.stringify(reply)};\n` +
         "process.stdout.write(JSON.stringify({ type: 'system', subtype: 'init' }) + '\\n');\n" +
         "const rl = createInterface({ input: process.stdin });\n" +

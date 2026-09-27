@@ -281,7 +281,7 @@ describe('CLI onboarding (#819)', () => {
             '-e',
             'process.stdout.write("wrapped\\n")',
           ],
-          // // os.homedir() reads USERPROFILE, not HOME, on Windows (#963).
+          // os.homedir() reads USERPROFILE, not HOME, on Windows (#963).
           { env: { HOME: join(base, 'lease-home'), ...(onWindows ? { USERPROFILE: join(base, 'lease-home') } : {}) }, timeoutMs: 30_000 },
         );
         expect(lease.status).toBe(0);
