@@ -102,7 +102,10 @@ describe('maintained Xezar project kit versus local runtime', () => {
   it('ignores local state without hiding maintained directories', () => {
     // `.local/xezar/tasks/...` is the kit's evidence root. The blanket `*` in `.local/.gitignore`
     // already covers it at any depth; naming it here makes that explicit rather than incidental.
-    for (const file of [...engineOnly, '.local/qa/agent-home/token', '.local/test-tmp/fixture', '.local/xezar/runs.json', '.local/xezar/tasks/x/manifest.json', '.local/xezar-tasks/x/manifest.json']) expect(ignored(file), file).toBe(true);
+    // The 3.0.3 kit's `.xezar/.gitignore` names no `/.local/`: nothing writes one under the kit, so
+    // that one path is checked only at the engine's data dir (the startup case below).
+    const kitRuntime = localRuntime.filter((file) => file !== `${kitRoot}/.local/note`);
+    for (const file of [...kitRuntime, ...engineOnly, '.local/qa/agent-home/token', '.local/test-tmp/fixture', '.local/xezar/runs.json', '.local/xezar/tasks/x/manifest.json', '.local/xezar-tasks/x/manifest.json']) expect(ignored(file), file).toBe(true);
   });
   it('startup ignores every engine-written path without touching the maintained kit', () => {
     // Execute only the actual helper body; importing the CLI would boot a real process.
