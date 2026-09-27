@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { TASK_VERDICT_ROLES } from '@qodeca/xezar-contract';
 import { gzipSync, gunzipSync } from 'node:zlib';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   findArchiveGaps,
   findContentLeaks,
@@ -233,5 +236,20 @@ describe('release content check', () => {
   it('never bans a verdict role word the published contract ships', () => {
     const names = kitNames(REPO_ROOT);
     for (const role of TASK_VERDICT_ROLES) expect(names, role).not.toContain(role);
+  });
+
+  // The onboarding kit ships `.xezar/workflows/issue-filing.yaml`, and the engine itself ships
+  // `onboarding/issue-filing.js`. A kit name is a banned word in the archive, so an onboarded
+  // checkout failed `check:pack` on the engine's own files. Named break: drop `issue-filing` from
+  // `GENERIC_WORKFLOW_NAMES` and this kit workflow becomes a banned name again.
+  it('never bans the issue-filing workflow name the engine itself ships', () => {
+    const root = mkdtempSync(join(tmpdir(), 'kit-names-'));
+    try {
+      mkdirSync(join(root, '.xezar', 'workflows'), { recursive: true });
+      writeFileSync(join(root, '.xezar', 'workflows', 'issue-filing.yaml'), 'name: issue-filing\n');
+      expect(kitNames(root)).not.toContain('issue-filing');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
