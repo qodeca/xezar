@@ -496,12 +496,16 @@ describe('runUnderGateLease', () => {
 });
 
 describe('the constants and the lines', () => {
-  it('the wait bound is 20 minutes, in source, with no env var to move it', () => {
+  it('the wait bound is 20 minutes, in source, with no env var to move it', async () => {
     expect(GATE_LEASE_WAIT_MS).toBe(20 * 60_000);
     // #672 Q7 (a): the bound is a constant, and the second half of the answer is the kit rule
     // that the canonical list runs in the `gates` CHECK step, which has no wall clock at all.
-    expect(process.env.XEZ_GATE_SLOTS).toBeUndefined();
-    expect(process.env.XEZ_GATE_LEASE).toBeUndefined();
+    // Read the SOURCE, not this process's environment: a gate runner that holds a lease exports
+    // XEZ_GATE_LEASE=1 to the suite it runs, so an ambient-env assertion failed under every kit
+    // gate while proving nothing about the module. Named break: add a `process.env.XEZ_GATE_*`
+    // read to gate-lease.ts and this fails.
+    const source = await readFile(new URL('./gate-lease.ts', import.meta.url), 'utf8');
+    expect(source).not.toMatch(/process\.env/);
   });
 
   it('the lock directory does not move with the state layout', () => {
