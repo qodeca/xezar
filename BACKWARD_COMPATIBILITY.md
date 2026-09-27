@@ -30,6 +30,14 @@ The YAML workflow format under `.xezar/workflows/` and the Markdown skill format
 keeps its old meaning: an earlier agent step falls through to the runner's default wall clock and
 the last interactive step is uncapped.
 
+A step's `verdictRole` names one of `TASK_VERDICT_ROLES` in `packages/contract/src/task-verdict.ts`,
+and each role keeps every verdict word it has ever accepted. Adding a role or a word is additive:
+0.20.0 adds `security-review` and `acceptance-verification`, and adds the 3.0.3 kit's CONFORMS,
+CONFORMS WITH FOLLOW-UPS and CONTRADICTS to `architecture-review` beside APPROVE and REQUEST CHANGES.
+Renaming or removing a role or a word is a break. The most steps a chain may hold when it is saved
+or run inline (`WORKFLOW_MAX_STEPS`, the same number for the HTTP API, MCP and the cockpit) rose
+from 8 to 12 in 0.20.0; raising it is additive, lowering it would refuse files that save today.
+
 ## 5. Configuration and state files
 
 `.xezar/config.json`, the per-user `~/.xezar/` files, and the runtime state under

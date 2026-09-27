@@ -19,6 +19,7 @@ import { tmpdir } from 'node:os';
 import { basename, join, relative } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { parse as parseYaml } from 'yaml';
+import { WORKFLOW_MAX_STEPS } from '@qodeca/xezar-contract';
 import { CONFIG_FILES } from '../../agent-config/catalog.ts';
 import { loadConfig, resolveWorktreeRetention } from '../../config.ts';
 import { BUNDLED_TEMPLATES_DIGEST } from '../../onboarding/status.ts';
@@ -2320,8 +2321,30 @@ describe('project_config: workflows', () => {
     expect(saved).toEqual({ name: 'Arch review', steps: [{ id: 'review', skill: 'arch', prompt: '{{task}}', verdictRole: 'architecture-review' }] });
     value(await invoke({ action: 'delete_workflow', name: 'Arch review' }));
 
-    const unknown = await invoke({ action: 'save_workflow', workflow: { name: 'x', steps: [{ id: 'r', prompt: 'x', verdictRole: 'security-review' }] } });
+    const unknown = await invoke({ action: 'save_workflow', workflow: { name: 'x', steps: [{ id: 'r', prompt: 'x', verdictRole: 'performance-review' }] } });
     expect(unknown.result.isError).toBe(true);
+  });
+
+  it('saves the 3.0.3 kit’s new reviewer roles and a nine-step chain; refuses one past the cap', async () => {
+    // Named break: put the cap back at 8, or drop `security-review` / `acceptance-verification`
+    // from the role list — the kit's nine-step workflows and its new reviewers then cannot be saved.
+    const reviewers = {
+      name: 'Kit reviews',
+      steps: [
+        { id: 'security', prompt: '{{task}}', verdictRole: 'security-review' },
+        { id: 'acceptance', prompt: '{{task}}', verdictRole: 'acceptance-verification' },
+      ],
+    };
+    value(await invoke({ action: 'save_workflow', workflow: reviewers }));
+    const saved = parseYaml(readFileSync(join(ws.roots.a, '.xezar', 'workflows', 'kit-reviews.yaml'), 'utf8'));
+    expect(saved.steps.map((step: { verdictRole: string }) => step.verdictRole)).toEqual(['security-review', 'acceptance-verification']);
+    value(await invoke({ action: 'delete_workflow', name: 'Kit reviews' }));
+
+    const steps = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `s${i}`, prompt: '{{task}}' }));
+    value(await invoke({ action: 'save_workflow', workflow: { name: 'Nine steps', steps: steps(9) } }));
+    value(await invoke({ action: 'delete_workflow', name: 'Nine steps' }));
+    const over = await invoke({ action: 'save_workflow', workflow: { name: 'Too long', steps: steps(WORKFLOW_MAX_STEPS + 1) } });
+    expect(over.result.isError).toBe(true);
   });
 
   it('refuses a check step — a shell command run later — without dispatching or writing anything', async () => {

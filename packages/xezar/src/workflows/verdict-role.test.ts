@@ -28,7 +28,7 @@ describe('#851 — the verdictRole step key', () => {
   });
 
   it.each(schemas)('$name refuses a role that is not on the list', ({ schema }) => {
-    expect(schema.safeParse({ id: 'review', prompt: '{{task}}', verdictRole: 'security-review' }).success).toBe(false);
+    expect(schema.safeParse({ id: 'review', prompt: '{{task}}', verdictRole: 'performance-review' }).success).toBe(false);
   });
 
   it.each(schemas)('$name refuses a role on a check step, which never has a packet collected', ({ schema }) => {

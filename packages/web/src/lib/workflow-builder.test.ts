@@ -107,11 +107,13 @@ describe('moveStep (drag reorder)', () => {
   })
 })
 
-// ---- the 8-step limit ---------------------------------------------------------------------------
+// ---- the step limit -----------------------------------------------------------------------------
 
 describe('WB_MAX_STEPS', () => {
-  it('mirrors the server save/run limit', () => {
-    expect(WB_MAX_STEPS).toBe(8)
+  it('mirrors the server save/run limit, which holds every 3.0.3 kit workflow', () => {
+    // Named break: pin it back to 8 and the kit's nine-step localisation and performance
+    // workflows can no longer be re-saved from the builder.
+    expect(WB_MAX_STEPS).toBe(12)
   })
 })
 
