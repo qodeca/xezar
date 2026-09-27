@@ -340,7 +340,7 @@ retried nor fixed here.
 only in the unrelated register-test fix)`. The `Head SHA` column above states the `origin/main`
 head every row anchors to for comparability; run 1's own worktree was actually one commit ahead of
 it, at `5af6644f`, a style-only fix to `packages/web/src/e2e-dry-run-register.test.ts` (see the
-Regression/control note in the dogfooding fragment for this task) that touches no browser-suite
+Regression/control note in this task's run notes) that touches no browser-suite
 file. Runs 2–4 ran with no worktree diff from `fee89d0c` — their own `START` lines record one head,
 not two.
 
@@ -386,7 +386,7 @@ One default-order attempt at this same head is deliberately not a row above: it 
 by an unrelated `npm test` invocation sharing this task's `$TMPDIR` while the browser suite was
 mid-run, which deleted a live SSR transform-cache directory out from under the running suite and
 produced 62 spurious file failures with only 99 of the expected ~459 tests even collected. That is
-measurement contamination, not suite evidence, so it is recorded as a dogfooding observation
+measurement contamination, not suite evidence, so it is recorded as an observation
 instead of a table row, and the affected run was discarded and re-run cleanly.
 
 **Adding the next row:** run `npm run test:e2e` (or the shuffled invocation above) to completion,
@@ -528,7 +528,7 @@ own semantic-locator command — rather than the CSS-selector methods on `AgentB
 one new interaction helper this package adds, and existing specs are not retrofitted to it.
 
 A **nested-host class** applies to any fixture server that is itself booted by a task this repo's
-own xezar is running (every QA, gate and UI-lane task dogfooding this repo): its MCP socket
+own xezar is running (every QA, gate and UI-lane task run on this repo): its MCP socket
 reliably never opens, so `guide-13-mcp-leader-control.e2e.ts`'s unattached-state case sees the
 degraded "service not running" branch rather than the real first-boot reading a bare CI runner
 shows — the spec asserts an honest reading in either branch instead of hard-requiring one (#579).

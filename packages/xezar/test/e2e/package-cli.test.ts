@@ -461,7 +461,7 @@ if (args.join(' ') === 'auth status --json') {
     );
 
     // `xezar init` — the first command a new user types. It scaffolds the
-    // `.xezar/` project kit, and BACKWARD_COMPATIBILITY.md lists it as a
+    // `.xezar/` project kit, and the backward-compatibility promise lists it as a
     // protected CLI surface whose load-bearing rule is stated in AGENTS.md:
     // init NEVER overwrites an existing file. Both failure modes are silent —
     // an empty kit, or a workflow the user authored quietly replaced.
@@ -551,7 +551,7 @@ if (args.join(' ') === 'auth status --json') {
     // `xezar serve` — the DEFAULT command, so a bare `xezar` is this boot. It
     // does four things beyond starting an HTTP server, and each of them fails
     // quietly: it picks the next free port when the requested one is taken
-    // (BACKWARD_COMPATIBILITY.md §1/§3), it honours `--repo`, it sweeps
+    // (the backward-compatibility promise), it honours `--repo`, it sweeps
     // orphaned worktrees at startup (spec 006), and it keeps
     // `<repo>/.local/.gitignore` blanket-ignoring run state — the upkeep whose
     // absence once put run state into a user's history.
@@ -696,7 +696,7 @@ if (args.join(' ') === 'auth status --json') {
     assert.doesNotMatch(firstBoot, /instance\.mode/, 'the default workspace boot stays silent');
     assert.doesNotMatch(firstBoot, /--instance/, 'the default boot mentions no instance flag');
 
-    // A bad value refuses BEFORE anything is claimed or bound (BACKWARD_COMPATIBILITY.md § 1,
+    // A bad value refuses BEFORE anything is claimed or bound (the backward-compatibility promise,
     // exit codes) — so this exits 1 rather than starting a cockpit on some port.
     await assert.rejects(
       execFile(process.execPath, [cliPath, '--instance', 'projekt', '--repo', serveRepo], {

@@ -323,7 +323,7 @@ deprecation line when it does, and never changes it. Keep it if you want the old
 after a downgrade, reads its old file but cannot read records written by 0.16.0. The old name stops
 being read no earlier than 0.18.0. The trail now records cockpit, automation and command-line changes
 too, not only MCP; on a hosted server behind a custom reverse proxy, set `X-Xezar-User` to the
-authenticated user (the bundled nginx site already does). Details: [`BACKWARD_COMPATIBILITY.md`](BACKWARD_COMPATIBILITY.md).
+authenticated user (the bundled nginx site already does).
 
 ### Claude Code, pi and OpenCode runs and your own MCP servers
 
@@ -335,7 +335,7 @@ project's one leader slot the moment it connected, so a task running in the proj
 config files are never edited. Two narrowings follow: a Claude Code task now sees only the MCP
 servers your project's own `.mcp.json` declares, not the ones in `~/.claude.json`; and for pi and
 OpenCode a server literally named `xezar` is switched off in tasks even when it belongs to you, so
-rename an unrelated server of that name. Details: [`BACKWARD_COMPATIBILITY.md`](BACKWARD_COMPATIBILITY.md).
+rename an unrelated server of that name.
 Migration: [Run each supported client as the project leader](docs/guide/13-mcp-leader.md) § "To keep your leader while tasks run in the same folder".
 
 ### The sidebar is navigation-only now
@@ -344,7 +344,7 @@ The sidebar's task list, the Active/Archived toggle and the "Search… ⌘K" box
 sidebar shows navigation only. Active/Archived and search now live on the Tasks pages – the
 per-project Tasks page and the workspace-wide All tasks page – alongside pin/unpin, unread state
 and diff stats, which already lived there; ⌘K still opens the command palette from anywhere, with
-no sidebar click target needed. Details: [`BACKWARD_COMPATIBILITY.md`](BACKWARD_COMPATIBILITY.md).
+no sidebar click target needed.
 
 ### Single-project mode
 
@@ -383,8 +383,6 @@ unchanged. See
 - The stdout line `recovered N run(s) from the previous session` is gone; a script that read it
   should instead read stderr's plain output and select `event=task.recovered`.
 
-Details for all four: [`BACKWARD_COMPATIBILITY.md`](BACKWARD_COMPATIBILITY.md).
-
 ## Upgrading to 0.15.0
 
 ### Codex runs and MCP servers
@@ -393,7 +391,7 @@ A Codex run no longer loads the MCP servers, plugins or apps from your own Codex
 Codex runs a server, declare it in the project's own `.codex/config.toml`, trust the project in Codex,
 keep `~/.codex/config.toml` from adding keys to it, and do not name it `xezar` (reserved for xezar's
 leader bridge). A Codex CLI that cannot answer `config/read` fails the run – update it with
-`npm i -g @openai/codex`. Details: [`BACKWARD_COMPATIBILITY.md`](BACKWARD_COMPATIBILITY.md).
+`npm i -g @openai/codex`.
 
 ### Team skills repository
 

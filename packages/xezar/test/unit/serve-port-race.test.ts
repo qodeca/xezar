@@ -183,7 +183,7 @@ test('a port taken between the free-port check and the bind never leaves a cockp
 
 // Guard, not the regression: this one passed before the fix too, because the old probe was the
 // first listener on the port and simply moved on. It pins the port-fallback contract
-// (BACKWARD_COMPATIBILITY.md §1/§3) for the new bind-and-retry path.
+// (the backward-compatibility promise) for the new bind-and-retry path.
 test('a port that is busy at bind time moves serve to the next port and says so', { timeout: 120_000 }, async () => {
   const wanted = await freePort(PORT_SPAN);
   const boot = await bootServe('at-bind', wanted, 1);

@@ -20,7 +20,7 @@ export interface ForgeAvailability {
 }
 
 /** One issue or pull request, flattened for the cockpit. `/api/github` serves
- *  exactly this shape (BACKWARD_COMPATIBILITY.md §2 — do not reshape). */
+ *  exactly this shape (the backward-compatibility promise — do not reshape). */
 export interface ForgeItem {
   kind: 'issue' | 'pr';
   number: number;
@@ -123,7 +123,7 @@ export interface ForgeCommentsData {
   truncated?: boolean;
   /** Timeline events (#525) — additive and optional; absent when the timeline fetch degraded to
    *  the legacy comments-only call. Capped independently of `comments`, which keeps its exact
-   *  pre-#525 shape, contents and cap (BACKWARD_COMPATIBILITY.md §2). */
+   *  pre-#525 shape, contents and cap (the backward-compatibility promise). */
   events?: ForgeTimelineEvent[];
 }
 

@@ -22,7 +22,7 @@ vi.mock('node:fs', async (importOriginal) => {
  * At least one external consumer checks the files at the TOP LEVEL of a project's
  * `.local/xezar/` against the names xezar writes today, and fails a gate in every project
  * that uses it when an unexpected name appears (AGENTS.md § CLI entry;
- * `BACKWARD_COMPATIBILITY.md` §3). That contract is a SHAPE — a base name, optionally
+ * the backward-compatibility promise). That contract is a SHAPE — a base name, optionally
  * suffixed with `.lock`, `.lock.takeover`, `.tmp`, a `.<pid>.<hex>.tmp` staging form, or a
  * `.1`–`.4` rotation number — not an enumerable set of exact strings; two exact-match lists
  * built against this surface were already wrong for that reason (see the two routing-map C1
@@ -76,7 +76,7 @@ const SCAN_ROOTS = ['src', 'scripts'] as const;
 /** A parameter or member spelled `dataDir`, or `projectDataDir(…)`. */
 const DATA_DIR_HEAD = /^(?:[\w$#]+\.)*dataDir$/;
 
-/** The documented suffixes after a base name (AGENTS.md § CLI entry, BACKWARD_COMPATIBILITY.md §3). */
+/** The documented suffixes after a base name (AGENTS.md § CLI entry, the backward-compatibility promise). */
 const DOCUMENTED_SUFFIX = /^(?:\.lock(?:\.takeover)?|\.takeover|\.tmp|\.\$\{[^}]*\}\.\$\{[^}]*\}\.tmp|\.\$\{[^}]*\}|\.[1-4])$/;
 
 /**
@@ -401,7 +401,7 @@ describe('.local/xezar/ gets no new top-level entry unnoticed (#838 item C3)', (
       unexplained(scan()),
       'A .local/xezar/ top-level entry is being constructed outside the documented shape. Add the ' +
         'name to ALLOWED_NAMES with a reason if it genuinely belongs (and update AGENTS.md / ' +
-        'BACKWARD_COMPATIBILITY.md §3), or fix the call site if it does not.',
+        'the backward-compatibility promise), or fix the call site if it does not.',
     ).toEqual([]);
   });
 

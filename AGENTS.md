@@ -51,8 +51,8 @@ Practical rules:
 The owner's Q1 decision (2026-09-16, [#466](https://github.com/qodeca/xezar/issues/466))
 allows exact capability references: shipped help **may** name a client's own instruction file,
 such as `AGENTS.md` or `CLAUDE.md`, to say what that client reads. It must **never** tell users
-to adopt Xezar's own files or process — `SDLC.md`, `repo-gates`, the `.xezar/` files, kit,
-checks or workflows, or our AGENTS/CODE_REVIEW conventions. Preserve user-authored guidance
+to adopt Xezar's own files or process – this repository's process documents, gates, `.xezar/`
+files, checks or workflows, or our AGENTS.md and review conventions. Preserve user-authored guidance
 and supported client filenames; neither is permission to distribute our project instructions.
 
 [PR #481](https://github.com/qodeca/xezar/pull/481) adds the enforcement: the instruction-producer
@@ -64,7 +64,7 @@ must identify the exact field and fragment, carry a reason and review reference,
 negative test proving adjacent project instructions still fail. Never exempt a whole file or
 instruction paragraph; never widen the shrinking allowance for outstanding repairs.
 
-A string a user will read ships generic; a rule this repo follows stays in AGENTS.md/SDLC.md/.xezar.
+A string a user will read ships generic; a rule this repo follows stays in AGENTS.md.
 
 ## Changing a mechanism that already works
 
@@ -184,22 +184,6 @@ Two source-cited routing invariants remain visible at the root: “built-ins alw
 
 ## Validation
 
-Before any commit or PR, run every command below. This is canonical reporting order:
-
-```bash
-npm run typecheck   # contract + api-client + server + web (a pretypecheck builds the server first)
-npm test            # vitest — server, contract, api-client and cockpit unit suites
-npm run test:unit   # node:test — fast core-module coverage (packages/xezar/test/unit/)
-npm run build       # tsc → dist/, vite → packages/xezar/web/dist/, then the check:pack tarball gate
-npm run test:package # pack/install the release tarball and exercise the built CLI (packages/xezar/test/e2e/)
-```
-
-An author runs the focused tests for what it changed and `npm run typecheck`; the canonical list below runs once per run, in the workflow's `gates` step.
-
-**That last sentence is load-bearing since #672, not merely tidy.** `repo-gates.sh` now takes a machine-wide gate lease before it installs anything, so a second full gate run on the same machine WAITS — up to a bounded 20 minutes — instead of contending. A check step has no wall clock at all, so the `gates` step can wait the whole bound safely. An AGENT step is different: it falls through to the runner's 30-minute `DEFAULT_RUN_TIMEOUT_MS` unless its workflow sets `timeout`, and 20 minutes of waiting plus a real gate run exceeds that, so an author who runs the canonical list inside their own authoring step can now be killed mid-wait. The lease prints its elapsed wait and records it on the attempt as `leaseWaitMs`, so that death is diagnosable rather than mysterious — but the way to not have it is to run the list where it belongs.
-
-Dependency installation runs alone, and `.xezar/checks/security-scan.sh` runs alone straight after it — the security stage is resolved before any gate that produces a quality signal, and its structured result is what the seal carries (SDLC.md § Security before the quality verdict). The canonical kit runner may then overlap three lanes: `typecheck → build → test:package`, `npm test`, and `npm run test:unit`. Join all lanes before `.xezar/checks/repository-checks.sh` (actual catalog, changelog, link and contract checks). Run `bash .xezar/checks/infra-tests.sh` locally as well for kit-check/workflow changes; its unconditional `Xezar infrastructure fixtures` CI job is required on every PR. Serial execution remains valid. Preserve the Vitest worker cap, execute every required command even after an ordinary gate failure, and leave cancelled command phases or unrecordable attempts incomplete. Atomic result publication is the completion commit point: if it finishes before a deferred cancellation is handled, retain and report the completed verdict. Only one reducer writes aggregate gate evidence.
-
 `npm test` and `npm run test:unit` are the fast unit gate: no server, no browser. They must stay that way.
 
 **The root `vitest.config.ts` caps worker fan-out at `min(4, availableParallelism() - 1)`, and that is a guarantee, not a tuning knob.** Vitest's own default (`availableParallelism() - 1`) is right for a laptop running one suite and wrong for a cockpit running several gate runs at once: ten concurrent gates on an 18-core box meant roughly 180 worker processes, and the measured consequence was starvation rather than a bug — unrelated suites timing out at 909s on a single file, and a different 17 files failing every run. Raising or deleting the cap re-creates exactly that. Note that it is a deliberate NO-OP on CI (a 2-core runner resolves to 1, a 4-core to 3), so a green CI run is not evidence the cap works, and CI timing cannot validate a change to it. Both runtime overrides still win for the unit gate when you genuinely need more: `npm test -- --maxWorkers=N`, and `VITEST_MAX_WORKERS`, which vitest applies at the very END of config resolution and therefore outranks every config file AND `--no-file-parallelism` on the command line. **That last property makes `VITEST_MAX_WORKERS` unsafe to export globally**, and the browser suite defends itself from it: `packages/web/e2e/vitest.config.ts` DELETES the variable before vitest reads it (#162). Those specs share one server, one machine and one set of on-disk fixtures — several rewrite state global to all of it — so running them concurrently is a correctness break, not a speed choice, and it produced four rounds of failures in files the change under test never touched. `packages/web/src/e2e-file-parallelism.test.ts` fails if that deletion stops working. Export the variable for `npm test` if you like; never assume it reaches `npm run test:e2e`. `npm run test:package` needs a completed `npm run build` (it packs the tarball).
@@ -222,11 +206,7 @@ Browser-suite execution and isolation detail lives in [docs/testing/agent-browse
 ## Related documents
 
 - `AGENT_PROTOCOL.md` — the agent protocol: the runner seam, the v1 `AgentEvent` + v2 `UiEvent` streams, per-backend mapping, the golden-fixture testing contract, and the checklist for adding a new runner.
-- `SDLC.md` — ticket flow, label state machine, QA gate, claim protocol.
-- `CODE_REVIEW.md` — what reviewers check and how severities are assigned.
-- `BACKWARD_COMPATIBILITY.md` — the public surfaces you must not break silently.
 - `docs/testing/agent-browser.md` — the browser suite: prerequisites, the two caches, what the boot pins, iterating on one spec, and the two rules it learned the hard way.
 - `docs/lessons/changing-working-mechanisms.md` — the worked examples behind § Changing a mechanism that already works.
-- `.xezar/pipeline/config.json` — machine-readable pipeline config (base branch, validation commands, labels), read by the kit contract test and by the optional `xez-*` team collection.
 
 Bare `#n` means `qodeca/xezar`.

@@ -32,7 +32,7 @@ import type {
  * `src/server/github.ts` (tab listing) and `src/server/pr.ts` (draft PRs)
  * behind the `ForgeDriver` seam. Those modules remain as thin delegates.
  * `/api/github`'s response shape is this driver's serialization and is
- * protected by BACKWARD_COMPATIBILITY.md — additive changes only.
+ * protected by the backward-compatibility promise — additive changes only.
  */
 
 const exec = promisify(execFile);
@@ -183,7 +183,7 @@ export interface GithubData {
   issues: GithubItem[];
   prs: GithubItem[];
   /** Repo-wide map of label name → 6-hex color (no `#`), so the UI can tint chips like GitHub
-   *  does. Additive (BACKWARD_COMPATIBILITY): absent on old payloads, chips fall back to neutral. */
+   *  does. Additive: absent on old payloads, chips fall back to neutral. */
   labelColors?: Record<string, string>;
 }
 
@@ -742,7 +742,7 @@ const ghReviewSchema = z.object({
 // The thread's non-comment history — commits, label changes, assignments, merges, force-pushes,
 // cross-references. Sourced from `/issues/{n}/timeline`, which returns comments AND events in one
 // chronological stream, so the `commented` rows keep flowing through `normalizeComments` unchanged
-// and `comments[]` stays exactly what BACKWARD_COMPATIBILITY.md §2 promises.
+// and `comments[]` stays exactly what the backward-compatibility promise promises.
 
 /** The event kinds rendered in v1 — an allowlist, so a new GitHub event type is dropped rather
  *  than rendered and can never crash or clutter the thread. Real timelines carry plenty that
@@ -2181,7 +2181,7 @@ function mockGithubRefStatus(prs: number[], issues: number[]): GithubRefStatusDa
  * Since #525 the thread is sourced from `/issues/{n}/timeline`, which returns comments AND events
  * in one stream: `commented` rows go through the unchanged `normalizeComments`, the rest through
  * `normalizeEvents`. `comments[]` therefore keeps its exact pre-#525 shape, contents and cap
- * (BACKWARD_COMPATIBILITY.md §2) — see the top-up below for the one case that needed defending.
+ * (the backward-compatibility promise) — see the top-up below for the one case that needed defending.
  */
 export async function fetchGithubComments(
   repoRoot: string,

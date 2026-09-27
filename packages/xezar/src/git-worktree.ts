@@ -455,7 +455,7 @@ async function gitHasIdentity(dir: string): Promise<boolean> {
  * (#591) and `worktreeShortstat` (#751) resolve through
  * `resolveTaskDiffBase` — this is the whole-branch anchor on purpose, for two
  * reasons. Its text output is `GET /api/v1/runs/:id/diff`, a protected surface
- * (BACKWARD_COMPATIBILITY.md §2), so narrowing it would silently change what
+ * (the backward-compatibility promise), so narrowing it would silently change what
  * every existing consumer reads. And its other caller, `settleSuccess`, asks
  * only "is there anything here to review at all" — over-answering that parks a
  * run at the review gate, which is recoverable, while under-answering would

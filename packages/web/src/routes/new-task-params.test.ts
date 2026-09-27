@@ -4,7 +4,7 @@ import { newTaskPrefillHref, parseNewTaskParams, type NewTaskParams } from './ne
 
 const empty: NewTaskParams = { skill: '', ref: '', auto: false, key: '', todo: '' }
 
-/** The saved-bookmarklet contract (spec 011) — protected by BACKWARD_COMPATIBILITY.md,
+/** The saved-bookmarklet contract (spec 011) — protected by the backward-compatibility promise,
  *  and these links live in users' browsers, not in this repo. The cases below mirror
  *  `initFromQuery()` in web/app.js so the React `/new` accepts exactly what the legacy
  *  page did. */

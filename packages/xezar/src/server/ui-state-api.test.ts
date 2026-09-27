@@ -10,7 +10,7 @@ import { apiRequest } from './loopback-request.testkit.ts';
 
 /**
  * `GET/PUT /api/v1/ui-state` (#408 — the `skillUsage` addition). The contract under test: the
- * schema is `.passthrough()` so unrelated keys survive a PUT untouched (BACKWARD_COMPATIBILITY.md
+ * schema is `.passthrough()` so unrelated keys survive a PUT untouched (the backward-compatibility promise
  * §3 — additive only); `skillUsage` is a plain `name -> count` map with no shape surprises; and
  * because the top-level merge is SHALLOW, a PUT of `skillUsage` replaces the whole map rather
  * than merging entry-by-entry — exactly what the client's `bumpSkillUsage` (packages/web/src/lib/
@@ -66,7 +66,7 @@ describe('the ui-state API — skillUsage (#408)', () => {
     expect(rawFile().skillUsage).toEqual({ 'xez-fix': 2 });
   });
 
-  it('a skillUsage PUT never disturbs unrelated existing keys (additive, #3 BACKWARD_COMPATIBILITY)', async () => {
+  it('a skillUsage PUT never disturbs unrelated existing keys (additive)', async () => {
     await put({ lastTask: { source: 'skill', ref: 'xez-fix' }, lastAutonomous: true });
     await put({ skillUsage: { 'xez-fix': 1 } });
     const raw = rawFile();

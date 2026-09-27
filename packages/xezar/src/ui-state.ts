@@ -23,7 +23,7 @@ export function uiStatePath(repoRoot: string): string {
  * value verbatim, so a `Record<string, unknown>` here made the route name no key at all and the
  * per-route parity guard vacuous — the same defect `healthSnapshot` had. `UiState` is a
  * `z.looseObject`, so the index signature (and with it the round-trip promise of
- * BACKWARD_COMPATIBILITY.md §3) survives; what it adds is the NAMES of the keys the server knows.
+ * the backward-compatibility promise) survives; what it adds is the NAMES of the keys the server knows.
  *
  * The cast is unchanged in kind — the file is user-editable JSON and is deliberately NOT parsed
  * through the schema, because a single malformed pref must not discard the whole bag (§3). What

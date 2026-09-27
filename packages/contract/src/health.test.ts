@@ -4,7 +4,7 @@ import { capabilitiesSchema, healthResponseSchema } from './health.ts';
 /**
  * `GET /api/v1/health` is the most externally-depended-on JSON in the app and
  * the one endpoint CORS is open for, so every field added to it is additive by
- * rule (BACKWARD_COMPATIBILITY.md §2).
+ * rule (the backward-compatibility promise).
  *
  * `singleProjectRoot` (#600) is the first capability that is OPTIONAL, and
  * these cases are why: a 0.16.0 cockpit can be pointed at a 0.15.0 server,

@@ -9,8 +9,12 @@ coverage/
 # package by packages/xezar/scripts/sync-readme.mjs. Never edit the copy.
 /packages/xezar/README.md
 
-# Xezar project instructions/workflows/skills/checks are maintained source.
-# Only local state is ignored: everything under /.local/, plus .xezar/.gitignore for the kit.
+# Xezar single-project files hold this machine's workspace and agent-login folders.
+# They stay local; the rest of .xezar/ is not ignored as a whole.
+/.xezar/workspace.json
+/.xezar/workspace.json.*
+/.xezar/workspace-ui.json
+/.xezar/agent-accounts.json
 
 # The same state under the names Cezar used before the rename. A developer who ran Cezar in
 # this checkout still has these directories, and the rename moved the ignore rules off them —
@@ -47,13 +51,9 @@ skills-lock.json
 .ai/qa/agent-home/
 
 # Claude Code keeps per-machine state under .claude/ (locks, worktrees, checkpoints, settings.local.json).
-# Only the committed design-system skill and the leader SessionStart hook are tracked
-# (docs/design-system/README.md, .xezar/docs/leader-guide.md); everything else stays local.
+# Only a shared .claude/settings.json may be tracked; everything else stays local.
 .claude/*
 !.claude/settings.json
-!.claude/skills/
-.claude/skills/*
-!.claude/skills/design-system/
 
 # mock-agent output from dry-run e2e (scripts/mock-claude.mjs appends here)
 /notes.md

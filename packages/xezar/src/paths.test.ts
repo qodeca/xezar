@@ -26,7 +26,7 @@ describe('paths', () => {
     expect(xezarHomeDir()).toBe(join(homedir(), '.xezar'));
   });
 
-  // Xezar is an independent application, not an upgrade of Cezar (see BACKWARD_COMPATIBILITY.md
+  // Xezar is an independent application, not an upgrade of Cezar (see the backward-compatibility promise
   // "The Xezar rename"). These pin the isolation: Xezar must never resolve, read or adopt the
   // other product's state, and must never honour its environment variable.
   describe('identity isolation from Cezar', () => {

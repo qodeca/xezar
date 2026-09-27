@@ -263,7 +263,7 @@ describe('CLI onboarding (#819)', () => {
         expect(mcp.stdout).not.toContain('gone-org');
         expect(mcp.stdout).toBe('');
 
-        // `lease` hands its stdout to the command it wraps — BACKWARD_COMPATIBILITY.md §1 promises
+        // `lease` hands its stdout to the command it wraps — the backward-compatibility promise promises
         // `lease gates` writes nothing there. HOME is pinned as well, because the gate slot locks
         // are machine-wide by design (`gateLeaseDir()`): without this the case would queue behind a
         // real gate run, including the one running this suite, for up to the lease's 20-minute bound.

@@ -108,30 +108,6 @@ session as well — it fails only when it has *neither* an OIDC endpoint nor a t
    bot-authored workflow runs by default. Until this PR lands, the trunk still names the previous
    version while the registry serves the new one.
 
-### Releasing from Xezar
-
-The steps above can run as **one Xezar task** in this repository's kit. In the cockpit pick the
-`release` workflow, keep Worktree **ON**, and type the brief:
-
-```text
-bump: patch          # or minor / major; add `dry-run: true` to stop before the dispatch
-```
-
-The task writes the `# <version> (<date>)` changelog section from the PRs merged into `main`
-since the last `v*` tag (no hand-written brief; it folds every `changelog.d/` fragment and every
-stray `# Unreleased` section in, and folds `.xezar/docs/dogfooding.d/` into the dogfooding ledger),
-runs the canonical gates, merges the changelog PR, dispatches this Release workflow once for that
-bump, verifies npm / the tag / the GitHub Release, and approves and merges the bot's
-`release/v<version>` PR. All the waiting happens in the task's last step, because a non-final
-agent step with no `timeout` of its own falls through to the runner's 30-minute default (#22); an
-explicit `timeout` overrides it. Nothing publishes outside the dispatched Release run, and the
-task never pushes to `main` or touches your primary checkout.
-
-Two things stay with you afterwards: run the `root-sync` workflow (Worktree **OFF**) with the
-bump merge commit as its target so your checkout matches the trunk, and `npm install -g
-@qodeca/xezar@<version>` locally. The manual path above remains valid and is what the task
-automates; `.xezar/skills/xezar-release-publish.md` lists exactly which commands it runs.
-
 ### What a green run means
 
 A green `Release` run means the package **is on the registry**. `scripts/release.mjs` exits

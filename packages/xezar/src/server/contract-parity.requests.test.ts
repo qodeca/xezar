@@ -139,7 +139,7 @@ describe('the settings routes validate with the CONTRACT request schemas', () =>
 
     expect(res.status).toBe(400);
     // Byte-identical to what the deleted `setConfigSchema` produced: the custom message travelled
-    // into the contract with the schema (#677 wave 1), so BACKWARD_COMPATIBILITY.md needs no line.
+    // into the contract with the schema (#677 wave 1), so the backward-compatibility promise needs no line.
     expect(await res.json()).toEqual({ error: 'systemPrompt: must be at most 20000 characters' });
   });
 

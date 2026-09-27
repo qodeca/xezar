@@ -78,4 +78,4 @@ When you change the cockpit:
 6. **The mockup stylesheet.** `cockpit.css` base classes are hand-written to match the components; when a component's look changes, change the class and re-open `specimens/components.html` beside the app.
 7. **A design decision.** Record it in `decisions.md` as the next `D-nn` and link it from the review comment.
 
-The Claude Code skill in `.claude/skills/design-system/SKILL.md` points an agent here; `AGENTS.md` routes design work to this file; `.xezar/skills/xezar-ux-design.md` reads it before a design, and the kit workflows `design` (mockup plus draft PR) and `design-review` (read-only verdict) run that skill. How the system itself changes is in [CONTRIBUTING.md](CONTRIBUTING.md).
+`AGENTS.md` routes design work to this file. How the system itself changes is in [CONTRIBUTING.md](CONTRIBUTING.md).

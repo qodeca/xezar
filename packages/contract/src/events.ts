@@ -15,7 +15,7 @@ import { z } from 'zod';
  * One line of a run transcript.
  *
  * Open by design: `type` is a plain string and unknown keys pass through, because the event
- * vocabulary is an APPEND-ONLY on-disk format (BACKWARD_COMPATIBILITY.md §7) that old NDJSON
+ * vocabulary is an APPEND-ONLY on-disk format (the backward-compatibility promise) that old NDJSON
  * recordings must keep replaying forever. Closing this schema would make a recording written by
  * a newer xezar unreadable by an older one — the opposite of what the format promises.
  */

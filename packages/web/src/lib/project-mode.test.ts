@@ -13,7 +13,7 @@ import {
  * The named break is `BREAK-467-PROJECTSLOCKED-WIDENED`: folding `instanceMode === 'project'` into
  * `projectsLocked`. It is the tempting refactor — all three are "this cockpit is narrower than the
  * default" — and it silently turns `project` mode into `XEZ_SINGLE_PROJECT`, which
- * `BACKWARD_COMPATIBILITY.md` § Instance mode calls a BREAK: the Add project menu disappears, the
+ * the backward-compatibility promise calls a BREAK: the Add project menu disappears, the
  * palette's Projects group disappears, and every other registered project goes with them.
  */
 

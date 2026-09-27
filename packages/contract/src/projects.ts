@@ -13,7 +13,7 @@ import { z } from 'zod';
  *
  * Five answers, and each is the result of a CHECK rather than of a remembered value. The stored
  * `projects[].lastListen` is a hint that is stale the moment a process exits, and
- * `BACKWARD_COMPATIBILITY.md` § 9 promises it is "never to be rendered as running without a
+ * the backward-compatibility promise promises it is "never to be rendered as running without a
  * liveness check of its own" — so it never appears on the wire and is only ever an ADDRESS to
  * probe.
  *

@@ -1,11 +1,8 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { parse as parseYaml } from 'yaml';
 
 import { workflowStepDefSchema } from '@qodeca/xezar-contract';
 
-import { skillStackOf, workflowFileSchema, workflowStepSchema } from './types.ts';
+import { skillStackOf, workflowStepSchema } from './types.ts';
 
 /**
  * #851 C — `verdictRole` is the step's declaration of the reviewer role it reports as, and the
@@ -43,19 +40,5 @@ describe('#851 — the verdictRole step key', () => {
   it('keeps a reviewer step out of the compact skills form, which cannot carry the role', () => {
     expect(skillStackOf([{ id: 'x', name: 'x', skill: 'x', prompt: '{{task}}' }])).toEqual(['x']);
     expect(skillStackOf([{ id: 'x', name: 'x', skill: 'x', prompt: '{{task}}', verdictRole: 'qa' }])).toBeNull();
-  });
-
-  it.each([
-    ['code-review.yaml', 'code-review'],
-    ['design-review.yaml', 'design-review'],
-    ['qa.yaml', 'qa'],
-    ['architecture-review.yaml', 'architecture-review'],
-  ] as const)('the kit verdict workflow %s declares %s on its verdict step', (file, role) => {
-    const workflow = workflowFileSchema.parse(
-      parseYaml(readFileSync(join(process.cwd(), '.xezar', 'workflows', file), 'utf8')),
-    );
-    const declared = (workflow.steps ?? []).filter((step) => step.verdictRole !== undefined);
-
-    expect(declared.map((step) => [step.id, step.verdictRole])).toEqual([['review', role]]);
   });
 });

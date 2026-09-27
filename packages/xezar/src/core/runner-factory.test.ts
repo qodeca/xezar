@@ -110,7 +110,7 @@ describe('createRunner — the unmatched input (pinned, not designed)', () => {
   });
 });
 
-describe('createRunner — the legacy `claude-cli` id (BACKWARD_COMPATIBILITY.md §3)', () => {
+describe('createRunner — the legacy `claude-cli` id (the backward-compatibility promise)', () => {
   let dataDir: string;
   let store: RunStore | undefined;
 

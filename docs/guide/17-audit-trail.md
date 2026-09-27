@@ -45,7 +45,6 @@ The audit trail is best effort and local: there is no cockpit viewer, no cryptog
 
 ## Related settings / env / config
 
-- [`BACKWARD_COMPATIBILITY.md`](../../BACKWARD_COMPATIBILITY.md) § "Project state files" for the full record shape, every settlement reason, and the complete rotation and locking contract.
 - [Projects](09-projects.md) and [Configuration reference](11-configuration-reference.md) for where `.local/xezar/` lives in the global and single-project layouts.
 - [Project layout](../project-layout.md) for the surrounding `.local/xezar/` directory.
 

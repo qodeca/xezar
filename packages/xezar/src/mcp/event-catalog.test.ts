@@ -415,7 +415,7 @@ describe('every other kind the catalog emits', () => {
     /**
      * #673, AC-07 — findings never reach the summary.
      *
-     * BACKWARD_COMPATIBILITY.md § 2 already forbids "putting a packet's prose into the summary",
+     * the backward-compatibility promise already forbids "putting a packet's prose into the summary",
      * and a findings list is the largest piece of prose the packet can now carry. The summary's
      * field list is closed: the two rows below are written from records that differ ONLY in their
      * findings, and they must be byte-identical.

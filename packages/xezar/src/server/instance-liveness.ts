@@ -17,7 +17,7 @@ import type { ProjectInstance } from '@qodeca/xezar-contract';
  *    when no address can be reached.
  *
  * `lastListen` alone is never enough and that is the whole point of this module:
- * `BACKWARD_COMPATIBILITY.md` § 9 records it as a hint carrying "no pid, lease or socket path"
+ * the backward-compatibility promise records it as a hint carrying "no pid, lease or socket path"
  * and "never to be rendered as running without a liveness check of its own". A remembered port
  * is stale the moment the process exits and can be taken by a completely different program the
  * moment after that, so this module treats it strictly as an ADDRESS TO ASK, never as evidence.

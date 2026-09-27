@@ -7,7 +7,7 @@ import { uiStateSchema } from './workspace.ts';
  *
  * Two shapes here are `z.looseObject` — zod v4's spelling of `.passthrough()` — and both are open
  * as a DURABILITY promise, not an oversight: the NDJSON event vocabulary is append-only
- * (BACKWARD_COMPATIBILITY.md §7) and `ui-state.json` is a user-owned bag an older server must not
+ * (the backward-compatibility promise) and `ui-state.json` is a user-owned bag an older server must not
  * strip. A closed schema in either place silently deletes a newer xezar's data on read-back, and
  * the type system cannot tell the two apart.
  */

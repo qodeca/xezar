@@ -167,7 +167,7 @@ describe('automations gate (#801)', () => {
   });
 
   describe('off (the default)', () => {
-    /** Every route of the feature, in the spelling BACKWARD_COMPATIBILITY.md §2 inventories. */
+    /** Every route of the feature, in the spelling the backward-compatibility promise inventories. */
     const routes = (id: string): Array<[label: string, path: string, init?: RequestInit]> => [
       ['GET /automations', '/api/v1/automations'],
       ['POST /automations', '/api/v1/automations', json(DEFINITION)],

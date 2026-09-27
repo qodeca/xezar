@@ -40,7 +40,7 @@ describe('resolveGetRequest', () => {
     // react-router owns the 404 — it is the only side that knows the route map.
     { name: '/nope → the shell, which renders the 404 route', path: '/nope', target: 'dist' },
     // The React composer carries the full bookmarklet auto-start contract
-    // (?skill=&ref=&auto=1&key=, BACKWARD_COMPATIBILITY.md) since R4 Step 1.3,
+    // (?skill=&ref=&auto=1&key=, the backward-compatibility promise) since R4 Step 1.3,
     // and R7 removed the ?legacy=1 escape hatch with the page it pointed at.
     { name: '/new → the shell (React composer owns the bookmarklet contract)', path: '/new', target: 'dist' },
     { name: '/new?legacy=1 has no special meaning — the query is not the path', path: '/new', target: 'dist' },

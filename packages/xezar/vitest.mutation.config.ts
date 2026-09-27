@@ -4,8 +4,7 @@ import { defineConfig } from 'vitest/config'
 
 // The test set the MCP mutation run (`npm run test:mutation:mcp`, stryker.config.mjs) kills
 // mutants with: the MCP suites alone, the same files `npm run test:coverage:mcp` measures.
-// A mutant another suite happens to kill was never aimed at by an MCP test (SDLC.md § The MCP
-// test floor). Its own file, not vitest.config.ts with a filter, because Stryker hands vitest a
+// A mutant another suite happens to kill was never aimed at by an MCP test. Its own file, not vitest.config.ts with a filter, because Stryker hands vitest a
 // config and no path filters; and `mergeConfig` would CONCATENATE `include` with the server's
 // `src/**/*.test.ts` instead of narrowing it. `root` is pinned because Stryker runs vitest from
 // the repository root, where the relative globs below would match nothing.

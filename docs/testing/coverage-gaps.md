@@ -45,8 +45,8 @@ File counts re-counted on `bb271fc`, 2026-09-15 (source inventory, not a new ful
 | node:test core | `npm run test:unit` | node:test | yes | 14 files, `packages/xezar/test/unit/` |
 | Packaged CLI e2e | `npm run test:package` | node:test | yes | 5 files, `packages/xezar/test/e2e/` |
 | Browser e2e | `npm run test:e2e` | vitest + agent-browser + real Chrome | yes – its own `ui-e2e` job (#128) | 67 files, `packages/web/e2e/` (re-counted 2026-09-23) |
-| Manual QA | `needs-qa` label | human | n/a | `SDLC.md` § The QA gate |
-| Design review | `needs-design` label + `## Design review` comment | design reviewer (human or `design-review` workflow) | n/a | `SDLC.md` § The design gate |
+| Manual QA | `needs-qa` label | human | n/a | the QA gate |
+| Design review | `needs-design` label + `## Design review` comment | design reviewer | n/a | the design gate |
 
 One structural note that changes how the tables below read: the six `contract-parity*.test.ts`
 files and `typed-bodies.test.ts` are **compile-time checks**, not runtime tests. Each contains a
@@ -557,7 +557,7 @@ The `epic`, `testing` and `priority-high` labels were created for this work; the
 
 ## 10. MCP floor (#333)
 
-`SDLC.md` § The MCP test floor holds the MCP server to two requirements at once: every source file
+The MCP test floor holds the MCP server to two requirements at once: every source file
 under `packages/xezar/src/mcp/` at 80 % lines **and** 80 % branches from the MCP suites alone, and
 every new test shown failing against a named break. This section is where that rule keeps its
 records – the measurement, the quality finding beside it, the behaviours held by suites v8 cannot
@@ -577,7 +577,7 @@ coverage a module picks up from an unrelated test was never aimed at it.
 
 What it cannot see is listed in 10.4. CI runs it in the separate, unconditional `MCP per-file
 coverage` job on every pull request, with a 10-minute timeout; it remains outside
-`.xezar/pipeline/config.json` and the local canonical gate. It was red on `main` from the day it
+the local canonical gate. It was red on `main` from the day it
 shipped until #352; 10.9 is the re-measurement that turned it green.
 
 ### 10.2 Measured – before and after this change
@@ -726,7 +726,7 @@ to be sure, and the 158 mutants took 68 minutes over three parallel copies. The 
 "5 000–8 000 mutants" for a real StrykerJS run was **too low**: Stryker generates **12 530** on this
 scope. The real run, its cost and its score are in 10.8. It was adopted as a release gate on the
 sample's recommendation; that step was removed on 2026-09-12; nightly GitHub Actions runs were
-scheduled by #433 on 2026-09-15. The per-PR form stays the named break SDLC.md requires.
+scheduled by #433 on 2026-09-15. The per-PR form stays the named break the MCP test floor requires.
 
 ### 10.4 Held by a suite v8 cannot see
 
@@ -1306,8 +1306,7 @@ top of an untested behaviour.
 One scoped exception is a requirement rather than a measurement: `npm run test:coverage:mcp` holds
 every MCP source file to 80 % lines and 80 % branches, and CI runs it in its own required job on
 every pull request. A PR on the MCP scope must also show each new test failing against a named break.
-Neither half passes alone – see
-[SDLC.md § The MCP test floor](../../SDLC.md#the-mcp-test-floor). Its slower counterpart is
+Neither half passes alone. Its slower counterpart is
 `npm run test:mutation:mcp`: StrykerJS over the same code and the same suites, never run by
 `npm test` or by per-PR CI because a full run takes hours. **It runs nightly against `main`** in
 `.github/workflows/mutation.yml` (#377), split across nine jobs, balanced on measured per-file cost

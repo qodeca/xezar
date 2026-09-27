@@ -5,7 +5,7 @@ import { dirname, extname, join, relative, resolve } from 'node:path';
 
 const root = resolve(import.meta.dirname, '..');
 const designsRoot = resolve(root, 'designs');
-const roots = ['docs', 'README.md', '.xezar/docs', 'designs'].map((p) => resolve(root, p));
+const roots = ['docs', 'README.md', 'designs'].map((p) => resolve(root, p));
 const walk = (path) => {
   if (!existsSync(path)) return [];
   if (statSync(path).isFile()) return extname(path) === '.md' ? [path] : [];

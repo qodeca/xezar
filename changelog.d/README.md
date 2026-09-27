@@ -20,10 +20,6 @@ Why fragments: `CHANGELOG.md` is append-only at the top, so every open pull requ
 lines and the first merge makes every other pull request conflict — and a content conflict stops
 GitHub from running CI on it at all. No two branches ever touch the same fragment bytes.
 
-`bash .xezar/checks/changelog-check.sh --fragments changelog.d` parses the fragments, and the
-repository check runs it. Do not edit `# Unreleased` directly: `changelog-check.sh --diff-base`
-refuses that on any branch, naming this directory. The refusal is about the state at HEAD and not
-about history: a branch that reverts a direct edit and moves the bullet into a fragment here
-passes, so repairing one never needs a rewrite of the branch. The `changelog` step of the `release`
-workflow folds every fragment into the new `# <version> (<date>)` section and deletes the files in
-the same commit, so a fragment is never left unfolded. This `README.md` is skipped by both.
+Do not edit `# Unreleased` in `CHANGELOG.md` directly; add a fragment here instead. At release
+time every fragment is folded into the new `# <version> (<date>)` section and the files are deleted
+in the same commit, so a fragment is never left unfolded. This `README.md` is not a fragment.

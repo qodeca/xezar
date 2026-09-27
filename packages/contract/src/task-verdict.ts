@@ -78,7 +78,7 @@ export const TASK_VERDICT_FINDING_BODY_MAX = 300;
  * through `satisfies Record<TaskVerdictRole, …>`, and both packet unions are BUILT from it rather
  * than spelled out, so a role added here reaches ingestion, the recorded shape, the MCP
  * `fromFindings.role` argument and the per-run bound in one edit. Adding a role is additive;
- * renaming or removing one is a break (`BACKWARD_COMPATIBILITY.md`).
+ * renaming or removing one is a break (the backward-compatibility promise).
  *
  * `architecture-review` (#851) is a review of the design of a change rather than its lines. It
  * speaks a code review's words — APPROVE or REQUEST CHANGES — and is a role of its own so its

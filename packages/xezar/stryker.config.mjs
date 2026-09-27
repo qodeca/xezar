@@ -2,7 +2,7 @@
 import { availableParallelism } from 'node:os'
 
 // The MCP mutation run – `npm run test:mutation:mcp`, never a per-PR one (#333,
-// docs/testing/coverage-gaps.md § 10.3; the per-PR form is the named break SDLC.md requires).
+// docs/testing/coverage-gaps.md § 10.3).
 // It was the `release` / `release-prep` workflows' first check step until 2026-09-12; that step
 // was removed because a release-only gate gets its first real exercise at the most expensive
 // moment (#375) and its repair lives in somebody else's PR. **It runs nightly against `main`** in

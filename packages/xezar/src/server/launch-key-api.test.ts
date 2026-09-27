@@ -16,7 +16,7 @@ import { createApp } from './server.ts';
  * `GET /api/v1/launch-key` — the VALUE the route answers with (gap R14, #53).
  *
  * The bookmarklet auto-start secret (spec 011) is per-project state that
- * `BACKWARD_COMPATIBILITY.md` §3 protects: every bookmarklet the user ever
+ * the backward-compatibility promise protects: every bookmarklet the user ever
  * saved carries the key of the project it was generated in. Three ways to
  * break it are silent — returning the wrong project's key, returning an empty
  * string, or minting a fresh one per request — and all three leave a saved

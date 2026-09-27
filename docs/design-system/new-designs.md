@@ -67,7 +67,7 @@ both holds at comfortable and compact in between.
 
 ## 7. Accessibility
 
-The bar is in `.xezar/skills/xezar-ux-design.md`, point 7. In the mockup: real `<button>`s and `<a>`s,
+In the mockup: real `<button>`s and `<a>`s,
 `aria-current="page"` on the active nav item, `aria-label` on icon-only controls, `sr-only` text for a
 count a badge shows in colour, and `role="status"` on anything that announces.
 
@@ -75,10 +75,9 @@ count a badge shows in colour, and `role="status"` on anything that announces.
 
 The README names, for each new surface, the components it reuses and the files a developer will touch,
 and it lists every place the design departs from this design system as an open decision. It ends with
-a `## Design review` section that reads "Pending" until the review lands. Then the `design-review`
-workflow (or a human design reviewer) reviews it and posts a `## Design review` comment on the PR; the
+a `## Design review` section that reads "Pending" until the review lands. Then a design reviewer reviews it and posts a `## Design review` comment on the PR; the
 README's own `## Design review` section links that comment with every finding's disposition, and
-`designs/README.md` moves the row to Approved (SDLC.md § The design gate). The lifecycle of a design
+`designs/README.md` moves the row to Approved. The lifecycle of a design
 folder, from Draft to Archived, is in `designs/README.md` § Lifecycle.
 
 ## 9. Specimens are the reference

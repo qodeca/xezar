@@ -609,7 +609,7 @@ function pairText(pair: EnginePair): string {
  * CLI-resolved id, because pinning xezar to one re-creates the drift that catalog exists to avoid
  * — so a mapping here would be a second, private source of vendor truth and would go stale. The
  * guard is a NAME check on the pair a caller asked for, not a proof that two runs share weights;
- * the argument's own description and BACKWARD_COMPATIBILITY.md § 2 say so.
+ * the argument's own description and the backward-compatibility promise say so.
  *
  * `ModelIdentityError` (a bare id on a provider-spanning backend) falls back to the trimmed
  * string: an unresolvable model is still comparable with itself, and refusing here would turn a

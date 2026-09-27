@@ -63,7 +63,7 @@ export type SkillsRefreshSource = z.infer<typeof skillsRefreshSourceSchema>;
  *
  * The route used to answer the bare `Skill[]`, which could not distinguish "upstream has not
  * moved" from "this machine could not reach upstream" — a breaking shape change, recorded in
- * `BACKWARD_COMPATIBILITY.md` § 2. `sources` is one entry per configured team-skills source, in
+ * the backward-compatibility promise. `sources` is one entry per configured team-skills source, in
  * configuration order, and is empty when the project configures none (nothing to reach, so the
  * refresh trivially succeeded).
  */

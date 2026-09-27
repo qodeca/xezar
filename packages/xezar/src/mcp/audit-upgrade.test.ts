@@ -25,7 +25,7 @@ import {
  *
  *   OLD READERS: the released 0.15.0 reader, frozen under `test/fixtures/audit-0.15.0/`, is run over
  *   every kind of record this code writes. It must not throw; what it keeps and what it quarantines
- *   is the measured compatibility result recorded in BACKWARD_COMPATIBILITY.md.
+ *   is the measured compatibility result recorded in the backward-compatibility promise.
  *
  *   UPGRADE / DOWNGRADE: a data folder as 0.15.0 wrote it (`data-dir/mcp-audit.ndjson`, produced by
  *   the 0.15.0 writer, whose source is blob-identical to `v0.15.0`) → this version reads it through

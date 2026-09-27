@@ -144,7 +144,7 @@ export function ReferenceChip({
   const status = explicitStatus ?? entry.status
   // A status this bundle has never heard of resolves to `undefined` here and is then treated
   // exactly like no status at all — the neutral chip, no glyph, no claim in the accessible name.
-  // That is what the vocabulary being ADDITIVE means in practice (BACKWARD_COMPATIBILITY.md):
+  // That is what the vocabulary being ADDITIVE means in practice (the backward-compatibility promise):
   // a value added server-side after this bundle shipped, or restored from a `sessionStorage`
   // payload a newer bundle wrote, must not be able to take a table down.
   const statusPresentation = referenceStatusPresentation(status)

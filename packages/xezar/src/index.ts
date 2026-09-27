@@ -1291,7 +1291,7 @@ const PORT_SPAN = 50;
 /**
  * Wait for `server` — whose first `listen(first, host)` is already under way — to really
  * listen, and resolve the port it bound. A busy port moves the SAME server to the next one
- * (BACKWARD_COMPATIBILITY.md §1/§3: "auto-picks the next free port"), until PORT_SPAN
+ * (the backward-compatibility promise: "auto-picks the next free port"), until PORT_SPAN
  * binds are used up or the range would pass 65535; any other bind error, or running out,
  * rejects with one clear line.
  *
@@ -1436,7 +1436,7 @@ async function runCommand(
   await semaphore.refresh();
   const manager = new RunManager(store, repoRoot, { semaphore });
 
-  // The stdout transcript is the DEFAULT and is unchanged (BACKWARD_COMPATIBILITY.md § 1).
+  // The stdout transcript is the DEFAULT and is unchanged (the backward-compatibility promise).
   // `--quiet` — a flag that did not exist before this release, so nothing that works today
   // changes — prints only the final status line, and keeps the agent's own errors on stderr
   // (`designs/cli-terminal/quiet.txt` scene 2).

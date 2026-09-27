@@ -36,7 +36,7 @@ function failureReason(source: SkillsRefreshSource | undefined): string {
  * Two behaviours are load-bearing here and neither had a test:
  *
  *  - The local-first discovery precedence `AGENTS.md` pins and
- *    `BACKWARD_COMPATIBILITY.md` §"skills" protects: `.xezar/skills` →
+ *    the backward-compatibility promise protects: `.xezar/skills` →
  *    `.ai/skills` → `.agents/skills` + agent mirrors → global → team repo, with
  *    "the user's repo is the source of truth" on a name collision. Asserted by
  *    BODY, not by name — a name-only assertion passes with the winner inverted.

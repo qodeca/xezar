@@ -159,7 +159,7 @@ const ALLOWED_URL_SCHEMES = new Set(['https', 'http', 'ssh', 'git', 'file']);
  * remote-helper syntax (`ext::sh -c …`, `fd::…`), and any other URL scheme.
  *
  * Every reject here maps to a real vector. Shapes that are merely *unusual* —
- * a Windows drive path, `~/…` — stay accepted: `BACKWARD_COMPATIBILITY.md` §5
+ * a Windows drive path, `~/…` — stay accepted: the backward-compatibility promise
  * protects the `skillsRepos` source shape, so narrowing it is a breaking change
  * and needs a migration path, not a silent refusal.
  */

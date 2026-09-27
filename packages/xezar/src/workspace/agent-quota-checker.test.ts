@@ -527,6 +527,9 @@ describe('AgentQuotaChecker', () => {
   // #893: the real 2.1.280 /usage reply for a login whose session has not started, read when
   // `get_usage` itself fails. The unused session row has no reset clause.
   it('reads session and weekly windows from the real 2.1.280 /usage fallback reply', async () => {
+    // The captured reply resets on Sep 26; pin the clock to the capture day so it never goes stale.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-09-23T12:00:00Z'));
     const warn = vi.fn();
     const reply = await readFile(
       new URL('../__fixtures__/agent-quota/claude-usage-2.1.280-session-unstarted.json', import.meta.url), 'utf8',

@@ -12,7 +12,7 @@ import { apiRequest } from './loopback-request.testkit.ts';
 /**
  * Deployment modes + forge seam (cockpit-ui redesign spec): `/api/v1/health`
  * gains `forge` and `capabilities.localHandoff` ADDITIVELY (the pre-forge
- * fields are the protected bookmarklet contract, BACKWARD_COMPATIBILITY.md
+ * fields are the protected bookmarklet contract, the backward-compatibility promise
  * §2), and the open-in-cli local handoff 409s in hosted mode.
  */
 

@@ -70,9 +70,8 @@ describe('tracked files', () => {
       /^\.ai\/qa\/agent-home\//,
       /^\.ai\/tmp\//,
       // `.claude/` is Claude Code's per-machine state (locks, worktrees, checkpoints,
-      // settings.local.json). Only the committed design-system skill and the committed leader
-      // SessionStart hook (`.claude/settings.json`, `.xezar/docs/leader-guide.md`) may live in git.
-      /^\.claude\/(?!settings\.json$|skills\/design-system\/)/,
+      // settings.local.json). Only a shared `.claude/settings.json` may live in git.
+      /^\.claude\/(?!settings\.json$)/,
     ];
     const leaked = trackedFiles().filter((file) =>
       stateDirs.some((dir) => dir.test(file)) || ((file.startsWith('.xezar/') || file.startsWith('.ai/xezar/')) && ignored(file)),
@@ -103,7 +102,7 @@ describe('maintained Xezar project kit versus local runtime', () => {
   it('ignores local state without hiding maintained directories', () => {
     // `.local/xezar/tasks/...` is the kit's evidence root. The blanket `*` in `.local/.gitignore`
     // already covers it at any depth; naming it here makes that explicit rather than incidental.
-    for (const file of [...localRuntime, ...engineOnly, '.local/qa/agent-home/token', '.local/test-tmp/fixture', '.local/xezar/runs.json', '.local/xezar/tasks/x/manifest.json', '.local/xezar-tasks/x/manifest.json']) expect(ignored(file), file).toBe(true);
+    for (const file of [...engineOnly, '.local/qa/agent-home/token', '.local/test-tmp/fixture', '.local/xezar/runs.json', '.local/xezar/tasks/x/manifest.json', '.local/xezar-tasks/x/manifest.json']) expect(ignored(file), file).toBe(true);
   });
   it('startup ignores every engine-written path without touching the maintained kit', () => {
     // Execute only the actual helper body; importing the CLI would boot a real process.

@@ -5,7 +5,7 @@
 > requirement record, not current product behavior.
 
 Status: **requirements draft, agreed with the owner on 2026-09-14; not yet implemented.** Audience: product owner and engineering team.
-Inputs: the [grill-me interview record](decisions-grill-record-2026-09-14.md) (20 locked decisions, cited below as *D-n*), the [five-reviewer verdict](decisions-design-review-2026-09-14.md) on the first design draft (cited as *R-n*), the campaign finding in [leader-dogfooding-2026-09-13.md § 14.2](../mcp-server/leader-dogfooding-2026-09-13.md), and MCP requirement F-09 in [mcp-project-leader-requirements.md](../mcp-server/mcp-project-leader-requirements.md).
+Inputs: the [grill-me interview record](decisions-grill-record-2026-09-14.md) (20 locked decisions, cited below as *D-n*), the [five-reviewer verdict](decisions-design-review-2026-09-14.md) on the first design draft (cited as *R-n*), the campaign finding in leader-dogfooding-2026-09-13.md § 14.2 (removed), and MCP requirement F-09 in [mcp-project-leader-requirements.md](../mcp-server/mcp-project-leader-requirements.md).
 Design: `designs/decisions/` (revision 2 applies the review and owner-interview findings; implementation remains unbuilt).
 
 Baseline: xezar `0c4fbde` (main, 2026-09-14). Bare `#n` means `qodeca/xezar`.

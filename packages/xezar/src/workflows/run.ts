@@ -5096,7 +5096,7 @@ export class RunManager {
    *
    * A FAILED step is collected from too. A reviewer that posted FAIL and then hit something else
    * still posted FAIL, and dropping the report on the way out is the one outcome
-   * `BACKWARD_COMPATIBILITY.md` §3 calls out: a recorded failure must not be erasable by a later
+   * the backward-compatibility promise calls out: a recorded failure must not be erasable by a later
    * unrelated problem.
    */
   private takeStepVerdict(runId: string, stepId: string): void {

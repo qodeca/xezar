@@ -217,7 +217,7 @@ describe('release content check', () => {
     }
   });
 
-  it("derives the kit's names from the repository kit, and never ends up empty", () => {
+  it("keeps the old kit's names after the kit left the repository, and never ends up empty", () => {
     const names = kitNames(REPO_ROOT);
     expect(names).toContain('xezar-implementation');
     expect(names).toContain('xezar-quality-gates');

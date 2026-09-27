@@ -26,7 +26,7 @@ import { readGlobalImportState, type GlobalImportState, type RecordedGlobalImpor
  * **The one deliberate exception to BR-2.** The mode's rule is that `~/.xezar` is never opened.
  * This module is the single place that opens it, READ-only, once, before the mode's own files
  * exist, and only after the person said yes. It never writes there. The exception is named in
- * `BACKWARD_COMPATIBILITY.md` and carries a reasoned entry in `state-path-scan.test.ts`, which
+ * the backward-compatibility promise and carries a reasoned entry in `state-path-scan.test.ts`, which
  * otherwise fails any code that names the global layout directly.
  *
  * What is copied, and what is not:

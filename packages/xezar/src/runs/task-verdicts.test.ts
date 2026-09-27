@@ -536,7 +536,7 @@ describe('T-6 — the record is durable before the packet is gone (break: drop t
 
     expect(ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review')?.outcome).toBe('recorded');
 
-    // No timer advanced, no flush by the test: the ordering claim in BACKWARD_COMPATIBILITY.md §2
+    // No timer advanced, no flush by the test: the ordering claim in the backward-compatibility promise
     // is that the record is durable BEFORE anything announces it, and the announcer's journal
     // append is immediate. A debounced-only write would leave this empty.
     const verdicts = onDiskRun(run.id)?.verdicts as Array<Record<string, unknown>> | undefined;

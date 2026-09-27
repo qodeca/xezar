@@ -48,7 +48,7 @@ describe('HANDOFF_INSTRUCTIONS', () => {
 /**
  * The marker vocabulary this module hands every agent (#47, gap R8).
  *
- * `BACKWARD_COMPATIBILITY.md` §8 declares `XEZ:DONE`, `XEZ:MONITORING`, `XEZ:PR=<n>`,
+ * the backward-compatibility promise declares `XEZ:DONE`, `XEZ:MONITORING`, `XEZ:PR=<n>`,
  * `XEZ:ISSUE=<n>` and `XEZ:TITLE=<phrase>` a protected, agent-facing contract: a running
  * agent's emitted marker has to keep meaning what it meant when its session started. This
  * module's `HANDOFF_ONLY_INSTRUCTIONS` is the *only* place that promise is made to the
@@ -59,7 +59,7 @@ describe('HANDOFF_INSTRUCTIONS', () => {
  * do not restate what that sibling suite already asserts.
  */
 describe('marker vocabulary — instructions vs. parsers (#47)', () => {
-  it('teaches every protected marker of BACKWARD_COMPATIBILITY §8', () => {
+  it('teaches every protected marker', () => {
     for (const marker of ['XEZ:DONE', 'XEZ:MONITORING', 'XEZ:PR=', 'XEZ:ISSUE=', 'XEZ:TITLE=', 'XEZ:ASK'])
       expect(HANDOFF_ONLY_INSTRUCTIONS).toContain(marker);
   });
