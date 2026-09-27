@@ -1,0 +1,21 @@
+# Line endings are decided here, not by each clone's core.autocrlf: text is stored AND checked out
+# with LF everywhere, so byte-exact fixtures, content-addressed scripts, shell scripts (a CR breaks
+# `#!/usr/bin/env bash`) and tests that split on "\n" behave alike. `eol=lf` overrides core.autocrlf.
+* text=auto eol=lf
+
+# Binary: never converted, never merged or diffed as text.
+*.png binary
+*.gif binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.avif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.tgz binary
