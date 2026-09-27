@@ -111,8 +111,8 @@ export function bumpSkillUsage(
 }
 
 /**
- * Does `query` fuzzy-match `candidate`? Case-insensitive subsequence — `omfx` finds
- * `xez-fix-issue` — the same permissiveness cmdk gives the palette, minus its score-reordering:
+ * Does `query` fuzzy-match `candidate`? Case-insensitive subsequence — `xzfx` finds
+ * `xez-auto-fix-issue` — the same permissiveness cmdk gives the palette, minus its score-reordering:
  * the composer autocomplete filters WITHOUT re-sorting, so the project-first order above
  * survives any query (a deliberate difference from the palette, where cmdk may interleave).
  */
@@ -168,8 +168,8 @@ function wordScore(haystack: string, word: string): number {
 /**
  * Multi-word filter for cmdk `<Command filter={…}>`: splits the typed query on whitespace
  * and requires every word to appear as a case-insensitive substring in the combined
- * value + keywords text.  "auto review" finds "xez-auto-review-pr", "verify ui" finds
- * "xez-auto-verify-ui".  Returns a 0–1 score (0 = no match) so cmdk hides non-matches and
+ * value + keywords text.  "auto review" finds "xez-auto-review-pr", "ux review" finds
+ * "xez-ux-review-pr".  Returns a 0–1 score (0 = no match) so cmdk hides non-matches and
  * ranks the rest.
  *
  * The score is the average per-word match *quality* (#484): a whole-word / word-start hit
@@ -193,8 +193,8 @@ export function multiWordFilter(value: string, search: string, keywords?: string
 /**
  * How well a whole `query` matches a single `text` (a skill name or its description).
  * 0 = no match; higher = better: exact > prefix > word-boundary hit > buried substring >
- * subsequence. The subsequence fallback keeps `fuzzyMatch`'s permissiveness ("omfx" still
- * finds "xez-fix-issue"), just ranked below the literal hits so the best match wins.
+ * subsequence. The subsequence fallback keeps `fuzzyMatch`'s permissiveness ("xzfx" still
+ * finds "xez-auto-fix-issue"), just ranked below the literal hits so the best match wins.
  */
 export function matchScore(text: string, query: string): number {
   if (query === '') return 1

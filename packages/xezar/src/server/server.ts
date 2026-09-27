@@ -136,6 +136,7 @@ import {
 } from '../onboarding/status.ts';
 import { activeSetupRunId } from '../onboarding/active.ts';
 import { discoverIssueFiling } from '../onboarding/issue-filing.ts';
+import { readInstallRecord } from '../onboarding/install-record.ts';
 import { recordOffered } from '../onboarding/state.ts';
 import { watchSetupCompletion } from '../onboarding/watch.ts';
 import {
@@ -5185,6 +5186,7 @@ export function createApp(deps: ServerDeps) {
       localHandoff: capabilities().localHandoff,
       checkingRunId: activeSetupRun(project),
       issueFiling: await discoverIssueFiling(project.root, checks),
+      installRecord: await readInstallRecord(project.root),
     });
   };
 

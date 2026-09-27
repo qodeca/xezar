@@ -156,7 +156,7 @@ export interface RunSkillLookup {
  *
  * The bug this exists for: on a brand-new project the very first task resolved its skill against
  * a catalog whose first fetch had not completed — `getTeamSkillsCached` starts that fetch and
- * returns what it has, which on a cold machine is nothing — so a task asking for `xez-onboard`
+ * returns what it has, which on a cold machine is nothing — so a task asking for `xez-onboard-opinionated`
  * ran the plain prompt while the fetch succeeded moments later. Only this call waits; the catalog
  * read every other consumer makes is untouched and still returns immediately.
  *

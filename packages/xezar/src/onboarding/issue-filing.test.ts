@@ -7,6 +7,7 @@ import {
   discoverIssueFiling,
   ghFact,
   ISSUE_FILING_SKILL,
+  ISSUE_FILING_WORKFLOW,
   type IssueFilingDeps,
 } from './issue-filing.ts';
 
@@ -20,13 +21,15 @@ const GH_READY: BackendCheck[] = [{ name: 'gh', available: true, version: 'authe
 const GH_MISSING: BackendCheck[] = [{ name: 'gh', available: false, hint: 'install the GitHub CLI and run `gh auth login` (only needed for PR creation)' }];
 const GH_SIGNED_OUT: BackendCheck[] = [{ name: 'gh', available: false, hint: GH_NOT_AUTHENTICATED_HINT }];
 
-const skill = (name: string): Skill => ({ name, body: '', path: `/skills/${name}.md`, source: 'team' });
+const skill = (name: string, source: Skill['source'] = 'team'): Skill => ({ name, body: '', path: `/skills/${name}.md`, source });
+const KIT_ROLE = 'xezar-issue-create';
 const never = new Promise<never>(() => undefined);
 
 function deps(over: Partial<IssueFilingDeps> = {}): Partial<IssueFilingDeps> {
   return {
     getRepoInfo: async (root) => ({ root, branch: 'main', remote: 'git@github.com:acme/widgets.git' }),
-    discoverSkills: async () => [skill('xez-onboard'), skill(ISSUE_FILING_SKILL)],
+    discoverSkills: async () => [skill('xez-onboard-opinionated'), skill(ISSUE_FILING_SKILL)],
+    loadWorkflows: async () => ({ workflows: [], issues: [] }),
     waitForTeamSkills: async () => [],
     waitMs: 20,
     ...over,
@@ -40,6 +43,58 @@ describe('discoverIssueFiling', () => {
       reason: null,
       skill: 'xez-issue-create',
     });
+  });
+
+  it('accepts the 3.0.3 kit role and reports it as the skill a task selects', async () => {
+    const answer = await discoverIssueFiling(
+      '/p',
+      GH_READY,
+      deps({ discoverSkills: async () => [skill(KIT_ROLE, 'xezar')] }),
+    );
+    expect(answer).toEqual({ status: 'available', reason: null, skill: 'xezar-issue-create' });
+  });
+
+  it('prefers the project kit role over the shared skill when both are there', async () => {
+    const answer = await discoverIssueFiling(
+      '/p',
+      GH_READY,
+      deps({ discoverSkills: async () => [skill(ISSUE_FILING_SKILL), skill(KIT_ROLE, 'xezar')] }),
+    );
+    expect(answer.skill).toBe('xezar-issue-create');
+  });
+
+  it('accepts the 3.0.3 issue-filing workflow, answering with the skill its step names', async () => {
+    const answer = await discoverIssueFiling(
+      '/p',
+      GH_READY,
+      deps({
+        discoverSkills: async () => [],
+        loadWorkflows: async () => ({
+          workflows: [
+            {
+              name: ISSUE_FILING_WORKFLOW,
+              source: 'file',
+              steps: [
+                { id: 'kit', command: 'true' },
+                { id: 'file', prompt: '{{task}}', skill: 'xezar-issue-create' },
+              ],
+            },
+          ],
+          issues: [],
+        }),
+      }),
+    );
+    expect(answer).toEqual({ status: 'available', reason: null, skill: 'xezar-issue-create' });
+  });
+
+  it('a throwing workflow read is a missing workflow, never an error', async () => {
+    const answer = await discoverIssueFiling(
+      '/p',
+      GH_READY,
+      deps({ discoverSkills: async () => [], loadWorkflows: async () => Promise.reject(new Error('boom')) }),
+    );
+    expect(answer.status).toBe('unavailable');
+    expect(answer.reason).not.toContain('boom');
   });
 
   it('says gh is not installed — as a reason, never an error', async () => {
@@ -94,9 +149,11 @@ describe('discoverIssueFiling', () => {
   });
 
   it('is unavailable when the skill is missing from a fully loaded catalog', async () => {
-    const answer = await discoverIssueFiling('/p', GH_READY, deps({ discoverSkills: async () => [skill('xez-onboard')] }));
+    const answer = await discoverIssueFiling('/p', GH_READY, deps({ discoverSkills: async () => [skill('xez-onboard-opinionated')] }));
     expect(answer.status).toBe('unavailable');
-    expect(answer.reason).toContain('The xez-issue-create skill is not in this project’s skills');
+    expect(answer.reason).toContain(
+      'No issue-filing skill is in this project’s skills: neither xez-issue-create, nor a project role whose name ends in -issue-create, nor an issue-filing workflow.',
+    );
   });
 
   it('names every missing part, not only the first', async () => {
@@ -108,7 +165,7 @@ describe('discoverIssueFiling', () => {
     expect(answer.status).toBe('unavailable');
     expect(answer.reason).toContain('not signed in');
     expect(answer.reason).toContain('not a git repository');
-    expect(answer.reason).toContain('xez-issue-create skill is not');
+    expect(answer.reason).toContain('No issue-filing skill is in this project');
   });
 
   it('reads "unknown", not "missing", while the shared collection has not loaded', async () => {

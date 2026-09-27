@@ -310,7 +310,9 @@ export const QUICK_TASK_WORKFLOW: WorkflowDef = {
  * call. Being a catalog entry rather than an inline chain is what lets a project leader dispatch
  * the same thing through `task_create` by name, which is the UI ↔ MCP parity rule.
  *
- * The step names the public `xez-onboard` skill, and the prompt below is deliberately complete on
+ * The step names the public `xez-onboard-opinionated` skill (Xezar Skills 3.0.3 – the only setup
+ * this engine offers; a finished project carries its install record, `.xezar/onboarding.json`),
+ * and the prompt below is deliberately complete on
  * its own: when the skill cannot be resolved (offline, no team collection) the runner degrades to
  * "running with the plain prompt" (`run.ts`), and the setup still has to work — a machine with no
  * network is exactly where it is most needed.
@@ -327,7 +329,7 @@ export const PROJECT_SETUP_WORKFLOW: WorkflowDef = {
     {
       id: 'setup',
       name: 'Set up this project',
-      skill: 'xez-onboard',
+      skill: 'xez-onboard-opinionated',
       prompt: [
         'Prepare this project so an agent can work in it well.',
         '',
@@ -342,7 +344,8 @@ export const PROJECT_SETUP_WORKFLOW: WorkflowDef = {
         '4. Finish by reporting what changed, what you did not do and why, and the numbered steps',
         '   that are left for a person to do themselves.',
         '5. In that report, say whether this project can file tracker issues. Filing needs the',
-        '   GitHub CLI (gh) installed and signed in, a GitHub remote, and the xez-issue-create skill.',
+        '   GitHub CLI (gh) installed and signed in, a GitHub remote, and an issue-filing skill: the',
+        '   project\'s own *-issue-create role or issue-filing workflow, or the xez-issue-create skill.',
         '   Write "Issue filing: available", or "Issue filing: not available: <reason>" naming each',
         '   missing part. A missing part is a finding, never a setup failure; do not install, sign in',
         '   or change anything to fix it.',

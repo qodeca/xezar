@@ -1,5 +1,6 @@
 import type { OnboardingIssueFiling, OnboardingStatus } from '@qodeca/xezar-contract';
 import type { BackendCheck } from '../core/backend-detect.ts';
+import type { InstallRecord } from './install-record.ts';
 import {
   carriedCheck,
   readOnboardingRecord,
@@ -19,15 +20,19 @@ import {
 /**
  * The pinned setup-template revision this engine bundles.
  *
- * It is the reviewed `xez-onboard` revision of the public `qodeca/xezar-skills` collection
- * (merged as `2c20c60`) that P1 delivered and P2 pins. It moves when the bundled templates move
- * and at no other time — which is what makes "the templates changed" a fact rather than a guess.
+ * It is the `xez-onboard-opinionated` release of the public `qodeca/xezar-skills` collection
+ * this engine supports: 3.0.3, tagged `v3.0.3` and merged as `ec856f8`. It moves when the
+ * supported onboarding moves and at no other time — which is what makes "the templates changed" a
+ * fact rather than a guess. It replaced the old `xez-onboard` pin (`2c20c60`) in 0.20.0, so a
+ * project last checked against that kit is offered one re-check, and the re-check runs the 3.0.3
+ * onboarding (`PROJECT_SETUP_WORKFLOW`). A finished 3.0.3 project carries the onboarding's own
+ * install record, `.xezar/onboarding.json`; this pin is only the engine's side of the pair.
  * A user never sets it, never sees the field name, and has no file to author (§ Zero config).
  *
  * In user-facing copy this is "setup templates", never "kit" (OQ-5, and the release-hygiene rule
  * of #466: xezar's own internal vocabulary is not something a user adopts).
  */
-export const BUNDLED_TEMPLATES_DIGEST = '2c20c60';
+export const BUNDLED_TEMPLATES_DIGEST = 'ec856f8';
 
 /** The bundled launch definition both the cockpit buttons and `task_create` name. */
 export const ONBOARDING_WORKFLOW_ID = 'project-setup';
@@ -73,6 +78,9 @@ export interface OnboardingStatusInput {
   /** `discoverIssueFiling()`'s answer (#468). Required so no caller can forget it and report a
    *  capability nobody looked at. */
   issueFiling: OnboardingIssueFiling;
+  /** `readInstallRecord()`'s answer: the committed `.xezar/onboarding.json` of a finished 3.0.3
+   *  onboarding, or `null`. Required for the same reason as `issueFiling`. */
+  installRecord: InstallRecord | null;
 }
 
 /**
@@ -99,7 +107,8 @@ export function deriveOnboardingStatus(
   const checkCoversObserved = checked !== null && samePair(checked, observed);
   const offeredThisPair = offeredFor(record, observed);
 
-  const state = deriveState({ read, checked, checkCoversObserved, checkingRunId });
+  const installed = input.installRecord !== null;
+  const state = deriveState({ read, checked, checkCoversObserved, checkingRunId, installed });
 
   // The offer row appears only for a change we can actually evidence, that nobody has been shown
   // yet, and that nothing is already acting on. Every clause is a "no offer appears" row of
@@ -111,7 +120,8 @@ export function deriveOnboardingStatus(
     state,
     // `recorded` means a readable record exists. A corrupt one is NOT provenance, and an absent
     // one is not either — the difference between them is carried by `state`, not by this field.
-    provenance: read.status === 'ok' ? 'recorded' : 'unknown',
+    // The committed install record is provenance too: it is the project's own record of a finished setup.
+    provenance: read.status === 'ok' || installed ? 'recorded' : 'unknown',
     available,
     unavailableReason: available ? null : NO_BACKEND_REASON,
     localHandoff,
@@ -153,10 +163,15 @@ function deriveState(input: {
   checked: { engineVersion: string; kitDigest: string } | null;
   checkCoversObserved: boolean;
   checkingRunId: string | null;
+  installed: boolean;
 }): OnboardingStatus['state'] {
   // A running check outranks every other sentence: it is the only state whose honest answer is
   // "wait", and it is what stops two clicks starting two checks (`AC-13`).
   if (input.checkingRunId) return 'checking';
+  // A committed 3.0.3 install record means setup finished, whether it ran from the cockpit or from
+  // the skill directly. It outranks the engine's own scratch record: that one is disposable, and an
+  // older check or an unreadable file there says nothing against a setup the project committed.
+  if (input.installed) return 'set-up';
   // A record we can see and cannot trust. Never `never` — claiming "no setup has been recorded"
   // about a file we simply failed to read would be a statement we have no evidence for.
   if (input.read.status === 'corrupt') return 'unknown';
