@@ -36,7 +36,7 @@ type Body = Record<string, unknown> & {
   text?: string;
 };
 
-// win32-skip(#963): Node cannot listen on the project MCP socket path on Windows – every test here opens it (observed first: ProjectContextError "unknown project", the Windows-root registry defect)
+// win32-skip(#963): Node cannot listen on the project MCP socket path on Windows – every test here opens it
 describe.skipIf(onWindows)('task_read — the task, history, Inbox and variant-group reads (#91)', () => {
   const saved = {
     home: process.env.XEZ_HOME,

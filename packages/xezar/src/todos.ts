@@ -4,6 +4,7 @@ import { promises as fs } from 'node:fs';
 import { mkdirSync, watch } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
+import { writeFileAtomic } from './platform/atomic-write.ts';
 
 /**
  * The global follow-up inbox (spec 007): `.local/xezar/todos.json`, a flat JSON
@@ -102,8 +103,7 @@ async function writeAtomic(dataDir: string, items: TodoItem[]): Promise<void> {
   const file = todosPath(dataDir);
   const tmp = `${file}.tmp`;
   await fs.mkdir(dataDir, { recursive: true });
-  await fs.writeFile(tmp, JSON.stringify(items, null, 2), 'utf8');
-  await fs.rename(tmp, file);
+  await writeFileAtomic(file, JSON.stringify(items, null, 2), { tmpPath: tmp, encoding: 'utf8' });
 }
 
 export async function readTodos(dataDir: string): Promise<TodoItem[]> {

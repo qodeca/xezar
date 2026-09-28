@@ -8,6 +8,7 @@ import {
   loadWorkspaceConfig,
 } from './config.ts';
 import { loadConfig } from '../config.ts';
+import { lookupSamePath } from '../platform/path-identity.ts';
 
 /**
  * Workspace-wide resource governance (spec 2026-07-20-multi-project-workspace,
@@ -104,6 +105,12 @@ function normalizeRootSync(root: string): string {
   } catch {
     return resolve(root);
   }
+}
+
+/** A per-project override by root: the exact key first, then – Windows only – a case or separator
+ *  variant of it, which is the same folder there (#963 Q3). The maps keep their raw keys. */
+function overrideForRoot(map: ReadonlyMap<string, number> | undefined, root: string): number | undefined {
+  return map?.get(root) ?? (map ? lookupSamePath(map, root) : undefined);
 }
 
 /**
@@ -348,7 +355,7 @@ export class WorkspaceSemaphore {
    * behaves; a root with no entry inherits.
    */
   projectMemoryLimitMb(repoRoot: string): number | null {
-    const override = this.limits.projectMemoryLimits?.get(normalizeRootSync(repoRoot));
+    const override = overrideForRoot(this.limits.projectMemoryLimits, normalizeRootSync(repoRoot));
     return override ?? this.memoryLimitMb();
   }
 
@@ -459,7 +466,7 @@ export class WorkspaceSemaphore {
    * override and inherits the workspace cap.
    */
   projectMaxParallel(repoRoot: string): number {
-    const override = this.limits.projectLimits?.get(normalizeRootSync(repoRoot));
+    const override = overrideForRoot(this.limits.projectLimits, normalizeRootSync(repoRoot));
     return override ?? this.maxParallel();
   }
 

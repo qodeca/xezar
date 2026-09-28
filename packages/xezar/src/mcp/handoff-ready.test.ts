@@ -181,7 +181,7 @@ function leader(root: string) {
   return { call, act };
 }
 
-// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – every test here starts the project MCP service on its socket (observed first: "project … is not in the workspace registry", the Windows-root registry defect)
+// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – every test here starts the project MCP service on its socket
 describe.skipIf(onWindows)('handoff_git ready — a leader moves its own draft pull request forward (#262)', () => {
   it('opens a draft PR through MCP, marks it ready through MCP, and the forge reports it ready', async () => {
     const c = await cockpit();

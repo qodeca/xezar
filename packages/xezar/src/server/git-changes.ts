@@ -5,6 +5,8 @@ import { lstat, open, readFile, readdir, realpath, stat } from 'node:fs/promises
 import { join, resolve, sep } from 'node:path';
 import { resolveTaskDiffBase, type RepointedHead } from '../git-diff-base.ts';
 import { isSafeGitRef } from '../git-refs.ts';
+import { isInsideDotGit } from '../platform/path-identity.ts';
+import { isDotGitSegment } from '../platform/path-syntax.ts';
 
 /**
  * Session git plumbing for the cockpit's Changes & Files tabs.
@@ -545,7 +547,11 @@ export async function readWorktreePath(
     return { kind: 'invalid', error: `path escapes the worktree: ${relPath}` };
   }
   const gitDir = join(rootAbs, '.git');
-  if (target === gitDir || target.startsWith(gitDir + sep)) {
+  // Windows opens `.GIT`, `.git.`, `.git ` and `.git::$INDEX_ALLOCATION` as the `.git` folder, so
+  // there the first segment is compared the way Windows compares it (#963). A refusal only widens;
+  // on POSIX the helper is `first === '.git'`, which the two checks before it already answer.
+  const first = target === rootAbs ? '' : target.slice(rootAbs.length + 1).split(sep)[0]!;
+  if (target === gitDir || target.startsWith(gitDir + sep) || isDotGitSegment(first)) {
     return { kind: 'invalid', error: '.git internals are not browsable' };
   }
   const display = target === rootAbs ? '' : target.slice(rootAbs.length + 1).split(sep).join('/');
@@ -574,12 +580,17 @@ export async function readWorktreePath(
   if (realTarget !== realRoot && !realTarget.startsWith(realRoot + sep)) {
     return { kind: 'invalid', error: `path escapes the worktree: ${relPath}` };
   }
+  // Windows: the native realpath answers the real long name, so an 8.3 alias (`GIT~1`) or any
+  // other spelling Windows opens as `.git` is caught here (#963). POSIX: always false.
+  if (isInsideDotGit(realTarget, realRoot)) {
+    return { kind: 'invalid', error: '.git internals are not browsable' };
+  }
 
   if (info.isDirectory()) {
     const dirents = await readdir(target, { withFileTypes: true });
     const entries: DirEntry[] = [];
     for (const d of dirents) {
-      if (d.name === '.git') continue;
+      if (isDotGitSegment(d.name)) continue;
       if (d.isDirectory()) {
         entries.push({ name: d.name, type: 'dir' });
       } else if (d.isFile()) {

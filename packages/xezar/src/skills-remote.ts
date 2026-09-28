@@ -10,6 +10,7 @@ import type {
 } from '@qodeca/xezar-contract';
 import { loadConfig, type SkillsRepoSource } from './config.ts';
 import { expandTilde, xezCacheDir } from './paths.ts';
+import { isDrivePath, isWindowsNetworkSource, startsWithTildeSeparator } from './platform/path-syntax.ts';
 import { parseFrontmatter, type Skill } from './skills.ts';
 
 /**
@@ -154,9 +155,15 @@ const ALLOWED_URL_SCHEMES = new Set(['https', 'http', 'ssh', 'git', 'file']);
  *  - `owner/name`         GitHub shorthand → canonical https
  *  - `https://` `http://` web URLs
  *  - `ssh://…` or scp-like `git@host:path`
- *  - a local path (`/abs`, `./`, `../`, `~/…`, `C:\…`) or `file://…`
+ *  - a local path (`/abs`, `./`, `../`, `~/…`, `~\…` on Windows, `C:\…`) or `file://…`
  * and reject the RCE/argument-injection surface: a leading `-`, the `::`
  * remote-helper syntax (`ext::sh -c …`, `fd::…`), and any other URL scheme.
+ * On Windows a network share (`//server/share`, `\\server\share`, and every
+ * file URL except a local drive one, `file:///C:/…`) is refused too (#963):
+ * Git for Windows turns `file://server/…`, `file:////server/…` and their
+ * relatives into `//server/…`, and opening one sends the user's
+ * Windows credentials to that server, and this string comes from a committed
+ * config file a cloned repository controls.
  *
  * Every reject here maps to a real vector. Shapes that are merely *unusual* —
  * a Windows drive path, `~/…` — stay accepted: the backward-compatibility promise
@@ -170,22 +177,24 @@ export function safeRemoteFor(repo: string): string | null {
   if (value.startsWith('-')) return null;
   // `ext::`, `fd::`, and friends: remote-helper transports = command execution.
   if (value.includes('::')) return null;
+  // Windows only: UNC, device and non-drive `file:` sources reach an SMB server (#963).
+  if (isWindowsNetworkSource(value)) return null;
   // Local paths are matched before the `owner/name` shorthand: `.` and `-` are
   // in the shorthand charset, so `./rel` would otherwise be read as the GitHub
   // repo `./rel` and rewritten to `https://github.com/./rel.git`.
   //
-  // `~/…` — git runs via execFile with no shell, so expand it here or git would
-  // look for a directory literally named `~`.
+  // `~/…` (and `~\…` on Windows) — git runs via execFile with no shell, so
+  // expand it here or git would look for a directory literally named `~`.
   //
   // `expandTilde` rather than a local `homedir()` join: this `~` is the USER'S
   // home in the path they wrote, in every layout (#600 SP-2.3 — a source repo
   // on the host does not move when the state does).
-  if (/^~\//.test(value)) return expandTilde(value);
+  if (startsWithTildeSeparator(value)) return expandTilde(value);
   if (/^(\/|\.\/|\.\.\/)/.test(value)) return value;
   // Windows drive-letter path (`C:\repo`, `C:/repo`). Not a transport — no
   // scheme, and a leading `-` is already refused above — and win32 is a
   // supported platform, so this shape must keep working (BC §5, local path).
-  if (/^[A-Za-z]:[\\/]/.test(value)) return value;
+  if (isDrivePath(value)) return value;
   // GitHub shorthand → the canonical https remote.
   if (/^[\w.-]+\/[\w.-]+$/.test(value)) return `https://github.com/${value}.git`;
   // Explicit URL scheme: allowlist safe transports only (blocks `ext:` etc.).

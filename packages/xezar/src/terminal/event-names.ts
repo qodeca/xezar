@@ -38,6 +38,7 @@ export const TERMINAL_ONLY_EVENTS = [
   'http.error',
   'http.refused',
   'http.repeated',
+  'windows.longpaths',
 ] as const;
 export type TerminalOnlyEvent = (typeof TERMINAL_ONLY_EVENTS)[number];
 

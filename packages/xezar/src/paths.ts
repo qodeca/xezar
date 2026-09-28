@@ -1,6 +1,8 @@
 import { homedir } from 'node:os';
-import { dirname, join, sep } from 'node:path';
+import { dirname, join } from 'node:path';
 import type { AgentHomePaths } from './agent-config/catalog.ts';
+import { isInsideByIdentity, samePath } from './platform/path-identity.ts';
+import { startsWithTildeSeparator } from './platform/path-syntax.ts';
 import { activeStateLayout, globalStateRoot } from './state-layout.ts';
 
 /**
@@ -42,7 +44,8 @@ export function xezarHomeDir(env: NodeJS.ProcessEnv = process.env): string {
 export function assertXezarHomeWriteIsSandboxed(path: string, env: NodeJS.ProcessEnv = process.env): void {
   if (!env.VITEST) return;
   const realHome = join(homedir(), '.xezar');
-  if (path !== realHome && !path.startsWith(realHome + sep)) return;
+  // Identity, not access: on Windows every spelling of the real home is refused (#963).
+  if (!samePath(path, realHome) && !isInsideByIdentity(realHome, path)) return;
   throw new Error(
     `[xez] refusing to write ${path} from a test run — XEZ_HOME is not pinned to a sandbox. ` +
       'Pin it (the vitest setup file does this by default) so the suite never touches the real xezar home.',
@@ -165,11 +168,12 @@ export function xezCacheDir(env: NodeJS.ProcessEnv = process.env): string {
  * workspace browse/checkout roots are stored as the user wrote them (a literal `~`), so
  * every consumer that must touch the REAL directory — the writability probe on
  * `PUT /api/workspace/config`, the browse root in
- * `src/server/fs-browse.ts` — expands it through this one helper.
+ * `src/server/fs-browse.ts` — expands it through this one helper. `~\…` expands too, on
+ * Windows only (#963); `~user` and `~x` stay literal everywhere.
  */
 export function expandTilde(path: string): string {
   if (path === '~') return homedir();
-  return path.startsWith('~/') ? join(homedir(), path.slice(2)) : path;
+  return startsWithTildeSeparator(path) ? join(homedir(), path.slice(2)) : path;
 }
 
 /**

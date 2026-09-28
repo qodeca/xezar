@@ -3,6 +3,7 @@ import { constants } from 'node:fs';
 import { mkdir, open, readFile, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { agentHomePaths } from '../paths.ts';
+import { isAbsolutePath } from '../platform/path-syntax.ts';
 import { checkedConfigPath, readConfigBuffer } from './path-access.ts';
 import { CONFIG_FILES } from './catalog.ts';
 
@@ -71,7 +72,7 @@ export async function seedAgentConfigLocalLayer(
   const commonDir = await git(worktreeCwd, ['rev-parse', '--git-common-dir']);
   if (!commonDir.ok) return [];
   const commonGitDir = commonDir.stdout.trim();
-  const absCommonGitDir = commonGitDir.startsWith('/') ? commonGitDir : join(worktreeCwd, commonGitDir);
+  const absCommonGitDir = isAbsolutePath(commonGitDir) ? commonGitDir : join(worktreeCwd, commonGitDir);
 
   for (const def of CONFIG_FILES) {
     if (!def.seeded) continue;

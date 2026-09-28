@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { FILE_SYMLINKS, linkDir, npmCommand, onWindows, shortTmpRoot } from '../helpers/platform.ts';
+import { FILE_SYMLINKS, linkDir, npmCommand, onWindows, shortTmpRoot, withPlatform } from '../helpers/platform.ts';
 
 // POSIX identity: these pass both before and after #963 by design – they pin that adopting the
 // helpers changes nothing on Linux or macOS.
@@ -64,4 +64,14 @@ test('linkDir: an existing link path is an error, not a silent overwrite', () =>
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('withPlatform reports the given platform inside and restores the real one, also after a throw', async () => {
+  const real = process.platform;
+  const other: NodeJS.Platform = real === 'win32' ? 'linux' : 'win32';
+  assert.equal(await withPlatform(other, () => process.platform), other);
+  assert.equal(process.platform, real);
+  await assert.rejects(withPlatform(other, async () => { throw new Error('boom'); }), /boom/);
+  assert.equal(process.platform, real);
+  assert.deepEqual(Object.getOwnPropertyDescriptor(process, 'platform'), { value: real, writable: false, enumerable: true, configurable: true });
 });

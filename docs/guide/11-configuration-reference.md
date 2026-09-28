@@ -42,7 +42,7 @@ The [project schema and resolver](../../packages/xezar/src/config.ts) define the
 
 | Key | Value and effect |
 | --- | --- |
-| `skillsRepos` | Array of `{ "repo": "owner/name", "ref": "main" }`; `repo` also accepts a Git URL or local path. Omitted: `qodeca/xezar-skills` at `main`, subject to your personal skill selection. An explicit list loads its sources without that selection; `[]` disables team sources. Any explicit value hides **Manage skills**. |
+| `skillsRepos` | Array of `{ "repo": "owner/name", "ref": "main" }`; `repo` also accepts a Git URL or local path; on Windows a network share (`//server/share/…`, `\\server\share\…`) or a `file:` URL other than a local drive one (`file:///C:/…`) is refused. Omitted: `qodeca/xezar-skills` at `main`, subject to your personal skill selection. An explicit list loads its sources without that selection; `[]` disables team sources. Any explicit value hides **Manage skills**. |
 | `maxParallel` | Integer 1–16, schema default 2. Legacy project key, imported once by workspace migration when applicable: current enforcement uses workspace `resources.maxParallel` and registry `projects[].maxParallel`, not this key. |
 | `worktreeRetention` | Integer 0–1000. Overrides workspace retention; otherwise inherits it, ultimately 10. Zero disables automatic reclamation. Reclamation removes finished worktree directories and keeps their branches. |
 | `memoryLimitMb` | Integer 0–1,048,576 MiB. A positive value on a registered project overrides the workspace ceiling. Zero or absence contributes no project override and inherits the workspace ceiling. |

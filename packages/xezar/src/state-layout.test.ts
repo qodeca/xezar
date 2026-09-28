@@ -2,7 +2,7 @@ import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathS
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { onWindows } from '../test/helpers/platform.ts';
+import { onWindows, withPlatform } from '../test/helpers/platform.ts';
 import {
   activeStateLayout,
   assertProjectStateUsable,
@@ -197,6 +197,19 @@ describe('resolveStateLayout', () => {
 
   it('never makes the user home a project root, flag or not', () => {
     expect(resolveStateLayout(homedir(), ['--single-project'], {}).mode).toBe('global');
+  });
+
+  // #963 Q3: on Windows another letter case names the same home and the same task-worktree folder.
+  // Every OS: `withPlatform` forces the Windows branch; the other spellings need not exist on disk.
+  it('recognises the home in any letter case on Windows', async () => {
+    expect(await withPlatform('win32', () => resolveStateLayout(homedir().toUpperCase(), ['--single-project'], {}).mode)).toBe('global');
+  });
+
+  it('recognises a task worktree in any letter case on Windows, and only there', async () => {
+    const worktree = join(project, '.LOCAL', 'Xezar', 'Worktrees', 'abc123');
+    mkdirSync(worktree, { recursive: true });
+    expect(await withPlatform('win32', () => resolveStateLayout(worktree, ['--single-project'], {}).mode)).toBe('global');
+    expect(await withPlatform('linux', () => resolveStateLayout(worktree, ['--single-project'], {}).mode)).toBe('project');
   });
 
   it('never makes a task-worktree path a project root, flag or not (FR-1.3)', () => {

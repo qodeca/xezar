@@ -1,6 +1,7 @@
 /**
  * Platform seams for tests (#963). Every export returns the pre-#963 POSIX value on Linux and
  * macOS, so adopting a helper never changes what a POSIX run does; only the Windows branch is new.
+ * `withPlatform` is the one tool of another kind: it makes a test run a Windows branch on every OS.
  * Pinned by `test/unit/test-platform-helpers.test.ts`.
  */
 import { existsSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
@@ -53,4 +54,22 @@ export function npmCommand(args: readonly string[]): { file: string; args: strin
     `npmCommand: npm's CLI was not found – npm_execpath does not name npm-cli.js (${fromEnv ?? 'unset'}) ` +
       `and ${bundled} does not exist`,
   );
+}
+
+/**
+ * Run `fn` while `process.platform` reports `platform`, and put the real value back afterwards,
+ * also when `fn` throws. For code that reads the platform at CALL time – every `src/platform/`
+ * helper defaults its `platform` argument to `process.platform` – so a Linux or macOS run exercises
+ * the Windows branch of a call site too. Only the reported name changes: `node:path`, the file
+ * system and child processes stay the host's, so a test run this way must not depend on a Windows
+ * file system (store the other spelling; never expect it to exist on disk).
+ */
+export async function withPlatform<T>(platform: NodeJS.Platform, fn: () => T | Promise<T>): Promise<T> {
+  const saved = Object.getOwnPropertyDescriptor(process, 'platform');
+  Object.defineProperty(process, 'platform', { ...saved, value: platform });
+  try {
+    return await fn();
+  } finally {
+    if (saved) Object.defineProperty(process, 'platform', saved);
+  }
 }

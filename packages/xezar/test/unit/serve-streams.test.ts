@@ -273,8 +273,6 @@ test('--log-level debug adds the routine diagnostics, still only on stderr', asy
   const held = await heldPort();
   let boot: Boot;
   try {
-    // win32-r9(#963): times out – serve logs `level=warn event=registry.port remembered=false` and
-    // `mcp.unavailable reason="project … is not in the workspace registry"`: the project is never registered.
     boot = await bootServe(repo, home, ['--log-level', 'debug'], String(held.port), [{
       pattern: /level=debug .* event=registry\.port\b/,
       description: 'serve registry port debug line',
