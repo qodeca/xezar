@@ -1,8 +1,11 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { homedir } from 'node:os';
 import { isAbsolute, join, sep } from 'node:path';
+import { withPlatform } from '../test/helpers/platform.ts';
 import {
   DEFAULT_SERVER_INSTANCE,
+  assertXezarHomeWriteIsSandboxed,
+  expandTilde,
   agentHomePaths,
   xezarHomeDir,
   claudeStateFilePath,
@@ -262,5 +265,51 @@ describe('claudeStateFilePath', () => {
     // the CLI never sees the variable.
     const env = { HOME: '/home/u' } as NodeJS.ProcessEnv;
     expect(claudeStateFilePath(join('/home/u', '.claude'), env)).toBe(join('/home/u', '.claude.json'));
+  });
+});
+
+describe('expandTilde (#963)', () => {
+  it('expands ~ and ~/x to the home directory on every OS', () => {
+    expect(expandTilde('~')).toBe(homedir());
+    expect(expandTilde('~/x')).toBe(join(homedir(), 'x'));
+  });
+
+  it('keeps ~user and ~x literal on every OS', () => {
+    expect(expandTilde('~user/x')).toBe('~user/x');
+    expect(expandTilde('~x')).toBe('~x');
+    expect(expandTilde('a/~/b')).toBe('a/~/b');
+  });
+
+  it.runIf(process.platform === 'win32')('expands ~\\x on Windows', () => {
+    expect(expandTilde('~\\x')).toBe(join(homedir(), 'x'));
+  });
+
+  it.runIf(process.platform !== 'win32')('keeps ~\\x literal on POSIX', () => {
+    expect(expandTilde('~\\x')).toBe('~\\x');
+  });
+});
+
+describe('assertXezarHomeWriteIsSandboxed (#963)', () => {
+  const env = { VITEST: 'true' } as NodeJS.ProcessEnv;
+  const realHome = join(homedir(), '.xezar');
+
+  it('refuses the real home and anything under it, and nothing else', () => {
+    expect(() => assertXezarHomeWriteIsSandboxed(realHome, env)).toThrow(/refusing to write/);
+    expect(() => assertXezarHomeWriteIsSandboxed(join(realHome, 'config.json'), env)).toThrow(/refusing to write/);
+    expect(() => assertXezarHomeWriteIsSandboxed(`${realHome}-other${sep}config.json`, env)).not.toThrow();
+    expect(() => assertXezarHomeWriteIsSandboxed(join(realHome, 'config.json'), {})).not.toThrow();
+  });
+
+  // Every OS: `withPlatform` forces the Windows branch; POSIX keeps the exact-spelling refusal.
+  it('refuses every Windows spelling of the real home, and only on Windows', async () => {
+    const upper = join(realHome, 'config.json').toUpperCase();
+    const forward = join(realHome, 'config.json').split('\\').join('/');
+    await withPlatform('win32', () => {
+      expect(() => assertXezarHomeWriteIsSandboxed(upper, env)).toThrow(/refusing to write/);
+      expect(() => assertXezarHomeWriteIsSandboxed(forward, env)).toThrow(/refusing to write/);
+    });
+    await withPlatform('linux', () => {
+      expect(() => assertXezarHomeWriteIsSandboxed(upper, env)).not.toThrow();
+    });
   });
 });

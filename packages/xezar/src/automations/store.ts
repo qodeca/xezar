@@ -5,12 +5,12 @@ import {
   mkdirSync,
   openSync,
   readFileSync,
-  renameSync,
   statSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { randomUUID } from 'node:crypto';
+import { writeFileAtomicSync } from '../platform/atomic-write.ts';
 import { collectSecretValues, redactDeep } from '../core/secret-redaction.ts';
 import { join } from 'node:path';
 import {
@@ -311,8 +311,7 @@ export class AutomationStore {
     mkdirSync(this.dataDir, { recursive: true });
     const path = join(this.dataDir, filename);
     const temporary = `${path}.tmp`;
-    writeFileSync(temporary, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
-    renameSync(temporary, path);
+    writeFileAtomicSync(path, `${JSON.stringify(value, null, 2)}\n`, { tmpPath: temporary, mode: 0o600 });
   }
 
   private appendNdjson(filename: string, value: unknown): void {
@@ -329,10 +328,10 @@ export class AutomationStore {
   private rewriteNdjson(filename: string, rows: unknown[]): void {
     const path = join(this.dataDir, filename);
     const temporary = `${path}.tmp`;
-    writeFileSync(temporary, rows.map((row) => JSON.stringify(row)).join('\n') + (rows.length ? '\n' : ''), {
+    writeFileAtomicSync(path, rows.map((row) => JSON.stringify(row)).join('\n') + (rows.length ? '\n' : ''), {
+      tmpPath: temporary,
       mode: 0o600,
     });
-    renameSync(temporary, path);
   }
 
   private warnOnce(key: string, message: string): void {

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { withPlatform } from '../../test/helpers/platform.ts';
 import { buildChildEnv, looksSecret } from './agent-env.ts';
 
 /**
@@ -212,6 +213,56 @@ describe('buildChildEnv — Windows-shaped env (#427 review)', () => {
     });
     expect(env.http_proxy).toBe('http://p:3128');
     expect(env.my_tool_dir).toBe('C:\\tc');
+  });
+});
+
+/**
+ * #963: the allowlist drops `NoDefaultCurrentDirectoryInExePath`, so on Windows the agent – and the
+ * git or rg it starts in the task's working copy – would run a program found in that folder first.
+ * The built env forces it back, over any host, per-run or full-hatch value, under one spelling.
+ */
+describe('buildChildEnv — program search on Windows (#963)', () => {
+  const VARIABLE = 'NoDefaultCurrentDirectoryInExePath';
+  const spellings = (env: NodeJS.ProcessEnv): string[] =>
+    Object.keys(env).filter((name) => name.toUpperCase() === VARIABLE.toUpperCase());
+
+  /** One env per path through `buildChildEnv`: the allowlist, a per-run override, the full hatch. */
+  const windowsShapedEnvs = (): NodeJS.ProcessEnv[] => {
+    const source: NodeJS.ProcessEnv = { Path: 'C:\\Windows', NODEFAULTCURRENTDIRECTORYINEXEPATH: '0' };
+    return [
+      buildChildEnv({ backend: 'claude', source: { Path: 'C:\\Windows' } }),
+      buildChildEnv({ backend: 'codex', source, extraEnv: { nodefaultcurrentdirectoryinexepath: '' } }),
+      buildChildEnv({ backend: 'pi', source: { ...source, XEZ_AGENT_ENV_FULL: '1' } }),
+    ];
+  };
+  const expectHardened = (envs: NodeJS.ProcessEnv[]): void => {
+    for (const env of envs) {
+      expect(spellings(env)).toEqual([VARIABLE]);
+      expect(env[VARIABLE]).toBe('1');
+    }
+  };
+  const posixEnv = (): NodeJS.ProcessEnv =>
+    buildChildEnv({ backend: 'claude', source: { PATH: '/usr/bin', HOME: '/home/dev' } });
+  const expectUntouched = (env: NodeJS.ProcessEnv): void => {
+    expect(env).toEqual({ PATH: '/usr/bin', HOME: '/home/dev' });
+    expect(spellings(env)).toEqual([]);
+  };
+
+  it.runIf(process.platform === 'win32')('forces it to 1 in every built env', () => {
+    expectHardened(windowsShapedEnvs());
+  });
+
+  // The Windows branch on every OS: the helper reads the platform at call time.
+  it('forces it to 1 in every built env where the platform reports win32, on any host', async () => {
+    expectHardened(await withPlatform('win32', windowsShapedEnvs));
+  });
+
+  it.runIf(process.platform !== 'win32')('adds nothing on POSIX', () => {
+    expectUntouched(posixEnv());
+  });
+
+  it('adds nothing where the platform reports linux, on any host', async () => {
+    expectUntouched(await withPlatform('linux', posixEnv));
   });
 });
 

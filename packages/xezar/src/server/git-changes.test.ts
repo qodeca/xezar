@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Hono } from 'hono';
@@ -450,6 +450,25 @@ describe('readWorktreePath — Files tab browsing', () => {
     } finally {
       if (onWindows) rmSync(outsideTarget, { recursive: true, force: true });
     }
+  });
+
+  // Windows opens every one of these spellings as the `.git` folder (#963, owner decision).
+  it.runIf(process.platform === 'win32')('refuses every Windows spelling of .git', async () => {
+    writeFileSync(join(dir, '.git', 'config'), '[core]\n');
+    for (const spelling of ['.GIT/config', '.Git', '.git./config', '.git /config', '.git::$INDEX_ALLOCATION/config']) {
+      const res = await readWorktreePath(dir, spelling);
+      expect(res.kind, spelling).toBe('invalid');
+      if (res.kind === 'invalid') expect(res.error, spelling).toBe('.git internals are not browsable');
+    }
+    const root = await readWorktreePath(dir, '');
+    expect(root.kind).toBe('dir');
+    if (root.kind === 'dir') expect(root.entries.map((e) => e.name)).not.toContain('.git');
+  });
+
+  it.runIf(process.platform === 'win32')('refuses the 8.3 short name of .git where the volume has one', async (context) => {
+    writeFileSync(join(dir, '.git', 'config'), '[core]\n');
+    if (!existsSync(join(dir, 'GIT~1'))) context.skip(); // short names are off on this volume
+    expect((await readWorktreePath(dir, 'GIT~1/config')).kind).toBe('invalid');
   });
 
   it('rejects reads THROUGH an intermediate symlinked directory (#blocker-symlink-traversal)', async () => {

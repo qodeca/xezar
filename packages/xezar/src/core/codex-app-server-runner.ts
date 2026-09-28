@@ -1,9 +1,10 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { chmod, lstat, mkdir, readFile, realpath, rename, unlink, writeFile } from 'node:fs/promises';
+import { chmod, lstat, mkdir, readFile, realpath, unlink } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { writeFileAtomic } from '../platform/atomic-write.ts';
 import type {
   AgentEvent,
   AgentRunResult,
@@ -569,9 +570,9 @@ class CodexSession implements AgentSession {
     try {
       await mkdir(join(dirname(hook.script), 'locks'), { recursive: true, mode: 0o700 });
       const temporary = `${path}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`;
-      await writeFile(temporary, `${JSON.stringify(record)}\n`, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
-      await chmod(temporary, 0o600);
-      await rename(temporary, path);
+      await writeFileAtomic(path, `${JSON.stringify(record)}\n`, {
+        tmpPath: temporary, encoding: 'utf8', mode: 0o600, flag: 'wx', tempMode: 0o600,
+      });
       this.hookLockPath = path;
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
@@ -944,9 +945,9 @@ async function ensureCodexReadOnlyHookFile(codexHome: string, hook: CodexReadOnl
       if (!profileChanged) return;
       const next = { ...document, hooks: { ...hooks, PreToolUse: handlers } };
       const temporary = `${path}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`;
-      await writeFile(temporary, `${JSON.stringify(next, null, 2)}\n`, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
-      await chmod(temporary, 0o600);
-      await rename(temporary, path);
+      await writeFileAtomic(path, `${JSON.stringify(next, null, 2)}\n`, {
+        tmpPath: temporary, encoding: 'utf8', mode: 0o600, flag: 'wx', tempMode: 0o600,
+      });
     } finally {
       await acquisition.release();
     }
@@ -982,9 +983,8 @@ async function ensureCodexReadOnlyHookCache(hook: CodexReadOnlyHook): Promise<vo
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
       }
       const temporary = `${target}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`;
-      await writeFile(temporary, content, { mode: 0o600, flag: 'wx' });
-      await chmod(temporary, 0o444);
-      await rename(temporary, target);
+      // The read-only 0o444 final mode travels on the temporary file (#963: one shared writer).
+      await writeFileAtomic(target, content, { tmpPath: temporary, mode: 0o600, flag: 'wx', tempMode: 0o444 });
     } finally {
       await acquisition.release();
     }

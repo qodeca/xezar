@@ -4,6 +4,7 @@ import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { withPlatform } from '../test/helpers/platform.ts';
 import type { SkillsRepoSource } from './config.ts';
 import {
   bareDirFor,
@@ -69,7 +70,8 @@ describe('safeRemoteFor', () => {
     'http://internal.example/skills.git',
     'ssh://git@github.com/qodeca/xezar-skills.git',
     'git://example.com/skills.git',
-    'file:///srv/skills.git',
+    // Windows accepts only a drive file URL (#963); the drive-less form is refused there, below.
+    process.platform === 'win32' ? 'file:///C:/srv/skills.git' : 'file:///srv/skills.git',
   ])('passes an allowlisted URL scheme through untouched: %s', (value) => {
     expect(safeRemoteFor(value)).toBe(value);
   });
@@ -120,6 +122,69 @@ describe('safeRemoteFor', () => {
     ['owner/na me', 'a space is not in the shorthand charset'],
   ])('refuses %j (%s)', (value) => {
     expect(safeRemoteFor(value)).toBeNull();
+  });
+
+  const WINDOWS_NETWORK_SOURCES = [
+    '//srv/share/x',
+    '\\\\srv\\share\\x',
+    'file://srv/share/x',
+    'FILE://srv/x',
+    // Git for Windows turns each of these into `//host/share` too.
+    'file:////host/share',
+    'file:///\\host\\share',
+    'file://///h/s',
+    'FILE:////srv/x',
+  ];
+
+  describe.runIf(process.platform === 'win32')('on Windows (#963)', () => {
+    it('expands `~\\` like `~/`', () => {
+      expect(safeRemoteFor('~\\skills')).toBe(join(homedir(), 'skills'));
+    });
+
+    it.each(WINDOWS_NETWORK_SOURCES)(
+      'refuses a network share, which would send the Windows login to that server: %s',
+      (value) => {
+        expect(safeRemoteFor(value)).toBeNull();
+      },
+    );
+
+    it('refuses a file URL with no drive letter', () => {
+      expect(safeRemoteFor('file:///srv/skills.git')).toBeNull();
+    });
+
+    it.each(['C:\\x', 'file:///C:/x', 'file://C:/x'])('still accepts a local drive path: %s', (value) => {
+      expect(safeRemoteFor(value)).toBe(value);
+    });
+  });
+
+  describe.runIf(process.platform !== 'win32')('on POSIX (unchanged by #963)', () => {
+    it('keeps `//srv/share/x` a plain local path', () => {
+      expect(safeRemoteFor('//srv/share/x')).toBe('//srv/share/x');
+    });
+
+    it('keeps accepting every `file://` spelling', () => {
+      for (const value of ['file://srv/share/x', 'file:////host/share', 'FILE:////srv/x']) {
+        expect(safeRemoteFor(value), value).toBe(value);
+      }
+    });
+
+    it('does not expand `~\\`', () => {
+      expect(safeRemoteFor('~\\skills')).toBeNull();
+    });
+  });
+
+  // Both branches on every OS: `safeRemoteFor` reads the platform at call time.
+  describe('on any host, with the platform forced (#963)', () => {
+    it.each(WINDOWS_NETWORK_SOURCES)('refuses %s where the platform reports win32', async (value) => {
+      expect(await withPlatform('win32', () => safeRemoteFor(value))).toBeNull();
+    });
+
+    // POSIX refuses nothing new: every answer is the pre-#963 one. `\\srv\share\x` is no path,
+    // drive, shorthand or URL there, so Linux and macOS never accepted it.
+    it.each(WINDOWS_NETWORK_SOURCES)('refuses nothing new for %s where the platform reports linux', async (value) => {
+      const before963 = value === '\\\\srv\\share\\x' ? null : value;
+      expect(await withPlatform('linux', () => safeRemoteFor(value))).toBe(before963);
+    });
   });
 });
 

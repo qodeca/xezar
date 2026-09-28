@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import './platform/exe-search.ts';
 import { projectDataDir } from './project-data-paths.ts';
 import { projectKitDir } from './project-kit-paths.ts';
 import { parseArgs } from 'node:util';
@@ -58,6 +59,7 @@ import {
 import { entry as activityEntry, startTerminalActivity, type TerminalActivity } from './terminal/index.ts';
 import { recoverAndReport } from './terminal/recovery.ts';
 import { formatDuration, formatTokens, glyphsFor } from './terminal/format.ts';
+import { startLongPathNotice } from './platform/long-paths.ts';
 import { runMigrations } from './workspace/migrations.ts';
 import {
   instanceBootLine,
@@ -1147,6 +1149,13 @@ async function serveCommand(
       }),
     );
   }
+
+  // Windows only (#963): one warning when long file paths are known to be off in Windows or Git.
+  // Started after the bind, on the next event-loop turn, and never awaited, so it cannot delay the
+  // cockpit; off Windows nothing starts. A throwing log is swallowed inside the helper.
+  startLongPathNotice(repoRoot, (line) => {
+    if (!stopping) terminal.log(activityEntry(line));
+  });
 
   // The boot project's MCP socket (#86, D-01 § 5.4), composed over the same app and store
   // the cockpit uses (#243). Fire-and-forget: it never delays or fails boot (N-07), and a

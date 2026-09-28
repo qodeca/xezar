@@ -14,6 +14,7 @@ import { AgentQuotaStore } from '../workspace/agent-quota.ts';
 import { RunManager } from '../workflows/run.ts';
 import { ensureLaunchKey } from './launch-key.ts';
 import { getRepoInfo } from './git.ts';
+import { samePath } from '../platform/path-identity.ts';
 
 /**
  * Per-project server context (spec 2026-07-20-multi-project-workspace,
@@ -351,7 +352,8 @@ export class ProjectContexts {
       return 'unchanged'; // a rejected read is no information — see the doc above.
     }
     const current = projects.find((p) => p.id === projectId);
-    if (current === undefined || current.root === existing.root) return 'unchanged';
+    // A spelling-only change (Windows letter case, #963 Q3) is the same folder: no drift.
+    if (current === undefined || samePath(current.root, existing.root)) return 'unchanged';
     if (this.hasActiveRuns(existing)) {
       this.warnActiveDrift(projectId, existing.root, current.root);
       return 'active';

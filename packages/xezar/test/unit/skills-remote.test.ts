@@ -55,7 +55,10 @@ test('safeRemoteFor accepts the documented safe source shapes', () => {
   assert.equal(safeRemoteFor('/abs/path/to/repo'), '/abs/path/to/repo');
   assert.equal(safeRemoteFor('./rel/repo'), './rel/repo');
   assert.equal(safeRemoteFor('../sibling/repo'), '../sibling/repo');
-  assert.equal(safeRemoteFor('file:///abs/repo'), 'file:///abs/repo');
+  // Windows accepts only a drive file URL (#963): a drive-less one would open a network share there.
+  const localFileUrl = onWindows ? 'file:///C:/abs/repo' : 'file:///abs/repo';
+  assert.equal(safeRemoteFor(localFileUrl), localFileUrl);
+  if (onWindows) assert.equal(safeRemoteFor('file:///abs/repo'), null);
   // `.` and `-` are in the owner/name charset, so a single-segment relative
   // path must be matched as a path first, not rewritten to a github.com URL.
   assert.equal(safeRemoteFor('./rel'), './rel');

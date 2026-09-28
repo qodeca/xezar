@@ -10,8 +10,9 @@ import {
 import { realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { linkDir } from '../../test/helpers/platform.ts';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { linkDir, withPlatform } from '../../test/helpers/platform.ts';
+import { withIdentityPlatform } from '../platform/identity-platform.testkit.ts';
 import { PROJECT_TAGS_MAX, PROJECT_TAG_MAX_LENGTH } from '@qodeca/xezar-contract';
 import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
@@ -30,6 +31,12 @@ import {
   type ServerDeps,
   type UpdateProjectResponse,
 } from './server.ts';
+
+// The identity helpers answer for the host unless a test forces them (`withIdentityPlatform`): the
+// POST /projects case needs the Windows IDENTITY rule on every OS without the Windows typed-folder
+// rule, which would refuse a POSIX host's `/tmp/…` before the identity line runs.
+vi.mock('../platform/path-identity.ts', async (importOriginal) =>
+  (await import('../platform/identity-platform.testkit.ts')).identityModuleWith(await importOriginal()));
 
 /**
  * Multi-project workspace API (spec 2026-07-20-multi-project-workspace, step
@@ -183,6 +190,24 @@ describe('workspace projects API', () => {
       ]);
     });
 
+    // #963 Q3 (C-M2): Git for Windows reports the boot root as `c:/…`; the registry holds `C:\…`
+    // (here in another letter case, so the realpath alone cannot rescue the match). Every OS:
+    // `withPlatform` forces the Windows branch; only the stored row carries the other case.
+    it('derives bootProject from a Windows row whatever the spelling of the boot root', async () => {
+      const stamp = '2026-01-01T00:00:00.000Z';
+      const stored = realpathSync.native(repoRoot).toLowerCase();
+      await mergeWriteWorkspaceConfig((config) => {
+        config.projects.push({ id: 'boot-lower', root: stored, name: 'boot', addedAt: stamp, lastOpenedAt: stamp, source: 'local' });
+      });
+      const gitSpelling = realpathSync.native(repoRoot).split('\\').join('/');
+      const body = await withPlatform('win32', async () => {
+        const res = await apiRequest(makeApp({ repoRoot: gitSpelling }), '/api/v1/projects');
+        expect(res.status).toBe(200);
+        return (await res.json()) as ProjectsResponse;
+      });
+      expect(body.bootProject).toBe('boot-lower');
+    });
+
     it('reports a deleted root as missing', async () => {
       const other = await registerProject(otherRoot);
       rmSync(otherRoot, { recursive: true, force: true });
@@ -326,6 +351,21 @@ describe('workspace projects API', () => {
       expect(body.error).toContain(first.id);
       expect(seen).toEqual([]);
       expect((await getProjects()).projects).toHaveLength(1);
+    });
+
+    // #963 Q3 (C-M2): a letter-case variant of a registered Windows folder is the same project.
+    // Every OS: `withIdentityPlatform` forces the Windows identity rule only (see the mock above);
+    // only the stored row carries the other case.
+    it('re-registering a letter-case variant answers 409 on Windows', async () => {
+      const stamp = '2026-01-01T00:00:00.000Z';
+      const stored = (await realpath(otherRoot)).toUpperCase();
+      await mergeWriteWorkspaceConfig((config) => {
+        config.projects.push({ id: 'upper', root: stored, name: 'upper', addedAt: stamp, lastOpenedAt: stamp, source: 'local' });
+      });
+      const { status, body } = await withIdentityPlatform('win32', () => post({ root: otherRoot }));
+      expect(status).toBe(409);
+      expect(body.project.id).toBe('upper');
+      expect((await loadWorkspaceConfig()).projects.map((p) => p.root)).toEqual([stored]);
     });
 
     it('400s a non-absolute path, a missing folder, a file, and a malformed body', async () => {

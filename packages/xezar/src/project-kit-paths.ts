@@ -1,5 +1,6 @@
 import { join, resolve } from 'node:path';
 import { xezarHomeDir } from './paths.ts';
+import { samePath } from './platform/path-identity.ts';
 
 export const PROJECT_KIT_DIR = '.xezar';
 
@@ -35,7 +36,7 @@ export function projectKitDir(repoRoot: string): string {
   // A home-directory launch is not a project registration. In particular, init
   // and PUT /config there must never turn the user's workspace file into a kit,
   // so the kit moves into that launch's own local state instead.
-  if ([xezarHomeDir(), xezarHomeDir({})].some(home => resolve(home) === resolve(canonical))) {
+  if ([xezarHomeDir(), xezarHomeDir({})].some(home => samePath(resolve(home), resolve(canonical)))) {
     return join(repoRoot, '.local/xezar/kit');
   }
   return canonical;

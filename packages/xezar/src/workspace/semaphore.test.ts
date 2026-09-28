@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { linkDir } from '../../test/helpers/platform.ts';
+import { linkDir, withPlatform } from '../../test/helpers/platform.ts';
 import { DEFAULT_MEMORY_LIMIT_MB } from './config.ts';
 import { WorkspaceSemaphore, type SemaphoreParticipant } from './semaphore.ts';
 
@@ -377,6 +377,38 @@ describe('WorkspaceSemaphore', () => {
       projectLimits = new Map<string, number>([[realpathSync(capped), 3]]);
       await sem.refresh();
       expect(sem.projectMaxParallel(capped)).toBe(3);
+    } finally {
+      rmSync(dirs, { recursive: true, force: true });
+    }
+  });
+
+  // #963 Q3: the registry key and the manager's root can differ only in letter case on Windows.
+  // Every OS: `withPlatform` forces the Windows branch; only the stored key carries the other case.
+  it('finds a per-project limit stored under a letter-case variant of the root', async () => {
+    const dirs = mkdtempSync(join(tmpdir(), 'xez-sema-case-'));
+    const repo = join(dirs, 'Repo');
+    mkdirSync(repo, { recursive: true });
+    try {
+      const key = realpathSync(repo).toUpperCase();
+      const sem = new WorkspaceSemaphore({
+        load: () =>
+          Promise.resolve({
+            maxParallel: 4,
+            memoryLimitMb: null,
+            projectLimits: new Map([[key, 1]]),
+            projectMemoryLimits: new Map([[key, 777]]),
+          }),
+      });
+      await sem.refresh();
+      await withPlatform('win32', () => {
+        expect(sem.projectMaxParallel(repo)).toBe(1);
+        expect(sem.projectMemoryLimitMb(repo)).toBe(777);
+      });
+      // POSIX keeps the exact key: the variant is another folder there.
+      await withPlatform('linux', () => {
+        expect(sem.projectMaxParallel(repo)).toBe(4);
+        expect(sem.projectMemoryLimitMb(repo)).toBeNull();
+      });
     } finally {
       rmSync(dirs, { recursive: true, force: true });
     }

@@ -132,6 +132,18 @@ describe('createWorktree recovery (real git)', () => {
     expect(() => writeFileSync(join(recovered.path, 'still-usable.txt'), 'yes\n')).not.toThrow();
   });
 
+  // #963 Q3: the repository root may arrive in another letter case (a typed path, Git's `C:/…`);
+  // on Windows that is the same folder, so the registered worktree is reused, never re-added.
+  it.runIf(process.platform === 'win32')('reuses the task worktree when the repository root is spelled in another case', async () => {
+    const repo = await fixtureRepo('xez-worktree-case-');
+    const runId = '44444444-4444-4444-8444-444444444444';
+    const first = await createWorktree(repo, runId, 'main');
+    const again = await createWorktree(repo.toUpperCase(), runId, 'main');
+    expect(again.path.toLowerCase()).toBe(first.path.toLowerCase());
+    const listed = await run('git', ['worktree', 'list', '--porcelain'], { cwd: repo });
+    expect(listed.stdout.match(new RegExp(`branch refs/heads/${branchFor(runId)}`, 'g'))).toHaveLength(1);
+  });
+
   it('preserves an unregistered non-empty managed path instead of deleting it', async () => {
     const repo = await fixtureRepo('xez-worktree-preserve-');
     const runId = '33333333-3333-4333-8333-333333333333';

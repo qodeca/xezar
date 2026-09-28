@@ -54,7 +54,9 @@ Every line carries an `event=` name. Where the event is also something the proje
 | `config.changed`, `workflow.saved`, `workflow.deleted`, `agent-config.changed` | A change that affects how tasks run. |
 | `goal.changed`, `instruction.added`, `instruction.queued`, `instruction.edited`, `instruction.removed` | A person changed a task's prompt or messages (shown at `debug`). |
 
-Names for the terminal only: `task.queued`, `task.started`, `task.recovered`, `step.started`, `xezar.ready`, `xezar.stopping`, `xezar.stopped`, `session.summary`, `mcp.ready`, `mcp.unavailable`, `registry.port`, `registry.invalid`, `instance.mode`, `http.error`, `http.refused`, `http.repeated`, `output.fallback` and `output.folded`.
+Names for the terminal only: `task.queued`, `task.started`, `task.recovered`, `step.started`, `xezar.ready`, `xezar.stopping`, `xezar.stopped`, `session.summary`, `mcp.ready`, `mcp.unavailable`, `registry.port`, `registry.invalid`, `instance.mode`, `http.error`, `http.refused`, `http.repeated`, `output.fallback`, `output.folded` and `windows.longpaths`.
+
+`windows.longpaths` appears on Windows only: printed once at start-up when long file paths are off in Windows or Git. Its `windows=` and `git=` fields say what was found for each setting (`on`, `off` or `unknown`), and the message names the fix.
 
 At start-up, `task.recovered count=<n> settled=<n>` is one aggregate about the previous session. `count` is every queued, waiting or running task found before recovery; `settled` is the originally waiting subset that recovery deliberately finished as done or ready for review. It is historical information, never a new per-task outcome, and it does not change the session's done, review, failed or cancelled totals. Under `--quiet` this information-level line is omitted.
 

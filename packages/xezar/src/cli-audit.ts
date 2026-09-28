@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import type { AuditActor, AuditResource } from '@qodeca/xezar-contract';
 import { AuditTrail, doorAuditWarning, type AuditChannel, type AuditScope } from './mcp/audit-trail.ts';
 import { ensureProjectDataIgnored, projectDataDir } from './project-data-paths.ts';
+import { samePath } from './platform/path-identity.ts';
 import { loadWorkspaceConfig } from './workspace/config.ts';
 import { allocateProjectSlug, findRegistryProject, shouldRegisterProject } from './workspace/projects.ts';
 
@@ -120,7 +121,7 @@ export async function invocationScope(repoRoot: string): Promise<CliAuditScope |
   try {
     const root = await realpath(repoRoot).catch(() => resolve(repoRoot));
     const { projects } = await loadWorkspaceConfig();
-    const known = projects.find((project) => project.root === root);
+    const known = projects.find((project) => samePath(project.root, root));
     const projectId = known?.id ?? allocateProjectSlug(root, projects.map((project) => project.id));
     const isProject = known !== undefined || (await shouldRegisterProject(root));
     return { projectId, dataDir: projectDataDir(known?.root ?? root), isProject };

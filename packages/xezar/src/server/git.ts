@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { fromGitPath } from '../platform/path-syntax.ts';
 
 const exec = promisify(execFile);
 
@@ -29,7 +30,8 @@ async function git(root: string, args: string[]): Promise<string> {
 /** Null when `dir` isn't inside a git repository. */
 export async function getRepoInfo(dir: string): Promise<RepoInfo | null> {
   try {
-    const root = (await git(dir, ['rev-parse', '--show-toplevel'])).trim();
+    // Git for Windows prints `C:/…`; the rest of Windows (and the registry) spells it `C:\…` (#963).
+    const root = fromGitPath((await git(dir, ['rev-parse', '--show-toplevel'])).trim());
     const branch = (await git(root, ['rev-parse', '--abbrev-ref', 'HEAD'])).trim();
     let remote: string | undefined;
     try {

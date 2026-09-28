@@ -1,8 +1,8 @@
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { onWindows } from '../../test/helpers/platform.ts';
+import { onWindows, withPlatform } from '../../test/helpers/platform.ts';
 import { workspaceConfigPath } from '../paths.ts';
 import { projectStateLayout, setActiveStateLayout } from '../state-layout.ts';
 import {
@@ -334,6 +334,47 @@ describe('workspace config', () => {
     const config = await loadWorkspaceConfig();
     expect(config.projects.map((p) => p.id)).toEqual(['good', 'also-good']);
     expect(config.projects[1]?.source).toBe('local');
+  });
+
+  // #963 AC-3: a saved Windows project used to vanish on the next load.
+  const keepsWindowsRows = async () => {
+    const roots = ['C:\\work\\drive-back', '\\\\srv\\share\\unc', 'C:/work/drive-forward'];
+    write({ projects: roots.map((root, index) => ({ ...project(`win-${index}`), root })) });
+    expect((await loadWorkspaceConfig()).projects.map((p) => p.root)).toEqual(roots);
+    await mergeWriteWorkspaceConfig((config) => {
+      config.schemaVersion = 1; // an unrelated write
+    });
+    const raw = JSON.parse(readFileSync(workspaceConfigPath(), 'utf8')) as { projects: Array<{ root: string }> };
+    expect(raw.projects.map((p) => p.root)).toEqual(roots); // stored bytes unchanged
+    expect((await loadWorkspaceConfig()).projects.map((p) => p.root)).toEqual(roots);
+  };
+  const dropsDriveRow = async () => {
+    write({ projects: [project('good'), { ...project('drive'), root: 'C:\\work\\x' }] });
+    expect((await loadWorkspaceConfig()).projects.map((p) => p.id)).toEqual(['good']);
+  };
+
+  it.runIf(process.platform === 'win32')('keeps drive-letter and network-share rows through load, merge-write and reload', keepsWindowsRows);
+
+  // The Windows branch on every OS: only the stored spellings are Windows ones, never the disk.
+  it('keeps those rows where the platform reports win32, on any host', () => withPlatform('win32', keepsWindowsRows));
+
+  it.runIf(process.platform !== 'win32')('still drops a drive-letter row on POSIX, where it is a relative name', dropsDriveRow);
+
+  it('still drops a drive-letter row where the platform reports linux, on any host', () => withPlatform('linux', dropsDriveRow));
+
+  // #963 AC-9: Windows refuses to replace a read-only file; Linux and macOS already did it.
+  it('replaces a read-only config file and leaves it at 0600', async () => {
+    await mergeWriteWorkspaceConfig((config) => {
+      config.projects.push(project('first'));
+    });
+    chmodSync(workspaceConfigPath(), 0o444);
+    await mergeWriteWorkspaceConfig((config) => {
+      config.projects.push(project('second'));
+    });
+    expect((await loadWorkspaceConfig()).projects.map((p) => p.id)).toEqual(['first', 'second']);
+    if (!onWindows) expect(statSync(workspaceConfigPath()).mode & 0o777).toBe(0o600);
+    else expect(statSync(workspaceConfigPath()).mode & 0o200).toBe(0o200);
+    expect(readdirSync(dirname(workspaceConfigPath())).filter((name) => name.endsWith('.tmp'))).toEqual([]);
   });
 
   it('per-project maxParallel: keeps a valid value, degrades a bad one to inherit, absent stays absent', async () => {

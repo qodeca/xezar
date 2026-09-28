@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
+import { writeFileAtomic } from '../platform/atomic-write.ts';
 
 /**
  * The disposable onboarding record: `.local/xezar/onboarding-state.json` (#464 P2,
@@ -162,13 +163,12 @@ async function writeAtomic(dataDir: string, record: OnboardingRecord): Promise<b
   const tmp = `${file}.tmp`;
   try {
     await fs.mkdir(dataDir, { recursive: true });
-    await fs.writeFile(tmp, `${JSON.stringify(record, null, 2)}\n`, 'utf8');
-    await fs.rename(tmp, file);
+    await writeFileAtomic(file, `${JSON.stringify(record, null, 2)}\n`, { tmpPath: tmp, encoding: 'utf8' });
     return true;
   } catch {
     // A read-only disk, a full one, a home that is not ours. The record is scratch: losing a
     // write costs the memory of one dismissal and nothing else, so this never propagates.
-    await fs.rm(tmp, { force: true }).catch(() => undefined);
+    // writeFileAtomic has already removed its temporary file.
     return false;
   }
 }

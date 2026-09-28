@@ -1,10 +1,11 @@
 import { realpath, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { basename, join, resolve, sep } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import { PROJECT_TAGS_MAX, PROJECT_TAG_MAX_LENGTH } from '@qodeca/xezar-contract';
 import type { InstanceMode } from '../cli-settings.ts';
 import { forgeKindOfRemote, forgeWebRoot, type ForgeKind } from '../server/forge/index.ts';
 import { getRepoInfo } from '../server/git.ts';
+import { containsPathSegments, samePath } from '../platform/path-identity.ts';
 import { activeStateLayout, type StateLayout } from '../state-layout.ts';
 import {
   mergeWriteWorkspaceConfig,
@@ -251,7 +252,7 @@ async function normalizeRoot(root: string): Promise<string> {
 
 /** True when `path` sits inside a xezar task worktree (`…/.local/xezar/worktrees/…`). */
 function isInsideTaskWorktree(path: string): boolean {
-  return `${path}${sep}`.includes(`${sep}.local${sep}xezar${sep}worktrees${sep}`);
+  return containsPathSegments(path, ['.local', 'xezar', 'worktrees']);
 }
 
 /**
@@ -272,7 +273,7 @@ export async function shouldRegisterProject(repoRoot: string): Promise<boolean> 
   const real = await normalizeRoot(repoRoot);
   if (isInsideTaskWorktree(real) || isInsideTaskWorktree(resolve(repoRoot))) return false;
   const home = await normalizeRoot(homedir());
-  return real !== home;
+  return !samePath(real, home);
 }
 
 /**
@@ -310,7 +311,9 @@ export async function registerProject(
   }
   let entry: WorkspaceProject | undefined;
   await mergeWriteWorkspaceConfig((config) => {
-    const existing = config.projects.find((p) => p.root === real);
+    // Same folder, any spelling Windows treats as the same (#963 Q3): the stored `root` keeps its
+    // bytes and only `lastOpenedAt` moves.
+    const existing = config.projects.find((p) => samePath(p.root, real));
     if (existing) {
       existing.lastOpenedAt = now;
       entry = existing;
@@ -505,7 +508,7 @@ async function projectLayoutRow(
   layout: StateLayout = activeStateLayout(),
 ): Promise<WorkspaceProject> {
   const real = await normalizeRoot(projectRoot);
-  const existing = stored.find((project) => project.root === real);
+  const existing = stored.find((project) => samePath(project.root, real));
   // Per-machine facts are overlaid from the working file, never from the
   // committed one (#600 defect A): the stored row keeps identity (id, name,
   // tags, cap) and the machine keeps its own stamps.
@@ -598,7 +601,7 @@ export async function findRegistryProject(
   const rows = await registryRows(undefined, layout);
   return 'id' in query
     ? rows.find((project) => project.id === query.id)
-    : rows.find((project) => project.root === query.root);
+    : rows.find((project) => samePath(project.root, query.root));
 }
 
 /**

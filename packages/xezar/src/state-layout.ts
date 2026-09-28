@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { accessSync, constants, existsSync, lstatSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
+import { containsPathSegments, samePath } from './platform/path-identity.ts';
 
 /**
  * Single-project mode (#600) — WHERE xezar keeps its state, decided once per
@@ -278,7 +279,7 @@ function isUserHome(dir: string): boolean {
       return resolve(path);
     }
   };
-  return real(dir) === real(homedir());
+  return samePath(real(dir), real(homedir()));
 }
 
 /**
@@ -288,7 +289,7 @@ function isUserHome(dir: string): boolean {
  * means, and FR-1.3 names this path explicitly.
  */
 function isInsideTaskWorktree(dir: string): boolean {
-  return `${resolve(dir)}${sep}`.includes(`${sep}.local${sep}xezar${sep}worktrees${sep}`);
+  return containsPathSegments(resolve(dir), ['.local', 'xezar', 'worktrees']);
 }
 
 /**

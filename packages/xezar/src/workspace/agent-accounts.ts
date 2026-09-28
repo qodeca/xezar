@@ -1,11 +1,13 @@
 import { realpathSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import { posix, resolve, win32 } from 'node:path';
+import { resolve } from 'node:path';
 import { z } from 'zod';
 import { DEFAULT_AGENT_ACCOUNT_ID } from '@qodeca/xezar-contract';
 import { PROVIDER_IDS, type ProviderId } from '../core/provider-auth.ts';
 import { supportsProfiles } from '../core/agent-profiles.ts';
 import { agentAccountsPath, workspaceConfigPath } from '../paths.ts';
+import { isAbsolutePath } from '../platform/path-syntax.ts';
+import { lookupSamePath } from '../platform/path-identity.ts';
 import { atomicWriteJsonSync } from './config.ts';
 
 /**
@@ -74,7 +76,7 @@ export function isAbsoluteConfigDir(
   configDir: string,
   platform: NodeJS.Platform = process.platform,
 ): boolean {
-  return (platform === 'win32' ? win32 : posix).isAbsolute(configDir);
+  return isAbsolutePath(configDir, platform);
 }
 
 /** C0 controls + DEL. A path containing one is never legitimate and would be interpolated into a
@@ -308,7 +310,9 @@ function selectionForRoot(
   const literal = store.selections[repoRoot];
   if (literal !== undefined) return literal;
   const normalized = normalizeRootSync(repoRoot);
-  return normalized === repoRoot ? undefined : store.selections[normalized];
+  const exact = normalized === repoRoot ? undefined : store.selections[normalized];
+  // Windows: a case or separator variant of the root is the same project (#963 Q3). POSIX: undefined.
+  return exact ?? lookupSamePath(Object.entries(store.selections), normalized);
 }
 
 /** Realpath-normalize a root the way the registry does, but synchronously — this answers a run's

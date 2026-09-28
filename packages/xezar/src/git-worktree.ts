@@ -5,6 +5,9 @@ import { readdir, readFile, rm, stat } from 'node:fs/promises';
 import { basename, join, resolve } from 'node:path';
 import { resolveTaskDiffBase } from './git-diff-base.ts';
 import { isSafeGitRef } from './git-refs.ts';
+import { withLongPathHint } from './platform/long-paths.ts';
+import { samePath } from './platform/path-identity.ts';
+import { fromGitPath } from './platform/path-syntax.ts';
 
 /**
  * Git worktree per task (spec 006). Each run gets its own branch
@@ -101,7 +104,8 @@ async function registeredWorktrees(repoRoot: string): Promise<RegisteredWorktree
   for (const line of res.stdout.split('\n')) {
     if (line.startsWith('worktree ')) {
       if (current) worktrees.push(current);
-      current = { path: line.slice('worktree '.length) };
+      // Git for Windows prints `C:/…`: spell it the way a fresh worktree path is spelled (#963).
+      current = { path: fromGitPath(line.slice('worktree '.length)) };
     } else if (current && line.startsWith('branch ')) {
       current.branch = line.slice('branch '.length);
     } else if (!line && current) {
@@ -159,7 +163,7 @@ export async function createWorktree(
   await git(repoRoot, ['worktree', 'prune']);
   const canonicalTarget = canonicalPath(absolutePath);
   let registered = await registeredWorktrees(repoRoot);
-  let atPath = registered.find((item) => canonicalPath(item.path) === canonicalTarget);
+  let atPath = registered.find((item) => samePath(canonicalPath(item.path), canonicalTarget));
   if (atPath) {
     if (atPath.branch !== branchRef) {
       throw new Error(
@@ -175,7 +179,7 @@ export async function createWorktree(
   if (existsSync(absolutePath)) {
     await git(repoRoot, ['worktree', 'repair', absolutePath]);
     registered = await registeredWorktrees(repoRoot);
-    atPath = registered.find((item) => canonicalPath(item.path) === canonicalTarget);
+    atPath = registered.find((item) => samePath(canonicalPath(item.path), canonicalTarget));
     if (atPath) {
       if (atPath.branch !== branchRef) {
         throw new Error(
@@ -204,14 +208,15 @@ export async function createWorktree(
     }
     const attach = await git(repoRoot, ['worktree', 'add', absolutePath, branch]);
     if (!attach.ok) {
-      throw new Error(`git worktree reattach failed: ${attach.stderr.trim() || attach.stdout.trim()}`);
+      throw new Error(`git worktree reattach failed: ${withLongPathHint(attach.stderr.trim() || attach.stdout.trim())}`);
     }
     return worktreeInfo(absolutePath, branch, base);
   }
 
   const create = await git(repoRoot, ['worktree', 'add', '-b', branch, absolutePath, base]);
   if (!create.ok) {
-    throw new Error(`git worktree add failed: ${create.stderr.trim() || create.stdout.trim()}`);
+    // Windows: a "Filename too long" failure carries the long-path fix (#963).
+    throw new Error(`git worktree add failed: ${withLongPathHint(create.stderr.trim() || create.stdout.trim())}`);
   }
   return worktreeInfo(absolutePath, branch, base);
 }

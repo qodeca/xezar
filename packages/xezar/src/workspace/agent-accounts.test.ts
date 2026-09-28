@@ -11,7 +11,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { linkDir, onWindows } from '../../test/helpers/platform.ts';
+import { linkDir, onWindows, withPlatform } from '../../test/helpers/platform.ts';
 import { agentAccountsPath, workspaceConfigPath } from '../paths.ts';
 import { loadWorkspaceConfig, mergeWriteWorkspaceConfig } from './config.ts';
 import {
@@ -289,6 +289,17 @@ describe('agent accounts store', () => {
 
       expect(selectionFor(store, realpathSync(real), 'claude')).toBe('work');
       expect(selectionFor(store, link, 'claude')).toBe('work');
+    });
+
+    // #963 Q3: on Windows a letter-case variant of the stored root is the same project. Every OS:
+    // `withPlatform` forces the Windows branch; only the stored key carries the other case.
+    it('resolves a letter-case variant of the stored root on Windows, and only there', async () => {
+      const real = join(home, 'Case-Repo');
+      mkdirSync(real);
+      write({ accounts: [account('work')], selections: { [realpathSync(real).toUpperCase()]: { claude: 'work' } } });
+      const store = await loadAgentAccounts();
+      expect(await withPlatform('win32', () => selectionFor(store, real, 'claude'))).toBe('work');
+      expect(await withPlatform('linux', () => selectionFor(store, real, 'claude'))).toBeUndefined();
     });
 
     it('still answers the machine-wide default for a root nobody chose', async () => {

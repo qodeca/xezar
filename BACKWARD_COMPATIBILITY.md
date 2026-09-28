@@ -81,3 +81,18 @@ Each entry names the release, the surface it breaks, the symptom a user sees and
   `engine-strict` is set; a problem that appears only on Node 20 is not fixed. *Way forward:*
   upgrade to Node.js 22 or the current LTS. The owner waived the §8 deprecation notice for
   this change (#963).
+- **0.20.0 – on Windows the project folder is spelled the Windows way** (§1, §2, §5). Health's
+  `repoRoot` (`GET /api/v1/health`), the folder in the start banner and the project root in audit
+  records take Windows separators, `C:\…`, instead of Git's `C:/…`. Linux and macOS are unchanged.
+  *Symptom:* a script on Windows that compared those values with a `C:/…` string no longer
+  matches. *Way forward:* compare with the `C:\…` spelling, or normalize both sides before
+  comparing. The owner approved this change without a §8 deprecation notice (#963).
+- **0.20.0 – on Windows a team skill source on a network share is refused** (§5). A
+  `skillsRepos` source that names a network share (`//server/share/…`, `\\server\share\…`) or a
+  file URL other than a local drive one (`file://server/…`, `file:////server/…`, `file:///srv/…`;
+  only `file:///C:/…` and `file://C:/…` stay accepted) is no longer fetched on Windows, because opening it
+  sends the user's Windows sign-in to that server and the source comes from a committed project
+  file. Linux, macOS and every other source shape are unchanged. *Symptom:* on Windows the team
+  skills from that source do not appear. *Way forward:* use an https or ssh address, or a local
+  copy of the repository (`C:\…` or `file:///C:/…`). The owner approved this change without a §8
+  deprecation notice (#963).

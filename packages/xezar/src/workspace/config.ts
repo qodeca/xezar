@@ -1,5 +1,4 @@
-import { randomBytes } from 'node:crypto';
-import { chmodSync, existsSync, mkdirSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { totalmem } from 'node:os';
 import { dirname } from 'node:path';
@@ -10,6 +9,8 @@ import { z } from 'zod';
 import { PROJECT_TAGS_MAX, PROJECT_TAG_MAX_LENGTH } from '@qodeca/xezar-contract';
 import { PROVIDER_IDS, type ProviderId } from '../core/provider-auth.ts';
 import { assertXezarHomeWriteIsSandboxed, workspaceConfigPath } from '../paths.ts';
+import { uniqueTmpPath, writeFileAtomicSync } from '../platform/atomic-write.ts';
+import { isAbsolutePath } from '../platform/path-syntax.ts';
 import {
   activeStateLayout,
   isSymbolicLink,
@@ -100,7 +101,7 @@ const workspaceProjectSchema = z
     id: z.string().regex(PROJECT_ID_RE),
     /** Absolute, realpath-normalized repo root (normalization is the writer's
      *  job — `registerProject` in step 1.3; the schema only demands absolute). */
-    root: z.string().min(1).max(4096).refine((p) => p.startsWith('/'), 'root must be absolute'),
+    root: z.string().min(1).max(4096).refine((p) => isAbsolutePath(p), 'root must be absolute'),
     /** Display name (basename by default). `''` = caller derives a fallback. */
     name: z.string().max(200).catch(''),
     addedAt: z.string().max(64).catch(''),
@@ -605,25 +606,22 @@ function warnOncePerState(path: string, raw: string | null, message: string): vo
  * `ENOENT` on the name A consumed. The pid + random suffix gives every writer
  * its own staging file, so the only cross-process contention left is the
  * rename itself, which is atomic.
+ *
+ * @deprecated use `uniqueTmpPath` from `platform/atomic-write.ts` (#963); kept for existing importers.
  */
 export function atomicTmpPath(path: string): string {
-  return `${path}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`;
+  return uniqueTmpPath(path);
 }
 
 /** Atomic JSON write (`0600`, dir `0700`) via a per-writer tmp + rename —
  *  shared by the workspace config and ui-state writers. Throws on write
- *  failure (e.g. a read-only home) — degrading is the caller's policy. */
+ *  failure (e.g. a read-only home) — degrading is the caller's policy. The
+ *  rename is retried on Windows only, the temp is removed on failure, and the
+ *  final `0600` chmod stays best-effort (#963). */
 export function atomicWriteJsonSync(path: string, value: unknown): void {
   assertXezarHomeWriteIsSandboxed(path);
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-  const tmp = atomicTmpPath(path);
-  writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
-  renameSync(tmp, path);
-  try {
-    chmodSync(path, 0o600); // best-effort — ignored on some filesystems
-  } catch {
-    // non-fatal
-  }
+  writeFileAtomicSync(path, `${JSON.stringify(value, null, 2)}\n`, { encoding: 'utf8', mode: 0o600, finalMode: 0o600 });
 }
 
 /**

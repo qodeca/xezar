@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync
 import { homedir, tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { linkDir } from '../../test/helpers/platform.ts';
+import { linkDir, withPlatform } from '../../test/helpers/platform.ts';
 import { PROJECT_TAGS_MAX, PROJECT_TAG_MAX_LENGTH } from '@qodeca/xezar-contract';
 import { projectStateLayout, setActiveStateLayout } from '../state-layout.ts';
 import { loadWorkspaceConfig, mergeWriteWorkspaceConfig } from './config.ts';
@@ -11,11 +11,13 @@ import { readStoredCliSettings, rememberLastListen } from './port-memory.ts';
 import {
   allocateProjectSlug,
   clearProjectProbeCache,
+  findRegistryProject,
   instanceBootLine,
   instanceModeInForce,
   listProjects,
   normalizeProjectTags,
   registerProject,
+  registryRows,
   removeProject,
   shouldRegisterProject,
 } from './projects.ts';
@@ -81,6 +83,24 @@ describe('workspace projects', () => {
       expect(again.addedAt).toBe(first.addedAt);
       expect(Date.parse(again.lastOpenedAt)).toBeGreaterThanOrEqual(Date.parse(first.lastOpenedAt));
       expect((await loadWorkspaceConfig()).projects).toHaveLength(1);
+    });
+
+    // #963 Q3 / AC-6: on Windows `c:\repo` and `C:\Repo` are one folder, so one project. Runs on
+    // every OS: `withPlatform` forces the Windows branch, and only the STORED row carries the other
+    // spelling, so nothing needs a case-insensitive file system.
+    it('dedupes a letter-case variant of a stored Windows root', async () => {
+      const root = makeDir('Case-Repo');
+      const lowered = root.toLowerCase();
+      const stamp = '2026-01-01T00:00:00.000Z';
+      await mergeWriteWorkspaceConfig((config) => {
+        config.projects.push({ id: 'case-repo', root: lowered, name: 'case-repo', addedAt: stamp, lastOpenedAt: stamp, source: 'local' });
+      });
+      const entry = await withPlatform('win32', () => registerProject(root));
+      expect(entry.id).toBe('case-repo');
+      const projects = (await loadWorkspaceConfig()).projects;
+      expect(projects).toHaveLength(1);
+      expect(projects[0]!.root).toBe(lowered); // the stored spelling is kept
+      expect(projects[0]!.lastOpenedAt).not.toBe(stamp);
     });
 
     it('dedupes a symlinked path to the realpath entry', async () => {
@@ -299,6 +319,46 @@ describe('workspace projects', () => {
       expect(await shouldRegisterProject(homedir())).toBe(false);
       expect(await shouldRegisterProject(`${homedir()}/`)).toBe(false);
     });
+
+    // #963 Q3: on Windows the worktree marker matches in any letter case. The folder is created in
+    // that case, so on Windows the realpath keeps it and only the identity rule can tell.
+    it('suppresses a task worktree spelled in another letter case on Windows, and only there', async () => {
+      const worktree = makeDir('host-repo', '.LOCAL', 'Xezar', 'Worktrees', 'abc12345');
+      expect(await withPlatform('win32', () => shouldRegisterProject(worktree))).toBe(false);
+      expect(await withPlatform('linux', () => shouldRegisterProject(worktree))).toBe(true);
+    });
+
+    // #963 Q3: the home is compared as a folder identity. The home here is never created, so the
+    // realpath cannot line the two spellings up and only the identity rule can tell.
+    it('suppresses another letter case of the home directory on Windows, and only there', async () => {
+      const saved = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
+      const home = join(repos, 'Missing-Home');
+      process.env.HOME = home; // POSIX: os.homedir() reads HOME
+      process.env.USERPROFILE = home; // Windows: os.homedir() reads USERPROFILE
+      try {
+        expect(homedir()).toBe(home);
+        const otherCase = join(repos, 'missing-home');
+        expect(await withPlatform('win32', () => shouldRegisterProject(otherCase))).toBe(false);
+        expect(await withPlatform('win32', () => shouldRegisterProject(join(repos, 'Missing-Home-2')))).toBe(true);
+        expect(await withPlatform('linux', () => shouldRegisterProject(otherCase))).toBe(true);
+      } finally {
+        for (const [name, value] of Object.entries(saved)) {
+          if (value === undefined) delete process.env[name];
+          else process.env[name] = value;
+        }
+      }
+    });
+  });
+
+  describe('findRegistryProject', () => {
+    // #963 Q3: the MCP bridge and the CLI look a project up by root; on Windows any letter case of
+    // the stored root is that project. POSIX keeps the exact compare.
+    it('finds a row by another letter case of its root on Windows, and only there', async () => {
+      const root = makeDir('Find-Me');
+      const entry = await registerProject(root);
+      expect(await withPlatform('win32', () => findRegistryProject({ root: root.toUpperCase() }))).toMatchObject({ id: entry.id });
+      expect(await withPlatform('linux', () => findRegistryProject({ root: root.toUpperCase() }))).toBeUndefined();
+    });
   });
 
   it('exposes the remote as a credential-free web root', async () => {
@@ -457,6 +517,15 @@ describe('single-project layout — per-machine facts stay out of the committed 
     const rows = await listProjects();
     expect(rows.map((row) => row.id)).toEqual([allocateProjectSlug(projectRoot, [foreignId])]);
     expect(rows[0]!.id).not.toBe(foreignId);
+  });
+
+  // #963 Q3: a committed row whose root is another letter case of this folder is this folder on
+  // Windows, so its id and name win over a derived row. POSIX keeps the exact compare.
+  it('keeps the stored row when its root is another letter case of the folder on Windows, and only there', async () => {
+    const stored = { id: 'stored-upper', root: projectRoot.toUpperCase(), name: 'Stored', addedAt: '2026-01-01T00:00:00.000Z', source: 'local' };
+    writeFileSync(workspacePath, `${JSON.stringify({ schemaVersion: 1, projects: [stored] }, null, 2)}\n`, 'utf8');
+    expect((await withPlatform('win32', () => registryRows())).map((row) => row.id)).toEqual(['stored-upper']);
+    expect((await withPlatform('linux', () => registryRows())).map((row) => row.id)).toEqual([allocateProjectSlug(projectRoot, ['stored-upper'])]);
   });
 
   it('keeps addedAt stable across two starts in the mode', async () => {

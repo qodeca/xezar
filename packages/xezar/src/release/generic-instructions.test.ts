@@ -109,6 +109,8 @@ async function manifest(): Promise<Producer[]> {
     // ---- what a person reads ----
     source('missing-cockpit recovery page', 'packages/xezar/src/server/static-ui.ts'),
     source('dry-run pull request', 'packages/xezar/src/server/forge/github.ts'),
+    source('Windows long-path notice', 'packages/xezar/src/platform/long-paths.ts'),
+    source('file replace error', 'packages/xezar/src/platform/atomic-write.ts'),
     ...COCKPIT_SOURCES.map((path) => source('cockpit copy', path)),
     { producer: 'npm README', location: 'packages/xezar/README.md', text: syncReadme.absolutizeReadmeLinks(read('README.md'), 'https://github.com/qodeca/xezar') },
     source('dry-run Claude mock', 'packages/xezar/scripts/mock-claude.mjs'),

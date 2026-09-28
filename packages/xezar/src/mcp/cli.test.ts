@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { LineFramer, encodeFrame } from './ipc.ts';
 import { SERVER_CAPABILITIES } from './protocol.ts';
 import { shortTmpRoot, onWindows } from '../../test/helpers/platform.ts';
+import { samePath } from '../platform/path-identity.ts';
 
 // #86 acceptance, against the REAL CLI: `xez serve` and `xez mcp` as separate
 // processes, exactly as a coding agent would meet them. `--import tsx` rather than
@@ -31,7 +32,8 @@ beforeEach(() => {
 });
 afterEach(() => {
   for (const child of children.splice(0)) child.kill('SIGKILL');
-  for (const dir of [home, repo, ...extraRepos.splice(0)]) rmSync(dir, { recursive: true, force: true });
+  // `maxRetries`: on Windows a just-killed child still holds its working folder for a moment (#963).
+  for (const dir of [home, repo, ...extraRepos.splice(0)]) rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
 });
 
 function xez(args: string[], cwd: string): ChildProcess {
@@ -82,8 +84,17 @@ async function serve({ port = 0, cwd = repo }: { port?: number; cwd?: string } =
     const res = await fetch(`${base}/api/v1/health`);
     return res.ok ? ((await res.json()) as { repoRoot?: string }) : undefined;
   });
-  // win32-r9(#963): GET /api/v1/health answers repoRoot as 'C:/Users/…' while realpathSync gives 'C:\Users\…'
-  expect(health.repoRoot, 'the cockpit on the bound port is the one this test started').toBe(realpathSync(cwd));
+  if (onWindows) {
+    // Health spells the root the Windows way, not Git's `C:/…` (#963). The CI temp folder can be an
+    // 8.3 alias of the same folder, so identity is compared on the native real paths.
+    expect(health.repoRoot, 'health spells the root with Windows separators').not.toContain('/');
+    expect(
+      samePath(realpathSync.native(health.repoRoot!), realpathSync.native(cwd)),
+      'the cockpit on the bound port is the one this test started',
+    ).toBe(true);
+  } else {
+    expect(health.repoRoot, 'the cockpit on the bound port is the one this test started').toBe(realpathSync(cwd));
+  }
   return { child, base, stdout: () => out, stderr: () => err };
 }
 

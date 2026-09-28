@@ -6,9 +6,11 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { projectDataDir } from '../project-data-paths.ts';
 import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
+import { mergeWriteWorkspaceConfig } from '../workspace/config.ts';
 import { clearProjectProbeCache, listProjects, registerProject, removeProject } from '../workspace/projects.ts';
 import { ProjectContexts } from './project-context.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
+import { withPlatform } from '../../test/helpers/platform.ts';
 import { createApp } from './server.ts';
 
 /**
@@ -66,7 +68,7 @@ describe('project context resolves the CURRENT registry root (#591)', () => {
   afterEach(async () => {
     await contexts.disposeAll();
     bootStore.flush();
-    for (const dir of [home, base, bootRoot]) rmSync(dir, { recursive: true, force: true });
+    for (const dir of [home, base, bootRoot]) rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
     if (savedHome === undefined) delete process.env.XEZ_HOME;
     else process.env.XEZ_HOME = savedHome;
     if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN;
@@ -107,5 +109,24 @@ describe('project context resolves the CURRENT registry root (#591)', () => {
     expect(existsSync(join(projectDataDir(rootNew), 'runs.json'))).toBe(true);
     expect(existsSync(join(projectDataDir(rootNew), 'runs', `${run.id}.ndjson`))).toBe(true);
     expect(existsSync(rootOld)).toBe(false); // the old root really is gone, not just unlinked in the registry
+  });
+
+  // #963 Q3 (C-M2): on Windows a letter-case change of the stored root names the same folder, so it
+  // is not drift and the warm context (with its live store) must survive. Every OS: `withPlatform`
+  // forces the Windows branch; only the stored row carries the other case.
+  it('keeps the context when only the letter case of the stored root changes', async () => {
+    const { id } = await registerProject(rootOld);
+    expect((await apiRequest(app, `/api/v1/p/${id}/runs`)).status).toBe(200);
+    const before = contexts.peek(id);
+    expect(before).toBeDefined();
+
+    await mergeWriteWorkspaceConfig((config) => {
+      const row = config.projects.find((project) => project.id === id)!;
+      row.root = row.root.toUpperCase();
+    });
+    clearProjectProbeCache();
+
+    expect(await withPlatform('win32', async () => (await apiRequest(app, `/api/v1/p/${id}/runs`)).status)).toBe(200);
+    expect(contexts.peek(id)).toBe(before);
   });
 });

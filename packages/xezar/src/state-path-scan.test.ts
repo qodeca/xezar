@@ -138,10 +138,10 @@ const ALLOWED: readonly Allowance[] = [
   },
   {
     file: 'state-layout.ts',
-    code: 'return real(dir) === real(homedir());',
+    code: 'return samePath(real(dir), real(homedir()));',
     reason:
       'isUserHome — the rule that $HOME is never a single-project root. It must compare against the ' +
-      'REAL home to refuse it, which is the opposite of resolving state there.',
+      'REAL home to refuse it, which is the opposite of resolving state there. Case-insensitive on Windows (#963 Q3).',
   },
 
   {
@@ -184,8 +184,8 @@ const ALLOWED: readonly Allowance[] = [
   },
   {
     file: 'paths.ts',
-    code: "return path.startsWith('~/') ? join(homedir(), path.slice(2)) : path;",
-    reason: 'expandTilde, same call. See above.',
+    code: 'return startsWithTildeSeparator(path) ? join(homedir(), path.slice(2)) : path;',
+    reason: 'expandTilde, same call. See above. `~\\` expands too, on Windows only (#963).',
   },
   {
     file: 'paths.ts',
@@ -330,10 +330,11 @@ const ALLOWED: readonly Allowance[] = [
   },
   {
     file: 'project-kit-paths.ts',
-    code: 'if ([xezarHomeDir(), xezarHomeDir({})].some(home => resolve(home) === resolve(canonical))) {',
+    code: 'if ([xezarHomeDir(), xezarHomeDir({})].some(home => samePath(resolve(home), resolve(canonical)))) {',
     reason:
       'projectKitDir\'s `~`-launch diversion — it names the per-user home only to COMPARE it with the repo ' +
-      'root, so a home-directory launch never turns the user\'s workspace file into a kit.',
+      'root, so a home-directory launch never turns the user\'s workspace file into a kit. ' +
+      'Case-insensitive on Windows (#963 Q3).',
   },
   {
     file: 'skills.ts',

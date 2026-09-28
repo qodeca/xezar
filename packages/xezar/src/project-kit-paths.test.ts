@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { withPlatform } from '../test/helpers/platform.ts';
 import { projectKitDir } from './project-kit-paths.ts';
 import { loadConfig, gatedSkillsRepos } from './config.ts';
 import { agentModelsLocked } from './core/agent-model-policy.ts';
@@ -37,6 +38,20 @@ describe('project kit layout', () => {
       expect((await loadConfig(root)).baseBranch).not.toBe('global-only');
       expect(readFileSync(join(root, '.xezar/config.json'), 'utf8'))
         .toBe('{"baseBranch":"global-only","modelsLocked":true}');
+    } finally {
+      if (saved === undefined) delete process.env.XEZ_HOME;
+      else process.env.XEZ_HOME = saved;
+    }
+  });
+
+  // #963 Q3: on Windows the xezar home spelled in another letter case is the same folder. Every OS:
+  // `withPlatform` forces the Windows branch; only XEZ_HOME carries the other case.
+  it('recognises the global workspace directory in any letter case on Windows, and only there', async () => {
+    const saved = process.env.XEZ_HOME;
+    process.env.XEZ_HOME = join(root, '.xezar').toUpperCase();
+    try {
+      expect(await withPlatform('win32', () => projectKitDir(root))).toBe(join(root, '.local/xezar/kit'));
+      expect(await withPlatform('linux', () => projectKitDir(root))).toBe(join(root, '.xezar'));
     } finally {
       if (saved === undefined) delete process.env.XEZ_HOME;
       else process.env.XEZ_HOME = saved;

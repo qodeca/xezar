@@ -417,7 +417,6 @@ describe('discover_project — the tool', () => {
     const discovery = mcpDiscoverySchema.parse(result.structuredContent);
     expect(discovery.project).toEqual({ id: 'proj-a', name: 'Project A', root });
     expect(discovery.repository).toEqual({ git: true, branch: 'main' });
-    // win32-r9(#963): project: null – the registry drops a Windows root (workspace/config.ts: root must start with '/')
     expect(discovery.limits.maxParallel).toMatchObject({ effective: 4, project: 4 });
     // No remote: GitHub is closed, with the reason.
     const github = actionOf(discovery, 'github');

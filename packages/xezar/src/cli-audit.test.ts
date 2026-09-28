@@ -3,11 +3,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { auditActionRecordSchema, auditCliCommandSchema, type AuditActionRecord } from '@qodeca/xezar-contract';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { onWindows } from '../test/helpers/platform.ts';
+import { onWindows, withPlatform } from '../test/helpers/platform.ts';
 import { cliAudit, CLI_AUDIT_ACTIONS, invocationScope, PROJECTS_SUBCOMMANDS, type CliCommandId } from './cli-audit.ts';
 import { AUDIT_TRAIL_FILE } from './mcp/audit-trail.ts';
 import { projectDataDir } from './project-data-paths.ts';
 import { projectStateLayout, setActiveStateLayout } from './state-layout.ts';
+import { mergeWriteWorkspaceConfig } from './workspace/config.ts';
 import { clearProjectProbeCache, registerProject } from './workspace/projects.ts';
 import { runProjectsCommand, type ProjectsCommandIo } from './workspace/projects-cli.ts';
 
@@ -197,6 +198,17 @@ describe('the cli audit door (#306 part 2)', () => {
       ['cli.mcp', { status: 'refused', reason: 'project_occupied' }],
     ]);
     expect(readFileSync(join(root, '.local', '.gitignore'), 'utf8')).toContain('*');
+  });
+
+  // #963 Q3: on Windows a registry row in another letter case is the same project. Every OS:
+  // `withPlatform` forces the Windows branch; only the stored row carries the other case.
+  it('scopes a record to a registry row spelled in another letter case', async () => {
+    const root = temp('xez-cli-audit-case-');
+    const stamp = '2026-01-01T00:00:00.000Z';
+    await mergeWriteWorkspaceConfig((config) => {
+      config.projects.push({ id: 'upper-row', root: realpathSync.native(root).toUpperCase(), name: 'upper', addedAt: stamp, lastOpenedAt: stamp, source: 'local' });
+    });
+    expect((await withPlatform('win32', () => invocationScope(root)))?.projectId).toBe('upper-row');
   });
 
   it('a registered project whose data folder cannot be created warns once and never throws', async () => {

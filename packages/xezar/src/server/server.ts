@@ -251,6 +251,8 @@ import { ProjectWriterError } from '../runs/project-writer.ts';
 import { reviewGateEnabled } from '../runs/review-gate.ts';
 import { readUiState, uiStatePath } from '../ui-state.ts';
 import { agentHomePaths, expandTilde } from '../paths.ts';
+import { isFullyQualifiedPath } from '../platform/path-syntax.ts';
+import { samePath } from '../platform/path-identity.ts';
 import { isLoopbackHostHeader, normalizeHostname, resolveBindHost, resolveCapabilities } from './capabilities.ts';
 import { createSocketHub, type SocketHub, type WsUpgradeVerdict } from './ws.ts';
 import { browseDirectory, isInsideBrowseRoot, isLexicallyInsideBrowseRoot, resolveBrowseRoot } from './fs-browse.ts';
@@ -1192,7 +1194,7 @@ export function createApp(deps: ServerDeps) {
     try {
       registry = projects ?? (await loadWorkspaceConfig()).projects;
       const real = await realpath(bootRoot).catch(() => bootRoot);
-      const match = registry.find((p) => p.root === real || p.root === bootRoot);
+      const match = registry.find((p) => samePath(p.root, real) || samePath(p.root, bootRoot));
       if (match) bootProjectCache = match.id;
     } catch {
       // unreadable workspace — fall through to the slug fallback below
@@ -3036,7 +3038,7 @@ export function createApp(deps: ServerDeps) {
     // dialog hands back absolute paths, but a hand-written body (curl, a
     // future CLI) spells home the way a shell does.
     const requested = expandTilde(spelled);
-    if (!requested.startsWith('/')) {
+    if (!isFullyQualifiedPath(requested)) {
       return {
         status: 400,
         body: { error: `not a folder: ${spelled} is not an absolute path` },
@@ -3104,7 +3106,7 @@ export function createApp(deps: ServerDeps) {
     const real = await realpath(requested).catch(() => requested);
     let known = false;
     try {
-      known = (await loadWorkspaceConfig()).projects.some((p) => p.root === real);
+      known = (await loadWorkspaceConfig()).projects.some((p) => samePath(p.root, real));
     } catch {
       // unreadable workspace — treat as unknown; the write below will fail loudly
     }
@@ -3372,7 +3374,7 @@ export function createApp(deps: ServerDeps) {
         // exist; checkout roots use `mkdir -p`. Both get a real write probe.
         // Any failure → 400 and NO change persisted.
         const expanded = expandTilde(configuredRoot);
-        if (!expanded.startsWith('/')) {
+        if (!isFullyQualifiedPath(expanded)) {
           return c.json({ error: `not writable: ${configuredRoot} is not an absolute path` }, 400);
         }
         if (!create) {
@@ -6497,6 +6499,22 @@ export function createApp(deps: ServerDeps) {
   return routed;
 }
 
+/**
+ * The project list the automations warm-up and the skills-update coordinator both work from: the
+ * registry, with the boot repo prepended when no row names it. "Names it" is folder identity
+ * (#963 Q3): on Windows a row spelled in another letter case IS the boot repo, so it is not listed
+ * a second time under the boot id. POSIX: the exact compare it always was.
+ */
+export function withBootProject(
+  projects: ProjectListEntry[],
+  repoRoot: string,
+  bootProjectId: string | undefined,
+): Array<ProjectListEntry | { id: string; root: string; status: 'ok' }> {
+  return projects.some((project) => samePath(project.root, repoRoot))
+    ? projects
+    : [{ id: bootProjectId ?? 'default', root: repoRoot, status: 'ok' as const }, ...projects];
+}
+
 export function startServer(deps: ServerDeps, port: number): ServerType {
   // Resolved here, not trusted from the caller: `bindHost: ''` must bind loopback exactly like an
   // absent one (#838 item A), and a programmatic caller that skips the CLI's `parseArgs` step must
@@ -6607,12 +6625,7 @@ export function startServer(deps: ServerDeps, port: number): ServerType {
   });
   // The project list the automations warm-up and the skills-update coordinator both work from:
   // the registry, with the boot repo prepended when it is not registered itself.
-  const automationBootProjects = async () => {
-    const projects = await listProjects();
-    return projects.some((project) => project.root === deps.repoRoot)
-      ? projects
-      : [{ id: deps.bootProjectId ?? 'default', root: deps.repoRoot, status: 'ok' as const }, ...projects];
-  };
+  const automationBootProjects = async () => withBootProject(await listProjects(), deps.repoRoot, deps.bootProjectId);
   // ONE start, ever, per on-transition — the property the boot-only start was load-bearing for,
   // and the reason `automationsRunning` is set BEFORE the first await: two resolves in the same
   // tick must not both enter and leave two pollers behind. Never throws and never rejects: this

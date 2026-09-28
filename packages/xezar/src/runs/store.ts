@@ -8,13 +8,12 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
-  renameSync,
   rmSync,
   statSync,
-  writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
+import { writeFileAtomicSync } from '../platform/atomic-write.ts';
 // The reviewer-report shapes (#460) come from the contract package, not from a second copy here:
 // they go out on every run route, and one definition is what keeps the wire and the file identical.
 import { decisionQuestionSchema, stepProgressSchema, taskVerdictIssueSchema, taskVerdictSchema } from '@qodeca/xezar-contract';
@@ -1547,8 +1546,9 @@ export class RunStore extends EventEmitter {
     const indexPath = join(this.dataDir, 'runs.json');
     const tmpPath = `${indexPath}.tmp`;
     try {
-      writeFileSync(tmpPath, JSON.stringify(this.listRuns(), null, 2), 'utf8');
-      renameSync(tmpPath, indexPath);
+      // ENOENT is never retried and the ORIGINAL error comes back, so `dataDirVanished` below
+      // still sees it; Windows alone retries a briefly held file (#963).
+      writeFileAtomicSync(indexPath, JSON.stringify(this.listRuns(), null, 2), { tmpPath, encoding: 'utf8' });
       if (this.dataDirMissing) {
         // Recovery is the one moment this story is worth a line: the index on disk was stale
         // for as long as the directory was gone, and the line says so once, after the gap has

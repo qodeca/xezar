@@ -126,6 +126,7 @@ export async function writeConfigFile(
     tmp = `${target}.xez-tmp-${process.pid}-${randomUUID()}`;
     await writeFile(tmp, content, { encoding: 'utf8', flag: 'wx' });
     if (await checkedConfigPath(path, root) !== target) throw new ConfigPathRefusal('outside-root');
+    // Deliberately a plain rename, not platform/atomic-write (#963): its Windows retry would widen the window after this containment check.
     await rename(tmp, target);
     const written = await readConfigBytes(target);
     return { ok: true, read: { id, path, exists: true, content: written, version: hashBytes(written) } };

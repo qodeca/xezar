@@ -16,6 +16,7 @@
  *   - `XEZ_AGENT_ENV_FULL=1` restores the legacy full-`process.env` behavior.
  */
 
+import { hardenChildExecutableSearch } from '../platform/exe-search.ts';
 import type { AgentBackend } from './agent-runner.ts';
 import { SECRET_NAME_RE } from './secret-redaction.ts';
 
@@ -292,6 +293,16 @@ function isTruthy(value: string | undefined): boolean {
   return v !== '' && v !== '0' && v !== 'false';
 }
 
+/**
+ * Windows only (#963): the allowlist drops `NoDefaultCurrentDirectoryInExePath`, so without this the
+ * agent – and the git or rg it starts inside the task's working copy – would run a program found in
+ * that folder before the one on PATH. Forced last, over any host or per-run value. POSIX: unchanged.
+ */
+function withHardenedExecutableSearch(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  hardenChildExecutableSearch(env);
+  return env;
+}
+
 export interface BuildChildEnvOptions {
   backend: AgentBackend;
   /** Per-run env (XEZ_HANDOFF_FILE etc.) — always applied, wins over host. */
@@ -326,7 +337,7 @@ export function buildChildEnv(opts: BuildChildEnvOptions): NodeJS.ProcessEnv {
     for (const [name, value] of Object.entries(source)) {
       if (!overridden.has(name.toUpperCase())) full[name] = value;
     }
-    return { ...full, ...extra };
+    return withHardenedExecutableSearch({ ...full, ...extra });
   }
 
   const backendPrefixes = BACKEND_ALLOW_PREFIXES[opts.backend] ?? BACKEND_ALLOW_PREFIXES.claude;
@@ -365,7 +376,7 @@ export function buildChildEnv(opts: BuildChildEnvOptions): NodeJS.ProcessEnv {
   }
   // Per-run env last — it is xezar's own, never a host secret, and must win.
   for (const [name, value] of Object.entries(extra)) out[name] = value;
-  return out;
+  return withHardenedExecutableSearch(out);
 
   /** `name` is matched normalized; the caller keeps the original spelling. */
   function allow(name: string): boolean {

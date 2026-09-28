@@ -8,7 +8,7 @@ If you would rather look before you sign anything in, [try it without a login](#
 
 Have Node.js 22 or newer and npm available. Install Git to use isolated task branches and the Git views. For real agent work, install and sign in to a supported agent CLI: Claude Code, Codex, OpenCode or pi. GitHub features also need `gh`; `GITHUB_TOKEN` is the authentication fallback when `gh` is not signed in. You can start a local task without it.
 
-**By system.** macOS and Linux need nothing beyond the above. Native Windows support is still in progress; under WSL, xezar works as it does on Linux. On Windows itself, install Git for Windows for the Git features and follow each agent CLI's own Windows instructions; the MCP leader bridge (`xezar mcp`) is not available there yet. If Git reports "Filename too long" in a deep project, run `git config --global core.longpaths true`.
+**By system.** macOS and Linux need nothing beyond the above. Native Windows support is still in progress; under WSL, xezar works as it does on Linux. On Windows itself, install Git for Windows for the Git features and follow each agent CLI's own Windows instructions; the MCP leader bridge (`xezar mcp`) is not available there yet. `xezar serve` warns at start-up when long file paths are off; turn on the Windows setting LongPathsEnabled (needs an administrator) and run `git config --global core.longpaths true`.
 
 ## To install xezar
 
