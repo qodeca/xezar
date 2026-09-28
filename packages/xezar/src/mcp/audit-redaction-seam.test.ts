@@ -10,6 +10,7 @@ import { createUiAuditDoor } from '../server/audit-ui.ts';
 import { registerProject } from '../workspace/projects.ts';
 import { AUDIT_TRAIL_FILE, AuditTrail, resetAuditWarningsForTests } from './audit-trail.ts';
 import { REPO_ROOT, SCAN_ROOTS, sourceFiles, withoutComments } from './audit-source-scan.testkit.ts';
+import { shortTmpRoot } from '../../test/helpers/platform.ts';
 
 /**
  * #306 part 4 — THE SEAM GUARD (spec `docs/features/mcp-server/audit-trail-origins-2026-09-17.md`
@@ -48,7 +49,7 @@ afterEach(() => {
 });
 
 function temp(prefix: string): string {
-  const dir = realpathSync(mkdtempSync(`/tmp/${prefix}`));
+  const dir = realpathSync(mkdtempSync(join(shortTmpRoot(), prefix)));
   dirs.push(dir);
   return dir;
 }

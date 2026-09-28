@@ -318,7 +318,7 @@ teardown_stale() {
 
 # ---- 4. build cache ---------------------------------------------------------
 # Node rather than `find | xargs stat`: `stat` takes -c on GNU and -f on BSD, and this
-# repo already requires Node 20+ — no reason to guess the flavor.
+# repo already requires Node 22+ — no reason to guess the flavor.
 fingerprint() {
   (cd "$REPO_ROOT" && node -e '
     const fs = require("fs"), path = require("path"), crypto = require("crypto");

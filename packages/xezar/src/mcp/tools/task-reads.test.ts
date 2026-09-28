@@ -20,6 +20,7 @@ import { listenMcpSocket, type McpServiceHandle } from '../service.ts';
 import { defineTool, type McpTool, type McpToolContext } from '../tool.ts';
 import { tools } from './index.ts';
 import { TASK_READ_PAGE_ITEMS, TASK_READ_RESULT_BUDGET_BYTES, taskReadsTool, taskSummarySchema } from './task-reads.ts';
+import { onWindows } from '../../../test/helpers/platform.ts';
 
 /**
  * `task_read` (#91) driven the way a leader drives it: a `tools/call` frame over the project's
@@ -28,8 +29,6 @@ import { TASK_READ_PAGE_ITEMS, TASK_READ_RESULT_BUDGET_BYTES, taskReadsTool, tas
  * carry the service entry yet, so the test hands it over the way the service will.
  */
 
-const isWindows = process.platform === 'win32';
-
 type Body = Record<string, unknown> & {
   nextCursor?: string;
   part?: number;
@@ -37,7 +36,8 @@ type Body = Record<string, unknown> & {
   text?: string;
 };
 
-describe.skipIf(isWindows)('task_read — the task, history, Inbox and variant-group reads (#91)', () => {
+// win32-skip(#963): Node cannot listen on the project MCP socket path on Windows – every test here opens it (observed first: ProjectContextError "unknown project", the Windows-root registry defect)
+describe.skipIf(onWindows)('task_read — the task, history, Inbox and variant-group reads (#91)', () => {
   const saved = {
     home: process.env.XEZ_HOME,
     dryRun: process.env.XEZ_DRY_RUN,

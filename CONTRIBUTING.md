@@ -11,7 +11,7 @@ Thank you for helping. This page is the whole path from an idea to a merged chan
 ## The loop
 
 1. Fork the repository (or branch, if you have write access) and branch off `main`.
-2. Install and build: `npm install`, then `npm run build`. You need Node 20+ and `git`.
+2. Install and build: `npm install`, then `npm run build`. You need Node 22+ and `git`.
 3. Make your change, with a test for any change in behaviour.
 4. Run the fast checks locally:
 
@@ -22,6 +22,9 @@ Thank you for helping. This page is the whole path from an idea to a merged chan
 
    CI runs the full gate on your pull request (`npm run test:unit`, `npm run build`,
    `npm run test:package` and the browser suite), so you do not have to.
+   It also repeats the validation steps on Linux with Node 22 and on Windows and macOS; those
+   extra runs are not required checks, so they never block a merge, and the Windows and macOS
+   runs are informational.
    `XEZ_DRY_RUN=1` replaces the agent CLIs with a mock, so you can exercise the cockpit without any agent login.
 5. Open a pull request against `main`.
 
@@ -30,8 +33,9 @@ Thank you for helping. This page is the whole path from an idea to a merged chan
 End-to-end, from a fresh clone to a global `xezar` command you can run in **any**
 repo on your machine — no npm publish required.
 
-**1. Prerequisites** — Node 20+ and `git` (plus at least one logged-in agent CLI,
-as in the README's [Quick start](README.md#quick-start)).
+**1. Prerequisites** — Node 22+ and `git` (plus at least one logged-in agent CLI,
+as in the README's [Quick start](README.md#quick-start)). On Windows, also read
+[Contributing from Windows](#contributing-from-windows).
 
 **2. Clone & install**
 
@@ -90,6 +94,41 @@ npm run uninstall-as-command    # removes xezar / xez (either flavor)
 - **Already installed the published `@qodeca/xezar` globally?** The
   link/snapshot install replaces it; `uninstall-as-command` removes ours, and
   `npm i -g @qodeca/xezar` brings the published one back.
+
+### Contributing from Windows
+
+Native Windows support is in progress, tracked in [#963](https://github.com/qodeca/xezar/issues/963).
+WSL works today: inside it, follow the Linux steps above. To work on Windows itself, you also need:
+
+- **Git for Windows with Git Bash.** npm runs package scripts through `cmd.exe`, but
+  `npm run test:e2e` calls `sh`, and the pipeline scripts under `.xezar/checks/` are bash.
+- **`jq` on `PATH`**, for the pipeline scripts that call it (`.xezar/checks/gh-write.sh`,
+  `.xezar/checks/verdict-write.sh`).
+- **Long paths.** Worktrees and `node_modules` nest deep. Enable Windows long-path support once,
+  from an administrator PowerShell, then tell Git to use it:
+
+  ```powershell
+  New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name "LongPathsEnabled" -Value 1 -PropertyType DWORD -Force
+  git config --global core.longpaths true
+  ```
+
+- **LF line endings.** `.gitattributes` checks text out with LF on every system. A clone made
+  before that file existed still holds CRLF files; commit or stash your work first, then
+  re-check everything out: `git rm -r --cached -q . && git reset --hard -q`.
+- **Developer Mode** (Windows Settings, *For developers*), so the tests that create file
+  symbolic links run instead of skipping.
+
+Some suites still fail or skip on Windows today, mainly because the xezar MCP bridge needs Unix
+sockets. The Windows CI runs report them without blocking a merge.
+
+Every such test carries one of two markers, so the gaps stay searchable:
+
+- `win32-skip(#963): <reason>` – the test cannot run on Windows for an environment reason, stated
+  inline (for example, a POSIX-only tool). The test is skipped there.
+- `win32-r9(#963): <symptom>` – the test runs on Windows and fails because of a known product bug
+  tracked in #963. It is not skipped, so the fix turns it green.
+
+A platform skip without a marker is not allowed.
 
 ### In-checkout scripts
 

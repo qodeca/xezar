@@ -2,6 +2,7 @@ import { chmodSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSy
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { onWindows } from '../../test/helpers/platform.ts';
 import { loadWorkspaceConfig, mergeWriteWorkspaceConfig } from './config.ts';
 import {
   firstUnreservedPort,
@@ -96,7 +97,8 @@ describe('port memory', () => {
       expect(projects[0]?.lastListen).toBeUndefined();
     });
 
-    it('named break `memory-required`: a home that cannot be written answers null, never throws', async () => {
+    // win32-skip(#963): Windows ignores POSIX mode bits, so a chmod'd read-only directory stays writable
+    it.skipIf(onWindows)('named break `memory-required`: a home that cannot be written answers null, never throws', async () => {
       writeConfig({ projects: [{ id: 'alpha', root: '/tmp/alpha' }] });
       chmodSync(home, 0o500);
       // Not reachable as root, which can write a read-only directory anyway.

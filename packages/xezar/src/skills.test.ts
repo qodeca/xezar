@@ -1,7 +1,8 @@
-import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { linkDir } from '../test/helpers/platform.ts';
 import {
   discoverSkills,
   filterImportedTeamSkills,
@@ -158,7 +159,7 @@ describe('discoverSkills local entrypoints', () => {
     await mkdir(canonicalDir, { recursive: true });
     await mkdir(mirrorRoot, { recursive: true });
     await writeFile(join(canonicalDir, 'SKILL.md'), '# Example skill');
-    await symlink('../../.agents/skills/xez-example', join(mirrorRoot, 'xez-example'), 'dir');
+    linkDir('../../.agents/skills/xez-example', join(mirrorRoot, 'xez-example'));
 
     const skills = (await discoverSkills(repoRoot)).filter((skill) => skill.name === 'xez-example');
 

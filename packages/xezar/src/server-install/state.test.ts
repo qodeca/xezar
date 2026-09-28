@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { onWindows } from '../../test/helpers/platform.ts';
 import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -15,6 +16,9 @@ import {
   saveServerState,
 } from './state.ts';
 import { freshServerState } from './types.ts';
+
+/** A live process that is not this worker: pid 1 on POSIX; Windows has no pid 1, so the parent (#963). */
+const liveForeignPid = onWindows ? process.ppid : process.pid === 1 ? 2 : 1;
 
 describe('server state', () => {
   let home: string;
@@ -45,7 +49,8 @@ describe('server state', () => {
     s.steps.deps = { status: 'done', created: null };
     saveServerState(s);
     const mode = statSync(serverStatePath()).mode & 0o777;
-    expect(mode).toBe(0o600);
+    // win32-skip(#963): Windows ignores POSIX mode bits
+    if (!onWindows) expect(mode).toBe(0o600);
     expect(loadServerState().steps.deps?.status).toBe('done');
   });
 
@@ -65,7 +70,7 @@ describe('server state', () => {
   it('lock is exclusive against a live foreign pid and reclaims stale', () => {
     const release = acquireLock();
     // simulate a live foreign holder
-    writeFileSync(join(home, 'server.install.lock'), `${process.pid === 1 ? 2 : 1}\n`);
+    writeFileSync(join(home, 'server.install.lock'), `${liveForeignPid}\n`);
     // pid 1 is alive on posix; expect the lock to be held
     expect(() => acquireLock()).toThrow(LockHeldError);
     // a dead pid is reclaimed
@@ -77,7 +82,7 @@ describe('server state', () => {
 
   it('lock acquisition is atomic (wx) — a pre-existing live lock file always wins', () => {
     // Simulate the race loser: the file appears (live pid) before our write.
-    writeFileSync(join(home, 'server.install.lock'), `${process.pid === 1 ? 2 : 1}\n`, { flag: 'wx' });
+    writeFileSync(join(home, 'server.install.lock'), `${liveForeignPid}\n`, { flag: 'wx' });
     expect(() => acquireLock()).toThrow(LockHeldError);
   });
 
@@ -138,7 +143,7 @@ describe('server state', () => {
     // but the SAME instance is exclusive against a live foreign pid
     writeFileSync(
       join(home, 'server-instances', 'shop-example-com.install.lock'),
-      `${process.pid === 1 ? 2 : 1}\n`,
+      `${liveForeignPid}\n`,
     );
     expect(() => acquireLock('shop-example-com')).toThrow(LockHeldError);
     release();

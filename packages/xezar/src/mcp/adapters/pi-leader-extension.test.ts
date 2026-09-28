@@ -1,9 +1,10 @@
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { createConnection, type Socket } from 'node:net';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import extension, { __internals } from '../../../scripts/pi-leader-extension.ts';
+import { shortTmpRoot, onWindows, linkDir } from '../../../test/helpers/platform.ts';
 
 /**
  * The shipped pi leader extension (`scripts/pi-leader-extension.ts`).
@@ -24,7 +25,7 @@ const openSockets: Socket[] = [];
 let realTmpDir: string | undefined;
 
 const tmp = (prefix: string): string => {
-  const dir = realpathSync(mkdtempSync(`/tmp/${prefix}`));
+  const dir = realpathSync(mkdtempSync(join(shortTmpRoot(), prefix)));
   dirs.push(dir);
   return dir;
 };
@@ -213,7 +214,8 @@ describe('the socket is kept away from other local accounts', () => {
    * first version, which a QA measured as world-reachable on Linux (`/tmp`, mode 1777, socket 0755).
    * Every assertion below fails against that.
    */
-  it('puts the socket inside a 0700 directory, not straight into the temporary directory', async () => {
+  // win32-skip(#963): pi's leader socket is a Unix socket path, which Node cannot listen on under Windows (listen EACCES), so no descriptor is written
+  it.skipIf(onWindows)('puts the socket inside a 0700 directory, not straight into the temporary directory', async () => {
     const harness = await boot();
     const socketPath = descriptorOf(harness).endpoint.socket;
 
@@ -228,7 +230,8 @@ describe('the socket is kept away from other local accounts', () => {
     expect(lstatSync(socketPath).isSocket()).toBe(true);
   });
 
-  it('still does so when TMPDIR is a world-writable directory, which is Linux\'s default', async () => {
+  // win32-skip(#963): pi's leader socket is a Unix socket path, which Node cannot listen on under Windows (listen EACCES), so no descriptor is written
+  it.skipIf(onWindows)('still does so when TMPDIR is a world-writable directory, which is Linux\'s default', async () => {
     // The exact condition that hid the defect: a sticky, world-writable parent.
     const shared = tmp('xzext-shared-');
     const { chmodSync } = await import('node:fs');
@@ -250,18 +253,20 @@ describe('the socket is kept away from other local accounts', () => {
     const tmpRoot = tmp('xzext-tmp-');
     pinTmpDir(tmpRoot);
     const elsewhere = tmp('xzext-attacker-');
-    symlinkSync(elsewhere, join(tmpRoot, 'xez-pi-planted'));
+    linkDir(elsewhere, join(tmpRoot, 'xez-pi-planted'));
 
     // `rmSync` removes the symlink and `mkdirSync` then makes a real directory, so the attacker's
     // target is never written into. The point is that the path used afterwards is not the symlink.
     const place = __internals.makePrivateSocketDir('planted');
+    // win32-r9(#963): makePrivateSocketDir answers undefined on Windows – its `(mode & 0o077) !== 0` check sees 0o666
     expect(place).toBeDefined();
     // A directory of its own, never the shared root, and never the planted link.
     expect(realpathSync(place!.dir)).not.toBe(realpathSync(tmpRoot));
     expect(realpathSync(place!.dir)).not.toBe(realpathSync(elsewhere));
     expect(lstatSync(place!.dir).isSymbolicLink()).toBe(false);
     expect(lstatSync(place!.dir).isDirectory()).toBe(true);
-    expect(lstatSync(place!.dir).mode & 0o777).toBe(0o700);
+    // win32-skip(#963): Windows ignores POSIX mode bits (observed: directories stat 0o666)
+    if (!onWindows) expect(lstatSync(place!.dir).mode & 0o777).toBe(0o700);
     expect(existsSync(join(elsewhere, 'leader.sock'))).toBe(false);
   });
 
@@ -279,7 +284,8 @@ describe('the socket is kept away from other local accounts', () => {
     }
   });
 
-  it('removes the whole private directory on shutdown, leaving nothing behind', async () => {
+  // win32-skip(#963): pi's leader socket is a Unix socket path, which Node cannot listen on under Windows (listen EACCES), so no descriptor is written
+  it.skipIf(onWindows)('removes the whole private directory on shutdown, leaving nothing behind', async () => {
     const harness = await boot();
     const socketPath = descriptorOf(harness).endpoint.socket;
     const dir = realpathSync(join(socketPath, '..'));
@@ -297,7 +303,8 @@ describe('the socket is kept away from other local accounts', () => {
 });
 
 describe('announcing itself to xezar', () => {
-  it('writes a descriptor naming the live socket, at mode 0600', async () => {
+  // win32-skip(#963): pi's leader socket is a Unix socket path, which Node cannot listen on under Windows (listen EACCES), so no descriptor is written
+  it.skipIf(onWindows)('writes a descriptor naming the live socket, at mode 0600', async () => {
     const harness = await boot();
     const path = join(harness.dataDir, 'pi-leader.json');
     expect(lstatSync(path).mode & 0o777).toBe(0o600);
@@ -352,7 +359,8 @@ describe('announcing itself to xezar', () => {
     expect(__internals.safeSessionId(throws)).toBe(`pid-${process.pid}`);
   });
 
-  it('survives a session teardown and rebuild, which pi does on /new and /reload', async () => {
+  // win32-skip(#963): pi's leader socket is a Unix socket path, which Node cannot listen on under Windows (listen EACCES), so no descriptor is written
+  it.skipIf(onWindows)('survives a session teardown and rebuild, which pi does on /new and /reload', async () => {
     const harness = await boot();
     const first = descriptorOf(harness).endpoint.socket;
     harness.shutdown();
@@ -367,7 +375,8 @@ describe('announcing itself to xezar', () => {
   });
 });
 
-describe('the commands xezar sends', () => {
+// win32-skip(#963): pi's leader socket is a Unix socket path, which Node cannot listen on under Windows (listen EACCES), so no descriptor is written
+describe.skipIf(onWindows)('the commands xezar sends', () => {
   it('answers get_state with pi\'s real idle and queue state', async () => {
     let idle = true;
     let pending = false;
@@ -502,7 +511,8 @@ describe('the commands xezar sends', () => {
   });
 });
 
-describe('the events it forwards', () => {
+// win32-skip(#963): pi's leader socket is a Unix socket path, which Node cannot listen on under Windows (listen EACCES), so no descriptor is written
+describe.skipIf(onWindows)('the events it forwards', () => {
   it('forwards exactly the four the adapter needs, with the message when there is one', async () => {
     const harness = await boot();
     const c = client(descriptorOf(harness).endpoint.socket);
@@ -556,6 +566,9 @@ describe('the events it forwards', () => {
   });
 });
 
+/** The platforms in the extension's `SUN_PATH_BYTES` table; anywhere else the length guard is off. */
+const SUN_PATH_PLATFORMS: string[] = ['linux', 'android', 'darwin', 'freebsd', 'openbsd', 'netbsd'];
+
 describe('when it cannot open its socket at all', () => {
   it('announces nothing rather than a descriptor naming a socket that does not listen', async () => {
     // A Unix socket path is capped at ~104 bytes, so a deep enough temporary directory makes the
@@ -575,7 +588,39 @@ describe('when it cannot open its socket at all', () => {
     expect(existsSync(join(harness.dataDir, 'pi-leader.json'))).toBe(false);
   });
 
-  it('drops a peer that sends an endless line instead of growing its buffer for ever', async () => {
+  // win32-skip(#963): Windows has no sun_path limit, so the length guard never refuses there;
+  // other platforms outside linux/android/darwin are skipped because this suite is not run on them
+  it.skipIf(!['linux', 'android', 'darwin'].includes(process.platform))(
+    'refuses at the real call site when TMPDIR makes the socket path too long, and creates no directory',
+    () => {
+      const root = tmp('xzext-cap-');
+      const deep = join(root, 'a'.repeat(60), 'b'.repeat(60));
+      mkdirSync(deep, { recursive: true });
+      pinTmpDir(deep); // os.tmpdir() reads TMPDIR on every call; afterEach restores it
+      const dir = join(deep, 'xez-pi-too-long');
+      // The precondition that makes this case mean something: the socket path really is over the cap.
+      expect(Buffer.byteLength(join(dir, 'leader.sock'), 'utf8')).toBeGreaterThan(108);
+
+      expect(__internals.makePrivateSocketDir('too-long')).toBeUndefined();
+      // Fail closed BEFORE touching the disk – no directory left behind for a socket that cannot bind.
+      expect(existsSync(dir)).toBe(false);
+    },
+  );
+
+  // win32-skip(#963): Windows has no sun_path limit to pin – Node's own bind decides there
+  it.skipIf(!SUN_PATH_PLATFORMS.includes(process.platform))('refuses a socket path at the byte count Node 23+ refuses it, not one earlier', () => {
+    // Node 22 binds a longer path truncated instead of failing (nodejs/node#52347). The limit must
+    // be exactly sun_path's size: one byte stricter would refuse paths Node 24 binds today.
+    const limit = process.platform === 'linux' || process.platform === 'android' ? 108 : 104;
+    const path = (bytes: number): string => `/${'a'.repeat(bytes - 1)}`;
+    expect(__internals.fitsSocketAddress(path(limit))).toBe(true);
+    expect(__internals.fitsSocketAddress(path(limit + 1))).toBe(false);
+    // Bytes, not characters: 'é' is two bytes in UTF-8.
+    expect(__internals.fitsSocketAddress(`${path(limit - 1)}é`)).toBe(false);
+  });
+
+  // win32-skip(#963): pi's leader socket is a Unix socket path, which Node cannot listen on under Windows (listen EACCES), so no descriptor is written
+  it.skipIf(onWindows)('drops a peer that sends an endless line instead of growing its buffer for ever', async () => {
     const harness = await boot();
     const c = client(descriptorOf(harness).endpoint.socket);
     await c.connected;

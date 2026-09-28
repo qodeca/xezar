@@ -2,6 +2,7 @@ import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from '
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { onWindows } from '../../test/helpers/platform.ts';
 
 import {
   carriedCheck,
@@ -107,7 +108,8 @@ describe('recordOffered', () => {
     expect(moved.record.engineVersion).toBe('0.15.0');
   });
 
-  it('answers `unwritable` on a read-only directory instead of throwing', async () => {
+  // win32-skip(#963): Windows ignores POSIX mode bits, so a chmod'd read-only directory stays writable
+  it.skipIf(onWindows)('answers `unwritable` on a read-only directory instead of throwing', async () => {
     chmodSync(dataDir, 0o500);
     try {
       const result = await recordOffered(dataDir, V1);

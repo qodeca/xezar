@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { onWindows } from '../test/helpers/platform.ts';
 
 /**
  * The onboarding half of the CLI, exercised through the REAL program (#819 items 1a–1c, 9b).
@@ -280,7 +281,8 @@ describe('CLI onboarding (#819)', () => {
             '-e',
             'process.stdout.write("wrapped\\n")',
           ],
-          { env: { HOME: join(base, 'lease-home') }, timeoutMs: 30_000 },
+          // os.homedir() reads USERPROFILE, not HOME, on Windows (#963).
+          { env: { HOME: join(base, 'lease-home'), ...(onWindows ? { USERPROFILE: join(base, 'lease-home') } : {}) }, timeoutMs: 30_000 },
         );
         expect(lease.status).toBe(0);
         expect(machineStateOf(leaseRepo).globalImport).toBe('imported');

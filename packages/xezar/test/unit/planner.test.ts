@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -113,6 +113,9 @@ async function planWithFakeAgent(
   );
 
   let bin = join(scratch, 'missing-claude');
+  // The stub touches this file on start, so a degraded plan can be told apart from a stub that
+  // never ran (a fallback reached through a spawn error would otherwise pass every assertion).
+  const marker = join(scratch, 'fake-claude-started');
   if (reply !== null) {
     bin = join(scratch, 'fake-claude.mjs');
     // Minimal stream-json CLI: answer each stdin turn with one `result`
@@ -121,6 +124,8 @@ async function planWithFakeAgent(
       bin,
       `#!${process.execPath}\n` +
         "import { createInterface } from 'node:readline';\n" +
+        "import { writeFileSync } from 'node:fs';\n" +
+        `writeFileSync(${JSON.stringify(marker)}, '');\n` +
         `const REPLY = ${JSON.stringify(reply)};\n` +
         "process.stdout.write(JSON.stringify({ type: 'system', subtype: 'init' }) + '\\n');\n" +
         "const rl = createInterface({ input: process.stdin });\n" +
@@ -141,7 +146,9 @@ async function planWithFakeAgent(
   process.env.XEZ_HOME = home; // never the developer's real ~/.xezar
   delete process.env.XEZ_DRY_RUN;
   try {
-    return await planChain(repoRoot, task);
+    const plan = await planChain(repoRoot, task);
+    if (reply !== null) assert.ok(existsSync(marker), 'the fake agent CLI must have been started');
+    return plan;
   } finally {
     if (saved.bin === undefined) delete process.env.XEZ_CLAUDE_BIN;
     else process.env.XEZ_CLAUDE_BIN = saved.bin;
@@ -169,19 +176,23 @@ test('planChain degrades to the one-step plan when the agent CLI is missing', as
 });
 
 test('planChain degrades on a truncated answer', async () => {
+  // win32-r9(#963): the stub-started assertion fails – spawning the shebang .mjs stub directly is EFTYPE on Windows.
   assertFallback(await planWithFakeAgent('fix the login bug', '{"title":"fix","steps":[{"name":"Imp'));
 });
 
 test('planChain degrades on an empty answer', async () => {
+  // win32-r9(#963): the stub-started assertion fails – spawning the shebang .mjs stub directly is EFTYPE on Windows.
   assertFallback(await planWithFakeAgent('fix the login bug', ''));
 });
 
 test('planChain degrades on an answer that is not the expected structure', async () => {
+  // win32-r9(#963): the stub-started assertion fails – spawning the shebang .mjs stub directly is EFTYPE on Windows.
   assertFallback(await planWithFakeAgent('fix the login bug', 'I am unable to plan this.'));
   assertFallback(await planWithFakeAgent('fix the login bug', '{"plan":"do it"}'));
 });
 
 test('planChain reports a zero-step answer as degraded, never as an empty plan', async () => {
+  // win32-r9(#963): the stub-started assertion fails – spawning the shebang .mjs stub directly is EFTYPE on Windows.
   const plan = await planWithFakeAgent(
     'fix the login bug',
     '{"title":"empty","steps":[],"rationale":"nothing to do"}',
@@ -191,6 +202,7 @@ test('planChain reports a zero-step answer as degraded, never as an empty plan',
 });
 
 test('planChain degrades when every proposed step is unusable', async () => {
+  // win32-r9(#963): the stub-started assertion fails – spawning the shebang .mjs stub directly is EFTYPE on Windows.
   // Both a prompt and a command (ambiguous), and neither (empty) — the
   // sanitizer drops both, so nothing survives and the caller falls back.
   const plan = await planWithFakeAgent(
@@ -208,6 +220,7 @@ test('planChain degrades when every proposed step is unusable', async () => {
 });
 
 test('planChain returns a real plan when the answer is usable', async () => {
+  // win32-r9(#963): the stub-started assertion fails – spawning the shebang .mjs stub directly is EFTYPE on Windows.
   // Positive control: without it, every assertion above would also pass on a
   // planner that had stopped working entirely.
   const plan = await planWithFakeAgent(
@@ -241,6 +254,7 @@ test('planChain returns a real plan when the answer is usable', async () => {
 });
 
 test('planChain keeps a reviewing step’s verdictRole, and only a known role on an agent step (#851)', async () => {
+  // win32-r9(#963): the stub-started assertion fails – spawning the shebang .mjs stub directly is EFTYPE on Windows.
   // A plan's reviewing step that lost its role would have every verdict it reports refused.
   // Named break: drop `verdictRole` from the planner's answer schema or from the step it builds.
   const plan = await planWithFakeAgent(

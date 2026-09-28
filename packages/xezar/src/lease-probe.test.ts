@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { onWindows } from '../test/helpers/platform.ts';
 
 import { leaseProbe, leaseProbeJson, leaseProbeSchema } from './lease-probe.ts';
 
@@ -43,7 +44,8 @@ describe('xezar lease gates --probe (#838 B)', () => {
   const cli = (args: readonly string[], cwd: string = base): Run => {
     const result = spawnSync(process.execPath, ['--import', tsxLoader, entry, ...args], {
       cwd,
-      env: { ...process.env, HOME: home, XEZ_HOME: xezarHome, VITEST: '', NO_COLOR: '1' },
+      // os.homedir() reads USERPROFILE, not HOME, on Windows (#963).
+      env: { ...process.env, HOME: home, ...(onWindows ? { USERPROFILE: home } : {}), XEZ_HOME: xezarHome, VITEST: '', NO_COLOR: '1' },
       stdio: ['ignore', 'pipe', 'pipe'],
       encoding: 'utf8',
       timeout: 30_000,
@@ -168,7 +170,8 @@ describe('xezar lease gates -- <command> is unchanged by the probe (#838 B)', ()
   const cli = (args: readonly string[]): Run => {
     const result = spawnSync(process.execPath, ['--import', tsxLoader, entry, ...args], {
       cwd: base,
-      env: { ...process.env, HOME: home, XEZ_HOME: join(base, 'xezar-home'), VITEST: '', NO_COLOR: '1' },
+      // os.homedir() reads USERPROFILE, not HOME, on Windows (#963).
+      env: { ...process.env, HOME: home, ...(onWindows ? { USERPROFILE: home } : {}), XEZ_HOME: join(base, 'xezar-home'), VITEST: '', NO_COLOR: '1' },
       stdio: ['ignore', 'pipe', 'pipe'],
       encoding: 'utf8',
       timeout: 30_000,

@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { LineFramer, encodeFrame } from './ipc.ts';
 import { SERVER_CAPABILITIES } from './protocol.ts';
+import { shortTmpRoot, onWindows } from '../../test/helpers/platform.ts';
 
 // #86 acceptance, against the REAL CLI: `xez serve` and `xez mcp` as separate
 // processes, exactly as a coding agent would meet them. `--import tsx` rather than
@@ -18,14 +19,14 @@ let home: string;
 let repo: string;
 
 function fixtureRepo(): string {
-  const dir = mkdtempSync('/tmp/xzr-');
+  const dir = mkdtempSync(join(shortTmpRoot(), 'xzr-'));
   execFileSync('git', ['init', '-q', '-b', 'main', dir]);
   execFileSync('git', ['-C', dir, '-c', 'user.name=Test', '-c', 'user.email=t@example.test', 'commit', '-q', '--allow-empty', '-m', 'fixture']);
   return dir;
 }
 
 beforeEach(() => {
-  home = mkdtempSync('/tmp/xzc-'); // short: see bridge.test.ts
+  home = mkdtempSync(join(shortTmpRoot(), 'xzc-')); // short: see bridge.test.ts
   repo = fixtureRepo();
 });
 afterEach(() => {
@@ -81,6 +82,7 @@ async function serve({ port = 0, cwd = repo }: { port?: number; cwd?: string } =
     const res = await fetch(`${base}/api/v1/health`);
     return res.ok ? ((await res.json()) as { repoRoot?: string }) : undefined;
   });
+  // win32-r9(#963): GET /api/v1/health answers repoRoot as 'C:/Users/…' while realpathSync gives 'C:\Users\…'
   expect(health.repoRoot, 'the cockpit on the bound port is the one this test started').toBe(realpathSync(cwd));
   return { child, base, stdout: () => out, stderr: () => err };
 }
@@ -117,7 +119,8 @@ function mcp(cwd: string) {
 const text = (m: Record<string, unknown>) => (m.result as { content: Array<{ text: string }> }).content[0]?.text ?? '';
 
 describe('xez mcp against a real xezar (#86 acceptance)', () => {
-  it('completes the MCP handshake against a running XEZ_DRY_RUN cockpit and reaches its project', async () => {
+  // win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – this waits for the project MCP socket
+  it.skipIf(onWindows)('completes the MCP handshake against a running XEZ_DRY_RUN cockpit and reaches its project', async () => {
     await serve();
     const socket = await until('the MCP socket', async () => {
       const entries = (() => {
@@ -168,7 +171,8 @@ describe('xez mcp against a real xezar (#86 acceptance)', () => {
     expect(cockpit.stderr()).toMatch(/level=warn/);
   }, 60_000);
 
-  it('with the xezar service not running, the bridge still handshakes and fails readably instead of hanging', async () => {
+  // win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – this waits for the project MCP socket
+  it.skipIf(onWindows)('with the xezar service not running, the bridge still handshakes and fails readably instead of hanging', async () => {
     // Register the project the ordinary way, then stop the cockpit.
     const cockpit = await serve();
     await until('the MCP socket', async () => {

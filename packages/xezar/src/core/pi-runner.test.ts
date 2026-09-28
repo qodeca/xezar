@@ -2,7 +2,7 @@ import { spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_proce
 import { EventEmitter } from 'node:events';
 import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -241,7 +241,8 @@ describe('pi RPC argv', () => {
       '--tools',
       'read,bash,edit,write,grep,find',
       '--extension',
-      expect.stringMatching(/scripts\/pi-worktree-guard\.ts$/),
+      // A native path the runner hands to spawn; its separator is the host's (#963).
+      expect.stringMatching(sep === '/' ? /scripts\/pi-worktree-guard\.ts$/ : /scripts\\pi-worktree-guard\.ts$/),
       // `--flag=value` keeps a root that starts with `-` or `@` from being read as a boolean flag.
       '--xezar-worktree-root=/repo/.local/xezar/worktrees/task',
       '--xezar-primary-root=/repo',

@@ -14,6 +14,7 @@ import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test, { type TestContext } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { onWindows } from '../helpers/platform.ts';
 import {
   bareDirFor,
   ensureBareClone,
@@ -112,16 +113,43 @@ test('ensureBareClone throws on an unsafe remote instead of shelling out', async
   );
 });
 
+/**
+ * Keep the event loop ref'd until this test ends (#963: Node 22 is the floor).
+ *
+ * `git(…, { network: true })` unrefs the clone/fetch child and its pipes on purpose (#249), so a
+ * test awaiting one can leave nothing ref'd. Node 22's runner reads that drained loop as the end
+ * of the file and cancels every pending test ("Promise resolution is still pending but the event
+ * loop has already resolved"); Node 24's runner holds the loop open itself while tests are pending
+ * (nodejs/node#56664). This does the same, in this test process only: the product's unref is
+ * untouched, and the #249 case below still proves the exit guarantee in a separate process.
+ */
+function holdEventLoop(t: TestContext): void {
+  const keepAlive = setInterval(() => {}, 2 ** 31 - 1);
+  t.after(() => clearInterval(keepAlive));
+}
+
+/**
+ * Every test that calls `holdEventLoop` carries this per-test timeout: the held loop means a promise
+ * that never settles would otherwise hang the file for ever instead of failing the one test.
+ */
+const HELD_LOOP_TIMEOUT_MS = 120_000;
+
 // ---- integration: local clone still works, SHA pins, bad ref degrades --------
 
-test('listRemoteSkills clones a local repo, pins the SHA, and refuses a bad ref', async (t) => {
+test('listRemoteSkills clones a local repo, pins the SHA, and refuses a bad ref', { timeout: HELD_LOOP_TIMEOUT_MS }, async (t) => {
+  holdEventLoop(t);
   const home = mkdtempSync(join(tmpdir(), 'xez-home-'));
   const srcDir = mkdtempSync(join(tmpdir(), 'xez-src-'));
   const prevHome = process.env.HOME;
+  const prevUserProfile = process.env.USERPROFILE;
   process.env.HOME = home; // redirect the ~/.cache/xez skills cache into temp
+  // os.homedir() reads USERPROFILE, not HOME, on Windows (#963).
+  if (onWindows) process.env.USERPROFILE = home;
   t.after(() => {
     if (prevHome === undefined) delete process.env.HOME;
     else process.env.HOME = prevHome;
+    if (prevUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = prevUserProfile;
     rmSync(home, { recursive: true, force: true });
     rmSync(srcDir, { recursive: true, force: true });
   });
@@ -171,14 +199,20 @@ test('listRemoteSkills clones a local repo, pins the SHA, and refuses a bad ref'
 
 // ---- per-project team-skills cache isolation (multi-project workspace, 2.6) --
 
-test('team-skills cache is keyed by repoRoot — projects never see each other\'s skills', async (t) => {
+test('team-skills cache is keyed by repoRoot — projects never see each other\'s skills', { timeout: HELD_LOOP_TIMEOUT_MS }, async (t) => {
+  holdEventLoop(t);
   const home = mkdtempSync(join(tmpdir(), 'xez-home-'));
   const prevHome = process.env.HOME;
+  const prevUserProfile = process.env.USERPROFILE;
   process.env.HOME = home; // redirect the ~/.cache/xez skills cache into temp
+  // os.homedir() reads USERPROFILE, not HOME, on Windows (#963).
+  if (onWindows) process.env.USERPROFILE = home;
   const dirs: string[] = [home];
   t.after(() => {
     if (prevHome === undefined) delete process.env.HOME;
     else process.env.HOME = prevHome;
+    if (prevUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = prevUserProfile;
     for (const d of dirs) rmSync(d, { recursive: true, force: true });
   });
 
@@ -239,7 +273,17 @@ test('team-skills cache is keyed by repoRoot — projects never see each other\'
  * not simulate (`rev-parse`, `ls-tree`, `show`) to this binary, so "the network
  * failed but the local clone still reads" is reproduced exactly.
  */
-const REAL_GIT = execFileSync('which', ['git'], { encoding: 'utf8' }).trim();
+/** The fake `git` is a `#!/bin/sh` script put first on a `:`-joined PATH; Windows neither runs a
+ *  shebang script nor splits PATH on `:`, so the module keeps reaching the real git.exe. */
+const NO_GIT_SHIM = onWindows
+  ? 'win32-skip(#963): the #!/bin/sh git shim never intercepts on Windows – shim.calls() stays empty and the real git.exe runs'
+  : false;
+
+const REAL_GIT = onWindows
+  ? // `which` under Git Bash prints an MSYS path (/mingw64/bin/git) Node cannot spawn; `where` prints
+    // native paths, one per line with CRLF endings.
+    execFileSync('where', ['git'], { encoding: 'utf8' }).split(/\r?\n/)[0]!.trim()
+  : execFileSync('which', ['git'], { encoding: 'utf8' }).trim();
 
 interface Sandbox {
   /** The redirected HOME — the `~/.cache/xez/skills` clone cache lives here. */
@@ -258,6 +302,7 @@ interface Sandbox {
 
 /** Per-test scratch: redirected HOME and PATH, captured warnings, full cleanup. */
 function sandbox(t: TestContext): Sandbox {
+  holdEventLoop(t);
   const dirs: string[] = [];
   const locked: string[] = [];
   const dir = (prefix: string): string => {
@@ -267,10 +312,13 @@ function sandbox(t: TestContext): Sandbox {
   };
   const home = dir('xez-home-');
   const prevHome = process.env.HOME;
+  const prevUserProfile = process.env.USERPROFILE;
   const prevPath = process.env.PATH;
   // `bareDirFor` resolves through os.homedir(), so redirecting HOME is what
   // keeps every clone in this file out of the developer's real ~/.cache/xez.
   process.env.HOME = home;
+  // os.homedir() reads USERPROFILE, not HOME, on Windows (#963).
+  if (onWindows) process.env.USERPROFILE = home;
   const warnings: string[] = [];
   const prevWarn = console.warn;
   console.warn = (...args: unknown[]) => {
@@ -281,6 +329,8 @@ function sandbox(t: TestContext): Sandbox {
     console.warn = prevWarn;
     if (prevHome === undefined) delete process.env.HOME;
     else process.env.HOME = prevHome;
+    if (prevUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = prevUserProfile;
     if (prevPath === undefined) delete process.env.PATH;
     else process.env.PATH = prevPath;
     // A directory a case made read-only has to be removable again.
@@ -417,7 +467,7 @@ async function waitFor(predicate: () => boolean, what: string, timeoutMs = 10_00
   }
 }
 
-test('a failed fetch degrades to the cached clone instead of throwing', async (t) => {
+test('a failed fetch degrades to the cached clone instead of throwing', { skip: NO_GIT_SHIM, timeout: HELD_LOOP_TIMEOUT_MS }, async (t) => {
   const box = sandbox(t);
   const src = box.skillsRepo('cached-skill');
   const root = box.projectRoot([{ repo: src, ref: 'main' }]);
@@ -438,7 +488,7 @@ test('a failed fetch degrades to the cached clone instead of throwing', async (t
   );
 });
 
-test('a failed fetch with no cache returns an empty catalog and never throws', async (t) => {
+test('a failed fetch with no cache returns an empty catalog and never throws', { timeout: HELD_LOOP_TIMEOUT_MS }, async (t) => {
   const box = sandbox(t);
   // A source that cannot be cloned and was never cached: an absent local path
   // fails instantly and offline, exactly like an unreachable remote.
@@ -455,7 +505,7 @@ test('a failed fetch with no cache returns an empty catalog and never throws', a
   assert.deepEqual(await listRemoteSkills({ repo: missing, ref: 'main' }), []);
 });
 
-test('a clone that hangs never blocks the catalog read, and a killed git degrades', async (t) => {
+test('a clone that hangs never blocks the catalog read, and a killed git degrades', { skip: NO_GIT_SHIM, timeout: HELD_LOOP_TIMEOUT_MS }, async (t) => {
   const box = sandbox(t);
   const src = box.skillsRepo('slow-skill');
   const root = box.projectRoot([{ repo: src, ref: 'main' }]);
@@ -489,7 +539,7 @@ const ONE_SHOT_START_DEADLINE_MS = 5_000;
 const PACKAGE_ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const SKILLS_REMOTE_MODULE = new URL('../../src/skills-remote.ts', import.meta.url).href;
 
-test('a hung network clone never holds a one-shot process open (#249)', async (t) => {
+test('a hung network clone never holds a one-shot process open (#249)', { skip: NO_GIT_SHIM, timeout: HELD_LOOP_TIMEOUT_MS }, async (t) => {
   const box = sandbox(t);
   const src = box.skillsRepo('one-shot-skill');
   const root = box.projectRoot([{ repo: src, ref: 'main' }]);
@@ -558,7 +608,7 @@ test('a hung network clone never holds a one-shot process open (#249)', async (t
   );
 });
 
-test('a corrupt or truncated cache degrades to empty, and a missing one re-clones', async (t) => {
+test('a corrupt or truncated cache degrades to empty, and a missing one re-clones', { timeout: HELD_LOOP_TIMEOUT_MS }, async (t) => {
   const box = sandbox(t);
   const src = box.skillsRepo('fragile-skill');
   const root = box.projectRoot([{ repo: src, ref: 'main' }]);
@@ -583,7 +633,7 @@ test('a corrupt or truncated cache degrades to empty, and a missing one re-clone
   assert.deepEqual((await refreshTeamSkills(root)).skills.map((s) => s.name), ['fragile-skill']);
 });
 
-test('all three configured source shapes resolve, and unsafe ones never reach git', async (t) => {
+test('all three configured source shapes resolve, and unsafe ones never reach git', { skip: NO_GIT_SHIM, timeout: HELD_LOOP_TIMEOUT_MS }, async (t) => {
   const box = sandbox(t);
   const local = box.skillsRepo('local-skill');
   const unsafeRepo = "ext::sh -c 'touch /tmp/xez-issue-57-pwn'";
@@ -627,7 +677,10 @@ test('all three configured source shapes resolve, and unsafe ones never reach gi
   assert.equal(existsSync(join(bareDirFor('acme/team-skills'), 'HEAD')), false);
 });
 
-test('a read-only cache directory degrades instead of failing the boot', async (t) => {
+test('a read-only cache directory degrades instead of failing the boot', {
+  skip: onWindows ? 'win32-skip(#963): Windows ignores POSIX mode bits – chmod 0500 leaves the directory writable' : false,
+  timeout: HELD_LOOP_TIMEOUT_MS,
+}, async (t) => {
   const box = sandbox(t);
   const src = box.skillsRepo('unwritable-skill');
   const root = box.projectRoot([{ repo: src, ref: 'main' }]);

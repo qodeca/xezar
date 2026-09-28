@@ -3,6 +3,7 @@ import { createServer, type RequestListener, type Server } from 'node:http';
 import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { onWindows } from '../../test/helpers/platform.ts';
 import { foreignWriterClaimIsLive } from '../runs/project-writer.ts';
 import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
@@ -452,8 +453,10 @@ describe('the writer-claim reader (#467, PR 3)', () => {
 
   it('another live process on this machine counts', () => {
     const dir = dataDir();
-    // PID 1 exists on every unix host and is never this vitest worker.
-    claim(dir, 1, { pid: 1, host: hostname() });
+    // PID 1 exists on every unix host and is never this vitest worker. Windows has no pid 1, so it
+    // uses this worker's parent, which is alive for as long as the worker is (#963).
+    const foreign = onWindows ? process.ppid : 1;
+    claim(dir, foreign, { pid: foreign, host: hostname() });
 
     expect(foreignWriterClaimIsLive(dir)).toBe(true);
   });

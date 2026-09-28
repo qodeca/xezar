@@ -1,3 +1,4 @@
+import { basename } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { baseUrlLocality, discoverPiModels, parsePiModels } from './pi-model-catalog.ts';
 
@@ -28,7 +29,7 @@ const SETTINGS_JSON = JSON.stringify({
 /** A reader over an in-memory `~/.pi/agent`, so no case ever touches a real home. */
 function reader(files: Record<string, string>) {
   return (path: string): Promise<string> => {
-    const name = path.split('/').pop() ?? '';
+    const name = basename(path);
     const body = files[name];
     if (body === undefined) {
       const error = new Error(`ENOENT: ${path}`) as NodeJS.ErrnoException;
@@ -76,7 +77,7 @@ describe('pi model discovery (#152)', () => {
     await discoverPiModels({
       home: '/fake/.pi/agent',
       readFile: (path) => {
-        touched.push(path.split('/').pop() ?? '');
+        touched.push(basename(path));
         return reader({ 'models.json': MODELS_JSON, 'settings.json': SETTINGS_JSON })(path);
       },
     });

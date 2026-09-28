@@ -9,10 +9,20 @@ import test from 'node:test';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { npmCommand, onWindows } from '../helpers/platform.ts';
 
 const execFile = promisify(execFileCallback);
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+/** Every case here goes through the xezar MCP Unix socket. `/tmp` stays the POSIX socket root. */
+const NO_MCP_SOCKET = onWindows
+  ? 'win32-skip(#963): xezar MCP bridge is not supported on Windows yet – the cockpit logs event=mcp.unavailable (mcp/ipc.ts)'
+  : false;
+/** npm through the #963 platform helper: POSIX runs `npm` exactly as before; Windows runs npm's own
+ *  CLI through node, because `npm.cmd` cannot be spawned without a shell (EINVAL). */
+function execNpm(args: string[], options: { cwd: string; maxBuffer: number }) {
+  const c = npmCommand(args);
+  return execFile(c.file, c.args, options);
+}
 
 /**
  * #117 — A-16's upgrade half (N-07, N-08, F-18, F-19): the RELEASE TARBALL, installed into an
@@ -230,7 +240,7 @@ async function assertWorkingCockpit(cockpit: Cockpit, cliPath: string, repo: str
   assert.ok(bridged && !bridged.isError, `${label}: the MCP bridge reaches the service (${bridged?.text})\n${cockpit.output()}`);
 }
 
-test('A-16: an upgraded cockpit stays usable with MCP state corrupt, deleted, after a hard restart, and never has two owners', { timeout: 300_000 }, async (t) => {
+test('A-16: an upgraded cockpit stays usable with MCP state corrupt, deleted, after a hard restart, and never has two owners', { timeout: 300_000, skip: NO_MCP_SOCKET }, async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'xezar-mcp-upgrade-'));
   // The socket lives under XEZ_HOME and a Unix socket path has a ~104-byte limit, which a task's
   // TMPDIR can exceed — so the home is short, under /tmp.
@@ -239,7 +249,7 @@ test('A-16: an upgraded cockpit stays usable with MCP state corrupt, deleted, af
   try {
     const packDir = join(root, 'pack');
     await mkdir(packDir);
-    const packed = await execFile(npm, ['pack', '--json', '--ignore-scripts', '--pack-destination', packDir], {
+    const packed = await execNpm(['pack', '--json', '--ignore-scripts', '--pack-destination', packDir], {
       cwd: packageRoot,
       maxBuffer: 10 * 1024 * 1024,
     });
@@ -248,7 +258,7 @@ test('A-16: an upgraded cockpit stays usable with MCP state corrupt, deleted, af
     const consumer = join(root, 'consumer');
     await mkdir(consumer);
     await writeFile(join(consumer, 'package.json'), '{"private":true}\n', 'utf8');
-    await execFile(npm, ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--no-package-lock', join(packDir, record.filename)], {
+    await execNpm(['install', '--ignore-scripts', '--no-audit', '--no-fund', '--no-package-lock', join(packDir, record.filename)], {
       cwd: consumer,
       maxBuffer: 10 * 1024 * 1024,
     });

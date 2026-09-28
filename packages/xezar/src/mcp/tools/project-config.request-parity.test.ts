@@ -300,6 +300,7 @@ describe('every MCP write action accepts what its route accepts', () => {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ browseRoot: repoRoot, projectsDir: join(repoRoot, 'checkouts') }),
       });
+      // win32-r9(#963): 400 'not writable: C:\… is not an absolute path' – PUT /workspace/config checks startsWith('/') (server.ts)
       expect(put.status, await put.clone().text()).toBe(200);
 
       const answer = (await (await apiRequest(app, '/api/v1/workspace/config')).json()) as { browseRoot: string; projectsDir: string };

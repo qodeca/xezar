@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { after, test } from 'node:test';
+import { onWindows, shortTmpRoot } from '../helpers/platform.ts';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 /**
@@ -33,7 +34,7 @@ const START_PORT = /event=xezar\.ready[^\n]*\bstart=(\d+)/;
 // `/tmp` explicitly, not `tmpdir()`: a task worktree's own TMPDIR sits INSIDE the repository,
 // and `shouldRegisterProject` refuses to register anything under `.local/xezar/worktrees/`,
 // so a fixture created there would never get a registry row to remember a port on.
-const fixtureRoot = await mkdtemp(join(realpathSync('/tmp'), 'xez-port-memory-'));
+const fixtureRoot = await mkdtemp(join(realpathSync(shortTmpRoot()), 'xez-port-memory-'));
 const bindSeamPath = join(fixtureRoot, 'occupy-at-bind.mjs');
 await writeFile(bindSeamPath, `
 import net from 'node:net';
@@ -501,12 +502,17 @@ function sentinelBand(ranges: readonly PortRange[]): PortRange {
   return { low, high };
 }
 
-const SENTINEL_BAND = sentinelBand(hostAutoAssignRanges());
+/** The tests that take a sentinel port need the host's automatic-assignment range, and that is
+ *  read only on macOS and Linux (`hostAutoAssignRanges` refuses anything else rather than guess). */
+const NO_PORT_RANGE = onWindows
+  ? 'win32-skip(#963): hostAutoAssignRanges() refuses win32 – it reads the automatic-assignment port range only on macOS and Linux'
+  : false;
+const SENTINEL_BAND = NO_PORT_RANGE ? { low: 0, high: -1 } : sentinelBand(hostAutoAssignRanges());
 const SENTINEL_BLOCKS = Math.floor((SENTINEL_BAND.high - SENTINEL_BAND.low + 1) / SENTINEL_BLOCK);
 /** The next block to try. Seeded from the pid so two concurrent invocations start apart. */
 let nextSentinelBlock = process.pid % SENTINEL_BLOCKS;
 
-test('the sentinel band lies below every automatic-assignment range the host reports', () => {
+test('the sentinel band lies below every automatic-assignment range the host reports', { skip: NO_PORT_RANGE }, () => {
   const inside = (port: number, ranges: readonly PortRange[]): boolean =>
     ranges.some((range) => port >= range.low && port <= range.high);
   const bandPorts = (band: PortRange): number[] =>
@@ -604,7 +610,7 @@ async function release(server: Server): Promise<void> {
   await once(server, 'close');
 }
 
-test('a start remembers the port it really bound, and the next start comes back to it', { timeout: 180_000 }, async () => {
+test('a start remembers the port it really bound, and the next start comes back to it', { timeout: 180_000, skip: NO_PORT_RANGE }, async () => {
   const { repo, home } = await fixture('reuse');
   const wanted = await sentinel();
 
@@ -626,7 +632,7 @@ test('a start remembers the port it really bound, and the next start comes back 
   assert.equal(second.startPort, first.port, `the second start must request the remembered port. Output:\n${second.output}`);
 });
 
-test('fragmented stderr readiness ignores an interleaved stdout chunk', { timeout: 180_000 }, async () => {
+test('fragmented stderr readiness ignores an interleaved stdout chunk', { timeout: 180_000, skip: NO_PORT_RANGE }, async () => {
   const { repo, home } = await fixture('fragmented-ready');
   const wanted = await sentinel();
 
@@ -648,7 +654,7 @@ test('fragmented stderr readiness ignores an interleaved stdout chunk', { timeou
   });
 });
 
-test('named break `remember-before-listen`/`false-ready`: a busy remembered port is replaced by the port really bound', { timeout: 180_000 }, async () => {
+test('named break `remember-before-listen`/`false-ready`: a busy remembered port is replaced by the port really bound', { timeout: 180_000, skip: NO_PORT_RANGE }, async () => {
   const { repo, home } = await fixture('busy');
   const wanted = await sentinel();
 
@@ -671,7 +677,7 @@ test('named break `remember-before-listen`/`false-ready`: a busy remembered port
   );
 });
 
-test('named break `memory-over-flag`: an explicit --port beats the remembered port', { timeout: 180_000 }, async () => {
+test('named break `memory-over-flag`: an explicit --port beats the remembered port', { timeout: 180_000, skip: NO_PORT_RANGE }, async () => {
   const { repo, home } = await fixture('flag');
   const remembered = await sentinel();
   await bootServe(repo, home, ['--port', String(remembered.port)]).finally(() => release(remembered.server));
@@ -685,7 +691,7 @@ test('named break `memory-over-flag`: an explicit --port beats the remembered po
   assert.equal(row?.lastListen?.port, boot.port, 'the newly bound port becomes the memory');
 });
 
-test('named break `env-over-stored`: a project port beats XEZ_PORT', { timeout: 180_000 }, async () => {
+test('named break `env-over-stored`: a project port beats XEZ_PORT', { timeout: 180_000, skip: NO_PORT_RANGE }, async () => {
   const { repo, home } = await fixture('stored');
   // One boot to create the registry row, then pin a port on it the way `xez projects port` does.
   const seed = await sentinel();
@@ -746,7 +752,7 @@ test('an invalid XEZ_PORT is refused the same way', { timeout: 120_000 }, async 
   assert.deepEqual(await readRegistry(home), []);
 });
 
-test('named break `memory-required`: a mangled stored port warns once and the cockpit still starts', { timeout: 180_000 }, async () => {
+test('named break `memory-required`: a mangled stored port warns once and the cockpit still starts', { timeout: 180_000, skip: NO_PORT_RANGE }, async () => {
   const { repo, home } = await fixture('mangled');
   const seed = await sentinel();
   const seeded = await bootServe(repo, home, ['--port', String(seed.port)]).finally(() => release(seed.server));

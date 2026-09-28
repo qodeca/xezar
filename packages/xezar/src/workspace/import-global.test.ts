@@ -14,6 +14,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { FILE_SYMLINKS, linkDir, onWindows } from '../../test/helpers/platform.ts';
 import {
   assertProjectStateUsable,
   globalStateLayout,
@@ -240,7 +241,7 @@ describe('import from the global setup (#600 FR-4)', () => {
 
     it('a folder reached through a symlink keeps its own selection, looked up by realpath (#612 n1)', async () => {
       const alias = join(base, 'alias');
-      symlinkSync(project, alias);
+      linkDir(project, alias);
       const aliasLayout = projectStateLayout(alias);
       await runFirstRunImport(aliasLayout, async () => true, env);
       expect((json(aliasLayout.accountsPath) as { selections: unknown }).selections).toEqual({
@@ -269,7 +270,7 @@ describe('import from the global setup (#600 FR-4)', () => {
     const outsideContents = (): string[] => readdirSync(outside).sort();
 
     it('a symlinked .xezar: the import refuses every file and writes nothing outside the project', async () => {
-      symlinkSync('../outside', layout.root);
+      linkDir('../outside', layout.root);
       const before = homeBytes();
 
       const outcome = await runFirstRunImport(layout, async () => true, env);
@@ -286,14 +287,15 @@ describe('import from the global setup (#600 FR-4)', () => {
     });
 
     it('a symlinked .xezar: the boot refuses, and creating the state files writes nothing outside', () => {
-      symlinkSync('../outside', layout.root);
+      linkDir('../outside', layout.root);
       expect(() => assertProjectStateUsable(layout)).toThrow(SingleProjectStateError);
       expect(() => assertProjectStateUsable(layout)).toThrow(/symbolic link/);
       expect(() => createProjectStateFiles(layout)).toThrow(SingleProjectStateError);
       expect(outsideContents()).toEqual([]);
     });
 
-    it('a symlinked target file is refused, left a link, and nothing is written through it', async () => {
+    // win32-skip(#963): creating a file symlink needs Developer Mode or elevation (EPERM)
+    it.skipIf(!FILE_SYMLINKS)('a symlinked target file is refused, left a link, and nothing is written through it', async () => {
       mkdirSync(layout.root, { recursive: true });
       // One link to an existing outside file, one dangling link to a file that does not exist yet.
       writeFileSync(join(outside, 'existing.json'), '{"mine":true}\n');
@@ -316,7 +318,8 @@ describe('import from the global setup (#600 FR-4)', () => {
       );
     });
 
-    it('creating the state files never replaces or writes through a symlinked file', () => {
+    // win32-skip(#963): creating a file symlink needs Developer Mode or elevation (EPERM)
+    it.skipIf(!FILE_SYMLINKS)('creating the state files never replaces or writes through a symlinked file', () => {
       mkdirSync(layout.root, { recursive: true });
       symlinkSync(join(outside, 'dangling.json'), layout.uiStatePath);
       createProjectStateFiles(layout);
@@ -624,7 +627,8 @@ describe('import from the global setup (#600 FR-4)', () => {
         ]);
       });
 
-      it('a symlinked accounts file is refused, never written through', () => {
+      // win32-skip(#963): creating a file symlink needs Developer Mode or elevation (EPERM)
+      it.skipIf(!FILE_SYMLINKS)('a symlinked accounts file is refused, never written through', () => {
         mkdirSync(layout.root, { recursive: true });
         symlinkSync(join(base, 'elsewhere.json'), layout.accountsPath);
         const report = importGlobalAccounts(layout, env);
@@ -711,7 +715,8 @@ describe('countImportableGlobalAccounts — a number, read-only, never an error'
     expect(existsSync(join(base, 'no-such-home'))).toBe(false);
   });
 
-  it('reads a permission-denied home as 0', () => {
+  // win32-skip(#963): Windows ignores POSIX mode bits, so a chmod 000 file stays readable
+  it.skipIf(onWindows)('reads a permission-denied home as 0', () => {
     if (process.getuid?.() === 0) return; // root reads through a mode of 000
     chmodSync(join(home, 'agent-accounts.json'), 0o000);
     try {

@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { onWindows } from '../../test/helpers/platform.ts';
 import type { AgentRunSpec } from '../core/agent-runner.ts';
 import { RunStore } from '../runs/store.ts';
 import { RunManager } from './run.ts';
@@ -300,7 +301,9 @@ describe('a resumed session keeps its workflow step tools', () => {
     expect(manager!.continueRun(id).ok).toBe(true);
     const spec = await specAt(0);
     // macOS may canonicalize /var to /private/var; compare the actual file, not that spelling.
-    expect(readFileSync(join(spec.cwd, 'a.txt'), 'utf8')).toBe('task-only content\n');
+    // git's checkout writes these bytes, and core.autocrlf on a Windows host turns LF into CRLF (#963).
+    const restored = readFileSync(join(spec.cwd, 'a.txt'), 'utf8');
+    expect(onWindows ? restored.replace(/\r\n/g, '\n') : restored).toBe('task-only content\n');
     expect((await run('git', ['branch', '--show-current'], { cwd: spec.cwd })).stdout.trim()).toBe(branch);
     expect(spec.cwd).not.toBe(repoRoot);
     expect(store.getRun(id)?.worktreeReclaimedAt).toBeUndefined();

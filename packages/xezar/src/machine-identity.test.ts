@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync, readlinkSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { onWindows } from '../test/helpers/platform.ts';
 import { localMachineId, machineRelation, __clearMachineIdCacheForTests } from './machine-identity.ts';
 
 vi.mock('node:child_process', async (importOriginal) => {
@@ -46,7 +47,10 @@ describe('localMachineId', () => {
   });
 
   it('probes once per process and reuses the answer', () => {
-    vi.mocked(execFileSync).mockReturnValue('  "IOPlatformUUID" = "3E1F0000-1111-2222-3333-444455556666"\n');
+    // The probe spawns `ioreg` on macOS and `reg query` on Windows (#963); answer in the shape each parses.
+    vi.mocked(execFileSync).mockReturnValue(onWindows
+      ? '    MachineGuid    REG_SZ    3E1F0000-1111-2222-3333-444455556666\r\n'
+      : '  "IOPlatformUUID" = "3E1F0000-1111-2222-3333-444455556666"\n');
     vi.mocked(readFileSync).mockReturnValue('c1f0a9d2e3b44c5d8e6f70819a2b3c4d\n');
     vi.mocked(readlinkSync).mockReturnValue('pid:[4026531836]');
     const first = localMachineId();
@@ -59,7 +63,7 @@ describe('localMachineId', () => {
 
   it('is an opaque token rather than the raw platform id', () => {
     const uuid = '3E1F0000-1111-2222-3333-444455556666';
-    vi.mocked(execFileSync).mockReturnValue(`  "IOPlatformUUID" = "${uuid}"\n`);
+    vi.mocked(execFileSync).mockReturnValue(onWindows ? `    MachineGuid    REG_SZ    ${uuid}\r\n` : `  "IOPlatformUUID" = "${uuid}"\n`);
     vi.mocked(readFileSync).mockReturnValue(`${uuid}\n`);
     vi.mocked(readlinkSync).mockImplementation(() => { throw Object.assign(new Error('missing'), { code: 'ENOENT' }); });
     const id = localMachineId();

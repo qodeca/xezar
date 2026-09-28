@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { onWindows } from '../../test/helpers/platform.ts';
 import { resolveStateLayout, setActiveStateLayout } from '../state-layout.ts';
 import { mergeWriteWorkspaceConfig } from './config.ts';
 import { mergeWriteWorkspaceUiState } from './ui-state.ts';
@@ -49,6 +50,7 @@ const tsxLoader = import.meta.resolve('tsx');
  */
 describe('single-project mode never opens the real xezar home (AC-11)', () => {
   const originalHome = process.env.HOME;
+  const originalUserProfile = process.env.USERPROFILE;
   const originalXezHome = process.env.XEZ_HOME;
   let base: string;
   let fakeHome: string;
@@ -71,6 +73,8 @@ describe('single-project mode never opens the real xezar home (AC-11)', () => {
     // because the point is a home that already holds the user's own setup.
     chmodSync(homeXezar, 0o500);
     process.env.HOME = fakeHome;
+    // os.homedir() reads USERPROFILE, not HOME, on Windows (#963).
+    if (onWindows) process.env.USERPROFILE = fakeHome;
     delete process.env.XEZ_HOME;
   });
 
@@ -79,6 +83,8 @@ describe('single-project mode never opens the real xezar home (AC-11)', () => {
     chmodSync(homeXezar, 0o700);
     if (originalHome === undefined) delete process.env.HOME;
     else process.env.HOME = originalHome;
+    if (originalUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = originalUserProfile;
     if (originalXezHome === undefined) delete process.env.XEZ_HOME;
     else process.env.XEZ_HOME = originalXezHome;
     rmSync(base, { recursive: true, force: true });
@@ -168,6 +174,7 @@ describe('single-project mode never opens the real xezar home (AC-11)', () => {
     const before = sentinelState();
     const cliEntry = fileURLToPath(new URL('../index.ts', import.meta.url));
     const env: NodeJS.ProcessEnv = { ...process.env, HOME: fakeHome };
+    if (onWindows) env.USERPROFILE = fakeHome; // os.homedir() reads USERPROFILE on Windows (#963)
     delete env.XEZ_HOME;
     // Without this the in-process write guard would refuse a leaked write
     // before the filesystem could, and a green run would prove the guard

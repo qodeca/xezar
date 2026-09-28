@@ -15,6 +15,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { onWindows } from '../../test/helpers/platform.ts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { auditRecordSchema, type AuditActionRecord, type AuditRecord } from '@qodeca/xezar-contract';
 import {
@@ -217,7 +218,8 @@ describe('AC-P3-01: two processes cross the limit at the same moment', () => {
     expect(seqs.slice(-3)).toEqual([lastFilled + 1, lastFilled + 2, lastFilled + 3]);
     // What each process was told is exactly what is on disk.
     expect(results.map((result) => result.out?.record?.seq).sort()).toEqual([lastFilled + 2, lastFilled + 3]);
-    for (const path of retainedPaths()) expect(modeOf(path)).toBe(0o600);
+    // win32-skip(#963): Windows ignores POSIX mode bits (observed: every file stats 0o666)
+    if (!onWindows) for (const path of retainedPaths()) expect(modeOf(path)).toBe(0o600);
   }, 90_000);
 
   it('named break `B-WRITER-SEQ`: two processes appending below the limit never share a sequence', async () => {
@@ -275,11 +277,13 @@ describe('AC-P3-02: after a rotation', () => {
     expect(readFileSync(rotatedAuditTrailPath(dataDir, 2), 'utf8')).toBe(seeded[3]);
     expect(readFileSync(rotatedAuditTrailPath(dataDir, 3), 'utf8')).toBe(seeded[2]);
     expect(readFileSync(rotatedAuditTrailPath(dataDir, 4), 'utf8')).toBe(seeded[1]);
-    for (const path of retainedPaths()) expect(modeOf(path)).toBe(0o600);
+    // win32-skip(#963): Windows ignores POSIX mode bits (observed: every file stats 0o666)
+    if (!onWindows) for (const path of retainedPaths()) expect(modeOf(path)).toBe(0o600);
     // The live file is under the limit it rotated for, and the legacy file is exactly as it was.
     expect(statSync(auditTrailPath(dataDir)).size).toBeLessThan(AUDIT_ROTATE_BYTES);
     expect(sha(legacy)).toBe(legacyHash);
-    expect(modeOf(legacy)).toBe(0o644);
+    // win32-skip(#963): Windows ignores POSIX mode bits (observed: every file stats 0o666)
+    if (!onWindows) expect(modeOf(legacy)).toBe(0o644);
     expect(existsSync(auditLockPath(dataDir))).toBe(false);
 
     // A reader sees the whole retained history, oldest first, and skips the marker.
@@ -300,8 +304,11 @@ describe('AC-P3-02: after a rotation', () => {
       { outcome: 'applied' },
     );
     expect(record?.seq).toBe(2);
-    expect(modeOf(auditTrailPath(dataDir))).toBe(0o600);
-    expect(modeOf(rotatedAuditTrailPath(dataDir, 1))).toBe(0o600);
+    // win32-skip(#963): Windows ignores POSIX mode bits (observed: every file stats 0o666)
+    if (!onWindows) {
+      expect(modeOf(auditTrailPath(dataDir))).toBe(0o600);
+      expect(modeOf(rotatedAuditTrailPath(dataDir, 1))).toBe(0o600);
+    }
   });
 
   it('rotates a torn last line away untouched at the boundary, so the next record starts a clean line', async () => {
@@ -348,7 +355,8 @@ describe('AC-P3-04: a rotation that crashed between its rename and its marker', 
       expect.objectContaining({ kind: 'action', seq: lastFilled + 2, resource: { kind: 'run', id: 'after-crash' } }),
     ]);
     expect(everyRecord().some((r) => r.kind === 'action' && r.resource?.id === 'lost-in-crash')).toBe(false);
-    for (const path of retainedPaths()) expect(modeOf(path)).toBe(0o600);
+    // win32-skip(#963): Windows ignores POSIX mode bits (observed: every file stats 0o666)
+    if (!onWindows) for (const path of retainedPaths()) expect(modeOf(path)).toBe(0o600);
     expect(existsSync(auditLockPath(dataDir))).toBe(false);
   }, 60_000);
 
@@ -374,7 +382,8 @@ describe('AC-P3-04: a rotation that crashed between its rename and its marker', 
     );
     expect(record?.seq).toBe(1);
     expect(recordsOf(auditTrailPath(dataDir)).map((r) => r.kind)).toEqual(['action']);
-    expect(modeOf(auditTrailPath(dataDir))).toBe(0o600);
+    // win32-skip(#963): Windows ignores POSIX mode bits (observed: every file stats 0o666)
+    if (!onWindows) expect(modeOf(auditTrailPath(dataDir))).toBe(0o600);
   });
 
   it('continues from the rotations when the live file holds no valid record', async () => {
@@ -403,7 +412,8 @@ describe('AC-P3-03: a failed audit write never changes the action, and warns onc
     return { result, effect };
   }
 
-  it('named break `B-FAIL-CLOSED`: an unwritable folder', async () => {
+  // win32-skip(#963): Windows ignores POSIX mode bits – chmod 0o500 leaves the folder writable, so no write fails
+  it.skipIf(onWindows)('named break `B-FAIL-CLOSED`: an unwritable folder', async () => {
     chmodSync(dataDir, 0o500);
     try {
       const warn = vi.fn();
@@ -448,7 +458,8 @@ describe('AC-P3-03: a failed audit write never changes the action, and warns onc
     expect(existsSync(missing)).toBe(false);
   });
 
-  it('keeps one warning per trail, so two projects in one process each say it once', async () => {
+  // win32-skip(#963): Windows ignores POSIX mode bits – chmod 0o500 leaves the folder writable, so no write fails
+  it.skipIf(onWindows)('keeps one warning per trail, so two projects in one process each say it once', async () => {
     chmodSync(dataDir, 0o500);
     const otherDir = join(root, 'bravo', '.local', 'xezar');
     mkdirSync(otherDir, { recursive: true });

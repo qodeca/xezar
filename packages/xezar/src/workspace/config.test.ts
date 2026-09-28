@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { onWindows } from '../../test/helpers/platform.ts';
 import { workspaceConfigPath } from '../paths.ts';
 import { projectStateLayout, setActiveStateLayout } from '../state-layout.ts';
 import {
@@ -159,7 +160,8 @@ describe('workspace config', () => {
       config.resources.maxParallel = 4;
       config.projects.push(project('xezar'));
     });
-    expect(statSync(workspaceConfigPath()).mode & 0o777).toBe(0o600);
+    // win32-skip(#963): Windows ignores POSIX mode bits
+    if (!onWindows) expect(statSync(workspaceConfigPath()).mode & 0o777).toBe(0o600);
     const config = await loadWorkspaceConfig();
     expect(config.schemaVersion).toBe(1);
     expect(config.resources.maxParallel).toBe(4);
@@ -376,7 +378,8 @@ describe('workspace config', () => {
       await registerOne();
       const snapshot = JSON.parse(readFileSync(workspaceConfigBackupPath(), 'utf8')) as WorkspaceConfig;
       expect(snapshot.projects.map((p) => p.id)).toEqual(['shop']);
-      expect(statSync(workspaceConfigBackupPath()).mode & 0o777).toBe(0o600);
+      // win32-skip(#963): Windows ignores POSIX mode bits
+      if (!onWindows) expect(statSync(workspaceConfigBackupPath()).mode & 0o777).toBe(0o600);
     });
 
     it('refreshes the snapshot when the last project is unregistered, so it cannot resurrect (#731)', async () => {

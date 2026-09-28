@@ -1,4 +1,6 @@
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
@@ -77,7 +79,7 @@ function codexLink(threadId: string) {
 
 /** The real delivery over a real journal; only the owner slot and the Codex dial are stubs. */
 function realDelivery() {
-  const dataDir = realpathSync(mkdtempSync('/tmp/xz-owner-switch-'))
+  const dataDir = realpathSync(mkdtempSync(join(process.platform === 'win32' ? tmpdir() : '/tmp', 'xz-owner-switch-')))
   dirs.push(dataDir)
   const journal = EventJournal.open({ dataDir, projectId: PROJECT, secretValues: [], warn: () => {} })
   journals.push(journal)

@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { CodexRequestRefused } from './codex.ts';
 import { CODEX_CONTROL_SOCKET, codexControlHome, connectCodexLeader, validateControlSocket } from './codex-link.ts';
+import { shortTmpRoot, onWindows } from '../../../test/helpers/platform.ts';
 
 /**
  * The link to a person's shared Codex app-server (#374), against a stand-in on a real Unix socket.
@@ -30,7 +31,7 @@ afterEach(async () => {
 
 /** A short, private Codex home under /tmp (a Unix socket path must stay under SUN_LEN). */
 function codexHome(prefix: string): string {
-  const home = realpathSync(mkdtempSync(`/tmp/${prefix}`));
+  const home = realpathSync(mkdtempSync(join(shortTmpRoot(), prefix)));
   dirs.push(home);
   const control = join(home, 'app-server-control');
   mkdirSync(control, { mode: 0o700 });
@@ -105,7 +106,8 @@ async function appServer(home: string, handler: Handler = answers(home, home), o
 }
 
 describe('the shared Codex app-server link (#374)', () => {
-  it('attaches to the one loaded, cwd-bound thread over the private socket, resumes it without turns, and lets go of it', async () => {
+  // win32-skip(#963): Node cannot listen on a Unix socket path on Windows (listen EACCES), and the Codex app-server stand-in listens on one
+  it.skipIf(onWindows)('attaches to the one loaded, cwd-bound thread over the private socket, resumes it without turns, and lets go of it', async () => {
     const home = codexHome('xzcl-');
     const server = await appServer(
       home,
@@ -137,7 +139,8 @@ describe('the shared Codex app-server link (#374)', () => {
     await expect(connected.link.request('thread/read', { threadId: 'thread-1' })).rejects.toThrow('connection is closed');
   });
 
-  it('never offers permessage-deflate — the stand-in hangs up on it exactly as codex-cli 0.154.0 does', async () => {
+  // win32-skip(#963): Node cannot listen on a Unix socket path on Windows (listen EACCES), and the Codex app-server stand-in listens on one
+  it.skipIf(onWindows)('never offers permessage-deflate — the stand-in hangs up on it exactly as codex-cli 0.154.0 does', async () => {
     const home = codexHome('xzcl-deflate-');
     const server = await appServer(home);
     const connected = await connectCodexLeader({ threadId: 'thread-1' }, home, home);
@@ -149,7 +152,8 @@ describe('the shared Codex app-server link (#374)', () => {
     expect(server.upgrades[1]?.['sec-websocket-extensions']).toContain('permessage-deflate');
   });
 
-  it('binds the ANNOUNCED thread when two sessions share the project, and refuses one it cannot find', async () => {
+  // win32-skip(#963): Node cannot listen on a Unix socket path on Windows (listen EACCES), and the Codex app-server stand-in listens on one
+  it.skipIf(onWindows)('binds the ANNOUNCED thread when two sessions share the project, and refuses one it cannot find', async () => {
     const home = codexHome('xzcl-two-');
     const server = await appServer(
       home,
@@ -167,7 +171,8 @@ describe('the shared Codex app-server link (#374)', () => {
     expect(server.methods().filter((method) => method === 'thread/resume')).toHaveLength(1);
   });
 
-  it('pages through thread/list for the announced thread, and a listing that never ends reads as not found', async () => {
+  // win32-skip(#963): Node cannot listen on a Unix socket path on Windows (listen EACCES), and the Codex app-server stand-in listens on one
+  it.skipIf(onWindows)('pages through thread/list for the announced thread, and a listing that never ends reads as not found', async () => {
     const home = codexHome('xzcl-pages-');
     let endless = false;
     const server = await appServer(
@@ -186,7 +191,8 @@ describe('the shared Codex app-server link (#374)', () => {
     expect(server.methods().slice(before).filter((method) => method === 'thread/list')).toHaveLength(20);
   });
 
-  it('refuses a saved but unloaded thread — never resuming it into the server — and closes its own link', async () => {
+  // win32-skip(#963): Node cannot listen on a Unix socket path on Windows (listen EACCES), and the Codex app-server stand-in listens on one
+  it.skipIf(onWindows)('refuses a saved but unloaded thread — never resuming it into the server — and closes its own link', async () => {
     const home = codexHome('xzcl-stale-');
     const server = await appServer(home, answers(home, home, { 'thread/list': { threads: [{ id: 'thread-1', cwd: home }] }, 'thread/loaded/list': { data: [] } }));
     await expect(connectCodexLeader({ threadId: 'thread-1' }, home, home)).rejects.toThrow('not loaded');
@@ -195,13 +201,15 @@ describe('the shared Codex app-server link (#374)', () => {
     expect([...server.clients].every((client) => client.readyState !== WebSocket.OPEN)).toBe(true);
   });
 
-  it('rejects the obsolete object-shaped loaded-thread response instead of accepting a false positive', async () => {
+  // win32-skip(#963): Node cannot listen on a Unix socket path on Windows (listen EACCES), and the Codex app-server stand-in listens on one
+  it.skipIf(onWindows)('rejects the obsolete object-shaped loaded-thread response instead of accepting a false positive', async () => {
     const home = codexHome('xzcl-old-shape-');
     await appServer(home, answers(home, home, { 'thread/loaded/list': { data: [{ id: 'thread-1' }] } }));
     await expect(connectCodexLeader({ threadId: 'thread-1' }, home, home)).rejects.toThrow('not loaded');
   });
 
-  it('a wrong home fails closed: another home, no home, or a symlinked candidate the server does not name', async () => {
+  // win32-skip(#963): Node cannot listen on a Unix socket path on Windows (listen EACCES), and the Codex app-server stand-in listens on one
+  it.skipIf(onWindows)('a wrong home fails closed: another home, no home, or a symlinked candidate the server does not name', async () => {
     const home = codexHome('xzcl-home-');
     let named: unknown = join(home, '..');
     await appServer(home, answers(home, home, { initialize: () => (named === undefined ? {} : { codexHome: named }) }));
@@ -213,19 +221,21 @@ describe('the shared Codex app-server link (#374)', () => {
     // A candidate home whose control folder is a symlink to a real server's: the socket checks pass,
     // but the server names ITS home, not the candidate, so nothing is trusted.
     named = home;
-    const alias = realpathSync(mkdtempSync('/tmp/xzcl-alias-'));
+    const alias = realpathSync(mkdtempSync(join(shortTmpRoot(), 'xzcl-alias-')));
     dirs.push(alias);
     symlinkSync(join(home, 'app-server-control'), join(alias, 'app-server-control'));
     await expect(connectCodexLeader({ threadId: 'thread-1' }, home, alias)).rejects.toThrow('did not confirm the Codex home');
   });
 
-  it('rejects a server that resumes a different thread than the one announced', async () => {
+  // win32-skip(#963): Node cannot listen on a Unix socket path on Windows (listen EACCES), and the Codex app-server stand-in listens on one
+  it.skipIf(onWindows)('rejects a server that resumes a different thread than the one announced', async () => {
     const home = codexHome('xzcl-mismatch-');
     await appServer(home, answers(home, home, { 'thread/list': { data: [{ thread: { id: 'thread-1', cwd: home } }] }, 'thread/resume': { threadId: 'wrong-thread' } }));
     await expect(connectCodexLeader({ threadId: 'thread-1' }, home, home)).rejects.toThrow('different thread');
   });
 
-  it('seeds a prompt already open at attach and the turn running then, and refuses a resume that reports no state', async () => {
+  // win32-skip(#963): Node cannot listen on a Unix socket path on Windows (listen EACCES), and the Codex app-server stand-in listens on one
+  it.skipIf(onWindows)('seeds a prompt already open at attach and the turn running then, and refuses a resume that reports no state', async () => {
     const home = codexHome('xzcl-busy-');
     let status: unknown = { type: 'active', activeFlags: ['waitingOnApproval'] };
     await appServer(
@@ -245,7 +255,8 @@ describe('the shared Codex app-server link (#374)', () => {
     await expect(connectCodexLeader({ threadId: 'thread-1' }, home, home)).rejects.toThrow('did not report the thread’s state');
   });
 
-  it('a missing daemon, a missing home and a hang-up are refused with reasons that name no path', async () => {
+  // win32-skip(#963): Node cannot listen on a Unix socket path on Windows (listen EACCES), and the Codex app-server stand-in listens on one
+  it.skipIf(onWindows)('a missing daemon, a missing home and a hang-up are refused with reasons that name no path', async () => {
     const home = codexHome('xzcl-missing-');
     const noSocket = await connectCodexLeader({ threadId: 'thread-1' }, home, home).catch((err: Error) => err);
     expect(noSocket).toBeInstanceOf(Error);
@@ -260,7 +271,8 @@ describe('the shared Codex app-server link (#374)', () => {
     for (const err of [noSocket, noHome, noProject, hungUp]) expect((err as Error).message).not.toContain(home);
   });
 
-  it('a readonly Codex home still attaches: xezar reads it and writes nothing there', async () => {
+  // win32-skip(#963): Node cannot listen on a Unix socket path on Windows (listen EACCES), and the Codex app-server stand-in listens on one
+  it.skipIf(onWindows)('a readonly Codex home still attaches: xezar reads it and writes nothing there', async () => {
     const home = codexHome('xzcl-readonly-');
     await appServer(home);
     chmodSync(home, 0o500);
@@ -269,7 +281,8 @@ describe('the shared Codex app-server link (#374)', () => {
     expect(connected.threadId).toBe('thread-1');
   });
 
-  it('the daemon exiting mid-session fails what is pending and marks the link closed; bad frames close it too', async () => {
+  // win32-skip(#963): Node cannot listen on a Unix socket path on Windows (listen EACCES), and the Codex app-server stand-in listens on one
+  it.skipIf(onWindows)('the daemon exiting mid-session fails what is pending and marks the link closed; bad frames close it too', async () => {
     const home = codexHome('xzcl-exit-');
     const server = await appServer(home, answers(home, home, { 'thread/read': SILENT, 'thread/garbage': (_request: Request, client: WebSocket) => (client.send('not json'), SILENT) }));
     const first = await connectCodexLeader({ threadId: 'thread-1' }, home, home);
@@ -285,7 +298,8 @@ describe('the shared Codex app-server link (#374)', () => {
     expect(again.upgrades).toHaveLength(1);
   });
 
-  it('answers the server’s ping, so an idle link is not reaped', async () => {
+  // win32-skip(#963): Node cannot listen on a Unix socket path on Windows (listen EACCES), and the Codex app-server stand-in listens on one
+  it.skipIf(onWindows)('answers the server’s ping, so an idle link is not reaped', async () => {
     const home = codexHome('xzcl-ping-');
     const server = await appServer(home);
     const connected = await connectCodexLeader({ threadId: 'thread-1' }, home, home);
@@ -297,12 +311,13 @@ describe('the shared Codex app-server link (#374)', () => {
   });
 
   it('refuses a non-socket endpoint', () => {
-    const path = realpathSync(mkdtempSync('/tmp/xzcl-file-'));
+    const path = realpathSync(mkdtempSync(join(shortTmpRoot(), 'xzcl-file-')));
     dirs.push(path);
     expect(() => validateControlSocket(path)).toThrow('not a Unix socket');
   });
 
-  it('refuses a socket beneath a non-private directory before it dials', async () => {
+  // win32-skip(#963): Node cannot listen on a Unix socket path on Windows (listen EACCES), and the Codex app-server stand-in listens on one
+  it.skipIf(onWindows)('refuses a socket beneath a non-private directory before it dials', async () => {
     const home = codexHome('xzcl-private-');
     const server = await appServer(home);
     chmodSync(join(home, 'app-server-control'), 0o755);

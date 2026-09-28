@@ -3,6 +3,7 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:f
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { onWindows } from '../test/helpers/platform.ts';
 import {
   discoverSkills,
   lookupRunSkill,
@@ -26,7 +27,11 @@ import { projectStateLayout, setActiveStateLayout } from './state-layout.ts';
  * fall-through cases stay green, which is exactly what made the bug invisible.
  */
 
-const REAL_GIT = execFileSync('which', ['git'], { encoding: 'utf8' }).trim();
+// `which` under Git Bash answers an MSYS path (`/mingw64/bin/git`) Node cannot spawn; `where` answers
+// native paths, one per line (#963).
+const REAL_GIT = onWindows
+  ? execFileSync('where', ['git'], { encoding: 'utf8' }).split(/\r?\n/)[0]!.trim()
+  : execFileSync('which', ['git'], { encoding: 'utf8' }).trim();
 const GIT_ENV = {
   ...process.env,
   GIT_CONFIG_GLOBAL: '/dev/null',

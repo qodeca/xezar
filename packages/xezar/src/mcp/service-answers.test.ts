@@ -8,6 +8,7 @@ import { startMcpService } from './index.ts';
 import { IPC_PROTOCOL_VERSION, LineFramer, encodeFrame, type IpcResponse } from './ipc.ts';
 import { listenMcpSocket } from './service.ts';
 import { defineTool, errorResult, textResult, type McpTool } from './tool.ts';
+import { shortTmpRoot, onWindows } from '../../test/helpers/platform.ts';
 
 /**
  * The service's answers to frames the bridge never sends on its good path (#333): a frame that is
@@ -25,7 +26,7 @@ let project: { id: string; name: string; root: string };
 const closers: Array<() => void> = [];
 
 beforeEach(() => {
-  home = mkdtempSync('/tmp/xzs-');
+  home = mkdtempSync(join(shortTmpRoot(), 'xzs-'));
   env = { XEZ_HOME: home };
   project = { id: 'alpha', name: 'Alpha', root: join(home, 'alpha') };
   mkdirSync(project.root);
@@ -97,7 +98,8 @@ async function connect(opts: { tools?: readonly McpTool[]; ownership?: ProjectOw
   return { send, request };
 }
 
-describe('the MCP service answers what the bridge never sends (#333)', () => {
+// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – this opens the project MCP socket
+describe.skipIf(onWindows)('the MCP service answers what the bridge never sends (#333)', () => {
   it('refuses a frame that is JSON but not a request, with bad-frame', async () => {
     const c = await connect();
     const answer = await c.send(encodeFrame({ hello: 'there' }), null);
@@ -187,7 +189,8 @@ describe('startMcpService, for a project the registry does not know (#333)', () 
  * #450 — `session/open` answers whether xezar can push to this session's client, carries what the
  * bridge registered onto the transport, and every tool call runs with ITS connection's session key.
  */
-describe('session/open push capability and the session key in the tool context (#450)', () => {
+// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – this opens the project MCP socket
+describe.skipIf(onWindows)('session/open push capability and the session key in the tool context (#450)', () => {
   async function twoConnections(opts: { sessions?: Parameters<typeof listenMcpSocket>[0]['sessions']; tools?: readonly McpTool[] }) {
     const handle = await listenMcpSocket({ project, version: '1.2.3', tools: opts.tools ?? [write, read], env, ...(opts.sessions ? { sessions: opts.sessions } : {}) });
     closers.push(() => handle.close());

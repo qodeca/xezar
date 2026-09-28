@@ -14,6 +14,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { onWindows } from '../../test/helpers/platform.ts';
 import { acquireFileLock } from '../core/file-lock.ts';
 import { projectStateLayout, setActiveStateLayout } from '../state-layout.ts';
 import { workspaceConfigLockPath } from './config-lock.ts';
@@ -194,7 +195,8 @@ describe('project machine state (#649)', () => {
     });
   }, 30_000);
 
-  it('named break `silent-failed-write`: a failed registration write warns once and never fails the boot', async () => {
+  // win32-skip(#963): Windows ignores POSIX mode bits, so a chmod'd read-only directory stays writable
+  it.skipIf(onWindows)('named break `silent-failed-write`: a failed registration write warns once and never fails the boot', async () => {
     const dataDir = join(root, '.local', 'xezar');
     mkdirSync(dataDir, { recursive: true });
     // Not reachable as root, which can write a read-only directory anyway.

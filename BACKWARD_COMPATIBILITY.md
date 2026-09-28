@@ -53,7 +53,7 @@ change.
 
 ## 7. The npm package
 
-`@qodeca/xezar`: its name, its `xezar` and `xez` bins, the supported Node range (20 and later), and
+`@qodeca/xezar`: its name, its `xezar` and `xez` bins, the supported Node range (22 and later), and
 that the built cockpit ships inside it. Nothing publishes automatically (`docs/publishing.md`).
 
 ## 8. Deprecation
@@ -75,3 +75,9 @@ Each entry names the release, the surface it breaks, the symptom a user sees and
   (the 3.0.3 install record) now reads as set up, with no setup or re-check offer, even when the
   onboarding ran outside the cockpit. *Way forward:* set the project up with the 3.0.3 onboarding;
   its install record is `.xezar/onboarding.json`.
+- **0.20.0 – Node.js 22 is the minimum** (§7). `engines.node` in `@qodeca/xezar` moves from
+  `>=20` to `>=22`; Node 20 reached end of life upstream on 2026-04-30 and is no longer tested.
+  *Symptom:* installing on Node 20 prints npm's `EBADENGINE` warning, or fails where
+  `engine-strict` is set; a problem that appears only on Node 20 is not fixed. *Way forward:*
+  upgrade to Node.js 22 or the current LTS. The owner waived the §8 deprecation notice for
+  this change (#963).

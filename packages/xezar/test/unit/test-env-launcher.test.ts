@@ -5,6 +5,9 @@ import { tmpdir } from 'node:os';
 import { createServer } from 'node:net';
 import { join, relative, resolve } from 'node:path';
 import { afterEach, test } from 'node:test';
+import { onWindows } from '../helpers/platform.ts';
+/** The launcher under test is POSIX shell (test-env-up.sh / test-env-down.sh run by /bin/sh). */
+const NO_SH = onWindows ? 'win32-skip(#963): spawn /bin/sh fails ENOENT – the test-env launcher is a POSIX shell script' : false;
 
 // The scripts under test are the REPO's, not this package's: test-env tooling spans every
 // workspace, so it stays at the root.
@@ -197,7 +200,7 @@ async function freePort(): Promise<number> {
  *
  * This pins it deterministically by manufacturing the exact timing rather than racing for it.
  */
-test('reuses an instance whose sources were last touched inside the boot second', { timeout: 60_000 }, async () => {
+test('reuses an instance whose sources were last touched inside the boot second', { timeout: 60_000, skip: NO_SH }, async () => {
   const fixture = makeFixture(hasSetsid);
   const env = { ...process.env, PATH: fixture.path, TEST_ENV_CACHE_TTL_SECONDS: '600' };
   const up = join(fixture.root, 'scripts/test-env-up.sh');
@@ -241,7 +244,7 @@ test('reuses an instance whose sources were last touched inside the boot second'
  * differs, so an instance booted under the other condition must not be reused. Nothing else in the
  * reuse check notices: `.xezar/` is not a build input and the pins are equal.
  */
-test('never reuses an instance across a change in the repository single-project marker', { timeout: 60_000 }, async () => {
+test('never reuses an instance across a change in the repository single-project marker', { timeout: 60_000, skip: NO_SH }, async () => {
   const fixture = makeFixture(hasSetsid);
   const env = { ...process.env, PATH: fixture.path, TEST_ENV_CACHE_TTL_SECONDS: '600' };
   const up = join(fixture.root, 'scripts/test-env-up.sh');
@@ -297,7 +300,7 @@ test('never reuses an instance across a change in the repository single-project 
  * then falls back to the next port the way the real app does and prints the port it holds. The
  * descriptor must name THAT port and it must answer.
  */
-test('reports the port the app really holds when the probed port is taken at bind time', { timeout: 60_000 }, async () => {
+test('reports the port the app really holds when the probed port is taken at bind time', { timeout: 60_000, skip: NO_SH }, async () => {
   // BREAK-671-ENV-PORT. The app's emitted boot URL is the deterministic signal; neither a
   // released availability probe nor the last unrelated log line containing “cockpit” owns it.
   const fixture = makeFixture(hasSetsid);
@@ -341,7 +344,7 @@ test('reports the port the app really holds when the probed port is taken at bin
  * untouched (the marker is byte-identical and nothing in the repository root appeared, moved or
  * vanished).
  */
-test('boots the marker-carrying repository in the global layout by asking for it, touching nothing', { timeout: 60_000 }, async () => {
+test('boots the marker-carrying repository in the global layout by asking for it, touching nothing', { timeout: 60_000, skip: NO_SH }, async () => {
   const fixture = makeFixture(hasSetsid);
   const env = { ...process.env, PATH: fixture.path, TEST_ENV_CACHE_TTL_SECONDS: '600' };
   const up = join(fixture.root, 'scripts/test-env-up.sh');
@@ -398,7 +401,7 @@ test('boots the marker-carrying repository in the global layout by asking for it
  * stub app holds its listener back (`XEZ_TEST_BOOT_DELAY_MS`) and names its own pid immediately, so
  * the launcher is still waiting on health, inside its boot, when it dies.
  */
-test('a launcher killed mid-boot leaves the repository untouched', { timeout: 60_000 }, async () => {
+test('a launcher killed mid-boot leaves the repository untouched', { timeout: 60_000, skip: NO_SH }, async () => {
   const fixture = makeFixture(hasSetsid);
   const env = {
     ...process.env,
@@ -432,7 +435,7 @@ test('a launcher killed mid-boot leaves the repository untouched', { timeout: 60
   }
 });
 
-test('launcher strips inherited task-control variables before starting the shared server', { timeout: 60_000 }, async () => {
+test('launcher strips inherited task-control variables before starting the shared server', { timeout: 60_000, skip: NO_SH }, async () => {
   const fixture = makeFixture(hasSetsid);
   const env = {
     ...process.env,
@@ -461,7 +464,7 @@ test('launcher strips inherited task-control variables before starting the share
 for (const withSetsid of [true, false]) {
   test(
     `generated launcher survives its caller and stops by descriptor PID (${withSetsid ? 'setsid' : 'nohup fallback'})`,
-    { skip: withSetsid && !hasSetsid ? 'setsid is not available on this platform' : false },
+    { skip: NO_SH || (withSetsid && !hasSetsid ? 'setsid is not available on this platform' : false) },
     async () => {
       const fixture = makeFixture(withSetsid);
       const env = { ...process.env, PATH: fixture.path, TEST_ENV_CACHE_TTL_SECONDS: '600' };

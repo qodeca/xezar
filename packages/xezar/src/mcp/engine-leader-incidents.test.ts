@@ -10,7 +10,7 @@ import { COMPLETION_VARIANTS, checkFailureWorkflow, order, providerClock, repair
 import type { RunStore } from '../runs/store.ts';
 import { createApp } from '../server/server.ts';
 import { connectedProviderAuth } from '../server/provider-auth.testkit.ts';
-import { DELIVERY_CLIENTS, deliveryHarness } from './leader-delivery.testkit.ts';
+import { DELIVERY_CLIENTS, deliveryHarness, deliveryPeerUnavailable } from './leader-delivery.testkit.ts';
 import { withEventOrigin } from './event-catalog.ts';
 import { executionControlTool } from './tools/execution-control.ts';
 import { taskReadsTool } from './tools/task-reads.ts';
@@ -94,7 +94,8 @@ async function settle(store: RunStore, id: string): Promise<void> {
   await untilStoreChanges(store, () => runSettled(store, id));
 }
 
-for (const client of DELIVERY_CLIENTS) describe(`engine incidents → ${client}`, () => {
+// win32-skip(#963): claude-code, codex and pi peers listen on a Unix socket path (the xezar MCP service, Codex's control socket, pi's leader socket) – listen EACCES / "not supported on Windows yet" (ipc.ts); opencode (HTTP) still runs
+for (const client of DELIVERY_CLIENTS) describe.skipIf(deliveryPeerUnavailable(client))(`engine incidents → ${client}`, () => {
   it.each([false, true])('G7 last-line control streamed=%s delivers one completion without a second turn', async streamed => {
     const h = await deliveryHarness(client); cleanup.push(h.close);
     const runner = scriptedRunner([streamed ? { streamed: true, chunks: ['XEZ:', 'DO', 'NE'] } : {}]); cleanup.push(runner.restore);

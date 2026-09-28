@@ -4,6 +4,7 @@ import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { onWindows } from '../../test/helpers/platform.ts';
 import { assertXezarHomeWriteIsSandboxed, workspaceConfigPath } from '../paths.ts';
 import { atomicWriteJsonSync, loadWorkspaceConfig, mergeWriteWorkspaceConfig } from './config.ts';
 
@@ -19,6 +20,7 @@ import { atomicWriteJsonSync, loadWorkspaceConfig, mergeWriteWorkspaceConfig } f
 describe('xezar home write safety', () => {
   const originalXezHome = process.env.XEZ_HOME;
   const originalHome = process.env.HOME;
+  const originalUserProfile = process.env.USERPROFILE;
   let pinned: string;
   let elsewhere: string;
   let fakeUserHome: string;
@@ -36,6 +38,10 @@ describe('xezar home write safety', () => {
     else process.env.XEZ_HOME = originalXezHome;
     if (originalHome === undefined) delete process.env.HOME;
     else process.env.HOME = originalHome;
+    if (onWindows) {
+      if (originalUserProfile === undefined) delete process.env.USERPROFILE;
+      else process.env.USERPROFILE = originalUserProfile;
+    }
     for (const dir of [pinned, elsewhere, fakeUserHome]) rmSync(dir, { recursive: true, force: true });
   });
 
@@ -77,6 +83,8 @@ describe('xezar home write safety', () => {
 
   it('refuses a write into the real xezar home while running under vitest', () => {
     process.env.HOME = fakeUserHome;
+    // os.homedir() reads USERPROFILE, not HOME, on Windows (#963).
+    if (onWindows) process.env.USERPROFILE = fakeUserHome;
     delete process.env.XEZ_HOME;
     const target = workspaceConfigPath();
 
@@ -87,6 +95,8 @@ describe('xezar home write safety', () => {
 
   it('leaves an existing real-home registry byte-for-byte intact when a leaked write is refused', () => {
     process.env.HOME = fakeUserHome;
+    // os.homedir() reads USERPROFILE, not HOME, on Windows (#963).
+    if (onWindows) process.env.USERPROFILE = fakeUserHome;
     delete process.env.XEZ_HOME;
     const target = workspaceConfigPath();
     const existing = '{"projects":[{"id":"real","root":"/repos/real"}]}\n';
@@ -124,6 +134,8 @@ describe('xezar home write safety', () => {
     const env: NodeJS.ProcessEnv = {
       ...process.env,
       HOME: fakeUserHome,
+      // os.homedir() reads USERPROFILE, not HOME, on Windows (#963).
+      ...(onWindows ? { USERPROFILE: fakeUserHome } : {}),
       GITHUB_ACTIONS: 'true',
       GITHUB_STEP_SUMMARY: summary,
     };
@@ -133,11 +145,12 @@ describe('xezar home write safety', () => {
     delete env.GITHUB_ACTIONS;
     delete env.GITHUB_STEP_SUMMARY;
 
-    const run = spawnSync(
-      vitestBin,
-      ['run', 'src/workspace/projects-cli.test.ts', '--testTimeout=15', '-t', 'remove'],
-      { cwd: packageRoot, env, encoding: 'utf8' },
-    );
+    // `.bin/vitest` is a shell shim Windows cannot spawn without a shell; run vitest's own entry
+    // through node there instead (#963).
+    const vitestArgs = ['run', 'src/workspace/projects-cli.test.ts', '--testTimeout=15', '-t', 'remove'];
+    const run = onWindows
+      ? spawnSync(process.execPath, [join(packageRoot, '..', '..', 'node_modules', 'vitest', 'vitest.mjs'), ...vitestArgs], { cwd: packageRoot, env, encoding: 'utf8' })
+      : spawnSync(vitestBin, vitestArgs, { cwd: packageRoot, env, encoding: 'utf8' });
 
     // The nested suite is EXPECTED to fail — 15ms cannot finish a `git init`.
     // What matters is what it left behind outside its sandbox.
@@ -148,6 +161,8 @@ describe('xezar home write safety', () => {
 
   it('allows writes outside the real xezar home, and is inert outside vitest', () => {
     process.env.HOME = fakeUserHome;
+    // os.homedir() reads USERPROFILE, not HOME, on Windows (#963).
+    if (onWindows) process.env.USERPROFILE = fakeUserHome;
     const sandboxed = join(pinned, 'config.json');
 
     expect(() => assertXezarHomeWriteIsSandboxed(sandboxed)).not.toThrow();

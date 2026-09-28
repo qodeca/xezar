@@ -3,6 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { onWindows } from '../../test/helpers/platform.ts';
 import { AutomationStore } from './store.ts';
 
 const dirs: string[] = [];
@@ -41,9 +42,12 @@ describe('AutomationStore', () => {
     const persisted = JSON.parse(readFileSync(path, 'utf8'));
     expect(persisted.future).toEqual({ kept: true });
     expect(persisted.automations[0].futureDefinition).toBe(true);
-    expect((await import('node:fs/promises')).stat(path).then((stat) => stat.mode & 0o777)).resolves.toBe(
-      0o600,
-    );
+    // win32-skip(#963): Windows ignores POSIX mode bits
+    if (!onWindows) {
+      expect((await import('node:fs/promises')).stat(path).then((stat) => stat.mode & 0o777)).resolves.toBe(
+        0o600,
+      );
+    }
   });
 
   it('salvages valid entries and malformed NDJSON rows with one warning per file', async () => {

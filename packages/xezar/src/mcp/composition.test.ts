@@ -24,6 +24,7 @@ import { resolveMcpTarget, startMcpService } from './index.ts';
 import { LineFramer, encodeFrame, type McpToolResult } from './ipc.ts';
 import { runVersion } from './stale-write.ts';
 import { tools } from './tools/index.ts';
+import { shortTmpRoot, onWindows } from '../../test/helpers/platform.ts';
 
 /**
  * #243 — the composed MCP service, driven the way a coding agent meets it: the real `runBridge`
@@ -40,7 +41,7 @@ const saved = { home: process.env.XEZ_HOME, dryRun: process.env.XEZ_DRY_RUN };
 // A short home under /tmp, never the per-worker sandbox: the sandbox sits under the task's
 // TMPDIR, which is already past the 104-byte socket limit on macOS (D-01 E5, § 9.5).
 const tmp = (prefix: string): string => {
-  const dir = realpathSync(mkdtempSync(`/tmp/${prefix}`));
+  const dir = realpathSync(mkdtempSync(join(shortTmpRoot(), prefix)));
   tempDirs.push(dir);
   return dir;
 };
@@ -145,7 +146,8 @@ const journalRows = (dataDir: string): McpJournalRow[] => {
 /** The E-01–E-03 rows a settled task can end in (done, review, waiting with or without a question). */
 const SETTLED_KINDS = ['task.done', 'result.ready', 'task.blocked', 'question.asked'];
 
-describe('the composed MCP service, through the real bridge and socket', () => {
+// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – this opens the project MCP socket
+describe.skipIf(onWindows)('the composed MCP service, through the real bridge and socket', () => {
   it('starts a task through the cockpit services, takes it through its lifecycle, and records the operation', async () => {
     const c = await cockpit();
     const handle = await startMcpService({ projectId: c.id, version: VERSION, service: c.app, store: c.store });
@@ -464,7 +466,8 @@ describe('the composed MCP service, through the real bridge and socket', () => {
 });
 
 describe('N-07: composition can never break ordinary startup', () => {
-  it('releases every part it composed when the socket cannot open', async () => {
+  // win32-skip(#963): provokes the socket-path length limit, which Windows never reaches: the MCP socket is unavailable there (ipc.ts), so the "too long" error cannot occur
+  it.skipIf(onWindows)('releases every part it composed when the socket cannot open', async () => {
     const c = await cockpit();
     // Past the local-socket length limit: the socket half throws after the journal and receipts opened.
     const longHome = join(tmp('xzl-'), 'h'.repeat(120));
@@ -478,7 +481,8 @@ describe('N-07: composition can never break ordinary startup', () => {
     handle.close();
   });
 
-  it('`xezar serve` still boots and answers /api/v1/health when the MCP composition throws', async () => {
+  // win32-skip(#963): provokes the socket-path length limit, which Windows never reaches: the MCP socket is unavailable there (ipc.ts), so the "too long" error cannot occur
+  it.skipIf(onWindows)('`xezar serve` still boots and answers /api/v1/health when the MCP composition throws', async () => {
     const repo = tmp('xzr-');
     // Registry and cockpit work under this home; only the MCP socket path is too long for it.
     const home = join(tmp('xzc-'), 'h'.repeat(120));

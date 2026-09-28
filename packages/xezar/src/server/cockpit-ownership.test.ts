@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileS
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { FILE_SYMLINKS } from '../../test/helpers/platform.ts';
 
 import { PROJECT_A, PROJECT_B, createAbWorld, nowhereId, type AbWorld } from '../../test/helpers/ab-fixture.ts';
 import { branchFor, worktreePathFor } from '../git-worktree.ts';
@@ -46,7 +47,8 @@ function namesNothingOfB(w: AbWorld, body: string): void {
   }
 }
 
-describe.skipIf(process.platform === 'win32')('cockpit routes and another project’s resources (#288)', { timeout: 120_000 }, () => {
+// win32-skip(#963): the A/B fixture (test/helpers/ab-fixture.ts) plants a file symlink; skipped only on a Windows host without Developer Mode or elevation (EPERM) – FILE_SYMLINKS is always true on POSIX
+describe.skipIf(!FILE_SYMLINKS)('cockpit routes and another project’s resources (#288)', { timeout: 120_000 }, () => {
   let world: AbWorld | undefined;
   beforeEach(async () => {
     world = await createAbWorld({ sockets: false, hostile: true, automations: true });
@@ -165,7 +167,8 @@ describe.skipIf(process.platform === 'win32')('cockpit routes and another projec
  * byte) and the CONTROL (A's own finished task still gets the real effect). The controls pass
  * with and without the fix; the regressions fail without it.
  */
-describe.skipIf(process.platform === 'win32')('run routes and a record that names another project’s worktree (#316)', { timeout: 120_000 }, () => {
+// win32-skip(#963): the A/B fixture (test/helpers/ab-fixture.ts) plants a file symlink; skipped only on a Windows host without Developer Mode or elevation (EPERM) – FILE_SYMLINKS is always true on POSIX
+describe.skipIf(!FILE_SYMLINKS)('run routes and a record that names another project’s worktree (#316)', { timeout: 120_000 }, () => {
   let world: AbWorld | undefined;
   let bare: string | undefined;
   beforeEach(async () => {

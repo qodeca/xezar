@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { test } from 'node:test';
 
 const root = fileURLToPath(new URL('../../../../docs/assets/readme/', import.meta.url));
@@ -25,7 +25,7 @@ test('README SVGs remain small, self-contained vector images (#448)', () => {
     assert.doesNotMatch(svg, /(?:\b(?:xlink:)?href\s*=\s*["'](?!#)|url\(\s*["']?(?!#)[^\s])/i, `${file}: external references are forbidden`);
     assert.match(svg, /role="img"/);
     assert.match(svg, /<title\b/);
-    const dimensions = file.includes(`${join('icons', '')}/`) ? [48, 48]
+    const dimensions = file.includes(`${join('icons', '')}${sep}`) ? [48, 48]
       : file.includes('hero-') ? [1280, 400]
       : file.includes('architecture-') ? [1200, 640] : [1200, 360];
     assert.ok(svg.includes(`viewBox="0 0 ${dimensions.join(' ')}"`), `${file}: unexpected canvas`);

@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { auditActionRecordSchema, auditCliCommandSchema, type AuditActionRecord } from '@qodeca/xezar-contract';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { onWindows } from '../test/helpers/platform.ts';
 import { cliAudit, CLI_AUDIT_ACTIONS, invocationScope, PROJECTS_SUBCOMMANDS, type CliCommandId } from './cli-audit.ts';
 import { AUDIT_TRAIL_FILE } from './mcp/audit-trail.ts';
 import { projectDataDir } from './project-data-paths.ts';
@@ -168,7 +169,10 @@ describe('the cli audit door (#306 part 2)', () => {
   it('$HOME itself warns once instead of staying silent (R1)', async () => {
     const home = temp('xez-cli-audit-home-excluded-');
     const savedHomeEnv = process.env.HOME;
+    const savedUserProfile = process.env.USERPROFILE;
     process.env.HOME = home;
+    // os.homedir() reads USERPROFILE, not HOME, on Windows (#963).
+    if (onWindows) process.env.USERPROFILE = home;
     try {
       const warnings: string[] = [];
       const audit = cliAudit('projects.list', home, { warn: (m) => warnings.push(m) });
@@ -178,6 +182,10 @@ describe('the cli audit door (#306 part 2)', () => {
     } finally {
       if (savedHomeEnv === undefined) delete process.env.HOME;
       else process.env.HOME = savedHomeEnv;
+      if (onWindows) {
+        if (savedUserProfile === undefined) delete process.env.USERPROFILE;
+        else process.env.USERPROFILE = savedUserProfile;
+      }
     }
   });
 

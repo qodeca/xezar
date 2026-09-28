@@ -18,6 +18,7 @@ import { resolveMcpTarget, startMcpService } from './index.ts';
 import { LineFramer, encodeFrame, mcpSocketLocation, type McpToolResult } from './ipc.ts';
 import { followProjectDoors, type ProjectDoorContexts, type ProjectDoorHandle } from './project-doors.ts';
 import { tools } from './tools/index.ts';
+import { shortTmpRoot, onWindows } from '../../test/helpers/platform.ts';
 
 /**
  * #557 — a project registered into a running cockpit gets the same MCP door the boot project has:
@@ -301,7 +302,7 @@ const saved = { home: process.env.XEZ_HOME, dryRun: process.env.XEZ_DRY_RUN };
 
 // Short paths under /tmp: the per-worker sandbox is past the 104-byte socket limit on macOS.
 const tmp = (prefix: string): string => {
-  const dir = realpathSync(mkdtempSync(`/tmp/${prefix}`));
+  const dir = realpathSync(mkdtempSync(join(shortTmpRoot(), prefix)));
   tempDirs.push(dir);
   return dir;
 };
@@ -357,7 +358,8 @@ async function until(what: string, probe: () => Promise<boolean>, ms = 15_000): 
 }
 
 describe('a project registered into a running cockpit (#557)', () => {
-  it('gets its own MCP door once built, loses it on removal, and leaves the boot door alone', async () => {
+  // win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – this opens the project MCP socket
+  it.skipIf(onWindows)('gets its own MCP door once built, loses it on removal, and leaves the boot door alone', async () => {
     const bootRoot = project();
     const { id: bootId } = await registerProject(bootRoot);
     const semaphore = new WorkspaceSemaphore({ initial: { maxParallel: 2 }, load: async () => ({ maxParallel: 2, memoryLimitMb: null }) });

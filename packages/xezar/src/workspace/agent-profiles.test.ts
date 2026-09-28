@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { agentAccountsPath } from '../paths.ts';
 import { PROVIDER_IDS } from '../core/provider-auth.ts';
@@ -54,9 +54,9 @@ describe('agent profile resolution', () => {
 
   describe('defaultAgentProfile', () => {
     it('is whatever agentHomePaths discovers, per provider', () => {
-      expect(defaultAgentProfile('claude', env).path).toBe('/home/u/.claude');
-      expect(defaultAgentProfile('codex', env).path).toBe('/home/u/.codex');
-      expect(defaultAgentProfile('opencode', env).path).toBe('/home/u/.config/opencode');
+      expect(defaultAgentProfile('claude', env).path).toBe(join('/home/u', '.claude'));
+      expect(defaultAgentProfile('codex', env).path).toBe(join('/home/u', '.codex'));
+      expect(defaultAgentProfile('opencode', env).path).toBe(join('/home/u', '.config', 'opencode'));
     });
 
     // #329, and the site that flipping `PROFILE_ENV_VAR.pi` alone would have left broken. The
@@ -65,7 +65,7 @@ describe('agent profile resolution', () => {
     // PROVIDER_IDS, reported `~/.claude` as pi's home. It was wrong before pi could carry
     // accounts at all; it would have become a wrong-account run once it could.
     it('resolves pi to its OWN home, never Claude’s', () => {
-      expect(defaultAgentProfile('pi', env).path).toBe('/home/u/.pi/agent');
+      expect(defaultAgentProfile('pi', env).path).toBe(join('/home/u', '.pi', 'agent'));
       expect(defaultAgentProfile('pi', env).path).not.toBe(defaultAgentProfile('claude', env).path);
     });
 
@@ -148,7 +148,7 @@ describe('agent profile resolution', () => {
       write({ accounts: [klaudiuszProfile] });
       const [, stored] = profilesForProvider(await loadAgentAccounts(), 'claude', env);
       expect(stored?.configDir).toBe('~/.claude-klaudiusz');
-      expect(stored?.path.endsWith('/.claude-klaudiusz')).toBe(true);
+      expect(stored?.path.endsWith(`${sep}.claude-klaudiusz`)).toBe(true);
       expect(stored?.path.startsWith('~')).toBe(false);
     });
   });

@@ -11,6 +11,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { onWindows } from '../../test/helpers/platform.ts';
 
 import {
   AgentTempDirError,
@@ -79,7 +80,8 @@ describe('agentTmpEnv — per-run temp directory (#785)', () => {
   // The failure this exists for is a directory that exists and accepts an inode but
   // rejects the write (`EDQUOT`). A read-only directory is the portable stand-in —
   // skipped under root, which ignores the mode bits.
-  it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+  // win32-skip(#963): Windows ignores POSIX mode bits, so a chmod'd read-only directory stays writable
+  it.skipIf(onWindows || process.getuid?.() === 0)(
     'fails when the directory exists but rejects writes',
     () => {
       const dir = agentTmpDir(dataDir, 'run-d');

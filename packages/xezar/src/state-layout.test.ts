@@ -2,6 +2,7 @@ import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathS
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { onWindows } from '../test/helpers/platform.ts';
 import {
   activeStateLayout,
   assertProjectStateUsable,
@@ -239,7 +240,7 @@ describe('the active layout drives every state path (DC-1)', () => {
 
   it('starts global, so a process that never sets it behaves exactly as before', () => {
     expect(activeStateLayout({ XEZ_HOME: '/tmp/pinned' }).mode).toBe('global');
-    expect(workspaceConfigPath({ XEZ_HOME: '/tmp/pinned' })).toBe('/tmp/pinned/config.json');
+    expect(workspaceConfigPath({ XEZ_HOME: '/tmp/pinned' })).toBe(join('/tmp/pinned', 'config.json'));
   });
 
   it('redirects the three workspace state files once a project layout is installed', () => {
@@ -264,8 +265,8 @@ describe('the active layout drives every state path (DC-1)', () => {
     setActiveStateLayout(resolveStateLayout(project, ['--single-project'], {}));
     setActiveStateLayout(resolveStateLayout(project, [], {}));
 
-    expect(workspaceConfigPath({ XEZ_HOME: '/tmp/a' })).toBe('/tmp/a/config.json');
-    expect(workspaceConfigPath({ XEZ_HOME: '/tmp/b' })).toBe('/tmp/b/config.json');
+    expect(workspaceConfigPath({ XEZ_HOME: '/tmp/a' })).toBe(join('/tmp/a', 'config.json'));
+    expect(workspaceConfigPath({ XEZ_HOME: '/tmp/b' })).toBe(join('/tmp/b', 'config.json'));
   });
 });
 
@@ -387,7 +388,8 @@ describe('assertProjectStateUsable (#600 Q1)', () => {
     expect(() => assertProjectStateUsable(layout)).toThrow(/is not a JSON object/);
   });
 
-  it('refuses an unwritable state directory', () => {
+  // win32-skip(#963): Windows ignores POSIX mode bits, so a chmod'd read-only directory stays writable
+  it.skipIf(onWindows)('refuses an unwritable state directory', () => {
     const layout = layoutFor();
     mkdirSync(layout.root, { recursive: true });
     writeFileSync(layout.workspacePath, '{}', 'utf8');

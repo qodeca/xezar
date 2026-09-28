@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
+import { onWindows } from '../../test/helpers/platform.ts';
 import type { AgentEvent } from './agent-runner.ts';
 import { isSignalTerminationExit, prependSystemPrompt } from './agent-runner.ts';
 import {
@@ -238,7 +239,7 @@ describe('a teardown xezar initiated', () => {
  * that handles and ignores SIGTERM alive, with `session.result` waiting for it.
  */
 describe('wall-clock timeout for a real Claude child that ignores SIGTERM', () => {
-  it.skipIf(process.platform === 'win32')(
+  it(
     'keeps the SIGKILL escalation armed until the child exits',
     async () => {
       const stubBin = fileURLToPath(
@@ -257,6 +258,7 @@ describe('wall-clock timeout for a real Claude child that ignores SIGTERM', () =
       const startedAt = Date.now();
 
       try {
+        // win32-r9(#963): spawn EFTYPE – the runner spawns the .mjs stub directly, which Windows cannot execute
         const result = await Promise.race([
           session.result,
           new Promise<never>((_, reject) =>
@@ -264,7 +266,8 @@ describe('wall-clock timeout for a real Claude child that ignores SIGTERM', () =
           ),
         ]);
 
-        expect(Date.now() - startedAt).toBeGreaterThanOrEqual(KILL_GRACE_MS - 500);
+        // win32-skip(#963): Windows has no catchable SIGTERM, so there is no SIGKILL escalation to wait for
+        if (!onWindows) expect(Date.now() - startedAt).toBeGreaterThanOrEqual(KILL_GRACE_MS - 500);
         expect(result.text).toBe('work done');
         expect(events).toContainEqual({
           type: 'error',

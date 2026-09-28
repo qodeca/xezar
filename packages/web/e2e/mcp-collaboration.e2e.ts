@@ -227,6 +227,7 @@ afterAll(async () => {
   await removeDataRoot(dataRoot)
 })
 
+// win32-skip(#963): xezar MCP bridge is not supported on Windows yet (mcp/ipc.ts answers unavailable on win32).
 describe.skipIf(onWindows)('MCP collaboration — the human’s cockpit and the leader on one project (A-08)', () => {
   it('B-01 (A-08, A-05) [I-001 I-015 I-018] a task the leader creates, and then renames, appears and renames live in the open cockpit, with no reload', async () => {
     const started = await leader!.tool('task_create', {

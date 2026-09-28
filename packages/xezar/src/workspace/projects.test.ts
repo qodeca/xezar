@@ -1,8 +1,9 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { linkDir } from '../../test/helpers/platform.ts';
 import { PROJECT_TAGS_MAX, PROJECT_TAG_MAX_LENGTH } from '@qodeca/xezar-contract';
 import { projectStateLayout, setActiveStateLayout } from '../state-layout.ts';
 import { loadWorkspaceConfig, mergeWriteWorkspaceConfig } from './config.ts';
@@ -85,7 +86,7 @@ describe('workspace projects', () => {
     it('dedupes a symlinked path to the realpath entry', async () => {
       const root = makeDir('real-repo');
       const link = join(repos, 'linked-repo');
-      symlinkSync(root, link);
+      linkDir(root, link);
       const first = await registerProject(root);
       const viaLink = await registerProject(link);
       expect(viaLink.id).toBe(first.id);

@@ -12,6 +12,7 @@ import { runBridge } from './bridge.ts';
 import { resolveMcpTarget, startMcpService } from './index.ts';
 import { LineFramer, encodeFrame, type McpToolResult } from './ipc.ts';
 import { tools } from './tools/index.ts';
+import { onWindows } from '../../test/helpers/platform.ts';
 
 /**
  * #819 item 5 — a client session started BEFORE the engine recovers by itself, with no `/mcp`
@@ -132,7 +133,8 @@ function openBridge(root: string, argv?: readonly string[]) {
 
 const text = (result: McpToolResult): string => result.content.map((part) => part.text).join('\n');
 
-describe('the bridge follows the folder\'s state layout on each session open (#819 item 5)', () => {
+// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – every test here starts the project MCP service on its socket
+describe.skipIf(onWindows)('the bridge follows the folder\'s state layout on each session open (#819 item 5)', () => {
   it('T5.1: a bridge started before workspace.json exists reaches the single-project engine on the next call, no restart', async () => {
     const root = tmp('xzlf-p-');
     const bridge = openBridge(root);

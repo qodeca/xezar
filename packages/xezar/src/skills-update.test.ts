@@ -2,6 +2,7 @@ import { chmod, mkdtemp, mkdir, readFile, readdir, writeFile } from 'node:fs/pro
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { onWindows } from '../test/helpers/platform.ts';
 import { isXezarSkillsSource, SkillsUpdateConflictError, SkillsUpdateCoordinator, SkillsUpdateService } from './skills-update.ts';
 
 const oldDryRun = process.env.XEZ_DRY_RUN;
@@ -185,7 +186,8 @@ describe('SkillsUpdateService', () => {
     await expect(readdir(join(home, '.agents'))).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
-  it('keeps checking the project scope when the machine-global mirror cannot hold a lock', async () => {
+  // win32-skip(#963): Windows ignores POSIX mode bits, so a chmod'd read-only directory stays writable
+  it.skipIf(onWindows)('keeps checking the project scope when the machine-global mirror cannot hold a lock', async () => {
     const lock = { skills: { alpha: { source: 'qodeca/xezar-skills' } } };
     const { home, repo } = await fixture(lock, lock);
     await chmod(join(home, '.agents'), 0o555);

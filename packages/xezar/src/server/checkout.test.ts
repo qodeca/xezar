@@ -6,13 +6,13 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
-  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { linkDir, onWindows } from '../../test/helpers/platform.ts';
 import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { mergeWriteWorkspaceConfig } from '../workspace/config.ts';
@@ -138,8 +138,8 @@ describe('checkout — the cleanup guard', () => {
     writeFileSync(join(insideVictim, 'precious.txt'), 'keep me', 'utf8');
     const linkOut = join(root, 'repo');
     const linkIn = join(root, 'repo2');
-    symlinkSync(victim, linkOut);
-    symlinkSync(insideVictim, linkIn);
+    linkDir(victim, linkOut);
+    linkDir(insideVictim, linkIn);
     try {
       expect(await cleanupCheckout(root, linkOut)).toBe(false);
       expect(await cleanupCheckout(root, linkIn)).toBe(false);
@@ -152,7 +152,8 @@ describe('checkout — the cleanup guard', () => {
 
   // `chmod` is advisory for root, so this case cannot be produced in a root container. Skipping
   // is honest: the branch it covers is "the rm failed", and root cannot make an rm fail.
-  it.skipIf(process.getuid?.() === 0)('REFUSES to report success when the rm itself fails', async () => {
+  // win32-skip(#963): Windows ignores POSIX mode bits, so a chmod'd read-only directory stays writable
+  it.skipIf(onWindows || process.getuid?.() === 0)('REFUSES to report success when the rm itself fails', async () => {
     const target = join(root, 'repo');
     mkdirSync(join(target, 'objects'), { recursive: true });
     chmodSync(root, 0o555);
@@ -327,7 +328,8 @@ describe('checkoutRepo — clone, failure cleanup, existing target', () => {
   });
 
   // See the cleanup case above: root ignores the permission bits this relies on.
-  it.skipIf(process.getuid?.() === 0)(
+  // win32-skip(#963): Windows ignores POSIX mode bits, so a chmod'd read-only directory stays writable
+  it.skipIf(onWindows || process.getuid?.() === 0)(
     'a target that cannot be created is a 500, not the 409 reserved for "it already exists"',
     async () => {
       chmodSync(root, 0o555);

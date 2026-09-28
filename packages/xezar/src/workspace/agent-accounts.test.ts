@@ -6,12 +6,12 @@ import {
   realpathSync,
   rmSync,
   statSync,
-  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { linkDir, onWindows } from '../../test/helpers/platform.ts';
 import { agentAccountsPath, workspaceConfigPath } from '../paths.ts';
 import { loadWorkspaceConfig, mergeWriteWorkspaceConfig } from './config.ts';
 import {
@@ -237,7 +237,8 @@ describe('agent accounts store', () => {
       expect(store.selections['/c']).toEqual({});
     });
 
-    it('writes at mode 0600, like every other file in ~/.xezar', async () => {
+    // win32-skip(#963): Windows ignores POSIX mode bits
+    it.skipIf(onWindows)('writes at mode 0600, like every other file in ~/.xezar', async () => {
       await mergeWriteAgentAccounts((store) => {
         store.accounts.push(account('work'));
       });
@@ -282,7 +283,7 @@ describe('agent accounts store', () => {
       const real = join(home, 'real-repo');
       const link = join(home, 'linked-repo');
       mkdirSync(real);
-      symlinkSync(real, link);
+      linkDir(real, link);
       write({ accounts: [account('work')], selections: { [realpathSync(real)]: { claude: 'work' } } });
       const store = await loadAgentAccounts();
 

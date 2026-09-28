@@ -17,6 +17,7 @@ import type { ServiceDispatch } from './service-adapter.ts';
 import { acceptedKeysSentence, schemaKeys } from './tool.ts';
 import { tools } from './tools/index.ts';
 import { ACTION_FIELDS, projectConfigTool } from './tools/project-config.ts';
+import { shortTmpRoot, onWindows } from '../../test/helpers/platform.ts';
 
 /**
  * #819 item 6 — A REFUSAL OUTRANKS AN ARGUMENT ERROR, AND AN ARGUMENT ERROR SAYS WHAT THE ACTION TAKES.
@@ -45,7 +46,7 @@ const saved = { home: process.env.XEZ_HOME, dryRun: process.env.XEZ_DRY_RUN };
 
 // A short home under /tmp: the per-worker sandbox is past the 104-byte socket limit on macOS (D-01 E5).
 const tmp = (prefix: string): string => {
-  const dir = realpathSync(mkdtempSync(`/tmp/${prefix}`));
+  const dir = realpathSync(mkdtempSync(join(shortTmpRoot(), prefix)));
   tempDirs.push(dir);
   return dir;
 };
@@ -125,7 +126,8 @@ async function world() {
 
 const text = (result: McpToolResult): string => result.content.map((part) => (part as { text: string }).text).join('\n');
 
-describe('#819 item 6 — a refusal is answered whatever else the call carries', () => {
+// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – this opens the project MCP socket
+describe.skipIf(onWindows)('#819 item 6 — a refusal is answered whatever else the call carries', () => {
   it('T6.1 a refused action with an approval key answers the refusal, dispatches nothing and never mentions approval', async () => {
     // RED against: validating before the refusal (the order up to 0.17.0), which answers
     // `Invalid arguments for project_config: … Unrecognized key: "approvedBy"`.
@@ -177,7 +179,8 @@ describe('#819 item 6 — a refusal is answered whatever else the call carries',
   });
 });
 
-describe('#819 item 6 — an unknown key says what the action takes', () => {
+// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – this opens the project MCP socket
+describe.skipIf(onWindows)('#819 item 6 — an unknown key says what the action takes', () => {
   it('T6.2 lists the accepted keys from ACTION_FIELDS and the requirements zod used to hide', async () => {
     // RED against: the plain zod text, which names only the unknown key.
     const w = await world();
@@ -217,7 +220,8 @@ describe('#819 item 6 — an unknown key says what the action takes', () => {
   });
 });
 
-describe('#819 item 6 — .strict() still refuses a typo on a write that is not refused', () => {
+// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – this opens the project MCP socket
+describe.skipIf(onWindows)('#819 item 6 — .strict() still refuses a typo on a write that is not refused', () => {
   it('T6.3 a misspelt optional guard fails instead of being dropped and dispatching the write', async () => {
     // RED against: stripping unknown keys (`.strict()` → `.strip()`): the misspelt stale guard
     // would vanish and the dismissal would dispatch against whatever identity is running now —
@@ -235,7 +239,8 @@ describe('#819 item 6 — .strict() still refuses a typo on a write that is not 
   });
 });
 
-describe('#819 item 6 — leader_events status and read accept an operationId and ignore it', () => {
+// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – this opens the project MCP socket
+describe.skipIf(onWindows)('#819 item 6 — leader_events status and read accept an operationId and ignore it', () => {
   it('T6.4 status with an operationId answers the plain status and files no receipt', async () => {
     // RED against: the old `operationId does not apply to status` rejection.
     const w = await world();
@@ -289,7 +294,8 @@ describe('#819 item 6 — the hooks themselves', () => {
   });
 });
 
-describe('#819 item 6 — a throwing preflight degrades to the argument error, it never hangs or kills the call', () => {
+// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – this opens the project MCP socket
+describe.skipIf(onWindows)('#819 item 6 — a throwing preflight degrades to the argument error, it never hangs or kills the call', () => {
   it('T6.5 a preflight that throws answers the ordinary invalid-arguments error, dispatches nothing and never leaks the throw', async () => {
     // RED against: `const refusal = tool.preflight?.(raw, ctx);` with NO exception guard (the
     // service.ts at 928ea2db, before this fix). `callTool` is async, so the synchronous throw

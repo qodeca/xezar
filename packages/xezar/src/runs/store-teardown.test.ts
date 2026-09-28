@@ -2,6 +2,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } f
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { onWindows } from '../../test/helpers/platform.ts';
 import { RunStore } from './store.ts';
 import { closeStoreAndRemove } from './store.testkit.ts';
 
@@ -158,7 +159,8 @@ describe('RunStore — a vanished data directory is a skipped write, not an erro
     store.close();
   });
 
-  it('GUARD: EACCES on an ANCESTOR of the data directory is still logged', () => {
+  // win32-skip(#963): Windows ignores POSIX mode bits, so a chmod 000 ancestor stays traversable
+  it.skipIf(onWindows)('GUARD: EACCES on an ANCESTOR of the data directory is still logged', () => {
     // The directory is present, so this is a permission failure and must stay loud — but
     // `existsSync(dataDir)` answers FALSE here, because the ancestor cannot be traversed. That
     // is the whole difference between "the directory is gone" and "I cannot reach it".

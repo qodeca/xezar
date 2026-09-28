@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { onWindows } from '../../../test/helpers/platform.ts';
 import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -180,7 +181,8 @@ describe('macosx-ngrok review fixes (PR #423)', () => {
     await ngrokStepOf().run(ctxFor(runner));
     const p = join(home, 'Library', 'LaunchAgents', 'ai.xezar.ngrok.plist');
     const mode = statSync(p).mode & 0o777;
-    expect(mode).toBe(0o600);
+    // win32-skip(#963): Windows ignores POSIX mode bits
+    if (!onWindows) expect(mode).toBe(0o600);
     expect(readFileSync(p, 'utf8')).toContain('ops:longenough'); // creds live here → hence 0600
   });
 
@@ -516,7 +518,8 @@ describe('macosx-ngrok steps in a real (non-dry) run', () => {
       const result = (await stepOf('autostart').run(baseCtx(runner)))!;
 
       const path = join(home, 'Library', 'LaunchAgents', 'ai.xezar.cockpit.plist');
-      expect(statSync(path).mode & 0o777).toBe(0o600);
+      // win32-skip(#963): Windows ignores POSIX mode bits
+      if (!onWindows) expect(statSync(path).mode & 0o777).toBe(0o600);
       const plist = readFileSync(path, 'utf8');
       expect(plist).toContain('<string>ai.xezar.cockpit</string>');
       expect(plist).toContain('<string>serve</string>');

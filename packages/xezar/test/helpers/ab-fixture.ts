@@ -32,6 +32,7 @@ import { listenMcpSocket, type McpServiceHandle } from '../../src/mcp/service.ts
 import { defineTool, type McpTool, type McpToolContext } from '../../src/mcp/tool.ts';
 import { tools as registry } from '../../src/mcp/tools/index.ts';
 import { withOperationId } from '../../src/mcp/tools/operation-id.testkit.ts';
+import { linkDir, shortTmpRoot } from './platform.ts';
 import { projectDataDir } from '../../src/project-data-paths.ts';
 import { RunStore, type RunRecord } from '../../src/runs/store.ts';
 import { closeStoreAndRemove } from '../../src/runs/store.testkit.ts';
@@ -408,13 +409,13 @@ function seedHostile(a: ProjectSide, b: ProjectSide): HostileRecords {
 
   const linked = store.createRun({ title: 'ALPHA linked', workflow: 'quick-task', task: 'ALPHA linked', steps: [] });
   const linkedPath = worktreePathFor(a.root, linked.id);
-  symlinkSync(b.worktree, linkedPath);
+  linkDir(b.worktree, linkedPath);
   store.updateRun(linked.id, { status: 'done', finishedAt: '2026-09-02T14:00:00.000Z', worktreePath: linkedPath });
 
   const leakLink = 'leak.txt';
   const rootLink = 'bravo';
   symlinkSync(join(b.worktree, 'notes.txt'), join(a.worktree, leakLink));
-  symlinkSync(b.root, join(a.worktree, rootLink));
+  linkDir(b.root, join(a.worktree, rootLink));
   return { stray: stray.id, legit: legit.id, mixedGroup, linked: linked.id, leakLink, rootLink };
 }
 
@@ -496,7 +497,7 @@ export async function createAbWorld(options: AbWorldOptions = {}): Promise<AbWor
   else delete process.env.XEZ_AUTOMATIONS;
   // The socket lives under XEZ_HOME and a Unix socket path has a hard ~104-byte limit, which a
   // task's TMPDIR can exceed — so the home is short, under /tmp, whenever sockets are on.
-  const home = mkdtempSync(join(withSockets ? realpathSync('/tmp') : realpathSync(tmpdir()), 'xez-ab-home-'));
+  const home = mkdtempSync(join(withSockets ? realpathSync(shortTmpRoot()) : realpathSync(tmpdir()), 'xez-ab-home-'));
   const base = realpathSync(mkdtempSync(join(tmpdir(), 'xez-ab-')));
   process.env.XEZ_HOME = home;
   process.env.XEZ_DRY_RUN = '1';

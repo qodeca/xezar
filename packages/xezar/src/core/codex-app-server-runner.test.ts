@@ -15,6 +15,7 @@ import { dirname, join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { FILE_SYMLINKS, linkDir, onWindows } from '../../test/helpers/platform.ts';
 import { projectStateLayout, setActiveStateLayout } from '../state-layout.ts';
 import type { AgentEvent } from './agent-runner.js';
 import { KILL_GRACE_MS } from './claude-cli-runner.js';
@@ -245,7 +246,7 @@ describe('wall-clock timeout for a real Codex child that ignores SIGTERM', () =>
     new URL('./__fixtures__/codex/mock-codex-app-server.mjs', import.meta.url),
   );
 
-  it.skipIf(process.platform === 'win32')(
+  it(
     'keeps the SIGKILL escalation armed until the child exits',
     async () => {
       const events: AgentEvent[] = [];
@@ -261,6 +262,7 @@ describe('wall-clock timeout for a real Codex child that ignores SIGTERM', () =>
       const startedAt = Date.now();
 
       try {
+        // win32-r9(#963): spawn EFTYPE – the runner spawns the .mjs stub directly, which Windows cannot execute
         const result = await Promise.race([
           session.result,
           new Promise<never>((_, reject) =>
@@ -268,7 +270,8 @@ describe('wall-clock timeout for a real Codex child that ignores SIGTERM', () =>
           ),
         ]);
 
-        expect(Date.now() - startedAt).toBeGreaterThanOrEqual(KILL_GRACE_MS - 500);
+        // win32-skip(#963): Windows has no catchable SIGTERM, so there is no SIGKILL escalation to wait for
+        if (!onWindows) expect(Date.now() - startedAt).toBeGreaterThanOrEqual(KILL_GRACE_MS - 500);
         expect(result.text).toBe('Checking the working tree.');
         expect(events).toContainEqual({
           type: 'error',
@@ -732,7 +735,7 @@ describe('a read-only step runs Codex confined to its worktree and its own roots
     const realHome = join(dir, 'real');
     const aliasHome = join(dir, 'alias');
     mkdirSync(realHome);
-    symlinkSync(realHome, aliasHome);
+    linkDir(realHome, aliasHome);
     try {
       const session = new CodexAppServerRunner({ bin: mockBin, timeoutMs: 0 }).startSession(
         {
@@ -938,7 +941,8 @@ describe('a read-only step runs Codex confined to its worktree and its own roots
     }
   }, 15_000);
 
-  it('refuses a symlinked hooks.json with a named reason and leaves its target untouched', async () => {
+  // win32-skip(#963): creating a file symlink needs Developer Mode or elevation (EPERM)
+  it.skipIf(!FILE_SYMLINKS)('refuses a symlinked hooks.json with a named reason and leaves its target untouched', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'xez-863-symlink-'));
     const target = join(dir, 'dotfiles-hooks.json');
     writeFileSync(target, '{"owner":"user"}\n');

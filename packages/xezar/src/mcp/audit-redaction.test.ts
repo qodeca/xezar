@@ -28,6 +28,7 @@ import { runBridge } from './bridge.ts';
 import { resolveMcpTarget, startMcpService } from './index.ts';
 import { LineFramer, encodeFrame, type McpToolResult } from './ipc.ts';
 import { tools } from './tools/index.ts';
+import { shortTmpRoot, onWindows } from '../../test/helpers/platform.ts';
 
 /**
  * #306 part 4 — REDACTION PER FIELD CLASS, PER DOOR (spec
@@ -85,7 +86,7 @@ afterEach(async () => {
 
 // Under /tmp: the MCP socket path must stay under 104 bytes on macOS.
 function temp(prefix: string): string {
-  const dir = realpathSync(mkdtempSync(`/tmp/${prefix}`));
+  const dir = realpathSync(mkdtempSync(join(shortTmpRoot(), prefix)));
   dirs.push(dir);
   return dir;
 }
@@ -292,7 +293,8 @@ async function mcpFixture(env: NodeJS.ProcessEnv = process.env) {
   return { dataDir: store.dataDir, call };
 }
 
-describe('mcp door', () => {
+// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – this opens the project MCP socket
+describe.skipIf(onWindows)('mcp door', () => {
   it('B-REDACT-MCP-IDENTIFIER-SECRET: a host secret as a task id and an operation id is dropped, never written', async () => {
     const m = await mcpFixture();
     await m.call('organise_work', { action: 'pin', runId: IDENTIFIER_SECRET, expectedVersion: REV, operationId: `op-${IDENTIFIER_SECRET}` });

@@ -1,5 +1,5 @@
 import { readdirSync } from 'node:fs'
-import { relative, resolve } from 'node:path'
+import { relative, resolve, sep } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 /**
@@ -20,7 +20,8 @@ const captureDir = resolve(e2eDir, 'capture')
 function filesUnder(dir: string): string[] {
   return (readdirSync(dir, { recursive: true, withFileTypes: true }) as import('node:fs').Dirent[])
     .filter((entry) => entry.isFile())
-    .map((entry) => relative(e2eDir, resolve(entry.parentPath, entry.name)))
+    // `/`-separated on every OS: the checks below compare against `capture/` (win32 `relative` gives `\`).
+    .map((entry) => relative(e2eDir, resolve(entry.parentPath, entry.name)).split(sep).join('/'))
 }
 
 /** `**\/*.<suffix>` rooted at `e2e/` — the only include shape either config uses. */

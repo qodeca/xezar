@@ -1,7 +1,8 @@
 // FIRST import on purpose: the home pin is a module-load side effect and must run before anything
 // that reaches `skills.ts` (#671).
 import './tools/mcp-test-home.testkit.ts';
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, symlinkSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync } from 'node:fs';
+import { linkDir } from '../../test/helpers/platform.ts';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -304,7 +305,7 @@ describe('binding refuses an untrusted or ambiguous source', () => {
   it('refuses a root that is a symlink at bind time, even to a folder of its own', async () => {
     const target = realpathSync(mkdtempSync(join(tmpdir(), 'xez-bind-target-')));
     const link = `${target}-link`;
-    symlinkSync(target, link, 'dir');
+    linkDir(target, link);
     try {
       fx.registry.push({ id: 'linked', root: link, status: 'not-git' });
       const err = await refusal(bindMcpSession(fx.source, 'linked'));
@@ -403,7 +404,7 @@ describe('a session bound to a project whose root has disappeared', () => {
     const binding = await bindMcpSession(fx.source, A);
     renameSync(fx.rootA, `${fx.rootA}-moved`);
     try {
-      symlinkSync(`${fx.rootA}-moved`, fx.rootA, 'dir');
+      linkDir(`${fx.rootA}-moved`, fx.rootA);
       expect((await refusal(binding.project())).reason).toBe('missing-root');
     } finally {
       rmSync(fx.rootA, { force: true });
@@ -414,7 +415,7 @@ describe('a session bound to a project whose root has disappeared', () => {
   it('fails closed when the root is replaced by a symlink to another project', async () => {
     const binding = await bindMcpSession(fx.source, A);
     rmSync(fx.rootA, { recursive: true, force: true });
-    symlinkSync(fx.rootB, fx.rootA, 'dir');
+    linkDir(fx.rootB, fx.rootA);
     const err = await refusal(binding.project());
     expect(err.reason).toBe('missing-root');
     expect(err.message).not.toContain(fx.rootB);

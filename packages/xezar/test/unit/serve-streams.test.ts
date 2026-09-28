@@ -6,6 +6,7 @@ import { realpathSync } from 'node:fs';
 import { createServer, type Server } from 'node:net';
 import { join, resolve } from 'node:path';
 import { after, test } from 'node:test';
+import { shortTmpRoot } from '../helpers/platform.ts';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 /**
@@ -39,7 +40,7 @@ const ANY_ESCAPE = /[\u001b\u009b\u009d\u0007]/;
 
 // `/tmp` explicitly: a task worktree's own TMPDIR is INSIDE the repository, and
 // `shouldRegisterProject` refuses to register anything under `.local/xezar/worktrees/`.
-const fixtureRoot = await mkdtemp(join(realpathSync('/tmp'), 'xez-streams-'));
+const fixtureRoot = await mkdtemp(join(realpathSync(shortTmpRoot()), 'xez-streams-'));
 after(async () => {
   await rm(fixtureRoot, { recursive: true, force: true });
 });
@@ -272,6 +273,8 @@ test('--log-level debug adds the routine diagnostics, still only on stderr', asy
   const held = await heldPort();
   let boot: Boot;
   try {
+    // win32-r9(#963): times out – serve logs `level=warn event=registry.port remembered=false` and
+    // `mcp.unavailable reason="project … is not in the workspace registry"`: the project is never registered.
     boot = await bootServe(repo, home, ['--log-level', 'debug'], String(held.port), [{
       pattern: /level=debug .* event=registry\.port\b/,
       description: 'serve registry port debug line',

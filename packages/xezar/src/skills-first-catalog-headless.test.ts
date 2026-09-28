@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { onWindows } from '../test/helpers/platform.ts';
 
 /**
  * #793 — the bounded first-team-skills wait #791 added parked a headless `xezar run` on a timer
@@ -22,7 +23,11 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
  * this case goes red — the CLI exits 0 with its output ending at the step banner.
  */
 
-const REAL_GIT = execFileSync('which', ['git'], { encoding: 'utf8' }).trim();
+// `which` under Git Bash answers an MSYS path (`/mingw64/bin/git`) Node cannot spawn; `where` answers
+// native paths, one per line (#963).
+const REAL_GIT = onWindows
+  ? execFileSync('where', ['git'], { encoding: 'utf8' }).split(/\r?\n/)[0]!.trim()
+  : execFileSync('which', ['git'], { encoding: 'utf8' }).trim();
 const GIT_ENV = {
   GIT_CONFIG_GLOBAL: '/dev/null',
   GIT_CONFIG_SYSTEM: '/dev/null',
@@ -105,6 +110,8 @@ describe('a headless run survives its own first-team-skills wait (#793)', () => 
       // Both pinned at the fixture: single-project mode never opens `~/.xezar`, and the child
       // must not reach the developer's real home for either half.
       HOME: home,
+      // os.homedir() reads USERPROFILE, not HOME, on Windows (#963).
+      ...(onWindows ? { USERPROFILE: home } : {}),
       XEZ_HOME: home,
       // A real run, deliberately: `XEZ_DRY_RUN=1` passes a ZERO bound and never reaches the wait
       // this case exists for. The backend is mocked at the binary instead, so no token is spent.

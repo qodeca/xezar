@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { onWindows } from '../../test/helpers/platform.ts';
 
 import { onboardingStatePath, resetOnboardingWarnings } from '../onboarding/state.ts';
 import { BUNDLED_TEMPLATES_DIGEST, ONBOARDING_WORKFLOW_ID } from '../onboarding/status.ts';
@@ -163,7 +164,8 @@ describe('the onboarding API', () => {
     expect(await res.json()).toHaveProperty('error');
   });
 
-  it('answers `unwritable` on a read-only data directory rather than failing', async () => {
+  // win32-skip(#963): Windows ignores POSIX mode bits, so a chmod'd read-only directory stays writable
+  it.skipIf(onWindows)('answers `unwritable` on a read-only data directory rather than failing', async () => {
     const dataDir = join(repoRoot, '.local/xezar');
     chmodSync(dataDir, 0o500);
     try {
