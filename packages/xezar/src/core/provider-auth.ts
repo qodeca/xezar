@@ -1,5 +1,13 @@
+import type { ChildProcessWithoutNullStreams, SpawnOptionsWithoutStdio } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { launchFile } from '../platform/process-launch.ts';
+import { launch } from '../platform/process-launch.ts';
+import {
+  PROCESS_GROUP_GRACE_MS,
+  ownProcessGroup,
+  signalProcessGroup,
+  stopProcessGroup,
+  type TreeStopDeps,
+} from '../platform/process-tree.ts';
 import { AGENT_MODELS_LOCKED_ENV } from './agent-model-policy.ts';
 import { profileEnv } from './agent-profiles.ts';
 import { parseOpencodeModels } from './opencode-model-catalog.ts';
@@ -264,42 +272,123 @@ const DESCRIPTORS: readonly ProviderDescriptor[] = [
   },
 ];
 
-function defaultRunProviderCommand(
+/** Test seams for {@link defaultRunProviderCommand}. Production passes none. */
+export interface ProviderCommandDeps {
+  /** Starts the CLI; `launch` in production. */
+  start?: (
+    executable: string,
+    args: readonly string[],
+    options: SpawnOptionsWithoutStdio,
+  ) => ChildProcessWithoutNullStreams;
+  /** The platform seam of the group and tree stop. */
+  tree?: Partial<TreeStopDeps>;
+}
+
+/** Each of stdout and stderr is kept to this much; more stops the probe, as `execFile`'s did. */
+const PROBE_OUTPUT_MAX_BYTES = 256 * 1024;
+/** The code `execFile` gave that overflow, so a result reads the same as before. */
+const PROBE_OUTPUT_OVERFLOW = 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER';
+
+/** One stdio stream, kept to `PROBE_OUTPUT_MAX_BYTES`. `add` answers false once it went over. */
+function boundedOutput(): { add(chunk: Buffer): boolean; text(): string } {
+  const kept: Buffer[] = [];
+  let total = 0;
+  return {
+    add(chunk) {
+      const room = PROBE_OUTPUT_MAX_BYTES - total;
+      if (room > 0) kept.push(room < chunk.length ? chunk.subarray(0, room) : chunk);
+      total += chunk.length;
+      return total <= PROBE_OUTPUT_MAX_BYTES;
+    },
+    text: () => Buffer.concat(kept).toString('utf8'),
+  };
+}
+
+/**
+ * Run one sign-in check. On POSIX the CLI starts in its own process group (#894), because a CLI
+ * that forks a background child and then hangs used to leave that child running: the old
+ * timeout stopped only the CLI itself. Now a timeout sends TERM to the whole group, KILL a grace later,
+ * and answers a grace after that even if no exit ever arrives. Every other ending – the CLI
+ * exits, or cannot start – kills the group before answering, since `close` proves only that the
+ * CLI and its pipes are gone (#892). Windows has no groups: each of those stops is the tree stop
+ * (`platform/process-tree.ts`), and nothing is stopped once the exit was seen.
+ */
+export function defaultRunProviderCommand(
   executable: string,
   args: readonly string[],
   timeoutMs: number,
   env?: Record<string, string>,
+  deps: ProviderCommandDeps = {},
 ): Promise<ProviderCommandResult> {
+  const start = deps.start ?? ((file, argv, options) => launch(file, argv, options));
   return new Promise((resolve) => {
-    launchFile(
-      executable,
-      args,
-      {
-        timeout: timeoutMs,
-        windowsHide: true,
-        maxBuffer: 256 * 1024,
-        // Inherit, then override: an auth probe is a short read-only CLI call, not a spawned
-        // agent, so it does not go through `buildChildEnv`'s allowlist — the CLI still needs the
-        // host's PATH and HOME to run at all. `env` is only ever a profile's config-dir variable.
-        ...(env && Object.keys(env).length > 0 ? { env: { ...process.env, ...env } } : {}),
-      },
-      (error, stdout, stderr) => {
-        const commandError = error as (NodeJS.ErrnoException & {
-          killed?: boolean;
-          signal?: string | null;
-        }) | null;
-        const code = commandError?.code;
-        resolve({
-          stdout: String(stdout),
-          stderr: String(stderr),
-          exitCode: typeof code === 'number' ? code : error ? null : 0,
-          errorCode: typeof code === 'string' ? code : undefined,
-          timedOut: commandError?.code === 'ETIMEDOUT'
-            || (commandError?.killed === true && commandError.signal === 'SIGTERM'),
-        });
-      },
-    );
+    // A refused start throws here and rejects the promise, which `probe` reports as unknown.
+    const child = start(executable, args, {
+      windowsHide: true,
+      shell: false,
+      // POSIX: its own group. Windows: no `detached`, which would open a console window for
+      // every console program the CLI starts; the tree stop reaches those instead.
+      ...ownProcessGroup(deps.tree),
+      // Inherit, then override: an auth probe is a short read-only CLI call, not a spawned
+      // agent, so it does not go through `buildChildEnv`'s allowlist — the CLI still needs the
+      // host's PATH and HOME to run at all. `env` is only ever a profile's config-dir variable.
+      ...(env && Object.keys(env).length > 0 ? { env: { ...process.env, ...env } } : {}),
+    });
+    watchProbe(child, timeoutMs, deps.tree ?? {}, resolve);
   });
+}
+
+/** Collect the probe's output and answer exactly once, stopping its group on every path. */
+function watchProbe(
+  child: ChildProcessWithoutNullStreams,
+  timeoutMs: number,
+  tree: Partial<TreeStopDeps>,
+  resolve: (result: ProviderCommandResult) => void,
+): void {
+  const stdout = boundedOutput();
+  const stderr = boundedOutput();
+  let stopped: 'timeout' | 'overflow' | undefined;
+  let settled = false;
+  let cancelStop: (() => void) | undefined;
+  const finish = (exitCode: number | null, errorCode?: string): void => {
+    if (settled) return;
+    settled = true;
+    clearTimeout(timer);
+    cancelStop?.();
+    // Whatever the group signal did not reach still reaches this answer's end.
+    signalProcessGroup(child, 'SIGKILL', tree);
+    resolve({
+      stdout: stdout.text(),
+      stderr: stderr.text(),
+      exitCode: stopped ? null : exitCode,
+      errorCode: errorCode ?? (stopped === 'overflow' ? PROBE_OUTPUT_OVERFLOW : undefined),
+      timedOut: stopped === 'timeout',
+    });
+  };
+  const stop = (reason: 'timeout' | 'overflow'): void => {
+    if (stopped || settled) return;
+    stopped = reason;
+    cancelStop = stopProcessGroup(child, PROCESS_GROUP_GRACE_MS, () => {
+      finish(null);
+      // A process that left the group can still hold the pipes: let go of xezar's ends.
+      for (const stream of [child.stdin, child.stdout, child.stderr]) stream.destroy();
+    }, tree);
+    // A failed signal emits `error` synchronously, which may already have answered.
+    if (settled) cancelStop();
+  };
+  const timer = setTimeout(() => stop('timeout'), timeoutMs);
+  timer.unref?.();
+  child.stdout.on('data', (chunk: Buffer) => {
+    if (!stdout.add(chunk)) stop('overflow');
+  });
+  child.stderr.on('data', (chunk: Buffer) => {
+    if (!stderr.add(chunk)) stop('overflow');
+  });
+  // `on`, not `once`, as execFile did: a later `error` (a failed kill) must not go unhandled.
+  child.on('error', (error: NodeJS.ErrnoException) => {
+    finish(null, typeof error.code === 'string' ? error.code : undefined);
+  });
+  child.once('close', (code: number | null) => finish(code));
 }
 
 function quoteExecutable(executable: string, platform: NodeJS.Platform): string {
