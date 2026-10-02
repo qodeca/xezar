@@ -164,7 +164,6 @@ const GRANDFATHERED = [
   'src/workflows/auto-resume.test.ts',
   'src/workflows/autosave-gate.test.ts',
   'src/workflows/continuation-tools.test.ts',
-  'src/workflows/memory-limit-pause.test.ts',
   'src/workflows/model-identity-wiring.test.ts',
   'src/workflows/recover-autonomous.test.ts',
   'src/workflows/recover-followups.test.ts',

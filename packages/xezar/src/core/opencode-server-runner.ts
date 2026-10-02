@@ -416,7 +416,7 @@ class OpencodeSession implements AgentSession {
         this.emit({ type: 'error', message: this.permissionFailure });
       }
       this.emit({ type: 'done' });
-      return base;
+      return this.timedOut ? { ...base, timedOut: true } : base;
     })();
   }
 

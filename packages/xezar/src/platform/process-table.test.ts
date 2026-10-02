@@ -10,6 +10,8 @@ import {
   fileTimeToMs,
   killIdentified,
   killScript,
+  lstartToMs,
+  parseDarwinRows,
   parseProcessRows,
   parseWindowsTable,
   readProcessTable,
@@ -62,6 +64,10 @@ function recordingRunner(reply: string | null): { run: TableRunner; calls: Array
   return { run, calls };
 }
 
+/** `Tue Sep 29 20:31:05 2026` as macOS `ps` prints it, and that moment in this machine's time zone. */
+const LSTART_TOKENS = 'Tue Sep 29 20:31:05 2026';
+const LSTART_MS = new Date(2026, 8, 29, 20, 31, 5).getTime();
+
 describe('parsing', () => {
   const PS = '  101     1  2048  1.5\n  102   101  1024  0.0\nbroken\n  x   1 2 3\n  103   102   -5  nan\n';
 
@@ -84,6 +90,20 @@ describe('parsing', () => {
     }
   });
 
+  it('reads macOS lstart as local time to the second, and refuses anything else', () => {
+    expect(lstartToMs(LSTART_TOKENS.split(' '))).toBe(LSTART_MS);
+    expect(lstartToMs('Mon Jan  1 00:00:00 2024'.split(/\s+/))).toBe(new Date(2024, 0, 1).getTime());
+    const bad = ['', 'Tue Sep 29 20:31:05', 'Tue Foo 29 20:31:05 2026', 'Tue Sep 29 20:31 2026', 'Tue Sep x 20:31:05 2026', 'Tue Sep 29 20:31:05 26'];
+    for (const text of bad) expect(lstartToMs(text.split(' ')), text).toBeUndefined();
+  });
+
+  it("parses macOS rows' first four columns exactly as the sampler's parser does", () => {
+    const text = `  101     1  2048  1.5 ${LSTART_TOKENS}\n  102   101  1024  0.0\nbroken\n  x   1 2 3 ${LSTART_TOKENS}\n  103   102   -5  nan ${LSTART_TOKENS}\n`;
+    const rows = parseDarwinRows(text);
+    expect(rows.map(({ startedAt: _startedAt, ...row }) => row)).toEqual(parsePsOutput(text));
+    expect(rows.map((row) => row.startedAt)).toEqual([LSTART_MS, undefined, LSTART_MS]);
+  });
+
   it("takes queriedAt from the script's own first line, else the fallback", () => {
     expect(parseWindowsTable(`queried ${JAN_1_2024_FILETIME}\r\n9 4 1 0 -\r\n`, 5)).toEqual({
       rows: [{ pid: 9, ppid: 4, rssKb: 1, cpuPct: 0 }],
@@ -94,12 +114,37 @@ describe('parsing', () => {
 });
 
 describe('readProcessTable', () => {
-  it.each(['linux', 'darwin'] as const)('runs the unchanged ps command on %s', async (platform) => {
+  it.each(['linux', 'freebsd'] as const)('runs the unchanged ps command on %s', async (platform) => {
     const { run, calls } = recordingRunner('  1 0 10 0.5\n');
     const table = await readProcessTable({}, { platform, run });
     expect(calls).toEqual([['ps', ['-axo', 'pid=,ppid=,rss=,%cpu='], { maxBuffer: 16 * 1024 * 1024 }]]);
     expect(table?.rows).toEqual([{ pid: 1, ppid: 0, rssKb: 10, cpuPct: 0.5 }]);
     expect(typeof table?.queriedAt).toBe('number');
+  });
+
+  it('adds the start time on macOS, in the C locale, and dates the query to the second (#943)', async () => {
+    vi.useFakeTimers({ now: Date.UTC(2026, 8, 29, 12, 0, 5, 750), toFake: ['Date'] });
+    try {
+      const { run, calls } = recordingRunner(`  7 1 10 0.5 ${LSTART_TOKENS}\n  8 7 20 0.0 garbled\n`);
+      const env = { LANG: 'de_DE.UTF-8', LC_ALL: 'de_DE' };
+      const table = await readProcessTable({ timeoutMs: 5_000 }, { platform: 'darwin', env, run });
+      expect(calls).toEqual([
+        [
+          'ps',
+          ['-axo', 'pid=,ppid=,rss=,%cpu=,lstart='],
+          { maxBuffer: 16 * 1024 * 1024, timeoutMs: 5_000, env: { LANG: 'de_DE.UTF-8', LC_ALL: 'C' } },
+        ],
+      ]);
+      expect(table).toEqual({
+        rows: [
+          { pid: 7, ppid: 1, rssKb: 10, cpuPct: 0.5, startedAt: LSTART_MS },
+          { pid: 8, ppid: 7, rssKb: 20, cpuPct: 0 },
+        ],
+        queriedAt: Date.UTC(2026, 8, 29, 12, 0, 5),
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('runs System32 PowerShell on win32, hidden, with the start-time column', async () => {
@@ -156,6 +201,8 @@ describe('defaultTableRunner', () => {
     expect(vi.mocked(execFile).mock.calls[0]!.slice(0, 3)).toEqual(['ps', ['-a'], { maxBuffer: 10 }]);
     await defaultTableRunner('ps', [], { maxBuffer: 10, timeoutMs: 3, hide: true });
     expect(vi.mocked(execFile).mock.calls[1]![2]).toEqual({ maxBuffer: 10, timeout: 3, windowsHide: true });
+    await defaultTableRunner('ps', [], { maxBuffer: 10, env: { LC_ALL: 'C' } });
+    expect(vi.mocked(execFile).mock.calls[2]![2]).toEqual({ maxBuffer: 10, env: { LC_ALL: 'C' } });
   });
 
   it('drops the error object, and the output it carries (SEC-5)', async () => {
@@ -337,11 +384,26 @@ describe('startTimeOf', () => {
     expect(readText).toHaveBeenCalledWith('/proc/1234/stat');
   });
 
-  it('answers null when unreadable, malformed, or off Linux', async () => {
+  it("macOS: one bounded ps -o lstart= in the C locale, equal to a table row's startedAt", async () => {
+    const { run, calls } = recordingRunner(`${LSTART_TOKENS}\n`);
+    expect(await startTimeOf(1234, { platform: 'darwin', env: { LC_ALL: 'fr_FR' }, run })).toBe(LSTART_MS);
+    expect(calls).toEqual([['ps', ['-o', 'lstart=', '-p', '1234'], { maxBuffer: 64 * 1024, timeoutMs: 2_000, env: { LC_ALL: 'C' } }]]);
+    expect(await startTimeOf(1234, { platform: 'darwin', run: recordingRunner(null).run })).toBeNull();
+    expect(await startTimeOf(1234, { platform: 'darwin', run: recordingRunner('').run })).toBeNull();
+    const throwing: TableRunner = async () => {
+      throw new Error('boom');
+    };
+    expect(await startTimeOf(1234, { platform: 'darwin', run: throwing })).toBeNull();
+    expect(await startTimeOf(0, { platform: 'darwin', run })).toBeNull();
+    expect(calls).toHaveLength(1);
+  });
+
+  it('answers null when unreadable, malformed, or off Linux and macOS', async () => {
     expect(await startTimeOf(1234, { platform: 'linux', readText: async () => { throw new Error('EACCES'); } })).toBeNull();
     expect(await startTimeOf(1234, { platform: 'linux', readText: async () => 'garbage' })).toBeNull();
     expect(await startTimeOf(1234, { platform: 'linux', readText: async () => '1 (x) S 1' })).toBeNull();
-    expect(await startTimeOf(1234, { platform: 'darwin', readText: async () => STAT })).toBeNull();
+    expect(await startTimeOf(1234, { platform: 'freebsd', readText: async () => STAT })).toBeNull();
+    expect(await startTimeOf(1234, { platform: 'win32', readText: async () => STAT })).toBeNull();
     expect(await startTimeOf(-1, { platform: 'linux', readText: async () => STAT })).toBeNull();
   });
 });

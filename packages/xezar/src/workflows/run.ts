@@ -55,6 +55,7 @@ import { autosaveCommit, createWorktree, resolveBaseRef, worktreeDiff, worktreeS
 import { getHeadCommit, getRepoInfo } from '../server/git.ts';
 import { loadWorkflows } from './load.ts';
 import { ingestTaskVerdict } from '../runs/task-verdicts.ts';
+import { RunProcessSweeper, type RunProcessSweeperOptions, type SweepReason } from '../runs/run-process-sweeper.ts';
 
 import type { QueuedMessage, RunRecord, RunStore, StepState } from '../runs/store.ts';
 import { AgentQuotaStore, normalizeLiveQuota } from '../workspace/agent-quota.ts';
@@ -388,6 +389,10 @@ interface ActiveRun {
    *  "xezar cut it off" and recorded the pause as `done`. Consumed once, where `session.result`
    *  resolves, and cleared there. */
   memoryLimitPause?: string;
+  /** Why xezar is stopping this run (#943), set beside `cancelled` by `cancel()` and beside
+   *  `memoryLimitPause` by `enforceMemoryLimit`. `dropActive` reads it to sweep what the run
+   *  started; a run that ends on its own has none, and its processes are left alone. */
+  stopReason?: SweepReason;
 }
 
 /** Safety cap on autonomous auto-continues per run — stops a stuck agent from nudging forever.
@@ -888,6 +893,8 @@ export class RunManager {
   /** Unsubscribe handle for the constructor's `onUsage` subscription — released
    *  by dispose() so a torn-down manager stops receiving sampler ticks. */
   private readonly offUsage: () => void;
+  /** Stops what a paused, cancelled or timed-out run started (#943). */
+  private readonly runProcesses: RunProcessSweeper;
 
   /** The stalled-queue watchdog (see `rescueStalledQueue`). */
   private readonly queueWatchdog: ReturnType<typeof setInterval>;
@@ -998,7 +1005,14 @@ export class RunManager {
   constructor(
     private readonly store: RunStore,
     private readonly repoRoot: string,
-    options: { semaphore?: WorkspaceSemaphore; resumeProofMs?: number; autoResumeTimer?: RunManager['autoResumeTimer']; agentQuotaStore?: AgentQuotaStore } = {},
+    options: {
+      semaphore?: WorkspaceSemaphore;
+      resumeProofMs?: number;
+      autoResumeTimer?: RunManager['autoResumeTimer'];
+      agentQuotaStore?: AgentQuotaStore;
+      /** Test seam: builds the run-process sweeper around this manager's hooks. */
+      runProcesses?: (hooks: RunProcessSweeperOptions) => RunProcessSweeper;
+    } = {},
   ) {
     this.autoResumeTimer = options.autoResumeTimer ?? {
       schedule: (callback, delay) => setTimeout(callback, delay),
@@ -1017,6 +1031,13 @@ export class RunManager {
     // Memory guard (#memory-guard): the shared process-tree sampler already ticks ~every 2 s for
     // the runs table; piggyback on it to enforce the per-task memory ceiling.
     this.offUsage = onUsage((snapshot) => void this.enforceMemoryLimit(snapshot));
+    // #943: the report is one note after the sweep; each sweep is enrolled like a run body, so
+    // `quiesce()` waits for it and a headless run cannot exit mid-sweep.
+    const sweeperHooks: RunProcessSweeperOptions = {
+      report: (runId, text) => this.store.appendEvent(runId, { type: 'note', message: text }),
+      track: (sweep) => this.trackRun(sweep),
+    };
+    this.runProcesses = options.runProcesses?.(sweeperHooks) ?? new RunProcessSweeper(sweeperHooks);
     // `.catch()` for the same reason `enforceRetention` carries one: a floated promise that
     // rejects is a process-level unhandled rejection, and this one CAN reject —
     // `sweepStalledQueue` → `reviveQueuedRun` → `reviveWorkflow` → `loadWorkflows` reads the
@@ -1099,6 +1120,7 @@ export class RunManager {
   dispose(): Promise<void> {
     this.disposed = true;
     this.offUsage();
+    this.runProcesses.dispose();
     this.offSemaphore();
     clearInterval(this.queueWatchdog);
     for (const [runId, state] of this.active) {
@@ -1294,6 +1316,7 @@ export class RunManager {
       // this as a failed, Continue-able step instead of reading the xezar-initiated close as a
       // finished turn (#603) — see the field doc on `ActiveRun.memoryLimitPause`.
       state.memoryLimitPause = `memory limit exceeded (${usedMb} MiB > ${limitMb} MiB)`;
+      state.stopReason = 'memory-limit';
       this.clearIdleTimer(state);
       state.session.end();
     }
@@ -1841,6 +1864,10 @@ export class RunManager {
   /** Remove a run from the live registries — keeps `waiting ⊆ active`. */
   private dropActive(runId: string): void {
     const state = this.active.get(runId);
+    // #943: a run xezar paused or cancelled leaves nothing it started running; every other end
+    // forgets the run's process ledger. Synchronous – the sweep runs enrolled in the background.
+    if (state?.stopReason) this.runProcesses.start(runId, state.stopReason);
+    else this.runProcesses.drop(runId);
     state?.releaseRepoRoot?.();
     if (state) state.releaseRepoRoot = undefined;
     this.waiting.delete(runId);
@@ -2411,6 +2438,7 @@ export class RunManager {
       return false;
     }
     state.cancelled = true;
+    state.stopReason = 'cancel';
     this.clearIdleTimer(state);
     state.interrupt();
     return true;
@@ -2470,8 +2498,19 @@ export class RunManager {
     // Still ONE registration site. A runner whose child exists already answers through `pid`;
     // one that has to ask its binary something first (pi, #548) answers through
     // `onProcessStart`, which also fires again when that runner restarts its own child.
-    if (session.pid !== undefined) registerRunProcess(runId, session.pid);
-    else session.onProcessStart?.((pid) => registerRunProcess(runId, pid));
+    // Every runner spawns its child synchronously inside `startSession` (pi: announces it from the
+    // same tick as its spawn) and this runs with no await after it, so the time read FIRST here is
+    // the spawn time the #943 ledger pins the root by – within its 2 s window. First, before
+    // `registerRunProcess`: on Windows that starts the sampler's first PowerShell read, and
+    // starting PowerShell blocks this thread for up to a second or more under load (T-02). Read
+    // after it, the pin missed the window, the ledger rejected the root and a stop swept nothing.
+    const trackProcess = (pid: number): void => {
+      const spawnedAt = Date.now();
+      registerRunProcess(runId, pid);
+      if (this.active.get(runId) === state) this.runProcesses.pinRoot(runId, pid, spawnedAt);
+    };
+    if (session.pid !== undefined) trackProcess(session.pid);
+    else session.onProcessStart?.(trackProcess);
     // The adopt. Ordering is load-bearing exactly as it is in `adoptActive`: `state.interrupt`
     // already points at this session, so a `cancel()` arriving one tick later takes the ordinary
     // path and this call is not a second, racing teardown.
@@ -3130,7 +3169,18 @@ export class RunManager {
     // rather than dropped (#200): stop before the spawn, exactly as a cancel one tick later
     // would have. `finishedAt` is stamped fresh because nothing else has stamped it — this run
     // ends without ever having opened a session.
-    if (this.adoptActive(runId, state)) {
+    let cancelledBeforeSession = this.adoptActive(runId, state);
+    // #943: a Continue after a memory-limit pause or a cancel waits for the sweep of the run's
+    // previous life so the new session does not start beside it – and never becomes one of its
+    // targets. The wait ends at the 10 s cap; a pass still running then is best effort and signals
+    // only the targets it chose before, each by identity. Nothing pending means no await, and
+    // `continueRun` has answered already.
+    const earlierSweep = cancelledBeforeSession ? undefined : this.runProcesses.pending(runId);
+    if (earlierSweep) {
+      await earlierSweep;
+      cancelledBeforeSession = state.cancelled;
+    }
+    if (cancelledBeforeSession) {
       const finishedAt = new Date().toISOString();
       this.store.updateStep(runId, stepId, { status: 'cancelled', finishedAt });
       this.store.updateRun(runId, { status: 'cancelled', finishedAt, currentStepId: undefined });
@@ -3636,6 +3686,19 @@ export class RunManager {
     this.adoptActive(runId, state);
     const emit = (event: { type: string; stepId?: string; [k: string]: unknown }) =>
       this.store.appendEvent(runId, event);
+    // #943: what an earlier life of this run started may still be being stopped; wait for it, at
+    // most until the 10 s cap (then best effort, as above). With nothing pending – the usual
+    // case – there is no await at all.
+    const earlierSweep = this.runProcesses.pending(runId);
+    if (earlierSweep) {
+      await earlierSweep;
+      if (state.cancelled) {
+        this.store.updateRun(runId, { status: 'cancelled', finishedAt: new Date().toISOString(), currentStepId: undefined });
+        emit({ type: 'lifecycle', message: 'run cancelled' });
+        this.dropActive(runId);
+        return;
+      }
+    }
 
     // Resolve the agent backend for this run: the task choice (GUI) wins over
     // the config default. Per-step `runner` can still override it below.
@@ -4469,6 +4532,10 @@ export class RunManager {
         const result = await session.result;
         // The exit is the shutdown's own stop: record nothing, the next start resumes the run (#963).
         if (this.exiting) await this.parkedForExit();
+        // #943: the step's wall clock ran out and the runner stopped its own tree; stop what the
+        // agent left running too, before anything else of this run starts. A cancel that lands
+        // meanwhile is seen below and by the step loop, never behind a retry.
+        if (result.timedOut) await this.runProcesses.now(runId, 'timeout');
         if (sessionError) {
           sink.sessionEnded('error', sessionError);
           return sessionError;

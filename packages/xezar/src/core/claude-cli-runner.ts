@@ -326,7 +326,7 @@ export class ClaudeCliRunner implements AgentRunner {
         const mins = Math.round((limitMs / 60_000) * 10) / 10;
         onEvent?.({ type: 'error', message: `claude CLI timed out after ${mins}m and was killed` });
         onEvent?.({ type: 'done' });
-        return { text, toolCalls, tokensUsed, sessionId: spec.sessionId };
+        return { text, toolCalls, tokensUsed, sessionId: spec.sessionId, timedOut: true };
       }
 
       // A session xezar itself tore down (EOF watchdog after `end()`, or a

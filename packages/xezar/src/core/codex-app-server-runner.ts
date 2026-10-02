@@ -379,7 +379,7 @@ class CodexSession implements AgentSession {
         const mins = Math.round((limitMs / 60_000) * 10) / 10;
         this.emit({ type: 'error', message: `codex app-server timed out after ${mins}m and was killed` });
         this.emit({ type: 'done' });
-        return base;
+        return { ...base, timedOut: true };
       }
 
       // Our own EOF watchdog / cancel signal coming back as 143/137 — the

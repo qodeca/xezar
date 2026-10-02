@@ -211,6 +211,9 @@ export interface AgentRunResult {
   /** Cost-weighted token usage; 0 when the backend surfaced no telemetry. */
   tokensUsed: number;
   sessionId?: string;
+  /** The runner's wall clock (`timeoutMs`) ran out and it stopped its child (#943). Absent
+   *  otherwise – the run manager then sweeps what the agent left running. */
+  timedOut?: true;
 }
 
 export interface SessionOptions {

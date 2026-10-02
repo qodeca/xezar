@@ -7,7 +7,11 @@
  * start time still matches, checked and killed through one handle.
  *
  * Every reader never rejects and drops the error object, which carries the program's output.
- * POSIX runs exactly the `ps` command the sampler ran before this module existed.
+ * Linux runs exactly the `ps` command the sampler ran before this module existed; macOS adds
+ * the start-time column (`lstart`, under `LC_ALL=C`) that #943's ledger needs.
+ *
+ * #943 adds `startTimeOf` on macOS; what else a run's process sweep reads is in
+ * `process-proof.ts`.
  *
  * Leaf layer: this folder imports only `node:*` and its own siblings.
  */
@@ -17,7 +21,7 @@ import { readFile } from 'node:fs/promises';
 import { powershellPath } from './system-programs.ts';
 
 /** One process. `rssKb` in KiB; `cpuPct` is 0 on Windows; `startedAt` in ms since the epoch
- *  (Windows), absent when unknown. */
+ *  (Windows; macOS to the second), absent when unknown. */
 export interface ProcRow {
   pid: number;
   ppid: number;
@@ -38,6 +42,8 @@ export interface TableRunOptions {
   timeoutMs?: number;
   /** Hide the console window (Windows). */
   hide?: boolean;
+  /** The child's whole environment; absent: inherited. */
+  env?: NodeJS.ProcessEnv;
 }
 
 /** Runs one program without a shell; its stdout, or null on any failure. Never rejects. */
@@ -59,6 +65,10 @@ export interface ReadTableOptions {
 
 const TABLE_MAX_BUFFER = 16 * 1024 * 1024;
 const PS_ARGS: readonly string[] = ['-axo', 'pid=,ppid=,rss=,%cpu='];
+/** macOS: the same columns plus the start time, `Mon Sep 29 20:31:05 2026` in the C locale. */
+const PS_ARGS_DARWIN: readonly string[] = ['-axo', 'pid=,ppid=,rss=,%cpu=,lstart='];
+const LSTART_MONTHS: readonly string[] = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MS_PER_SECOND = 1_000;
 /** 100 ns ticks between 1601-01-01 (FILETIME) and 1970-01-01. */
 const FILETIME_UNIX_EPOCH = 116444736000000000n;
 const FILETIME_TICKS_PER_MS = 10000n;
@@ -104,6 +114,7 @@ export const defaultTableRunner: TableRunner = (file, args, options) =>
           maxBuffer: options.maxBuffer,
           ...(options.timeoutMs !== undefined ? { timeout: options.timeoutMs } : {}),
           ...(options.hide ? { windowsHide: true } : {}),
+          ...(options.env !== undefined ? { env: options.env } : {}),
         },
         (error, stdout) => resolve(error ? null : stdout),
       );
@@ -152,6 +163,37 @@ export function parseProcessRows(text: string): ProcRow[] {
   return out;
 }
 
+/**
+ * macOS `lstart` in the C locale – `Mon Sep 29 20:31:05 2026`, local time – as ms since the
+ * epoch, or undefined. Whole seconds: that is all `ps` prints.
+ */
+export function lstartToMs(tokens: readonly string[]): number | undefined {
+  if (tokens.length !== 5) return undefined;
+  const [, monthName, day, time, year] = tokens as [string, string, string, string, string];
+  const month = LSTART_MONTHS.indexOf(monthName);
+  const hms = /^(\d{1,2}):(\d{2}):(\d{2})$/.exec(time);
+  if (month === -1 || hms === null || !/^\d{1,2}$/.test(day) || !/^\d{4}$/.test(year)) return undefined;
+  const ms = new Date(Number(year), month, Number(day), Number(hms[1]), Number(hms[2]), Number(hms[3])).getTime();
+  return Number.isSafeInteger(ms) && ms > 0 ? ms : undefined;
+}
+
+/** macOS rows: the four sampler columns, parsed exactly as `parseProcessRows` does, then `lstart`. */
+export function parseDarwinRows(text: string): ProcRow[] {
+  const out: ProcRow[] = [];
+  for (const line of text.split('\n')) {
+    const [row] = parseProcessRows(line);
+    if (row === undefined) continue;
+    const startedAt = lstartToMs(line.trim().split(/\s+/).slice(4));
+    out.push(startedAt === undefined ? row : { ...row, startedAt });
+  }
+  return out;
+}
+
+/** `ps` in the C locale, so `lstart` has one spelling whatever the user's language. */
+function cLocaleEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return { ...env, LC_ALL: 'C' };
+}
+
 /** The Windows script's output: its `queried <FILETIME>` line, then rows. */
 export function parseWindowsTable(text: string, fallbackQueriedAt: number): ProcessTable {
   const queried = /^\s*queried (\d+)\s*$/m.exec(text);
@@ -161,8 +203,9 @@ export function parseWindowsTable(text: string, fallbackQueriedAt: number): Proc
 
 /**
  * One snapshot of every process, or null when it cannot be read. Never rejects. POSIX: `ps -axo
- * pid=,ppid=,rss=,%cpu=`, 16 MiB of output. Windows: PowerShell's Win32_Process with each
- * process's creation time, and the query's own start time.
+ * pid=,ppid=,rss=,%cpu=`, 16 MiB of output; macOS adds `lstart=` under `LC_ALL=C` and floors
+ * `queriedAt` to the second, the resolution of its start times. Windows: PowerShell's
+ * Win32_Process with each process's creation time, and the query's own start time.
  */
 export async function readProcessTable(
   opts: ReadTableOptions = {},
@@ -182,6 +225,15 @@ export async function readProcessTable(
         hide: true,
       });
       return text === null ? null : parseWindowsTable(text, startedAt);
+    }
+    if (platform === 'darwin') {
+      const text = await run('ps', PS_ARGS_DARWIN, {
+        maxBuffer: TABLE_MAX_BUFFER,
+        ...(opts.timeoutMs !== undefined ? { timeoutMs: opts.timeoutMs } : {}),
+        env: cLocaleEnv(deps.env ?? process.env),
+      });
+      const queriedAt = Math.floor(startedAt / MS_PER_SECOND) * MS_PER_SECOND;
+      return text === null ? null : { rows: parseDarwinRows(text), queriedAt };
     }
     const text = await run('ps', PS_ARGS, {
       maxBuffer: TABLE_MAX_BUFFER,
@@ -396,15 +448,43 @@ export function signalPid(pid: number, signal: NodeJS.Signals): SignalOutcome {
 export interface StartTimeDeps {
   platform?: NodeJS.Platform;
   readText?: (path: string) => Promise<string>;
+  /** macOS: runs `ps`. */
+  run?: TableRunner;
+  env?: NodeJS.ProcessEnv;
+}
+
+/** How long a macOS `ps -p` for one start time may take. */
+const START_TIME_TIMEOUT_MS = 2_000;
+const START_TIME_MAX_BUFFER = 64 * 1024;
+
+/** macOS: `ps -o lstart= -p <pid>` in the C locale, as `readProcessTable`'s rows carry it. */
+async function darwinStartTimeOf(pid: number, deps: StartTimeDeps): Promise<number | null> {
+  const text = await (deps.run ?? defaultTableRunner)('ps', ['-o', 'lstart=', '-p', String(pid)], {
+    maxBuffer: START_TIME_MAX_BUFFER,
+    timeoutMs: START_TIME_TIMEOUT_MS,
+    env: cLocaleEnv(deps.env ?? process.env),
+  });
+  return text === null ? null : (lstartToMs(text.trim().split(/\s+/)) ?? null);
 }
 
 /**
- * Linux: a process's start time, field 22 of `/proc/<pid>/stat` (clock ticks since boot), read
- * after the LAST `)` because the command name may itself hold one. Comparable only with another
- * `startTimeOf` of the same machine. Null when unreadable, and on every other platform.
+ * A process's start time, the identity a pid alone cannot give. Linux: field 22 of
+ * `/proc/<pid>/stat` (clock ticks since boot), read after the LAST `)` because the command name
+ * may itself hold one. macOS: `lstart` in ms, equal to the `startedAt` of the same process's
+ * `readProcessTable` row. Comparable only with another `startTimeOf` (or, on macOS, a row) of the
+ * same machine. Null when unreadable, and on every other platform. Never rejects.
  */
 export async function startTimeOf(pid: number, deps: StartTimeDeps = {}): Promise<number | null> {
-  if ((deps.platform ?? process.platform) !== 'linux' || !Number.isSafeInteger(pid) || pid <= 0) return null;
+  const platform = deps.platform ?? process.platform;
+  if (!Number.isSafeInteger(pid) || pid <= 0) return null;
+  if (platform === 'darwin') {
+    try {
+      return await darwinStartTimeOf(pid, deps);
+    } catch {
+      return null;
+    }
+  }
+  if (platform !== 'linux') return null;
   try {
     const text = await (deps.readText ?? ((path: string) => readFile(path, 'utf8')))(`/proc/${pid}/stat`);
     const close = text.lastIndexOf(')');

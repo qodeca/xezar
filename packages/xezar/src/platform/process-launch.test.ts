@@ -160,11 +160,20 @@ describe.each(['linux', 'darwin'] as const)('on %s every wrapper passes its argu
 
   it('launchDetached → spawn(file, args, { stdio: ignore, detached }) and true after the settle window', async () => {
     const args = ['/repo'];
-    expect(await launchDetached('code', args, 0, deps)).toBe(true);
+    // The inherited environment, pinned: without the run marker nothing is passed, as before.
+    expect(await launchDetached('code', args, 0, { ...deps, resolve: { env: { PATH: '/usr/bin' } } })).toBe(true);
     const call = spawnMock.mock.calls[0]!;
     expect(call[0]).toBe('code');
     expect(call[1]).toBe(args);
     expect(call[2]).toEqual({ stdio: 'ignore', detached: true });
+  });
+
+  // ARCH-2 / SEC-963-04: an editor or terminal a nested xezar opens must not carry the outer
+  // run's marker, or stopping that run would sweep the user's editor on Linux.
+  it('launchDetached passes the environment without the run marker when it holds one', async () => {
+    const env = { PATH: '/usr/bin', XEZ_TASK_ID: 'run-1' };
+    expect(await launchDetached('code', ['/repo'], 0, { ...deps, resolve: { env } })).toBe(true);
+    expect(spawnMock.mock.calls[0]![2]).toEqual({ stdio: 'ignore', detached: true, env: { PATH: '/usr/bin' } });
   });
 
   it('launchDetached answers false when the start fails', async () => {
@@ -254,6 +263,13 @@ describe('Windows shaping, on every OS (A6, AC-2)', () => {
     expect(execFileMock).not.toHaveBeenCalled();
   });
 
+  it('drops the run marker in any spelling from a detached start (ARCH-2, SEC-963-04)', async () => {
+    const shaped = windows();
+    const env = { ...shaped.resolve.env, xez_task_id: 'run-1' };
+    expect(await launchDetached('codex', [], 0, { ...shaped, resolve: { ...shaped.resolve, env } })).toBe(true);
+    expect(spawnMock.mock.calls[0]![2]).toEqual({ stdio: 'ignore', detached: true, env: shaped.resolve.env });
+  });
+
   it('answers false from launchDetached for a refused start', async () => {
     expect(await launchDetached('cmd', ['/c', 'start'], 0, windows())).toBe(false);
     expect(spawnMock).not.toHaveBeenCalled();
@@ -294,6 +310,17 @@ describe('launchCmd (D22, SEC-7)', () => {
       ['/d', '/v:off', '/c', 'start', '""', 'http://127.0.0.1:4777/'],
       { stdio: 'ignore', detached: true, windowsVerbatimArguments: true },
     ]);
+  });
+
+  it('starts the window without the run marker, in any spelling (ARCH-2, SEC-963-04)', async () => {
+    const env = { ...SYSTEM, Xez_Task_Id: 'run-1', XEZ_TASK_ID: 'run-1' };
+    expect(await launchCmd(['/c', 'start', '', 'http://127.0.0.1:4777/'], { env, settleMs: 0 })).toBe(true);
+    expect(spawnMock.mock.calls[0]![2]).toEqual({
+      stdio: 'ignore',
+      detached: true,
+      windowsVerbatimArguments: true,
+      env: SYSTEM,
+    });
   });
 
   // SEC-963-01: Windows Terminal reads `;` as a command separator even inside quotes.

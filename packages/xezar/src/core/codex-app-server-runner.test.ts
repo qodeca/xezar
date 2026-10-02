@@ -275,6 +275,7 @@ describe('wall-clock timeout for a real Codex child that ignores SIGTERM', () =>
         // win32-skip(#963): Windows has no catchable SIGTERM, so there is no SIGKILL escalation to wait for
         if (!onWindows) expect(Date.now() - startedAt).toBeGreaterThanOrEqual(KILL_GRACE_MS - 500);
         expect(result.text).toBe('Checking the working tree.');
+        expect(result.timedOut).toBe(true); // #943: the run manager sweeps after a timeout
         expect(events).toContainEqual({
           type: 'error',
           message: 'codex app-server timed out after 0m and was killed',

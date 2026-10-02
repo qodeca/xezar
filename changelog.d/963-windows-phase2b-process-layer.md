@@ -22,6 +22,12 @@
   everything, so prefer Ctrl+C or Ctrl+Break. Before,
   Ctrl+Break and closing the window ended xezar without saving. `xezar lease gates` also passes
   Ctrl+Break and a closing window on to the command it runs. (#963)
+- ✨ **A task paused for its memory limit, cancelled or stopped at its time limit now also stops the
+  background programs it started, such as dev servers, and names them in the task.** xezar stops only
+  programs it can prove the task started, never by name or folder. When it cannot confirm which
+  process is the task's agent, it says so in the task rather than skipping the cleanup silently.
+  This is a cleanup, not a sandbox; on macOS a program that detaches and loses its parent within
+  about two seconds can be missed. (#943)
 
 ## 🐛 Fixes
 
@@ -45,3 +51,5 @@
 - 🔧 **xezar keeps running when a Codex session ends while xezar is still writing to it.** On
   every system, that failed write could end xezar with an unhandled error; now only the request
   waiting on it fails. (#963)
+- 🔧 **On macOS, xezar reads the process list in the standard C locale.** Start times and CPU
+  figures now read the same whatever the system language; Linux and Windows are unchanged. (#943)

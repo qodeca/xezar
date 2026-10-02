@@ -273,6 +273,7 @@ describe('wall-clock timeout for a real Claude child that ignores SIGTERM', () =
         // win32-skip(#963): Windows has no catchable SIGTERM, so there is no SIGKILL escalation to wait for
         if (!onWindows) expect(Date.now() - startedAt).toBeGreaterThanOrEqual(KILL_GRACE_MS - 500);
         expect(result.text).toBe('work done');
+        expect(result.timedOut).toBe(true); // #943: the run manager sweeps after a timeout
         expect(events).toContainEqual({
           type: 'error',
           message: 'claude CLI timed out after 0m and was killed',
