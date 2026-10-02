@@ -147,7 +147,17 @@ export function stopTrackedProcessTrees(deps: Partial<TreeStopDeps> = {}): Promi
 }
 
 /**
- * Signal the process group `child` leads (it was spawned `detached: true`). POSIX: `kill(-pid)`,
+ * The spawn option that makes a child lead its own process group, so `signalProcessGroup` reaches
+ * everything it starts: `detached: true` on POSIX (a new session and group). Nothing on Windows:
+ * there are no groups, and `detached` would start the child with no console, so every console
+ * program it starts opens a new, visible window. The tree stop reaches its descendants instead.
+ */
+export function ownProcessGroup(deps: { platform?: NodeJS.Platform } = {}): { detached?: true } {
+  return (deps.platform ?? process.platform) === 'win32' ? {} : { detached: true };
+}
+
+/**
+ * Signal the process group `child` leads (it was spawned with `ownProcessGroup`). POSIX: `kill(-pid)`,
  * falling back to the child itself when the group is already gone. win32: `stopChildTree`.
  * Never throws.
  */

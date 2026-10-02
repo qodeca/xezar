@@ -7,6 +7,7 @@ import {
   TREE_STOP_EXIT_CODE,
   TREE_STOP_TIMEOUT_MS,
   isTreeStopExit,
+  ownProcessGroup,
   signalProcessGroup,
   stopChildTree,
   stopProcessGroup,
@@ -292,6 +293,13 @@ describe('stopProcessGroup', () => {
       [-802, 'SIGTERM'],
       [-802, 'SIGKILL'],
     ]);
+  });
+});
+
+describe('ownProcessGroup', () => {
+  it('is detached on POSIX and adds nothing on Windows, where detached means no console', () => {
+    for (const platform of ['linux', 'darwin'] as const) expect(ownProcessGroup({ platform })).toEqual({ detached: true });
+    expect(ownProcessGroup({ platform: 'win32' })).toEqual({});
   });
 });
 

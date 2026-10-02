@@ -1,8 +1,20 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ChildProcessWithoutNullStreams } from 'node:child_process';
+import { EventEmitter } from 'node:events';
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { OwnedPids } from '../../test/helpers/owned-pids.ts';
+import { TEST_DIR_RM_OPTIONS, onWindows } from '../../test/helpers/platform.ts';
+import { PROCESS_GROUP_GRACE_MS, TREE_STOP_TIMEOUT_MS } from '../platform/process-tree.ts';
 import {
   ProviderAuthService,
+  defaultRunProviderCommand,
   isRuntimeProviderAuthFailure,
   providerAuthChecksDisabled,
+  type ProviderCommandDeps,
   type ProviderCommandResult,
   type RunProviderCommand,
 } from './provider-auth.ts';
@@ -1108,4 +1120,350 @@ describe('ProviderAuthService', () => {
         .toBe("'opencode' auth login");
     });
   });
+});
+
+// #894: the sign-in check runs in its own process group and stops everything it started. The
+// seam tests run the POSIX group path and the Windows tree path on every OS against a fake child;
+// the real-process tests below prove the same against a CLI that forks a background grandchild.
+describe('defaultRunProviderCommand – a probe stops everything it started (#894)', () => {
+  type ProbeStart = NonNullable<ProviderCommandDeps['start']>;
+  type FakeStream = EventEmitter & { destroy: Mock<() => void> };
+  interface FakeProbe extends EventEmitter {
+    pid: number | undefined;
+    exitCode: number | null;
+    signalCode: NodeJS.Signals | null;
+    kill: Mock<(signal?: NodeJS.Signals) => boolean>;
+    stdin: FakeStream;
+    stdout: FakeStream;
+    stderr: FakeStream;
+  }
+
+  const PID = 4_242;
+  const TIMEOUT_MS = 10_000;
+  const MAX_OUTPUT_BYTES = 256 * 1024;
+
+  const fakeStream = (): FakeStream => Object.assign(new EventEmitter(), { destroy: vi.fn<() => void>() });
+
+  function fakeProbe(): FakeProbe {
+    return Object.assign(new EventEmitter(), {
+      pid: PID as number | undefined,
+      exitCode: null,
+      signalCode: null,
+      kill: vi.fn<(signal?: NodeJS.Signals) => boolean>(() => true),
+      stdin: fakeStream(),
+      stdout: fakeStream(),
+      stderr: fakeStream(),
+    });
+  }
+
+  function startWith(child: FakeProbe): Mock<ProbeStart> {
+    return vi.fn<ProbeStart>(() => child as unknown as ChildProcessWithoutNullStreams);
+  }
+
+  /** Whether `pending` has settled, without waiting for it. */
+  async function isSettled(pending: Promise<unknown>): Promise<boolean> {
+    const marker = Symbol('pending');
+    return (await Promise.race([pending, Promise.resolve(marker)])) !== marker;
+  }
+
+  /** Signals sent through `process.kill`, recorded and never delivered. */
+  function recordGroupSignals(): Mock {
+    return vi.spyOn(process, 'kill').mockImplementation(() => true) as unknown as Mock;
+  }
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it('starts the CLI in its own group, hidden, without a shell, with a profile env on top of the host env', async () => {
+    recordGroupSignals();
+    const child = fakeProbe();
+    const start = startWith(child);
+    const pending = defaultRunProviderCommand('claude', ['auth', 'status'], TIMEOUT_MS, { CLAUDE_CONFIG_DIR: '/p' }, {
+      start,
+      tree: { platform: 'linux' },
+    });
+    child.emit('close', 0, null);
+    await pending;
+    expect(start).toHaveBeenCalledWith('claude', ['auth', 'status'], expect.objectContaining({
+      detached: true,
+      windowsHide: true,
+      shell: false,
+      env: { ...process.env, CLAUDE_CONFIG_DIR: '/p' },
+    }));
+
+    // The default profile adds nothing: the CLI reads the host environment, exactly as before.
+    const bare = fakeProbe();
+    const bareStart = startWith(bare);
+    const barePending = defaultRunProviderCommand('codex', ['login', 'status'], TIMEOUT_MS, undefined, {
+      start: bareStart,
+      tree: { platform: 'linux' },
+    });
+    bare.emit('close', 0, null);
+    await barePending;
+    expect(bareStart.mock.calls[0]?.[2]).not.toHaveProperty('env');
+  });
+
+  // Q-02: on Windows `detached` is DETACHED_PROCESS – the probe has no console, so each console
+  // program it starts (codex and opencode start their native binary) opens a visible window.
+  it('Windows: starts the CLI hidden and NOT detached; the tree stop replaces the group', async () => {
+    const child = fakeProbe();
+    const start = startWith(child);
+    const pending = defaultRunProviderCommand('codex', ['login', 'status'], TIMEOUT_MS, undefined, {
+      start,
+      tree: { platform: 'win32', isOwnChild: () => false },
+    });
+    child.emit('close', 0, null);
+    await pending;
+    const options = start.mock.calls[0]?.[2];
+    expect(options).toEqual(expect.objectContaining({ windowsHide: true, shell: false }));
+    expect(options).not.toHaveProperty('detached');
+  });
+
+  it('POSIX: a hung CLI gets TERM to its group at the timeout, KILL a grace later, and settles a grace after that', async () => {
+    vi.useFakeTimers();
+    const kill = recordGroupSignals();
+    const child = fakeProbe();
+    const pending = defaultRunProviderCommand('claude', [], TIMEOUT_MS, undefined, {
+      start: startWith(child),
+      tree: { platform: 'linux' },
+    });
+    child.stdout.emit('data', Buffer.from('{"loggedIn":'));
+
+    vi.advanceTimersByTime(TIMEOUT_MS - 1);
+    expect(kill).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(kill.mock.calls).toEqual([[-PID, 'SIGTERM']]);
+    vi.advanceTimersByTime(PROCESS_GROUP_GRACE_MS);
+    expect(kill.mock.calls).toEqual([[-PID, 'SIGTERM'], [-PID, 'SIGKILL']]);
+    vi.advanceTimersByTime(PROCESS_GROUP_GRACE_MS - 1);
+    expect(await isSettled(pending)).toBe(false);
+
+    // No exit ever arrives: the settle timer answers anyway, after one more KILL to the group.
+    vi.advanceTimersByTime(1);
+    await expect(pending).resolves.toEqual({
+      stdout: '{"loggedIn":',
+      stderr: '',
+      exitCode: null,
+      errorCode: undefined,
+      timedOut: true,
+    });
+    expect(kill.mock.calls).toEqual([[-PID, 'SIGTERM'], [-PID, 'SIGKILL'], [-PID, 'SIGKILL']]);
+    expect(child.kill).not.toHaveBeenCalled();
+    // Whatever left the group can still hold the pipes: xezar lets go of its ends.
+    expect(child.stdout.destroy).toHaveBeenCalled();
+    expect(child.stderr.destroy).toHaveBeenCalled();
+  });
+
+  it('POSIX: a CLI that exits has its group killed before the answer (#892), and no timer fires later', async () => {
+    vi.useFakeTimers();
+    const kill = recordGroupSignals();
+    const child = fakeProbe();
+    const pending = defaultRunProviderCommand('claude', [], TIMEOUT_MS, undefined, {
+      start: startWith(child),
+      tree: { platform: 'darwin' },
+    });
+    child.stdout.emit('data', Buffer.from('{"loggedIn":false}'));
+    child.stderr.emit('data', Buffer.from('not signed in'));
+    child.emit('close', 1, null);
+
+    await expect(pending).resolves.toEqual({
+      stdout: '{"loggedIn":false}',
+      stderr: 'not signed in',
+      exitCode: 1,
+      errorCode: undefined,
+      timedOut: false,
+    });
+    expect(kill.mock.calls).toEqual([[-PID, 'SIGKILL']]);
+    vi.advanceTimersByTime(TIMEOUT_MS * 3);
+    expect(kill).toHaveBeenCalledTimes(1);
+    expect(child.stdout.destroy).not.toHaveBeenCalled();
+  });
+
+  it('POSIX: a CLI that closes while it is being stopped answers at once, timed out, with no later signal', async () => {
+    vi.useFakeTimers();
+    const kill = recordGroupSignals();
+    const child = fakeProbe();
+    const pending = defaultRunProviderCommand('claude', [], TIMEOUT_MS, undefined, {
+      start: startWith(child),
+      tree: { platform: 'linux' },
+    });
+    vi.advanceTimersByTime(TIMEOUT_MS);
+    child.emit('close', null, 'SIGTERM');
+
+    await expect(pending).resolves.toMatchObject({ exitCode: null, errorCode: undefined, timedOut: true });
+    expect(kill.mock.calls).toEqual([[-PID, 'SIGTERM'], [-PID, 'SIGKILL']]);
+    vi.advanceTimersByTime(PROCESS_GROUP_GRACE_MS * 5);
+    expect(kill).toHaveBeenCalledTimes(2);
+  });
+
+  it('a CLI that cannot start answers with its error code and signals nothing', async () => {
+    const kill = recordGroupSignals();
+    const child = fakeProbe();
+    child.pid = undefined;
+    const pending = defaultRunProviderCommand('claude', [], TIMEOUT_MS, undefined, {
+      start: startWith(child),
+      tree: { platform: 'linux' },
+    });
+    child.emit('error', Object.assign(new Error('spawn claude ENOENT'), { code: 'ENOENT' }));
+    // Node follows a failed start with a `close` carrying the negative errno; it changes nothing.
+    child.emit('close', -2, null);
+
+    await expect(pending).resolves.toEqual({
+      stdout: '',
+      stderr: '',
+      exitCode: null,
+      errorCode: 'ENOENT',
+      timedOut: false,
+    });
+    expect(kill).not.toHaveBeenCalled();
+    expect(child.kill).not.toHaveBeenCalled();
+  });
+
+  it('output over 256 KiB stops the group with the maxBuffer code and keeps exactly 256 KiB', async () => {
+    vi.useFakeTimers();
+    const kill = recordGroupSignals();
+    const child = fakeProbe();
+    const pending = defaultRunProviderCommand('pi', ['--list-models'], TIMEOUT_MS, undefined, {
+      start: startWith(child),
+      tree: { platform: 'linux' },
+    });
+    child.stdout.emit('data', Buffer.alloc(200 * 1024, 'a'));
+    expect(kill).not.toHaveBeenCalled();
+    child.stdout.emit('data', Buffer.alloc(100 * 1024, 'b'));
+    expect(kill.mock.calls).toEqual([[-PID, 'SIGTERM']]);
+    // More output while it stops is dropped, and the timeout no longer changes the reason.
+    child.stdout.emit('data', Buffer.alloc(1024, 'c'));
+    vi.advanceTimersByTime(TIMEOUT_MS);
+    child.emit('close', null, 'SIGTERM');
+
+    const result = await pending;
+    expect(result).toMatchObject({
+      exitCode: null,
+      errorCode: 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER',
+      timedOut: false,
+    });
+    expect(result.stdout).toBe('a'.repeat(200 * 1024) + 'b'.repeat(MAX_OUTPUT_BYTES - 200 * 1024));
+  });
+
+  it('Windows: the stop is the tree stop, never a group signal, and nothing is stopped after an exit', async () => {
+    vi.useFakeTimers();
+    const kill = recordGroupSignals();
+    const tree = { platform: 'win32' as const, isOwnChild: () => false };
+
+    const hung = fakeProbe();
+    const hungPending = defaultRunProviderCommand('claude', [], TIMEOUT_MS, undefined, { start: startWith(hung), tree });
+    vi.advanceTimersByTime(TIMEOUT_MS);
+    expect(hung.kill.mock.calls).toEqual([['SIGTERM']]);
+    // The kill ended it: its pid may now be anyone's, so neither the escalation nor the answer
+    // stops anything more.
+    hung.signalCode = 'SIGTERM';
+    vi.advanceTimersByTime(2 * PROCESS_GROUP_GRACE_MS);
+    await expect(hungPending).resolves.toMatchObject({ timedOut: true, exitCode: null });
+    expect(hung.kill.mock.calls).toEqual([['SIGTERM']]);
+
+    const done = fakeProbe();
+    const donePending = defaultRunProviderCommand('claude', [], TIMEOUT_MS, undefined, { start: startWith(done), tree });
+    done.exitCode = 0;
+    done.emit('close', 0, null);
+    await expect(donePending).resolves.toMatchObject({ exitCode: 0, timedOut: false });
+    expect(done.kill).not.toHaveBeenCalled();
+    expect(kill).not.toHaveBeenCalled();
+  });
+});
+
+describe('defaultRunProviderCommand with real processes (#894)', () => {
+  const HOLDS_STDOUT = fileURLToPath(new URL('./__fixtures__/process/probe-grandchild-holds-stdout.mjs', import.meta.url));
+  const LEAVES_MEMBER = fileURLToPath(new URL('./__fixtures__/process/probe-leaves-group-member.mjs', import.meta.url));
+  /** Long enough for two cold Node starts in a row (the CLI, then its grandchild) and the pid file
+   *  on a loaded 2-core runner: a grandchild started after the stop would escape it (T-08). */
+  const PROBE_TIMEOUT_MS = 5_000;
+  const SETTLE_SLACK_MS = 1_000;
+  /** Windows stops the grandchild after the answer: one bounded PowerShell reads and kills. */
+  const TREE_STOP_BOUND_MS = TREE_STOP_TIMEOUT_MS;
+  /** The answer comes by the timeout plus two graces. On Windows, starting the tree stop's
+   *  PowerShell can hold the event loop – and so every timer – for seconds (2.5 s measured cold),
+   *  so there the bound also allows the tree stop's own; the fake-timer tests above pin the exact
+   *  schedule on every OS. */
+  const SETTLE_BOUND_MS = PROBE_TIMEOUT_MS + 2 * PROCESS_GROUP_GRACE_MS + SETTLE_SLACK_MS
+    + (onWindows ? TREE_STOP_BOUND_MS : 0);
+
+  let dir: string;
+  /** Pid files the fixtures write and the test has not read yet, so a failing test still stops them. */
+  const pidFiles = new Set<string>();
+  /** The fixtures' processes, stopped after each test only while each pid is still theirs (T-04). */
+  const owned = new OwnedPids();
+
+  /** The pids a fixture wrote – all alive when it wrote the file – owned from now on. */
+  function own<T extends Record<string, number>>(pidFile: string): T {
+    const pids = JSON.parse(readFileSync(pidFile, 'utf8')) as T;
+    owned.add(Object.values(pids), statSync(pidFile).mtimeMs);
+    pidFiles.delete(pidFile);
+    return pids;
+  }
+
+  function alive(pid: number): boolean {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch (error) {
+      return (error as NodeJS.ErrnoException).code === 'EPERM';
+    }
+  }
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'xez-provider-probe-'));
+  });
+
+  afterEach(async () => {
+    for (const file of [...pidFiles]) if (existsSync(file)) own(file);
+    pidFiles.clear();
+    await owned.stopAll();
+    await rm(dir, TEST_DIR_RM_OPTIONS);
+  }, 30_000);
+
+  it('a hung CLI whose background grandchild holds its stdout answers by the timeout plus two graces, and both are gone', async () => {
+    const pidFile = join(dir, 'pids.json');
+    pidFiles.add(pidFile);
+    const started = Date.now();
+    const result = await defaultRunProviderCommand(process.execPath, [HOLDS_STDOUT, pidFile], PROBE_TIMEOUT_MS);
+    const elapsed = Date.now() - started;
+
+    expect(result).toMatchObject({ exitCode: null, errorCode: undefined, timedOut: true });
+    expect(elapsed).toBeLessThan(SETTLE_BOUND_MS);
+    const pids = own<{ child: number; grandchild: number }>(pidFile);
+    expect(result.stdout).toContain(`"grandchild":${pids.grandchild}`);
+    await expect
+      .poll(() => alive(pids.child) || alive(pids.grandchild), { timeout: TREE_STOP_BOUND_MS, interval: 100 })
+      .toBe(false);
+    owned.gone(pids.child, pids.grandchild);
+  }, 40_000);
+
+  it.skipIf(onWindows)('POSIX: a CLI that exits 0 leaves no member of its group behind', async () => {
+    const pidFile = join(dir, 'pids.json');
+    pidFiles.add(pidFile);
+    const result = await defaultRunProviderCommand(process.execPath, [LEAVES_MEMBER, pidFile], 10_000);
+
+    expect(result).toMatchObject({ exitCode: 0, errorCode: undefined, timedOut: false });
+    const pids = own<{ child: number; member: number }>(pidFile);
+    expect(result.stdout).toContain(`"member":${pids.member}`);
+    await expect.poll(() => alive(pids.member), { timeout: 2_000, interval: 50 }).toBe(false);
+    owned.gone(pids.child, pids.member); // the CLI's exit 0 above, and the poll
+  }, 15_000);
+
+  it('a CLI that is not installed answers ENOENT', async () => {
+    await expect(defaultRunProviderCommand('xez-no-such-provider-cli-894', ['auth', 'status'], 5_000))
+      .resolves.toMatchObject({ exitCode: null, errorCode: 'ENOENT', timedOut: false });
+  }, 15_000);
+
+  it('output over 256 KiB answers with the maxBuffer code', async () => {
+    const result = await defaultRunProviderCommand(
+      process.execPath,
+      ['-e', 'process.stdout.write(Buffer.alloc(300 * 1024, 97)); setInterval(() => {}, 1_000);'],
+      10_000,
+    );
+    expect(result).toMatchObject({ exitCode: null, errorCode: 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER', timedOut: false });
+    expect(result.stdout).toHaveLength(256 * 1024);
+  }, 15_000);
 });

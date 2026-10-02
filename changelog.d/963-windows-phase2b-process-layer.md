@@ -36,6 +36,9 @@
   program's children with it, so a stopped agent could leave its tools running. xezar now stops
   them too, checking each one's start time so an unrelated program is never touched, and a stop
   xezar made no longer reads as an agent error. Linux and macOS are unchanged. (#963)
+- 🐛 **A sign-in check that hangs now stops everything it started within about 12 seconds.**
+  Before, xezar stopped only the agent's own command when its sign-in check timed out, so a
+  background program that command had started kept running. (#894)
 
 ## 🔧 Changed
 
