@@ -49,6 +49,7 @@ import {
 } from './batch-line.ts';
 import { trackChild } from './child-registry.ts';
 import { CommandRefusedError, resolveCommand, type ResolveContext, type ResolveFs } from './command-resolve.ts';
+import { withoutRunMarker } from './process-proof.ts';
 import { system32Program } from './system-programs.ts';
 
 /** How a launch may be shaped beyond its options. */
@@ -287,8 +288,9 @@ function settleDetached(start: () => ChildProcess, settleMs: number): Promise<bo
 /**
  * Start a program the user sees (an editor, a terminal, a file manager) and let it go: no stdio,
  * its own process group, never hidden, never tracked – a shutdown must not close the user's
- * editor. Resolves true once `settleMs` passed without an error, false on any failure, including
- * a refused start.
+ * editor – and without the run marker, so no run's process sweep counts it as its own (#943).
+ * Resolves true once `settleMs` passed without an error, false on any failure, including a
+ * refused start. `deps.resolve.env` stands in for the inherited environment in tests.
  */
 export function launchDetached(
   file: string,
@@ -297,7 +299,8 @@ export function launchDetached(
   deps: LaunchDeps = {},
 ): Promise<boolean> {
   return settleDetached(() => {
-    const options: SpawnOptions = { stdio: 'ignore', detached: true };
+    const env = withoutRunMarker(deps.resolve?.env ?? process.env, deps);
+    const options: SpawnOptions = { stdio: 'ignore', detached: true, ...(env ? { env } : {}) };
     if (!isWindows(deps)) return spawn(file, args, options);
     const shaped = shapeForWindows(file, args, options, false, deps);
     return spawn(shaped.file, shaped.args, shaped.options ?? options);
@@ -359,8 +362,9 @@ export function cmdLine(args: readonly string[]): string[] {
 
 /**
  * The only way to start cmd.exe (%SystemRoot%\System32, never COMSPEC): `cmd.exe /d /v:off
- * <args>`, detached, as `launchDetached`. Every element is checked by `cmdLine` and the line is
- * passed verbatim; a refusal throws `CommandRefusedError` before anything starts.
+ * <args>`, detached and without the run marker, as `launchDetached`. Every element is checked by
+ * `cmdLine` and the line is passed verbatim; a refusal throws `CommandRefusedError` before
+ * anything starts.
  */
 export function launchCmd(
   args: readonly string[],
@@ -370,8 +374,9 @@ export function launchCmd(
   if (cmdExe === null) throw new CommandRefusedError('XEZ_CMD_NO_SYSTEM_ROOT', CMD_EXE_NAME);
   const line = ['/d', '/v:off', ...cmdLine(args)];
   if (verbatimLineLength(cmdExe, line) > CMD_LINE_MAX) throw new CommandRefusedError('XEZ_CMD_TOO_LONG', CMD_EXE_NAME);
+  const env = withoutRunMarker(deps.env ?? process.env, { platform: 'win32' });
   return settleDetached(
-    () => spawn(cmdExe, line, { stdio: 'ignore', detached: true, windowsVerbatimArguments: true }),
+    () => spawn(cmdExe, line, { stdio: 'ignore', detached: true, windowsVerbatimArguments: true, ...(env ? { env } : {}) }),
     deps.settleMs ?? DETACHED_SETTLE_MS,
   );
 }

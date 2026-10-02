@@ -794,7 +794,7 @@ export class PiRunner implements AgentRunner {
         const message = `pi CLI timed out after ${Math.round((limitMs / 60_000) * 10) / 10}m and was killed`;
         onEvent?.({ type: 'error', message });
         onEvent?.({ type: 'done' });
-        return { text: textChunks.join('\n').trim(), toolCalls, tokensUsed, sessionId };
+        return { text: textChunks.join('\n').trim(), toolCalls, tokensUsed, sessionId, timedOut: true };
       }
       // A teardown xezar itself asked for (`end()`'s watchdog, or a cancel)
       // comes back as 143 because pi handles SIGTERM itself — our own signal,

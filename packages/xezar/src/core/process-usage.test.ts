@@ -1,6 +1,29 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { aggregateTreeUsage, parsePsOutput } from './process-usage.ts';
+import type { ProcessTable } from '../platform/process-table.ts';
+import {
+  aggregateTreeUsage,
+  currentUsage,
+  onProcessTable,
+  onUsage,
+  parsePsOutput,
+  registerRunProcess,
+  unregisterRunProcess,
+} from './process-usage.ts';
+
+const tableHook = vi.hoisted(() => ({ next: null as ProcessTable | null, reads: 0 }));
+
+// Only the read is faked: every other export (the walk above all) is the real one.
+vi.mock('../platform/process-table.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../platform/process-table.ts')>();
+  return {
+    ...actual,
+    readProcessTable: vi.fn(async () => {
+      tableHook.reads += 1;
+      return tableHook.next;
+    }),
+  };
+});
 
 describe('parsePsOutput', () => {
   it('parses the unix `ps` shape (pid ppid rssKb cpu)', () => {
@@ -101,5 +124,55 @@ describe('aggregateTreeUsage walks exactly as it did before #963', () => {
     for (const root of [500, 501, 502, 12345]) {
       expect(aggregateTreeUsage(procs, root)).toEqual(referenceAggregate(procs, root));
     }
+  });
+});
+
+describe('onProcessTable (#943)', () => {
+  const RUN = 'run-process-table-hook';
+
+  afterEach(() => {
+    unregisterRunProcess(RUN);
+    tableHook.next = null;
+    tableHook.reads = 0;
+  });
+
+  it("hands each tick's whole table to its listeners, before the usage listeners, and survives a throwing one", async () => {
+    const table: ProcessTable = { rows: parsePsOutput(['500 1 100 1', '501 500 50 0', '900 1 7 0'].join('\n')), queriedAt: 1_234 };
+    tableHook.next = table;
+    const order: string[] = [];
+    const seen: ProcessTable[] = [];
+    const offBroken = onProcessTable(() => {
+      throw new Error('a broken ledger');
+    });
+    const offTable = onProcessTable((received) => {
+      order.push('table');
+      seen.push(received);
+    });
+    const offUsage = onUsage(() => order.push('usage'));
+    try {
+      registerRunProcess(RUN, 500);
+      await vi.waitFor(() => expect(order).toEqual(['table', 'usage']));
+      expect(seen).toEqual([table]);
+      expect(seen[0]).toBe(table);
+      expect(currentUsage(RUN)).toEqual({ cpuPct: 1, rssBytes: 150 * 1024, procCount: 2 });
+    } finally {
+      offBroken();
+      offTable();
+      offUsage();
+    }
+  });
+
+  it('is not called for a table that could not be read, nor after unsubscribing', async () => {
+    const calls: ProcessTable[] = [];
+    const off = onProcessTable((received) => calls.push(received));
+    registerRunProcess(RUN, 500);
+    await vi.waitFor(() => expect(tableHook.reads).toBe(1));
+    expect(calls).toEqual([]);
+    off();
+    unregisterRunProcess(RUN);
+    tableHook.next = { rows: parsePsOutput('500 1 100 1'), queriedAt: 1 };
+    registerRunProcess(RUN, 500);
+    await vi.waitFor(() => expect(tableHook.reads).toBe(2));
+    expect(calls).toEqual([]);
   });
 });

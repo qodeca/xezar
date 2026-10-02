@@ -87,7 +87,7 @@ Use **Draft PR** in the review panel after inspecting the changes. The operation
 ## To continue, cancel, archive or open in a terminal
 
 - **Continue**: reopen a stopped task with a recorded agent session. Add a follow-up prompt, or submit without text to reopen it. Resolve any provider-availability message first.
-- **Cancel**: stop a running, waiting or queued task.
+- **Cancel**: stop a running, waiting or queued task. Cancelling – like a pause for the memory limit or a step reaching its time limit – also stops background programs the task started, such as a dev server, and names them in the task. This is a best-effort cleanup, not a sandbox: on macOS, a program that detaches from the task and loses its parent within about two seconds can be missed.
 - **Finish**: close a waiting session, or accept a task at review.
 - **Archive**: put an inactive task aside; **Unarchive** brings it back. Archiving is separate from deleting the task.
 - **Open in…** (desktop only): a task with a worktree offers available local applications and agent CLIs. A task without a worktree offers only **Terminal (resume session)**, when its session can be resumed. On phones, the action menu has a plain **Terminal** item when available. The same backend can resume a stopped task's recorded session; a different backend starts fresh. A running task's CLI launch also starts fresh rather than attaching another CLI to the active session.

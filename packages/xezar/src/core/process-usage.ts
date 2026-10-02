@@ -14,7 +14,7 @@
  *    `ps` output (scripts/test-process-usage.mjs).
  */
 
-import { descendantPids, readProcessTable } from '../platform/process-table.ts';
+import { descendantPids, readProcessTable, type ProcessTable } from '../platform/process-table.ts';
 
 /** One aggregated sample for a run's process tree. */
 export interface ProcessUsage {
@@ -96,9 +96,11 @@ interface Entry {
 }
 
 type UsageListener = (usage: Record<string, ProcessUsage>) => void;
+type TableListener = (table: ProcessTable) => void;
 
 const entries = new Map<string, Entry>();
 const listeners = new Set<UsageListener>();
+const tableListeners = new Set<TableListener>();
 let timer: NodeJS.Timeout | null = null;
 let sampling = false;
 
@@ -150,6 +152,19 @@ export function onUsage(listener: UsageListener): () => void {
   return () => listeners.delete(listener);
 }
 
+/**
+ * Subscribe to each tick's whole process table (#943): the rows and the moment the query
+ * started. It fires only while runs are registered, and only with a table that was read – the
+ * same ticks `onUsage` gets, before them. Returns the unsubscribe. A run's process sweeper
+ * keeps its ledger from these; nothing here changes what a sample measures.
+ */
+export function onProcessTable(listener: TableListener): () => void {
+  tableListeners.add(listener);
+  return () => {
+    tableListeners.delete(listener);
+  };
+}
+
 /** Test hook: fan one snapshot out to every subscriber without shelling `ps` —
  *  lets unit tests prove a dispose()d subscriber stops receiving ticks. */
 export function emitUsageForTest(snapshot: Record<string, ProcessUsage>): void {
@@ -168,6 +183,13 @@ async function sample(): Promise<void> {
   try {
     const table = await readProcessTable();
     if (table === null) return; // ps unavailable — degrade to no data
+    for (const listener of tableListeners) {
+      try {
+        listener(table);
+      } catch {
+        // a broken ledger must not kill the sampler
+      }
+    }
     const procs = table.rows;
     for (const entry of entries.values()) {
       const usage = aggregateTreeUsage(procs, entry.pid);

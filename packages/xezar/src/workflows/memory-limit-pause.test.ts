@@ -1,9 +1,16 @@
-import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { OwnedPids } from '../../test/helpers/owned-pids.ts';
+import { pidExists } from '../platform/process-proof.ts';
+import { agentTmpDir } from '../runs/agent-tmpdir.ts';
+import { RunProcessSweeper } from '../runs/run-process-sweeper.ts';
 import { RunStore } from '../runs/store.ts';
+import { closeStoreAndRemove } from '../runs/store.testkit.ts';
 import { WorkspaceSemaphore } from '../workspace/semaphore.ts';
 import { RunManager } from './run.ts';
 import type { WorkflowDef } from './types.ts';
@@ -54,7 +61,7 @@ describe('a run xezar terminates for the memory limit (#603)', () => {
     if (savedEnv.XEZ_DRY_RUN === undefined) delete process.env.XEZ_DRY_RUN;
     else process.env.XEZ_DRY_RUN = savedEnv.XEZ_DRY_RUN;
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
+    closeStoreAndRemove(store, repoRoot);
   });
 
   const waitFor = async (
@@ -170,4 +177,139 @@ describe('a run xezar terminates for the memory limit (#603)', () => {
     expect(run?.error).toContain('memory limit exceeded');
     expect(run?.steps.find((s) => s.id === 'continue-1')?.status).toBe('failed');
   }, 30_000);
+});
+
+/**
+ * #943 AC-12a/12b, with real processes on the machine the suite runs on: an agent that started a
+ * dev server in the background and walked away from it (`claude-detaches-server.mjs`) is paused
+ * for the memory limit, and the server is stopped with it – while three decoys started beside it
+ * in the same folder live on: one carrying ANOTHER run's id, one with this run's id in its
+ * arguments only, and one with the literal `XEZ_TASK_ID=<this run>` in its arguments (SEC-4,
+ * SEC-10). Linux proves the server by its environment; Windows and macOS by the ledger, which
+ * the test waits on through `ledgerHas` rather than a sleep (R11).
+ */
+describe('a memory-limit pause stops what the run started (#943)', () => {
+  const FIXTURE = fileURLToPath(new URL('../core/__fixtures__/process/claude-detaches-server.mjs', import.meta.url));
+  const AGENT: WorkflowDef = { name: 'quick-task', source: 'built-in', steps: [{ id: 'task', name: 'Task', prompt: '{{task}}' }] };
+  let repoRoot: string;
+  let store: RunStore;
+  let manager: RunManager;
+  let sweeper: RunProcessSweeper | undefined;
+  /** The fixture's launcher and server: known by pid only, so stopped by identity (T-04). */
+  const leftovers = new OwnedPids();
+  /** The decoys this case started itself: stopped through their own handles. */
+  const decoyChildren: ChildProcess[] = [];
+  const savedEnv: Record<string, string | undefined> = {};
+
+  beforeEach(() => {
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-943-'));
+    execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: repoRoot });
+    execFileSync('git', [...GIT_ID, 'commit', '--allow-empty', '-q', '-m', 'base'], { cwd: repoRoot });
+    for (const key of ['XEZ_DRY_RUN', 'XEZ_CLAUDE_BIN']) savedEnv[key] = process.env[key];
+    process.env.XEZ_DRY_RUN = '1';
+    process.env.XEZ_CLAUDE_BIN = FIXTURE;
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
+    // A ceiling no real sample reaches: only the direct trigger below pauses the run.
+    manager = new RunManager(store, repoRoot, {
+      semaphore: new WorkspaceSemaphore({ initial: { maxParallel: 2, memoryLimitMb: 100_000 } }),
+      runProcesses: (hooks) => (sweeper = new RunProcessSweeper(hooks)),
+    });
+  });
+
+  afterEach(async () => {
+    try {
+      await manager.quiesce();
+    } finally {
+      // Whatever quiesce does, the real processes this case started are stopped (Q-06) – a pid the
+      // case saw exit never again, the rest only while each is still the process it saw (T-04).
+      // Through the handle: a no-op once Node saw the decoy exit, so never a stranger's pid.
+      for (const decoy of decoyChildren.splice(0)) decoy.kill('SIGKILL');
+      await leftovers.stopAll();
+      for (const [key, value] of Object.entries(savedEnv)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+      store.flush();
+      closeStoreAndRemove(store, repoRoot);
+    }
+  }, 30_000);
+
+  const waitFor = async (pred: () => boolean, what: string, explain?: () => string): Promise<void> => {
+    const deadline = Date.now() + 30_000;
+    while (!pred()) {
+      if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}${explain ? ` (${explain()})` : ''}`);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  };
+  /** The run's notes – a root the ledger rejected is named there (T-02), so a miss explains itself. */
+  const notesOf = (runId: string): string =>
+    JSON.stringify((store.readEvents(runId) as Array<{ type: string; message?: string }>).filter((e) => e.type === 'note').map((e) => e.message));
+
+  function startDecoy(env: NodeJS.ProcessEnv, args: string[]): number {
+    const { XEZ_TASK_ID: _outer, ...base } = process.env;
+    // Each decoy ends itself after two minutes, so a case that dies before its cleanup leaves nothing.
+    const decoy = spawn(process.execPath, ['-e', 'setTimeout(() => process.exit(0), 120000); setInterval(() => {}, 60000); // xez-943-decoy', ...args], {
+      cwd: repoRoot,
+      env: { ...base, ...env },
+      stdio: 'ignore',
+      windowsHide: true,
+    });
+    decoyChildren.push(decoy);
+    return decoy.pid!;
+  }
+
+  it('stops the detached server, names it in one note after the pause, and leaves every decoy alive', async () => {
+    const record = manager.startRun(AGENT, { task: 'start the dev server', worktree: false });
+    const runId = record.id;
+    const tmp = agentTmpDir(store.dataDir, runId);
+    const pidFile = join(tmp, 'detached.pid');
+    // A fixture that never started (on POSIX: not executable, spawn EACCES) shows as a failed run.
+    const runState = (): string => `run ${store.getRun(runId)?.status}: ${store.getRun(runId)?.error ?? ''}; notes: ${notesOf(runId)}`;
+    await waitFor(() => existsSync(pidFile), 'the fixture to start its server', runState);
+    const { launcher, server } = JSON.parse(readFileSync(pidFile, 'utf8')) as { launcher: number; server: number };
+    // Both still run here: the fixture waits for the release file before the launcher exits.
+    leftovers.add([launcher, server]);
+    const decoys = [
+      startDecoy({ XEZ_TASK_ID: randomUUID() }, []),
+      startDecoy({}, [runId]),
+      startDecoy({}, [`XEZ_TASK_ID=${runId}`]),
+    ];
+
+    if (process.platform !== 'linux') {
+      await waitFor(() => sweeper!.ledgerHas(runId, server), 'the ledger to record the server', () => `notes: ${notesOf(runId)}`);
+    }
+    writeFileSync(join(tmp, 'release'), '');
+    await waitFor(() => !pidExists(launcher), 'the launcher to exit, orphaning the server');
+    leftovers.gone(launcher);
+    expect(pidExists(server)).toBe(true);
+    await waitFor(
+      () => Boolean((manager as unknown as { active: Map<string, { session?: { open: boolean } }> }).active.get(runId)?.session?.open),
+      'the session to be open',
+    );
+
+    await (manager as unknown as {
+      enforceMemoryLimit(snapshot: Record<string, { rssBytes: number }>): Promise<void>;
+    }).enforceMemoryLimit({ [runId]: { rssBytes: 999_999_999_999 } });
+    await waitFor(() => !manager.isActive(runId), 'the pause to end the run');
+    expect(store.getRun(runId)?.status).toBe('failed');
+    await sweeper!.pending(runId);
+
+    expect(pidExists(server)).toBe(false);
+    leftovers.gone(server);
+    for (const decoy of decoys) expect(pidExists(decoy)).toBe(true);
+    const events = store.readEvents(runId) as Array<{ type: string; message?: string }>;
+    const reports = events.filter((e) => e.type === 'note' && /^(Stopped|Could not stop) /.test(e.message ?? ''));
+    expect(reports).toHaveLength(1);
+    const report = reports[0]!.message ?? '';
+    expect(report.startsWith('Stopped ')).toBe(true);
+    expect(report).toContain(` ${server} `);
+    expect(report).toContain('xez-943-dev-server');
+    for (const decoy of decoys) expect(report).not.toContain(String(decoy));
+    const paused = events.findIndex((e) => e.type === 'lifecycle' && (e.message ?? '').startsWith('paused — memory limit exceeded'));
+    expect(paused).toBeGreaterThanOrEqual(0);
+    expect(paused).toBeLessThan(events.indexOf(reports[0]!));
+    // No Continue here: it would start the fixture again – a second launcher and a detached server
+    // racing the teardown, outside `leftovers` (Q-06). A Continue after a sweep is pinned in
+    // run-process-sweep.test.ts.
+  }, 90_000);
 });

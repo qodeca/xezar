@@ -912,7 +912,7 @@ describe('a server that ignores SIGTERM', () => {
   it('is escalated on the wall-clock timeout path and reports the timeout', async () => {
     const { session, pid, v1 } = start({ env: ignoreSigterm, timeoutMs: 1_000 });
     try {
-      await session.result;
+      expect((await session.result).timedOut).toBe(true); // #943: the run manager sweeps after a timeout
 
       expect(signalsSeen()).toEqual(['SIGTERM']);
       expect(isAlive(pid)).toBe(false);

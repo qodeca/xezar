@@ -980,6 +980,21 @@ describe('pi wall-clock timeout escalates SIGTERM -> SIGKILL (D)', () => {
     });
   });
 
+  it('marks the result timedOut when the wall clock stopped it (#943)', async () => {
+    let result: Promise<unknown> | undefined;
+    await withFakeChild(async (fake) => {
+      const session = new PiRunner({ bin: 'pi', timeoutMs: 20, supportsMcpConfig: NO_MCP_CONFIG }).startSession({
+        userPrompt: 'do it',
+        cwd: process.cwd(),
+      });
+      result = session.result.catch(() => null);
+      await fake.spawned;
+      vi.advanceTimersByTime(20);
+      fake.exit(143);
+    });
+    await expect(result).resolves.toMatchObject({ timedOut: true });
+  });
+
   it('still signals when the session had already auto-ended (the `open` guard)', async () => {
     // `autoEndAfterFirstTurn` sets `open = false`; the old `interrupt()` returned early on
     // that, so the deadline fired into a no-op and nothing was ever killed.

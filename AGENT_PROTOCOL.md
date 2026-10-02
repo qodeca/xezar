@@ -163,6 +163,9 @@ around them:
   that loop within a microtask, so a `finally` disarms the `SIGKILL` long before its grace
   period elapses. Clear it after `waitForExit` instead. This is the single easiest way to
   ship an escalation that is present in the diff, reviewed, and dead.
+- **Return `timedOut: true`** on the `AgentRunResult` of a session the deadline stopped
+  (#943), and never otherwise. The run manager reads it to stop what the agent left running
+  after the timeout; a runner that omits it leaves those programs behind.
 
 `SessionOptions`:
 
