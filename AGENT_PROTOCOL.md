@@ -108,7 +108,7 @@ A termination the runner itself caused is **not** an agent failure (pre-rename i
 `end()` arms a SIGTERM→SIGKILL watchdog for CLIs that ignore EOF, and
 `interrupt()` signals outright; the agent CLIs install their own handlers and
 exit `128 + signal`. A runner MUST therefore record that it sent the signal and
-settle such an exit on the normal path — `isSignalTerminationExit(exitCode)`
+settle such an exit on the normal path — `isXezarStopExit(exitCode)`
 (`packages/xezar/src/core/agent-runner.ts`) plus a `note` — instead of throwing. Throwing makes
 a finished run settle as `failed` and a cancelled run settle as `failed` too.
 
@@ -127,6 +127,22 @@ so the watchdog's own SIGTERM flips it while the CLI — which handles the
 signal — keeps running, and the escalation written for exactly that case is
 skipped. Use `trackChildExit(child)` (`packages/xezar/src/core/agent-runner.ts`),
 which seeds from `exitCode`/`signalCode` and listens for `exit`.
+
+**On Windows the same stop exits `1`** (#963). A kill there is TerminateProcess: the CLI never
+runs a signal handler, and the process reports exit code 1 whatever the signal.
+`isXezarStopExit` therefore accepts the `128 + signal` codes on every platform and `1` on
+Windows only — and, like the rest of this rule, only next to the runner's own "we sent the
+stop" flag. Without that flag an exit 1 is an ordinary agent failure, which is why the
+foreign-signal check above stays on `isSignalTerminationExit`.
+
+**Send every stop through `stopChildTree(child, signal)`**
+(`packages/xezar/src/platform/process-tree.ts`), never `child.kill` (#963). On Linux and macOS
+it is exactly `child.kill(signal)`. On Windows it kills the child, then the programs that child
+started, each identified by its start time (no `taskkill /T`): TerminateProcess stops one
+process, so an agent's shell, test runner or dev server would otherwise outlive the stop. It
+never rejects, so a runner may drop the promise (`void stopChildTree(…)`). The `raw-kill` rule
+in `packages/xezar/src/process-spawn-scan.test.ts` fails the unit gate on any `.kill(` outside
+`platform/` except the `process.kill(pid, 0)` liveness probe.
 
 The **wall-clock deadline is a third termination path, and it carries the same
 obligation.** `AgentRunSpec.timeoutMs` is not advisory: when it expires a runner MUST
@@ -641,8 +657,8 @@ To be first-class:
    `result`). Honor `AgentRunSpec` uniformly — use `prependSystemPrompt` if the
    backend has no native system-prompt channel. Implement all THREE termination paths
    to the same standard (`end()`, `interrupt()`, and the `timeoutMs` deadline): each
-   escalates SIGTERM→SIGKILL gated on `trackChildExit`, and each records that the runner
-   sent the signal so the exit settles on the normal path, and report a `128 + signal` exit the
+   escalates SIGTERM→SIGKILL through `stopChildTree`, gated on `trackChildExit`, and each records that the runner
+   sent the signal so the exit settles on the normal path (`isXezarStopExit`), and report a `128 + signal` exit the
    runner did NOT cause through `foreignSignalExitMessage`. See § the termination rules above;
    `pi-runner.ts` is the reference for the deadline path; `claude-cli-runner.ts` for the
    `end()` SIGTERM→SIGKILL watchdog (but not its timer cleanup). No runner covers all three yet.

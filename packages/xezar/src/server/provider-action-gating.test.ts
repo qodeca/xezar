@@ -5,6 +5,7 @@ import type { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProviderAuthService, type ProviderId } from '../core/provider-auth.ts';
 import { RunStore, type RunRecord } from '../runs/store.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 import { defaultWorkspaceConfig, type WorkspaceConfig } from '../workspace/config.ts';
 import { RunManager, type StartRunInput } from '../workflows/run.ts';
 import type { WorkflowDef } from '../workflows/types.ts';
@@ -98,7 +99,7 @@ describe('provider action gating', () => {
 
   afterEach(() => {
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
     if (savedModelsLocked === undefined) delete process.env.XEZ_AGENT_MODELS_LOCKED;
     else process.env.XEZ_AGENT_MODELS_LOCKED = savedModelsLocked;
     if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN;
@@ -286,7 +287,7 @@ describe('the gate verifies before it refuses', () => {
 
   afterEach(() => {
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
     if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN;
     else process.env.XEZ_DRY_RUN = savedDryRun;
   });
@@ -406,7 +407,7 @@ describe('provider availability preserves existing execution', () => {
   afterEach(() => {
     if (runId) manager.cancel(runId);
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
     if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN;
     else process.env.XEZ_DRY_RUN = savedDryRun;
     if (savedCodexBin === undefined) delete process.env.XEZ_CODEX_BIN;

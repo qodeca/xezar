@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { useEmptyPath } from '../../test/helpers/empty-path.ts';
 
 import type { AgentEvent, AgentRunResult } from './agent-runner.js';
 import { PiRunner, type PiMcpConfigProbe } from './pi-runner.js';
@@ -27,6 +28,8 @@ const spawnHook = vi.hoisted(() => ({
   override: null as null | (() => unknown),
   onSpawn: null as null | (() => void),
 }));
+
+useEmptyPath();
 
 vi.mock('node:child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:child_process')>();

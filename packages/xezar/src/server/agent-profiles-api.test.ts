@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgentProfilesResponse, AgentProfileResponse } from '@qodeca/xezar-contract';
 import { agentAccountsPath } from '../paths.ts';
 import { RunStore } from '../runs/store.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { loadAgentAccounts, mergeWriteAgentAccounts } from '../workspace/agent-accounts.ts';
 import { clearProjectProbeCache, registerProject } from '../workspace/projects.ts';
@@ -43,7 +44,7 @@ describe('agent profiles API', () => {
 
   afterEach(() => {
     store.flush();
-    for (const dir of [home, repoRoot]) rmSync(dir, { recursive: true, force: true });
+    for (const dir of [home, repoRoot]) rmSync(dir, TEST_DIR_RM_OPTIONS);
     for (const [key, value] of [
       ['XEZ_HOME', saved.home],
       ['XEZ_REMOTE', saved.remote],

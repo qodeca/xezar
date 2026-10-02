@@ -1,4 +1,4 @@
-import { spawn as nodeSpawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import type { ChildProcess, ChildProcessWithoutNullStreams } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve as resolvePath } from 'node:path';
 import type {
@@ -11,7 +11,9 @@ import type {
   ContentBlock,
   SessionOptions,
 } from './agent-runner.js';
-import { foreignSignalExitMessage, isSignalTerminationExit, trackChildExit } from './agent-runner.js';
+import { foreignSignalExitMessage, isSignalTerminationExit, isXezarStopExit, trackChildExit } from './agent-runner.js';
+import { launch } from '../platform/process-launch.js';
+import { stopChildTree } from '../platform/process-tree.js';
 import { buildChildEnv } from './agent-env.js';
 import { piMcpIsolation, runMcpIsolationNote, writeMcpOverlay } from './run-mcp-isolation.js';
 import { readNdjson } from './ndjson.js';
@@ -119,7 +121,7 @@ export function piSupportsMcpConfig(
   signal?: AbortSignal,
 ): Promise<PiMcpConfigAnswer> {
   return new Promise<PiMcpConfigAnswer>((resolve) => {
-    let child: ReturnType<typeof nodeSpawn> | undefined;
+    let child: ChildProcess | undefined;
     let done = false;
     const settle = (answer: PiMcpConfigAnswer): void => {
       if (done) return;
@@ -130,14 +132,14 @@ export function piSupportsMcpConfig(
     };
     // Same treatment as the bound above: SIGKILL, and answer without waiting for the corpse.
     const onAbort = (): void => {
-      child?.kill('SIGKILL');
+      if (child) void stopChildTree(child, 'SIGKILL');
       settle('unknown');
     };
     // The hard bound. It resolves WITHOUT waiting for the corpse, so a child that ignores
     // signals delays nothing, and it signals SIGKILL because SIGTERM is exactly what a CLI
     // with its own handler absorbs (measured: 30 s held on a SIGTERM-trapping child).
     const timer = setTimeout(() => {
-      child?.kill('SIGKILL');
+      if (child) void stopChildTree(child, 'SIGKILL');
       settle('unknown');
     }, timeoutMs);
     timer.unref?.();
@@ -149,7 +151,7 @@ export function piSupportsMcpConfig(
     signal?.addEventListener('abort', onAbort);
 
     try {
-      child = nodeSpawn(bin, ['--help'], {
+      child = launch(bin, ['--help'], {
         cwd,
         env,
         // No stdin at all: a binary that reads it sees EOF and cannot hold the probe open.
@@ -397,7 +399,7 @@ export class PiRunner implements AgentRunner {
     restart: (() => AgentSession | null) | null,
     onRestartWindowClosed?: () => void,
   ): AgentSession {
-    const child = nodeSpawn(this.bin, buildPiArgs(spec, mcpOverlay?.path), {
+    const child = launch(this.bin, buildPiArgs(spec, mcpOverlay?.path), {
       cwd: spec.cwd,
       env: childEnv,
     });
@@ -585,7 +587,7 @@ export class PiRunner implements AgentRunner {
     // signal exit WITHOUT it reads as one xezar never sent (#156).
     const signalChild = (signal: 'SIGTERM'): void => {
       terminatedByXezar = true;
-      child.kill(signal);
+      void stopChildTree(child, signal);
     };
     const end = (): void => {
       if (!open) return;
@@ -642,7 +644,7 @@ export class PiRunner implements AgentRunner {
             interrupt();
             child.stdout.destroy();
             timeoutKillTimer = setTimeout(() => {
-              if (!hasExited()) child.kill('SIGKILL');
+              if (!hasExited()) void stopChildTree(child, 'SIGKILL');
             }, KILL_GRACE_MS);
             timeoutKillTimer.unref?.();
           }, limitMs)
@@ -797,7 +799,8 @@ export class PiRunner implements AgentRunner {
       // A teardown xezar itself asked for (`end()`'s watchdog, or a cancel)
       // comes back as 143 because pi handles SIGTERM itself — our own signal,
       // not a pi failure, so it settles on the normal path with a note (#703).
-      if (terminatedByXezar && isSignalTerminationExit(exitCode)) {
+      // On Windows that stop leaves exit code 1 (`isXezarStopExit`, #963).
+      if (terminatedByXezar && isXezarStopExit(exitCode)) {
         onEvent?.({
           type: 'note',
           message: `pi CLI did not exit on its own after close; terminated by xezar (code ${exitCode})`,

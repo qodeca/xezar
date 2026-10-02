@@ -13,6 +13,7 @@
  *                 model with `provider/model`.
  */
 
+import { isTreeStopExit } from '../platform/process-tree.ts';
 import type { UiEvent } from './ui-events.ts';
 
 /**
@@ -99,6 +100,19 @@ export function prependSystemPrompt(systemPrompt: string | undefined, userPrompt
  */
 export function isSignalTerminationExit(exitCode: number | null): boolean {
   return exitCode === 130 || exitCode === 137 || exitCode === 143;
+}
+
+/**
+ * The exit codes a stop xezar sent can leave behind (#963): the `128 + signal` codes on every
+ * platform, and on Windows also 1 – `kill()` there is TerminateProcess, which reports exit 1
+ * whatever the signal. Like `isSignalTerminationExit`, only meaningful next to the runner's own
+ * "we sent the stop" flag (#703): without it, an exit 1 is an ordinary failure.
+ */
+export function isXezarStopExit(
+  exitCode: number | null,
+  deps: { platform?: NodeJS.Platform } = {},
+): boolean {
+  return isSignalTerminationExit(exitCode) || isTreeStopExit(exitCode, deps);
 }
 
 /** The stop signal behind each exit code `isSignalTerminationExit` accepts. */

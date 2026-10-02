@@ -1,5 +1,4 @@
 import { projectScratchDir } from '../project-data-paths.ts';
-import { execFile } from 'node:child_process';
 import { rmSync } from 'node:fs';
 import { lstat, open, readFile, readdir, realpath, stat } from 'node:fs/promises';
 import { join, resolve, sep } from 'node:path';
@@ -7,6 +6,7 @@ import { resolveTaskDiffBase, type RepointedHead } from '../git-diff-base.ts';
 import { isSafeGitRef } from '../git-refs.ts';
 import { isInsideDotGit } from '../platform/path-identity.ts';
 import { isDotGitSegment } from '../platform/path-syntax.ts';
+import { launchFile } from '../platform/process-launch.ts';
 
 /**
  * Session git plumbing for the cockpit's Changes & Files tabs.
@@ -31,7 +31,7 @@ interface GitResult {
  *  `GIT_INDEX_FILE`) merge over the process env. */
 function git(cwd: string, args: string[], env?: Record<string, string>): Promise<GitResult> {
   return new Promise((resolvePromise) => {
-    execFile(
+    launchFile(
       'git',
       args,
       {

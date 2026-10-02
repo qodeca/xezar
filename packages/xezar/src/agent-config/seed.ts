@@ -1,8 +1,8 @@
-import { execFile } from 'node:child_process';
 import { constants } from 'node:fs';
 import { mkdir, open, readFile, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { agentHomePaths } from '../paths.ts';
+import { launchFile } from '../platform/process-launch.ts';
 import { isAbsolutePath } from '../platform/path-syntax.ts';
 import { checkedConfigPath, readConfigBuffer } from './path-access.ts';
 import { CONFIG_FILES } from './catalog.ts';
@@ -32,7 +32,7 @@ import { CONFIG_FILES } from './catalog.ts';
 
 function git(cwd: string, args: string[]): Promise<{ ok: boolean; stdout: string }> {
   return new Promise((resolve) => {
-    execFile('git', args, { cwd, encoding: 'utf8' }, (err, stdout) =>
+    launchFile('git', args, { cwd, encoding: 'utf8' }, (err, stdout) =>
       resolve({ ok: !err, stdout: stdout ?? '' }),
     );
   });

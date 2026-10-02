@@ -1,6 +1,7 @@
-import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync, readlinkSync } from 'node:fs';
+import { launchFileSync } from './platform/process-launch.ts';
+import { system32Program } from './platform/system-programs.ts';
 
 /**
  * "Is a PID written into a file here comparable to a PID here?" is the one question the
@@ -109,7 +110,9 @@ function readPlatformMachineId(): string | null {
     return uuid?.[1] ?? null;
   }
   if (process.platform === 'win32') {
-    const guid = /MachineGuid\s+REG_SZ\s+(\S+)/i.exec(probe('reg', ['query', 'HKLM\\SOFTWARE\\Microsoft\\Cryptography', '/v', 'MachineGuid']) ?? '');
+    // reg.exe from System32, never whichever `reg` the PATH offers first (#963).
+    const reg = system32Program('reg.exe') ?? 'reg';
+    const guid = /MachineGuid\s+REG_SZ\s+(\S+)/i.exec(probe(reg, ['query', 'HKLM\\SOFTWARE\\Microsoft\\Cryptography', '/v', 'MachineGuid']) ?? '');
     return guid?.[1] ?? null;
   }
   // Linux and the BSDs: systemd's id first, then the older D-Bus one it usually symlinks to.
@@ -132,7 +135,7 @@ function readPidNamespace(): string | null {
 /** A fixed argument vector, no shell, bounded time, stderr discarded, or `null`. */
 function probe(command: string, args: readonly string[]): string | null {
   try {
-    return execFileSync(command, [...args], { encoding: 'utf8', timeout: PROBE_TIMEOUT_MS, stdio: ['ignore', 'pipe', 'ignore'] });
+    return launchFileSync(command, [...args], { encoding: 'utf8', timeout: PROBE_TIMEOUT_MS, stdio: ['ignore', 'pipe', 'ignore'] });
   } catch {
     return null;
   }

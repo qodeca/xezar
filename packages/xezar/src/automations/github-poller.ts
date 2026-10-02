@@ -1,9 +1,7 @@
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import { z } from 'zod';
+import { launchFileAsync } from '../platform/process-launch.ts';
 import type { AutomationDefinition, AutomationEvent } from './types.ts';
 
-const execFileAsync = promisify(execFile);
 const HARD_CANDIDATE_CAP = 100;
 const GITHUB_COMMAND_TIMEOUT_MS = 30_000;
 
@@ -66,7 +64,7 @@ export class GithubPoller {
   private readonly run: NonNullable<GithubPollerOptions['run']>;
 
   constructor(options: GithubPollerOptions = {}) {
-    this.run = options.run ?? (async (executable, args) => (await execFileAsync(executable, [...args], {
+    this.run = options.run ?? (async (executable, args) => (await launchFileAsync(executable, [...args], {
       maxBuffer: 4 * 1024 * 1024,
       timeout: GITHUB_COMMAND_TIMEOUT_MS,
     })).stdout);

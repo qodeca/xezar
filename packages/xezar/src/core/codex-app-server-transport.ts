@@ -1,7 +1,9 @@
-import { spawn as nodeSpawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { trackChildExit } from './agent-runner.ts';
 import { buildChildEnv } from './agent-env.ts';
 import { EOF_KILL_GRACE_MS, EOF_TERM_GRACE_MS, KILL_GRACE_MS } from './claude-cli-runner.ts';
+import { launch } from '../platform/process-launch.ts';
+import { stopChildTree } from '../platform/process-tree.ts';
 
 export interface CodexAppServerMessage {
   id?: number | string;
@@ -32,7 +34,7 @@ export function spawnCodexAppServer(
   preparedEnv?: NodeJS.ProcessEnv,
 ): ChildProcessWithoutNullStreams {
   try {
-    return nodeSpawn(bin, ['app-server'], {
+    return launch(bin, ['app-server'], {
       cwd,
       env: preparedEnv ?? buildCodexAppServerEnv(extraEnv),
     });
@@ -46,7 +48,12 @@ export class CodexAppServerRpc {
   private nextId = 1;
   private readonly pending = new Map<number, PendingRequest>();
 
-  constructor(readonly child: ChildProcessWithoutNullStreams) {}
+  constructor(readonly child: ChildProcessWithoutNullStreams) {
+    // A write still in flight when the app-server exits – or when xezar stops it right after
+    // `turn/interrupt`, which on Windows ends it at once – fails later, as an EPIPE `error` on
+    // stdin. Unheard, that error would crash the process; the read/exit path settles (#963).
+    child.stdin.on('error', () => undefined);
+  }
 
   allocateId(): number {
     return this.nextId++;
@@ -126,12 +133,12 @@ export function endCodexAppServer(
   const termTimer = setTimeout(() => {
     if (!hasExited()) {
       onSignal?.();
-      child.kill('SIGTERM');
+      void stopChildTree(child, 'SIGTERM');
     }
     killTimer = setTimeout(() => {
       if (!hasExited()) {
         onSignal?.();
-        child.kill('SIGKILL');
+        void stopChildTree(child, 'SIGKILL');
       }
     }, EOF_KILL_GRACE_MS);
     killTimer.unref?.();

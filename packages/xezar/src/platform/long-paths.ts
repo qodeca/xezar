@@ -13,8 +13,7 @@
  * Leaf layer: this folder imports only `node:*` and its own siblings.
  */
 import { execFile } from 'node:child_process';
-import { win32 } from 'node:path';
-import { isDrivePath } from './path-syntax.ts';
+import { system32Program } from './system-programs.ts';
 
 export type LongPathState = 'on' | 'off' | 'unknown';
 /** A finished probe. `exitCode` null = it did not finish (not found, timed out, killed). */
@@ -42,9 +41,7 @@ export const LONG_PATHS_FIX =
  * relative, UNC or device root would let the environment pick which program runs.
  */
 export function regExePath(env: NodeJS.ProcessEnv): string | null {
-  const root = env.SystemRoot ?? env.SYSTEMROOT;
-  if (!root || !isDrivePath(root)) return null;
-  return win32.join(root, 'System32', 'reg.exe');
+  return system32Program('reg.exe', env);
 }
 
 /** `reg query <FileSystem key>`: the whole key, so "value absent" (off) and "key unreadable"

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useEmptyPath } from '../../test/helpers/empty-path.ts';
 
 import { detectEnvironment, readHostGithubToken } from './backend-detect.js';
 
@@ -27,6 +28,8 @@ const execHook = vi.hoisted(() => ({
   replies: new Map<string, FakeReply>(),
   calls: [] as { file: string; args: string[]; timeout: number | undefined }[],
 }));
+
+useEmptyPath();
 
 vi.mock('node:child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:child_process')>();

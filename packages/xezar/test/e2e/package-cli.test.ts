@@ -181,7 +181,6 @@ test('the release tarball installs and runs the dry-run CLI workflow', { timeout
     // server.json) to a temp dir — booting the real CLI must never touch the
     // developer's real ~/.xezar.
     const xezHome = join(root, 'xez-home');
-    // win32-r9(#963): exits 1 – step "task" failed: spawn EFTYPE (the dry-run runner spawns the shebang script scripts/mock-claude.mjs directly).
     const run = await execFile(process.execPath, [cliPath, 'run', 'mock:done', '--repo', fixtureRepo], {
       cwd: consumerDir,
       env: { ...process.env, XEZ_DRY_RUN: '1', XEZ_HOME: xezHome },

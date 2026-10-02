@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AgentRunResult, AgentRunSpec } from '../core/agent-runner.ts';
 import * as factory from '../core/runner-factory.ts';
 import { RunStore, type RunRecord } from '../runs/store.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 import { RunManager } from './run.ts';
 import { scriptedRunner, type ScriptedTurn } from './engine-incidents.testkit.ts';
 import type { WorkflowDef, WorkflowStepDef } from './types.ts';
@@ -16,7 +17,7 @@ afterEach(async () => {
   for (const manager of managers.splice(0)) await manager.quiesce();
   for (const store of stores.splice(0)) store.flush();
   vi.restoreAllMocks();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  for (const root of roots.splice(0)) rmSync(root, TEST_DIR_RM_OPTIONS);
 });
 
 function fixture(turns: Array<{ text?: string; before?: (spec: AgentRunSpec) => void }>) {

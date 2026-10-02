@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { withPlatform } from '../../test/helpers/platform.ts';
 import type { AgentEvent, AgentSession } from './agent-runner.ts';
 import type { UiEvent } from './ui-events.ts';
 import { DEFAULT_RUN_TIMEOUT_MS } from './claude-cli-runner.ts';
@@ -974,6 +975,28 @@ describe('a server that exits on SIGTERM', () => {
     } finally {
       session.interrupt();
     }
+  }, 30_000);
+
+  /**
+   * GUARD (#963 AC-7) — a Windows stop can leave exit code 1. OpenCode never judged the exit
+   * code of the server it stopped, and must not start to: the session still ends as done.
+   */
+  it('still ends as done when the stopped server exits 1, as a Windows stop can', async () => {
+    await withPlatform('win32', async () => {
+      const { session, pid, v1, v2 } = start({ env: { MOCK_OPENCODE_SIGTERM_EXIT_CODE: '1' } });
+      try {
+        await until(() => v2.some((e) => e.type === 'turn.completed'), 'the turn to complete');
+
+        session.end();
+        await session.result;
+
+        expect(v1.filter((e) => e.type === 'error')).toEqual([]);
+        expect(v1.at(-1)).toEqual({ type: 'done' });
+        expect(isAlive(pid)).toBe(false);
+      } finally {
+        session.interrupt();
+      }
+    });
   }, 30_000);
 });
 

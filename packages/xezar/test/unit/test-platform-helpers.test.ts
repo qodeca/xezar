@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { FILE_SYMLINKS, linkDir, npmCommand, onWindows, shortTmpRoot, withPlatform } from '../helpers/platform.ts';
+import { FILE_SYMLINKS, linkDir, npmCommand, onWindows, shortTmpRoot, TEST_DIR_RM_OPTIONS, withPlatform } from '../helpers/platform.ts';
 
 // POSIX identity: these pass both before and after #963 by design – they pin that adopting the
 // helpers changes nothing on Linux or macOS.
@@ -14,6 +14,7 @@ test('POSIX: every helper returns the pre-#963 literal', { skip: onWindows ? 'wi
   const c = npmCommand(['x']);
   assert.deepEqual(c, { file: 'npm', args: ['x'] });
   assert.equal(Object.hasOwn(c, 'shell'), false);
+  assert.deepEqual(TEST_DIR_RM_OPTIONS, { recursive: true, force: true });
 });
 
 test('win32: temp root is tmpdir() and npm runs through node', { skip: onWindows ? false : 'Windows-only branch' }, () => {
@@ -24,6 +25,7 @@ test('win32: temp root is tmpdir() and npm runs through node', { skip: onWindows
   assert.equal(c.args.at(-1), 'x');
   assert.match(c.args[0] ?? '', /npm-cli\.js$/);
   assert.equal(Object.hasOwn(c, 'shell'), false);
+  assert.deepEqual(TEST_DIR_RM_OPTIONS, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
 test('win32 CI: file symlinks are available, so no FILE_SYMLINKS-gated suite is silently skipped', { skip: onWindows && process.env.CI ? false : 'Windows CI only' }, () => {

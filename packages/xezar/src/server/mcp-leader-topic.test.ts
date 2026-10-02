@@ -8,6 +8,7 @@ import WebSocket from 'ws';
 import type { McpLeaderStatus } from '@qodeca/xezar-contract';
 import { projectLeaderChanged, projectLeaderIds, registerProjectLeader, watchProjectLeaders, type ProjectLeaderPort } from '../mcp/project-leaders.ts';
 import { RunStore } from '../runs/store.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { mcpLeaderTopic } from './mcp-leader-topic.ts';
@@ -343,7 +344,7 @@ describe('createApp registers the mcp-leader topic', () => {
   });
   afterEach(() => {
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
     if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN;
     else process.env.XEZ_DRY_RUN = savedDryRun;
   });

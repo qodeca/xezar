@@ -4,11 +4,24 @@
  * `withPlatform` is the one tool of another kind: it makes a test run a Windows branch on every OS.
  * Pinned by `test/unit/test-platform-helpers.test.ts`.
  */
-import { existsSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, symlinkSync, writeFileSync, type RmOptions } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 
 export const onWindows = process.platform === 'win32';
+
+const RM_MAX_RETRIES = 10;
+const RM_RETRY_DELAY_MS = 100;
+
+/** `rmSync` options for removing a test's scratch directory. POSIX: the pre-#963
+ *  `{ recursive, force }`. Windows adds Node's own retry: right after files were written, Windows
+ *  can refuse the delete with `EPERM` while a delete-pending handle or a file scanner lets go, even
+ *  when no process holds the directory. Node retries EBUSY, EMFILE, ENFILE, ENOTEMPTY and EPERM
+ *  with a linear backoff of `retryDelay` ms per try (fs.rmSync docs) – about 6.6 s at most, then
+ *  the error surfaces as before. */
+export const TEST_DIR_RM_OPTIONS: Readonly<RmOptions> = onWindows
+  ? { recursive: true, force: true, maxRetries: RM_MAX_RETRIES, retryDelay: RM_RETRY_DELAY_MS }
+  : { recursive: true, force: true };
 
 /** Home for a local socket. POSIX keeps literal `/tmp`: a Unix socket path is capped near 104 bytes
  *  and the per-run TMPDIR can be deeper. Windows has no xezar MCP socket yet (#963): tmpdir(). */

@@ -66,6 +66,21 @@ describe('Codex app-server transport', () => {
     expect(writes.join('')).toContain('"method":"initialized"');
   });
 
+  // On every OS, deliberately (Q-09): on Linux and macOS a late EPIPE used to be an uncaught
+  // stream error too. The exit path still rejects what was pending.
+  it('absorbs a late stdin EPIPE instead of crashing the process, and still rejects the request (#963)', async () => {
+    const { child } = fakeChild();
+    const rpc = new CodexAppServerRpc(child);
+    const pending = rpc.request('turn/interrupt', {});
+    const epipe = Object.assign(new Error('write EPIPE'), { code: 'EPIPE' });
+
+    // An `error` with no listener throws out of `emit`: the uncaught exception a stopped
+    // app-server used to leave behind.
+    expect(() => child.stdin.emit('error', epipe)).not.toThrow();
+    rpc.rejectPending();
+    await expect(pending).rejects.toThrow('codex app-server exited');
+  });
+
   it('rejects a correlated request with the app-server error message', async () => {
     const { child } = fakeChild();
     const rpc = new CodexAppServerRpc(child);

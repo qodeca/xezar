@@ -32,7 +32,7 @@ import { listenMcpSocket, type McpServiceHandle } from '../../src/mcp/service.ts
 import { defineTool, type McpTool, type McpToolContext } from '../../src/mcp/tool.ts';
 import { tools as registry } from '../../src/mcp/tools/index.ts';
 import { withOperationId } from '../../src/mcp/tools/operation-id.testkit.ts';
-import { linkDir, shortTmpRoot } from './platform.ts';
+import { linkDir, shortTmpRoot, TEST_DIR_RM_OPTIONS } from './platform.ts';
 import { projectDataDir } from '../../src/project-data-paths.ts';
 import { RunStore, type RunRecord } from '../../src/runs/store.ts';
 import { closeStoreAndRemove } from '../../src/runs/store.testkit.ts';
@@ -871,7 +871,7 @@ export async function createAbWorld(options: AbWorldOptions = {}): Promise<AbWor
     // it landed (#631, #671 rows F-26 and F-29). `contexts.disposeAll()` closes A's store the
     // same way; B has no context, so it is closed here.
     closeStoreAndRemove(storeB, base);
-    rmSync(home, { recursive: true, force: true });
+    rmSync(home, TEST_DIR_RM_OPTIONS);
     for (const [key, value] of [
       ['XEZ_HOME', saved.home],
       ['XEZ_DRY_RUN', saved.dryRun],

@@ -1,10 +1,10 @@
-import { spawn } from 'node:child_process';
 import { accessSync, constants, existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 import type { RunnerId } from '../core/agent-runner.ts';
-import { openInTerminal, refuseSpawnUnderTest } from './open-in-terminal.ts';
+import { firstOnPath } from '../platform/path-search.ts';
+import { openInTerminal, runDetached } from './open-in-terminal.ts';
 import { isWsl, translateToWindowsPath } from './wsl.ts';
 
 /**
@@ -83,21 +83,22 @@ export function resolveOnPath(
   wsl: boolean = isWsl(),
   searchPath: string = process.env.PATH ?? '',
 ): string | null {
-  const dirs = searchPath.split(platform === 'win32' ? ';' : ':');
   const suffixed = platform === 'win32' || wsl;
   const names = suffixed ? [bin, `${bin}.com`, `${bin}.exe`] : [bin];
-  for (const dir of dirs) {
-    if (!dir) continue;
-    for (const name of names) {
+  const hit = firstOnPath(names, searchPath, {
+    delimiter: platform === 'win32' ? ';' : ':',
+    join,
+    exists: (path) => {
       try {
-        accessSync(join(dir, name), constants.X_OK);
-        return name;
+        accessSync(path, constants.X_OK);
+        return true;
       } catch {
-        // keep looking
+        return false; // keep looking
       }
-    }
-  }
-  return null;
+    },
+    platform,
+  });
+  return hit?.name ?? null;
 }
 
 function onPath(bin: string): boolean {
@@ -235,29 +236,4 @@ function pickInstalledMacApp(names: string | string[]): string {
       ].some((p) => existsSync(p)),
     ) ?? candidates[0]!
   );
-}
-
-/** Spawn detached; success = no error within a short settle window (mirrors open-in-terminal). */
-function runDetached(bin: string, args: string[]): Promise<boolean> {
-  return new Promise((resolve) => {
-    refuseSpawnUnderTest(bin, args);
-    let child;
-    try {
-      child = spawn(bin, args, { stdio: 'ignore', detached: true });
-    } catch {
-      resolve(false);
-      return;
-    }
-    let settled = false;
-    const settle = (ok: boolean) => {
-      if (settled) return;
-      settled = true;
-      resolve(ok);
-    };
-    child.once('error', () => settle(false));
-    setTimeout(() => {
-      child.unref();
-      settle(true);
-    }, 250);
-  });
 }

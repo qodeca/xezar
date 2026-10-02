@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { launch } from '../platform/process-launch.ts';
+import { stopChildTree } from '../platform/process-tree.ts';
 import {
   parseAskMarkerResult,
   stripAskMarker,
@@ -967,6 +968,13 @@ export class RunManager {
    */
   private quiescing = false;
 
+  /**
+   * Set by `holdForExit()`: the process is exiting and is stopping the programs it started. A
+   * body that sees a session or a check end from here on parks instead of recording it, and none
+   * starts a new one, so the stop never reads as a failure, a retry or the next step (#963).
+   */
+  private exiting = false;
+
   /** Set by the watchdog for exactly one sweep: ignore the usage-limit hold and make progress. */
   private forceNextPump = false;
 
@@ -1201,6 +1209,28 @@ export class RunManager {
       this.quiescing = false;
     }
     return this.dispose();
+  }
+
+  /**
+   * The process is about to exit and will stop the programs this manager started (the Windows
+   * `serve` shutdown, #963). Call it BEFORE those stops: from here on nothing this manager does
+   * reaches disk, nothing new starts, and a session or check that ends parks its body for good –
+   * the process is gone a few seconds later. That is the outcome an immediate exit has on POSIX:
+   * the record still says `running` (or `queued`/`waiting`), and the next start's `recover()`
+   * re-queues or resumes it (#367) instead of finding a failure the stop itself caused.
+   *
+   * Not a teardown for a process that goes on: the parked bodies never settle, so `quiesce()`
+   * would never return afterwards. Never rejects.
+   */
+  holdForExit(): Promise<void> {
+    this.exiting = true;
+    this.store.holdForExit();
+    return this.dispose();
+  }
+
+  /** Never settles: where a body goes once `holdForExit()` ran (see `exiting`). */
+  private parkedForExit(): Promise<never> {
+    return new Promise<never>(() => undefined);
   }
 
   /**
@@ -3382,6 +3412,8 @@ export class RunManager {
     }
     this.store.updateStep(runId, stepId, { profileId: continueProfile.profileId });
 
+    // A shutdown that is stopping this process's programs starts nothing new (#963).
+    if (this.exiting) await this.parkedForExit();
     const runner = createRunner(continueBackend);
     state.currentStepId = stepId;
     this.beginUsageInvocation(runId, state, stepId);
@@ -3449,6 +3481,8 @@ export class RunManager {
     };
     try {
       await session.result;
+      // The exit is the shutdown's own stop: record nothing, the next start resumes the run (#963).
+      if (this.exiting) await this.parkedForExit();
       if (sessionError) throw new Error(sessionError);
       // Same "our own signal coming back" teardown path a legitimate `XEZ:DONE` close settles on
       // (#703) — a close xezar forced for the memory guard must land on the `catch` below as a
@@ -3514,6 +3548,7 @@ export class RunManager {
         appendHandoffHeartbeat(this.dataDir, runId, `step "${stepId}" complete — status=done`);
       }
     } catch (err) {
+      if (this.exiting) await this.parkedForExit();
       const message = err instanceof Error ? err.message : String(err);
       sink.sessionEnded('error', message);
       await endTurn();
@@ -4336,6 +4371,8 @@ export class RunManager {
         message: 'repair turn — resuming this step\'s own session with the failing output only; the brief is not repeated',
       });
     }
+    // A shutdown that is stopping this process's programs starts nothing new (#963).
+    if (this.exiting) await this.parkedForExit();
     const runner = createRunner(stepBackend);
     // Advisory liveness (#460 § 2): record the wall clock this step is ACTUALLY spawning with,
     // once, here — the one place that knows both the step's own `timeout` and which backend is
@@ -4430,6 +4467,8 @@ export class RunManager {
 
       try {
         const result = await session.result;
+        // The exit is the shutdown's own stop: record nothing, the next start resumes the run (#963).
+        if (this.exiting) await this.parkedForExit();
         if (sessionError) {
           sink.sessionEnded('error', sessionError);
           return sessionError;
@@ -4453,6 +4492,7 @@ export class RunManager {
         if (!interactive && !state.cancelled) return unfinishedStepReason(lastTurnText);
         return null;
       } catch (err) {
+        if (this.exiting) await this.parkedForExit();
         const message = err instanceof Error ? err.message : String(err);
         sink.sessionEnded('error', message); // alongside v1's fatal `error`
         return message;
@@ -5023,12 +5063,16 @@ export class RunManager {
     step: WorkflowStepDef,
     emit: (event: { type: string; stepId?: string; [k: string]: unknown }) => void,
   ): Promise<{ ok: boolean; output: string }> {
+    // A shutdown that is stopping this process's programs starts nothing new, and a check it
+    // stops parks instead of failing: the next start resumes the run (#963).
+    if (this.exiting) return this.parkedForExit();
     const command = step.command as string;
     emit({ type: 'note', stepId: step.id, message: `$ ${command}` });
     return new Promise((resolve) => {
       // Check steps run in the same cwd as the agent steps — the worktree.
-      const child = spawn('bash', ['-lc', command], { cwd: state.cwd, env: process.env });
-      state.interrupt = () => child.kill('SIGTERM');
+      const child = launch('bash', ['-lc', command], { cwd: state.cwd, env: process.env });
+      // Windows: bash and the runners it started (#963); elsewhere exactly `child.kill`.
+      state.interrupt = () => void stopChildTree(child, 'SIGTERM');
 
       let output = '';
       // A check's output is recorded as ONE `check-output` line when the command exits, so on the
@@ -5052,12 +5096,14 @@ export class RunManager {
       child.stdout.on('data', collect);
       child.stderr.on('data', collect);
       child.on('error', (err) => {
+        if (this.exiting) return;
         state.interrupt = () => undefined;
         const message = `failed to spawn: ${err.message}`;
         emit({ type: 'check-output', stepId: step.id, command, text: message, exitCode: -1 });
         resolve({ ok: false, output: message });
       });
       child.on('close', (code) => {
+        if (this.exiting) return;
         state.interrupt = () => undefined;
         const trimmed = output.trim() || '(no output)';
         emit({ type: 'check-output', stepId: step.id, command, text: trimmed, exitCode: code ?? -1 });

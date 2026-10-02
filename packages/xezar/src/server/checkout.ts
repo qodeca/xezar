@@ -1,7 +1,8 @@
-import { spawn } from 'node:child_process';
 import { lstat, mkdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { isFullyQualifiedPath } from '../platform/path-syntax.ts';
+import { launch } from '../platform/process-launch.ts';
+import { stopChildTree } from '../platform/process-tree.ts';
 
 /**
  * `POST /api/projects/checkout` — the "Add project → Clone from GitHub" flow
@@ -182,7 +183,7 @@ export type CloneRunner = (
  */
 export const ghCloneRunner: CloneRunner = (ref, dir, onLine, signal) =>
   new Promise((resolvePromise) => {
-    const child = spawn('gh', ['repo', 'clone', ref.slug, dir, '--', '--progress'], {
+    const child = launch('gh', ['repo', 'clone', ref.slug, dir, '--', '--progress'], {
       stdio: ['ignore', 'pipe', 'pipe'],
       timeout: CLONE_TIMEOUT_MS,
       // No inherited stdin and `GH_PROMPT_DISABLED`: an unauthenticated `gh`
@@ -202,7 +203,7 @@ export const ghCloneRunner: CloneRunner = (ref, dir, onLine, signal) =>
     // let it keep writing into a directory nobody is waiting for — the caller
     // then takes the failure path, which cleans up.
     const onAbort = (): void => {
-      child.kill('SIGTERM');
+      void stopChildTree(child, 'SIGTERM');
       finish({ ok: false, error: 'checkout cancelled' });
     };
     signal?.addEventListener('abort', onAbort, { once: true });

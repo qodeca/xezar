@@ -3,7 +3,6 @@ import './platform/exe-search.ts';
 import { projectDataDir } from './project-data-paths.ts';
 import { projectKitDir } from './project-kit-paths.ts';
 import { parseArgs } from 'node:util';
-import { spawn, execFileSync } from 'node:child_process';
 import type { Server } from 'node:net';
 import { mkdirSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
@@ -60,6 +59,8 @@ import { entry as activityEntry, startTerminalActivity, type TerminalActivity } 
 import { recoverAndReport } from './terminal/recovery.ts';
 import { formatDuration, formatTokens, glyphsFor } from './terminal/format.ts';
 import { startLongPathNotice } from './platform/long-paths.ts';
+import { launchCmd, launchDetached, launchFileSync } from './platform/process-launch.ts';
+import { exitAfterStoppingTrees, onShutdownSignals } from './platform/shutdown-signals.ts';
 import { runMigrations } from './workspace/migrations.ts';
 import {
   instanceBootLine,
@@ -1014,6 +1015,8 @@ async function serveCommand(
   const localHandoff = (): boolean => resolveCapabilities(process.env, bindHost).localHandoff;
   let mcpService: { close(): void } | undefined;
   let projectDoors: { close(): void } | undefined;
+  /** Every project context the server builds, so a Windows shutdown can hold their runs (#963). */
+  let projectContexts: { ids(): string[]; peek(id: string): { manager: RunManager } | undefined } | undefined;
   let stopping = false;
   const server = startServer({
     repoRoot,
@@ -1040,6 +1043,7 @@ async function serveCommand(
     // Every project built later gets its own subscription, taken before ITS recovery, and
     // released when its context is disposed (#467, PR 3).
     onContexts: (contexts) => {
+      projectContexts = contexts;
       terminal.onContexts(contexts);
       // Every project built after boot gets the MCP door the boot project has (#557): opened when
       // its context is built, closed when it is disposed. The boot project is skipped — its door is
@@ -1234,14 +1238,28 @@ async function serveCommand(
     // The terminal first: the live region has to be erased and the cursor restored while there
     // is still a process to do it. `stop()` never throws, so nothing below can be skipped.
     terminal.stop({ ...(repo ? { projectName: bootProjectId ?? repo.branch } : {}) });
-    // MCP next, so no MCP listener is still attached while the store flushes.
-    mcpService?.close();
-    projectDoors?.close();
-    store.flush();
-    process.exit(0);
+    // POSIX: MCP, the doors and the flush, then `process.exit(0)` at once, as always. Windows: the
+    // programs xezar started are stopped first (at most a few seconds) – xezar's direct children
+    // end with it through libuv's job object, but what they started outside that job does not
+    // (#963) – and the rest of the shutdown runs while that stop is under way. Before the stop
+    // every run manager is held, so the stopped agents' exits are not recorded as failed steps,
+    // retries or new starts: live runs stay live on disk and the next start resumes them, as on
+    // POSIX.
+    void exitAfterStoppingTrees({
+      beforeStop: () => {
+        void manager.holdForExit();
+        for (const id of projectContexts?.ids() ?? []) void projectContexts?.peek(id)?.manager.holdForExit();
+      },
+      meanwhile: () => {
+        // MCP first, so no MCP listener is still attached while the store flushes.
+        mcpService?.close();
+        projectDoors?.close();
+        store.flush();
+      },
+    });
   };
-  process.on('SIGINT', shutdown);
-  process.on('SIGTERM', shutdown);
+  // POSIX: SIGINT and SIGTERM, as always. Windows adds Ctrl+Break and closing the window (#963).
+  onShutdownSignals(shutdown);
 
   // Open the browser only once the server actually answers, so the first
   // paint is the cockpit and never a connection error.
@@ -1525,7 +1543,7 @@ async function runCommand(
  */
 function augmentPathFromLoginShell(): void {
   try {
-    const out = execFileSync('bash', ['-lc', 'printf %s "$PATH"'], { timeout: 5000, encoding: 'utf8' });
+    const out = launchFileSync('bash', ['-lc', 'printf %s "$PATH"'], { timeout: 5000, encoding: 'utf8' });
     const loginPath = out.split('\n').map((s) => s.trim()).filter(Boolean).pop() ?? '';
     if (!loginPath) return;
     const seen = new Set<string>();
@@ -1789,18 +1807,19 @@ function readOwnVersion(): string {
 }
 
 function openUrl(url: string): void {
-  const cmd =
-    process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'cmd' : 'xdg-open';
-  const args = process.platform === 'win32' ? ['/c', 'start', '', url] : [url];
   try {
-    const child = spawn(cmd, args, { stdio: 'ignore', detached: true });
     // A missing opener (e.g. no `xdg-open` on a headless Linux VPS) surfaces
-    // asynchronously as an 'error' event, NOT a synchronous throw — without a
-    // listener Node promotes it to an unhandled error and hard-crashes the whole
-    // process, even though the cockpit is already serving. Swallow it: the URL is
-    // printed above, so a browser-less host just doesn't auto-open.
-    child.on('error', () => {});
-    child.unref();
+    // asynchronously as an 'error' event, NOT a synchronous throw — both helpers
+    // listen for it and answer false, so it can never hard-crash the process while
+    // the cockpit is already serving. The URL is printed above, so a browser-less
+    // host just doesn't auto-open.
+    if (process.platform === 'win32') {
+      // cmd.exe only through `launchCmd`, which refuses a URL the command processor
+      // would reinterpret (#963).
+      void launchCmd(['/c', 'start', '', url]);
+      return;
+    }
+    void launchDetached(process.platform === 'darwin' ? 'open' : 'xdg-open', [url]);
   } catch {
     // the printed URL is enough
   }

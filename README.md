@@ -119,7 +119,7 @@ More → [Worktrees and git](docs/guide/03-worktrees-and-git.md)
 |---|---|
 | Every system | Node.js 22 or newer with npm, and at least one signed-in agent CLI – [`claude`](https://github.com/anthropics/claude-code), [`codex`](https://github.com/openai/codex), [OpenCode](https://opencode.ai) or [pi](https://github.com/badlogic/pi-mono). Optional: `git` for isolated working copies (Git worktrees) and the Git views, and `gh` for GitHub issues and pull requests. |
 | macOS, Linux | Nothing more. |
-| Windows | Native Windows support is still in progress. Under WSL, xezar works as it does on Linux. On Windows itself, install [Git for Windows](https://gitforwindows.org/) for the Git features, and install each agent CLI as its own Windows instructions describe. The MCP leader bridge (`xezar mcp`) is not available on Windows itself yet. |
+| Windows | Native Windows support is still in progress. Under WSL, xezar works as it does on Linux. On Windows itself, install [Git for Windows](https://gitforwindows.org/) for the Git features, and install each agent CLI as its own Windows instructions describe. The MCP leader bridge (`xezar mcp`) is not available on Windows itself yet. To stop `xezar serve` there, press Ctrl+C or Ctrl+Break in its window: it saves its state and stops the programs it started. Closing the window gives it only about 5 seconds, which on a busy machine may not be enough to stop everything. |
 
 The package installs both the `xezar` and `xez` commands.
 

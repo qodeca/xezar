@@ -1,4 +1,3 @@
-import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
@@ -10,6 +9,8 @@ import type {
 } from '@qodeca/xezar-contract';
 import { loadConfig, type SkillsRepoSource } from './config.ts';
 import { expandTilde, xezCacheDir } from './paths.ts';
+import { launchFile } from './platform/process-launch.ts';
+import { stopChildTree } from './platform/process-tree.ts';
 import { isDrivePath, isWindowsNetworkSource, startsWithTildeSeparator } from './platform/path-syntax.ts';
 import { parseFrontmatter, type Skill } from './skills.ts';
 
@@ -115,7 +116,7 @@ function git(
 ): Promise<GitResult> {
   return new Promise((resolve) => {
     let guard: ReturnType<typeof setTimeout> | undefined;
-    const child = execFile(
+    const child = launchFile(
       'git',
       [...GIT_HARDENING_ARGS, ...args],
       {
@@ -134,7 +135,7 @@ function git(
     );
     // Armed after the spawn, which is safe because execFile never calls back synchronously —
     // even a missing `git` arrives as an async `error`.
-    guard = setTimeout(() => child.kill('SIGKILL'), timeoutMs);
+    guard = setTimeout(() => void stopChildTree(child, 'SIGKILL'), timeoutMs);
     guard.unref?.();
     if (!opts.network) return;
     child.unref();

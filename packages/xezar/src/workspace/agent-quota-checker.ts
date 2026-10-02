@@ -1,4 +1,4 @@
-import { spawn as nodeSpawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -13,6 +13,8 @@ import {
 } from '@qodeca/xezar-contract';
 import { buildChildEnv } from '../core/agent-env.ts';
 import { profileEnv } from '../core/agent-profiles.ts';
+import { launch } from '../platform/process-launch.ts';
+import { signalProcessGroup, stopProcessGroup } from '../platform/process-tree.ts';
 import { defaultAgentAccountStore, loadAgentAccounts } from './agent-accounts.ts';
 import { listAgentProfiles, type ResolvedAgentProfile } from './agent-profiles.ts';
 import {
@@ -189,24 +191,12 @@ function processFailure(message: string, code?: string): Error {
   return error;
 }
 
-function signalSavedProcessGroup(child: ChildProcessWithoutNullStreams, signal: NodeJS.Signals): void {
-  if (child.pid === undefined) return;
-  try {
-    if (process.platform === 'win32') child.kill(signal);
-    else process.kill(-child.pid, signal);
-  } catch {
-    // The group may already have closed between the reply and the signal. Falling back to the
-    // saved child handle is safe and keeps a timer callback from becoming an uncaught exception.
-    try { child.kill(signal); } catch { /* already gone */ }
-  }
-}
-
 /** Fixed-argv child runner. It never invokes a shell and signals only the saved process group. */
 export const runQuotaProcess: RunQuotaProcess = (spec) => new Promise((resolve, reject) => {
   const remaining = Math.max(1, spec.deadline - Date.now());
   let child: ChildProcessWithoutNullStreams;
   try {
-    child = nodeSpawn(spec.executable, [...spec.args], {
+    child = launch(spec.executable, [...spec.args], {
       cwd: spec.cwd,
       env: spec.env,
       shell: false,
@@ -223,14 +213,12 @@ export const runQuotaProcess: RunQuotaProcess = (spec) => new Promise((resolve, 
   let stdout = '';
   let stderr = '';
   let lineBuffer = '';
-  let killTimer: NodeJS.Timeout | undefined;
-  let closeTimer: NodeJS.Timeout | undefined;
+  let cancelStop: (() => void) | undefined;
   const finish = (error?: Error, value?: unknown) => {
     if (settled) return;
     settled = true;
     clearTimeout(timer);
-    if (killTimer) clearTimeout(killTimer);
-    if (closeTimer) clearTimeout(closeTimer);
+    cancelStop?.();
     if (error) reject(error);
     else resolve(value);
   };
@@ -238,7 +226,7 @@ export const runQuotaProcess: RunQuotaProcess = (spec) => new Promise((resolve, 
     // `close` only proves that the group leader and its inherited stdio are gone. A grandchild
     // may still occupy the saved process group, so every completion path escalates before it can
     // clear the timer that would otherwise perform this kill (#892).
-    signalSavedProcessGroup(child, 'SIGKILL');
+    signalProcessGroup(child, 'SIGKILL');
     finish(error, value);
   };
   const stop = (error?: Error, value?: unknown) => {
@@ -247,13 +235,8 @@ export const runQuotaProcess: RunQuotaProcess = (spec) => new Promise((resolve, 
     stopError = error;
     stopValue = value;
     child.stdin.end();
-    signalSavedProcessGroup(child, 'SIGTERM');
-    killTimer = setTimeout(() => {
-      signalSavedProcessGroup(child, 'SIGKILL');
-      closeTimer = setTimeout(() => finishAfterKill(stopError, stopValue), PROCESS_CLOSE_GRACE_MS);
-      closeTimer.unref?.();
-    }, PROCESS_CLOSE_GRACE_MS);
-    killTimer.unref?.();
+    // TERM to the saved group now, KILL after the grace, then settle after another one (#888).
+    cancelStop = stopProcessGroup(child, PROCESS_CLOSE_GRACE_MS, () => finishAfterKill(stopError, stopValue));
   };
   const timer = setTimeout(() => {
     stop(processFailure('agent quota check timed out', 'ETIMEDOUT'));

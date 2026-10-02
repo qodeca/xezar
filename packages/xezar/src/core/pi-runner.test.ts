@@ -6,6 +6,8 @@ import { join, sep } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useEmptyPath } from '../../test/helpers/empty-path.ts';
+import { withPlatform } from '../../test/helpers/platform.ts';
 
 import type { AgentEvent, AgentRunResult } from './agent-runner.js';
 import type { UiEvent } from './ui-events.js';
@@ -27,6 +29,8 @@ const spawnHook = vi.hoisted(() => ({
   override: null as null | (() => unknown),
   onSpawn: null as null | (() => void),
 }));
+
+useEmptyPath();
 
 vi.mock('node:child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:child_process')>();
@@ -211,6 +215,42 @@ describe('pi signal terminations', () => {
     expect(
       events.some((event) => event.type === 'note' && event.message.includes('xezar sent no signal')),
     ).toBe(false);
+  }, 15_000);
+
+  /**
+   * #963 AC-7 — on Windows a stop can leave exit code 1 and no signal (TerminateProcess); with
+   * the #703 flag set that is our own stop, not a pi failure.
+   */
+  it('settles a xezar-initiated stop on Windows, which exits 1', async () => {
+    await withPlatform('win32', async () => {
+      const { signals, exit, events, session } = await startWithFakeChild();
+
+      session.interrupt();
+      expect(signals).toEqual(['SIGTERM']);
+      exit(1);
+
+      await session.result;
+      expect(events.some((event) => event.type === 'error')).toBe(false);
+      expect(
+        events.some((event) => event.type === 'note' && event.message.includes('terminated by xezar (code 1)')),
+      ).toBe(true);
+      expect(events.at(-1)).toEqual({ type: 'done' });
+    });
+  }, 15_000);
+
+  /** GUARD — Linux and macOS are unchanged: exit 1 after our own SIGTERM is still a failure. */
+  it('still fails an exit 1 after a xezar stop on Linux and macOS', async () => {
+    await withPlatform('linux', async () => {
+      const { exit, events, session } = await startWithFakeChild();
+
+      session.interrupt();
+      exit(1);
+
+      await expect(session.result).rejects.toThrow(/^pi CLI exited with code 1/);
+      expect(events.some((event) => event.type === 'note' && event.message.includes('terminated by xezar'))).toBe(
+        false,
+      );
+    });
   }, 15_000);
 });
 

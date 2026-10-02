@@ -1,12 +1,10 @@
-import { execFile } from 'node:child_process';
 import { constants } from 'node:fs';
 import { access, mkdir, open, readFile, rm, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { promisify } from 'node:util';
 import { xezCacheDir } from './paths.ts';
+import { launchFileAsync } from './platform/process-launch.ts';
 
-const execFileAsync = promisify(execFile);
 const CHECK_TTL_MS = 6 * 60 * 60 * 1_000;
 const COMMAND_TIMEOUT_MS = 30_000;
 const OUTPUT_CAP = 64 * 1_024;
@@ -135,7 +133,8 @@ async function defaultResolveNpx(): Promise<string | null> {
 }
 
 async function defaultRun(file: string, args: readonly string[], cwd: string, timeoutMs: number): Promise<CommandResult> {
-  const result = await execFileAsync(file, [...args], {
+  // Windows: npm's own `npx.cmd` runs as `node npx-cli.js` – no shell (#963).
+  const result = await launchFileAsync(file, [...args], {
     cwd, shell: false, timeout: timeoutMs, maxBuffer: OUTPUT_CAP,
     env: { ...process.env, npm_config_yes: 'true', GIT_TERMINAL_PROMPT: '0' },
   });

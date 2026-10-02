@@ -724,6 +724,8 @@ export class RunStore extends EventEmitter {
   private saveTimer: NodeJS.Timeout | null = null;
   /** Set by `close()` only: this store no longer writes, and that is not an error. */
   private closed = false;
+  /** Set by `holdForExit()` only: not even an event line reaches disk any more. */
+  private exitHeld = false;
   /** A save found its own data directory gone and skipped itself. Not a lifecycle state — it
    *  only decides whether the NEXT successful save says the gap has closed. */
   private dataDirMissing = false;
@@ -1127,7 +1129,7 @@ export class RunStore extends EventEmitter {
     const full: RunEvent = this.redact({ ...event, seq, ts: new Date().toISOString() });
     // Sync append keeps event order without a write queue; local NDJSON
     // appends at agent-event rates are effectively free.
-    appendFileSync(this.eventsPath(runId), `${JSON.stringify(full)}\n`, 'utf8');
+    if (!this.exitHeld) appendFileSync(this.eventsPath(runId), `${JSON.stringify(full)}\n`, 'utf8');
     if (full.type === 'ask.requested' && typeof full.requestId === 'string' && Array.isArray(full.questions)) {
       run.decisionQuestion = {
         id: full.requestId,
@@ -1447,6 +1449,18 @@ export class RunStore extends EventEmitter {
     this.cancelScheduledSave();
     this.saveNow();
     this.closed = true;
+  }
+
+  /**
+   * The process is about to exit while the programs it started are still being stopped (the
+   * Windows `serve` shutdown, #963): write the index one last time, then let nothing reach disk –
+   * neither the index nor an event line. What the stopped programs' exits would record (a failed
+   * step, a retry) is then never written, so the files hold what an immediate exit leaves: live
+   * runs stay live, and the next start's `recover()` re-queues or resumes them (#367).
+   */
+  holdForExit(): void {
+    this.close();
+    this.exitHeld = true;
   }
 
   /** Whether this store has ended its write lifecycle. Only `close()` sets it: a vanished data
