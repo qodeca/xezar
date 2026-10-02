@@ -1,10 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useEmptyPath } from '../../../test/helpers/empty-path.ts';
 
 // `vi.hoisted` so the mock exists before the (hoisted) `vi.mock` factory runs. `gh()` builds its
 // subprocess runner from `promisify(execFile)` at module load, so replacing `execFile` is the only
 // seam that reaches it — the same wiring `github.test.ts` uses, for the same reason: no real `gh`
 // on the box, and no network.
 const execFileMock = vi.hoisted(() => vi.fn());
+useEmptyPath();
+
 vi.mock('node:child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:child_process')>();
   // The default THROWS rather than forwarding to the real `execFile`. Forwarding would let a case

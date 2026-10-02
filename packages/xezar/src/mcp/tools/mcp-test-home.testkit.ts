@@ -31,6 +31,7 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll } from 'vitest';
+import { TEST_DIR_RM_OPTIONS } from '../../../test/helpers/platform.ts';
 
 const previous = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
 
@@ -50,5 +51,5 @@ afterAll(() => {
   else process.env.HOME = previous.HOME;
   if (previous.USERPROFILE === undefined) delete process.env.USERPROFILE;
   else process.env.USERPROFILE = previous.USERPROFILE;
-  rmSync(mcpTestHome, { recursive: true, force: true });
+  rmSync(mcpTestHome, TEST_DIR_RM_OPTIONS);
 });

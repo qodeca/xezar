@@ -1,9 +1,10 @@
 import { projectScratchDir } from '../project-data-paths.ts';
-import { spawn } from 'node:child_process';
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { shellQuote, withEnvPrefix } from '../core/shell-env.ts';
+import { cmdPathSafe, cmdTokenSafe } from '../platform/batch-line.ts';
+import { launchCmd, launchDetached } from '../platform/process-launch.ts';
 import { isWsl, wslDistroName } from './wsl.ts';
 
 /**
@@ -44,12 +45,22 @@ export async function openInTerminal(
   }
 
   if (process.platform === 'win32') {
+    // The folder is checked on its own first: inside the composed line a `"` in it could close its
+    // quote and make the rest read as a second, well-formed `set` (SEC-11A-05).
+    if (!cmdPathSafe(cwd)) return false;
     const inner = `cd /d "${cwd}" && ${prefixed}`;
-    // Windows Terminal first, classic cmd window as fallback.
-    if (await runDetached('cmd', ['/c', 'start', '', 'wt', '-d', cwd, 'cmd', '/K', prefixed])) {
+    // Windows Terminal first, classic cmd window as fallback. Both go through `launchCmd`, which
+    // refuses a line cmd.exe would reinterpret (#963) – a refusal is a false, like a failed start.
+    // A folder with a space or any other character `cmdPathSafe` allows goes to Windows Terminal
+    // quoted; a plain one stays bare, as before. A command carrying the account env (`set "…"`) or
+    // any other quote goes straight to the classic window: Windows Terminal rebuilds its tab's
+    // command without those quotes, which would point the shell at the wrong account (SEC-11A-01).
+    const folder = cmdTokenSafe(cwd) ? cwd : `"${cwd}"`;
+    const terminalSafe = !prefixed.includes('"');
+    if (terminalSafe && (await runCmdDetached(['/c', 'start', '', 'wt', '-d', folder, 'cmd', '/K', prefixed]))) {
       return true;
     }
-    return runDetached('cmd', ['/c', 'start', '', 'cmd', '/K', inner]);
+    return runCmdDetached(['/c', 'start', '', 'cmd', '/K', inner]);
   }
 
   // Linux/other: a temp script avoids each emulator's own quoting rules. It reaps
@@ -90,12 +101,16 @@ export async function openInTerminal(
  *  argument array is NOT protection when the binary is a shell — libuv only quotes arguments
  *  containing space, tab or quote, so a space-free `distro` like `a&calc&` would reach `cmd`
  *  live and be interpreted. `wt.exe` and `conhost.exe` parse no metacharacters, so the same
- *  input is inert. `distro` is additionally validated at the source (`wslDistroName`). */
+ *  input is inert. `distro` is additionally validated at the source (`wslDistroName`).
+ *
+ *  One exception to "parse no metacharacters": Windows Terminal splits its command line into
+ *  separate commands at every `;`, so a project folder with one in it would make `wt.exe` start
+ *  whatever follows. Such a line skips Windows Terminal and goes to the console window, which
+ *  does not split (SEC-963-01). */
 export function wslTerminalLaunchers(scriptPath: string, distro: string): Array<[string, string[]]> {
-  return [
-    ['wt.exe', ['wsl.exe', '-d', distro, '--', scriptPath]],
-    ['conhost.exe', ['wsl.exe', '-d', distro, '--', scriptPath]],
-  ];
+  const args = ['wsl.exe', '-d', distro, '--', scriptPath];
+  const terminalSafe = !args.some((arg) => arg.includes(';'));
+  return [...(terminalSafe ? [['wt.exe', args] as [string, string[]]] : []), ['conhost.exe', [...args]]];
 }
 
 /** Grace period before a launch script's directory is removed. Generous next to the
@@ -163,29 +178,20 @@ export function refuseSpawnUnderTest(bin: string, args: readonly string[]): void
   );
 }
 
-/** Spawn detached; success = no error within a short settle window. */
-function runDetached(bin: string, args: string[]): Promise<boolean> {
-  return new Promise((resolve) => {
-    refuseSpawnUnderTest(bin, args);
-    let child;
-    try {
-      child = spawn(bin, args, { stdio: 'ignore', detached: true });
-    } catch {
-      resolve(false);
-      return;
-    }
-    let settled = false;
-    const settle = (ok: boolean) => {
-      if (settled) return;
-      settled = true;
-      resolve(ok);
-    };
-    child.once('error', () => settle(false));
-    setTimeout(() => {
-      child.unref();
-      settle(true);
-    }, 250);
-  });
+/** Spawn detached; success = no error within a short settle window. Shared with `open-in-app.ts`. */
+export function runDetached(bin: string, args: string[]): Promise<boolean> {
+  refuseSpawnUnderTest(bin, args);
+  return launchDetached(bin, args);
+}
+
+/** `cmd.exe <args>` through `launchCmd`, the one way cmd.exe starts; a refused line is a false. */
+function runCmdDetached(args: string[]): Promise<boolean> {
+  refuseSpawnUnderTest('cmd', args);
+  try {
+    return launchCmd(args);
+  } catch {
+    return Promise.resolve(false);
+  }
 }
 
 function appleScriptQuote(s: string): string {

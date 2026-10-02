@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { useEmptyPath } from '../../test/helpers/empty-path.ts';
 
 import { ghCloneRunner, type RepoRef } from './checkout.ts';
 
@@ -18,6 +19,8 @@ import { ghCloneRunner, type RepoRef } from './checkout.ts';
  */
 
 const { spawnMock } = vi.hoisted(() => ({ spawnMock: vi.fn() }));
+useEmptyPath();
+
 vi.mock('node:child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:child_process')>();
   return { ...actual, spawn: spawnMock };
@@ -25,10 +28,14 @@ vi.mock('node:child_process', async (importOriginal) => {
 
 const REF: RepoRef = { owner: 'qodeca', repo: 'xezar', slug: 'qodeca/xezar' };
 
-/** A stand-in for the spawned `gh`: two readable streams and the two events the runner listens to. */
+/** A stand-in for the spawned `gh`: two readable streams and the two events the runner listens to.
+ *  `exitCode`/`signalCode` start null like a real child's: on Windows a stop skips a child whose
+ *  exit was already seen (#963). */
 class FakeChild extends EventEmitter {
   stdout = Object.assign(new EventEmitter(), { setEncoding: vi.fn() });
   stderr = Object.assign(new EventEmitter(), { setEncoding: vi.fn() });
+  exitCode: number | null = null;
+  signalCode: NodeJS.Signals | null = null;
   kill = vi.fn();
 }
 

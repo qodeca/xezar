@@ -27,6 +27,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useEmptyPath } from '../../test/helpers/empty-path.ts';
 
 import type { AgentEvent, AgentRunSpec } from './agent-runner.js';
 import { buildClaudeArgs } from './claude-cli-runner.js';
@@ -49,6 +50,8 @@ import {
 /** Only the M1 regression test below swaps the child out, mirroring the identical hook in
  *  `pi-runner.test.ts`; every other test in this file never reaches `node:child_process`. */
 const spawnHook = vi.hoisted(() => ({ override: null as null | ((...args: unknown[]) => unknown) }));
+
+useEmptyPath();
 
 vi.mock('node:child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:child_process')>();

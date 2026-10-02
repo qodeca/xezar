@@ -1,9 +1,11 @@
-import { spawn } from 'node:child_process';
 import { open, mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 import { acquireFileLock } from './file-lock.ts';
+import { launch } from '../platform/process-launch.ts';
+import { stopChildTree } from '../platform/process-tree.ts';
+import { onShutdownSignals } from '../platform/shutdown-signals.ts';
 import { DEFAULT_GATE_SLOTS } from '../workspace/config.ts';
 
 /**
@@ -347,7 +349,7 @@ function sleep(ms: number): Promise<void> {
 export interface RunUnderGateLeaseOptions extends GateLeaseOptions {
   /** Where the loud lines go. Never stdout: stdout belongs to the command being run. */
   stderr?: { write(chunk: string): unknown };
-  /** Injected for tests; defaults to `child_process.spawn` with inherited stdio. */
+  /** Injected for tests; defaults to starting `argv` with inherited stdio (`platform/process-launch.ts`). */
   run?: (argv: readonly string[]) => Promise<number>;
 }
 
@@ -383,7 +385,8 @@ export function gateLeaseLine(event: GateLeaseEvent): string | null {
  *
  * The lease is released in `finally`, including on the signal paths: a SIGINT or SIGTERM is
  * forwarded to the child and the slot goes back when the child is gone, rather than being left
- * for the stale bound to reclaim.
+ * for the stale bound to reclaim. On Windows Ctrl+Break (SIGBREAK) and closing the console window
+ * (SIGHUP) are forwarded too, and the stop reaches what the command started (#963).
  */
 export async function runUnderGateLease(
   argv: readonly string[],
@@ -405,18 +408,9 @@ export async function runUnderGateLease(
 
 function spawnInherited(argv: readonly string[]): Promise<number> {
   return new Promise((done, fail) => {
-    const child = spawn(argv[0] as string, argv.slice(1), { stdio: 'inherit' });
-    const forward = (signal: NodeJS.Signals) => (): void => {
-      child.kill(signal);
-    };
-    const onInt = forward('SIGINT');
-    const onTerm = forward('SIGTERM');
-    process.on('SIGINT', onInt);
-    process.on('SIGTERM', onTerm);
-    const detach = (): void => {
-      process.off('SIGINT', onInt);
-      process.off('SIGTERM', onTerm);
-    };
+    const child = launch(argv[0] as string, argv.slice(1), { stdio: 'inherit' });
+    // POSIX: SIGINT and SIGTERM, each forwarded as `child.kill(signal)`, exactly as before.
+    const detach = onShutdownSignals((signal) => void stopChildTree(child, signal));
     child.on('error', (error) => {
       detach();
       fail(error);
@@ -430,6 +424,6 @@ function spawnInherited(argv: readonly string[]): Promise<number> {
 }
 
 function signalNumber(signal: NodeJS.Signals): number {
-  const known: Record<string, number> = { SIGINT: 2, SIGKILL: 9, SIGTERM: 15, SIGHUP: 1 };
+  const known: Record<string, number> = { SIGINT: 2, SIGKILL: 9, SIGTERM: 15, SIGHUP: 1, SIGBREAK: 21 };
   return known[signal] ?? 0;
 }

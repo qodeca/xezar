@@ -1,4 +1,4 @@
-import { spawn as nodeSpawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import http from 'node:http';
 import https from 'node:https';
 import os from 'node:os';
@@ -12,6 +12,8 @@ import type {
 } from './agent-runner.ts';
 import type { AgentSession, SessionOptions } from './agent-runner.ts';
 import { prependSystemPrompt, trackChildExit } from './agent-runner.ts';
+import { launch } from '../platform/process-launch.ts';
+import { stopChildTree } from '../platform/process-tree.ts';
 import { buildChildEnv } from './agent-env.ts';
 import { AUTO_END_DELAY_MS, DEFAULT_RUN_TIMEOUT_MS } from './claude-cli-runner.ts';
 import { opencodeMcpIsolation, runMcpIsolationNote, type OpencodeMcpIsolation } from './run-mcp-isolation.ts';
@@ -329,7 +331,7 @@ class OpencodeSession implements AgentSession {
     const isolationNote = runMcpIsolationNote('opencode', isolation);
     if (isolationNote) onEvent?.({ type: 'note', message: isolationNote });
     try {
-      this.child = nodeSpawn(bin, ['serve', '--hostname', '127.0.0.1', '--port', '0'], {
+      this.child = launch(bin, ['serve', '--hostname', '127.0.0.1', '--port', '0'], {
         cwd: spec.cwd,
         env: opencodeChildEnv(spec, isolation),
       });
@@ -483,10 +485,10 @@ class OpencodeSession implements AgentSession {
   private terminate(): void {
     if (this.signalled || this.hasExited()) return;
     this.signalled = true;
-    this.child.kill('SIGTERM');
+    void stopChildTree(this.child, 'SIGTERM');
     setTimeout(() => {
       if (this.hasExited()) return;
-      this.child.kill('SIGKILL');
+      void stopChildTree(this.child, 'SIGKILL');
     }, KILL_GRACE_MS).unref?.();
   }
 

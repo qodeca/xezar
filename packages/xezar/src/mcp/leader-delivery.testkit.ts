@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { expect, vi } from 'vitest';
 import { RunStore } from '../runs/store.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 import { WorkspaceEventBus } from '../server/server.ts';
 import { ProjectOwnership } from '../workspace/project-owner.ts';
 import { EventCatalog } from './event-catalog.ts';
@@ -54,7 +55,7 @@ export async function deliveryHarness(client: DeliveryClient) {
     for (const run of store.listRuns()) store.deleteRun(run.id);
     ownership.dispose();
     catalog.detach(); journal.close(); store.flush();
-    rmSync(root, { recursive: true, force: true });
+    rmSync(root, TEST_DIR_RM_OPTIONS);
   };
   try {
     if (client === 'codex') await fakeCodex(root, codexHome, received, requests, closers);

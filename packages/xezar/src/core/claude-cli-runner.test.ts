@@ -5,8 +5,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it, vi } from 'vitest';
-import { onWindows } from '../../test/helpers/platform.ts';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { useEmptyPath } from '../../test/helpers/empty-path.ts';
+import { OwnedPids } from '../../test/helpers/owned-pids.ts';
+import { onWindows, withPlatform } from '../../test/helpers/platform.ts';
+import { TREE_STOP_TIMEOUT_MS } from '../platform/process-tree.ts';
 import type { AgentEvent } from './agent-runner.ts';
 import { isSignalTerminationExit, prependSystemPrompt } from './agent-runner.ts';
 import {
@@ -23,6 +26,8 @@ import type { UiEvent } from './ui-events.ts';
 /** Only the escalation tests below swap the child out; every other test in this
  *  file keeps spawning its real stub binary through the untouched `spawn`. */
 const spawnHook = vi.hoisted(() => ({ override: null as null | (() => unknown) }));
+
+useEmptyPath();
 
 vi.mock('node:child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:child_process')>();
@@ -258,7 +263,6 @@ describe('wall-clock timeout for a real Claude child that ignores SIGTERM', () =
       const startedAt = Date.now();
 
       try {
-        // win32-r9(#963): spawn EFTYPE – the runner spawns the .mjs stub directly, which Windows cannot execute
         const result = await Promise.race([
           session.result,
           new Promise<never>((_, reject) =>
@@ -393,6 +397,60 @@ describe('SIGTERM→SIGKILL escalation for a CLI that survives SIGTERM', () => {
 });
 
 /**
+ * #963 AC-6 — on Windows a stop used to end the CLI alone (TerminateProcess has no tree), so a
+ * tool or dev server the CLI had started outlived every session. The stub starts a DETACHED
+ * grandchild (a non-detached Node grandchild dies with its parent on Windows, so it would prove
+ * nothing), both ignore stdin EOF, and the EOF watchdog's stop must end both.
+ */
+describe.runIf(onWindows)('a Windows stop reaches what the CLI started (#963)', () => {
+  const stubBin = fileURLToPath(new URL('./__fixtures__/claude/stub-spawns-grandchild.mjs', import.meta.url));
+  /** The EOF watchdog's SIGTERM, then the tree stop's own worst case – its one PowerShell (table
+   *  and kill) is ended at `TREE_STOP_TIMEOUT_MS`; a cold start takes seconds on a small CI runner
+   *  – and slack. The SIGKILL grace never runs: the SIGTERM already ends the CLI. */
+  const STOP_BOUND_MS = EOF_TERM_GRACE_MS + TREE_STOP_TIMEOUT_MS + 2_000;
+  const started = new OwnedPids();
+  const alive = (pid: number): boolean => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch (error) {
+      return (error as NodeJS.ErrnoException).code === 'EPERM';
+    }
+  };
+  afterEach(() => started.stopAll(), 20_000);
+
+  it('stops the CLI and its grandchild after end(), with no error', async () => {
+    const events: AgentEvent[] = [];
+    let pids: { child: number; grandchild: number } | undefined;
+    const session = new ClaudeCliRunner({ bin: stubBin, timeoutMs: 0 }).startSession(
+      { userPrompt: 'do it', cwd: process.cwd() },
+      (event) => {
+        events.push(event);
+        if (event.type === 'text') pids = JSON.parse(event.text) as { child: number; grandchild: number };
+      },
+    );
+    try {
+      await expect.poll(() => pids, { timeout: 10_000 }).toBeDefined();
+      started.add([pids!.child, pids!.grandchild]);
+      expect(alive(pids!.grandchild)).toBe(true);
+
+      const ending = Date.now();
+      session.end();
+      await session.result;
+      await expect
+        .poll(() => alive(pids!.child) || alive(pids!.grandchild), { timeout: STOP_BOUND_MS, interval: 100 })
+        .toBe(false);
+      started.gone(pids!.child, pids!.grandchild);
+      expect(Date.now() - ending).toBeLessThan(STOP_BOUND_MS);
+      expect(events.some((event) => event.type === 'error')).toBe(false);
+    } finally {
+      // A case that failed before its stop still ends the session – and with it the CLI's tree.
+      session.interrupt();
+    }
+  }, 40_000);
+});
+
+/**
  * #156 — five agent CLIs were SIGTERMed by a peer task's unscoped
  * `pkill -f "repo-gates.sh --fast"`, which matched their own
  * `--append-system-prompt` argv. All five reported the bare
@@ -489,6 +547,56 @@ describe('a signal xezar did not send', () => {
     expect(
       events.some((event) => event.type === 'note' && event.message.includes('xezar sent no signal')),
     ).toBe(false);
+  }, 15_000);
+
+  /**
+   * #963 AC-7 — on Windows `kill()` is TerminateProcess, which leaves exit code 1 whatever the
+   * signal, so the stop xezar sent came back as `claude CLI exited with code 1`: an agent failure
+   * for every cancel and every EOF teardown. With the #703 flag set, exit 1 is our own stop there.
+   */
+  it('settles a xezar-initiated stop on Windows, which exits 1', async () => {
+    await withPlatform('win32', async () => {
+      const { fake, events, session } = startWithFakeChild();
+
+      session.interrupt();
+      expect(fake.signals).toEqual(['SIGTERM']);
+      fake.exit(1);
+
+      await session.result;
+      expect(events.some((event) => event.type === 'error')).toBe(false);
+      expect(
+        events.some((event) => event.type === 'note' && event.message.includes('terminated by xezar (code 1)')),
+      ).toBe(true);
+      expect(events.at(-1)).toEqual({ type: 'done' });
+    });
+  }, 15_000);
+
+  /** GUARD — exit 1 is an ordinary failure on Windows when xezar sent nothing. */
+  it('still fails an exit 1 on Windows that xezar did not cause', async () => {
+    await withPlatform('win32', async () => {
+      const { fake, events, session } = startWithFakeChild();
+
+      fake.exit(1);
+
+      await expect(session.result).rejects.toThrow(/^claude CLI exited with code 1$/);
+      expect(fake.signals).toEqual([]);
+      expect(events.some((event) => event.type === 'error')).toBe(true);
+    });
+  }, 15_000);
+
+  /** GUARD — Linux and macOS are unchanged: exit 1 after our own SIGTERM is still a failure. */
+  it('still fails an exit 1 after a xezar stop on Linux and macOS', async () => {
+    await withPlatform('linux', async () => {
+      const { fake, events, session } = startWithFakeChild();
+
+      session.interrupt();
+      fake.exit(1);
+
+      await expect(session.result).rejects.toThrow(/^claude CLI exited with code 1$/);
+      expect(events.some((event) => event.type === 'note' && event.message.includes('terminated by xezar'))).toBe(
+        false,
+      );
+    });
   }, 15_000);
 });
 

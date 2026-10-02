@@ -14,7 +14,7 @@
  *    `ps` output (scripts/test-process-usage.mjs).
  */
 
-import { execFile } from 'node:child_process';
+import { descendantPids, readProcessTable } from '../platform/process-table.ts';
 
 /** One aggregated sample for a run's process tree. */
 export interface ProcessUsage {
@@ -66,30 +66,20 @@ export function parsePsOutput(text: string): ProcStat[] {
  */
 export function aggregateTreeUsage(procs: ProcStat[], rootPid: number): ProcessUsage | null {
   const byPid = new Map<number, ProcStat>();
-  const children = new Map<number, number[]>();
-  for (const p of procs) {
-    byPid.set(p.pid, p);
-    const siblings = children.get(p.ppid);
-    if (siblings) siblings.push(p.pid);
-    else children.set(p.ppid, [p.pid]);
-  }
-  if (!byPid.has(rootPid)) return null;
+  for (const p of procs) byPid.set(p.pid, p);
+  const root = byPid.get(rootPid);
+  if (!root) return null;
 
-  let cpuPct = 0;
-  let rssKb = 0;
-  let procCount = 0;
-  const queue = [rootPid];
-  const seen = new Set<number>(); // pid-reuse in a torn snapshot can't loop us
-  while (queue.length > 0) {
-    const pid = queue.pop() as number;
-    if (seen.has(pid)) continue;
-    seen.add(pid);
+  let cpuPct = root.cpuPct;
+  let rssKb = root.rssKb;
+  let procCount = 1;
+  // The walk by parent pid, in the order it always visited (#963 moved it to `platform/`).
+  for (const pid of descendantPids(procs, { pid: rootPid })) {
     const p = byPid.get(pid);
     if (!p) continue;
     cpuPct += p.cpuPct;
     rssKb += p.rssKb;
     procCount += 1;
-    for (const child of children.get(pid) ?? []) queue.push(child);
   }
   return { cpuPct: Math.round(cpuPct * 10) / 10, rssBytes: rssKb * 1024, procCount };
 }
@@ -176,9 +166,9 @@ async function sample(): Promise<void> {
   if (sampling || entries.size === 0) return;
   sampling = true;
   try {
-    const text = await runPs();
-    if (text === null) return; // ps unavailable — degrade to no data
-    const procs = parsePsOutput(text);
+    const table = await readProcessTable();
+    if (table === null) return; // ps unavailable — degrade to no data
+    const procs = table.rows;
     for (const entry of entries.values()) {
       const usage = aggregateTreeUsage(procs, entry.pid);
       entry.last = usage ?? undefined;
@@ -200,32 +190,4 @@ async function sample(): Promise<void> {
   } finally {
     sampling = false;
   }
-}
-
-/** One system-wide snapshot in the `pid ppid rssKb cpu` shape `parsePsOutput` expects; null on
- *  any failure. Unix uses `ps`; Windows uses PowerShell's Win32_Process (WorkingSetSize → KB,
- *  cpu reported as 0 — the memory guard only needs RSS). */
-function runPs(): Promise<string | null> {
-  if (process.platform === 'win32') {
-    return new Promise((resolve) => {
-      execFile(
-        'powershell',
-        [
-          '-NoProfile',
-          '-Command',
-          "Get-CimInstance Win32_Process | ForEach-Object { \"$($_.ProcessId) $($_.ParentProcessId) $([math]::Round($_.WorkingSetSize/1024)) 0\" }",
-        ],
-        { maxBuffer: 16 * 1024 * 1024, windowsHide: true },
-        (err, stdout) => resolve(err ? null : stdout),
-      );
-    });
-  }
-  return new Promise((resolve) => {
-    execFile(
-      'ps',
-      ['-axo', 'pid=,ppid=,rss=,%cpu='],
-      { maxBuffer: 16 * 1024 * 1024 },
-      (err, stdout) => resolve(err ? null : stdout),
-    );
-  });
 }

@@ -15,7 +15,8 @@ import { dirname, join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { FILE_SYMLINKS, linkDir, onWindows } from '../../test/helpers/platform.ts';
+import { useEmptyPath } from '../../test/helpers/empty-path.ts';
+import { FILE_SYMLINKS, linkDir, onWindows, withPlatform } from '../../test/helpers/platform.ts';
 import { projectStateLayout, setActiveStateLayout } from '../state-layout.ts';
 import type { AgentEvent } from './agent-runner.js';
 import { KILL_GRACE_MS } from './claude-cli-runner.js';
@@ -33,6 +34,8 @@ afterEach(() => {
 /** Only the escalation tests below swap the child out; every other test in this
  *  file keeps spawning the real mock app-server through the untouched `spawn`. */
 const spawnHook = vi.hoisted(() => ({ override: null as null | (() => unknown) }));
+
+useEmptyPath();
 
 vi.mock('node:child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:child_process')>();
@@ -262,7 +265,6 @@ describe('wall-clock timeout for a real Codex child that ignores SIGTERM', () =>
       const startedAt = Date.now();
 
       try {
-        // win32-r9(#963): spawn EFTYPE – the runner spawns the .mjs stub directly, which Windows cannot execute
         const result = await Promise.race([
           session.result,
           new Promise<never>((_, reject) =>
@@ -422,6 +424,93 @@ describe('a signal xezar did not send (codex app-server)', () => {
     );
     const error = events.find((event) => event.type === 'error');
     expect(error?.type === 'error' && error.message).toContain('#156');
+  }, 15_000);
+
+  /**
+   * One cancelled session against the real mock, with the stop delivered by pid instead of
+   * through Node's own handle: that is the shape that leaves exit code 1 and no signal on every
+   * OS – Windows ends the process with TerminateProcess(1), and on Linux and macOS the mock's
+   * SIGTERM handler exits 1 (`MOCK_CODEX_SIGTERM_EXIT_CODE`).
+   */
+  async function cancelWithExitOne(): Promise<{ events: AgentEvent[]; signals: string[]; result: Promise<unknown> }> {
+    const actual = await vi.importActual<typeof import('node:child_process')>('node:child_process');
+    const signals: string[] = [];
+    let spawned: { pid?: number | undefined } | undefined;
+    spawnHook.override = () => {
+      const child = actual.spawn(process.execPath, [mockBin, 'app-server'], {
+        env: { ...process.env, MOCK_CODEX_IGNORE_EOF: '1', MOCK_CODEX_SIGTERM_EXIT_CODE: '1' },
+      });
+      spawned = child;
+      child.kill = (signal?: NodeJS.Signals | number) => {
+        signals.push(String(signal));
+        if (child.pid !== undefined) process.kill(child.pid, signal);
+        return true;
+      };
+      return child;
+    };
+    const events: AgentEvent[] = [];
+    let sawText: () => void = () => {};
+    const firstText = new Promise<void>((resolve) => {
+      sawText = resolve;
+    });
+    let stopped = false;
+    try {
+      const session = new CodexAppServerRunner({ bin: 'codex', timeoutMs: 0 }).startSession(
+        { userPrompt: 'check the working tree', cwd: process.cwd() },
+        (event) => {
+          events.push(event);
+          if (event.type === 'text') sawText();
+        },
+      );
+      // Bounded, so a mock that never answers fails here and its process is still ended below.
+      await Promise.race([
+        firstText,
+        new Promise<never>((_resolve, reject) => setTimeout(() => reject(new Error('no first text from the mock app-server')), 10_000).unref()),
+      ]);
+      session.interrupt();
+      stopped = true;
+      return { events, signals, result: session.result };
+    } finally {
+      spawnHook.override = null;
+      // The mock ignores EOF and runs for ever: a helper that failed before its stop ends it (T-11).
+      if (!stopped && spawned?.pid !== undefined) {
+        try {
+          process.kill(spawned.pid, 'SIGKILL');
+        } catch {
+          // already gone
+        }
+      }
+    }
+  }
+
+  /**
+   * #963 AC-7 — on Windows a stop that does not go through Node's own handle leaves exit code 1
+   * and no signal; with the #703 flag set that is our own stop, not a codex failure.
+   */
+  it('settles a xezar-initiated stop on Windows, which exits 1', async () => {
+    await withPlatform('win32', async () => {
+      const { events, signals, result } = await cancelWithExitOne();
+
+      await result;
+      expect(signals).toEqual(['SIGTERM']);
+      expect(events.some((event) => event.type === 'error')).toBe(false);
+      expect(
+        events.some((event) => event.type === 'note' && event.message.includes('terminated by xezar (code 1)')),
+      ).toBe(true);
+      expect(events.at(-1)).toEqual({ type: 'done' });
+    });
+  }, 15_000);
+
+  /** GUARD — Linux and macOS are unchanged: exit 1 after our own SIGTERM is still a failure. */
+  it('still fails an exit 1 after a xezar stop on Linux and macOS', async () => {
+    await withPlatform('linux', async () => {
+      const { events, result } = await cancelWithExitOne();
+
+      await expect(result).rejects.toThrow(/^codex app-server exited with code 1/);
+      expect(events.some((event) => event.type === 'note' && event.message.includes('terminated by xezar'))).toBe(
+        false,
+      );
+    });
   }, 15_000);
 });
 

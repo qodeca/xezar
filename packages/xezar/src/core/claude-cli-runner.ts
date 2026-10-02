@@ -1,4 +1,4 @@
-import { spawn as nodeSpawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve as resolvePath } from 'node:path';
 import type {
@@ -14,7 +14,9 @@ import type {
 
 // Re-exported for backends and the run manager that still import them from here.
 export type { AgentSession, SessionOptions } from './agent-runner.ts';
-import { foreignSignalExitMessage, isSignalTerminationExit, trackChildExit } from './agent-runner.ts';
+import { foreignSignalExitMessage, isSignalTerminationExit, isXezarStopExit, trackChildExit } from './agent-runner.ts';
+import { launch } from '../platform/process-launch.ts';
+import { stopChildTree } from '../platform/process-tree.ts';
 import { buildChildEnv } from './agent-env.ts';
 import { claudeMcpIsolation, runMcpIsolationNote, type ClaudeMcpIsolation } from './run-mcp-isolation.ts';
 import { costWeightedTokens, type RawUsage } from './usage.ts';
@@ -122,7 +124,7 @@ export class ClaudeCliRunner implements AgentRunner {
 
     let child: ChildProcessWithoutNullStreams;
     try {
-      child = nodeSpawn(this.bin, args, {
+      child = launch(this.bin, args, {
         cwd: spec.cwd,
         env: buildChildEnv({ backend: this.backend, extraEnv: spec.env }),
       });
@@ -183,7 +185,7 @@ export class ClaudeCliRunner implements AgentRunner {
     let terminatedByXezar = false;
     const signalChild = (signal: 'SIGTERM' | 'SIGKILL'): void => {
       terminatedByXezar = true;
-      child.kill(signal);
+      void stopChildTree(child, signal);
     };
     // Every watchdog below asks "is the child still alive?" — and that question
     // is NOT `child.killed`, which only reports signal delivery. claude handles
@@ -330,7 +332,8 @@ export class ClaudeCliRunner implements AgentRunner {
       // A session xezar itself tore down (EOF watchdog after `end()`, or a
       // cancel) exits 143/137 — that is our own signal coming back, not an
       // agent failure, so it settles on the normal path with a note (#703).
-      if (terminatedByXezar && isSignalTerminationExit(exitCode)) {
+      // On Windows that stop leaves exit code 1 (`isXezarStopExit`, #963).
+      if (terminatedByXezar && isXezarStopExit(exitCode)) {
         onEvent?.({
           type: 'note',
           message: `claude CLI did not exit on its own after close; terminated by xezar (code ${exitCode})`,

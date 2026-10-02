@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useEmptyPath } from '../test/helpers/empty-path.ts';
 import { withPlatform } from '../test/helpers/platform.ts';
 import { branchFor, createWorktree } from './git-worktree.ts';
 import { withIdentityPlatform } from './platform/identity-platform.testkit.ts';
@@ -28,6 +29,8 @@ const gitHook = vi.hoisted(() => ({
   calls: [] as string[][],
 }));
 
+useEmptyPath();
+
 vi.mock('node:child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:child_process')>();
   type Callback = (error: Error | null, stdout: string, stderr: string) => void;
@@ -36,7 +39,9 @@ vi.mock('node:child_process', async (importOriginal) => {
     gitHook.calls.push(args);
     const reply = gitHook.answer(args);
     queueMicrotask(() => callback(reply.ok ? null : Object.assign(new Error('git failed'), { code: 128 }), reply.stdout, reply.stderr));
-    return undefined;
+    // execFile always returns a ChildProcess, and on win32 `launchFile` hands it to the child
+    // registry. An unspawned one (no pid) is what a scripted git is: never tracked, never stopped.
+    return new actual.ChildProcess();
   };
   return { ...actual, execFile };
 });

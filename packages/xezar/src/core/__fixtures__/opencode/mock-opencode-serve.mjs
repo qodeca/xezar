@@ -16,6 +16,9 @@
 //   MOCK_OPENCODE_IGNORE_SIGTERM=1   handle SIGTERM and keep running — the
 //                                    real server's own handler, the shape that
 //                                    made #858's SIGKILL escalation necessary.
+//   MOCK_OPENCODE_SIGTERM_EXIT_CODE=<n>  exit n instead of 0 on SIGTERM – `1`
+//                                    is what a Windows stop (TerminateProcess)
+//                                    leaves, reproduced on every OS (#963).
 //   MOCK_OPENCODE_EXIT_BEFORE_LISTEN=1  die before printing a URL: the server
 //                                    is gone before the runner's handshake.
 //   MOCK_OPENCODE_EXIT_AFTER_IDLE=1  exit cleanly right after `session.idle`,
@@ -599,7 +602,7 @@ process.on('SIGTERM', () => {
   // The real `opencode serve` installs its own SIGTERM handler. Under
   // MOCK_OPENCODE_IGNORE_SIGTERM it keeps running after handling the signal —
   // the #858 shape where only the SIGKILL escalation can end the process.
-  if (!ignoreSigterm) process.exit(0);
+  if (!ignoreSigterm) process.exit(Number(process.env.MOCK_OPENCODE_SIGTERM_EXIT_CODE ?? 0));
 });
 
 if (exitBeforeListen) {

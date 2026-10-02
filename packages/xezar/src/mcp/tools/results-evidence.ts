@@ -1,4 +1,3 @@
-import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { hc } from 'hono/client';
@@ -23,6 +22,7 @@ import {
 } from '@qodeca/xezar-contract';
 import { resolveTaskDiffBase, type GitRunner } from '../../git-diff-base.ts';
 import { isSafeGitRef } from '../../git-refs.ts';
+import { launchFile } from '../../platform/process-launch.ts';
 import type { RunRecord } from '../../runs/store.ts';
 import type { AppType } from '../../server/app-type.ts';
 import { imageMimeType } from '../../server/git-changes.ts';
@@ -341,7 +341,7 @@ function errorOf(answer: Answer): string {
 function gitIn(dir: string): GitRunner {
   return (args) =>
     new Promise((resolve) => {
-      execFile(
+      launchFile(
         'git',
         args,
         {

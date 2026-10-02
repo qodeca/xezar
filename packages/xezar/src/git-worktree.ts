@@ -1,5 +1,4 @@
 import { projectDataDir } from './project-data-paths.ts';
-import { execFile } from 'node:child_process';
 import { existsSync, realpathSync, type Dirent } from 'node:fs';
 import { readdir, readFile, rm, stat } from 'node:fs/promises';
 import { basename, join, resolve } from 'node:path';
@@ -7,6 +6,7 @@ import { resolveTaskDiffBase } from './git-diff-base.ts';
 import { isSafeGitRef } from './git-refs.ts';
 import { withLongPathHint } from './platform/long-paths.ts';
 import { samePath } from './platform/path-identity.ts';
+import { launchFile } from './platform/process-launch.ts';
 import { fromGitPath } from './platform/path-syntax.ts';
 
 /**
@@ -37,7 +37,7 @@ interface RegisteredWorktree {
 /** Run git, never throw — degradation is the caller's policy. */
 function git(cwd: string, args: string[]): Promise<GitResult> {
   return new Promise((resolve) => {
-    execFile(
+    launchFile(
       'git',
       args,
       { cwd, maxBuffer: 32 * 1024 * 1024, encoding: 'utf8' },
@@ -230,7 +230,7 @@ export async function createWorktree(
  */
 export function worktreeSizeBytes(path: string): Promise<number | null> {
   return new Promise((resolve) => {
-    execFile('du', ['-sk', path], { encoding: 'utf8' }, (err, stdout) => {
+    launchFile('du', ['-sk', path], { encoding: 'utf8' }, (err, stdout) => {
       if (err) {
         resolve(null);
         return;

@@ -8,6 +8,9 @@
 // `MOCK_CODEX_IGNORE_EOF=1` switches to the #703 teardown shape instead: the
 // server stays deaf to stdin EOF (the CLI hang the EOF watchdog exists for)
 // and handles SIGTERM itself, exiting 143 rather than dying from the signal.
+// `MOCK_CODEX_SIGTERM_EXIT_CODE=<n>` (with IGNORE_EOF) exits n instead of 143 on
+// SIGTERM – `1` is what a Windows stop (TerminateProcess) leaves, reproduced on
+// every OS (#963).
 // `MOCK_CODEX_FOREIGN_SIGNAL_EXIT=1` is the #156 mirror image: a clean turn
 // followed by an unsolicited 143, as if a peer process had signalled it.
 //
@@ -93,7 +96,7 @@ function isolationProblem(config) {
 const ignoreEof = process.env.MOCK_CODEX_IGNORE_EOF === '1';
 if (ignoreEof) {
   process.on('SIGTERM', () => {
-    if (process.env.MOCK_CODEX_IGNORE_SIGTERM !== '1') process.exit(143);
+    if (process.env.MOCK_CODEX_IGNORE_SIGTERM !== '1') process.exit(Number(process.env.MOCK_CODEX_SIGTERM_EXIT_CODE ?? 143));
   });
   // Keep the event loop alive so EOF alone can never end the process.
   setInterval(() => {}, 60_000);

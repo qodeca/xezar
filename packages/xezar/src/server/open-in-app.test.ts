@@ -3,10 +3,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useEmptyPath } from '../../test/helpers/empty-path.ts';
 
 // `vi.hoisted` so `spawnMock` is initialized before the (hoisted) vi.mock factory runs — the
 // factory sets its default implementation, so a bare `const` would be read before init.
 const spawnMock = vi.hoisted(() => vi.fn());
+useEmptyPath();
+
 vi.mock('node:child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:child_process')>();
   // Default to an INERT child — nothing in this file needs a real process. `runDetached` only

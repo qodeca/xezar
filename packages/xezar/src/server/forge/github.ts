@@ -1,8 +1,7 @@
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import { z } from 'zod';
 import { REFERENCE_STATUS_MAX } from '@qodeca/xezar-contract';
 import { autosaveCommit } from '../../git-worktree.ts';
+import { launchFile, launchFileAsync } from '../../platform/process-launch.ts';
 import type {
   DraftPrInput,
   DraftPrOutcome,
@@ -34,8 +33,6 @@ import type {
  * `/api/github`'s response shape is this driver's serialization and is
  * protected by the backward-compatibility promise — additive changes only.
  */
-
-const exec = promisify(execFile);
 
 export const GH_PR_DIFF_FILE_CAP = 300;
 export const GH_PR_PATCH_CAP = 512 * 1024;
@@ -270,7 +267,7 @@ export function rollupToChecks(rollup: z.infer<typeof ghStatusCheckRollup>): Git
 }
 
 async function gh(repoRoot: string, args: string[], timeout = 15_000): Promise<string> {
-  const { stdout } = await exec('gh', args, {
+  const { stdout } = await launchFileAsync('gh', args, {
     cwd: repoRoot,
     timeout,
     maxBuffer: 50 * 1024 * 1024,
@@ -2550,7 +2547,7 @@ interface ExecResult {
 
 function execTool(args: string[], cwd: string, bin: string, timeoutMs = 30_000): Promise<ExecResult> {
   return new Promise((resolve) => {
-    execFile(
+    launchFile(
       bin,
       args,
       { cwd, timeout: timeoutMs, maxBuffer: 4 * 1024 * 1024, encoding: 'utf8' },

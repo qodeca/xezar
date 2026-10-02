@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RunStore } from '../runs/store.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 import { providerClock, scriptedRunner, SINGLE_STEP, terminal } from './engine-incidents.testkit.ts';
 import { WorkspaceSemaphore } from '../workspace/semaphore.ts';
 import {
@@ -153,7 +154,7 @@ describe('a run stopped by a usage limit resumes itself', () => {
           `before the engine stopped writing into ${repoRoot} (temp dir deliberately leaked)`,
       );
     }
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
   }, TEARDOWN_TIMEOUT_MS);
 
   it('schedules the resume for the provider\'s reset instant plus the grace', async () => {
@@ -994,7 +995,7 @@ describe('G9 deterministic quota recovery', () => {
           expect(store.getRun(run.id)?.autoResumeAt).toBeUndefined();
           expect(runner.specs).toHaveLength(1);
         }
-      } finally { await manager.quiesce(); store.flush(); runner.restore(); clock.restore(); rmSync(root, { recursive: true, force: true }); }
+      } finally { await manager.quiesce(); store.flush(); runner.restore(); clock.restore(); rmSync(root, TEST_DIR_RM_OPTIONS); }
     },
   );
 });
@@ -1030,7 +1031,7 @@ describe('quota event consumption', () => {
       await manager.quiesce();
       store.flush();
       runner.restore();
-      rmSync(root, { recursive: true, force: true });
+      rmSync(root, TEST_DIR_RM_OPTIONS);
     }
   });
 
@@ -1064,7 +1065,7 @@ describe('quota event consumption', () => {
       await manager.quiesce();
       store.flush();
       runner.restore();
-      rmSync(root, { recursive: true, force: true });
+      rmSync(root, TEST_DIR_RM_OPTIONS);
     }
   });
 
@@ -1093,7 +1094,7 @@ describe('quota event consumption', () => {
       });
       await expect.poll(() => manager.agentQuotaStore.answer().accounts.find((row) => row.runner === 'codex'))
         .toMatchObject({ accountId: 'default', status: 'out', source: 'failedRun' });
-    } finally { await manager.quiesce(); store.flush(); runner.restore(); clock.restore(); rmSync(root, { recursive: true, force: true }); }
+    } finally { await manager.quiesce(); store.flush(); runner.restore(); clock.restore(); rmSync(root, TEST_DIR_RM_OPTIONS); }
   });
 
   it('drops malformed quota telemetry with one warning and keeps the run running', async () => {
@@ -1120,7 +1121,7 @@ describe('quota event consumption', () => {
       await manager.quiesce();
       store.flush();
       runner.restore();
-      rmSync(root, { recursive: true, force: true });
+      rmSync(root, TEST_DIR_RM_OPTIONS);
     }
   });
 });
@@ -1162,7 +1163,7 @@ describe('G9 account/project quota isolation', () => {
     } finally {
       for (const manager of managers) await manager.quiesce();
       for (const store of stores) store.flush(); runner.restore(); clock.restore();
-      for (const root of roots) rmSync(root, { recursive: true, force: true });
+      for (const root of roots) rmSync(root, TEST_DIR_RM_OPTIONS);
     }
   });
 });

@@ -1,5 +1,6 @@
 import { rmSync } from 'node:fs';
 
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 import type { RunStore } from './store.ts';
 
 /**
@@ -17,5 +18,5 @@ import type { RunStore } from './store.ts';
  */
 export function closeStoreAndRemove(store: RunStore | undefined, dir: string | undefined): void {
   store?.close();
-  if (dir) rmSync(dir, { recursive: true, force: true });
+  if (dir) rmSync(dir, TEST_DIR_RM_OPTIONS);
 }

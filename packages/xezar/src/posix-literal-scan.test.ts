@@ -21,19 +21,27 @@ const SCAN_ROOT = 'packages/xezar/src';
 
 interface Rule {
   readonly id: string;
-  readonly pattern: RegExp;
+  /** A line is a finding when ANY of these matches – one rule, several spellings. */
+  readonly patterns: readonly RegExp[];
   readonly fix: string;
 }
 
 const RULES: readonly Rule[] = [
   {
     id: 'starts-with-slash',
-    pattern: /\.startsWith\(\s*(['"`])\/\1\s*\)/,
+    patterns: [
+      /\.startsWith\(\s*(['"`])\/\1\s*\)/,
+      // The same test spelled by its first character – `[0]`, `charAt(0)` or `at(0)`, with `===`,
+      // `==`, `!==` or `!=`, either operand first (T-12) – or as a regex anchored at `/` alone (#963).
+      /(?:\[0\]|\.charAt\(\s*0\s*\)|\.at\(\s*0\s*\))\s*[!=]==?\s*(['"`])\/\1/,
+      /(['"`])\/\1\s*[!=]==?\s*[\w$.?!]*(?:\[0\]|\.charAt\(\s*0\s*\)|\.at\(\s*0\s*\))/,
+      /\/\^\\\/\/[a-z]*\.test\(/,
+    ],
     fix: 'use isAbsolutePath / isFullyQualifiedPath from platform/path-syntax.ts',
   },
   {
     id: 'tmp-literal',
-    pattern: /(['"`])\/tmp(?:\/|\1)/,
+    patterns: [/(['"`])\/tmp(?:\/|\1)/],
     fix: 'use os.tmpdir()',
   },
 ];
@@ -71,7 +79,9 @@ export function literalFindings(file: string, source: string): Finding[] {
     .split('\n')
     .forEach((raw, index) => {
       for (const rule of RULES) {
-        if (rule.pattern.test(raw)) found.push({ file, line: index + 1, rule: rule.id, code: raw.trim() });
+        if (rule.patterns.some((pattern) => pattern.test(raw))) {
+          found.push({ file, line: index + 1, rule: rule.id, code: raw.trim() });
+        }
       }
     });
   return found;
@@ -112,5 +122,29 @@ describe('POSIX-only path literals (#963)', () => {
     expect(literalFindings('probe.ts', tmp).map((f) => f.rule)).toEqual(['tmp-literal']);
     expect(literalFindings('probe.ts', `// ${slash} and ${tmp}`)).toEqual([]);
     expect(literalFindings('probe.ts', "const dir = tmpdir(); const url = p.startsWith('/api');")).toEqual([]);
+  });
+
+  it.each([
+    ['the first character', ['if (p[0] ', '=== ', "'/'", ') return;'].join('')],
+    ['the first character, double-quoted', ['if (value[0]===', '"/"', ') return;'].join('')],
+    ['charAt(0)', ['if (p.charAt(0) ', '=== ', "'/'", ') return;'].join('')],
+    ['a negated first character (T-12)', ['if (p[0] ', '!== ', "'/'", ') return;'].join('')],
+    ['a loose comparison', ['if (p.charAt(0) ', '== ', "'/'", ') return;'].join('')],
+    ['a loose negated comparison', ['if (p.charAt(0) ', '!= ', "'/'", ') return;'].join('')],
+    ['at(0)', ['if (p.at(0) ', '=== ', "'/'", ') return;'].join('')],
+    ['the operands reversed', ['if (', "'/'", ' === ', 'p[0]) return;'].join('')],
+    ['the operands reversed, with at(0)', ['if (', '"/"', ' !== ', 'value.at(0)) return;'].join('')],
+    ['a regex anchored at a slash', ['if (', '/^', '\\/', '/', '.test(p)) return;'].join('')],
+    ['a regex anchored at a slash, with a flag', ['if (', '/^', '\\/', '/u', '.test(p)) return;'].join('')],
+  ])('starts-with-slash also fires on %s (#963)', (_label, line) => {
+    expect(literalFindings('probe.ts', line).map((f) => f.rule)).toEqual(['starts-with-slash']);
+  });
+
+  it('starts-with-slash leaves a regex for a longer prefix, another first character and comments alone', () => {
+    expect(literalFindings('probe.ts', ['if (', '/^', '\\/qodeca\\/', '/', '.test(p)) return;'].join(''))).toEqual([]);
+    expect(literalFindings('probe.ts', ['if (p[0] ', '=== ', "'.'", ') return;'].join(''))).toEqual([]);
+    expect(literalFindings('probe.ts', ['if (', "'/'", ' === ', 'p[1]) return;'].join(''))).toEqual([]);
+    expect(literalFindings('probe.ts', ['if (p.at(-1) ', '=== ', "'/'", ') return;'].join(''))).toEqual([]);
+    expect(literalFindings('probe.ts', ['// p.charAt(0) ', '=== ', "'/'"].join(''))).toEqual([]);
   });
 });

@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events';
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { dirname, sep } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useEmptyPath } from '../../test/helpers/empty-path.ts';
 import { onWindows } from '../../test/helpers/platform.ts';
 
 import { createLaunchScript, openInTerminal, refuseSpawnUnderTest, wslTerminalLaunchers } from './open-in-terminal.ts';
@@ -9,6 +10,8 @@ import { createLaunchScript, openInTerminal, refuseSpawnUnderTest, wslTerminalLa
 /** The seam the platform-branch tests below drive. Only `spawn` is replaced — `./wsl.ts` reaches
  *  for `execFileSync` from the same module, and it must keep working. */
 const { spawnMock } = vi.hoisted(() => ({ spawnMock: vi.fn() }));
+useEmptyPath();
+
 vi.mock('node:child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:child_process')>();
   return { ...actual, spawn: spawnMock };
@@ -52,6 +55,12 @@ describe('wslTerminalLaunchers (#361 WSL support)', () => {
   it('addresses the distro the launch actually runs in, not a hardcoded default', () => {
     const [first] = wslTerminalLaunchers('/tmp/script.sh', 'Debian');
     expect(first?.[1]).toContain('Debian');
+  });
+
+  // SEC-963-01: Windows Terminal starts whatever follows a `;` as another command.
+  it('skips Windows Terminal when a `;` would split its command line', () => {
+    const script = '/home/u/a; powershell -e AAAA /.local/xezar/tmp/xez-term-abc/launch.sh';
+    expect(wslTerminalLaunchers(script, 'Ubuntu')).toEqual([['conhost.exe', ['wsl.exe', '-d', 'Ubuntu', '--', script]]]);
   });
 });
 
@@ -146,8 +155,10 @@ describe('the spawn guard (#820)', () => {
 
   it('stops openInTerminal before it can reach the OS', async () => {
     delete process.env.XEZ_ALLOW_TEST_SPAWN;
-    // The exact call #820 reported: `openInApp('terminal', dir)` → `openInTerminal(dir, ':')`.
-    await expect(openInTerminal('/tmp/some-account-folder', ':')).rejects.toThrow(/refusing to spawn/);
+    // The exact call #820 reported: `openInApp('terminal', dir)` → `openInTerminal(dir, ':')`. On
+    // Windows the folder must be a drive path, or the launch is refused before the guard is reached.
+    const dir = process.platform === 'win32' ? 'C:\\some-account-folder' : '/tmp/some-account-folder';
+    await expect(openInTerminal(dir, ':')).rejects.toThrow(/refusing to spawn/);
   });
 });
 
@@ -270,35 +281,67 @@ describe('the platform launch lines', () => {
   });
 
   describe('Windows', () => {
-    beforeEach(() => setPlatform('win32'));
+    /** cmd.exe starts from %SystemRoot%\System32 only (`launchCmd`, #963); pinned so every host
+     *  – a Linux CI runner has no SystemRoot at all – spells the same path. */
+    const savedSystemRoot = { SystemRoot: process.env.SystemRoot, SYSTEMROOT: process.env.SYSTEMROOT };
+    const CMD_EXE = 'C:\\Windows\\System32\\cmd.exe';
+    /** What `launchCmd` always passes before the caller's line, and how it starts cmd.exe. */
+    const CMD_PREFIX = ['/d', '/v:off'];
+    const CMD_OPTIONS = { stdio: 'ignore', detached: true, windowsVerbatimArguments: true };
 
-    it('prefers Windows Terminal and renders the env as a persisting `set`', async () => {
+    beforeEach(() => {
+      setPlatform('win32');
+      delete process.env.SYSTEMROOT;
+      process.env.SystemRoot = 'C:\\Windows';
+    });
+    afterEach(() => {
+      for (const [key, value] of Object.entries(savedSystemRoot)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    });
+
+    it('prefers Windows Terminal', async () => {
       spawnMock.mockImplementation(quietChild);
 
-      expect(
-        await settleAll(
-          openInTerminal('C:\\work\\wt', 'claude --resume abc', {
-            CLAUDE_CONFIG_DIR: 'C:\\Users\\u\\.claude-work',
-          }),
-        ),
-      ).toBe(true);
+      expect(await settleAll(openInTerminal('C:\\work\\wt', 'claude --resume abc'))).toBe(true);
 
       expect(spawnMock).toHaveBeenCalledTimes(1);
-      expect(spawnMock.mock.calls[0]?.slice(0, 2)).toEqual([
-        'cmd',
-        [
-          '/c',
-          'start',
-          '',
-          'wt',
-          '-d',
-          'C:\\work\\wt',
-          'cmd',
-          '/K',
-          'set "CLAUDE_CONFIG_DIR=C:\\Users\\u\\.claude-work" && claude --resume abc',
-        ],
+      // The `/K` payload is quoted whole, so the window's cmd.exe strips exactly those quotes and
+      // runs the checked line as it was checked.
+      expect(spawnMock.mock.calls[0]).toEqual([
+        CMD_EXE,
+        [...CMD_PREFIX, '/c', 'start', '""', 'wt', '-d', 'C:\\work\\wt', 'cmd', '/K', '"claude --resume abc"'],
+        CMD_OPTIONS,
       ]);
     });
+
+    // SEC-11A-01: Windows Terminal rebuilds its tab's command without the quotes of the `set`, so
+    // the account folder arrived cut at a space, or with a trailing one. The classic window's
+    // cmd.exe reads the quoted `set` as it was checked, and the env persists in it.
+    it.each(['C:\\Users\\u\\.claude-work', 'C:\\Users\\Jane Doe\\.claude-work'])(
+      'opens a second-account handoff (%j) in the classic window, with the env as a persisting `set`',
+      async (folder) => {
+        spawnMock.mockImplementation(quietChild);
+
+        expect(await settleAll(openInTerminal('C:\\work\\wt', 'claude --resume abc', { CLAUDE_CONFIG_DIR: folder }))).toBe(true);
+
+        expect(spawnMock).toHaveBeenCalledTimes(1);
+        expect(spawnMock.mock.calls[0]).toEqual([
+          CMD_EXE,
+          [
+            ...CMD_PREFIX,
+            '/c',
+            'start',
+            '""',
+            'cmd',
+            '/K',
+            `"cd /d "C:\\work\\wt" && set "CLAUDE_CONFIG_DIR=${folder}" && claude --resume abc"`,
+          ],
+          CMD_OPTIONS,
+        ]);
+      },
+    );
 
     it('falls back to a classic cmd window that cds itself in', async () => {
       spawnMock.mockImplementationOnce(failingChild).mockImplementation(quietChild);
@@ -307,13 +350,54 @@ describe('the platform launch lines', () => {
 
       expect(spawnMock).toHaveBeenCalledTimes(2);
       expect(spawnMock.mock.calls[1]?.[1]).toEqual([
+        ...CMD_PREFIX,
         '/c',
         'start',
-        '',
+        '""',
         'cmd',
         '/K',
-        'cd /d "C:\\work\\wt" && claude --resume abc',
+        '"cd /d "C:\\work\\wt" && claude --resume abc"',
       ]);
+    });
+
+    // Q-04: the folder goes to Windows Terminal quoted, so a space no longer costs the terminal.
+    it('opens Windows Terminal in a folder with a space, quoting it', async () => {
+      spawnMock.mockImplementation(quietChild);
+
+      expect(await settleAll(openInTerminal('C:\\my work\\wt', 'claude --resume abc'))).toBe(true);
+
+      expect(spawnMock).toHaveBeenCalledTimes(1);
+      expect(spawnMock.mock.calls[0]?.[1]?.slice(3, 9)).toEqual(['start', '""', 'wt', '-d', '"C:\\my work\\wt"', 'cmd']);
+    });
+
+    // Q-04: user folders with a non-ASCII letter, an apostrophe or a comma used to be refused on
+    // both launchers, leaving only the copy-the-command fallback.
+    it.each(['C:\\Users\\Łukasz\\repo', "C:\\Users\\O'Brien\\repo", 'C:\\OneDrive - Contoso, Inc\\repo'])(
+      'opens a terminal in %j on either launcher',
+      async (cwd) => {
+        spawnMock.mockImplementationOnce(failingChild).mockImplementation(quietChild);
+
+        expect(await settleAll(openInTerminal(cwd, 'claude --resume abc'))).toBe(true);
+
+        expect(spawnMock).toHaveBeenCalledTimes(2);
+        expect(spawnMock.mock.calls[0]?.[1]).toContain(`"${cwd}"`);
+        expect(spawnMock.mock.calls[1]?.[1]?.at(-1)).toBe(`"cd /d "${cwd}" && claude --resume abc"`);
+      },
+    );
+
+    it.each([
+      ['a folder with a command separator', 'C:\\A&B', ':'],
+      ['a folder with a variable', 'C:\\%PATH%', ':'],
+      ['a folder with a quote', 'C:\\x" & calc & "', ':'],
+      // SEC-11A-05: the quote closes `cd /d "…"` and the rest reads as a well-formed `set`.
+      ['a folder that would close its own quote', 'C:\\a" && set "PATH=C:\\evil', 'claude --resume abc'],
+      ['a command with a pipe', 'C:\\work\\wt', 'claude | calc'],
+      ['a command with a delayed expansion', 'C:\\work\\wt', 'claude !x!'],
+    ])('refuses %s before cmd.exe ever starts (SEC-7)', async (_label, cwd, command) => {
+      spawnMock.mockImplementation(quietChild);
+
+      expect(await settleAll(openInTerminal(cwd, command))).toBe(false);
+      expect(spawnMock).not.toHaveBeenCalled();
     });
 
     it('gives up after both launchers fail', async () => {
@@ -330,6 +414,21 @@ describe('the platform launch lines', () => {
         await settleAll(openInTerminal('C:\\w', ':', { CLAUDE_CONFIG_DIR: 'C:\\%USERNAME%' })),
       ).toBe(false);
       expect(spawnMock).not.toHaveBeenCalled();
+    });
+
+    // SEC-963-01: Windows Terminal would start what follows the `;` as a second command. The
+    // classic window's cmd.exe reads it inside the quoted `set`, as plain text.
+    it('never hands a `;` in the agent account folder to Windows Terminal', async () => {
+      spawnMock.mockImplementation(quietChild);
+      const env = { CLAUDE_CONFIG_DIR: 'C:\\x;powershell -NoP -e SQBFAFgA' };
+
+      expect(await settleAll(openInTerminal('C:\\work\\wt', 'claude --resume abc', env))).toBe(true);
+
+      expect(spawnMock).toHaveBeenCalledTimes(1);
+      expect(spawnMock.mock.calls[0]?.[1]).not.toContain('wt');
+      expect(spawnMock.mock.calls[0]?.[1]?.at(-1)).toBe(
+        '"cd /d "C:\\work\\wt" && set "CLAUDE_CONFIG_DIR=C:\\x;powershell -NoP -e SQBFAFgA" && claude --resume abc"',
+      );
     });
   });
 

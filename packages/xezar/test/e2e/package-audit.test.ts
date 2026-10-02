@@ -94,7 +94,6 @@ test('every command-line subcommand of the packed CLI writes one cli audit recor
     const added = async (before: number, where = repo) => (await auditOf(where)).slice(before);
 
     // `run` registers the repo and creates its data folder; every later row appends to it.
-    // win32-r9(#963): exits 1 – step "task" failed: spawn EFTYPE (the dry-run runner spawns the shebang script scripts/mock-claude.mjs directly).
     await exec(['run', 'mock:done', '--repo', repo]);
     let seen = 0;
     const expectRows = async (rows: Array<[string, string, string?]>, where = repo) => {
@@ -133,6 +132,8 @@ test('every command-line subcommand of the packed CLI writes one cli audit recor
 
     await exec(['projects', 'add', other, '--repo', repo]);
     const registry = JSON.parse(await readFile(join(root, 'xez-home', 'config.json'), 'utf8')) as { projects: Array<{ id: string; root: string }> };
+    // win32-r9(#963): fails here – the registry stores the Windows path `…\other`, so `endsWith('/other')` finds nothing. With that
+    // match made separator-neutral, the cleanup below then fails EBUSY: it removes the folder right after `kill`, before the killed CLI children have let go of it.
     const otherId = registry.projects.find((project) => project.root.endsWith('/other'))?.id;
     assert.ok(otherId, 'projects add registered the second repo');
     await exec(['projects', 'tag', otherId, 'alpha', '--repo', repo]);

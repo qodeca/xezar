@@ -18,9 +18,11 @@ import type {
 import {
   foreignSignalExitMessage,
   isSignalTerminationExit,
+  isXezarStopExit,
   prependSystemPrompt,
   trackChildExit,
 } from './agent-runner.ts';
+import { stopChildTree } from '../platform/process-tree.ts';
 import {
   AUTO_END_DELAY_MS,
   DEFAULT_RUN_TIMEOUT_MS,
@@ -299,7 +301,7 @@ class CodexSession implements AgentSession {
         killTimer = setTimeout(() => {
           if (!this.hasExited()) {
             this.terminatedByXezar = true;
-            this.child.kill('SIGKILL');
+            void stopChildTree(this.child, 'SIGKILL');
           }
         }, KILL_GRACE_MS);
         killTimer.unref?.();
@@ -381,8 +383,9 @@ class CodexSession implements AgentSession {
       }
 
       // Our own EOF watchdog / cancel signal coming back as 143/137 — the
-      // teardown xezar asked for, not a codex failure (#703).
-      if (this.terminatedByXezar && isSignalTerminationExit(exitCode)) {
+      // teardown xezar asked for, not a codex failure (#703). On Windows that
+      // stop leaves exit code 1 (`isXezarStopExit`, #963).
+      if (this.terminatedByXezar && isXezarStopExit(exitCode)) {
         this.emit({
           type: 'note',
           message: `codex app-server did not exit on its own after close; terminated by xezar (code ${exitCode})`,
@@ -471,7 +474,7 @@ class CodexSession implements AgentSession {
     }
     if (!this.hasExited()) {
       this.terminatedByXezar = true;
-      this.child.kill('SIGTERM');
+      void stopChildTree(this.child, 'SIGTERM');
     }
   }
 

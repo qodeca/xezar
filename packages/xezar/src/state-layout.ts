@@ -1,8 +1,8 @@
-import { execFileSync } from 'node:child_process';
 import { accessSync, constants, existsSync, lstatSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import { containsPathSegments, samePath } from './platform/path-identity.ts';
+import { launchFileSync } from './platform/process-launch.ts';
 
 /**
  * Single-project mode (#600) — WHERE xezar keeps its state, decided once per
@@ -257,7 +257,7 @@ export function isLinkedWorktree(dir: string): boolean {
   }
   if (entry.isDirectory()) return false;
   try {
-    const out = execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-dir', '--git-common-dir'], {
+    const out = launchFileSync('git', ['rev-parse', '--path-format=absolute', '--git-dir', '--git-common-dir'], {
       cwd: dir,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],

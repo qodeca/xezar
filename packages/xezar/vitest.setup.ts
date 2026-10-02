@@ -45,6 +45,19 @@ process.env.GH_TELEMETRY = '0'
 // `src/vitest-env-isolation.test.ts` pins that this deletion stays.
 delete process.env.ANTHROPIC_MODEL
 
+// Windows: a bare program name finds only `.exe` and `.com` files here – what Node itself found
+// before #963. The product also finds npm's `.cmd` shims, correctly, because that is how codex,
+// opencode and pi install; but then any case that reaches a default agent name (a model list
+// starting `codex app-server`, backend detection running `pi --version`) started the developer's
+// REAL CLI, in the case's own folder, where it outlived the case and Windows refused to delete
+// the folder (EPERM). Without `.cmd` and `.bat` an npm-installed CLI is not found and the start
+// fails with ENOENT, as on a machine without it. A CLI installed as an `.exe` (a native Claude Code
+// install) is still found, exactly as Node found it before #963: this narrows the exposure to what
+// it was, it does not remove it (T-10). An empty PATH would hide the shims too, but also git,
+// bash and node, which often share the shims' folder. Explicit paths and `.mjs` fixtures are
+// unaffected; a case that tests shim lookup passes its own PATHEXT.
+if (process.platform === 'win32') process.env.PATHEXT = '.COM;.EXE'
+
 pinSandboxHome()
 beforeEach(pinSandboxHome)
 // Registered before any suite's own hooks, so vitest runs it last on the way out —

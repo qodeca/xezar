@@ -3,7 +3,7 @@ import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { onWindows } from '../../test/helpers/platform.ts';
+import { onWindows, withPlatform } from '../../test/helpers/platform.ts';
 
 import {
   acquireGateLease,
@@ -496,6 +496,62 @@ describe('runUnderGateLease', () => {
     });
     expect(slotsDuring).toEqual(['gate-slot-1.lock']);
   });
+});
+
+/**
+ * #963 AC-8 — the command a gate run starts gets the stop signals the gate run gets. On Windows
+ * Ctrl+Break (SIGBREAK) and closing the console window (SIGHUP) are stop signals too, and before
+ * #963 only SIGINT and SIGTERM were forwarded, so either one left the command running. The
+ * command here is a real child that would otherwise run for ten seconds.
+ */
+describe('the stop signals a gate run forwards to its command (#963)', () => {
+  const waitFor = async (check: () => boolean, what: string): Promise<void> => {
+    const deadline = Date.now() + 5_000;
+    while (!check()) {
+      if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
+      await new Promise((done) => setTimeout(done, 10));
+    }
+  };
+
+  it.each(['SIGBREAK', 'SIGHUP'] as const)(
+    'on Windows forwards %s to the command and stops listening once it is gone',
+    async (signal) => {
+      await withPlatform('win32', async () => {
+        const before = process.listenerCount(signal);
+        const running = runUnderGateLease([process.execPath, '-e', 'setTimeout(() => {}, 10_000)'], {
+          slots: 1,
+          lockDir: dir,
+          stderr: { write: () => undefined },
+        });
+        await waitFor(() => process.listenerCount(signal) === before + 1, `a ${signal} listener`);
+
+        process.emit(signal, signal);
+
+        // Stopped, and read as stopped: 128 + SIGTERM, the signal a Windows stop is delivered as.
+        expect(await running).toBe(143);
+        expect(process.listenerCount(signal)).toBe(before);
+      });
+    },
+    15_000,
+  );
+
+  it('on Linux and macOS listens to SIGINT and SIGTERM only, exactly as before', async () => {
+    await withPlatform('linux', async () => {
+      const names = ['SIGINT', 'SIGTERM', 'SIGBREAK', 'SIGHUP'] as const;
+      const count = (): number[] => names.map((name) => process.listenerCount(name));
+      const before = count();
+      const running = runUnderGateLease([process.execPath, '-e', 'setTimeout(() => {}, 300)'], {
+        slots: 1,
+        lockDir: dir,
+        stderr: { write: () => undefined },
+      });
+      await waitFor(() => process.listenerCount('SIGTERM') === before[1]! + 1, 'the SIGTERM listener');
+      expect(count()).toEqual([before[0]! + 1, before[1]! + 1, before[2], before[3]]);
+
+      expect(await running).toBe(0);
+      expect(count()).toEqual(before);
+    });
+  }, 15_000);
 });
 
 describe('the constants and the lines', () => {

@@ -1,9 +1,11 @@
-import { spawn as nodeSpawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { z } from 'zod';
 import { buildChildEnv } from './agent-env.ts';
 import { readNdjson } from './ndjson.ts';
 import { resolveClaudeExecutable } from './claude-cli-runner.ts';
 import type { ModelOption } from './runner-model-catalog.ts';
+import { launch } from '../platform/process-launch.ts';
+import { stopChildTree } from '../platform/process-tree.ts';
 
 export interface ClaudeModelDiscoveryOptions {
   cwd: string;
@@ -81,11 +83,16 @@ const DISCOVERY_ARGS = [
 ];
 
 function spawnClaudeProbe(bin: string, cwd: string): ChildProcessWithoutNullStreams {
-  return nodeSpawn(bin, DISCOVERY_ARGS, {
-    cwd,
-    env: buildChildEnv({ backend: 'claude' }),
-    stdio: ['pipe', 'pipe', 'pipe'],
-  });
+  return launch(
+    bin,
+    DISCOVERY_ARGS,
+    {
+      cwd,
+      env: buildChildEnv({ backend: 'claude' }),
+      stdio: ['pipe', 'pipe', 'pipe'],
+    },
+    { hide: true },
+  );
 }
 
 /**
@@ -219,10 +226,10 @@ function endClaudeProbe(child: ChildProcessWithoutNullStreams): void {
   });
   const term = setTimeout(() => {
     if (exited) return;
-    child.kill('SIGTERM');
+    void stopChildTree(child, 'SIGTERM');
     const kill = setTimeout(() => {
       if (exited) return;
-      child.kill('SIGKILL');
+      void stopChildTree(child, 'SIGKILL');
     }, KILL_GRACE_MS);
     kill.unref?.();
   }, TERM_GRACE_MS);

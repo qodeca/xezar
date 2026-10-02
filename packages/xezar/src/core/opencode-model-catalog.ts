@@ -1,7 +1,9 @@
-import { spawn as nodeSpawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { trackChildExit } from './agent-runner.ts';
 import { buildChildEnv } from './agent-env.ts';
 import type { ModelOption } from './runner-model-catalog.ts';
+import { launch } from '../platform/process-launch.ts';
+import { stopChildTree } from '../platform/process-tree.ts';
 
 export interface OpencodeModelDiscoveryOptions {
   cwd: string;
@@ -136,10 +138,15 @@ function spawnOpencode(
   args: readonly string[],
   cwd: string,
 ): ChildProcessWithoutNullStreams {
-  const child = nodeSpawn(bin, [...args], {
-    cwd,
-    env: buildChildEnv({ backend: 'opencode' }),
-  });
+  const child = launch(
+    bin,
+    [...args],
+    {
+      cwd,
+      env: buildChildEnv({ backend: 'opencode' }),
+    },
+    { hide: true },
+  );
   // Nothing is ever written to it, and an open stdin is what makes a CLI that expects a TTY
   // sit and wait instead of printing its list.
   child.stdin.end();
@@ -163,10 +170,10 @@ function teardown(child: ChildProcessWithoutNullStreams): () => void {
   return () => {
     if (signalled || hasExited()) return;
     signalled = true;
-    child.kill('SIGTERM');
+    void stopChildTree(child, 'SIGTERM');
     const escalation = setTimeout(() => {
       if (hasExited()) return;
-      child.kill('SIGKILL');
+      void stopChildTree(child, 'SIGKILL');
     }, KILL_GRACE_MS);
     escalation.unref?.();
   };

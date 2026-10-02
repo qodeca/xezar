@@ -1,8 +1,5 @@
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+import { launchFileAsync } from '../platform/process-launch.ts';
 import { installParenthetical } from './provider-install.ts';
-
-const exec = promisify(execFile);
 
 export interface BackendCheck {
   name: 'claude' | 'codex' | 'opencode' | 'pi' | 'gh' | 'git';
@@ -39,7 +36,7 @@ async function probeClaude(): Promise<BackendCheck> {
   // installer's dependency step even though runs would have worked fine.
   const bin = process.env.XEZ_CLAUDE_BIN ?? 'claude';
   try {
-    const { stdout } = await exec(bin, ['--version'], { timeout: 10_000 });
+    const { stdout } = await launchFileAsync(bin, ['--version'], { timeout: 10_000 });
     const version = stdout.trim();
     // A generic `claude` binary (a shell wrapper, an unrelated tool) can shadow
     // the real CLI on $PATH — reject anything that doesn't match the banner.
@@ -75,7 +72,7 @@ async function probeCodex(): Promise<BackendCheck> {
   }
   const bin = process.env.XEZ_CODEX_BIN ?? 'codex';
   try {
-    const { stdout } = await exec(bin, ['--version'], { timeout: 10_000 });
+    const { stdout } = await launchFileAsync(bin, ['--version'], { timeout: 10_000 });
     return {
       name: 'codex',
       available: true,
@@ -94,7 +91,7 @@ async function probeCodex(): Promise<BackendCheck> {
 async function probeOpencode(): Promise<BackendCheck> {
   const bin = process.env.XEZ_OPENCODE_BIN ?? 'opencode';
   try {
-    const { stdout } = await exec(bin, ['--version'], { timeout: 10_000 });
+    const { stdout } = await launchFileAsync(bin, ['--version'], { timeout: 10_000 });
     return {
       name: 'opencode',
       available: true,
@@ -117,7 +114,7 @@ async function probePi(): Promise<BackendCheck> {
   }
   const bin = process.env.XEZ_PI_BIN ?? 'pi';
   try {
-    const { stdout } = await exec(bin, ['--version'], { timeout: 10_000 });
+    const { stdout } = await launchFileAsync(bin, ['--version'], { timeout: 10_000 });
     return {
       name: 'pi',
       available: true,
@@ -142,7 +139,7 @@ export const GH_NOT_AUTHENTICATED_HINT =
 
 async function probeGh(): Promise<BackendCheck> {
   try {
-    const { stdout } = await exec('gh', ['auth', 'token'], { timeout: 10_000 });
+    const { stdout } = await launchFileAsync('gh', ['auth', 'token'], { timeout: 10_000 });
     if (stdout.trim().length > 0) {
       return { name: 'gh', available: true, version: 'authenticated' };
     }
@@ -161,7 +158,7 @@ async function probeGh(): Promise<BackendCheck> {
 
 async function probeGit(): Promise<BackendCheck> {
   try {
-    const { stdout } = await exec('git', ['--version'], { timeout: 10_000 });
+    const { stdout } = await launchFileAsync('git', ['--version'], { timeout: 10_000 });
     return { name: 'git', available: true, version: stdout.trim() };
   } catch {
     return { name: 'git', available: false, hint: 'install git' };
@@ -171,7 +168,7 @@ async function probeGit(): Promise<BackendCheck> {
 /** The host's GitHub token: logged-in `gh` first, `GITHUB_TOKEN` fallback. */
 export async function readHostGithubToken(): Promise<string | null> {
   try {
-    const { stdout } = await exec('gh', ['auth', 'token'], { timeout: 10_000 });
+    const { stdout } = await launchFileAsync('gh', ['auth', 'token'], { timeout: 10_000 });
     const token = stdout.trim();
     if (token) return token;
   } catch {

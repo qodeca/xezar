@@ -1,5 +1,5 @@
-import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { launchFile } from '../platform/process-launch.ts';
 import { AGENT_MODELS_LOCKED_ENV } from './agent-model-policy.ts';
 import { profileEnv } from './agent-profiles.ts';
 import { parseOpencodeModels } from './opencode-model-catalog.ts';
@@ -271,7 +271,7 @@ function defaultRunProviderCommand(
   env?: Record<string, string>,
 ): Promise<ProviderCommandResult> {
   return new Promise((resolve) => {
-    execFile(
+    launchFile(
       executable,
       args,
       {

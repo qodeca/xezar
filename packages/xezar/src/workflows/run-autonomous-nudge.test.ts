@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { RunStore, type RunRecord } from '../runs/store.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 import { MAX_AUTO_CONTINUES, RunManager } from './run.ts';
 import type { WorkflowDef } from './types.ts';
 import { COMPLETION_VARIANTS, scriptedRunner, SINGLE_STEP as INCIDENT_STEP, terminal } from './engine-incidents.testkit.ts';
@@ -124,8 +125,8 @@ describe('the autonomous turn-end nudge (#489, gap R20)', () => {
       else process.env[key] = value;
     }
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
-    rmSync(logDir, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
+    rmSync(logDir, TEST_DIR_RM_OPTIONS);
   });
 
   const waitFor = async (id: string, pred: (r: RunRecord | undefined) => boolean, ms = 15_000) => {
@@ -433,7 +434,7 @@ describe('G7 completion-marker incident', () => {
         expect(store.getRun(record.id)?.status).toBe('done');
         expect(runner.specs).toHaveLength(variant.continued ? 2 : 1);
         expect(store.readEvents(record.id).filter(e => e.type === 'note' && String(e.message).includes('autonomous —'))).toHaveLength(0);
-      } finally { await manager.quiesce(); store.flush(); runner.restore(); rmSync(root, { recursive: true, force: true }); }
+      } finally { await manager.quiesce(); store.flush(); runner.restore(); rmSync(root, TEST_DIR_RM_OPTIONS); }
     },
   );
 });

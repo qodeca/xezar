@@ -1,8 +1,11 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync, readlinkSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { onWindows } from '../test/helpers/platform.ts';
+import { useEmptyPath } from '../test/helpers/empty-path.ts';
+import { onWindows, withPlatform } from '../test/helpers/platform.ts';
 import { localMachineId, machineRelation, __clearMachineIdCacheForTests } from './machine-identity.ts';
+
+useEmptyPath();
 
 vi.mock('node:child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:child_process')>();
@@ -59,6 +62,23 @@ describe('localMachineId', () => {
     expect(second).toBe(first);
     // One probe for the whole process: darwin spawns `ioreg`, the others read a file.
     expect(vi.mocked(execFileSync).mock.calls.length + vi.mocked(readFileSync).mock.calls.length).toBe(1);
+  });
+
+  it('asks reg.exe from System32 on Windows, never a `reg` found on PATH (#963)', async () => {
+    const saved = { SystemRoot: process.env.SystemRoot, SYSTEMROOT: process.env.SYSTEMROOT };
+    process.env.SystemRoot = 'C:\\Windows';
+    try {
+      vi.mocked(execFileSync).mockReturnValue('    MachineGuid    REG_SZ    3E1F0000-1111-2222-3333-444455556666\r\n');
+      await withPlatform('win32', () => {
+        expect(localMachineId()).toMatch(/^[0-9a-f]{32}$/);
+      });
+      expect(vi.mocked(execFileSync).mock.calls[0]?.[0]).toBe('C:\\Windows\\System32\\reg.exe');
+    } finally {
+      for (const [key, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
   });
 
   it('is an opaque token rather than the raw platform id', () => {

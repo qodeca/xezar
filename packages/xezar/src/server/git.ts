@@ -1,8 +1,5 @@
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import { fromGitPath } from '../platform/path-syntax.ts';
-
-const exec = promisify(execFile);
+import { launchFileAsync } from '../platform/process-launch.ts';
 
 export interface RepoInfo {
   root: string;
@@ -23,7 +20,7 @@ export interface LogEntry {
 }
 
 async function git(root: string, args: string[]): Promise<string> {
-  const { stdout } = await exec('git', args, { cwd: root, maxBuffer: 10 * 1024 * 1024 });
+  const { stdout } = await launchFileAsync('git', args, { cwd: root, maxBuffer: 10 * 1024 * 1024 });
   return stdout;
 }
 
