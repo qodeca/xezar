@@ -32,6 +32,9 @@ describe('RunManager agent-profile resolution', () => {
     scheduleAutoResumeIfLimited(runId: string): void;
   };
   const seam = () => manager as unknown as Seam;
+  /** A reset an hour from now, in epoch seconds: a login is out only until its reset, so a fixed
+   *  calendar date would stop proving anything the day it passed. */
+  const resetInAnHour = (): number => Math.floor(Date.now() / 1000) + 3_600;
 
   beforeEach(async () => {
     home = mkdtempSync(join(realpathSync(tmpdir()), 'xez-profile-wiring-home-'));
@@ -133,7 +136,7 @@ describe('RunManager agent-profile resolution', () => {
     const run = newRun();
     const resolved = await seam().agentEnvForStep(run.id, 'claude');
     store.updateStep(run.id, 'work', { status: 'failed', backend: 'claude', profileId: resolved.profileId });
-    store.updateRun(run.id, { status: 'failed', error: 'Claude AI usage limit reached|1790685902' });
+    store.updateRun(run.id, { status: 'failed', error: `Claude AI usage limit reached|${resetInAnHour()}` });
     seam().scheduleAutoResumeIfLimited(run.id);
     await expect.poll(() => manager.agentQuotaStore.answer().accounts[0]).toMatchObject({
       runner: 'claude', accountId: 'work', status: 'out',
@@ -150,7 +153,8 @@ describe('RunManager agent-profile resolution', () => {
     });
     store.updateStep(run.id, 'author', { status: 'done', backend: 'claude', profileId: 'default' });
     store.updateStep(run.id, 'review', { status: 'failed', backend: 'codex', profileId: 'cx' });
-    store.updateRun(run.id, { status: 'failed', error: 'usage limit reached; resets 2026-09-29T12:45:02Z' });
+    const resets = new Date(resetInAnHour() * 1000).toISOString().replace('.000Z', 'Z');
+    store.updateRun(run.id, { status: 'failed', error: `usage limit reached; resets ${resets}` });
     seam().scheduleAutoResumeIfLimited(run.id);
     await expect.poll(() => manager.agentQuotaStore.answer().accounts[0]).toMatchObject({
       runner: 'codex', accountId: 'cx', status: 'out',

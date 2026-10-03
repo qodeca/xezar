@@ -1004,12 +1004,15 @@ describe('quota event consumption', () => {
   it('consumes account-quota on initial and Continue paths without persisting it', async () => {
     const root = mkdtempSync(join(tmpdir(), 'xez-quota-events-'));
     const store = RunStore.open(join(root, 'data'));
+    // An hour from now, in epoch seconds: a window counts only until its reset, so a fixed
+    // calendar date would stop proving anything the day it passed.
+    const resetsAt = Math.floor(Date.now() / 1000) + 3_600;
     const quotaEvent = (usedPercent: number) => ({
       type: 'account-quota' as const,
       runner: 'claude' as const,
       payload: { rate_limit_info: {
         status: 'allowed', utilization: usedPercent / 100,
-        resetsAt: 1_790_685_902, rateLimitType: 'five_hour',
+        resetsAt, rateLimitType: 'five_hour',
       } },
     });
     const runner = scriptedRunner([

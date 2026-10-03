@@ -174,9 +174,10 @@ interface Harness {
   adapter: McpServiceAdapter;
   runId: string;
   otherRunId: string;
-  /** A human edit through the cockpit's own route. */
+  /** A human edit through the cockpit's own route. Resolves once its audit record is on disk. */
   human: (runId: string, title: string, project?: string) => Promise<void>;
-  /** A leader edit through the MCP adapter, attributed to `operationId`. */
+  /** A leader edit through the MCP adapter, attributed to `operationId`. Resolves once its audit
+   *  record is on disk. */
   leader: (operationId: string, runId: string, title: string) => Promise<void>;
   /** The audit entries the two doors wrote, oldest first. */
   audit: () => ReturnType<AuditTrail['read']>['entries'];
@@ -294,7 +295,10 @@ async function harness(): Promise<Harness> {
           body: JSON.stringify({ title }),
         });
         expect(res.status).toBe(200);
-        if (project === 'proj-a') channels.ui.recordStatus({ action: 'runs.update', resource: { kind: 'run', id } }, res.status);
+        // Awaited, as the real doors await theirs: a floating write still holds the project's
+        // `audit.ndjson.lock` when the test ends, and a lock file created while `afterEach`
+        // removes the temp root fails Node 24's one-pass `rmSync` with ENOTEMPTY.
+        if (project === 'proj-a') await channels.ui.recordStatus({ action: 'runs.update', resource: { kind: 'run', id } }, res.status);
       } finally {
         door.current = null;
       }
@@ -304,7 +308,8 @@ async function harness(): Promise<Harness> {
       try {
         const result = await adapter.patchRun(id, { title });
         expect(result.ok).toBe(true);
-        channels.mcp.recordStatus({ action: 'runs.update', resource: { kind: 'run', id }, operationId }, result.status);
+        // Awaited for the reason `human` gives.
+        await channels.mcp.recordStatus({ action: 'runs.update', resource: { kind: 'run', id }, operationId }, result.status);
       } finally {
         doorA.current = null;
       }
@@ -467,6 +472,9 @@ describe('the leader side: human changes arrive, its own echoes do not', () => {
 
     // Dispatch first, record after: the order `issue` exists to forbid.
     await h.leader('op-late-record-1', h.runId, 'late record');
+    // The harness's own guard: the door's audit record is already on disk, so nothing this case
+    // started is still writing when `afterEach` removes its temp root (see the harness's `human`).
+    expect(h.audit().map((entry) => entry.operationKey)).toEqual(['proj-a/op-late-record-1']);
     await guard.issue('op-late-record-1', () => undefined);
 
     expect(delivered.map((r) => r.causedBy)).toEqual(['op-late-record-1']);
