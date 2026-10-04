@@ -263,7 +263,7 @@ test('team-skills cache is keyed by repoRoot — projects never see each other\'
 // =============================================================================
 // Network and cache degradation (#57, coverage gap R18)
 //
-// The contract under test is a boot-time promise from AGENTS.md: "Missing dirs
+// The contract under test is a boot-time promise from packages/xezar/src/AGENTS.md § Skills: "Missing dirs
 // are fine; team-skill loading never blocks on the network (background cache in
 // `~/.cache/xez/`)." Every case below therefore has to be reproducible with no
 // network at all — the fake `git` under `shimGit` is the seam, and a redirected

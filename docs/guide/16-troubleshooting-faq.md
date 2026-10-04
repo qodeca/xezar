@@ -10,6 +10,12 @@ In a Git project, requested isolation fails closed: `worktree creation failed: �
 
 Read the Git error after the prefix. Check the selected base branch and inspect `git status` and `git worktree list` in that project. Resolve the reported branch, path or permission problem before retrying. Do not delete an existing worktree directory without preserving its changes. If you deliberately want a task to edit the project checkout, start it with **Worktree** off; that changes where the task works, rather than repairing isolation.
 
+On Windows, `Filename too long` means long file paths are off. The failure message names the fix; it is also in [Getting started](01-getting-started.md#to-check-prerequisites).
+
+### On Windows, Open in… shows a command to copy instead of opening
+
+A folder name or link contains a character the Windows command processor would act on, such as `&` or `%`, so xezar opened nothing rather than risk running something else. Copy the command and run it yourself, or rename the folder.
+
 ### The port is busy
 
 A normal launch starts from the port this project used last time (or the one you pinned), else `4321`, and then tries higher ports when the address is in use. Use the URL actually printed in the terminal. The [CLI reference](12-cli-reference.md#which-port-a-project-starts-from) lists the full order. If the whole search range is occupied, the error is `no free port in … on …; free one or pass --port <port>`.

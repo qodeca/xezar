@@ -1,6 +1,6 @@
 # Guidance for `packages/xezar/src/agent-config/`
 
-These rules are the full task-routing guidance moved from the repository root. Root `AGENTS.md` retains the routing index and canonical cross-repository rules.
+Cross-repository rules and the task-routing index are in the root `AGENTS.md`.
 
 ## Agent config files (Settings → Agent config; grouped by agent, MCP as a per-agent subsection — spec 2026-07-17-agent-config-by-agent, descriptor table in `packages/web/src/routes/settings/agent-descriptors.ts`)
 

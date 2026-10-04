@@ -1,6 +1,6 @@
 # Guidance for `docs/design-system/`
 
-These rules are the full task-routing guidance moved from the repository root. Root `AGENTS.md` retains the routing index and canonical cross-repository rules.
+Cross-repository rules and the task-routing index are in the root `AGENTS.md`.
 
 ## Design system and UI design (a new mockup in `designs/<feature>/`, any new or changed cockpit UI in `packages/web`, a UX/UI review)
 

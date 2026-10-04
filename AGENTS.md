@@ -112,15 +112,14 @@ when it lands — pre-rename issue 694 arrived with eleven unreachable routes fo
 
 - **Every RESPONSE shape is a zod schema in `packages/contract`, with its TypeScript type
   inferred from it (`z.infer`)** — `contract-parity*.test.ts` asserts each is mutually assignable
-  with the route's own inferred type, so that half is enforced. **Request schemas are migrating
-  there and most have not arrived**: roughly forty are still declared in `server.ts`. The two
-  settings routes arrived first (#677 wave 1): `PUT /config` and `PUT /workspace/config` validate
-  with the contract's `setConfigInputSchema` / `setWorkspaceConfigInputSchema`, the `server.ts`
-  copies are gone, and `contract-parity.requests.test.ts` pins the route against the schema in both
-  directions the way the response files do. Two things travelled WITH those schemas and are
-  behaviour a type cannot carry: `systemPrompt`'s custom `'must be at most 20000 characters'`
-  message and the shape's key ORDER, which decides the field order of a multi-issue `{ error }`
-  string. A request schema you migrate carries its own equivalents. Never hand-write an API TYPE, and never
+  with the route's own inferred type, so that half is enforced. **Request schemas belong there
+  too**, but some are still declared in `server.ts` (migration progress: [docs/STATUS.md](docs/STATUS.md)).
+  A migrated request schema is pinned against its route in both directions by
+  `contract-parity.requests.test.ts`, the way the response files are. Two things travel WITH a
+  migrated schema and are behaviour a type cannot carry, as the settings schemas
+  (`setConfigInputSchema` / `setWorkspaceConfigInputSchema`) show: `systemPrompt`'s custom
+  `'must be at most 20000 characters'` message and the shape's key ORDER, which decides the field
+  order of a multi-issue `{ error }` string. A request schema you migrate carries its own equivalents. Never hand-write an API TYPE, and never
   declare one in `server.ts` or in the api-client; when you touch a request shape, move it to
   `packages/contract` and delete the local copy rather than editing the copy. The api-client re-exports the contract; the cockpit imports
   the schema when it wants to validate and the type when it wants to compile.
@@ -156,14 +155,14 @@ Rules that follow from that:
 - **The CLI is not a separate package and should not become one.** It is the same program as the service — `packages/xezar/src/index.ts` boots `startServer`, but also `RunManager`, the workspace registry and the worktree machinery, and `xezar run` executes a workflow with no server at all.
 - A dependency belongs to the workspace that imports it. The root carries only what spans all four (`typescript`, `vitest`, `@vitest/coverage-v8`, `tsx`). A build script counts as an importer: `packages/xezar/scripts/inline-contract.mjs` reaches for `esbuild`, so `esbuild` is a devDependency of `packages/xezar` rather than something inherited from whatever vite happens to hoist.
 - Cross-package imports go through the package name, never a relative path — the exceptions are test-only reaches into `packages/xezar/src` — golden fixtures, the pure helper `runs/task-refs` a cockpit test re-checks, and the MCP `EventJournal`/`LeaderDelivery` classes `mcp-leader-control.owner-switch.test.tsx` drives — and they are ugly on purpose.
-- The repo root keeps only what spans workspaces: `scripts/dev.mjs` (boots both halves), `scripts/release.mjs` (a release spans every package), `scripts/test-local-state.mjs` (read by the root vitest config and by both node:test gates), the browser-suite trio `scripts/e2e.sh` + `scripts/test-env-up.sh` + `scripts/test-env-down.sh` (it boots the server package and drives the web package), and `scripts/migrate-local-state.mjs`. Everything else lives in the package that owns it.
+- The repo root keeps only what spans workspaces: `scripts/dev.mjs` (boots both halves), `scripts/release.mjs` (a release spans every package), `scripts/test-local-state.mjs` (read by the root vitest config and by both node:test gates), the browser-suite trio `scripts/e2e.sh` + `scripts/test-env-up.sh` + `scripts/test-env-down.sh` (it boots the server package and drives the web package), `scripts/migrate-local-state.mjs`, `scripts/check-links.mjs` (the offline link check across all docs), and the leader launcher pair `scripts/xezar-leader.sh` + `scripts/xezar-leader-settings.json`. Everything else lives in the package that owns it.
 
 ## Task routing
 
 | When the task involves… | Read first | Key rule |
 | --- | --- | --- |
 | CLI entry, `serve`/`run`/`init` subcommands, flags | `packages/xezar/src/index.ts` | Keep the CLI dependency-free and preserve its default and state-layout contracts; full rules: `packages/xezar/src/AGENTS.md`. |
-| Agent runners / backends | `AGENT_PROTOCOL.md` (the contract), then `packages/xezar/src/core/agent-runner.ts`, `packages/xezar/src/core/runner-factory.ts`, `packages/xezar/src/core/read-only-lock.ts`, `packages/xezar/src/core/claude-cli-runner.ts`, `packages/xezar/src/core/codex-app-server-runner.ts`, `packages/xezar/src/core/opencode-server-runner.ts`, `packages/xezar/src/core/pi-runner.ts`, `packages/xezar/src/core/backend-detect.ts` | Implement every backend behind the shared runner protocol and preserve read-only and dry-run behavior; full rules: `packages/xezar/src/core/AGENTS.md`. |
+| Agent runners / backends | `AGENT_PROTOCOL.md` (the contract), then `packages/xezar/src/core/agent-runner.ts`, `packages/xezar/src/core/runner-factory.ts`, `packages/xezar/src/core/read-only-lock.ts`, `packages/xezar/src/core/claude-cli-runner.ts`, `packages/xezar/src/core/codex-app-server-runner.ts`, `packages/xezar/src/core/opencode-server-runner.ts`, `packages/xezar/src/core/pi-runner.ts`, `packages/xezar/src/core/backend-detect.ts`, `packages/xezar/src/platform/process-launch.ts`, `packages/xezar/src/platform/process-tree.ts` | Implement every backend behind the shared runner protocol and preserve read-only and dry-run behavior; full rules: `packages/xezar/src/core/AGENTS.md`. |
 | HTTP server & API routes | `packages/xezar/src/server/server.ts` | Keep the local-only default, middleware validation, chained route typing, and versioned API surface; full rules: `packages/xezar/src/server/AGENTS.md`. |
 | API request/response shapes (any new field, route or payload) | `packages/contract/src/*.ts`, then `packages/xezar/src/server/validators.ts` | Define each boundary shape once in zod and infer its TypeScript type; full rules: `packages/contract/src/AGENTS.md`. |
 | Real-time events (live UI signals, replacing polls) | `packages/xezar/src/server/ws.ts` + the `health` topic in `packages/xezar/src/server/server.ts`, and `packages/web/src/api/ws.ts` | Use the demand-driven shared subscription bus and preserve scoped lifetimes; full rules: `packages/xezar/src/server/AGENTS.md`. |
@@ -173,14 +172,13 @@ Rules that follow from that:
 | GitHub integration (issues/PRs tab, draft PRs) | `packages/xezar/src/server/forge/github.ts` (the forge-driver seam; `server/github.ts` and `server/pr.ts` are thin re-export delegates) | Keep GitHub behind the forge-driver seam and degrade cleanly when unavailable; full rules: `packages/xezar/src/server/AGENTS.md`. |
 | Workflows (YAML chains, steps, retries) | `packages/xezar/src/workflows/types.ts`, then `packages/xezar/src/workflows/load.ts`, `packages/xezar/src/workflows/run.ts` | Treat workflow YAML as validated user input and preserve step lifecycle semantics; full rules: `packages/xezar/src/workflows/AGENTS.md`. |
 | Skills (Markdown playbooks, team repos) | `packages/xezar/src/skills.ts`, `packages/xezar/src/skills-remote.ts` | Keep skills discoverable, safely synchronized, and independent of required configuration; full rules: `packages/xezar/src/AGENTS.md`. |
-| Runs store / state persistence | `packages/xezar/src/runs/store.ts` | Preserve atomic persistence, append-only events, and old-record parsing; full rules: `packages/xezar/src/runs/AGENTS.md`. |
+| Runs store / state persistence | `packages/xezar/src/runs/store.ts`; for stopping what a run started, `packages/xezar/src/runs/run-process-sweeper.ts` | Preserve atomic persistence, append-only events, and old-record parsing; full rules: `packages/xezar/src/runs/AGENTS.md`; sweep rules: `packages/xezar/src/AGENTS.md` § Run process sweep. |
+| Platform differences – paths, file replacement, program search, starting/stopping programs, `serve` shutdown | `packages/xezar/src/platform/` (`process-launch.ts`, `process-tree.ts`, `atomic-write.ts`, `path-identity.ts`, `shutdown-signals.ts`) | Never test `process.platform` at a call site or import `node:child_process` outside `platform/`; guards `posix-literal-scan.test.ts` and `process-spawn-scan.test.ts`; full rules: `packages/xezar/src/AGENTS.md` § Platform layer. |
 | Web UI (cockpit) | `packages/web/src/app.tsx`, then `packages/web/src/routes.tsx`, `packages/web/src/api/`, and the affected component/route | Keep one typed client boundary and the cockpit’s shared labels, routes, and recovery behavior; full rules: `packages/web/AGENTS.md`. |
 | Design system and UI design (a new mockup in `designs/<feature>/`, any new or changed cockpit UI in `packages/web`, a UX/UI review) | `docs/design-system/README.md` (routes by task), then `foundations.md`, `components.md`, `patterns.md`, `writing.md`, `new-designs.md`, `known-gaps.md` | Follow the documented tokens, components, patterns, states, and design-review gate; full rules: `docs/design-system/AGENTS.md`. |
 | Agent config files (Settings → Agent config; grouped by agent, MCP as a per-agent subsection — spec 2026-07-17-agent-config-by-agent, descriptor table in `packages/web/src/routes/settings/agent-descriptors.ts`) | `packages/xezar/src/agent-config/` (`catalog.ts`, `files.ts`, `validate.ts`, `service.ts`, `seed.ts`), then `packages/xezar/src/paths.ts` and the `/api/v1/agent-config` routes in `packages/xezar/src/server/server.ts` | Preserve byte-exact agent-owned files and keep writes local-only; full rules: `packages/xezar/src/agent-config/AGENTS.md`. |
 | MCP server (`xezar mcp` bridge, the tools a project leader calls) | `docs/features/mcp-server/mcp-api.md` (generated tool reference), then `packages/xezar/src/mcp/tools/index.ts`, `packages/xezar/src/mcp/tool.ts` | Keep MCP tools registry-driven, documented from source, and leader-only in operation; full rules: `packages/xezar/src/mcp/AGENTS.md`. |
 | Feature specs / design history | `docs/features/README.md` | Treat historical spec numbers as labels and current feature records according to their status; full rules: `docs/features/AGENTS.md`. |
-
-Two source-cited routing invariants remain visible at the root: “built-ins always come back after delete” and “Missing dirs are fine”.
 
 ## Validation
 
