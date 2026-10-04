@@ -665,6 +665,10 @@ To be first-class:
    runner did NOT cause through `foreignSignalExitMessage`. See § the termination rules above;
    `pi-runner.ts` is the reference for the deadline path; `claude-cli-runner.ts` for the
    `end()` SIGTERM→SIGKILL watchdog (but not its timer cleanup). No runner covers all three yet.
+   Return `timedOut: true` on a deadline stop (§1). Start the process with `launch` from
+   `packages/xezar/src/platform/process-launch.ts`, never `node:child_process` –
+   `process-spawn-scan.test.ts` fails the unit gate otherwise; on Windows this is what finds npm
+   shims and refuses unsafe `.cmd` arguments.
    A backend's NATIVE question — a request that blocks
    the turn until the client answers — must never wait unbounded: bridge it onto `ask.requested`
    and answer it from the next `sendMessage`, refuse it explicitly when

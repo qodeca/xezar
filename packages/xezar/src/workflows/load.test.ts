@@ -192,7 +192,7 @@ describe('loadWorkflows', () => {
     expect(shadowed.workflows.map((w) => w.name)).toEqual(['project-setup', 'quick-task']);
     expect(quickOf(shadowed)?.source).toBe('file');
 
-    // AGENTS.md: "built-ins always come back after delete".
+    // packages/xezar/src/workflows/AGENTS.md: "built-ins always come back after delete".
     rmSync(override);
     const restored = await loadWorkflows(root);
     expect(restored.workflows.map((w) => w.name)).toEqual(['project-setup', 'quick-task']);

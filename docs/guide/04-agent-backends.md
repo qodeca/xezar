@@ -19,6 +19,8 @@ xezar probes agent binaries with `--version` for its health check. The composer 
 
 If the executable is outside the server's `PATH`, export the matching variable before starting xezar: `XEZ_CLAUDE_BIN`, `XEZ_CODEX_BIN`, `XEZ_OPENCODE_BIN` or `XEZ_PI_BIN`. Use the executable's path as the value. A missing optional backend does not prevent the cockpit from starting.
 
+On Windows, the path may name an `.exe`, an npm command (`.cmd`, which xezar runs without the Windows command processor) or a `.js`/`.mjs` script (run with Node). Any other `.cmd` or `.bat` file starts only when every argument is plain text; otherwise xezar refuses it with a message naming the file and the argument's position. PATH entries that depend on the current folder, such as `.` or `node_modules\.bin`, are skipped, so list the full folder instead.
+
 ## To choose models and defaults
 
 Open project **Settings → Agents** to select the default agent and per-agent model presets. You can override the choice for a task, or set `runner` and `model` in a workflow step. A step's model takes precedence over the task's model. Leaving a model on **auto (default)** lets the backend choose; OpenCode model IDs use `provider/model`.

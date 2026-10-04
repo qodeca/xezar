@@ -1,6 +1,6 @@
 # Guidance for `docs/features/`
 
-These rules are the full task-routing guidance moved from the repository root. Root `AGENTS.md` retains the routing index and canonical cross-repository rules.
+Cross-repository rules and the task-routing index are in the root `AGENTS.md`.
 
 ## Feature specs / design history
 

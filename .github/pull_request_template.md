@@ -22,8 +22,8 @@ Design review evidence: <link to the "## Design review" comment or the design RE
 
 ## Risk
 
-<!-- One risk flag, `risk-high`: the change touches the runner seam, worktree or
-     branch handling, the `.local/xezar/` or `~/.xezar/config.json` formats, the HTTP API, or edits
+<!-- One risk flag, `risk-high`: the change touches the runner seam, the platform layer
+     (`packages/xezar/src/platform/` – starting, stopping or writing files), worktree or branch handling, the `.local/xezar/` or `~/.xezar/config.json` formats, the HTTP API, or edits
      broadly across the tree. Say which, or "ordinary". A maintainer applies the label. -->
 
 - [ ] This change is `risk-high`
