@@ -290,20 +290,22 @@ gh api "repos/${OWNER_REPO}/git/refs/heads/${EVIDENCE_BRANCH}" >/dev/null 2>&1 |
 }
 
 # upload each image. An image-sized base64 string blows the shell arg limit, so it
-# must never touch a command line — write it to a temp file and let `jq --rawfile`
-# read it into the JSON body, which `gh api --input -` sends over stdin. Pass the
-# existing blob sha to overwrite on re-runs.
+# must never touch a command line — write it to a fresh temp file (mktemp, never a
+# fixed name) and let `jq --rawfile` read it into the JSON body, which
+# `gh api --input -` sends over stdin. Pass the existing blob sha to overwrite on re-runs.
 BODY_IMAGES=""
+B64=$(mktemp) || exit 1
 for img in <image-paths>; do
   path="{slug}/$(basename "$img")"
-  base64 < "$img" | tr -d '\n' > /tmp/ev-content.b64            # portable across GNU/BSD; no newlines
+  base64 < "$img" | tr -d '\n' > "$B64"            # portable across GNU/BSD; no newlines
   existing=$(gh api "repos/${OWNER_REPO}/contents/${path}?ref=${EVIDENCE_BRANCH}" --jq .sha 2>/dev/null || true)
-  jq -n --rawfile c /tmp/ev-content.b64 --arg m "qa evidence {slug}" --arg b "$EVIDENCE_BRANCH" --arg s "$existing" \
+  jq -n --rawfile c "$B64" --arg m "qa evidence {slug}" --arg b "$EVIDENCE_BRANCH" --arg s "$existing" \
      'if $s == "" then {message:$m,branch:$b,content:$c} else {message:$m,branch:$b,content:$c,sha:$s} end' \
      | gh api -X PUT "repos/${OWNER_REPO}/contents/${path}" --input - >/dev/null
   url="https://raw.githubusercontent.com/${OWNER_REPO}/${EVIDENCE_BRANCH}/${path}"
   BODY_IMAGES="${BODY_IMAGES}\n![$(basename "$img")](${url})"
 done
+rm -f "$B64"
 
 # assemble the comment (caller's body + the image markdown) and post it
 { cat <body-file>; printf "%b" "$BODY_IMAGES"; } | gh pr comment {prNumber} --body-file -

@@ -2,8 +2,15 @@
 # authorisation decision is correct, whether untrusted input reaches a sink. Read-only: no setup, no
 # gates, no commits. The verdict is one PR comment headed "## Security review" naming the exact
 # head SHA, and it is void when the head moves.
+# Since D13 (DECISIONS.md) the review step may RUN the change – check the PR head out, install,
+# run the tests and a dev server – through `review-run.sh`, and use every chrome-devtools tool.
+# It still holds no Edit or Write and no git or gh command that commits or pushes, and its verdict
+# is refused (`verdict-write.sh` runs `review-run.sh finish`) when HEAD or a tracked file changed.
+# Its kit scripts run from the kit step's copy in .local/xezar/cache/kit/checks/, never from the tracked
+# .xezar/checks/, which the checkout replaces with the pull request's own.
+# The preflight runs strict (no `--allow-root`).
 name: security-review
-description: "Review a change that touches a trust boundary – authorisation, untrusted input to sink, secrets, failure paths, new trust – as the human-judgement half of reviewerRequired. One comment naming the exact head SHA. Never by the author's lane. Read-only."
+description: "Review a change that touches a trust boundary – authorisation, untrusted input to sink, secrets, failure paths, new trust – as the human-judgement half of reviewerRequired. One comment naming the exact head SHA. Never by the author's lane. Changes no tracked file."
 steps:
   - id: kit
     name: Snapshot the local project kit
@@ -11,11 +18,12 @@ steps:
     resultScope: routine
   - id: preflight
     name: Report the checkout
-    command: ".xezar/checks/worktree-preflight.sh --allow-root"
+    command: ".xezar/checks/worktree-preflight.sh"
     resultScope: routine
   - id: review
     name: Security review
-    prompt: "Security review: {{task}}. Follow xezar-security-review instructions. A clean security scan is not your verdict. Read SECURITY.md and the trust boundaries CODE_REVIEW.md names, then work from the diff outward: who can reach each changed entry point, where each untrusted value lands, where secrets can leak, what fails open, what the change newly trusts or quietly weakens. Name the attacker's path, never a category, and never a working exploit or a secret. The launch text names the author's lane, login and vendor: report independence as confirmed, not confirmed or unknown, never confirmed without that text, and where it names you say so and stop; a high-risk change that shares your vendor is 'confirmed, same vendor', said in the first line. Read git only through .xezar/checks/git-read.sh and GitHub only through gh pr view and gh pr diff. Post exactly one comment headed '## Security review' with the full head SHA; never edit, approve, merge or label."
+    prompt: "Security review: {{task}}. Follow xezar-security-review instructions. A clean security scan is not your verdict. Read SECURITY.md and the trust boundaries CODE_REVIEW.md names, then work from the diff outward: who can reach each changed entry point, where each untrusted value lands, where secrets can leak, what fails open, what the change newly trusts or quietly weakens. Name the attacker's path, never a category, and never a working exploit or a secret. The launch text names the author's lane, login and vendor: report independence as confirmed, not confirmed or unknown, never confirmed without that text, and where it names you say so and stop; a high-risk change that shares your vendor is 'confirmed, same vendor', said in the first line. Read git only through bash .local/xezar/cache/kit/checks/git-read.sh and GitHub only through gh pr view and gh pr diff. Post exactly one comment headed '## Security review' with the full head SHA; never edit, approve, merge or label."
     skill: xezar-security-review
-    allowedTools: [Read, Grep, Glob, Bash]
-    bashAllowlist: ["gh pr view", "gh pr diff", "gh pr checks", "gh pr list", "gh issue view", "gh issue list", "gh label list", "gh repo view", "jq -n", "bash .xezar/checks/git-read.sh", "bash .xezar/checks/gh-write.sh", "bash .xezar/checks/verdict-write.sh", "bash .xezar/checks/phase-record.sh", "bash .xezar/checks/worktree-setup.sh --readonly-init"]
+    timeout: 2h
+    allowedTools: [Read, Grep, Glob, Bash, mcp__chrome-devtools__navigate_page, mcp__chrome-devtools__new_page, mcp__chrome-devtools__list_pages, mcp__chrome-devtools__select_page, mcp__chrome-devtools__close_page, mcp__chrome-devtools__take_snapshot, mcp__chrome-devtools__take_screenshot, mcp__chrome-devtools__list_console_messages, mcp__chrome-devtools__get_console_message, mcp__chrome-devtools__list_network_requests, mcp__chrome-devtools__get_network_request, mcp__chrome-devtools__click, mcp__chrome-devtools__fill, mcp__chrome-devtools__fill_form, mcp__chrome-devtools__hover, mcp__chrome-devtools__press_key, mcp__chrome-devtools__type_text, mcp__chrome-devtools__wait_for, mcp__chrome-devtools__handle_dialog, mcp__chrome-devtools__resize_page, mcp__chrome-devtools__get_css_styles, mcp__chrome-devtools__emulate, mcp__chrome-devtools__evaluate_script, mcp__chrome-devtools__upload_file, mcp__chrome-devtools__drag, mcp__chrome-devtools__performance_start_trace, mcp__chrome-devtools__performance_stop_trace, mcp__chrome-devtools__performance_analyze_insight, mcp__chrome-devtools__take_heapsnapshot, mcp__chrome-devtools__lighthouse_audit]
+    bashAllowlist: ["gh pr view", "gh pr diff", "gh pr checks", "gh pr list", "gh issue view", "gh issue list", "gh label list", "gh repo view", "jq -n", "bash .local/xezar/cache/kit/checks/git-read.sh", "bash .local/xezar/cache/kit/checks/gh-write.sh", "bash .local/xezar/cache/kit/checks/verdict-write.sh", "bash .local/xezar/cache/kit/checks/phase-record.sh", "bash .local/xezar/cache/kit/checks/worktree-setup.sh --readonly-init", "bash .local/xezar/cache/kit/checks/review-run.sh"]

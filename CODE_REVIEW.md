@@ -54,6 +54,9 @@ the diff to the security-review row. The risk is not removed; it is made visible
   and origin guards, the bind host), `packages/xezar/src/mcp/` (the leader's tools and session
   binding), `packages/xezar/src/agent-config/` (the agents' own config files) and
   `packages/xezar/src/workspace/` (per-user state and the project registry).
+  These product paths are not in the kit's own list: they are routed by `security.trustBoundaries`
+  in `.xezar/pipeline/config.json`, read from the base branch and machine-routed like the kit's
+  own; an invalid list routes the change to review.
 
 A change to `deploy.*`, to the base branch, to a workflow file, to a check script or to the
 routing file goes to the security-review row, never through an ordinary review. The reviewer
