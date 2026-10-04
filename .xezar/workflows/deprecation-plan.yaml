@@ -41,3 +41,4 @@ steps:
     name: Draft PR into the base branch
     prompt: "Hand off the deprecation plan for: {{task}}. Verify the sealed head and open the draft PR; make no content changes here. The body leads with what is going, what replaces it, and the dates; then the decisions that are the owner's and the follow-up tasks in order. The PR changes documents only."
     skill: xezar-handoff-draft-pr
+    timeout: 15m

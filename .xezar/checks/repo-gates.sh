@@ -93,7 +93,7 @@ gate_names_json() {
   node -e 'process.stdout.write(JSON.stringify(process.argv.slice(1)))' "${GATE_NAMES[@]}"
 }
 gate_list_id() {
-  gate_list_json | shasum -a 256 | cut -d' ' -f1
+  gate_list_json | sha256_lines | cut -d' ' -f1
 }
 
 FAST=0
@@ -424,7 +424,12 @@ GATE_SCHEDULER_PID=""
 gate_cancel() {
   trap '' INT TERM
   if [ -n "$GATE_SCHEDULER_PID" ]; then
-    kill -TERM "$GATE_SCHEDULER_PID" 2>/dev/null || true
+    # Under Git Bash a TERM never reaches node's handler: it ends the MSYS stub and leaves node and
+    # its gates running (#122). The scheduler polls this file there and stops its gates itself.
+    case "${OSTYPE:-}" in
+      msys* | cygwin*) : > "$GATE_ATTEMPT_DIR/workers/stop" 2>/dev/null || kill -TERM "$GATE_SCHEDULER_PID" 2>/dev/null || true ;;
+      *) kill -TERM "$GATE_SCHEDULER_PID" 2>/dev/null || true ;;
+    esac
     wait "$GATE_SCHEDULER_PID" 2>/dev/null || true
   fi
   if [ -f "$GATE_ATTEMPT_DIR/result.json" ]; then
@@ -447,6 +452,9 @@ gate_phase() {
     for (let i = 0; i < args.length; i += 3) entries.push({index: Number(args[i]), name: args[i+1], command: args[i+2]});
     process.stdout.write(JSON.stringify(entries));
   ' "${args[@]}")" || return 1
+  # The folder gate_cancel writes its stop file to under Git Bash: made before node starts, so an
+  # interrupt that lands before the scheduler made it still reaches the scheduler.
+  mkdir -p "$GATE_ATTEMPT_DIR/workers" || return 1
   node "$SCRIPT_DIR/lib/gate-parallel.mjs" "$SCRIPT_DIR/lib/gate-record.sh" "$mode" "$entries" &
   GATE_SCHEDULER_PID=$!
   wait "$GATE_SCHEDULER_PID"
@@ -480,6 +488,9 @@ gate_finish() {
   printf 'recorded       %s\n' "$result"
 
   if [ "$complete_rc" -eq 0 ] && [ "$expected" = passed ]; then
+    # Only a run the record calls passed refreshes the dependency stamp; a failed or stopped run
+    # never does. See deps_restamp_after_gates in lib/common.sh for every other refusal.
+    deps_restamp_after_gates "$DEPS_BASELINE"
     printf 'ALL GATES PASSED\n'
     exit 0
   fi
@@ -489,10 +500,14 @@ gate_finish() {
   exit 1
 }
 
+# The install this run proved current, taken before any other gate can write into node_modules.
+# Empty until then, so a run whose install did not pass never re-stamps.
+DEPS_BASELINE=""
 if [ "$FAST" -eq 1 ]; then
   # Recorded under the install gate's own name: the seal looks each required gate up by name, and
   # gate-results.mjs is told that name by its caller, never by the record it judges.
   gate_note_skip "${GATE_NAMES[0]}" "deps-verified-current" || exit 1
+  DEPS_BASELINE="$(deps_restamp_baseline)" || DEPS_BASELINE=""
 else
   gate_phase serial 1 || exit 1
   if node -e 'process.exit(JSON.parse(require("node:fs").readFileSync(process.argv[1])).status === "passed" ? 0 : 1)' "$GATE_ATTEMPT_DIR/workers/1.json"; then
@@ -509,6 +524,7 @@ else
       exit 1
     fi
     write_deps_stamp || exit 1
+    DEPS_BASELINE="$(deps_restamp_baseline)" || DEPS_BASELINE=""
   fi
 fi
 # Security first, alone, and before any quality gate. A failing security stage stops the run

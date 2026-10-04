@@ -42,6 +42,7 @@ steps:
     name: Write the changelog entry from merged PRs
     prompt: "{{task}}"
     skill: xezar-release-changelog
+    timeout: 30m
   - id: readiness
     name: Confirm the phase record is complete and nothing blocks
     command: ".xezar/checks/worktree-preflight.sh --readiness"
@@ -64,3 +65,4 @@ steps:
     name: Publish — merge the changelog, dispatch Release, merge the bump PR
     prompt: "Publish the release for: {{task}}"
     skill: xezar-release-publish
+    timeout: 12h

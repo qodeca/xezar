@@ -40,3 +40,4 @@ steps:
     name: Draft PR into the base branch
     prompt: "Hand off the observability work for: {{task}}. Verify the sealed head and open the draft PR; make no content changes here. The body names the questions that can now be answered, the alerts with owner and threshold, the runbook pages, and the redaction proof."
     skill: xezar-handoff-draft-pr
+    timeout: 15m

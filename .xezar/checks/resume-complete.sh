@@ -18,7 +18,8 @@
 #   3. inputs        — are the installed dependencies still the ones the manifests describe;
 #   4. reuse         — is the sealed evidence still eligible to certify THIS revision, asked
 #                      through the same code the handoff asks with. Only a verified compatible
-#                      outcome is reused;
+#                      outcome is reused, and only while step 3 found the dependencies fresh: a
+#                      failed or unknown freshness check re-runs the gates (#53);
 #   5. gates         — re-runs the required stage when reuse is refused, or when asked;
 #   6. seal          — records the new attempt as this run's evidence.
 #
@@ -195,13 +196,18 @@ fi
 
 # --- 5 and 6. Re-run what is missing or invalidated, then seal -------------------------------------
 step "5. required stages"
+# Fail closed on the inputs (#53): the seal certifies a revision judged against the installed
+# dependencies, and a stale or unknown install is not the one it judged, so the gates run again
+# (and install first) rather than reusing it.
 NEED_GATES=1
-if [ "$REUSABLE" -eq 1 ] && [ "$FORCE_GATES" -eq 0 ]; then NEED_GATES=0; fi
+if [ "$REUSABLE" -eq 1 ] && [ "$FORCE_GATES" -eq 0 ] && [ "$DEPS_FRESH" -eq 1 ]; then NEED_GATES=0; fi
 
 if [ "$NEED_GATES" -eq 0 ]; then
   note "gates         reuse accepted, so the gates are NOT re-run"
 elif [ "$FORCE_GATES" -eq 1 ]; then
   note "gates         re-run (--force-gates)"
+elif [ "$REUSABLE" -eq 1 ]; then
+  note "gates         re-run (the evidence is eligible, but the dependencies are stale or unknown)"
 else
   note "gates         re-run (the sealed evidence is not eligible for this revision)"
 fi

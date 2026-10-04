@@ -32,7 +32,7 @@ Everything else goes through a pull request.
 | `parked.md` | calls the leader made alone while the owner was away | yes |
 | `merges.md` | one line per day: every merge as `#PR -> sha` | no, read on demand |
 | `plan.md` | the owner-approved plan, copied in once, never edited | on demand |
-| `timeline-YYYY-MM-DD.md` | one file per day, append-only | newest day only, tail |
+| `timeline-YYYY-MM-DD.md` | one file per day, append-only | newest day only, newest 40 entries |
 | `archive-*.md` | stale blocks kept for history | never |
 
 - **`README.md`** — live state. Rewritten, not appended, at every milestone, as the last act of
@@ -65,6 +65,7 @@ Everything else goes through a pull request.
 
 - **`timeline-YYYY-MM-DD.md`** — one file per day, append-only. Every line starts
   `- YYYY-MM-DD HH:MM - ...` stamped from `date` and names run ids by their first 8 characters.
+  That leading `- ` at column 0 is what makes a line an **entry**: indent any continuation line.
   Never read this file whole; read its tail.
 
 - **`archive-*.md`** — stale blocks kept for history. Never loaded at session start.
@@ -98,8 +99,9 @@ leave the folder in place. Campaigns are never deleted.
 
 ## Loading
 
-The leader's session-start hook injects `README.md`, the newest `timeline-*.md`, `parked.md` and
-the whole of `decisions.md`. `plan.md` and the archives are read on demand. Agent memory holds a
+The leader's session-start hook injects `README.md`, the newest 40 entries of the newest
+`timeline-*.md` with a pointer to the full file, `parked.md` and the whole of `decisions.md`. A
+missing, symlinked or unreadable `decisions.md` is named by a warning at the top of the context. `plan.md` and the archives are read on demand. Agent memory holds a
 pointer to the folder, never a copy of its content.
 
 ## Writing rules

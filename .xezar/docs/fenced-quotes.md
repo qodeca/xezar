@@ -22,6 +22,16 @@ For a focused excerpt, append an inclusive line range:
 The selected source lines retain their line endings and are compared byte for byte. The start must
 not exceed the end, and both lines must exist.
 
+For one entry of a list in a JSON file, name the list by its key path:
+
+    <!-- from: .claude/settings.json#entry:hooks.SessionStart -->
+
+This form compares structure, not bytes. The source must be valid JSON with a list at that key path
+(keys joined by dots), the quote must be valid JSON, and it must equal one element of the list:
+object key order and whitespace are ignored, list order is not. Other elements of the list, and
+other keys of the file, are not compared, so a project can add entries of its own beside the quoted
+one while any change to the quoted entry still fails.
+
 The marker is optional. Unmarked fences remain ordinary examples and are not compared. A marker
 without an immediately following fence fails, as does a marked fence that is not closed. Markers
 inside another fenced block are ordinary example text. A marker indented four or more spaces is
@@ -31,7 +41,7 @@ Opening and closing fences may use three or more backticks or tildes; a closing 
 same character and at least the opening length.
 
 The check scans maintained Markdown under `docs/` and `.xezar/docs/`, root `*.md`, and —
-for a project that still keeps its designs at the repository root — `designs/**/README.md`. It explicitly excludes every `.local/xezar/`, `node_modules/`, and `changelog.d/`
+for a project that still keeps its designs at the repository root — `designs/**/README.md`. It explicitly excludes every `.local/`, `node_modules/`, and `changelog.d/`
 directory encountered inside those surfaces rather than relying on their usual repository
 locations to keep them out of the walk.
 

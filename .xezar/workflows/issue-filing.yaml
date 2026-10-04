@@ -21,4 +21,5 @@ steps:
     name: Search, draft and file one issue
     prompt: "{{task}}"
     skill: xezar-issue-create
+    timeout: 1h
     allowedTools: [Read, Grep, Glob, Bash, Write]

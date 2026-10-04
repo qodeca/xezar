@@ -92,7 +92,7 @@ gate_resolve_producer() {
       const gates = (run?.workflowDef?.steps ?? []).find((s) => s.id === "gates");
       process.stdout.write(`${run?.workflow ?? ""}\t${gates?.command ?? ""}`);
     } catch {}
-  ' "${MAIN_ROOT:-}/.local/xezar/runtime/runs.json" "${TASK_ID:-}" 2>/dev/null)" || probe=""
+  ' "${MAIN_ROOT:-}/.local/xezar/runs.json" "${TASK_ID:-}" 2>/dev/null)" || probe=""
   workflow="${probe%%$'\t'*}"
   command="${probe#*$'\t'}"
   if [ -n "$workflow" ] && [ -n "$command" ]; then

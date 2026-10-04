@@ -77,6 +77,19 @@
       }
     },
 
+    "vendorExclusions": {
+      "description": "Optional; missing means none. Each names a vendor whose lanes never take work that a lane of the same vendor wrote or repaired. The route script applies it when the leader passes the author chain (`--author`, `--repair`); it is data, so a project may drop or extend it.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["vendor"],
+        "properties": {
+          "vendor": { "$ref": "#/$defs/slug" },
+          "why": { "$ref": "#/$defs/text" }
+        }
+      }
+    },
+
     "tieRule": { "$ref": "#/$defs/text" },
 
     "noMatch": {
@@ -172,6 +185,7 @@
         "local": { "type": "boolean" },
         "enforcesToolLimits": { "type": "boolean" },
         "advisoryOnly": { "type": "boolean" },
+        "fullShellReviews": { "description": "Optional; missing means false. true lets a lane with enforcesToolLimits: false judge in a review row or a security row that only reads, although it runs with a full shell. Never on a cheap, local or advisory-only lane. The owner accepted this risk for one lane (#89).", "type": "boolean" },
         "enabled": { "description": "false switches the lane off everywhere. Default true.", "type": "boolean" },
         "notes": { "type": "array", "items": { "$ref": "#/$defs/text" } }
       }
@@ -224,7 +238,7 @@
           "items": { "$ref": "#/$defs/laneId" }
         },
         "never": { "type": "array", "items": { "$ref": "#/$defs/match" } },
-        "neverAuthor": { "description": "The lane, login and vendor that wrote the work are banned; checked at dispatch.", "type": "boolean" },
+        "neverAuthor": { "description": "The lane, model and login that wrote or repaired the work are banned, on every row; its vendor is banned only where vendorExclusions names it. Checked at dispatch.", "type": "boolean" },
         "neverClaimant": { "description": "The lane that made the claim being verified is banned; checked at dispatch.", "type": "boolean" },
         "secondOpinion": {
           "description": "Advisory lanes, each launched as its own task beside the chosen one. Its findings are never binding; an unavailable lane is dropped.",

@@ -82,3 +82,143 @@ export function judge(config, key) {
   }
   return { status: "ok", detail: `${value.length} entr${value.length === 1 ? "y" : "ies"}`, values: value };
 }
+
+// --- security.trustBoundaries -----------------------------------------------------------------
+//
+// A project's own trust-boundary paths, added to the kit's list in `security-scan.mjs`. Each
+// element is `{ "pattern": "<glob>", "why": "<one line>" }`. Absent or `[]` means no project
+// entries; the kit's list applies either way and can never be removed or weakened from here.
+//
+// The patterns are contributor-controlled input, so they are never turned into a regular
+// expression. They are parsed into tokens and matched by a hand-written simulation whose cost is
+// bounded by path length times pattern length — no backtracking, no glob library. The grammar is
+// deliberately small: literals, `?` (one character other than `/`), `*` (any run of characters
+// other than `/`) and `**` (a whole segment: any run of characters, `/` included; a leading or
+// inner `**/` also matches zero folders). Anything with a second meaning in some glob dialect —
+// `!`, braces, extglobs, character classes, regex characters — is refused rather than guessed at.
+
+export const TRUST_BOUNDARY_LIMITS = { entries: 64, length: 256 };
+
+// `!` negation, `{}` braces, `()` extglobs, `[]` character classes, and the regex characters
+// that are not ordinary in a path (`.` is: it is a literal here, as in every file name).
+const TRUST_PATTERN_REFUSED = /[!{}()[\]^$|\\+]/;
+
+/**
+ * Parse one pattern into tokens. Returns { tokens } or { error }.
+ * Token kinds: "lit" (one character), "any1" (`?`), "star" (`*`), "globstar" (`**` as the last
+ * segment), "globdir" (`**\/` — zero or more whole folders).
+ */
+export function parseTrustPattern(pattern) {
+  if (typeof pattern !== "string" || pattern === "") return { error: "the pattern must be a non-empty string" };
+  if (pattern.length > TRUST_BOUNDARY_LIMITS.length) return { error: `the pattern is longer than ${TRUST_BOUNDARY_LIMITS.length} characters` };
+  const refused = TRUST_PATTERN_REFUSED.exec(pattern);
+  if (refused) return { error: `"${refused[0]}" is not allowed; a pattern holds literals, ?, * and ** only (no negation, braces, extglobs, character classes or regex characters)` };
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001f\u007f]/.test(pattern)) return { error: "the pattern holds a control character" };
+  if (pattern.startsWith("/")) return { error: "the pattern must be relative to the repository root, with no leading /" };
+  if (pattern.endsWith("/")) return { error: "the pattern ends with /; write <folder>/** for everything under a folder" };
+  const segments = pattern.split("/");
+  if (segments.some((s) => s === "")) return { error: "the pattern holds an empty segment (//)" };
+  if (segments.some((s) => s === "." || s === "..")) return { error: "the pattern holds a . or .. segment" };
+  const tokens = [];
+  segments.forEach((segment, index) => {
+    const last = index === segments.length - 1;
+    if (segment === "**") {
+      tokens.push({ kind: last ? "globstar" : "globdir" });
+      return;
+    }
+    if (segment.includes("**")) { tokens.error = `"${segment}": ** must be a whole segment`; return; }
+    for (const ch of segment) tokens.push(ch === "*" ? { kind: "star" } : ch === "?" ? { kind: "any1" } : { kind: "lit", ch });
+    if (!last) tokens.push({ kind: "lit", ch: "/" });
+  });
+  if (tokens.error) return { error: tokens.error };
+  return { tokens };
+}
+
+/**
+ * Does `path` match the parsed `tokens`, whole path, anchored at both ends. A set-of-positions
+ * simulation: every step advances each live position by one path character, so the cost is at
+ * most path length × token count, whatever the pattern.
+ */
+export function matchTrustPattern(tokens, path) {
+  const n = tokens.length;
+  // State `i` is "about to match token i". A globdir (`**/`) has a second state, `n + 1 + i`,
+  // "inside it": entered by consuming a character, and left only through a `/`. Only the first
+  // may be skipped without consuming anything (zero folders); a folder begun must be finished.
+  const inside = (i) => n + 1 + i;
+  const skippable = (i) => i < n && (tokens[i].kind === "star" || tokens[i].kind === "globstar" || tokens[i].kind === "globdir");
+  const close = (set) => {
+    const stack = [...set];
+    while (stack.length) {
+      const i = stack.pop();
+      if (skippable(i) && !set.has(i + 1)) {
+        set.add(i + 1);
+        stack.push(i + 1);
+      }
+    }
+    return set;
+  };
+  let live = close(new Set([0]));
+  for (const ch of path) {
+    const next = new Set();
+    for (const s of live) {
+      if (s > n) {
+        // inside a globdir: any character keeps it open, a `/` may also close it
+        next.add(s);
+        if (ch === "/") next.add(s - n);
+        continue;
+      }
+      if (s === n) continue;
+      const t = tokens[s];
+      if (t.kind === "lit") { if (t.ch === ch) next.add(s + 1); }
+      else if (t.kind === "any1") { if (ch !== "/") next.add(s + 1); }
+      else if (t.kind === "star") { if (ch !== "/") next.add(s); }
+      else if (t.kind === "globstar") next.add(s);
+      else if (t.kind === "globdir") { if (ch !== "/") next.add(inside(s)); }
+    }
+    if (next.size === 0) return false;
+    live = close(next);
+  }
+  return live.has(n);
+}
+
+/**
+ * Judge `security.trustBoundaries`. Returns { status, detail, entries }, status one of:
+ *   ok         a non-empty list, every element valid; `entries` carry their parsed tokens
+ *   empty      the key is `[]` — no project entries
+ *   absent     the key (or the whole `security` object) is not there — no project entries
+ *   malformed  anything else. The scan routes a malformed list to review; it never reads it as
+ *              "no project entries", and it never applies part of it.
+ */
+export function judgeTrustBoundaries(config) {
+  const key = "security.trustBoundaries";
+  const node = config?.security;
+  if (node !== undefined && (node === null || typeof node !== "object" || Array.isArray(node))) {
+    return { status: "malformed", detail: `"security" must be an object`, entries: [] };
+  }
+  const value = node?.trustBoundaries;
+  if (value === undefined) return { status: "absent", detail: `"${key}" is not set`, entries: [] };
+  if (!Array.isArray(value)) return { status: "malformed", detail: `"${key}" must be a list of { pattern, why }`, entries: [] };
+  if (value.length === 0) return { status: "empty", detail: `"${key}" is []`, entries: [] };
+  if (value.length > TRUST_BOUNDARY_LIMITS.entries) {
+    return { status: "malformed", detail: `"${key}" has ${value.length} entries; at most ${TRUST_BOUNDARY_LIMITS.entries} are read`, entries: [] };
+  }
+  const entries = [];
+  for (const [index, element] of value.entries()) {
+    const at = `"${key}"[${index}]`;
+    if (element === null || typeof element !== "object" || Array.isArray(element)) {
+      return { status: "malformed", detail: `${at} must be an object { pattern, why }`, entries: [] };
+    }
+    const extra = Object.keys(element).find((k) => k !== "pattern" && k !== "why");
+    if (extra !== undefined) return { status: "malformed", detail: `${at} has "${extra}", which is not a field this kit reads (pattern, why)`, entries: [] };
+    const parsed = parseTrustPattern(element.pattern);
+    if (parsed.error) return { status: "malformed", detail: `${at} pattern ${JSON.stringify(element.pattern)}: ${parsed.error}`, entries: [] };
+    const why = element.why;
+    // eslint-disable-next-line no-control-regex
+    if (typeof why !== "string" || why.trim() === "" || why.length > TRUST_BOUNDARY_LIMITS.length || /[\u0000-\u001f\u007f]/.test(why)) {
+      return { status: "malformed", detail: `${at} needs a "why": one line of at most ${TRUST_BOUNDARY_LIMITS.length} characters saying what the path decides`, entries: [] };
+    }
+    entries.push({ pattern: element.pattern, why: why.trim(), tokens: parsed.tokens });
+  }
+  return { status: "ok", detail: `${entries.length} entr${entries.length === 1 ? "y" : "ies"}`, entries };
+}
