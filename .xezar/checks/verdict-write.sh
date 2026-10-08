@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # The only way a reading role writes a file.
 #
+# Before a verdict packet is written, a review that ran the change must pass `review-run.sh finish`
+# (D13): a verdict from a review that changed the tree is refused.
+#
 # A reading step carries a `bashAllowlist` of command prefixes and no Edit or Write tool, so it
 # cannot redirect into a file or run `mv`. It still has three things it must write: the verdict
 # packet the engine reads when the step settles, the `BLOCKED` file that stops readiness, and its
@@ -74,7 +77,10 @@ evidence_dir() {
 if [ $# -eq 0 ]; then
   request="$(head -c $((EVIDENCE_MAX_BYTES + 4096)))" || refuse "could not read stdin"
   jq -e 'type == "object"' >/dev/null 2>&1 <<<"$request" || refuse "stdin is not one JSON request object"
-  j_kind="$(jq -r 'if (.kind | type) == "string" then .kind else "" end' <<<"$request")"
+  # jq on native Windows ends every line with CR (#122): under Git Bash or Cygwin the kind and name
+  # lose it through drop_jq_cr, and the text, which must stay byte-exact, comes through
+  # jq_string_bytes (both lib/common.sh; elsewhere both reads are today's).
+  j_kind="$(jq -r 'if (.kind | type) == "string" then .kind else "" end' <<<"$request" | drop_jq_cr)"
   case "$j_kind" in
     packet)
       jq -e '(.packet | type) == "object"' >/dev/null <<<"$request" || refuse "a packet request needs a packet object"
@@ -82,11 +88,11 @@ if [ $# -eq 0 ]; then
       ;;
     blocked)
       jq -e '(.text | type) == "string"' >/dev/null <<<"$request" || refuse "a blocked request needs a string text"
-      exec bash "$SCRIPT_DIR/verdict-write.sh" blocked < <(jq -j '.text' <<<"$request")
+      exec bash "$SCRIPT_DIR/verdict-write.sh" blocked < <(jq_string_bytes '.text' <<<"$request")
       ;;
     evidence)
       jq -e '(.text | type) == "string" and (.name | type) == "string"' >/dev/null <<<"$request" || refuse "an evidence request needs a string name and text"
-      exec bash "$SCRIPT_DIR/verdict-write.sh" evidence "$(jq -r '.name' <<<"$request")" < <(jq -j '.text' <<<"$request")
+      exec bash "$SCRIPT_DIR/verdict-write.sh" evidence "$(jq -r '.name' <<<"$request" | drop_jq_cr)" < <(jq_string_bytes '.text' <<<"$request")
       ;;
     *) usage ;;
   esac
@@ -102,6 +108,12 @@ case "$kind" in
     # The engine refuses a packet whose ids are not this task's and step's, so the ids are stamped
     # here from the step's environment, never typed by the reviewer; a packet naming others is refused.
     [ -n "${XEZ_TASK_ID:-}" ] && [ -n "${XEZ_STEP_ID:-}" ] || refuse "XEZ_TASK_ID or XEZ_STEP_ID is not set: a packet belongs to a workflow step"
+    # A review that ran the change (review-run.sh keeps its state under <evidence>/review/) records a
+    # verdict only when it left the tree as it found it: `finish` stops what it started and fails
+    # when HEAD or a tracked file changed (D13). A review that ran nothing has no shell that writes.
+    if dir="$(evidence_dir 2>/dev/null)" && [ -d "$dir/review" ]; then
+      bash "$SCRIPT_DIR/review-run.sh" finish >&2 || refuse "the review changed HEAD or a tracked file, so its verdict is void (review-run.sh finish)"
+    fi
     target="${XEZ_HANDOFF_FILE}.verdict.json"
     tmp="$(atomic_from_stdin "$target" "$PACKET_MAX_BYTES")" || exit 1
     if ! stamp="$(node -e '

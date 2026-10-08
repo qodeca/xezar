@@ -1,5 +1,12 @@
+# Since D13 (DECISIONS.md) the review step may RUN the change – check the PR head out, install,
+# run the tests and a dev server – through `review-run.sh`, and use every chrome-devtools tool.
+# It still holds no Edit or Write and no git or gh command that commits or pushes, and its verdict
+# is refused (`verdict-write.sh` runs `review-run.sh finish`) when HEAD or a tracked file changed.
+# Its kit scripts run from the kit step's copy in .local/xezar/cache/kit/checks/, never from the tracked
+# .xezar/checks/, which the checkout replaces with the pull request's own.
+# The preflight runs strict (no `--allow-root`).
 name: code-review
-description: Review a PR or the current branch diff against this repo's architecture and conventions. Read-only.
+description: Review a PR or the current branch diff against this repo's architecture and conventions. Changes no tracked file.
 steps:
   - id: kit
     name: Snapshot the local project kit
@@ -7,12 +14,13 @@ steps:
     resultScope: routine
   - id: preflight
     name: Report the checkout
-    command: ".xezar/checks/worktree-preflight.sh --allow-root"
+    command: ".xezar/checks/worktree-preflight.sh"
     resultScope: routine
   - id: review
     name: Review
     prompt: "{{task}} Report independence as confirmed, not confirmed or unknown, from the author the launch text names; never confirmed without that text."
     skill: xezar-code-review
+    timeout: 2h
     verdictRole: code-review
-    allowedTools: [Read, Grep, Glob, Bash]
-    bashAllowlist: ["gh pr view", "gh pr diff", "gh pr checks", "gh pr list", "gh issue view", "gh issue list", "gh label list", "gh repo view", "jq -n", "bash .xezar/checks/git-read.sh", "bash .xezar/checks/gh-write.sh", "bash .xezar/checks/verdict-write.sh", "bash .xezar/checks/phase-record.sh", "bash .xezar/checks/worktree-setup.sh --readonly-init"]
+    allowedTools: [Read, Grep, Glob, Bash, mcp__chrome-devtools__navigate_page, mcp__chrome-devtools__new_page, mcp__chrome-devtools__list_pages, mcp__chrome-devtools__select_page, mcp__chrome-devtools__close_page, mcp__chrome-devtools__take_snapshot, mcp__chrome-devtools__take_screenshot, mcp__chrome-devtools__list_console_messages, mcp__chrome-devtools__get_console_message, mcp__chrome-devtools__list_network_requests, mcp__chrome-devtools__get_network_request, mcp__chrome-devtools__click, mcp__chrome-devtools__fill, mcp__chrome-devtools__fill_form, mcp__chrome-devtools__hover, mcp__chrome-devtools__press_key, mcp__chrome-devtools__type_text, mcp__chrome-devtools__wait_for, mcp__chrome-devtools__handle_dialog, mcp__chrome-devtools__resize_page, mcp__chrome-devtools__get_css_styles, mcp__chrome-devtools__emulate, mcp__chrome-devtools__evaluate_script, mcp__chrome-devtools__upload_file, mcp__chrome-devtools__drag, mcp__chrome-devtools__performance_start_trace, mcp__chrome-devtools__performance_stop_trace, mcp__chrome-devtools__performance_analyze_insight, mcp__chrome-devtools__take_heapsnapshot, mcp__chrome-devtools__lighthouse_audit]
+    bashAllowlist: ["gh pr view", "gh pr diff", "gh pr checks", "gh pr list", "gh issue view", "gh issue list", "gh label list", "gh repo view", "jq -n", "bash .local/xezar/cache/kit/checks/git-read.sh", "bash .local/xezar/cache/kit/checks/gh-write.sh", "bash .local/xezar/cache/kit/checks/verdict-write.sh", "bash .local/xezar/cache/kit/checks/phase-record.sh", "bash .local/xezar/cache/kit/checks/worktree-setup.sh --readonly-init", "bash .local/xezar/cache/kit/checks/review-run.sh"]

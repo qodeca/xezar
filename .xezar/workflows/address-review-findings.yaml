@@ -35,5 +35,6 @@ steps:
     resultScope: stage
   - id: handoff
     name: Update the draft PR
-    prompt: "Push the fixes and update the existing draft PR for: {{task}}"
+    prompt: "Push the sealed fix to the PR's own branch only through .xezar/checks/push-check.sh, then update the existing PR for: {{task}}"
     skill: xezar-handoff-draft-pr
+    timeout: 15m

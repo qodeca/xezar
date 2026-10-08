@@ -94,9 +94,54 @@ function closesFence(text, fence) {
 
 function parseSource(specification) {
   const range = specification.match(/^(.*)#L([1-9][0-9]*)-L([1-9][0-9]*)$/);
-  return range
-    ? { path: range[1], start: Number(range[2]), end: Number(range[3]) }
-    : { path: specification, start: null, end: null };
+  if (range) return { path: range[1], start: Number(range[2]), end: Number(range[3]), entry: null };
+  const entry = specification.match(/^(.*)#entry:([A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*)$/);
+  if (entry) return { path: entry[1], start: null, end: null, entry: entry[2].split('.') };
+  return { path: specification, start: null, end: null, entry: null };
+}
+
+// `#entry:<key.path>` compares STRUCTURE, not bytes: the source is JSON, the key path names a list
+// in it, and the quote must parse as JSON equal to one element of that list. Object key order is
+// ignored and list order is not. A project can then add its own entries beside the one quoted
+// without breaking the quote, while any change to the quoted entry itself still fails.
+function sameJson(left, right) {
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return Array.isArray(left) && Array.isArray(right) && left.length === right.length
+      && left.every((value, index) => sameJson(value, right[index]));
+  }
+  if (left && right && typeof left === 'object' && typeof right === 'object') {
+    const keys = Object.keys(left);
+    return keys.length === Object.keys(right).length
+      && keys.every((key) => Object.hasOwn(right, key) && sameJson(left[key], right[key]));
+  }
+  return left === right;
+}
+
+function entryMatches(bytes, source, actual, document, lineNumber) {
+  let list;
+  try {
+    list = JSON.parse(bytes.toString('utf8'));
+  } catch (error) {
+    failures.push(`${document}:${lineNumber}: source ${source.path} is not valid JSON: ${error.message}`);
+    return null;
+  }
+  for (const key of source.entry) {
+    list = list && typeof list === 'object' && !Array.isArray(list) && Object.hasOwn(list, key)
+      ? list[key]
+      : undefined;
+  }
+  if (!Array.isArray(list)) {
+    failures.push(`${document}:${lineNumber}: source ${source.path} has no list at ${source.entry.join('.')}`);
+    return null;
+  }
+  let quoted;
+  try {
+    quoted = JSON.parse(actual.toString('utf8'));
+  } catch (error) {
+    failures.push(`${document}:${lineNumber}: fenced quote of an entry is not valid JSON: ${error.message}`);
+    return null;
+  }
+  return list.some((element) => sameJson(element, quoted));
 }
 
 async function expectedBytes(specification, document, lineNumber) {
@@ -173,14 +218,21 @@ async function checkDocument(absoluteDocument) {
     if (quote) {
       if (!closesFence(line.text, quote.fence)) continue;
       const actual = bytes.subarray(quote.contentStart, line.start);
-      const expected = await expectedBytes(quote.source, relativeDocument, quote.markerLine);
-      const matches = expected && (
-        actual.equals(expected)
-        || (expected.at(-1) !== 0x0a
-          && actual.length === expected.length + 1
-          && actual.at(-1) === 0x0a
-          && actual.subarray(0, -1).equals(expected))
-      );
+      const source = parseSource(quote.source);
+      let expected = await expectedBytes(quote.source, relativeDocument, quote.markerLine);
+      let matches;
+      if (expected && source.entry) {
+        matches = entryMatches(expected, source, actual, relativeDocument, quote.markerLine);
+        if (matches === null) expected = null;
+      } else {
+        matches = expected && (
+          actual.equals(expected)
+          || (expected.at(-1) !== 0x0a
+            && actual.length === expected.length + 1
+            && actual.at(-1) === 0x0a
+            && actual.subarray(0, -1).equals(expected))
+        );
+      }
       if (expected && !matches) {
         failures.push(
           `${relativeDocument}:${quote.markerLine}: fenced quote differs from ${quote.source}`,

@@ -26,6 +26,19 @@ where the two seem to differ, the guide wins and the difference is a finding for
 - **Why least file overlap beats priority.** Two tasks on one file means the second one rebases,
   conflicts, or fails its gate at merge. A high-priority task that collides costs more than it
   saves; priority only chooses between tasks that do not collide.
+- **Why dispatching at once is safe.** Waiting for the next L3 tick leaves headroom idle for up to
+  half an hour after every verdict. Your own turn that dispatches – never an L1 or L2 tick –
+  counts as an L3 run: it applies every L3 check, so it is the same dispatcher, not a second one.
+  It never wakes L3 and never adds a wake, so at most one wake is still pending; when that wake fires, L3 counts what is running,
+  sees your dispatch, and starts nothing the ceilings or the overlap rule forbid.
+- **Why quota is read before every dispatch.** L2 reads quota once an hour, and a login can run out
+  in between. A login picked from memory or an old table is the commonest way a task starts on an
+  exhausted login and fails at once; `read_quota` is cheap, and its answer is the only fact.
+- **Why a merge queue changes the merge steps.** Without a queue, each merge moves the base, and
+  every other open PR must update its branch and re-run its checks before it may merge. With
+  several PRs a day that loop runs the full CI again and again for nothing (one project counted 19
+  update-branch cycles before it turned its queue on). A queue tests each PR on top of the ones
+  ahead of it, once, so `gh pr merge --auto` replaces the loop.
 
 ## Owner-only decisions
 

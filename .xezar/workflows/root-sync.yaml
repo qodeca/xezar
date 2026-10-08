@@ -21,3 +21,4 @@ steps:
     name: Verify the root assignment, then fast-forward
     prompt: "{{task}}"
     skill: xezar-integration
+    timeout: 30m

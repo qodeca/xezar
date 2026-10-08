@@ -14,16 +14,19 @@
 # file is a judgement, and a check that silently removes work is worse than the mess.
 set -uo pipefail
 
+# Usage: local-tree.sh [repository-root] (default: the project this copy is installed in).
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd -P)"
+REPO_ROOT="$(cd "${1:-$SCRIPT_DIR/../..}" && pwd -P)" || exit 2
 LOCAL="$REPO_ROOT/.local/xezar"
 
 # The six named subfolders. Anything else at the top level is loose.
 ALLOWED="runtime tasks worktrees scratch cache qa"
 
-# Single-project mode (`.xezar/workspace.json` present): the ENGINE keeps its own working files at
-# the top level of `.local/xezar/`. They are the engine's, not loose work, and nothing here may move
-# them. The list is closed and exact on purpose: a name that is not on it is still reported.
+# The ENGINE keeps its own working files at the top level of `.local/xezar/`, in every layout: from
+# engine 0.19.0 its per-project data folder is `<repo>/.local/xezar` whether or not
+# `.xezar/workspace.json` exists (`projectDataDir`, `src/project-data-paths.ts`). They are the
+# engine's, not loose work, and nothing here may move them. The list is closed and exact on
+# purpose: a name that is not on it is still reported.
 #
 # THAT MAKES THIS LIST A CROSS-REPOSITORY SURFACE, and it is worth knowing which way it cuts. The
 # engine can add a state file here as a routine change — its own contributor guidance says a
@@ -67,7 +70,7 @@ ALLOWED="runtime tasks worktrees scratch cache qa"
 # when this is next revisited.
 ENGINE_DIRS=""
 ENGINE_FILES=""
-if [ -f "$REPO_ROOT/.xezar/workspace.json" ]; then
+engine_names_load() {
   # `kit` is the one name here that a source enumeration of 0.18.0 missed and the engine team's own
   # scan found: `projectKitDir` (`src/project-kit-paths.ts`) falls back to `.local/xezar/kit` when
   # the repo root IS the user's home directory, so that a home launch cannot turn the workspace
@@ -109,7 +112,8 @@ if [ -f "$REPO_ROOT/.xezar/workspace.json" ]; then
 $engine_names
 EOF_NAMES
   fi
-fi
+}
+engine_names_load
 
 # Only the primary checkout has the full tree. A task worktree creates the one or two subfolders
 # it needs, so running this there would report four missing folders on every single task.
@@ -194,14 +198,12 @@ if [ -n "$loose" ]; then
   echo "    cache/     anything re-derivable"
   echo "    qa/        QA artefacts: screenshots, recordings, reports"
   echo "  Move each entry into the right one, or delete it. This check never deletes anything."
-  if [ -f "$REPO_ROOT/.xezar/workspace.json" ]; then
-    echo
-    echo "  DID YOU JUST UPGRADE THE ENGINE? Then this may not be loose work at all. Engine names"
-    echo "  come from this kit's list plus \`xezar state-names --json\` when xezar is on PATH. Where"
-    echo "  it is not (CI), a name a newer engine added is reported like a stray file. If the name"
-    echo "  above looks like the engine's rather than yours, do not move it: run the check where"
-    echo "  xezar is installed, or report it so the kit's list is extended."
-  fi
+  echo
+  echo "  DID YOU JUST UPGRADE THE ENGINE? Then this may not be loose work at all. Engine names"
+  echo "  come from this kit's list plus \`xezar state-names --json\` when xezar is on PATH. Where"
+  echo "  it is not (CI), a name a newer engine added is reported like a stray file. If the name"
+  echo "  above looks like the engine's rather than yours, do not move it: run the check where"
+  echo "  xezar is installed, or report it so the kit's list is extended."
   status=1
 fi
 

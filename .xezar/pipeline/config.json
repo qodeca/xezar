@@ -97,5 +97,25 @@
   },
   "localisation": {
     "locales": []
+  },
+  "security": {
+    "trustBoundaries": [
+      {
+        "pattern": "packages/xezar/src/server/**",
+        "why": "The HTTP surface: loopback and origin guards, the bind host."
+      },
+      {
+        "pattern": "packages/xezar/src/mcp/**",
+        "why": "The leader's tools and session binding."
+      },
+      {
+        "pattern": "packages/xezar/src/agent-config/**",
+        "why": "The agents' own config files."
+      },
+      {
+        "pattern": "packages/xezar/src/workspace/**",
+        "why": "Per-user state and the project registry."
+      }
+    ]
   }
 }

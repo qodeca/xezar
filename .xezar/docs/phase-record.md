@@ -1,8 +1,8 @@
 # The phase record
 
-`SDLC.md` § Task phases says what each phase of a development task settles. This page says what that phase writes down and where, so the next phase — or the next agent, after a Continue, a backend switch or a replacement run — reads a fact instead of re-deriving it.
+Each phase of a development task settles one question. This page says what each phase writes down and where, so the next phase — or the next agent, after a Continue, a backend switch or a replacement run — reads a fact instead of re-deriving it.
 
-The record is operating guidance for this repository's own kit. It ships in nothing; the published package carries no part of `.xezar/`.
+The record is operating guidance for this project's kit; nothing in it is committed.
 
 ## Where it lives
 
@@ -44,7 +44,7 @@ bash .xezar/checks/phase-record.sh check                        # what readiness
 | Readiness | `BLOCKED` | Present only when something blocks: the missing decision with its options, the unavailable check, or the exhausted counter |
 | Canonical checks | gate logs + `SECURITY` | Complete hashed logs and real outcomes; the security stage's own structured result, separate from the quality verdict |
 | Seal | the seal | The head SHA the evidence belongs to, hashed |
-| Handoff | the handoff report, and `DELIVERED` when it applies | PR number, head SHA and labels with their stated reasons; `DELIVERED` when the fix went to another branch |
+| Handoff | the handoff report | PR number, head SHA and labels with their stated reasons; for a repair, the `push-check.sh` line naming the sealed sha it pushed |
 | Independent review / QA / design | the PR comments | The verdicts themselves live on the PR (`## QA`, `## Design review`, the review comment), each naming its head SHA |
 | AC verification | `AC_VERIFICATION` | Each accepted criterion ID mapped to the evidence that satisfies it, at the current head |
 
@@ -66,7 +66,7 @@ One round legitimately has no content claim: a round whose only job is to merge 
 
 - `BLOCKED` stops readiness before anyone pays for a gate run, and it outranks every other record.
 - `REFRESH` is the merge-only round's declaration, and the one case where an absent content claim is correct. Three lines — `refresh`, `base`, `evidence` — and no criterion. It is refused when it carries a content claim, so it never stands in for the `accepted-by:` line a content claim needs, and a round without it is still judged by `CRITERIA`.
-- `DELIVERED` is the review-response case only — a fix pushed to the PR's own branch, leaving this task's branch empty. Three lines: `branch`, `head`, `base`, checked live against the remote.
+- `DELIVERED` is retired (#54) and readiness refuses it. A repair moves its own branch onto the PR head and commits there, so it has commits of its own; the handoff pushes the sealed commit through `.xezar/checks/push-check.sh`.
 - `VERIFICATION` is the verify-only case only — this run verified an existing revision and was never asked to change source. It is `verified:` plus `findings:`, and it is why readiness accepts an empty branch. It is **not** the acceptance-criteria mapping; that is `AC_VERIFICATION`, above, and the two are different questions.
 - `COUNTERS` is written by `phase-record.sh counters`, never by hand — see below.
 
@@ -100,9 +100,11 @@ The result records the decision before it records an outcome: does a code or sec
 
 Four statuses, and only the first is a pass: `pass`, `findings` (the gate fails), `unknown`, `not-applicable`. A candidate whose base was resolved and whose diff was readable but whose inventory is nonetheless **empty** is `not-applicable`, not refused: the gate can run before the agent has committed anything, so there is nothing to scan and nothing to refuse. **Empty is decided from the full enumeration over the base, deletions included** — never from the content-scan enumeration alone, which excludes them, or a candidate that only deletes files would misread as one that changed nothing. A change set that is non-empty but has nothing the content scan reads (deletion-only, or similar) says so in its own words instead, and the deleted paths still reach the trust-boundary check. The shapes that DO mean the stage could not look — an unresolved base, an unreadable repository, an enumeration command that errored — are recorded as `unknown` and refused, and the two must never be confused with each other.
 
-Two run shapes legitimately carry no commits of their own — `DELIVERED` (the fix went to the PR's own branch) and `VERIFICATION` (this run only verified an existing revision) — and readiness accepts an empty branch for exactly those two. For them the empty change set is expected. `security-scan.sh` records the declaration with its reason so a reviewer reads why the branch is empty; an empty change set resolves as `not-applicable` whether or not it is declared, and the declaration is never a pass.
+One run shape legitimately carries no commits of its own — `VERIFICATION` (this run only verified an existing revision) — and readiness accepts an empty branch for that one only. For it the empty change set is expected. `security-scan.sh` records the declaration with its reason so a reviewer reads why the branch is empty; an empty change set resolves as `not-applicable` whether or not it is declared, and the declaration is never a pass.
 
 `reviewerRequired` is recorded separately. A change to a named trust boundary — the list is `TRUST_BOUNDARIES` in `.xezar/checks/lib/security-scan.mjs`: the pipeline config and the base branch, CI's own workflows, the kit's workflows, checks, docs and skills, the routing file, `loops.json`, the Claude settings files, the project's `.codex/` folder and the env contract — does not fail the gate, because automation cannot prove that an authorization decision is correct. It records that a human or a security reviewer is required, and the handoff says so.
+
+A project adds paths of its own in `security.trustBoundaries` in `.xezar/pipeline/config.json`: `[{ "pattern": "tools/example/**", "why": "<what the path decides>" }]`. The list only adds — the kit's entries always apply — and it is read from the base branch tip (`origin/<baseBranch>`), never from the branch under review, so a branch that drops its own path is still routed. A pattern holds literals, `?`, `*` and `**` only; at most 64 entries of at most 256 characters. Each match in the result names its `list`, `kit` or `project`, with its `why`. A project list that cannot be read, or that is invalid, is never read as "no entries": the `trust-boundary-config` check records `unknown` with the reason, `reviewerRequired` is set, and — unlike `trust-boundary` — that check counts, so the stage reads `unknown`.
 
 One suppression exists and it is per LINE: a source line carrying `security-scan:allow` is not reported, and the count of allowed lines is recorded in the result. It is there because a scanner has to be able to name the thing it bans and a fixture has to be able to contain one. Never use it on a real finding, and never exempt a file or a rule.
 

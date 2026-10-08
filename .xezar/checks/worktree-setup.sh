@@ -144,7 +144,7 @@ fi
 printf '\n=== worktree setup ===\n'
 
 # --- Toolchain ----------------------------------------------------------------------
-# The repo requires Node >= 20 and pins npm through `packageManager`. A worktree
+# The repo requires Node >= 22 and pins npm through `packageManager`. A worktree
 # inherits the shell's PATH, so this catches a cockpit started under the wrong Node.
 # With `dependencies.units` (lib/deps.mjs) each unit's tool is checked instead — npm, Yarn 1,
 # the .NET SDK — and a numeric root .nvmrc pins the Node major (lib/common.sh applied it).
@@ -160,8 +160,8 @@ else
 
   node -e '
     const [major, minor] = process.versions.node.split(".").map(Number);
-    if (major < 20) {
-      console.error(`node ${process.versions.node} is below the required 20`);
+    if (major < 22) {
+      console.error(`node ${process.versions.node} is below the required 22`);
       process.exit(1);
     }
   ' || fatal "unsupported Node version"

@@ -14,14 +14,20 @@ if(git('branch','--show-current')!==`xez/${run.slice(0,8)}`) throw Error('task b
 if(process.env.XEZ_TASK_ID && process.env.XEZ_TASK_ID!==run) throw Error('task environment identity mismatch');
 const target=path.join(cwd,'.xezar');
 // Refuse symlink traversal in both source and destination; never overwrite task edits.
-function safeParents(base,rel){let cur=base;for(const part of rel.split(path.sep)){cur=path.join(cur,part);try{if(fs.lstatSync(cur).isSymbolicLink())throw Error(`symlink refused: ${rel}`);}catch(e){if(e.code!=='ENOENT')throw e;}}}
+function safeParents(base,rel){let cur=base;for(const part of path.normalize(rel).split(path.sep)){cur=path.join(cur,part);try{if(fs.lstatSync(cur).isSymbolicLink())throw Error(`symlink refused: ${rel}`);}catch(e){if(e.code!=='ENOENT')throw e;}}}
 safeParents(cwd,'.xezar');fs.mkdirSync(target,{recursive:true});
 safeParents(cwd,'.local/xezar/cache/kit');
 const local=path.join(cwd,'.local/xezar/cache/kit');fs.mkdirSync(local,{recursive:true});
+// The review's own scripts (D13; see review-run.sh, "Which copy runs"): the primary's checks/, copied outside the tracked
+// tree on every kit step, so a review that checks a PR head out (which replaces .xezar/checks/) still runs this kit.
+{const trusted=path.join(local,'checks'),stage=`${trusted}.stage-${process.pid}`;let n=0;safeParents(source,'checks');
+ const copy=(from,to)=>{fs.mkdirSync(to,{mode:0o755});for(const f of fs.readdirSync(from).sort()){const s=path.join(from,f),d=path.join(to,f),st=fs.lstatSync(s);if(st.isDirectory())copy(s,d);else if(st.isFile()){fs.writeFileSync(d,fs.readFileSync(s),{flag:'wx',mode:st.mode&0o777});n++;}else throw Error(`not a regular kit asset: ${path.relative(source,s).split(path.sep).join('/')}`);}};
+ fs.rmSync(stage,{recursive:true,force:true});copy(path.join(source,'checks'),stage);fs.rmSync(trusted,{recursive:true,force:true});fs.renameSync(stage,trusted);
+ console.log(`REVIEW TOOLS: ${n} kit checks copied from the primary checkout to .local/xezar/cache/kit/checks`);}
 const record=path.join(local,'snapshot.json');
 if(fs.existsSync(record)){if(fs.lstatSync(record).isSymbolicLink())throw Error('snapshot symlink');const saved=JSON.parse(fs.readFileSync(record));if(saved.run!==run)throw Error('snapshot owner mismatch');console.log(`KIT REUSED: ${saved.digest}; preserves task-local edits`);process.exit(0);}
 const entries=[];
-function walk(rel){safeParents(source,rel);const stat=fs.lstatSync(path.join(source,rel));if(stat.isDirectory()){for(const f of fs.readdirSync(path.join(source,rel)).sort())walk(path.join(rel,f));}else if(stat.isFile())entries.push(rel);else throw Error(`not a regular kit asset: ${rel}`);}
+function walk(rel){safeParents(source,rel);const stat=fs.lstatSync(path.join(source,rel));if(stat.isDirectory()){for(const f of fs.readdirSync(path.join(source,rel)).sort())walk(path.join(rel,f));}else if(stat.isFile())entries.push(rel.split(path.sep).join('/'));else throw Error(`not a regular kit asset: ${rel}`);}
 for(const rel of ['checks','skills','workflows','docs','config.json','CLAUDE.md','kit-manifest.json'])if(fs.existsSync(path.join(source,rel)))walk(rel);
 const lock=path.join(local,'bootstrap-lock');fs.mkdirSync(lock);
 try{

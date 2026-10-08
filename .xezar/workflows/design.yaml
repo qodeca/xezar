@@ -20,7 +20,7 @@ steps:
     resultScope: routine
   - id: design
     name: Design the surface
-    prompt: "Author the design for: {{task}}. Follow xezar-ux-design authoring instructions and the design system named by paths.designSystem in .xezar/pipeline/config.json: usage for scope, recipes for composition, verification for evidence, lifecycle for ownership and storage for artifacts. Own the static mockup and developer README handoff; finish focused checks and commits before the existing readiness, gates, evidence and PR handoff stages."
+    prompt: "Author the design for: {{task}}. Follow xezar-ux-design authoring instructions and the design system named by paths.designSystem in .xezar/pipeline/config.json (with designSystem.modules, the resolved module – see Modules in xezar-design-system): usage for scope, recipes for composition, verification for evidence, lifecycle for ownership and storage for artifacts. Own the static mockup and developer README handoff; finish focused checks and commits before the existing readiness, gates, evidence and PR handoff stages."
     skill: xezar-ux-design
     allowedTools: [Read, Edit, Write, Grep, Glob, Bash, mcp__chrome-devtools__navigate_page, mcp__chrome-devtools__new_page, mcp__chrome-devtools__list_pages, mcp__chrome-devtools__select_page, mcp__chrome-devtools__close_page, mcp__chrome-devtools__take_snapshot, mcp__chrome-devtools__take_screenshot, mcp__chrome-devtools__list_console_messages, mcp__chrome-devtools__get_console_message, mcp__chrome-devtools__list_network_requests, mcp__chrome-devtools__get_network_request, mcp__chrome-devtools__click, mcp__chrome-devtools__fill, mcp__chrome-devtools__fill_form, mcp__chrome-devtools__hover, mcp__chrome-devtools__press_key, mcp__chrome-devtools__type_text, mcp__chrome-devtools__wait_for, mcp__chrome-devtools__handle_dialog, mcp__chrome-devtools__resize_page, mcp__chrome-devtools__get_css_styles]
     timeout: 2h
@@ -43,3 +43,4 @@ steps:
     name: Draft PR into the base branch
     prompt: "Hand off the design of: {{task}}. Follow the design system's lifecycle and storage pages for ownership and evidence; verify the sealed head and open the draft PR with needs-design. The author already owns the mockup and README handoff; make no content changes here. Independent design review remains pending."
     skill: xezar-handoff-draft-pr
+    timeout: 15m

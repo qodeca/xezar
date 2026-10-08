@@ -45,3 +45,4 @@ steps:
     name: Draft PR into the base branch
     prompt: "Hand off the localisation work for: {{task}}. Verify the sealed head and open the draft PR; make no content changes here. The body says which locales changed, which strings are machine drafts awaiting a fluent reviewer, which text must not ship on a draft, and what the browser or output check showed."
     skill: xezar-handoff-draft-pr
+    timeout: 15m

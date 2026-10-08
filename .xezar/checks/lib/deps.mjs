@@ -9,8 +9,13 @@
 //   deps.mjs fingerprint --root <dir>   one digest over every unit's inputs
 //   deps.mjs stamp       --root <dir>   record every unit as installed for this task
 //   deps.mjs fresh       --root <dir>   exit 0 when every stamp matches and every install is this task's own
+//                                       (the tree digest gives up after XEZ_DEPS_DIGEST_TIMEOUT_MS, default
+//                                       60000, and a digest that gave up is not fresh)
 //   deps.mjs resolve     --root <dir>   exit 0 when every install is this task's own; problems on stderr
 //   deps.mjs versions    --root <dir>   the unit tools' versions as JSON, for the gate record
+//   deps.mjs single-contents --root <dir>  a single npm root only: the tree digest of its
+//                                       node_modules, the stamp file left out; "unavailable" and
+//                                       exit 1 when it cannot be taken (lib/common.sh stamps it)
 //
 // WHERE THE UNITS COME FROM. `dependencies.units` in `.xezar/pipeline/config.json`, read from the
 // BASE BRANCH (`origin/<remote default>`), the way `route.mjs` reads routing: what gets installed
@@ -19,14 +24,18 @@
 // root the kit always had, and `lib/common.sh` then takes its old path unchanged.
 //
 // WHAT IS INSTALLED. The install map below, as argv arrays run with `spawnSync` and never through
-// a shell. npm: `npm ci`. Yarn 1 only, checked per unit: Yarn 2 or later is refused by name, since
+// a shell – with one exception on native Windows, where npm and Yarn are `.cmd` shims that only
+// cmd.exe starts: there `start()` runs them through cmd.exe with every argument and the shim's path
+// checked first, and never searches the unit's folder for a program (lib/windows-programs.mjs,
+// #122). npm: `npm ci`. Yarn 1 only, checked per unit: Yarn 2 or later is refused by name, since
 // its flags, lockfile and install layout are different tools. dotnet: `restore <entry>`, with
 // `--locked-mode` when a project carries `packages.lock.json`. Lifecycle scripts run, as `npm ci`
 // always did here (DECISIONS.md -> "Dependency units").
 //
 // WHAT "FRESH" MEANS. A stamp per unit under `.local/xezar/cache/deps/`, holding the unit's input
-// fingerprint, this task's own path and the identity of the installed tree (a nonce written into
-// node_modules at stamp time, plus that folder's inode), AND a proof that the install on disk is this task's own:
+// fingerprint, this task's own path, the identity of the installed tree (a nonce written into
+// node_modules at stamp time, plus that folder's inode) and a metadata digest of everything in it
+// (#53), AND a proof that the install on disk is this task's own:
 // a worktree sits inside the primary checkout, and an install borrowed from an ancestor silently
 // judges another checkout (#286). A unit that cannot be found is a failure, never a skip.
 //
@@ -36,7 +45,9 @@ import { createHash, randomBytes } from "node:crypto";
 import { execFileSync, spawnSync } from "node:child_process";
 import { accessSync, constants, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { delimiter, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, delimiter, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+
+const WINDOWS = process.platform === "win32" ? await import("./windows-programs.mjs") : null;
 
 const CONFIG = ".xezar/pipeline/config.json";
 const STAMPS = ".local/xezar/cache/deps";
@@ -66,17 +77,31 @@ function safeParents(base, rel) {
   }
 }
 
+// Every unit tool starts here. Off Windows: spawnSync, as it always did. On native Windows the tool
+// is looked up on PATH as Windows names it (npm.cmd, yarn.cmd, dotnet.exe; an absolute path is
+// kept) and started by that full path, a .cmd through cmd.exe (launchFor); a tool that is not
+// found answers as spawnSync does, with an ENOENT error, and is never started by its bare name,
+// which Windows would look for in the unit's folder first.
+function start(tool, args, options = {}) {
+  if (!WINDOWS) return spawnSync(tool, args, options);
+  const plan = WINDOWS.launchFor(tool, args, { env: options.env ?? process.env, cwd: options.cwd });
+  if (plan.error) return { status: null, error: plan.error };
+  return spawnSync(plan.file, plan.args, { ...options, ...plan.options });
+}
+
 // The first line a tool prints for `--version`, or "unknown". Run in the unit's folder: Yarn 1
 // honours a `.yarnrc` there, and dotnet a `global.json`.
 function version(tool, cwd) {
   if (!tool) return "unknown";
-  const r = spawnSync(tool, ["--version"], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 30000 });
+  const r = start(tool, ["--version"], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 30000 });
   return r.status === 0 && r.stdout.trim() ? r.stdout.trim().split("\n")[0].trim() : "unknown";
 }
 
 // dotnet is often installed off PATH (`dotnet-install.sh` puts it in ~/.dotnet). Both fallbacks
-// are absolute paths outside the repository, never a repository-local binary.
+// are absolute paths outside the repository, never a repository-local binary. On Windows it is
+// dotnet.exe, found the same way, in the same order.
 function dotnetBin() {
+  if (WINDOWS) return WINDOWS.findProgram("dotnet", { extraDirs: [process.env.DOTNET_ROOT, join(homedir(), ".dotnet")] });
   for (const dir of (process.env.PATH ?? "").split(delimiter)) {
     if (dir && isAbsolute(dir) && executable(join(dir, "dotnet"))) return join(dir, "dotnet");
   }
@@ -186,19 +211,29 @@ function nodePin(root) {
   return m ? { kind: "major", major: Number(m[1]) } : { kind: "alias", raw };
 }
 
-const nvmVersions = () => join(process.env.NVM_DIR || join(homedir(), ".nvm"), "versions", "node");
+// The folders nvm keeps Node versions in, searched in this order: nvm-windows' %NVM_HOME%, whose
+// version folder holds node.exe itself (only when NVM_HOME is an absolute path, #122), then nvm's
+// $NVM_DIR/versions/node, whose version folder holds bin/node.
+// NVM_HOME is read on every OS so the Linux gate proves the nvm-windows layout; only nvm-windows sets it.
+const nvmRoots = () => [
+  ...(process.env.NVM_HOME && isAbsolute(process.env.NVM_HOME) ? [{ dir: process.env.NVM_HOME, bin: "" }] : []),
+  { dir: join(process.env.NVM_DIR || join(homedir(), ".nvm"), "versions", "node"), bin: "bin" },
+];
 
-// The numerically newest installed v<major>.x.y (v22.10.0 beats v22.9.0), already on disk.
+// The numerically newest installed v<major>.x.y (v22.10.0 beats v22.9.0), already on disk: the
+// folder that holds its executable node (or node.exe), from the first root that has one.
 function nvmBin(major) {
-  let names = [];
-  try { names = readdirSync(nvmVersions()); } catch { return null; }
-  const found = names
-    .map((name) => /^v(\d+)\.(\d+)\.(\d+)$/.exec(name))
-    .filter((m) => m && Number(m[1]) === major)
-    .sort((a, b) => Number(b[2]) - Number(a[2]) || Number(b[3]) - Number(a[3]));
-  for (const m of found) {
-    const bin = join(nvmVersions(), m[0], "bin");
-    if (executable(join(bin, "node"))) return bin;
+  for (const root of nvmRoots()) {
+    let names = [];
+    try { names = readdirSync(root.dir); } catch { continue; }
+    const found = names
+      .map((name) => /^v(\d+)\.(\d+)\.(\d+)$/.exec(name))
+      .filter((m) => m && Number(m[1]) === major)
+      .sort((a, b) => Number(b[2]) - Number(a[2]) || Number(b[3]) - Number(a[3]));
+    for (const m of found) {
+      const bin = join(root.dir, m[0], root.bin);
+      if (executable(join(bin, "node")) || executable(join(bin, "node.exe"))) return bin;
+    }
   }
   return null;
 }
@@ -348,7 +383,110 @@ const writeTreeId = (root, u) => {
   rmSync(file, { force: true });
   writeFileSync(file, `${randomBytes(16).toString("hex")}\n`, { flag: "wx" });
 };
-const stampContent = (root, u, fp) => `${fp}\ntask=${join(root, u.dir)}\n${u.provider === "dotnet" ? "" : `tree=${treeId(root, u)}\n`}`;
+
+// What is IN the tree (#53). The nonce and the inode catch a node_modules replaced wholesale, not a
+// package folder swapped or a file edited inside it. So the stamp also carries a digest over every
+// entry's metadata: its path, type and inode, a link's target, and a file's size, mtime and ctime.
+// Metadata, not content: hashing every byte of a large monorepo's installs costs minutes, a stat
+// walk costs seconds, and a changed file changes its ctime whatever else is forged.
+//
+// Two exceptions, both closed:
+//   - a build cache the gates themselves write (a folder below, directly inside any node_modules)
+//     is left out, but only while it holds no package.json, no `.bin` and no link, so nothing in it
+//     can act as a package or an executable. A cache that does hold one is digested like the rest;
+//   - a link anywhere in the tree that points into a cache left out is refused: that would make a
+//     skipped folder reachable as a package.
+// A tree that cannot be read is refused, never skipped, and so is a walk slower than the timeout.
+// None of this stops a writer inside the task who can run `deps.mjs stamp`: it re-stamps whatever
+// tree is there. The stamp tells an honest run its install is unchanged; it is not a seal.
+const SINGLE_STAMP = ".xezar-deps-stamp";
+// `.tmp` is where TypeScript's `tsc -b` writes its build info in every create-vite TS template
+// (`tsBuildInfoFile: ./node_modules/.tmp/...`), and `.astro` is Astro's default `cacheDir`.
+const BUILD_CACHES = new Set([".cache", ".vite", ".vite-temp", ".vitest", ".tmp", ".astro"]);
+const DIGEST_TIMEOUT_MS = (() => {
+  const raw = process.env.XEZ_DEPS_DIGEST_TIMEOUT_MS;
+  return raw !== undefined && /^\d{1,9}$/.test(raw) ? Number(raw) : 60000;
+})();
+
+class Unavailable extends Error {}
+
+// true when nothing under `dir` could act as a package or an executable.
+function inertCache(dir, deadline) {
+  const stack = [dir];
+  while (stack.length) {
+    if (Date.now() >= deadline) throw new Unavailable(`the digest timed out after ${DIGEST_TIMEOUT_MS} ms (XEZ_DEPS_DIGEST_TIMEOUT_MS)`);
+    const d = stack.pop();
+    let entries;
+    try { entries = readdirSync(d, { withFileTypes: true }); } catch (e) { throw new Unavailable(`${d} cannot be read (${e.code})`); }
+    for (const e of entries) {
+      if (e.isSymbolicLink() || e.name === ".bin" || e.name === "package.json") return false;
+      if (e.isDirectory()) stack.push(join(d, e.name));
+    }
+  }
+  return true;
+}
+
+// `skipTop` names one entry directly inside `nm` that is left out: the single npm root's own stamp
+// file, which lives in node_modules and is written after the digest.
+function treeDigest(nm, skipTop = null) {
+  const deadline = Date.now() + DIGEST_TIMEOUT_MS;
+  const hash = createHash("sha256");
+  const caches = [];
+  const links = [];
+  const walk = (dir, rel) => {
+    if (Date.now() >= deadline) throw new Unavailable(`the digest timed out after ${DIGEST_TIMEOUT_MS} ms (XEZ_DEPS_DIGEST_TIMEOUT_MS)`);
+    let names;
+    try { names = readdirSync(dir); } catch (e) { throw new Unavailable(`${dir} cannot be read (${e.code})`); }
+    names.sort();
+    for (const name of names) {
+      if (!rel && name === skipTop) continue;
+      const p = join(dir, name);
+      const r = rel ? `${rel}/${name}` : name;
+      let st;
+      try { st = lstatSync(p); } catch (e) { throw new Unavailable(`${p} cannot be read (${e.code})`); }
+      if (st.isDirectory() && BUILD_CACHES.has(name) && basename(dir) === "node_modules" && inertCache(p, deadline)) {
+        caches.push(p);
+        continue;
+      }
+      if (st.isSymbolicLink()) {
+        let to;
+        try { to = readlinkSync(p); } catch (e) { throw new Unavailable(`${p} cannot be read (${e.code})`); }
+        links.push([p, resolve(dir, to)]);
+        hash.update(`${r}\0l\0${st.ino}\0${to}\n`);
+      } else if (st.isDirectory()) {
+        hash.update(`${r}\0d\0${st.ino}\n`);
+        walk(p, r);
+      } else if (st.isFile()) {
+        hash.update(`${r}\0f\0${st.ino}\0${st.size}\0${st.mtimeMs}\0${st.ctimeMs}\n`);
+      } else {
+        hash.update(`${r}\0o\0${st.ino}\0${st.mode}\n`);
+      }
+    }
+  };
+  walk(nm, "");
+  // Both the link's own path and its canonical target: a cache reached through a second link is
+  // still a cache.
+  const within = (p, c) => p === c || p.startsWith(c + sep);
+  const cacheKeys = caches.flatMap((c) => [c, real(c)]).filter(Boolean);
+  for (const [link, first] of links) {
+    const hit = cacheKeys.find((c) => [first, real(link)].some((t) => t && within(t, c)));
+    if (hit) throw new Unavailable(`${relative(nm, link)} links into the build cache ${relative(nm, hit)}, which the digest leaves out`);
+  }
+  return hash.digest("hex");
+}
+
+// The digest line of a Node unit's stamp, or the reason there is none.
+const contents = (root, u) => {
+  const nm = join(root, u.dir, "node_modules");
+  if (!lstat(nm)?.isDirectory()) return { line: "none" };
+  try { return { line: treeDigest(nm) }; } catch (e) {
+    if (!(e instanceof Unavailable)) throw e;
+    return { line: "unavailable", why: `${u.dir}: ${e.message}` };
+  }
+};
+
+const stampContent = (root, u, fp, digest) =>
+  `${fp}\ntask=${join(root, u.dir)}\n${u.provider === "dotnet" ? "" : `tree=${treeId(root, u)}\ncontents=${digest}\n`}`;
 const stampRel = (u) => `${STAMPS}/${u.slug}`;
 
 // --- is this install the task's own ---------------------------------------------------------
@@ -446,7 +584,7 @@ function resolveNode(root, u, problems) {
 // --no-restore, so a borrowed one would judge another checkout).
 function resolveDotnet(root, u, problems) {
   for (const file of dotnetProjects(root, u)) {
-    const proj = relative(root, file);
+    const proj = relative(root, file).split(sep).join("/"); // "/" for safeParents and messages on Windows (#122)
     if (!file.startsWith(root + sep)) { problems.push(`  ${u.dir}/${u.entry} lists ${file}, outside this task`); continue; }
     try { safeParents(root, proj); } catch (e) { problems.push(`  ${proj}: ${e.message}`); continue; }
     if (!isFile(file)) { problems.push(`  ${proj}: listed in ${u.dir}/${u.entry} but not found`); continue; }
@@ -493,7 +631,7 @@ function cmdInstall(root, units) {
     if (!plan.tool) throw new Refusal(`${u.dir}: dotnet is not on PATH, nor at $DOTNET_ROOT or ~/.dotnet`);
     const shown = `${u.provider === "dotnet" ? "dotnet" : plan.tool} ${plan.args.join(" ")}`;
     console.log(`  deps          installing ${u.dir} (${shown})`);
-    const r = spawnSync(plan.tool, plan.args, { cwd: join(root, u.dir), stdio: "inherit", env: { ...process.env, ...plan.env } });
+    const r = start(plan.tool, plan.args, { cwd: join(root, u.dir), stdio: "inherit", env: { ...process.env, ...plan.env } });
     if (r.error || r.status !== 0) {
       console.error(`deps-restore: ${shown} failed in ${u.dir}${r.error ? ` (${r.error.message})` : ` (exit ${r.status})`}`);
       return 1;
@@ -509,11 +647,11 @@ function cmdTools(root, units) {
   console.log(`${pad("node")}${process.version}`);
   if (pin.kind === "alias") console.log(`${pad("node pin")}.nvmrc holds "${pin.raw}", which is not a version number, so no Node is pinned here`);
   if (pin.kind === "major" && nodeMajor() !== pin.major) {
-    console.error(`node ${process.version} is on PATH, but this repository pins Node ${pin.major} (.nvmrc), and no Node ${pin.major} was found under ${nvmVersions()}. Install Node ${pin.major} (nvm is one way: nvm install ${pin.major}) or start the session under it.`);
+    console.error(`node ${process.version} is on PATH, but this repository pins Node ${pin.major} (.nvmrc), and no Node ${pin.major} was found under ${nvmRoots().map((r) => r.dir).join(" or ")}. Install Node ${pin.major} (nvm is one way: nvm install ${pin.major}) or start the session under it.`);
     return 1;
   }
-  if (needsNode && pin.kind !== "major" && nodeMajor() < 20) {
-    console.error(`node ${process.version} is below the required 20`);
+  if (needsNode && pin.kind !== "major" && nodeMajor() < 22) {
+    console.error(`node ${process.version} is below the required 22`);
     return 1;
   }
   const providers = [...new Set(units.map((u) => u.provider))];
@@ -556,6 +694,19 @@ function main() {
     }
     return 0;
   }
+  // A single npm root (no units): the same #53 digest over its one node_modules, so a package
+  // changed after install is stale there too. lib/common.sh writes and compares the stamp.
+  if (command === "single-contents") {
+    if (units) { console.error("deps: dependency units are configured; single-contents is for a single npm root"); return 2; }
+    const nm = join(root, "node_modules");
+    if (!lstat(nm)?.isDirectory()) { console.log("none"); return 0; }
+    try { console.log(treeDigest(nm, SINGLE_STAMP)); return 0; } catch (e) {
+      if (!(e instanceof Unavailable)) throw e;
+      console.error(`deps: ${e.message}`);
+      console.log("unavailable");
+      return 1;
+    }
+  }
   if (!units) { console.error("deps: no dependency units are configured (dependencies.units on the base branch)"); return 2; }
   switch (command) {
     case "units":
@@ -575,14 +726,26 @@ function main() {
         mkdirSync(dirname(file), { recursive: true });
         rmSync(file, { force: true });
         writeTreeId(root, u);
-        writeFileSync(file, stampContent(root, u, unitFingerprint(root, u)), { flag: "wx" });
+        const digest = u.provider === "dotnet" ? { line: "" } : contents(root, u);
+        // A tree with no digest is stamped as such, and `fresh` never accepts that stamp: the
+        // next --fast run installs again rather than trusting a tree nobody could read.
+        if (digest.why) console.error(`deps: ${digest.why}; stamped as not fresh, so the next run installs again`);
+        writeFileSync(file, stampContent(root, u, unitFingerprint(root, u), digest.line), { flag: "wx" });
       }
       return 0;
     case "fresh":
       for (const u of units) {
         safeParents(root, stampRel(u));
         const file = join(root, stampRel(u));
-        if (!isFile(file) || readFileSync(file, "utf8") !== stampContent(root, u, unitFingerprint(root, u))) return 1;
+        if (!isFile(file)) return 1;
+        const stamp = readFileSync(file, "utf8");
+        const fp = unitFingerprint(root, u);
+        // The cheap lines first, so a stale input never pays for the walk.
+        if (!stamp.startsWith(stampContent(root, u, fp, "").replace(/contents=\n$/, ""))) return 1;
+        if (u.provider === "dotnet") { if (stamp !== stampContent(root, u, fp, "")) return 1; continue; }
+        const digest = contents(root, u);
+        if (digest.why) { console.error(`deps: ${digest.why}, so the installed tree is not fresh`); return 1; }
+        if (digest.line === "unavailable" || stamp !== stampContent(root, u, fp, digest.line)) return 1;
       }
       return resolveAll(root, units).length === 0 ? 0 : 1;
     case "resolve": {

@@ -164,7 +164,7 @@ if [ "$IS_WORKTREE" -eq 1 ]; then
     if [ ! -d "$MAIN_ROOT/.git/worktrees/$leaf" ]; then
       fail isolation.worktree-registered "git has no worktree registration at .git/worktrees/$leaf — the tree is unregistered or stale"
     fi
-    if ! git -C "$MAIN_ROOT" worktree list --porcelain 2>/dev/null | grep -qxF "worktree $TASK_CWD"; then
+    if ! worktree_is_listed "$TASK_CWD" "$MAIN_ROOT"; then
       fail isolation.worktree-listed "git worktree list does not report $TASK_CWD — refusing to work in an unregistered tree"
     fi
 
@@ -306,7 +306,7 @@ fi
 # directory that does not exist yet — which is precisely the moment before a run creates it.
 for ignored in .local/xezar/probe node_modules/probe dist/probe coverage/probe \
                .local/xezar/scratch/probe .local/xezar/worktrees/probe \
-               .local/xezar/runtime/runs.json .local/xezar/runtime/ui-state.json; do
+               .local/xezar/runs.json .local/xezar/ui-state.json; do
   if ! git -C "$TASK_CWD" check-ignore -q "$ignored" 2>/dev/null; then
     fail ignore.hygiene "\"${ignored%/probe}\" is not git-ignored — autosave would commit scratch, runtime or build output"
   fi
@@ -405,15 +405,13 @@ if [ "$MODE" = "readiness" ] || [ "$MODE" = "record-gate-evidence" ] || [ "$MODE
   # findings are. An absent record keeps the refusal — the default is still "an empty branch is not
   # work". A record that does not name a real commit refuses too. BLOCKED is checked first and wins.
   #
-  # A second, related kind is honestly commitless for the opposite reason: a fix that correctly
-  # landed on a DIFFERENT branch (#402). `address-review-findings` runs a fresh worktree on a fresh
-  # task branch, but `xezar-review-response` pushes the fix to the PR's own branch on purpose — it
-  # must not rename or adopt a task branch. Run `ba255b58` did exactly this (commit `b38e835` on
-  # `xez/939d7d68`) and still failed here, because this predicate only knew about VERIFICATION. A
-  # DELIVERED record, same directory, same shape, one field swapped ("head/base" for "delivered",
-  # instead of "verified"): the branch it landed on, the commit now at its tip, and the commit that
-  # branch was at before this run. Accepted only when that branch really carries that head, and that
-  # head really descends from that base — a record naming an unrelated pair of shas proves nothing.
+  # A DELIVERED record used to be a second commitless kind (#402): `xezar-review-response` pushed
+  # the fix to the PR's own branch from inside the agent step, before any gate, and recorded the
+  # push here. The gates then ran on this run's own unchanged branch – a no-op – so ungated code
+  # reached the PR. That path is retired (#54): the repair moves this run's own branch onto the PR
+  # head and commits there, so the branch has commits of its own, the gates and the seal judge the
+  # real fix, and the handoff pushes the sealed commit through `push-check.sh`. A DELIVERED record
+  # now refuses, and names that path.
   empty_base=""
   checked_bases=0
   if [ -z "${HEAD_SHA:-}" ]; then
@@ -449,42 +447,9 @@ if [ "$MODE" = "readiness" ] || [ "$MODE" = "record-gate-evidence" ] || [ "$MODE
           info "findings      $verified_findings"
         fi
       elif [ -n "$delivery_record" ] && [ -f "$delivery_record" ]; then
-        delivered_branch="$(sed -n 's/^branch:[[:space:]]*\(.*[^[:space:]]\)[[:space:]]*$/\1/p' "$delivery_record" | head -n 1)"
-        delivered_head="$(sed -n 's/^head:[[:space:]]*\([0-9a-fA-F]\{40\}\)[[:space:]]*$/\1/p' "$delivery_record" | head -n 1)"
-        delivered_base="$(sed -n 's/^base:[[:space:]]*\([0-9a-fA-F]\{40\}\)[[:space:]]*$/\1/p' "$delivery_record" | head -n 1)"
-        if [ -z "$delivered_branch" ]; then
-          fail scope.delivery-record "branch \"$BRANCH\" has no commits over its base, and its DELIVERED record ($delivery_record) has no \"branch: <name>\" line naming the branch the fix was pushed to."
-        elif [ -z "$delivered_head" ]; then
-          fail scope.delivery-record "branch \"$BRANCH\" has no commits over its base, and its DELIVERED record ($delivery_record) has no \"head: <full 40-character commit sha>\" line."
-        elif [ -z "$delivered_base" ]; then
-          fail scope.delivery-record "branch \"$BRANCH\" has no commits over its base, and its DELIVERED record ($delivery_record) has no \"base: <full 40-character commit sha>\" line."
-        elif ! git -C "$TASK_CWD" cat-file -e "$delivered_head^{commit}" 2>/dev/null; then
-          fail scope.delivery-record "branch \"$BRANCH\" has no commits over its base, and its DELIVERED record names head $delivered_head, which is not a commit in this repository. Fetch the revision you pushed, or correct the record."
-        elif ! git -C "$TASK_CWD" cat-file -e "$delivered_base^{commit}" 2>/dev/null; then
-          fail scope.delivery-record "branch \"$BRANCH\" has no commits over its base, and its DELIVERED record names base $delivered_base, which is not a commit in this repository."
-        else
-          # `refs/heads/$delivered_branch` and `refs/remotes/origin/$delivered_branch` are both
-          # writable by the very agent this check exists to hold accountable: `git commit-tree`
-          # plus `git update-ref` manufactures either one without a single byte reaching the
-          # network (#416 review). Only a LIVE query against the remote proves a push happened, so
-          # the local and remote-tracking refs are no longer consulted at all — a stale or absent
-          # remote branch now refuses exactly like a missing record would.
-          remote_tip="$(git -C "$TASK_CWD" ls-remote origin "refs/heads/$delivered_branch" 2>/dev/null | awk '{print $1}' | head -n 1)"
-          if [ -z "$remote_tip" ]; then
-            fail scope.delivery-record "branch \"$BRANCH\" has no commits over its base, and its DELIVERED record names branch \"$delivered_branch\", but a live \"git ls-remote origin refs/heads/$delivered_branch\" returned nothing — the branch does not exist on the remote, or the remote could not be reached. A local branch or remote-tracking ref is never accepted as proof of a push; push the branch, then correct or re-check the record."
-          elif [ "$remote_tip" != "$delivered_head" ]; then
-            fail scope.delivery-record "branch \"$BRANCH\" has no commits over its base, and its DELIVERED record names head $delivered_head on branch \"$delivered_branch\", but origin's LIVE tip for refs/heads/$delivered_branch is $remote_tip right now. The recorded head was never actually pushed there, or has since been superseded — fetch is not proof either, since a fetch only updates a ref this agent already controls."
-          elif [ "$delivered_head" = "$delivered_base" ]; then
-            fail scope.delivery-record "branch \"$BRANCH\" has no commits over its base, and its DELIVERED record's head and base are the same commit ($delivered_head) — no new commits were delivered."
-          elif ! git -C "$TASK_CWD" merge-base --is-ancestor "$delivered_base" "$delivered_head" 2>/dev/null; then
-            fail scope.delivery-record "branch \"$BRANCH\" has no commits over its base, and its DELIVERED record's head $delivered_head is not a descendant of its recorded base $delivered_base — that is not a fix delivered over the reviewed head."
-          else
-            info "own commits   none — delivered to origin/$delivered_branch instead, by its DELIVERED record"
-            info "delivered     $delivered_head (over $delivered_base), verified live against origin"
-          fi
-        fi
+        fail scope.delivery-record "branch \"$BRANCH\" has no commits over its base, and this run wrote a DELIVERED record ($delivery_record). That path is retired (#54): a repair no longer pushes before the gates. Move this run's own branch onto the PR head (git fetch origin <head branch>, then git switch -C $BRANCH FETCH_HEAD), commit the fix there, and let readiness, the gates and the seal run on it; the handoff then pushes the sealed commit through .xezar/checks/push-check.sh."
       else
-        fail branch.has-own-commits "branch \"$BRANCH\" has no commits over its base — HEAD ${HEAD_SHA:0:12} is already contained in $empty_base. There is no work here to gate, seal or hand off. If the author step stopped for a decision, it must write the task's BLOCKED file. If this run only verifies a revision that already exists and was never asked to change source (QA of another branch, an acceptance re-run), record that in ${evidence_dir:-the task evidence directory}/VERIFICATION with a \"verified: <commit sha>\" line and a \"findings: <where the result is posted>\" line. If this run's fix correctly landed on a different branch than this one (address-review-findings pushing to the PR's own branch), record that in ${evidence_dir:-the task evidence directory}/DELIVERED with a \"branch: <name>\" line, a \"head: <commit sha now at that branch's tip>\" line and a \"base: <commit sha it was at before this run>\" line. A run that was asked to change source on its own branch must not write either record."
+        fail branch.has-own-commits "branch \"$BRANCH\" has no commits over its base — HEAD ${HEAD_SHA:0:12} is already contained in $empty_base. There is no work here to gate, seal or hand off. If the author step stopped for a decision, it must write the task's BLOCKED file. If this run only verifies a revision that already exists and was never asked to change source (QA of another branch, an acceptance re-run), record that in ${evidence_dir:-the task evidence directory}/VERIFICATION with a \"verified: <commit sha>\" line and a \"findings: <where the result is posted>\" line. A repair of an existing PR moves this branch onto the PR head and commits there; it never pushes before the gates. A run that was asked to change source on its own branch must not write a VERIFICATION record."
       fi
     fi
   fi

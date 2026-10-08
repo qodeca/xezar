@@ -37,3 +37,4 @@ steps:
     name: Draft PR into the base branch
     prompt: "Hand off the fix for: {{task}}"
     skill: xezar-handoff-draft-pr
+    timeout: 15m

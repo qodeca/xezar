@@ -25,6 +25,7 @@ routing itself is data, not a document: `.xezar/routing.json`, read through `.xe
 | `parallel-tasks.md` | How to decide whether to fan work out at all, and why the gate tail is a queue even when the tasks are not. The numeric ceilings are in `.xezar/loops.json`, not here. |
 | `account-limits.md` | How to read each login's budget with `read_quota`, how to probe a login still `unknown`, and how to recover a lane that is out. |
 | `recovery.md` | What to do when a task, a merge or a session fails part-way. |
+| `local-patches.md` | How a deliberate edit to a kit file is recorded in `.xezar/LOCAL-PATCHES.md` and the manifest, so the drift check and the next upgrade keep it. |
 | `phase-record.md` | What each phase of a task writes down, and where. |
 | `close-out.md` | How a campaign ends and what has to be true before it does. |
 

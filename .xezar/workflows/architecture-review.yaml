@@ -1,8 +1,15 @@
 # Reviews a plan, a spec or a PR against this project's accepted architecture decisions.
 # Read-only like design-review: no setup, no gates, no commits. The verdict is posted with `gh`
 # as a comment headed "## Architecture review", never written into the tree.
+# Since D13 (DECISIONS.md) the review step may RUN the change – check the PR head out, install,
+# run the tests and a dev server – through `review-run.sh`, and use every chrome-devtools tool.
+# It still holds no Edit or Write and no git or gh command that commits or pushes, and its verdict
+# is refused (`verdict-write.sh` runs `review-run.sh finish`) when HEAD or a tracked file changed.
+# Its kit scripts run from the kit step's copy in .local/xezar/cache/kit/checks/, never from the tracked
+# .xezar/checks/, which the checkout replaces with the pull request's own.
+# The preflight runs strict (no `--allow-root`).
 name: architecture-review
-description: "Review a plan, spec or PR against the accepted architecture records and pages. Verdict CONFORMS / CONFORMS WITH FOLLOW-UPS / CONTRADICTS. Read-only."
+description: "Review a plan, spec or PR against the accepted architecture records and pages. Verdict CONFORMS / CONFORMS WITH FOLLOW-UPS / CONTRADICTS. Changes no tracked file."
 steps:
   - id: kit
     name: Snapshot the local project kit
@@ -10,11 +17,12 @@ steps:
     resultScope: routine
   - id: preflight
     name: Report the checkout
-    command: ".xezar/checks/worktree-preflight.sh --allow-root"
+    command: ".xezar/checks/worktree-preflight.sh"
     resultScope: routine
   - id: review
     name: Architecture review
     prompt: "Architecture review (see '## Review mode' in your skill): {{task}}. Judge the candidate against the Accepted records and the pages under paths.architecture in .xezar/pipeline/config.json, and against nothing else; where this project has recorded no decisions, say so and report only what the change would quietly decide. Own only the read-only verdict at the identified revision; the author owns every file. The launch text names the author's lane, login and vendor: report independence as confirmed, not confirmed or unknown, never confirmed without that text, and where it names you say so and stop. With no PR and no issue to comment on, the same text is your final message."
     skill: xezar-architecture
-    allowedTools: [Read, Grep, Glob, Bash]
-    bashAllowlist: ["gh pr view", "gh pr diff", "gh pr checks", "gh pr list", "gh issue view", "gh issue list", "gh label list", "gh repo view", "jq -n", "bash .xezar/checks/git-read.sh", "bash .xezar/checks/gh-write.sh", "bash .xezar/checks/verdict-write.sh", "bash .xezar/checks/phase-record.sh", "bash .xezar/checks/worktree-setup.sh --readonly-init"]
+    timeout: 2h
+    allowedTools: [Read, Grep, Glob, Bash, mcp__chrome-devtools__navigate_page, mcp__chrome-devtools__new_page, mcp__chrome-devtools__list_pages, mcp__chrome-devtools__select_page, mcp__chrome-devtools__close_page, mcp__chrome-devtools__take_snapshot, mcp__chrome-devtools__take_screenshot, mcp__chrome-devtools__list_console_messages, mcp__chrome-devtools__get_console_message, mcp__chrome-devtools__list_network_requests, mcp__chrome-devtools__get_network_request, mcp__chrome-devtools__click, mcp__chrome-devtools__fill, mcp__chrome-devtools__fill_form, mcp__chrome-devtools__hover, mcp__chrome-devtools__press_key, mcp__chrome-devtools__type_text, mcp__chrome-devtools__wait_for, mcp__chrome-devtools__handle_dialog, mcp__chrome-devtools__resize_page, mcp__chrome-devtools__get_css_styles, mcp__chrome-devtools__emulate, mcp__chrome-devtools__evaluate_script, mcp__chrome-devtools__upload_file, mcp__chrome-devtools__drag, mcp__chrome-devtools__performance_start_trace, mcp__chrome-devtools__performance_stop_trace, mcp__chrome-devtools__performance_analyze_insight, mcp__chrome-devtools__take_heapsnapshot, mcp__chrome-devtools__lighthouse_audit]
+    bashAllowlist: ["gh pr view", "gh pr diff", "gh pr checks", "gh pr list", "gh issue view", "gh issue list", "gh label list", "gh repo view", "jq -n", "bash .local/xezar/cache/kit/checks/git-read.sh", "bash .local/xezar/cache/kit/checks/gh-write.sh", "bash .local/xezar/cache/kit/checks/verdict-write.sh", "bash .local/xezar/cache/kit/checks/phase-record.sh", "bash .local/xezar/cache/kit/checks/worktree-setup.sh --readonly-init", "bash .local/xezar/cache/kit/checks/review-run.sh"]

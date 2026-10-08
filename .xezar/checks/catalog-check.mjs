@@ -20,6 +20,9 @@
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { basename, join } from "node:path";
 
+// Every file is read with LF line endings, so a CRLF checkout (core.autocrlf on Windows) parses the same (#122).
+const readText = (path) => readFileSync(path, "utf8").replace(/\r\n/g, "\n");
+
 const root = process.argv[2] ?? process.cwd();
 const workflowsDir = join(root, ".xezar/workflows");
 const skillsDir = join(root, ".xezar/skills");
@@ -175,10 +178,54 @@ const READ_ONLY_WORKFLOWS = new Set([
   "security-review",
 ]);
 
-// Steps that hold neither Edit nor Write but must RUN code – a build, a test, a dev server, a
-// browser – and so cannot live inside a prefix list. They run in their own detached worktree and
-// never touch the author's branch; that, not a shell limit, is their guarantee.
+// The review and QA workflows (D13, DECISIONS.md). Every review or QA step may RUN the change it
+// judges – check the PR head out, install, run tests and a dev server – but only through
+// `review-run.sh`, which refuses git, gh, sudo and shell wrappers and the main checkout. Each holds
+// every chrome-devtools tool and holds no Edit or Write. Its verdict is refused when HEAD or a
+// tracked file changed (`verdict-write.sh` runs `review-run.sh finish`): that check, not the shell
+// prefix list, is what keeps a review a review. It is not a trailing check step, which would
+// silence XEZ:ASK and XEZ:DONE for the whole run.
+const REVIEW_WORKFLOWS = new Set([
+  "acceptance-verification",
+  "architecture-review",
+  "code-review",
+  "design-review",
+  "qa",
+  "security-review",
+]);
+// The review workflows whose routing rows say `runsCode: true` (routing.json): they build and run
+// the change as their job, not only on a pull request that needs it. test-kit-catalog.mjs binds
+// the rows to this list.
 const RUNS_CODE_WORKFLOWS = new Set(["acceptance-verification", "design-review", "qa"]);
+// A review step checks the PR head out, which replaces the tracked `.xezar/checks/` with that head's
+// own copies – old, missing or changed by the PR. So it runs every kit script from the kit step's
+// copy outside the tracked tree (review-run.sh, "Which copy runs"), and a
+// `bash .xezar/checks/` entry in its allowlist is refused: that would run the PR's script.
+const TRUSTED_CHECKS = ".local/xezar/cache/kit/checks";
+const trusted = (entry) => entry.replace(/^bash \.xezar\/checks\//, `bash ${TRUSTED_CHECKS}/`);
+const REVIEW_BASH_PREFIXES = new Set([...READER_BASH_PREFIXES].map(trusted));
+const REVIEW_RUN_PREFIX = `bash ${TRUSTED_CHECKS}/review-run.sh`;
+
+// Every chrome-devtools tool. A review or QA step holds all of them (D13). The ones after the
+// basic set – emulate, script evaluation, uploads, drag, performance, heap and lighthouse – are
+// granted only there, in a workflow's own tool list, never in any other workflow.
+const BASIC_BROWSER_TOOLS = [
+  "navigate_page", "new_page", "list_pages", "select_page", "close_page", "take_snapshot",
+  "take_screenshot", "list_console_messages", "get_console_message", "list_network_requests",
+  "get_network_request", "click", "fill", "fill_form", "hover", "press_key", "type_text", "wait_for",
+  "handle_dialog", "resize_page", "get_css_styles",
+].map((t) => `mcp__chrome-devtools__${t}`);
+const REVIEW_ONLY_BROWSER_TOOLS = [
+  "emulate", "evaluate_script", "upload_file", "drag", "performance_start_trace",
+  "performance_stop_trace", "performance_analyze_insight", "take_heapsnapshot", "lighthouse_audit",
+].map((t) => `mcp__chrome-devtools__${t}`);
+const BROWSER_TOOLS = new Set([...BASIC_BROWSER_TOOLS, ...REVIEW_ONLY_BROWSER_TOOLS]);
+
+// The engine's step wall clock (`workflows/types.ts`, `parseStepTimeout`): a positive whole number
+// of seconds, minutes or hours, at most 2^31-1 ms. "none" means no limit, which is refused below.
+const STEP_TIMEOUT_RE = /^(\d+)(s|m|h)$/;
+const STEP_TIMEOUT_UNIT_MS = { s: 1_000, m: 60_000, h: 3_600_000 };
+const MAX_STEP_TIMEOUT_MS = 2_147_483_647;
 
 // the engine's `configSchema`.
 const CONFIG_KEYS = new Set([
@@ -324,14 +371,15 @@ function parseInlineList(value) {
 function checkReaderStep(at, workflow, step) {
   const tools = step.allowedTools;
   const writes = Array.isArray(tools) && (tools.includes("Edit") || tools.includes("Write"));
-  if (READ_ONLY_WORKFLOWS.has(workflow) && (!Array.isArray(tools) || writes || !tools.every((t) => READER_TOOLS.has(t)))) {
-    err(at, `"${workflow}" is a reading workflow: its allowedTools must be listed and hold only ${[...READER_TOOLS].join(", ")}`);
+  const review = REVIEW_WORKFLOWS.has(workflow);
+  const allowed = (t) => READER_TOOLS.has(t) || (review && BROWSER_TOOLS.has(t));
+  if ((READ_ONLY_WORKFLOWS.has(workflow) || review) && (!Array.isArray(tools) || writes || !tools.every(allowed))) {
+    err(at, `"${workflow}" is a ${review ? "review" : "reading"} workflow: its allowedTools must be listed and hold only ${[...READER_TOOLS].join(", ")}${review ? " and the chrome-devtools tools" : ""}`);
     return;
   }
   if (!Array.isArray(tools) || writes) return;
   const list = step.bashAllowlist;
   if (!Array.isArray(list) || list.length === 0) {
-    if (RUNS_CODE_WORKFLOWS.has(workflow)) return;
     err(
       at,
       "holds neither Edit nor Write, so it is a reading step, and it has no bashAllowlist – every backend still gives it a shell that can write",
@@ -339,9 +387,51 @@ function checkReaderStep(at, workflow, step) {
     return;
   }
   for (const entry of list) {
-    if (!READER_BASH_PREFIXES.has(entry)) {
-      err(at, `bashAllowlist entry "${entry}" is not a reading prefix; git goes through git-read.sh, comments and labels through gh-write.sh, files through verdict-write.sh`);
+    if (review && (entry === REVIEW_RUN_PREFIX || REVIEW_BASH_PREFIXES.has(entry))) continue;
+    if (review && /^bash \.xezar\/checks\//.test(entry) && (READER_BASH_PREFIXES.has(entry) || trusted(entry) === REVIEW_RUN_PREFIX)) {
+      err(at, `bashAllowlist entry "${entry}" runs the copy a checkout replaces with the pull request's own; a review step runs kit scripts from ${TRUSTED_CHECKS}/ ("${trusted(entry)}", D13)`);
+      continue;
     }
+    if (!(review ? REVIEW_BASH_PREFIXES : READER_BASH_PREFIXES).has(entry)) {
+      err(at, `bashAllowlist entry "${entry}" is not a reading prefix; git goes through git-read.sh, comments and labels through gh-write.sh, files through verdict-write.sh${review ? ", running the change through review-run.sh" : ""}`);
+    }
+  }
+  if (review) {
+    // The prompt is an instruction too: a review prompt that names the tracked path sends the
+    // reviewer to the script the checkout just replaced with the pull request's own.
+    if (typeof step.prompt === "string" && step.prompt.includes(".xezar/checks/")) {
+      err(at, `its prompt names ".xezar/checks/", the copy a checkout replaces with the pull request's own; a review prompt names ${TRUSTED_CHECKS}/ or leaves the path to the role skill (D13)`);
+    }
+    if (!list.includes(REVIEW_RUN_PREFIX)) {
+      err(at, `is a review or QA step without "${REVIEW_RUN_PREFIX}", so it cannot run the change it judges (D13)`);
+    }
+    const missing = [...BROWSER_TOOLS].filter((t) => !tools.includes(t));
+    if (missing.length) err(at, `is a review or QA step and lacks ${missing.join(", ")}; every review holds every chrome-devtools tool (D13)`);
+  }
+}
+
+// A review or QA workflow runs code, so its preflight runs strict (D13).
+function checkReviewWorkflow(file, workflow, steps) {
+  if (!REVIEW_WORKFLOWS.has(workflow)) return;
+  for (const step of steps) {
+    if (typeof step.command === "string" && /worktree-preflight\.sh/.test(step.command) && /--allow-root/.test(step.command)) {
+      err(`${file} step "${step.id}"`, "runs worktree-preflight.sh with --allow-root; a review or QA step runs code, so it never runs in the main checkout (D13)");
+    }
+  }
+}
+
+// Every agent step carries its own wall clock (#52). Without one, the limit is the runner's
+// default, and the last step's default is none: a `handoff` that hangs after its work is sealed
+// holds the run open until someone notices.
+function checkStepTimeout(at, step) {
+  if (step.timeout === undefined || step.timeout === "") {
+    err(at, 'an agent step has no timeout, so its limit is whatever the runner defaults to – none at all for the last step; give it one sized for the job, such as "15m" or "2h"');
+    return;
+  }
+  const m = STEP_TIMEOUT_RE.exec(step.timeout);
+  const ms = m ? Number(m[1]) * STEP_TIMEOUT_UNIT_MS[m[2]] : 0;
+  if (!(ms > 0 && ms <= MAX_STEP_TIMEOUT_MS)) {
+    err(at, `timeout "${step.timeout}" is not a positive duration such as "45s", "90m" or "2h" ("none" is no limit, which an agent step may not have)`);
   }
 }
 
@@ -356,6 +446,7 @@ function checkWorkflow(file, doc) {
 
   const ids = doc.steps.map((s) => s.id);
   const agentIndexes = [];
+  checkReviewWorkflow(file, basename(file).replace(/\.ya?ml$/, ""), doc.steps);
 
   doc.steps.forEach((step, index) => {
     const at = `${file} step "${step.id ?? `#${index + 1}`}"`;
@@ -377,6 +468,12 @@ function checkWorkflow(file, doc) {
         if (!existsSync(skillPath)) err(at, `names skill "${step.skill}", which has no file at ${skillPath}`);
       }
       checkReaderStep(at, basename(file).replace(/\.ya?ml$/, ""), step);
+      checkStepTimeout(at, step);
+    }
+    if (Array.isArray(step.allowedTools) && !REVIEW_WORKFLOWS.has(basename(file).replace(/\.ya?ml$/, ""))) {
+      for (const tool of REVIEW_ONLY_BROWSER_TOOLS) {
+        if (step.allowedTools.includes(tool)) err(at, `grants ${tool}, which only the review and QA workflows may hold (D13)`);
+      }
     }
     if (isCheck) {
       // A check step's command must be a script this repo actually ships, so a renamed or
@@ -464,7 +561,7 @@ if (!existsSync(workflowsDir)) {
     .sort();
   if (files.length === 0) err(".xezar/workflows", "no workflow files found");
   for (const file of files) {
-    const doc = parseWorkflow(readFileSync(join(workflowsDir, file), "utf8"), file);
+    const doc = parseWorkflow(readText(join(workflowsDir, file)), file);
     checkWorkflow(file, doc);
   }
   notes.push(`${files.length} workflow file(s) checked`);
@@ -473,9 +570,27 @@ if (!existsSync(workflowsDir)) {
 // A project's own Claude settings re-widen a reading step's shell: the engine removes only the
 // file tools, and a `permissions.allow` Bash rule here is added to the step's allowlist (engine
 // answer on xezar #849). So a Bash rule is allowed only when it names a reading prefix.
+//
+// Committed `.claude/settings.json` fails the check. The untracked `.claude/settings.local.json`
+// only WARNS (DECISIONS.md, "A widening rule in local settings warns"): the repository check must
+// give the same answer on every machine, and that file exists on one. The owner accepted the risk
+// that the widened rule is live on that machine.
+//
+// The browser is limited by exact tool names (FACT 23 in test-kit-facts.mjs), and `emulate`
+// and the other review-only tools are granted only by the review and QA workflows, in their own
+// tool lists (D13), never by a settings file. So a chrome-devtools grant outside this list, or one
+// that names the whole server, fails in EITHER file. It is not the workflows' browser list (D13
+// grants reviews more), so it has its own name.
+const SETTINGS_BROWSER_TOOLS = new Set([
+  "navigate_page", "new_page", "list_pages", "select_page", "close_page", "take_snapshot", "take_screenshot",
+  "list_console_messages", "get_console_message", "list_network_requests", "get_network_request", "click", "fill",
+  "fill_form", "hover", "press_key", "type_text", "wait_for", "handle_dialog", "resize_page", "get_css_styles",
+]);
+const warnings = [];
 for (const name of ["settings.json", "settings.local.json"]) {
   const path = join(root, ".claude", name);
   if (!existsSync(path)) continue;
+  const committed = name === "settings.json";
   let allow;
   try {
     allow = JSON.parse(readFileSync(path, "utf8"))?.permissions?.allow;
@@ -489,10 +604,21 @@ for (const name of ["settings.json", "settings.local.json"]) {
     continue;
   }
   for (const rule of allow) {
-    if (typeof rule !== "string" || !/^Bash\b/.test(rule)) continue;
+    if (typeof rule !== "string") continue;
+    if (/^mcp__(chrome-devtools(__|$)|\*)/.test(rule)) {
+      const tool = /^mcp__chrome-devtools__([a-z_]+)$/.exec(rule)?.[1];
+      if (!tool || !SETTINGS_BROWSER_TOOLS.has(tool)) {
+        err(`.claude/${name}`, `permissions.allow has "${rule}", a browser grant outside the allowed chrome-devtools tools or one naming the whole server; list only exact allowed tool names (emulate, evaluate_script and the other review-only tools are granted by the review and QA workflows, never by a settings file)`);
+      }
+      continue;
+    }
+    if (!/^Bash\b/.test(rule)) continue;
     const prefix = /^Bash\((.+?)(?::\*|\s\*)?\)$/.exec(rule)?.[1];
-    if (!prefix || !READER_BASH_PREFIXES.has(prefix)) {
-      err(`.claude/${name}`, `permissions.allow has "${rule}", which widens every reading step's shell; allow only a reading prefix here`);
+    if (prefix && READER_BASH_PREFIXES.has(prefix)) continue;
+    if (committed) {
+      err(`.claude/${name}`, `permissions.allow has "${rule}", which widens every reading step's shell; allow only a reading prefix here. A rule only the leader needs belongs in scripts/xezar-leader-settings.json, which only the launcher loads`);
+    } else {
+      warnings.push(`.claude/${name}: permissions.allow has "${rule}", which widens every reading step's shell on this machine. This file is not committed, so the repository check does not fail on it, but the rule is live for every Claude step here. Move a rule only the leader needs to scripts/xezar-leader-settings.json, or narrow it to a reading prefix`);
     }
   }
 }
@@ -504,7 +630,7 @@ for (const name of ["settings.json", "settings.local.json"]) {
 const codexRules = join(root, ".codex", "rules");
 if (existsSync(codexRules)) {
   for (const name of readdirSync(codexRules).filter((f) => f.endsWith(".rules")).sort()) {
-    const text = readFileSync(join(codexRules, name), "utf8").replace(/#.*$/gm, "");
+    const text = readText(join(codexRules, name)).replace(/#.*$/gm, "");
     const calls = text.split(/\bprefix_rule\s*\(/).slice(1);
     if (calls.length === 0 && text.trim() !== "") err(`.codex/rules/${name}`, "has no prefix_rule this check can read; write each rule as a plain prefix_rule(...) call");
     for (const call of calls) {
@@ -526,7 +652,7 @@ if (existsSync(skillsDir)) {
   const skillFiles = readdirSync(skillsDir).filter((f) => f.endsWith(".md")).sort();
   let sharedContract;
   for (const file of skillFiles) {
-    const text = readFileSync(join(skillsDir, file), "utf8");
+    const text = readText(join(skillsDir, file));
     const fm = /^---\n([\s\S]*?)\n---\n/.exec(text);
     if (!fm) {
       err(`skills/${file}`, "has no YAML frontmatter block");
@@ -718,6 +844,7 @@ if (!singleProjectMode) {
 if (!existsSync(join(checksDir, "repo-gates.sh"))) err(".xezar/checks", "repo-gates.sh is missing");
 
 for (const note of notes) process.stdout.write(`  ${note}\n`);
+for (const line of warnings) process.stdout.write(`  WARNING ${line}\n`);
 if (errors.length > 0) {
   process.stdout.write(`\nCATALOG CHECK FAILED (${errors.length}):\n`);
   for (const line of errors) process.stdout.write(`  - ${line}\n`);

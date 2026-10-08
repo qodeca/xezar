@@ -9,7 +9,7 @@
       "mechanism": "cron",
       "schedule": "*/10 * * * *",
       "mayDispatch": false,
-      "prompt": "Check whether anything is waiting on you: a task in a blocked or question state, a review verdict you have not acted on, a PR that is mergeable now, or a finished task whose result you have not read. Act on what you find, one item at a time. Never start new work here - that is the pacing loop's job alone. If work finished and there is ready work to follow it, wake the pacing loop now instead of waiting for its clock; keep at most one such wake pending, replacing any earlier one. If nothing is waiting, do nothing and say so."
+      "prompt": "Check whether anything is waiting on you: a task in a blocked or question state, a review verdict you have not acted on, a PR that is mergeable now, or a finished task whose result you have not read. Act on what you find, one item at a time. Never start new work here - that is the pacing loop's job alone; a leader turn outside the loops that dispatches at once counts as a pacing run, and this tick is never one. If work finished and there is ready work to follow it, wake the pacing loop now instead of waiting for its clock; keep at most one such wake pending, replacing any earlier one. If nothing is waiting, do nothing and say so."
     },
     {
       "id": "L2",
@@ -25,7 +25,7 @@
       "mechanism": "cron",
       "schedule": "*/30 * * * *",
       "mayDispatch": true,
-      "prompt": "Decide whether to start more work. Count what is running: full gate runs, total tasks, tasks on the metered agent tool, and machine load. Start another task only while ALL of these hold: at most 2 gate runs, at most 10 tasks, at most 4 metered-tool tasks, machine load at or below 18. If there is ready work and headroom, pick the next item by least file overlap against every running task, using priority only to break a tie, then classify it against `node .xezar/checks/route.mjs --rows` and run `node .xezar/checks/route.mjs <row id>`: dispatch the first listed lane with budget that is not the author's, as .xezar/docs/routing.md says. A `wait` line means the item waits; never pick a lane the script did not list. If you are at a ceiling, queue and name which ceiling. If there is no ready work, do nothing and say so."
+      "prompt": "Decide whether to start more work. Count what is running: full gate runs, total tasks, tasks on the metered agent tool, and machine load. Start another task only while ALL of these hold: at most 2 gate runs, at most 10 tasks, at most 4 metered-tool tasks, machine load at or below 18. If there is ready work and headroom, pick the next item by least file overlap against every running task, using priority only to break a tie, then classify it against `node .xezar/checks/route.mjs --rows` and run `node .xezar/checks/route.mjs <row id>`, adding `--author <lane>` and each `--repair <lane>` when the item judges someone's work: dispatch the first listed lane with budget that is not the author's, as .xezar/docs/routing.md says. A `wait` line means the item waits; never pick a lane the script did not list. If you are at a ceiling, queue and name which ceiling. If there is no ready work, do nothing and say so."
     }
   ],
   "ceilings": {

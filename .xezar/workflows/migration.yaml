@@ -41,3 +41,4 @@ steps:
     name: Draft PR into the base branch
     prompt: "Hand off the migration for: {{task}}. Verify the sealed head and open the draft PR; make no content changes here. The body leads with what changes shape, whether there is a way back or the move is one-way and on whose word, the dry-run numbers, and the runbook. A different account and a different vendor review this: it is high risk by its nature."
     skill: xezar-handoff-draft-pr
+    timeout: 15m

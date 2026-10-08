@@ -131,7 +131,7 @@ A `SessionStart` hook prints nothing on stdout in the silent cases, and one line
 ```
 
 `additionalContext` is one string holding one fixed line that tells the session it is the leader,
-the guide, and then, when a campaign is open, four more labelled blocks inside an
+the `decisions.md` warning when there is one (see the cost model below), the guide, and then, when a campaign is open, four more labelled blocks inside an
 untrusted-content boundary. The fixed order is: the leader line, the guide, the
 newest campaign `README.md`, its newest `timeline-*.md`, its `parked.md`, then its `decisions.md`.
 Order matters — a rule that a decision overrides is read after the rule, and the authority file is
@@ -148,27 +148,27 @@ through, so a file cannot close the region early and have the rest of itself rea
 The guide's block heading is the literal relative path; each campaign block heading is the nonce
 plus the file's absolute path, which is also how a truncated note names itself (see the cost model
 below). The hook is
-registered in `.claude/settings.json` with the four matchers a leader has to survive:
+registered in `.claude/settings.json` as one entry of `hooks.SessionStart`, with the four matchers
+a leader has to survive:
 
-<!-- from: .claude/settings.json -->
+<!-- from: .claude/settings.json#entry:hooks.SessionStart -->
 ```json
 {
-  "hooks": {
-    "SessionStart": [
-      {
-        "matcher": "startup|resume|clear|compact",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/.xezar/checks/leader-context.sh\"",
-            "timeout": 15
-          }
-        ]
-      }
-    ]
-  }
+  "matcher": "startup|resume|clear|compact",
+  "hooks": [
+    {
+      "type": "command",
+      "command": "bash \"$CLAUDE_PROJECT_DIR/.xezar/checks/leader-context.sh\"",
+      "timeout": 15
+    }
+  ]
 }
 ```
+
+The repository check compares this entry, not the whole file (see
+[fenced-quotes.md](fenced-quotes.md)). A project may add its own hooks and permissions to
+`.claude/settings.json`; put a hook of your own in an entry of its own, because a change to this
+entry fails the check.
 
 `$CLAUDE_PROJECT_DIR` is the project root Claude Code provides, so the hook still resolves when the
 session was opened in a subdirectory of the project — a relative command would resolve against that
@@ -195,11 +195,24 @@ guide's size compounds. Three caps follow, and all are requirements rather than 
   **65 536 bytes** (`NOTE_TAIL_BYTES`), because they grow for the life of a campaign while the
   leader reads the tail anyway. A note over the cap is preceded by a visible line naming the file
   and its size, so a partial note is never mistaken for the whole.
+- **The newest timeline is bounded by entries first.** It is injected as its newest **40 entries**
+  (`TIMELINE_ENTRIES`; the operator may set `XEZAR_TIMELINE_ENTRIES` to another whole number in the
+  leader's environment), followed by one pointer line naming the full file and how many older
+  entries were left out. An entry is one top-level list item — a line starting `- ` at column 0,
+  as [campaign-notes.md](campaign-notes.md) writes every event — plus the lines after it up to the
+  next one, so a multi-line entry is never split. A busy day filled the byte cap with old detail;
+  the byte cap stays as the backstop for a few very long entries. A timeline with 40 entries or
+  fewer, or with none yet, loads as before.
 - **`decisions.md` is injected whole and is never cut.** It is the authority file: the owner's exact
   words, append-only, and the oldest entry binds the leader exactly as hard as the newest. Cutting
   its head would silently drop standing decisions the leader is still required to follow, and it
   would do so with no visible failure — which is the worst shape a defect can take. The guide is
   likewise **not** capped; it is always loaded in full.
+- **A `decisions.md` the loader cannot read is announced, never skipped.** When the live campaign's
+  `decisions.md` is missing, a symlink, not a regular file, or unreadable, the context carries one
+  `WARNING <nonce>:` line naming the path and the reason. It sits in the trusted part, after the
+  leader line and before the guide, outside the untrusted region, and it carries the run's nonce,
+  so no campaign file can forge or hide it. A normal file produces no warning.
 
 A silent case costs one process spawn and no tokens. A loud case costs the guide, the whole
 decisions file, and the bounded narrative notes.

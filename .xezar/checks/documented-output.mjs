@@ -20,6 +20,15 @@ if (process.argv.length > 3) {
   process.exit(2);
 }
 
+// On native Windows a bare `bash` is WSL's on a stock machine, so the fixture script starts in Git
+// Bash, by its full path (lib/windows-programs.mjs, loaded on Windows only, #122).
+const WINDOWS = process.platform === 'win32' ? await import('./lib/windows-programs.mjs') : null;
+const BASH = WINDOWS ? WINDOWS.gitBash() : 'bash';
+if (BASH === null) {
+  console.error(`documented-output: ${WINDOWS.GIT_BASH_MISSING}`);
+  process.exit(1);
+}
+
 const scriptRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const repositoryRoot = realpathSync(requestedRoot ? path.resolve(requestedRoot) : scriptRoot);
 const allowlistPath = path.join(repositoryRoot, '.xezar/checks/documented-output.allowlist.json');
@@ -208,6 +217,16 @@ function setupLeaderContextFixture(row, scratch) {
     throw new FixtureSetupError(`could not copy ${row.script}: ${error.message}`);
   }
   writeFileSync(path.join(root, '.xezar/docs/leader-guide.md'), '# Fixture leader guide\n');
+  // A live campaign whose timeline is longer than the loader keeps, so the loud case also runs the
+  // entry cut and its pointer line.
+  const campaign = path.join(root, '.xezar/campaigns/20260101-fixture');
+  mkdirSync(campaign, { recursive: true });
+  writeFileSync(path.join(campaign, 'README.md'), '# Fixture campaign\n');
+  writeFileSync(path.join(campaign, 'decisions.md'), '# Decisions\n');
+  writeFileSync(
+    path.join(campaign, 'timeline-2026-01-01.md'),
+    Array.from({ length: 45 }, (_, index) => `- 2026-01-01 09:${String(index).padStart(2, '0')} - fixture event\n`).join(''),
+  );
   for (const args of [
     ['init', '-q', '-b', 'main'],
     ['-c', 'user.email=fixture@example.invalid', '-c', 'user.name=fixture', 'add', '-A'],
@@ -233,7 +252,7 @@ function cleanEnvironment() {
 }
 
 function executeFixtureScript(root, row, { cwd = root, env = cleanEnvironment() } = {}) {
-  return run('bash', [path.join(root, row.script)], { cwd, env });
+  return run(BASH, [path.join(root, row.script)], { cwd, env });
 }
 
 function assertSilent(result, name) {

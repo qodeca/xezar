@@ -41,11 +41,65 @@
 # Xezar's worktree parent, relative to the primary checkout.
 XEZAR_WORKTREES_RELDIR=".local/xezar/worktrees"
 
+# Git Bash rewrites an argument that looks like a list of POSIX paths before git.exe sees it:
+# `origin/<base>:.xezar/x.json` arrived as `origin\<base>;.xezar\x.json` (#122). An argument that
+# starts with `origin/` or `refs/` is a git ref in every kit script, never a file path.
+case "${OSTYPE:-}" in
+  msys* | cygwin*)
+    case ";${MSYS2_ARG_CONV_EXCL:-};" in
+      *";origin/;refs/;"*) ;;
+      *) export MSYS2_ARG_CONV_EXCL="origin/;refs/${MSYS2_ARG_CONV_EXCL:+;$MSYS2_ARG_CONV_EXCL}" ;;
+    esac ;;
+esac
+
 # Absolute, symlink-resolved form of a directory. Comparing two paths that reach the
 # same directory through different symlinks is the whole reason this exists.
 abs_real_dir() {
   ( cd "$1" 2>/dev/null && pwd -P ) || return 1
 }
+
+# Is "$1" an absolute path? `/…` everywhere. Under Git Bash also `C:/…`: Git for Windows prints
+# --git-dir and --git-common-dir that way (#122). Everywhere else `C:/x` is a relative path.
+is_absolute_path() {
+  case "$1" in /*) return 0 ;; esac
+  case "${OSTYPE:-}" in
+    msys* | cygwin*) case "$1" in [A-Za-z]:/*) return 0 ;; esac ;;
+  esac
+  return 1
+}
+
+# Does `git worktree list` for the checkout at "$2" report the worktree at "$1" (a `pwd -P` path)?
+# Git Bash prints porcelain paths as `C:/…` while `pwd -P` gives `/c/…` or `/tmp/…` (#122), so
+# there both sides go through `cygpath -m` and compare without case; a task path cygpath cannot
+# convert is never listed (an empty one would equal a blank line). Empty porcelain paths never
+# reach cygpath, which stops at the first one. Elsewhere: the exact porcelain line, as always.
+worktree_is_listed() {
+  local want
+  case "${OSTYPE:-}" in
+    msys* | cygwin*)
+      want="$(cygpath -m -- "$1" 2>/dev/null)" && [ -n "$want" ] || return 1
+      want="$(printf '%s' "$want" | LC_ALL=C tr 'A-Z' 'a-z')"
+      # never -q: under pipefail an early exit fails the pipeline
+      git -C "$2" worktree list --porcelain 2>/dev/null | sed -n 's/^worktree \(.\)/\1/p' |
+        cygpath -m -f - 2>/dev/null | LC_ALL=C tr 'A-Z' 'a-z' | grep -xF -- "$want" >/dev/null
+      ;;
+    *) git -C "$2" worktree list --porcelain 2>/dev/null | grep -qxF "worktree $1" ;;
+  esac
+}
+
+# jq on native Windows writes CRLF, and jq 1.6 there has no --binary (#122). Both helpers check
+# OSTYPE when called, and only under Git Bash or Cygwin do anything new; elsewhere they are
+# today's reads, so a CR a token really holds is still refused there.
+# drop_jq_cr: a filter for a token jq printed (an action, a label, a name) – drops jq's CRs.
+drop_jq_cr() { case "${OSTYPE:-}" in msys* | cygwin*) tr -d '\r' ;; *) cat ;; esac; }
+# jq_string_bytes: the string filter "$1" selects from the JSON on stdin, byte for byte. Under Git
+# Bash it travels as one @base64 line, which a CR cannot change, and is decoded here: a CR inside
+# the string survives, none is added. Elsewhere `jq -j`, which adds nothing either.
+jq_string_bytes() { case "${OSTYPE:-}" in msys* | cygwin*) jq -r "($1) | @base64" | tr -d '\r' | base64 --decode ;; *) jq -j "$1" ;; esac; }
+
+# `shasum -a 256` lines for files or stdin. Git Bash has shasum only on a login PATH (core_perl),
+# so without it the same lines come from coreutils' sha256sum (#122).
+sha256_lines() { if command -v shasum >/dev/null 2>&1; then shasum -a 256 "$@"; else sha256sum "$@"; fi; }
 
 # A task id becomes a directory name under the task evidence root. Anything that is not a
 # single safe path segment is refused outright rather than sanitised, so a crafted id
@@ -84,10 +138,7 @@ resolve_task_paths() {
   # In the primary checkout `--git-common-dir` is relative (".git"); in a linked
   # worktree it is the absolute path of the primary checkout's .git directory.
   common_dir="$(cd "$TASK_CWD" && git rev-parse --git-common-dir 2>/dev/null)" || return 1
-  case "$common_dir" in
-    /*) ;;
-    *) common_dir="$TASK_CWD/$common_dir" ;;
-  esac
+  is_absolute_path "$common_dir" || common_dir="$TASK_CWD/$common_dir"
   MAIN_ROOT="$(abs_real_dir "$(dirname "$common_dir")")" || return 1
 
   WORKTREES_DIR="$MAIN_ROOT/$XEZAR_WORKTREES_RELDIR"
@@ -306,10 +357,7 @@ task_tree_is_dirty() {
 task_git_dir() {
   local git_dir
   git_dir="$(cd "$TASK_CWD" && git rev-parse --git-dir 2>/dev/null)" || return 1
-  case "$git_dir" in
-    /*) ;;
-    *) git_dir="$TASK_CWD/$git_dir" ;;
-  esac
+  is_absolute_path "$git_dir" || git_dir="$TASK_CWD/$git_dir"
   printf '%s' "$git_dir"
 }
 
@@ -419,13 +467,10 @@ fixture_scratch_remove() {
     printf 'fixture_scratch_remove: refusing an EMPTY path\n' >&2
     return 1
   fi
-  case "$dir" in
-    /*) ;;
-    *)
-      printf 'fixture_scratch_remove: refusing a RELATIVE path ("%s") — it resolves against the CWD\n' "$dir" >&2
-      return 1
-      ;;
-  esac
+  if ! is_absolute_path "$dir"; then
+    printf 'fixture_scratch_remove: refusing a RELATIVE path ("%s") — it resolves against the CWD\n' "$dir" >&2
+    return 1
+  fi
 
   # A final segment of `.` or `..` names a DIRECTORY, not the thing the caller meant, and it is how
   # a path like `<root>/owned/..` reads as "inside the root" while pointing at its parent. `rm`
@@ -518,10 +563,18 @@ deps_units_mode() {
 deps_use_pinned_node() {
   local root bin
   root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." 2>/dev/null && pwd -P)" || return 0
+  # A review's copy of the kit (.local/xezar/cache/kit/checks, see review-run.sh) sits deeper than
+  # `.xezar/checks/lib`; the checkout it serves is the repository the current directory is in.
+  [ -d "$root/.xezar" ] || root="$(git rev-parse --show-toplevel 2>/dev/null)" || return 0
   [ -f "$root/.nvmrc" ] || return 0
   command -v node >/dev/null 2>&1 || return 0
   bin="$(node "$DEPS_MJS" node-pin --root "$root" 2>/dev/null)" || return 0
   [ -n "$bin" ] || return 0
+  # Under Git Bash node prints a Windows path (C:\…). On bash's PATH it would split at the drive
+  # colon and leave a drive-relative `\…` entry, which finds node only from that drive (#122).
+  case "${OSTYPE:-}" in
+    msys* | cygwin*) bin="$(cygpath -u "$bin" 2>/dev/null)" && [ -n "$bin" ] || return 0 ;;
+  esac
   PATH="$bin:$PATH"
   export PATH
 }
@@ -550,12 +603,12 @@ deps_fingerprint() {
     cd "$TASK_CWD" || return 1
     local f
     for f in package-lock.json npm-shrinkwrap.json package.json .npmrc; do
-      [ -f "$f" ] && shasum -a 256 "$f"
+      [ -f "$f" ] && sha256_lines "$f"
     done
     # Patches are applied at install time, so a changed patch means a different node_modules.
     if [ -d patches ]; then
       find patches -type f -print 2>/dev/null | LC_ALL=C sort |
-        while IFS= read -r f; do shasum -a 256 "$f"; done
+        while IFS= read -r f; do sha256_lines "$f"; done
     fi
     # Workspace manifests. `find` is given only the directories that exist, because a
     # missing `examples/` must not turn into a failed fingerprint under `set -o pipefail`.
@@ -565,7 +618,7 @@ deps_fingerprint() {
     if [ ${#roots[@]} -gt 0 ]; then
       find "${roots[@]}" -mindepth 2 -maxdepth 2 -name package.json -print 2>/dev/null |
         LC_ALL=C sort |
-        while IFS= read -r f; do shasum -a 256 "$f"; done
+        while IFS= read -r f; do sha256_lines "$f"; done
     fi
     # The pinned package manager: a different npm resolves differently.
     node -e '
@@ -577,11 +630,14 @@ deps_fingerprint() {
     ' 2>/dev/null
     printf 'npm=%s\n' "$(npm --version 2>/dev/null || printf 'unknown')"
     printf 'node=%s\n' "$(node --version 2>/dev/null || printf 'unknown')"
-  ) | shasum -a 256 | cut -d' ' -f1
+  ) | sha256_lines | cut -d' ' -f1
 }
 
 # Lives inside node_modules on purpose: wiping node_modules must also invalidate the
-# claim that node_modules is current.
+# claim that node_modules is current. Two lines: the input fingerprint, then
+# `contents=<digest>`, the #53 metadata digest of what is in node_modules (the stamp
+# itself left out), so a package folder swapped or a file edited after the install is
+# stale too. A stamp without the second line (written before 3.1.0) is never fresh.
 deps_stamp_path() {
   printf '%s/node_modules/.xezar-deps-stamp' "$TASK_CWD"
 }
@@ -596,10 +652,15 @@ deps_are_fresh() {
     0) node "$DEPS_MJS" fresh --root "$TASK_CWD" 2>/dev/null; return ;;
     2) return 1 ;;
   esac
+  local fp digest
   stamp="$(deps_stamp_path)"
   [ -f "$stamp" ] || return 1
   [ -d "$TASK_CWD/node_modules" ] || return 1
-  [ "$(cat "$stamp" 2>/dev/null)" = "$(deps_fingerprint)" ] || return 1
+  fp="$(deps_fingerprint)"
+  # The cheap line first, so a stale input never pays for the walk.
+  [ "$(sed -n 1p "$stamp" 2>/dev/null)" = "$fp" ] || return 1
+  digest="$(node "$DEPS_MJS" single-contents --root "$TASK_CWD" 2>/dev/null)" || return 1
+  [ "$(cat "$stamp" 2>/dev/null)" = "$(printf '%s\ncontents=%s' "$fp" "$digest")" ] || return 1
   deps_resolve_in_task 2>/dev/null
 }
 
@@ -681,8 +742,93 @@ write_deps_stamp() {
     0) node "$DEPS_MJS" stamp --root "$TASK_CWD"; return ;;
     2) return 1 ;;
   esac
+  local fp digest
   mkdir -p "$TASK_CWD/node_modules" || return 1
-  deps_fingerprint > "$(deps_stamp_path)"
+  fp="$(deps_fingerprint)" || return 1
+  # A tree with no digest is stamped as such, and deps_are_fresh never accepts that stamp.
+  if ! digest="$(node "$DEPS_MJS" single-contents --root "$TASK_CWD")"; then
+    printf 'deps: stamped as not fresh, so the next run installs again\n' >&2
+    digest=unavailable
+  fi
+  printf '%s\ncontents=%s\n' "$fp" "$digest" > "$(deps_stamp_path)"
+}
+
+# Which installed tree this is, without its contents: each node_modules folder's device and inode,
+# the identity file inside it (a unit's nonce, the single root's stamp) and the unit stamps. A tree
+# deleted and reinstalled, or swapped for another, gets a different answer; a file a gate writes
+# INSIDE the same tree does not. One line on stdout; exit 1 when it cannot be read.
+deps_tree_identity() {
+  local dirs
+  deps_units_mode 2>/dev/null
+  case $? in
+    0) dirs="$(node "$DEPS_MJS" units --root "$TASK_CWD" 2>/dev/null | node -e '
+         let s = ""; process.stdin.on("data", (d) => (s += d)).on("end", () => {
+           for (const u of JSON.parse(s)) if (u.provider !== "dotnet") console.log(u.dir);
+         });')" || return 1 ;;
+    2) return 1 ;;
+    *) dirs="." ;;
+  esac
+  node -e '
+    const fs = require("node:fs"), path = require("node:path"), crypto = require("node:crypto");
+    const [root, list] = process.argv.slice(1);
+    const read = (p) => { try { return fs.readFileSync(p, "utf8"); } catch { return "-"; } };
+    const parts = [];
+    for (const dir of list.split("\n").filter(Boolean)) {
+      const nm = path.join(root, dir, "node_modules");
+      let st;
+      try { st = fs.lstatSync(nm); } catch { process.exit(1); }
+      if (!st.isDirectory()) process.exit(1);
+      parts.push(`${dir}\0${st.dev}:${st.ino}\0${read(path.join(nm, ".xezar-deps-tree"))}\0${read(path.join(nm, ".xezar-deps-stamp"))}`);
+    }
+    const stamps = path.join(root, ".local/xezar/cache/deps");
+    let names = [];
+    try { names = fs.readdirSync(stamps).sort(); } catch {}
+    for (const n of names) parts.push(`stamp\0${n}\0${read(path.join(stamps, n))}`);
+    process.stdout.write(crypto.createHash("sha256").update(parts.join("\n")).digest("hex"));
+  ' "$TASK_CWD" "$dirs"
+}
+
+# The baseline a gate run takes once its install is known good: right after the install gate
+# stamped it, or after --fast found it fresh. Two lines: the input fingerprint, the tree identity.
+deps_restamp_baseline() {
+  local fp id
+  fp="$(deps_fingerprint 2>/dev/null)" || return 1
+  id="$(deps_tree_identity)" || return 1
+  [ -n "$fp" ] && [ -n "$id" ] || return 1
+  printf '%s\n%s' "$fp" "$id"
+}
+
+# Re-stamp after every gate passed, so what the gates themselves wrote into node_modules (`prisma
+# generate` writing node_modules/.prisma, Vite writing node_modules/.vite/deps/package.json) does
+# not turn every later --fast run and every resume into a silent reinstall. It re-stamps only the
+# tree this run already proved current, and only when nothing an install reads has changed since:
+#   - a baseline exists (the install gate passed and stamped, or --fast found the tree fresh);
+#   - the input fingerprint (lockfiles, manifests, .npmrc, patches, tool versions) is unchanged;
+#   - the tree identity is unchanged (same folders, nonce and stamps: not reinstalled or swapped);
+#   - every dependency still resolves inside this task (#286).
+# Anything else leaves the stamp as it was, so the next --fast run installs again, and says why.
+# Never fails the run: the verdict is already recorded, and a stamp not refreshed costs one install.
+deps_restamp_after_gates() {
+  local baseline="$1" now="" why=""
+  if [ -z "$baseline" ]; then
+    why="this run has no verified install to compare against"
+  elif ! now="$(deps_restamp_baseline)"; then
+    why="the installed tree could not be read"
+  elif [ "$(printf '%s\n' "$now" | sed -n 1p)" != "$(printf '%s\n' "$baseline" | sed -n 1p)" ]; then
+    why="a lockfile, manifest or tool version changed during the gates"
+  elif [ "$(printf '%s\n' "$now" | sed -n 2p)" != "$(printf '%s\n' "$baseline" | sed -n 2p)" ]; then
+    why="node_modules was replaced or its stamp rewritten during the gates"
+  elif ! deps_resolve_in_task >/dev/null 2>&1; then
+    why="the dependencies no longer resolve inside this task"
+  elif ! write_deps_stamp; then
+    why="the stamp could not be written"
+  fi
+  if [ -n "$why" ]; then
+    printf 'deps stamp     NOT refreshed (%s); the next --fast run installs again\n' "$why"
+  else
+    printf 'deps stamp     refreshed after the gates; what they wrote into node_modules is part of the stamped tree\n'
+  fi
+  return 0
 }
 
 # --- Gate evidence --------------------------------------------------------------------
@@ -707,11 +853,11 @@ tree_fingerprint() {
     for kit_part in checks skills workflows docs pipeline; do
       if [ -d ".xezar/$kit_part" ]; then
         find ".xezar/$kit_part" -type f -print | LC_ALL=C sort |
-          while IFS= read -r kit_file; do shasum -a 256 "$kit_file"; done
+          while IFS= read -r kit_file; do sha256_lines "$kit_file"; done
       fi
     done
     for kit_file in config.json CLAUDE.md kit-manifest.json .gitignore; do
-      [ ! -f ".xezar/$kit_file" ] || shasum -a 256 ".xezar/$kit_file"
+      [ ! -f ".xezar/$kit_file" ] || sha256_lines ".xezar/$kit_file"
     done
     printf -- '--tracked--\n'
     git diff HEAD 2>/dev/null
@@ -721,11 +867,11 @@ tree_fingerprint() {
       while IFS= read -r -d '' f; do
         if [ -f "$f" ] && [ ! -L "$f" ]; then
           printf '%s ' "$f"
-          shasum -a 256 "$f" | cut -d' ' -f1
+          sha256_lines "$f" | cut -d' ' -f1
         else
           # A symlink or a special file: record its kind and target, never follow it.
           printf '%s special %s\n' "$f" "$(readlink "$f" 2>/dev/null || printf 'non-regular')"
         fi
       done
-  ) | shasum -a 256 | cut -d' ' -f1
+  ) | sha256_lines | cut -d' ' -f1
 }

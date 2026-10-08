@@ -42,9 +42,21 @@
 // non-empty in `allFiles` but has nothing in `files` (deletion-only, or similar) says so in its own
 // words rather than claiming it changes no file.
 //
+// THE PROJECT'S OWN TRUST BOUNDARIES. A project adds paths of its own through
+// `security.trustBoundaries` in `.xezar/pipeline/config.json` — `[{ "pattern": "<glob>", "why":
+// "<one line>" }]`, grammar and matcher in `config-grammar.mjs`. The list only ADDS: the kit's own
+// entries below are always applied. It is read from the BASE BRANCH TIP
+// (`refs/remotes/origin/<baseBranch>`), never from the merge-base and never from the working tree,
+// so a branch under review cannot drop its own path from the list. A list that cannot be read, or
+// that is invalid, is never "no project entries": the `trust-boundary-config` check records
+// `unknown`, `reviewerRequired` is set, and — unlike `trust-boundary` — that check COUNTS in the
+// stage status, because here the stage genuinely could not look.
+//
 // Usage:
-//   node security-scan.mjs --cwd <dir> --base <sha> --head <sha> [--out <file>] [--quiet]
+//   node security-scan.mjs --cwd <dir> --base <sha> --head <sha> [--base-branch <name>]
+//                          [--out <file>] [--quiet]
 //                          [--empty-declared "<why this run legitimately carries no commits>"]
+//   --base-branch defaults to $BASE_BRANCH, which `lib/common.sh` exports.
 //
 // Exit codes: 0 resolved (pass / unknown / not-applicable) · 1 refused (findings, or the stage
 // could not look) · 2 usage.
@@ -54,6 +66,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync, renameSync, realpathSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { judgeTrustBoundaries, matchTrustPattern } from "./config-grammar.mjs";
 
 const SCHEMA_VERSION = 1;
 const KIND = "xezar.security-result";
@@ -65,6 +78,10 @@ const MAX_DIFF_BYTES = 24 * 1024 * 1024;
 const EXIT_OK = 0;
 const EXIT_REFUSED = 1;
 const EXIT_USAGE = 2;
+
+// The project list's home, and the shape a base branch name must have before it reaches git.
+const PIPELINE_CONFIG = ".xezar/pipeline/config.json";
+const BRANCH = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,254}$/;
 
 // --- what counts as code ------------------------------------------------------------------
 //
@@ -89,10 +106,6 @@ const DEPENDENCY_INPUTS = [
 // required, which the seal carries and the reviewer reads.
 const TRUST_BOUNDARIES = [
   { pattern: /^\.xezar\/checks\/documented-output\.allowlist\.json$/, why: "the executables authorized for documented-output verification" },
-  { pattern: /^packages\/xezar\/src\/server\//, why: "the HTTP surface, its origin guard and its bind host" },
-  { pattern: /^packages\/xezar\/src\/agent-config\//, why: "reads and writes the coding agents' own config files" },
-  { pattern: /^packages\/xezar\/src\/mcp\//, why: "the tools a project leader calls" },
-  { pattern: /^packages\/xezar\/src\/workspace\//, why: "per-user state and the project registry" },
   { pattern: /^\.github\/workflows\//, why: "what CI is allowed to do with the repository's credentials" },
   { pattern: /^\.xezar\/pipeline\/config\.json$/, why: "the deploy and rollback targets, and the commands every gate run trusts" },
   { pattern: /^\.xezar\/config\.json$/, why: "the base branch every run forks from and merges into" },
@@ -297,21 +310,83 @@ export function scanKillByPattern(addedByFile) {
   return { findings, allowed };
 }
 
-export function trustBoundariesTouched(files) {
+/**
+ * The kit's list first, then the project's. Each match names its list; the project's entries can
+ * only add a match, never remove or replace one of the kit's.
+ */
+export function trustBoundariesTouched(files, projectEntries = []) {
   const touched = [];
   for (const file of files) {
     for (const boundary of TRUST_BOUNDARIES) {
-      if (boundary.pattern.test(file)) touched.push({ file, why: boundary.why });
+      if (boundary.pattern.test(file)) touched.push({ file, why: boundary.why, list: "kit" });
+    }
+    for (const entry of projectEntries) {
+      if (matchTrustPattern(entry.tokens, file)) touched.push({ file, why: entry.why, list: "project" });
     }
   }
   return touched;
 }
 
 /**
+ * The project's `security.trustBoundaries`, read from the base branch tip and nowhere else.
+ * Returns { status, detail, entries, source }, status one of ok / empty / absent / malformed /
+ * unreadable. An unresolved ref is `unreadable`: there is no fallback to the merge-base, to a
+ * local branch or to the working tree, each of which the branch under review can shape.
+ */
+export function readProjectTrustBoundaries(cwd, baseBranch) {
+  if (typeof baseBranch !== "string" || baseBranch === "") {
+    return { status: "unreadable", detail: "the base branch is unknown, so the project's trust-boundary list could not be read", entries: [], source: null };
+  }
+  if (!BRANCH.test(baseBranch) || baseBranch.includes("..")) {
+    return { status: "unreadable", detail: `the base branch name ${JSON.stringify(baseBranch)} is not a plain branch name`, entries: [], source: null };
+  }
+  const ref = `refs/remotes/origin/${baseBranch}`;
+  const source = `origin/${baseBranch}:${PIPELINE_CONFIG}`;
+  try {
+    git(cwd, "rev-parse", "--verify", "--quiet", `${ref}^{commit}`);
+  } catch {
+    return { status: "unreadable", detail: `${ref} does not resolve here, and the project's trust-boundary list is read from the base branch tip only (fetch it first)`, entries: [], source };
+  }
+  let listed;
+  try {
+    listed = git(cwd, "ls-tree", "--name-only", ref, "--", PIPELINE_CONFIG).trim();
+  } catch {
+    return { status: "unreadable", detail: `cannot list ${source}`, entries: [], source };
+  }
+  // No pipeline config on the base branch at all: nothing there can name a project path.
+  if (listed === "") return { status: "absent", detail: `${source} does not exist, so there are no project entries`, entries: [], source };
+  let config;
+  try {
+    config = JSON.parse(git(cwd, "show", `${ref}:${PIPELINE_CONFIG}`));
+  } catch {
+    return { status: "unreadable", detail: `${source} could not be read as JSON`, entries: [], source };
+  }
+  const judged = judgeTrustBoundaries(config);
+  return { ...judged, source };
+}
+
+function trustBoundaryConfigCheck(project) {
+  const where = project.source ? ` (${project.source})` : "";
+  switch (project.status) {
+    case "ok":
+      return check("trust-boundary-config", "pass", `${project.detail} in the project's security.trustBoundaries, read from the base branch${where}`);
+    case "empty":
+    case "absent":
+      return check("trust-boundary-config", "not-applicable", `the project adds no trust boundaries of its own: ${project.detail}${where}`);
+    case "malformed":
+      return check("trust-boundary-config", "unknown", `the project's security.trustBoundaries is invalid, so none of it was applied and a reviewer is required: ${project.detail}${where}`);
+    default:
+      return check("trust-boundary-config", "unknown", `the project's security.trustBoundaries could not be read, so a reviewer is required: ${project.detail}`);
+  }
+}
+
+/**
  * The whole stage, as a pure function of the inventory and the diff, so the tests drive THIS
  * code rather than a copy of it.
  */
-export function assess({ files, allFiles, addedByFile, truncated }) {
+export function assess({ files, allFiles, addedByFile, truncated, project }) {
+  // No list supplied is not "no project entries": fail toward review, like an unreadable one.
+  const projectList = project ?? { status: "unreadable", detail: "no project trust-boundary list was supplied to the scan", entries: [], source: null };
   const { code, other } = classifyInventory(files);
   const applies = code.length > 0;
   const checks = [];
@@ -397,12 +472,16 @@ export function assess({ files, allFiles, addedByFile, truncated }) {
   // `allFiles`, not `files`: a deleted path can be the trust-boundary change (deleting the origin
   // guard is itself an authorization-relevant edit), and ACMR would hide it from this check the
   // same way it hid it from the emptiness decision above.
-  const trustBoundaries = trustBoundariesTouched(allFiles);
+  const projectEntries = projectList.status === "ok" ? projectList.entries : [];
+  const trustBoundaries = trustBoundariesTouched(allFiles, projectEntries);
   checks.push(
     trustBoundaries.length === 0
       ? check("trust-boundary", "not-applicable", "the candidate changes no named trust boundary")
       : check("trust-boundary", "unknown", `${trustBoundaries.length} named trust boundary/boundaries changed; automation cannot prove an authorization decision is correct, so a human or a security reviewer is required`),
   );
+  const configCheck = trustBoundaryConfigCheck(projectList);
+  checks.push(configCheck);
+  const configUnknown = configCheck.status === "unknown";
 
   const blocking = checks.filter((c) => c.status === "findings");
   // `trust-boundary` is deliberately OUT of the rollup (#503 review N1). `unknown` in this stage
@@ -415,8 +494,12 @@ export function assess({ files, allFiles, addedByFile, truncated }) {
   // this file's own rule table argues against. The per-check entry and the flag both stay; only
   // the rollup stops treating a recorded fact as an unanswered question.
   const rollup = checks.filter((c) => c.name !== "trust-boundary");
+  // `trust-boundary-config` stays IN the rollup, and ahead of the capability decision: when the
+  // project's list could not be read or is invalid, the stage did not look at the project's paths,
+  // whatever kind of file changed. That is the one shape here that is a real unanswered question.
   let status;
   if (blocking.length > 0) status = "findings";
+  else if (configUnknown) status = "unknown";
   else if (!applies) status = "not-applicable";
   else if (rollup.some((c) => c.status === "unknown")) status = "unknown";
   else status = "pass";
@@ -433,7 +516,7 @@ export function assess({ files, allFiles, addedByFile, truncated }) {
     inventory: { total: allFiles.length, code: code.length, other: other.length, truncated },
     checks,
     trustBoundaries,
-    reviewerRequired: trustBoundaries.length > 0,
+    reviewerRequired: trustBoundaries.length > 0 || configUnknown,
     status,
     blocking: blocking.map((c) => c.name),
   };
@@ -451,6 +534,7 @@ function main() {
   // was asked to change source and has not committed yet". The reason travels into the result for
   // the reviewer; the outcome no longer depends on it.
   const emptyDeclared = typeof args["empty-declared"] === "string" ? args["empty-declared"] : null;
+  const baseBranch = typeof args["base-branch"] === "string" ? args["base-branch"] : process.env.BASE_BRANCH;
 
   let files = [];
   let allFiles = [];
@@ -503,7 +587,7 @@ function main() {
       blocking: [],
     };
   } else {
-    result = assess({ files, allFiles, addedByFile: addedLinesByFile(diffText), truncated });
+    result = assess({ files, allFiles, addedByFile: addedLinesByFile(diffText), truncated, project: readProjectTrustBoundaries(cwd, baseBranch) });
   }
 
   // NO EMPTY-INVENTORY REFUSAL, and the distinction it rests on is the whole point. An empty
@@ -558,8 +642,12 @@ function main() {
       process.stdout.write(`empty declared   ${record.emptyDeclared}\n`);
     }
     if (record.reviewerRequired) {
-      process.stdout.write("reviewer         REQUIRED — a named trust boundary changed:\n");
-      for (const b of record.trustBoundaries) process.stdout.write(`      ${b.file} — ${b.why}\n`);
+      if (record.trustBoundaries.length > 0) {
+        process.stdout.write("reviewer         REQUIRED — a named trust boundary changed:\n");
+        for (const b of record.trustBoundaries) process.stdout.write(`      ${b.file} — ${b.why} [${b.list}]\n`);
+      }
+      const config = record.checks.find((c) => c.name === "trust-boundary-config" && c.status === "unknown");
+      if (config) process.stdout.write(`reviewer         REQUIRED — ${config.detail}\n`);
     }
     if (typeof args.out === "string") process.stdout.write(`record           ${args.out}\n`);
     if (record.refused) process.stdout.write(`REFUSED          ${record.refusedReason}\n`);
