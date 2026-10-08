@@ -7,4 +7,4 @@ Deliberate local changes to kit files. Format: the kit's `upgrade/CONTRACT.md` Â
 - Reason: the templates name this product's backends, version commands, design folder and risk surfaces; the kit's generic copies would drop that detail
 - Upstream: local only
 - Since: 2026-10-05
-- Confirmed: no
+- Confirmed: yes
