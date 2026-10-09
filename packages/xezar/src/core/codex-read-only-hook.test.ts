@@ -30,7 +30,8 @@ describe('Codex PreToolUse adapter for the shared read-only lock (#863 S2)', () 
   });
 
   it.each(CODEX_READ_ONLY_HOOK_FIXTURES)('matches the shared fixture: $name', ({ payload, entries, rule }) => {
-    const decision = decideCodexPreToolUse(payload, entries);
+    // The shared table is the POSIX contract; Windows (PowerShell) is pinned separately below.
+    const decision = decideCodexPreToolUse(payload, entries, 'linux');
     if (rule === undefined) {
       expect(decision).toEqual({ allowed: true });
       expect(codexHookOutput(decision)).toBeUndefined();
@@ -44,6 +45,24 @@ describe('Codex PreToolUse adapter for the shared read-only lock (#863 S2)', () 
         },
       });
     }
+  });
+
+  it('reads a command as PowerShell on Windows only, where Codex runs it through pwsh (#963)', () => {
+    const payload = { tool_name: 'Bash', tool_input: { command: 'git log --output,evil' } };
+    expect(decideCodexPreToolUse(payload, ['git log'], 'win32')).toMatchObject({ allowed: false, rule: 'syntax.powershell-token' });
+    expect(decideCodexPreToolUse(payload, ['git log'], 'linux')).toEqual({ allowed: true });
+    expect(decideCodexPreToolUse(payload, ['git log'], 'darwin')).toEqual({ allowed: true });
+  });
+
+  it('on Windows refuses every shared fixture the POSIX reading refuses, plus PowerShell-only words (#963)', () => {
+    const newlyRefused: string[] = [];
+    for (const { name, payload, entries, rule } of CODEX_READ_ONLY_HOOK_FIXTURES) {
+      const decision = decideCodexPreToolUse(payload, entries, 'win32');
+      if (rule !== undefined) expect(decision, name).toMatchObject({ allowed: false, rule });
+      else if (!decision.allowed) newlyRefused.push(name);
+    }
+    // `\(` is an escape only to a POSIX shell; PowerShell reads `(` as an operator.
+    expect(newlyRefused).toEqual(['escaped parentheses stay text']);
   });
 
   it('has a Codex payload fixture for every shared refusal reason code', () => {

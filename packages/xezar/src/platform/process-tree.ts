@@ -19,8 +19,21 @@
  *
  * Leaf layer: this folder imports only `node:*` and its own siblings.
  */
-import { isOwnChild, trackedChildren, trackedEntry, type RegisteredChild } from './child-registry.ts';
-import { descendantTargets, type IdentifiedPid, type ProcessTable } from './process-table.ts';
+import { isOwnChild, trackedChildren, trackedEntry, type RegisteredChild, type TrackedChild } from './child-registry.ts';
+import {
+  msysMemberWinpids,
+  msysTreeTargets,
+  readMsysPid,
+  readMsysTable,
+  type MsysRow,
+} from './msys-process-tree.ts';
+import {
+  defaultTableRunner,
+  descendantTargets,
+  STOP_CLOCK_SLACK_MS,
+  type IdentifiedPid,
+  type ProcessTable,
+} from './process-table.ts';
 import { readTableThenKill } from './table-then-kill.ts';
 
 /** The signals xezar sends to stop a child. */
@@ -39,6 +52,8 @@ export interface TreeStopDeps {
     opts: { timeoutMs: number },
   ) => Promise<unknown>;
   now: () => number;
+  /** One read of Git's `ps` (`readMsysTable`). */
+  readMsys: (ps: string) => Promise<readonly MsysRow[] | null>;
 }
 
 /** How long a descendant stop's one PowerShell may take for the table and the kill together –
@@ -59,11 +74,39 @@ const DONE: Promise<void> = Promise.resolve();
 /** The one descendant stop each child gets, however many times it is stopped. */
 const descendantStops = new WeakMap<RegisteredChild, Promise<void>>();
 
-/** A stopped root: its pid and the window its direct children were created in. */
+/** A stopped root: its pid and the window its direct children were created in; for a Git Bash
+ *  shell, also Git's ps and the shell's MSYS pid. */
 interface StoppedRoot {
   pid: number;
   spawnedAt: number;
   stoppedAt: number;
+  msys?: { ps: string; msysPid: number };
+}
+
+/** The root record of a tracked child, read right after its kill: the MSYS pid file is read now,
+ *  before the exit removes it. */
+function stoppedRoot(pid: number, entry: TrackedChild, stoppedAt: number): StoppedRoot {
+  const msysPid = entry.msys ? readMsysPid(entry.msys.pidFile) : null;
+  return {
+    pid,
+    spawnedAt: entry.spawnedAt,
+    stoppedAt,
+    ...(entry.msys && msysPid !== null ? { msys: { ps: entry.msys.ps, msysPid } } : {}),
+  };
+}
+
+/** Each Git Bash root's MSYS group members, as Windows pids: one ps read per ps.exe. */
+async function msysStarts(roots: readonly StoppedRoot[], deps: Partial<TreeStopDeps>): Promise<Map<StoppedRoot, number[]>> {
+  const starts = new Map<StoppedRoot, number[]>();
+  const tables = new Map<string, Promise<readonly MsysRow[] | null>>();
+  const read = deps.readMsys ?? ((ps: string) => readMsysTable(ps, defaultTableRunner));
+  for (const root of roots) {
+    if (!root.msys) continue;
+    let table = tables.get(root.msys.ps);
+    if (!table) tables.set(root.msys.ps, (table = read(root.msys.ps).catch(() => null)));
+    starts.set(root, msysMemberWinpids((await table) ?? [], root.msys.msysPid));
+  }
+  return starts;
 }
 
 function hasExited(child: RegisteredChild): boolean {
@@ -82,8 +125,17 @@ function nextTurn(): Promise<void> {
 async function stopDescendantsOf(roots: readonly StoppedRoot[], deps: Partial<TreeStopDeps>): Promise<void> {
   try {
     await nextTurn();
+    const msys = await msysStarts(roots, deps);
     // An overlap between two trees is harmless: the kill takes each pid once.
-    const choose = (table: ProcessTable): IdentifiedPid[] => roots.flatMap((root) => descendantTargets(table.rows, root));
+    const choose = (table: ProcessTable): IdentifiedPid[] =>
+      roots.flatMap((root) => [
+        ...descendantTargets(table.rows, root),
+        ...msysTreeTargets(table.rows, msys.get(root) ?? [], {
+          pid: root.pid,
+          spawnedAt: root.spawnedAt,
+          readAt: root.stoppedAt + STOP_CLOCK_SLACK_MS,
+        }),
+      ]);
     await (deps.readThenKill ?? readTableThenKill)(choose, { timeoutMs: TREE_STOP_TIMEOUT_MS });
   } catch {
     // only the roots are stopped – what every stop did before
@@ -114,7 +166,7 @@ export function stopChildTree(
   if (!entry) return DONE;
   const pending = descendantStops.get(child);
   if (pending) return pending;
-  const stopping = stopDescendantsOf([{ pid: child.pid, spawnedAt: entry.spawnedAt, stoppedAt }], deps);
+  const stopping = stopDescendantsOf([stoppedRoot(child.pid, entry, stoppedAt)], deps);
   descendantStops.set(child, stopping);
   return stopping;
 }
@@ -138,7 +190,7 @@ export function stopTrackedProcessTrees(deps: Partial<TreeStopDeps> = {}): Promi
     }
   }
   const stopping = stopDescendantsOf(
-    roots.map(({ child, spawnedAt }) => ({ pid: child.pid!, spawnedAt, stoppedAt })),
+    roots.map((entry) => stoppedRoot(entry.child.pid!, entry, stoppedAt)),
     deps,
   );
   // A runner's own stop arriving now shares this read rather than starting another.

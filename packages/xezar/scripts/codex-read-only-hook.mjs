@@ -136,8 +136,66 @@ function splitReadOnlyCommand(command) {
   if (words.length === 0) return refuse("syntax.empty", "the command is empty");
   return { command: command.trim(), words };
 }
-function basename(word) {
-  return word.slice(word.lastIndexOf("/") + 1);
+var POWERSHELL_SMART_QUOTES = /* @__PURE__ */ new Set(["\u2018", "\u2019", "\u201A", "\u201B", "\u201C", "\u201D", "\u201E", "\u201F"]);
+function splitPowerShellWords(command) {
+  const words = [];
+  let text = "";
+  let raw = "";
+  let quote;
+  let started = false;
+  const push = () => {
+    if (started) words.push({ text, raw });
+    text = "";
+    raw = "";
+    started = false;
+  };
+  for (let i = 0; i < command.length; i++) {
+    const char = command[i];
+    if (POWERSHELL_SMART_QUOTES.has(char)) return refuse("syntax.powershell-quote", `PowerShell reads ${JSON.stringify(char)} as a quote`);
+    if (quote) {
+      raw += char;
+      if (char === quote) {
+        if (command[i + 1] !== quote) {
+          quote = void 0;
+          continue;
+        }
+        raw += char;
+        i++;
+      } else if (quote === '"' && (char === "`" || char === "$")) {
+        return refuse("syntax.expansion", "a word the shell still expands cannot be checked safely");
+      }
+      text += char;
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      quote = char;
+      raw += char;
+      started = true;
+      continue;
+    }
+    if (char === "," || char === "@" || char === "^" || char === "%") {
+      return refuse("syntax.powershell-token", `PowerShell gives the unquoted ${JSON.stringify(char)} a meaning of its own (including the stop-parsing token --%)`);
+    }
+    if (char === "`" || char === "$") return refuse("syntax.expansion", "a word the shell still expands cannot be checked safely");
+    if (";&|<>(){}\n".includes(char)) return refuse("syntax.compound", `PowerShell reads the unquoted ${JSON.stringify(char)} as an operator`);
+    if (char === "#" && !started) break;
+    if (/\s/.test(char)) {
+      push();
+      continue;
+    }
+    raw += char;
+    text += char;
+    started = true;
+  }
+  if (quote) return refuse("syntax.unclosed-quote", "an unclosed quote cannot be checked safely");
+  push();
+  if (words.length === 0) return refuse("syntax.empty", "the command is empty");
+  if (words.some((word) => word.text.includes('"'))) return refuse("syntax.powershell-quote", 'a literal " inside a word can be split again when PowerShell passes it on');
+  return words;
+}
+function basename(word, platform = process.platform) {
+  if (platform !== "win32") return word.slice(word.lastIndexOf("/") + 1);
+  return word.slice(Math.max(word.lastIndexOf("/"), word.lastIndexOf("\\")) + 1).replace(/\.(?:exe|cmd|bat)$/i, "").toLowerCase();
 }
 function isLongOptionPrefix(argument, option) {
   const name = argument.split("=", 1)[0] ?? "";
@@ -213,41 +271,54 @@ function npmRefusal(words) {
 }
 var CHECKED_ARGUMENT_DISPATCHERS = { git: gitRefusal, find: findRefusal, rg: rgRefusal, npm: npmRefusal };
 var IMPLEMENTED_ARGUMENT_POLICY_PROGRAMS = Object.freeze(COMMAND_RUNNING_ARGUMENTS.map((row) => row.program));
-function commandArgumentRefusal(words) {
-  const program = basename(words[0]?.text ?? "");
+function commandArgumentRefusal(words, platform) {
+  const program = basename(words[0]?.text ?? "", platform);
   const policy = COMMAND_RUNNING_ARGUMENTS.find((row) => row.program === program);
   if (policy?.enforcement === "never-named") return refuse("command.never-named", `${program} programs cannot be safely named by a read-only allowlist`);
   if (policy?.enforcement !== "checked") return void 0;
   return CHECKED_ARGUMENT_DISPATCHERS[program](words);
 }
-function decideReadOnlyCommand(command, entries) {
-  const normalized = normalizeBashAllowlist(entries);
-  if (normalized.length === 0) return refuse(ALLOWLIST_RULE, "the bashAllowlist has no usable entry");
-  const scriptPipe = splitAllowlistedScriptPipe(command, normalized);
-  if (scriptPipe) {
-    const left = decideReadOnlyCommand(scriptPipe.left, normalized);
-    if (!left.allowed) return left;
-    return { allowed: true };
-  }
-  const parsed = splitReadOnlyCommand(command);
-  if ("allowed" in parsed) return parsed;
-  const [programWord] = parsed.words;
-  const program = basename(programWord?.text ?? "");
+function wordsRefusal(words, normalized, platform) {
+  const [programWord] = words;
+  const program = basename(programWord?.text ?? "", platform);
   if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(programWord?.text ?? "")) {
     return refuse("syntax.leading-assignment", "a leading environment assignment can alter the command that follows");
   }
   if (WRAPPER_COMMANDS.has(program)) {
-    const wrapperNamed = normalized.some((entry) => basename(entry.split(/\s+/, 1)[0] ?? "") === program);
+    const wrapperNamed = normalized.some((entry) => basename(entry.split(/\s+/, 1)[0] ?? "", platform) === program);
     if (!wrapperNamed) return refuse("syntax.wrapper-command", `${program} can run another command and no entry names that wrapper`);
   }
-  const argumentRefusal = commandArgumentRefusal(parsed.words);
-  if (argumentRefusal) return argumentRefusal;
+  return commandArgumentRefusal(words, platform);
+}
+function decideReadOnlyCommand(command, entries, dialect = "posix", platform = process.platform) {
+  const normalized = normalizeBashAllowlist(entries);
+  if (normalized.length === 0) return refuse(ALLOWLIST_RULE, "the bashAllowlist has no usable entry");
+  const scriptPipe = splitAllowlistedScriptPipe(command, normalized);
+  if (scriptPipe) {
+    const left = decideReadOnlyCommand(scriptPipe.left, normalized, dialect, platform);
+    if (!left.allowed) return left;
+    if (dialect === "powershell") {
+      const right = splitPowerShellWords(scriptPipe.right);
+      if ("allowed" in right) return right;
+    }
+    return { allowed: true };
+  }
+  const parsed = splitReadOnlyCommand(command);
+  if ("allowed" in parsed) return parsed;
+  const posixRefusal = wordsRefusal(parsed.words, normalized, platform);
+  if (posixRefusal) return posixRefusal;
+  if (dialect === "powershell") {
+    const powershellWords = splitPowerShellWords(command);
+    if ("allowed" in powershellWords) return powershellWords;
+    const powershellRefusal = wordsRefusal(powershellWords, normalized, platform);
+    if (powershellRefusal) return powershellRefusal;
+  }
   if (!normalized.some((entry) => matchesBashAllowlistEntry(parsed.command, entry))) {
     return refuse(ALLOWLIST_RULE, `${JSON.stringify(parsed.command)} does not match an entry exactly or followed by a literal space`);
   }
   return { allowed: true };
 }
-function decideReadOnlyShellCall(call, entries) {
+function decideReadOnlyShellCall(call, entries, dialect = "posix", platform = process.platform) {
   if (call.toolName !== "Bash") {
     const subject = typeof call.toolName === "string" ? `tool ${JSON.stringify(call.toolName)} is not the Bash shell tool` : "the hook payload does not name the Bash shell tool";
     return refuse("payload.tool-name", subject);
@@ -255,7 +326,7 @@ function decideReadOnlyShellCall(call, entries) {
   if (typeof call.command !== "string") {
     return refuse("payload.command", "the Bash hook payload has no string command");
   }
-  return decideReadOnlyCommand(call.command, entries);
+  return decideReadOnlyCommand(call.command, entries, dialect, platform);
 }
 function splitAllowlistedScriptPipe(command, entries) {
   let quote;
@@ -311,10 +382,11 @@ function codexReadOnlyLockState(payload, record, now = Date.now()) {
   if (!validRecord) return "expired-or-malformed";
   return typeof input.session_id === "string" && lock.sessionId === input.session_id && typeof input.cwd === "string" && lock.cwd === input.cwd ? "active" : "live-mismatch";
 }
-function decideCodexPreToolUse(payload, entries) {
+function decideCodexPreToolUse(payload, entries, platform = process.platform) {
   const record = payload && typeof payload === "object" ? payload : {};
   const toolInput = record.tool_input && typeof record.tool_input === "object" ? record.tool_input : {};
-  return decideReadOnlyShellCall({ toolName: record.tool_name, command: toolInput.command }, entries);
+  const dialect = platform === "win32" ? "powershell" : "posix";
+  return decideReadOnlyShellCall({ toolName: record.tool_name, command: toolInput.command }, entries, dialect, platform);
 }
 function codexHookOutput(decision) {
   if (decision.allowed) return void 0;

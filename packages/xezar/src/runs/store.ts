@@ -724,6 +724,8 @@ export class RunStore extends EventEmitter {
   private saveTimer: NodeJS.Timeout | null = null;
   /** Set by `close()` only: this store no longer writes, and that is not an error. */
   private closed = false;
+  /** Background work that must stop when this store closes (`onClose`). */
+  private closeHooks = new Set<() => unknown>();
   /** Set by `holdForExit()` only: not even an event line reaches disk any more. */
   private exitHeld = false;
   /** A save found its own data directory gone and skipped itself. Not a lifecycle state — it
@@ -1444,11 +1446,43 @@ export class RunStore extends EventEmitter {
    * been closed stops writing for good; a vanished directory skips the write it could not do and
    * is retried by the next one (`saveNow`).
    */
-  close(): void {
-    if (this.closed) return;
+  close(): Promise<void> {
+    if (this.closed) return Promise.resolve();
     this.cancelScheduledSave();
     this.saveNow();
     this.closed = true;
+    // Everything above stays synchronous; only the hooks' own stops are awaited.
+    const stops = [...this.closeHooks].map((hook) => {
+      try {
+        return hook();
+      } catch {
+        return undefined;
+      }
+    });
+    this.closeHooks.clear();
+    return Promise.allSettled(stops).then(() => undefined);
+  }
+
+  /**
+   * Run `hook` when this store closes, and let `close()` wait for what it returns. For background
+   * work tied to this store's project – the repo-handle lookup (`armRepoHandle`) – whose process
+   * would otherwise outlive the store inside the project folder, which Windows then refuses to
+   * move or remove (#963). The store knows nothing of that work. Returns the unsubscribe; a hook
+   * added after `close()` runs at once.
+   */
+  onClose(hook: () => unknown): () => void {
+    if (this.closed) {
+      try {
+        hook();
+      } catch {
+        // A hook's own failure is its own; the store is closed either way.
+      }
+      return () => undefined;
+    }
+    this.closeHooks.add(hook);
+    return () => {
+      this.closeHooks.delete(hook);
+    };
   }
 
   /**
@@ -1459,7 +1493,7 @@ export class RunStore extends EventEmitter {
    * runs stay live, and the next start's `recover()` re-queues or resumes them (#367).
    */
   holdForExit(): void {
-    this.close();
+    void this.close();
     this.exitHeld = true;
   }
 

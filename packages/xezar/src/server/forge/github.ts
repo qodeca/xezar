@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { REFERENCE_STATUS_MAX } from '@qodeca/xezar-contract';
 import { autosaveCommit } from '../../git-worktree.ts';
 import { launchFile, launchFileAsync } from '../../platform/process-launch.ts';
+import { stopChildTree } from '../../platform/process-tree.ts';
 import type {
   DraftPrInput,
   DraftPrOutcome,
@@ -266,13 +267,28 @@ export function rollupToChecks(rollup: z.infer<typeof ghStatusCheckRollup>): Git
   return 'passing';
 }
 
-async function gh(repoRoot: string, args: string[], timeout = 15_000): Promise<string> {
-  const { stdout } = await launchFileAsync('gh', args, {
+async function gh(repoRoot: string, args: string[], timeout = 15_000, signal?: AbortSignal): Promise<string> {
+  if (signal?.aborted) throw new Error('gh call cancelled');
+  const pending = launchFileAsync('gh', args, {
     cwd: repoRoot,
     timeout,
     maxBuffer: 50 * 1024 * 1024,
   });
-  return stdout;
+  if (!signal) return (await pending).stdout;
+  // A cancel stops `gh` and the git it started, and settles only once they are gone: on Windows a
+  // folder a live process works in cannot be moved or removed (#963).
+  let stopping: Promise<unknown> = Promise.resolve();
+  const onAbort = (): void => {
+    const child = pending.child;
+    if (child && child.exitCode === null && child.signalCode === null) stopping = stopChildTree(child, 'SIGKILL');
+  };
+  signal.addEventListener('abort', onAbort, { once: true });
+  try {
+    return (await pending).stdout;
+  } finally {
+    signal.removeEventListener('abort', onAbort);
+    await stopping;
+  }
 }
 
 // ---- comment counts (#499 Phase 1) -----------------------------------------
@@ -1021,18 +1037,21 @@ export function __clearRepoHandleCacheForTests(): void {
  *  slug or `gh` failed — the caller then skips checks entirely and commits render unglyphed. */
 export async function resolveRepoHandle(
   repoRoot: string,
+  opts: { signal?: AbortSignal } = {},
 ): Promise<{ owner: string; name: string } | null> {
   const memo = repoHandleCache.get(repoRoot);
   if (memo !== undefined) return memo;
   let handle: { owner: string; name: string } | null;
   try {
     handle = parseOwnerName(
-      await gh(repoRoot, ['repo', 'view', '--json', 'nameWithOwner', '--jq', '.nameWithOwner']),
+      await gh(repoRoot, ['repo', 'view', '--json', 'nameWithOwner', '--jq', '.nameWithOwner'], undefined, opts.signal),
     );
   } catch {
     // Transient — do NOT memoize, so the next thread retries.
     return null;
   }
+  // A cancelled lookup caches nothing, even an answer that arrived as it was cancelled (#963).
+  if (opts.signal?.aborted) return null;
   repoHandleCache.set(repoRoot, handle); // includes the permanent negative
   return handle;
 }

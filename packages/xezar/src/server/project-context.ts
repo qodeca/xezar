@@ -686,6 +686,8 @@ async function teardown(ctx: { store: RunStore; manager: RunManager }): Promise<
   // writer that had not finished letting go could re-arm the 300 ms debounce against a data
   // directory this teardown is about to outlive (#631, #671 F-26/F-29). Closing ends the write
   // lifecycle, which is what this function already claims to do.
-  ctx.store.close();
+  // Awaited: closing also stops the store's background `gh` lookup and waits until it is gone (#963).
+  const closed = ctx.store.close();
   ctx.store.removeAllListeners();
+  await closed;
 }

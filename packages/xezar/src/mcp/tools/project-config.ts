@@ -1,4 +1,5 @@
-import { existsSync, realpathSync } from 'node:fs';
+import { existsSync } from 'node:fs';
+import { containmentRealpathSync } from '../../platform/canonical-path.ts';
 import { readdir, readFile } from 'node:fs/promises';
 import { basename, dirname, extname, isAbsolute, join, relative, sep } from 'node:path';
 import {
@@ -1092,12 +1093,9 @@ function scrubIdentity(text: string): string {
  * exist yet is judged by its nearest existing ancestor — the directory the write would create it in.
  */
 export function resolvesInside(root: string, path: string): boolean {
-  let realRoot: string;
-  try {
-    realRoot = realpathSync(root);
-  } catch {
-    return false;
-  }
+  // Windows: the native spelling, so another letter case, an 8.3 name or a `subst` drive compares (#963).
+  const realRoot = containmentRealpathSync(root);
+  if (realRoot === null) return false;
   let existing = path;
   const rest: string[] = [];
   while (!existsSync(existing)) {
@@ -1106,12 +1104,9 @@ export function resolvesInside(root: string, path: string): boolean {
     rest.unshift(basename(existing));
     existing = parent;
   }
-  let real: string;
-  try {
-    real = join(realpathSync(existing), ...rest);
-  } catch {
-    return false;
-  }
+  const realExisting = containmentRealpathSync(existing);
+  if (realExisting === null) return false;
+  const real = join(realExisting, ...rest);
   return real === realRoot || real.startsWith(realRoot + sep);
 }
 

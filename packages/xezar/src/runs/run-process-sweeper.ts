@@ -25,7 +25,14 @@
  */
 import { onProcessTable } from '../core/process-usage.ts';
 import { collectSecretValues } from '../core/secret-redaction.ts';
-import { RUN_MARKER_ENV, envHasEntry, pidExists, readCommandLines } from '../platform/process-proof.ts';
+import {
+  RUN_MARKER_ENV,
+  envHasEntry,
+  nameAndKillIdentified,
+  pidExists,
+  readCommandLines,
+  type NamedKill,
+} from '../platform/process-proof.ts';
 import {
   killIdentified,
   readProcessTable,
@@ -217,9 +224,11 @@ export class RunProcessSweeper {
       if (table === null || record.closed) return;
       const targets = (await this.attribute(runId, table, ledger)).filter((target) => record.claim(target.pid));
       if (targets.length === 0) return;
-      await this.name(targets, record);
       if (this.platform === 'win32') await this.stopWindows(targets, record);
-      else await this.stopPosix(targets, record);
+      else {
+        await this.name(targets, record);
+        await this.stopPosix(targets, record);
+      }
     }
   }
 
@@ -260,12 +269,39 @@ export class RunProcessSweeper {
 
   /** Read and redact the targets' command lines before they are stopped – after, they are gone. */
   private async name(targets: readonly Target[], record: SweepRecord): Promise<void> {
-    const unnamed = targets.map(({ pid }) => pid).filter((pid) => record.wantsName(pid));
+    const unnamed = this.unnamed(targets, record);
     if (unnamed.length === 0) return;
     const read = this.deps.readCommandLines ?? ((pids: readonly number[]) => readCommandLines(pids));
-    const commands = await read(unnamed).catch(() => new Map<number, string>());
+    this.recordNames(await read(unnamed).catch(() => new Map<number, string>()), record);
+  }
+
+  private unnamed(targets: readonly Target[], record: SweepRecord): number[] {
+    return targets.map(({ pid }) => pid).filter((pid) => record.wantsName(pid));
+  }
+
+  private recordNames(commands: ReadonlyMap<number, string>, record: SweepRecord): void {
     this.secrets ??= this.deps.secretValues?.() ?? collectSecretValues();
     for (const [pid, command] of commands) record.name(pid, command, this.secrets);
+  }
+
+  /**
+   * Windows: name, then kill by identity. Production does both in ONE PowerShell
+   * (`nameAndKillIdentified`): two in a row took longer than the sweep's cap on a busy machine
+   * (#963). A test that passes its own seams gets them called in the same order.
+   */
+  private async nameAndKill(targets: readonly Target[], record: SweepRecord): Promise<NamedKill['outcomes']> {
+    const list = targets.map(({ pid, identity }) => ({ pid, startedAt: identity }));
+    const unnamed = this.unnamed(targets, record);
+    if (this.deps.killIdentified === undefined && this.deps.readCommandLines === undefined) {
+      const { commands, outcomes } = await nameAndKillIdentified(list, unnamed).catch(
+        (): NamedKill => ({ commands: new Map(), outcomes: null }),
+      );
+      this.recordNames(commands, record);
+      return outcomes;
+    }
+    await this.name(targets, record);
+    const kill = this.deps.killIdentified ?? ((pids: readonly IdentifiedPid[]) => killIdentified(pids));
+    return kill(list).catch(() => null);
   }
 
   /** POSIX: SIGTERM, up to 2 s to leave, SIGKILL for who stayed, 500 ms to settle. */
@@ -302,10 +338,9 @@ export class RunProcessSweeper {
     }
   }
 
-  /** Windows: kill by identity through one handle, then a fresh table 1 s later confirms. */
+  /** Windows: name and kill by identity through one handle, then a fresh table 1 s later confirms. */
   private async stopWindows(targets: readonly Target[], record: SweepRecord): Promise<void> {
-    const kill = this.deps.killIdentified ?? ((list: readonly IdentifiedPid[]) => killIdentified(list));
-    const outcomes = await kill(targets.map(({ pid, identity }) => ({ pid, startedAt: identity }))).catch(() => null);
+    const outcomes = await this.nameAndKill(targets, record);
     const toVerify: Target[] = [];
     for (const target of targets) {
       const outcome = outcomes?.get(target.pid);
@@ -318,10 +353,23 @@ export class RunProcessSweeper {
       }
     }
     if (toVerify.length === 0 || record.closed) return;
-    await delay(WINDOWS_VERIFY_MS);
+    // A pid that no longer exists is stopped: no table needed. Only a pid that still exists (the
+    // same process, or by now a stranger's) costs a table read (#963: each PowerShell run takes
+    // seconds on a busy machine, and the whole sweep has 10).
+    const exists = this.deps.pidExists ?? pidExists;
+    let present = toVerify;
+    for (const until = Date.now() + WINDOWS_VERIFY_MS; present.length > 0 && !record.closed && Date.now() < until; ) {
+      await delay(POLL_MS);
+      present = present.filter((target) => {
+        if (exists(target.pid)) return true;
+        record.stopped(target.pid);
+        return false;
+      });
+    }
+    if (present.length === 0 || record.closed) return;
     const table = await (this.deps.readTable ?? readProcessTable)({ timeoutMs: TABLE_TIMEOUT_MS });
     const live = new Set((table?.rows ?? []).map((row) => `${row.pid}:${row.startedAt}`));
-    for (const target of toVerify) {
+    for (const target of present) {
       const unconfirmed = table === null ? outcomes?.get(target.pid) !== 'killed' : live.has(`${target.pid}:${target.identity}`);
       if (unconfirmed) record.unstoppable(target.pid, 'still-running');
       else record.stopped(target.pid);

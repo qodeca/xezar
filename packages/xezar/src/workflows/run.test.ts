@@ -2045,6 +2045,7 @@ describe('native Codex requestUserInput parks and resumes the run (#565)', () =>
   let runId: string | undefined;
   const savedDryRun = process.env.XEZ_DRY_RUN;
   const savedCodexBin = process.env.XEZ_CODEX_BIN;
+  const savedAutoName = process.env.XEZ_AUTONAME;
   const workflow: WorkflowDef = {
     name: 'quick-task', source: 'built-in', steps: [{ id: 'task', name: 'Task', prompt: '{{task}}' }],
   };
@@ -2052,6 +2053,8 @@ describe('native Codex requestUserInput parks and resumes the run (#565)', () =>
   beforeEach(async () => {
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-565-'));
     delete process.env.XEZ_DRY_RUN;
+    // Not a dry run, so the namer would start the real `claude` CLI in this folder (#963).
+    process.env.XEZ_AUTONAME = '0';
     // Resolved from this file, not the cwd: the fixture is a sibling of the source under test,
     // so the path holds wherever vitest is invoked from and survives the tree moving.
     process.env.XEZ_CODEX_BIN = join(import.meta.dirname, '../core/__fixtures__/codex/mock-codex-app-server.mjs');
@@ -2064,10 +2067,12 @@ describe('native Codex requestUserInput parks and resumes the run (#565)', () =>
   });
 
   afterEach(async () => {
-    if (runId) manager.cancel(runId);
-    await manager.dispose(); // settle the queue watchdog before the root goes (#125)
+    // Cancel, wait for the session to exit, then dispose (#125): on Windows a live session's
+    // working folder cannot be removed (#963).
+    await manager.quiesce();
     if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN; else process.env.XEZ_DRY_RUN = savedDryRun;
     if (savedCodexBin === undefined) delete process.env.XEZ_CODEX_BIN; else process.env.XEZ_CODEX_BIN = savedCodexBin;
+    if (savedAutoName === undefined) delete process.env.XEZ_AUTONAME; else process.env.XEZ_AUTONAME = savedAutoName;
     store.flush();
     rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
   });

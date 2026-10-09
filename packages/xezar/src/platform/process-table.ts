@@ -84,7 +84,7 @@ export const STOP_CLOCK_SLACK_MS = 100;
 export const KILL_IDENTIFIED_TIMEOUT_MS = 5_000;
 const KILL_MAX_BUFFER = 1024 * 1024;
 /** Targets per PowerShell run, so the encoded command stays far below Windows' 32 767 limit. */
-const KILL_BATCH = 200;
+export const KILL_BATCH = 200;
 /** Windows' System Idle (0) and System (4) processes. */
 const WINDOWS_SYSTEM_PID_MAX = 4;
 /** POSIX init. */

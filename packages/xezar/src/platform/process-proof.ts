@@ -14,7 +14,20 @@
 import { Buffer } from 'node:buffer';
 import { readFile } from 'node:fs/promises';
 import { powershellPath } from './system-programs.ts';
-import { defaultTableRunner, powershellArgs, systemPidFloor, type ProcessTableDeps } from './process-table.ts';
+import {
+  defaultTableRunner,
+  KILL_BATCH,
+  KILL_IDENTIFIED_TIMEOUT_MS,
+  killIdentified,
+  killScript,
+  parseKillOutcomes,
+  powershellArgs,
+  systemPidFloor,
+  validTargets,
+  type IdentifiedPid,
+  type KillOutcome,
+  type ProcessTableDeps,
+} from './process-table.ts';
 
 /** The environment entry every agent of a run carries (`RunManager.agentEnv`): `XEZ_TASK_ID=<runId>`. */
 export const RUN_MARKER_ENV = 'XEZ_TASK_ID';
@@ -107,16 +120,20 @@ function commandLinePids(pids: readonly number[], platform: NodeJS.Platform): nu
  * as base64 of UTF-8, so no command line can forge another row.
  */
 export function commandLineScript(pids: readonly number[]): string {
+  return ["$ProgressPreference = 'SilentlyContinue'", ...commandLineQuery(pids, '')].join('\n');
+}
+
+/** The query lines of `commandLineScript`, each row starting with `prefix`. */
+function commandLineQuery(pids: readonly number[], prefix: string): string[] {
   const filter = commandLinePids(pids, 'win32')
     .map((pid) => `ProcessId = ${pid}`)
     .join(' OR ');
   return [
-    "$ProgressPreference = 'SilentlyContinue'",
     `Get-CimInstance Win32_Process -Filter '${filter}' | ForEach-Object {`,
     '  $line = [string]$_.CommandLine',
-    '  "$($_.ProcessId) $([Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($line)))"',
+    `  "${prefix}$($_.ProcessId) $([Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($line)))"`,
     '}',
-  ].join('\n');
+  ];
 }
 
 /** `<pid> <command>` lines; only pids that were asked about, the first line for each. */
@@ -188,4 +205,69 @@ export async function readCommandLines(pids: readonly number[], deps: CommandLin
   } catch {
     return new Map();
   }
+}
+
+/** What `nameAndKillIdentified` found: the command lines it read, and the kill outcomes (null
+ *  when nothing could run, as `killIdentified` answers). */
+export interface NamedKill {
+  commands: Map<number, string>;
+  outcomes: Map<number, KillOutcome> | null;
+}
+
+const NAME_ROW = 'name ';
+
+/** The one script: the name query (its failure never stops the kill), then the kill loop. */
+export function nameAndKillScript(targets: readonly IdentifiedPid[], named: readonly number[]): string {
+  const query = commandLinePids(named, 'win32').length === 0 ? [] : commandLineQuery(named, NAME_ROW);
+  return [
+    "$ProgressPreference = 'SilentlyContinue'",
+    ...(query.length === 0 ? [] : ['try {', ...query.map((line) => `  ${line}`), '} catch {}']),
+    killScript(targets),
+  ].join('\n');
+}
+
+/**
+ * win32, for a run's sweep (#963): ONE PowerShell reads the command lines of `named`, then runs
+ * the identity kill (`killIdentified`'s loop) over `targets`. Each PowerShell start costs seconds
+ * on a busy machine, and a sweep that started two in a row went past its 10 s cap and reported a
+ * stop that had worked as "still running". Names first: after the kill they are gone. Name rows
+ * carry a `name ` prefix, so no command line can read as a kill outcome. Targets past the first
+ * kill batch go through `killIdentified`. Off Windows: nothing runs, outcomes null. Never rejects.
+ */
+export async function nameAndKillIdentified(
+  targets: readonly IdentifiedPid[],
+  named: readonly number[],
+  deps: CommandLineDeps = {},
+): Promise<NamedKill> {
+  const commands = new Map<number, string>();
+  if ((deps.platform ?? process.platform) !== 'win32') return { commands, outcomes: null };
+  const valid = validTargets(targets);
+  if (valid.length === 0) return { commands, outcomes: new Map() };
+  const powershell = powershellPath(deps.env ?? process.env);
+  if (powershell === null) return { commands, outcomes: null };
+  const first = valid.slice(0, KILL_BATCH);
+  let outcomes: Map<number, KillOutcome> | null = null;
+  try {
+    const text = await (deps.run ?? defaultTableRunner)(powershell, powershellArgs(nameAndKillScript(first, named)), {
+      maxBuffer: COMMAND_LINES_MAX_BUFFER,
+      timeoutMs: KILL_IDENTIFIED_TIMEOUT_MS + COMMAND_LINES_TIMEOUT_MS,
+      hide: true,
+    });
+    if (text !== null) {
+      const lines = text.split('\n');
+      const rows = lines.filter((line) => line.startsWith(NAME_ROW)).map((line) => line.slice(NAME_ROW.length));
+      const asked = new Set(commandLinePids(named, 'win32'));
+      const decode = (value: string): string => Buffer.from(value, 'base64').toString('utf8');
+      for (const [pid, command] of parseCommandLineRows(rows.join('\n'), asked, decode)) commands.set(pid, command);
+      outcomes = new Map();
+      parseKillOutcomes(text, new Set(first.map(({ pid }) => pid)), outcomes);
+    }
+  } catch {
+    // a throwing runner: the rest still gets its kill
+  }
+  if (valid.length > KILL_BATCH) {
+    const rest = await killIdentified(valid.slice(KILL_BATCH), deps);
+    if (rest !== null) outcomes = new Map([...(outcomes ?? []), ...rest]);
+  }
+  return { commands, outcomes };
 }

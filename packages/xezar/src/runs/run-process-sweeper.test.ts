@@ -252,6 +252,25 @@ describe('RunProcessSweeper on Windows – the ledger is the proof', () => {
     expect(reports[0]![1]).toBe('Could not stop 2 programs this task started: 320 node admin.js (access denied); 321 node stuck.js (still running).');
   });
 
+  it('confirms a killed pid that is gone without another table read (#963)', async () => {
+    let reads = 0;
+    const h = harness('win32', {
+      readTable: async () => {
+        reads += 1;
+        return h.machine.table();
+      },
+    });
+    h.machine.add({ pid: ROOT, ppid: XEZAR, startedAt: T0, cmdline: 'node claude.js' });
+    h.sweeper.pinRoot(RUN, ROOT, T0 + 500);
+    h.machine.add({ pid: 330, ppid: ROOT, startedAt: T0 + 1_000, cmdline: 'node dev.js' });
+    h.machine.tick();
+    h.machine.processes.get(ROOT)!.alive = false;
+    await settle(h.sweeper.now(RUN, 'cancel'));
+    expect(h.reports[0]![1]).toMatch(/^Stopped 1 program this task started: 330 node dev\.js/);
+    // One read to find it, one rescan that finds nothing – none to confirm a pid that is gone.
+    expect(reads).toBe(2);
+  });
+
   it("a timeout keeps the run's ledger; a cancel or pause hands it to the sweep", async () => {
     const { machine, sweeper } = windows();
     machine.tick();

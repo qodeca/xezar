@@ -1,6 +1,7 @@
-import { readdir, realpath, stat } from 'node:fs/promises';
+import { readdir, stat } from 'node:fs/promises';
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { expandTilde } from '../paths.ts';
+import { containmentRealpath, containmentSpelling } from '../platform/canonical-path.ts';
 
 /**
  * `GET /api/fs/browse` — the directory picker behind "Add project → open local
@@ -112,7 +113,8 @@ function contains(root: string, candidate: string): boolean {
 export async function isLexicallyInsideBrowseRoot(root: string, candidate: string): Promise<boolean> {
   const realRoot = await realpathOrNull(root);
   if (realRoot === null) return false;
-  return contains(realRoot, resolve(candidate));
+  // Windows: the ancestor's own spelling, so a different letter case, an 8.3 name or a `subst` drive compare (#963).
+  return contains(realRoot, await containmentSpelling(candidate));
 }
 
 export async function isInsideBrowseRoot(root: string, candidate: string): Promise<boolean> {
@@ -126,11 +128,7 @@ export async function isInsideBrowseRoot(root: string, candidate: string): Promi
 /** realpath or null — every "does it exist / where does it really point"
  *  question in this module is best-effort and answered without throwing. */
 async function realpathOrNull(path: string): Promise<string | null> {
-  try {
-    return await realpath(path);
-  } catch {
-    return null;
-  }
+  return containmentRealpath(path);
 }
 
 async function exists(path: string): Promise<boolean> {
