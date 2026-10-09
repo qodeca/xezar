@@ -10,6 +10,7 @@ import { ProjectContexts } from './project-context.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { createApp, type ServerDeps } from './server.ts';
 import { __seedRefStatusCacheForTests } from './forge/github.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * `GET /api/v1/workspace/runs-index` — the ⌘K palette's cross-project task finder.
@@ -55,7 +56,7 @@ describe('workspace runs index API', () => {
 
   afterEach(() => {
     store.flush();
-    for (const dir of [home, repoRoot, otherRoot]) rmSync(dir, { recursive: true, force: true });
+    for (const dir of [home, repoRoot, otherRoot]) rmSync(dir, TEST_DIR_RM_OPTIONS);
     if (savedHome === undefined) delete process.env.XEZ_HOME;
     else process.env.XEZ_HOME = savedHome;
     if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN;

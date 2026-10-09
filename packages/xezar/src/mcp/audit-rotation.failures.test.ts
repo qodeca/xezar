@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { onWindows } from '../../test/helpers/platform.ts';
+import { onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AUDIT_ROTATE_BYTES, AuditTrail, auditLockPath, auditTrailPath, rotatedAuditTrailPath } from './audit-trail.ts';
 
@@ -49,7 +49,7 @@ beforeEach(() => {
 afterEach(() => {
   failures.chmod = undefined;
   failures.rename = undefined;
-  fs.rmSync(root, { recursive: true, force: true });
+  fs.rmSync(root, TEST_DIR_RM_OPTIONS);
 });
 
 const line = (seq: number): string =>

@@ -12,6 +12,7 @@ import { apiRequest } from './loopback-request.testkit.ts';
 import { createApp, type WorkspaceConfigResponse } from './server.ts';
 import { cliColorModeSchema, cliLogLevelSchema, cliOutputModeSchema } from '@qodeca/xezar-contract';
 import { COLOR_MODES, LOG_LEVELS, OUTPUT_MODES } from '../cli-settings.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /** What `cli` answers with nothing stored, no variable set and no narrowing (#467, PR 5). */
 const DEFAULT_CLI: WorkspaceConfigResponse['cli'] = {
@@ -105,7 +106,7 @@ describe('the workspace settings API (step 2.7)', () => {
       if (savedCliEnv[name] === undefined) delete process.env[name];
       else process.env[name] = savedCliEnv[name];
     }
-    for (const dir of [home, repoRoot]) rmSync(dir, { recursive: true, force: true });
+    for (const dir of [home, repoRoot]) rmSync(dir, TEST_DIR_RM_OPTIONS);
   });
 
   const rawConfig = () => JSON.parse(readFileSync(workspaceConfigPath(), 'utf8')) as Record<string, unknown>;

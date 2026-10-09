@@ -2,7 +2,7 @@
 // that reaches `skills.ts` (#671).
 import './tools/mcp-test-home.testkit.ts';
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync } from 'node:fs';
-import { linkDir } from '../../test/helpers/platform.ts';
+import { linkDir, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -115,7 +115,7 @@ beforeEach(async () => {
 afterEach(() => {
   vi.restoreAllMocks();
   fx.contexts.disposeAll();
-  for (const root of [fx.rootA, fx.rootB, fx.rootBoot]) rmSync(root, { recursive: true, force: true });
+  for (const root of [fx.rootA, fx.rootB, fx.rootBoot]) rmSync(root, TEST_DIR_RM_OPTIONS);
 });
 
 /** Everything that identifies B. None of it may appear in an error or a log line. */
@@ -315,7 +315,7 @@ describe('binding refuses an untrusted or ambiguous source', () => {
     } finally {
       fx.contexts.dispose('linked');
       rmSync(link, { force: true });
-      rmSync(target, { recursive: true, force: true });
+      rmSync(target, TEST_DIR_RM_OPTIONS);
     }
   });
 
@@ -361,7 +361,7 @@ describe('a session bound to a project whose root has disappeared', () => {
     const binding = await bindMcpSession(fx.source, A);
     expect((await binding.run(fx.aRunId)).id).toBe(fx.aRunId);
 
-    rmSync(fx.rootA, { recursive: true, force: true });
+    rmSync(fx.rootA, TEST_DIR_RM_OPTIONS);
 
     for (const attempt of [
       binding.project(),
@@ -395,7 +395,7 @@ describe('a session bound to a project whose root has disappeared', () => {
       expect(statSync(fx.rootA).isDirectory()).toBe(true);
       expect((await refusal(binding.run(fx.aRunId))).reason).toBe('missing-root');
     } finally {
-      rmSync(`${fx.rootA}-moved`, { recursive: true, force: true });
+      rmSync(`${fx.rootA}-moved`, TEST_DIR_RM_OPTIONS);
     }
   });
 
@@ -408,13 +408,13 @@ describe('a session bound to a project whose root has disappeared', () => {
       expect((await refusal(binding.project())).reason).toBe('missing-root');
     } finally {
       rmSync(fx.rootA, { force: true });
-      rmSync(`${fx.rootA}-moved`, { recursive: true, force: true });
+      rmSync(`${fx.rootA}-moved`, TEST_DIR_RM_OPTIONS);
     }
   });
 
   it('fails closed when the root is replaced by a symlink to another project', async () => {
     const binding = await bindMcpSession(fx.source, A);
-    rmSync(fx.rootA, { recursive: true, force: true });
+    rmSync(fx.rootA, TEST_DIR_RM_OPTIONS);
     linkDir(fx.rootB, fx.rootA);
     const err = await refusal(binding.project());
     expect(err.reason).toBe('missing-root');

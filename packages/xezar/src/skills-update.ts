@@ -92,12 +92,26 @@ export function isXezarSkillsSource(value: unknown): boolean {
   }
 }
 
+/** Windows answers ENOENT, not ENOTDIR, when a parent on the path is a FILE (#963): a lock under a
+ *  `.agents` file is unreadable metadata there too, not a lock that was never written. */
+async function nearestExistingIsDirectory(dir: string): Promise<boolean> {
+  for (let current = dir; ; current = dirname(current)) {
+    try {
+      return (await stat(current)).isDirectory();
+    } catch {
+      if (dirname(current) === current) return false;
+    }
+  }
+}
+
 async function readLock(path: string): Promise<LockRead> {
   let parsed: unknown;
   try {
     parsed = JSON.parse(await readFile(path, 'utf8'));
   } catch (error) {
-    return (error as NodeJS.ErrnoException).code === 'ENOENT' ? { kind: 'missing' } : { kind: 'invalid' };
+    return (error as NodeJS.ErrnoException).code === 'ENOENT' && (await nearestExistingIsDirectory(dirname(path)))
+      ? { kind: 'missing' }
+      : { kind: 'invalid' };
   }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { kind: 'invalid' };
   const root = parsed as Record<string, unknown>;

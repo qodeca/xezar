@@ -18,10 +18,12 @@ Tracked in [#963](https://github.com/qodeca/xezar/issues/963).
 New write-then-rename sites use `writeFileAtomic` / `writeFileAtomicSync`. These known exceptions
 have not been migrated yet and still use a plain rename:
 
-- the MCP writers: `mcp/connection-file.ts`, `mcp/event-controller.ts`, `mcp/event-journal.ts`,
-  `mcp/operation-receipts.ts`, `mcp/reconnect.ts`, `mcp/audit-trail.ts` and
-  `packages/xezar/scripts/pi-leader-extension.ts`;
-- `server-install/state.ts`.
+- `mcp/connection-file.ts`, which moves with the Windows MCP transport;
+- `packages/xezar/scripts/pi-leader-extension.ts`, which moves with the pi leader on Windows.
+
+The test scripts `packages/xezar/scripts/mock-claude.mjs` and
+`packages/xezar/scripts/multi-project-harness.mjs` cannot import the platform layer, so each
+carries its own short Windows retry around the rename.
 
 `agent-config/files.ts` is not on this list: its plain `rename` is a deliberate, permanent
 exception.

@@ -19,6 +19,7 @@ import {
   type AgentQuotaProcessSpec,
   type RunQuotaProcess,
 } from './agent-quota-checker.ts';
+import { onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 const profile = (provider: 'claude' | 'codex', id = 'default'): ResolvedAgentProfile => ({
   provider,
@@ -98,7 +99,7 @@ async function runHungClaudeCheck(ignoreTerm: boolean): Promise<{
       for (const pgid of pgids) {
         try { process.kill(-pgid, 'SIGKILL'); } catch { /* already gone */ }
       }
-      await rm(fixtureDir, { recursive: true, force: true });
+      await rm(fixtureDir, TEST_DIR_RM_OPTIONS);
     },
   };
 }
@@ -786,7 +787,8 @@ describe('AgentQuotaChecker', () => {
     await expect.poll(() => [alive(reply.parentPid), alive(reply.childPid)]).toEqual([false, false]);
   });
 
-  it('kills every saved group after the full Claude checker times out on the QA hang shape', async () => {
+  // win32-skip(#963): process groups and a bash fake are POSIX only; Windows has no `kill(-pgid)`
+  it.skipIf(onWindows)('kills every saved group after the full Claude checker times out on the QA hang shape', async () => {
     const result = await runHungClaudeCheck(false);
     try {
       expect(result.pgids.length).toBeGreaterThan(0);
@@ -797,7 +799,8 @@ describe('AgentQuotaChecker', () => {
     }
   });
 
-  it('kills every saved group when a full-checker grandchild ignores SIGTERM', async () => {
+  // win32-skip(#963): process groups and a bash fake are POSIX only; Windows has no `kill(-pgid)`
+  it.skipIf(onWindows)('kills every saved group when a full-checker grandchild ignores SIGTERM', async () => {
     const result = await runHungClaudeCheck(true);
     try {
       expect(result.pgids.length).toBeGreaterThan(0);

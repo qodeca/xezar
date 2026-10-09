@@ -6,6 +6,7 @@ import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { xezarHomeDir } from '../paths.ts';
 import { createApp, localHandoffRouteManifest } from './server.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 // Registration owns the inventory. Source parity prevents an inline local-only
 // refusal from being added without the guard (or losing its marker).
@@ -29,7 +30,7 @@ describe('registration-derived local-only boundary (#547)', () => {
   const stores: RunStore[] = [];
   afterEach(() => {
     for (const store of stores.splice(0)) store.flush();
-    for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+    for (const root of roots.splice(0)) rmSync(root, TEST_DIR_RM_OPTIONS);
     vi.unstubAllEnvs();
   });
   it.each(['environment', 'bind-host'])('A-LOCAL-01 all registered guards refuse before local effects: %s', async (mode) => {

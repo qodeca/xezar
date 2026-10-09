@@ -8,6 +8,7 @@ import { StepAborted } from './steps.ts';
 import { createAutoUi } from './ui.ts';
 import type { InstallStep, PlatformStrategy, Runner } from './types.ts';
 import { mergeWriteWorkspaceConfig } from '../workspace/config.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 const noRunner: Runner = { capture: async () => ({ code: 0, stdout: '', stderr: '' }), interactive: async () => 0 };
 
@@ -50,7 +51,7 @@ describe('engine', () => {
   afterEach(() => {
     if (original === undefined) delete process.env.XEZ_HOME;
     else process.env.XEZ_HOME = original;
-    rmSync(home, { recursive: true, force: true });
+    rmSync(home, TEST_DIR_RM_OPTIONS);
   });
 
   it('runs all steps and flips installed=true', async () => {
@@ -274,7 +275,7 @@ describe('engine — ledger preservation and uninstall safety (PR #423 review fi
   afterEach(() => {
     if (original === undefined) delete process.env.XEZ_HOME;
     else process.env.XEZ_HOME = original;
-    rmSync(home, { recursive: true, force: true });
+    rmSync(home, TEST_DIR_RM_OPTIONS);
   });
 
   it('a cancelled --reconfigure re-run keeps the previously recorded artifacts', async () => {

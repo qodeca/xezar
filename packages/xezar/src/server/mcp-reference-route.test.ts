@@ -16,6 +16,7 @@ import { clearProjectProbeCache, listProjects, registerProject } from '../worksp
 import { apiRequest } from './loopback-request.testkit.ts';
 import { ProjectContexts } from './project-context.ts';
 import { createApp } from './server.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * #284 — `GET /api/v1/mcp/reference`, the one route behind Settings → MCP API.
@@ -80,7 +81,7 @@ describe('GET /api/v1/mcp/reference (#284)', () => {
   afterEach(async () => {
     await contexts.disposeAll();
     store.flush();
-    for (const dir of [home, repoRoot]) rmSync(dir, { recursive: true, force: true });
+    for (const dir of [home, repoRoot]) rmSync(dir, TEST_DIR_RM_OPTIONS);
     if (saved.home === undefined) delete process.env.XEZ_HOME;
     else process.env.XEZ_HOME = saved.home;
     if (saved.remote === undefined) delete process.env.XEZ_REMOTE;

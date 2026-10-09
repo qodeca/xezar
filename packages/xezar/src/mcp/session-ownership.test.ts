@@ -30,7 +30,7 @@ import { IPC_PROTOCOL_VERSION, LineFramer, encodeFrame, type McpToolResult } fro
 import { runVersion } from './stale-write.ts';
 import { tools } from './tools/index.ts';
 import { withOperationId } from './tools/operation-id.testkit.ts';
-import { onWindows } from '../../test/helpers/platform.ts';
+import { onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * #302 — exclusive ownership over a LIVE MCP session (A-17, A-18, the exclusivity half of A-23).
@@ -67,7 +67,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   for (const close of closers.splice(0).reverse()) await Promise.resolve(close()).catch(() => undefined);
-  for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  for (const dir of tempDirs.splice(0)) rmSync(dir, TEST_DIR_RM_OPTIONS);
   for (const [key, value] of [['XEZ_HOME', saved.home], ['XEZ_DRY_RUN', saved.dryRun]] as const) {
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;

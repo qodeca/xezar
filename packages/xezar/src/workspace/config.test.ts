@@ -2,7 +2,7 @@ import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathS
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { onWindows, withPlatform } from '../../test/helpers/platform.ts';
+import { onWindows, withPlatform, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 import { workspaceConfigPath } from '../paths.ts';
 import { projectStateLayout, setActiveStateLayout } from '../state-layout.ts';
 import {
@@ -49,7 +49,7 @@ describe('workspace config', () => {
     else process.env.XEZ_PROJECTS_DIR = originalProjectsDir;
     if (originalSkillsAutoUpdate === undefined) delete process.env.XEZ_SKILLS_AUTO_UPDATE;
     else process.env.XEZ_SKILLS_AUTO_UPDATE = originalSkillsAutoUpdate;
-    rmSync(home, { recursive: true, force: true });
+    rmSync(home, TEST_DIR_RM_OPTIONS);
     vi.restoreAllMocks();
   });
 
@@ -506,7 +506,7 @@ describe('single-project mode omits the machine-scoped keys (#650)', () => {
 
   afterEach(() => {
     setActiveStateLayout(null);
-    rmSync(project, { recursive: true, force: true });
+    rmSync(project, TEST_DIR_RM_OPTIONS);
   });
 
   const onDisk = (): Record<string, unknown> =>
@@ -590,7 +590,7 @@ describe('single-project mode omits the machine-scoped keys (#650)', () => {
     } finally {
       if (saved === undefined) delete process.env.XEZ_HOME;
       else process.env.XEZ_HOME = saved;
-      rmSync(globalHome, { recursive: true, force: true });
+      rmSync(globalHome, TEST_DIR_RM_OPTIONS);
     }
   });
 });

@@ -2,7 +2,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } f
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { onWindows } from '../../test/helpers/platform.ts';
+import { onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 import { RunStore } from './store.ts';
 import { closeStoreAndRemove } from './store.testkit.ts';
 
@@ -60,7 +60,7 @@ describe('RunStore — a vanished data directory is a skipped write, not an erro
 
   afterEach(() => {
     vi.restoreAllMocks();
-    rmSync(dataDir, { recursive: true, force: true });
+    rmSync(dataDir, TEST_DIR_RM_OPTIONS);
   });
 
   it('a pending debounced save whose directory is gone neither logs nor throws', async () => {
@@ -68,7 +68,7 @@ describe('RunStore — a vanished data directory is a skipped write, not an erro
     const id = metered(store);
     meter(store, id, 30); // arms the 300 ms debounce
 
-    rmSync(dataDir, { recursive: true, force: true }); // the fixture teardown that used to win
+    rmSync(dataDir, TEST_DIR_RM_OPTIONS); // the fixture teardown that used to win
     await afterTheDebounce();
 
     expect(errors).toEqual([]);
@@ -82,7 +82,7 @@ describe('RunStore — a vanished data directory is a skipped write, not an erro
   it('a write that arrives after the directory is gone is silent too, however many arrive', async () => {
     const store = RunStore.open(dataDir);
     const id = metered(store);
-    rmSync(dataDir, { recursive: true, force: true });
+    rmSync(dataDir, TEST_DIR_RM_OPTIONS);
 
     meter(store, id, 40);
     await afterTheDebounce();
@@ -102,7 +102,7 @@ describe('RunStore — a vanished data directory is a skipped write, not an erro
     const onDisk = JSON.parse(readFileSync(join(dataDir, 'runs.json'), 'utf8')) as StoredRun[];
     expect(onDisk.find((r) => r.id === id)?.steps[0]?.outputTokens).toBe(60);
 
-    rmSync(dataDir, { recursive: true, force: true });
+    rmSync(dataDir, TEST_DIR_RM_OPTIONS);
     meter(store, id, 70); // a writer that had not finished letting go
     await afterTheDebounce();
     expect(errors).toEqual([]);
@@ -112,7 +112,7 @@ describe('RunStore — a vanished data directory is a skipped write, not an erro
   it('close() is idempotent and safe on a store whose directory has already gone', () => {
     const store = RunStore.open(dataDir);
     metered(store);
-    rmSync(dataDir, { recursive: true, force: true });
+    rmSync(dataDir, TEST_DIR_RM_OPTIONS);
 
     expect(() => {
       store.close();
@@ -141,7 +141,7 @@ describe('RunStore — a vanished data directory is a skipped write, not an erro
     const store = RunStore.open(dataDir);
     const id = metered(store);
 
-    rmSync(dataDir, { recursive: true, force: true });
+    rmSync(dataDir, TEST_DIR_RM_OPTIONS);
     meter(store, id, 200);
     await afterTheDebounce(); // the write that could not happen — skipped, silent
     expect(existsSync(join(dataDir, 'runs.json'))).toBe(false);
@@ -180,7 +180,7 @@ describe('RunStore — a vanished data directory is a skipped write, not an erro
       expect(store.isClosed).toBe(false);
     } finally {
       chmodSync(parent, 0o700);
-      rmSync(parent, { recursive: true, force: true });
+      rmSync(parent, TEST_DIR_RM_OPTIONS);
     }
   });
 

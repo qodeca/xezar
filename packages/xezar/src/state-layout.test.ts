@@ -2,7 +2,7 @@ import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathS
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { onWindows, withPlatform } from '../test/helpers/platform.ts';
+import { onWindows, withPlatform, TEST_DIR_RM_OPTIONS } from '../test/helpers/platform.ts';
 import {
   activeStateLayout,
   assertProjectStateUsable,
@@ -37,7 +37,7 @@ describe('resolveStateLayout', () => {
 
   afterEach(() => {
     setActiveStateLayout(null);
-    rmSync(project, { recursive: true, force: true });
+    rmSync(project, TEST_DIR_RM_OPTIONS);
   });
 
   const marker = (): string => {
@@ -248,7 +248,7 @@ describe('the active layout drives every state path (DC-1)', () => {
 
   afterEach(() => {
     setActiveStateLayout(null);
-    rmSync(project, { recursive: true, force: true });
+    rmSync(project, TEST_DIR_RM_OPTIONS);
   });
 
   it('starts global, so a process that never sets it behaves exactly as before', () => {
@@ -292,7 +292,7 @@ describe('createProjectStateFiles (AC-2, AC-4)', () => {
 
   afterEach(() => {
     setActiveStateLayout(null);
-    rmSync(project, { recursive: true, force: true });
+    rmSync(project, TEST_DIR_RM_OPTIONS);
   });
 
   it('creates exactly the four files, and nothing else, under <project>/.xezar', () => {
@@ -356,7 +356,7 @@ describe('assertProjectStateUsable (#600 Q1)', () => {
       // never existed — nothing to restore
     }
     setActiveStateLayout(null);
-    rmSync(project, { recursive: true, force: true });
+    rmSync(project, TEST_DIR_RM_OPTIONS);
   });
 
   const layoutFor = (): ReturnType<typeof resolveStateLayout> =>

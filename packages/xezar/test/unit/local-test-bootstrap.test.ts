@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import { test } from 'node:test';
 import { pathToFileURL } from 'node:url';
-import { onWindows } from '../helpers/platform.ts';
+import { onWindows, TEST_DIR_RM_OPTIONS } from '../helpers/platform.ts';
 const root = resolve(import.meta.dirname, '../../../..');
 const bootstrap = resolve(root, 'scripts/test-local-state.mjs');
 const marker = `${sep}.local${sep}xezar${sep}worktrees${sep}`;
@@ -37,7 +37,7 @@ test('project-local temporary fixtures cannot discover or mutate their parent Gi
         // Git for Windows prints C:/…: bring it to the native form realpathSync uses. POSIX: as printed.
         const present = process.platform === 'win32' ? resolve(printed) : printed;
         console.log(JSON.stringify({ scratch: tmpdir(), absent: absent.status, ownRepo: present === realpathSync(fixture) }));
-      } finally { rmSync(fixture, { recursive: true, force: true }); }
+      } finally { rmSync(fixture, { recursive: true, force: true, ...(process.platform === 'win32' ? { maxRetries: 10, retryDelay: 100 } : {}) }); }
     `,
   ], { cwd: root, encoding: 'utf8' }));
   // A checkout that is itself a xezar task worktree cannot keep scratch in-repo (see the next
@@ -112,6 +112,6 @@ test('a checkout that is itself a task worktree pins scratch outside the worktre
     created.push(other);
     assert.notEqual(other, scratch);
   } finally {
-    for (const dir of [fixture, ...created]) rmSync(dir, { recursive: true, force: true });
+    for (const dir of [fixture, ...created]) rmSync(dir, TEST_DIR_RM_OPTIONS);
   }
 });

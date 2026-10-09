@@ -351,8 +351,10 @@ jobs:
 
   # Cross-platform signal (#963). A NEW, non-required job: the five required checks are read by exact
   # name, so none is renamed or folded in. ubuntu-latest on Node 22 (the engines floor) must pass;
-  # windows-latest and macos-latest on Node 22 and lts/* are informational until #963 lands
-  # (`continue-on-error`, `fail-fast: false`). Steps after install run even if an earlier one failed,
+  # windows-latest and macos-latest on Node 22 and 24 are informational until #963 lands
+  # (`continue-on-error`, `fail-fast: false`). Those legs name a Node major, never `lts/*`: a leg
+  # that may become a required check must not change Node major on its own. `lts/*` runs as an
+  # informational canary only, so a new LTS shows up here before anyone pins it. Steps after install run even if an earlier one failed,
   # so one red leg still reports every step. Step commands run in bash on every OS (Git Bash on
   # Windows); npm itself still runs package scripts through cmd.exe there.
   cross-platform:
@@ -368,8 +370,10 @@ jobs:
         include:
           - { os: ubuntu-latest, node: '22', informational: false, timeout: 20 }
           - { os: windows-latest, node: '22', informational: true, timeout: 45 }
+          - { os: windows-latest, node: '24', informational: true, timeout: 45 }
           - { os: windows-latest, node: 'lts/*', informational: true, timeout: 45 }
           - { os: macos-latest, node: '22', informational: true, timeout: 30 }
+          - { os: macos-latest, node: '24', informational: true, timeout: 30 }
           - { os: macos-latest, node: 'lts/*', informational: true, timeout: 30 }
     defaults:
       run:

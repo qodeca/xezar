@@ -25,6 +25,7 @@ import {
   type LocalHandoffInput,
   type LocalHandoffResult,
 } from './local-handoff.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../../test/helpers/platform.ts';
 
 // Health also probes installed CLIs (with 10-second timeouts). Those host-dependent
 // checks are unrelated to handoff authorization; keep the real health route and
@@ -81,7 +82,7 @@ afterEach(() => {
   restore('XEZ_DRY_RUN', saved.dry);
   delete process.env.XEZ_TEST_HANDOFF_TOKEN;
   for (const store of stores.splice(0)) store.close();
-  for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  for (const dir of tempDirs.splice(0)) rmSync(dir, TEST_DIR_RM_OPTIONS);
 });
 
 /** The real app, and every request it received — method and path, in order. */

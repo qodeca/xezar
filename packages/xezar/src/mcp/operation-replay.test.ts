@@ -22,7 +22,7 @@ import { LineFramer, encodeFrame, type McpToolResult } from './ipc.ts';
 import { OperationReceiptStore, RECEIPT_JOURNAL_FILE } from './operation-receipts.ts';
 import type { ServiceDispatch } from './service-adapter.ts';
 import { tools } from './tools/index.ts';
-import { onWindows } from '../../test/helpers/platform.ts';
+import { onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * #264 — A REPLAY RETURNS THE FIRST ANSWER AND REPEATS NO EFFECT, for every mutating tool.
@@ -71,7 +71,7 @@ beforeEach(() => {
 afterEach(async () => {
   vi.restoreAllMocks();
   for (const close of closers.splice(0).reverse()) await Promise.resolve(close()).catch(() => undefined);
-  for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  for (const dir of tempDirs.splice(0)) rmSync(dir, TEST_DIR_RM_OPTIONS);
   for (const [key, value] of [['XEZ_HOME', saved.home], ['XEZ_DRY_RUN', saved.dryRun]] as const) {
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;

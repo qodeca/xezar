@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import extension, { __internals } from '../../../scripts/pi-leader-extension.ts';
-import { shortTmpRoot, onWindows, linkDir } from '../../../test/helpers/platform.ts';
+import { shortTmpRoot, onWindows, linkDir, TEST_DIR_RM_OPTIONS } from '../../../test/helpers/platform.ts';
 
 /**
  * The shipped pi leader extension (`scripts/pi-leader-extension.ts`).
@@ -85,7 +85,7 @@ afterEach(() => {
     }
     for (const dir of dirs.splice(0)) {
       try {
-        rmSync(dir, { recursive: true, force: true });
+        rmSync(dir, TEST_DIR_RM_OPTIONS);
       } catch { /* a leftover temporary directory harms nothing */ }
     }
   }
@@ -249,7 +249,8 @@ describe('the socket is kept away from other local accounts', () => {
     expect(realpathSync(join(socketPath, '..', '..'))).toBe(realpathSync(shared));
   });
 
-  it('refuses to adopt a symlink planted at its directory path, and opens nothing', () => {
+  // win32-skip(#963): makePrivateSocketDir answers undefined on Windows – its `(mode & 0o077) !== 0` check sees 0o666 (the pi leader over Windows pipes is deferred)
+  it.skipIf(onWindows)('refuses to adopt a symlink planted at its directory path, and opens nothing', () => {
     const tmpRoot = tmp('xzext-tmp-');
     pinTmpDir(tmpRoot);
     const elsewhere = tmp('xzext-attacker-');
@@ -258,7 +259,6 @@ describe('the socket is kept away from other local accounts', () => {
     // `rmSync` removes the symlink and `mkdirSync` then makes a real directory, so the attacker's
     // target is never written into. The point is that the path used afterwards is not the symlink.
     const place = __internals.makePrivateSocketDir('planted');
-    // win32-r9(#963): makePrivateSocketDir answers undefined on Windows – its `(mode & 0o077) !== 0` check sees 0o666
     expect(place).toBeDefined();
     // A directory of its own, never the shared root, and never the planted link.
     expect(realpathSync(place!.dir)).not.toBe(realpathSync(tmpRoot));

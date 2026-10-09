@@ -11,6 +11,7 @@ import { ProjectOwnership } from '../../workspace/project-owner.ts';
 import { EventController, type EventDispatch } from '../event-controller.ts';
 import { EventJournal } from '../event-journal.ts';
 import { OPENCODE_DELIVERY_ROUTES, OpenCodeDeliveryBlocked, OpenCodeReactionAdapter, renderDispatch } from './opencode.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../../test/helpers/platform.ts';
 
 /**
  * #110 — the OpenCode reaction adapter, against a fake `opencode serve` that answers the routes
@@ -353,7 +354,7 @@ describe('the xezar project feed is the only trigger — OpenCode’s own stream
   beforeEach(() => {
     dataDir = mkdtempSync(join(tmpdir(), 'xez-opencode-adapter-'));
   });
-  afterEach(() => rmSync(dataDir, { recursive: true, force: true }));
+  afterEach(() => rmSync(dataDir, TEST_DIR_RM_OPTIONS));
 
   const input = (n: number, over: Partial<McpJournalAppendInput> = {}): McpJournalAppendInput => ({
     category: 'E-01',

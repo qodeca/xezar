@@ -7,11 +7,11 @@ import {
   openSync,
   readFileSync,
   readSync,
-  renameSync,
   rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
+import { renameReplacingSync } from '../platform/atomic-write.ts';
 import { join, resolve } from 'node:path';
 import {
   auditActionRecordSchema,
@@ -666,7 +666,7 @@ function appendAuditRecord(
   for (let generation = AUDIT_RETAINED_ROTATIONS - 1; generation >= 1; generation -= 1) {
     renameIfPresent(rotations[generation - 1]!, rotations[generation]!);
   }
-  renameSync(live, rotations[0]!);
+  renameReplacingSync(live, rotations[0]!);
   hooks.afterRotateRename?.();
   for (const path of rotations) repairMode(path);
   return startLive();
@@ -674,7 +674,7 @@ function appendAuditRecord(
 
 function renameIfPresent(from: string, to: string): void {
   try {
-    renameSync(from, to);
+    renameReplacingSync(from, to);
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
   }

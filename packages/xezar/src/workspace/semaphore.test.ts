@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { linkDir, withPlatform } from '../../test/helpers/platform.ts';
+import { linkDir, withPlatform, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 import { DEFAULT_MEMORY_LIMIT_MB } from './config.ts';
 import { WorkspaceSemaphore, type SemaphoreParticipant } from './semaphore.ts';
 
@@ -131,8 +131,8 @@ describe('WorkspaceSemaphore', () => {
     } finally {
       if (savedHome === undefined) delete process.env.XEZ_HOME;
       else process.env.XEZ_HOME = savedHome;
-      rmSync(home, { recursive: true, force: true });
-      rmSync(repo, { recursive: true, force: true });
+      rmSync(home, TEST_DIR_RM_OPTIONS);
+      rmSync(repo, TEST_DIR_RM_OPTIONS);
     }
   });
 
@@ -378,7 +378,7 @@ describe('WorkspaceSemaphore', () => {
       await sem.refresh();
       expect(sem.projectMaxParallel(capped)).toBe(3);
     } finally {
-      rmSync(dirs, { recursive: true, force: true });
+      rmSync(dirs, TEST_DIR_RM_OPTIONS);
     }
   });
 
@@ -410,7 +410,7 @@ describe('WorkspaceSemaphore', () => {
         expect(sem.projectMemoryLimitMb(repo)).toBeNull();
       });
     } finally {
-      rmSync(dirs, { recursive: true, force: true });
+      rmSync(dirs, TEST_DIR_RM_OPTIONS);
     }
   });
 
@@ -443,7 +443,7 @@ describe('WorkspaceSemaphore', () => {
       expect(sem.projectMaxParallel(link)).toBe(1);
       expect(sem.projectMaxParallel(real)).toBe(1);
     } finally {
-      rmSync(dirs, { recursive: true, force: true });
+      rmSync(dirs, TEST_DIR_RM_OPTIONS);
     }
   });
 

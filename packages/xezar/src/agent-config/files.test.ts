@@ -2,7 +2,7 @@ import { mkdtempSync, realpathSync, rmSync, writeFileSync, readFileSync, mkdirSy
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { linkDir } from '../../test/helpers/platform.ts';
+import { linkDir, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 import { readConfigFile, writeConfigFile } from './files.ts';
 
 let repo: string;
@@ -15,8 +15,8 @@ beforeEach(() => {
   env = { HOME: home } as NodeJS.ProcessEnv;
 });
 afterEach(() => {
-  rmSync(repo, { recursive: true, force: true });
-  rmSync(home, { recursive: true, force: true });
+  rmSync(repo, TEST_DIR_RM_OPTIONS);
+  rmSync(home, TEST_DIR_RM_OPTIONS);
 });
 
 describe('readConfigFile', () => {
@@ -102,6 +102,6 @@ describe('writeConfigFile', () => {
     expect(out).toMatchObject({ ok: true });
     // the real file landed in the dotfiles target, and ~/.claude is still a symlink
     expect(readFileSync(join(dotfiles, 'settings.json'), 'utf8')).toBe('{"x":1}');
-    rmSync(dotfiles, { recursive: true, force: true });
+    rmSync(dotfiles, TEST_DIR_RM_OPTIONS);
   });
 });

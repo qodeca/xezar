@@ -20,6 +20,7 @@ import { projectConfigTool } from './project-config.ts';
 import { withOperationId } from './operation-id.testkit.ts';
 import { taskReadsTool } from './task-reads.ts';
 import { organiseWorkTool } from './work-organisation.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../../test/helpers/platform.ts';
 
 /**
  * #250 — the MCP half of stale-write rejection: every tool action that changes a task REQUIRES the
@@ -81,7 +82,7 @@ beforeEach(() => {
 
 afterEach(() => {
   store.flush();
-  rmSync(repoRoot, { recursive: true, force: true });
+  rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
 });
 
 const ctx = (): McpToolContext =>

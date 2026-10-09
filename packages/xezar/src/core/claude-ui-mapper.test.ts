@@ -23,6 +23,7 @@ import {
   type ClaudeUiMapping,
 } from './claude-ui-mapper.ts';
 import { ClaudeCliRunner } from './claude-cli-runner.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FIXTURES = join(HERE, '__fixtures__', 'claude');
@@ -615,7 +616,7 @@ describe('ClaudeCliRunner v2 wiring (against the bundled mock CLI)', () => {
         message: 'Failed to authenticate. API Error: 401 OAuth access token has been revoked.',
       });
     } finally {
-      await rm(cwd, { recursive: true, force: true });
+      await rm(cwd, TEST_DIR_RM_OPTIONS);
     }
   }, 30_000);
 
@@ -664,7 +665,7 @@ describe('ClaudeCliRunner v2 wiring (against the bundled mock CLI)', () => {
       });
       expect(v2.at(-1)?.type).toBe('usage.updated');
     } finally {
-      await rm(cwd, { recursive: true, force: true });
+      await rm(cwd, TEST_DIR_RM_OPTIONS);
     }
   }, 30_000);
 
@@ -712,7 +713,7 @@ describe('ClaudeCliRunner v2 wiring (against the bundled mock CLI)', () => {
       );
       expect(completedSpawns).toHaveLength(2);
     } finally {
-      await rm(cwd, { recursive: true, force: true });
+      await rm(cwd, TEST_DIR_RM_OPTIONS);
     }
   }, 30_000);
 });

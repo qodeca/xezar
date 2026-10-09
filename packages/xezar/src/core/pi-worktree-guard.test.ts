@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import extension, { __internals } from '../../scripts/pi-worktree-guard.ts';
 import { agentDirectories } from '../workflows/run.ts';
-import { linkDir, onWindows } from '../../test/helpers/platform.ts';
+import { linkDir, onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 import { READ_ONLY_LOCK_FIXTURES } from './read-only-lock.testkit.ts';
 
 const roots: string[] = [];
@@ -46,8 +46,6 @@ function fixture(primaryName = 'repo'): Fixture {
 
 type ToolCall = Parameters<typeof __internals.guardToolCall>[2];
 
-// win32-r9(#963): the bash-command checks do not block a Windows-path `cd`/`git -C`/redirect into the
-// primary checkout (35 cases answer undefined instead of { block: true }) – scripts/pi-worktree-guard.ts
 function guard(f: Fixture, event: ToolCall, allowed: string[] = []) {
   return __internals.guardToolCall(f.worktree, f.worktree, event, f.primary, allowed);
 }
@@ -67,7 +65,7 @@ afterEach(() => {
   else process.env.HOME = originalHome;
   if (originalUserProfile === undefined) delete process.env.USERPROFILE;
   else process.env.USERPROFILE = originalUserProfile;
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  for (const root of roots.splice(0)) rmSync(root, TEST_DIR_RM_OPTIONS);
 });
 
 describe('pi linked-worktree tool guard (#537)', () => {
@@ -199,6 +197,22 @@ describe('pi linked-worktree tool guard (#537)', () => {
     ])('allows %s', (_name, command) => {
       const f = fixture();
       expect(guard(f, bash(command(f)))).toBeUndefined();
+    });
+
+    // Git Bash spellings of a native path (#963): `/c/…` is the drive, `C:/…` is the same path.
+    const gitBashPath = (p: string) => `/${p[0]?.toLowerCase()}/${p.slice(3).replaceAll('\\', '/')}`;
+    it.runIf(onWindows).each([
+      ['cd /<drive>/… into the primary', (f: Fixture) => `cd ${gitBashPath(f.primary)} && git status`],
+      ['a redirect to /<drive>/… in the primary', (f: Fixture) => `echo x >> ${gitBashPath(f.primary)}/tracked.md`],
+      ['git -C with forward slashes', (f: Fixture) => `git -C ${f.primary.replaceAll('\\', '/')} commit -am x`],
+    ])('blocks on Windows %s', (_name, command) => {
+      const f = fixture();
+      expect(guard(f, bash(command(f)))).toMatchObject(BLOCK);
+    });
+
+    it.runIf(onWindows)('still allows an escaped glob and a /<drive>/… path outside the primary on Windows', () => {
+      const f = fixture();
+      expect(guard(f, bash(`find . -name \\*.ts && cd ${gitBashPath(f.outside)} && ls`))).toBeUndefined();
     });
   });
 

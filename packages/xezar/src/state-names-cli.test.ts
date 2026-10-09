@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { STATE_NAMES_PAYLOAD } from './local-xezar-top-level-names.ts';
 import { runStateNamesCommand, stateNamesJson, type StateNamesIo } from './state-names-cli.ts';
+import { TEST_DIR_RM_OPTIONS } from '../test/helpers/platform.ts';
 
 /**
  * `xezar state-names` (#852), exercised through the REAL program.
@@ -68,7 +69,7 @@ describe('xezar state-names (#852)', () => {
     home = mkdtempSync(join(tmpdir(), 'xezar-state-names-'));
   });
   afterAll(() => {
-    rmSync(home, { recursive: true, force: true });
+    rmSync(home, TEST_DIR_RM_OPTIONS);
   });
 
   it('prints the fixture bytes exactly, through the real command line', () => {

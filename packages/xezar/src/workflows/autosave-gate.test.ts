@@ -7,6 +7,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { autosaveCommit, createWorktree } from '../git-worktree.ts';
 import { RunStore } from '../runs/store.ts';
 import { AUTOSAVE_INTERVAL_MS, periodicAutosaveEnabled, RunManager } from './run.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 const run = promisify(execFile);
 const GIT_ID = ['-c', 'user.name=test', '-c', 'user.email=test@local'];
@@ -51,7 +52,7 @@ describe('periodic autosave gate (#471)', () => {
 
   afterAll(() => {
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
   });
 
   afterEach(() => {

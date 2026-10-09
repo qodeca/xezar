@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { loadWorkflows, projectWorkflowsDir, WORKFLOWS_DIR } from './load.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * The LOADER's own behaviour (#46): discovery, per-file degradation and the
@@ -21,7 +22,7 @@ describe('loadWorkflows', () => {
     root = mkdtempSync(join(tmpdir(), 'xez-wf-load-'));
   });
   afterEach(() => {
-    rmSync(root, { recursive: true, force: true });
+    rmSync(root, TEST_DIR_RM_OPTIONS);
   });
 
   /** Write one file under the repo root, creating its parents. */

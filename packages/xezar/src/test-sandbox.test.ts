@@ -3,6 +3,7 @@ import { mkdtempSync, readdirSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { TEST_DIR_RM_OPTIONS } from '../test/helpers/platform.ts';
 
 /**
  * What `vitest.setup.ts` promises every case in this suite, checked against the real tool.
@@ -18,7 +19,7 @@ const ghAvailable = spawnSync('gh', ['--version'], { stdio: 'ignore' }).error ==
 describe('test sandbox', () => {
   const dirs: string[] = [];
   afterEach(() => {
-    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+    for (const dir of dirs.splice(0)) rmSync(dir, TEST_DIR_RM_OPTIONS);
   });
 
   it.skipIf(!ghAvailable)('a gh started with a test’s temporary HOME writes nothing into it', () => {

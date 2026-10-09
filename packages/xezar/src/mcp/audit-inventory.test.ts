@@ -19,6 +19,7 @@ import {
   mcpActionKey,
 } from './audit-inventory.ts';
 import { TOOL_ACTION_COVERAGE } from './tools/api-coverage.testkit.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * #306 part 2 — THE PARITY TEST (spec `docs/features/mcp-server/audit-trail-origins-2026-09-17.md`
@@ -43,7 +44,7 @@ const store = RunStore.open(join(root, '.local/xezar'));
 const app = createApp({ repoRoot: root, store, manager: {} as RunManager, version: '0.0.0-test' });
 afterAll(() => {
   store.flush();
-  rmSync(root, { recursive: true, force: true });
+  rmSync(root, TEST_DIR_RM_OPTIONS);
 });
 
 interface RouteRow {

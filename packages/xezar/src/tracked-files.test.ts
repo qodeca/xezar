@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { TEST_DIR_RM_OPTIONS } from '../test/helpers/platform.ts';
+import { hasLine } from './text-lines.ts';
 
 /**
  * What this repository is allowed to have under version control.
@@ -112,19 +114,19 @@ describe('maintained Xezar project kit versus local runtime', () => {
     const source = readFileSync(join(repoRoot, 'packages/xezar/src/index.ts'), 'utf8');
     const body = /function ensureDataGitignore\(repoRoot: string\): void \{([\s\S]*?)\n\}/.exec(source)?.[1];
     expect(body).toBeDefined();
-    const ensure = new Function('repoRoot', 'join', 'existsSync', 'readFileSync', 'writeFileSync', 'mkdirSync', body!);
+    const ensure = new Function('repoRoot', 'join', 'existsSync', 'readFileSync', 'writeFileSync', 'mkdirSync', 'hasLine', body!);
     const temp = mkdtempSync(join(tmpdir(), 'xezar-ignore-'));
     try {
       execFileSync('git', ['init', '-q', temp]);
       // A fresh install has no ignore file at all: the helper still protects engine state.
-      ensure(temp, join, existsSync, readFileSync, writeFileSync, mkdirSync);
-      ensure(temp, join, existsSync, readFileSync, writeFileSync, mkdirSync);
+      ensure(temp, join, existsSync, readFileSync, writeFileSync, mkdirSync, hasLine);
+      ensure(temp, join, existsSync, readFileSync, writeFileSync, mkdirSync, hasLine);
       expect(readFileSync(join(temp, '.local/.gitignore'), 'utf8')).toBe('\n*\n');
       for (const file of maintainedLayouts) expect(ignored(file, temp), file).toBe(false);
       for (const file of localRuntime) expect(ignored(file.replace(`${kitRoot}/`, '.local/xezar/'), temp), file).toBe(true);
       for (const file of engineOnly) expect(ignored(file, temp), file).toBe(true);
       // The old location is no longer engine state, so nothing blanket-ignores it either.
       expect(ignored('.ai/xezar/config.json', temp)).toBe(false);
-    } finally { rmSync(temp, { recursive: true, force: true }); }
+    } finally { rmSync(temp, TEST_DIR_RM_OPTIONS); }
   });
 });

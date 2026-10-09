@@ -4,7 +4,7 @@ import { existsSync, ftruncateSync, mkdirSync, mkdtempSync, readFileSync, readdi
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { onWindows } from '../../test/helpers/platform.ts';
+import { onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 // Passthrough, so one case can interleave a peer's reap inside a renewal write.
 vi.mock('node:fs', async (importOriginal) => {
@@ -56,7 +56,7 @@ afterEach(async () => {
       await ended;
     }
   }
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  for (const root of roots.splice(0)) rmSync(root, TEST_DIR_RM_OPTIONS);
 });
 
 function tempDir(prefix: string): string {
@@ -287,7 +287,7 @@ describe('ProjectOwnership — one owner per project (#99)', () => {
       const pids = pidTable();
       const old = ownership({ dataDir, now: clock.now, isAlive: pids.isAlive, pid: 5201 });
       const oldToken = tokenOf(await old.acquire('old-leader'));
-      rmSync(join(dataDir, OWNER_CLAIM_DIR), { recursive: true, force: true });
+      rmSync(join(dataDir, OWNER_CLAIM_DIR), TEST_DIR_RM_OPTIONS);
       pids.kill(5201); // the service restarted
       const next = ownership({ dataDir, now: clock.now, isAlive: pids.isAlive, pid: 5202 });
       const newToken = tokenOf(await next.acquire('new-leader'));

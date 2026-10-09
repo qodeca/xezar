@@ -28,6 +28,7 @@ import { LEADER_CURSORS_FILE, LeaderCursors, LeaderInbox, reactionOperationId, r
 import { guardedRunMutation, runVersion } from '../../src/mcp/stale-write.ts';
 import { RunStore } from '../../src/runs/store.ts';
 import { ProjectOwnership } from '../../src/workspace/project-owner.ts';
+import { TEST_DIR_RM_OPTIONS } from '../helpers/platform.ts';
 
 /**
  * #117 — the correctness and durability acceptance cases (A-13, A-14, A-16, A-21) at the level of
@@ -148,7 +149,7 @@ describe('A-13 — a stale leader mutation after a human change (N-03)', () => {
       assert.equal(store.getRun(id)?.task, 'the leader, after reading the human brief');
       store.flush();
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      rmSync(dir, TEST_DIR_RM_OPTIONS);
     }
   });
 
@@ -183,7 +184,7 @@ describe('A-13 — a stale leader mutation after a human change (N-03)', () => {
       assert.equal(effects, 1);
       store.flush();
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      rmSync(dir, TEST_DIR_RM_OPTIONS);
     }
   });
 });
@@ -239,7 +240,7 @@ describe('A-14 — a mutation executed but its response lost (N-10)', () => {
       assert.equal(counter.n, 2, 'two keys, two effects');
       assert.equal(store.listRuns().length, 2);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      rmSync(dir, TEST_DIR_RM_OPTIONS);
     }
   });
 
@@ -264,7 +265,7 @@ describe('A-14 — a mutation executed but its response lost (N-10)', () => {
       assert.equal(counter.n, 1, 'no collision ran an effect');
       assert.equal(store.listRuns().length, 1);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      rmSync(dir, TEST_DIR_RM_OPTIONS);
     }
   });
 
@@ -335,7 +336,7 @@ describe('A-14 — a mutation executed but its response lost (N-10)', () => {
       assert.equal(counter.n, 0, 'the effect is never blindly repeated');
       assert.equal(store.listRuns().length, 1, 'still exactly one task');
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      rmSync(dir, TEST_DIR_RM_OPTIONS);
     }
   });
 
@@ -371,7 +372,7 @@ describe('A-14 — a mutation executed but its response lost (N-10)', () => {
       asUnverified(await receipts.execute(request));
       assert.equal(effects, 1, 'never repeated blindly');
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      rmSync(dir, TEST_DIR_RM_OPTIONS);
     }
   });
 });
@@ -459,7 +460,7 @@ describe('A-16 — older state with the MCP state absent or corrupt (N-07, N-08)
       assert.equal(store.getRun(olderRun)?.status, 'done', 'the older task is retained');
     } finally {
       for (const journal of journals) journal.close();
-      rmSync(dir, { recursive: true, force: true });
+      rmSync(dir, TEST_DIR_RM_OPTIONS);
     }
   });
 
@@ -551,7 +552,7 @@ describe('A-16 — older state with the MCP state absent or corrupt (N-07, N-08)
       assert.equal(store.getRun(olderRun)?.status, 'done', 'the older task is retained');
     } finally {
       for (const journal of journals) journal.close();
-      rmSync(dir, { recursive: true, force: true });
+      rmSync(dir, TEST_DIR_RM_OPTIONS);
     }
   });
 
@@ -576,7 +577,7 @@ describe('A-16 — older state with the MCP state absent or corrupt (N-07, N-08)
       first.dispose();
       second.dispose();
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      rmSync(dir, TEST_DIR_RM_OPTIONS);
     }
   });
 });
@@ -616,7 +617,7 @@ describe('A-21 — reconnect with a valid cursor, an old cursor, duplicates and 
       store.flush();
     } finally {
       journal.close();
-      rmSync(dir, { recursive: true, force: true });
+      rmSync(dir, TEST_DIR_RM_OPTIONS);
     }
   });
 
@@ -660,7 +661,7 @@ describe('A-21 — reconnect with a valid cursor, an old cursor, duplicates and 
       store.flush();
     } finally {
       journal.close();
-      rmSync(dir, { recursive: true, force: true });
+      rmSync(dir, TEST_DIR_RM_OPTIONS);
     }
   });
 
@@ -699,7 +700,7 @@ describe('A-21 — reconnect with a valid cursor, an old cursor, duplicates and 
       assert.deepEqual(again, { ...once1, replayed: true });
     } finally {
       journal.close();
-      rmSync(dir, { recursive: true, force: true });
+      rmSync(dir, TEST_DIR_RM_OPTIONS);
     }
   });
 });

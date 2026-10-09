@@ -14,7 +14,7 @@ import { EventJournal } from '../event-journal.ts';
 import { LeaderCursors, type StateReader } from '../reconnect.ts';
 import type { McpToolContext, McpToolResult } from '../tool.ts';
 import { type LeaderControlPort, leaderEventsInputSchema, leaderEventsTool } from './leader-events.ts';
-import { shortTmpRoot } from '../../../test/helpers/platform.ts';
+import { shortTmpRoot, TEST_DIR_RM_OPTIONS } from '../../../test/helpers/platform.ts';
 
 /**
  * #450 — `leader_events` `attach`, `stop` and `status`: the arguments the schema refuses, the answer
@@ -199,7 +199,7 @@ describe('leader setup verification and restart recovery (#464 P3, ONB-04/13/14)
       ))).toContain('Leader setup: delivery verified');
     } finally {
       journal.close();
-      rmSync(dir, { recursive: true, force: true });
+      rmSync(dir, TEST_DIR_RM_OPTIONS);
     }
   });
 
@@ -235,7 +235,7 @@ describe('#460 § 4 — reading after a compaction, over a real journal', () => 
 
   afterEach(() => {
     for (const journal of journals.splice(0)) journal.close();
-    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+    for (const dir of dirs.splice(0)) rmSync(dir, TEST_DIR_RM_OPTIONS);
   });
 
   /** One project's journal, cursors and a stub state reader — the three parts the tool composes. */

@@ -12,6 +12,7 @@ import { allocateProjectSlug, listProjects, registerProject } from '../workspace
 import { runProjectsCommand, type ProjectsCommandIo } from '../workspace/projects-cli.ts';
 import { createApp } from './server.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * ONE table across the THREE doors a project registry has (#600 PR3, criteria
@@ -82,9 +83,9 @@ describe('single-project mode — one registry, refused in all three doors (#600
   afterEach(() => {
     setActiveStateLayout(null);
     store.flush();
-    rmSync(projectRoot, { recursive: true, force: true });
-    rmSync(otherRoot, { recursive: true, force: true });
-    if (foreignParent !== undefined) rmSync(foreignParent, { recursive: true, force: true });
+    rmSync(projectRoot, TEST_DIR_RM_OPTIONS);
+    rmSync(otherRoot, TEST_DIR_RM_OPTIONS);
+    if (foreignParent !== undefined) rmSync(foreignParent, TEST_DIR_RM_OPTIONS);
     foreignParent = undefined;
     if (savedFlag === undefined) delete process.env.XEZ_SINGLE_PROJECT;
     else process.env.XEZ_SINGLE_PROJECT = savedFlag;

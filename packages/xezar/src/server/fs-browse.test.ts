@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { workspaceConfigPath } from '../paths.ts';
 import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
-import { linkDir, onWindows } from '../../test/helpers/platform.ts';
+import { linkDir, onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { createApp } from './server.ts';
 import type { FsBrowseResponse } from './fs-browse.ts';
@@ -77,7 +77,7 @@ describe('GET /api/v1/fs/browse (step 4.1)', () => {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
     }
-    for (const dir of [home, outside]) rmSync(dir, { recursive: true, force: true });
+    for (const dir of [home, outside]) rmSync(dir, TEST_DIR_RM_OPTIONS);
   });
 
   const browse = (query = '') => apiRequest(app, `/api/v1/fs/browse${query}`);

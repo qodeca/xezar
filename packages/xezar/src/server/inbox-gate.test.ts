@@ -7,6 +7,7 @@ import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { createApp, type ServerDeps } from './server.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * The global follow-up inbox is opt-in (#471): `XEZ_FOLLOWUPS=1` turns it on,
@@ -45,7 +46,7 @@ describe('inbox gate (#471)', () => {
 
   afterEach(() => {
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
     if (savedFollowups === undefined) delete process.env.XEZ_FOLLOWUPS;
     else process.env.XEZ_FOLLOWUPS = savedFollowups;
     if (savedRemote === undefined) delete process.env.XEZ_REMOTE;

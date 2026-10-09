@@ -7,6 +7,7 @@ import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { resolveBindHost } from './capabilities.ts';
 import { startServer } from './server.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * #838 item A, the programmatic door: `startServer` is the real first `listen`, so an empty
@@ -37,7 +38,7 @@ describe('startServer bindHost', () => {
 
   afterEach(() => {
     store.flush();
-    rmSync(dir, { recursive: true, force: true });
+    rmSync(dir, TEST_DIR_RM_OPTIONS);
   });
 
   it("an empty bindHost binds 127.0.0.1, exactly like an absent one", async () => {

@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os';
 import { join, sep } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { onWindows } from '../test/helpers/platform.ts';
+import { onWindows, TEST_DIR_RM_OPTIONS } from '../test/helpers/platform.ts';
 import { buildChildEnv } from './core/agent-env.ts';
 import { mcpSocketDir, mcpSocketLocation } from './mcp/ipc.ts';
 import {
@@ -51,8 +51,8 @@ afterEach(() => {
     else process.env.USERPROFILE = originalUserProfile;
   }
   setActiveStateLayout(null);
-  rmSync(home, { recursive: true, force: true });
-  rmSync(project, { recursive: true, force: true });
+  rmSync(home, TEST_DIR_RM_OPTIONS);
+  rmSync(project, TEST_DIR_RM_OPTIONS);
 });
 
 /** Put the process in single-project mode for `project`, as the CLI boot does. */
@@ -104,7 +104,7 @@ describe('the skills cache follows the layout (SP-2.2, AC-5)', () => {
       // is the falsifier.
       expect(existsSync(join(home, '.cache', 'xez'))).toBe(false);
     } finally {
-      rmSync(source, { recursive: true, force: true });
+      rmSync(source, TEST_DIR_RM_OPTIONS);
     }
   });
 
@@ -116,7 +116,7 @@ describe('the skills cache follows the layout (SP-2.2, AC-5)', () => {
       await ensureBareClone(source);
       expect(existsSync(join(cached, 'HEAD'))).toBe(true);
     } finally {
-      rmSync(source, { recursive: true, force: true });
+      rmSync(source, TEST_DIR_RM_OPTIONS);
     }
   });
 
@@ -135,7 +135,7 @@ describe('the skills cache follows the layout (SP-2.2, AC-5)', () => {
     } finally {
       if (previous === undefined) delete process.env.XEZ_HOME;
       else process.env.XEZ_HOME = previous;
-      rmSync(withXezHome, { recursive: true, force: true });
+      rmSync(withXezHome, TEST_DIR_RM_OPTIONS);
     }
   });
 });

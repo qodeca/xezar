@@ -11,6 +11,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { createAbWorld, PROJECT_A, XEZAR_VERSION } from '../helpers/ab-fixture.ts';
 import { LeaderCursors, runStateReader } from '../../src/mcp/reconnect.ts';
 import { leaderEventsTool, type LeaderEventsPort } from '../../src/mcp/tools/leader-events.ts';
+import { TEST_DIR_RM_OPTIONS } from '../helpers/platform.ts';
 
 /**
  * #373 / A-19 real-model clause. Manual node:test integration ONLY; neither fast test glob includes
@@ -143,7 +144,7 @@ test('evidence hygiene fails on a planted key, including nested files', () => {
     assertEvidenceClean(directory, key);
     writeFileSync(join(directory, 'nested', 'leak.txt'), key);
     assert.throws(() => assertEvidenceClean(directory, key), /endpoint key leaked/);
-  } finally { rmSync(directory, { recursive: true, force: true }); }
+  } finally { rmSync(directory, TEST_DIR_RM_OPTIONS); }
 });
 
 async function until(check: () => boolean, ms: number, reason: string): Promise<void> {
@@ -371,7 +372,7 @@ test('[pi] a real model acknowledges the delivered nonce and cursor', { timeout:
       record.summary = 'Evidence hygiene failed: endpoint key found in an evidence file';
       save('results.json', record);
       throw error;
-    } finally { rmSync(scratch, { recursive: true, force: true }); }
+    } finally { rmSync(scratch, TEST_DIR_RM_OPTIONS); }
     t.diagnostic(`evidence: ${out}; verdict: ${record.verdict}`);
   }
 });
@@ -642,7 +643,7 @@ test('[claude-code] a real model acknowledges a Channels-delivered event with th
     await stopChild(child);
     await stopChild(serve?.child);
     save('results.json', record);
-    rmSync(scratch, { recursive: true, force: true });
+    rmSync(scratch, TEST_DIR_RM_OPTIONS);
     t.diagnostic(`evidence: ${out}; verdict: ${record.verdict}`);
   }
 });
@@ -764,7 +765,7 @@ test('[codex] a real model acknowledges an app-server-delivered event with the e
     await stopChild(appServer);
     await stopChild(serve?.child);
     save('results.json', record);
-    rmSync(scratch, { recursive: true, force: true });
+    rmSync(scratch, TEST_DIR_RM_OPTIONS);
     t.diagnostic(`evidence: ${out}; verdict: ${record.verdict}`);
   }
 });

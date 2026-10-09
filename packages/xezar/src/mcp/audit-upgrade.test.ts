@@ -18,6 +18,7 @@ import {
   legacyAuditTrailPath,
   resetLegacyAuditNoticeForTests,
 } from './audit-trail.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * #306 part 1 — the two never-trimmed compatibility proofs (spec
@@ -49,7 +50,7 @@ beforeEach(() => {
   resetLegacyAuditNoticeForTests();
 });
 afterEach(() => {
-  rmSync(root, { recursive: true, force: true });
+  rmSync(root, TEST_DIR_RM_OPTIONS);
 });
 
 /** A copy of the folder 0.15.0 left behind. */

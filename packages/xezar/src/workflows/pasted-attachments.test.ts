@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { ContentBlock } from '../core/agent-runner.ts';
@@ -18,6 +18,7 @@ import {
   type PastedContent,
 } from './run.ts';
 import { attachmentExtension, isAttachmentMediaType, isImageAttachmentName } from '@qodeca/xezar-contract';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 const run = promisify(execFile);
 const GIT_ID = ['-c', 'user.name=test', '-c', 'user.email=test@local'];
@@ -197,7 +198,7 @@ describe('pasted screenshots materialize to disk and reach the agent as file pat
       else process.env[key] = value;
     }
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
   });
 
   function readStdinLines(): Array<{ userText: string; imageCount: number }> {
@@ -414,7 +415,7 @@ describe('pasted screenshots materialize to disk and reach the agent as file pat
     const pathMatch = followUp?.userText.match(/- (.*pasted-\d+\.jpg)/);
     expect(pathMatch).toBeTruthy();
     const filePath = pathMatch?.[1] as string;
-    expect(filePath).toMatch(new RegExp(`^${join(dataDir, 'runs', `${record.id}-images`).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/pasted-\\d+\\.jpg$`));
+    expect(filePath).toMatch(new RegExp(`^${join(dataDir, 'runs', `${record.id}-images`).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\\\\/]pasted-\\d+\\.jpg$`));
     expect(existsSync(filePath)).toBe(true);
     expect(readFileSync(filePath).equals(Buffer.from(TINY_PNG_B64, 'base64'))).toBe(true);
 
@@ -466,7 +467,7 @@ describe('pasted screenshots materialize to disk and reach the agent as file pat
       .split('\n')
       .map((line) => JSON.parse(line) as { type: string; text?: string; images?: string[] })
       .find((event) => event.type === 'user-message' && event.text === 'fix what this shows');
-    expect(userMessage?.images?.[0]).toBe(`/api/v1/runs/${record.id}/images/${filePath.split('/').pop()}`);
+    expect(userMessage?.images?.[0]).toBe(`/api/v1/runs/${record.id}/images/${basename(filePath)}`);
     expect(ndjson).not.toContain(TINY_PNG_B64);
 
     manager.finish(record.id);

@@ -3,12 +3,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { agentModelsLocked } from './agent-model-policy.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 describe('agentModelsLocked', () => {
   const roots: string[] = [];
 
   afterEach(() => {
-    for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+    for (const root of roots.splice(0)) rmSync(root, TEST_DIR_RM_OPTIONS);
   });
 
   it('is off by default and only exact 1 enables it', () => {

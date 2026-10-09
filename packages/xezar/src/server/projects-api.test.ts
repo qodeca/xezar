@@ -11,7 +11,7 @@ import { realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { linkDir, withPlatform } from '../../test/helpers/platform.ts';
+import { linkDir, withPlatform, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 import { withIdentityPlatform } from '../platform/identity-platform.testkit.ts';
 import { PROJECT_TAGS_MAX, PROJECT_TAG_MAX_LENGTH } from '@qodeca/xezar-contract';
 import { RunStore } from '../runs/store.ts';
@@ -91,7 +91,7 @@ describe('workspace projects API', () => {
 
   afterEach(() => {
     store.flush();
-    for (const dir of [home, repoRoot, otherRoot]) rmSync(dir, { recursive: true, force: true });
+    for (const dir of [home, repoRoot, otherRoot]) rmSync(dir, TEST_DIR_RM_OPTIONS);
     if (savedHome === undefined) delete process.env.XEZ_HOME;
     else process.env.XEZ_HOME = savedHome;
     if (savedRemote === undefined) delete process.env.XEZ_REMOTE;
@@ -210,7 +210,7 @@ describe('workspace projects API', () => {
 
     it('reports a deleted root as missing', async () => {
       const other = await registerProject(otherRoot);
-      rmSync(otherRoot, { recursive: true, force: true });
+      rmSync(otherRoot, TEST_DIR_RM_OPTIONS);
       clearProjectProbeCache(); // drop the TTL cache so the probe re-looks
       const body = await getProjects();
       expect(body.projects.find((p) => p.id === other.id)?.status).toBe('missing');

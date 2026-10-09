@@ -8,6 +8,7 @@ import type { RunManager } from '../workflows/run.ts';
 import type { ForgeCommentsData } from './github.ts';
 import { createApp } from './server.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * `GET /api/v1/github/comments/:kind/:number` (#499 Phase 2). The contract under test: zod-validated
@@ -38,7 +39,7 @@ describe('the github comments API', () => {
 
   afterEach(() => {
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
   });
 
   it('returns a dry-run thread for a valid issue request', async () => {

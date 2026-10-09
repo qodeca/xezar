@@ -12,6 +12,7 @@ import {
 } from './codex-read-only-hook.ts';
 import { CODEX_READ_ONLY_HOOK_FIXTURES } from './codex-read-only-hook.testkit.ts';
 import { READ_ONLY_LOCK_FIXTURES } from './read-only-lock.testkit.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 describe('Codex PreToolUse adapter for the shared read-only lock (#863 S2)', () => {
   const sourceHook = fileURLToPath(new URL('../../scripts/codex-read-only-hook.mjs', import.meta.url));
@@ -25,7 +26,7 @@ describe('Codex PreToolUse adapter for the shared read-only lock (#863 S2)', () 
   });
 
   afterEach(() => {
-    rmSync(hookDir, { recursive: true, force: true });
+    rmSync(hookDir, TEST_DIR_RM_OPTIONS);
   });
 
   it.each(CODEX_READ_ONLY_HOOK_FIXTURES)('matches the shared fixture: $name', ({ payload, entries, rule }) => {

@@ -9,7 +9,7 @@ import test from 'node:test';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
-import { npmCommand } from '../helpers/platform.ts';
+import { npmCommand, TEST_DIR_RM_OPTIONS } from '../helpers/platform.ts';
 
 const execFile = promisify(execFileCallback);
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -745,7 +745,7 @@ if (args.join(' ') === 'auth status --json') {
       await mcpExited;
     }
   } finally {
-    await rm(root, { recursive: true, force: true });
+    await rm(root, TEST_DIR_RM_OPTIONS);
   }
 });
 

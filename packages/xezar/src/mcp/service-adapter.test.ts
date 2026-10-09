@@ -20,6 +20,7 @@ import {
   type StartRunRequest,
   type StartRunValue,
 } from './service-adapter.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * The shared business-service adapter (#89): the cockpit and MCP reach the SAME services, so they
@@ -181,7 +182,7 @@ afterEach(async () => {
     }
     ws.contexts.disposeAll();
   }
-  for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  for (const dir of tempDirs.splice(0)) rmSync(dir, TEST_DIR_RM_OPTIONS);
   if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN;
   else process.env.XEZ_DRY_RUN = savedDryRun;
   if (savedHome === undefined) delete process.env.XEZ_HOME;

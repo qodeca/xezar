@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { TEST_DIR_RM_OPTIONS } from '../test/helpers/platform.ts';
 
 /**
  * `--bind-host ""` must behave exactly like the flag being absent (#838 item A, owner decision):
@@ -40,7 +41,7 @@ afterEach(async () => {
       await ended;
     }
   }
-  rmSync(base, { recursive: true, force: true });
+  rmSync(base, TEST_DIR_RM_OPTIONS);
 });
 
 function freshRepo(name: string): string {

@@ -11,7 +11,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { onWindows } from '../../test/helpers/platform.ts';
+import { onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 import {
   AgentTempDirError,
@@ -37,7 +37,7 @@ describe('agentTmpEnv — per-run temp directory (#785)', () => {
   });
 
   afterEach(() => {
-    rmSync(dataDir, { recursive: true, force: true });
+    rmSync(dataDir, TEST_DIR_RM_OPTIONS);
   });
 
   it('gives the run its own directory and creates it before the backend spawns', () => {
@@ -108,7 +108,7 @@ describe('agentTmpEnv — per-run temp directory (#785)', () => {
         expect(env).toEqual({});
         expect(existsSync(agentTmpDir(dataDir, 'run-f'))).toBe(false);
       } finally {
-        rmSync(host, { recursive: true, force: true });
+        rmSync(host, TEST_DIR_RM_OPTIONS);
       }
     });
 
@@ -146,7 +146,7 @@ describe('reaping the per-run temp directories (#785)', () => {
   });
 
   afterEach(() => {
-    rmSync(dataDir, { recursive: true, force: true });
+    rmSync(dataDir, TEST_DIR_RM_OPTIONS);
   });
 
   it('removes one run’s directory and everything in it', () => {

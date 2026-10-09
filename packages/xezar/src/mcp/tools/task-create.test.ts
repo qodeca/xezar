@@ -23,6 +23,7 @@ import type { ServiceDispatch } from '../service-adapter.ts';
 import type { McpToolResult } from '../tool.ts';
 import { tools } from './index.ts';
 import { taskCreateTool, type TaskCreateContext } from './task-create.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../../test/helpers/platform.ts';
 
 /**
  * `task_create` against the composer form (#92, A-05): every field set, omitted and invalid.
@@ -465,7 +466,7 @@ afterEach(async () => {
     f.contexts.disposeAll();
   }
   for (const store of stores.splice(0)) store.close();
-  for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  for (const dir of tempDirs.splice(0)) rmSync(dir, TEST_DIR_RM_OPTIONS);
   for (const key of PINNED) {
     const value = saved[key];
     if (value === undefined) delete process.env[key];

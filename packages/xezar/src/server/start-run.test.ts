@@ -9,6 +9,7 @@ import type { WorkflowDef } from '../workflows/types.ts';
 import { createApp } from './server.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { connectedProviderAuth } from './provider-auth.testkit.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * `POST /api/v1/runs` `systemPrompt` (R2 2.3) — the programmatic per-run
@@ -48,7 +49,7 @@ describe('POST /api/v1/runs systemPrompt', () => {
 
   afterEach(() => {
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
     if (savedFollowups === undefined) delete process.env.XEZ_FOLLOWUPS;
     else process.env.XEZ_FOLLOWUPS = savedFollowups;
   });
@@ -166,7 +167,7 @@ describe('POST /api/v1/runs generateFollowups — the XEZ_FOLLOWUPS ceiling (#47
 
   afterEach(() => {
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
     if (savedFollowups === undefined) delete process.env.XEZ_FOLLOWUPS;
     else process.env.XEZ_FOLLOWUPS = savedFollowups;
   });

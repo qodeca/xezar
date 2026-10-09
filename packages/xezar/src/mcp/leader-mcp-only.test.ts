@@ -22,7 +22,7 @@ import { resultsEvidenceTool } from './tools/results-evidence.ts';
 import { taskCreateTool } from './tools/task-create.ts';
 import { taskReadsTool } from './tools/task-reads.ts';
 import { organiseWorkTool } from './tools/work-organisation.ts';
-import { shortTmpRoot, onWindows } from '../../test/helpers/platform.ts';
+import { shortTmpRoot, onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * #439 — the owner's operating rule (2026-09-15): a project leader works through the xezar MCP tools
@@ -98,7 +98,7 @@ describe('no leader-facing string names the HTTP attach route (#450, T-26)', () 
   const servers: Server[] = [];
   afterEach(() => {
     for (const server of servers.splice(0)) server.close();
-    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+    for (const dir of dirs.splice(0)) rmSync(dir, TEST_DIR_RM_OPTIONS);
   });
 
   async function instructions(clientName: string, grant?: Record<string, unknown>): Promise<string> {

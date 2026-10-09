@@ -11,13 +11,14 @@ import {
   type RematerializeStore,
 } from './retention.ts';
 import type { RunRecord } from './store.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 const run = promisify(execFile);
 const GIT_ID = ['-c', 'user.name=test', '-c', 'user.email=test@local'];
 const roots: string[] = [];
 
 afterEach(() => {
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  for (const root of roots.splice(0)) rmSync(root, TEST_DIR_RM_OPTIONS);
 });
 
 async function fixtureRepo(): Promise<string> {

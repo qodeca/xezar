@@ -4,7 +4,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync,
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, test } from 'node:test';
-import { linkDir, onWindows } from '../helpers/platform.ts';
+import { linkDir, onWindows, TEST_DIR_RM_OPTIONS } from '../helpers/platform.ts';
 /** migrate-local-state.mjs refuses to move legacy data it cannot prove idle, and proves it with lsof. */
 const NO_LSOF = onWindows ? 'win32-skip(#963): migrate-local-state.mjs exits 1 "install lsof before migration"; Windows has no lsof' : false;
 const repo = resolve(import.meta.dirname, '../../../..');
@@ -17,7 +17,7 @@ function fixture(): string {
   return root;
 }
 function migrate(root: string) { return spawnSync(process.execPath, [join(root, 'scripts/migrate-local-state.mjs')], { encoding: 'utf8' }); }
-afterEach(() => roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })));
+afterEach(() => roots.splice(0).forEach(root => rmSync(root, TEST_DIR_RM_OPTIONS)));
 test('preserves old QA bytes in an archive and is safe to run twice', { skip: NO_LSOF }, () => {
   const root = fixture();
   writeFileSync(join(root, '.ai/qa/test-env.json'), '{"status":"stopped"}\n');

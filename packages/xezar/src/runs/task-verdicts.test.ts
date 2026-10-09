@@ -2,7 +2,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, sy
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { FILE_SYMLINKS, onWindows } from '../../test/helpers/platform.ts';
+import { FILE_SYMLINKS, onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 import {
   TASK_VERDICT_FINDINGS_MAX,
@@ -43,7 +43,7 @@ afterEach(() => {
   // scheduled, it fires long after this file is done, and the ENOENT it logs into the directory
   // deleted on the next line reaches vitest as a console message with no worker left to take it.
   store.flush();
-  rmSync(dataDir, { recursive: true, force: true });
+  rmSync(dataDir, TEST_DIR_RM_OPTIONS);
 });
 
 function startedRun(stepIds: string[] = ['review']): RunRecord {
@@ -423,7 +423,7 @@ describe('T-4 — a newer report supersedes its own role only (break: read the p
     ingestTaskVerdict(store, dataDir, run.id, 'review', 'code-review');
 
     // Retention reclaims the directory (#483). The record is untouched by that.
-    rmSync(worktree, { recursive: true, force: true });
+    rmSync(worktree, TEST_DIR_RM_OPTIONS);
     store.updateRun(run.id, { worktreeReclaimedAt: new Date().toISOString() });
     store.flush();
     const reopened = RunStore.open(dataDir);

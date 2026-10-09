@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { createServer } from 'node:net';
 import { join, relative, resolve } from 'node:path';
 import { afterEach, test } from 'node:test';
-import { onWindows } from '../helpers/platform.ts';
+import { onWindows, TEST_DIR_RM_OPTIONS } from '../helpers/platform.ts';
 /** The launcher under test is POSIX shell (test-env-up.sh / test-env-down.sh run by /bin/sh). */
 const NO_SH = onWindows ? 'win32-skip(#963): spawn /bin/sh fails ENOENT – the test-env launcher is a POSIX shell script' : false;
 
@@ -24,7 +24,7 @@ afterEach(() => {
     }
   }
   launchedPids.clear();
-  for (const fixture of fixtures.splice(0)) rmSync(fixture, { recursive: true, force: true });
+  for (const fixture of fixtures.splice(0)) rmSync(fixture, TEST_DIR_RM_OPTIONS);
 });
 
 function commandPath(command: string): string {
@@ -277,7 +277,7 @@ test('never reuses an instance across a change in the repository single-project 
   assert.equal(markerOf(), true);
 
   // And back: an instance booted under the marker is never reused once it is gone.
-  rmSync(join(fixture.root, '.xezar'), { recursive: true, force: true });
+  rmSync(join(fixture.root, '.xezar'), TEST_DIR_RM_OPTIONS);
   const markerGoneRun = spawnSync('/bin/sh', [up], { encoding: 'utf8', env, timeout: 20_000 });
   assert.equal(markerGoneRun.status, 0, markerGoneRun.stderr);
   assert.match(markerGoneRun.stdout, /TEST_ENV_REUSED=0/);

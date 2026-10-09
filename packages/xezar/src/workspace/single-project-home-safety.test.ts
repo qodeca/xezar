@@ -15,7 +15,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { onWindows } from '../../test/helpers/platform.ts';
+import { onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 import { resolveStateLayout, setActiveStateLayout } from '../state-layout.ts';
 import { mergeWriteWorkspaceConfig } from './config.ts';
 import { mergeWriteWorkspaceUiState } from './ui-state.ts';
@@ -87,7 +87,7 @@ describe('single-project mode never opens the real xezar home (AC-11)', () => {
     else process.env.USERPROFILE = originalUserProfile;
     if (originalXezHome === undefined) delete process.env.XEZ_HOME;
     else process.env.XEZ_HOME = originalXezHome;
-    rmSync(base, { recursive: true, force: true });
+    rmSync(base, TEST_DIR_RM_OPTIONS);
   });
 
   /** Content, size and mtime — the three ways a write shows up. */
@@ -142,7 +142,7 @@ describe('single-project mode never opens the real xezar home (AC-11)', () => {
 
   it('does not create a home at all when the user has none', async () => {
     chmodSync(homeXezar, 0o700); // so this case can remove it at all
-    rmSync(homeXezar, { recursive: true, force: true });
+    rmSync(homeXezar, TEST_DIR_RM_OPTIONS);
     chmodSync(fakeHome, 0o500);
     setActiveStateLayout(resolveStateLayout(project, ['--single-project'], process.env));
 

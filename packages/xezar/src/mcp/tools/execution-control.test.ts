@@ -25,6 +25,7 @@ import {
 } from './execution-control.ts';
 import { tools } from './index.ts';
 import { NO_VERSION, versionForTest } from './version.testkit.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../../test/helpers/platform.ts';
 
 /**
  * Execution control (#94). The end-to-end cases drive the real app `createApp` builds, with real
@@ -193,7 +194,7 @@ afterEach(async () => {
     ws.contexts.disposeAll();
   }
   for (const store of stores.splice(0)) store.close();
-  for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  for (const dir of tempDirs.splice(0)) rmSync(dir, TEST_DIR_RM_OPTIONS);
   if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN;
   else process.env.XEZ_DRY_RUN = savedDryRun;
   if (savedHome === undefined) delete process.env.XEZ_HOME;

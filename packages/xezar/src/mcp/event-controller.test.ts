@@ -20,6 +20,7 @@ import {
   type ReactionAdapter,
 } from './event-controller.ts';
 import { EventJournal } from './event-journal.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * #107 — the non-model event controller. The three acceptance tests of the issue are the first
@@ -48,7 +49,7 @@ afterEach(() => {
   for (const owner of owners.splice(0)) owner.dispose();
   for (const journal of journals.splice(0)) journal.close();
   vi.useRealTimers();
-  rmSync(dataDir, { recursive: true, force: true });
+  rmSync(dataDir, TEST_DIR_RM_OPTIONS);
 });
 
 function openJournal(projectId = 'alpha', dir = dataDir): EventJournal {
@@ -459,7 +460,7 @@ describe('acceptance 2 — the controller and the bridge are one owner with one 
       expect(betaClient.deliveredIds()).toEqual(['beta:1']);
     } finally {
       for (const c of controllers.filter((c) => c.projectId === 'beta')) c.close();
-      rmSync(betaDir, { recursive: true, force: true });
+      rmSync(betaDir, TEST_DIR_RM_OPTIONS);
     }
   });
 

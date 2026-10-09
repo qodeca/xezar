@@ -4,7 +4,7 @@ import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { onWindows } from '../../test/helpers/platform.ts';
+import { onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 import { assertXezarHomeWriteIsSandboxed, workspaceConfigPath } from '../paths.ts';
 import { atomicWriteJsonSync, loadWorkspaceConfig, mergeWriteWorkspaceConfig } from './config.ts';
 
@@ -42,7 +42,7 @@ describe('xezar home write safety', () => {
       if (originalUserProfile === undefined) delete process.env.USERPROFILE;
       else process.env.USERPROFILE = originalUserProfile;
     }
-    for (const dir of [pinned, elsewhere, fakeUserHome]) rmSync(dir, { recursive: true, force: true });
+    for (const dir of [pinned, elsewhere, fakeUserHome]) rmSync(dir, TEST_DIR_RM_OPTIONS);
   });
 
   it('keeps a merge-write inside one file when XEZ_HOME moves mid-flight', async () => {

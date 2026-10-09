@@ -24,6 +24,7 @@ import type { RunManager } from '../workflows/run.ts';
 import type { AppType } from './app-type.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { createApp } from './server.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * REQUEST parity, the half `contract-parity*.test.ts` does not cover (#677 wave 1).
@@ -123,7 +124,7 @@ describe('the settings routes validate with the CONTRACT request schemas', () =>
   afterEach(() => {
     if (savedHome === undefined) delete process.env.XEZ_HOME;
     else process.env.XEZ_HOME = savedHome;
-    rmSync(home, { recursive: true, force: true });
+    rmSync(home, TEST_DIR_RM_OPTIONS);
     closeStoreAndRemove(store, repoRoot);
   });
 

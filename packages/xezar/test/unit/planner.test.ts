@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { z } from 'zod';
 import { parseStructured, planChain, proposeWorkflowName } from '../../src/planner.js';
+import { TEST_DIR_RM_OPTIONS } from '../helpers/platform.ts';
 
 test('proposeWorkflowName slugs a title to the file-name form', () => {
   assert.equal(proposeWorkflowName('Fix And Review'), 'fix-and-review');
@@ -156,7 +157,7 @@ async function planWithFakeAgent(
     else process.env.XEZ_HOME = saved.home;
     if (saved.dry === undefined) delete process.env.XEZ_DRY_RUN;
     else process.env.XEZ_DRY_RUN = saved.dry;
-    rmSync(scratch, { recursive: true, force: true });
+    rmSync(scratch, TEST_DIR_RM_OPTIONS);
   }
 }
 

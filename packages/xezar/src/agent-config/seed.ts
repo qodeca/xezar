@@ -1,9 +1,9 @@
 import { constants } from 'node:fs';
 import { mkdir, open, readFile, stat, writeFile } from 'node:fs/promises';
-import { dirname, join, relative } from 'node:path';
+import { dirname, isAbsolute, join, relative, sep } from 'node:path';
 import { agentHomePaths } from '../paths.ts';
 import { launchFile } from '../platform/process-launch.ts';
-import { isAbsolutePath } from '../platform/path-syntax.ts';
+import { isAbsolutePath, toGitPath } from '../platform/path-syntax.ts';
 import { checkedConfigPath, readConfigBuffer } from './path-access.ts';
 import { CONFIG_FILES } from './catalog.ts';
 
@@ -78,10 +78,13 @@ export async function seedAgentConfigLocalLayer(
     if (!def.seeded) continue;
     const src = def.resolve(repoRoot, home);
     const rel = relative(repoRoot, src);
-    // Never seed something outside the repo, or that isn't there.
-    if (rel.startsWith('..')) continue;
+    // Never seed something outside the repo, or that isn't there. On Windows a file on another
+    // drive has no relative path at all: `relative` returns it absolute (#963).
+    if (rel === '' || rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) continue;
+    // Git reads a `` in a pathspec or an exclude line as an escape: hand it `/` (#963).
+    const gitRel = toGitPath(rel);
     // Only seed a genuinely-ignored file — never force-exclude a tracked one.
-    const ignored = await git(repoRoot, ['check-ignore', '-q', '--', rel]);
+    const ignored = await git(repoRoot, ['check-ignore', '-q', '--', gitRel]);
     if (!ignored.ok) continue;
 
     const dest = join(worktreeCwd, rel);
@@ -100,8 +103,8 @@ export async function seedAgentConfigLocalLayer(
       await targetFile.chmod(mode);
       await targetFile.truncate(0);
       await targetFile.writeFile(content);
-      await ensureExcluded(absCommonGitDir, rel);
-      seeded.push(rel);
+      await ensureExcluded(absCommonGitDir, gitRel);
+      seeded.push(gitRel);
     } catch {
       // best-effort: a seed failure must not fail the run
     } finally {

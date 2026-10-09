@@ -8,6 +8,7 @@ import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { createApp } from './server.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * `POST /api/v1/runs/:id/continue` runner/model override (#401) — the follow-up composer lets the
@@ -58,7 +59,7 @@ describe('POST /api/v1/runs/:id/continue override', () => {
 
   afterEach(() => {
     store.flush();
-    for (const dir of [repoRoot, home]) rmSync(dir, { recursive: true, force: true });
+    for (const dir of [repoRoot, home]) rmSync(dir, TEST_DIR_RM_OPTIONS);
     if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN;
     else process.env.XEZ_DRY_RUN = savedDryRun;
     if (savedHome === undefined) delete process.env.XEZ_HOME;

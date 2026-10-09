@@ -7,6 +7,20 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 
+/** Windows refuses a rename for a moment while another process holds the file (#963): retry for
+ *  about a second there. Linux and macOS: one rename, as before. */
+function renameRetrying(from, to) {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      renameSync(from, to);
+      return;
+    } catch (error) {
+      if (process.platform !== 'win32' || attempt >= 20 || !['EPERM', 'EBUSY', 'EACCES'].includes(error?.code)) throw error;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
+    }
+  }
+}
+
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const DIST_CLI = join(REPO, 'packages/xezar/dist/index.js');
 const TIMEOUT_MS = 60_000;
@@ -360,9 +374,9 @@ async function main(options = {}) {
     await outlastProbeCache(bRegisteredAt);
     const absentB = `${repoB}.missing`;
     const renamedAwayAt = Date.now();
-    renameSync(repoB, absentB);
+    renameRetrying(repoB, absentB);
     const missing = await api(base, `/api/v1/p/${b.id}/runs`);
-    renameSync(absentB, repoB);
+    renameRetrying(absentB, repoB);
     assertion(result, 'registered missing B is 409 before first build', missing.status === 409, missing);
     await outlastProbeCache(renamedAwayAt);
     assertion(result, 'B builds lazily on its first scoped request', (await api(base, `/api/v1/p/${b.id}/runs`)).status === 200, b.id);

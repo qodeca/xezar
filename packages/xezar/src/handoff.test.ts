@@ -19,6 +19,7 @@ import {
 import { parseAskMarker } from './core/ask.ts';
 import { parseTaskMarkers, stripTaskMarkers } from './runs/task-markers.ts';
 import { todoSchema } from './todos.ts';
+import { TEST_DIR_RM_OPTIONS } from '../test/helpers/platform.ts';
 
 /**
  * HANDOFF_INSTRUCTIONS is the only thing that tells an agent what to append to todos.json,
@@ -177,7 +178,7 @@ describe('handoff journal file', () => {
   }
 
   afterEach(() => {
-    while (roots.length) rmSync(roots.pop()!, { recursive: true, force: true });
+    while (roots.length) rmSync(roots.pop()!, TEST_DIR_RM_OPTIONS);
   });
 
   const seed = { id: 'run1', title: 'Cover the parser', workflow: 'quick-task', task: '  do the thing  ' };

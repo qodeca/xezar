@@ -13,6 +13,7 @@ import {
   writeFileAtomicSync,
   type RenameSeams,
 } from './atomic-write.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 function fsError(code: string): NodeJS.ErrnoException {
   return Object.assign(new Error(`${code}: rename 'a' -> 'b'`), {
@@ -183,7 +184,7 @@ describe('writeFileAtomic on the real file system', () => {
     for (const name of existsSync(dir) ? readdirSync(dir) : []) {
       try { chmodSync(join(dir, name), 0o666); } catch { /* best-effort */ }
     }
-    rmSync(dir, { recursive: true, force: true });
+    rmSync(dir, TEST_DIR_RM_OPTIONS);
   });
 
   it('replaces the content and leaves no temporary file (sync and async)', async () => {

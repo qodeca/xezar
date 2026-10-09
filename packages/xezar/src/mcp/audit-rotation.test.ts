@@ -15,7 +15,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { onWindows } from '../../test/helpers/platform.ts';
+import { onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { auditRecordSchema, type AuditActionRecord, type AuditRecord } from '@qodeca/xezar-contract';
 import {
@@ -62,7 +62,7 @@ beforeEach(() => {
   mkdirSync(dataDir, { recursive: true });
 });
 afterEach(() => {
-  rmSync(root, { recursive: true, force: true });
+  rmSync(root, TEST_DIR_RM_OPTIONS);
 });
 
 /** One valid v2 action line, as a door would have written it. */

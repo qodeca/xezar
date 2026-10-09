@@ -9,7 +9,7 @@ import test from 'node:test';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { npmCommand, onWindows } from '../helpers/platform.ts';
+import { npmCommand, onWindows, TEST_DIR_RM_OPTIONS } from '../helpers/platform.ts';
 
 const execFile = promisify(execFileCallback);
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -304,7 +304,7 @@ test('A-16: an upgraded cockpit stays usable with MCP state corrupt, deleted, af
 
     await t.test('restart with MCP state deleted: the dead owner is reaped, the cockpit works, the socket stays private', async () => {
       for (const file of MCP_STATE) await rm(join(dataDir, file), { force: true });
-      await rm(join(dataDir, 'mcp'), { recursive: true, force: true });
+      await rm(join(dataDir, 'mcp'), TEST_DIR_RM_OPTIONS);
       // A config that parses and is simply empty is the user's own state: the snapshot must not
       // override it with a project the user removed.
       await writeFile(join(home, 'config.json'), '{}\n', 'utf8');
@@ -342,7 +342,7 @@ test('A-16: an upgraded cockpit stays usable with MCP state corrupt, deleted, af
     });
   } finally {
     for (const cockpit of cockpits) await cockpit.stop('SIGKILL').catch(() => undefined);
-    await rm(root, { recursive: true, force: true });
-    await rm(home, { recursive: true, force: true });
+    await rm(root, TEST_DIR_RM_OPTIONS);
+    await rm(home, TEST_DIR_RM_OPTIONS);
   }
 });

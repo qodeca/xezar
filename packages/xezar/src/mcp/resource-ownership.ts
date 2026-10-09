@@ -1,7 +1,8 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { realpathSync } from 'node:fs';
 import { lstat, realpath } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { isDotGitSegment } from '../platform/path-syntax.ts';
 import { z } from 'zod';
 
 import type { AutomationStore } from '../automations/store.ts';
@@ -206,7 +207,7 @@ async function worktreeDirIsOurs(scope: OwnershipScope, run: RunRecord): Promise
   try {
     info = await lstat(expected);
   } catch (err) {
-    return (err as NodeJS.ErrnoException).code === 'ENOENT';
+    return (err as NodeJS.ErrnoException).code === 'ENOENT' && (await nearestExistingIsDirectory(dirname(expected)));
   }
   if (info.isSymbolicLink() || !info.isDirectory()) return false;
   try {
@@ -216,6 +217,24 @@ async function worktreeDirIsOurs(scope: OwnershipScope, run: RunRecord): Promise
   }
 }
 
+
+/**
+ * An absent worktree passes only when the folder above it really is a folder (or is absent too).
+ * Linux and macOS report a file in that place as ENOTDIR, which already refuses; Windows reports
+ * ENOENT for the same thing, so without this a path that cannot be inspected would read as
+ * "reclaimed" and be admitted (#963). Unknown is never ours.
+ */
+async function nearestExistingIsDirectory(path: string): Promise<boolean> {
+  for (let current = path; ; current = dirname(current)) {
+    try {
+      const info = await lstat(current);
+      return info.isDirectory() && !info.isSymbolicLink();
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') return false;
+      if (dirname(current) === current) return true;
+    }
+  }
+}
 /**
  * A run of the bound project. Refused as `not_found` when the id is not in this project's store
  * OR when the record's worktree path is not this project's — such a record would name another
@@ -334,7 +353,8 @@ export async function ownWorktreeFile(
   }
   const segments = raw.split('/').filter((s) => s !== '' && s !== '.');
   // `.git` compared case-insensitively: on a case-insensitive filesystem `.GIT` IS `.git`.
-  if (segments.some((s) => s === '..' || s.toLowerCase() === '.git')) return refuse(scope, 'file', 'forbidden_path');
+  // Windows also opens `.git.`, `.git ` and `.git::$INDEX_ALLOCATION` as that folder (#963).
+  if (segments.some((s) => s === '..' || s.toLowerCase() === '.git' || isDotGitSegment(s))) return refuse(scope, 'file', 'forbidden_path');
   // A `worktree: false` run reads from the project root, where `.local/` holds the engine's
   // runtime state — every task's transcript and the launch key, which F-15 forbids returning.
   if (segments[0]?.toLowerCase() === '.local') return refuse(scope, 'file', 'forbidden_path');

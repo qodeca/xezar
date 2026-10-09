@@ -28,7 +28,7 @@ import { toolListing, type McpToolContext, type McpToolResult } from './tool.ts'
 import { handoffGitTool, QUALITY_BLOCKER_NEXT_ACTION } from './tools/handoff-git.ts';
 import { tools } from './tools/index.ts';
 import { withOperationId } from './tools/operation-id.testkit.ts';
-import { onWindows } from '../../test/helpers/platform.ts';
+import { onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * #116 — the PARITY AND COLLABORATION half of the whole-feature acceptance suite (requirements § 9):
@@ -1102,7 +1102,7 @@ describe.skipIf(onWindows)('#116 parity and collaboration acceptance — A/B wor
       } finally {
         await leader.close();
         service.close();
-        rmSync(home, { recursive: true, force: true });
+        rmSync(home, TEST_DIR_RM_OPTIONS);
       }
     });
 
@@ -1141,7 +1141,7 @@ describe.skipIf(onWindows)('#116 parity and collaboration acceptance — A/B wor
       } finally {
         await leader.close();
         service.close();
-        rmSync(home, { recursive: true, force: true });
+        rmSync(home, TEST_DIR_RM_OPTIONS);
       }
     });
   });

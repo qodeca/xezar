@@ -4,10 +4,10 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
-  renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
+import { renameReplacingSync } from '../platform/atomic-write.ts';
 import { basename, dirname } from 'node:path';
 import {
   DEFAULT_SERVER_INSTANCE,
@@ -88,7 +88,7 @@ export function saveServerState(state: ServerState, instance: string = DEFAULT_S
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   const tmp = `${path}.tmp`;
   writeFileSync(tmp, `${JSON.stringify(state, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
-  renameSync(tmp, path);
+  renameReplacingSync(tmp, path);
   try {
     chmodSync(path, 0o600); // best-effort — ignored on some filesystems
   } catch {

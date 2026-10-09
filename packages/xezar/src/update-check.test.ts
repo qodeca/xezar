@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { checkForUpdate, isNewerVersion } from './update-check.ts';
+import { TEST_DIR_RM_OPTIONS } from '../test/helpers/platform.ts';
 
 /**
  * `update-check.ts` runs on the BOOT path and reaches the npm registry, so this
@@ -172,7 +173,7 @@ describe('checkForUpdate — a read-only home degrades', () => {
       if (savedHome === undefined) delete process.env.HOME;
       else process.env.HOME = savedHome;
       chmodSync(readOnlyHome, 0o700);
-      rmSync(readOnlyHome, { recursive: true, force: true });
+      rmSync(readOnlyHome, TEST_DIR_RM_OPTIONS);
     }
   });
 });

@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { SKILLS_BANNER_LINES, printSkillsBanner, shouldShowSkillsBanner } from './skills-banner.ts';
+import { TEST_DIR_RM_OPTIONS } from '../test/helpers/platform.ts';
 
 /**
  * The banner's wiring and its two off switches (#391). `printSkillsBanner` is what `serve` calls,
@@ -27,7 +28,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  rmSync(repoRoot, { recursive: true, force: true });
+  rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
   delete process.env.XEZ_NO_BANNER;
 });
 

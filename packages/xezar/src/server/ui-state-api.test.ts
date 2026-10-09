@@ -7,6 +7,7 @@ import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { createApp } from './server.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * `GET/PUT /api/v1/ui-state` (#408 — the `skillUsage` addition). The contract under test: the
@@ -31,7 +32,7 @@ describe('the ui-state API — skillUsage (#408)', () => {
 
   afterEach(() => {
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
   });
 
   const uiStatePath = () => join(repoRoot, '.local/xezar', 'ui-state.json');

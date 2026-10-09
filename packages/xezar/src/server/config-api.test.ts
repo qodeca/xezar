@@ -8,6 +8,7 @@ import { WorkspaceSemaphore } from '../workspace/semaphore.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { createApp } from './server.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * `GET/PUT /api/v1/config` (R6 Step 1.5 — Settings → Agents). The contract under
@@ -61,8 +62,8 @@ describe('the config API', () => {
 
   afterEach(() => {
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
-    rmSync(homeRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
+    rmSync(homeRoot, TEST_DIR_RM_OPTIONS);
     if (savedHome === undefined) delete process.env.HOME;
     else process.env.HOME = savedHome;
     if (savedXezHome === undefined) delete process.env.XEZ_HOME;
@@ -381,7 +382,7 @@ describe('liveTitleUpdates round-trip (task auto-naming spec)', () => {
 
   afterEach(() => {
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
   });
 
   const put = (body: unknown) =>
@@ -418,7 +419,7 @@ describe('reviewGate round-trip (optional review gate, #489)', () => {
 
   afterEach(() => {
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
   });
 
   const put = (body: unknown) =>
@@ -484,8 +485,8 @@ describe('the project memoryLimitMb write reaches enforcement without a restart 
 
   afterEach(() => {
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
-    rmSync(homeRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
+    rmSync(homeRoot, TEST_DIR_RM_OPTIONS);
     if (savedXezHome === undefined) delete process.env.XEZ_HOME;
     else process.env.XEZ_HOME = savedXezHome;
   });

@@ -12,7 +12,7 @@ import { runBridge } from './bridge.ts';
 import { resolveMcpTarget, startMcpService } from './index.ts';
 import { LineFramer, encodeFrame, type McpToolResult } from './ipc.ts';
 import { tools } from './tools/index.ts';
-import { onWindows } from '../../test/helpers/platform.ts';
+import { onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * #819 item 5 — a client session started BEFORE the engine recovers by itself, with no `/mcp`
@@ -58,7 +58,7 @@ beforeEach(() => {
 afterEach(async () => {
   for (const close of closers.splice(0).reverse()) await Promise.resolve(close()).catch(() => undefined);
   setActiveStateLayout(null);
-  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  for (const dir of dirs.splice(0)) rmSync(dir, TEST_DIR_RM_OPTIONS);
   for (const [key, value] of [
     ['XEZ_HOME', saved.home],
     ['XEZ_DRY_RUN', saved.dryRun],

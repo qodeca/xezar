@@ -59,7 +59,8 @@ import { entry as activityEntry, startTerminalActivity, type TerminalActivity } 
 import { recoverAndReport } from './terminal/recovery.ts';
 import { formatDuration, formatTokens, glyphsFor } from './terminal/format.ts';
 import { startLongPathNotice } from './platform/long-paths.ts';
-import { launchCmd, launchDetached, launchFileSync } from './platform/process-launch.ts';
+import { pathWithLoginShell } from './platform/login-shell-path.ts';
+import { launchCmd, launchDetached } from './platform/process-launch.ts';
 import { exitAfterStoppingTrees, onShutdownSignals } from './platform/shutdown-signals.ts';
 import { runMigrations } from './workspace/migrations.ts';
 import {
@@ -87,6 +88,7 @@ import {
 } from './state-layout.ts';
 import { createProjectStateFiles } from './workspace/config.ts';
 import { npxCommand, readOwnName } from './own-package.ts';
+import { hasLine } from './text-lines.ts';
 import {
   accountImportLines,
   askInTerminal,
@@ -1543,13 +1545,8 @@ async function runCommand(
  */
 function augmentPathFromLoginShell(): void {
   try {
-    const out = launchFileSync('bash', ['-lc', 'printf %s "$PATH"'], { timeout: 5000, encoding: 'utf8' });
-    const loginPath = out.split('\n').map((s) => s.trim()).filter(Boolean).pop() ?? '';
-    if (!loginPath) return;
-    const seen = new Set<string>();
-    process.env.PATH = [...loginPath.split(':'), ...(process.env.PATH ?? '').split(':')]
-      .filter((d) => d && !seen.has(d) && seen.add(d))
-      .join(':');
+    const merged = pathWithLoginShell(process.env.PATH);
+    if (merged !== undefined) process.env.PATH = merged;
   } catch {
     // best effort — keep the existing PATH
   }
@@ -1792,7 +1789,7 @@ function ensureDataGitignore(repoRoot: string): void {
     mkdirSync(join(repoRoot, '.local'), { recursive: true });
     const ignore = join(repoRoot, '.local', '.gitignore');
     const content = existsSync(ignore) ? readFileSync(ignore, 'utf8') : '';
-    if (!content.split('\n').includes('*')) writeFileSync(ignore, `${content}\n*\n`, 'utf8');
+    if (!hasLine(content, '*')) writeFileSync(ignore, `${content}\n*\n`, 'utf8');
   } catch { /* read-only repositories retain the normal degradation policy */ }
 }
 

@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { withPlatform } from '../../test/helpers/platform.ts';
+import { onWindows, withPlatform, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 import type { AgentEvent, AgentSession } from './agent-runner.ts';
 import type { UiEvent } from './ui-events.ts';
 import { DEFAULT_RUN_TIMEOUT_MS } from './claude-cli-runner.ts';
@@ -64,7 +64,7 @@ afterEach(() => {
     }
     spawned.clear();
   } finally {
-    rmSync(tmpDir, { recursive: true, force: true });
+    rmSync(tmpDir, TEST_DIR_RM_OPTIONS);
   }
 });
 
@@ -91,6 +91,10 @@ async function until(condition: () => boolean, label: string, timeoutMs = 10_000
     await sleep(10);
   }
 }
+
+/** What the mock logs for one stop: SIGTERM, or nothing on Windows, where a stop ends the process
+ *  without a signal it can catch (#963). `isAlive` is the proof on both. */
+const CAUGHT_STOP: string[] = onWindows ? [] : ['SIGTERM'];
 
 /** Stop signals the mock actually caught, in order. */
 function signalsSeen(): string[] {
@@ -258,7 +262,7 @@ describe('a normal session against the real opencode mock server', () => {
       expect(v2[turnDone]).toMatchObject({ type: 'turn.completed', turnId: 'turn_1', stopReason: 'end_turn' });
 
       // The real process, not a mock's call log.
-      expect(signalsSeen()).toEqual(['SIGTERM']);
+      expect(signalsSeen()).toEqual(CAUGHT_STOP);
       expect(isAlive(pid)).toBe(false);
     } finally {
       session.interrupt();
@@ -343,7 +347,7 @@ describe('a normal session against the real opencode mock server', () => {
       // a real `opencode` on PATH must not have that binary satisfy this test.
       // Only the mock mints `ses_mock_1` and only the mock writes the log.
       expect(started.v1[0]).toEqual({ type: 'session', sessionId: 'ses_mock_1' });
-      expect(signalsSeen()).toEqual(['SIGTERM']);
+      expect(signalsSeen()).toEqual(CAUGHT_STOP);
       expect(isAlive(started.pid)).toBe(false);
     } finally {
       started?.session.interrupt();
@@ -385,7 +389,7 @@ describe('a normal session against the real opencode mock server', () => {
     expect(result.text).toContain('Checking the working tree.');
     expect(v1.at(-1)).toEqual({ type: 'done' });
     // `run()` closes itself through the auto-end timer — one SIGTERM, no leak.
-    expect(signalsSeen()).toEqual(['SIGTERM']);
+    expect(signalsSeen()).toEqual(CAUGHT_STOP);
   }, 30_000);
 });
 
@@ -400,7 +404,7 @@ describe('cancelling a session', () => {
       await session.result;
 
       expect(session.open).toBe(false);
-      expect(signalsSeen()).toEqual(['SIGTERM']);
+      expect(signalsSeen()).toEqual(CAUGHT_STOP);
       expect(isAlive(pid)).toBe(false);
     } finally {
       session.interrupt();
@@ -507,7 +511,7 @@ describe('a turn that outlives the request that submitted it (#168)', () => {
       // Whatever did arrive is kept; nothing hangs.
       expect(result.text).toBe('Partial answer');
       expect(v1.at(-1)).toEqual({ type: 'done' });
-      expect(signalsSeen()).toEqual(['SIGTERM']);
+      expect(signalsSeen()).toEqual(CAUGHT_STOP);
       expect(isAlive(pid)).toBe(false);
     } finally {
       session.interrupt();
@@ -620,7 +624,7 @@ describe('the blocking fallback outlives the fetch transport wall (#153 AC 2)', 
       expect(v1.some((e) => e.type === 'error' && e.message.includes('timed out'))).toBe(true);
       expect(v1.at(-1)).toEqual({ type: 'done' });
       expect(elapsed).toBeLessThan(15_000);
-      expect(signalsSeen()).toEqual(['SIGTERM']);
+      expect(signalsSeen()).toEqual(CAUGHT_STOP);
       expect(isAlive(pid)).toBe(false);
     } finally {
       session.interrupt();
@@ -643,7 +647,7 @@ describe('the blocking fallback outlives the fetch transport wall (#153 AC 2)', 
 
       expect(v1.at(-1)).toEqual({ type: 'done' });
       expect(session.open).toBe(false);
-      expect(signalsSeen()).toEqual(['SIGTERM']);
+      expect(signalsSeen()).toEqual(CAUGHT_STOP);
       expect(isAlive(pid)).toBe(false);
     } finally {
       session.interrupt();
@@ -886,7 +890,8 @@ describe('a session that goes silent after a rejected ask (#692)', () => {
 describe('a server that ignores SIGTERM', () => {
   const ignoreSigterm = { MOCK_OPENCODE_IGNORE_SIGTERM: '1' };
 
-  it('is escalated to SIGKILL after end() and does not leak', async () => {
+  // win32-skip(#963): Windows has no catchable SIGTERM, so there is no handled-but-alive state to escalate from
+  it.skipIf(onWindows)('is escalated to SIGKILL after end() and does not leak', async () => {
     const { session, pid, v1 } = start({ env: ignoreSigterm });
     try {
       await until(() => v1.some((e) => e.type === 'session'), 'the session handshake');
@@ -900,7 +905,7 @@ describe('a server that ignores SIGTERM', () => {
       await session.result;
       const elapsed = Date.now() - started;
 
-      expect(signalsSeen()).toEqual(['SIGTERM']);
+      expect(signalsSeen()).toEqual(CAUGHT_STOP);
       expect(isAlive(pid)).toBe(false);
       // It survived the grace window and died to the escalation, not to SIGTERM.
       expect(elapsed).toBeGreaterThanOrEqual(KILL_GRACE_MS - 500);
@@ -914,7 +919,7 @@ describe('a server that ignores SIGTERM', () => {
     try {
       expect((await session.result).timedOut).toBe(true); // #943: the run manager sweeps after a timeout
 
-      expect(signalsSeen()).toEqual(['SIGTERM']);
+      expect(signalsSeen()).toEqual(CAUGHT_STOP);
       expect(isAlive(pid)).toBe(false);
       expect(v1.some((e) => e.type === 'error' && e.message.includes('timed out'))).toBe(true);
       expect(v1.at(-1)).toEqual({ type: 'done' });
@@ -935,7 +940,7 @@ describe('a server that ignores SIGTERM', () => {
       session.interrupt();
       await session.result;
 
-      expect(signalsSeen()).toEqual(['SIGTERM']);
+      expect(signalsSeen()).toEqual(CAUGHT_STOP);
       expect(isAlive(pid)).toBe(false);
     } finally {
       session.interrupt();
@@ -954,7 +959,7 @@ describe('a server that exits on SIGTERM', () => {
       await session.result;
       const elapsed = Date.now() - started;
 
-      expect(signalsSeen()).toEqual(['SIGTERM']);
+      expect(signalsSeen()).toEqual(CAUGHT_STOP);
       expect(isAlive(pid)).toBe(false);
       expect(elapsed).toBeLessThan(KILL_GRACE_MS);
     } finally {
@@ -1031,7 +1036,7 @@ describe('a server that fails before or during the stream', () => {
       expect(v1).toContainEqual({ type: 'error', message: 'opencode: opencode did not return a session id' });
       expect(v1.some((e) => e.type === 'session')).toBe(false);
       expect(v1.at(-1)).toEqual({ type: 'done' });
-      expect(signalsSeen()).toEqual(['SIGTERM']);
+      expect(signalsSeen()).toEqual(CAUGHT_STOP);
       expect(isAlive(pid)).toBe(false);
     } finally {
       session.interrupt();
@@ -1074,7 +1079,7 @@ describe('a server that fails before or during the stream', () => {
       await session.result;
 
       expect(v1.at(-1)).toEqual({ type: 'done' });
-      expect(signalsSeen()).toEqual(['SIGTERM']);
+      expect(signalsSeen()).toEqual(CAUGHT_STOP);
       expect(isAlive(pid)).toBe(false);
     } finally {
       session.interrupt();

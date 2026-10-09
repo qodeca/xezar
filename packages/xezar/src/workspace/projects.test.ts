@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync
 import { homedir, tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { linkDir, withPlatform } from '../../test/helpers/platform.ts';
+import { linkDir, withPlatform, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 import { PROJECT_TAGS_MAX, PROJECT_TAG_MAX_LENGTH } from '@qodeca/xezar-contract';
 import { projectStateLayout, setActiveStateLayout } from '../state-layout.ts';
 import { loadWorkspaceConfig, mergeWriteWorkspaceConfig } from './config.ts';
@@ -44,8 +44,8 @@ describe('workspace projects', () => {
   afterEach(() => {
     if (originalHome === undefined) delete process.env.XEZ_HOME;
     else process.env.XEZ_HOME = originalHome;
-    rmSync(home, { recursive: true, force: true });
-    rmSync(repos, { recursive: true, force: true });
+    rmSync(home, TEST_DIR_RM_OPTIONS);
+    rmSync(repos, TEST_DIR_RM_OPTIONS);
   });
 
   const makeDir = (...segments: string[]): string => {
@@ -248,7 +248,7 @@ describe('workspace projects', () => {
     it('reports a deleted root as missing (after the probe TTL cache is cleared)', async () => {
       const root = makeDir('doomed');
       await registerProject(root);
-      rmSync(root, { recursive: true, force: true });
+      rmSync(root, TEST_DIR_RM_OPTIONS);
       clearProjectProbeCache();
       const [entry] = await listProjects();
       expect(entry?.status).toBe('missing');
@@ -266,7 +266,7 @@ describe('workspace projects', () => {
       const root = makeDir('cached');
       await registerProject(root);
       expect((await listProjects())[0]?.status).toBe('not-git');
-      rmSync(root, { recursive: true, force: true });
+      rmSync(root, TEST_DIR_RM_OPTIONS);
       // Within the TTL the stale probe is served (no fs/git work per render)…
       expect((await listProjects())[0]?.status).toBe('not-git');
       // …and a cleared cache sees reality again.
@@ -487,7 +487,7 @@ describe('single-project layout — per-machine facts stay out of the committed 
 
   afterEach(() => {
     setActiveStateLayout(null);
-    rmSync(projectRoot, { recursive: true, force: true });
+    rmSync(projectRoot, TEST_DIR_RM_OPTIONS);
   });
 
   it('registerProject twice and rememberLastListen once leave the committed file byte-identical', async () => {
@@ -568,7 +568,7 @@ describe('instanceModeInForce (#467, spec § 2.3–2.4)', () => {
 
   afterEach(() => {
     setActiveStateLayout(null);
-    rmSync(projectRoot, { recursive: true, force: true });
+    rmSync(projectRoot, TEST_DIR_RM_OPTIONS);
   });
 
   describe('no narrowing — the request stands', () => {

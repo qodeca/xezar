@@ -7,6 +7,7 @@ import { RunStore } from '../runs/store.ts';
 import { WorkspaceSemaphore } from '../workspace/semaphore.ts';
 import { RunManager } from './run.ts';
 import type { WorkflowDef } from './types.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 const GIT_ID = ['-c', 'user.name=test', '-c', 'user.email=test@local'];
 
@@ -67,7 +68,9 @@ const INSTANT: WorkflowDef = {
  * waits: a runner starved for ~3 s let the holder expire before the test
  * asserted the queued run was still queued.
  */
-function gatedHolder(gate: string): WorkflowDef {
+function gatedHolder(gatePath: string): WorkflowDef {
+  // The path lands inside a JS string: a Windows `\` there would be an escape. Windows accepts `/` (#963).
+  const gate = gatePath.replaceAll('\\', '/');
   return {
     name: 'gated-hold',
     source: 'built-in',
@@ -146,7 +149,7 @@ describe('workspace semaphore across RunManagers (step 2.5)', () => {
     }
     for (const manager of managers.splice(0)) manager.dispose();
     stores.length = 0;
-    for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+    for (const root of roots.splice(0)) rmSync(root, TEST_DIR_RM_OPTIONS);
     if (savedEnv.XEZ_DRY_RUN === undefined) delete process.env.XEZ_DRY_RUN;
     else process.env.XEZ_DRY_RUN = savedEnv.XEZ_DRY_RUN;
   });

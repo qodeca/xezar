@@ -11,6 +11,7 @@ import { createApp, WorkspaceEventBus } from './server.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 // @ts-expect-error Vitest supplies raw asset imports in tests.
 import frozenText from '../../../contract/src/__fixtures__/agent-quota.expected.json?raw';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 describe('agent quota read surface', () => {
   let root: string;
@@ -29,8 +30,8 @@ describe('agent quota read surface', () => {
 
   afterEach(() => {
     runs.close();
-    rmSync(root, { recursive: true, force: true });
-    rmSync(home, { recursive: true, force: true });
+    rmSync(root, TEST_DIR_RM_OPTIONS);
+    rmSync(home, TEST_DIR_RM_OPTIONS);
     if (savedHome === undefined) delete process.env.XEZ_HOME;
     else process.env.XEZ_HOME = savedHome;
   });

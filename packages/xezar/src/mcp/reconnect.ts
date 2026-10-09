@@ -1,4 +1,5 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { renameReplacingSync } from '../platform/atomic-write.ts';
 import { join } from 'node:path';
 import { z } from 'zod';
 
@@ -280,7 +281,7 @@ export class LeaderCursors implements LeaderRecord {
     this.#warn(
       `[xez] MCP leader cursors for project ${projectId} are unreadable — the leader restarts at the journal head; the old file is kept as ${this.path}.corrupt`,
     );
-    try { renameSync(this.path, `${this.path}.corrupt`); } catch { /* the save below overwrites it instead */ }
+    try { renameReplacingSync(this.path, `${this.path}.corrupt`); } catch { /* the save below overwrites it instead */ }
     const state = atHead();
     this.#state = state;
     this.#save();
@@ -292,7 +293,7 @@ export class LeaderCursors implements LeaderRecord {
       mkdirSync(join(this.path, '..'), { recursive: true, mode: 0o700 });
       const tmp = atomicTmpPath(this.path);
       writeFileSync(tmp, `${JSON.stringify(this.#state)}\n`, { encoding: 'utf8', mode: 0o600 });
-      renameSync(tmp, this.path);
+      renameReplacingSync(tmp, this.path);
       try { chmodSync(this.path, 0o600); } catch { /* best-effort on filesystems without modes */ }
     } catch (err) {
       if (this.#warned) return;

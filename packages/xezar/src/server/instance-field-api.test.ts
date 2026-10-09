@@ -10,6 +10,7 @@ import { clearProjectProbeCache, registerProject } from '../workspace/projects.t
 import { InstanceLiveness, type HealthProbe } from './instance-liveness.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { createApp, type ServerDeps } from './server.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * The derived `instance?` field on `GET /api/v1/projects` (#467, PR 3, spec § 5).
@@ -45,7 +46,7 @@ describe('GET /api/v1/projects carries the derived instance field (#467, PR 3)',
 
   afterEach(() => {
     store.flush();
-    for (const dir of [home, bootRoot, otherRoot]) rmSync(dir, { recursive: true, force: true });
+    for (const dir of [home, bootRoot, otherRoot]) rmSync(dir, TEST_DIR_RM_OPTIONS);
     for (const [key, saved] of [
       ['XEZ_HOME', savedHome],
       ['XEZ_REMOTE', savedRemote],

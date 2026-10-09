@@ -17,6 +17,7 @@ import {
 } from '@qodeca/xezar-contract';
 
 import { EventJournal, McpJournalCursorError, type EventJournalOptions } from './event-journal.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 const DAY = 24 * 60 * 60 * 1_000;
 const T0 = Date.parse('2026-09-01T00:00:00.000Z');
@@ -32,7 +33,7 @@ beforeEach(() => {
 
 afterEach(() => {
   for (const journal of open.splice(0)) journal.close();
-  rmSync(dataDir, { recursive: true, force: true });
+  rmSync(dataDir, TEST_DIR_RM_OPTIONS);
 });
 
 function openJournal(opts: Partial<EventJournalOptions> = {}): EventJournal {
@@ -312,7 +313,7 @@ describe('the per-project event journal (#103)', () => {
         expect(rejection.error).toBe('cursor_project_mismatch');
         expect(rejection.message).not.toMatch(/alpha|bravo/);
       } finally {
-        rmSync(bDir, { recursive: true, force: true });
+        rmSync(bDir, TEST_DIR_RM_OPTIONS);
       }
     });
 
@@ -338,7 +339,7 @@ describe('the per-project event journal (#103)', () => {
       journal.append(event(1));
       const cursor = journal.headCursor();
       journal.close();
-      rmSync(join(dataDir, 'mcp'), { recursive: true, force: true }); // the user deleted runtime state
+      rmSync(join(dataDir, 'mcp'), TEST_DIR_RM_OPTIONS); // the user deleted runtime state
       journal = openJournal();
       journal.append(event(1));
 

@@ -20,6 +20,7 @@ import {
   renderCodexEventMessage,
   type CodexAppServerLink,
 } from './codex.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../../test/helpers/platform.ts';
 
 /**
  * #109 — the Codex reaction adapter. `FakeAppServer` reproduces the app-server behaviour recorded in
@@ -512,7 +513,7 @@ describe('with the real journal and controller (#103, #107)', () => {
     owner.dispose();
     journal.close();
     vi.useRealTimers();
-    rmSync(dataDir, { recursive: true, force: true });
+    rmSync(dataDir, TEST_DIR_RM_OPTIONS);
   });
 
   function event(n: number): McpJournalAppendInput {

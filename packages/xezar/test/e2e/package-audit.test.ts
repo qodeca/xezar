@@ -8,7 +8,7 @@ import test from 'node:test';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { npmCommand } from '../helpers/platform.ts';
+import { npmCommand, TEST_DIR_RM_OPTIONS } from '../helpers/platform.ts';
 
 const execFile = promisify(execFileCallback);
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -132,9 +132,8 @@ test('every command-line subcommand of the packed CLI writes one cli audit recor
 
     await exec(['projects', 'add', other, '--repo', repo]);
     const registry = JSON.parse(await readFile(join(root, 'xez-home', 'config.json'), 'utf8')) as { projects: Array<{ id: string; root: string }> };
-    // win32-r9(#963): fails here – the registry stores the Windows path `…\other`, so `endsWith('/other')` finds nothing. With that
-    // match made separator-neutral, the cleanup below then fails EBUSY: it removes the folder right after `kill`, before the killed CLI children have let go of it.
-    const otherId = registry.projects.find((project) => project.root.endsWith('/other'))?.id;
+    // The registry stores the host's spelling: `…\other` on Windows (#963).
+    const otherId = registry.projects.find((project) => /[\\/]other$/.test(project.root))?.id;
     assert.ok(otherId, 'projects add registered the second repo');
     await exec(['projects', 'tag', otherId, 'alpha', '--repo', repo]);
     await exec(['projects', 'port', otherId, '4999', '--repo', repo]);
@@ -190,8 +189,12 @@ test('every command-line subcommand of the packed CLI writes one cli audit recor
     await waitFor(async () => ((await added(seen)).length > 0 ? true : undefined), 60_000, 'the cli.serve record');
     await expectRows([['cli.serve', 'applied']]);
   } finally {
-    for (const child of children) if (child.exitCode === null) child.kill('SIGKILL');
-    await rm(root, { recursive: true, force: true });
+    // Wait for each killed CLI to exit: Windows refuses to remove a folder a live process still holds (#963).
+    const running = children.filter((child) => child.exitCode === null && child.signalCode === null);
+    const exited = running.map((child) => new Promise((done) => child.once('exit', done)));
+    for (const child of running) child.kill('SIGKILL');
+    await Promise.all(exited);
+    await rm(root, TEST_DIR_RM_OPTIONS);
   }
 });
 
@@ -245,6 +248,6 @@ test('a fresh, never-run git folder still gets its cli.init and refusal records'
       ],
     );
   } finally {
-    await rm(root, { recursive: true, force: true });
+    await rm(root, TEST_DIR_RM_OPTIONS);
   }
 });

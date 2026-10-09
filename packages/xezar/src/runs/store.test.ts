@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RunStore } from './store.ts';
 
 import type { RunRecord } from './store.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 // RunStore intentionally debounces index writes. Most cases in this file exercise
 // in-memory behaviour and remove their fixture directory before that production
@@ -40,7 +41,7 @@ describe('RunStore — directional usage persistence', () => {
   });
 
   afterEach(() => {
-    rmSync(dataDir, { recursive: true, force: true });
+    rmSync(dataDir, TEST_DIR_RM_OPTIONS);
   });
 
   it('round-trips step checkpoints and complete run aggregates through runs.json', () => {
@@ -111,7 +112,7 @@ describe('RunStore — titleSummary + diffStat (#389)', () => {
   });
 
   afterEach(() => {
-    rmSync(dataDir, { recursive: true, force: true });
+    rmSync(dataDir, TEST_DIR_RM_OPTIONS);
   });
 
   it('round-trips the new fields through runs.json', () => {
@@ -317,7 +318,7 @@ describe('RunStore — PR auto-link only on real creation (#fake-pr)', () => {
     dataDir = mkdtempSync(join(tmpdir(), 'xez-store-'));
   });
   afterEach(() => {
-    rmSync(dataDir, { recursive: true, force: true });
+    rmSync(dataDir, TEST_DIR_RM_OPTIONS);
   });
 
   const freshRun = () => {
@@ -467,7 +468,7 @@ describe('RunStore — secret redaction before persistence (#427)', () => {
     dataDir = mkdtempSync(join(tmpdir(), 'xez-store-'));
   });
   afterEach(() => {
-    rmSync(dataDir, { recursive: true, force: true });
+    rmSync(dataDir, TEST_DIR_RM_OPTIONS);
     for (const [k, v] of Object.entries(saved)) {
       if (v === undefined) delete process.env[k];
       else process.env[k] = v;
@@ -683,7 +684,7 @@ describe('RunStore — referenced-PR discovery (#407, spec 2026-07-16-pr-autodis
     dataDir = mkdtempSync(join(tmpdir(), 'xez-store-'));
   });
   afterEach(() => {
-    rmSync(dataDir, { recursive: true, force: true });
+    rmSync(dataDir, TEST_DIR_RM_OPTIONS);
   });
 
   const freshRun = (task = 'task') => {
@@ -833,7 +834,7 @@ describe('RunStore — agent-declared marker refs (spec 2026-07-18-task-ref-mark
     dataDir = mkdtempSync(join(tmpdir(), 'xez-store-'));
   });
   afterEach(() => {
-    rmSync(dataDir, { recursive: true, force: true });
+    rmSync(dataDir, TEST_DIR_RM_OPTIONS);
   });
 
   const freshRun = (task = 'task') => {
@@ -1047,7 +1048,7 @@ describe('RunStore — referenced-issue discovery (spec 2026-07-21-report-ref-di
     dataDir = mkdtempSync(join(tmpdir(), 'xez-store-'));
   });
   afterEach(() => {
-    rmSync(dataDir, { recursive: true, force: true });
+    rmSync(dataDir, TEST_DIR_RM_OPTIONS);
   });
 
   const freshRun = (task = 'task') => {
@@ -1190,7 +1191,7 @@ describe("RunStore — a task never adopts another repository's ref (#945)", () 
     dataDir = mkdtempSync(join(tmpdir(), 'xez-store-repo-scope-'));
   });
   afterEach(() => {
-    rmSync(dataDir, { recursive: true, force: true });
+    rmSync(dataDir, TEST_DIR_RM_OPTIONS);
   });
 
   const HANDLE = { owner: 'qodeca', name: 'xezar' };
@@ -1452,7 +1453,7 @@ describe('RunStore — seq survives a restart (#424 symptom class)', () => {
   });
 
   afterEach(() => {
-    rmSync(dataDir, { recursive: true, force: true });
+    rmSync(dataDir, TEST_DIR_RM_OPTIONS);
   });
 
   it('continues numbering above the NDJSON max after reopen, so replayed clients keep receiving', () => {
@@ -1486,7 +1487,7 @@ describe('RunStore — provider authorization callouts', () => {
   });
 
   afterEach(() => {
-    rmSync(dataDir, { recursive: true, force: true });
+    rmSync(dataDir, TEST_DIR_RM_OPTIONS);
   });
 
   it('persists the structured provider-auth-required event without vendor error text', () => {
@@ -1521,7 +1522,7 @@ describe('RunStore — queuedMessages (#472)', () => {
   });
 
   afterEach(() => {
-    rmSync(dataDir, { recursive: true, force: true });
+    rmSync(dataDir, TEST_DIR_RM_OPTIONS);
     delete process.env.GITHUB_TOKEN;
     delete process.env.XEZ_REDACT_SECRETS;
   });
@@ -1588,7 +1589,7 @@ describe('RunStore — read receipts (#unread-done-items)', () => {
   });
 
   afterEach(() => {
-    rmSync(dataDir, { recursive: true, force: true });
+    rmSync(dataDir, TEST_DIR_RM_OPTIONS);
   });
 
   /** Create a run and drive it to a terminal status with a finishedAt, the way the run manager
@@ -1771,7 +1772,7 @@ describe('RunStore — the legacy `claude-cli` runner id (#547)', () => {
   });
 
   afterEach(() => {
-    rmSync(dataDir, { recursive: true, force: true });
+    rmSync(dataDir, TEST_DIR_RM_OPTIONS);
   });
 
   it('loads a record carrying `claude-cli` and folds it to `claude`', () => {
@@ -1891,7 +1892,7 @@ describe('RunStore — pinned tasks (#935)', () => {
   });
 
   afterEach(() => {
-    rmSync(dataDir, { recursive: true, force: true });
+    rmSync(dataDir, TEST_DIR_RM_OPTIONS);
   });
 
   const newRun = (store: RunStore): string =>

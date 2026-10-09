@@ -3,7 +3,7 @@ import { appendFileSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readF
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { onWindows } from '../../test/helpers/platform.ts';
+import { onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AuditActionRecord, AuditEntry } from '@qodeca/xezar-contract';
 import {
@@ -48,7 +48,7 @@ beforeEach(() => {
   resetLegacyAuditNoticeForTests();
 });
 afterEach(() => {
-  rmSync(root, { recursive: true, force: true });
+  rmSync(root, TEST_DIR_RM_OPTIONS);
 });
 
 describe('the file names (#306)', () => {

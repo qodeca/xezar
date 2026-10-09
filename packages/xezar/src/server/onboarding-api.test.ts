@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { onWindows } from '../../test/helpers/platform.ts';
+import { onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 import { onboardingStatePath, resetOnboardingWarnings } from '../onboarding/state.ts';
 import { BUNDLED_TEMPLATES_DIGEST, ONBOARDING_WORKFLOW_ID } from '../onboarding/status.ts';
@@ -59,8 +59,8 @@ describe('the onboarding API', () => {
     else process.env.XEZ_HOME = savedHome;
     if (savedDry === undefined) delete process.env.XEZ_DRY_RUN;
     else process.env.XEZ_DRY_RUN = savedDry;
-    rmSync(repoRoot, { recursive: true, force: true });
-    rmSync(xezHome, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
+    rmSync(xezHome, TEST_DIR_RM_OPTIONS);
   });
 
   const statePath = () => onboardingStatePath(join(repoRoot, '.local/xezar'));

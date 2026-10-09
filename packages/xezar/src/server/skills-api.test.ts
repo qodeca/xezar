@@ -16,6 +16,7 @@ import { bareDirFor } from '../skills-remote.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { createApp } from './server.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * Narrow to the failure branch. Since #789 review finding 2 the contract is a discriminated
@@ -70,7 +71,7 @@ afterAll(() => {
   else process.env.HOME = fixedHome.previous.HOME;
   if (fixedHome.previous.USERPROFILE === undefined) delete process.env.USERPROFILE;
   else process.env.USERPROFILE = fixedHome.previous.USERPROFILE;
-  rmSync(fixedHome.home, { recursive: true, force: true });
+  rmSync(fixedHome.home, TEST_DIR_RM_OPTIONS);
 });
 
 /** A fixed identity, so every fixture commit works on a bare CI machine. */
@@ -153,7 +154,7 @@ describe('the skills catalog API', () => {
   afterEach(() => {
     store.flush();
     for (const dir of [repoRoot, source, bareDir, join(fixedHome.home, '.claude')]) {
-      rmSync(dir, { recursive: true, force: true });
+      rmSync(dir, TEST_DIR_RM_OPTIONS);
     }
   });
 
@@ -299,7 +300,7 @@ describe('a refresh that reaches one source and not the other', () => {
 
   afterEach(() => {
     store.flush();
-    for (const dir of [repoRoot, source, bareDir]) rmSync(dir, { recursive: true, force: true });
+    for (const dir of [repoRoot, source, bareDir]) rmSync(dir, TEST_DIR_RM_OPTIONS);
   });
 
   it('reports each source separately, in configuration order', async () => {
@@ -352,7 +353,7 @@ describe('a refresh whose source is reachable but whose ref cannot be read', () 
 
   afterEach(() => {
     store.flush();
-    for (const dir of [repoRoot, source, bareDir]) rmSync(dir, { recursive: true, force: true });
+    for (const dir of [repoRoot, source, bareDir]) rmSync(dir, TEST_DIR_RM_OPTIONS);
   });
 
   it('reports the unreadable ref as a failure, not as a completed refresh', async () => {
@@ -399,7 +400,7 @@ describe('the skills catalog API with an unreachable team repo', () => {
 
   afterEach(() => {
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
   });
 
   /** The default 5s test timeout is part of the assertion: a hang fails here. */

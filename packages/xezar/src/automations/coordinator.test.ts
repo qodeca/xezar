@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AutomationCoordinator } from './coordinator.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 const dirs: string[] = [];
 async function project(): Promise<string> {
@@ -10,7 +11,7 @@ async function project(): Promise<string> {
   dirs.push(root);
   return root;
 }
-afterEach(async () => Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true }))));
+afterEach(async () => Promise.all(dirs.splice(0).map((dir) => rm(dir, TEST_DIR_RM_OPTIONS))));
 
 describe('AutomationCoordinator', () => {
   it('discovers only projects carrying the optional definitions file', async () => {

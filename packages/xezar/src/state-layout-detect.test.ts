@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { isLinkedWorktree, PROJECT_STATE_MARKER, resolveStateLayout } from './state-layout.ts';
+import { TEST_DIR_RM_OPTIONS } from '../test/helpers/platform.ts';
 
 /**
  * FR-1.3: a linked git worktree is never a single-project root, and the reason
@@ -48,7 +49,7 @@ describe('single-project detection against a real git worktree', () => {
   });
 
   afterEach(() => {
-    rmSync(base, { recursive: true, force: true });
+    rmSync(base, TEST_DIR_RM_OPTIONS);
   });
 
   /** Put the marker in a folder, the way a first `--single-project` run does. */

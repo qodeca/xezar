@@ -10,6 +10,7 @@ import {
   acquireFileLock,
   queueByLockPath,
 } from './file-lock.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * The shared bounded lock (#306 part 3). Its contention behaviour across real processes is proved by
@@ -24,7 +25,7 @@ beforeEach(() => {
   lock = join(dir, 'thing.lock');
 });
 afterEach(() => {
-  rmSync(dir, { recursive: true, force: true });
+  rmSync(dir, TEST_DIR_RM_OPTIONS);
 });
 
 describe('a lock file with no readable owner', () => {

@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { resolveStateLayout, setActiveStateLayout } from '../state-layout.ts';
 import { isLoopbackHost, isLoopbackHostHeader, normalizeHostname, resolveCapabilities } from './capabilities.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * `resolveCapabilities` takes its env as a parameter, so these drive it
@@ -277,7 +278,7 @@ describe('resolveCapabilities — singleProject and singleProjectRoot are indepe
 
   afterEach(() => {
     setActiveStateLayout(null);
-    rmSync(project, { recursive: true, force: true });
+    rmSync(project, TEST_DIR_RM_OPTIONS);
   });
 
   const enterMode = (): void => {
@@ -337,7 +338,7 @@ describe('resolveCapabilities — instanceMode is sent only for project (#467)',
 
   afterEach(() => {
     setActiveStateLayout(null);
-    rmSync(project, { recursive: true, force: true });
+    rmSync(project, TEST_DIR_RM_OPTIONS);
   });
 
   const enterMode = (): void => {

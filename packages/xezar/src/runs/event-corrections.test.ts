@@ -6,6 +6,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { acquireHistoryView } from './event-corrections.ts';
 import { deriveRunContextEvents, readEventsAfterLiveCursor, readRunHistoryPage, validateLegacyHistoryResume, validateLiveCursor } from './event-history.ts';
 import { RunStore } from './store.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 vi.mock('node:fs', async (original) => {
   const actual = await original<typeof import('node:fs')>();
@@ -32,7 +33,7 @@ function correct(path: string, excludedIndexes: number[]): void {
 }
 afterEach(() => {
   vi.restoreAllMocks();
-  for (const path of directories.splice(0)) rmSync(path, { recursive: true, force: true });
+  for (const path of directories.splice(0)) rmSync(path, TEST_DIR_RM_OPTIONS);
 });
 
 it('leaves the no-sidecar path untouched, including missing ordinary histories', () => {

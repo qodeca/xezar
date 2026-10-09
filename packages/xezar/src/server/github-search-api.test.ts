@@ -8,6 +8,7 @@ import type { RunManager } from '../workflows/run.ts';
 import type { ForgeSearchData } from './github.ts';
 import { createApp } from './server.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * `GET /api/v1/github/search?kind=…&q=…` (#730).
@@ -44,7 +45,7 @@ describe('the github search API', () => {
 
   afterEach(() => {
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
   });
 
   it('finds a PR by number', async () => {

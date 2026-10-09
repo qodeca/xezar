@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { TEST_DIR_RM_OPTIONS } from '../test/helpers/platform.ts';
 
 describe('init uses the project kit directory', () => {
   let root: string;
@@ -11,7 +12,7 @@ describe('init uses the project kit directory', () => {
     root = mkdtempSync(join(tmpdir(), 'xez-kit-init-'));
     execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: root });
   });
-  afterEach(() => { rmSync(root, { recursive: true, force: true }); });
+  afterEach(() => { rmSync(root, TEST_DIR_RM_OPTIONS); });
   function init() {
     execFileSync(process.execPath, [
       '--import', import.meta.resolve('tsx'), fileURLToPath(new URL('./index.ts', import.meta.url)), 'init',

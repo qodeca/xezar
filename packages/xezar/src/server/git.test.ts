@@ -12,6 +12,7 @@ import {
   getRepoInfo,
   getStatus,
 } from './git.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * getRepoInfo remote discovery: the forge seam (and so the GitHub tab) hangs
@@ -73,7 +74,7 @@ describe('getRepoInfo — remote discovery', () => {
   });
 
   afterEach(() => {
-    rmSync(dir, { recursive: true, force: true });
+    rmSync(dir, TEST_DIR_RM_OPTIONS);
   });
 
   it('reads an HTTPS origin remote', async () => {
@@ -117,7 +118,7 @@ describe('getRepoInfo — remote discovery', () => {
       expect(await getRepoInfo(bare)).toBeNull();
       expect(await getHeadCommit(bare)).toBeNull();
     } finally {
-      rmSync(bare, { recursive: true, force: true });
+      rmSync(bare, TEST_DIR_RM_OPTIONS);
     }
   });
 });

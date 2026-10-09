@@ -29,6 +29,7 @@ const ambient = vi.hoisted(() => {
 // this is the pin under test. `mcpAmbientHome` records the home the testkit replaced.
 import { mcpAmbientHome, mcpTestHome } from './mcp-test-home.testkit.ts';
 import { discoverSkills } from '../../skills.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../../test/helpers/platform.ts';
 
 const SKILL = 'xez-issue-create';
 
@@ -54,7 +55,7 @@ describe('the MCP test home pin (#671)', () => {
     try {
       expect(await discoverSkills(root)).toEqual([]);
     } finally {
-      rmSync(root, { recursive: true, force: true });
+      rmSync(root, TEST_DIR_RM_OPTIONS);
     }
   });
 });

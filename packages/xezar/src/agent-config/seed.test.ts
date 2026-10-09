@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, sym
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { FILE_SYMLINKS } from '../../test/helpers/platform.ts';
+import { FILE_SYMLINKS, onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 import { seedAgentConfigLocalLayer } from './seed.ts';
 
 let repo: string;
@@ -23,7 +23,7 @@ beforeEach(() => {
   git(repo, 'add', '-A');
   git(repo, 'commit', '-qm', 'init');
 });
-afterEach(() => rmSync(repo, { recursive: true, force: true }));
+afterEach(() => rmSync(repo, TEST_DIR_RM_OPTIONS));
 
 /** A linked worktree off HEAD, like a real run. */
 function makeWorktree(): string {
@@ -41,7 +41,8 @@ describe('seedAgentConfigLocalLayer', () => {
       const seeded = await seedAgentConfigLocalLayer(repo, wt, env);
       expect(seeded).toContain('.claude/settings.local.json');
       expect(readFileSync(join(wt, '.claude', 'settings.local.json'), 'utf8')).toBe('{"env":{"X":"1"}}');
-      expect(statSync(join(wt, '.claude', 'settings.local.json')).mode & 0o777).toBe(0o600);
+      // win32-skip(#963): Windows keeps no POSIX permission bits (a file reads back as 0o666)
+      if (!onWindows) expect(statSync(join(wt, '.claude', 'settings.local.json')).mode & 0o777).toBe(0o600);
       // info/exclude is on the common dir (shared) — the seeded file is ignored in the worktree
       expect(
         execFileSync('git', ['check-ignore', '.claude/settings.local.json'], { cwd: wt, encoding: 'utf8' }).trim(),

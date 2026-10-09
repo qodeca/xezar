@@ -1,6 +1,7 @@
 import { tmpdir } from 'node:os';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
+import { hasLine } from './text-lines.ts';
 
 /**
  * Engine-owned run state: run index, transcripts, worktrees, scratch, todos,
@@ -20,7 +21,7 @@ export function ensureProjectDataIgnored(dataDir: string): void {
     mkdirSync(local, { recursive: true, mode: 0o700 });
     const file = join(local, '.gitignore');
     const current = existsSync(file) ? readFileSync(file, 'utf8') : '';
-    if (!current.split('\n').includes('*')) writeFileSync(file, `${current}\n*\n`, 'utf8');
+    if (!hasLine(current, '*')) writeFileSync(file, `${current}\n*\n`, 'utf8');
   } catch { /* Normal store writes decide how to handle a read-only repository. */ }
 }
 

@@ -6,6 +6,7 @@ import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { createApp } from './server.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 describe('project kit API reads and writes the same directory', () => {
   let root: string;
@@ -14,7 +15,7 @@ describe('project kit API reads and writes the same directory', () => {
     root = mkdtempSync(join(tmpdir(), 'xez-kit-api-'));
     store = RunStore.open(join(root, '.local/xezar'));
   });
-  afterEach(() => { store.flush(); rmSync(root, { recursive: true, force: true }); });
+  afterEach(() => { store.flush(); rmSync(root, TEST_DIR_RM_OPTIONS); });
 
   it('saves and deletes workflows and merges settings in .xezar', async () => {
     const kit = '.xezar';

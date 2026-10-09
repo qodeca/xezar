@@ -4,7 +4,7 @@ import { lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkS
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
-import { FILE_SYMLINKS, linkDir } from '../../test/helpers/platform.ts';
+import { FILE_SYMLINKS, linkDir, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 import { AutomationStore } from '../automations/store.ts';
 import { branchFor, removeWorktree, worktreeDiffStat, worktreePathFor } from '../git-worktree.ts';
@@ -257,7 +257,7 @@ describe('resource ownership (#88)', () => {
   afterAll(() => {
     f.storeA.flush();
     f.storeB.flush();
-    rmSync(f.base, { recursive: true, force: true });
+    rmSync(f.base, TEST_DIR_RM_OPTIONS);
   });
 
   beforeEach(() => {
@@ -584,6 +584,14 @@ describe('resource ownership (#88)', () => {
     expect(await ownWorktreeFile(scope, f.alphaRun.id, 'notes.txt/child')).toMatchObject({ ok: false, code: 'not_found' });
   });
 
+  it('refuses the names Windows opens as the .git folder (#963)', async () => {
+    // POSIX keeps them as ordinary (here absent) names; only an exact `.git` names the folder there.
+    const expected = process.platform === 'win32' ? 'forbidden_path' : 'not_found';
+    for (const alias of ['.git./config', '.git /config', '.git::$INDEX_ALLOCATION/config', 'sub/.GIT./HEAD']) {
+      expect(await ownWorktreeFile(scope, f.alphaRun.id, alias)).toMatchObject({ ok: false, code: expected });
+    }
+  });
+
   it('refuses a malformed, tampered or oversized cursor, and never seals past B-04', () => {
     const resource = `run:${f.alphaRun.id}:history`;
     const good = sealCursor(scope, resource, 'page-2');
@@ -626,7 +634,7 @@ describe('resource ownership (#88) — the same flows without the guard', () => 
     } finally {
       f.storeA.flush();
       f.storeB.flush();
-      rmSync(f.base, { recursive: true, force: true });
+      rmSync(f.base, TEST_DIR_RM_OPTIONS);
     }
   }, 60_000);
 });
@@ -654,7 +662,7 @@ describe('resource ownership — an absent worktree passes, an unreadable one fa
       expect(await ownGroup(scope, 'group-r')).toMatchObject({ ok: true, value: { runs: [{ id: run.id }] } });
     } finally {
       store.flush();
-      rmSync(root, { recursive: true, force: true });
+      rmSync(root, TEST_DIR_RM_OPTIONS);
     }
   });
 
@@ -663,11 +671,10 @@ describe('resource ownership — an absent worktree passes, an unreadable one fa
     try {
       // `lstat(<data>/worktrees/<id>)` now fails with ENOTDIR, not ENOENT: unknown is never ours.
       writeFileSync(join(projectDataDir(root), 'worktrees'), 'not a directory\n');
-      // win32-r9(#963): Windows lstat under a file answers ENOENT, not ENOTDIR, so the group is admitted (ok: true) instead of refused
       expect(await ownGroup(scope, 'group-r')).toMatchObject({ ok: false, code: 'not_found' });
     } finally {
       store.flush();
-      rmSync(root, { recursive: true, force: true });
+      rmSync(root, TEST_DIR_RM_OPTIONS);
     }
   });
 });

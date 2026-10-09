@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { CodexRequestRefused } from './codex.ts';
 import { CODEX_CONTROL_SOCKET, codexControlHome, connectCodexLeader, validateControlSocket } from './codex-link.ts';
-import { shortTmpRoot, onWindows } from '../../../test/helpers/platform.ts';
+import { shortTmpRoot, onWindows, TEST_DIR_RM_OPTIONS } from '../../../test/helpers/platform.ts';
 
 /**
  * The link to a person's shared Codex app-server (#374), against a stand-in on a real Unix socket.
@@ -25,7 +25,7 @@ afterEach(async () => {
   for (const close of closers.splice(0)) await close();
   for (const dir of dirs.splice(0)) {
     chmodSync(dir, 0o700);
-    rmSync(dir, { recursive: true, force: true });
+    rmSync(dir, TEST_DIR_RM_OPTIONS);
   }
 });
 

@@ -29,6 +29,7 @@ vi.mock('./open-in-app.js', async (importOriginal) => {
 
 import { openInApp } from './open-in-app.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 describe('POST /api/v1/open-in — the project folder in a local app', () => {
   let repoRoot: string;
@@ -44,7 +45,7 @@ describe('POST /api/v1/open-in — the project folder in a local app', () => {
 
   afterEach(() => {
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
     if (savedRemote === undefined) delete process.env.XEZ_REMOTE;
     else process.env.XEZ_REMOTE = savedRemote;
   });

@@ -7,6 +7,7 @@ import type { RunManager } from '../workflows/run.ts';
 import type { ForgePrDiffResult } from './github.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { createApp } from './server.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 describe('the GitHub PR changes API', () => {
   let repoRoot: string;
@@ -25,7 +26,7 @@ describe('the GitHub PR changes API', () => {
   });
   afterEach(() => {
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
   });
 
   it('serves deterministic bounded structured changes through both route mounts', async () => {

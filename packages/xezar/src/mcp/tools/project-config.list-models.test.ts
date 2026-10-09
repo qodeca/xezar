@@ -16,6 +16,7 @@ import { WorkspaceSemaphore } from '../../workspace/semaphore.ts';
 import type { ServiceDispatch } from '../service-adapter.ts';
 import type { McpToolResult } from '../tool.ts';
 import { projectConfigTool, type ProjectConfigContext } from './project-config.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../../test/helpers/platform.ts';
 
 /**
  * `project_config list_models` (#819 item 4): the models each agent tool can be dispatched to,
@@ -33,7 +34,7 @@ const stores: RunStore[] = [];
 
 afterEach(() => {
   for (const store of stores.splice(0)) store.close();
-  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  for (const dir of dirs.splice(0)) rmSync(dir, TEST_DIR_RM_OPTIONS);
 });
 
 const CLAUDE_MODELS: ModelOption[] = [

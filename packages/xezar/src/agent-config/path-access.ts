@@ -57,10 +57,19 @@ export async function checkedConfigPath(path: string, root: string): Promise<str
   return join(await canonicalPath(dirname(absolutePath)), basename(absolutePath));
 }
 
-/** O_NOFOLLOW also refuses a leaf replaced by a link after the path check. */
+/** O_NOFOLLOW also refuses a leaf replaced by a link after the path check. Windows has no
+ *  O_NOFOLLOW (#963), so there the opened file must still be the one at `path`, and not a link. */
 export async function readConfigBuffer(path: string): Promise<Buffer> {
   let file;
   try {
+    if (constants.O_NOFOLLOW === undefined) {
+      file = await open(path, constants.O_RDONLY);
+      const [opened, leaf] = await Promise.all([file.stat({ bigint: true }), lstat(path, { bigint: true })]);
+      if (leaf.isSymbolicLink() || leaf.ino !== opened.ino || leaf.dev !== opened.dev) {
+        throw new ConfigPathRefusal('symlink');
+      }
+      return await file.readFile();
+    }
     file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
     return await file.readFile();
   } catch (err) {

@@ -12,7 +12,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { linkDir, onWindows } from '../../test/helpers/platform.ts';
+import { linkDir, onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { mergeWriteWorkspaceConfig } from '../workspace/config.ts';
@@ -93,7 +93,7 @@ describe('checkout — the cleanup guard', () => {
     root = mkdtempSync(join(realpathSync(tmpdir()), 'xez-checkout-root-'));
   });
   afterEach(() => {
-    rmSync(root, { recursive: true, force: true });
+    rmSync(root, TEST_DIR_RM_OPTIONS);
   });
 
   it('deletes a direct child of the checkout root, recursively', async () => {
@@ -113,7 +113,7 @@ describe('checkout — the cleanup guard', () => {
       expect(await cleanupCheckout(root, outside)).toBe(false);
       expect(existsSync(join(outside, 'precious.txt'))).toBe(true);
     } finally {
-      rmSync(outside, { recursive: true, force: true });
+      rmSync(outside, TEST_DIR_RM_OPTIONS);
     }
   });
 
@@ -146,7 +146,7 @@ describe('checkout — the cleanup guard', () => {
       expect(existsSync(join(victim, 'precious.txt'))).toBe(true);
       expect(existsSync(join(insideVictim, 'precious.txt'))).toBe(true);
     } finally {
-      rmSync(victim, { recursive: true, force: true });
+      rmSync(victim, TEST_DIR_RM_OPTIONS);
     }
   });
 
@@ -188,7 +188,7 @@ describe('checkoutRepo — clone, failure cleanup, existing target', () => {
     process.env.XEZ_DRY_RUN = '1';
   });
   afterEach(() => {
-    rmSync(root, { recursive: true, force: true });
+    rmSync(root, TEST_DIR_RM_OPTIONS);
     if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN;
     else process.env.XEZ_DRY_RUN = savedDryRun;
   });
@@ -381,7 +381,7 @@ describe('POST /api/v1/projects/checkout', () => {
 
   afterEach(() => {
     store.flush();
-    for (const dir of [home, repoRoot]) rmSync(dir, { recursive: true, force: true });
+    for (const dir of [home, repoRoot]) rmSync(dir, TEST_DIR_RM_OPTIONS);
     if (savedHome === undefined) delete process.env.XEZ_HOME;
     else process.env.XEZ_HOME = savedHome;
     if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN;
@@ -550,7 +550,7 @@ describe('POST /api/v1/projects/checkout', () => {
     const target = join(checkoutRoot, 'xezar');
     mkdirSync(target, { recursive: true });
     const existing = await registerProject(target, 'local');
-    rmSync(target, { recursive: true, force: true });
+    rmSync(target, TEST_DIR_RM_OPTIONS);
     clearProjectProbeCache();
 
     const { status, body } = await post({ url: 'qodeca/xezar' });

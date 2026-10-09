@@ -12,6 +12,7 @@ import { mergeWriteWorkspaceConfig } from '../workspace/config.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { createApp } from './server.ts';
+import { onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 describe('workspace skills update API', () => {
   const savedHome = process.env.XEZ_HOME;
@@ -52,8 +53,8 @@ describe('workspace skills update API', () => {
     else process.env.XEZ_HOME = savedHome;
     if (savedAutoUpdate === undefined) delete process.env.XEZ_SKILLS_AUTO_UPDATE;
     else process.env.XEZ_SKILLS_AUTO_UPDATE = savedAutoUpdate;
-    rmSync(home, { recursive: true, force: true });
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(home, TEST_DIR_RM_OPTIONS);
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
   });
 
   it('returns the cached snapshot immediately and schedules a detection-only check', async () => {
@@ -147,7 +148,11 @@ describe('workspace skills update API', () => {
  * shared `~/.cache/xez`, and it is also AC-13 — the mode reads the project-local cache.
  */
 describe('workspace skills update API — skill catalog version', () => {
-  const REAL_GIT = execFileSync('which', ['git'], { encoding: 'utf8' }).trim();
+  // `which` under Git Bash answers an MSYS path (`/mingw64/bin/git`) Node cannot spawn; `where` answers
+  // native paths, one per line (#963).
+  const REAL_GIT = onWindows
+    ? execFileSync('where', ['git'], { encoding: 'utf8' }).split(/\r?\n/)[0]!.trim()
+    : execFileSync('which', ['git'], { encoding: 'utf8' }).trim();
   const GIT_ENV = {
     ...process.env,
     GIT_CONFIG_GLOBAL: '/dev/null',
@@ -188,8 +193,8 @@ describe('workspace skills update API — skill catalog version', () => {
   afterEach(() => {
     setActiveStateLayout(null);
     store.flush();
-    rmSync(project, { recursive: true, force: true });
-    rmSync(origin, { recursive: true, force: true });
+    rmSync(project, TEST_DIR_RM_OPTIONS);
+    rmSync(origin, TEST_DIR_RM_OPTIONS);
   });
 
   it('answers 200 with an unknown catalog on a cold cache, and the rest of the payload intact (AC-05)', async () => {

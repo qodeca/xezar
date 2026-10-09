@@ -7,6 +7,7 @@ import { RunStore } from '../runs/store.ts';
 import { WorkspaceSemaphore } from '../workspace/semaphore.ts';
 import { RunManager } from './run.ts';
 import type { WorkflowDef } from './types.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * `RunManager.quiesce()` — "stop, then dispose" — and the guarantee `dispose()` deliberately
@@ -313,7 +314,7 @@ async function teardownFixtures(): Promise<void> {
           `${fixture.root} deliberately leaked rather than deleted under a live run`,
       );
     }
-    rmSync(fixture.root, { recursive: true, force: true });
+    rmSync(fixture.root, TEST_DIR_RM_OPTIONS);
   }
 }
 

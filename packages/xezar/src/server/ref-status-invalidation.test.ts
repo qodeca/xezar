@@ -10,6 +10,7 @@ import type { RunManager } from '../workflows/run.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { forgetRefStatus } from './github.ts';
 import { createApp } from './server.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * The two places xezar changes a pull request itself — and therefore the two places it must stop
@@ -63,7 +64,7 @@ describe('a reference xezar changes itself is forgotten, not waited out', () => 
 
   afterEach(() => {
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
   });
 
   it('forgets the pull request it merged', async () => {
@@ -116,7 +117,7 @@ describe('a reference xezar changes itself is forgotten, not waited out', () => 
       // The dry-run catalog's fake PR URL is `…/pull/777`.
       expect(forgetRefStatus).toHaveBeenCalledWith(repoRoot, 777);
     } finally {
-      rmSync(worktree, { recursive: true, force: true });
+      rmSync(worktree, TEST_DIR_RM_OPTIONS);
     }
   });
 });

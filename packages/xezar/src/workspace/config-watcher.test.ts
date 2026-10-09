@@ -17,6 +17,7 @@ import {
   type ConfigDirWatcher,
 } from './config-watcher.ts';
 import { WorkspaceSemaphore } from './semaphore.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * The workspace config watcher (#677 slice D1). Every case but one delivers the raw fs event
@@ -78,7 +79,7 @@ describe('workspace config watcher', () => {
     setConfigWatchFactory(undefined);
     vi.useRealTimers();
     vi.restoreAllMocks();
-    rmSync(dir, { recursive: true, force: true });
+    rmSync(dir, TEST_DIR_RM_OPTIONS);
   });
 
   describe('debounce (fake timers)', () => {

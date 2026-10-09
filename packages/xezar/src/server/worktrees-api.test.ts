@@ -10,6 +10,7 @@ import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { createApp } from './server.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 const run = promisify(execFile);
 const GIT_ID = ['-c', 'user.name=test', '-c', 'user.email=test@local'];
@@ -46,8 +47,8 @@ describe('the worktrees API', () => {
     store.flush();
     if (savedHome === undefined) delete process.env.XEZ_HOME;
     else process.env.XEZ_HOME = savedHome;
-    rmSync(repoRoot, { recursive: true, force: true });
-    rmSync(xezHome, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
+    rmSync(xezHome, TEST_DIR_RM_OPTIONS);
   });
 
   async function seed(
@@ -154,7 +155,7 @@ describe('the worktrees API', () => {
   it('omits worktrees whose directory no longer exists on disk', async () => {
     const id = await seed('66666666-6666-4666-8666-666666666666', 'done', '2026-07-01T00:00:00Z');
     const wtPath = store.getRun(id)?.worktreePath as string;
-    rmSync(wtPath, { recursive: true, force: true });
+    rmSync(wtPath, TEST_DIR_RM_OPTIONS);
     expect(existsSync(wtPath)).toBe(false);
     expect((await getWorktrees()).worktrees.map((w) => w.runId)).not.toContain(id);
   });

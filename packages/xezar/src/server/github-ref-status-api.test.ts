@@ -8,6 +8,7 @@ import type { RunManager } from '../workflows/run.ts';
 import type { GithubRefStatusData } from './github.ts';
 import { createApp } from './server.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * `GET /api/v1/github/ref-status?prs=…&issues=…` — the batched status behind a task's PR/issue
@@ -40,7 +41,7 @@ describe('the github ref-status API', () => {
 
   afterEach(() => {
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
   });
 
   async function refStatus(query: string): Promise<GithubRefStatusData> {

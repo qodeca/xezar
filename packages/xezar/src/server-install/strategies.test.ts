@@ -9,6 +9,7 @@ import { createAutoUi } from './ui.ts';
 import { nginxVhost } from './platforms/ubuntu-vps.ts';
 import type { BackendCheck } from '../core/backend-detect.ts';
 import type { Runner } from './types.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 const noRunner: Runner = { capture: async () => ({ code: 0, stdout: '', stderr: '' }), interactive: async () => 0 };
 
@@ -40,7 +41,7 @@ describe('ubuntu-vps dry-run', () => {
   afterEach(() => {
     if (original === undefined) delete process.env.XEZ_HOME;
     else process.env.XEZ_HOME = original;
-    rmSync(home, { recursive: true, force: true });
+    rmSync(home, TEST_DIR_RM_OPTIONS);
   });
 
   it('walks every Phase-1 step and writes a complete server.json', async () => {

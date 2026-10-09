@@ -11,6 +11,7 @@ import { ProjectContexts } from './project-context.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { WorkspaceEventBus, createApp } from './server.ts';
 import { AgentQuotaStore } from '../workspace/agent-quota.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * One route-level A/B product-composition transition that no focused suite owns end to end: a
@@ -61,7 +62,7 @@ describe('multi-project composition: late B build through removal and re-add, A 
     for (const close of closers.splice(0)) await close().catch(() => undefined);
     await contexts.disposeAll();
     storeA.flush();
-    for (const dir of [home, rootA, rootB]) rmSync(dir, { recursive: true, force: true });
+    for (const dir of [home, rootA, rootB]) rmSync(dir, TEST_DIR_RM_OPTIONS);
     if (savedHome === undefined) delete process.env.XEZ_HOME;
     else process.env.XEZ_HOME = savedHome;
     if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN;

@@ -19,6 +19,7 @@ import { EventCatalog, withEventOrigin, expectEventTransition, type WorkspaceEve
 import { EventJournal } from './event-journal.ts';
 import { StallMonitor } from './stall-monitor.ts';
 import { runVersion } from './stale-write.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * #104 — the E-01–E-06 catalog reaches the journal, and nothing else does.
@@ -76,7 +77,7 @@ afterEach(() => {
   // `EnvironmentTeardownError: Closing rpc while "onUserConsoleLog" was pending` — one error, zero
   // failed tests, `npm test` exit 1. It surfaced on the second gate run of an unchanged tree.
   store.flush();
-  rmSync(dataDir, { recursive: true, force: true });
+  rmSync(dataDir, TEST_DIR_RM_OPTIONS);
 });
 
 function rows(): McpJournalRow[] {

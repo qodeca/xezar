@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { appendFileSync, chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { onWindows } from '../../test/helpers/platform.ts';
+import { onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { auditActionRecordSchema, type AuditActionRecord } from '@qodeca/xezar-contract';
 import {
@@ -36,7 +36,7 @@ beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'xez-audit-'));
 });
 afterEach(() => {
-  rmSync(root, { recursive: true, force: true });
+  rmSync(root, TEST_DIR_RM_OPTIONS);
 });
 
 /** A pin, as both doors would describe it: same action, same resource, same parsed payload. */

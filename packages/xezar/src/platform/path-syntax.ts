@@ -67,6 +67,12 @@ export function fromGitPath(path: string, platform: NodeJS.Platform = process.pl
   return platform === 'win32' ? win32.normalize(path) : path;
 }
 
+/** The other direction, for a relative path handed TO Git (a pathspec, an `info/exclude` line):
+ *  Git reads `\` as an escape there, so win32 spells it with `/`. POSIX: unchanged. */
+export function toGitPath(path: string, platform: NodeJS.Platform = process.platform): string {
+  return platform === 'win32' ? path.replaceAll('\\', '/') : path;
+}
+
 /**
  * Does this single path segment name the `.git` folder? POSIX: exactly `.git`. win32: Windows opens
  * `.GIT`, `.git.`, `.git ` and `.git::$INDEX_ALLOCATION` as the same folder, so drop an NTFS stream

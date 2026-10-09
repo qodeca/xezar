@@ -13,6 +13,7 @@ import { launchFile } from './platform/process-launch.ts';
 import { stopChildTree } from './platform/process-tree.ts';
 import { isDrivePath, isWindowsNetworkSource, startsWithTildeSeparator } from './platform/path-syntax.ts';
 import { parseFrontmatter, type Skill } from './skills.ts';
+import { hasLine } from './text-lines.ts';
 
 /**
  * Team skills from remote git repos (spec 005), janitor-style: a bare clone
@@ -538,7 +539,7 @@ async function excludeFromGit(repoRoot: string, pattern: string): Promise<void> 
     } catch {
       // no exclude file yet
     }
-    if (prev.split('\n').includes(pattern)) return;
+    if (hasLine(prev, pattern)) return;
     await mkdir(dirname(excludePath), { recursive: true });
     await writeFile(excludePath, prev + (prev && !prev.endsWith('\n') ? '\n' : '') + pattern + '\n', 'utf8');
   } catch {

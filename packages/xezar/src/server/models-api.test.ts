@@ -8,6 +8,7 @@ import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { createApp } from './server.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 describe('workspace model catalog API', () => {
   let root: string;
@@ -20,7 +21,7 @@ describe('workspace model catalog API', () => {
 
   afterEach(() => {
     store.flush();
-    rmSync(root, { recursive: true, force: true });
+    rmSync(root, TEST_DIR_RM_OPTIONS);
   });
 
   type Discover = () => Promise<Array<{ id: string; label: string; description: string }>>;

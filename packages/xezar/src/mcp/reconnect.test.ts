@@ -26,6 +26,7 @@ import {
   type LeaderDelivery,
 } from './reconnect.ts';
 import { guardedRunMutation, runVersion } from './stale-write.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * #105 — reconnect delivers outstanding significant events plus the current authoritative state,
@@ -53,7 +54,7 @@ afterEach(() => {
   vi.useRealTimers();
   for (const journal of journals.splice(0)) journal.close();
   for (const store of stores.splice(0)) store.close();
-  rmSync(dataDir, { recursive: true, force: true });
+  rmSync(dataDir, TEST_DIR_RM_OPTIONS);
 });
 
 /** The store a case reads and writes, closed in teardown before `dataDir` goes. */

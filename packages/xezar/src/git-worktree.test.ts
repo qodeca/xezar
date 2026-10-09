@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { linkDir, TEST_DIR_RM_OPTIONS } from '../test/helpers/platform.ts';
 import {
   branchFor,
   createWorktree,
@@ -98,6 +99,52 @@ describe('worktreeSizeBytes (#483)', () => {
   it('degrades to null for a path that does not exist (du errors)', async () => {
     expect(await worktreeSizeBytes(join(tmpdir(), 'xez-du-nope-does-not-exist-12345'))).toBeNull();
   });
+
+  describe('when du cannot run (Windows without Git usr\bin on PATH, #963)', () => {
+    const noDu = ((_file: string, _args: readonly string[], _options: unknown, callback: (err: Error | null, stdout: string) => void) => {
+      callback(Object.assign(new Error('spawn du ENOENT'), { code: 'ENOENT' }), '');
+    }) as unknown as NonNullable<Parameters<typeof worktreeSizeBytes>[1]>['launchFile'];
+
+    it('sums the file sizes in Node', async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'xez-du-walk-'));
+      try {
+        mkdirSync(join(dir, 'a', 'b'), { recursive: true });
+        writeFileSync(join(dir, 'one.txt'), 'x'.repeat(10));
+        writeFileSync(join(dir, 'a', 'b', 'two.txt'), 'y'.repeat(32));
+        expect(await worktreeSizeBytes(dir, { launchFile: noDu })).toBe(42);
+      } finally {
+        rmSync(dir, TEST_DIR_RM_OPTIONS);
+      }
+    });
+
+    it('does not follow a directory link', async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'xez-du-link-'));
+      const outside = mkdtempSync(join(tmpdir(), 'xez-du-outside-'));
+      try {
+        writeFileSync(join(outside, 'big.bin'), 'z'.repeat(1000));
+        writeFileSync(join(dir, 'own.txt'), 'x'.repeat(5));
+        linkDir(outside, join(dir, 'linked'));
+        expect(await worktreeSizeBytes(dir, { launchFile: noDu })).toBe(5);
+      } finally {
+        rmSync(dir, TEST_DIR_RM_OPTIONS);
+        rmSync(outside, TEST_DIR_RM_OPTIONS);
+      }
+    });
+
+    it('gives up with null when the walk runs past its budget', async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'xez-du-budget-'));
+      try {
+        writeFileSync(join(dir, 'one.txt'), 'x');
+        expect(await worktreeSizeBytes(dir, { launchFile: noDu, budgetMs: -1 })).toBeNull();
+      } finally {
+        rmSync(dir, TEST_DIR_RM_OPTIONS);
+      }
+    });
+
+    it('still says null for a path that does not exist', async () => {
+      expect(await worktreeSizeBytes(join(tmpdir(), 'xez-du-nope-does-not-exist-12345'), { launchFile: noDu })).toBeNull();
+    });
+  });
 });
 
 describe('createWorktree recovery (real git)', () => {
@@ -122,7 +169,7 @@ describe('createWorktree recovery (real git)', () => {
     await run('git', ['add', '-A'], { cwd: first.path });
     await run('git', [...GIT_ID, 'commit', '-q', '-m', 'task progress'], { cwd: first.path });
 
-    rmSync(first.path, { recursive: true, force: true });
+    rmSync(first.path, TEST_DIR_RM_OPTIONS);
     await run('git', ['worktree', 'prune'], { cwd: repo });
 
     const recovered = await createWorktree(repo, runId, 'main');
@@ -172,7 +219,7 @@ describe('worktreeShortstat (real git)', () => {
   });
 
   afterAll(() => {
-    rmSync(repo, { recursive: true, force: true });
+    rmSync(repo, TEST_DIR_RM_OPTIONS);
   });
 
   it('counts modified + untracked (intent-to-add) files against the base', async () => {
@@ -196,7 +243,7 @@ describe('worktreeShortstat (real git)', () => {
     try {
       expect(await worktreeShortstat(plain, 'main')).toBeNull();
     } finally {
-      rmSync(plain, { recursive: true, force: true });
+      rmSync(plain, TEST_DIR_RM_OPTIONS);
     }
   });
 

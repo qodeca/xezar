@@ -5,6 +5,7 @@ import { Hono } from 'hono';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AUDIT_TRAIL_FILE } from '../mcp/audit-trail.ts';
 import { AUDIT_ROUTE, auditRouteDescriptor, createUiAuditDoor, isLoopbackPeer, sanitizeProxyUser, type UiAuditDeps } from './audit-ui.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * #306 part 2 — the cockpit door's own rules, on a bare Hono app so each rule is isolated. The
@@ -13,7 +14,7 @@ import { AUDIT_ROUTE, auditRouteDescriptor, createUiAuditDoor, isLoopbackPeer, s
 
 const dirs: string[] = [];
 afterEach(() => {
-  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  for (const dir of dirs.splice(0)) rmSync(dir, TEST_DIR_RM_OPTIONS);
   vi.restoreAllMocks();
 });
 

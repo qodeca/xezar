@@ -6,6 +6,7 @@ import { dirname, join, resolve } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { TEST_DIR_RM_OPTIONS } from '../helpers/platform.ts';
 
 const execFile = promisify(execFileCallback);
 // This file lives at packages/xezar/test/e2e; the orchestrator it drives is at the REPO root,
@@ -156,7 +157,7 @@ test('the version-bump staging path commits every manifest the release script st
     assert.deepEqual(committed.trim().split('\n').sort(), [...stampedPaths].sort());
   } finally {
     await rm(output, { force: true });
-    await rm(root, { recursive: true, force: true });
+    await rm(root, TEST_DIR_RM_OPTIONS);
   }
 });
 
@@ -195,7 +196,7 @@ test('a patch bump stamps every manifest, keeps the caret ranges, and emits the 
     assert.match(output, /^published=false$/m);
     assert.match(output, /^dryRun=true$/m);
   } finally {
-    await rm(root, { recursive: true, force: true });
+    await rm(root, TEST_DIR_RM_OPTIONS);
   }
 });
 
@@ -228,7 +229,7 @@ test('a private package is stamped but never published', { timeout: 120_000 }, a
     const output = await readFile(join(root, 'github-output.txt'), 'utf8');
     assert.match(output, /^publishedNames=@scope\/fake-root$/m);
   } finally {
-    await rm(root, { recursive: true, force: true });
+    await rm(root, TEST_DIR_RM_OPTIONS);
   }
 });
 
@@ -241,7 +242,7 @@ test('the existing bump publishes the committed version verbatim', { timeout: 12
     const output = await readFile(join(root, 'github-output.txt'), 'utf8');
     assert.match(output, /^version=2\.3\.4$/m);
   } finally {
-    await rm(root, { recursive: true, force: true });
+    await rm(root, TEST_DIR_RM_OPTIONS);
   }
 });
 
@@ -268,7 +269,7 @@ test('no credential at all FAILS the release instead of quietly dry-running', { 
     const output = await readFile(join(root, 'github-output.txt'), 'utf8');
     assert.doesNotMatch(output, /^published=true$/m);
   } finally {
-    await rm(root, { recursive: true, force: true });
+    await rm(root, TEST_DIR_RM_OPTIONS);
   }
 });
 
@@ -286,7 +287,7 @@ test('an OIDC-capable job needs no token — the id-token endpoint IS the creden
     assert.match(stdout, /dist-tag latest/);
     assert.doesNotMatch(stdout, /refusing to run/);
   } finally {
-    await rm(root, { recursive: true, force: true });
+    await rm(root, TEST_DIR_RM_OPTIONS);
   }
 });
 
@@ -300,7 +301,7 @@ test('an explicit --dry-run never claims a publish', { timeout: 120_000 }, async
     assert.match(output, /^dryRun=true$/m);
     assert.match(output, /^version=0\.2\.0$/m);
   } finally {
-    await rm(root, { recursive: true, force: true });
+    await rm(root, TEST_DIR_RM_OPTIONS);
   }
 });
 
@@ -312,6 +313,6 @@ test('an unknown bump exits non-zero without touching the manifests', { timeout:
     assert.equal((await readPkg(root, 'packages', 'xezar')).version, '0.1.5');
     assert.equal((await readPkg(root, 'packages', 'api-client')).version, '0.1.5');
   } finally {
-    await rm(root, { recursive: true, force: true });
+    await rm(root, TEST_DIR_RM_OPTIONS);
   }
 });

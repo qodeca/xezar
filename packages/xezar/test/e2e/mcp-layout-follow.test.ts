@@ -8,7 +8,7 @@ import test from 'node:test';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { npmCommand, onWindows } from '../helpers/platform.ts';
+import { npmCommand, onWindows, TEST_DIR_RM_OPTIONS } from '../helpers/platform.ts';
 
 const execFile = promisify(execFileCallback);
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -175,6 +175,6 @@ test('a client session started before the single-project engine reaches it with 
         await once(cockpit, 'exit');
       }
     }
-    await rm(root, { recursive: true, force: true });
+    await rm(root, TEST_DIR_RM_OPTIONS);
   }
 });

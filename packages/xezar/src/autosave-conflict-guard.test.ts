@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { autosaveCommit } from './git-worktree.ts';
+import { TEST_DIR_RM_OPTIONS } from '../test/helpers/platform.ts';
 
 const run = promisify(execFile);
 const GIT_ID = ['-c', 'user.name=test', '-c', 'user.email=test@local'];
@@ -33,7 +34,7 @@ describe('autosave conflict guard (#471 follow-up)', () => {
 
   afterEach(() => {
     warn.mockRestore();
-    rmSync(repo, { recursive: true, force: true });
+    rmSync(repo, TEST_DIR_RM_OPTIONS);
   });
 
   /** Leave the repo mid-merge with a genuine conflict in `a.txt`. */

@@ -3,7 +3,7 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:f
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { onWindows } from '../test/helpers/platform.ts';
+import { onWindows, TEST_DIR_RM_OPTIONS } from '../test/helpers/platform.ts';
 import {
   discoverSkills,
   lookupRunSkill,
@@ -81,7 +81,7 @@ describe("a run's first skill resolution and the first team-skills fetch (#777)"
     setActiveStateLayout(null);
     if (savedPath === undefined) delete process.env.PATH;
     else process.env.PATH = savedPath;
-    for (const dir of [project, origin, bin]) rmSync(dir, { recursive: true, force: true });
+    for (const dir of [project, origin, bin]) rmSync(dir, TEST_DIR_RM_OPTIONS);
   });
 
   function configure(sources: Array<{ repo: string; ref: string }>): void {

@@ -25,6 +25,7 @@ import { runInstall, runUninstall, type RunOptions } from './engine.ts';
 import { RUNNER_IDS } from '../core/agent-runner.ts';
 import type { BackendCheck } from '../core/backend-detect.ts';
 import { CANCEL, type CommandResult, type InstallContext, type InstallStep, type PlatformStrategy, type Runner, type Ui } from './types.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 function makeCtx(over: {
   ui?: Ui;
@@ -707,7 +708,7 @@ describe('rollback scope — a step that never ran is never undone', () => {
   afterEach(() => {
     if (original === undefined) delete process.env.XEZ_HOME;
     else process.env.XEZ_HOME = original;
-    rmSync(home, { recursive: true, force: true });
+    rmSync(home, TEST_DIR_RM_OPTIONS);
   });
 
   const runOpts = (over: Partial<RunOptions> = {}): RunOptions => ({

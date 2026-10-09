@@ -1,4 +1,5 @@
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { renameReplacingSync } from '../platform/atomic-write.ts';
 import { dirname, join } from 'node:path';
 import { z } from 'zod';
 
@@ -731,7 +732,7 @@ export class EventController {
     try {
       mkdirSync(dirname(this.#statePath), { recursive: true, mode: 0o700 });
       writeFileSync(tmp, `${JSON.stringify(body)}\n`, { encoding: 'utf8', mode: 0o600 });
-      renameSync(tmp, this.#statePath);
+      renameReplacingSync(tmp, this.#statePath);
     } catch (err) {
       if (this.#warnedWrite) return;
       this.#warnedWrite = true;

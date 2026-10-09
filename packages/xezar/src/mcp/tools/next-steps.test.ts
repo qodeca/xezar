@@ -19,6 +19,7 @@ import type { McpTool, McpToolContext, McpToolResult } from '../tool.ts';
 import { discoverProjectTool } from './discovery.ts';
 import { localHandoffTool } from './local-handoff.ts';
 import { NEW_OPERATION_ID, projectConfigTool } from './project-config.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../../test/helpers/platform.ts';
 
 /**
  * #838 E3, E4 and F — a refusal's next step is only worth what its FIRST call is worth.
@@ -65,7 +66,7 @@ afterEach(async () => {
   }
   for (const server of servers.splice(0)) await new Promise<void>((resolve) => server.close(() => resolve()));
   for (const store of stores.splice(0)) store.close();
-  for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  for (const dir of tempDirs.splice(0)) rmSync(dir, TEST_DIR_RM_OPTIONS);
 });
 
 /**
