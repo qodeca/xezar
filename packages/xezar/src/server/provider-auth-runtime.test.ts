@@ -13,6 +13,7 @@ import {
   recoverWithProviderRuntimeAuthObservation,
   watchProviderRuntimeAuthFailures,
 } from './provider-auth-runtime.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 const CONNECTED_OUTPUT: Record<ProviderId, string> = {
   claude: '{"loggedIn":true}',
@@ -56,7 +57,7 @@ describe('watchProviderRuntimeAuthFailures', () => {
   afterEach(() => {
     for (const unwatch of unwatchers.splice(0)) unwatch();
     store.flush();
-    rmSync(root, { recursive: true, force: true });
+    rmSync(root, TEST_DIR_RM_OPTIONS);
     if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN;
     else process.env.XEZ_DRY_RUN = savedDryRun;
   });

@@ -15,11 +15,11 @@ import {
 } from 'node:fs';
 import { createServer as createHttpServer, type Server as HttpServer } from 'node:http';
 import { tmpdir } from 'node:os';
-import { basename, join, relative } from 'node:path';
+import { basename, join, relative, sep } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { parse as parseYaml } from 'yaml';
 import { WORKFLOW_MAX_STEPS } from '@qodeca/xezar-contract';
-import { linkDir } from '../../../test/helpers/platform.ts';
+import { linkDir, TEST_DIR_RM_OPTIONS } from '../../../test/helpers/platform.ts';
 import { CONFIG_FILES } from '../../agent-config/catalog.ts';
 import { loadConfig, resolveWorktreeRetention } from '../../config.ts';
 import { BUNDLED_TEMPLATES_DIGEST } from '../../onboarding/status.ts';
@@ -256,7 +256,7 @@ afterEach(() => {
     else process.env[key] = savedEnv[key];
   }
   for (const store of stores.splice(0)) store.close();
-  for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  for (const dir of tempDirs.splice(0)) rmSync(dir, TEST_DIR_RM_OPTIONS);
 });
 
 /** The cockpit's own request: same-origin, from the loopback deployment a browser talks to. */
@@ -2542,8 +2542,9 @@ describe('project_config: skills', () => {
     expect(source?.reason).not.toContain(ws.home);
     // The whole payload, not just the reason: `repo` is a host path here too.
     expect(JSON.stringify(refreshed)).not.toContain(ws.home);
-    expect(source?.reason).toContain('~/');
-    expect(source?.repo).toBe('~/.cache/xez/no-such-skills-repo');
+    // `~` replaces the home folder only; the rest keeps the host's separator (`\` on Windows, #963).
+    expect(source?.reason).toContain(`~${sep}`);
+    expect(source?.repo).toBe(['~', '.cache', 'xez', 'no-such-skills-repo'].join(sep));
 
     // UI ↔ MCP parity: the cockpit route answers the same failure, and is the surface that may
     // name a local path (it runs on this machine). The leader's door is the one that may not.

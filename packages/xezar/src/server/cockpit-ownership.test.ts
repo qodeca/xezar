@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileS
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { FILE_SYMLINKS } from '../../test/helpers/platform.ts';
+import { FILE_SYMLINKS, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 import { PROJECT_A, PROJECT_B, createAbWorld, nowhereId, type AbWorld } from '../../test/helpers/ab-fixture.ts';
 import { branchFor, worktreePathFor } from '../git-worktree.ts';
@@ -177,7 +177,7 @@ describe.skipIf(!FILE_SYMLINKS)('run routes and a record that names another proj
   afterEach(async () => {
     await world?.dispose();
     world = undefined;
-    if (bare) rmSync(bare, { recursive: true, force: true });
+    if (bare) rmSync(bare, TEST_DIR_RM_OPTIONS);
     bare = undefined;
   }, 60_000);
   const w = (): AbWorld => world!;

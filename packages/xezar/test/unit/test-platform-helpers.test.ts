@@ -49,11 +49,11 @@ test('linkDir: a relative target resolves against the link parent, and deleting 
     mkdirSync(join(root, 'a'));
     linkDir('../t', join(root, 'a', 'link'));
     assert.equal(readFileSync(join(root, 'a', 'link', 'marker.txt'), 'utf8'), 'kept');
-    rmSync(join(root, 'a'), { recursive: true, force: true });
+    rmSync(join(root, 'a'), TEST_DIR_RM_OPTIONS);
     assert.equal(existsSync(join(root, 'a')), false);
     assert.equal(readFileSync(join(root, 't', 'marker.txt'), 'utf8'), 'kept');
   } finally {
-    rmSync(root, { recursive: true, force: true });
+    rmSync(root, TEST_DIR_RM_OPTIONS);
   }
 });
 
@@ -64,7 +64,7 @@ test('linkDir: an existing link path is an error, not a silent overwrite', () =>
     mkdirSync(join(root, 'link'));
     assert.throws(() => linkDir(join(root, 't'), join(root, 'link')), { code: 'EEXIST' });
   } finally {
-    rmSync(root, { recursive: true, force: true });
+    rmSync(root, TEST_DIR_RM_OPTIONS);
   }
 });
 

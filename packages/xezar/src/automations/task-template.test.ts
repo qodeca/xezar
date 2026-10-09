@@ -7,6 +7,7 @@ import type { RunManager } from '../workflows/run.ts';
 import { launchAutomationRun, reconcileAutomationReceipts, renderAutomationTask, validateAutomationPrompt } from './task-template.ts';
 import { AutomationStore } from './store.ts';
 import type { AutomationDefinition } from './types.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 const definition: AutomationDefinition = {
   id: 'one', revision: 1, name: 'Review', enabled: true, events: ['issue.opened'], intervalSeconds: 300,
@@ -39,7 +40,7 @@ describe('automation task templates', () => {
       } as unknown as RunManager;
       const launched = await launchAutomationRun({ root, manager, store, definition: { ...definition, task: { ...definition.task, workflow: 'quick-task' } }, candidate, receiptId: 'receipt' });
       expect(store.getRun(launched.runId)?.automation).toEqual({ automationId: 'one', automationRevision: 1, receiptId: 'receipt', event: 'issue.opened', githubUrl: candidate.url });
-    } finally { await rm(root, { recursive: true, force: true }); }
+    } finally { await rm(root, TEST_DIR_RM_OPTIONS); }
   });
 
   it('reconciles a reserved receipt from persisted run provenance', async () => {
@@ -53,6 +54,6 @@ describe('automation task templates', () => {
       automations.appendReceipt({ receiptId: 'receipt', receiptKey: 'one:e', eventId: 'e', automationId: 'one', revision: 1, status: 'reserved', observedAt: '2026-07-26T00:00:00.000Z', updatedAt: '2026-07-26T00:00:00.000Z' });
       expect(reconcileAutomationReceipts(automations, runs)).toBe(1);
       expect(automations.latestReceipts().get('one:e')).toMatchObject({ status: 'launched', runId: run.id });
-    } finally { await rm(root, { recursive: true, force: true }); }
+    } finally { await rm(root, TEST_DIR_RM_OPTIONS); }
   });
 });

@@ -3,7 +3,7 @@
 import './mcp-test-home.testkit.ts';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import { FILE_SYMLINKS, linkDir } from '../../../test/helpers/platform.ts';
+import { FILE_SYMLINKS, linkDir, onWindows, TEST_DIR_RM_OPTIONS } from '../../../test/helpers/platform.ts';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -282,7 +282,7 @@ afterEach(async () => {
     for (const id of ws.contexts.ids()) await ws.contexts.peek(id)?.manager.dispose();
     ws.contexts.disposeAll();
   }
-  for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  for (const dir of tempDirs.splice(0)) rmSync(dir, TEST_DIR_RM_OPTIONS);
   for (const [key, value] of [
     ['XEZ_DRY_RUN', saved.dryRun],
     ['XEZ_HOME', saved.home],
@@ -600,9 +600,11 @@ describe('GitHub reads degrade, never fail', () => {
     delete process.env.XEZ_DRY_RUN;
     // A PATH that still reaches git but no longer reaches gh.
     const bin = makeDir('xez-evidence-bin-');
-    const kept = (saved.path ?? '').split(delimiter).filter((dir) => dir && !existsSync(join(dir, 'gh')));
-    const gitDir = (saved.path ?? '').split(delimiter).find((dir) => dir && existsSync(join(dir, 'git')));
-    if (gitDir && !kept.includes(gitDir)) symlinkSync(join(gitDir, 'git'), join(bin, 'git'));
+    // Windows programs carry `.exe` (#963).
+    const program = (name: string): string => (onWindows ? `${name}.exe` : name);
+    const kept = (saved.path ?? '').split(delimiter).filter((dir) => dir && !existsSync(join(dir, program('gh'))));
+    const gitDir = (saved.path ?? '').split(delimiter).find((dir) => dir && existsSync(join(dir, program('git'))));
+    if (gitDir && !kept.includes(gitDir)) symlinkSync(join(gitDir, program('git')), join(bin, program('git')));
     process.env.PATH = [bin, ...kept].join(delimiter);
     expect(() => execFileSync('gh', ['--version'], { stdio: 'ignore' })).toThrow();
 

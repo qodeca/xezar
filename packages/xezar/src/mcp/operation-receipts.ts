@@ -26,7 +26,8 @@
  * required. Nothing here runs at boot unless a caller opens the store, and opening never throws.
  */
 import { createHash, randomUUID } from 'node:crypto';
-import { appendFileSync, chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { appendFileSync, chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { renameReplacingSync } from '../platform/atomic-write.ts';
 import { join } from 'node:path';
 import { z } from 'zod';
 import {
@@ -822,7 +823,7 @@ function safeJson(line: string): unknown {
 function writeAtomic(path: string, content: string): void {
   const tmp = atomicTmpPath(path);
   writeFileSync(tmp, content, { encoding: 'utf8', mode: 0o600 });
-  renameSync(tmp, path);
+  renameReplacingSync(tmp, path);
   try {
     chmodSync(path, 0o600);
   } catch {

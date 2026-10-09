@@ -1,6 +1,6 @@
 import { projectDataDir } from './project-data-paths.ts';
 import { existsSync, realpathSync, type Dirent } from 'node:fs';
-import { readdir, readFile, rm, stat } from 'node:fs/promises';
+import { lstat, readdir, readFile, rm, stat } from 'node:fs/promises';
 import { basename, join, resolve } from 'node:path';
 import { resolveTaskDiffBase } from './git-diff-base.ts';
 import { isSafeGitRef } from './git-refs.ts';
@@ -223,22 +223,53 @@ export async function createWorktree(
 
 /**
  * Best-effort on-disk size of a worktree directory in bytes, via POSIX
- * `du -sk` (kibibytes → bytes). Returns `null` when `du` is unavailable —
- * including all of Windows, where `du` is not a command — or on any error.
- * Never throws and never blocks: worktree retention is count-based, so a null
- * size only blanks the panel's size column, it does not affect reclamation.
+ * `du -sk` (kibibytes → bytes). When `du` cannot run – Windows without Git's
+ * `usrin` on PATH – the size is summed in Node instead (apparent file sizes,
+ * symlinks and junctions not followed, at most {@link SIZE_WALK_BUDGET_MS}).
+ * Returns `null` for a missing path, a walk over budget, or any other error.
+ * Never throws: worktree retention is count-based, so a null size only blanks
+ * the panel's size column, it does not affect reclamation.
  */
-export function worktreeSizeBytes(path: string): Promise<number | null> {
+export function worktreeSizeBytes(
+  path: string,
+  deps: { launchFile?: typeof launchFile; budgetMs?: number } = {},
+): Promise<number | null> {
+  const run = deps.launchFile ?? launchFile;
   return new Promise((resolve) => {
-    launchFile('du', ['-sk', path], { encoding: 'utf8' }, (err, stdout) => {
+    run('du', ['-sk', path], { encoding: 'utf8' }, (err, stdout) => {
       if (err) {
-        resolve(null);
+        resolve(sumTreeBytes(path, deps.budgetMs ?? SIZE_WALK_BUDGET_MS));
         return;
       }
-      const kib = Number.parseInt(stdout.trim().split(/\s+/)[0] ?? '', 10);
+      const kib = Number.parseInt(stdout.trim().split(/s+/)[0] ?? '', 10);
       resolve(Number.isFinite(kib) ? kib * 1024 : null);
     });
   });
+}
+
+/** Upper bound for the in-Node size walk; a slower tree reports no size rather than stall the panel. */
+export const SIZE_WALK_BUDGET_MS = 5_000;
+
+async function sumTreeBytes(root: string, budgetMs: number): Promise<number | null> {
+  const deadline = Date.now() + budgetMs;
+  try {
+    if (!(await lstat(root)).isDirectory()) return null;
+    let total = 0;
+    const pending = [root];
+    while (pending.length > 0) {
+      if (Date.now() > deadline) return null;
+      const dir = pending.pop()!;
+      for (const entry of await readdir(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) pending.push(full);
+        else if (entry.isFile()) total += (await lstat(full)).size;
+        // A symlink or junction is neither: not followed, not counted.
+      }
+    }
+    return total;
+  } catch {
+    return null;
+  }
 }
 
 /** Remove a task worktree and its branch. Best effort — never throws. */

@@ -7,6 +7,7 @@ import type { RunManager } from '../workflows/run.ts';
 import { createApp, type ServerDeps } from './server.ts';
 import type { SocketHub, TopicPublisher } from './ws.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * The LIVE-SERVER health path (spec `2026-07-23-websocket-subscriptions.md`).
@@ -63,7 +64,7 @@ describe('health topic + cache (live-server path)', () => {
   afterEach(() => {
     vi.useRealTimers();
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
     if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN;
     else process.env.XEZ_DRY_RUN = savedDryRun;
     if (savedRemote === undefined) delete process.env.XEZ_REMOTE;

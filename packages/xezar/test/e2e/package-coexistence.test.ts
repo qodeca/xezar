@@ -8,7 +8,7 @@ import test from 'node:test';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { npmCommand, onWindows } from '../helpers/platform.ts';
+import { npmCommand, onWindows, TEST_DIR_RM_OPTIONS } from '../helpers/platform.ts';
 
 const execFile = promisify(execFileCallback);
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -248,6 +248,6 @@ test('two projects run at once on one machine, each on its own port and its own 
     assert.doesNotMatch(betaBound, /alpha/, `beta's MCP must not reach alpha, got ${betaBound}`);
   } finally {
     for (const cockpit of cockpits) await cockpit.stop();
-    await rm(root, { recursive: true, force: true });
+    await rm(root, TEST_DIR_RM_OPTIONS);
   }
 });

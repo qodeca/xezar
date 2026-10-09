@@ -15,6 +15,7 @@ vi.mock('../git-worktree.js', async (importOriginal) => {
 });
 
 import { RunManager } from './run.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 const GIT_ID = ['-c', 'user.name=test', '-c', 'user.email=test@local'];
 const roots: string[] = [];
@@ -57,7 +58,7 @@ async function waitFor(predicate: () => boolean, what: string): Promise<void> {
 
 afterEach(() => {
   for (const store of stores.splice(0)) store.close();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  for (const root of roots.splice(0)) rmSync(root, TEST_DIR_RM_OPTIONS);
 });
 
 describe('RunManager repository-root isolation', () => {

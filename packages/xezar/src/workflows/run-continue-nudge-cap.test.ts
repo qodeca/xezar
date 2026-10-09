@@ -7,6 +7,7 @@ import * as factory from '../core/runner-factory.ts';
 import { RunStore } from '../runs/store.ts';
 import { MAX_AUTO_CONTINUES, MAX_GATED_CONTINUE_NUDGES, RunManager } from './run.ts';
 import type { WorkflowDef } from './types.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * #613 — `execution_control continue` re-prompted a finished turn 41 times.
@@ -122,7 +123,7 @@ describe('#613 — the autonomous re-prompt loop is bounded', { timeout: 30_000 
     store.flush();
     runner?.restore();
     runner = undefined;
-    rmSync(root, { recursive: true, force: true });
+    rmSync(root, TEST_DIR_RM_OPTIONS);
   });
 
   const status = (id: string) => store.getRun(id)?.status;

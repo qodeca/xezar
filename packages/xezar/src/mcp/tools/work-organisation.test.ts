@@ -3,7 +3,7 @@
 import './mcp-test-home.testkit.ts';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
-import { linkDir } from '../../../test/helpers/platform.ts';
+import { linkDir, TEST_DIR_RM_OPTIONS } from '../../../test/helpers/platform.ts';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -205,7 +205,7 @@ afterEach(async () => {
     }
     ws.contexts.disposeAll();
   }
-  for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  for (const dir of tempDirs.splice(0)) rmSync(dir, TEST_DIR_RM_OPTIONS);
   for (const [key, value] of [
     ['XEZ_DRY_RUN', saved.dryRun],
     ['XEZ_HOME', saved.home],

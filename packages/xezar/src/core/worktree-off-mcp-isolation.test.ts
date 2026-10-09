@@ -46,6 +46,7 @@ import {
   runMcpIsolationNote,
   writeMcpOverlay,
 } from './run-mcp-isolation.js';
+import { onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /** Only the M1 regression test below swaps the child out, mirroring the identical hook in
  *  `pi-runner.test.ts`; every other test in this file never reaches `node:child_process`. */
@@ -74,7 +75,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  rmSync(root, { recursive: true, force: true });
+  rmSync(root, TEST_DIR_RM_OPTIONS);
 });
 
 function write(relative: string, value: unknown): void {
@@ -229,6 +230,16 @@ describe('pi only passes --mcp-config when the pi MCP extension is installed (#5
 
   /** Executable stub `pi`s. `--help` is all the probe ever asks for. */
   function fakeBin(name: string, helpText: string): string {
+    // Windows cannot run a `#!/bin/sh` file; the launch layer runs a `.mjs` path through Node (#963).
+    if (onWindows) {
+      const script = join(root, `${name}.mjs`);
+      writeFileSync(
+        script,
+        `if (process.argv[2] === '--help') { console.log(${JSON.stringify(helpText)}); process.exit(0); }\nprocess.exit(7);\n`,
+        'utf8',
+      );
+      return script;
+    }
     const path = join(root, name);
     writeFileSync(path, `#!/bin/sh\nif [ "$1" = "--help" ]; then\n  echo '${helpText}'\n  exit 0\nfi\nexit 7\n`, 'utf8');
     chmodSync(path, 0o755);

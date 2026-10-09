@@ -14,7 +14,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { FILE_SYMLINKS, linkDir, onWindows } from '../../test/helpers/platform.ts';
+import { FILE_SYMLINKS, linkDir, onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 import {
   assertProjectStateUsable,
   globalStateLayout,
@@ -90,7 +90,7 @@ describe('import from the global setup (#600 FR-4)', () => {
   });
 
   afterEach(() => {
-    rmSync(base, { recursive: true, force: true });
+    rmSync(base, TEST_DIR_RM_OPTIONS);
   });
 
   /** Every file under the home, with its bytes — what "the home is untouched" means. */
@@ -250,7 +250,7 @@ describe('import from the global setup (#600 FR-4)', () => {
     });
 
     it('an empty home imports nothing and says so', async () => {
-      rmSync(home, { recursive: true, force: true });
+      rmSync(home, TEST_DIR_RM_OPTIONS);
       const outcome = await runFirstRunImport(layout, async () => true, env);
       expect(projectStateDirContents()).toEqual([]);
       expect(firstRunImportLine(outcome, layout, env)).toBe(`  nothing to import from ${home}`);
@@ -680,7 +680,7 @@ describe('countImportableGlobalAccounts — a number, read-only, never an error'
   });
 
   afterEach(() => {
-    rmSync(base, { recursive: true, force: true });
+    rmSync(base, TEST_DIR_RM_OPTIONS);
   });
 
   const homeBytes = (): Record<string, string> =>

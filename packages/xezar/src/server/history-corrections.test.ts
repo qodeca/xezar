@@ -8,9 +8,10 @@ import { readRunHistoryPage } from '../runs/event-history.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { createApp } from './server.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 const roots: string[] = [];
-afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+afterEach(() => { for (const root of roots.splice(0)) rmSync(root, TEST_DIR_RM_OPTIONS); });
 const hash = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
 
 function fixture() {

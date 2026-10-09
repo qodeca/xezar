@@ -21,6 +21,7 @@ import {
 import { DEFAULT_AGENT_ACCOUNT_ID, defaultAgentAccountStore, loadAgentAccounts } from './agent-accounts.ts';
 import { unavailableAgentAccountReason, unavailableAgentAccountRefusal } from '@qodeca/xezar-contract';
 import { projectStateLayout, setActiveStateLayout } from '../state-layout.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * Resolution rules from spec 2026-07-29-agent-profiles. The pair worth reading closely is the two
@@ -39,7 +40,7 @@ describe('agent profile resolution', () => {
   afterEach(() => {
     if (originalHome === undefined) delete process.env.XEZ_HOME;
     else process.env.XEZ_HOME = originalHome;
-    rmSync(home, { recursive: true, force: true });
+    rmSync(home, TEST_DIR_RM_OPTIONS);
   });
 
   const env = { HOME: '/home/u' } as NodeJS.ProcessEnv;

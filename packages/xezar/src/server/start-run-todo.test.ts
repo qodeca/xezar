@@ -12,6 +12,7 @@ import type { WorkflowDef } from '../workflows/types.ts';
 import { createApp } from './server.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { connectedProviderAuth } from './provider-auth.testkit.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * `POST /api/v1/runs` `todoId` (#374) — the audit trail across the composer detour.
@@ -71,7 +72,7 @@ describe('POST /api/v1/runs todoId', () => {
 
   afterEach(() => {
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
   });
 
   const post = (body: unknown) =>

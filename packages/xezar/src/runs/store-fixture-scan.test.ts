@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * The structural half of the store-teardown fix (#631, #671 rows F-26 and F-29; review of PR
@@ -322,7 +323,7 @@ describe('no NEW fixture removes a run store’s directory without letting the s
   });
 
   it('flags the shape the flake came from, and only that shape', () => {
-    const racing = ['const store = RunStore.open(join(base, ".local"));', 'rmSync(base, { recursive: true, force: true });'].join('\n');
+    const racing = ['const store = RunStore.open(join(base, ".local"));', 'rmSync(base, TEST_DIR_RM_OPTIONS);'].join('\n');
     expect(findingsIn('probe.test.ts', racing).map((f) => f.line)).toEqual([2]);
 
     // A store with no removal, and a removal of a directory no store was opened over, are both fine.

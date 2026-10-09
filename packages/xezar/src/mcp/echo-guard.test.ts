@@ -24,6 +24,7 @@ import {
 import { EventJournal } from './event-journal.ts';
 import { RECEIPT_MAX_KEPT } from './operation-receipts.ts';
 import { McpServiceAdapter } from './service-adapter.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * The echo guard (#106, F-13, A-20): a project-bound leader sees human changes and new outcomes,
@@ -389,7 +390,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   for (const close of closers.splice(0).reverse()) await Promise.resolve(close()).catch(() => undefined);
-  for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  for (const dir of tempDirs.splice(0)) rmSync(dir, TEST_DIR_RM_OPTIONS);
   if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN;
   else process.env.XEZ_DRY_RUN = savedDryRun;
   if (savedHome === undefined) delete process.env.XEZ_HOME;

@@ -13,7 +13,7 @@ import { LEADER_EVENTS_TOOL_NAME, LeaderDelivery, type LeaderDeliveryOptions, le
 import { textResult } from './tool.ts';
 import { leaderEventsTool } from './tools/leader-events.ts';
 import { type FakeOpenCodeSession, fakeOpenCodeSession } from './leader-delivery.testkit.ts';
-import { shortTmpRoot } from '../../test/helpers/platform.ts';
+import { shortTmpRoot, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * #309 — the two answers `LeaderDelivery` gives about things it did not choose: a session that turns
@@ -42,7 +42,7 @@ afterEach(async () => {
   for (const delivery of deliveries.splice(0)) delivery.close();
   for (const server of servers.splice(0)) await server.stop();
   for (const journal of journals.splice(0)) journal.close();
-  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  for (const dir of dirs.splice(0)) rmSync(dir, TEST_DIR_RM_OPTIONS);
 });
 
 /** The shared fake `opencode serve` (#651), kept so `afterEach` closes it whatever the case did. */

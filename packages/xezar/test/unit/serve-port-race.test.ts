@@ -8,6 +8,7 @@ import { join, resolve } from 'node:path';
 import { after, test } from 'node:test';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
+import { TEST_DIR_RM_OPTIONS } from '../helpers/platform.ts';
 
 // #238: `xezar serve` printed `cockpit → <url>` before it knew whether the bind worked. It
 // proved a port free with a throwaway listener, RELEASED it, and only then let the real server
@@ -77,7 +78,7 @@ const fixtureRoot = await mkdtemp(join(tmpdir(), 'xez-serve-race-'));
 const thiefPath = join(fixtureRoot, 'thief.mjs');
 await writeFile(thiefPath, THIEF, 'utf8');
 after(async () => {
-  await rm(fixtureRoot, { recursive: true, force: true });
+  await rm(fixtureRoot, TEST_DIR_RM_OPTIONS);
 });
 
 interface Boot {

@@ -7,6 +7,7 @@ import { RunStore, type RunRecord } from '../runs/store.js';
 import type { RunManager } from '../workflows/run.js';
 import { createApp } from './server.js';
 import { apiRequest } from './loopback-request.testkit.js';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * The PER-TASK off switch for a usage-limit resume (spec
@@ -45,7 +46,7 @@ describe('per-task auto-resume cancellation', () => {
 
   afterEach(() => {
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
   });
 
   /** A run parked exactly as a usage limit leaves it: failed, with a resume promised. */

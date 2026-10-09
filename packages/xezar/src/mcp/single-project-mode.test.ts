@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { projectStateLayout, setActiveStateLayout } from '../state-layout.ts';
 import { registerProject } from '../workspace/projects.ts';
 import { resolveMcpTarget, startMcpService } from './index.ts';
-import { onWindows } from '../../test/helpers/platform.ts';
+import { onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * #600 review M1 — in single-project ROOT mode the registry is the DERIVED row,
@@ -39,7 +39,7 @@ describe.skipIf(onWindows)('single-project mode opens the MCP service (#600 revi
   afterEach(() => {
     for (const handle of handles.splice(0)) handle.close();
     setActiveStateLayout(null);
-    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+    for (const dir of dirs.splice(0)) rmSync(dir, TEST_DIR_RM_OPTIONS);
     for (const [key, value] of [['XEZ_HOME', saved.home], ['XEZ_DRY_RUN', saved.dryRun]] as const) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;

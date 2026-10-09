@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   fromGitPath,
+  toGitPath,
   isAbsolutePath,
   isDotGitSegment,
   isDrivePath,
@@ -124,6 +125,20 @@ describe('fromGitPath', () => {
     expect(fromGitPath('C:/a/b', 'win32')).toBe('C:\\a\\b');
     expect(fromGitPath('C:\\a\\b', 'win32')).toBe('C:\\a\\b');
     expect(fromGitPath('//srv/share/x', 'win32')).toBe('\\\\srv\\share\\x');
+  });
+});
+
+describe('toGitPath', () => {
+  it('leaves every POSIX value untouched, even a backslash', () => {
+    for (const platform of POSIX_PLATFORMS) {
+      for (const path of ['a/b', 'a\\b', '.claude/settings.local.json']) {
+        expect(toGitPath(path, platform)).toBe(path);
+      }
+    }
+  });
+  it('spells a win32 relative path with forward slashes for Git', () => {
+    expect(toGitPath('.claude\\settings.local.json', 'win32')).toBe('.claude/settings.local.json');
+    expect(toGitPath('a/b\\c', 'win32')).toBe('a/b/c');
   });
 });
 

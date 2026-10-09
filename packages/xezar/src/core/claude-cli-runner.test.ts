@@ -226,15 +226,19 @@ describe('a teardown xezar initiated', () => {
     expect(
       uiEvents.some((event) => event.type === 'turn.completed' && event.stopReason === 'error'),
     ).toBe(false);
-    expect(uiEvents).toContainEqual({
-      type: 'turn.completed',
-      turnId: 'turn_1',
-      stopReason: 'end_turn',
-    });
     expect(events.at(-1)).toEqual({ type: 'done' });
-    expect(
-      events.some((e) => e.type === 'note' && e.message.includes('terminated by xezar (code 143)')),
-    ).toBe(true);
+    // win32-skip(#963): a Windows stop kills the stub at once, before it writes its closing turn,
+    // and Node reports that kill as exit code null, so no exit code reaches the note
+    if (!onWindows) {
+      expect(uiEvents).toContainEqual({
+        type: 'turn.completed',
+        turnId: 'turn_1',
+        stopReason: 'end_turn',
+      });
+      expect(
+        events.some((e) => e.type === 'note' && e.message.includes('terminated by xezar (code 143)')),
+      ).toBe(true);
+    }
   }, 15_000);
 });
 
@@ -272,7 +276,9 @@ describe('wall-clock timeout for a real Claude child that ignores SIGTERM', () =
 
         // win32-skip(#963): Windows has no catchable SIGTERM, so there is no SIGKILL escalation to wait for
         if (!onWindows) expect(Date.now() - startedAt).toBeGreaterThanOrEqual(KILL_GRACE_MS - 500);
-        expect(result.text).toBe('work done');
+        // Windows kills at the 100 ms limit, often before the stub wrote its text (#963).
+        if (onWindows) expect(['', 'work done']).toContain(result.text);
+        else expect(result.text).toBe('work done');
         expect(result.timedOut).toBe(true); // #943: the run manager sweeps after a timeout
         expect(events).toContainEqual({
           type: 'error',

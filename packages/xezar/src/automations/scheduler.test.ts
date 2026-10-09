@@ -4,9 +4,10 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AutomationStore } from './store.ts';
 import { ProjectAutomationScheduler, WorkspaceAutomationScheduler } from './scheduler.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 const dirs: string[] = [];
-afterEach(async () => Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true }))));
+afterEach(async () => Promise.all(dirs.splice(0).map((dir) => rm(dir, TEST_DIR_RM_OPTIONS))));
 async function setup() {
   const dir = await mkdtemp(join(tmpdir(), 'xezar-scheduler-')); dirs.push(dir);
   const store = AutomationStore.open(dir);

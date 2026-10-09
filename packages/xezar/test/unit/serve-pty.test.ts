@@ -4,7 +4,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { realpathSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { after, test } from 'node:test';
-import { onWindows, shortTmpRoot } from '../helpers/platform.ts';
+import { onWindows, shortTmpRoot, TEST_DIR_RM_OPTIONS } from '../helpers/platform.ts';
 import { RunStore } from '../../src/runs/store.ts';
 
 /**
@@ -53,7 +53,7 @@ const pythonAvailable = hasPython();
 assert.ok(pythonAvailable || !process.env.CI || onWindows, 'CI requires python3 with the pty module');
 const fixtureRoot = await mkdtemp(join(realpathSync(shortTmpRoot()), 'xez-pty-'));
 after(async () => {
-  await rm(fixtureRoot, { recursive: true, force: true });
+  await rm(fixtureRoot, TEST_DIR_RM_OPTIONS);
 });
 
 async function makeRepo(name: string): Promise<string> {

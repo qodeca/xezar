@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { withPlatform } from '../test/helpers/platform.ts';
+import { withPlatform, TEST_DIR_RM_OPTIONS } from '../test/helpers/platform.ts';
 import { projectKitDir } from './project-kit-paths.ts';
 import { loadConfig, gatedSkillsRepos } from './config.ts';
 import { agentModelsLocked } from './core/agent-model-policy.ts';
@@ -12,7 +12,7 @@ import { loadWorkflows } from './workflows/load.ts';
 describe('project kit layout', () => {
   let root: string;
   beforeEach(() => { root = mkdtempSync(join(tmpdir(), 'xez-kit-')); });
-  afterEach(() => { rmSync(root, { recursive: true, force: true }); });
+  afterEach(() => { rmSync(root, TEST_DIR_RM_OPTIONS); });
   function write(path: string, value: string) {
     const target = join(root, path);
     mkdirSync(dirname(target), { recursive: true });

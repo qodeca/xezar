@@ -76,7 +76,8 @@ export function isInsideRoots(pattern: string, allowedRoots: readonly string[]):
   if (literal === '' || /[*?[\]{}]/.test(literal) || !path.isAbsolute(literal)) return false;
   // A `..` segment is refused rather than collapsed: collapsing it lexically
   // disagrees with the filesystem when the segment before it is a symlink.
-  if (literal.split('/').includes('..')) return false;
+  // Windows also separates with `\`, so `C:\a\..\b` is refused too (#963); on POSIX `sep` is `/`.
+  if (literal.split('/').flatMap((part) => part.split(path.sep)).includes('..')) return false;
   const resolved = realPrefix(path.resolve(literal));
   return allowedRoots.some((root) => resolved === root || resolved.startsWith(root.endsWith(path.sep) ? root : root + path.sep));
 }

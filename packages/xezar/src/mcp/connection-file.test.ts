@@ -6,7 +6,7 @@ import { projectDataDir } from '../project-data-paths.ts';
 import { registerProject } from '../workspace/projects.ts';
 import { mcpConnectionDescriptorSchema, mcpConnectionPath, writeMcpConnectionFile } from './connection-file.ts';
 import { startMcpService } from './index.ts';
-import { onWindows } from '../../test/helpers/platform.ts';
+import { onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * D-04's connection file (#262, A-01): the running service writes
@@ -32,7 +32,7 @@ beforeEach(() => {
 
 afterEach(() => {
   for (const close of closers.splice(0).reverse()) close();
-  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  for (const dir of dirs.splice(0)) rmSync(dir, TEST_DIR_RM_OPTIONS);
   if (saved === undefined) delete process.env.XEZ_HOME;
   else process.env.XEZ_HOME = saved;
 });

@@ -8,6 +8,7 @@ import { RunStore } from '../runs/store.ts';
 import { WorkspaceSemaphore } from '../workspace/semaphore.ts';
 import { RunManager } from './run.ts';
 import type { WorkflowDef } from './types.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * A cancel that lands while an agent session is still being spawned (#229).
@@ -113,8 +114,8 @@ afterEach(async () => {
       }, 'every run to stop at teardown').catch(() => undefined);
       await f.manager.quiesce();
       f.store.flush();
-      rmSync(f.root, { recursive: true, force: true });
-      rmSync(f.binDir, { recursive: true, force: true });
+      rmSync(f.root, TEST_DIR_RM_OPTIONS);
+      rmSync(f.binDir, TEST_DIR_RM_OPTIONS);
     }
   } finally {
     for (const key of PINNED) {

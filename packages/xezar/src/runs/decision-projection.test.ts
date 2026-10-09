@@ -5,11 +5,12 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { RunStore, type RunRecord } from './store.ts';
 import { runDecisionProjection } from './decision-projection.ts';
 import { guardedRunMutation, runVersion } from '../mcp/stale-write.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 let store: RunStore;
 let root: string;
 beforeEach(() => { root = mkdtempSync(join(tmpdir(), 'decision-projection-')); store = RunStore.open(root); });
-afterEach(() => { store.flush(); rmSync(root, { recursive: true, force: true }); });
+afterEach(() => { store.flush(); rmSync(root, TEST_DIR_RM_OPTIONS); });
 
 // #532 G3: each independent field has its own omission mutant. A combined patch would hide omissions.
 const changes: Array<[string, (run: RunRecord) => Partial<RunRecord>]> = [

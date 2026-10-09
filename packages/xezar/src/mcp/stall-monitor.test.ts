@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { RunStore, type RunRecord } from '../runs/store.ts';
 import { StallMonitor, type StallReporter, type StallTimer } from './stall-monitor.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * #460 § 2, tests T-6 … T-9 of the accepted spec — the advisory stall monitor.
@@ -87,7 +88,7 @@ afterEach(() => {
   // Flush before the directory goes: the store's debounced save would otherwise log an ENOENT
   // after the file ends, which vitest turns into a teardown error (see event-catalog.test.ts).
   store.flush();
-  rmSync(dataDir, { recursive: true, force: true });
+  rmSync(dataDir, TEST_DIR_RM_OPTIONS);
 });
 
 function createRun(kinds: Array<'agent' | 'check'> = ['agent']): RunRecord {
@@ -411,7 +412,7 @@ describe('T-8 the observed set (break: include every running record regardless o
     } finally {
       other.detach();
       otherStore.flush();
-      rmSync(otherDir, { recursive: true, force: true });
+      rmSync(otherDir, TEST_DIR_RM_OPTIONS);
     }
   });
 });

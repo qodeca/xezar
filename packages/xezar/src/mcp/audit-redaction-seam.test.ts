@@ -10,7 +10,7 @@ import { createUiAuditDoor } from '../server/audit-ui.ts';
 import { registerProject } from '../workspace/projects.ts';
 import { AUDIT_TRAIL_FILE, AuditTrail, resetAuditWarningsForTests } from './audit-trail.ts';
 import { REPO_ROOT, SCAN_ROOTS, sourceFiles, withoutComments } from './audit-source-scan.testkit.ts';
-import { shortTmpRoot } from '../../test/helpers/platform.ts';
+import { shortTmpRoot, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * #306 part 4 — THE SEAM GUARD (spec `docs/features/mcp-server/audit-trail-origins-2026-09-17.md`
@@ -42,7 +42,7 @@ beforeEach(() => {
   resetAuditWarningsForTests();
 });
 afterEach(() => {
-  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  for (const dir of dirs.splice(0)) rmSync(dir, TEST_DIR_RM_OPTIONS);
   if (savedHome === undefined) delete process.env.XEZ_HOME;
   else process.env.XEZ_HOME = savedHome;
   vi.restoreAllMocks();

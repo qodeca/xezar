@@ -3,10 +3,10 @@ import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import { existsSync, openSync, closeSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { hostname, tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { linkDir } from '../../test/helpers/platform.ts';
+import { linkDir, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 import { ownProjectData } from './project-writer.ts';
 import { localMachineId } from '../machine-identity.ts';
 import { RunStore } from './store.ts';
@@ -57,7 +57,7 @@ afterEach(async () => {
       await ended;
     }
   }
-  rmSync(root, { recursive: true, force: true });
+  rmSync(root, TEST_DIR_RM_OPTIONS);
 });
 
 async function owner(dataDir: string): Promise<ChildProcess> {
@@ -286,7 +286,8 @@ it('a second CLI with nested repo, different port/home refuses before recovering
   execFileSync('git', ['init', '-q', root]);
   execFileSync('git', ['-C', root, '-c', 'user.name=Test', '-c', 'user.email=test@example.test', 'commit', '--allow-empty', '-qm', 'fixture']);
   const nested = join(root, 'nested'); mkdirSync(nested);
-  expect(execFileSync('git', ['-C', nested, 'rev-parse', '--show-toplevel'], { encoding: 'utf8' }).trim()).toBe(root);
+  // Git for Windows prints `C:/…`; resolve() spells both sides the same on every OS.
+  expect(resolve(execFileSync('git', ['-C', nested, 'rev-parse', '--show-toplevel'], { encoding: 'utf8' }).trim())).toBe(resolve(root));
   const dataDir = join(root, '.local/xezar');
   const store = RunStore.open(dataDir);
   const run = store.createRun({ title: 'owned task', task: 'must not be recovered by a peer', workflow: 'quick-task', runner: 'claude', steps: [{ id: 'task', name: 'Task', kind: 'agent' }] });

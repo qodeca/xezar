@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { onWindows } from '../../../test/helpers/platform.ts';
+import { onWindows, TEST_DIR_RM_OPTIONS } from '../../../test/helpers/platform.ts';
 import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -33,7 +33,7 @@ describe('macosx-ngrok', () => {
   afterEach(() => {
     if (original === undefined) delete process.env.XEZ_HOME;
     else process.env.XEZ_HOME = original;
-    rmSync(home, { recursive: true, force: true });
+    rmSync(home, TEST_DIR_RM_OPTIONS);
   });
 
   it('is registered alongside ubuntu-vps', () => {
@@ -120,7 +120,7 @@ describe('macosx-ngrok review fixes (PR #423)', () => {
   afterEach(() => {
     if (original === undefined) delete process.env.XEZ_HOME;
     else process.env.XEZ_HOME = original;
-    rmSync(home, { recursive: true, force: true });
+    rmSync(home, TEST_DIR_RM_OPTIONS);
   });
 
   function ngrokStepOf() {
@@ -299,7 +299,7 @@ describe('macosx-ngrok steps in a real (non-dry) run', () => {
     vi.useRealTimers();
     if (original === undefined) delete process.env.XEZ_HOME;
     else process.env.XEZ_HOME = original;
-    rmSync(home, { recursive: true, force: true });
+    rmSync(home, TEST_DIR_RM_OPTIONS);
   });
 
   const stepOf = (id: string) => {

@@ -4,7 +4,7 @@ import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { withPlatform } from '../test/helpers/platform.ts';
+import { withPlatform, TEST_DIR_RM_OPTIONS } from '../test/helpers/platform.ts';
 import type { SkillsRepoSource } from './config.ts';
 import {
   bareDirFor,
@@ -54,7 +54,7 @@ afterAll(() => {
   else process.env.HOME = fixedHome.previous.HOME;
   if (fixedHome.previous.USERPROFILE === undefined) delete process.env.USERPROFILE;
   else process.env.USERPROFILE = fixedHome.previous.USERPROFILE;
-  rmSync(fixedHome.home, { recursive: true, force: true });
+  rmSync(fixedHome.home, TEST_DIR_RM_OPTIONS);
 });
 
 // ---- the source-string guard (#428) ------------------------------------------------------
@@ -275,7 +275,7 @@ describe('team skills read out of a real bare clone', () => {
 
   afterEach(() => {
     for (const dir of [source, repoRoot, bareDirFor(source)]) {
-      rmSync(dir, { recursive: true, force: true });
+      rmSync(dir, TEST_DIR_RM_OPTIONS);
     }
   });
 
@@ -315,7 +315,7 @@ describe('team skills read out of a real bare clone', () => {
     it('surfaces a clone failure rather than leaving a half-usable cache', async () => {
       const missing = join(source, 'no-such-repo');
       await expect(ensureBareClone(missing)).rejects.toThrow(/git clone --bare/);
-      rmSync(bareDirFor(missing), { recursive: true, force: true });
+      rmSync(bareDirFor(missing), TEST_DIR_RM_OPTIONS);
     });
   });
 
@@ -430,7 +430,7 @@ describe('team skills read out of a real bare clone', () => {
       try {
         await expect(fetchAll(orphan)).rejects.toThrow(/git fetch failed/);
       } finally {
-        rmSync(orphan, { recursive: true, force: true });
+        rmSync(orphan, TEST_DIR_RM_OPTIONS);
       }
     });
   });

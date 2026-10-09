@@ -8,7 +8,7 @@ import { startMcpService } from './index.ts';
 import { IPC_PROTOCOL_VERSION, LineFramer, encodeFrame, type IpcResponse } from './ipc.ts';
 import { listenMcpSocket } from './service.ts';
 import { defineTool, errorResult, textResult, type McpTool } from './tool.ts';
-import { shortTmpRoot, onWindows } from '../../test/helpers/platform.ts';
+import { shortTmpRoot, onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * The service's answers to frames the bridge never sends on its good path (#333): a frame that is
@@ -34,7 +34,7 @@ beforeEach(() => {
 afterEach(() => {
   for (const close of closers.splice(0).reverse()) close();
   vi.restoreAllMocks();
-  rmSync(home, { recursive: true, force: true });
+  rmSync(home, TEST_DIR_RM_OPTIONS);
 });
 
 let writes = 0;

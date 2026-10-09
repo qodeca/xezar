@@ -10,6 +10,7 @@ import type { TodoItem } from '../todos.ts';
 import { createApp } from './server.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { connectedProviderAuth } from './provider-auth.testkit.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * `POST /api/v1/todos/:id/start` (spec 007, extended by #401 + #413): the "▶ Run" flow that turns
@@ -65,7 +66,7 @@ describe('POST /api/v1/todos/:id/start', () => {
     if (savedFollowups === undefined) delete process.env.XEZ_FOLLOWUPS;
     else process.env.XEZ_FOLLOWUPS = savedFollowups;
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
   });
 
   const start = (id: string, body?: unknown) =>

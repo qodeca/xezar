@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { onWindows } from '../../test/helpers/platform.ts';
+import { onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -31,7 +31,7 @@ describe('server state', () => {
   afterEach(() => {
     if (original === undefined) delete process.env.XEZ_HOME;
     else process.env.XEZ_HOME = original;
-    rmSync(home, { recursive: true, force: true });
+    rmSync(home, TEST_DIR_RM_OPTIONS);
   });
 
   it('degrades to fresh when the file is missing', () => {

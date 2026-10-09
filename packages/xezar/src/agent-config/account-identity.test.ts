@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { readAccountIdentity } from './account-identity.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * Reading who an agent account is signed in as (spec 2026-07-29-agent-profiles, "Show details").
@@ -19,7 +20,7 @@ describe('readAccountIdentity', () => {
   });
 
   afterEach(() => {
-    rmSync(home, { recursive: true, force: true });
+    rmSync(home, TEST_DIR_RM_OPTIONS);
   });
 
   /** An account dir whose `.claude.json` lives INSIDE it, as an overridden config dir does. */

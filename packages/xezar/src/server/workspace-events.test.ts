@@ -11,6 +11,7 @@ import { clearProjectProbeCache, listProjects, registerProject, removeProject } 
 import { ProjectContexts } from './project-context.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { WorkspaceEventBus, createApp } from './server.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * Workspace SSE stream (spec 2026-07-20-multi-project-workspace, step 2.8):
@@ -71,7 +72,7 @@ describe('GET /api/v1/workspace/events', () => {
     for (const close of closers.splice(0)) await close().catch(() => undefined);
     await contexts.disposeAll();
     store.flush();
-    for (const dir of [home, repoRoot, otherRoot]) rmSync(dir, { recursive: true, force: true });
+    for (const dir of [home, repoRoot, otherRoot]) rmSync(dir, TEST_DIR_RM_OPTIONS);
     if (savedHome === undefined) delete process.env.XEZ_HOME;
     else process.env.XEZ_HOME = savedHome;
     if (savedRemote === undefined) delete process.env.XEZ_REMOTE;
@@ -479,7 +480,7 @@ describe('GET /api/v1/workspace/events', () => {
       { ...JSON.parse(JSON.stringify(run)), project: second.id },
     ]);
 
-    rmSync(base, { recursive: true, force: true });
+    rmSync(base, TEST_DIR_RM_OPTIONS);
   });
 
   /**

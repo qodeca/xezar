@@ -10,7 +10,7 @@ import { mergeWriteWorkspaceConfig } from '../workspace/config.ts';
 import { clearProjectProbeCache, listProjects, registerProject, removeProject } from '../workspace/projects.ts';
 import { ProjectContexts } from './project-context.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
-import { withPlatform } from '../../test/helpers/platform.ts';
+import { withPlatform, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 import { createApp } from './server.ts';
 
 /**
@@ -88,7 +88,7 @@ describe('project context resolves the CURRENT registry root (#591)', () => {
     // The old folder (and its dataDir) is really gone, the way a deleted worktree or a moved repo
     // would be.
     await removeProject(id);
-    rmSync(rootOld, { recursive: true, force: true });
+    rmSync(rootOld, TEST_DIR_RM_OPTIONS);
     const second = await registerProject(rootNew);
     expect(second.id).toBe(id); // same slug reused — the scenario the removal route never saw
 

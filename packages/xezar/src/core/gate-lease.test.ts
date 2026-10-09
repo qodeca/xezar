@@ -3,7 +3,7 @@ import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { onWindows, withPlatform } from '../../test/helpers/platform.ts';
+import { onWindows, withPlatform, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 import {
   acquireGateLease,
@@ -34,7 +34,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  await rm(dir, { recursive: true, force: true });
+  await rm(dir, TEST_DIR_RM_OPTIONS);
 });
 
 /**

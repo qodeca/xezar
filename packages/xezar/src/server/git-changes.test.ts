@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { linkDir, onWindows } from '../../test/helpers/platform.ts';
+import { linkDir, onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 import { worktreePathFor } from '../git-worktree.ts';
 import { RunStore, type RunRecord } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
@@ -65,7 +65,7 @@ describe('collectChanges — structured diff vs base', () => {
     initRepo(dir);
   });
 
-  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+  afterEach(() => rmSync(dir, TEST_DIR_RM_OPTIONS));
 
   it('reports modified, added, deleted, renamed and binary files with counts and patches', async () => {
     writeFileSync(join(dir, 'mod.txt'), 'line one\nline two\n');
@@ -356,7 +356,7 @@ describe('collectRunCommits — the run branch commits since base', () => {
     dir = mkdtempSync(join(tmpdir(), 'xez-runcommits-'));
     initRepo(dir);
   });
-  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+  afterEach(() => rmSync(dir, TEST_DIR_RM_OPTIONS));
 
   it('lists only the branch commits past the merge-base, newest first', async () => {
     writeFileSync(join(dir, 'a.txt'), 'a\n');
@@ -403,7 +403,7 @@ describe('readWorktreePath — Files tab browsing', () => {
     writeFileSync(join(dir, 'bin.dat'), Buffer.from([0, 1, 2, 0]));
   });
 
-  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+  afterEach(() => rmSync(dir, TEST_DIR_RM_OPTIONS));
 
   it('lists the root (dirs first, .git hidden) when path is omitted', async () => {
     const res = await readWorktreePath(dir, '');
@@ -448,7 +448,7 @@ describe('readWorktreePath — Files tab browsing', () => {
       expect((await readWorktreePath(dir, 'link')).kind).toBe('invalid');
       expect((await readWorktreePath(dir, 'nope.txt')).kind).toBe('missing');
     } finally {
-      if (onWindows) rmSync(outsideTarget, { recursive: true, force: true });
+      if (onWindows) rmSync(outsideTarget, TEST_DIR_RM_OPTIONS);
     }
   });
 
@@ -482,7 +482,7 @@ describe('readWorktreePath — Files tab browsing', () => {
     expect(viaLink.kind).toBe('invalid');
     if (viaLink.kind === 'invalid') expect(viaLink.error).toContain('escapes the worktree');
 
-    rmSync(outside, { recursive: true, force: true });
+    rmSync(outside, TEST_DIR_RM_OPTIONS);
   });
 });
 
@@ -571,7 +571,7 @@ describe('session git API routes', () => {
 
   afterEach(() => {
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
   });
 
   const commit = (id: string, body: unknown) =>
@@ -888,7 +888,7 @@ describe('session git API routes', () => {
       expect(second.status).toBe(200);
       expect((await second.json()) as object).toMatchObject({ pushed: true, upstreamSet: false });
     } finally {
-      rmSync(remote, { recursive: true, force: true });
+      rmSync(remote, TEST_DIR_RM_OPTIONS);
     }
   });
 });
@@ -918,7 +918,7 @@ describe('repo git API routes (R5 Step 1.3 — main working tree)', () => {
 
   afterEach(() => {
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
   });
 
   const branch = (body: unknown) =>
@@ -1163,7 +1163,7 @@ describe('createOrSwitchBranch — dash-guard on both operands (#431)', () => {
     g(dir, 'commit', '-m', 'base');
   });
 
-  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+  afterEach(() => rmSync(dir, TEST_DIR_RM_OPTIONS));
 
   it('rejects an option-like branch name — it reaches `checkout [-b] <name>` positionally', async () => {
     for (const name of ['-x', '--force', '-']) {
@@ -1194,7 +1194,7 @@ describe('commitAll / pushCurrentBranch — direct degradation paths', () => {
       expect(res.ok).toBe(false);
       if (!res.ok) expect(res.error.toLowerCase()).toContain('not a git repository');
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      rmSync(dir, TEST_DIR_RM_OPTIONS);
     }
   });
 
@@ -1210,7 +1210,7 @@ describe('commitAll / pushCurrentBranch — direct degradation paths', () => {
       expect(res.ok).toBe(false);
       if (!res.ok) expect(res.error).toContain('detached HEAD');
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      rmSync(dir, TEST_DIR_RM_OPTIONS);
     }
   });
 });

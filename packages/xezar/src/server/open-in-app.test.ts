@@ -48,6 +48,7 @@ import {
   openInApp,
   resolveOnPath,
 } from './open-in-app.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 describe('detectOpenTargets', () => {
   it('always offers a file manager and a terminal, first, both with an icon', () => {
@@ -88,7 +89,7 @@ describe('detectOpenTargets', () => {
 
     afterEach(() => {
       if (originalPath !== undefined) process.env.PATH = originalPath;
-      if (stubDir) rmSync(stubDir, { recursive: true, force: true });
+      if (stubDir) rmSync(stubDir, TEST_DIR_RM_OPTIONS);
     });
 
     it('detects every JetBrains product once its CLI launcher is on PATH', () => {
@@ -205,7 +206,7 @@ describe('resolveOnPath (#469 Windows launcher safety)', () => {
   let stubDir: string;
 
   afterEach(() => {
-    if (stubDir) rmSync(stubDir, { recursive: true, force: true });
+    if (stubDir) rmSync(stubDir, TEST_DIR_RM_OPTIONS);
     stubDir = '';
   });
 

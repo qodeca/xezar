@@ -11,6 +11,7 @@ import {
   readEventsAfterLiveCursor,
   readRunHistoryPage,
 } from './event-history.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 const dirs: string[] = [];
 
@@ -26,7 +27,7 @@ function fixture(events: Array<Partial<RunEvent> & Pick<RunEvent, 'seq' | 'type'
 }
 
 afterEach(() => {
-  while (dirs.length > 0) rmSync(dirs.pop()!, { recursive: true, force: true });
+  while (dirs.length > 0) rmSync(dirs.pop()!, TEST_DIR_RM_OPTIONS);
 });
 
 describe('canonicalSessionItems', () => {

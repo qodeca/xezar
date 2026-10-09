@@ -24,7 +24,7 @@ import { defineTool, toolListing, type McpTool, type McpToolContext } from '../t
 import { QUALITY_BLOCKER_NEXT_ACTION, handoffGitTool, qualityBlockers, readyBlockers } from './handoff-git.ts';
 import { tools } from './index.ts';
 import { withOperationId } from './operation-id.testkit.ts';
-import { onWindows } from '../../../test/helpers/platform.ts';
+import { onWindows, TEST_DIR_RM_OPTIONS } from '../../../test/helpers/platform.ts';
 
 /**
  * `handoff_git` (#96) driven the way a leader drives it: a `tools/call` frame over the project's own
@@ -186,7 +186,7 @@ describe.skipIf(onWindows)('handoff_git — commit, push, draft PR, merge and br
     for (const socket of sockets) socket.close();
     contexts.disposeAll();
     bootStore.close();
-    for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
+    for (const dir of dirs) rmSync(dir, TEST_DIR_RM_OPTIONS);
     for (const key of ENV_KEYS) {
       if (savedEnv[key] === undefined) delete process.env[key];
       else process.env[key] = savedEnv[key];

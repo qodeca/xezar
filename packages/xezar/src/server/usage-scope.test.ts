@@ -10,6 +10,7 @@ import { clearProjectProbeCache, listProjects, registerProject } from '../worksp
 import { ProjectContexts } from './project-context.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { createApp } from './server.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * Per-project `usage` SSE scoping (spec 2026-07-20-multi-project-workspace,
@@ -67,7 +68,7 @@ describe('usage SSE fan-out is scoped per project', () => {
     for (const close of closers.splice(0)) await close().catch(() => undefined);
     await contexts.disposeAll();
     store.flush();
-    for (const dir of [home, repoRoot, otherRoot]) rmSync(dir, { recursive: true, force: true });
+    for (const dir of [home, repoRoot, otherRoot]) rmSync(dir, TEST_DIR_RM_OPTIONS);
     if (savedHome === undefined) delete process.env.XEZ_HOME;
     else process.env.XEZ_HOME = savedHome;
     if (savedRemote === undefined) delete process.env.XEZ_REMOTE;

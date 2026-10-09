@@ -15,6 +15,7 @@ import {
   type PiRpcLink,
   type PiRpcMessage,
 } from './pi.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../../test/helpers/platform.ts';
 
 /**
  * #330 WP2 — the pi reaction adapter.
@@ -845,7 +846,7 @@ describe('piReactionTarget — where a project\'s pi events go', () => {
 describe('through the real event controller', () => {
   const dirs: string[] = [];
   afterEach(() => {
-    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+    for (const dir of dirs.splice(0)) rmSync(dir, TEST_DIR_RM_OPTIONS);
   });
 
   it('a row appended to a real journal reaches pi, and reactedSeq moves only when the model was asked', async () => {

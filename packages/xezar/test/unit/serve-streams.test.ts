@@ -6,7 +6,7 @@ import { realpathSync } from 'node:fs';
 import { createServer, type Server } from 'node:net';
 import { join, resolve } from 'node:path';
 import { after, test } from 'node:test';
-import { shortTmpRoot } from '../helpers/platform.ts';
+import { shortTmpRoot, TEST_DIR_RM_OPTIONS } from '../helpers/platform.ts';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 /**
@@ -42,7 +42,7 @@ const ANY_ESCAPE = /[\u001b\u009b\u009d\u0007]/;
 // `shouldRegisterProject` refuses to register anything under `.local/xezar/worktrees/`.
 const fixtureRoot = await mkdtemp(join(realpathSync(shortTmpRoot()), 'xez-streams-'));
 after(async () => {
-  await rm(fixtureRoot, { recursive: true, force: true });
+  await rm(fixtureRoot, TEST_DIR_RM_OPTIONS);
 });
 
 async function makeRepo(name: string): Promise<string> {

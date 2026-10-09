@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { expect, it, vi } from 'vitest';
 import { RunStore } from '../runs/store.ts';
 import { AUTO_RESUME_GRACE_MS, RunManager } from './run.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 it.each(['cancel', 'dispose'] as const)('uninjected quota timer preserves Node delay, unref and %s', async action => {
   const root = mkdtempSync(join(tmpdir(), 'xez-quota-default-'));
@@ -38,6 +39,6 @@ it.each(['cancel', 'dispose'] as const)('uninjected quota timer preserves Node d
     date.mockRestore();
     vi.restoreAllMocks();
     store.flush();
-    rmSync(root, { recursive: true, force: true });
+    rmSync(root, TEST_DIR_RM_OPTIONS);
   }
 });

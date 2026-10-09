@@ -7,6 +7,7 @@ import { promisify } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { RunStore } from '../runs/store.ts';
 import { RunManager } from './run.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 const run = promisify(execFile);
 const GIT_ID = ['-c', 'user.name=test', '-c', 'user.email=test@local'];
@@ -40,7 +41,7 @@ describe('recover() contains backend session failures (#562)', () => {
     if (savedReject === undefined) delete process.env.MOCK_CODEX_REJECT_RESUME;
     else process.env.MOCK_CODEX_REJECT_RESUME = savedReject;
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
   });
 
   it('marks one recovery continuation failed and does not retry it on the next boot', async () => {

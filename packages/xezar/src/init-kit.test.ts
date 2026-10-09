@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { discoverProjectCheck, fixAndVerifyWorkflow, PROJECT_CONVENTIONS_SKILL } from './init-kit.ts';
 import { loadWorkflows } from './workflows/load.ts';
 import { workflowFileSchema } from './workflows/types.ts';
+import { TEST_DIR_RM_OPTIONS } from '../test/helpers/platform.ts';
 
 // #466: `xezar init` writes into any kind of project, so its verify step must be honest — a real
 // check the project has, or a review step that says nothing was checked. Never an `echo` that
@@ -15,7 +16,7 @@ describe('init kit', () => {
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), 'xez-init-kit-'));
   });
-  afterEach(() => rmSync(root, { recursive: true, force: true }));
+  afterEach(() => rmSync(root, TEST_DIR_RM_OPTIONS));
 
   const load = (yaml: string) => workflowFileSchema.parse(parse(yaml));
 

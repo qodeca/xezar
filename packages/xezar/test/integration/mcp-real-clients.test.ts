@@ -21,6 +21,7 @@ import { PiRunner } from '../../src/core/pi-runner.ts';
 import type { UiEvent } from '../../src/core/ui-events.ts';
 import { ProjectOwnership } from '../../src/workspace/project-owner.ts';
 import { runVersion } from '../../src/mcp/stale-write.ts';
+import { TEST_DIR_RM_OPTIONS } from '../helpers/platform.ts';
 
 /**
  * #118 — the OWNERSHIP, DELIVERY AND SETUP half of the whole-feature acceptance suite (requirements
@@ -1489,7 +1490,7 @@ after(async () => {
   const table = results.map((r) => `| ${r.case} | ${r.client} | ${r.verdict} | ${r.summary.replace(/\|/g, '\\|')} |`).join('\n');
   writeFileSync(join(OUT, 'results.md'), `| Case | Client | Verdict | Summary |\n| --- | --- | --- | --- |\n${table}\n`);
   await fx?.world.dispose();
-  if (fx?.scratch) rmSync(fx.scratch, { recursive: true, force: true });
+  if (fx?.scratch) rmSync(fx.scratch, TEST_DIR_RM_OPTIONS);
   console.log(`\n#118 real-client results: ${join(OUT, 'results.json')}\n`);
 });
 
@@ -2636,7 +2637,7 @@ describe('A-19 — immediate acceptance, delivery, and a real model reaction', (
       imposter = startAppServer(otherHome, 'imposter-app-server');
       const otherSocket = join(otherHome, 'app-server-control', 'app-server-control.sock');
       await waitFor('the other home’s control socket', () => (existsSync(otherSocket) ? true : undefined), 30_000).catch(() => undefined);
-      rmSync(join(codexHome, 'app-server-control'), { recursive: true, force: true });
+      rmSync(join(codexHome, 'app-server-control'), TEST_DIR_RM_OPTIONS);
       symlinkSync(join(otherHome, 'app-server-control'), join(codexHome, 'app-server-control'));
       const logBeforeWrong = serveLog().length;
       const wrong = await attach();

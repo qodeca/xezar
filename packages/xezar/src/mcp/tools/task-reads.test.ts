@@ -20,7 +20,7 @@ import { listenMcpSocket, type McpServiceHandle } from '../service.ts';
 import { defineTool, type McpTool, type McpToolContext } from '../tool.ts';
 import { tools } from './index.ts';
 import { TASK_READ_PAGE_ITEMS, TASK_READ_RESULT_BUDGET_BYTES, taskReadsTool, taskSummarySchema } from './task-reads.ts';
-import { onWindows } from '../../../test/helpers/platform.ts';
+import { onWindows, TEST_DIR_RM_OPTIONS } from '../../../test/helpers/platform.ts';
 
 /**
  * `task_read` (#91) driven the way a leader drives it: a `tools/call` frame over the project's
@@ -115,7 +115,7 @@ describe.skipIf(onWindows)('task_read — the task, history, Inbox and variant-g
     for (const socket of sockets) socket.close();
     contexts.disposeAll();
     storeA.flush();
-    for (const dir of [home, rootA, rootB]) rmSync(dir, { recursive: true, force: true });
+    for (const dir of [home, rootA, rootB]) rmSync(dir, TEST_DIR_RM_OPTIONS);
     restore('XEZ_HOME', saved.home);
     restore('XEZ_DRY_RUN', saved.dryRun);
     restore('XEZ_FOLLOWUPS', saved.followups);

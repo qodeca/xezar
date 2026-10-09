@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { onWindows } from '../test/helpers/platform.ts';
+import { onWindows, TEST_DIR_RM_OPTIONS } from '../test/helpers/platform.ts';
 
 /**
  * #793 — the bounded first-team-skills wait #791 added parked a headless `xezar run` on a timer
@@ -60,7 +60,7 @@ describe('a headless run survives its own first-team-skills wait (#793)', () => 
   });
 
   afterEach(() => {
-    rmSync(root, { recursive: true, force: true });
+    rmSync(root, TEST_DIR_RM_OPTIONS);
   });
 
   it('resolves the team skill and finishes the run when the first clone takes a second', () => {

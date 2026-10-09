@@ -4,10 +4,10 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
-  renameSync,
   truncateSync,
   writeFileSync,
 } from 'node:fs';
+import { renameReplacingSync } from '../platform/atomic-write.ts';
 import { join } from 'node:path';
 import { z } from 'zod';
 
@@ -328,7 +328,7 @@ export class EventJournal {
     const body = this.#lines.length === 0 ? '' : `${this.#lines.join('\n')}\n`;
     try {
       writeFileSync(tmp, body, 'utf8');
-      renameSync(tmp, this.rowsPath);
+      renameReplacingSync(tmp, this.rowsPath);
       this.#fileBytes = Buffer.byteLength(body, 'utf8');
       this.#evictedOnDisk = 0;
     } catch (err) {
@@ -415,7 +415,7 @@ export class EventJournal {
 
   #setAside(): void {
     try {
-      if (existsSync(this.rowsPath)) renameSync(this.rowsPath, `${this.rowsPath}.corrupt`);
+      if (existsSync(this.rowsPath)) renameReplacingSync(this.rowsPath, `${this.rowsPath}.corrupt`);
     } catch { /* the fresh journal overwrites it instead */ }
   }
 
@@ -435,7 +435,7 @@ export class EventJournal {
         `${JSON.stringify({ v: 1, projectId: this.projectId, epoch: this.#epoch, createdAt: new Date(this.#now()).toISOString() })}\n`,
         'utf8',
       );
-      renameSync(tmp, this.indexPath);
+      renameReplacingSync(tmp, this.indexPath);
     } catch (err) {
       this.#writable = false;
       this.#warnWrite(err);

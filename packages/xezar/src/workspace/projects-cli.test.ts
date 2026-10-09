@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSyn
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { linkDir } from '../../test/helpers/platform.ts';
+import { linkDir, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 import { loadWorkspaceConfig } from './config.ts';
 import { clearProjectProbeCache, registerProject } from './projects.ts';
 import { runProjectsCommand, type ProjectsCommandIo } from './projects-cli.ts';
@@ -33,8 +33,8 @@ describe('xezar projects CLI', () => {
   afterEach(() => {
     if (originalHome === undefined) delete process.env.XEZ_HOME;
     else process.env.XEZ_HOME = originalHome;
-    rmSync(home, { recursive: true, force: true });
-    rmSync(repos, { recursive: true, force: true });
+    rmSync(home, TEST_DIR_RM_OPTIONS);
+    rmSync(repos, TEST_DIR_RM_OPTIONS);
   });
 
   const run = (...args: string[]): Promise<number> =>
@@ -73,7 +73,7 @@ describe('xezar projects CLI', () => {
       await registerProject(makeDir('plain'));
       const doomed = makeDir('doomed');
       await registerProject(doomed);
-      rmSync(doomed, { recursive: true, force: true });
+      rmSync(doomed, TEST_DIR_RM_OPTIONS);
       clearProjectProbeCache();
       expect(await run('list')).toBe(0);
       const listing = io.out.join('\n');

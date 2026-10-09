@@ -12,6 +12,7 @@ import {
   type ContextDisposal,
   type ProjectContextSource,
 } from './project-context.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * Lazy per-project context map (spec 2026-07-20-multi-project-workspace,
@@ -31,8 +32,8 @@ describe('ProjectContexts', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
-    rmSync(rootA, { recursive: true, force: true });
-    rmSync(rootB, { recursive: true, force: true });
+    rmSync(rootA, TEST_DIR_RM_OPTIONS);
+    rmSync(rootB, TEST_DIR_RM_OPTIONS);
   });
 
   function makeContexts(projects: ProjectContextSource[]): ProjectContexts {

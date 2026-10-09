@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { linkDir } from '../test/helpers/platform.ts';
+import { linkDir, TEST_DIR_RM_OPTIONS } from '../test/helpers/platform.ts';
 import {
   discoverSkills,
   filterImportedTeamSkills,
@@ -22,7 +22,7 @@ const XEZ = 'qodeca/xezar-skills';
 const tempDirs: string[] = [];
 
 afterEach(async () => {
-  await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+  await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, TEST_DIR_RM_OPTIONS)));
 });
 
 function teamSkill(name: string, repo: string): Skill {

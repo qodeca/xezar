@@ -3,7 +3,7 @@ import { createServer, type RequestListener, type Server } from 'node:http';
 import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { onWindows } from '../../test/helpers/platform.ts';
+import { onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 import { foreignWriterClaimIsLive } from '../runs/project-writer.ts';
 import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
@@ -423,7 +423,7 @@ describe('the writer-claim reader (#467, PR 3)', () => {
   const dirs: string[] = [];
 
   afterEach(() => {
-    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+    for (const dir of dirs.splice(0)) rmSync(dir, TEST_DIR_RM_OPTIONS);
   });
 
   const dataDir = (): string => {
@@ -491,7 +491,7 @@ describe('instance liveness: the own cockpit address (#819 item 8)', () => {
   afterEach(async () => {
     recordOwnListen(null, true);
     for (const server of servers.splice(0)) await new Promise<void>((resolve) => server.close(() => resolve()));
-    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+    for (const dir of dirs.splice(0)) rmSync(dir, TEST_DIR_RM_OPTIONS);
   });
   async function listening(host = '127.0.0.1'): Promise<{ server: Server; port: number }> {
     const server = createServer();

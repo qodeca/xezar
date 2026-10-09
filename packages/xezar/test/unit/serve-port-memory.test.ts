@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { after, test } from 'node:test';
-import { onWindows, shortTmpRoot } from '../helpers/platform.ts';
+import { onWindows, shortTmpRoot, TEST_DIR_RM_OPTIONS } from '../helpers/platform.ts';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 /**
@@ -57,7 +57,7 @@ net.Server.prototype.listen = function (...args) {
 };
 `, 'utf8');
 after(async () => {
-  await rm(fixtureRoot, { recursive: true, force: true });
+  await rm(fixtureRoot, TEST_DIR_RM_OPTIONS);
 });
 
 interface Boot {

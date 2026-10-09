@@ -12,6 +12,7 @@ import { projectStateLayout, setActiveStateLayout } from '../state-layout.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { openInTerminal } from './open-in-terminal.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 // The terminal launcher actually spawns a process (osascript/cmd/x-terminal-emulator) — mocked
 // so this suite exercises only the command construction, never a real terminal window.
@@ -85,7 +86,7 @@ describe('POST /api/v1/runs/:id/open-in — agent CLI resume vs fresh launch', (
 
   afterEach(() => {
     store.flush();
-    for (const dir of [repoRoot, home]) rmSync(dir, { recursive: true, force: true });
+    for (const dir of [repoRoot, home]) rmSync(dir, TEST_DIR_RM_OPTIONS);
     if (savedRemote === undefined) delete process.env.XEZ_REMOTE;
     else process.env.XEZ_REMOTE = savedRemote;
     if (savedHome === undefined) delete process.env.XEZ_HOME;

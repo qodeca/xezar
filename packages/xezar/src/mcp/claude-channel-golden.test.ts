@@ -14,7 +14,7 @@ import { LineFramer, encodeFrame } from './ipc.ts';
 import { CHANNEL_INCOMPATIBLE_PROTOCOL_VERSION } from './protocol.ts';
 import { listenMcpSocket, type McpSessionTransport } from './service.ts';
 import { tools } from './tools/index.ts';
-import { shortTmpRoot, onWindows } from '../../test/helpers/platform.ts';
+import { shortTmpRoot, onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * #886 — the channel contract with Claude Code, pinned against what a REAL Claude Code sends and
@@ -52,7 +52,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   for (const h of handles.splice(0)) h.close();
-  rmSync(home, { recursive: true, force: true });
+  rmSync(home, TEST_DIR_RM_OPTIONS);
 });
 
 function row(journalSeq: number): McpJournalRow {

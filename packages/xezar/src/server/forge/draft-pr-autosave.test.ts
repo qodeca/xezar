@@ -6,6 +6,7 @@ import { promisify } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDraftPr } from './github.ts';
 import type { RunRecord } from '../../runs/store.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../../test/helpers/platform.ts';
 
 const run = promisify(execFile);
 const GIT_ID = ['-c', 'user.name=test', '-c', 'user.email=test@local'];
@@ -41,7 +42,7 @@ describe('createDraftPr pre-PR autosave (#471 follow-up)', () => {
   afterEach(() => {
     warn.mockRestore();
     vi.unstubAllEnvs();
-    rmSync(repo, { recursive: true, force: true });
+    rmSync(repo, TEST_DIR_RM_OPTIONS);
   });
 
   it('refuses to publish a worktree holding conflict markers', async () => {

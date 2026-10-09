@@ -9,6 +9,7 @@ import type { RunManager } from '../workflows/run.ts';
 import { createApp } from './server.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { connectedProviderAuth } from './provider-auth.testkit.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * `POST /api/v1/plan` (spec 008), gap R13 of the coverage audit (#52).
@@ -53,7 +54,7 @@ describe('POST /plan success body (#52)', () => {
 
   afterEach(() => {
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
     if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN;
     else process.env.XEZ_DRY_RUN = savedDryRun;
     if (savedClaudeBin === undefined) delete process.env.XEZ_CLAUDE_BIN;

@@ -20,6 +20,7 @@ import { WorkspaceSemaphore } from '../workspace/semaphore.ts';
 import { parseTaskMarkers } from '../runs/task-markers.ts';
 import { appendTurnText, IDLE_TIMEOUT_MS, RunManager } from './run.ts';
 import type { WorkflowDef } from './types.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 type UsageAccountingHarness = {
   beginUsageInvocation(runId: string, state: Record<string, unknown>, stepId: string): void;
@@ -83,7 +84,7 @@ describe('RunManager directional usage accounting', () => {
     // `rmSync` is the whole fix, and every teardown below does the same.
     await manager.dispose();
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
   });
 
   function fixture() {
@@ -241,7 +242,7 @@ it('parallel variants ignore a worktree opt-out and retain isolated mode', async
   } finally {
     await created?.dispose(); // settle the queue watchdog before the root goes (#125)
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
   }
 });
 
@@ -279,7 +280,7 @@ describe('RunManager.recordTurnEnd', () => {
   afterAll(async () => {
     await manager.dispose(); // settle the queue watchdog before the root goes (#125)
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
   });
 
   /** A run with a real worktree forked off main, holding an edit + a new file. */
@@ -444,7 +445,7 @@ describe('RunManager.continueRun override', () => {
   afterEach(async () => {
     await manager.dispose(); // settle the queue watchdog before the root goes (#125)
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
   });
 
   /** A finished run with a resumable session on the `claude`/`sonnet` backend. */
@@ -681,7 +682,7 @@ describe('RunManager.settleSuccess — optional review gate', () => {
   afterAll(async () => {
     await manager.dispose(); // settle the queue watchdog before the root goes (#125)
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
     if (savedGate === undefined) delete process.env.XEZ_REVIEW_GATE;
     else process.env.XEZ_REVIEW_GATE = savedGate;
     if (savedAutoname === undefined) delete process.env.XEZ_AUTONAME;
@@ -786,7 +787,7 @@ describe('a chain of 2 selected skills runs BOTH steps, in order (#410)', () => 
       else process.env[key] = value;
     }
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
   });
 
   it('runs both skill steps to completion, and the second step\'s prompt carries the chain guard', async () => {
@@ -876,7 +877,7 @@ describe('a single agent step plus a check step gets NO chain note (#410)', () =
       else process.env[key] = value;
     }
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
   });
 
   it("leaves the lone agent step's prompt untouched", async () => {
@@ -957,7 +958,7 @@ describe('XEZ:MONITORING parks as running/monitoring, not waiting (#490)', () =>
       else process.env[key] = value;
     }
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
   });
 
   const waitFor = async (id: string, pred: (r: RunRecord | undefined) => boolean, ms = 15_000) => {
@@ -1198,7 +1199,7 @@ describe('XEZ:ASK parks as waiting and emits ask.requested (#473)', () => {
       else process.env[key] = value;
     }
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
   });
 
   const waitFor = async (id: string, pred: (r: RunRecord | undefined) => boolean, ms = 15_000) => {
@@ -1382,7 +1383,7 @@ describe('RunManager.persistAttachment without a session (#472)', () => {
 
   afterEach(async () => {
     await manager.dispose(); // settle the queue watchdog before the root goes (#125)
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
   });
 
   it('persists two attachments with no ActiveRun and gives them distinct names', () => {
@@ -1468,7 +1469,7 @@ describe('RunManager queued-stack mutators (#472)', () => {
 
   afterEach(async () => {
     await manager.dispose(); // settle the queue watchdog before the root goes (#125)
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
   });
 
   it('appends messages in order while queued', () => {
@@ -1779,7 +1780,7 @@ describe('RunManager.hydrateQueuedInput (#472)', () => {
 
   afterEach(async () => {
     await manager.dispose(); // settle the queue watchdog before the root goes (#125)
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
   });
 
   it('folds the task and every stacked message, in order, blank-line joined', () => {
@@ -1941,7 +1942,7 @@ describe('queued stacking reaches the backend (#472)', () => {
       else process.env[key] = value;
     }
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
   });
 
   it('delivers the task plus every stacked message, with the edit applied', async () => {
@@ -2004,7 +2005,7 @@ describe('recover() carries the queued stack exactly once (#472)', () => {
   });
 
   afterEach(() => {
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
   });
 
   it('folds once across repeated recoveries', async () => {
@@ -2068,7 +2069,7 @@ describe('native Codex requestUserInput parks and resumes the run (#565)', () =>
     if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN; else process.env.XEZ_DRY_RUN = savedDryRun;
     if (savedCodexBin === undefined) delete process.env.XEZ_CODEX_BIN; else process.env.XEZ_CODEX_BIN = savedCodexBin;
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
   });
 
   const waitFor = async (predicate: () => boolean, ms = 15_000) => {
@@ -2143,7 +2144,7 @@ describe('registry /skill expansion survives a continuation (#811)', () => {
     if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN;
     else process.env.XEZ_DRY_RUN = savedDryRun;
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
   });
 
   const eventsOf = (id: string) =>
@@ -2267,7 +2268,7 @@ describe("registry /skill expansion on a fresh run's opening prompt (#278)", () 
     if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN;
     else process.env.XEZ_DRY_RUN = savedDryRun;
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
   });
 
   // Tolerant of the pre-first-event window: the run's ndjson does not exist until
@@ -2381,7 +2382,7 @@ describe('RunManager.dispose settles the queue watchdog (#125)', () => {
     // One case removes its own root mid-test — that IS the teardown under examination.
     if (existsSync(repoRoot)) {
       store.flush();
-      rmSync(repoRoot, { recursive: true, force: true });
+      rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
     }
   });
 
@@ -2405,7 +2406,7 @@ describe('RunManager.dispose settles the queue watchdog (#125)', () => {
     await manager.dispose();
 
     expect(ndjsonOf(runId)).not.toContain('queue watchdog');
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
     await expect(sweep).resolves.toBeUndefined();
   });
 

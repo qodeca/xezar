@@ -22,7 +22,7 @@ import {
   type OperationRequest,
   type Reconciler,
 } from './operation-receipts.ts';
-import { onWindows } from '../../test/helpers/platform.ts';
+import { onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * Issue #101 — durable operation-key idempotency (decision D-06). The four acceptance cases come
@@ -45,7 +45,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   vi.restoreAllMocks();
-  rmSync(dataDir, { recursive: true, force: true });
+  rmSync(dataDir, TEST_DIR_RM_OPTIONS);
 });
 
 /** A task store whose `create` honours a predicted id, as D-06 § 12.1 requires of `createRun`. */

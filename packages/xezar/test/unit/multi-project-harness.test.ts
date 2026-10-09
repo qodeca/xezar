@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, it } from 'node:test';
 import { pathToFileURL } from 'node:url';
+import { TEST_DIR_RM_OPTIONS } from '../helpers/platform.ts';
 
 interface HarnessModule {
   ChildRegistry: new (stateFile: string) => {
@@ -29,7 +30,7 @@ afterEach(async () => {
   for (const child of children) if (alive(child)) child.kill('SIGKILL');
   await Promise.all(children.map(waitExit));
   children.length = 0;
-  for (const root of roots) rmSync(root, { recursive: true, force: true });
+  for (const root of roots) rmSync(root, TEST_DIR_RM_OPTIONS);
   roots.length = 0;
 });
 

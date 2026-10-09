@@ -14,6 +14,7 @@ import { RunManager } from '../workflows/run.ts';
 import { ProjectContexts } from './project-context.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { WorkspaceEventBus, createApp } from './server.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 const CONNECTED_OUTPUT: Record<ProviderId, string> = {
   claude: '{"loggedIn":true}',
@@ -72,7 +73,7 @@ describe('workspace provider API', () => {
 
   afterEach(() => {
     store.flush();
-    rmSync(root, { recursive: true, force: true });
+    rmSync(root, TEST_DIR_RM_OPTIONS);
     if (savedModelsLocked === undefined) delete process.env.XEZ_AGENT_MODELS_LOCKED;
     else process.env.XEZ_AGENT_MODELS_LOCKED = savedModelsLocked;
     if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN;
@@ -454,7 +455,7 @@ describe('workspace provider API', () => {
     } finally {
       recover.mockRestore();
       await contexts.disposeAll();
-      rmSync(lazyRoot, { recursive: true, force: true });
+      rmSync(lazyRoot, TEST_DIR_RM_OPTIONS);
     }
   });
 

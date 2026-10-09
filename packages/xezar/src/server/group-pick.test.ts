@@ -9,6 +9,7 @@ import { RunStore, type RunRecord } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { createApp } from './server.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * Group-pick winner-park under the optional review gate (#489). The
@@ -50,7 +51,7 @@ describe('POST /api/v1/groups/:groupId/pick — review gate', () => {
 
   afterEach(() => {
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
     if (savedGate === undefined) delete process.env.XEZ_REVIEW_GATE;
     else process.env.XEZ_REVIEW_GATE = savedGate;
   });

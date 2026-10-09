@@ -12,6 +12,7 @@ import {
   withWorkspaceConfigLock,
   workspaceConfigLockPath,
 } from './config-lock.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * The bounded cross-process merge lock (#467, AC-04).
@@ -64,7 +65,7 @@ describe('workspace config lock', () => {
   afterEach(() => {
     if (originalHome === undefined) delete process.env.XEZ_HOME;
     else process.env.XEZ_HOME = originalHome;
-    rmSync(home, { recursive: true, force: true });
+    rmSync(home, TEST_DIR_RM_OPTIONS);
   });
 
   it('named break `lost-registry-row`: two processes registering at once keep both rows', async () => {

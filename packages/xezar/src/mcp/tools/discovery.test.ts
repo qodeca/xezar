@@ -21,6 +21,7 @@ import { providerInstallHint } from '../../core/provider-auth.ts';
 import { PROVIDER_INSTALL } from '../../core/provider-install.ts';
 import { BIND_HOST_OPTION } from '../../server/capabilities.ts';
 import { bindHostFromArgv, buildDiscovery, cockpitLinks, discoverProjectTool, discoveryText, type DiscoveryFacts } from './discovery.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../../test/helpers/platform.ts';
 
 // The bound project and one OTHER registered project whose name and id must never surface (N-01).
 const BOUND = { id: 'alpha-app', name: 'alpha-app', root: '/work/alpha-app' };
@@ -388,7 +389,7 @@ describe('discover_project — the tool', () => {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
     }
-    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+    for (const dir of dirs.splice(0)) rmSync(dir, TEST_DIR_RM_OPTIONS);
   });
 
   it('takes no arguments: a projectId parameter is refused rather than honoured', () => {
@@ -627,7 +628,7 @@ describe('discover_project — the cockpit address (#819 item 8)', () => {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
     }
-    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+    for (const dir of dirs.splice(0)) rmSync(dir, TEST_DIR_RM_OPTIONS);
   });
   async function discover(): Promise<{ discovery: McpDiscovery; text: string }> {
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'xez-discovery-cockpit-')));

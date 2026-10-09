@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { __internals as piExtension } from '../scripts/pi-leader-extension.ts';
 import { SCAN_UNRESOLVED_ONLY_NAMES, STATE_NAME_ENTRIES } from './local-xezar-top-level-names.ts';
 import { stripComments } from './release/instruction-hygiene.testkit.ts';
+import { TEST_DIR_RM_OPTIONS } from '../test/helpers/platform.ts';
 
 // Every export stays the real one; only `renameSync` becomes observable, so the C1 control below
 // can see the staging name the pi extension renames from.
@@ -505,7 +506,7 @@ describe('.local/xezar/ gets no new top-level entry unnoticed (#838 item C3)', (
 
 describe('the pi extension stages pi-leader.json in the documented shape (#838 item C1)', () => {
   let dir: string | undefined;
-  afterEach(() => { if (dir) rmSync(dir, { recursive: true, force: true }); dir = undefined; });
+  afterEach(() => { if (dir) rmSync(dir, TEST_DIR_RM_OPTIONS); dir = undefined; });
 
   it('renames from `pi-leader.json.<pid>.<8 hex>.tmp`', () => {
     dir = mkdtempSync(join(tmpdir(), 'xez-c1-'));

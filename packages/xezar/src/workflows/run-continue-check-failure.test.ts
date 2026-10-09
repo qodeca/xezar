@@ -11,6 +11,7 @@ import type { McpTool, McpToolContext } from '../mcp/tool.ts';
 import { withEventOrigin } from '../mcp/event-catalog.ts';
 import { RunManager, AUTO_RESUME_GRACE_MS } from './run.ts';
 import { checkFailureWorkflow, order, providerClock, repair, scriptedRunner, terminal } from './engine-incidents.testkit.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 // #520 regression: Continue must not settle success before the remaining checks finish.
 describe('G8 Continue preserves the failed check and workflow tail', () => {
@@ -66,7 +67,7 @@ describe('G8 Continue preserves the failed check and workflow tail', () => {
           ? ['readiness', 'repair', 'readiness'] : ['readiness', 'repair', 'readiness', 'gates', 'evidence', 'handoff']);
         expect(premature).toEqual([]);
         expect(store.getRun(record.id)?.status).toBe(mode === 'failed retry' ? 'failed' : 'done');
-      } finally { await manager.quiesce(); store.flush(); runner.restore(); clock.restore(); rmSync(root, { recursive: true, force: true }); }
+      } finally { await manager.quiesce(); store.flush(); runner.restore(); clock.restore(); rmSync(root, TEST_DIR_RM_OPTIONS); }
     },
   );
 });

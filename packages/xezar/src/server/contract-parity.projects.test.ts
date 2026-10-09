@@ -18,6 +18,7 @@ import type { AppType } from './app-type.ts';
 import { InstanceLiveness } from './instance-liveness.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { createApp } from './server.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * `packages/contract/src/projects.ts` describes EXACTLY what `GET /api/v1/projects` sends, for
@@ -71,7 +72,7 @@ describe('the projects contract matches the route exactly (#467, PR 3)', () => {
 
   afterEach(() => {
     store.flush();
-    for (const dir of [home, bootRoot, otherRoot]) rmSync(dir, { recursive: true, force: true });
+    for (const dir of [home, bootRoot, otherRoot]) rmSync(dir, TEST_DIR_RM_OPTIONS);
     if (savedHome === undefined) delete process.env.XEZ_HOME;
     else process.env.XEZ_HOME = savedHome;
     if (savedRemote === undefined) delete process.env.XEZ_REMOTE;

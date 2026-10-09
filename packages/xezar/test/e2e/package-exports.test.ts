@@ -6,6 +6,7 @@ import { dirname, join, resolve } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { TEST_DIR_RM_OPTIONS } from '../helpers/platform.ts';
 
 const execFile = promisify(execFileCallback);
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -74,7 +75,7 @@ test('every exported subpath resolves for an outside consumer', async () => {
       });
     }
   } finally {
-    await rm(root, { recursive: true, force: true });
+    await rm(root, TEST_DIR_RM_OPTIONS);
   }
 });
 
@@ -99,7 +100,7 @@ test('the bare package specifier lands on the CLI entry point', async () => {
       `'${manifest.name}' resolves to ${resolved.stdout.trim()}, not the CLI entry point`,
     );
   } finally {
-    await rm(root, { recursive: true, force: true });
+    await rm(root, TEST_DIR_RM_OPTIONS);
   }
 });
 

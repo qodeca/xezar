@@ -9,6 +9,7 @@ import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { createApp, WorkspaceEventBus } from './server.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 describe('GitHub automation API', () => {
   let root: string;
@@ -28,8 +29,8 @@ describe('GitHub automation API', () => {
   });
   afterEach(() => {
     store.flush();
-    rmSync(root, { recursive: true, force: true });
-    rmSync(home, { recursive: true, force: true });
+    rmSync(root, TEST_DIR_RM_OPTIONS);
+    rmSync(home, TEST_DIR_RM_OPTIONS);
     delete process.env.XEZ_HOME;
     if (savedAutomations === undefined) delete process.env.XEZ_AUTOMATIONS;
     else process.env.XEZ_AUTOMATIONS = savedAutomations;

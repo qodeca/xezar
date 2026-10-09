@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, expect, it } from 'vitest';
-import { FILE_SYMLINKS, linkDir } from '../../test/helpers/platform.ts';
+import { FILE_SYMLINKS, linkDir, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 import { checkedConfigPath, readConfigBytes } from './path-access.ts';
 
 let fixture: string;
@@ -12,7 +12,7 @@ beforeEach(() => {
   root = join(fixture, 'home');
   mkdirSync(root);
 });
-afterEach(() => rmSync(fixture, { recursive: true, force: true }));
+afterEach(() => rmSync(fixture, TEST_DIR_RM_OPTIONS));
 
 // win32-skip(#963): creating a file symlink needs Developer Mode or elevation (EPERM)
 it.skipIf(!FILE_SYMLINKS).each(['missing', 'self', 'existing'])('refuses a %s leaf symlink with a typed reason', async (kind) => {

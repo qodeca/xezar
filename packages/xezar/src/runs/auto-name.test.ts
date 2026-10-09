@@ -8,6 +8,7 @@ import {
   postValidateTitle,
   TITLE_MAX,
 } from './auto-name.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /** The namer's pure half (spec 2026-07-17-task-auto-naming): prompt, cross-check, post-validation. */
 
@@ -132,7 +133,7 @@ describe('generateRunName (dry run)', () => {
         const result = await generateRunName(root, { task: '437', skillName: 'xez-auto-review-pr' });
         expect(result).toEqual({ titleSummary: '437: implementing cr fixes', prNumber: 437 });
       } finally {
-        rmSync(root, { recursive: true, force: true });
+        rmSync(root, TEST_DIR_RM_OPTIONS);
       }
     } finally {
       if (saved === undefined) delete process.env.XEZ_DRY_RUN;
@@ -163,7 +164,7 @@ describe('generateRunName on an unavailable committed account (#612 m2)', () => 
       expect(await generateRunName(root, { task: '437', skillName: 'xez-auto-review-pr' })).toBeNull();
     } finally {
       setActiveStateLayout(null);
-      rmSync(root, { recursive: true, force: true });
+      rmSync(root, TEST_DIR_RM_OPTIONS);
       if (saved === undefined) delete process.env.XEZ_DRY_RUN;
       else process.env.XEZ_DRY_RUN = saved;
     }

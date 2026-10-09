@@ -10,7 +10,7 @@ import {
   piLeaderPath,
   readPiLeaderDescriptor,
 } from './pi-link.ts';
-import { shortTmpRoot, onWindows } from '../../../test/helpers/platform.ts';
+import { shortTmpRoot, onWindows, TEST_DIR_RM_OPTIONS } from '../../../test/helpers/platform.ts';
 
 /**
  * The producer that was missing. These cases drive a REAL Unix socket with a real server on the
@@ -34,7 +34,7 @@ const tmp = (): string => {
 afterEach(async () => {
   for (const link of links.splice(0)) link.close();
   for (const server of servers.splice(0)) await new Promise<void>((r) => server.close(() => r()));
-  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  for (const dir of dirs.splice(0)) rmSync(dir, TEST_DIR_RM_OPTIONS);
 });
 
 /** A stand-in leader extension: one connection, JSONL in, JSONL out, scripted answers. */

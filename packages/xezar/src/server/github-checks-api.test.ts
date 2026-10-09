@@ -8,6 +8,7 @@ import type { RunManager } from '../workflows/run.ts';
 import type { GithubChecksData } from './github.ts';
 import { createApp } from './server.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * `GET /api/v1/github/checks?prs=…` (#664). The contract under test: the `prs` list is zod-free but
@@ -39,7 +40,7 @@ describe('the github checks API', () => {
 
   afterEach(() => {
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
   });
 
   it('returns a number → glyph map for the requested PRs (dry-run mock)', async () => {

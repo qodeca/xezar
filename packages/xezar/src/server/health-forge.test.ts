@@ -8,6 +8,7 @@ import { resolveStateLayout, setActiveStateLayout } from '../state-layout.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { createApp, type ServerDeps } from './server.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * Deployment modes + forge seam (cockpit-ui redesign spec): `/api/v1/health`
@@ -67,7 +68,7 @@ describe('GET /api/v1/health — forge + capabilities', () => {
 
   afterEach(() => {
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
     if (savedRemote === undefined) delete process.env.XEZ_REMOTE;
     else process.env.XEZ_REMOTE = savedRemote;
     if (savedFollowups === undefined) delete process.env.XEZ_FOLLOWUPS;
@@ -304,7 +305,7 @@ describe('POST /api/v1/runs/:id/open-in-cli — hosted-mode defense in depth', (
 
   afterEach(() => {
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
     if (savedRemote === undefined) delete process.env.XEZ_REMOTE;
     else process.env.XEZ_REMOTE = savedRemote;
   });

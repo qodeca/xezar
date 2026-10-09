@@ -1,8 +1,8 @@
 import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { linkDir } from '../../test/helpers/platform.ts';
+import { linkDir, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 import {
   decideOpencodePermission,
   MAX_PERMISSION_DENIALS,
@@ -26,7 +26,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  rmSync(base, { recursive: true, force: true });
+  rmSync(base, TEST_DIR_RM_OPTIONS);
 });
 
 const reply = (permission: string, patterns: string[]): string =>
@@ -58,6 +58,14 @@ describe('external_directory asks', () => {
     expect(reply('external_directory', ['~/secrets'])).toBe('reject');
     expect(reply('external_directory', [`${work}/../wt-evil/*`])).toBe('reject');
     expect(reply('external_directory', [])).toBe('reject');
+  });
+
+  it('rejects a `..` step written with the host separator (#963)', () => {
+    // `wt/out` is a link to `wt-evil/deep`, so `wt/out/../x` reads as `wt/x` but opens `wt-evil/x`.
+    // On POSIX `sep` is `/`; on Windows this is the `\` spelling a plain `/` split missed.
+    mkdirSync(join(base, 'wt-evil', 'deep'));
+    linkDir(join(base, 'wt-evil', 'deep'), join(work, 'out'));
+    expect(reply('external_directory', [[work, 'out', '..', 'x'].join(sep)])).toBe('reject');
   });
 
   it('compares symlink-resolved paths on both sides (m2)', () => {

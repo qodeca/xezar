@@ -26,6 +26,7 @@ import { apiRequest } from './loopback-request.testkit.js';
 import type { Hono } from 'hono';
 import type { RunManager } from '../workflows/run.js';
 import type { HttpFailure } from '../terminal/http-diagnostics.js';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 describe('the HTTP diagnostic hook', () => {
   let repoRoot: string;
@@ -40,7 +41,7 @@ describe('the HTTP diagnostic hook', () => {
 
   afterEach(() => {
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
   });
 
   function build(over: Record<string, unknown> = {}): Hono {

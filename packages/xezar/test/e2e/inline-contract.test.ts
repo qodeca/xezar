@@ -8,6 +8,7 @@ import { dirname, join, relative, resolve } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { TEST_DIR_RM_OPTIONS } from '../helpers/platform.ts';
 
 const execFile = promisify(execFileCallback);
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -119,6 +120,6 @@ test('a repointed declaration type-checks with skipLibCheck OFF', async () => {
       `a repointed declaration names a module TypeScript cannot resolve:\n${unresolved.join('\n')}`,
     );
   } finally {
-    await rm(scratch, { recursive: true, force: true });
+    await rm(scratch, TEST_DIR_RM_OPTIONS);
   }
 });

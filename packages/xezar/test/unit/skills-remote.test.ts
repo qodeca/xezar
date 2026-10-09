@@ -14,7 +14,7 @@ import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test, { type TestContext } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { onWindows } from '../helpers/platform.ts';
+import { onWindows, TEST_DIR_RM_OPTIONS } from '../helpers/platform.ts';
 import {
   bareDirFor,
   ensureBareClone,
@@ -153,8 +153,8 @@ test('listRemoteSkills clones a local repo, pins the SHA, and refuses a bad ref'
     else process.env.HOME = prevHome;
     if (prevUserProfile === undefined) delete process.env.USERPROFILE;
     else process.env.USERPROFILE = prevUserProfile;
-    rmSync(home, { recursive: true, force: true });
-    rmSync(srcDir, { recursive: true, force: true });
+    rmSync(home, TEST_DIR_RM_OPTIONS);
+    rmSync(srcDir, TEST_DIR_RM_OPTIONS);
   });
 
   const g = (args: string[]) =>
@@ -216,7 +216,7 @@ test('team-skills cache is keyed by repoRoot — projects never see each other\'
     else process.env.HOME = prevHome;
     if (prevUserProfile === undefined) delete process.env.USERPROFILE;
     else process.env.USERPROFILE = prevUserProfile;
-    for (const d of dirs) rmSync(d, { recursive: true, force: true });
+    for (const d of dirs) rmSync(d, TEST_DIR_RM_OPTIONS);
   });
 
   /** One local skills repo carrying a single directory skill named `name`. */
@@ -344,7 +344,7 @@ function sandbox(t: TestContext): Sandbox {
         // already gone
       }
     }
-    for (const made of dirs) rmSync(made, { recursive: true, force: true });
+    for (const made of dirs) rmSync(made, TEST_DIR_RM_OPTIONS);
   });
 
   return {
@@ -632,7 +632,7 @@ test('a corrupt or truncated cache degrades to empty, and a missing one re-clone
   assert.deepEqual((await refreshTeamSkills(root)).skills, []);
 
   // A cache that is simply gone degrades to a re-fetch: the skills come back.
-  rmSync(bare, { recursive: true, force: true });
+  rmSync(bare, TEST_DIR_RM_OPTIONS);
   assert.deepEqual((await refreshTeamSkills(root)).skills.map((s) => s.name), ['fragile-skill']);
 });
 

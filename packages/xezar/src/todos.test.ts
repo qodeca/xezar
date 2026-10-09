@@ -8,6 +8,7 @@ import {
   todosWatchActive,
   type TodosWatcher,
 } from './todos.ts';
+import { TEST_DIR_RM_OPTIONS } from '../test/helpers/platform.ts';
 
 /**
  * Per-dataDir todos watch (multi-project spec, step 2.3): each project's
@@ -75,7 +76,7 @@ describe('per-dataDir todos watch (step 2.3)', () => {
     // Drop the pin rather than leave the whole worker pointed at a directory about to be
     // removed — `vitest.setup.ts` re-pins its own sandbox home in its `afterEach`.
     delete process.env.XEZ_HOME;
-    rmSync(root, { recursive: true, force: true });
+    rmSync(root, TEST_DIR_RM_OPTIONS);
   });
 
   const subscribe = (dataDir: string, cb: () => void) => {

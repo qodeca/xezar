@@ -7,7 +7,7 @@ import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useEmptyPath } from '../../test/helpers/empty-path.ts';
-import { withPlatform } from '../../test/helpers/platform.ts';
+import { withPlatform, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 import type { AgentEvent, AgentRunResult } from './agent-runner.js';
 import type { UiEvent } from './ui-events.js';
@@ -108,7 +108,7 @@ describe('a dry-run pi session emits normalized AgentEvents', () => {
   afterEach(() => {
     if (saved === undefined) delete process.env.XEZ_DRY_RUN;
     else process.env.XEZ_DRY_RUN = saved;
-    rmSync(cwd, { recursive: true, force: true });
+    rmSync(cwd, TEST_DIR_RM_OPTIONS);
   });
 
   it('streams text, a tool call/result and a terminal done over the mock', async () => {
@@ -1053,7 +1053,7 @@ describe('the pi capability-probe facade (#648)', () => {
   afterEach(() => {
     spawnHook.override = null;
     spawnHook.onSpawn = null;
-    rmSync(cwd, { recursive: true, force: true });
+    rmSync(cwd, TEST_DIR_RM_OPTIONS);
   });
 
   /** Let the awaited probe answer run the facade's next steps — a spawn, if it still makes one. */

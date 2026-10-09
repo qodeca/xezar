@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { auditActionRecordSchema, auditCliCommandSchema, type AuditActionRecord } from '@qodeca/xezar-contract';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { onWindows, withPlatform } from '../test/helpers/platform.ts';
+import { onWindows, withPlatform, TEST_DIR_RM_OPTIONS } from '../test/helpers/platform.ts';
 import { cliAudit, CLI_AUDIT_ACTIONS, invocationScope, PROJECTS_SUBCOMMANDS, type CliCommandId } from './cli-audit.ts';
 import { AUDIT_TRAIL_FILE } from './mcp/audit-trail.ts';
 import { projectDataDir } from './project-data-paths.ts';
@@ -29,7 +29,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  for (const dir of dirs.splice(0)) rmSync(dir, TEST_DIR_RM_OPTIONS);
   if (savedHome === undefined) delete process.env.XEZ_HOME;
   else process.env.XEZ_HOME = savedHome;
 });

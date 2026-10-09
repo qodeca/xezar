@@ -35,7 +35,7 @@ import type { McpToolContext } from './tool.ts';
 import { QUALITY_BLOCKER_NEXT_ACTION, handoffGitTool } from './tools/handoff-git.ts';
 import { tools } from './tools/index.ts';
 import { withOperationId } from './tools/operation-id.testkit.ts';
-import { onWindows } from '../../test/helpers/platform.ts';
+import { onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * #117 — the correctness and durability suite, whole-feature half: A-13, A-14, A-15, A-16, A-21 and
@@ -104,7 +104,7 @@ afterEach(async () => {
       // A part the case already closed on purpose (a service restart).
     }
   }
-  for (const dir of composedDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  for (const dir of composedDirs.splice(0)) rmSync(dir, TEST_DIR_RM_OPTIONS);
   for (const [key, value] of [['XEZ_HOME', savedEnv.home], ['XEZ_DRY_RUN', savedEnv.dryRun]] as const) {
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;

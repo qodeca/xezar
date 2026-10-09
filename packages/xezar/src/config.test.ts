@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DEFAULT_SKILLS_REPOS, gatedSkillsRepos, loadConfig, resolveWorktreeRetention } from './config.ts';
+import { TEST_DIR_RM_OPTIONS } from '../test/helpers/platform.ts';
 
 /**
  * `config.json` schema roundtrips (R2 2.3: `systemPrompt?`). The invariants
@@ -19,7 +20,7 @@ describe('loadConfig systemPrompt', () => {
   });
 
   afterEach(() => {
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
   });
 
   const write = (value: unknown) => {
@@ -176,8 +177,8 @@ describe('resolveWorktreeRetention', () => {
   afterEach(() => {
     if (savedHome === undefined) delete process.env.XEZ_HOME;
     else process.env.XEZ_HOME = savedHome;
-    rmSync(repoRoot, { recursive: true, force: true });
-    rmSync(xezHome, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
+    rmSync(xezHome, TEST_DIR_RM_OPTIONS);
   });
 
   const writeRepo = (value: unknown) => {
@@ -193,7 +194,7 @@ describe('resolveWorktreeRetention', () => {
   });
 
   it('inherits it when the repo has no config file at all', async () => {
-    rmSync(join(repoRoot, '.local/xezar'), { recursive: true, force: true });
+    rmSync(join(repoRoot, '.local/xezar'), TEST_DIR_RM_OPTIONS);
     writeWorkspace({ resources: { worktreeRetentionDefault: 7 } });
     expect(await resolveWorktreeRetention(repoRoot)).toBe(7);
   });
@@ -266,7 +267,7 @@ describe('gatedSkillsRepos', () => {
   });
 
   afterEach(() => {
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
   });
 
   const write = (value: unknown) => {
@@ -326,7 +327,7 @@ describe('loadConfig machine-wide agent defaults', () => {
   afterEach(() => {
     if (savedHome === undefined) delete process.env.XEZ_HOME;
     else process.env.XEZ_HOME = savedHome;
-    for (const dir of [repoRoot, xezHome]) rmSync(dir, { recursive: true, force: true });
+    for (const dir of [repoRoot, xezHome]) rmSync(dir, TEST_DIR_RM_OPTIONS);
   });
 
   const writeRepo = (value: unknown) => {

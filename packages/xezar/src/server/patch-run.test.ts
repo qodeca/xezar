@@ -7,6 +7,7 @@ import { RunStore, type RunRecord } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { createApp } from './server.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * `PATCH /api/v1/runs/:id` (#389) through the real Hono app. The route touches
@@ -33,7 +34,7 @@ describe('PATCH /api/v1/runs/:id', () => {
 
   afterEach(() => {
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
   });
 
   const patch = (id: string, body: unknown) =>

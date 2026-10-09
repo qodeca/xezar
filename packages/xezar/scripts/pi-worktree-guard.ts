@@ -70,7 +70,7 @@
 
 import { existsSync, lstatSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, isAbsolute, join, parse, relative, resolve, sep } from 'node:path';
+import { delimiter, dirname, isAbsolute, join, parse, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // This extension ships as TypeScript under `scripts/`, while package source does not ship. In a
@@ -209,17 +209,21 @@ const SEPARATOR = '\0';
 interface ShellWord {
   text: string;
   quoted: boolean;
+  /** The word with every backslash kept, only when that differs from `text` (see `spellings`). */
+  raw?: string;
 }
 
 /** Split a command into words; shell operators become SEPARATOR. Quotes are honoured. */
 function shellWords(command: string): ShellWord[] {
   const words: ShellWord[] = [];
   let word: string | undefined;
+  let raw = '';
   let quoted = false;
   let quote: '"' | "'" | undefined;
   const end = () => {
-    if (word !== undefined) words.push({ text: word, quoted });
+    if (word !== undefined) words.push(raw === word ? { text: word, quoted } : { text: word, quoted, raw });
     word = undefined;
+    raw = '';
     quoted = false;
   };
   const separator = () => {
@@ -230,13 +234,19 @@ function shellWords(command: string): ShellWord[] {
     const char = command[i] as string;
     if (quote) {
       if (char === quote) quote = undefined;
-      else if (char === '\\' && quote === '"' && i + 1 < command.length) word = (word ?? '') + command[++i];
-      else word = (word ?? '') + char;
+      else if (char === '\\' && quote === '"' && i + 1 < command.length) {
+        raw += char + command[i + 1];
+        word = (word ?? '') + command[++i];
+      } else {
+        word = (word ?? '') + char;
+        raw += char;
+      }
     } else if (char === '"' || char === "'") {
       quote = char;
       word ??= '';
       quoted = true;
     } else if (char === '\\' && i + 1 < command.length) {
+      raw += char + command[i + 1];
       word = (word ?? '') + command[++i];
     } else if (/\s/.test(char)) {
       end();
@@ -245,15 +255,33 @@ function shellWords(command: string): ShellWord[] {
       // Keep the backtick on the word it ends, so `cd \`…\`` has an operand that reads as a
       // substitution (like `$(`), not an absent one.
       word = (word ?? '') + char;
+      raw += char;
       separator();
     } else if (';&|()<>'.includes(char)) {
       separator();
     } else {
       word = (word ?? '') + char;
+      raw += char;
     }
   }
   end();
   return words;
+}
+
+/** A native Windows path spelling: a drive root, or a backslash between two path characters. */
+const WINDOWS_PATH_SPELLING = /^[A-Za-z]:[\\/]|[\w.~-]\\[\w.-]/;
+
+/**
+ * The spellings a word is checked under, the one a directory change follows first. On Windows
+ * (#963) an agent writes native paths – `C:\x`, `..\x`, `~/Projects\x` – that bash unescapes into
+ * something else, and Git Bash maps `/c/x` to `C:\x`, so the backslash-kept and the mapped
+ * spellings are checked too: a refusal under ANY of them refuses. A backslash that is not between
+ * path characters (`\*.ts`, `a\|b`) stays an escape. Elsewhere it is the word itself.
+ */
+function spellings(word: ShellWord): string[] {
+  if (process.platform !== 'win32') return [word.text];
+  const native = word.raw !== undefined && WINDOWS_PATH_SPELLING.test(word.raw) ? word.raw : windowsShellPath(word.text);
+  return native === word.text ? [native] : [native, word.text];
 }
 
 /** Expand `~`, `$NAME` and `${NAME}` from this process's environment; anything else dynamic is unknown. */
@@ -337,7 +365,9 @@ function cdpathRedirects(literal: string, cwd: Place | undefined): boolean {
   const cdpath = process.env.CDPATH;
   if (!cdpath || isAbsolute(literal) || /^\.\.?(?:[\\/]|$)/.test(literal)) return false;
   const local = cwd ? realPotential(resolve(cwd.path, literal)) : undefined;
-  return cdpath.split(':').some((entry) => {
+  // Windows lists are `;`-separated, but Git Bash may pass a `:` list: try both (#963).
+  const entries = delimiter === ':' ? cdpath.split(':') : [...cdpath.split(delimiter), ...cdpath.split(':')];
+  return entries.some((entry) => {
     const base = isAbsolute(entry) ? entry : cwd ? resolve(cwd.path, entry) : undefined;
     if (base === undefined) return true;
     const candidate = resolve(base, literal);
@@ -360,6 +390,12 @@ function directoryTarget(operand: string, state: ShellState, roots: Roots, searc
   // primary checkout; one that stays in it and follows a symlink elsewhere is not a primary write.
   if (!absolute && inside(roots.worktree, (state.cwd as Place).path) && !lexicallyInWorktree) return undefined;
   return place;
+}
+
+/** `directoryTarget` under every spelling of the word: `undefined` when any of them is refused. */
+function wordTarget(word: ShellWord, state: ShellState, roots: Roots, searchesCdpath: boolean): Place | undefined {
+  const targets = spellings(word).map((spelling) => directoryTarget(spelling, state, roots, searchesCdpath));
+  return targets.includes(undefined) ? undefined : targets[0];
 }
 
 /** A path spelled only with `.` and `..` segments names a directory, never a file. */
@@ -445,7 +481,9 @@ function wordsEscape(words: ShellWord[], roots: Roots): boolean {
     // `echo '..'`). Every directory change (`cd '..'`, `git -C '..'`) and every UNQUOTED `..`
     // argument (`rm -rf ..`) refuses for its own reason, before and after this.
     if (word.quoted && PARENT_ONLY.test(word.text) && !TEXT_EMITTER.test(commandWord.text)) return true;
-    if (mentionParts(word.text).some((part) => mentionEscapes(part, state, roots, word.quoted))) return true;
+    if (spellings(word).some((spelling) => mentionParts(spelling).some((part) => mentionEscapes(part, state, roots, word.quoted)))) {
+      return true;
+    }
 
     if (word.text === 'cd' || word.text === 'pushd') {
       let j = i + 1;
@@ -462,7 +500,7 @@ function wordsEscape(words: ShellWord[], roots: Roots): boolean {
       } else if (word.text === 'pushd' && /^[+-]\d+$/.test(operand.text)) {
         target = undefined; // a stack rotation: one of the verified entries, but not known which
       } else {
-        target = directoryTarget(operand.text, state, roots, true);
+        target = wordTarget(operand, state, roots, true);
         if (target === undefined) return true;
       }
       if (word.text === 'pushd') state.stack.push(state.cwd);
@@ -478,12 +516,14 @@ function wordsEscape(words: ShellWord[], roots: Roots): boolean {
       state.cwd = /^[+-]\d+$/.test(operandAt(i + 1)?.text ?? '') ? undefined : state.stack.pop();
       continue;
     }
-    const inline = /^(?:--git-dir|--work-tree|--chdir|GIT_DIR|GIT_WORK_TREE)=(.*)$/.exec(word.text);
-    if (inline && !directoryTarget(inline[1] as string, state, roots, false)) return true;
+    for (const spelling of spellings(word)) {
+      const inline = /^(?:--git-dir|--work-tree|--chdir|GIT_DIR|GIT_WORK_TREE)=(.*)$/.exec(spelling);
+      if (inline && !directoryTarget(inline[1] as string, state, roots, false)) return true;
+    }
     if (word.text === '-C' || word.text === '--git-dir' || word.text === '--work-tree' || word.text === '--chdir') {
       const operand = operandAt(i + 1);
-      if (operand !== undefined && !directoryTarget(operand.text, state, roots, false)) return true;
-    } else if (/^-C./.test(word.text) && !directoryTarget(word.text.slice(2), state, roots, false)) {
+      if (operand !== undefined && !wordTarget(operand, state, roots, false)) return true;
+    } else if (spellings(word).some((spelling) => /^-C./.test(spelling) && !directoryTarget(spelling.slice(2), state, roots, false))) {
       return true; // `env -Cdir`
     }
   }
@@ -567,6 +607,8 @@ function scriptEscapes(words: ShellWord[], roots: Roots, depth: number): boolean
       if (!candidate.quoted) continue;
       read = true;
       if (bashEscapes(candidate.text, roots, depth + 1)) return true;
+      // The script as written, backslashes kept: on Windows a native path inside it (#963).
+      if (process.platform === 'win32' && candidate.raw !== undefined && bashEscapes(candidate.raw, roots, depth + 1)) return true;
     }
     if (!read) return true;
   }

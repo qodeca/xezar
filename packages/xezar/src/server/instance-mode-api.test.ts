@@ -15,6 +15,7 @@ import {
   type ProjectContextSource,
 } from './project-context.ts';
 import { createApp, type ServerDeps } from './server.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * `--instance project` in the server (#467, PR 2, spec § 5).
@@ -54,7 +55,7 @@ describe('instance mode: the server serves one project (#467, PR 2)', () => {
   afterEach(async () => {
     for (const contexts of builtContexts.splice(0)) await contexts.disposeAll();
     store.flush();
-    for (const dir of [home, bootRoot, otherRoot]) rmSync(dir, { recursive: true, force: true });
+    for (const dir of [home, bootRoot, otherRoot]) rmSync(dir, TEST_DIR_RM_OPTIONS);
     if (savedHome === undefined) delete process.env.XEZ_HOME;
     else process.env.XEZ_HOME = savedHome;
     if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN;
@@ -130,7 +131,7 @@ describe('instance mode: the server serves one project (#467, PR 2)', () => {
 
         expect(res.status).toBe(200);
       } finally {
-        rmSync(added, { recursive: true, force: true });
+        rmSync(added, TEST_DIR_RM_OPTIONS);
       }
     });
 

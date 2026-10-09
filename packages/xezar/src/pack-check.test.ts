@@ -20,6 +20,7 @@ import {
   kitNames,
   releaseArchiveRules,
 } from './release/instruction-hygiene.testkit.ts';
+import { TEST_DIR_RM_OPTIONS } from '../test/helpers/platform.ts';
 
 // The decision behind `npm run check:pack` (scripts/check-pack.mjs): would the
 // npm tarball ship a working cockpit? Pins the R1 "npm pack shipped no UI" bug.
@@ -249,7 +250,7 @@ describe('release content check', () => {
       writeFileSync(join(root, '.xezar', 'workflows', 'issue-filing.yaml'), 'name: issue-filing\n');
       expect(kitNames(root)).not.toContain('issue-filing');
     } finally {
-      rmSync(root, { recursive: true, force: true });
+      rmSync(root, TEST_DIR_RM_OPTIONS);
     }
   });
 });

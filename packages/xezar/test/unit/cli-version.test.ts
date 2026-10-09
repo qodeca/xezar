@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
 import { promisify } from 'node:util';
+import { TEST_DIR_RM_OPTIONS } from '../helpers/platform.ts';
 
 const execFile = promisify(execFileCallback);
 const packageRoot = resolve(import.meta.dirname, '../..');
@@ -55,7 +56,7 @@ test('`--version` works outside any git repository and touches no state', { time
       '--version must not create the workspace registry',
     );
   } finally {
-    await rm(outside, { recursive: true, force: true });
+    await rm(outside, TEST_DIR_RM_OPTIONS);
   }
 });
 

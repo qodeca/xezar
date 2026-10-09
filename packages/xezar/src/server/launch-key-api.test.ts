@@ -11,6 +11,7 @@ import { clearProjectProbeCache, listProjects, registerProject } from '../worksp
 import { ProjectContexts } from './project-context.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { createApp } from './server.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * `GET /api/v1/launch-key` — the VALUE the route answers with (gap R14, #53).
@@ -98,7 +99,7 @@ describe('GET /launch-key (value contract, #53)', () => {
   afterEach(async () => {
     await contexts?.disposeAll();
     store?.flush();
-    for (const dir of [home, bootRoot, otherRoot]) rmSync(dir, { recursive: true, force: true });
+    for (const dir of [home, bootRoot, otherRoot]) rmSync(dir, TEST_DIR_RM_OPTIONS);
     if (savedHome === undefined) delete process.env.XEZ_HOME;
     else process.env.XEZ_HOME = savedHome;
     if (savedRemote === undefined) delete process.env.XEZ_REMOTE;

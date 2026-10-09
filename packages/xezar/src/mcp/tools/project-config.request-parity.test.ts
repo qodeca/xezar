@@ -26,6 +26,7 @@ import { closeStoreAndRemove } from '../../runs/store.testkit.ts';
 import { WorkspaceSemaphore } from '../../workspace/semaphore.ts';
 import type { RunManager } from '../../workflows/run.ts';
 import { ACTION_FIELDS, PROJECT_CONFIG_ACTIONS, projectConfigInputSchema } from './project-config.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../../test/helpers/platform.ts';
 
 /**
  * MCP ↔ route REQUEST parity, per key (#677 wave 1, slice A3).
@@ -278,7 +279,7 @@ describe('every MCP write action accepts what its route accepts', () => {
     afterEach(() => {
       if (savedHome === undefined) delete process.env.XEZ_HOME;
       else process.env.XEZ_HOME = savedHome;
-      rmSync(home, { recursive: true, force: true });
+      rmSync(home, TEST_DIR_RM_OPTIONS);
       closeStoreAndRemove(store, repoRoot);
     });
 

@@ -2,7 +2,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, st
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { onWindows } from '../../test/helpers/platform.ts';
+import { onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 import { workspaceConfigPath, workspaceUiStatePath } from '../paths.ts';
 import { DEFAULT_MEMORY_LIMIT_MB, defaultWorkspaceConfig, loadWorkspaceConfig } from './config.ts';
 import { runMigrations, WORKSPACE_MIGRATIONS, type WorkspaceMigration } from './migrations.ts';
@@ -29,8 +29,8 @@ describe('workspace migrations', () => {
     if (originalHome === undefined) delete process.env.XEZ_HOME;
     else process.env.XEZ_HOME = originalHome;
     chmodSync(home, 0o700); // undo the unwritable-home test before cleanup
-    rmSync(home, { recursive: true, force: true });
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(home, TEST_DIR_RM_OPTIONS);
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
     vi.restoreAllMocks();
   });
 

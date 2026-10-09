@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { planChain } from './planner.ts';
 import { projectStateLayout, setActiveStateLayout } from './state-layout.ts';
 import { mergeWriteAgentAccounts } from './workspace/agent-accounts.ts';
+import { TEST_DIR_RM_OPTIONS } from '../test/helpers/platform.ts';
 
 /**
  * #612 review m2: the planner spawns an agent CLI under the project's account, so in
@@ -25,7 +26,7 @@ describe('planChain on an unavailable committed account (#612 m2)', () => {
 
   afterEach(() => {
     setActiveStateLayout(null);
-    rmSync(root, { recursive: true, force: true });
+    rmSync(root, TEST_DIR_RM_OPTIONS);
     if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN;
     else process.env.XEZ_DRY_RUN = savedDryRun;
   });

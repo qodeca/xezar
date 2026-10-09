@@ -8,7 +8,7 @@ import { hashBytes } from '../agent-config/files.ts';
 import { listConfigFiles } from '../agent-config/catalog.ts';
 import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
-import { FILE_SYMLINKS, linkDir } from '../../test/helpers/platform.ts';
+import { FILE_SYMLINKS, linkDir, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { createApp } from './server.ts';
 
@@ -53,7 +53,7 @@ describe('the agent-config API', () => {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
     }
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
     if (prevRemote === undefined) delete process.env.XEZ_REMOTE;
     else process.env.XEZ_REMOTE = prevRemote;
   });
@@ -143,7 +143,7 @@ describe('the agent-config API', () => {
       expect(res.status).toBe(409);
       expect((await put('claude.project.settings', { content: '{}', version: null })).status).toBe(409);
     } finally {
-      rmSync(outside, { recursive: true, force: true });
+      rmSync(outside, TEST_DIR_RM_OPTIONS);
     }
   });
 
@@ -285,7 +285,7 @@ describe('the agent-config API', () => {
       writePiHome();
     });
     afterEach(() => {
-      rmSync(fakeHome, { recursive: true, force: true });
+      rmSync(fakeHome, TEST_DIR_RM_OPTIONS);
       for (const key of PINS) {
         const value = saved.get(key);
         if (value === undefined) delete process.env[key];

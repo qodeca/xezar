@@ -8,6 +8,20 @@
 import { createInterface } from 'node:readline';
 import { appendFileSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 
+/** Windows refuses a rename for a moment while another process holds the file (#963): retry for
+ *  about a second there. Linux and macOS: one rename, as before. */
+function renameRetrying(from, to) {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      renameSync(from, to);
+      return;
+    } catch (error) {
+      if (process.platform !== 'win32' || attempt >= 20 || !['EPERM', 'EBUSY', 'EACCES'].includes(error?.code)) throw error;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
+    }
+  }
+}
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const emit = (obj) => process.stdout.write(`${JSON.stringify(obj)}\n`);
 
@@ -101,7 +115,7 @@ function writeVerdictPacket(userText) {
     };
     const target = `${handoff}.verdict.json`;
     writeFileSync(`${target}.tmp`, JSON.stringify(packet), 'utf8');
-    renameSync(`${target}.tmp`, target);
+    renameRetrying(`${target}.tmp`, target);
   } catch {
     // best effort — the mock still answers without a packet
   }

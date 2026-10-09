@@ -20,6 +20,7 @@ import { taskReadsTool } from './tools/task-reads.ts';
 import { DELIVERY_CLIENTS, deliveryHarness, deliveryPeerUnavailable } from './leader-delivery.testkit.ts';
 import { organiseWorkTool } from './tools/work-organisation.ts';
 import type { McpTool, McpToolContext } from './tool.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 // Regressions reproduced on 248ea8a; agent processes and transport are recording seams.
 // Real tool -> real HTTP routes -> real RunStore; only agent delivery is a recording seam.
@@ -56,7 +57,7 @@ afterEach(() => {
   catalog.detach();
   journal.close();
   store.flush();
-  rmSync(root, { recursive: true, force: true });
+  rmSync(root, TEST_DIR_RM_OPTIONS);
 });
 
 function running() {

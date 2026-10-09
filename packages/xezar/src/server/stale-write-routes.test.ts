@@ -10,6 +10,7 @@ import type { RunManager } from '../workflows/run.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { connectedProviderAuth } from './provider-auth.testkit.ts';
 import { createApp } from './server.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * #250 — the stale-write check on every route that mutates one run, through the real Hono app and a
@@ -71,7 +72,7 @@ beforeEach(() => {
 
 afterEach(() => {
   store.flush();
-  rmSync(repoRoot, { recursive: true, force: true });
+  rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
   if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN;
   else process.env.XEZ_DRY_RUN = savedDryRun;
 });

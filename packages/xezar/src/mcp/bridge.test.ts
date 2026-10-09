@@ -11,7 +11,7 @@ import { SERVER_CAPABILITIES } from './protocol.ts';
 import { listenMcpSocket, type McpServiceHandle } from './service.ts';
 import { recordOwnListen } from '../server/instance-liveness.ts';
 import { defineTool, textResult, type McpTool } from './tool.ts';
-import { shortTmpRoot, onWindows } from '../../test/helpers/platform.ts';
+import { shortTmpRoot, onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 // A short home under /tmp, never the per-worker sandbox: the sandbox sits under the task's
 // TMPDIR, which is already past the 104-byte socket limit on macOS (D-01 E5, § 9.5).
@@ -29,7 +29,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   for (const h of handles.splice(0)) h.close();
-  rmSync(home, { recursive: true, force: true });
+  rmSync(home, TEST_DIR_RM_OPTIONS);
 });
 
 const echoProject = defineTool({
@@ -608,7 +608,7 @@ describe.skipIf(onWindows)('the leader/push service→bridge frame (#374)', () =
       close: () => {
         peer?.destroy();
         server.close();
-        rmSync(dir, { recursive: true, force: true });
+        rmSync(dir, TEST_DIR_RM_OPTIONS);
       },
     };
   }

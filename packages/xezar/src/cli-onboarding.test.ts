@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { onWindows } from '../test/helpers/platform.ts';
+import { onWindows, TEST_DIR_RM_OPTIONS } from '../test/helpers/platform.ts';
 
 /**
  * The onboarding half of the CLI, exercised through the REAL program (#819 items 1a–1c, 9b).
@@ -96,7 +96,7 @@ describe('CLI onboarding (#819)', () => {
   });
 
   afterEach(() => {
-    rmSync(base, { recursive: true, force: true });
+    rmSync(base, TEST_DIR_RM_OPTIONS);
   });
 
   describe('the launch flags (item 1a)', () => {

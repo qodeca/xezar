@@ -14,7 +14,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { onWindows } from '../../test/helpers/platform.ts';
+import { onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 import { acquireFileLock } from '../core/file-lock.ts';
 import { projectStateLayout, setActiveStateLayout } from '../state-layout.ts';
 import { workspaceConfigLockPath } from './config-lock.ts';
@@ -75,7 +75,7 @@ describe('project machine state (#649)', () => {
     setActiveStateLayout(null);
     if (originalHome === undefined) delete process.env.XEZ_HOME;
     else process.env.XEZ_HOME = originalHome;
-    rmSync(root, { recursive: true, force: true });
+    rmSync(root, TEST_DIR_RM_OPTIONS);
     // The warning latches for the process, so re-arm it between cases; a later
     // warn-asserting case would otherwise pass vacuously.
     machineState.resetProjectMachineStateWriteWarning();

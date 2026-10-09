@@ -16,7 +16,7 @@ import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useEmptyPath } from '../../test/helpers/empty-path.ts';
-import { FILE_SYMLINKS, linkDir, onWindows, withPlatform } from '../../test/helpers/platform.ts';
+import { FILE_SYMLINKS, linkDir, onWindows, withPlatform, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 import { projectStateLayout, setActiveStateLayout } from '../state-layout.ts';
 import type { AgentEvent } from './agent-runner.js';
 import { KILL_GRACE_MS } from './claude-cli-runner.js';
@@ -82,9 +82,12 @@ describe('a teardown xezar initiated (codex app-server)', () => {
     expect(result.text).toBe('Checking the working tree.');
     expect(events.some((e) => e.type === 'error')).toBe(false);
     expect(events.at(-1)).toEqual({ type: 'done' });
-    expect(
-      events.some((e) => e.type === 'note' && e.message.includes('terminated by xezar (code 143)')),
-    ).toBe(true);
+    // win32-skip(#963): Node reports a Windows kill as exit code null, so no exit code reaches the note
+    if (!onWindows) {
+      expect(
+        events.some((e) => e.type === 'note' && e.message.includes('terminated by xezar (code 143)')),
+      ).toBe(true);
+    }
   }, 15_000);
 
   it('surfaces a failed turn as an AgentEvent error', async () => {
@@ -274,7 +277,9 @@ describe('wall-clock timeout for a real Codex child that ignores SIGTERM', () =>
 
         // win32-skip(#963): Windows has no catchable SIGTERM, so there is no SIGKILL escalation to wait for
         if (!onWindows) expect(Date.now() - startedAt).toBeGreaterThanOrEqual(KILL_GRACE_MS - 500);
-        expect(result.text).toBe('Checking the working tree.');
+        // Windows kills at the 100 ms limit, often before the mock wrote its first text (#963).
+        if (onWindows) expect(['', 'Checking the working tree.']).toContain(result.text);
+        else expect(result.text).toBe('Checking the working tree.');
         expect(result.timedOut).toBe(true); // #943: the run manager sweeps after a timeout
         expect(events).toContainEqual({
           type: 'error',
@@ -595,7 +600,7 @@ describe('a read-only step runs Codex confined to its worktree and its own roots
 
   afterEach(() => {
     setActiveStateLayout(null);
-    rmSync(cacheProject, { recursive: true, force: true });
+    rmSync(cacheProject, TEST_DIR_RM_OPTIONS);
   });
 
   async function threadRequest(opts: { allowedTools: string[]; expect: string; resume?: boolean; bashAllowlist?: string[] }) {
@@ -618,9 +623,11 @@ describe('a read-only step runs Codex confined to its worktree and its own roots
       );
       await expect(session.result).resolves.toMatchObject({ sessionId: 'th_mock_1' });
       // `cwd` is the run's own temp dir; swap it for a stable token so the params pin whole.
-      return readFileSync(log, 'utf8').trim().split('\n').map((line) => JSON.parse(line.split(dir).join('<cwd>')) as unknown);
+      // The log is JSON, so a Windows `dir` sits in it with every `\` doubled (#963).
+      const inJson = JSON.stringify(dir).slice(1, -1);
+      return readFileSync(log, 'utf8').trim().split('\n').map((line) => JSON.parse(line.split(inJson).join('<cwd>')) as unknown);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      rmSync(dir, TEST_DIR_RM_OPTIONS);
     }
   }
 
@@ -688,7 +695,7 @@ describe('a read-only step runs Codex confined to its worktree and its own roots
       expect(methods).toContain('config/batchWrite');
       expect(methods).not.toContain('turn/start');
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      rmSync(dir, TEST_DIR_RM_OPTIONS);
     }
   }, 15_000);
 
@@ -716,7 +723,7 @@ describe('a read-only step runs Codex confined to its worktree and its own roots
       expect(methods).toEqual(['initialize', 'initialized']);
       expect(readFileSync(log, 'utf8')).not.toContain('config/batchWrite');
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      rmSync(dir, TEST_DIR_RM_OPTIONS);
     }
   }, 15_000);
 
@@ -754,7 +761,7 @@ describe('a read-only step runs Codex confined to its worktree and its own roots
     } finally {
       if (previous === undefined) delete process.env.CODEX_HOME;
       else process.env.CODEX_HOME = previous;
-      rmSync(dir, { recursive: true, force: true });
+      rmSync(dir, TEST_DIR_RM_OPTIONS);
     }
   }, 15_000);
 
@@ -783,7 +790,7 @@ describe('a read-only step runs Codex confined to its worktree and its own roots
     } finally {
       if (previous === undefined) delete process.env.CODEX_HOME;
       else process.env.CODEX_HOME = previous;
-      rmSync(dir, { recursive: true, force: true });
+      rmSync(dir, TEST_DIR_RM_OPTIONS);
     }
   }, 15_000);
 
@@ -816,7 +823,7 @@ describe('a read-only step runs Codex confined to its worktree and its own roots
       const hook = codexReadOnlyHook({ cwd: dir, userPrompt: '', allowedTools: REVIEW, bashAllowlist: ['git status'] });
       expect(readdirSync(join(dirname(hook!.script), 'locks'))).toEqual([]);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      rmSync(dir, TEST_DIR_RM_OPTIONS);
     }
   }, 15_000);
 
@@ -844,7 +851,7 @@ describe('a read-only step runs Codex confined to its worktree and its own roots
       );
       await expect(session.result).resolves.toMatchObject({ sessionId: 'th_mock_1' });
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      rmSync(dir, TEST_DIR_RM_OPTIONS);
     }
   }, 15_000);
 
@@ -883,14 +890,14 @@ describe('a read-only step runs Codex confined to its worktree and its own roots
       expect(command).toBeTypeOf('string');
       if (!command) throw new Error('installed Bash hook has no command');
       const script = command.match(/^'[^']+' '([^']+)' --xezar-read-only-hook$/)?.[1];
-      expect(script).toMatch(new RegExp(`${cacheProject.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&')}/\\.local/xezar/cache/codex-hook/[a-f0-9]{64}\\.mjs$`));
+      expect(script).toMatch(new RegExp(`${cacheProject.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\\\\/]\\.local[\\\\/]xezar[\\\\/]cache[\\\\/]codex-hook[\\\\/][a-f0-9]{64}\\.mjs$`));
       if (!script) throw new Error('installed Bash hook command has no cache script path');
       expect(statSync(script).mode & 0o777).toBe(0o444);
       const methods = readFileSync(log, 'utf8').trim().split('\n').map((line) => JSON.parse(line).method as string);
       expect(methods.indexOf('hooks/list')).toBeLessThan(methods.indexOf('config/batchWrite'));
       expect(methods.indexOf('config/batchWrite')).toBeLessThan(methods.indexOf('turn/start'));
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      rmSync(dir, TEST_DIR_RM_OPTIONS);
     }
   }, 15_000);
 
@@ -934,7 +941,7 @@ describe('a read-only step runs Codex confined to its worktree and its own roots
       expect(methods.indexOf('hooks/list')).toBeLessThan(methods.indexOf('config/batchWrite'));
       expect(methods.indexOf('config/batchWrite')).toBeLessThan(methods.indexOf('turn/start'));
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      rmSync(dir, TEST_DIR_RM_OPTIONS);
     }
   }, 15_000);
 
@@ -990,7 +997,7 @@ describe('a read-only step runs Codex confined to its worktree and its own roots
         hooks: [{ type: 'command', command: hook.command }],
       }]);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      rmSync(dir, TEST_DIR_RM_OPTIONS);
     }
   }, 15_000);
 
@@ -1027,7 +1034,7 @@ describe('a read-only step runs Codex confined to its worktree and its own roots
       expect(commands).not.toContain(command(missing));
       expect(commands).toHaveLength(2);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      rmSync(dir, TEST_DIR_RM_OPTIONS);
     }
   }, 15_000);
 
@@ -1052,7 +1059,7 @@ describe('a read-only step runs Codex confined to its worktree and its own roots
       await expect(session.result).rejects.toThrow(/hooks-file\.symlink refused/);
       expect(readFileSync(target, 'utf8')).toBe('{"owner":"user"}\n');
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      rmSync(dir, TEST_DIR_RM_OPTIONS);
     }
   }, 15_000);
 

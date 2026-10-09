@@ -9,6 +9,7 @@ import { clearProjectProbeCache, listProjects, registerProject } from '../worksp
 import { ProjectContexts } from './project-context.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { createApp, projectRouteManifest, type ProjectRouteInfo } from './server.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * Alias parity for the mirrored project-route table (spec
@@ -91,7 +92,7 @@ describe('project-route alias parity (unprefixed vs /api/v1/p/<boot> vs /api/v1/
   afterEach(async () => {
     await contexts.disposeAll();
     store.flush();
-    for (const dir of [home, repoRoot, otherRoot]) rmSync(dir, { recursive: true, force: true });
+    for (const dir of [home, repoRoot, otherRoot]) rmSync(dir, TEST_DIR_RM_OPTIONS);
     if (savedHome === undefined) delete process.env.XEZ_HOME;
     else process.env.XEZ_HOME = savedHome;
     if (savedRemote === undefined) delete process.env.XEZ_REMOTE;
@@ -312,7 +313,7 @@ describe('project-route alias parity (unprefixed vs /api/v1/p/<boot> vs /api/v1/
 
   it('a registered project whose folder is gone answers 409 {error}', async () => {
     const other = await registerProject(otherRoot);
-    rmSync(otherRoot, { recursive: true, force: true });
+    rmSync(otherRoot, TEST_DIR_RM_OPTIONS);
     clearProjectProbeCache(); // drop the status-probe TTL so the loss is seen
     const res = await apiRequest(app, `/api/v1/p/${other.id}/runs`);
     expect(res.status).toBe(409);

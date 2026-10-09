@@ -3,7 +3,8 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, ut
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { onWindows } from '../test/helpers/platform.ts';
+import { onWindows, TEST_DIR_RM_OPTIONS } from '../test/helpers/platform.ts';
+import { cmdShimText } from './platform/cmd-shim.testkit.ts';
 import {
   bareDirFor,
   ensureBareClone,
@@ -69,6 +70,7 @@ function commitMore(dir: string, body: string, date: string, tag?: string): void
 
 describe('skillsCatalogVersions', () => {
   const savedPath = process.env.PATH;
+  const savedPathext = process.env.PATHEXT;
   let project: string;
   let origin: string;
 
@@ -89,8 +91,10 @@ describe('skillsCatalogVersions', () => {
     setActiveStateLayout(null);
     if (savedPath === undefined) delete process.env.PATH;
     else process.env.PATH = savedPath;
-    rmSync(project, { recursive: true, force: true });
-    rmSync(origin, { recursive: true, force: true });
+    if (savedPathext === undefined) delete process.env.PATHEXT;
+    else process.env.PATHEXT = savedPathext;
+    rmSync(project, TEST_DIR_RM_OPTIONS);
+    rmSync(origin, TEST_DIR_RM_OPTIONS);
   });
 
   it('reports the served commit, its tag and its date, and reads up to date (AC-01, AC-03, AC-04)', async () => {
@@ -150,7 +154,7 @@ describe('skillsCatalogVersions', () => {
     const bare = bareDirFor(origin);
     mkdirSync(dirname(bare), { recursive: true });
     execFileSync(REAL_GIT, ['clone', '--bare', origin, bare], { stdio: 'ignore', env: GIT_ENV });
-    rmSync(origin, { recursive: true, force: true });
+    rmSync(origin, TEST_DIR_RM_OPTIONS);
     await expect(fetchAll(bare)).rejects.toThrow(/git fetch failed/);
     // Whatever git left behind, the failed attempt is fresh on disk: that is the trap.
     writeFileSync(join(bare, 'FETCH_HEAD'), '', 'utf8');
@@ -234,7 +238,7 @@ describe('skillsCatalogVersions', () => {
     process.env.PATH = empty;
     const versions = await skillsCatalogVersions(project);
     expect(versions).toEqual([{ repo: origin, ref: 'main', state: 'unknown', fetchedAt: null }]);
-    rmSync(empty, { recursive: true, force: true });
+    rmSync(empty, TEST_DIR_RM_OPTIONS);
   });
 
   it('performs no network git — no fetch, no clone, no ls-remote (AC-07)', async () => {
@@ -243,8 +247,28 @@ describe('skillsCatalogVersions', () => {
     // A `git` shim earlier on PATH that records every invocation and then runs the real one.
     const bin = mkdtempSync(join(tmpdir(), 'xez-catalog-bin-'));
     const log = join(bin, 'calls.log');
-    writeFileSync(join(bin, 'git'), `#!/bin/sh\nprintf '%s\\n' "$*" >> ${JSON.stringify(log)}\nexec ${JSON.stringify(REAL_GIT)} "$@"\n`, 'utf8');
-    chmodSync(join(bin, 'git'), 0o755);
+    if (onWindows) {
+      // Windows runs no `#!/bin/sh` file: an npm-style `git.cmd`, which the launch layer turns into
+      // `node git-shim.mjs`, does the same recording (#963).
+      writeFileSync(
+        join(bin, 'git-shim.mjs'),
+        [
+          "import { appendFileSync } from 'node:fs';",
+          "import { spawnSync } from 'node:child_process';",
+          'const args = process.argv.slice(2);',
+          `appendFileSync(${JSON.stringify(log)}, args.join(' ') + '\\n');`,
+          `const r = spawnSync(${JSON.stringify(REAL_GIT)}, args, { stdio: 'inherit' });`,
+          'process.exit(r.status ?? 1);',
+        ].join('\n'),
+        'utf8',
+      );
+      writeFileSync(join(bin, 'git.cmd'), cmdShimText({ target: 'git-shim.mjs', prog: 'node' }), 'utf8');
+      // `vitest.setup.ts` limits the search to `.COM;.EXE`; this case looks up a shim.
+      process.env.PATHEXT = '.COM;.EXE;.BAT;.CMD';
+    } else {
+      writeFileSync(join(bin, 'git'), `#!/bin/sh\nprintf '%s\\n' "$*" >> ${JSON.stringify(log)}\nexec ${JSON.stringify(REAL_GIT)} "$@"\n`, 'utf8');
+      chmodSync(join(bin, 'git'), 0o755);
+    }
     writeFileSync(log, '', 'utf8');
     process.env.PATH = `${bin}${delimiter}${savedPath ?? ''}`;
 
@@ -253,7 +277,7 @@ describe('skillsCatalogVersions', () => {
     const calls = readFileSync(log, 'utf8').split('\n').filter(Boolean);
     expect(calls.length).toBeGreaterThan(0);
     expect(calls.filter((line) => /\b(fetch|clone|ls-remote|push|pull)\b/.test(line))).toEqual([]);
-    rmSync(bin, { recursive: true, force: true });
+    rmSync(bin, TEST_DIR_RM_OPTIONS);
   });
 
   it('answers an empty list when no skills source is configured', async () => {

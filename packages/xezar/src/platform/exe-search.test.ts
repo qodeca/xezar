@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { hardenChildExecutableSearch, hardenExecutableSearch } from './exe-search.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 const VARIABLE = 'NoDefaultCurrentDirectoryInExePath';
 
@@ -82,7 +83,7 @@ describe.runIf(process.platform === 'win32')('planted git.exe on Windows', () =>
     } finally {
       if (saved === undefined) delete process.env[VARIABLE];
       else process.env[VARIABLE] = saved;
-      rmSync(folder, { recursive: true, force: true });
+      rmSync(folder, TEST_DIR_RM_OPTIONS);
     }
   });
 });

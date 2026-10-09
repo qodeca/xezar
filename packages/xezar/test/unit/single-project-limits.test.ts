@@ -6,6 +6,7 @@ import test from 'node:test';
 import { projectStateLayout, setActiveStateLayout } from '../../src/state-layout.js';
 import { deriveDefaultMemoryLimitMb } from '../../src/workspace/config.js';
 import { WorkspaceSemaphore } from '../../src/workspace/semaphore.js';
+import { TEST_DIR_RM_OPTIONS } from '../helpers/platform.ts';
 
 /**
  * SP-2.4 (#600 AC-7, FR-7.1, FR-7.3): a committed resource limit is applied as
@@ -153,6 +154,6 @@ test('the DEFAULT loader applies a committed workspace.json limit exactly (no lo
     assert.equal(semaphore.projectMaxParallel(projectRoot), committedParallel);
   } finally {
     setActiveStateLayout(null);
-    rmSync(projectRoot, { recursive: true, force: true });
+    rmSync(projectRoot, TEST_DIR_RM_OPTIONS);
   }
 });

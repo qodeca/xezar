@@ -15,6 +15,7 @@ import {
 import { StepAborted, StepCancelled } from '../steps.ts';
 import { createAutoUi } from '../ui.ts';
 import { CANCEL, type InstallContext, type InstallStep, type Runner, type Ui } from '../types.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../../test/helpers/platform.ts';
 
 const okRunner: Runner = { capture: async () => ({ code: 0, stdout: '', stderr: '' }), interactive: async () => 0 };
 
@@ -55,7 +56,7 @@ describe('ubuntu-vps ssl step', () => {
   afterEach(() => {
     if (original === undefined) delete process.env.XEZ_HOME;
     else process.env.XEZ_HOME = original;
-    rmSync(home, { recursive: true, force: true });
+    rmSync(home, TEST_DIR_RM_OPTIONS);
   });
 
   it('orders the steps and only SSL is optional (the service must run)', () => {
@@ -333,7 +334,7 @@ describe('ubuntu-vps redeploy npx-cache refresh (#696)', () => {
     } finally {
       if (prev === undefined) delete process.env.npm_config_cache;
       else process.env.npm_config_cache = prev;
-      rmSync(cache, { recursive: true, force: true });
+      rmSync(cache, TEST_DIR_RM_OPTIONS);
     }
   });
 
@@ -357,7 +358,7 @@ describe('ubuntu-vps redeploy npx-cache refresh (#696)', () => {
     } finally {
       if (previousCache === undefined) delete process.env.npm_config_cache;
       else process.env.npm_config_cache = previousCache;
-      rmSync(cache, { recursive: true, force: true });
+      rmSync(cache, TEST_DIR_RM_OPTIONS);
     }
   });
 });
@@ -815,7 +816,7 @@ describe('ubuntu-vps autostart undo', () => {
     unitDir = mkdtempSync(join(tmpdir(), 'xez-unit-'));
   });
   afterEach(() => {
-    rmSync(unitDir, { recursive: true, force: true });
+    rmSync(unitDir, TEST_DIR_RM_OPTIONS);
   });
 
   function recording() {

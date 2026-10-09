@@ -22,6 +22,7 @@ import {
   SOFTWARE_ONLY_FRAMING_RULE,
   stripComments,
 } from './instruction-hygiene.testkit.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * The generic-instructions guard (#466).
@@ -177,7 +178,7 @@ describe('generic instructions (#466)', () => {
       const builtIns = workflows.filter((w) => w.source === 'built-in');
       expect(builtIns.map((w) => w.name)).toEqual([PROJECT_SETUP_WORKFLOW.name, QUICK_TASK_WORKFLOW.name].sort());
     } finally {
-      rmSync(empty, { recursive: true, force: true });
+      rmSync(empty, TEST_DIR_RM_OPTIONS);
     }
 
     // The cockpit walk found the cockpit, not an empty directory.

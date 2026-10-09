@@ -7,6 +7,7 @@ import { RunStore } from '../runs/store.ts';
 import { AgentTempDirError, agentTmpDir } from '../runs/agent-tmpdir.ts';
 import { registerProject } from '../workspace/projects.ts';
 import { RunManager, agentDirectories } from './run.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * #785 wiring: the per-run temp directory has to reach the SPAWN, be gone when
@@ -47,7 +48,7 @@ describe('RunManager — task-scoped agent TMPDIR (#785)', () => {
 
   afterEach(() => {
     store.flush();
-    for (const dir of [home, repoRoot]) rmSync(dir, { recursive: true, force: true });
+    for (const dir of [home, repoRoot]) rmSync(dir, TEST_DIR_RM_OPTIONS);
     if (savedHome === undefined) delete process.env.XEZ_HOME;
     else process.env.XEZ_HOME = savedHome;
   });

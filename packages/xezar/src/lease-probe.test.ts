@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { onWindows } from '../test/helpers/platform.ts';
+import { onWindows, TEST_DIR_RM_OPTIONS } from '../test/helpers/platform.ts';
 
 import { leaseProbe, leaseProbeJson, leaseProbeSchema } from './lease-probe.ts';
 
@@ -62,7 +62,7 @@ describe('xezar lease gates --probe (#838 B)', () => {
   });
   afterAll(() => {
     if (existsSync(slotDir)) chmodSync(slotDir, 0o700);
-    rmSync(base, { recursive: true, force: true });
+    rmSync(base, TEST_DIR_RM_OPTIONS);
   });
 
   it('prints exactly one JSON line naming the gates lease and the resolved slot count, exit 0', () => {
@@ -75,7 +75,7 @@ describe('xezar lease gates --probe (#838 B)', () => {
   });
 
   it('creates no file under the gate-slots directory, nor in either state home', () => {
-    rmSync(slotDir, { recursive: true, force: true });
+    rmSync(slotDir, TEST_DIR_RM_OPTIONS);
 
     const run = cli(['lease', 'gates', '--probe']);
 
@@ -102,7 +102,7 @@ describe('xezar lease gates --probe (#838 B)', () => {
       expect(readFileSync(join(slotDir, 'gate-slot-1.lock'), 'utf8')).toBe('someone else\n');
     } finally {
       chmodSync(slotDir, 0o700);
-      rmSync(slotDir, { recursive: true, force: true });
+      rmSync(slotDir, TEST_DIR_RM_OPTIONS);
     }
   });
 
@@ -116,7 +116,7 @@ describe('xezar lease gates --probe (#838 B)', () => {
       expect(run.stdout).toBe('{"lease":{"gates":true},"slots":4}\n');
       expect(listTree(xezarHome)).toEqual(['config.json']);
     } finally {
-      rmSync(xezarHome, { recursive: true, force: true });
+      rmSync(xezarHome, TEST_DIR_RM_OPTIONS);
     }
   });
 
@@ -185,7 +185,7 @@ describe('xezar lease gates -- <command> is unchanged by the probe (#838 B)', ()
     mkdirSync(home);
   });
   afterAll(() => {
-    rmSync(base, { recursive: true, force: true });
+    rmSync(base, TEST_DIR_RM_OPTIONS);
   });
 
   it('passes the command’s stdout and exit code through, and leaves stdout to the command alone', () => {

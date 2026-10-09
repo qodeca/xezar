@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { shortTmpRoot } from '../test/helpers/platform.ts';
+import { shortTmpRoot, TEST_DIR_RM_OPTIONS } from '../test/helpers/platform.ts';
 import { automationAudit } from './automations/audit.ts';
 import type { AutomationDefinition } from './automations/types.ts';
 import { cliAudit } from './cli-audit.ts';
@@ -34,7 +34,7 @@ beforeEach(() => {
   resetAuditWarningsForTests();
 });
 afterEach(() => {
-  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  for (const dir of dirs.splice(0)) rmSync(dir, TEST_DIR_RM_OPTIONS);
   if (savedHome === undefined) delete process.env.XEZ_HOME;
   else process.env.XEZ_HOME = savedHome;
   vi.restoreAllMocks();

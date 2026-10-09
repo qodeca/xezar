@@ -3,7 +3,7 @@ import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { dirname, sep } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useEmptyPath } from '../../test/helpers/empty-path.ts';
-import { onWindows } from '../../test/helpers/platform.ts';
+import { onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 import { createLaunchScript, openInTerminal, refuseSpawnUnderTest, wslTerminalLaunchers } from './open-in-terminal.ts';
 
@@ -99,7 +99,7 @@ describe('launch-script cleanup (#785)', () => {
       // Still there — the cleanup is a grace period, not a race with the launcher.
       expect(existsSync(scriptPath)).toBe(true);
     } finally {
-      rmSync(dirname(scriptPath), { recursive: true, force: true });
+      rmSync(dirname(scriptPath), TEST_DIR_RM_OPTIONS);
     }
   });
 });
@@ -484,7 +484,7 @@ describe('the platform launch lines', () => {
       expect(readFileSync(scriptPath, 'utf8')).toBe(
         "#!/usr/bin/env bash\ncd '/tmp/my worktree'\nexport CLAUDE_CONFIG_DIR='/home/u/.claude-work'; claude --resume abc\nexec bash\n",
       );
-      rmSync(dirname(scriptPath), { recursive: true, force: true });
+      rmSync(dirname(scriptPath), TEST_DIR_RM_OPTIONS);
     });
   });
 
@@ -509,7 +509,7 @@ describe('the platform launch lines', () => {
       // win32-skip(#963): the stubbed WSL platform on a Windows host writes the script under the Windows
       // temp directory, so the POSIX spelling only exists inside a real distro
       if (!onWindows) expect(args.at(-1)).toMatch(/^\/.*xez-term-[^/]+\/launch\.sh$/);
-      rmSync(dirname(args.at(-1) as string), { recursive: true, force: true });
+      rmSync(dirname(args.at(-1) as string), TEST_DIR_RM_OPTIONS);
     });
 
     it('falls back to a classic console window, and never probes a Linux emulator', async () => {

@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { FILE_SYMLINKS } from '../../test/helpers/platform.ts';
+import { FILE_SYMLINKS, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { createApp, type ServerDeps } from './server.ts';
@@ -44,8 +44,8 @@ describe("POST /api/v1/runs/:id/open-in — target 'default' (local-mode file op
 
   afterEach(() => {
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
-    rmSync(worktree, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
+    rmSync(worktree, TEST_DIR_RM_OPTIONS);
     if (savedRemote === undefined) delete process.env.XEZ_REMOTE;
     else process.env.XEZ_REMOTE = savedRemote;
   });
@@ -95,7 +95,7 @@ describe("POST /api/v1/runs/:id/open-in — target 'default' (local-mode file op
       expect(res.status).toBe(409);
       expect(openFileInDefaultApp).not.toHaveBeenCalled();
     } finally {
-      rmSync(outside, { recursive: true, force: true });
+      rmSync(outside, TEST_DIR_RM_OPTIONS);
     }
   });
 
@@ -109,7 +109,7 @@ describe("POST /api/v1/runs/:id/open-in — target 'default' (local-mode file op
       expect(res.status).toBe(409);
       expect(openFileInDefaultApp).not.toHaveBeenCalled();
     } finally {
-      rmSync(outside, { recursive: true, force: true });
+      rmSync(outside, TEST_DIR_RM_OPTIONS);
     }
   });
 

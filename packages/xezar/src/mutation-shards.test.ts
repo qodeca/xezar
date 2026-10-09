@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
+import { TEST_DIR_RM_OPTIONS } from '../test/helpers/platform.ts';
 
 // The MCP mutation gate runs nightly against `main` (#377): `.github/workflows/mutation.yml` splits
 // it across nine jobs because one job cannot finish inside GitHub's 6-hour kill.
@@ -158,7 +159,7 @@ describe('the glob semantics the plan depends on', () => {
   writeFileSync(join(fixture, 'src', 'mcp', 'tools', 'deep.ts'), 'const c = 333\n');
   writeFileSync(join(fixture, 'src', 'other.ts'), 'const d = 4444\n');
   afterAll(async () => {
-    await (await import('node:fs/promises')).rm(fixture, { recursive: true, force: true });
+    await (await import('node:fs/promises')).rm(fixture, TEST_DIR_RM_OPTIONS);
   });
 
   it('lets `**/` cross directories and keeps `*` inside one', () => {

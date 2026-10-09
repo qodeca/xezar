@@ -7,6 +7,7 @@ import { readOnboardingRecord } from './state.ts';
 import { BUNDLED_TEMPLATES_DIGEST, ONBOARDING_WORKFLOW_ID } from './status.ts';
 import { setupRunFinishedScope, watchSetupCompletion, type SetupWatch } from './watch.ts';
 import { RunStore } from '../runs/store.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * The transition out of `checking` (#464 P2, review round 1 finding 1).
@@ -31,7 +32,7 @@ describe('stamping a finished check', () => {
     watch?.stop();
     store.flush();
     store.removeAllListeners();
-    rmSync(dataDir, { recursive: true, force: true });
+    rmSync(dataDir, TEST_DIR_RM_OPTIONS);
   });
 
   const setupRun = (workflow: string = ONBOARDING_WORKFLOW_ID) =>

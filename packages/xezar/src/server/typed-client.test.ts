@@ -9,6 +9,7 @@ import { clearProjectProbeCache, listProjects, registerProject } from '../worksp
 import { ProjectContexts } from './project-context.ts';
 import type { AppType } from './app-type.ts';
 import { createApp } from './server.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * The typed client, end to end (spec 2026-07-23-independent-server-web-packages, Phase 1).
@@ -71,8 +72,8 @@ describe('createXezarClient<AppType>', () => {
   afterEach(async () => {
     await contexts.disposeAll();
     store.flush();
-    rmSync(home, { recursive: true, force: true });
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(home, TEST_DIR_RM_OPTIONS);
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
     if (savedHome === undefined) delete process.env.XEZ_HOME;
     else process.env.XEZ_HOME = savedHome;
     if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN;

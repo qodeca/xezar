@@ -12,6 +12,7 @@ import { RunManager } from '../workflows/run.ts';
 import { ProjectContexts } from './project-context.ts';
 import { createApp, startServer, type ServerDeps } from './server.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
+import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * One test in this file (#715) has to hold the refresh branch of `onContextDisposed` open BETWEEN
@@ -148,7 +149,7 @@ describe('automations gate (#801)', () => {
 
   afterEach(() => {
     store.flush();
-    rmSync(repoRoot, { recursive: true, force: true });
+    rmSync(repoRoot, TEST_DIR_RM_OPTIONS);
     if (savedAutomations === undefined) delete process.env.XEZ_AUTOMATIONS;
     else process.env.XEZ_AUTOMATIONS = savedAutomations;
     if (savedFollowups === undefined) delete process.env.XEZ_FOLLOWUPS;
@@ -278,7 +279,7 @@ describe('automations gate (#801)', () => {
     });
 
     afterEach(() => {
-      rmSync(home, { recursive: true, force: true });
+      rmSync(home, TEST_DIR_RM_OPTIONS);
       if (savedHome === undefined) delete process.env.XEZ_HOME;
       else process.env.XEZ_HOME = savedHome;
       if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN;
@@ -477,7 +478,7 @@ describe('automations gate (#801)', () => {
         await vi.waitFor(() => expect(started).toHaveBeenCalledTimes(2), { timeout: 4_000 });
       } finally {
         server.close();
-        rmSync(otherRoot, { recursive: true, force: true });
+        rmSync(otherRoot, TEST_DIR_RM_OPTIONS);
       }
     });
 
@@ -533,7 +534,7 @@ describe('automations gate (#801)', () => {
         expect(removeAutomationSpy).toHaveBeenCalledWith(untouched.id);
       } finally {
         server.close();
-        rmSync(untouchedRoot, { recursive: true, force: true });
+        rmSync(untouchedRoot, TEST_DIR_RM_OPTIONS);
       }
     });
 
@@ -641,7 +642,7 @@ describe('automations gate (#801)', () => {
         parkedDispose.mockRestore();
         server.close();
         await contexts.disposeAll().catch(() => undefined);
-        rmSync(liveRoot, { recursive: true, force: true });
+        rmSync(liveRoot, TEST_DIR_RM_OPTIONS);
       }
     });
 
@@ -750,7 +751,7 @@ describe('automations gate (#801)', () => {
         parkedDispose.mockRestore();
         server.close();
         await contexts.disposeAll().catch(() => undefined);
-        rmSync(base, { recursive: true, force: true });
+        rmSync(base, TEST_DIR_RM_OPTIONS);
       }
     });
 
@@ -807,7 +808,7 @@ describe('automations gate (#801)', () => {
       } finally {
         server.close();
         await contexts.disposeAll().catch(() => undefined);
-        rmSync(base, { recursive: true, force: true });
+        rmSync(base, TEST_DIR_RM_OPTIONS);
       }
     });
 
@@ -927,7 +928,7 @@ describe('automations gate (#801)', () => {
         parkedDispose.mockRestore();
         server.close();
         await contexts.disposeAll().catch(() => undefined);
-        rmSync(base, { recursive: true, force: true });
+        rmSync(base, TEST_DIR_RM_OPTIONS);
       }
     });
 
@@ -1054,7 +1055,7 @@ describe('automations gate (#801)', () => {
         parkedDispose.mockRestore();
         server.close();
         await contexts.disposeAll().catch(() => undefined);
-        rmSync(base, { recursive: true, force: true });
+        rmSync(base, TEST_DIR_RM_OPTIONS);
       }
     });
   });
