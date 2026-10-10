@@ -25,6 +25,19 @@ export const TEST_DIR_RM_OPTIONS: Readonly<RmOptions> = onWindows
 
 /** Home for a local socket. POSIX keeps literal `/tmp`: a Unix socket path is capped near 104 bytes
  *  and the per-run TMPDIR can be deeper. Windows serves MCP on a named pipe, with no path limit: tmpdir(). */
+/**
+ * The environment for a Git Bash a test starts with ordinary command-line quoting (#963). With
+ * `MSYS=noglob` – which the kit's gate sets for its own shells, so every test under a gate inherits
+ * it – the MSYS runtime no longer takes ordinary quotes apart, and `bash -c '…'` silently runs
+ * nothing and exits 0. Windows: a copy without the `MSYS` variable. Linux and macOS: `env` itself.
+ */
+export function plainMsysEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  if (!onWindows) return env;
+  const copy: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(env)) if (key.toUpperCase() !== 'MSYS') copy[key] = value;
+  return copy;
+}
+
 export function shortTmpRoot(): string {
   return onWindows ? tmpdir() : '/tmp';
 }

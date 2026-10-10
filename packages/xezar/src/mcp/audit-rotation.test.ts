@@ -218,7 +218,7 @@ describe('AC-P3-01: two processes cross the limit at the same moment', () => {
     expect(seqs.slice(-3)).toEqual([lastFilled + 1, lastFilled + 2, lastFilled + 3]);
     // What each process was told is exactly what is on disk.
     expect(results.map((result) => result.out?.record?.seq).sort()).toEqual([lastFilled + 2, lastFilled + 3]);
-    // win32-skip(#963): Windows ignores POSIX mode bits (observed: every file stats 0o666)
+    // win32-skip(#972): Windows ignores POSIX mode bits (observed: every file stats 0o666)
     if (!onWindows) for (const path of retainedPaths()) expect(modeOf(path)).toBe(0o600);
   }, 90_000);
 
@@ -277,12 +277,12 @@ describe('AC-P3-02: after a rotation', () => {
     expect(readFileSync(rotatedAuditTrailPath(dataDir, 2), 'utf8')).toBe(seeded[3]);
     expect(readFileSync(rotatedAuditTrailPath(dataDir, 3), 'utf8')).toBe(seeded[2]);
     expect(readFileSync(rotatedAuditTrailPath(dataDir, 4), 'utf8')).toBe(seeded[1]);
-    // win32-skip(#963): Windows ignores POSIX mode bits (observed: every file stats 0o666)
+    // win32-skip(#972): Windows ignores POSIX mode bits (observed: every file stats 0o666)
     if (!onWindows) for (const path of retainedPaths()) expect(modeOf(path)).toBe(0o600);
     // The live file is under the limit it rotated for, and the legacy file is exactly as it was.
     expect(statSync(auditTrailPath(dataDir)).size).toBeLessThan(AUDIT_ROTATE_BYTES);
     expect(sha(legacy)).toBe(legacyHash);
-    // win32-skip(#963): Windows ignores POSIX mode bits (observed: every file stats 0o666)
+    // win32-skip(#972): Windows ignores POSIX mode bits (observed: every file stats 0o666)
     if (!onWindows) expect(modeOf(legacy)).toBe(0o644);
     expect(existsSync(auditLockPath(dataDir))).toBe(false);
 
@@ -304,7 +304,7 @@ describe('AC-P3-02: after a rotation', () => {
       { outcome: 'applied' },
     );
     expect(record?.seq).toBe(2);
-    // win32-skip(#963): Windows ignores POSIX mode bits (observed: every file stats 0o666)
+    // win32-skip(#972): Windows ignores POSIX mode bits (observed: every file stats 0o666)
     if (!onWindows) {
       expect(modeOf(auditTrailPath(dataDir))).toBe(0o600);
       expect(modeOf(rotatedAuditTrailPath(dataDir, 1))).toBe(0o600);
@@ -355,7 +355,7 @@ describe('AC-P3-04: a rotation that crashed between its rename and its marker', 
       expect.objectContaining({ kind: 'action', seq: lastFilled + 2, resource: { kind: 'run', id: 'after-crash' } }),
     ]);
     expect(everyRecord().some((r) => r.kind === 'action' && r.resource?.id === 'lost-in-crash')).toBe(false);
-    // win32-skip(#963): Windows ignores POSIX mode bits (observed: every file stats 0o666)
+    // win32-skip(#972): Windows ignores POSIX mode bits (observed: every file stats 0o666)
     if (!onWindows) for (const path of retainedPaths()) expect(modeOf(path)).toBe(0o600);
     expect(existsSync(auditLockPath(dataDir))).toBe(false);
   }, 60_000);
@@ -382,7 +382,7 @@ describe('AC-P3-04: a rotation that crashed between its rename and its marker', 
     );
     expect(record?.seq).toBe(1);
     expect(recordsOf(auditTrailPath(dataDir)).map((r) => r.kind)).toEqual(['action']);
-    // win32-skip(#963): Windows ignores POSIX mode bits (observed: every file stats 0o666)
+    // win32-skip(#972): Windows ignores POSIX mode bits (observed: every file stats 0o666)
     if (!onWindows) expect(modeOf(auditTrailPath(dataDir))).toBe(0o600);
   });
 
@@ -412,7 +412,7 @@ describe('AC-P3-03: a failed audit write never changes the action, and warns onc
     return { result, effect };
   }
 
-  // win32-skip(#963): Windows ignores POSIX mode bits – chmod 0o500 leaves the folder writable, so no write fails
+  // win32-skip(#972): Windows ignores POSIX mode bits – chmod 0o500 leaves the folder writable, so no write fails
   it.skipIf(onWindows)('named break `B-FAIL-CLOSED`: an unwritable folder', async () => {
     chmodSync(dataDir, 0o500);
     try {
@@ -458,7 +458,7 @@ describe('AC-P3-03: a failed audit write never changes the action, and warns onc
     expect(existsSync(missing)).toBe(false);
   });
 
-  // win32-skip(#963): Windows ignores POSIX mode bits – chmod 0o500 leaves the folder writable, so no write fails
+  // win32-skip(#972): Windows ignores POSIX mode bits – chmod 0o500 leaves the folder writable, so no write fails
   it.skipIf(onWindows)('keeps one warning per trail, so two projects in one process each say it once', async () => {
     chmodSync(dataDir, 0o500);
     const otherDir = join(root, 'bravo', '.local', 'xezar');

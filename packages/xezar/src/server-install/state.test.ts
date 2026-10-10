@@ -49,7 +49,7 @@ describe('server state', () => {
     s.steps.deps = { status: 'done', created: null };
     saveServerState(s);
     const mode = statSync(serverStatePath()).mode & 0o777;
-    // win32-skip(#963): Windows ignores POSIX mode bits
+    // win32-skip(#972): Windows ignores POSIX mode bits
     if (!onWindows) expect(mode).toBe(0o600);
     expect(loadServerState().steps.deps?.status).toBe('done');
   });

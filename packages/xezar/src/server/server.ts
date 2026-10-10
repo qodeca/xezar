@@ -391,6 +391,16 @@ export interface ServerDeps {
    *  to the HTTP server it binds. Optional so legacy callers/tests change
    *  nothing: no hub, no topics, and the HTTP surface is byte-identical. */
   socketHub?: SocketHub;
+  /**
+   * The boot's own environment and repository probe, and when it finished (#963). The first health
+   * snapshot reuses it while it is younger than the health cache's freshness window, instead of
+   * starting every agent CLI a second time while the server boots; every later snapshot probes.
+   */
+  bootProbe?: {
+    readonly checks: Awaited<ReturnType<typeof detectEnvironment>>;
+    readonly repo: Awaited<ReturnType<typeof getRepoInfo>>;
+    readonly at: number;
+  };
   /** Re-arm the workspace automation timer after definition mutations. */
   automationsChanged?: () => void;
   /** `startServer` only: handed the app it built, so the MCP socket (src/index.ts) dispatches
@@ -1622,10 +1632,14 @@ export function createApp(deps: ServerDeps) {
   // hand, the handler was checked against it, and `AppType` then reported the hand-written type
   // back as if the server had proven it. Inferring here means the route says what it actually
   // sends, which is what lets the DTO be derived instead of maintained.
+  let bootProbe = deps.bootProbe;
   const healthSnapshot = async () => {
+    // Used once at most, and only while fresh: a boot that took longer probes again.
+    const seed = bootProbe !== undefined && Date.now() - bootProbe.at <= HEALTH_TTL_MS ? bootProbe : undefined;
+    bootProbe = undefined;
     const [checks, repo, config, workspace] = await Promise.all([
-      detectEnvironment(),
-      getRepoInfo(bootRoot),
+      seed ? seed.checks : detectEnvironment(),
+      seed ? seed.repo : getRepoInfo(bootRoot),
       loadConfig(bootRoot),
       workspaceSummary(),
     ]);

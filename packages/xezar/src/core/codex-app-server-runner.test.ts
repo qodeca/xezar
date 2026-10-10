@@ -82,7 +82,7 @@ describe('a teardown xezar initiated (codex app-server)', () => {
     expect(result.text).toBe('Checking the working tree.');
     expect(events.some((e) => e.type === 'error')).toBe(false);
     expect(events.at(-1)).toEqual({ type: 'done' });
-    // win32-skip(#963): Node reports a Windows kill as exit code null, so no exit code reaches the note
+    // win32-skip(#974): Node reports a Windows kill as exit code null, so no exit code reaches the note
     if (!onWindows) {
       expect(
         events.some((e) => e.type === 'note' && e.message.includes('terminated by xezar (code 143)')),
@@ -275,7 +275,7 @@ describe('wall-clock timeout for a real Codex child that ignores SIGTERM', () =>
           ),
         ]);
 
-        // win32-skip(#963): Windows has no catchable SIGTERM, so there is no SIGKILL escalation to wait for
+        // win32-skip(#974): Windows has no catchable SIGTERM, so there is no SIGKILL escalation to wait for
         if (!onWindows) expect(Date.now() - startedAt).toBeGreaterThanOrEqual(KILL_GRACE_MS - 500);
         // Windows kills at the 100 ms limit, often before the mock wrote its first text (#963).
         if (onWindows) expect(['', 'Checking the working tree.']).toContain(result.text);
@@ -1038,7 +1038,7 @@ describe('a read-only step runs Codex confined to its worktree and its own roots
     }
   }, 15_000);
 
-  // win32-skip(#963): creating a file symlink needs Developer Mode or elevation (EPERM)
+  // win32-skip(#973): creating a file symlink needs Developer Mode or elevation (EPERM)
   it.skipIf(!FILE_SYMLINKS)('refuses a symlinked hooks.json with a named reason and leaves its target untouched', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'xez-863-symlink-'));
     const target = join(dir, 'dotfiles-hooks.json');

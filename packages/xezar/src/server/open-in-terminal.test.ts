@@ -506,7 +506,7 @@ describe('the platform launch lines', () => {
       // Re-enters THIS distro: the script path stays POSIX because wsl.exe reads its command
       // line inside the distro, not on the Windows side.
       expect(args.slice(0, 4)).toEqual(['wsl.exe', '-d', 'Ubuntu-24.04', '--']);
-      // win32-skip(#963): the stubbed WSL platform on a Windows host writes the script under the Windows
+      // win32-skip(#976): the stubbed WSL platform on a Windows host writes the script under the Windows
       // temp directory, so the POSIX spelling only exists inside a real distro
       if (!onWindows) expect(args.at(-1)).toMatch(/^\/.*xez-term-[^/]+\/launch\.sh$/);
       rmSync(dirname(args.at(-1) as string), TEST_DIR_RM_OPTIONS);

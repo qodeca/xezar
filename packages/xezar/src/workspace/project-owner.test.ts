@@ -412,7 +412,7 @@ describe('ProjectOwnership — one owner per project (#99)', () => {
       const owner = ownership({ dataDir, now: clock.now });
       const token = tokenOf(await owner.acquire('leader'));
       const path = join(dataDir, OWNER_CLAIM_DIR, claims(dataDir)[0]!);
-      // win32-skip(#963): Windows ignores POSIX mode bits
+      // win32-skip(#972): Windows ignores POSIX mode bits
       if (!onWindows) expect(statSync(path).mode & 0o777).toBe(0o600);
       clock.advance(OWNER_RENEW_INTERVAL_MS);
       owner.renewalTick();

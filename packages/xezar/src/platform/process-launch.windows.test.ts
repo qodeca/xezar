@@ -33,6 +33,7 @@ let batch = '';
 let marker = '';
 
 beforeAll(() => {
+  // win32-skip(#976): the real Windows programs this suite starts exist on Windows only
   if (process.platform !== 'win32') return;
   dir = mkdtempSync(join(tmpdir(), 'xez-launch-'));
   mkdirSync(join(dir, 'bin'));
@@ -50,6 +51,7 @@ afterAll(() => {
   if (dir) rmSync(dir, TEST_DIR_RM_OPTIONS);
 });
 
+// win32-skip(#976): the real Windows programs this suite starts exist on Windows only
 describe.runIf(process.platform === 'win32')('starting real programs on Windows', () => {
   it('runs an npm shim by path with every argument intact (AC-2)', async () => {
     const { stdout } = await launchFileAsync(shim, hostileArgs(), { encoding: 'utf8' });

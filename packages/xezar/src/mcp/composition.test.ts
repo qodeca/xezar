@@ -206,7 +206,7 @@ describe('the composed MCP service, through the real bridge and socket', () => {
       operationKey: `${c.id}/op-compose-0001`,
     });
     // #306: no opt-in flag, the new file name, owner-only, and nothing under the legacy name.
-    // win32-skip(#963): Windows ignores POSIX mode bits (observed: every file stats 0o666)
+    // win32-skip(#972): Windows ignores POSIX mode bits (observed: every file stats 0o666)
     if (!onWindows) expect(statSync(join(c.dataDir, 'audit.ndjson')).mode & 0o777).toBe(0o600);
     expect(existsSync(join(c.dataDir, 'mcp-audit.ndjson'))).toBe(false);
 
@@ -471,7 +471,7 @@ describe('the composed MCP service, through the real bridge and socket', () => {
 });
 
 describe('N-07: composition can never break ordinary startup', () => {
-  // win32-skip(#963): provokes the Unix socket-path length limit (`sun_path`); Windows serves MCP on a named pipe, which has no path limit, so the "too long" error cannot occur there
+  // win32-skip(#976): provokes the Unix socket-path length limit (`sun_path`); Windows serves MCP on a named pipe, which has no path limit, so the "too long" error cannot occur there
   it.skipIf(onWindows)('releases every part it composed when the socket cannot open', async () => {
     const c = await cockpit();
     // Past the local-socket length limit: the socket half throws after the journal and receipts opened.
@@ -486,7 +486,7 @@ describe('N-07: composition can never break ordinary startup', () => {
     handle.close();
   });
 
-  // win32-skip(#963): provokes the Unix socket-path length limit (`sun_path`); Windows serves MCP on a named pipe, which has no path limit, so the "too long" error cannot occur there
+  // win32-skip(#976): provokes the Unix socket-path length limit (`sun_path`); Windows serves MCP on a named pipe, which has no path limit, so the "too long" error cannot occur there
   it.skipIf(onWindows)('`xezar serve` still boots and answers /api/v1/health when the MCP composition throws', async () => {
     const repo = tmp('xzr-');
     // Registry and cockpit work under this home; only the MCP socket path is too long for it.

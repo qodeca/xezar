@@ -181,6 +181,7 @@ describe('createWorktree recovery (real git)', () => {
 
   // #963 Q3: the repository root may arrive in another letter case (a typed path, Git's `C:/…`);
   // on Windows that is the same folder, so the registered worktree is reused, never re-added.
+  // win32-skip(#976): only Windows treats two letter cases as the same folder
   it.runIf(process.platform === 'win32')('reuses the task worktree when the repository root is spelled in another case', async () => {
     const repo = await fixtureRepo('xez-worktree-case-');
     const runId = '44444444-4444-4444-8444-444444444444';

@@ -201,6 +201,7 @@ describe('pi linked-worktree tool guard (#537)', () => {
 
     // Git Bash spellings of a native path (#963): `/c/…` is the drive, `C:/…` is the same path.
     const gitBashPath = (p: string) => `/${p[0]?.toLowerCase()}/${p.slice(3).replaceAll('\\', '/')}`;
+    // win32-skip(#976): Git Bash drive spellings (`/c/…`) exist on Windows only
     it.runIf(onWindows).each([
       ['cd /<drive>/… into the primary', (f: Fixture) => `cd ${gitBashPath(f.primary)} && git status`],
       ['a redirect to /<drive>/… in the primary', (f: Fixture) => `echo x >> ${gitBashPath(f.primary)}/tracked.md`],
@@ -210,6 +211,7 @@ describe('pi linked-worktree tool guard (#537)', () => {
       expect(guard(f, bash(command(f)))).toMatchObject(BLOCK);
     });
 
+    // win32-skip(#976): Git Bash drive spellings (`/c/…`) exist on Windows only
     it.runIf(onWindows)('still allows an escaped glob and a /<drive>/… path outside the primary on Windows', () => {
       const f = fixture();
       expect(guard(f, bash(`find . -name \\*.ts && cd ${gitBashPath(f.outside)} && ls`))).toBeUndefined();

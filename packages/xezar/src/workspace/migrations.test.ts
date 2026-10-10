@@ -52,7 +52,7 @@ describe('workspace migrations', () => {
     await runMigrations({ bootRepoRoot: null });
     const config = await loadWorkspaceConfig();
     expect(config).toEqual({ ...defaultWorkspaceConfig(), schemaVersion: 1 });
-    // win32-skip(#963): Windows ignores POSIX mode bits
+    // win32-skip(#972): Windows ignores POSIX mode bits
     if (!onWindows) expect(statSync(workspaceConfigPath()).mode & 0o777).toBe(0o600);
     // nothing to import → the global ui-state file is not created
     expect(existsSync(workspaceUiStatePath())).toBe(false);
@@ -79,7 +79,7 @@ describe('workspace migrations', () => {
       appearance: { accent: 'violet', density: 'compact' },
       notifications: { enabled: false },
     });
-    // win32-skip(#963): Windows ignores POSIX mode bits
+    // win32-skip(#972): Windows ignores POSIX mode bits
     if (!onWindows) expect(statSync(workspaceUiStatePath()).mode & 0o777).toBe(0o600);
     // additive: per-repo files are byte-identical
     expect(readFileSync(join(repoRoot, '.xezar/config.json'), 'utf8')).toBe(repoConfigBefore);
@@ -147,7 +147,7 @@ describe('workspace migrations', () => {
     expect(config.resources.memoryLimitMb).toBe(DEFAULT_MEMORY_LIMIT_MB);
   });
 
-  // win32-skip(#963): Windows ignores POSIX mode bits, so a chmod'd read-only directory stays writable
+  // win32-skip(#972): Windows ignores POSIX mode bits, so a chmod'd read-only directory stays writable
   it.skipIf(onWindows)('an unwritable home degrades with ONE warning and never throws', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     chmodSync(home, 0o500); // read-only home dir → the atomic write fails

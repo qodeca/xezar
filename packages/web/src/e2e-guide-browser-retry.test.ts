@@ -26,7 +26,7 @@ import { GuideBrowser } from '../e2e/guide-browser'
  * collects `src/**` only, and this must hold on the fast gate (`npm test`), not only under
  * `npm run test:e2e`, which needs a real browser.
  */
-// win32-skip(#963): the fake agent-browser is a `#!/usr/bin/env node` script, and execFileSync cannot run
+// win32-skip(#975): the fake agent-browser is a `#!/usr/bin/env node` script, and execFileSync cannot run
 // a shebang script on Windows (spawnSync …/agent-browser ENOENT).
 describe.skipIf(process.platform === 'win32')('clickRoleWhenStable retries the covered click agent-browser really reports', () => {
   let dir: string

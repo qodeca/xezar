@@ -227,7 +227,7 @@ describe('a teardown xezar initiated', () => {
       uiEvents.some((event) => event.type === 'turn.completed' && event.stopReason === 'error'),
     ).toBe(false);
     expect(events.at(-1)).toEqual({ type: 'done' });
-    // win32-skip(#963): a Windows stop kills the stub at once, before it writes its closing turn,
+    // win32-skip(#974): a Windows stop kills the stub at once, before it writes its closing turn,
     // and Node reports that kill as exit code null, so no exit code reaches the note
     if (!onWindows) {
       expect(uiEvents).toContainEqual({
@@ -274,7 +274,7 @@ describe('wall-clock timeout for a real Claude child that ignores SIGTERM', () =
           ),
         ]);
 
-        // win32-skip(#963): Windows has no catchable SIGTERM, so there is no SIGKILL escalation to wait for
+        // win32-skip(#974): Windows has no catchable SIGTERM, so there is no SIGKILL escalation to wait for
         if (!onWindows) expect(Date.now() - startedAt).toBeGreaterThanOrEqual(KILL_GRACE_MS - 500);
         // Windows kills at the 100 ms limit, often before the stub wrote its text (#963).
         if (onWindows) expect(['', 'work done']).toContain(result.text);
@@ -409,6 +409,7 @@ describe('SIGTERM→SIGKILL escalation for a CLI that survives SIGTERM', () => {
  * grandchild (a non-detached Node grandchild dies with its parent on Windows, so it would prove
  * nothing), both ignore stdin EOF, and the EOF watchdog's stop must end both.
  */
+// win32-skip(#976): a Windows tree stop with real processes runs on Windows only; the POSIX stop is pinned above
 describe.runIf(onWindows)('a Windows stop reaches what the CLI started (#963)', () => {
   const stubBin = fileURLToPath(new URL('./__fixtures__/claude/stub-spawns-grandchild.mjs', import.meta.url));
   /** The EOF watchdog's SIGTERM, then the tree stop's own worst case – its one PowerShell (table

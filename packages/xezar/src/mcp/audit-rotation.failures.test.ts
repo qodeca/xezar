@@ -99,7 +99,7 @@ describe('AC-P3-03: chmod and rename failures', () => {
     failures.chmod = undefined;
     const record = await trail.channel('mcp').record({ action: 'run.cancel' }, { outcome: 'applied' });
     expect(record?.seq).toBe(2);
-    // win32-skip(#963): Windows ignores POSIX mode bits (observed: every file stats 0o666)
+    // win32-skip(#972): Windows ignores POSIX mode bits (observed: every file stats 0o666)
     if (!onWindows) expect(fs.statSync(live).mode & 0o777).toBe(0o600);
   });
 

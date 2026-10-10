@@ -1,5 +1,6 @@
 import { Buffer } from 'node:buffer';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { withPlatform } from '../../test/helpers/platform.ts';
 import { aggregateTreeUsage, parsePsOutput } from '../core/process-usage.ts';
 import {
   SPAWN_CLOCK_SLACK_MS,
@@ -195,7 +196,9 @@ describe('readProcessTable', () => {
 });
 
 describe('defaultTableRunner', () => {
-  it('passes only the options it was given and answers stdout', async () => {
+  // Linux and macOS call `execFile` on this thread; Windows moves the same call to a worker thread
+  // (process-table.windows.test.ts), so these pin the POSIX branch on every host.
+  it('passes only the options it was given and answers stdout', () => withPlatform('linux', async () => {
     execHook.reply = { error: null, stdout: 'rows' };
     expect(await defaultTableRunner('ps', ['-a'], { maxBuffer: 10 })).toBe('rows');
     expect(vi.mocked(execFile).mock.calls[0]!.slice(0, 3)).toEqual(['ps', ['-a'], { maxBuffer: 10 }]);
@@ -203,12 +206,12 @@ describe('defaultTableRunner', () => {
     expect(vi.mocked(execFile).mock.calls[1]![2]).toEqual({ maxBuffer: 10, timeout: 3, windowsHide: true });
     await defaultTableRunner('ps', [], { maxBuffer: 10, env: { LC_ALL: 'C' } });
     expect(vi.mocked(execFile).mock.calls[2]![2]).toEqual({ maxBuffer: 10, env: { LC_ALL: 'C' } });
-  });
+  }));
 
-  it('drops the error object, and the output it carries (SEC-5)', async () => {
+  it('drops the error object, and the output it carries (SEC-5)', () => withPlatform('linux', async () => {
     execHook.reply = { error: Object.assign(new Error('failed'), { stdout: 'GITHUB_TOKEN=ghp_secret' }), stdout: 'GITHUB_TOKEN=ghp_secret' };
     expect(await defaultTableRunner('ps', [], { maxBuffer: 10 })).toBeNull();
-  });
+  }));
 });
 
 describe('descendantPids', () => {

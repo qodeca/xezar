@@ -136,6 +136,7 @@ describe('safeRemoteFor', () => {
     'FILE:////srv/x',
   ];
 
+  // win32-skip(#976): the Windows Git spelling rules run on Windows only; POSIX is pinned below
   describe.runIf(process.platform === 'win32')('on Windows (#963)', () => {
     it('expands `~\\` like `~/`', () => {
       expect(safeRemoteFor('~\\skills')).toBe(join(homedir(), 'skills'));
@@ -157,6 +158,7 @@ describe('safeRemoteFor', () => {
     });
   });
 
+  // win32-skip(#976): POSIX only – the Windows rules are pinned above
   describe.runIf(process.platform !== 'win32')('on POSIX (unchanged by #963)', () => {
     it('keeps `//srv/share/x` a plain local path', () => {
       expect(safeRemoteFor('//srv/share/x')).toBe('//srv/share/x');

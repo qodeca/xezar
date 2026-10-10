@@ -389,7 +389,7 @@ async function rewriteEndpoint(svc: McpServiceHandle, skewMs: number): Promise<v
  * so each case asserts the status AND the remedy text, and the ones beside it must not match.
  */
 describe('bridge — each unreachable or refusing service reads as its own failure (D-01 § 5)', () => {
-  // win32-skip(#963): a stale socket FILE is a Unix-socket state; the Windows equivalent, an endpoint an exited engine left, is pinned in pipe-endpoint.test.ts and by the stale-endpoint case of 'service socket lifecycle'
+  // win32-skip(#976): a stale socket FILE is a Unix-socket state; the Windows equivalent, an endpoint an exited engine left, is pinned in pipe-endpoint.test.ts and by the stale-endpoint case of 'service socket lifecycle'
   it.skipIf(onWindows)('reads a stale socket left by a dead cockpit (ECONNREFUSED) as not running', async () => {
     const path = join(home, 'stale.sock');
     execFileSync(process.execPath, ['-e', `require('net').createServer().listen(${JSON.stringify(path)}, () => process.exit(0))`]);
@@ -401,7 +401,7 @@ describe('bridge — each unreachable or refusing service reads as its own failu
   });
 
   // Root ignores socket permissions, so the refusal cannot be provoked there.
-  // win32-skip(#963): the refusal is provoked with POSIX mode bits (chmod 0o000), which Windows ignores
+  // win32-skip(#972): the refusal is provoked with POSIX mode bits (chmod 0o000), which Windows ignores
   it.skipIf(process.getuid?.() === 0 || onWindows)('reads a socket this user may not open (EACCES) as permission denied, never as not running', async () => {
     const svc = await service();
     chmodSync(svc.path, 0o000);
@@ -415,7 +415,7 @@ describe('bridge — each unreachable or refusing service reads as its own failu
 
   // #963: the transport decides the words, never the platform. Break: picking the pipe text from
   // `process.platform` instead of from whether the bridge dialled a pipe.
-  // win32-skip(#963): the refusal is provoked with POSIX mode bits (chmod 0o000), which Windows ignores
+  // win32-skip(#972): the refusal is provoked with POSIX mode bits (chmod 0o000), which Windows ignores
   it.skipIf(process.getuid?.() === 0 || onWindows)('names the socket, not a pipe, for a socket target refused (EACCES) while the platform reads win32', async () => {
     const svc = await service();
     chmodSync(svc.path, 0o000);
@@ -426,7 +426,7 @@ describe('bridge — each unreachable or refusing service reads as its own failu
     );
   });
 
-  // win32-skip(#963): the refusal is provoked with POSIX mode bits (chmod 0o000), which Windows ignores
+  // win32-skip(#972): the refusal is provoked with POSIX mode bits (chmod 0o000), which Windows ignores
   it.skipIf(process.getuid?.() === 0 || onWindows)('names the pipe and elevation for a pipe the bridge may not open (EACCES)', async () => {
     const path = await scriptedService('locked-pipe', () => '');
     chmodSync(path, 0o000);
@@ -618,7 +618,7 @@ describe('service socket lifecycle (N-07)', () => {
     expect(existsSync(svc.path)).toBe(false);
   });
 
-  // win32-skip(#963): a socket file left behind is a Unix-socket state; the Windows equivalent is the stale-endpoint case below
+  // win32-skip(#976): a socket file left behind is a Unix-socket state; the Windows equivalent is the stale-endpoint case below
   it.skipIf(onWindows)('replaces a stale socket left by a dead cockpit', async () => {
     // A process that exits without closing its listener leaves the socket file
     // behind — exactly what a crashed cockpit leaves.
@@ -639,6 +639,7 @@ describe('service socket lifecycle (N-07)', () => {
     );
   });
 
+  // win32-skip(#976): a named-pipe endpoint exists on Windows only; the socket-file case above is its POSIX twin
   it.runIf(onWindows)('replaces an endpoint whose engine is gone (#963)', async () => {
     // The endpoint names a pid whose start time no longer matches: what an exited cockpit leaves.
     const first = await service();
@@ -648,7 +649,7 @@ describe('service socket lifecycle (N-07)', () => {
     expect(readPipeEndpoint(pipeFiles(mcpSocketDir(env), project.id).endpoint)).toMatchObject({ pipeName: second.path, pid: process.pid });
   });
 
-  // win32-skip(#963): a named pipe has no file path, so nothing can sit where the pipe would be
+  // win32-skip(#976): a named pipe has no file path, so nothing can sit where the pipe would be
   it.skipIf(onWindows)('leaves a file that is not a socket alone', async () => {
     const svc = await service();
     svc.close();

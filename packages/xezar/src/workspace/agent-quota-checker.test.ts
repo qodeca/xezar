@@ -787,7 +787,7 @@ describe('AgentQuotaChecker', () => {
     await expect.poll(() => [alive(reply.parentPid), alive(reply.childPid)]).toEqual([false, false]);
   });
 
-  // win32-skip(#963): process groups and a bash fake are POSIX only; Windows has no `kill(-pgid)`
+  // win32-skip(#975): process groups and a bash fake are POSIX only; Windows has no `kill(-pgid)`
   it.skipIf(onWindows)('kills every saved group after the full Claude checker times out on the QA hang shape', async () => {
     const result = await runHungClaudeCheck(false);
     try {
@@ -799,7 +799,7 @@ describe('AgentQuotaChecker', () => {
     }
   });
 
-  // win32-skip(#963): process groups and a bash fake are POSIX only; Windows has no `kill(-pgid)`
+  // win32-skip(#975): process groups and a bash fake are POSIX only; Windows has no `kill(-pgid)`
   it.skipIf(onWindows)('kills every saved group when a full-checker grandchild ignores SIGTERM', async () => {
     const result = await runHungClaudeCheck(true);
     try {

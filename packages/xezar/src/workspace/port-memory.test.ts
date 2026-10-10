@@ -97,7 +97,7 @@ describe('port memory', () => {
       expect(projects[0]?.lastListen).toBeUndefined();
     });
 
-    // win32-skip(#963): Windows ignores POSIX mode bits, so a chmod'd read-only directory stays writable
+    // win32-skip(#972): Windows ignores POSIX mode bits, so a chmod'd read-only directory stays writable
     it.skipIf(onWindows)('named break `memory-required`: a home that cannot be written answers null, never throws', async () => {
       writeConfig({ projects: [{ id: 'alpha', root: '/tmp/alpha' }] });
       chmodSync(home, 0o500);

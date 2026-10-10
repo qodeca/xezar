@@ -130,7 +130,7 @@ function rendererLines(lines: readonly string[]): string[] {
   return lines.slice(boot + 1);
 }
 
-test('80 columns: boot, a status line in words, the table and the end summary', { skip: onWindows ? "win32-skip(#963): Python's pty module is POSIX-only" : !pythonAvailable && 'python3 with the pty module is not available' }, async () => {
+test('80 columns: boot, a status line in words, the table and the end summary', { skip: onWindows ? "win32-skip(#975): Python's pty module is POSIX-only" : !pythonAvailable && 'python3 with the pty module is not available' }, async () => {
   const repo = await makeRepo('pty-80');
   const raw = captureServe(repo, join(fixtureRoot, 'home-80'), 80);
   const lines = visible(raw);
@@ -161,7 +161,7 @@ test('80 columns: boot, a status line in words, the table and the end summary', 
   }
 });
 
-test('80 columns: the region is redrawn in place, and the cursor comes back', { skip: onWindows ? "win32-skip(#963): Python's pty module is POSIX-only" : !pythonAvailable && 'python3 with the pty module is not available' }, async () => {
+test('80 columns: the region is redrawn in place, and the cursor comes back', { skip: onWindows ? "win32-skip(#975): Python's pty module is POSIX-only" : !pythonAvailable && 'python3 with the pty module is not available' }, async () => {
   // named break: `cursor-left-hidden`
   const repo = await makeRepo('pty-cursor');
   const raw = captureServe(repo, join(fixtureRoot, 'home-cursor'), 80);
@@ -179,7 +179,7 @@ test('80 columns: the region is redrawn in place, and the cursor comes back', { 
   );
 });
 
-test('40 columns: lines, not a table, and still no line past the edge', { skip: onWindows ? "win32-skip(#963): Python's pty module is POSIX-only" : !pythonAvailable && 'python3 with the pty module is not available' }, async () => {
+test('40 columns: lines, not a table, and still no line past the edge', { skip: onWindows ? "win32-skip(#975): Python's pty module is POSIX-only" : !pythonAvailable && 'python3 with the pty module is not available' }, async () => {
   // named break: `narrow-overflow`
   const repo = await makeRepo('pty-40');
   const raw = captureServe(repo, join(fixtureRoot, 'home-40'), 40);
@@ -203,7 +203,7 @@ test('40 columns: lines, not a table, and still no line past the edge', { skip: 
   assert.ok(raw.includes(SHOW_CURSOR), 'the cursor is restored at 40 columns too');
 });
 
-test('recovered boot keeps the banner above the first live region', { skip: onWindows ? "win32-skip(#963): Python's pty module is POSIX-only" : !pythonAvailable && 'python3 with pty unavailable' }, async () => {
+test('recovered boot keeps the banner above the first live region', { skip: onWindows ? "win32-skip(#975): Python's pty module is POSIX-only" : !pythonAvailable && 'python3 with pty unavailable' }, async () => {
   const repo = await makeRepo('pty-recovered');
   const store = RunStore.open(join(repo, '.local', 'xezar'));
   for (let i = 0; i < 12; i++) {
@@ -218,7 +218,7 @@ test('recovered boot keeps the banner above the first live region', { skip: onWi
   assert.ok(region > banner, 'recovered boot must print the cockpit banner before the first live region');
   assert.match(raw, /Session summary/);
 });
-test('quiet recovered boot has only the URL on stdout and no live region', { skip: onWindows ? "win32-skip(#963): Python's pty module is POSIX-only" : !pythonAvailable && 'python3 with pty unavailable' }, async () => {
+test('quiet recovered boot has only the URL on stdout and no live region', { skip: onWindows ? "win32-skip(#975): Python's pty module is POSIX-only" : !pythonAvailable && 'python3 with pty unavailable' }, async () => {
   const repo = await makeRepo('pty-quiet-recovered');
   const store = RunStore.open(join(repo, '.local', 'xezar'));
   const run = store.createRun({ title: 'Recovered task', task: 'A task', workflow: 'quick-task', steps: [] });

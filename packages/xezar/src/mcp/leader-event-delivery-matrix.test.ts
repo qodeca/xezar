@@ -56,7 +56,8 @@ function produce(h: Harness, variant: string) {
   return row as McpJournalRow;
 }
 
-// win32-skip(#963): the codex and pi peers listen on a Unix socket path (Codex's control socket, pi's leader socket); attaching a Codex or pi leader on Windows is deferred to a follow-up. claude-code (named pipe) and opencode (HTTP) run
+// win32-skip(#977): the codex peer listens on Codex's control socket, a Unix socket path (listen EACCES under Windows); attaching a Codex leader on Windows is not built yet
+// win32-skip(#978): the pi peer listens on pi's leader socket, a Unix socket path (listen EACCES under Windows); attaching a pi leader on Windows is not built yet. claude-code (named pipe) and opencode (HTTP) run on Windows
 for (const client of DELIVERY_CLIENTS) describe.skipIf(deliveryPeerUnavailable(client))(`#532 production event matrix / ${client}`, () => {
   // Named breaks: omit catalog subscriptions, hide task.failed, suppress all leader-origin rows.
   it.each(variants)('%s reaches the receiving peer with exact identity and cursor', async variant => {
@@ -92,7 +93,8 @@ for (const client of DELIVERY_CLIENTS) describe.skipIf(deliveryPeerUnavailable(c
   });
 });
 
-// win32-skip(#963): the codex and pi peers listen on a Unix socket path (Codex's control socket, pi's leader socket); attaching a Codex or pi leader on Windows is deferred to a follow-up. claude-code (named pipe) and opencode (HTTP) run
+// win32-skip(#977): the codex peer listens on Codex's control socket, a Unix socket path (listen EACCES under Windows); attaching a Codex leader on Windows is not built yet
+// win32-skip(#978): the pi peer listens on pi's leader socket, a Unix socket path (listen EACCES under Windows); attaching a pi leader on Windows is not built yet. claude-code (named pipe) and opencode (HTTP) run on Windows
 for (const client of DELIVERY_CLIENTS) describe.skipIf(deliveryPeerUnavailable(client))(`#532 significance and ordering / ${client}`, () => {
   it('scans all-routine pages before failure, retains raw rows and never covers an unseen tail', async () => {
     // Named breaks: only Claude filters significance; task.failed is routine; cursor uses page tail.
@@ -159,7 +161,8 @@ it.each(variants.filter(variant => !['config.changed', 'workflow.saved', 'workfl
   } finally { await h.close(); }
 });
 
-// win32-skip(#963): the codex and pi peers listen on a Unix socket path (Codex's control socket, pi's leader socket); attaching a Codex or pi leader on Windows is deferred to a follow-up. claude-code (named pipe) and opencode (HTTP) run
+// win32-skip(#977): the codex peer listens on Codex's control socket, a Unix socket path (listen EACCES under Windows); attaching a Codex leader on Windows is not built yet
+// win32-skip(#978): the pi peer listens on pi's leader socket, a Unix socket path (listen EACCES under Windows); attaching a pi leader on Windows is not built yet. claude-code (named pipe) and opencode (HTTP) run on Windows
 for (const client of DELIVERY_CLIENTS) it.skipIf(deliveryPeerUnavailable(client))(`#532 legacy gate without routing metadata remains significant / ${client}`, async () => {
   const h = await deliveryHarness(client);
   try {

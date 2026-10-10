@@ -1,7 +1,7 @@
 # Status
 
 Maintainer-facing notes on known gaps and unfinished migrations. The standing rules stay in the
-`AGENTS.md` files; this page only records how far each piece of work has got. As of 2026-10-04.
+`AGENTS.md` files; this page only records how far each piece of work has got. As of 2026-10-10.
 
 ## Stopping children's programs when `serve` exits on Linux and macOS
 
@@ -13,7 +13,7 @@ immediate: what the children started at shutdown is not stopped.
 
 ## Write sites still using a plain rename
 
-Tracked in [#963](https://github.com/qodeca/xezar/issues/963).
+Tracked in [#978](https://github.com/qodeca/xezar/issues/978).
 
 New write-then-rename sites use `writeFileAtomic` / `writeFileAtomicSync`. One known exception
 has not been migrated yet and still uses a plain rename:

@@ -160,7 +160,7 @@ describe('workspace config', () => {
       config.resources.maxParallel = 4;
       config.projects.push(project('xezar'));
     });
-    // win32-skip(#963): Windows ignores POSIX mode bits
+    // win32-skip(#972): Windows ignores POSIX mode bits
     if (!onWindows) expect(statSync(workspaceConfigPath()).mode & 0o777).toBe(0o600);
     const config = await loadWorkspaceConfig();
     expect(config.schemaVersion).toBe(1);
@@ -353,11 +353,13 @@ describe('workspace config', () => {
     expect((await loadWorkspaceConfig()).projects.map((p) => p.id)).toEqual(['good']);
   };
 
+  // win32-skip(#976): drive-letter and network-share paths are absolute on Windows only; every host runs the withPlatform twin below
   it.runIf(process.platform === 'win32')('keeps drive-letter and network-share rows through load, merge-write and reload', keepsWindowsRows);
 
   // The Windows branch on every OS: only the stored spellings are Windows ones, never the disk.
   it('keeps those rows where the platform reports win32, on any host', () => withPlatform('win32', keepsWindowsRows));
 
+  // win32-skip(#976): POSIX only – on Windows a drive-letter row is absolute and kept, as the cases above pin
   it.runIf(process.platform !== 'win32')('still drops a drive-letter row on POSIX, where it is a relative name', dropsDriveRow);
 
   it('still drops a drive-letter row where the platform reports linux, on any host', () => withPlatform('linux', dropsDriveRow));
@@ -419,7 +421,7 @@ describe('workspace config', () => {
       await registerOne();
       const snapshot = JSON.parse(readFileSync(workspaceConfigBackupPath(), 'utf8')) as WorkspaceConfig;
       expect(snapshot.projects.map((p) => p.id)).toEqual(['shop']);
-      // win32-skip(#963): Windows ignores POSIX mode bits
+      // win32-skip(#972): Windows ignores POSIX mode bits
       if (!onWindows) expect(statSync(workspaceConfigBackupPath()).mode & 0o777).toBe(0o600);
     });
 

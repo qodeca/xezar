@@ -598,7 +598,7 @@ describe('storage (D-06 § 7)', () => {
     expect(wire(await reopened.execute(createRequest(tasks, 'op-00000003', 't3')))).toMatchObject({ replayed: true });
   });
 
-  // win32-skip(#963): Windows ignores POSIX mode bits – the only assertions here are the 0600 modes
+  // win32-skip(#972): Windows ignores POSIX mode bits – the only assertions here are the 0600 modes
   it.skipIf(onWindows)('snapshot files are private to the user', async () => {
     const tasks = taskStore();
     await open().execute(createRequest(tasks, 'op-00000001', 'x'));

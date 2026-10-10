@@ -294,7 +294,7 @@ describe('import from the global setup (#600 FR-4)', () => {
       expect(outsideContents()).toEqual([]);
     });
 
-    // win32-skip(#963): creating a file symlink needs Developer Mode or elevation (EPERM)
+    // win32-skip(#973): creating a file symlink needs Developer Mode or elevation (EPERM)
     it.skipIf(!FILE_SYMLINKS)('a symlinked target file is refused, left a link, and nothing is written through it', async () => {
       mkdirSync(layout.root, { recursive: true });
       // One link to an existing outside file, one dangling link to a file that does not exist yet.
@@ -318,7 +318,7 @@ describe('import from the global setup (#600 FR-4)', () => {
       );
     });
 
-    // win32-skip(#963): creating a file symlink needs Developer Mode or elevation (EPERM)
+    // win32-skip(#973): creating a file symlink needs Developer Mode or elevation (EPERM)
     it.skipIf(!FILE_SYMLINKS)('creating the state files never replaces or writes through a symlinked file', () => {
       mkdirSync(layout.root, { recursive: true });
       symlinkSync(join(outside, 'dangling.json'), layout.uiStatePath);
@@ -627,7 +627,7 @@ describe('import from the global setup (#600 FR-4)', () => {
         ]);
       });
 
-      // win32-skip(#963): creating a file symlink needs Developer Mode or elevation (EPERM)
+      // win32-skip(#973): creating a file symlink needs Developer Mode or elevation (EPERM)
       it.skipIf(!FILE_SYMLINKS)('a symlinked accounts file is refused, never written through', () => {
         mkdirSync(layout.root, { recursive: true });
         symlinkSync(join(base, 'elsewhere.json'), layout.accountsPath);
@@ -715,7 +715,7 @@ describe('countImportableGlobalAccounts — a number, read-only, never an error'
     expect(existsSync(join(base, 'no-such-home'))).toBe(false);
   });
 
-  // win32-skip(#963): Windows ignores POSIX mode bits, so a chmod 000 file stays readable
+  // win32-skip(#972): Windows ignores POSIX mode bits, so a chmod 000 file stays readable
   it.skipIf(onWindows)('reads a permission-denied home as 0', () => {
     if (process.getuid?.() === 0) return; // root reads through a mode of 000
     chmodSync(join(home, 'agent-accounts.json'), 0o000);

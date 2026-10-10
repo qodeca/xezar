@@ -57,7 +57,7 @@ import { FILE_SYMLINKS } from '../helpers/platform.ts';
  *  Developer Mode or elevation. Directory links are junctions and need neither. */
 const skipHostile = FILE_SYMLINKS
   ? false
-  : 'win32-skip(#963): the hostile A/B world seeds a file symlink – symlinkSync fails EPERM without Developer Mode or elevation';
+  : 'win32-skip(#973): the hostile A/B world seeds a file symlink – symlinkSync fails EPERM without Developer Mode or elevation';
 
 async function inWorld(options: AbWorldOptions, body: (world: AbWorld) => Promise<void>): Promise<void> {
   const world = await createAbWorld({ sockets: false, ...options });

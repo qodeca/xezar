@@ -187,7 +187,7 @@ describe('T-2 — nothing unproven becomes an approval (break: accept unvalidate
     expect(verdictsOf(run.id)).toEqual([]);
   });
 
-  // win32-skip(#963): creating a file symlink needs Developer Mode or elevation (EPERM)
+  // win32-skip(#973): creating a file symlink needs Developer Mode or elevation (EPERM)
   it.skipIf(!FILE_SYMLINKS)('refuses a symlink rather than following it out of the data directory', () => {
     const run = startedRun();
     const elsewhere = join(dataDir, 'planted.json');
@@ -576,7 +576,7 @@ describe('T-6 — the record is durable before the packet is gone (break: drop t
     expect(onDiskRun(run.id)?.verdictIssues).toHaveLength(1);
   });
 
-  // win32-skip(#963): Windows ignores POSIX mode bits, so a chmod 000 directory stays traversable
+  // win32-skip(#972): Windows ignores POSIX mode bits, so a chmod 000 directory stays traversable
   it.skipIf(onWindows)('refuses when the packet cannot even be looked up, rather than reading it as "nothing reported"', () => {
     const run = startedRun();
     const file = taskVerdictPacketPath(dataDir, run.id);

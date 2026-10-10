@@ -890,7 +890,7 @@ describe('a session that goes silent after a rejected ask (#692)', () => {
 describe('a server that ignores SIGTERM', () => {
   const ignoreSigterm = { MOCK_OPENCODE_IGNORE_SIGTERM: '1' };
 
-  // win32-skip(#963): Windows has no catchable SIGTERM, so there is no handled-but-alive state to escalate from
+  // win32-skip(#974): Windows has no catchable SIGTERM, so there is no handled-but-alive state to escalate from
   it.skipIf(onWindows)('is escalated to SIGKILL after end() and does not leak', async () => {
     const { session, pid, v1 } = start({ env: ignoreSigterm });
     try {

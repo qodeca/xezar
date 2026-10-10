@@ -3,6 +3,7 @@ import { closeSync, openSync, mkdirSync, readFileSync, readdirSync, realpathSync
 import { hostname } from 'node:os';
 import { join } from 'node:path';
 import { localMachineId, machineRelation, type MachineRelation } from '../machine-identity.ts';
+import { claimProcess, claimStartedAt } from '../platform/claim-start.ts';
 
 const owned = new Map<string, string>();
 
@@ -23,7 +24,14 @@ export class ProjectWriterError extends Error {
  * `hostname()` live. `machine` is omitted (not written as null) when this host cannot identify
  * itself, so an unidentifiable host keeps writing the pre-#199 shape byte for byte. */
 function claimBody(machine: string | null): string {
-  return JSON.stringify({ pid: process.pid, host: hostname(), ...(machine === null ? {} : { machine }) });
+  // `started` (Windows only, #963) tells this process from a later one that reuses its pid.
+  const started = claimStartedAt();
+  return JSON.stringify({
+    pid: process.pid,
+    host: hostname(),
+    ...(machine === null ? {} : { machine }),
+    ...(started === undefined ? {} : { started }),
+  });
 }
 
 /**
@@ -132,6 +140,11 @@ export function ownProjectData(dataDir: string): void {
       try { process.kill(pid, 0); }
       catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error;
+        dead = true;
+      }
+      // Windows (#963): the pid lives, but a process created after this claim was written has
+      // reused it; the claimer itself is gone. A claim recording no start time keeps the pid answer.
+      if (!dead && peer && typeof peer === 'object' && claimProcess(pid, (peer as { started?: unknown }).started) === 'other') {
         dead = true;
       }
       if (dead) {

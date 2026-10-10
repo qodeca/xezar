@@ -108,7 +108,7 @@ describe('recordOffered', () => {
     expect(moved.record.engineVersion).toBe('0.15.0');
   });
 
-  // win32-skip(#963): Windows ignores POSIX mode bits, so a chmod'd read-only directory stays writable
+  // win32-skip(#972): Windows ignores POSIX mode bits, so a chmod'd read-only directory stays writable
   it.skipIf(onWindows)('answers `unwritable` on a read-only directory instead of throwing', async () => {
     chmodSync(dataDir, 0o500);
     try {
