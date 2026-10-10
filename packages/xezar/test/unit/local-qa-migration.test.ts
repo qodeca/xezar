@@ -4,9 +4,13 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync,
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, test } from 'node:test';
-import { linkDir, onWindows, TEST_DIR_RM_OPTIONS } from '../helpers/platform.ts';
+import { gitRoot } from '../../src/platform/git-bash.ts';
+import { linkDir, onWindows, plainMsysEnv, TEST_DIR_RM_OPTIONS } from '../helpers/platform.ts';
 /** migrate-local-state.mjs refuses to move legacy data it cannot prove idle, and proves it with lsof. */
-const NO_LSOF = onWindows ? 'win32-skip(#963): migrate-local-state.mjs exits 1 "install lsof before migration"; Windows has no lsof' : false;
+const NO_LSOF = onWindows ? 'win32-skip(#975): migrate-local-state.mjs exits 1 "install lsof before migration"; Windows has no lsof' : false;
+/** The shell test-env-up.sh runs in: POSIX /bin/sh; Windows: Git Bash's own usr\bin\bash.exe. */
+const gitBashRoot = onWindows ? gitRoot() : null;
+const SH = gitBashRoot ? join(gitBashRoot, 'usr', 'bin', 'bash.exe') : '/bin/sh';
 const repo = resolve(import.meta.dirname, '../../../..');
 const roots: string[] = [];
 function fixture(): string {
@@ -32,9 +36,10 @@ test('refuses active processes, corrupt descriptors and archives that already ex
   const root = fixture(); const file = join(root, '.ai/qa/test-env.json');
   writeFileSync(file, JSON.stringify({ app: { pid: process.pid }, status: 'running' }));
   assert.match(migrate(root).stderr, /process is alive/);
-  // win32-skip(#963): spawn /bin/sh fails ENOENT (status null) on Windows; the migrate refusals below still run there.
-  if (!onWindows) {
-    const boot = spawnSync('/bin/sh', [join(root, 'scripts/test-env-up.sh')], { encoding: 'utf8' });
+  // win32-skip(#975): without Git Bash there is no shell for the launcher; the migrate refusals below still run.
+  if (!onWindows || gitBashRoot) {
+    const up = join(root, 'scripts/test-env-up.sh');
+    const boot = spawnSync(SH, [onWindows ? up.replaceAll('\\', '/') : up], { encoding: 'utf8', env: plainMsysEnv() });
     assert.equal(boot.status, 1); assert.match(boot.stderr, /legacy QA state exists/);
   }
   writeFileSync(file, '{broken'); assert.match(migrate(root).stderr, /corrupt/);

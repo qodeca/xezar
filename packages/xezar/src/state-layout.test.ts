@@ -401,7 +401,7 @@ describe('assertProjectStateUsable (#600 Q1)', () => {
     expect(() => assertProjectStateUsable(layout)).toThrow(/is not a JSON object/);
   });
 
-  // win32-skip(#963): Windows ignores POSIX mode bits, so a chmod'd read-only directory stays writable
+  // win32-skip(#972): Windows ignores POSIX mode bits, so a chmod'd read-only directory stays writable
   it.skipIf(onWindows)('refuses an unwritable state directory', () => {
     const layout = layoutFor();
     mkdirSync(layout.root, { recursive: true });

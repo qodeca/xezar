@@ -47,7 +47,7 @@ function namesNothingOfB(w: AbWorld, body: string): void {
   }
 }
 
-// win32-skip(#963): the A/B fixture (test/helpers/ab-fixture.ts) plants a file symlink; skipped only on a Windows host without Developer Mode or elevation (EPERM) – FILE_SYMLINKS is always true on POSIX
+// win32-skip(#973): the A/B fixture (test/helpers/ab-fixture.ts) plants a file symlink; skipped only on a Windows host without Developer Mode or elevation (EPERM) – FILE_SYMLINKS is always true on POSIX
 describe.skipIf(!FILE_SYMLINKS)('cockpit routes and another project’s resources (#288)', { timeout: 120_000 }, () => {
   let world: AbWorld | undefined;
   beforeEach(async () => {
@@ -167,7 +167,7 @@ describe.skipIf(!FILE_SYMLINKS)('cockpit routes and another project’s resource
  * byte) and the CONTROL (A's own finished task still gets the real effect). The controls pass
  * with and without the fix; the regressions fail without it.
  */
-// win32-skip(#963): the A/B fixture (test/helpers/ab-fixture.ts) plants a file symlink; skipped only on a Windows host without Developer Mode or elevation (EPERM) – FILE_SYMLINKS is always true on POSIX
+// win32-skip(#973): the A/B fixture (test/helpers/ab-fixture.ts) plants a file symlink; skipped only on a Windows host without Developer Mode or elevation (EPERM) – FILE_SYMLINKS is always true on POSIX
 describe.skipIf(!FILE_SYMLINKS)('run routes and a record that names another project’s worktree (#316)', { timeout: 120_000 }, () => {
   let world: AbWorld | undefined;
   let bare: string | undefined;

@@ -152,7 +152,7 @@ describe('checkout — the cleanup guard', () => {
 
   // `chmod` is advisory for root, so this case cannot be produced in a root container. Skipping
   // is honest: the branch it covers is "the rm failed", and root cannot make an rm fail.
-  // win32-skip(#963): Windows ignores POSIX mode bits, so a chmod'd read-only directory stays writable
+  // win32-skip(#972): Windows ignores POSIX mode bits, so a chmod'd read-only directory stays writable
   it.skipIf(onWindows || process.getuid?.() === 0)('REFUSES to report success when the rm itself fails', async () => {
     const target = join(root, 'repo');
     mkdirSync(join(target, 'objects'), { recursive: true });
@@ -328,7 +328,7 @@ describe('checkoutRepo — clone, failure cleanup, existing target', () => {
   });
 
   // See the cleanup case above: root ignores the permission bits this relies on.
-  // win32-skip(#963): Windows ignores POSIX mode bits, so a chmod'd read-only directory stays writable
+  // win32-skip(#972): Windows ignores POSIX mode bits, so a chmod'd read-only directory stays writable
   it.skipIf(onWindows || process.getuid?.() === 0)(
     'a target that cannot be created is a 500, not the 409 reserved for "it already exists"',
     async () => {

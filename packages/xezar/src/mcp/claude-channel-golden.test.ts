@@ -91,7 +91,8 @@ async function world() {
     resolveTarget: async () => targetFor(handle, { id: 'alpha', name: 'Alpha' }, env),
   });
   const until = async <T>(what: string, fn: () => T | undefined): Promise<T> => {
-    for (let i = 0; i < 200; i++) {
+    // Windows: the bridge's first session open checks the pipe folder with PowerShell, seconds on a busy machine.
+    for (let i = 0; i < (onWindows ? 3_000 : 200); i++) {
       const v = fn();
       if (v !== undefined) return v;
       await new Promise((r) => setTimeout(r, 10));

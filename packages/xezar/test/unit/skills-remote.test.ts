@@ -11,10 +11,11 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 import test, { type TestContext } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { onWindows, TEST_DIR_RM_OPTIONS } from '../helpers/platform.ts';
+import { cmdShimText } from '../../src/platform/cmd-shim.testkit.ts';
 import {
   bareDirFor,
   ensureBareClone,
@@ -276,11 +277,6 @@ test('team-skills cache is keyed by repoRoot — projects never see each other\'
  * not simulate (`rev-parse`, `ls-tree`, `show`) to this binary, so "the network
  * failed but the local clone still reads" is reproduced exactly.
  */
-/** The fake `git` is a `#!/bin/sh` script put first on a `:`-joined PATH; Windows neither runs a
- *  shebang script nor splits PATH on `:`, so the module keeps reaching the real git.exe. */
-const NO_GIT_SHIM = onWindows
-  ? 'win32-skip(#963): the #!/bin/sh git shim never intercepts on Windows – shim.calls() stays empty and the real git.exe runs'
-  : false;
 
 const REAL_GIT = onWindows
   ? // `which` under Git Bash prints an MSYS path (/mingw64/bin/git) Node cannot spawn; `where` prints
@@ -443,10 +439,16 @@ const done = spawnSync(CONFIG.realGit, args, { stdio: 'inherit' });
 process.exit(done.status ?? 1);
 `,
   );
-  const bin = join(dir, 'git');
-  writeFileSync(bin, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(shim)} "$@"\n`);
-  chmodSync(bin, 0o755);
-  process.env.PATH = `${dir}:${process.env.PATH ?? ''}`;
+  if (onWindows) {
+    // Windows runs no `#!` script: an npm-style `git.cmd` shim instead, which the launch layer
+    // unwraps into `node git-shim.mjs …` without cmd.exe, first on the `;`-joined PATH.
+    writeFileSync(join(dir, 'git.cmd'), cmdShimText({ target: 'git-shim.mjs', prog: 'node' }), 'utf8');
+  } else {
+    const bin = join(dir, 'git');
+    writeFileSync(bin, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(shim)} "$@"\n`);
+    chmodSync(bin, 0o755);
+  }
+  process.env.PATH = `${dir}${delimiter}${process.env.PATH ?? ''}`;
 
   return {
     log: config.log,
@@ -470,7 +472,7 @@ async function waitFor(predicate: () => boolean, what: string, timeoutMs = 10_00
   }
 }
 
-test('a failed fetch degrades to the cached clone instead of throwing', { skip: NO_GIT_SHIM, timeout: HELD_LOOP_TIMEOUT_MS }, async (t) => {
+test('a failed fetch degrades to the cached clone instead of throwing', { timeout: HELD_LOOP_TIMEOUT_MS }, async (t) => {
   const box = sandbox(t);
   const src = box.skillsRepo('cached-skill');
   const root = box.projectRoot([{ repo: src, ref: 'main' }]);
@@ -508,7 +510,7 @@ test('a failed fetch with no cache returns an empty catalog and never throws', {
   assert.deepEqual(await listRemoteSkills({ repo: missing, ref: 'main' }), []);
 });
 
-test('a clone that hangs never blocks the catalog read, and a killed git degrades', { skip: NO_GIT_SHIM, timeout: HELD_LOOP_TIMEOUT_MS }, async (t) => {
+test('a clone that hangs never blocks the catalog read, and a killed git degrades', { timeout: HELD_LOOP_TIMEOUT_MS }, async (t) => {
   const box = sandbox(t);
   const src = box.skillsRepo('slow-skill');
   const root = box.projectRoot([{ repo: src, ref: 'main' }]);
@@ -542,7 +544,7 @@ const ONE_SHOT_START_DEADLINE_MS = 5_000;
 const PACKAGE_ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const SKILLS_REMOTE_MODULE = new URL('../../src/skills-remote.ts', import.meta.url).href;
 
-test('a hung network clone never holds a one-shot process open (#249)', { skip: NO_GIT_SHIM, timeout: HELD_LOOP_TIMEOUT_MS }, async (t) => {
+test('a hung network clone never holds a one-shot process open (#249)', { timeout: HELD_LOOP_TIMEOUT_MS }, async (t) => {
   const box = sandbox(t);
   const src = box.skillsRepo('one-shot-skill');
   const root = box.projectRoot([{ repo: src, ref: 'main' }]);
@@ -636,7 +638,7 @@ test('a corrupt or truncated cache degrades to empty, and a missing one re-clone
   assert.deepEqual((await refreshTeamSkills(root)).skills.map((s) => s.name), ['fragile-skill']);
 });
 
-test('all three configured source shapes resolve, and unsafe ones never reach git', { skip: NO_GIT_SHIM, timeout: HELD_LOOP_TIMEOUT_MS }, async (t) => {
+test('all three configured source shapes resolve, and unsafe ones never reach git', { timeout: HELD_LOOP_TIMEOUT_MS }, async (t) => {
   const box = sandbox(t);
   const local = box.skillsRepo('local-skill');
   const unsafeRepo = "ext::sh -c 'touch /tmp/xez-issue-57-pwn'";
@@ -681,7 +683,7 @@ test('all three configured source shapes resolve, and unsafe ones never reach gi
 });
 
 test('a read-only cache directory degrades instead of failing the boot', {
-  skip: onWindows ? 'win32-skip(#963): Windows ignores POSIX mode bits – chmod 0500 leaves the directory writable' : false,
+  skip: onWindows ? 'win32-skip(#972): Windows ignores POSIX mode bits – chmod 0500 leaves the directory writable' : false,
   timeout: HELD_LOOP_TIMEOUT_MS,
 }, async (t) => {
   const box = sandbox(t);

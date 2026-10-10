@@ -61,6 +61,7 @@ describe('hardenExecutableSearch', () => {
 
 // Real Windows: a `git.exe` planted in the child's working folder. Before the fix it is the program
 // that runs; after it, the real Git from PATH answers.
+// win32-skip(#976): a program search through the working folder happens on Windows only
 describe.runIf(process.platform === 'win32')('planted git.exe on Windows', () => {
   it('runs the PATH git, not the one in the working folder', () => {
     const folder = mkdtempSync(join(tmpdir(), 'xez-planted-git-'));

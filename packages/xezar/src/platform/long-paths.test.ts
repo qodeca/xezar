@@ -60,6 +60,7 @@ describe('probeLongPathNotice', () => {
   // The real reg.exe and git on a Windows machine, through the production runner: whatever the
   // settings are, both must be READ (never "unknown"), which pins the runner and the header and
   // value parsing against the real output shape.
+  // win32-skip(#976): the long-path settings are read from the Windows registry and Git, on Windows only
   it.runIf(process.platform === 'win32')('reads both real settings on Windows', async () => {
     const outcomes: Record<string, ProbeOutcome> = {};
     const run: ProbeRunner = async (file, args, timeoutMs) => {

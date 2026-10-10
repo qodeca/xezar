@@ -1179,7 +1179,7 @@ describe('attaching Codex (#374)', () => {
     expect(journal.latestSeq).toBe(1);
   });
 
-  // win32-skip(#963): the real Codex connector refuses at once on Windows (attaching a Codex leader there is
+  // win32-skip(#977): the real Codex connector refuses at once on Windows (attaching a Codex leader there is
   // deferred to a follow-up); codex-link.test.ts pins that refusal on every OS
   it.skipIf(onWindows)('a missing daemon is refused by the REAL connector, and the log names the reason, not the path', async () => {
     const home = realpathSync(mkdtempSync(join(shortTmpRoot(), 'xzld-codex-')));
@@ -1258,7 +1258,7 @@ describe('attaching Codex (#374)', () => {
     expect(made.status()).toMatchObject({ owner: null, blocker: { code: 'no-leader-session' } });
   });
 
-  // win32-skip(#963): the real Codex connector refuses at once on Windows (attaching a Codex leader there is
+  // win32-skip(#977): the real Codex connector refuses at once on Windows (attaching a Codex leader there is
   // deferred to a follow-up); codex-link.test.ts pins that refusal on every OS
   it.skipIf(onWindows)('the REAL connector’s refusals carry their reason: a missing socket gets the app-server fix, an unreadable home the home fix', async () => {
     const home = realpathSync(mkdtempSync(join(shortTmpRoot(), 'xzld-codex-')));

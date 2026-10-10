@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
+import { onWindows, plainMsysEnv, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 import { gitRoot } from '../platform/git-bash.ts';
 import { launch } from '../platform/process-launch.ts';
 import { readProcessTable, type ProcessTable } from '../platform/process-table.ts';
@@ -27,7 +27,7 @@ const alive = (pid: number): boolean => {
   }
 };
 
-// win32-skip(#963): Git Bash process groups exist on Windows only
+// win32-skip(#976): Git Bash process groups exist on Windows only
 describe.skipIf(!onWindows)('the run sweep and Git Bash process groups (#963)', () => {
   let dir = '';
   const started: number[] = [];
@@ -47,7 +47,8 @@ describe.skipIf(!onWindows)('the run sweep and Git Bash process groups (#963)', 
     // The shell waits for `go`, then leaves the orphan from a subshell and exits.
     const script = `while [ ! -e '${slash(go)}' ]; do sleep 0.1; done; (nohup ${sleeper} >/dev/null 2>&1 &); exit 0`;
     const agentCode = `const { spawn } = require('node:child_process'); spawn(process.argv[1], ['-c', process.argv[2]], { stdio: 'ignore' }); setInterval(() => {}, 1000);`;
-    const agent = launch(process.execPath, ['-e', agentCode, bash, script], { stdio: 'ignore' });
+    // plainMsysEnv: the stand-in agent starts its bash with ordinary quoting, which MSYS=noglob breaks.
+    const agent = launch(process.execPath, ['-e', agentCode, bash, script], { stdio: 'ignore', env: plainMsysEnv() });
     const spawnedAt = Date.now();
 
     let listener: ((table: ProcessTable) => void) | undefined;

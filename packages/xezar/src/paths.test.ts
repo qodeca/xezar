@@ -280,10 +280,12 @@ describe('expandTilde (#963)', () => {
     expect(expandTilde('a/~/b')).toBe('a/~/b');
   });
 
+  // win32-skip(#976): `~` is a home prefix on Windows only; POSIX is pinned by the next case
   it.runIf(process.platform === 'win32')('expands ~\\x on Windows', () => {
     expect(expandTilde('~\\x')).toBe(join(homedir(), 'x'));
   });
 
+  // win32-skip(#976): POSIX only – the Windows expansion is pinned by the case above
   it.runIf(process.platform !== 'win32')('keeps ~\\x literal on POSIX', () => {
     expect(expandTilde('~\\x')).toBe('~\\x');
   });

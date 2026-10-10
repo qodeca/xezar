@@ -18,6 +18,7 @@
 import { Buffer } from 'node:buffer';
 import { execFile } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
+import { Worker } from 'node:worker_threads';
 import type { MsysRow } from './msys-process-tree.ts';
 import { powershellPath } from './system-programs.ts';
 
@@ -109,6 +110,9 @@ export const WINDOWS_TABLE_SCRIPT = [
 /** The one runner the readers use unless a test passes its own: execFile without a shell, the
  *  options given and nothing else, stdout on success, null otherwise. */
 export const defaultTableRunner: TableRunner = (file, args, options) =>
+  process.platform === 'win32' ? runOffThread(file, args, options) : runOnThread(file, args, options);
+
+const runOnThread: TableRunner = (file, args, options) =>
   new Promise((resolve) => {
     try {
       execFile(
@@ -126,6 +130,61 @@ export const defaultTableRunner: TableRunner = (file, args, options) =>
       resolve(null);
     }
   });
+
+/**
+ * Windows (#963): the first PowerShell a process starts holds the CALLING thread inside process
+ * creation for one to two seconds (measured on Windows 11, any window option, Windows PowerShell
+ * and PowerShell 7 alike). On the main thread that froze the whole server – every request, the MCP
+ * pipe and the cockpit – right after boot, when the MCP folder check runs. So on Windows the same
+ * `execFile` runs on a short-lived worker thread, and only that thread waits.
+ */
+const OFF_THREAD_RUNNER = `
+const { parentPort, workerData } = require('node:worker_threads');
+const { execFile } = require('node:child_process');
+const { file, args, options } = workerData;
+try {
+  execFile(file, args, options, (error, stdout) => parentPort.postMessage(error ? null : stdout));
+} catch {
+  parentPort.postMessage(null);
+}
+`;
+
+function runOffThread(file: string, args: readonly string[], options: TableRunOptions): Promise<string | null> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const settle = (text: string | null): void => {
+      if (settled) return;
+      settled = true;
+      resolve(text);
+    };
+    try {
+      const worker = new Worker(OFF_THREAD_RUNNER, {
+        eval: true,
+        // Plain CommonJS: a loader the parent was started with (tsx, a test runner) must not
+        // reinterpret these few lines.
+        execArgv: [],
+        workerData: {
+          file,
+          args: [...args],
+          options: {
+            maxBuffer: options.maxBuffer,
+            ...(options.timeoutMs !== undefined ? { timeout: options.timeoutMs } : {}),
+            ...(options.hide ? { windowsHide: true } : {}),
+            ...(options.env !== undefined ? { env: options.env } : {}),
+          },
+        },
+      });
+      worker.once('message', (text: unknown) => {
+        settle(typeof text === 'string' ? text : null);
+        void worker.terminate();
+      });
+      worker.once('error', () => settle(null));
+      worker.once('exit', () => settle(null));
+    } catch {
+      settle(null);
+    }
+  });
+}
 
 /** `powershell.exe -NoProfile -NonInteractive -EncodedCommand <script>`: no quoting to get wrong. */
 export function powershellArgs(script: string): string[] {

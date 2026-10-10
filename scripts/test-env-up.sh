@@ -19,6 +19,9 @@
 #             hermetic test) and read the port the app really holds from its cockpit line,
 #             instead of proving a port free and releasing it before the bind — the #238
 #             TOCTOU, where a peer takes the probed port and the boot polls a dead URL.
+#   2026-10-10 run under Git Bash on Windows: no setsid/nohup there, the descriptor records the
+#             WINDOWS pid of node (not the MSYS pid `$!` names) and platform `win32`, and a stop
+#             ends exactly that pid's tree with taskkill. POSIX behaviour is unchanged.
 set -eu
 
 # ---- project-specific parameters -------------------------------------------
@@ -28,6 +31,15 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # <root>/scripts/test-env-up.sh → <root>. Derived from the script's own path so this
 # works unchanged inside a git worktree (no `git rev-parse`, no cwd assumption).
 REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+
+# Git Bash (MSYS) on Windows. Its shell has no setsid, a native program gets no POSIX signal, the
+# shell's own `kill` only knows MSYS pids while the descriptor records the Windows pid of node (the
+# pid every consumer of the descriptor, Node's `process.kill`, understands), and MSYS rewrites a
+# `/c/...` argument it hands to node — so a path the descriptor must compare is kept in native form.
+case "$(uname -s 2>/dev/null || true)" in
+  MINGW*|MSYS*) ON_WINDOWS=1 ;;
+  *) ON_WINDOWS=0 ;;
+esac
 
 # Never start a second environment while an old-path instance may still be running.
 if [ -f "$REPO_ROOT/.ai/qa/test-env.json" ] || [ -d "$REPO_ROOT/.ai/qa/test-env.lock" ]; then
@@ -119,6 +131,13 @@ unset ANTHROPIC_MODEL
 # `PI_CODING_AGENT_DIR` here in the same change, or a pinned and an unpinned instance compare
 # equal and the boot reuses the wrong one.
 AGENT_HOME_FINGERPRINT="$CLAUDE_CONFIG_DIR|$CODEX_HOME|$OPENCODE_CONFIG_DIR"
+# Windows: the same three pins in native form (`pwd -W`, Git Bash's builtin). MSYS converts only
+# the first `/c/...` of the joined string on its way into the descriptor writer, so the POSIX
+# spelling would never compare equal to what was recorded and every boot would go cold.
+if [ "$ON_WINDOWS" = 1 ]; then
+  QA_DIR_NATIVE="$(CDPATH= cd -- "$REPO_ROOT" && pwd -W)/.local/qa"
+  AGENT_HOME_FINGERPRINT="$QA_DIR_NATIVE/agent-home/claude|$QA_DIR_NATIVE/agent-home/codex|$QA_DIR_NATIVE/agent-home/opencode"
+fi
 
 # Does this repository root carry the single-project marker (#600)? The folder decides the
 # layout, with no flag and no variable, so a plain clone of a repository that commits
@@ -181,6 +200,23 @@ done
 mkdir -p "$QA_DIR"
 
 log() { echo "[test-env] $*" >&2; }
+
+# Is the recorded app pid alive? POSIX: `kill -0`, exactly as before. Windows: Node answers for the
+# Windows pid (EPERM still means "exists").
+app_alive() {
+  if [ "$ON_WINDOWS" = 1 ]; then
+    node -e 'try { process.kill(Number(process.argv[1]), 0) } catch (e) { process.exit(e.code === "EPERM" ? 0 : 1) }' "$1" 2>/dev/null
+  else
+    kill -0 "$1" 2>/dev/null
+  fi
+}
+
+# Windows only: end exactly this Windows pid and the processes it started. taskkill by its full
+# System32 path, never by image name or pattern; /F because a console program has no catchable stop.
+stop_windows_pid() {
+  [ -n "${SYSTEMROOT:-}" ] || { log "SYSTEMROOT is not set — cannot reach taskkill to stop pid $1"; return 0; }
+  "$SYSTEMROOT/System32/taskkill.exe" //PID "$1" //T //F >/dev/null 2>&1 || true
+}
 
 http_ok() { curl -fsS --max-time 5 "$1" >/dev/null 2>&1; }
 
@@ -267,7 +303,7 @@ try_reuse() {
   }
   [ -n "$pid" ] && [ -n "$url" ] || return 1
   # A state file is a claim, not proof: the PID must still be alive…
-  kill -0 "$pid" 2>/dev/null || return 1
+  app_alive "$pid" || return 1
   # …and the app must actually answer. Health first (deep: reads config + git),
   # then the app shell, which is what the e2e specs actually load.
   http_ok "$url$HEALTH_PATH" || return 1
@@ -308,11 +344,15 @@ teardown_stale() {
   pid=$(json_get "$ENV_DESCRIPTOR" app.pid)
   own=$(json_get "$ENV_DESCRIPTOR" startedByThisRepo)
   # Only ever kill what this repo started.
-  if [ -n "$pid" ] && [ "$own" = true ] && kill -0 "$pid" 2>/dev/null; then
+  if [ -n "$pid" ] && [ "$own" = true ] && app_alive "$pid"; then
     log "stopping stale instance (pid $pid)"
-    kill "$pid" 2>/dev/null || true
-    sleep 1
-    kill -9 "$pid" 2>/dev/null || true
+    if [ "$ON_WINDOWS" = 1 ]; then
+      stop_windows_pid "$pid"
+    else
+      kill "$pid" 2>/dev/null || true
+      sleep 1
+      kill -9 "$pid" 2>/dev/null || true
+    fi
   fi
 }
 
@@ -453,7 +493,13 @@ start_app() {
   log "starting xezar (requesting port $REQUESTED_PORT, XEZ_DRY_RUN=1)"
   # --no-open: a test boot must never hijack the operator's browser.
   # $APP_LAYOUT_INPUT: the app is TOLD which layout to resolve, never tricked into it.
-  if command -v setsid >/dev/null 2>&1; then
+  if [ "$ON_WINDOWS" = 1 ]; then
+    # Git Bash: no setsid, and no nohup needed — a non-interactive shell sends its background jobs
+    # no hangup, and the backgrounded node outlives this script and the program that started it.
+    # `$!` is the MSYS pid; it maps to node's Windows pid once `exec` has run (see below).
+    (cd "$REPO_ROOT" && exec node packages/xezar/dist/index.js --port "$REQUESTED_PORT" --no-open --repo "$REPO_ROOT" "$APP_LAYOUT_INPUT" \
+      >"$APP_LOG" 2>&1 </dev/null) &
+  elif command -v setsid >/dev/null 2>&1; then
     (cd "$REPO_ROOT" && exec setsid nohup node packages/xezar/dist/index.js --port "$REQUESTED_PORT" --no-open --repo "$REPO_ROOT" "$APP_LAYOUT_INPUT" \
       >"$APP_LOG" 2>&1 </dev/null) &
   else
@@ -476,6 +522,13 @@ start_app() {
       if [ -n "$PORT" ]; then BASE_URL="http://127.0.0.1:$PORT"; fi
     fi
     if [ -n "$BASE_URL" ] && http_ok "$BASE_URL$HEALTH_PATH"; then
+      if [ "$ON_WINDOWS" = 1 ]; then
+        # The app answers, so `exec` has long replaced the subshell: the MSYS pid now names node,
+        # and its Windows pid is what the descriptor records.
+        win_pid=$(cat "/proc/$APP_PID/winpid" 2>/dev/null || true)
+        [ -n "$win_pid" ] || { log "cannot read the Windows pid of MSYS pid $APP_PID"; exit 1; }
+        APP_PID=$win_pid
+      fi
       log "healthy on $BASE_URL after ${waited}s"
       return 0
     fi
@@ -483,7 +536,12 @@ start_app() {
     waited=$((waited + 1))
   done
   log "health wait timed out after ${HEALTH_TIMEOUT}s — see .local/qa/test-env-app.log"
-  kill "$APP_PID" 2>/dev/null || true
+  if [ "$ON_WINDOWS" = 1 ]; then
+    win_pid=$(cat "/proc/$APP_PID/winpid" 2>/dev/null || true)
+    [ -z "$win_pid" ] || stop_windows_pid "$win_pid"
+  else
+    kill "$APP_PID" 2>/dev/null || true
+  fi
   exit 1
 }
 
@@ -506,6 +564,15 @@ reset_agent_home() {
 }
 
 # ---- 7. descriptor write ----------------------------------------------------
+# The descriptor's `platform`. Windows (Git Bash) answers win32; elsewhere the rule is unchanged.
+platform_name() {
+  if [ "$ON_WINDOWS" = 1 ]; then
+    echo win32
+  else
+    uname -s 2>/dev/null | grep -qi Linux && { grep -qiE 'microsoft|wsl' /proc/version 2>/dev/null && echo wsl2 || echo linux; } || echo darwin
+  fi
+}
+
 write_descriptor() {
   SINGLE_PROJECT=false
   [ "${XEZ_SINGLE_PROJECT:-}" = 1 ] && SINGLE_PROJECT=true
@@ -541,7 +608,7 @@ write_descriptor() {
   ' "$ENV_DESCRIPTOR" "$BASE_URL" "$PORT" "$APP_PID" \
     "XEZ_DRY_RUN=1 XEZ_HOME=.local/qa/xez-home CLAUDE_CONFIG_DIR=.local/qa/agent-home/claude CODEX_HOME=.local/qa/agent-home/codex OPENCODE_CONFIG_DIR=.local/qa/agent-home/opencode node packages/xezar/dist/index.js --repo $REPO_ROOT --port $PORT --no-open $APP_LAYOUT_INPUT" \
     "$BROWSER_INSTALLED" "$BROWSER_COMMAND" "$BROWSER_VERSION" "$BROWSER_NOTES" "$BROWSER_DESCRIPTOR" \
-    "$SINGLE_PROJECT" "$(uname -s 2>/dev/null | grep -qi Linux && { grep -qiE 'microsoft|wsl' /proc/version 2>/dev/null && echo wsl2 || echo linux; } || echo darwin)" \
+    "$SINGLE_PROJECT" "$(platform_name)" \
     "$AGENT_HOME_FINGERPRINT" "$(single_project_root)" "$BOOT_STATE_LAYOUT"
 }
 

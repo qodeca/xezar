@@ -23,7 +23,7 @@ let env: NodeJS.ProcessEnv;
 const project = { id: 'alpha', name: 'Alpha', root: '' };
 const handles: McpServiceHandle[] = [];
 
-// win32-skip(#963): the named-pipe rendezvous exists on Windows only; its rules run everywhere in pipe-endpoint/pipe-auth tests
+// win32-skip(#976): the named-pipe rendezvous exists on Windows only; its rules run everywhere in pipe-endpoint/pipe-auth tests
 describe.skipIf(!onWindows)('the MCP pipe rendezvous on Windows (#963)', () => {
   beforeEach(() => {
     home = mkdtempSync(join(tmpdir(), 'xez-pipe-svc-'));

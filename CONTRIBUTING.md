@@ -97,8 +97,8 @@ npm run uninstall-as-command    # removes xezar / xez (either flavor)
 
 ### Contributing from Windows
 
-Native Windows support is in progress, tracked in [#963](https://github.com/qodeca/xezar/issues/963).
-WSL works today: inside it, follow the Linux steps above. To work on Windows itself, you also need:
+Windows is supported natively; inside WSL, the Linux steps above apply instead. To work on Windows
+itself, you also need:
 
 - **Git for Windows with Git Bash.** npm runs package scripts through `cmd.exe`, but
   `npm run test:e2e` calls `sh`, and the pipeline scripts under `.xezar/checks/` are bash.
@@ -118,17 +118,25 @@ WSL works today: inside it, follow the Linux steps above. To work on Windows its
 - **Developer Mode** (Windows Settings, *For developers*), so the tests that create file
   symbolic links run instead of skipping.
 
-Some suites still fail or skip on Windows today, mainly because the xezar MCP bridge needs Unix
-sockets. The Windows CI runs report them without blocking a merge.
+Windows runs the full test suite. A test that cannot run on one operating system is skipped
+there, and every such skip carries a marker on its line or in the comment directly above it:
+`win32-skip(#N): <reason>`. The reason says what the platform lacks, not "not supported yet".
+`#N` is one of these open issues:
 
-Every such test carries one of two markers, so the gaps stay searchable:
+| Issue | Class | Meaning |
+| --- | --- | --- |
+| #972 | POSIX mode bits | Windows keeps no `chmod` bits, so a `0o600` check or a `chmod 000` refusal cannot be provoked. |
+| #973 | File symlink privilege | Creating a file symbolic link needs Developer Mode or elevation. |
+| #974 | No catchable SIGTERM | A Windows stop ends the process at once, so there is no TERM-then-KILL path or signal handler to test. |
+| #975 | POSIX-only tools | The test needs Python's `pty`, `/bin/sh` or a `#!` script, `lsof`, or a process group (`kill(-pid)`). |
+| #976 | One-OS mechanism | The mechanism exists on one system only: Unix socket files and their path limit, or a test that runs only on Windows (named pipes, 8.3 names, drive letters, access lists) or only on Linux (`/proc`). |
+| #977 | Codex leader on Windows | Attaching a Codex leader on Windows is not built yet. |
+| #978 | pi leader on Windows | Attaching a pi leader on Windows is not built yet. |
 
-- `win32-skip(#963): <reason>` – the test cannot run on Windows for an environment reason, stated
-  inline (for example, a POSIX-only tool). The test is skipped there.
-- `win32-r9(#963): <symptom>` – the test runs on Windows and fails because of a known product bug
-  tracked in #963. It is not skipped, so the fix turns it green.
-
-A platform skip without a marker is not allowed.
+The older `win32-r9` marker, for a test that ran on Windows and failed, is retired: fix the failure
+or skip the test with a `win32-skip` marker. `packages/xezar/src/platform/skip-marker-scan.test.ts`
+fails on an unmarked platform skip, on a marker naming any other issue (including the closed
+#963), and on any `win32-r9` marker.
 
 ### In-checkout scripts
 

@@ -80,7 +80,7 @@ describe('agentTmpEnv — per-run temp directory (#785)', () => {
   // The failure this exists for is a directory that exists and accepts an inode but
   // rejects the write (`EDQUOT`). A read-only directory is the portable stand-in —
   // skipped under root, which ignores the mode bits.
-  // win32-skip(#963): Windows ignores POSIX mode bits, so a chmod'd read-only directory stays writable
+  // win32-skip(#972): Windows ignores POSIX mode bits, so a chmod'd read-only directory stays writable
   it.skipIf(onWindows || process.getuid?.() === 0)(
     'fails when the directory exists but rejects writes',
     () => {

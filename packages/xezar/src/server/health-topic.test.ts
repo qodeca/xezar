@@ -296,6 +296,47 @@ describe('health topic + cache (live-server path)', () => {
     expect(a).toBe(b); // the very same object — one compute
   }, TEST_BUDGET_MS);
 
+  // #963: the boot already probed every agent CLI and the repository a moment ago; probing them
+  // again for the pre-warm doubled the first GET's wait (seconds on Windows, where one agent CLI
+  // takes 1.5 s to print its version).
+  describe('the boot probe (#963)', () => {
+    const SEEDED = { probe: 'from boot' } as unknown as NonNullable<ServerDeps['bootProbe']>['checks'];
+    const checksOf = async (): Promise<unknown> => {
+      const res = await apiRequest(currentApp!, '/api/v1/health');
+      return ((await res.json()) as { checks?: unknown }).checks;
+    };
+    const buildSeeded = (at: number) => {
+      const { hub, topics } = stubHub();
+      const app = createApp({
+        repoRoot,
+        store,
+        manager: {} as RunManager,
+        version: '0.0.0-test',
+        socketHub: hub,
+        bootProbe: { checks: SEEDED, repo: null, at },
+      });
+      currentApp = app;
+      return { app, topics };
+    };
+
+    it('serves the first snapshot from a fresh boot probe, then probes for itself', async () => {
+      setRunner('claude');
+      buildSeeded(Date.now());
+      const warmedAt = await settle();
+      expect(await checksOf()).toEqual(SEEDED);
+      // Used once: the next recompute probes, whatever the boot saw.
+      vi.setSystemTime(warmedAt + 2 * 60 * 60 * 1_000);
+      expect(await checksOf()).not.toEqual(SEEDED);
+    }, TEST_BUDGET_MS);
+
+    it('probes again when the boot probe is older than the freshness window', async () => {
+      setRunner('claude');
+      buildSeeded(Date.now() - 5_001);
+      await settle();
+      expect(await checksOf()).not.toEqual(SEEDED);
+    }, TEST_BUDGET_MS);
+  });
+
   it('a hub-less app is unchanged: no cache, every request computes fresh', async () => {
     setRunner('claude');
     const app = createApp({ repoRoot, store, manager: {} as RunManager, version: '0.0.0-test' });

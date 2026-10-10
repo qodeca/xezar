@@ -128,7 +128,7 @@ function buildFixture() {
   writeFileSync(join(alphaWorktree, 'notes.txt'), 'alpha notes\n');
   mkdirSync(join(alphaWorktree, 'sub'));
   writeFileSync(join(alphaWorktree, 'sub', 'deep.txt'), 'alpha deep\n');
-  // win32-skip(#963): a file symlink needs Developer Mode or elevation on Windows (EPERM); the directory and traversal cases still run
+  // win32-skip(#973): a file symlink needs Developer Mode or elevation on Windows (EPERM); the directory and traversal cases still run
   if (FILE_SYMLINKS) symlinkSync(join(bravoWorktree, 'secret.txt'), join(alphaWorktree, 'leak.txt'));
   linkDir(rootB, join(alphaWorktree, 'bravo'));
 
@@ -402,7 +402,7 @@ describe('resource ownership (#88)', () => {
     const seen = await attempt(async () => [
       await fileFlow(f.alphaRun.id, join(f.bravoWorktree, 'secret.txt')),
       await fileFlow(f.alphaRun.id, dotdot),
-      // win32-skip(#963): a file symlink needs Developer Mode or elevation on Windows (EPERM); the directory and traversal cases still run
+      // win32-skip(#973): a file symlink needs Developer Mode or elevation on Windows (EPERM); the directory and traversal cases still run
       ...(FILE_SYMLINKS ? [await fileFlow(f.alphaRun.id, 'leak.txt')] : []),
       await fileFlow(f.alphaRun.id, 'bravo/README.md'),
       await fileFlow(f.alphaRun.id, '.git/config'),

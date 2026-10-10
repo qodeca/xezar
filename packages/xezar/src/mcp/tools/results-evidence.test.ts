@@ -581,7 +581,7 @@ describe('files: distinct states, bounded pages, refused paths', () => {
     const task = await finishedTask(ws);
     const outside = makeDir('xez-evidence-outside-');
     writeFileSync(join(outside, 'secret.txt'), 'outside the worktree\n');
-    // win32-skip(#963): a file symlink needs Developer Mode or elevation on Windows (EPERM); the directory and traversal cases still run
+    // win32-skip(#973): a file symlink needs Developer Mode or elevation on Windows (EPERM); the directory and traversal cases still run
     if (FILE_SYMLINKS) symlinkSync(join(outside, 'secret.txt'), join(task.worktree, 'link.txt'));
     linkDir(outside, join(task.worktree, 'linkdir'));
     const refused = ['/etc/passwd', '../README.md', 'a/../../x', '.git/config', ...(FILE_SYMLINKS ? ['link.txt'] : []), 'linkdir/secret.txt'];

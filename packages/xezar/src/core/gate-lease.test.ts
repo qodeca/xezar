@@ -257,7 +257,7 @@ describe('acquireGateLease', () => {
     expect(GATE_LEASE_STALE_MS / GATE_LEASE_HEARTBEAT_MS).toBeGreaterThanOrEqual(3);
   });
 
-  // win32-skip(#963): Windows ignores POSIX mode bits, so a chmod'd read-only directory stays writable
+  // win32-skip(#972): Windows ignores POSIX mode bits, so a chmod'd read-only directory stays writable
   it.skipIf(onWindows)('(d) an unwritable lock directory reports itself and takes nothing', async () => {
     const readOnly = join(dir, 'read-only');
     await mkdir(readOnly);
@@ -411,7 +411,7 @@ describe('runUnderGateLease', () => {
     }
   });
 
-  // win32-skip(#963): Windows ignores POSIX mode bits, so a chmod'd read-only directory stays writable
+  // win32-skip(#972): Windows ignores POSIX mode bits, so a chmod'd read-only directory stays writable
   it.skipIf(onWindows)('an unusable directory runs the command anyway, loudly', async () => {
     const readOnly = join(dir, 'ro');
     await mkdir(readOnly);

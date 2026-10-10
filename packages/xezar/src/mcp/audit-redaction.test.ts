@@ -28,7 +28,7 @@ import { runBridge } from './bridge.ts';
 import { resolveMcpTarget, startMcpService } from './index.ts';
 import { LineFramer, encodeFrame, type McpToolResult } from './ipc.ts';
 import { tools } from './tools/index.ts';
-import { shortTmpRoot, onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
+import { shortTmpRoot, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * #306 part 4 — REDACTION PER FIELD CLASS, PER DOOR (spec
@@ -293,8 +293,7 @@ async function mcpFixture(env: NodeJS.ProcessEnv = process.env) {
   return { dataDir: store.dataDir, call };
 }
 
-// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – this opens the project MCP socket
-describe.skipIf(onWindows)('mcp door', () => {
+describe('mcp door', () => {
   it('B-REDACT-MCP-IDENTIFIER-SECRET: a host secret as a task id and an operation id is dropped, never written', async () => {
     const m = await mcpFixture();
     await m.call('organise_work', { action: 'pin', runId: IDENTIFIER_SECRET, expectedVersion: REV, operationId: `op-${IDENTIFIER_SECRET}` });

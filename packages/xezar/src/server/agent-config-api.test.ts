@@ -86,7 +86,7 @@ describe('the agent-config API', () => {
     },
   );
 
-  // win32-skip(#963): creating a file symlink needs Developer Mode or elevation (EPERM)
+  // win32-skip(#973): creating a file symlink needs Developer Mode or elevation (EPERM)
   it.skipIf(!FILE_SYMLINKS).each(listConfigFiles().flatMap((def) =>
     (['read', 'write', 'list'] as const).map((operation) => [def.id, operation, def] as const),
   ))('refuses a credential symlink at %s on %s (#363)', async (id, operation, def) => {
@@ -121,7 +121,7 @@ describe('the agent-config API', () => {
     }
   });
 
-  // win32-skip(#963): creating a file symlink needs Developer Mode or elevation (EPERM)
+  // win32-skip(#973): creating a file symlink needs Developer Mode or elevation (EPERM)
   it.skipIf(!FILE_SYMLINKS)('withholds Claude MCP names when its state file is a symlink', async () => {
     const credential = join(repoRoot, 'sentinel-state');
     writeFileSync(credential, '{"mcpServers":{"FAKE-STATE-CREDENTIAL":{}}}');

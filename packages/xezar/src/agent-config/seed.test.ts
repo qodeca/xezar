@@ -41,7 +41,7 @@ describe('seedAgentConfigLocalLayer', () => {
       const seeded = await seedAgentConfigLocalLayer(repo, wt, env);
       expect(seeded).toContain('.claude/settings.local.json');
       expect(readFileSync(join(wt, '.claude', 'settings.local.json'), 'utf8')).toBe('{"env":{"X":"1"}}');
-      // win32-skip(#963): Windows keeps no POSIX permission bits (a file reads back as 0o666)
+      // win32-skip(#972): Windows keeps no POSIX permission bits (a file reads back as 0o666)
       if (!onWindows) expect(statSync(join(wt, '.claude', 'settings.local.json')).mode & 0o777).toBe(0o600);
       // info/exclude is on the common dir (shared) — the seeded file is ignored in the worktree
       expect(
@@ -52,7 +52,7 @@ describe('seedAgentConfigLocalLayer', () => {
     }
   });
 
-  // win32-skip(#963): creating a file symlink needs Developer Mode or elevation (EPERM)
+  // win32-skip(#973): creating a file symlink needs Developer Mode or elevation (EPERM)
   it.skipIf(!FILE_SYMLINKS).each(['source', 'destination'])('never seeds through a %s file symlink (#363)', async (side) => {
     mkdirSync(join(repo, '.claude'), { recursive: true });
     const wt = makeWorktree();

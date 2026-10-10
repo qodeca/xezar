@@ -387,7 +387,7 @@ describe('storage: written, never required', () => {
     expect(read.entries.map((e) => e.origin)).toEqual(['ui', 'mcp']);
   });
 
-  // win32-skip(#963): Windows ignores POSIX mode bits – chmod 0o500 leaves the folder writable, so no write fails
+  // win32-skip(#972): Windows ignores POSIX mode bits – chmod 0o500 leaves the folder writable, so no write fails
   it.skipIf(onWindows)('never fails the operation when the trail cannot be written, and warns once', async () => {
     const dataDir = dataDirOf('alpha');
     chmodSync(dataDir, 0o500);
@@ -403,7 +403,7 @@ describe('storage: written, never required', () => {
     }
   });
 
-  // win32-skip(#963): Windows ignores POSIX mode bits (observed: every file stats 0o666)
+  // win32-skip(#972): Windows ignores POSIX mode bits (observed: every file stats 0o666)
   it.skipIf(onWindows)('writes the trail owner-only', async () => {
     const dataDir = dataDirOf('alpha');
     await new AuditTrail({ projectId: 'alpha', dataDir }, { now }).channel('ui').record(pinOp('run-1'), { outcome: 'applied' });

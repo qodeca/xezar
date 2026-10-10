@@ -46,6 +46,7 @@ async function firstLine(stream: NodeJS.ReadableStream): Promise<string> {
   }
 }
 
+// win32-skip(#976): a Windows tree stop with real processes runs on Windows only
 describe.runIf(process.platform === 'win32')('Windows tree stop with real processes', () => {
   it('stops a child and its grandchild, both ignoring stdin EOF, within the bound (AC-6)', async () => {
     const child = launch(process.execPath, [FIXTURE], { stdio: ['pipe', 'pipe', 'ignore'] });

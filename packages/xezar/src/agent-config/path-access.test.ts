@@ -14,7 +14,7 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(fixture, TEST_DIR_RM_OPTIONS));
 
-// win32-skip(#963): creating a file symlink needs Developer Mode or elevation (EPERM)
+// win32-skip(#973): creating a file symlink needs Developer Mode or elevation (EPERM)
 it.skipIf(!FILE_SYMLINKS).each(['missing', 'self', 'existing'])('refuses a %s leaf symlink with a typed reason', async (kind) => {
   const path = join(root, 'config');
   const target = kind === 'self' ? path : join(root, kind);
@@ -53,7 +53,7 @@ it('canonicalizes a relocated whole home without authorizing a file symlink', as
   const path = join(alias, 'config');
   writeFileSync(join(root, 'config'), '  raw\n');
   await expect(readConfigBytes(await checkedConfigPath(path, alias))).resolves.toBe('  raw\n');
-  // win32-skip(#963): creating a file symlink needs Developer Mode or elevation (EPERM)
+  // win32-skip(#973): creating a file symlink needs Developer Mode or elevation (EPERM)
   if (FILE_SYMLINKS) {
     rmSync(join(root, 'config'));
     symlinkSync(join(root, 'credential'), join(root, 'config'));
@@ -61,7 +61,7 @@ it('canonicalizes a relocated whole home without authorizing a file symlink', as
   }
 });
 
-// win32-skip(#963): creating a file symlink needs Developer Mode or elevation (EPERM)
+// win32-skip(#973): creating a file symlink needs Developer Mode or elevation (EPERM)
 it.skipIf(!FILE_SYMLINKS)('refuses a leaf changed to a symlink between checking and opening', async () => {
   const path = join(root, 'config');
   writeFileSync(path, '{}');

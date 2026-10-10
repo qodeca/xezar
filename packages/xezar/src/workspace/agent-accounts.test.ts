@@ -237,7 +237,7 @@ describe('agent accounts store', () => {
       expect(store.selections['/c']).toEqual({});
     });
 
-    // win32-skip(#963): Windows ignores POSIX mode bits
+    // win32-skip(#972): Windows ignores POSIX mode bits
     it.skipIf(onWindows)('writes at mode 0600, like every other file in ~/.xezar', async () => {
       await mergeWriteAgentAccounts((store) => {
         store.accounts.push(account('work'));

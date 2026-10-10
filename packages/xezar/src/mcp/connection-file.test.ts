@@ -62,7 +62,7 @@ describe('D-04: the running service writes the MCP connection file (A-01, #262)'
     const path = mcpConnectionPath(p.dataDir);
     expect(path).toBe(join(p.root, '.local', 'xezar', 'mcp-connection.json'));
     expect(existsSync(path), 'written on start').toBe(true);
-    // win32-skip(#963): Windows ignores POSIX mode bits (observed: every file stats 0o666)
+    // win32-skip(#972): Windows ignores POSIX mode bits (observed: every file stats 0o666)
     if (!onWindows) expect((statSync(path).mode & 0o777).toString(8)).toBe('600');
     const raw = readFileSync(path, 'utf8');
     // `.strict()`: the file carries D-04's labels and D-01's socket and nothing else — no token.
@@ -98,7 +98,7 @@ describe('D-04: the running service writes the MCP connection file (A-01, #262)'
     const first = await start(p.id, []);
     const written = mcpConnectionDescriptorSchema.strict().parse(JSON.parse(readFileSync(path, 'utf8')));
     expect(written.endpoint.socket).toBe(first.path);
-    // win32-skip(#963): Windows ignores POSIX mode bits (observed: every file stats 0o666)
+    // win32-skip(#972): Windows ignores POSIX mode bits (observed: every file stats 0o666)
     if (!onWindows) expect((statSync(path).mode & 0o777).toString(8)).toBe('600');
     closers.pop()!(); // closes `first`
 
@@ -117,12 +117,12 @@ describe('D-04: the running service writes the MCP connection file (A-01, #262)'
     const path = mcpConnectionPath(dataDir);
     writeFileSync(`${path}.tmp`, 'left by a service that died mid-write\n');
     chmodSync(`${path}.tmp`, 0o644);
-    // win32-skip(#963): Windows ignores POSIX mode bits (observed: every file stats 0o666)
+    // win32-skip(#972): Windows ignores POSIX mode bits (observed: every file stats 0o666)
     if (!onWindows) expect((statSync(`${path}.tmp`).mode & 0o777).toString(8)).toBe('644');
 
     writeMcpConnectionFile({ project: { id: 'stale', root }, dataDir, socket: '/tmp/xz-stale.sock' });
 
-    // win32-skip(#963): Windows ignores POSIX mode bits (observed: every file stats 0o666)
+    // win32-skip(#972): Windows ignores POSIX mode bits (observed: every file stats 0o666)
     if (!onWindows) expect((statSync(path).mode & 0o777).toString(8)).toBe('600');
     expect(existsSync(`${path}.tmp`)).toBe(false);
     expect(mcpConnectionDescriptorSchema.strict().parse(JSON.parse(readFileSync(path, 'utf8'))).endpoint.socket).toBe('/tmp/xz-stale.sock');

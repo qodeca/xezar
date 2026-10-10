@@ -136,7 +136,7 @@ describe('P1-A4: writing never touches the legacy file', () => {
     for (let i = 0; i < 3; i += 1) await mcp.record({ action: 'organiseWork.pin', operationId: `op-legacy-000${i}` }, { outcome: 'applied' });
 
     expect(fileState(legacyAuditTrailPath(dir))).toEqual(before);
-    // win32-skip(#963): Windows ignores POSIX mode bits (observed: every file stats 0o666)
+    // win32-skip(#972): Windows ignores POSIX mode bits (observed: every file stats 0o666)
     if (!onWindows) expect(statSync(auditTrailPath(dir)).mode & 0o777).toBe(0o600);
     const lines = readFileSync(auditTrailPath(dir), 'utf8').trim().split('\n');
     expect(lines.map((line) => (JSON.parse(line) as { v: number; seq: number }).seq)).toEqual([1, 2, 3]);

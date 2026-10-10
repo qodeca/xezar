@@ -248,6 +248,7 @@ describe('buildChildEnv — program search on Windows (#963)', () => {
     expect(spellings(env)).toEqual([]);
   };
 
+  // win32-skip(#976): the variable is set on Windows only; POSIX is pinned by the next case
   it.runIf(process.platform === 'win32')('forces it to 1 in every built env', () => {
     expectHardened(windowsShapedEnvs());
   });
@@ -257,6 +258,7 @@ describe('buildChildEnv — program search on Windows (#963)', () => {
     expectHardened(await withPlatform('win32', windowsShapedEnvs));
   });
 
+  // win32-skip(#976): POSIX only – the Windows addition is pinned by the case above
   it.runIf(process.platform !== 'win32')('adds nothing on POSIX', () => {
     expectUntouched(posixEnv());
   });

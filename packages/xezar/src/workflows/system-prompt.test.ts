@@ -17,7 +17,11 @@ import {
   resolveExtraSystemPrompt,
   skillSystemPrompt,
 } from './run.ts';
-import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
+import { onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
+
+/** How long a mock run may take. Windows: the mock agent starts through node, and a gate runs three suites at once. */
+const RUN_DEADLINE_MS = onWindows ? 60_000 : 20_000;
+const TEST_MS = onWindows ? 90_000 : 30_000;
 
 const run = promisify(execFile);
 const GIT_ID = ['-c', 'user.name=test', '-c', 'user.email=test@local'];
@@ -217,7 +221,7 @@ describe('systemPrompt end-to-end (dry run)', () => {
     writeFileSync(argsFile, '', 'utf8'); // fresh capture per run
     const record = manager.startRun(selectedWorkflow, input);
     const terminal = new Set(['done', 'review', 'failed', 'cancelled']);
-    const deadline = Date.now() + 20_000;
+    const deadline = Date.now() + RUN_DEADLINE_MS;
     while (!terminal.has(store.getRun(record.id)?.status ?? '')) {
       if (Date.now() > deadline) throw new Error('run did not finish in time');
       await new Promise((r) => setTimeout(r, 100));
@@ -243,7 +247,7 @@ describe('systemPrompt end-to-end (dry run)', () => {
     const prompt = capturedSystemPrompt();
     // Composition: extra prompt first (no skill on this step), contract last.
     expect(prompt).toBe(composeSystemPrompt(CONFIG_PROMPT, HANDOFF_INSTRUCTIONS));
-  }, 30_000);
+  }, TEST_MS);
 
 
 
@@ -258,7 +262,7 @@ describe('systemPrompt end-to-end (dry run)', () => {
     expect(after?.titleSummary).toBe('437: implementing cr fixes');
     expect(after?.titleOrigin).toBe('auto');
     expect(after?.prNumber).toBe(437);
-  }, 30_000);
+  }, TEST_MS);
 
   it('turn-end refresh skips under XEZ_DRY_RUN and when the toggle or ownership forbids it', async () => {
     type Seam = {
@@ -308,7 +312,7 @@ describe('systemPrompt end-to-end (dry run)', () => {
       if (savedToggle === undefined) delete process.env.XEZ_TITLE_UPDATES;
       else process.env.XEZ_TITLE_UPDATES = savedToggle;
     }
-  }, 30_000);
+  }, TEST_MS);
 
   it('marker declarations outrank the namer (spec 2026-07-18-task-ref-markers)', async () => {
     const record = manager.startRun(skillWorkflow, { task: '437' });
@@ -328,7 +332,7 @@ describe('systemPrompt end-to-end (dry run)', () => {
     expect(after?.titleSummary).toBe('500: implementing marker refs');
     expect(after?.titleOrigin).toBe('marker');
     expect(after?.prNumber).toBe(500);
-  }, 30_000);
+  }, TEST_MS);
 
   it('mock:refs end to end: markers set the record, silence the wrong chip, and stay out of the transcript', async () => {
     const id = await runToEnd({ task: 'do the thing mock:refs mock:done' });
@@ -350,7 +354,7 @@ describe('systemPrompt end-to-end (dry run)', () => {
     for (const event of textEvents) {
       expect(String(event.text)).not.toMatch(/^XEZ:(?:PR|ISSUE|TITLE)=/m);
     }
-  }, 30_000);
+  }, TEST_MS);
 
   it('a user rename made before the namer answers is never overwritten', async () => {
     writeFileSync(argsFile, '', 'utf8');
@@ -359,7 +363,7 @@ describe('systemPrompt end-to-end (dry run)', () => {
     store.updateRun(record.id, { title: 'My name', titleSummary: 'My name', titleOrigin: 'user' });
 
     const terminal = new Set(['done', 'review', 'failed', 'cancelled']);
-    const deadline = Date.now() + 20_000;
+    const deadline = Date.now() + RUN_DEADLINE_MS;
     while (!terminal.has(store.getRun(record.id)?.status ?? '')) {
       if (Date.now() > deadline) throw new Error('run did not finish in time');
       await new Promise((resolve) => setTimeout(resolve, 100));
@@ -369,7 +373,7 @@ describe('systemPrompt end-to-end (dry run)', () => {
     const after = store.getRun(record.id);
     expect(after?.titleSummary).toBe('My name');
     expect(after?.titleOrigin).toBe('user');
-  }, 30_000);
+  }, TEST_MS);
 
   it('override: replaces the config default in argv and in the record echo', async () => {
     const id = await runToEnd({ task: 'do the thing', systemPrompt: OVERRIDE_PROMPT });
@@ -378,7 +382,7 @@ describe('systemPrompt end-to-end (dry run)', () => {
     const prompt = capturedSystemPrompt();
     expect(prompt).toBe(composeSystemPrompt(OVERRIDE_PROMPT, HANDOFF_INSTRUCTIONS));
     expect(prompt).not.toContain(CONFIG_PROMPT);
-  }, 30_000);
+  }, TEST_MS);
 
   it('sends skill identity, description, instructions, and numeric task context to the runner', async () => {
     const id = await runToEnd({ task: '432' }, skillWorkflow);
@@ -418,7 +422,7 @@ describe('systemPrompt end-to-end (dry run)', () => {
     const worktreePath = record?.worktreePath;
     if (!worktreePath) throw new Error('run did not create its worktree');
     expect(readFileSync(join(worktreePath, 'notes.md'), 'utf8')).toContain(': 432\n');
-  }, 30_000);
+  }, TEST_MS);
 
   // The positive control for the opt-out test below: without this, mistyping the `!== false`
   // guard would stop every run from producing inbox entries with the whole suite still green.
@@ -431,7 +435,7 @@ describe('systemPrompt end-to-end (dry run)', () => {
     expect(capturedSystemPrompt()).toContain('XEZ_TODOS_FILE');
     expect(existsSync(todosFile)).toBe(true);
     expect(existsSync(inheritedTodos)).toBe(false);
-  }, 30_000);
+  }, TEST_MS);
 
   it('explicit opt-out keeps handoff behavior but removes inbox prompt and environment', async () => {
     const todosFile = join(repoRoot, '.local/xezar/todos.json');
@@ -453,7 +457,7 @@ describe('systemPrompt end-to-end (dry run)', () => {
     expect(manager.continueRun(id, { text: 'continue without generating follow-ups' })).toEqual({
       ok: true,
     });
-    const deadline = Date.now() + 20_000;
+    const deadline = Date.now() + RUN_DEADLINE_MS;
     while (readFileSync(argsFile, 'utf8').trim().split('\n').length < 2) {
       if (Date.now() > deadline) throw new Error('continuation did not start in time');
       await new Promise((resolve) => setTimeout(resolve, 100));
@@ -464,7 +468,7 @@ describe('systemPrompt end-to-end (dry run)', () => {
     expect(capturedSystemPrompt(1)).not.toContain('XEZ_TODOS_FILE');
     expect(existsSync(todosFile)).toBe(false);
     expect(existsSync(inheritedTodos)).toBe(false);
-  }, 30_000);
+  }, TEST_MS);
 });
 
 /**
@@ -537,7 +541,7 @@ describe('the global follow-up gate (dry run)', () => {
     writeFileSync(argsFile, '', 'utf8');
     const record = manager.startRun(workflow, input);
     const terminal = new Set(['done', 'review', 'failed', 'cancelled']);
-    const deadline = Date.now() + 20_000;
+    const deadline = Date.now() + RUN_DEADLINE_MS;
     while (!terminal.has(store.getRun(record.id)?.status ?? '')) {
       if (Date.now() > deadline) throw new Error('run did not finish in time');
       await new Promise((r) => setTimeout(r, 100));
@@ -565,7 +569,7 @@ describe('the global follow-up gate (dry run)', () => {
     expect(existsSync(inheritedTodos)).toBe(false);
     // The record agrees, so a later continuation reads the same answer.
     expect(store.getRun(id)?.generateFollowups).toBe(false);
-  }, 30_000);
+  }, TEST_MS);
 
   it('keeps the per-task handoff journal — #471 turns off the inbox, not the notes', async () => {
     const id = await runToEnd({ task: 'do the thing mock:done' });
@@ -580,7 +584,7 @@ describe('the global follow-up gate (dry run)', () => {
     expect(readFileSync(join(repoRoot, '.local/xezar/runs', `${id}.handoff.md`), 'utf8')).toContain(
       'mock: implemented the change',
     );
-  }, 30_000);
+  }, TEST_MS);
 
   it('a client asking for follow-ups cannot override the gate', async () => {
     const todosFile = join(repoRoot, '.local/xezar/todos.json');
@@ -589,7 +593,7 @@ describe('the global follow-up gate (dry run)', () => {
     expect(capturedSystemPrompt()).not.toContain('XEZ_TODOS_FILE');
     expect(existsSync(todosFile)).toBe(false);
     expect(store.getRun(id)?.generateFollowups).toBe(false);
-  }, 30_000);
+  }, TEST_MS);
 
   it('turning the flag on restores the inbox for a new run', async () => {
     const todosFile = join(repoRoot, '.local/xezar/todos.json');
@@ -602,5 +606,5 @@ describe('the global follow-up gate (dry run)', () => {
     } finally {
       delete process.env.XEZ_FOLLOWUPS;
     }
-  }, 30_000);
+  }, TEST_MS);
 });

@@ -7,7 +7,7 @@ import { FILE_SYMLINKS, linkDir, npmCommand, onWindows, shortTmpRoot, TEST_DIR_R
 
 // POSIX identity: these pass both before and after #963 by design – they pin that adopting the
 // helpers changes nothing on Linux or macOS.
-test('POSIX: every helper returns the pre-#963 literal', { skip: onWindows ? 'win32-skip(#963): POSIX-only identity pin – the Windows branch is pinned by the next test' : false }, () => {
+test('POSIX: every helper returns the pre-#963 literal', { skip: onWindows ? 'win32-skip(#976): POSIX-only identity pin – the Windows branch is pinned by the next test' : false }, () => {
   assert.equal(onWindows, false);
   assert.equal(shortTmpRoot(), '/tmp');
   assert.equal(FILE_SYMLINKS, true);
@@ -17,7 +17,7 @@ test('POSIX: every helper returns the pre-#963 literal', { skip: onWindows ? 'wi
   assert.deepEqual(TEST_DIR_RM_OPTIONS, { recursive: true, force: true });
 });
 
-test('win32: temp root is tmpdir() and npm runs through node', { skip: onWindows ? false : 'Windows-only branch' }, () => {
+test('win32: temp root is tmpdir() and npm runs through node', { skip: onWindows ? false : 'win32-skip(#976): the Windows branch, pinned on Windows only – the POSIX identity is pinned above' }, () => {
   assert.equal(shortTmpRoot(), tmpdir());
   assert.equal(typeof FILE_SYMLINKS, 'boolean');
   const c = npmCommand(['x']);
@@ -28,7 +28,7 @@ test('win32: temp root is tmpdir() and npm runs through node', { skip: onWindows
   assert.deepEqual(TEST_DIR_RM_OPTIONS, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
-test('win32 CI: file symlinks are available, so no FILE_SYMLINKS-gated suite is silently skipped', { skip: onWindows && process.env.CI ? false : 'Windows CI only' }, () => {
+test('win32 CI: file symlinks are available, so no FILE_SYMLINKS-gated suite is silently skipped', { skip: onWindows && process.env.CI ? false : 'win32-skip(#976): Windows CI only – its runners are elevated, so file symlinks must be available there' }, () => {
   // GitHub's Windows runners run elevated; a false here means every FILE_SYMLINKS-gated suite
   // skipped on CI without anyone seeing it.
   assert.equal(FILE_SYMLINKS, true);

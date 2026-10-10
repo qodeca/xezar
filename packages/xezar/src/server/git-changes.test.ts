@@ -453,6 +453,7 @@ describe('readWorktreePath — Files tab browsing', () => {
   });
 
   // Windows opens every one of these spellings as the `.git` folder (#963, owner decision).
+  // win32-skip(#976): only Windows opens these spellings as the `.git` folder
   it.runIf(process.platform === 'win32')('refuses every Windows spelling of .git', async () => {
     writeFileSync(join(dir, '.git', 'config'), '[core]\n');
     for (const spelling of ['.GIT/config', '.Git', '.git./config', '.git /config', '.git::$INDEX_ALLOCATION/config']) {
@@ -465,6 +466,7 @@ describe('readWorktreePath — Files tab browsing', () => {
     if (root.kind === 'dir') expect(root.entries.map((e) => e.name)).not.toContain('.git');
   });
 
+  // win32-skip(#976): 8.3 short names exist on Windows only
   it.runIf(process.platform === 'win32')('refuses the 8.3 short name of .git where the volume has one', async (context) => {
     writeFileSync(join(dir, '.git', 'config'), '[core]\n');
     if (!existsSync(join(dir, 'GIT~1'))) context.skip(); // short names are off on this volume

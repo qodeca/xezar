@@ -64,7 +64,7 @@ function runStep(command: string, cwd: string): Promise<{ code: number | null; o
   return new Promise((resolve) => child.on('close', (code) => resolve({ code, out })));
 }
 
-// win32-skip(#963): Git Bash exists on Windows only; Linux and macOS are pinned above
+// win32-skip(#976): Git Bash exists on Windows only; Linux and macOS are pinned above
 describe.skipIf(!onWindows)('launchCheckStep in Git Bash on Windows (#963)', () => {
   let dir = '';
   afterEach(() => {

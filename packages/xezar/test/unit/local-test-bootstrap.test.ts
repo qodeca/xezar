@@ -97,7 +97,7 @@ test('a checkout that is itself a task worktree pins scratch outside the worktre
     assert.ok(!`${scratch}${sep}`.includes(marker), `scratch ${scratch} must not sit under a task-worktree ancestor`);
     assert.ok(!`${realpathSync(scratch)}${sep}`.includes(marker), 'nor may its realpath');
     assert.match(scratch, /[\\/]xezar-test-tmp-[0-9a-f]{12}$/, 'one hash-named directory per checkout');
-    // win32-skip(#963): Windows ignores POSIX mode bits; the rest of this test runs there.
+    // win32-skip(#972): Windows ignores POSIX mode bits; the rest of this test runs there.
     if (!onWindows) assert.equal(statSync(scratch).mode & 0o777, 0o700);
 
     // A worker spawned with the moved TMPDIR reuses the directory instead of nesting one per level.

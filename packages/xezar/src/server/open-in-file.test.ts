@@ -99,7 +99,7 @@ describe("POST /api/v1/runs/:id/open-in — target 'default' (local-mode file op
     }
   });
 
-  // win32-skip(#963): creating a file symlink needs Developer Mode or elevation (EPERM)
+  // win32-skip(#973): creating a file symlink needs Developer Mode or elevation (EPERM)
   it.skipIf(!FILE_SYMLINKS)('rejects a symlink pointing outside the worktree', async () => {
     const outside = mkdtempSync(join(tmpdir(), 'xez-openfile-link-'));
     try {

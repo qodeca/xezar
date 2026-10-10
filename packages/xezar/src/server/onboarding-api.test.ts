@@ -164,7 +164,7 @@ describe('the onboarding API', () => {
     expect(await res.json()).toHaveProperty('error');
   });
 
-  // win32-skip(#963): Windows ignores POSIX mode bits, so a chmod'd read-only directory stays writable
+  // win32-skip(#972): Windows ignores POSIX mode bits, so a chmod'd read-only directory stays writable
   it.skipIf(onWindows)('answers `unwritable` on a read-only data directory rather than failing', async () => {
     const dataDir = join(repoRoot, '.local/xezar');
     chmodSync(dataDir, 0o500);

@@ -6,7 +6,8 @@ import { hostname, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { linkDir, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
+import { linkDir, onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
+import { claimStartedAt } from '../platform/claim-start.ts';
 import { ownProjectData } from './project-writer.ts';
 import { localMachineId } from '../machine-identity.ts';
 import { RunStore } from './store.ts';
@@ -39,6 +40,9 @@ const THIS_HOST = hostname();
 const EARLIER_NAME = `${THIS_HOST}-on-another-network`;
 /** …and the same laptop one network LATER still, so a case can rename it while it runs. */
 const RENAMED_HOST = `${THIS_HOST}-on-yet-another-network`;
+/** What this process records beside its pid on Windows (#963); nothing on Linux and macOS. */
+const OWN_STARTED = claimStartedAt();
+const STARTED_FIELD = OWN_STARTED === undefined ? {} : { started: OWN_STARTED };
 let root: string;
 const children: ChildProcess[] = [];
 const source = new URL('./project-writer.ts', import.meta.url).href;
@@ -203,7 +207,7 @@ it('a claim written by this process records its identity beside the display host
   ownProjectData(root);
   const [name] = readdirSync(join(root, 'writer-claims'));
   expect(JSON.parse(readFileSync(join(root, 'writer-claims', name!), 'utf8'))).toEqual({
-    pid: process.pid, host: hostname(), machine: LOCAL_MACHINE,
+    pid: process.pid, host: hostname(), machine: LOCAL_MACHINE, ...STARTED_FIELD,
   });
 });
 
@@ -214,7 +218,7 @@ it('GUARD: an unidentifiable host writes the pre-#199 claim shape unchanged', ()
   ownProjectData(root);
   const [name] = readdirSync(join(root, 'writer-claims'));
   expect(readFileSync(join(root, 'writer-claims', name!), 'utf8'))
-    .toBe(JSON.stringify({ pid: process.pid, host: hostname() }));
+    .toBe(JSON.stringify({ pid: process.pid, host: hostname(), ...STARTED_FIELD }));
 });
 
 // #199, the half that survived inside ONE process. The re-entrant self-check compared the claim's
@@ -230,7 +234,7 @@ it('keeps its own claim when this machine renames itself mid-process', () => {
   // The file is untouched, hostname included: it is a display field, not an identity.
   expect(readdirSync(join(root, 'writer-claims'))).toEqual(before);
   expect(JSON.parse(readFileSync(join(root, 'writer-claims', before[0]!), 'utf8'))).toEqual({
-    pid: process.pid, host: THIS_HOST, machine: LOCAL_MACHINE,
+    pid: process.pid, host: THIS_HOST, machine: LOCAL_MACHINE, ...STARTED_FIELD,
   });
 });
 
@@ -305,7 +309,8 @@ it('a second CLI with nested repo, different port/home refuses before recovering
   let output = '';
   second.stderr!.on('data', (chunk) => { output += String(chunk); });
   const code = await new Promise<number | null>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('second CLI did not refuse before boot')), 5000);
+    // Windows: the live claim's pid is also checked for its start time, one PowerShell run (#963).
+    const timer = setTimeout(() => reject(new Error('second CLI did not refuse before boot')), onWindows ? 20_000 : 5000);
     second.once('exit', (value) => { clearTimeout(timer); resolve(value); });
   });
   expect(code).toBe(1);
@@ -313,7 +318,7 @@ it('a second CLI with nested repo, different port/home refuses before recovering
   expect(readFileSync(join(dataDir, 'runs.json'))).toEqual(index);
   expect(readFileSync(join(dataDir, 'runs', `${run.id}.ndjson`))).toEqual(events);
   expect(readdirSync(join(dataDir, 'runs'))).toEqual([`${run.id}.ndjson`]);
-}, 15000);
+}, onWindows ? 40_000 : 15000);
 
 it('simultaneous contenders publish before scanning and cannot both become writers', async () => {
   const data = join(root, 'data');
@@ -350,12 +355,13 @@ it('simultaneous contenders publish before scanning and cannot both become write
   const answers = await Promise.all([0, 1].map(() => new Promise<{ result: string; claimsAtScan: number }>((resolve, reject) => {
     const child = spawn(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', script, data, barrier], { stdio: ['ignore', 'pipe', 'pipe'] });
     children.push(child);
-    const timer = setTimeout(() => reject(new Error('contenders did not finish')), 6000);
+    // Windows: each contender also checks the other's live pid for its start time, one PowerShell run (#963).
+    const timer = setTimeout(() => reject(new Error('contenders did not finish')), onWindows ? 30_000 : 6000);
     child.stdout!.once('data', (chunk) => { clearTimeout(timer); resolve(JSON.parse(String(chunk))); });
     child.once('exit', (code) => { clearTimeout(timer); reject(new Error(`contender exited ${code}`)); });
   })));
   expect(answers).toEqual([{ result: 'refused', claimsAtScan: 2 }, { result: 'refused', claimsAtScan: 2 }]);
-}, 10000);
+}, onWindows ? 45_000 : 10000);
 
 // Claim reclamation must still reach the ordinary crash-recovery path.
 it('a dead owner lets its successor recover a queued task with preserved evidence', async () => {
@@ -396,3 +402,19 @@ it('a post-open write failure removes only its own claim and allows a repaired r
   expect(readdirSync(join(root, 'writer-claims'))).toEqual([]);
   expect(() => ownProjectData(root)).not.toThrow();
 });
+
+// #963, real Windows: a killed xezar leaves its claim, and Windows soon hands its pid to another
+// process. A live pid whose process was created after the claim's recorded start is not the writer.
+// win32-skip(#976): the claim's start time is recorded and compared on Windows only
+it.runIf(onWindows)('reclaims a claim whose pid now names a process created after it', async () => {
+  const child = await owner(join(root, 'elsewhere'));
+  const stale = peer(child.pid!, JSON.stringify({ pid: child.pid, host: hostname(), machine: LOCAL_MACHINE, started: Date.now() - 60 * 60 * 1000 }));
+  expect(() => ownProjectData(root)).not.toThrow();
+  expect(existsSync(stale)).toBe(false);
+}, 60_000);
+
+// win32-skip(#976): the claim's start time is recorded and compared on Windows only
+it.runIf(onWindows)('GUARD: still refuses a live writer whose claim records its own start', async () => {
+  const child = await owner(root);
+  expect(() => ownProjectData(root)).toThrow(`live writer PID ${child.pid}`);
+}, 60_000);

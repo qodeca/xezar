@@ -1,5 +1,6 @@
-/** POSIX-only built-CLI + authenticated streaming proxy verification (#547).
+/** Built-CLI + authenticated streaming proxy verification (#547).
  * Run from the repository: npm run test:server-mode. No browser or public service.
+ * POSIX tears down by process group; Windows through the product's process-table layer.
  */
 import assert from 'node:assert/strict';
 import { spawn, execFileSync } from 'node:child_process';
@@ -9,7 +10,7 @@ import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promise
 import http from 'node:http';
 import { dirname, join, resolve } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
 const cli = join(root, 'packages/xezar/dist/index.js');
@@ -17,7 +18,9 @@ const started = performance.now();
 let child, proxy, fixture, backend, authority;
 let childExited = false;
 const extraChildren = new Set();
-const groups = new Set(); // process-group ids of every CLI spawned (each leads its own)
+const groups = new Set(); // process-group ids of every CLI spawned (each leads its own); Windows: the CLI pids
+const spawnTimes = new Map(); // CLI pid → when it was spawned (Windows: dates its direct children)
+const onWindows = process.platform === 'win32';
 let fixtureRepo, fixtureEnv;
 let forwarded = 0;
 let lastForwardedHost;
@@ -108,10 +111,14 @@ async function twoDistinctFreePorts() {
  * below only turn a descendant that will not die into a named failure instead of a wait.
  */
 function spawnCli(args, extraEnv = {}) {
+  const spawnedAt = Date.now();
+  // Windows: no `detached` — there are no process groups, and a detached console program starts
+  // with no console of its own. Its tree is found through the process table instead (below).
   const proc = spawn(process.execPath, [cli, 'serve', '--repo', fixtureRepo, '--no-open', '--output', 'lines', '--color', 'never', ...args],
-    { cwd: fixtureRepo, env: { ...fixtureEnv, ...extraEnv }, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+    { cwd: fixtureRepo, env: { ...fixtureEnv, ...extraEnv }, stdio: ['ignore', 'pipe', 'pipe'], ...(onWindows ? {} : { detached: true }) });
   proc.exited = new Promise((done) => proc.once('exit', done)); // attached at spawn, so an early exit is never missed
   if (proc.pid) groups.add(proc.pid); // a failed spawn has no pid and reports through 'error'
+  if (proc.pid) spawnTimes.set(proc.pid, spawnedAt);
   return proc;
 }
 const hasExited = (proc) => proc.exitCode !== null || proc.signalCode !== null;
@@ -120,6 +127,36 @@ function groupAlive(pgid) {
     if (error.code === 'ESRCH') return false;
     throw error;
   }
+}
+
+/**
+ * Windows has no process group a signal or `kill(-pgid, 0)` can reach, so the same guarantee —
+ * nothing the CLI started can still write into the scratch directory — comes from the product's
+ * own platform layer, loaded from the build this harness already requires: the CLI's
+ * creation-filtered descendants in one process-table snapshot (`descendantTargets`), killed by
+ * identity in the same PowerShell (`readTableThenKill`), then a fresh snapshot that must show none.
+ * Never a name or pattern: the root is the exact pid this harness spawned.
+ */
+let windowsTree;
+async function loadWindowsTree() {
+  const load = (file) => import(pathToFileURL(join(root, 'packages/xezar/dist/platform', file)).href);
+  const [table, thenKill] = await Promise.all([load('process-table.js'), load('table-then-kill.js')]);
+  windowsTree = { ...table, ...thenKill };
+}
+function treeRoot(pid) {
+  // The CLI has exited by the time this runs: a direct child must have been created inside its life.
+  return { pid, spawnedAt: spawnTimes.get(pid) ?? 0, stoppedAt: Date.now() };
+}
+async function treeAlive(pid) {
+  const table = await windowsTree.readProcessTable({ timeoutMs: 10_000 });
+  assert.ok(table, 'BREAK-TEARDOWN-TREE: the Windows process table could not be read');
+  return windowsTree.descendantPids(table.rows, treeRoot(pid)).length > 0;
+}
+async function reapTree(pid) {
+  const result = await windowsTree.readTableThenKill(
+    (table) => windowsTree.descendantTargets(table.rows, treeRoot(pid)), { timeoutMs: 10_000 });
+  assert.ok(result, 'BREAK-TEARDOWN-TREE: the Windows process table could not be read');
+  for (let tries = 0; tries < 20 && await treeAlive(pid); tries++) await sleep(100);
 }
 /** Waits for a kernel fact; the bound only turns a leak into a named failure. */
 async function waitFor(predicate, bound) {
@@ -138,6 +175,7 @@ async function stopCli(proc) {
 }
 /** End what the CLI left behind — its own process group, by exact id — and await an empty group. */
 async function reapGroup(pgid) {
+  if (onWindows) return reapTree(pgid);
   if (!groupAlive(pgid)) return;
   process.kill(-pgid, 'SIGTERM'); // the exact group this harness created, never a process-name search
   if (await waitFor(() => !groupAlive(pgid), 5000)) return;
@@ -202,15 +240,16 @@ async function cleanup() {
   assert.equal(proxy?.listening ?? false, false, 'proxy listener survived cleanup');
   // Only once no process the system under test started can still write into it (#876).
   for (const pgid of groups) await reapGroup(pgid);
-  const survivors = [...groups].filter(groupAlive);
+  const survivors = [];
+  for (const pgid of groups) if (onWindows ? await treeAlive(pgid) : groupAlive(pgid)) survivors.push(pgid);
   assert.deepEqual(survivors, [], 'BREAK-TEARDOWN-TREE: a descendant of the CLI outlived teardown; the scratch directory is left in place');
   if (fixture) await rm(fixture, { recursive: true, force: true });
   assert.equal(forced, false, 'backend required SIGKILL; graceful teardown failed');
 }
 
 try {
-  assert.notEqual(process.platform, 'win32', 'POSIX process teardown is required (0.16.0)');
   await access(cli); // missing build fails, never falls back to source
+  if (onWindows) await loadWindowsTree();
   await mkdir(join(root, '.local'), { recursive: true });
   fixture = await mkdtemp(join(root, '.local/server-mode-'));
   const env = { PATH: process.env.PATH, HOME: join(fixture, 'home'), CI: '1', NO_COLOR: '1',

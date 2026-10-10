@@ -1440,6 +1440,8 @@ describe('defaultRunProviderCommand with real processes (#894)', () => {
     owned.gone(pids.child, pids.grandchild);
   }, 40_000);
 
+  // win32-skip(#975): the sign-in check runs in its own process group on POSIX only, and Windows has no
+  // `kill(-pgid)` group to sweep; the Windows tree stop is pinned by the timeout case above
   it.skipIf(onWindows)('POSIX: a CLI that exits 0 leaves no member of its group behind', async () => {
     const pidFile = join(dir, 'pids.json');
     pidFiles.add(pidFile);

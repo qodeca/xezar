@@ -465,7 +465,8 @@ function portRange(low: number, high: number, source: string): PortRange {
 
 /**
  * Every range this host assigns ports from automatically. macOS has two (the default range and
- * the `IP_PORTRANGE_HIGH` one), Linux one; any other platform is refused rather than guessed.
+ * the `IP_PORTRANGE_HIGH` one), Linux one, Windows one per IP family; any other platform is refused
+ * rather than guessed.
  */
 function hostAutoAssignRanges(): PortRange[] {
   if (process.platform === 'darwin') {
@@ -481,7 +482,17 @@ function hostAutoAssignRanges(): PortRange[] {
     const [low, high] = readFileSync(source, 'utf8').trim().split(/\s+/).map(Number);
     return [portRange(low ?? Number.NaN, high ?? Number.NaN, source)];
   }
-  assert.fail(`this test reads the automatic-assignment port range only on macOS and Linux, not ${process.platform}`);
+  if (process.platform === 'win32') {
+    // `netsh` prints the start port, then the number of ports; the labels are localised, the order is not.
+    const netsh = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'netsh.exe');
+    const ranges = (['ipv4', 'ipv6'] as const).map((family) => {
+      const out = execFileSync(netsh, ['int', family, 'show', 'dynamicport', 'tcp'], { encoding: 'utf8' });
+      const [start, count] = (out.match(/:\s*(\d+)/g) ?? []).map((m) => Number(m.replace(/\D/g, '')));
+      return portRange(start ?? Number.NaN, (start ?? Number.NaN) + (count ?? Number.NaN) - 1, `netsh int ${family} show dynamicport tcp`);
+    });
+    return ranges;
+  }
+  assert.fail(`this test reads the automatic-assignment port range only on macOS, Linux and Windows, not ${process.platform}`);
 }
 
 /**
@@ -502,17 +513,12 @@ function sentinelBand(ranges: readonly PortRange[]): PortRange {
   return { low, high };
 }
 
-/** The tests that take a sentinel port need the host's automatic-assignment range, and that is
- *  read only on macOS and Linux (`hostAutoAssignRanges` refuses anything else rather than guess). */
-const NO_PORT_RANGE = onWindows
-  ? 'win32-skip(#963): hostAutoAssignRanges() refuses win32 – it reads the automatic-assignment port range only on macOS and Linux'
-  : false;
-const SENTINEL_BAND = NO_PORT_RANGE ? { low: 0, high: -1 } : sentinelBand(hostAutoAssignRanges());
+const SENTINEL_BAND = sentinelBand(hostAutoAssignRanges());
 const SENTINEL_BLOCKS = Math.floor((SENTINEL_BAND.high - SENTINEL_BAND.low + 1) / SENTINEL_BLOCK);
 /** The next block to try. Seeded from the pid so two concurrent invocations start apart. */
 let nextSentinelBlock = process.pid % SENTINEL_BLOCKS;
 
-test('the sentinel band lies below every automatic-assignment range the host reports', { skip: NO_PORT_RANGE }, () => {
+test('the sentinel band lies below every automatic-assignment range the host reports', () => {
   const inside = (port: number, ranges: readonly PortRange[]): boolean =>
     ranges.some((range) => port >= range.low && port <= range.high);
   const bandPorts = (band: PortRange): number[] =>
@@ -610,7 +616,7 @@ async function release(server: Server): Promise<void> {
   await once(server, 'close');
 }
 
-test('a start remembers the port it really bound, and the next start comes back to it', { timeout: 180_000, skip: NO_PORT_RANGE }, async () => {
+test('a start remembers the port it really bound, and the next start comes back to it', { timeout: 180_000 }, async () => {
   const { repo, home } = await fixture('reuse');
   const wanted = await sentinel();
 
@@ -632,7 +638,7 @@ test('a start remembers the port it really bound, and the next start comes back 
   assert.equal(second.startPort, first.port, `the second start must request the remembered port. Output:\n${second.output}`);
 });
 
-test('fragmented stderr readiness ignores an interleaved stdout chunk', { timeout: 180_000, skip: NO_PORT_RANGE }, async () => {
+test('fragmented stderr readiness ignores an interleaved stdout chunk', { timeout: 180_000 }, async () => {
   const { repo, home } = await fixture('fragmented-ready');
   const wanted = await sentinel();
 
@@ -654,7 +660,7 @@ test('fragmented stderr readiness ignores an interleaved stdout chunk', { timeou
   });
 });
 
-test('named break `remember-before-listen`/`false-ready`: a busy remembered port is replaced by the port really bound', { timeout: 180_000, skip: NO_PORT_RANGE }, async () => {
+test('named break `remember-before-listen`/`false-ready`: a busy remembered port is replaced by the port really bound', { timeout: 180_000 }, async () => {
   const { repo, home } = await fixture('busy');
   const wanted = await sentinel();
 
@@ -677,7 +683,7 @@ test('named break `remember-before-listen`/`false-ready`: a busy remembered port
   );
 });
 
-test('named break `memory-over-flag`: an explicit --port beats the remembered port', { timeout: 180_000, skip: NO_PORT_RANGE }, async () => {
+test('named break `memory-over-flag`: an explicit --port beats the remembered port', { timeout: 180_000 }, async () => {
   const { repo, home } = await fixture('flag');
   const remembered = await sentinel();
   await bootServe(repo, home, ['--port', String(remembered.port)]).finally(() => release(remembered.server));
@@ -691,7 +697,7 @@ test('named break `memory-over-flag`: an explicit --port beats the remembered po
   assert.equal(row?.lastListen?.port, boot.port, 'the newly bound port becomes the memory');
 });
 
-test('named break `env-over-stored`: a project port beats XEZ_PORT', { timeout: 180_000, skip: NO_PORT_RANGE }, async () => {
+test('named break `env-over-stored`: a project port beats XEZ_PORT', { timeout: 180_000 }, async () => {
   const { repo, home } = await fixture('stored');
   // One boot to create the registry row, then pin a port on it the way `xez projects port` does.
   const seed = await sentinel();
@@ -752,7 +758,7 @@ test('an invalid XEZ_PORT is refused the same way', { timeout: 120_000 }, async 
   assert.deepEqual(await readRegistry(home), []);
 });
 
-test('named break `memory-required`: a mangled stored port warns once and the cockpit still starts', { timeout: 180_000, skip: NO_PORT_RANGE }, async () => {
+test('named break `memory-required`: a mangled stored port warns once and the cockpit still starts', { timeout: 180_000 }, async () => {
   const { repo, home } = await fixture('mangled');
   const seed = await sentinel();
   const seeded = await bootServe(repo, home, ['--port', String(seed.port)]).finally(() => release(seed.server));

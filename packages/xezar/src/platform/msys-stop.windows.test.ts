@@ -33,7 +33,7 @@ const sleeper = (file: string): string =>
 const readPid = (file: string): number | null =>
   existsSync(file) && readFileSync(file, 'utf8').length > 0 ? Number(readFileSync(file, 'utf8')) : null;
 
-// win32-skip(#963): Git Bash process trees exist on Windows only
+// win32-skip(#976): Git Bash process trees exist on Windows only
 describe.skipIf(!onWindows)('stopping a check step stops what Git Bash started (#963)', () => {
   let dir = '';
   const started: number[] = [];

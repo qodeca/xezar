@@ -152,7 +152,7 @@ describe('reading the descriptor the pi leader extension writes', () => {
     expect(found.ok === false && found.reason).toMatch(/is not a socket/);
   });
 
-  // win32-skip(#963): the pi leader stand-in listens on a Unix socket path (listen EACCES under Windows); attaching a pi leader on Windows is deferred to a follow-up
+  // win32-skip(#978): the pi leader stand-in listens on a Unix socket path (listen EACCES under Windows); attaching a pi leader on Windows is deferred to a follow-up
   it.skipIf(onWindows)('accepts a live socket, and reads it from the project data directory only', async () => {
     const leader = fakeLeader();
     await listening(leader.server);
@@ -166,7 +166,7 @@ describe('reading the descriptor the pi leader extension writes', () => {
   });
 });
 
-// win32-skip(#963): the pi leader stand-in listens on a Unix socket path (listen EACCES under Windows); attaching a pi leader on Windows is deferred to a follow-up
+// win32-skip(#978): the pi leader stand-in listens on a Unix socket path (listen EACCES under Windows); attaching a pi leader on Windows is deferred to a follow-up
 describe.skipIf(onWindows)('the link itself, over a real socket', () => {
   it('carries a command and resolves with pi\'s own response frame', async () => {
     const leader = fakeLeader({

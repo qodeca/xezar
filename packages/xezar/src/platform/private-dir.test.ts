@@ -101,14 +101,14 @@ describe('ensurePrivateDir on Linux and macOS (#963)', () => {
       const dir = join(base, platform);
       expect(await ensurePrivateDir(dir, { platform, run })).toEqual({ ok: true });
       expect(run).not.toHaveBeenCalled();
-      // win32-skip(#963): Windows reports no POSIX mode bits
+      // win32-skip(#972): Windows reports no POSIX mode bits
       if (!onWindows) expect(statSync(dir).mode & 0o777).toBe(0o700);
       expect(await checkPrivateDir(dir, [], { platform, run })).toEqual({ ok: true });
     });
   }
 });
 
-// win32-skip(#963): Windows access lists exist on Windows only; the rules above run everywhere
+// win32-skip(#976): Windows access lists exist on Windows only; the rules above run everywhere
 describe.skipIf(!onWindows)('ensurePrivateDir on Windows (#963)', () => {
   let base = '';
   beforeEach(() => {

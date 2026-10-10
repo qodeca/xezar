@@ -48,6 +48,7 @@ describe('the server suite runs with no ambient agent-model pin', () => {
  * of PATHEXT for the whole suite. The first case pins the behaviour, the second the mechanism.
  */
 describe('the server suite finds no command shim by bare name on Windows', () => {
+  // win32-skip(#976): a command shim found by bare name is a Windows concern only
   it.runIf(process.platform === 'win32')('reports a shim on PATH as missing (ENOENT)', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'xez-no-shim-'));
     try {

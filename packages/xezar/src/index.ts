@@ -965,6 +965,7 @@ async function serveCommand(
 
   const checks = await detectEnvironment();
   const repo = await getRepoInfo(repoRoot);
+  const probedAt = Date.now();
 
   // Startup reconcile (spec 006): sweep worktrees whose run no longer exists.
   if (repo) {
@@ -1025,6 +1026,9 @@ async function serveCommand(
     store,
     manager,
     version,
+    // The first health answer reuses this probe while it is fresh (#963): starting every agent CLI
+    // again during boot doubled the wait for it.
+    bootProbe: { checks, repo, at: probedAt },
     channel,
     update,
     bootProjectId,

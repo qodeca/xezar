@@ -43,6 +43,7 @@ describe('the #943 readers against a real child', () => {
     expect(pidExists(pid)).toBe(false);
   });
 
+  // win32-skip(#976): `/proc/<pid>/environ` exists on Linux only; Windows and macOS are pinned by the next case
   it.runIf(process.platform === 'linux')('Linux: proves the marker from /proc, and only the exact one', { timeout: REAL_TIMEOUT_MS }, async () => {
     const pid = await startMarkedChild();
     expect(await envHasEntry(pid, `XEZ_TASK_ID=${RUN_ID}`)).toBe(true);
@@ -51,6 +52,7 @@ describe('the #943 readers against a real child', () => {
     expect(await startTimeOf(pid)).toEqual(expect.any(Number));
   });
 
+  // win32-skip(#976): the process-table ledger is the proof on Windows and macOS only; Linux is pinned above
   it.runIf(process.platform === 'darwin' || process.platform === 'win32')(
     "macOS and Windows: the table's row carries a start time, and the command line reads back",
     { timeout: REAL_TIMEOUT_MS },

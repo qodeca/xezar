@@ -186,7 +186,7 @@ describe('SkillsUpdateService', () => {
     await expect(readdir(join(home, '.agents'))).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
-  // win32-skip(#963): Windows ignores POSIX mode bits, so a chmod'd read-only directory stays writable
+  // win32-skip(#972): Windows ignores POSIX mode bits, so a chmod'd read-only directory stays writable
   it.skipIf(onWindows)('keeps checking the project scope when the machine-global mirror cannot hold a lock', async () => {
     const lock = { skills: { alpha: { source: 'qodeca/xezar-skills' } } };
     const { home, repo } = await fixture(lock, lock);

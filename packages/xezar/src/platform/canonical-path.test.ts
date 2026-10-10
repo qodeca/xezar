@@ -28,7 +28,7 @@ function shortName(path: string): string | null {
   return out && !out.includes('"') && out.toLowerCase() !== path.toLowerCase() ? out : null;
 }
 
-// win32-skip(#963): letter case, 8.3 names and drive letters are Windows spellings; POSIX is pinned above
+// win32-skip(#976): letter case, 8.3 names and drive letters are Windows spellings; POSIX is pinned above
 describe.skipIf(!onWindows)('containment on the Windows file system (#963)', () => {
   let base = '';
   let root = '';
@@ -59,7 +59,7 @@ describe.skipIf(!onWindows)('containment on the Windows file system (#963)', () 
   it('allows the 8.3 short spelling of a folder inside', async (ctx) => {
     const inside = join(root, 'Long Folder Name');
     const short = shortName(inside);
-    if (short === null) ctx.skip(); // win32-skip(#963): this volume keeps no 8.3 names
+    if (short === null) ctx.skip(); // win32-skip(#976): this volume keeps no 8.3 names
     expect(await isLexicallyInsideBrowseRoot(root, short!)).toBe(true);
     expect(await isInsideBrowseRoot(root, short!)).toBe(true);
     expect(resolvesInside(root, join(short!, 'x.json'))).toBe(true);
