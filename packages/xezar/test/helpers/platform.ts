@@ -24,7 +24,7 @@ export const TEST_DIR_RM_OPTIONS: Readonly<RmOptions> = onWindows
   : { recursive: true, force: true };
 
 /** Home for a local socket. POSIX keeps literal `/tmp`: a Unix socket path is capped near 104 bytes
- *  and the per-run TMPDIR can be deeper. Windows has no xezar MCP socket yet (#963): tmpdir(). */
+ *  and the per-run TMPDIR can be deeper. Windows serves MCP on a named pipe, with no path limit: tmpdir(). */
 export function shortTmpRoot(): string {
   return onWindows ? tmpdir() : '/tmp';
 }

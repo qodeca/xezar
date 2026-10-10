@@ -68,7 +68,14 @@ export function codexControlHome(env: NodeJS.ProcessEnv = process.env): string {
  * path from anyone: `codexHome` comes from the service's own environment (`codexControlHome`).
  * Every error it throws is free of paths, so a caller may log it as it is.
  */
-export async function connectCodexLeader(announcement: CodexLeaderAnnouncement, projectRoot: string, codexHome: string): Promise<ConnectedCodexLeader> {
+export async function connectCodexLeader(
+  announcement: CodexLeaderAnnouncement,
+  projectRoot: string,
+  codexHome: string,
+  platform: NodeJS.Platform = process.platform,
+): Promise<ConnectedCodexLeader> {
+  // #963: Codex's control endpoint is a Unix socket; its Windows counterpart is a follow-up.
+  if (platform === 'win32') throw new CodexAttachError('unsupported', 'attaching to a running Codex session is not available on this system');
   // A home that cannot be read is where xezar looks, not where this person's Codex runs: the home fix.
   const home = local('the Codex home cannot be read', () => realpathSync(codexHome), 'home');
   const expectedProject = local('the project folder cannot be read', () => realpathSync(projectRoot));

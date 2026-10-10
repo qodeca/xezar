@@ -2,8 +2,8 @@
 // that reaches `skills.ts` (#671).
 import './tools/mcp-test-home.testkit.ts';
 import { execFileSync } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { delimiter, join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -23,7 +23,8 @@ import { runVersion } from './stale-write.ts';
 import { QUALITY_BLOCKER_NEXT_ACTION } from './tools/handoff-git.ts';
 import { tools } from './tools/index.ts';
 import { withOperationId } from './tools/operation-id.testkit.ts';
-import { onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
+import { cmdShimText } from '../platform/cmd-shim.testkit.ts';
+import { shortTmpRoot, onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * #262 — a leader marks its own draft pull request ready, through the REAL composed service: the
@@ -37,14 +38,14 @@ const VERSION = '9.9.9-ready';
 const REPO = 'acme/demo';
 const REMOTE_URL = `https://github.com/${REPO}.git`;
 const FAKE_GH = fileURLToPath(new URL('../../test/helpers/fake-gh.mjs', import.meta.url));
-const ENV_KEYS = ['XEZ_HOME', 'XEZ_DRY_RUN', 'PATH', 'FAKE_GH_STATE', 'GIT_CONFIG_GLOBAL', 'GIT_CONFIG_NOSYSTEM'] as const;
+const ENV_KEYS = ['XEZ_HOME', 'XEZ_DRY_RUN', 'PATH', 'PATHEXT', 'FAKE_GH_STATE', 'GIT_CONFIG_GLOBAL', 'GIT_CONFIG_NOSYSTEM'] as const;
 
 const saved: Partial<Record<(typeof ENV_KEYS)[number], string | undefined>> = {};
 const tempDirs: string[] = [];
 const closers: Array<() => unknown> = [];
 
 const tmp = (prefix: string): string => {
-  const dir = realpathSync(mkdtempSync(`/tmp/${prefix}`));
+  const dir = realpathSync(mkdtempSync(join(shortTmpRoot(), prefix)));
   tempDirs.push(dir);
   return dir;
 };
@@ -72,9 +73,17 @@ beforeEach(() => {
   // `gh` is the fake, first on PATH; it runs under this very node.
   const bin = join(home, 'bin');
   mkdirSync(bin);
-  writeFileSync(join(bin, 'gh'), `#!/bin/sh\nexec "${process.execPath}" "${FAKE_GH}" "$@"\n`, 'utf8');
-  chmodSync(join(bin, 'gh'), 0o755);
-  process.env.PATH = `${bin}:${process.env.PATH ?? ''}`;
+  if (onWindows) {
+    // Windows (#963): an npm-style `gh.cmd` shim beside a copy of the fake, which xezar's launcher
+    // unwraps to run under node directly; `vitest.setup.ts` limits PATHEXT to `.COM;.EXE`.
+    copyFileSync(FAKE_GH, join(bin, 'gh.mjs'));
+    writeFileSync(join(bin, 'gh.cmd'), cmdShimText({ target: 'gh.mjs', prog: 'node' }), 'utf8');
+    process.env.PATHEXT = '.COM;.EXE;.BAT;.CMD';
+  } else {
+    writeFileSync(join(bin, 'gh'), `#!/bin/sh\nexec "${process.execPath}" "${FAKE_GH}" "$@"\n`, 'utf8');
+    chmodSync(join(bin, 'gh'), 0o755);
+  }
+  process.env.PATH = `${bin}${delimiter}${process.env.PATH ?? ''}`;
   statePath = join(home, 'forge.json');
   process.env.FAKE_GH_STATE = statePath;
   writeFileSync(statePath, JSON.stringify({ repo: REPO, calls: [], prs: [] }));
@@ -181,8 +190,7 @@ function leader(root: string) {
   return { call, act };
 }
 
-// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – every test here starts the project MCP service on its socket
-describe.skipIf(onWindows)('handoff_git ready — a leader moves its own draft pull request forward (#262)', () => {
+describe('handoff_git ready — a leader moves its own draft pull request forward (#262)', () => {
   it('opens a draft PR through MCP, marks it ready through MCP, and the forge reports it ready', async () => {
     const c = await cockpit();
     const mcp = leader(c.root);

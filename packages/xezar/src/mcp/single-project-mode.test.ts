@@ -1,9 +1,11 @@
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { projectStateLayout, setActiveStateLayout } from '../state-layout.ts';
 import { registerProject } from '../workspace/projects.ts';
 import { resolveMcpTarget, startMcpService } from './index.ts';
-import { onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
+import { PIPE_NAME_PATTERN } from './pipe-endpoint.ts';
+import { onWindows, shortTmpRoot, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * #600 review M1 — in single-project ROOT mode the registry is the DERIVED row,
@@ -18,15 +20,14 @@ import { onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
  *
  * Both are RED on the pre-fix source and GREEN through `findRegistryProject`.
  */
-// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – every test here starts the project MCP service on its socket
-describe.skipIf(onWindows)('single-project mode opens the MCP service (#600 review M1)', () => {
+describe('single-project mode opens the MCP service (#600 review M1)', () => {
   const dirs: string[] = [];
   const handles: Array<{ close(): void }> = [];
   const saved = { home: process.env.XEZ_HOME, dryRun: process.env.XEZ_DRY_RUN };
 
   /** Short paths under /tmp: the per-worker sandbox is past the 104-byte socket limit on macOS. */
   const tmp = (prefix: string): string => {
-    const dir = realpathSync(mkdtempSync(`/tmp/${prefix}`));
+    const dir = realpathSync(mkdtempSync(join(shortTmpRoot(), prefix)));
     dirs.push(dir);
     return dir;
   };
@@ -53,9 +54,11 @@ describe.skipIf(onWindows)('single-project mode opens the MCP service (#600 revi
 
     const handle = await startMcpService({ projectId: entry.id, version: '9.9.9-sp' });
     handles.push(handle);
-    expect(handle.path).toContain(entry.id);
+    // Windows (#963): the pipe name is fresh at every start, so the project's id names its endpoint files instead.
+    if (onWindows) expect(handle.path).toMatch(PIPE_NAME_PATTERN);
+    else expect(handle.path).toContain(entry.id);
 
     const target = await resolveMcpTarget(root);
-    expect(target).toMatchObject({ kind: 'socket', project: { id: entry.id } });
+    expect(target).toMatchObject({ kind: onWindows ? 'pipe' : 'socket', project: { id: entry.id } });
   });
 });

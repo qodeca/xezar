@@ -81,7 +81,10 @@ async function cockpit(maxParallel = 2) {
     workspaceEvents: new WorkspaceEventBus(),
     providerAuth: connectedProviderAuth(),
   });
-  closers.push(() => {
+  closers.push(async () => {
+    // Windows (#963): a settled run's agent session stays alive with its working folder in the
+    // project, and Windows refuses to delete a folder a live process works in. Stop it first.
+    if (onWindows) await manager.quiesce();
     manager.dispose();
     store.flush();
     contexts.disposeAll();
@@ -146,8 +149,7 @@ const journalRows = (dataDir: string): McpJournalRow[] => {
 /** The E-01–E-03 rows a settled task can end in (done, review, waiting with or without a question). */
 const SETTLED_KINDS = ['task.done', 'result.ready', 'task.blocked', 'question.asked'];
 
-// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – this opens the project MCP socket
-describe.skipIf(onWindows)('the composed MCP service, through the real bridge and socket', () => {
+describe('the composed MCP service, through the real bridge and socket', () => {
   it('starts a task through the cockpit services, takes it through its lifecycle, and records the operation', async () => {
     const c = await cockpit();
     const handle = await startMcpService({ projectId: c.id, version: VERSION, service: c.app, store: c.store });
@@ -204,7 +206,8 @@ describe.skipIf(onWindows)('the composed MCP service, through the real bridge an
       operationKey: `${c.id}/op-compose-0001`,
     });
     // #306: no opt-in flag, the new file name, owner-only, and nothing under the legacy name.
-    expect(statSync(join(c.dataDir, 'audit.ndjson')).mode & 0o777).toBe(0o600);
+    // win32-skip(#963): Windows ignores POSIX mode bits (observed: every file stats 0o666)
+    if (!onWindows) expect(statSync(join(c.dataDir, 'audit.ndjson')).mode & 0o777).toBe(0o600);
     expect(existsSync(join(c.dataDir, 'mcp-audit.ndjson'))).toBe(false);
 
     // #103: the project's journal is open while the service runs, and released by close().
@@ -213,7 +216,9 @@ describe.skipIf(onWindows)('the composed MCP service, through the real bridge an
     handle.close();
     const reopened = EventJournal.open({ dataDir: c.dataDir, projectId: c.id, secretValues: [] });
     reopened.close();
-  });
+    // Windows (#963): the pipe's first PowerShell run in a worker and a dry-run task's lifecycle
+    // together pass the default 15 s there.
+  }, onWindows ? 60_000 : undefined);
 
   it("writes an MCP cancel as the leader's change, naming the operation that caused it", async () => {
     // No free slot: the task the leader starts stays queued in the cockpit's own manager.
@@ -466,7 +471,7 @@ describe.skipIf(onWindows)('the composed MCP service, through the real bridge an
 });
 
 describe('N-07: composition can never break ordinary startup', () => {
-  // win32-skip(#963): provokes the socket-path length limit, which Windows never reaches: the MCP socket is unavailable there (ipc.ts), so the "too long" error cannot occur
+  // win32-skip(#963): provokes the Unix socket-path length limit (`sun_path`); Windows serves MCP on a named pipe, which has no path limit, so the "too long" error cannot occur there
   it.skipIf(onWindows)('releases every part it composed when the socket cannot open', async () => {
     const c = await cockpit();
     // Past the local-socket length limit: the socket half throws after the journal and receipts opened.
@@ -481,7 +486,7 @@ describe('N-07: composition can never break ordinary startup', () => {
     handle.close();
   });
 
-  // win32-skip(#963): provokes the socket-path length limit, which Windows never reaches: the MCP socket is unavailable there (ipc.ts), so the "too long" error cannot occur
+  // win32-skip(#963): provokes the Unix socket-path length limit (`sun_path`); Windows serves MCP on a named pipe, which has no path limit, so the "too long" error cannot occur there
   it.skipIf(onWindows)('`xezar serve` still boots and answers /api/v1/health when the MCP composition throws', async () => {
     const repo = tmp('xzr-');
     // Registry and cockpit work under this home; only the MCP socket path is too long for it.

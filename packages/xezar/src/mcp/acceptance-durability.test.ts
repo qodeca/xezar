@@ -35,7 +35,7 @@ import type { McpToolContext } from './tool.ts';
 import { QUALITY_BLOCKER_NEXT_ACTION, handoffGitTool } from './tools/handoff-git.ts';
 import { tools } from './tools/index.ts';
 import { withOperationId } from './tools/operation-id.testkit.ts';
-import { onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
+import { shortTmpRoot, onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * #117 — the correctness and durability suite, whole-feature half: A-13, A-14, A-15, A-16, A-21 and
@@ -114,7 +114,7 @@ afterEach(async () => {
 // A short directory under /tmp, never the per-worker sandbox: that sits under the task's TMPDIR,
 // already past the 104-byte socket-path limit on macOS (D-01 E5).
 function shortTmp(prefix: string): string {
-  const dir = realpathSync(mkdtempSync(`/tmp/${prefix}`));
+  const dir = realpathSync(mkdtempSync(join(shortTmpRoot(), prefix)));
   composedDirs.push(dir);
   return dir;
 }
@@ -300,8 +300,7 @@ function journalRowsOnDisk(dataDir: string): Array<{ eventId: string; kind: stri
 
 // ---- A-13 ----------------------------------------------------------------------------------------
 
-// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – every test here opens the project MCP socket, in the A/B world or the composed service
-describe.skipIf(onWindows)('A-13 — a human changed a resource after the leader read it (N-03)', () => {
+describe('A-13 — a human changed a resource after the leader read it (N-03)', () => {
   it("rejects the stale leader write with nothing applied: A's state is byte-identical and B is untouched", async () => {
     const w = await openWorld();
     const id = w.a.ids.queued;
@@ -459,8 +458,7 @@ describe.skipIf(onWindows)('A-13 — a human changed a resource after the leader
 
 // ---- A-14 ----------------------------------------------------------------------------------------
 
-// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – every test here opens the project MCP socket, in the A/B world or the composed service
-describe.skipIf(onWindows)('A-14 — a mutation executed but its response lost (N-10)', () => {
+describe('A-14 — a mutation executed but its response lost (N-10)', () => {
   it("one key through the cockpit's create route: EXACTLY ONE task for a repeated key, TWO for two keys", async () => {
     const w = await openWorld();
     const receipts = OperationReceiptStore.open(w.a.dataDir);
@@ -585,8 +583,7 @@ describe.skipIf(onWindows)('A-14 — a mutation executed but its response lost (
 
 // ---- A-15 ----------------------------------------------------------------------------------------
 
-// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – every test here opens the project MCP socket, in the A/B world or the composed service
-describe.skipIf(onWindows)('A-15 — a task completes while the client is offline (F-19–F-21, N-05, N-06, N-10)', () => {
+describe('A-15 — a task completes while the client is offline (F-19–F-21, N-05, N-06, N-10)', () => {
   it('the task and its result survive; reconnect delivers the outstanding event and the current state; nothing polls; a replay repeats no effect', async () => {
     const w = await openWorld();
     // The project half, attached where the project opens — never by a leader connection (N-05).
@@ -716,8 +713,7 @@ describe.skipIf(onWindows)('A-15 — a task completes while the client is offlin
 
 // ---- A-16 ----------------------------------------------------------------------------------------
 
-// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – every test here opens the project MCP socket, in the A/B world or the composed service
-describe.skipIf(onWindows)('A-16 — MCP state absent or corrupt, the MCP service restarting (N-07, N-08)', () => {
+describe('A-16 — MCP state absent or corrupt, the MCP service restarting (N-07, N-08)', () => {
   it('a second MCP service for the same project is refused, and the first keeps serving: never two owners', async () => {
     const w = await openWorld();
     await expect(
@@ -758,8 +754,7 @@ describe.skipIf(onWindows)('A-16 — MCP state absent or corrupt, the MCP servic
 
 // ---- A-21 ----------------------------------------------------------------------------------------
 
-// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – every test here opens the project MCP socket, in the A/B world or the composed service
-describe.skipIf(onWindows)('A-21 — reconnect with a valid or an old cursor (F-21, N-10)', () => {
+describe('A-21 — reconnect with a valid or an old cursor (F-21, N-10)', () => {
   it('an old cursor after the journal was recreated is an explicit gap naming current-state recovery, with the current state beside it', async () => {
     const w = await openWorld();
     const cursors = LeaderCursors.open({ dataDir: w.a.dataDir, projectId: PROJECT_A, journal: w.a.journal, warn: () => {} });
@@ -880,8 +875,7 @@ describe.skipIf(onWindows)('A-21 — reconnect with a valid or an old cursor (F-
 
 // ---- A-22 ----------------------------------------------------------------------------------------
 
-// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – every test here opens the project MCP socket, in the A/B world or the composed service
-describe.skipIf(onWindows)('A-22 — global administration and weakening gates, including by an approval request (F-12, F-22)', () => {
+describe('A-22 — global administration and weakening gates, including by an approval request (F-12, F-22)', () => {
   // `set_workspace_config` left this list with #677 B1 and the two workspace folder paths followed
   // in B2: the owner's 2026-09-20 rule made the whole workspace SETTINGS write a leader write, and
   // `acceptance-parity.test.ts` P-45 holds it to the cockpit's own route, probe included.
@@ -926,7 +920,7 @@ describe.skipIf(onWindows)('A-22 — global administration and weakening gates, 
     // not a refusal: it is a dispatch of the cockpit's own route and nothing else, never a second
     // write path that would sidestep the route's own probe. What it WRITES is P-45's case.
     const roots = await w.observe(() =>
-      w.call('a', 'project_config', { action: 'set_workspace_config', operationId: 'op-a22-roots-0001', workspaceConfig: { browseRoot: '/tmp', projectsDir: '/tmp' } }),
+      w.call('a', 'project_config', { action: 'set_workspace_config', operationId: 'op-a22-roots-0001', workspaceConfig: { browseRoot: shortTmpRoot(), projectsDir: shortTmpRoot() } }),
     );
     expect(roots.response.isError ?? false, 'workspace roots').toBe(false);
     expect(roots.dispatched, 'workspace roots go through the cockpit’s own route').toEqual(['PUT /api/v1/workspace/config']);
@@ -948,7 +942,9 @@ describe.skipIf(onWindows)('A-22 — global administration and weakening gates, 
     expect(provider.response.isError ?? false, 'provider switch').toBe(false);
     expect(provider.dispatched, 'the provider switch goes through the cockpit’s own route').toEqual(['PUT /api/v1/providers/claude/enabled']);
     // The only change in A is the door's own audit record of each refused call (D-06 § 10).
-    expect(snapshotChanges(beforeA, w.snapshot('a')).filter((line) => !line.includes('/audit.ndjson') && line !== '~ audit')).toEqual([]);
+    // Windows (#963): the snapshot spells paths with backslashes; compare them as POSIX does.
+    const changesA = snapshotChanges(beforeA, w.snapshot('a')).map((line) => (onWindows ? line.replace(/\\/g, '/') : line));
+    expect(changesA.filter((line) => !line.includes('/audit.ndjson') && line !== '~ audit')).toEqual([]);
   });
 
   it('only safe effective reads are allowed, and they carry no account identity or secret', async () => {

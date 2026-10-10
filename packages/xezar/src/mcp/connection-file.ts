@@ -1,6 +1,7 @@
-import { chmodSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
+import { writeFileAtomicSync } from '../platform/atomic-write.ts';
 import { ensureProjectDataIgnored } from '../project-data-paths.ts';
 
 /**
@@ -55,19 +56,14 @@ export function writeMcpConnectionFile(input: {
   ensureProjectDataIgnored(input.dataDir);
   mkdirSync(input.dataDir, { recursive: true });
   const path = mcpConnectionPath(input.dataDir);
-  const tmp = `${path}.tmp`;
-  try {
-    writeFileSync(tmp, `${JSON.stringify(descriptor, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
-    // The mode is ignored when a stale tmp already existed; the rename carries the tmp's mode.
-    chmodSync(tmp, 0o600);
-    renameSync(tmp, path);
-  } catch (err) {
-    try {
-      rmSync(tmp, { force: true });
-    } catch {
-      /* the write's own error is the one worth reporting */
-    }
-    throw err;
-  }
+  // The temporary file is created 0600 and chmod'ed strictly before the rename, which carries its
+  // mode; on Windows the rename retries a briefly locked target (#963).
+  writeFileAtomicSync(path, `${JSON.stringify(descriptor, null, 2)}\n`, {
+    encoding: 'utf8',
+    mode: 0o600,
+    tempMode: 0o600,
+    // The fixed sibling name is load-bearing: a stale one is replaced, and N-07 relies on it to fail.
+    tmpPath: `${path}.tmp`,
+  });
   return path;
 }

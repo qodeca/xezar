@@ -21,7 +21,7 @@ import { resolveMcpTarget, startMcpService } from './index.ts';
 import { LineFramer, encodeFrame, type McpToolResult } from './ipc.ts';
 import { tools } from './tools/index.ts';
 import { withOperationId } from './tools/operation-id.testkit.ts';
-import { onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
+import { shortTmpRoot, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * #251 and #252, against the REAL composed service: the real `runBridge` over the real project
@@ -44,7 +44,7 @@ const saved = { home: process.env.XEZ_HOME, dryRun: process.env.XEZ_DRY_RUN, rem
 
 // A short home under /tmp: the per-worker sandbox is already past the macOS socket-path limit.
 const tmp = (prefix: string): string => {
-  const dir = realpathSync(mkdtempSync(`/tmp/${prefix}`));
+  const dir = realpathSync(mkdtempSync(join(shortTmpRoot(), prefix)));
   tempDirs.push(dir);
   return dir;
 };
@@ -185,8 +185,7 @@ const e05 = (dataDir: string): McpJournalRow[] => journalRows(dataDir).filter((r
 
 const STEPS = [{ id: 'do', prompt: 'do it' }];
 
-// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – every test here starts the project MCP service on its socket
-describe.skipIf(onWindows)('#251 — a reconnecting leader reads the events it missed (A-15, A-21)', () => {
+describe('#251 — a reconnecting leader reads the events it missed (A-15, A-21)', () => {
   it('delivers the outstanding events and current state, again until acknowledged, then an explicit gap when events were dropped', async () => {
     const c = await cockpit();
     let handle = await serve(c);
@@ -282,8 +281,7 @@ describe.skipIf(onWindows)('#251 — a reconnecting leader reads the events it m
   });
 });
 
-// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – every test here starts the project MCP service on its socket
-describe.skipIf(onWindows)('#252 — a human change to config, a workflow or agent config reaches the leader as E-05', () => {
+describe('#252 — a human change to config, a workflow or agent config reaches the leader as E-05', () => {
   it('writes exactly one row per real change, as the human’s, and none for a refused or empty write', async () => {
     const c = await cockpit();
     await serve(c);

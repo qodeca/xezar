@@ -20,12 +20,14 @@ import { runBridge } from './bridge.ts';
 import { LineFramer, encodeFrame } from './ipc.ts';
 import { tools } from './tools/index.ts';
 import { onWindows, shortTmpRoot } from '../../test/helpers/platform.ts';
+import { targetFor } from '../../test/helpers/mcp-raw.ts';
 
 export const DELIVERY_CLIENTS = ['claude-code', 'codex', 'opencode', 'pi'] as const;
 export type DeliveryClient = typeof DELIVERY_CLIENTS[number];
-/** True where this client's peer cannot be built: every peer but OpenCode's (HTTP) listens on a Unix socket path,
- *  which Node cannot do on Windows (#963). Always false on POSIX. */
-export const deliveryPeerUnavailable = (client: DeliveryClient): boolean => onWindows && client !== 'opencode';
+/** True where this client's peer cannot be built: the Codex and pi peers listen on a Unix socket path, which
+ *  Node cannot do on Windows; attaching either there is a follow-up (#963). Claude Code crosses the real
+ *  service, a named pipe on Windows. Always false on POSIX. */
+export const deliveryPeerUnavailable = (client: DeliveryClient): boolean => onWindows && (client === 'codex' || client === 'pi');
 const SESSION = 'ses_matrix0000000000000001';
 interface Submission { parts: Array<{ text: string; metadata?: { xezar?: { rows: string[] } } }> }
 
@@ -77,7 +79,7 @@ export async function deliveryHarness(client: DeliveryClient) {
       }, () => {});
       output.on('data', (chunk: Buffer) => framer.push(chunk));
       const done = runBridge({ input, output, version: '0.0.0-test', tools,
-        resolveTarget: async () => ({ kind: 'socket', path: socket.path, project: { id: 'matrix', name: 'Matrix' } }) });
+        resolveTarget: async () => targetFor(socket, { id: 'matrix', name: 'Matrix' }, { ...process.env, XEZ_HOME: root }) });
       closers.push(async () => { input.end(); await done; });
       let next = 1;
       const rpc = (method: string, params: Record<string, unknown>) => new Promise(resolve => {

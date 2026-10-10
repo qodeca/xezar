@@ -13,7 +13,7 @@ import { LEADER_EVENTS_TOOL_NAME, LeaderDelivery, type LeaderDeliveryOptions, le
 import { textResult } from './tool.ts';
 import { leaderEventsTool } from './tools/leader-events.ts';
 import { type FakeOpenCodeSession, fakeOpenCodeSession } from './leader-delivery.testkit.ts';
-import { shortTmpRoot, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
+import { onWindows, shortTmpRoot, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * #309 — the two answers `LeaderDelivery` gives about things it did not choose: a session that turns
@@ -117,6 +117,11 @@ const until = async (what: string, probe: () => boolean, ms = 5_000): Promise<vo
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
 };
+
+/** Why pi-link finds no leader: on Windows attaching a pi leader is deferred (#963). */
+const PI_NO_LEADER_REASON = onWindows
+  ? 'attaching a pi leader is not available on this system yet'
+  : 'no pi leader has announced itself to this project';
 
 describe('a session that does not own the project', () => {
   it('gets no dispatcher, says why once in the log, and reports no delivery', () => {
@@ -1174,7 +1179,9 @@ describe('attaching Codex (#374)', () => {
     expect(journal.latestSeq).toBe(1);
   });
 
-  it('a missing daemon is refused by the REAL connector, and the log names the reason, not the path', async () => {
+  // win32-skip(#963): the real Codex connector refuses at once on Windows (attaching a Codex leader there is
+  // deferred to a follow-up); codex-link.test.ts pins that refusal on every OS
+  it.skipIf(onWindows)('a missing daemon is refused by the REAL connector, and the log names the reason, not the path', async () => {
     const home = realpathSync(mkdtempSync(join(shortTmpRoot(), 'xzld-codex-')));
     dirs.push(home);
     const { delivery: made, warnings } = codexDelivery({ home });
@@ -1251,7 +1258,9 @@ describe('attaching Codex (#374)', () => {
     expect(made.status()).toMatchObject({ owner: null, blocker: { code: 'no-leader-session' } });
   });
 
-  it('the REAL connector’s refusals carry their reason: a missing socket gets the app-server fix, an unreadable home the home fix', async () => {
+  // win32-skip(#963): the real Codex connector refuses at once on Windows (attaching a Codex leader there is
+  // deferred to a follow-up); codex-link.test.ts pins that refusal on every OS
+  it.skipIf(onWindows)('the REAL connector’s refusals carry their reason: a missing socket gets the app-server fix, an unreadable home the home fix', async () => {
     const home = realpathSync(mkdtempSync(join(shortTmpRoot(), 'xzld-codex-')));
     dirs.push(home);
     const withHome = codexDelivery({ home }).delivery;
@@ -1730,7 +1739,7 @@ describe('the MCP leader door (#450)', () => {
     plain.sessionOpened('s3');
     expect(await plain.act({ action: 'attach', client: 'pi' })).toEqual({
       ok: false,
-      error: 'xezar has no live link to a pi leader for this project (no pi leader has announced itself to this project). pi speaks RPC over its own stdin and stdout only — it has no port, socket or attach mode — so a pi you run yourself can be reached only from inside it, by the xezar leader extension. Events stay in the project journal and nothing is lost.',
+      error: `xezar has no live link to a pi leader for this project (${PI_NO_LEADER_REASON}). pi speaks RPC over its own stdin and stdout only — it has no port, socket or attach mode — so a pi you run yourself can be reached only from inside it, by the xezar leader extension. Events stay in the project journal and nothing is lost.`,
     });
     expect(await plain.act({ action: 'attach', client: 'codex' })).toEqual({
       ok: false,

@@ -24,7 +24,7 @@ import { resolveMcpTarget, startMcpService } from './index.ts';
 import { LineFramer, encodeFrame, type McpToolResult } from './ipc.ts';
 import { tools } from './tools/index.ts';
 import { withOperationId } from './tools/operation-id.testkit.ts';
-import { onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
+import { shortTmpRoot, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * #309 — push delivery against the REAL composed service: `startMcpService` exactly as `xezar
@@ -59,7 +59,7 @@ const saved = {
 
 // A short home under /tmp: the socket path must stay under the OS limit (D-01 E5).
 const tmp = (prefix: string): string => {
-  const dir = realpathSync(mkdtempSync(`/tmp/${prefix}`));
+  const dir = realpathSync(mkdtempSync(join(shortTmpRoot(), prefix)));
   tempDirs.push(dir);
   return dir;
 };
@@ -355,8 +355,7 @@ const auditActions = (dataDir: string): string[] => {
 
 const attach = (c: Cockpit, baseUrl: string) => c.human('POST', '/mcp/leader', { action: 'attach', client: 'opencode', baseUrl, sessionId: SESSION });
 
-// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – every test here starts the project MCP service on its socket
-describe.skipIf(onWindows)('#309 — push delivery in the running service (A-19 delivery, A-20 no-echo-loop)', () => {
+describe('#309 — push delivery in the running service (A-19 delivery, A-20 no-echo-loop)', () => {
   it('delivers a human change and a task outcome to the OpenCode leader the person attached, and never the leader’s own echo', async () => {
     const c = await cockpit();
     const oc = await fakeOpenCode(c.root);

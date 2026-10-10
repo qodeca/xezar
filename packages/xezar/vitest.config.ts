@@ -24,7 +24,12 @@ export default defineConfig({
     // slow, which is exactly the population that was flaking. A hung test still fails well inside
     // one gate, and a passing run pays nothing: a timeout only bounds a test that is already
     // failing.
-    testTimeout: 15_000,
+    //
+    // Windows (#963) pays more for the same case: every MCP service start makes its pipe folder
+    // private with one PowerShell run (about 1 s warm, 5 s cold), and under a full gate four
+    // workers' PowerShell runs queue behind each other. Linux and macOS keep 15 000 ms exactly.
+    testTimeout: process.platform === 'win32' ? 45_000 : 15_000,
+    ...(process.platform === 'win32' ? { hookTimeout: 45_000 } : {}),
     // `expect.poll` has its own, shorter default of ONE second, and it had already been
     // hand-patched to 3 000 ms at four call sites whose comments name this exact flake. One
     // budget for the suite replaces those one-off patches. It sits BELOW `testTimeout` on

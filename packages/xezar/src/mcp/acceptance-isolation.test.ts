@@ -63,10 +63,31 @@ const exercised = new Set<N01Item>();
 
 /** § 9 for one observation, plus the N-01 items this case exercises on purpose. */
 function judge(world: AbWorld, seen: Observation<unknown>, items: readonly N01Item[], echoes: readonly string[] = []): string {
-  const surface = assertIsolated(world, seen, { echoes });
+  const surface = assertIsolated(world, seen, { echoes: windowsEchoes(echoes) });
   for (const item of [...items, 'side effects' as const]) exercised.add(item);
   return surface;
 }
+
+/** The JSON-escaped spelling of `value`, without its quotes. */
+const jsonEscaped = (value: string): string => JSON.stringify(value).slice(1, -1);
+
+/** How deep the surface nests JSON: a frame in the leader log carries a tool result's JSON text. */
+const ECHO_ESCAPE_DEPTH = 4;
+
+/**
+ * Windows (#963): an echo holding a path has backslashes, which the searched surface carries
+ * JSON-escaped once per level of nesting (a tool result's text is JSON inside a frame inside the
+ * JSON-encoded surface), so the leader's own echo is stripped in each of those spellings too – the
+ * most escaped first. POSIX: unchanged.
+ */
+const windowsEchoes = (echoes: readonly string[]): readonly string[] =>
+  onWindows
+    ? echoes.flatMap((echo) => {
+        const spellings = [echo];
+        for (let level = 1; level <= ECHO_ESCAPE_DEPTH; level++) spellings.unshift(jsonEscaped(spellings[0]!));
+        return spellings;
+      })
+    : echoes;
 
 const text = resultText;
 const payload = (result: McpToolResult): Record<string, any> => {
@@ -132,8 +153,7 @@ function scopeA(world: AbWorld, audit: OwnershipAuditEntry[]): OwnershipScope {
   return ownershipScope({ root: world.a.root, store: world.a.store, automationStore: world.a.automations }, (e) => audit.push(e));
 }
 
-// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – every test here opens the project MCP socket (observed: "not supported on Windows yet" in the world setup)
-describe.skipIf(onWindows)('#115 isolation acceptance — A/B world', { timeout: 120_000 }, () => {
+describe('#115 isolation acceptance — A/B world', { timeout: 120_000 }, () => {
   // ---- A-02: bound to A, B supplied through a parameter, an alias or call content -------------
 
   describe('A-02 — no variation changes scope, reveals B or acts on B', () => {
@@ -417,6 +437,8 @@ describe.skipIf(onWindows)('#115 isolation acceptance — A/B world', { timeout:
       const withoutTrail = (s: string) => {
         const parsed = JSON.parse(s) as { files: string[]; audit: unknown };
         const files = parsed.files
+          // Windows (#963): the snapshot spells paths with backslashes; compare them as POSIX does.
+          .map((f) => (onWindows ? f.replace(/\\/g, '/') : f))
           .filter((f) => !f.includes('/audit.ndjson'))
           .map((f) => (f.startsWith('F /.git/index ') ? f.replace(/^(F \S+ \d+ \d+) \S+ /, '$1 <mtime> ') : f));
         return JSON.stringify({ ...parsed, files, audit: null });
@@ -1002,7 +1024,8 @@ describe.skipIf(onWindows)('#115 isolation acceptance — A/B world', { timeout:
       expect(own.size).toBe(2);
       expect(surface.length).toBeGreaterThan(5_000);
       expect(readFileSync(c.path, 'utf8')).toContain(c.credential);
-      expect(statSync(c.path).mode & 0o777).toBe(0o600);
+      // POSIX mode bits: Windows has none to check (#963); the file's privacy there is its folder's ACL.
+      if (!onWindows) expect(statSync(c.path).mode & 0o777).toBe(0o600);
       const history = text(seen.response.reads[3]!);
       expect(history).toContain('ALPHA used [REDACTED] to push');
 

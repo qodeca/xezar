@@ -6,7 +6,7 @@ import { projectDataDir } from '../project-data-paths.ts';
 import { registerProject } from '../workspace/projects.ts';
 import { mcpConnectionDescriptorSchema, mcpConnectionPath, writeMcpConnectionFile } from './connection-file.ts';
 import { startMcpService } from './index.ts';
-import { onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
+import { onWindows, shortTmpRoot, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * D-04's connection file (#262, A-01): the running service writes
@@ -21,7 +21,7 @@ const closers: Array<() => void> = [];
 
 // A short home under /tmp: the task TMPDIR is past the 104-byte socket limit on macOS (D-01 E5).
 const tmp = (prefix: string): string => {
-  const dir = realpathSync(mkdtempSync(`/tmp/${prefix}`));
+  const dir = realpathSync(mkdtempSync(join(shortTmpRoot(), prefix)));
   dirs.push(dir);
   return dir;
 };
@@ -52,8 +52,7 @@ async function start(projectId: string, warnings: string[], env: NodeJS.ProcessE
 
 const aboutTheFile = (warnings: string[]) => warnings.filter((w) => w.includes('connection file'));
 
-// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – every test here starts the project MCP service on its socket
-describe.skipIf(onWindows)('D-04: the running service writes the MCP connection file (A-01, #262)', () => {
+describe('D-04: the running service writes the MCP connection file (A-01, #262)', () => {
   it('names this project, this process and the socket that really listens; mode 0600, ignored by git, no secret', async () => {
     const p = await project();
     const secret = `ghp_${'Z9y8X7w6V5u4T3s2R1q0'.repeat(2)}`;
@@ -63,7 +62,8 @@ describe.skipIf(onWindows)('D-04: the running service writes the MCP connection 
     const path = mcpConnectionPath(p.dataDir);
     expect(path).toBe(join(p.root, '.local', 'xezar', 'mcp-connection.json'));
     expect(existsSync(path), 'written on start').toBe(true);
-    expect((statSync(path).mode & 0o777).toString(8)).toBe('600');
+    // win32-skip(#963): Windows ignores POSIX mode bits (observed: every file stats 0o666)
+    if (!onWindows) expect((statSync(path).mode & 0o777).toString(8)).toBe('600');
     const raw = readFileSync(path, 'utf8');
     // `.strict()`: the file carries D-04's labels and D-01's socket and nothing else — no token.
     const descriptor = mcpConnectionDescriptorSchema.strict().parse(JSON.parse(raw));
@@ -98,7 +98,8 @@ describe.skipIf(onWindows)('D-04: the running service writes the MCP connection 
     const first = await start(p.id, []);
     const written = mcpConnectionDescriptorSchema.strict().parse(JSON.parse(readFileSync(path, 'utf8')));
     expect(written.endpoint.socket).toBe(first.path);
-    expect((statSync(path).mode & 0o777).toString(8)).toBe('600');
+    // win32-skip(#963): Windows ignores POSIX mode bits (observed: every file stats 0o666)
+    if (!onWindows) expect((statSync(path).mode & 0o777).toString(8)).toBe('600');
     closers.pop()!(); // closes `first`
 
     unlinkSync(path);
@@ -116,11 +117,13 @@ describe.skipIf(onWindows)('D-04: the running service writes the MCP connection 
     const path = mcpConnectionPath(dataDir);
     writeFileSync(`${path}.tmp`, 'left by a service that died mid-write\n');
     chmodSync(`${path}.tmp`, 0o644);
-    expect((statSync(`${path}.tmp`).mode & 0o777).toString(8)).toBe('644');
+    // win32-skip(#963): Windows ignores POSIX mode bits (observed: every file stats 0o666)
+    if (!onWindows) expect((statSync(`${path}.tmp`).mode & 0o777).toString(8)).toBe('644');
 
     writeMcpConnectionFile({ project: { id: 'stale', root }, dataDir, socket: '/tmp/xz-stale.sock' });
 
-    expect((statSync(path).mode & 0o777).toString(8)).toBe('600');
+    // win32-skip(#963): Windows ignores POSIX mode bits (observed: every file stats 0o666)
+    if (!onWindows) expect((statSync(path).mode & 0o777).toString(8)).toBe('600');
     expect(existsSync(`${path}.tmp`)).toBe(false);
     expect(mcpConnectionDescriptorSchema.strict().parse(JSON.parse(readFileSync(path, 'utf8'))).endpoint.socket).toBe('/tmp/xz-stale.sock');
   });

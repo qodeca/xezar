@@ -8,14 +8,12 @@ import test from 'node:test';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { npmCommand, onWindows, TEST_DIR_RM_OPTIONS } from '../helpers/platform.ts';
+import { npmCommand, shortTmpRoot, TEST_DIR_RM_OPTIONS } from '../helpers/platform.ts';
 
 const execFile = promisify(execFileCallback);
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-/** Every case here goes through the xezar MCP Unix socket. `/tmp` stays the POSIX socket root. */
-const NO_MCP_SOCKET = onWindows
-  ? 'win32-skip(#963): xezar MCP bridge is not supported on Windows yet – the cockpit logs event=mcp.unavailable (mcp/ipc.ts)'
-  : false;
+/** Every case here goes through the xezar MCP service: a Unix socket on POSIX, whose root stays
+ *  `/tmp` (`shortTmpRoot`), and a named pipe on Windows (#963). */
 /** npm through the #963 platform helper: POSIX runs `npm` exactly as before; Windows runs npm's own
  *  CLI through node, because `npm.cmd` cannot be spawned without a shell (EINVAL). */
 function execNpm(args: string[], options: { cwd: string; maxBuffer: number }) {
@@ -98,10 +96,10 @@ function spawnBridge(cliPath: string, repo: string, env: NodeJS.ProcessEnv): Bri
   };
 }
 
-test('a client session started before the single-project engine reaches it with no reconnect (#819 item 5)', { timeout: 300_000, skip: NO_MCP_SOCKET }, async () => {
+test('a client session started before the single-project engine reaches it with no reconnect (#819 item 5)', { timeout: 300_000 }, async () => {
   // Short paths under /tmp: in single-project mode the socket lives INSIDE the project
   // (`<project>/.local/xezar/ipc`), and a Unix socket path has a ~104-byte limit.
-  const root = await mkdtemp(join(realpathSync('/tmp'), 'xez-lf-'));
+  const root = await mkdtemp(join(realpathSync(shortTmpRoot()), 'xez-lf-'));
   const home = join(root, 'home');
   let bridge: Bridge | undefined;
   let cockpit: ChildProcess | undefined;

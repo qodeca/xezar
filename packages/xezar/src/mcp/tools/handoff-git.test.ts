@@ -4,7 +4,6 @@ import './mcp-test-home.testkit.ts';
 import type { GithubPrMergeState } from '@qodeca/xezar-contract';
 import { execFileSync } from 'node:child_process';
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
-import { createConnection } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,7 +23,8 @@ import { defineTool, toolListing, type McpTool, type McpToolContext } from '../t
 import { QUALITY_BLOCKER_NEXT_ACTION, handoffGitTool, qualityBlockers, readyBlockers } from './handoff-git.ts';
 import { tools } from './index.ts';
 import { withOperationId } from './operation-id.testkit.ts';
-import { onWindows, TEST_DIR_RM_OPTIONS } from '../../../test/helpers/platform.ts';
+import { connectRaw } from '../../../test/helpers/mcp-raw.ts';
+import { onWindows, shortTmpRoot, TEST_DIR_RM_OPTIONS } from '../../../test/helpers/platform.ts';
 
 /**
  * `handoff_git` (#96) driven the way a leader drives it: a `tools/call` frame over the project's own
@@ -44,8 +44,7 @@ type Body = Record<string, unknown>;
 
 const sh = (cwd: string, ...args: string[]): string => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
 
-// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – every test here opens the project MCP socket (observed: "not supported on Windows yet" in beforeEach)
-describe.skipIf(onWindows)('handoff_git — commit, push, draft PR, merge and branches (#96)', () => {
+describe('handoff_git — commit, push, draft PR, merge and branches (#96)', () => {
   const savedEnv: Record<string, string | undefined> = {};
   const ENV_KEYS = [
     'XEZ_HOME',
@@ -111,7 +110,7 @@ describe.skipIf(onWindows)('handoff_git — commit, push, draft PR, merge and br
     for (const key of ENV_KEYS) savedEnv[key] = process.env[key];
     dirs = [];
     // The socket path has a hard OS limit (~104 bytes); a task's TMPDIR can be longer than that.
-    const home = makeDir('xez-hg-', realpathSync('/tmp'));
+    const home = makeDir('xez-hg-', realpathSync(shortTmpRoot()));
     process.env.XEZ_HOME = home;
     process.env.XEZ_DRY_RUN = '1';
     // Hermetic git: no developer identity, hooks path or signing config leaks in.
@@ -180,10 +179,11 @@ describe.skipIf(onWindows)('handoff_git — commit, push, draft PR, merge and br
       await listenMcpSocket({ project: { id: 'plain', name: 'Plain', root: roots.plain }, version: '0.0.0-test', tools: [tool] }),
     ];
     socketPath = { leader: sockets[0]!.path, plain: sockets[1]!.path };
-  });
+    // Windows: each pipe start makes its folder private with one PowerShell run, seconds on a busy machine.
+  }, onWindows ? 60_000 : undefined);
 
   afterEach(() => {
-    for (const socket of sockets) socket.close();
+    for (const socket of sockets ?? []) socket.close();
     contexts.disposeAll();
     bootStore.close();
     for (const dir of dirs) rmSync(dir, TEST_DIR_RM_OPTIONS);
@@ -207,26 +207,30 @@ describe.skipIf(onWindows)('handoff_git — commit, push, draft PR, merge and br
 
   function callRaw(args: Record<string, unknown>, project: 'leader' | 'plain' = 'leader'): Promise<McpToolResult> {
     return new Promise((resolve, reject) => {
-      const socket = createConnection(socketPath[project]);
-      // On a session, as the bridge sends it (#302): `session/open` first, then the call.
-      const framer = new LineFramer(
-        (line) => {
-          const response = JSON.parse(line) as { id: number; ok: boolean; result?: McpToolResult; error?: { message: string } };
-          if (response.id === 0 && response.ok) {
-            socket.write(
-              encodeFrame({ v: IPC_PROTOCOL_VERSION, id: 1, method: 'tools/call', params: { name: 'handoff_git', arguments: args } }),
-            );
-            return;
-          }
-          socket.end();
-          if (response.ok) resolve(response.result!);
-          else reject(new Error(response.error?.message));
-        },
-        () => reject(new Error('oversized frame')),
-      );
-      socket.on('data', (chunk: Buffer) => framer.push(chunk));
-      socket.on('error', reject);
-      socket.on('connect', () => socket.write(encodeFrame({ v: IPC_PROTOCOL_VERSION, id: 0, method: 'session/open' })));
+      void connectRaw(socketPath[project], { projectId: project }).then((socket) => {
+        // On a session, as the bridge sends it (#302): `session/open` first, then the call.
+        const framer = new LineFramer(
+          (line) => {
+            const response = JSON.parse(line) as { id: number; ok: boolean; result?: McpToolResult; error?: { message: string } };
+            if (response.id === 0 && response.ok) {
+              socket.write(
+                encodeFrame({ v: IPC_PROTOCOL_VERSION, id: 1, method: 'tools/call', params: { name: 'handoff_git', arguments: args } }),
+              );
+              return;
+            }
+            // Windows: a named pipe's end() sends the service no EOF, so only destroy() frees the
+            // session before the next call opens one.
+            if (onWindows) socket.destroy();
+            else socket.end();
+            if (response.ok) resolve(response.result!);
+            else reject(new Error(response.error?.message));
+          },
+          () => reject(new Error('oversized frame')),
+        );
+        socket.on('data', (chunk: Buffer) => framer.push(chunk));
+        socket.on('error', reject);
+        socket.write(encodeFrame({ v: IPC_PROTOCOL_VERSION, id: 0, method: 'session/open' }));
+      }, reject);
     });
   }
 

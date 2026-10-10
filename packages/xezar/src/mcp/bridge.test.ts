@@ -1,17 +1,21 @@
 import { execFileSync } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { createConnection, createServer, type Server } from 'node:net';
+import { createServer, type Server } from 'node:net';
 import { join } from 'node:path';
 import { PassThrough, Writable } from 'node:stream';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { HEALTH_TOOL, runBridge, type ServiceTarget } from './bridge.ts';
-import { LineFramer, encodeFrame } from './ipc.ts';
+import { LineFramer, encodeFrame, mcpSocketDir } from './ipc.ts';
+import { pipeFiles, readPipeEndpoint, writePipeFiles, type PipeOpen } from './pipe-endpoint.ts';
 import { SERVER_CAPABILITIES } from './protocol.ts';
 import { listenMcpSocket, type McpServiceHandle } from './service.ts';
 import { recordOwnListen } from '../server/instance-liveness.ts';
 import { defineTool, textResult, type McpTool } from './tool.ts';
-import { shortTmpRoot, onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
+import { shortTmpRoot, onWindows, TEST_DIR_RM_OPTIONS, withPlatform } from '../../test/helpers/platform.ts';
+import { connectRaw, targetFor } from '../../test/helpers/mcp-raw.ts';
+import { checkPrivateDir } from '../platform/private-dir.ts';
 
 // A short home under /tmp, never the per-worker sandbox: the sandbox sits under the task's
 // TMPDIR, which is already past the 104-byte socket limit on macOS (D-01 E5, § 9.5).
@@ -62,6 +66,7 @@ function bridge(opts: {
   target: () => Promise<ServiceTarget>;
   timeoutMs?: number;
   onSessionOpen?: Parameters<typeof runBridge>[0]['onSessionOpen'];
+  openPipe?: Parameters<typeof runBridge>[0]['openPipe'];
 }) {
   const input = new PassThrough();
   const output = new PassThrough();
@@ -83,6 +88,7 @@ function bridge(opts: {
     resolveTarget: opts.target,
     ...(opts.timeoutMs ? { requestTimeoutMs: opts.timeoutMs } : {}),
     ...(opts.onSessionOpen ? { onSessionOpen: opts.onSessionOpen } : {}),
+    ...(opts.openPipe ? { openPipe: opts.openPipe } : {}),
   });
   const waitFor = (match: (m: Record<string, unknown>) => boolean) =>
     new Promise<Record<string, unknown>>((resolve) => {
@@ -110,6 +116,12 @@ const socketTarget = (path: string): (() => Promise<ServiceTarget>) => async () 
   path,
   project: { id: project.id, name: project.name },
 });
+/** The target for a real service: POSIX the socket, as before; Windows its named pipe (#963). */
+const serviceTarget = (svc: McpServiceHandle): (() => Promise<ServiceTarget>) => async () =>
+  targetFor(svc, { id: project.id, name: project.name }, env);
+/** Where a stand-in server listens: POSIX `<dir>/<name>.sock`, as before; Windows a fresh named pipe (#963). */
+const standInPath = (name: string, dir: string = home): string =>
+  onWindows ? `\\\\.\\pipe\\xezar-test-${randomBytes(16).toString('hex')}` : join(dir, `${name}.sock`);
 const text = (m: Record<string, unknown>) =>
   ((m.result as { content: Array<{ text: string }> }).content[0]?.text ?? '');
 
@@ -167,24 +179,22 @@ describe('bridge handshake (D-01 § 1.6, N-07)', () => {
 });
 
 describe('bridge → service over the project socket', () => {
-  // win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts), and Node cannot listen on a Unix socket path there (listen EACCES)
-  it.skipIf(onWindows)('announces the Codex thread from `_meta.threadId` alone — configured exactly as `runMcpCommand` configures it', async () => {
+  it('announces the Codex thread from `_meta.threadId` alone — configured exactly as `runMcpCommand` configures it', async () => {
     // Codex 0.154.0 spawns its MCP servers with a filtered environment (no CODEX_HOME), and
     // `runMcpCommand` passes the bridge nothing else: the thread id IS the whole announcement, so the
     // bridge here gets no environment at all, as in production (#374 round 3, blocker 2).
     const announcements: unknown[] = [];
     const svc = await service([echoProject], { codexAnnounced: (_key, value) => announcements.push(value) });
-    const b = bridge({ tools: [echoProject], target: socketTarget(svc.path) });
+    const b = bridge({ tools: [echoProject], target: serviceTarget(svc) });
     await b.request('tools/call', { name: 'echo_project', arguments: { text: 'ok' }, _meta: { threadId: 'thread-1', progressToken: 1 } });
     await b.request('tools/call', { name: 'echo_project', arguments: { text: 'ok' }, _meta: { threadId: '' } });
     await b.request('tools/call', { name: 'echo_project', arguments: { text: 'ok' }, _meta: { threadId: 'x'.repeat(201) } });
     await b.request('tools/call', { name: 'echo_project', arguments: { text: 'ok' } });
     expect(announcements).toEqual([{ threadId: 'thread-1' }]);
   });
-  // win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts), and Node cannot listen on a Unix socket path there (listen EACCES)
-  it.skipIf(onWindows)('reports health, binding the project from the socket and never from arguments', async () => {
+  it('reports health, binding the project from the socket and never from arguments', async () => {
     const svc = await service();
-    const b = bridge({ target: socketTarget(svc.path) });
+    const b = bridge({ target: serviceTarget(svc) });
     const res = await b.request('tools/call', { name: 'health', arguments: { projectId: 'beta' } });
     expect(res.result).toMatchObject({
       structuredContent: { status: 'running', xezarVersion: '1.2.3', project: { id: 'alpha', name: 'Alpha' } },
@@ -195,15 +205,14 @@ describe('bridge → service over the project socket', () => {
 
   // #819 item 8. Break: the health data dropping the address (the bridge's schema strips an unknown
   // key), or the service sending one it never recorded.
-  // win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts), and Node cannot listen on a Unix socket path there (listen EACCES)
-  it.skipIf(onWindows)('carries the cockpit address the person opens, once the service recorded a real listen', async () => {
+  it('carries the cockpit address the person opens, once the service recorded a real listen', async () => {
     const listener = createServer();
     await new Promise<void>((resolve) => listener.listen(0, '127.0.0.1', resolve));
     try {
       recordOwnListen(listener, true);
       const port = (listener.address() as { port: number }).port;
       const svc = await service();
-      const res = await bridge({ target: socketTarget(svc.path) }).request('tools/call', { name: 'health' });
+      const res = await bridge({ target: serviceTarget(svc) }).request('tools/call', { name: 'health' });
       expect(res.result).toMatchObject({ structuredContent: { status: 'running', cockpitUrl: `http://127.0.0.1:${port}/p/alpha/` } });
       expect(text(res)).toBe(`xezar 1.2.3 is running for project Alpha (alpha). The person opens its cockpit at http://127.0.0.1:${port}/p/alpha/.`);
     } finally {
@@ -214,8 +223,7 @@ describe('bridge → service over the project socket', () => {
 
   // #838 F. Break: `health` reading the recorded address without the hosted re-check the other
   // three readers apply, so a process that turned hosted after its listen still hands it out.
-  // win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts), and Node cannot listen on a Unix socket path there (listen EACCES)
-  it.skipIf(onWindows)('omits the cockpit address once this process runs hosted, even with one recorded', async () => {
+  it('omits the cockpit address once this process runs hosted, even with one recorded', async () => {
     const listener = createServer();
     await new Promise<void>((resolve) => listener.listen(0, '127.0.0.1', resolve));
     const savedRemote = process.env.XEZ_REMOTE;
@@ -223,7 +231,7 @@ describe('bridge → service over the project socket', () => {
       recordOwnListen(listener, true);
       process.env.XEZ_REMOTE = '1';
       const svc = await service();
-      const res = await bridge({ target: socketTarget(svc.path) }).request('tools/call', { name: 'health' });
+      const res = await bridge({ target: serviceTarget(svc) }).request('tools/call', { name: 'health' });
       expect(res.result).toMatchObject({ structuredContent: { status: 'running' } });
       expect((res.result as { structuredContent: Record<string, unknown> }).structuredContent).not.toHaveProperty('cockpitUrl');
       expect(text(res)).toBe('xezar 1.2.3 is running for project Alpha (alpha).');
@@ -235,10 +243,9 @@ describe('bridge → service over the project socket', () => {
     }
   });
 
-  // win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts), and Node cannot listen on a Unix socket path there (listen EACCES)
-  it.skipIf(onWindows)('runs registry tools in the service with the bound project, validating arguments first', async () => {
+  it('runs registry tools in the service with the bound project, validating arguments first', async () => {
     const svc = await service([echoProject, boom]);
-    const b = bridge({ tools: [echoProject, boom], target: socketTarget(svc.path) });
+    const b = bridge({ tools: [echoProject, boom], target: serviceTarget(svc) });
     const ok = await b.request('tools/call', { name: 'echo_project', arguments: { text: 'hi', projectId: 'beta' } });
     expect(text(ok)).toBe('hi from alpha');
     const invalid = await b.request('tools/call', { name: 'echo_project', arguments: { text: 'far too long text' } });
@@ -269,9 +276,8 @@ describe('bridge → service over the project socket', () => {
     });
   });
 
-  // win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts), and Node cannot listen on a Unix socket path there (listen EACCES)
-  it.skipIf(onWindows)('answers a hung service with a timeout result instead of hanging', async () => {
-    const path = join(home, 'hung.sock');
+  it('answers a hung service with a timeout result instead of hanging', async () => {
+    const path = standInPath('hung');
     const hung: Server = createServer(() => {}); // accepts, never answers
     await new Promise<void>((r) => hung.listen(path, r));
     handles.push({ close: () => hung.close() });
@@ -280,10 +286,9 @@ describe('bridge → service over the project socket', () => {
     expect(res.result).toMatchObject({ isError: true, structuredContent: { status: 'timeout' } });
   });
 
-  // win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts), and Node cannot listen on a Unix socket path there (listen EACCES)
-  it.skipIf(onWindows)('never tells the model to blindly retry a call whose connection closed mid-flight', async () => {
+  it('never tells the model to blindly retry a call whose connection closed mid-flight', async () => {
     // A write that passed the fence still finishes in the service, so "call again" could run it twice.
-    const path = join(home, 'drops.sock');
+    const path = standInPath('drops');
     const drops: Server = createServer((socket) => {
       const framer = new LineFramer((line) => {
         const req = JSON.parse(line) as { v: number; id: number; method: string };
@@ -308,11 +313,11 @@ describe('bridge → service over the project socket', () => {
     expect(res.result).toMatchObject({ serverInfo: { name: 'xezar' } });
   });
 
-  // win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts), and Node cannot listen on a Unix socket path there (listen EACCES)
-  it.skipIf(onWindows)('refuses legibly across bridge protocol versions', async () => {
+  it('refuses legibly across bridge protocol versions', async () => {
     const svc = await service();
+    const socket = await connectRaw(svc.path, { projectId: project.id, env });
+    socket.write(encodeFrame({ v: 99, id: 7, method: 'health' }));
     const answer = await new Promise<string>((resolve) => {
-      const socket = createConnection(svc.path, () => socket.write(encodeFrame({ v: 99, id: 7, method: 'health' })));
       socket.once('data', (c) => {
         resolve(String(c));
         socket.destroy();
@@ -337,7 +342,7 @@ async function scriptedService(
   answer: (req: { v: number; id: number; method: string }) => string,
   sessionOpen?: (req: { v: number; id: number }) => string,
 ): Promise<string> {
-  const path = join(home, `${name}.sock`);
+  const path = standInPath(name);
   const server: Server = createServer((socket) => {
     const framer = new LineFramer((line) => {
       const req = JSON.parse(line) as { v: number; id: number; method: string };
@@ -354,15 +359,38 @@ async function scriptedService(
   return path;
 }
 
+/** A Windows-shaped target (#963) whose endpoint files live where the service would write them. */
+const pipeTarget = async (): Promise<ServiceTarget> => ({
+  kind: 'pipe',
+  files: pipeFiles(join(home, 'ipc'), project.id),
+  project: { id: project.id, name: project.name },
+});
+/** An `openPipe` seam whose endpoint check passed and names `path` (any OS: a socket path dials too). */
+const PIPE_TEST_KEY = Buffer.alloc(32, 7);
+const openedAs = (path: string) => async (): Promise<PipeOpen> => ({ ok: true, pipeName: path, key: PIPE_TEST_KEY });
+
+/**
+ * Windows (#963): point the service's endpoint at the parent process – live, and not this one –
+ * with its real start time plus `skewMs`. 0 reads as another live cockpit, anything else as one that exited.
+ */
+async function rewriteEndpoint(svc: McpServiceHandle, skewMs: number): Promise<void> {
+  const files = pipeFiles(mcpSocketDir(env), project.id);
+  const endpoint = readPipeEndpoint(files.endpoint);
+  if (typeof endpoint === 'string') throw new Error(`no endpoint for ${svc.path}: ${endpoint}`);
+  const parent = await checkPrivateDir(files.dir, [], {}, { startTimeOf: process.ppid });
+  if (!parent.ok || typeof parent.startedAt !== 'number') throw new Error('could not read the parent process start time');
+  writePipeFiles(files, { ...endpoint, pid: process.ppid, processStartTime: parent.startedAt + skewMs });
+}
+
 /**
  * D-01 § 5: every way of not reaching xezar reaches the leader as an ordinary tool result that names
  * WHICH way, because each needs a different remedy — start the cockpit, run as the right user, or
  * align the versions. A mapping that collapsed two of them would send someone to fix the wrong thing,
  * so each case asserts the status AND the remedy text, and the ones beside it must not match.
  */
-// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts), and Node cannot listen on a Unix socket path there (listen EACCES)
-describe.skipIf(onWindows)('bridge — each unreachable or refusing service reads as its own failure (D-01 § 5)', () => {
-  it('reads a stale socket left by a dead cockpit (ECONNREFUSED) as not running', async () => {
+describe('bridge — each unreachable or refusing service reads as its own failure (D-01 § 5)', () => {
+  // win32-skip(#963): a stale socket FILE is a Unix-socket state; the Windows equivalent, an endpoint an exited engine left, is pinned in pipe-endpoint.test.ts and by the stale-endpoint case of 'service socket lifecycle'
+  it.skipIf(onWindows)('reads a stale socket left by a dead cockpit (ECONNREFUSED) as not running', async () => {
     const path = join(home, 'stale.sock');
     execFileSync(process.execPath, ['-e', `require('net').createServer().listen(${JSON.stringify(path)}, () => process.exit(0))`]);
     expect(statSync(path).isSocket()).toBe(true);
@@ -373,7 +401,8 @@ describe.skipIf(onWindows)('bridge — each unreachable or refusing service read
   });
 
   // Root ignores socket permissions, so the refusal cannot be provoked there.
-  it.skipIf(process.getuid?.() === 0)('reads a socket this user may not open (EACCES) as permission denied, never as not running', async () => {
+  // win32-skip(#963): the refusal is provoked with POSIX mode bits (chmod 0o000), which Windows ignores
+  it.skipIf(process.getuid?.() === 0 || onWindows)('reads a socket this user may not open (EACCES) as permission denied, never as not running', async () => {
     const svc = await service();
     chmodSync(svc.path, 0o000);
     const b = bridge({ target: socketTarget(svc.path) });
@@ -381,6 +410,30 @@ describe.skipIf(onWindows)('bridge — each unreachable or refusing service read
     expect(res.result).toMatchObject({ isError: true, structuredContent: { status: 'refused' } });
     expect(text(res)).toBe(
       "xezar's socket for project Alpha (alpha) refused this user (permission denied). The bridge must run as the same user as the cockpit.",
+    );
+  });
+
+  // #963: the transport decides the words, never the platform. Break: picking the pipe text from
+  // `process.platform` instead of from whether the bridge dialled a pipe.
+  // win32-skip(#963): the refusal is provoked with POSIX mode bits (chmod 0o000), which Windows ignores
+  it.skipIf(process.getuid?.() === 0 || onWindows)('names the socket, not a pipe, for a socket target refused (EACCES) while the platform reads win32', async () => {
+    const svc = await service();
+    chmodSync(svc.path, 0o000);
+    const res = await withPlatform('win32', () => bridge({ target: socketTarget(svc.path) }).request('tools/call', { name: 'health' }));
+    expect(res.result).toMatchObject({ isError: true, structuredContent: { status: 'refused' } });
+    expect(text(res)).toBe(
+      "xezar's socket for project Alpha (alpha) refused this user (permission denied). The bridge must run as the same user as the cockpit.",
+    );
+  });
+
+  // win32-skip(#963): the refusal is provoked with POSIX mode bits (chmod 0o000), which Windows ignores
+  it.skipIf(process.getuid?.() === 0 || onWindows)('names the pipe and elevation for a pipe the bridge may not open (EACCES)', async () => {
+    const path = await scriptedService('locked-pipe', () => '');
+    chmodSync(path, 0o000);
+    const res = await bridge({ target: pipeTarget, openPipe: openedAs(path) }).request('tools/call', { name: 'health' });
+    expect(res.result).toMatchObject({ isError: true, structuredContent: { status: 'refused' } });
+    expect(text(res)).toBe(
+      "xezar's pipe for project Alpha (alpha) refused this user (permission denied). If xezar runs as administrator, start it without elevation; the bridge must run as the same user as the cockpit.",
     );
   });
 
@@ -432,8 +485,68 @@ describe.skipIf(onWindows)('bridge — each unreachable or refusing service read
   });
 });
 
-// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts), and Node cannot listen on a Unix socket path there (listen EACCES)
-describe.skipIf(onWindows)('the session-open report the `xezar mcp` audit record reads (#306 part 2)', () => {
+/**
+ * #963: a Windows pipe target fails in its own words too. The endpoint check runs before anything is
+ * dialled, and the pipe must prove itself with the handshake before the first frame. These run on
+ * every OS: a missing endpoint reads no ACL, and the `openPipe` seam stands in for the check.
+ */
+describe('bridge — a pipe target that cannot be used reads as its own failure (#963)', () => {
+  /** A stand-in that answers the bridge's `hello` with `reply` and then says nothing. */
+  async function helloService(name: string, reply: string): Promise<string> {
+    const path = standInPath(name);
+    const server: Server = createServer((socket) => socket.once('data', () => socket.write(reply)));
+    await new Promise<void>((r) => server.listen(path, r));
+    handles.push({ close: () => server.close() });
+    return path;
+  }
+
+  it('reads a missing endpoint as not running, without dialling anything', async () => {
+    const res = await bridge({ target: pipeTarget }).request('tools/call', { name: 'health' });
+    expect(res.result).toMatchObject({ isError: true, structuredContent: { status: 'not-running' } });
+    expect(text(res)).toMatch(/^xezar is not running for project Alpha \(alpha\)\. Start the cockpit/);
+  });
+
+  it('reads an endpoint the check calls stale as not running', async () => {
+    const res = await bridge({ target: pipeTarget, openPipe: async () => ({ ok: false, kind: 'not-running' }) }).request('tools/call', { name: 'health' });
+    expect(res.result).toMatchObject({ isError: true, structuredContent: { status: 'not-running' } });
+    expect(text(res)).toMatch(/^xezar is not running for project Alpha \(alpha\)\. Start the cockpit/);
+  });
+
+  it('reads unreadable or disagreeing endpoint files as refused, naming a restart', async () => {
+    const res = await bridge({ target: pipeTarget, openPipe: async () => ({ ok: false, kind: 'invalid' }) }).request('tools/call', { name: 'health' });
+    expect(res.result).toMatchObject({ isError: true, structuredContent: { status: 'refused' } });
+    expect(text(res)).toBe(
+      "xezar's connection files for project Alpha (alpha) are unreadable or disagree, so the bridge did not connect. Restart the cockpit to write them again.",
+    );
+  });
+
+  it('reads files that are not private as refused, with the check’s own reason', async () => {
+    const openPipe = async (): Promise<PipeOpen> => ({ ok: false, kind: 'not-private', message: 'the folder is readable by another user.' });
+    const res = await bridge({ target: pipeTarget, openPipe }).request('tools/call', { name: 'health' });
+    expect(res.result).toMatchObject({ isError: true, structuredContent: { status: 'refused' } });
+    expect(text(res)).toBe('The bridge did not connect to xezar for project Alpha (alpha): the folder is readable by another user.');
+  });
+
+  it('reads a pipe that refuses the handshake version as a version mismatch', async () => {
+    const path = await helloService('hello-old', `${JSON.stringify({ type: 'hello-refused', v: 2, reason: 'version' })}\n`);
+    const res = await bridge({ target: pipeTarget, openPipe: openedAs(path) }).request('tools/call', { name: 'health' });
+    expect(res.result).toMatchObject({ isError: true, structuredContent: { status: 'version-mismatch' } });
+    expect(text(res)).toBe(
+      'xezar for project Alpha (alpha) speaks a different pipe handshake than this bridge (xezar 1.2.3). Run the bridge and the cockpit from the same xezar version.',
+    );
+  });
+
+  it('never uses a pipe whose answer does not prove the endpoint key, reading it as refused', async () => {
+    const path = await helloService('hello-foreign', `${JSON.stringify({ type: 'hello', v: 1, mac: '0'.repeat(64) })}\n`);
+    const res = await bridge({ target: pipeTarget, openPipe: openedAs(path) }).request('tools/call', { name: 'health' });
+    expect(res.result).toMatchObject({ isError: true, structuredContent: { status: 'refused' } });
+    expect(text(res)).toBe(
+      'The pipe named for project Alpha (alpha) did not prove it belongs to the running xezar, so the bridge did not use it. Restart the cockpit; if this repeats, another program may be using the pipe name.',
+    );
+  });
+});
+
+describe('the session-open report the `xezar mcp` audit record reads (#306 part 2)', () => {
   type Report = Parameters<NonNullable<Parameters<typeof runBridge>[0]['onSessionOpen']>>[0];
 
   it('reports the owner grant, an occupied project and an unavailable target with its snake-cased status', async () => {
@@ -441,7 +554,7 @@ describe.skipIf(onWindows)('the session-open report the `xezar mcp` audit record
     const onSessionOpen = (outcome: Report) => reports.push(outcome);
 
     const svc = await service();
-    await bridge({ target: socketTarget(svc.path), onSessionOpen }).request('tools/call', { name: 'health' });
+    await bridge({ target: serviceTarget(svc), onSessionOpen }).request('tools/call', { name: 'health' });
 
     const occupied = await scriptedService(
       'occupied',
@@ -477,7 +590,7 @@ describe.skipIf(onWindows)('the session-open report the `xezar mcp` audit record
 
     const svc = await service();
     const b = bridge({
-      target: socketTarget(svc.path),
+      target: serviceTarget(svc),
       onSessionOpen: () => {
         throw new Error('observer failed');
       },
@@ -487,17 +600,26 @@ describe.skipIf(onWindows)('the session-open report the `xezar mcp` audit record
   });
 });
 
-// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts), and Node cannot listen on a Unix socket path there (listen EACCES)
-describe.skipIf(onWindows)('service socket lifecycle (N-07)', () => {
+describe('service socket lifecycle (N-07)', () => {
   it('creates the directory 0700 and the socket 0600, and removes the socket on close', async () => {
     const svc = await service();
+    if (onWindows) {
+      // #963: no socket file and no mode bits; the marker and endpoint name the pipe, and close removes them.
+      const files = pipeFiles(mcpSocketDir(env), project.id);
+      expect(readPipeEndpoint(files.endpoint)).toMatchObject({ pipeName: svc.path, pid: process.pid });
+      expect(existsSync(files.marker)).toBe(true);
+      svc.close();
+      await expect.poll(() => existsSync(files.endpoint) || existsSync(files.marker)).toBe(false);
+      return;
+    }
     expect(statSync(join(home, 'ipc')).mode & 0o777).toBe(0o700);
     expect(statSync(svc.path).mode & 0o777).toBe(0o600);
     svc.close();
     expect(existsSync(svc.path)).toBe(false);
   });
 
-  it('replaces a stale socket left by a dead cockpit', async () => {
+  // win32-skip(#963): a socket file left behind is a Unix-socket state; the Windows equivalent is the stale-endpoint case below
+  it.skipIf(onWindows)('replaces a stale socket left by a dead cockpit', async () => {
     // A process that exits without closing its listener leaves the socket file
     // behind — exactly what a crashed cockpit leaves.
     const path = join(home, 'ipc', 'alpha.sock');
@@ -509,13 +631,25 @@ describe.skipIf(onWindows)('service socket lifecycle (N-07)', () => {
   });
 
   it('never steals a live socket from another cockpit serving the same project', async () => {
-    await service();
+    const first = await service();
+    // #963: on Windows the endpoint must name ANOTHER live process, as another cockpit's would.
+    if (onWindows) await rewriteEndpoint(first, 0);
     await expect(listenMcpSocket({ project, version: '1', tools: [], env })).rejects.toThrow(
       'another xezar is already serving this project over MCP',
     );
   });
 
-  it('leaves a file that is not a socket alone', async () => {
+  it.runIf(onWindows)('replaces an endpoint whose engine is gone (#963)', async () => {
+    // The endpoint names a pid whose start time no longer matches: what an exited cockpit leaves.
+    const first = await service();
+    await rewriteEndpoint(first, 1);
+    const second = await service();
+    expect(second.path).not.toBe(first.path);
+    expect(readPipeEndpoint(pipeFiles(mcpSocketDir(env), project.id).endpoint)).toMatchObject({ pipeName: second.path, pid: process.pid });
+  });
+
+  // win32-skip(#963): a named pipe has no file path, so nothing can sit where the pipe would be
+  it.skipIf(onWindows)('leaves a file that is not a socket alone', async () => {
     const svc = await service();
     svc.close();
     writeFileSync(svc.path, 'not mine');
@@ -563,8 +697,7 @@ describe('Claude Code channel handshake (#374)', () => {
   });
 });
 
-// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts), and Node cannot listen on a Unix socket path there (listen EACCES)
-describe.skipIf(onWindows)('the leader/push service→bridge frame (#374)', () => {
+describe('the leader/push service→bridge frame (#374)', () => {
   /**
    * A raw unix-socket server standing in for the service, so a test can send an arbitrary
    * `leader/push` frame down the bridge's own connection and read what it announced in `session/open`.
@@ -577,7 +710,7 @@ describe.skipIf(onWindows)('the leader/push service→bridge frame (#374)', () =
     close: () => void;
   }> {
     const dir = mkdtempSync(join(shortTmpRoot(), 'xzbp-'));
-    const path = join(dir, 's.sock');
+    const path = standInPath('s', dir);
     let peer: import('node:net').Socket | undefined;
     const replies: Record<string, unknown>[] = [];
     let resolveOpened: (params: Record<string, unknown>) => void;
@@ -700,7 +833,7 @@ describe.skipIf(onWindows)('the leader/push service→bridge frame (#374)', () =
  */
 describe('push capability at the handshake (#450)', () => {
   async function pushService(grant: (open: number) => Record<string, unknown>) {
-    const path = join(home, `push-${Math.random().toString(36).slice(2, 8)}.sock`);
+    const path = standInPath(`push-${Math.random().toString(36).slice(2, 8)}`);
     const opens: Record<string, unknown>[] = [];
     const peers: import('node:net').Socket[] = [];
     const control = { expire: false };
@@ -729,8 +862,7 @@ describe('push capability at the handshake (#450)', () => {
   const notices = (b: ReturnType<typeof bridge>) => b.messages.filter((m) => m.method === 'notifications/claude/channel');
   const settle = () => new Promise((r) => setTimeout(r, 60));
 
-  // win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts), and Node cannot listen on a Unix socket path there (listen EACCES)
-  it.skipIf(onWindows)('T-14: a service that can push gets the channel registered and the channel instructions', async () => {
+  it('T-14: a service that can push gets the channel registered and the channel instructions', async () => {
     // RED against: always passing `channel: false` — the channel is never registered.
     const svc = await pushService(() => ({ owner: true, canPush: true }));
     const b = bridge({ target: socketTarget(svc.path) });
@@ -740,8 +872,7 @@ describe('push capability at the handshake (#450)', () => {
     b.input.end(); await b.done;
   });
 
-  // win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts), and Node cannot listen on a Unix socket path there (listen EACCES)
-  it.skipIf(onWindows)('T-15: a service that answers it cannot push gets no channel, and instructions naming its reason', async () => {
+  it('T-15: a service that answers it cannot push gets no channel, and instructions naming its reason', async () => {
     // RED against: advertising on the client name alone (the code before #450).
     const svc = await pushService(() => ({ owner: true, canPush: false, pushUnavailable: { code: 'hosted-mode', message: 'This xezar runs in hosted mode.' } }));
     const b = bridge({ target: socketTarget(svc.path) });
@@ -753,8 +884,7 @@ describe('push capability at the handshake (#450)', () => {
     b.input.end(); await b.done;
   });
 
-  // win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts), and Node cannot listen on a Unix socket path there (listen EACCES)
-  it.skipIf(onWindows)('T-16 (#439): a service that answers without canPush is older, so no channel and the older-service reason', async () => {
+  it('T-16 (#439): a service that answers without canPush is older, so no channel and the older-service reason', async () => {
     // RED against: reading an absent `canPush` as true.
     const svc = await pushService(() => ({ owner: true }));
     const b = bridge({ target: socketTarget(svc.path) });
@@ -776,8 +906,7 @@ describe('push capability at the handshake (#450)', () => {
     b.input.end(); await b.done;
   });
 
-  // win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts), and Node cannot listen on a Unix socket path there (listen EACCES)
-  it.skipIf(onWindows)('T-20: the first session/open omits channelAdvertised, and every later one says what the handshake registered', async () => {
+  it('T-20: the first session/open omits channelAdvertised, and every later one says what the handshake registered', async () => {
     // RED against: sending it on the first open, or sending a value the handshake did not register.
     for (const canPush of [true, false]) {
       const svc = await pushService(() => ({ owner: true, canPush }));
@@ -793,8 +922,7 @@ describe('push capability at the handshake (#450)', () => {
     }
   });
 
-  // win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts), and Node cannot listen on a Unix socket path there (listen EACCES)
-  it.skipIf(onWindows)('T-19: the service closing a registered owner session writes exactly one notice, re-armed by the next session', async () => {
+  it('T-19: the service closing a registered owner session writes exactly one notice, re-armed by the next session', async () => {
     // RED against: dropping the one-shot flag (a second notice for one loss) or never re-arming it.
     const svc = await pushService(() => ({ owner: true, canPush: true }));
     const b = bridge({ target: socketTarget(svc.path) });
@@ -816,8 +944,7 @@ describe('push capability at the handshake (#450)', () => {
     b.input.end(); await b.done;
   });
 
-  // win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts), and Node cannot listen on a Unix socket path there (listen EACCES)
-  it.skipIf(onWindows)('T-19: no notice when the channel was not registered, when the client closed, or when the session was fenced', async () => {
+  it('T-19: no notice when the channel was not registered, when the client closed, or when the session was fenced', async () => {
     // RED against: removing the `channelAdvertised` check (a notice to a client with no channel).
     const noChannel = await pushService(() => ({ owner: true, canPush: false, pushUnavailable: { code: 'client-unknown', message: 'unknown.' } }));
     const b1 = bridge({ target: socketTarget(noChannel.path) });

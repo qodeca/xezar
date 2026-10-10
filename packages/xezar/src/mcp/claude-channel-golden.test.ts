@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { createServer, type Socket } from 'node:net';
 import { join } from 'node:path';
@@ -14,6 +14,7 @@ import { LineFramer, encodeFrame } from './ipc.ts';
 import { CHANNEL_INCOMPATIBLE_PROTOCOL_VERSION } from './protocol.ts';
 import { listenMcpSocket, type McpSessionTransport } from './service.ts';
 import { tools } from './tools/index.ts';
+import { targetFor } from '../../test/helpers/mcp-raw.ts';
 import { shortTmpRoot, onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
@@ -71,11 +72,12 @@ async function world() {
   const root = join(home, 'alpha');
   mkdirSync(root);
   let transport: McpSessionTransport | undefined;
+  const env = { XEZ_HOME: home };
   const handle = await listenMcpSocket({
     project: { id: 'alpha', name: 'Alpha', root },
     version: 'this-tree',
     tools: [],
-    env: { XEZ_HOME: home },
+    env,
     sessions: { opened: (_key, t) => { transport = t; }, closed: () => {}, pushCapability: () => ({ canPush: true }) },
   });
   handles.push(handle);
@@ -86,7 +88,7 @@ async function world() {
   output.on('data', (c: Buffer) => framer.push(c));
   const done = runBridge({
     input, output, version: '0.19.0-test', tools: [],
-    resolveTarget: async () => ({ kind: 'socket', path: handle.path, project: { id: 'alpha', name: 'Alpha' } }),
+    resolveTarget: async () => targetFor(handle, { id: 'alpha', name: 'Alpha' }, env),
   });
   const until = async <T>(what: string, fn: () => T | undefined): Promise<T> => {
     for (let i = 0; i < 200; i++) {
@@ -99,8 +101,7 @@ async function world() {
   return { input, messages, done, until, transport: () => transport };
 }
 
-// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – this opens the project MCP socket
-describe.skipIf(onWindows)(`the Claude Code channel contract, against a real Claude Code ${FIXTURE.claudeCodeVersion} (#886)`, () => {
+describe(`the Claude Code channel contract, against a real Claude Code ${FIXTURE.claudeCodeVersion} (#886)`, () => {
   it('answers the captured initialize with the channel capability and a revision Claude Code delivers over', async () => {
     // RED against: dropping `experimental["claude/channel"]` (Claude Code logs "server did not declare
     // claude/channel capability"), or negotiating 2026-07-28 (no unsolicited notification path).
@@ -166,7 +167,9 @@ const SERVED_BY_0_18_0 = new Set(['session/open', 'health', 'tools/call']);
 const sent = (f: WireFrame): unknown => ({ v: f.v, method: f.method, params: f.params });
 
 async function replay018() {
-  const path = join(home, 'svc-0.18.0.sock');
+  // Windows: a named pipe in place of the Unix socket. The bridge dials a `socket` target without the
+  // pipe handshake, so the stand-in still answers exactly the captured 0.18.0 wire.
+  const path = onWindows ? '\\\\.\\pipe\\xezar-test-' + randomBytes(16).toString('hex') : join(home, 'svc-0.18.0.sock');
   const script = WIRE.exchange.slice();
   const unexpected: unknown[] = [];
   const replies: WireFrame[] = [];
@@ -209,8 +212,7 @@ describe('a bridge from this tree against the published xezar 0.18.0 service (#8
     expect(createHash('sha256').update(readFileSync(WIRE_FILE)).digest('hex')).toBe(WIRE_SHA256);
   });
 
-  // win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – this opens the project MCP socket
-  it.skipIf(onWindows)('opens its session, registers the channel, relays every tool answer and delivers 0.18.0’s own push', async () => {
+  it('opens its session, registers the channel, relays every tool answer and delivers 0.18.0’s own push', async () => {
     const svc = await replay018();
     const input = new PassThrough();
     const output = new PassThrough();
