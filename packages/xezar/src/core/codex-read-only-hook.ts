@@ -69,16 +69,22 @@ export interface CodexHookOutput {
   };
 }
 
-/** Codex-only shape adaptation. The shared module makes every allow/deny decision. */
+/**
+ * Codex-only shape adaptation. The shared module makes every allow/deny decision. Codex on Windows
+ * runs a shell command through PowerShell (`pwsh.exe -Command`, measured on 0.157.1), so there the
+ * command must also pass the PowerShell reading (#963); everywhere else it is a POSIX shell.
+ */
 export function decideCodexPreToolUse(
   payload: unknown,
   entries: readonly string[],
+  platform: NodeJS.Platform = process.platform,
 ): ReadOnlyCommandDecision {
   const record = payload && typeof payload === 'object' ? payload as CodexPreToolUsePayload : {};
   const toolInput = record.tool_input && typeof record.tool_input === 'object'
     ? record.tool_input as { readonly command?: unknown }
     : {};
-  return decideReadOnlyShellCall({ toolName: record.tool_name, command: toolInput.command }, entries);
+  const dialect = platform === 'win32' ? 'powershell' : 'posix';
+  return decideReadOnlyShellCall({ toolName: record.tool_name, command: toolInput.command }, entries, dialect, platform);
 }
 
 /** No stdout means allow; a denial uses Codex's documented PreToolUse response shape. */

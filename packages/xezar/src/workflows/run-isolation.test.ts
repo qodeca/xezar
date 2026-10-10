@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RunStore } from '../runs/store.ts';
 import type { WorkflowDef } from './types.ts';
 
@@ -55,6 +55,17 @@ async function waitFor(predicate: () => boolean, what: string): Promise<void> {
   }
   throw new Error(`timed out waiting for ${what}`);
 }
+
+// The namer would start the real `claude` CLI for every run here; none of these cases is about
+// naming, and on Windows that first start blocks the event loop for seconds (#963).
+const savedAutoName = process.env.XEZ_AUTONAME;
+beforeEach(() => {
+  process.env.XEZ_AUTONAME = '0';
+});
+afterEach(() => {
+  if (savedAutoName === undefined) delete process.env.XEZ_AUTONAME;
+  else process.env.XEZ_AUTONAME = savedAutoName;
+});
 
 afterEach(() => {
   for (const store of stores.splice(0)) store.close();

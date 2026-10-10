@@ -24,7 +24,18 @@ describe('armRepoHandle (#945)', () => {
   /** Just enough store to observe the one call this module makes. */
   const fakeStore = () => {
     const setRepoHandle = vi.fn();
-    return { store: { setRepoHandle } as unknown as RunStore, setRepoHandle };
+    let hook: (() => unknown) | undefined;
+    const onClose = vi.fn((fn: () => unknown) => {
+      hook = fn;
+      return () => {
+        hook = undefined;
+      };
+    });
+    /** What `RunStore.close()` does with the hook: run it and wait for what it returns. */
+    const close = async () => {
+      await hook?.();
+    };
+    return { store: { setRepoHandle, onClose } as unknown as RunStore, setRepoHandle, close, hooked: () => hook !== undefined };
   };
 
   /** Let the promise chain inside `armRepoHandle` settle without the caller awaiting it. */
@@ -37,7 +48,7 @@ describe('armRepoHandle (#945)', () => {
     armRepoHandle(store, '/repo');
     await settle();
 
-    expect(resolveRepoHandleMock).toHaveBeenCalledWith('/repo');
+    expect(resolveRepoHandleMock).toHaveBeenCalledWith('/repo', { signal: expect.any(AbortSignal) });
     expect(setRepoHandle).toHaveBeenCalledWith({ owner: 'qodeca', name: 'xezar' });
   });
 
@@ -78,5 +89,36 @@ describe('armRepoHandle (#945)', () => {
     release({ owner: 'qodeca', name: 'xezar' });
     await settle();
     expect(setRepoHandle).toHaveBeenCalledWith({ owner: 'qodeca', name: 'xezar' });
+  });
+
+  it('cancels the lookup when the store closes, waits for it, and heals nothing (#963)', async () => {
+    let release: (value: unknown) => void = () => {};
+    let signal: AbortSignal | undefined;
+    resolveRepoHandleMock.mockImplementation((_root: string, opts: { signal: AbortSignal }) => {
+      signal = opts.signal;
+      return new Promise((resolve) => { release = resolve; });
+    });
+    const { store, setRepoHandle, close } = fakeStore();
+
+    armRepoHandle(store, '/repo');
+    let closed = false;
+    const closing = close().then(() => { closed = true; });
+    expect(signal?.aborted).toBe(true);
+    await settle();
+    expect(closed).toBe(false); // close waits until the lookup has let go
+
+    release({ owner: 'qodeca', name: 'xezar' }); // a late answer
+    await closing;
+    expect(setRepoHandle).not.toHaveBeenCalled();
+  });
+
+  it('lets go of the close hook once the lookup is done (#963)', async () => {
+    resolveRepoHandleMock.mockResolvedValue(null);
+    const { store, hooked } = fakeStore();
+
+    armRepoHandle(store, '/repo');
+    expect(hooked()).toBe(true);
+    await settle();
+    expect(hooked()).toBe(false);
   });
 });

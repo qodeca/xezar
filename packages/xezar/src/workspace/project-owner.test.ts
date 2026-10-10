@@ -3,7 +3,7 @@ import { once } from 'node:events';
 import { existsSync, ftruncateSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 // Passthrough, so one case can interleave a peer's reap inside a renewal write.
@@ -46,6 +46,17 @@ import {
 const roots: string[] = [];
 const owners: ProjectOwnership[] = [];
 const children: ChildProcess[] = [];
+
+// The namer would start the real `claude` CLI for every run here; none of these cases is about
+// naming, and on Windows that first start blocks the event loop for seconds (#963).
+const savedAutoName = process.env.XEZ_AUTONAME;
+beforeEach(() => {
+  process.env.XEZ_AUTONAME = '0';
+});
+afterEach(() => {
+  if (savedAutoName === undefined) delete process.env.XEZ_AUTONAME;
+  else process.env.XEZ_AUTONAME = savedAutoName;
+});
 
 afterEach(async () => {
   for (const owner of owners.splice(0)) owner.dispose();

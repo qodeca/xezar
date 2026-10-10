@@ -10,6 +10,7 @@
  * Leaf layer: this folder imports only `node:*` and its own siblings.
  */
 import { ChildProcess } from 'node:child_process';
+import type { MsysTree } from './msys-process-tree.ts';
 
 /** The slice of `ChildProcess` a stop needs – keeps the helpers usable with test fakes. */
 export interface RegisteredChild {
@@ -27,6 +28,8 @@ export interface TrackedChild {
   readonly child: RegisteredChild;
   /** ms since the epoch, read right after `spawn` returned. */
   readonly spawnedAt: number;
+  /** A Git Bash shell (`launchMsys`): how a stop finds its MSYS processes. */
+  readonly msys?: MsysTree;
 }
 
 /** Test seams. Production passes none. */
@@ -34,6 +37,8 @@ export interface ChildRegistryDeps {
   platform?: NodeJS.Platform;
   isOwnChild?: (child: unknown) => boolean;
   now?: () => number;
+  /** Recorded with the child: a Git Bash shell's MSYS tree (`launchMsys`). */
+  msys?: MsysTree;
 }
 
 const tracked = new Map<RegisteredChild, TrackedChild>();
@@ -53,7 +58,7 @@ export function trackChild(child: TrackableChild, deps: ChildRegistryDeps = {}):
   if ((deps.platform ?? process.platform) !== 'win32') return;
   const exited = child.exitCode !== null || child.signalCode !== null;
   if (!(deps.isOwnChild ?? isOwnChild)(child) || exited || tracked.has(child)) return;
-  tracked.set(child, { child, spawnedAt: (deps.now ?? Date.now)() });
+  tracked.set(child, { child, spawnedAt: (deps.now ?? Date.now)(), ...(deps.msys ? { msys: deps.msys } : {}) });
   child.once('exit', () => tracked.delete(child));
 }
 

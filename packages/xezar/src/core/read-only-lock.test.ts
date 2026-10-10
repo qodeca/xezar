@@ -106,6 +106,61 @@ describe('shared read-only lock (#863)', () => {
     expect(audited).toBeGreaterThan(0);
   });
 
+  describe('the shell decides the readings; Windows changes only program names (#963)', () => {
+    it('refuses an escaped git output option in Git Bash (guard: already refused before #963)', () => {
+      expect(decideReadOnlyCommand('git log --outp\\ut=evil', ['git log'], 'posix', 'win32'))
+        .toMatchObject({ allowed: false, rule: 'command.git-output' });
+    });
+
+    it.each([
+      ['git log --output,evil', 'syntax.powershell-token'],
+      ['git log --outp^ut=x', 'syntax.powershell-token'],
+      ['git log @args', 'syntax.powershell-token'],
+      ['git log %x', 'syntax.powershell-token'],
+      ['git log --% x', 'syntax.powershell-token'],
+      ['git log \u2018--output=x\u2019', 'syntax.powershell-quote'],
+      ['git log "x\u201D --output=x "', 'syntax.powershell-quote'],
+      ['git log a\\ --output=evil', 'command.git-output'],
+      ['git status a\\; rm -rf x', 'syntax.compound'],
+      ['git log \'a" --output=x "b\'', 'syntax.powershell-quote'],
+      ['git log "a"" --output=x ""b"', 'syntax.powershell-quote'],
+    ])('refuses %j under the PowerShell reading', (command, rule) => {
+      expect(decideReadOnlyCommand(command, ['git log', 'git status'], 'powershell', 'win32'))
+        .toMatchObject({ allowed: false, rule });
+    });
+
+    it('keeps the PowerShell reading off for a POSIX shell', () => {
+      expect(decideReadOnlyCommand('git log --output,evil', ['git log'], 'posix', 'win32')).toEqual({ allowed: true });
+      expect(decideReadOnlyCommand('git log a\\ --output=evil', ['git log'], 'posix', 'win32')).toEqual({ allowed: true });
+    });
+
+    it('allows an ordinary command under the PowerShell reading', () => {
+      expect(decideReadOnlyCommand('git log --oneline -5', ['git log'], 'powershell', 'win32')).toEqual({ allowed: true });
+      expect(decideReadOnlyCommand("grep -n 'it''s' src\\a.ts", ['grep'], 'powershell', 'win32')).toEqual({ allowed: true });
+    });
+
+    it.each([
+      ['GIT.EXE log --output=x', ['GIT.EXE log'], 'posix'],
+      ["'C:\\Program Files\\Git\\cmd\\git.exe' log --output=x", ["'C:\\Program Files\\Git\\cmd\\git.exe' log"], 'posix'],
+      ['C:\\Git\\cmd\\git.exe log --output=x', ['C:\\Git\\cmd\\git.exe log'], 'powershell'],
+    ] as const)('reads %j as git on Windows', (command, entries, shell) => {
+      expect(decideReadOnlyCommand(command, entries, shell, 'win32'))
+        .toMatchObject({ allowed: false, rule: 'command.git-output' });
+    });
+
+    it.each(['linux', 'darwin'] as const)('keeps today\'s POSIX decisions on %s', (platform) => {
+      const posix = (command: string, entries: readonly string[]) => decideReadOnlyCommand(command, entries, 'posix', platform);
+      expect(posix('git.exe status', ['git.exe status'])).toEqual({ allowed: true });
+      expect(posix('git.exe log --output=x', ['git.exe log'])).toEqual({ allowed: true });
+      expect(posix('C:\\x\\git.exe status', ['C:\\x\\git.exe status'])).toEqual({ allowed: true });
+      expect(posix('a\\b', ['a\\b'])).toEqual({ allowed: true });
+      expect(posix('grep "a\\"b" f', ['grep'])).toEqual({ allowed: true });
+      expect(posix('git log \'a" --output=x "b\'', ['git log'])).toEqual({ allowed: true });
+      expect(posix('grep foo\\|bar', ['grep'])).toEqual({ allowed: true });
+      expect(posix('git log --outp\\ut=evil', ['git log'])).toMatchObject({ allowed: false, rule: 'command.git-output' });
+    });
+  });
+
   it.each(['env', 'timeout', 'xargs', 'nohup', 'exec', 'eval', 'command', 'bash', 'sh', 'zsh', 'nice', 'caffeinate'])(
     'refuses the wrapper %s unless an entry names it',
     (wrapper) => {

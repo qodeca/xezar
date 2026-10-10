@@ -35,7 +35,10 @@ import {
   type StdioNull,
   type StdioPipe,
 } from 'node:child_process';
-import { closeSync, fstatSync, openSync, readSync, statSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { closeSync, existsSync, fstatSync, openSync, readSync, rmSync, statSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { win32 } from 'node:path';
 import type { Readable, Writable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
@@ -48,6 +51,8 @@ import {
   verbatimLineLength,
 } from './batch-line.ts';
 import { trackChild } from './child-registry.ts';
+import { msysQuote } from './git-bash.ts';
+import { msysPidPrefix } from './msys-process-tree.ts';
 import { CommandRefusedError, resolveCommand, type ResolveContext, type ResolveFs } from './command-resolve.ts';
 import { withoutRunMarker } from './process-proof.ts';
 import { system32Program } from './system-programs.ts';
@@ -200,6 +205,36 @@ export function launch(
 }
 
 /**
+ * win32 only: Git Bash's own `bash.exe` running `command` as one `-c` script (#963). The MSYS
+ * runtime re-reads its command line itself and ignores libuv's quoting, so the script is quoted
+ * with `msysQuote` and the line is passed verbatim – the one place a verbatim line reaches
+ * anything but cmd.exe, which is why callers cannot ask for it. `bash` is a full path from
+ * `gitRoot`, never a name to search for. Not hidden: a check step is work the user watches.
+ */
+export function launchMsys(
+  bash: string,
+  command: string,
+  options: Omit<SpawnOptionsWithoutStdio, 'shell' | 'windowsVerbatimArguments'>,
+): ChildProcessWithoutNullStreams {
+  // A stop finds the shell's MSYS processes through Git's ps and the shell's own MSYS pid, which
+  // the script's first act writes to a file (`msys-process-tree.ts`). Without ps.exe (MinGit) the
+  // script runs as given and a stop reaches the Windows tree only.
+  const ps = win32.join(win32.dirname(bash), 'ps.exe');
+  const pidFile = win32.join(tmpdir(), `xez-msys-${randomUUID()}.pid`);
+  const prefix = existsSync(ps) ? msysPidPrefix(pidFile) : null;
+  // With a verbatim line Node does not quote the program either, so `argv0` carries it quoted:
+  // `C:\Program Files\Git\…` would otherwise split at its space (the kit's `gate-parallel.mjs` does the same).
+  const child = spawn(bash, ['-c', `${prefix ?? ''}${command}`].map(msysQuote), {
+    ...options,
+    windowsVerbatimArguments: true,
+    argv0: msysQuote(bash),
+  });
+  trackChild(child, { platform: 'win32', ...(prefix !== null ? { msys: { ps, pidFile } } : {}) });
+  if (prefix !== null) child.once('exit', () => rmSync(pidFile, { force: true }));
+  return child;
+}
+
+/**
  * `execFile` in its one 4-argument form (background work: hidden on Windows). A missing program
  * reaches `callback` as ENOENT, as before.
  */
@@ -224,17 +259,20 @@ type ExecFileAsync = (
   options: ExecFileOptionsWithStringEncoding,
 ) => Promise<{ stdout: string; stderr: string }> & { child?: ChildProcess };
 
+/** What `launchFileAsync` answers: promisify's promise, with the child it started when it started one. */
+export type LaunchedFile = Promise<{ stdout: string; stderr: string }> & { child?: ChildProcess };
+
 /**
  * `promisify(execFile)`, bound at each call (so a test's mock is the one used). Resolves with
  * `{ stdout, stderr }`; rejects with execFile's error. A refusal rejects too, as Node's own
- * EINVAL does through promisify.
+ * EINVAL does through promisify. `.child` is promisify's own, so a caller can stop it.
  */
 export function launchFileAsync(
   file: string,
   args: readonly string[],
   options: ExecFileOptionsWithStringEncoding,
   deps: LaunchDeps = {},
-): Promise<{ stdout: string; stderr: string }> {
+): LaunchedFile {
   try {
     refuseCommandProcessorOptions(file, options);
     const run = promisify(execFile) as unknown as ExecFileAsync;

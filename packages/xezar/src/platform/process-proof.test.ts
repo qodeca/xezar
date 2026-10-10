@@ -5,6 +5,8 @@ import {
   COMMAND_LINES_MAX,
   commandLineScript,
   envHasEntry,
+  nameAndKillIdentified,
+  nameAndKillScript,
   RUN_MARKER_ENV,
   pidExists,
   readCommandLines,
@@ -220,5 +222,51 @@ describe('readCommandLines', () => {
     expect(await readCommandLines([4121], { platform: 'win32', env: {}, run: recordingRunner('4121 x').run })).toEqual(new Map());
     expect(log).not.toHaveBeenCalled();
     expect(warn).not.toHaveBeenCalled();
+  });
+});
+
+describe('nameAndKillIdentified (#963)', () => {
+  const env = { SystemRoot: 'C:\\Windows' };
+  const b64 = (text: string) => Buffer.from(text, 'utf8').toString('base64');
+
+  it('builds ONE script: the name query inside a try, then the identity kill loop', () => {
+    const script = nameAndKillScript([{ pid: 4121, startedAt: 1_000 }], [4121, Number.NaN, 4]);
+    expect(script).toContain("-Filter 'ProcessId = 4121'");
+    expect(script).toContain('"name $($_.ProcessId) ');
+    expect(script.indexOf('try {')).toBeLessThan(script.indexOf('Get-CimInstance'));
+    expect(script.indexOf('Get-CimInstance')).toBeLessThan(script.indexOf('$t = @(4121,1000)'));
+    expect(script).not.toMatch(/NaN|ProcessId = 4\b/);
+    // Nothing to name: no query at all.
+    expect(nameAndKillScript([{ pid: 4121, startedAt: 1_000 }], [])).not.toContain('Get-CimInstance');
+  });
+
+  it('starts one hidden System32 PowerShell, and reads names and outcomes apart', async () => {
+    // A command line that decodes to a kill outcome stays a name.
+    const { run, calls } = recordingRunner(
+      `name 4121 ${b64('node dev.js')}\r\nname 4133 ${b64('4121 gone')}\r\n4121 killed\r\n4133 mismatch\r\n9999 killed\r\n`,
+    );
+    const result = await nameAndKillIdentified(
+      [{ pid: 4121, startedAt: 1 }, { pid: 4133, startedAt: 2 }],
+      [4121, 4133],
+      { platform: 'win32', env, run },
+    );
+    expect(result.commands).toEqual(new Map([[4121, 'node dev.js'], [4133, '4121 gone']]));
+    expect(result.outcomes).toEqual(new Map([[4121, 'killed'], [4133, 'mismatch']]));
+    expect(calls).toHaveLength(1);
+    const [file, , options] = calls[0]!;
+    expect(file).toBe('C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe');
+    expect(options).toEqual({ maxBuffer: 16 * 1024 * 1024, timeoutMs: 10_000, hide: true });
+  });
+
+  it('answers null outcomes when PowerShell fails, and starts nothing off Windows or for no target', async () => {
+    const failed = recordingRunner(null);
+    expect(await nameAndKillIdentified([{ pid: 4121, startedAt: 1 }], [4121], { platform: 'win32', env, run: failed.run })).toEqual({
+      commands: new Map(),
+      outcomes: null,
+    });
+    const idle = recordingRunner('');
+    expect((await nameAndKillIdentified([{ pid: 4121, startedAt: 1 }], [4121], { platform: 'linux', run: idle.run })).outcomes).toBeNull();
+    expect((await nameAndKillIdentified([], [4121], { platform: 'win32', env, run: idle.run })).outcomes).toEqual(new Map());
+    expect(idle.calls).toHaveLength(0);
   });
 });

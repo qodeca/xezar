@@ -192,7 +192,9 @@ describe('pasted screenshots materialize to disk and reach the agent as file pat
     manager = new RunManager(store, repoRoot);
   });
 
-  afterAll(() => {
+  afterAll(async () => {
+    // Stop every run first: a live session's working folder cannot be removed on Windows (#963).
+    await manager.quiesce();
     for (const [key, value] of Object.entries(savedEnv)) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;

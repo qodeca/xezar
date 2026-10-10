@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { launch } from '../platform/process-launch.ts';
+import { CheckShellMissingError, launchCheckStep } from '../platform/check-step-shell.ts';
 import { stopChildTree } from '../platform/process-tree.ts';
 import {
   parseAskMarkerResult,
@@ -5136,8 +5136,16 @@ export class RunManager {
     const command = step.command as string;
     emit({ type: 'note', stepId: step.id, message: `$ ${command}` });
     return new Promise((resolve) => {
-      // Check steps run in the same cwd as the agent steps — the worktree.
-      const child = launch('bash', ['-lc', command], { cwd: state.cwd, env: process.env });
+      // Check steps run in the same cwd as the agent steps — the worktree. Windows: Git Bash only (#963).
+      let child: ReturnType<typeof launchCheckStep>;
+      try {
+        child = launchCheckStep(command, { cwd: state.cwd, env: process.env });
+      } catch (err) {
+        if (!(err instanceof CheckShellMissingError)) throw err;
+        emit({ type: 'check-output', stepId: step.id, command, text: err.message, exitCode: -1 });
+        resolve({ ok: false, output: err.message });
+        return;
+      }
       // Windows: bash and the runners it started (#963); elsewhere exactly `child.kill`.
       state.interrupt = () => void stopChildTree(child, 'SIGTERM');
 

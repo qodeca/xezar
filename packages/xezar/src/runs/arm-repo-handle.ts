@@ -18,9 +18,21 @@ import type { RunStore } from './store.ts';
  * rejection here would take down a boot over a cosmetic chip.
  */
 export function armRepoHandle(store: RunStore, repoRoot: string): void {
-  void resolveRepoHandle(repoRoot)
-    .then((handle) => store.setRepoHandle(handle))
+  // Closing the store cancels the lookup and waits until `gh` and the git it started are gone:
+  // on Windows a folder a live process works in cannot be moved or removed (#963). A cancelled
+  // lookup heals nothing – the store it would heal has closed.
+  const controller = new AbortController();
+  let release = (): void => undefined;
+  const lookup = resolveRepoHandle(repoRoot, { signal: controller.signal })
+    .then((handle) => {
+      if (!controller.signal.aborted) store.setRepoHandle(handle);
+    })
     .catch(() => {
       // Unknown handle is a first-class state — leave the store unscoped (pre-#945 behavior).
-    });
+    })
+    .finally(() => release());
+  release = store.onClose(() => {
+    controller.abort();
+    return lookup;
+  });
 }

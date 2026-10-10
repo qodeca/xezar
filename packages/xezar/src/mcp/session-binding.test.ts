@@ -6,6 +6,10 @@ import { linkDir, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+// The background repo-handle lookup (`gh`, #945) would still be running in a project folder these
+// cases move on purpose, and Windows refuses to move a folder a live process works in (#963).
+// Binding never reads the handle, so the lookup is switched off here.
+vi.mock('../runs/arm-repo-handle.ts', () => ({ armRepoHandle: () => undefined }));
 import { ProjectWriterError } from '../runs/project-writer.ts';
 import { RunStore } from '../runs/store.ts';
 import { ProjectContextError, ProjectContexts, type ProjectContext, type ProjectContextSource } from '../server/project-context.ts';

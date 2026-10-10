@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { RunStore } from '../runs/store.ts';
 import { closeStoreAndRemove } from '../runs/store.testkit.ts';
 import { RunManager } from './run.ts';
@@ -157,6 +157,17 @@ async function drain(fixture: Fixture): Promise<void> {
     await waitFor(() => unsettled().length === 0, 'the cancelled leftover runs to settle');
   }
 }
+
+// The namer would start the real `claude` CLI for every run here; none of these cases is about
+// naming, and on Windows that first start blocks the event loop for seconds (#963).
+const savedAutoName = process.env.XEZ_AUTONAME;
+beforeEach(() => {
+  process.env.XEZ_AUTONAME = '0';
+});
+afterEach(() => {
+  if (savedAutoName === undefined) delete process.env.XEZ_AUTONAME;
+  else process.env.XEZ_AUTONAME = savedAutoName;
+});
 
 afterEach(async () => {
   for (const fixture of fixtures.splice(0)) {

@@ -25,8 +25,16 @@
  */
 import { onProcessTable } from '../core/process-usage.ts';
 import { collectSecretValues } from '../core/secret-redaction.ts';
-import { RUN_MARKER_ENV, envHasEntry, pidExists, readCommandLines } from '../platform/process-proof.ts';
 import {
+  RUN_MARKER_ENV,
+  envHasEntry,
+  nameAndKillIdentified,
+  pidExists,
+  readCommandLines,
+  type NamedKill,
+} from '../platform/process-proof.ts';
+import {
+  defaultTableRunner,
   killIdentified,
   readProcessTable,
   signalPid,
@@ -39,6 +47,10 @@ import {
   type ReadTableOptions,
   type SignalOutcome,
 } from '../platform/process-table.ts';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { gitRoot } from '../platform/git-bash.ts';
+import { readMsysTable, type MsysRow } from '../platform/msys-process-tree.ts';
 import { RunProcessLedger } from './run-process-ledger.ts';
 import { SweepRecord } from './run-process-sweep-record.ts';
 import { buildSweepReport, rootNotConfirmedNote } from './run-process-report.ts';
@@ -79,6 +91,8 @@ export interface RunProcessSweeperDeps {
   platform?: NodeJS.Platform;
   subscribe?: (listener: (table: ProcessTable) => void) => () => void;
   readTable?: (opts: ReadTableOptions) => Promise<ProcessTable | null>;
+  /** Windows: one read of Git's `ps`, or null when there is none (no Git for Windows, MinGit). */
+  readMsys?: () => Promise<readonly MsysRow[] | null>;
   envHasEntry?: (pid: number, entry: string) => Promise<boolean>;
   startTimeOf?: (pid: number) => Promise<number | null>;
   pidExists?: (pid: number) => boolean;
@@ -108,6 +122,9 @@ export class RunProcessSweeper {
   private readonly unsubscribe: () => void;
   private secrets: readonly string[] | undefined;
   private disposed = false;
+  /** Git's `ps.exe`, once looked up: null when there is none. */
+  private gitPs: string | null | undefined;
+  private msysReading = false;
 
   constructor(
     private readonly options: RunProcessSweeperOptions,
@@ -168,10 +185,38 @@ export class RunProcessSweeper {
 
   /** One sampler read into every ledger. A root a read rejects is said once, in the run's notes. */
   private record(table: ProcessTable): void {
+    let recorded = false;
     for (const [runId, ledger] of this.ledgers) {
       const rejected = ledger.record(table);
       if (rejected !== undefined && !this.disposed) this.options.report(runId, rootNotConfirmedNote(rejected));
+      recorded ||= !ledger.isEmpty;
     }
+    if (recorded && this.platform === 'win32' && !this.msysReading) void this.recordMsys(table);
+  }
+
+  /**
+   * Windows (#963): Git's `ps` beside the sampler's read, while a ledger holds something – one
+   * small read, at most one at a time. Records the Git Bash process groups the runs' shells lead.
+   */
+  private async recordMsys(table: ProcessTable): Promise<void> {
+    this.msysReading = true;
+    try {
+      const msys = await this.readMsys();
+      if (msys === null || this.disposed) return;
+      for (const ledger of this.ledgers.values()) ledger.recordMsys({ ...table, msys });
+    } finally {
+      this.msysReading = false;
+    }
+  }
+
+  private readMsys(): Promise<readonly MsysRow[] | null> {
+    if (this.deps.readMsys) return this.deps.readMsys().catch(() => null);
+    if (this.gitPs === undefined) {
+      const root = gitRoot();
+      const ps = root === null ? null : join(root, 'usr', 'bin', 'ps.exe');
+      this.gitPs = ps !== null && existsSync(ps) ? ps : null;
+    }
+    return this.gitPs === null ? Promise.resolve(null) : readMsysTable(this.gitPs, defaultTableRunner);
   }
 
   private schedule(runId: string, reason: SweepReason): Promise<void> {
@@ -213,13 +258,18 @@ export class RunProcessSweeper {
     const deadline = Date.now() + (this.deps.capMs ?? SWEEP_CAP_MS);
     for (let pass = 0; pass < MAX_PASSES && !record.closed && Date.now() < deadline; pass += 1) {
       const readTable = this.deps.readTable ?? readProcessTable;
-      const table = await readTable({ timeoutMs: Math.max(1, Math.min(TABLE_TIMEOUT_MS, deadline - Date.now())) });
-      if (table === null || record.closed) return;
+      const read = await readTable({ timeoutMs: Math.max(1, Math.min(TABLE_TIMEOUT_MS, deadline - Date.now())) });
+      if (read === null || record.closed) return;
+      // Windows: a run whose shells recorded a Git Bash group also needs Git's `ps` (#963).
+      const msys = this.platform === 'win32' && ledger?.hasGroups ? await this.readMsys() : null;
+      const table = msys === null ? read : { ...read, msys };
       const targets = (await this.attribute(runId, table, ledger)).filter((target) => record.claim(target.pid));
       if (targets.length === 0) return;
-      await this.name(targets, record);
       if (this.platform === 'win32') await this.stopWindows(targets, record);
-      else await this.stopPosix(targets, record);
+      else {
+        await this.name(targets, record);
+        await this.stopPosix(targets, record);
+      }
     }
   }
 
@@ -229,7 +279,7 @@ export class RunProcessSweeper {
     const excluded = (pid: number): boolean => pid <= floor || own.has(pid);
     if (!this.usesLedger()) return this.markedTargets(runId, table.rows.filter((row) => !excluded(row.pid)));
     if (ledger === undefined) return [];
-    return ledger.targets(table.rows, excluded).map(({ pid, startedAt }) => ({ pid, identity: startedAt }));
+    return ledger.targets(table.rows, excluded, table.msys).map(({ pid, startedAt }) => ({ pid, identity: startedAt }));
   }
 
   /** Linux: the rows whose environment carries the run's marker. */
@@ -260,12 +310,39 @@ export class RunProcessSweeper {
 
   /** Read and redact the targets' command lines before they are stopped – after, they are gone. */
   private async name(targets: readonly Target[], record: SweepRecord): Promise<void> {
-    const unnamed = targets.map(({ pid }) => pid).filter((pid) => record.wantsName(pid));
+    const unnamed = this.unnamed(targets, record);
     if (unnamed.length === 0) return;
     const read = this.deps.readCommandLines ?? ((pids: readonly number[]) => readCommandLines(pids));
-    const commands = await read(unnamed).catch(() => new Map<number, string>());
+    this.recordNames(await read(unnamed).catch(() => new Map<number, string>()), record);
+  }
+
+  private unnamed(targets: readonly Target[], record: SweepRecord): number[] {
+    return targets.map(({ pid }) => pid).filter((pid) => record.wantsName(pid));
+  }
+
+  private recordNames(commands: ReadonlyMap<number, string>, record: SweepRecord): void {
     this.secrets ??= this.deps.secretValues?.() ?? collectSecretValues();
     for (const [pid, command] of commands) record.name(pid, command, this.secrets);
+  }
+
+  /**
+   * Windows: name, then kill by identity. Production does both in ONE PowerShell
+   * (`nameAndKillIdentified`): two in a row took longer than the sweep's cap on a busy machine
+   * (#963). A test that passes its own seams gets them called in the same order.
+   */
+  private async nameAndKill(targets: readonly Target[], record: SweepRecord): Promise<NamedKill['outcomes']> {
+    const list = targets.map(({ pid, identity }) => ({ pid, startedAt: identity }));
+    const unnamed = this.unnamed(targets, record);
+    if (this.deps.killIdentified === undefined && this.deps.readCommandLines === undefined) {
+      const { commands, outcomes } = await nameAndKillIdentified(list, unnamed).catch(
+        (): NamedKill => ({ commands: new Map(), outcomes: null }),
+      );
+      this.recordNames(commands, record);
+      return outcomes;
+    }
+    await this.name(targets, record);
+    const kill = this.deps.killIdentified ?? ((pids: readonly IdentifiedPid[]) => killIdentified(pids));
+    return kill(list).catch(() => null);
   }
 
   /** POSIX: SIGTERM, up to 2 s to leave, SIGKILL for who stayed, 500 ms to settle. */
@@ -302,10 +379,9 @@ export class RunProcessSweeper {
     }
   }
 
-  /** Windows: kill by identity through one handle, then a fresh table 1 s later confirms. */
+  /** Windows: name and kill by identity through one handle, then a fresh table 1 s later confirms. */
   private async stopWindows(targets: readonly Target[], record: SweepRecord): Promise<void> {
-    const kill = this.deps.killIdentified ?? ((list: readonly IdentifiedPid[]) => killIdentified(list));
-    const outcomes = await kill(targets.map(({ pid, identity }) => ({ pid, startedAt: identity }))).catch(() => null);
+    const outcomes = await this.nameAndKill(targets, record);
     const toVerify: Target[] = [];
     for (const target of targets) {
       const outcome = outcomes?.get(target.pid);
@@ -318,10 +394,23 @@ export class RunProcessSweeper {
       }
     }
     if (toVerify.length === 0 || record.closed) return;
-    await delay(WINDOWS_VERIFY_MS);
+    // A pid that no longer exists is stopped: no table needed. Only a pid that still exists (the
+    // same process, or by now a stranger's) costs a table read (#963: each PowerShell run takes
+    // seconds on a busy machine, and the whole sweep has 10).
+    const exists = this.deps.pidExists ?? pidExists;
+    let present = toVerify;
+    for (const until = Date.now() + WINDOWS_VERIFY_MS; present.length > 0 && !record.closed && Date.now() < until; ) {
+      await delay(POLL_MS);
+      present = present.filter((target) => {
+        if (exists(target.pid)) return true;
+        record.stopped(target.pid);
+        return false;
+      });
+    }
+    if (present.length === 0 || record.closed) return;
     const table = await (this.deps.readTable ?? readProcessTable)({ timeoutMs: TABLE_TIMEOUT_MS });
     const live = new Set((table?.rows ?? []).map((row) => `${row.pid}:${row.startedAt}`));
-    for (const target of toVerify) {
+    for (const target of present) {
       const unconfirmed = table === null ? outcomes?.get(target.pid) !== 'killed' : live.has(`${target.pid}:${target.identity}`);
       if (unconfirmed) record.unstoppable(target.pid, 'still-running');
       else record.stopped(target.pid);
