@@ -1,4 +1,4 @@
-## ✨ Added
+## ✨ Features
 
 - ✨ **Windows: the project leader connects over MCP.** On Windows the running xezar now serves its
   MCP connection on a named pipe with a fresh random name at every start. Its folder is made private
