@@ -16,6 +16,7 @@
  * its parent exited within one tick) is never recorded: this is best-effort cleanup, not a
  * containment boundary.
  */
+import type { MsysRow } from '../platform/msys-process-tree.ts';
 import {
   SPAWN_CLOCK_SLACK_MS,
   descendantTargets,
@@ -27,6 +28,8 @@ import {
 export const ROOT_PIN_WINDOW_MS = 2_000;
 /** Recorded processes per run; beyond it only what is already recorded is kept up to date. */
 export const LEDGER_MAX_ENTRIES = 2_048;
+/** Recorded Git Bash process groups per run. */
+export const LEDGER_MAX_GROUPS = 256;
 
 /** A process by identity: its pid, and the start time that tells it from a later holder. */
 export interface IdentifiedProcess {
@@ -56,6 +59,9 @@ function rowsByPid(rows: readonly ProcRow[]): Map<number, ProcRow> {
 export class RunProcessLedger {
   private root: RootPin | undefined;
   private readonly seen = new Map<number, Seen>();
+  /** Windows: the MSYS process groups the run's own Git Bash shells lead – pgid → the leader's
+   *  Windows start time (#963). */
+  private readonly groups = new Map<number, number>();
 
   /** The run's root process from now on; what earlier roots recorded is kept. */
   pin(pid: number, spawnedAt: number): void {
@@ -65,6 +71,29 @@ export class RunProcessLedger {
   /** Has any read recorded anything? Without it no process can be proved the run's. */
   get isEmpty(): boolean {
     return this.seen.size === 0;
+  }
+
+  /** Has a read recorded a Git Bash process group? Only then is Git's `ps` worth reading at a stop. */
+  get hasGroups(): boolean {
+    return this.groups.size > 0;
+  }
+
+  /**
+   * Windows (#963): the MSYS half of one read. A recorded process that leads its own MSYS process
+   * group – a Git Bash shell the run started, as an agent's Bash tool does – records that group.
+   * When an MSYS process execs, or a subshell exits, a program it started lives on under a Windows
+   * parent that is already gone, and the group is what still ties it to the run.
+   */
+  recordMsys(table: ProcessTable): void {
+    if (table.msys === undefined) return;
+    const byPid = rowsByPid(table.rows);
+    for (const row of table.msys) {
+      if (row.pid !== row.pgid || this.groups.has(row.pgid)) continue;
+      const startedAt = byPid.get(row.winpid)?.startedAt;
+      if (startedAt === undefined || this.seen.get(row.winpid)?.startedAt !== startedAt) continue;
+      if (this.groups.size >= LEDGER_MAX_GROUPS) return;
+      this.groups.set(row.pgid, startedAt);
+    }
   }
 
   /** Test seam: did a read record this pid? */
@@ -124,12 +153,13 @@ export class RunProcessLedger {
    * The live processes of `rows` that belong to the run, by identity. `excluded(pid)` rows never
    * count (xezar itself, its ancestors, the system's own pids) and are never walked through.
    */
-  targets(rows: readonly ProcRow[], excluded: (pid: number) => boolean): IdentifiedProcess[] {
+  targets(rows: readonly ProcRow[], excluded: (pid: number) => boolean, msys?: readonly MsysRow[]): IdentifiedProcess[] {
     const found = new Map<number, number>();
     for (const row of rows) {
       const entry = this.seen.get(row.pid);
       if (entry !== undefined && row.startedAt === entry.startedAt && !excluded(row.pid)) found.set(row.pid, row.startedAt);
     }
+    for (const target of this.groupMembers(rows, excluded, msys ?? [])) found.set(target.pid, target.startedAt);
     for (let grew = true; grew; ) {
       grew = false;
       for (const row of rows) {
@@ -141,6 +171,29 @@ export class RunProcessLedger {
       }
     }
     return [...found].map(([pid, startedAt]) => ({ pid, startedAt }));
+  }
+
+  /**
+   * Windows (#963): the live members of the run's recorded MSYS groups, by Windows identity. A
+   * member counts when its Windows process started no earlier than the group's leader did. A group
+   * whose leader pid now names another live process (MSYS reused the pid) counts for nothing.
+   */
+  private groupMembers(rows: readonly ProcRow[], excluded: (pid: number) => boolean, msys: readonly MsysRow[]): IdentifiedProcess[] {
+    if (this.groups.size === 0 || msys.length === 0) return [];
+    const byPid = rowsByPid(rows);
+    const reused = new Set<number>();
+    for (const row of msys) {
+      const leaderStart = this.groups.get(row.pid);
+      if (leaderStart !== undefined && byPid.get(row.winpid)?.startedAt !== leaderStart) reused.add(row.pid);
+    }
+    const out: IdentifiedProcess[] = [];
+    for (const row of msys) {
+      const leaderStart = this.groups.get(row.pgid);
+      if (leaderStart === undefined || reused.has(row.pgid) || excluded(row.winpid)) continue;
+      const startedAt = byPid.get(row.winpid)?.startedAt;
+      if (startedAt !== undefined && startedAt >= leaderStart) out.push({ pid: row.winpid, startedAt });
+    }
+    return out;
   }
 
   /**

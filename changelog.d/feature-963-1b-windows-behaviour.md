@@ -11,6 +11,10 @@
 - 🐛 **Windows: stopping a check step stops what its shell started.** A program whose Git Bash
   parent had already exited (`nohup`, a subshell) was out of reach of the Windows process walk and
   kept running; the stop now also reads Git's own process list. (#963)
+- 🐛 **Windows: cancelling or pausing a task also stops what its agent's Git Bash commands left.**
+  A program started from a Git Bash subshell (`nohup … &`) whose shell exited between two process
+  reads was no longer linked to the task; the task's record now keeps each shell's Git Bash process
+  group, read from Git's own process list. (#963)
 - 🐛 **Windows: a paused task's leftover programs are reported as stopped when they are.** The
   sweep named and stopped them with two PowerShell runs, which on a busy machine went past its
   10-second limit and reported a stop that had worked as "still running"; it now uses one. (#963)

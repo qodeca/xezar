@@ -18,6 +18,7 @@
 import { Buffer } from 'node:buffer';
 import { execFile } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
+import type { MsysRow } from './msys-process-tree.ts';
 import { powershellPath } from './system-programs.ts';
 
 /** One process. `rssKb` in KiB; `cpuPct` is 0 on Windows; `startedAt` in ms since the epoch
@@ -35,6 +36,9 @@ export interface ProcessTable {
   /** When the query STARTED, in ms since the epoch: every row describes a process that was
    *  alive at some moment after this. */
   queriedAt: number;
+  /** Windows, when the reader also read Git's `ps` (the run sweep, #963): the MSYS processes,
+   *  each with its Windows pid. Absent: not read – never "no MSYS process". */
+  msys?: readonly MsysRow[];
 }
 
 export interface TableRunOptions {

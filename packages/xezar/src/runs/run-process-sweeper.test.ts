@@ -252,6 +252,92 @@ describe('RunProcessSweeper on Windows – the ledger is the proof', () => {
     expect(reports[0]![1]).toBe('Could not stop 2 programs this task started: 320 node admin.js (access denied); 321 node stuck.js (still running).');
   });
 
+  describe('Git Bash process groups (#963)', () => {
+    const flush = (): Promise<void> => vi.runAllTimersAsync().then(() => undefined);
+
+    /** The agent's Bash tool: a Git Bash shell under the root, leading its own MSYS group 865. */
+    async function withShell(): Promise<Harness> {
+      const h = windows();
+      h.machine.add({ pid: 340, ppid: ROOT, startedAt: T0 + 1_000, cmdline: 'bash -c ...', msys: { pid: 865, ppid: 1, pgid: 865 } });
+      h.machine.tick();
+      await flush();
+      return h;
+    }
+
+    /** `nohup node dev.js &` from a subshell no read ever saw: its Windows parent is gone. */
+    function orphanOf(h: Harness): void {
+      h.machine.add({ pid: 342, ppid: 341, startedAt: T0 + 1_200, cmdline: 'nohup node dev.js', msys: { pid: 867, ppid: 1, pgid: 865 } });
+      h.machine.add({ pid: 343, ppid: 342, startedAt: T0 + 1_300, cmdline: 'node dev.js', msys: { pid: 868, ppid: 867, pgid: 865 } });
+      h.machine.add({ pid: 344, ppid: 343, startedAt: T0 + 1_400, cmdline: 'node worker.js' });
+      h.machine.processes.get(340)!.alive = false;
+      h.machine.processes.get(ROOT)!.alive = false;
+    }
+
+    it('stops what a shell started after its MSYS parent exited between two reads', async () => {
+      const h = await withShell();
+      orphanOf(h);
+      await settle(h.sweeper.now(RUN, 'cancel'));
+      expect(h.machine.killRequests.flat().map(({ pid }) => pid).sort()).toEqual([342, 343, 344]);
+      expect(h.reports[0]![1]).toMatch(/^Stopped 3 programs this task started: /);
+    });
+
+    it('without the group, the same orphans are out of reach (the gap it closes)', async () => {
+      const h = windows();
+      h.machine.hasGit = false;
+      h.machine.add({ pid: 340, ppid: ROOT, startedAt: T0 + 1_000, cmdline: 'bash -c ...', msys: { pid: 865, ppid: 1, pgid: 865 } });
+      h.machine.tick();
+      await flush();
+      orphanOf(h);
+      await settle(h.sweeper.now(RUN, 'cancel'));
+      expect(h.machine.killRequests.flat().map(({ pid }) => pid)).toEqual([]);
+    });
+
+    it('leaves a group whose leader pid MSYS gave to a stranger, and a member older than the leader', async () => {
+      const h = await withShell();
+      h.machine.processes.get(340)!.alive = false;
+      // MSYS reused 865 for a stranger's shell, which leads a group of its own.
+      h.machine.add({ pid: 900, ppid: 1, startedAt: T0 + 50_000, cmdline: 'bash stranger', msys: { pid: 865, ppid: 1, pgid: 865 } });
+      h.machine.add({ pid: 901, ppid: 900, startedAt: T0 + 50_100, cmdline: 'node stranger.js', msys: { pid: 870, ppid: 865, pgid: 865 } });
+      await settle(h.sweeper.now(RUN, 'cancel'));
+      expect(h.machine.killRequests.flat().map(({ pid }) => pid)).toEqual([ROOT]);
+
+      const old = await withShell();
+      old.machine.add({ pid: 350, ppid: 1, startedAt: T0 + 900, cmdline: 'node older.js', msys: { pid: 880, ppid: 1, pgid: 865 } });
+      await settle(old.sweeper.now(RUN, 'cancel'));
+      expect(old.machine.killRequests.flat().map(({ pid }) => pid).sort()).toEqual([ROOT, 340]);
+    });
+
+    it("reads Git's ps only while a ledger holds something, and at a stop only for a run with a group", async () => {
+      const h = harness('win32');
+      h.machine.add({ pid: ROOT, ppid: XEZAR, startedAt: T0, cmdline: 'node claude.js' });
+      h.machine.tick();
+      await flush();
+      expect(h.machine.msysReads).toBe(0); // nothing pinned, nothing recorded
+      h.sweeper.pinRoot(RUN, ROOT, T0 + 500);
+      h.machine.tick();
+      await flush();
+      expect(h.machine.msysReads).toBe(1);
+      h.machine.msysReads = 0;
+      await settle(h.sweeper.now(RUN, 'cancel'));
+      expect(h.machine.msysReads).toBe(0); // no shell recorded a group
+
+      const g = await withShell();
+      g.machine.msysReads = 0;
+      await settle(g.sweeper.now(RUN, 'cancel'));
+      expect(g.machine.msysReads).toBeGreaterThan(0);
+    });
+
+    it('never reads Git ps on macOS', async () => {
+      const h = harness('darwin');
+      h.machine.add({ pid: ROOT, ppid: XEZAR, startedAt: T0, cmdline: 'node claude.js' });
+      h.sweeper.pinRoot(RUN, ROOT, T0 + 500);
+      h.machine.tick();
+      await flush();
+      await settle(h.sweeper.now(RUN, 'cancel'));
+      expect(h.machine.msysReads).toBe(0);
+    });
+  });
+
   it('confirms a killed pid that is gone without another table read (#963)', async () => {
     let reads = 0;
     const h = harness('win32', {

@@ -34,6 +34,7 @@ import {
   type NamedKill,
 } from '../platform/process-proof.ts';
 import {
+  defaultTableRunner,
   killIdentified,
   readProcessTable,
   signalPid,
@@ -46,6 +47,10 @@ import {
   type ReadTableOptions,
   type SignalOutcome,
 } from '../platform/process-table.ts';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { gitRoot } from '../platform/git-bash.ts';
+import { readMsysTable, type MsysRow } from '../platform/msys-process-tree.ts';
 import { RunProcessLedger } from './run-process-ledger.ts';
 import { SweepRecord } from './run-process-sweep-record.ts';
 import { buildSweepReport, rootNotConfirmedNote } from './run-process-report.ts';
@@ -86,6 +91,8 @@ export interface RunProcessSweeperDeps {
   platform?: NodeJS.Platform;
   subscribe?: (listener: (table: ProcessTable) => void) => () => void;
   readTable?: (opts: ReadTableOptions) => Promise<ProcessTable | null>;
+  /** Windows: one read of Git's `ps`, or null when there is none (no Git for Windows, MinGit). */
+  readMsys?: () => Promise<readonly MsysRow[] | null>;
   envHasEntry?: (pid: number, entry: string) => Promise<boolean>;
   startTimeOf?: (pid: number) => Promise<number | null>;
   pidExists?: (pid: number) => boolean;
@@ -115,6 +122,9 @@ export class RunProcessSweeper {
   private readonly unsubscribe: () => void;
   private secrets: readonly string[] | undefined;
   private disposed = false;
+  /** Git's `ps.exe`, once looked up: null when there is none. */
+  private gitPs: string | null | undefined;
+  private msysReading = false;
 
   constructor(
     private readonly options: RunProcessSweeperOptions,
@@ -175,10 +185,38 @@ export class RunProcessSweeper {
 
   /** One sampler read into every ledger. A root a read rejects is said once, in the run's notes. */
   private record(table: ProcessTable): void {
+    let recorded = false;
     for (const [runId, ledger] of this.ledgers) {
       const rejected = ledger.record(table);
       if (rejected !== undefined && !this.disposed) this.options.report(runId, rootNotConfirmedNote(rejected));
+      recorded ||= !ledger.isEmpty;
     }
+    if (recorded && this.platform === 'win32' && !this.msysReading) void this.recordMsys(table);
+  }
+
+  /**
+   * Windows (#963): Git's `ps` beside the sampler's read, while a ledger holds something – one
+   * small read, at most one at a time. Records the Git Bash process groups the runs' shells lead.
+   */
+  private async recordMsys(table: ProcessTable): Promise<void> {
+    this.msysReading = true;
+    try {
+      const msys = await this.readMsys();
+      if (msys === null || this.disposed) return;
+      for (const ledger of this.ledgers.values()) ledger.recordMsys({ ...table, msys });
+    } finally {
+      this.msysReading = false;
+    }
+  }
+
+  private readMsys(): Promise<readonly MsysRow[] | null> {
+    if (this.deps.readMsys) return this.deps.readMsys().catch(() => null);
+    if (this.gitPs === undefined) {
+      const root = gitRoot();
+      const ps = root === null ? null : join(root, 'usr', 'bin', 'ps.exe');
+      this.gitPs = ps !== null && existsSync(ps) ? ps : null;
+    }
+    return this.gitPs === null ? Promise.resolve(null) : readMsysTable(this.gitPs, defaultTableRunner);
   }
 
   private schedule(runId: string, reason: SweepReason): Promise<void> {
@@ -220,8 +258,11 @@ export class RunProcessSweeper {
     const deadline = Date.now() + (this.deps.capMs ?? SWEEP_CAP_MS);
     for (let pass = 0; pass < MAX_PASSES && !record.closed && Date.now() < deadline; pass += 1) {
       const readTable = this.deps.readTable ?? readProcessTable;
-      const table = await readTable({ timeoutMs: Math.max(1, Math.min(TABLE_TIMEOUT_MS, deadline - Date.now())) });
-      if (table === null || record.closed) return;
+      const read = await readTable({ timeoutMs: Math.max(1, Math.min(TABLE_TIMEOUT_MS, deadline - Date.now())) });
+      if (read === null || record.closed) return;
+      // Windows: a run whose shells recorded a Git Bash group also needs Git's `ps` (#963).
+      const msys = this.platform === 'win32' && ledger?.hasGroups ? await this.readMsys() : null;
+      const table = msys === null ? read : { ...read, msys };
       const targets = (await this.attribute(runId, table, ledger)).filter((target) => record.claim(target.pid));
       if (targets.length === 0) return;
       if (this.platform === 'win32') await this.stopWindows(targets, record);
@@ -238,7 +279,7 @@ export class RunProcessSweeper {
     const excluded = (pid: number): boolean => pid <= floor || own.has(pid);
     if (!this.usesLedger()) return this.markedTargets(runId, table.rows.filter((row) => !excluded(row.pid)));
     if (ledger === undefined) return [];
-    return ledger.targets(table.rows, excluded).map(({ pid, startedAt }) => ({ pid, identity: startedAt }));
+    return ledger.targets(table.rows, excluded, table.msys).map(({ pid, startedAt }) => ({ pid, identity: startedAt }));
   }
 
   /** Linux: the rows whose environment carries the run's marker. */

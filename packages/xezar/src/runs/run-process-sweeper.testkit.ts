@@ -23,6 +23,8 @@ export interface FakeProcess {
   denied?: boolean;
   /** Linux: after this many start-time reads the pid names a newer process (pid reuse). */
   reusedAfterReads?: number;
+  /** Windows: its row in Git's `ps` – MSYS pid, parent and process group (#963). */
+  msys?: { pid: number; ppid: number; pgid: number };
   /** Called when it dies – a supervisor restarting it, say. */
   onDeath?: (machine: FakeMachine) => void;
 }
@@ -32,6 +34,9 @@ export class FakeMachine {
   readonly signals: Array<[number, string]> = [];
   readonly killRequests: Array<Array<{ pid: number; startedAt: number }>> = [];
   readonly identityReads = new Map<number, number>();
+  /** Reads of Git's `ps`; `hasGit: false` answers each with null (no Git for Windows). */
+  msysReads = 0;
+  hasGit = true;
   private listener: ((table: ProcessTable) => void) | undefined;
 
   constructor(
@@ -121,6 +126,13 @@ export class FakeMachine {
         };
       },
       readTable: async () => this.table(),
+      readMsys: async () => {
+        this.msysReads += 1;
+        if (!this.hasGit) return null;
+        return [...this.processes.values()]
+          .filter((proc) => proc.alive && proc.msys !== undefined)
+          .map((proc) => ({ ...proc.msys!, winpid: proc.pid }));
+      },
       envHasEntry: (pid, entry) => envHasEntry(pid, entry, { platform: 'linux', readBytes: async (path) => this.environBytes(path) }),
       startTimeOf: async (pid) => this.identityOf(pid),
       pidExists: (pid) => this.isAlive(pid),
