@@ -79,7 +79,12 @@ export function piLeaderPath(dataDir: string): string {
  * Read the descriptor, or say why there is none. Never throws: every failure is a reason a person
  * can act on, because this runs on the `attach` path and the answer is shown to them.
  */
-export function readPiLeaderDescriptor(dataDir: string): { ok: true; descriptor: PiLeaderDescriptor } | { ok: false; reason: string } {
+export function readPiLeaderDescriptor(
+  dataDir: string,
+  platform: NodeJS.Platform = process.platform,
+): { ok: true; descriptor: PiLeaderDescriptor } | { ok: false; reason: string } {
+  // #963: the pi extension listens on a Unix socket; a pi leader over Windows pipes is a follow-up.
+  if (platform === 'win32') return { ok: false, reason: 'attaching a pi leader is not available on this system yet' };
   let raw: string;
   try {
     raw = readFileSync(piLeaderPath(dataDir), 'utf8');

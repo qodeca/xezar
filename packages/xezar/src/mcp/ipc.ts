@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { mcpProjectOccupiedErrorSchema, mcpSessionExpiredErrorSchema } from '@qodeca/xezar-contract';
 import { z } from 'zod';
 import { activeStateLayout, type StateLayout } from '../state-layout.ts';
+import { pipeFiles, type PipeFiles } from './pipe-endpoint.ts';
 
 /**
  * The IPC leg between `xez mcp` (the bridge) and the running xezar service — D-01
@@ -75,6 +76,8 @@ function maxSocketPathBytes(platform: NodeJS.Platform): number {
 
 export type McpSocketLocation =
   | { readonly kind: 'socket'; readonly path: string }
+  /** Windows (#963): a named pipe whose name changes every start, found through `files`. */
+  | { readonly kind: 'pipe'; readonly files: PipeFiles }
   | { readonly kind: 'unavailable'; readonly reason: string };
 
 /**
@@ -84,8 +87,8 @@ export type McpSocketLocation =
  * D-01 § 1.4: when `<home>/ipc/<projectId>.sock` is longer than the OS allows, the
  * first 12 hex characters of SHA-256(project root) replace the id. When even that
  * is too long (a very long `XEZ_HOME`), there is no socket — the caller degrades.
- * Windows named pipes are untested and their naming is undecided (D-01 § 10.2), so
- * Windows is reported as unavailable rather than guessed.
+ * Windows (#963, D-01 § 10.2 as amended): a named pipe, named afresh at every start and
+ * found through the endpoint and marker files in the same folder (`pipe-endpoint.ts`).
  *
  * `layout` defaults to the process's own. The bridge passes the layout it
  * resolved for its folder on this session open (#819 item 5), so a folder that
@@ -98,10 +101,8 @@ export function mcpSocketLocation(
   platform: NodeJS.Platform = process.platform,
   layout: StateLayout = activeStateLayout(env),
 ): McpSocketLocation {
-  if (platform === 'win32') {
-    return { kind: 'unavailable', reason: 'the xezar MCP bridge is not supported on Windows yet' };
-  }
   const dir = layout.ipcDir;
+  if (platform === 'win32') return { kind: 'pipe', files: pipeFiles(dir, project.id) };
   const limit = maxSocketPathBytes(platform);
   const primary = join(dir, `${project.id}.sock`);
   if (Buffer.byteLength(primary) <= limit) return { kind: 'socket', path: primary };

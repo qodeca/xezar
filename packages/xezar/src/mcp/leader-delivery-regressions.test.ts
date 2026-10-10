@@ -301,7 +301,7 @@ function outcomeAfter(h: MatrixHarness, runId: string, outcome: typeof outcomes[
 // #532 G2 extends #531 through the real controller and all four receiving peers.
 // Named breaks: unconditional pendingIntents.set; retained explicit-refusal ownership;
 // consume without expected status; leaked settled async origin; erase newer intent on old refusal.
-// win32-skip(#963): claude-code, codex and pi peers listen on a Unix socket path (the xezar MCP service, Codex's control socket, pi's leader socket) – listen EACCES / "not supported on Windows yet" (ipc.ts); opencode (HTTP) still runs
+// win32-skip(#963): the codex and pi peers listen on a Unix socket path (Codex's control socket, pi's leader socket); attaching a Codex or pi leader on Windows is deferred to a follow-up. claude-code (named pipe) and opencode (HTTP) run
 for (const client of DELIVERY_CLIENTS) describe.skipIf(deliveryPeerUnavailable(client))(`#532 causal matrix / ${client}`, () => {
   const rejected = ['send_message', 'cancel', 'continue', 'answer_question', 'pin', 'set_title', 'edit_brief'] as const;
   for (const action of rejected) {
@@ -399,7 +399,7 @@ it.each(['new-id', 'same-id-new-content'] as const)('question replacement %s mus
   expect(runVersion(store, run.id)).not.toBe(token);
 });
 
-// win32-skip(#963): claude-code, codex and pi peers listen on a Unix socket path (the xezar MCP service, Codex's control socket, pi's leader socket) – listen EACCES / "not supported on Windows yet" (ipc.ts); opencode (HTTP) still runs
+// win32-skip(#963): the codex and pi peers listen on a Unix socket path (Codex's control socket, pi's leader socket); attaching a Codex or pi leader on Windows is deferred to a follow-up. claude-code (named pipe) and opencode (HTTP) run
 for (const client of DELIVERY_CLIENTS) describe.skipIf(deliveryPeerUnavailable(client))(`#532 delayed intent arbitration / ${client}`, () => {
   it('own accepted cancelled acknowledgement stays suppressed but an unrelated failed outcome is delivered', async () => {
     const h = await deliveryHarness(client);

@@ -103,26 +103,41 @@ async function listening(server: Server): Promise<void> {
 
 const settle = (): Promise<void> => new Promise((r) => setTimeout(r, 25));
 
+/**
+ * The platform whose descriptor rules these cases read under. POSIX: the host's own, which is the
+ * default the production call passes. Windows refuses a pi leader before reading anything (#963),
+ * so a Windows host checks the file rules – the same on every OS – under Linux's.
+ */
+const DESCRIPTOR_RULES: NodeJS.Platform = onWindows ? 'linux' : process.platform;
+
 describe('reading the descriptor the pi leader extension writes', () => {
+  it('on Windows answers that attaching a pi leader is not available yet, whatever the folder holds (#963)', () => {
+    const empty = tmp();
+    expect(readPiLeaderDescriptor(empty, 'win32')).toEqual({ ok: false, reason: 'attaching a pi leader is not available on this system yet' });
+    const announced = tmp();
+    writeFileSync(piLeaderPath(announced), JSON.stringify(descriptorFor(join(announced, 'leader.sock'))));
+    expect(readPiLeaderDescriptor(announced, 'win32')).toEqual({ ok: false, reason: 'attaching a pi leader is not available on this system yet' });
+  });
+
   it('says there is no leader when nothing has announced one — the ordinary case, not an error', () => {
-    const found = readPiLeaderDescriptor(tmp());
+    const found = readPiLeaderDescriptor(tmp(), DESCRIPTOR_RULES);
     expect(found).toEqual({ ok: false, reason: 'no pi leader has announced itself to this project' });
   });
 
   it('refuses a file that is not JSON, and one that is not this descriptor, with different reasons', () => {
     const a = tmp();
     writeFileSync(piLeaderPath(a), 'not json at all');
-    expect(readPiLeaderDescriptor(a)).toEqual({ ok: false, reason: `${PI_LEADER_FILE} is not valid JSON` });
+    expect(readPiLeaderDescriptor(a, DESCRIPTOR_RULES)).toEqual({ ok: false, reason: `${PI_LEADER_FILE} is not valid JSON` });
 
     const b = tmp();
     writeFileSync(piLeaderPath(b), JSON.stringify({ schemaVersion: 99, endpoint: {} }));
-    expect(readPiLeaderDescriptor(b)).toEqual({ ok: false, reason: `${PI_LEADER_FILE} is not a descriptor this xezar understands` });
+    expect(readPiLeaderDescriptor(b, DESCRIPTOR_RULES)).toEqual({ ok: false, reason: `${PI_LEADER_FILE} is not a descriptor this xezar understands` });
   });
 
   it('names a pi that went away without cleaning up, rather than letting the dial fail with an errno', () => {
     const dir = tmp();
     writeFileSync(piLeaderPath(dir), JSON.stringify(descriptorFor(join(dir, 'gone.sock'))));
-    const found = readPiLeaderDescriptor(dir);
+    const found = readPiLeaderDescriptor(dir, DESCRIPTOR_RULES);
     expect(found.ok).toBe(false);
     expect(found.ok === false && found.reason).toMatch(/is gone/);
   });
@@ -132,12 +147,12 @@ describe('reading the descriptor the pi leader extension writes', () => {
     const notASocket = join(dir, 'regular-file');
     writeFileSync(notASocket, 'x');
     writeFileSync(piLeaderPath(dir), JSON.stringify(descriptorFor(notASocket)));
-    const found = readPiLeaderDescriptor(dir);
+    const found = readPiLeaderDescriptor(dir, DESCRIPTOR_RULES);
     expect(found.ok).toBe(false);
     expect(found.ok === false && found.reason).toMatch(/is not a socket/);
   });
 
-  // win32-skip(#963): Node cannot listen on a Unix socket path on Windows (listen EACCES), and the pi leader stand-in listens on one
+  // win32-skip(#963): the pi leader stand-in listens on a Unix socket path (listen EACCES under Windows); attaching a pi leader on Windows is deferred to a follow-up
   it.skipIf(onWindows)('accepts a live socket, and reads it from the project data directory only', async () => {
     const leader = fakeLeader();
     await listening(leader.server);
@@ -151,7 +166,7 @@ describe('reading the descriptor the pi leader extension writes', () => {
   });
 });
 
-// win32-skip(#963): Node cannot listen on a Unix socket path on Windows (listen EACCES), and the pi leader stand-in listens on one
+// win32-skip(#963): the pi leader stand-in listens on a Unix socket path (listen EACCES under Windows); attaching a pi leader on Windows is deferred to a follow-up
 describe.skipIf(onWindows)('the link itself, over a real socket', () => {
   it('carries a command and resolves with pi\'s own response frame', async () => {
     const leader = fakeLeader({

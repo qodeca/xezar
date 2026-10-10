@@ -1,12 +1,13 @@
 // FIRST import on purpose: the home pin is a module-load side effect and must run before anything
 // that reaches `skills.ts` (#671).
 import './tools/mcp-test-home.testkit.ts';
-import { execFileSync, spawn } from 'node:child_process';
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   MCP_PROJECT_OCCUPIED_CODE,
   MCP_PROJECT_OCCUPIED_REASON,
@@ -27,10 +28,11 @@ import { WorkspaceSemaphore } from '../workspace/semaphore.ts';
 import { runBridge } from './bridge.ts';
 import { resolveMcpTarget, startMcpService, type StartMcpServiceOptions } from './index.ts';
 import { IPC_PROTOCOL_VERSION, LineFramer, encodeFrame, type McpToolResult } from './ipc.ts';
+import { readPipeEndpoint, type PipeFiles } from './pipe-endpoint.ts';
 import { runVersion } from './stale-write.ts';
 import { tools } from './tools/index.ts';
 import { withOperationId } from './tools/operation-id.testkit.ts';
-import { onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
+import { shortTmpRoot, onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * #302 — exclusive ownership over a LIVE MCP session (A-17, A-18, the exclusivity half of A-23).
@@ -55,7 +57,7 @@ const saved = { home: process.env.XEZ_HOME, dryRun: process.env.XEZ_DRY_RUN };
 
 // A short home under /tmp: the socket path must stay under the OS limit (D-01 E5).
 const tmp = (prefix: string): string => {
-  const dir = realpathSync(mkdtempSync(`/tmp/${prefix}`));
+  const dir = realpathSync(mkdtempSync(join(shortTmpRoot(), prefix)));
   tempDirs.push(dir);
   return dir;
 };
@@ -206,8 +208,40 @@ async function startSlowTask(c: Cockpit, owner: ReturnType<typeof agent>): Promi
   return runId;
 }
 
-// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – every test here starts the project MCP service on its socket
-describe.skipIf(onWindows)('A-17 — only the competing owner is refused', () => {
+/**
+ * Windows (#963): the same holder as the POSIX one below, on the project's named pipe. The pipe
+ * answers nothing before the handshake, so the separate process says `hello` first – through the
+ * production `pipeHello`, loaded with tsx – with the key this process read from the endpoint.
+ */
+function pipeHolder(files: PipeFiles): ChildProcess {
+  const endpoint = readPipeEndpoint(files.endpoint);
+  if (typeof endpoint === 'string') throw new Error(`no pipe endpoint for the project (${endpoint})`);
+  const pipeAuth = pathToFileURL(fileURLToPath(new URL('./pipe-auth.ts', import.meta.url))).href;
+  return spawn(
+    process.execPath,
+    [
+      '--import',
+      'tsx',
+      '--input-type=module',
+      '-e',
+      `import { createConnection } from 'node:net';
+       const { pipeHello } = await import(${JSON.stringify(pipeAuth)});
+       const [name, key] = process.argv.slice(1);
+       const s = createConnection(name, async () => {
+         const hello = await pipeHello(s, { key: Buffer.from(key, 'hex'), pipeName: name }, 10000);
+         if (!hello.ok) process.exit(3);
+         s.on('data', (d) => { if (String(d).includes('"ok":true')) process.stdout.write('owned\\n'); });
+         s.write(JSON.stringify({ v: ${IPC_PROTOCOL_VERSION}, id: 1, method: 'session/open' }) + '\\n');
+       });
+       setInterval(() => {}, 1000);`,
+      endpoint.pipeName,
+      endpoint.key,
+    ],
+    { stdio: ['ignore', 'pipe', 'inherit'] },
+  );
+}
+
+describe('A-17 — only the competing owner is refused', () => {
   it('refuses a second logical client with the occupied error, gives it no tool access, and tells it nothing about the owner', async () => {
     const c = await cockpit();
     await serve(c);
@@ -257,8 +291,7 @@ describe.skipIf(onWindows)('A-17 — only the competing owner is refused', () =>
   });
 });
 
-// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – every test here starts the project MCP service on its socket
-describe.skipIf(onWindows)('A-18 — liveness, fencing and restart', () => {
+describe('A-18 — liveness, fencing and restart', () => {
   it('model silence keeps ownership: an idle owner outlives many leases because the service renews it, not the model', async () => {
     const c = await cockpit();
     let clock = Date.now();
@@ -300,20 +333,23 @@ describe.skipIf(onWindows)('A-18 — liveness, fencing and restart', () => {
     const c = await cockpit();
     await serve(c);
     const target = await resolveMcpTarget(c.root);
-    if (target.kind !== 'socket') throw new Error('no socket for the project');
+    if (target.kind !== 'socket' && target.kind !== 'pipe') throw new Error('no socket for the project');
     // A separate process holding a session on the real socket, then SIGKILLed: nothing is closed by
     // it, only by the operating system (D-02.4 signal 1).
-    const holder = spawn(
-      process.execPath,
-      [
-        '-e',
-        `const s = require('net').createConnection(process.argv[1], () => s.write(JSON.stringify({ v: ${IPC_PROTOCOL_VERSION}, id: 1, method: 'session/open' }) + '\\n'));
+    const holder =
+      target.kind === 'socket'
+        ? spawn(
+            process.execPath,
+            [
+              '-e',
+              `const s = require('net').createConnection(process.argv[1], () => s.write(JSON.stringify({ v: ${IPC_PROTOCOL_VERSION}, id: 1, method: 'session/open' }) + '\\n'));
          s.on('data', (d) => { if (String(d).includes('"ok":true')) process.stdout.write('owned\\n'); });
          setInterval(() => {}, 1000);`,
-        target.path,
-      ],
-      { stdio: ['ignore', 'pipe', 'inherit'] },
-    );
+              target.path,
+            ],
+            { stdio: ['ignore', 'pipe', 'inherit'] },
+          )
+        : pipeHolder(target.files);
     closers.push(() => holder.kill('SIGKILL'));
     await new Promise<void>((resolve) => holder.stdout!.on('data', (d) => String(d).includes('owned') && resolve()));
     expect(isOccupied(await agent(c.root).initialize())).toBe(true);
@@ -410,8 +446,7 @@ describe.skipIf(onWindows)('A-18 — liveness, fencing and restart', () => {
   });
 });
 
-// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – every test here starts the project MCP service on its socket
-describe.skipIf(onWindows)('N-05 — a started task keeps running through every ownership change', () => {
+describe('N-05 — a started task keeps running through every ownership change', () => {
   it('survives its owner leaving, a successor, a refused client, fencing and a service restart; nothing calls the run manager', async () => {
     const c = await cockpit();
     let service = await serve(c);
@@ -437,5 +472,12 @@ describe.skipIf(onWindows)('N-05 — a started task keeps running through every 
     expect(c.store.getRun(runId)?.status).toBe('running');
     expect(cancel).not.toHaveBeenCalled();
     expect(c.store.readEvents(runId).some((event) => (event as { type?: string }).type === 'cancelled')).toBe(false);
+    // Windows (#963): the running task's agent holds its folder open, so it is stopped before
+    // the folder is removed; POSIX removes the folder under the running task, as before.
+    if (onWindows) {
+      cancel.mockRestore();
+      c.manager.cancel(runId);
+      await until('the task to stop', () => (c.store.getRun(runId)?.status !== 'running' ? true : undefined));
+    }
   }, 30_000);
 });

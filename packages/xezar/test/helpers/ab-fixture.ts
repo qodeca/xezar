@@ -33,6 +33,7 @@ import { defineTool, type McpTool, type McpToolContext } from '../../src/mcp/too
 import { tools as registry } from '../../src/mcp/tools/index.ts';
 import { withOperationId } from '../../src/mcp/tools/operation-id.testkit.ts';
 import { linkDir, shortTmpRoot, TEST_DIR_RM_OPTIONS } from './platform.ts';
+import { connectRaw, targetFor } from './mcp-raw.ts';
 import { projectDataDir } from '../../src/project-data-paths.ts';
 import { RunStore, type RunRecord } from '../../src/runs/store.ts';
 import { closeStoreAndRemove } from '../../src/runs/store.testkit.ts';
@@ -676,7 +677,8 @@ export async function createAbWorld(options: AbWorldOptions = {}): Promise<AbWor
 
   const frame = (side: Side, payload: unknown): Promise<unknown> =>
     new Promise((resolve, reject) => {
-      const socket = createConnection(socketPath(side));
+      // Connected (and, on Windows, past the pipe handshake) before the first frame (#963).
+      void connectRaw(socketPath(side), { projectId: side === 'a' ? PROJECT_A : PROJECT_B }).then((socket) => {
       const line = typeof payload === 'string' ? payload : JSON.stringify(payload);
       const answers: string[] = [];
       let opening = needsSession(payload);
@@ -702,13 +704,12 @@ export async function createAbWorld(options: AbWorldOptions = {}): Promise<AbWor
       );
       socket.on('data', (chunk: Buffer) => framer.push(chunk));
       socket.on('error', reject);
-      socket.on('connect', () => {
-        if (opening) socket.write(encodeFrame({ v: IPC_PROTOCOL_VERSION, id: 0, method: 'session/open' }));
-        else {
-          leaderLog.push(`client→${side} ${line}`);
-          socket.write(`${line}\n`);
-        }
-      });
+      if (opening) socket.write(encodeFrame({ v: IPC_PROTOCOL_VERSION, id: 0, method: 'session/open' }));
+      else {
+        leaderLog.push(`client→${side} ${line}`);
+        socket.write(`${line}\n`);
+      }
+      }, reject);
     });
 
   const call = async (side: Side, tool: string, args: Record<string, unknown> = {}): Promise<McpToolResult> => {
@@ -747,7 +748,7 @@ export async function createAbWorld(options: AbWorldOptions = {}): Promise<AbWor
       output,
       version: XEZAR_VERSION,
       tools: registry,
-      resolveTarget: async () => ({ kind: 'socket', path: socketPath(side), project: { id: project.id, name: project.name } }),
+      resolveTarget: async () => targetFor({ path: socketPath(side) }, { id: project.id, name: project.name }),
     });
     const handle: Leader = {
       request(method, params) {

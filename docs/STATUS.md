@@ -15,11 +15,9 @@ immediate: what the children started at shutdown is not stopped.
 
 Tracked in [#963](https://github.com/qodeca/xezar/issues/963).
 
-New write-then-rename sites use `writeFileAtomic` / `writeFileAtomicSync`. These known exceptions
-have not been migrated yet and still use a plain rename:
-
-- `mcp/connection-file.ts`, which moves with the Windows MCP transport;
-- `packages/xezar/scripts/pi-leader-extension.ts`, which moves with the pi leader on Windows.
+New write-then-rename sites use `writeFileAtomic` / `writeFileAtomicSync`. One known exception
+has not been migrated yet and still uses a plain rename:
+`packages/xezar/scripts/pi-leader-extension.ts`, which moves with the pi leader on Windows.
 
 The test scripts `packages/xezar/scripts/mock-claude.mjs` and
 `packages/xezar/scripts/multi-project-harness.mjs` cannot import the platform layer, so each

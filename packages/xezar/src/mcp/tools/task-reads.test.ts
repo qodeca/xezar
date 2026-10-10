@@ -2,7 +2,6 @@
 // that reaches `skills.ts` (#671).
 import './mcp-test-home.testkit.ts';
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
-import { createConnection } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Hono } from 'hono';
@@ -20,7 +19,8 @@ import { listenMcpSocket, type McpServiceHandle } from '../service.ts';
 import { defineTool, type McpTool, type McpToolContext } from '../tool.ts';
 import { tools } from './index.ts';
 import { TASK_READ_PAGE_ITEMS, TASK_READ_RESULT_BUDGET_BYTES, taskReadsTool, taskSummarySchema } from './task-reads.ts';
-import { onWindows, TEST_DIR_RM_OPTIONS } from '../../../test/helpers/platform.ts';
+import { connectRaw } from '../../../test/helpers/mcp-raw.ts';
+import { onWindows, shortTmpRoot, TEST_DIR_RM_OPTIONS } from '../../../test/helpers/platform.ts';
 
 /**
  * `task_read` (#91) driven the way a leader drives it: a `tools/call` frame over the project's
@@ -36,8 +36,7 @@ type Body = Record<string, unknown> & {
   text?: string;
 };
 
-// win32-skip(#963): Node cannot listen on the project MCP socket path on Windows – every test here opens it
-describe.skipIf(onWindows)('task_read — the task, history, Inbox and variant-group reads (#91)', () => {
+describe('task_read — the task, history, Inbox and variant-group reads (#91)', () => {
   const saved = {
     home: process.env.XEZ_HOME,
     dryRun: process.env.XEZ_DRY_RUN,
@@ -69,7 +68,7 @@ describe.skipIf(onWindows)('task_read — the task, history, Inbox and variant-g
 
   beforeEach(async () => {
     // The socket path has a hard OS limit (~104 bytes); a task's TMPDIR can be longer than that.
-    home = mkdtempSync(join(realpathSync('/tmp'), 'xez-tr-'));
+    home = mkdtempSync(join(realpathSync(shortTmpRoot()), 'xez-tr-'));
     rootA = mkdtempSync(join(realpathSync(tmpdir()), 'xez-tr-a-'));
     rootB = mkdtempSync(join(realpathSync(tmpdir()), 'xez-tr-b-'));
     process.env.XEZ_HOME = home;
@@ -124,26 +123,31 @@ describe.skipIf(onWindows)('task_read — the task, history, Inbox and variant-g
 
   /** One `tools/call` over a project's socket, exactly as the bridge sends it: on a session (#302). */
   function call(socketPath: string, args: Record<string, unknown>): Promise<McpToolResult> {
+    const projectId = socketPath === socketA ? idA : socketPath === socketB ? idB : 'plain';
     return new Promise((resolve, reject) => {
-      const socket = createConnection(socketPath);
-      const framer = new LineFramer(
-        (line) => {
-          const response = JSON.parse(line) as { id: number; ok: boolean; result?: McpToolResult; error?: { message: string } };
-          if (response.id === 0 && response.ok) {
-            socket.write(
-              encodeFrame({ v: IPC_PROTOCOL_VERSION, id: 1, method: 'tools/call', params: { name: 'task_read', arguments: args } }),
-            );
-            return;
-          }
-          socket.end();
-          if (response.ok) resolve(response.result!);
-          else reject(new Error(response.error?.message));
-        },
-        () => reject(new Error('oversized frame')),
-      );
-      socket.on('data', (chunk: Buffer) => framer.push(chunk));
-      socket.on('error', reject);
-      socket.on('connect', () => socket.write(encodeFrame({ v: IPC_PROTOCOL_VERSION, id: 0, method: 'session/open' })));
+      void connectRaw(socketPath, { projectId }).then((socket) => {
+        const framer = new LineFramer(
+          (line) => {
+            const response = JSON.parse(line) as { id: number; ok: boolean; result?: McpToolResult; error?: { message: string } };
+            if (response.id === 0 && response.ok) {
+              socket.write(
+                encodeFrame({ v: IPC_PROTOCOL_VERSION, id: 1, method: 'tools/call', params: { name: 'task_read', arguments: args } }),
+              );
+              return;
+            }
+            // Windows: a named pipe's end() sends the service no EOF, so only destroy() frees the
+            // session before the next call opens one.
+            if (onWindows) socket.destroy();
+            else socket.end();
+            if (response.ok) resolve(response.result!);
+            else reject(new Error(response.error?.message));
+          },
+          () => reject(new Error('oversized frame')),
+        );
+        socket.on('data', (chunk: Buffer) => framer.push(chunk));
+        socket.on('error', reject);
+        socket.write(encodeFrame({ v: IPC_PROTOCOL_VERSION, id: 0, method: 'session/open' }));
+      }, reject);
     });
   }
 

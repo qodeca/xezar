@@ -29,11 +29,20 @@ describe('mcpSocketLocation (D-01 § 1.3–1.4)', () => {
     });
   });
 
-  it('reports a readable reason when even the fallback is too long, and on Windows', () => {
+  it('reports a readable reason when even the fallback is too long', () => {
     const tooLong = mcpSocketLocation(project, { XEZ_HOME: `/${'a'.repeat(120)}` }, 'darwin');
     expect(tooLong).toMatchObject({ kind: 'unavailable' });
     expect(tooLong.kind === 'unavailable' && tooLong.reason).toMatch(/too long.*XEZ_HOME/);
-    expect(mcpSocketLocation(project, { XEZ_HOME: '/h' }, 'win32')).toMatchObject({ kind: 'unavailable' });
+  });
+
+  it('on Windows names the named-pipe marker, endpoint and lock files in the IPC folder (#963)', () => {
+    const dir = join('/h', 'ipc');
+    expect(mcpSocketLocation(project, { XEZ_HOME: '/h' }, 'win32')).toEqual({
+      kind: 'pipe',
+      files: { dir, marker: join(dir, 'shop.pipe'), endpoint: join(dir, 'shop.key'), lock: join(dir, 'shop.lock') },
+    });
+    // No length limit applies to a pipe: a home far past `sun_path` still gets one.
+    expect(mcpSocketLocation(project, { XEZ_HOME: `/${'a'.repeat(120)}` }, 'win32')).toMatchObject({ kind: 'pipe' });
   });
 
   // #600: in single-project mode the socket dir is inside the project, so both the

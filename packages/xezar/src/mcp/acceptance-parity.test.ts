@@ -28,7 +28,8 @@ import { toolListing, type McpToolContext, type McpToolResult } from './tool.ts'
 import { handoffGitTool, QUALITY_BLOCKER_NEXT_ACTION } from './tools/handoff-git.ts';
 import { tools } from './tools/index.ts';
 import { withOperationId } from './tools/operation-id.testkit.ts';
-import { onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
+import { targetFor } from '../../test/helpers/mcp-raw.ts';
+import { onWindows, shortTmpRoot, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * #116 — the PARITY AND COLLABORATION half of the whole-feature acceptance suite (requirements § 9):
@@ -425,8 +426,7 @@ function addForgeRemote(w: AbWorld): void {
   git(w.a.root, 'config', `url.${bare}.pushInsteadOf`, GITHUB_REMOTE);
 }
 
-// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – every test here opens the project MCP socket (observed: "not supported on Windows yet" in the world setup)
-describe.skipIf(onWindows)('#116 parity and collaboration acceptance — A/B world', { timeout: 180_000 }, () => {
+describe('#116 parity and collaboration acceptance — A/B world', { timeout: 180_000 }, () => {
   // =============================================================================================
   // A-06 — choose workflow, runner and model; create; edit a queued brief; organise; variants.
   // =============================================================================================
@@ -1050,9 +1050,10 @@ describe.skipIf(onWindows)('#116 parity and collaboration acceptance — A/B wor
         const now = new Date().toISOString();
         config.projects.push({ id: PROJECT_A, root: w.a.root, name: w.a.name, addedAt: now, lastOpenedAt: now, source: 'local' });
       });
-      const home = realpathSync(mkdtempSync('/tmp/xzp22-'));
-      const service = await startMcpService({ projectId: PROJECT_A, version: 'parity', service: w.service, store: w.a.store, env: { ...process.env, XEZ_HOME: home } });
-      const leader = bridgeLeader({ kind: 'socket', path: service.path, project: { id: PROJECT_A, name: w.a.name } });
+      const home = realpathSync(mkdtempSync(join(shortTmpRoot(), 'xzp22-')));
+      const env = { ...process.env, XEZ_HOME: home };
+      const service = await startMcpService({ projectId: PROJECT_A, version: 'parity', service: w.service, store: w.a.store, env });
+      const leader = bridgeLeader(targetFor(service, { id: PROJECT_A, name: w.a.name }, env));
       try {
         // Connect: whatever is outstanding is read, then acknowledged — the leader starts current.
         const first = await leaderEvents(leader, { action: 'read' });
@@ -1114,9 +1115,10 @@ describe.skipIf(onWindows)('#116 parity and collaboration acceptance — A/B wor
         const now = new Date().toISOString();
         if (!config.projects.some((p) => p.id === PROJECT_A)) config.projects.push({ id: PROJECT_A, root: w.a.root, name: w.a.name, addedAt: now, lastOpenedAt: now, source: 'local' });
       });
-      const home = realpathSync(mkdtempSync('/tmp/xzp43-'));
-      const service = await startMcpService({ projectId: PROJECT_A, version: 'parity', service: w.service, store: w.a.store, env: { ...process.env, XEZ_HOME: home } });
-      const leader = bridgeLeader({ kind: 'socket', path: service.path, project: { id: PROJECT_A, name: w.a.name } });
+      const home = realpathSync(mkdtempSync(join(shortTmpRoot(), 'xzp43-')));
+      const env = { ...process.env, XEZ_HOME: home };
+      const service = await startMcpService({ projectId: PROJECT_A, version: 'parity', service: w.service, store: w.a.store, env });
+      const leader = bridgeLeader(targetFor(service, { id: PROJECT_A, name: w.a.name }, env));
       const door = async (args: Record<string, unknown>): Promise<Record<string, any>> =>
         ((await leader.request('tools/call', { name: 'leader_events', arguments: withOperationId('leader_events', args) })) as McpToolResult).structuredContent as Record<string, any>;
       const shared = (status: Record<string, any>) => ({ owner: status.owner, leader: status.leader, blocker: status.blocker?.code ?? null });
@@ -1754,6 +1756,7 @@ describe.skipIf(onWindows)('#116 parity and collaboration acceptance — A/B wor
           rmSync(globalAccounts, { force: true });
         }
       },
+      90_000,
     );
 
     parity('P-44', ['A-09', 'A-08', 'A-05'], ['I-143', 'I-144', 'I-145', 'I-146'], 'the leader reads this project’s setup state, dispatches the bundled setup task and records the offer, and the cockpit sees the same thing', async () => {

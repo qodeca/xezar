@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { createServer, type Server } from 'node:net';
 import { join } from 'node:path';
@@ -106,7 +107,9 @@ describe('no leader-facing string names the HTTP attach route (#450, T-26)', () 
     if (grant) {
       const dir = realpathSync(mkdtempSync(join(shortTmpRoot(), 'xzlm-')));
       dirs.push(dir);
-      path = join(dir, 's.sock');
+      // Windows: a named pipe in place of the Unix socket; the bridge dials a `socket` target
+      // without the pipe handshake, so the stand-in answers the same frames.
+      path = onWindows ? '\\\\.\\pipe\\xezar-test-' +randomBytes(16).toString('hex') : join(dir, 's.sock');
       const server = createServer((socket) => {
         const framer = new LineFramer((line) => {
           const req = JSON.parse(line) as { v: number; id: number; method: string };
@@ -163,8 +166,7 @@ describe('no leader-facing string names the HTTP attach route (#450, T-26)', () 
     expect(description).not.toMatch(/exactly.once delivery|guaranteed once|never lost/i);
   });
 
-  // win32-skip(#963): Node cannot listen on a Unix socket path on Windows (listen EACCES), and this test's stand-in service listens on one
-  it.skipIf(onWindows)('every initialize instructions variant', async () => {
+  it('every initialize instructions variant', async () => {
     // RED against: re-adding `ATTACH_DOOR` to the instructions.
     const variants = {
       other: await instructions('codex'),

@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import type { McpPushCapability } from '@qodeca/xezar-contract';
 import { chmod, lstat, mkdir, unlink } from 'node:fs/promises';
-import { createConnection, createServer, type Socket } from 'node:net';
+import { createConnection, createServer, type Server, type Socket } from 'node:net';
 import type { z } from 'zod';
+import { acquireFileLock } from '../core/file-lock.ts';
 import { assertXezarHomeWriteIsSandboxed } from '../paths.ts';
+import { checkPrivateDir, ensurePrivateDir } from '../platform/private-dir.ts';
 import { projectDataDir } from '../project-data-paths.ts';
 import { cockpitLinks } from './cockpit-address.ts';
 import { ProjectOwnership, sessionExpiredError } from '../workspace/project-owner.ts';
@@ -21,6 +23,16 @@ import {
   type HealthResult,
   type IpcResponse,
 } from './ipc.ts';
+import { PipeAuthGate } from './pipe-auth.ts';
+import {
+  endpointIsLive,
+  newPipeKey,
+  newPipeName,
+  readPipeEndpoint,
+  removePipeFilesIfOurs,
+  writePipeFiles,
+  type PipeFiles,
+} from './pipe-endpoint.ts';
 import { acceptedKeysSentence, errorResult, schemaKeys, type McpTool, type McpToolContext, type McpToolResult } from './tool.ts';
 
 /**
@@ -149,10 +161,19 @@ export type McpDoor = (
 ) => Promise<McpToolResult>;
 
 export interface McpServiceHandle {
+  /** The socket path; on Windows the pipe name. */
   readonly path: string;
   /** Stop answering and remove the socket. Synchronous, so a shutdown handler can call it. */
   close(): void;
 }
+
+/** The refusal when a live xezar already serves the project – the same words on every system. */
+export const MCP_ALREADY_SERVING = 'another xezar is already serving this project over MCP';
+
+/** How long a pipe start or close waits for another one on the same project. */
+const PIPE_LOCK_WAIT_MS = 10_000;
+/** A fresh name that is somehow taken is drawn again, at most this many times. */
+const PIPE_LISTEN_ATTEMPTS = 3;
 
 /**
  * Open the project's socket. Throws a one-line, readable error when it cannot —
@@ -162,6 +183,7 @@ export interface McpServiceHandle {
 export async function listenMcpSocket(opts: McpServiceOptions): Promise<McpServiceHandle> {
   const location = mcpSocketLocation(opts.project, opts.env, opts.platform);
   if (location.kind === 'unavailable') throw new Error(location.reason);
+  if (location.kind === 'pipe') return listenMcpPipe(location.files, opts);
   const dir = mcpSocketDir(opts.env);
   assertXezarHomeWriteIsSandboxed(dir, opts.env);
   await mkdir(dir, { recursive: true, mode: 0o700 });
@@ -222,10 +244,110 @@ async function clearStaleSocket(path: string): Promise<void> {
   }
   if (!isSocket) throw new Error(`${path} exists and is not a socket — leaving it alone`);
   if (await socketIsLive(path)) {
-    throw new Error('another xezar is already serving this project over MCP');
+    throw new Error(MCP_ALREADY_SERVING);
   }
   await unlink(path);
 }
+
+/**
+ * Windows (#963): the project's named pipe. The folder is made private to this user first (an
+ * elevated xezar is refused there), then, under the project's pipe lock: a live engine's endpoint
+ * refuses the start; a stale one is replaced. The pipe is named afresh and its endpoint and marker
+ * written once it listens. Every connection passes `PipeAuthGate` before `serveConnection` sees a
+ * byte. Close removes the two files under the same lock, and only while they still name this pipe.
+ */
+async function listenMcpPipe(files: PipeFiles, opts: McpServiceOptions): Promise<McpServiceHandle> {
+  assertXezarHomeWriteIsSandboxed(files.dir, opts.env);
+  const privacy = await ensurePrivateDir(files.dir, {}, { startTimeOf: process.pid });
+  if (!privacy.ok) throw new Error(privacy.message);
+  const processStartTime = privacy.startedAt;
+  if (typeof processStartTime !== 'number') throw new Error('xezar could not read its own start time, which the MCP pipe needs');
+
+  const lock = await acquireFileLock(files.lock, { waitMs: PIPE_LOCK_WAIT_MS });
+  if (!lock.acquired) throw new Error('another xezar is starting or stopping MCP for this project; try again');
+  const ownership =
+    opts.ownership ??
+    new ProjectOwnership({ dataDir: opts.dataDir ?? projectDataDir(opts.project.root), projectId: opts.project.id });
+  const sockets = new Set<Socket>();
+  const key = newPipeKey();
+  let pipeName = '';
+  let server: Server | undefined;
+  const gate = new PipeAuthGate({
+    key: Buffer.from(key, 'hex'),
+    get pipeName() {
+      return pipeName;
+    },
+    onEvict: (count) => console.warn(`[xez] MCP pipe: evicted an unauthenticated connection (${count} so far)`),
+  });
+  try {
+    const existing = readPipeEndpoint(files.endpoint);
+    // This process's own endpoint is live exactly while it still serves that pipe; one it closed is
+    // stale even before close() has removed the files.
+    if (typeof existing !== 'string' && existing.pid === process.pid && servingPipes.get(files.endpoint) === existing.pipeName) {
+      throw new Error(MCP_ALREADY_SERVING);
+    }
+    if (typeof existing !== 'string' && existing.pid !== process.pid) {
+      const check = await checkPrivateDir(files.dir, [files.endpoint], {}, { startTimeOf: existing.pid });
+      if (check.ok && endpointIsLive(existing, check.startedAt)) throw new Error(MCP_ALREADY_SERVING);
+    }
+    for (let attempt = 1; ; attempt++) {
+      pipeName = newPipeName();
+      const candidate = createServer((socket) => {
+        sockets.add(socket);
+        socket.on('close', () => sockets.delete(socket));
+        gate.admit(socket, (ready, rest) => {
+          serveConnection(ready as Socket, opts, ownership);
+          if (rest.length > 0) ready.emit('data', rest);
+        });
+      });
+      try {
+        await new Promise<void>((resolve, reject) => {
+          candidate.once('error', reject);
+          candidate.listen(pipeName, () => {
+            candidate.off('error', reject);
+            resolve();
+          });
+        });
+        server = candidate;
+        break;
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== 'EADDRINUSE' || attempt >= PIPE_LISTEN_ATTEMPTS) throw err;
+      }
+    }
+    writePipeFiles(files, { v: 1, pipeName, key, pid: process.pid, processStartTime });
+    servingPipes.set(files.endpoint, pipeName);
+  } catch (err) {
+    server?.close();
+    if (opts.ownership === undefined) ownership.dispose();
+    throw err;
+  } finally {
+    await lock.release();
+  }
+  const listening = server;
+  listening.on('error', (err) => console.warn(`[xez] MCP pipe error: ${err.message}`));
+  const name = pipeName;
+  return {
+    path: name,
+    close() {
+      if (servingPipes.get(files.endpoint) === name) servingPipes.delete(files.endpoint);
+      gate.closeAll();
+      for (const socket of sockets) socket.destroy();
+      listening.close();
+      ownership.dispose();
+      void (async () => {
+        const held = await acquireFileLock(files.lock, { waitMs: PIPE_LOCK_WAIT_MS });
+        try {
+          removePipeFilesIfOurs(files, name);
+        } finally {
+          if (held.acquired) await held.release();
+        }
+      })();
+    },
+  };
+}
+
+/** Windows (#963): the pipe each endpoint file of this process names while it serves it. */
+const servingPipes = new Map<string, string>();
 
 function socketIsLive(path: string): Promise<boolean> {
   return new Promise((resolve) => {

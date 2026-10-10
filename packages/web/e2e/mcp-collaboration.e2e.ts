@@ -27,8 +27,8 @@ import { AgentBrowser, bootProjectId, fixtureServeEnv, getJson, removeDataRoot, 
  * `<XEZ_HOME>/ipc/<projectId>.sock`, and a Unix socket path has a hard limit of 104 bytes on macOS
  * (D-01 § 1.4). A task or CI `TMPDIR` can already be longer than that, and a boot whose socket cannot
  * open still serves the cockpit — so every leader call here would answer "not running" instead of
- * failing for the real reason. The bridge is unsupported on Windows (D-01 § 10.2), so that platform
- * keeps `os.tmpdir()` and the suite skips.
+ * failing for the real reason. Windows serves MCP on a named pipe, which has no path limit (D-01 § 10.2
+ * as amended, #963), so that platform keeps `os.tmpdir()`.
  */
 
 const artifactsDir = resolve(import.meta.dirname, '../../../.local/qa/artifacts_e2e')
@@ -227,8 +227,7 @@ afterAll(async () => {
   await removeDataRoot(dataRoot)
 })
 
-// win32-skip(#963): xezar MCP bridge is not supported on Windows yet (mcp/ipc.ts answers unavailable on win32).
-describe.skipIf(onWindows)('MCP collaboration — the human’s cockpit and the leader on one project (A-08)', () => {
+describe('MCP collaboration — the human’s cockpit and the leader on one project (A-08)', () => {
   it('B-01 (A-08, A-05) [I-001 I-015 I-018] a task the leader creates, and then renames, appears and renames live in the open cockpit, with no reload', async () => {
     const started = await leader!.tool('task_create', {
       operationId: `op-e2e-${process.pid}-1`,

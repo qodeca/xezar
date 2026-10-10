@@ -13,6 +13,7 @@ import {
   CODEX_EVENT_SOURCE_NOTICE,
   CodexReactionAdapter,
   CodexRequestRefused,
+  codexBlocker,
   codexReactionTarget,
   codexTerminalDelivery,
   codexThreadState,
@@ -875,5 +876,15 @@ describe('reading the thread state (codex-cli 0.154.0 `ThreadStatus`)', () => {
     for (const flags of [[{ type: 'waitingOnApproval' }], ['bogus'], [null]]) {
       await expect(codexThreadState(server, 'thread-1', { thread: { status: { type: 'active', activeFlags: flags } } }), JSON.stringify(flags)).rejects.toThrow('did not report');
     }
+  });
+});
+
+describe('the unsupported-system refusal (#963)', () => {
+  it('names its own code and a fix that sends the leader to leader_events, never to a socket command', () => {
+    const blocker = codexBlocker('unsupported');
+    expect(blocker).toMatchObject({ code: 'codex-attach-unsupported', message: expect.stringContaining('cannot reach') });
+    expect(blocker.fix).toContain('not available on this system yet');
+    expect(blocker.fix).toContain('leader_events');
+    expect(blocker.fix).not.toContain('unix://');
   });
 });

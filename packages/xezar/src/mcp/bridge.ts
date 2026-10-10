@@ -26,6 +26,8 @@ import {
   serverCapabilitiesFor,
   type RequestId,
 } from './protocol.ts';
+import { pipeHello, type PipeHelloFailure } from './pipe-auth.ts';
+import { openPipeEndpoint, type PipeFiles, type PipeOpen } from './pipe-endpoint.ts';
 import { errorResult, textResult, toolListing, type McpTool } from './tool.ts';
 
 /**
@@ -71,6 +73,8 @@ import { errorResult, textResult, toolListing, type McpTool } from './tool.ts';
 
 export type ServiceTarget =
   | { readonly kind: 'socket'; readonly path: string; readonly project: { readonly id: string; readonly name: string } }
+  /** Windows (#963): the pipe is found through its endpoint files at each session open. */
+  | { readonly kind: 'pipe'; readonly files: PipeFiles; readonly project: { readonly id: string; readonly name: string } }
   | { readonly kind: 'unavailable'; readonly status: 'not-registered' | 'unsupported'; readonly message: string };
 
 export interface BridgeOptions {
@@ -81,6 +85,8 @@ export interface BridgeOptions {
   readonly tools: readonly McpTool[];
   /** Re-resolved whenever a session is opened, so registering or starting the project later just works. */
   resolveTarget(): Promise<ServiceTarget>;
+  /** Test seam: how a `pipe` target's endpoint is opened. Default `openPipeEndpoint`. */
+  openPipe?(files: PipeFiles): Promise<PipeOpen>;
   readonly requestTimeoutMs?: number;
   /**
    * Told how each `session/open` settled (#306 part 2): `owner`, or a refusal with a machine reason
@@ -358,7 +364,15 @@ type IpcOutcome =
   | { kind: 'timeout' }
   | { kind: 'closed' }
   | { kind: 'bad-response' }
-  | { kind: 'aborted' };
+  | { kind: 'aborted' }
+  /** Windows (#963): the pipe answered, but not as the engine its endpoint names. */
+  | { kind: 'auth'; failure: Exclude<PipeHelloFailure, 'timeout' | 'closed'> };
+
+/** What the bridge proves a Windows pipe with (#963). */
+interface PipeAuth {
+  readonly key: Buffer;
+  readonly pipeName: string;
+}
 
 type OpenOutcome =
   | { kind: 'owner' }
@@ -398,7 +412,7 @@ class ServiceSession {
   private noticeSent = false;
 
   constructor(
-    private readonly opts: Pick<BridgeOptions, 'resolveTarget' | 'version' | 'requestTimeoutMs' | 'onSessionOpen'>,
+    private readonly opts: Pick<BridgeOptions, 'resolveTarget' | 'openPipe' | 'version' | 'requestTimeoutMs' | 'onSessionOpen'>,
     /** Writes a `leader/push`'s content out as the client's `notifications/claude/channel` (#374). */
     private readonly channelPush: (params: LeaderPushParams) => Promise<void>,
   ) {}
@@ -494,19 +508,33 @@ class ServiceSession {
     if (target.kind === 'unavailable') return { kind: 'unavailable', result: errorResult(target.message, { status: target.status }) };
     if (this.closed) return { kind: 'unavailable', result: errorResult('The MCP session ended before xezar answered.', { status: 'aborted' }) };
     this.project = target.project;
+    // Windows (#963): the endpoint is checked before anything is dialled, outside the open budget –
+    // its one PowerShell run can take seconds on a busy machine.
+    let path: string;
+    let auth: PipeAuth | undefined;
+    if (target.kind === 'pipe') {
+      const opened = await (this.opts.openPipe ?? openPipeEndpoint)(target.files);
+      if (!opened.ok) return { kind: 'unavailable', result: pipeUnavailable(opened, this.projectLabel()) };
+      path = opened.pipeName;
+      auth = { key: opened.key, pipeName: opened.pipeName };
+    } else {
+      path = target.path;
+    }
+    if (this.closed) return { kind: 'unavailable', result: errorResult('The MCP session ended before xezar answered.', { status: 'aborted' }) };
     const timeoutMs = Math.min(this.opts.requestTimeoutMs ?? IPC_REQUEST_TIMEOUT_MS, IPC_SESSION_OPEN_TIMEOUT_MS);
     const started = Date.now();
     const connected = await IpcConnection.connect(
-      target.path,
+      path,
       this.opts.version,
       timeoutMs,
       (connection) => this.onClosed(connection),
       // #374: the service pushes a channel event as a `leader/push` request on this connection; the
       // bridge turns it into the client's `notifications/claude/channel`.
       this.channelPush,
+      auth,
     );
     if (!(connected instanceof IpcConnection)) {
-      return { kind: 'unavailable', result: unreachable(connected, this.projectLabel(), this.opts.version) };
+      return { kind: 'unavailable', result: unreachable(connected, this.projectLabel(), this.opts.version, auth !== undefined) };
     }
     // #374: announce that this bridge understands `leader/push` and which client it fronts, so the
     // service can decide whether a Claude Code channel push is possible. Additive params: an older
@@ -613,9 +641,11 @@ class IpcConnection {
     timeoutMs: number,
     onClose: (connection: IpcConnection) => void,
     channelPush: (params: LeaderPushParams) => Promise<void>,
+    auth?: PipeAuth,
   ): Promise<IpcConnection | Exclude<IpcOutcome, { kind: 'response' }>> {
     return new Promise((resolve) => {
       const socket = createConnection(path);
+      const started = Date.now();
       let settled = false;
       const timer = setTimeout(() => {
         if (settled) return;
@@ -630,13 +660,31 @@ class IpcConnection {
         socket.destroy();
         resolve({ kind: 'error', code: err.code });
       });
-      socket.once('connect', () => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
+      const ready = (rest: Buffer): void => {
         const connection = new IpcConnection(socket, version, channelPush);
         connection.attach(onClose);
+        if (rest.length > 0) socket.emit('data', rest);
         resolve(connection);
+      };
+      socket.once('connect', () => {
+        if (settled) return;
+        if (auth === undefined) {
+          settled = true;
+          clearTimeout(timer);
+          ready(Buffer.alloc(0));
+          return;
+        }
+        // Windows (#963): prove the pipe before the first frame, inside the same budget.
+        void pipeHello(socket, auth, timeoutMs - (Date.now() - started)).then((hello) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          if (hello.ok) return ready(hello.rest);
+          socket.destroy();
+          if (hello.failure === 'timeout') resolve({ kind: 'timeout' });
+          else if (hello.failure === 'closed') resolve({ kind: 'closed' });
+          else resolve({ kind: 'auth', failure: hello.failure });
+        });
       });
     });
   }
@@ -744,6 +792,7 @@ function unreachable(
   outcome: Exclude<IpcOutcome, { kind: 'response' }>,
   project: { id: string; name: string },
   version: string,
+  overPipe = false,
 ): McpToolResult {
   const label = `${project.name} (${project.id})`;
   switch (outcome.kind) {
@@ -752,6 +801,13 @@ function unreachable(
         return errorResult(
           `xezar is not running for project ${label}. Start the cockpit in the project's directory with \`xez\` (or \`npx @qodeca/xezar\`), then call this tool again.`,
           { status: 'not-running' },
+        );
+      }
+      if ((outcome.code === 'EACCES' || outcome.code === 'EPERM') && overPipe) {
+        // #963: a pipe an elevated engine created refuses a normal user's bridge.
+        return errorResult(
+          `xezar's pipe for project ${label} refused this user (permission denied). If xezar runs as administrator, start it without elevation; the bridge must run as the same user as the cockpit.`,
+          { status: 'refused' },
         );
       }
       if (outcome.code === 'EACCES' || outcome.code === 'EPERM') {
@@ -782,6 +838,35 @@ function unreachable(
       );
     case 'aborted':
       return errorResult('The MCP session ended before xezar answered.', { status: 'aborted' });
+    case 'auth':
+      return outcome.failure === 'version'
+        ? errorResult(
+            `xezar for project ${label} speaks a different pipe handshake than this bridge (xezar ${version}). Run the bridge and the cockpit from the same xezar version.`,
+            { status: 'version-mismatch' },
+          )
+        : errorResult(
+            `The pipe named for project ${label} did not prove it belongs to the running xezar, so the bridge did not use it. Restart the cockpit; if this repeats, another program may be using the pipe name.`,
+            { status: 'refused' },
+          );
+  }
+}
+
+/** Windows (#963): why the endpoint check refused to dial. */
+function pipeUnavailable(opened: Extract<PipeOpen, { ok: false }>, project: { id: string; name: string }): McpToolResult {
+  const label = `${project.name} (${project.id})`;
+  switch (opened.kind) {
+    case 'not-running':
+      return errorResult(
+        `xezar is not running for project ${label}. Start the cockpit in the project's directory with \`xez\` (or \`npx @qodeca/xezar\`), then call this tool again.`,
+        { status: 'not-running' },
+      );
+    case 'invalid':
+      return errorResult(
+        `xezar's connection files for project ${label} are unreadable or disagree, so the bridge did not connect. Restart the cockpit to write them again.`,
+        { status: 'refused' },
+      );
+    case 'not-private':
+      return errorResult(`The bridge did not connect to xezar for project ${label}: ${opened.message}`, { status: 'refused' });
   }
 }
 

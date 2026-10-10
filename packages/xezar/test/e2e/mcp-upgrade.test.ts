@@ -9,14 +9,14 @@ import test from 'node:test';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { npmCommand, onWindows, TEST_DIR_RM_OPTIONS } from '../helpers/platform.ts';
+import { pipeFiles } from '../../src/mcp/pipe-endpoint.ts';
+import { checkPrivateDir } from '../../src/platform/private-dir.ts';
+import { npmCommand, onWindows, shortTmpRoot, TEST_DIR_RM_OPTIONS } from '../helpers/platform.ts';
 
 const execFile = promisify(execFileCallback);
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-/** Every case here goes through the xezar MCP Unix socket. `/tmp` stays the POSIX socket root. */
-const NO_MCP_SOCKET = onWindows
-  ? 'win32-skip(#963): xezar MCP bridge is not supported on Windows yet – the cockpit logs event=mcp.unavailable (mcp/ipc.ts)'
-  : false;
+/** Every case here goes through the xezar MCP service: a Unix socket on POSIX, whose root stays
+ *  `/tmp` (`shortTmpRoot`), and a named pipe on Windows (#963). */
 /** npm through the #963 platform helper: POSIX runs `npm` exactly as before; Windows runs npm's own
  *  CLI through node, because `npm.cmd` cannot be spawned without a shell (EINVAL). */
 function execNpm(args: string[], options: { cwd: string; maxBuffer: number }) {
@@ -240,11 +240,11 @@ async function assertWorkingCockpit(cockpit: Cockpit, cliPath: string, repo: str
   assert.ok(bridged && !bridged.isError, `${label}: the MCP bridge reaches the service (${bridged?.text})\n${cockpit.output()}`);
 }
 
-test('A-16: an upgraded cockpit stays usable with MCP state corrupt, deleted, after a hard restart, and never has two owners', { timeout: 300_000, skip: NO_MCP_SOCKET }, async (t) => {
+test('A-16: an upgraded cockpit stays usable with MCP state corrupt, deleted, after a hard restart, and never has two owners', { timeout: 300_000 }, async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'xezar-mcp-upgrade-'));
   // The socket lives under XEZ_HOME and a Unix socket path has a ~104-byte limit, which a task's
   // TMPDIR can exceed — so the home is short, under /tmp.
-  const home = await mkdtemp(join(realpathSync('/tmp'), 'xez-up-'));
+  const home = await mkdtemp(join(realpathSync(shortTmpRoot()), 'xez-up-'));
   const cockpits: Cockpit[] = [];
   try {
     const packDir = join(root, 'pack');
@@ -322,10 +322,21 @@ test('A-16: an upgraded cockpit stays usable with MCP state corrupt, deleted, af
       assert.equal(config.projects?.some((project) => project.id === 'removed-by-user'), false, 'an empty config is never overridden by its snapshot');
 
       const ipc = join(home, 'ipc');
-      assert.equal(lstatSync(ipc).mode & 0o777, 0o700, 'the socket directory is private to the user');
-      const sockets = readdirSync(ipc).filter((name) => name.endsWith('.sock'));
-      assert.equal(sockets.length, 1, 'exactly one project socket after the restart');
-      assert.equal(lstatSync(join(ipc, sockets[0]!)).mode & 0o777, 0o600, 'the socket is private to the user');
+      if (onWindows) {
+        // A named pipe has no file and Windows has no mode bits: the service's marker and endpoint
+        // files stand in for the socket, and the folder's access list for its 0700 (#963).
+        const markers = readdirSync(ipc).filter((name) => name.endsWith('.pipe'));
+        assert.equal(markers.length, 1, 'exactly one project pipe marker after the restart');
+        const files = pipeFiles(ipc, markers[0]!.slice(0, -'.pipe'.length));
+        assert.ok(existsSync(files.endpoint), 'the pipe endpoint sits next to its marker');
+        const privacy = await checkPrivateDir(ipc, [files.marker, files.endpoint]);
+        assert.ok(privacy.ok, `the IPC folder and its pipe files are private to the user: ${JSON.stringify(privacy)}`);
+      } else {
+        assert.equal(lstatSync(ipc).mode & 0o777, 0o700, 'the socket directory is private to the user');
+        const sockets = readdirSync(ipc).filter((name) => name.endsWith('.sock'));
+        assert.equal(sockets.length, 1, 'exactly one project socket after the restart');
+        assert.equal(lstatSync(join(ipc, sockets[0]!)).mode & 0o777, 0o600, 'the socket is private to the user');
+      }
 
       // No two project owners: a second cockpit for the same project refuses, the first carries on.
       const second = spawnCockpit(cliPath, repo, env);

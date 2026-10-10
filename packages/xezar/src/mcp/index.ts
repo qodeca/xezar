@@ -688,7 +688,9 @@ export async function resolveMcpTarget(
   }
   const location = mcpSocketLocation(project, launch.env ?? process.env, process.platform, layout);
   if (location.kind === 'unavailable') return { kind: 'unavailable', status: 'unsupported', message: location.reason };
-  return { kind: 'socket', path: location.path, project: { id: project.id, name: projectName(project) } };
+  const named = { id: project.id, name: projectName(project) };
+  if (location.kind === 'pipe') return { kind: 'pipe', files: location.files, project: named };
+  return { kind: 'socket', path: location.path, project: named };
 }
 
 /**

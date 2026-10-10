@@ -16,9 +16,10 @@ import { WorkspaceSemaphore } from '../workspace/semaphore.ts';
 import { runBridge } from './bridge.ts';
 import { resolveMcpTarget, startMcpService } from './index.ts';
 import { LineFramer, encodeFrame, mcpSocketLocation, type McpToolResult } from './ipc.ts';
+import { readPipeMarker } from './pipe-endpoint.ts';
 import { followProjectDoors, type ProjectDoorContexts, type ProjectDoorHandle } from './project-doors.ts';
 import { tools } from './tools/index.ts';
-import { shortTmpRoot, onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
+import { shortTmpRoot, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * #557 — a project registered into a running cockpit gets the same MCP door the boot project has:
@@ -358,8 +359,7 @@ async function until(what: string, probe: () => Promise<boolean>, ms = 15_000): 
 }
 
 describe('a project registered into a running cockpit (#557)', () => {
-  // win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – this opens the project MCP socket
-  it.skipIf(onWindows)('gets its own MCP door once built, loses it on removal, and leaves the boot door alone', async () => {
+  it('gets its own MCP door once built, loses it on removal, and leaves the boot door alone', async () => {
     const bootRoot = project();
     const { id: bootId } = await registerProject(bootRoot);
     const semaphore = new WorkspaceSemaphore({ initial: { maxParallel: 2 }, load: async () => ({ maxParallel: 2, memoryLimitMb: null }) });
@@ -394,7 +394,10 @@ describe('a project registered into a running cockpit (#557)', () => {
     });
 
     // Guard (passes with or without the fix): the boot door is where it always was, and answers.
-    expect(bootDoor.path).toBe((mcpSocketLocation({ id: bootId, root: bootRoot }) as { path: string }).path);
+    const bootLocation = mcpSocketLocation({ id: bootId, root: bootRoot });
+    // Windows (#963): the pipe is named afresh at every start; its marker in the IPC folder names it.
+    if (bootLocation.kind === 'pipe') expect(readPipeMarker(bootLocation.files.marker)).toBe(bootDoor.path);
+    else expect(bootDoor.path).toBe((bootLocation as { path: string }).path);
     expect(text(await healthFrom(bootRoot))).toContain(`is running for project`);
 
     // The "Add project" flow, then the first scoped request that builds B's context.
@@ -409,7 +412,9 @@ describe('a project registered into a running cockpit (#557)', () => {
     expect((await app.request(`/api/v1/p/${secondId}/runs`, { headers: { host: '127.0.0.1' } })).status).toBe(200);
 
     // B's own door answers from B's folder, bound to B and not to the boot project.
-    const secondSocket = (mcpSocketLocation({ id: secondId, root: secondRoot }) as { path: string }).path;
+    const secondLocation = mcpSocketLocation({ id: secondId, root: secondRoot });
+    // Windows (#963): the door's marker file stands where the socket file does on POSIX.
+    const secondSocket = secondLocation.kind === 'pipe' ? secondLocation.files.marker : (secondLocation as { path: string }).path;
     await until('the second project MCP door', async () => existsSync(secondSocket));
     const second = await healthFrom(secondRoot);
     expect(second.isError).toBeFalsy();

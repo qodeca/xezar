@@ -2,8 +2,9 @@
 
 > **Status update — 2026-09-15:** Implemented by #86 (bridge) and #99 (owner). The dated spike below is
 > superseded for current setup by [D-04 § 3](mcp-d04-connection-file-decision.md); source anchors refer to
-> `9fdcf0e`. It measured three clients; pi was added as a fourth by #330. Windows named pipes were not built:
-> `ipc.ts` reports Windows unavailable. Wake was later decided per client; see the [Claude
+> `9fdcf0e`. It measured three clients; pi was added as a fourth by #330. Windows named pipes were built by
+> #963 with an authenticated handshake; § 10 item 2 records the design and its accepted residual risk. Wake
+> was later decided per client; see the [Claude
 > Code](mcp-wake-claude-code-decision.md), [Codex](mcp-wake-codex-decision.md) and
 > [DoD](mcp-definition-of-done-record.md) records.
 
@@ -55,7 +56,7 @@ minimum supported versions.
 | # | Question | Decision | Status | Evidence |
 | --- | --- | --- | --- | --- |
 | 1.1 | Transport to the MCP client | **stdio**. One bridge process per client session, spawned by the client itself, speaking newline-framed JSON-RPC on its own stdin/stdout. | Decided here | E1, E2, E3 |
-| 1.2 | IPC primitive from the bridge to the running service | **A Unix domain socket** (`AF_UNIX`, `SOCK_STREAM`) owned by the running xezar service — `net.createServer(path)` in Node, so no dependency is added. Frames are newline-delimited JSON, the same framing as the stdio leg. On Windows the same Node API listens on a **named pipe**; that half is untested (§ 10). | Decided here | E4, E5, E7 |
+| 1.2 | IPC primitive from the bridge to the running service | **A Unix domain socket** (`AF_UNIX`, `SOCK_STREAM`) owned by the running xezar service — `net.createServer(path)` in Node, so no dependency is added. Frames are newline-delimited JSON, the same framing as the stdio leg. On Windows the same Node API listens on a **named pipe**, behind an authenticated handshake (§ 10 item 2, #963). | Decided here | E4, E5, E7 |
 | 1.3 | Socket location | `<xezarHomeDir()>/ipc/<projectId>.sock`, i.e. normally `~/.xezar/ipc/<projectId>.sock`, where `projectId` is the id the workspace registry already allocated. Directory mode `0700`, socket mode `0600`. **Not** inside the project's `.local/xezar/`. | Decided here | E5 (the path-length measurement that forced it), E7 (the permission measurement) |
 | 1.4 | Fallback when that path is too long | If `<xezarHomeDir()>/ipc/<projectId>.sock` would exceed the OS limit measured in E5, substitute the first 12 hex characters of the SHA-256 of the project root for `<projectId>`. The limit is the operating system's, not a xezar constant. | Decided here | E5 |
 | 1.5 | Where project identity comes from | **The socket the bridge connected to.** The service allocates one socket per registered project and answers only for that project on it. No `projectId` parameter, alias, root path or prompt content from the client is consulted. | Decided here (mechanism); **Agreed** (the requirement — § 8, F-01, N-09) | E3 |
@@ -626,10 +627,30 @@ Explicitly, and without hedging.
    an event. **Not attempted:** it needs a real model turn on the user's own account, which the
    compatibility report's own guidance forbids for fixtures. A-19 and A-23 remain unpassed and D-05
    remains Open.
-2. **Windows is untested.** Decision 1.2 asserts that the same Node `net` API listens on a named pipe.
-   **Not attempted:** no Windows host was available. The path-length limit measured in E5 is a Unix
-   `sun_path` limit and does not apply to named pipes; the fallback in 1.4 is therefore Unix-only and
-   the Windows naming scheme is undecided.
+2. **Windows – amended by #963.** The spike had no Windows host. The `sun_path` limit of E5 does not
+   apply to named pipes, so the fallback in 1.4 stays Unix-only. #963 decided and built the Windows half:
+   - **Name.** `\\.\pipe\xezar-mcp-<32 lower hex>`, fresh at every service start. The `<ipcDir>/<id>.pipe`
+     marker holds only that name (the launcher contract).
+   - **Folder.** The IPC folder gets a protected access list: the user, SYSTEM and Administrators only.
+     It is read back as SDDL and judged by SID, never by account name. Its owner must be the user.
+     A reparse point, a network drive, a non-NTFS/ReFS volume or an elevated engine makes MCP
+     unavailable with a reason; boot never fails.
+   - **Endpoint.** `<id>.key` (written atomically, before the marker) holds `{ v, pipeName, key, pid,
+     processStartTime }`, with 32 random bytes of key. The bridge re-checks the folder and files, the
+     name match and that `pid` is alive with the same start time, on every session open. A stale
+     endpoint is never dialled. Start and close are serialized by a lock file.
+   - **Handshake.** The server writes nothing until the client sends `hello { v, nonce }`. It answers
+     `HMAC-SHA256(key, nonce ‖ pipeName)`, which the bridge checks in constant time. A connection with
+     no `hello` closes after 1 s; at most 16 wait, and the oldest is evicted at the cap.
+   - **Default pipe access list.** Node creates the pipe with the default list, so other local accounts
+     and remote clients can open it. They get nothing before a valid `hello`, and the handshake proves the
+     server only to a client that can read the private key.
+   - **Accepted residual risk (owner sign-off in the #963 PR 2 review).** libuv opens a pipe without
+     `SECURITY_SQOS_PRESENT`, so a *live* malicious pipe server with the right name could impersonate the
+     user's token at connect time. The liveness check limits this to a name the running engine owns
+     right now; a stale name is never dialled. A full fix needs a native addon and is out of scope.
+   - **Deferred.** Attaching a Codex session or a pi leader is not available on Windows yet; each fails
+     with a clear message. pi as a task backend is not affected.
 3. **Cross-user denial was not demonstrated.** E7 shows that the mode bits are enforced *for the
    owner*. **Not attempted:** proving that a *different* local user is refused needs a second account
    on this machine.

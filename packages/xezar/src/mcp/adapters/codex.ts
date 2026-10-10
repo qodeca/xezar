@@ -645,7 +645,7 @@ const UNREACHABLE: CodexReactionBlocker = {
  * - `state`: the app-server reported the session's state in a shape this version does not recognise,
  *   so nothing was attached rather than guess whether a prompt is open.
  */
-export type CodexUnreachableReason = 'not-announced' | 'app-server' | 'home' | 'thread' | 'state';
+export type CodexUnreachableReason = 'not-announced' | 'app-server' | 'home' | 'thread' | 'state' | 'unsupported';
 
 const UNTIL_THEN = ' Until then, use leader_events in Codex to read saved events.';
 
@@ -665,6 +665,10 @@ const CODEX_REASONS: Record<CodexUnreachableReason, { readonly code: string; rea
   thread: {
     code: 'codex-thread-not-loaded',
     fix: `This Codex session is not loaded on the app-server: its TUI exited, it is only saved, or another session in this folder makes it ambiguous. Open the session in your Codex TUI again, let it call a xezar tool once, then attach again.${UNTIL_THEN}`,
+  },
+  unsupported: {
+    code: 'codex-attach-unsupported',
+    fix: `Attaching to a running Codex session is not available on this system yet.${UNTIL_THEN}`,
   },
   state: {
     code: 'codex-thread-state-unknown',

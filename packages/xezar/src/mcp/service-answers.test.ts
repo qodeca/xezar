@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { createConnection, type Socket } from 'node:net';
+import type { Socket } from 'node:net';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
@@ -8,7 +8,8 @@ import { startMcpService } from './index.ts';
 import { IPC_PROTOCOL_VERSION, LineFramer, encodeFrame, type IpcResponse } from './ipc.ts';
 import { listenMcpSocket } from './service.ts';
 import { defineTool, errorResult, textResult, type McpTool } from './tool.ts';
-import { shortTmpRoot, onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
+import { connectRaw } from '../../test/helpers/mcp-raw.ts';
+import { shortTmpRoot, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * The service's answers to frames the bridge never sends on its good path (#333): a frame that is
@@ -67,9 +68,8 @@ beforeEach(() => {
 async function connect(opts: { tools?: readonly McpTool[]; ownership?: ProjectOwnership; dataDir?: string } = {}) {
   const handle = await listenMcpSocket({ project, version: '1.2.3', tools: opts.tools ?? [write, read], env, ...opts });
   closers.push(() => handle.close());
-  const socket: Socket = createConnection(handle.path);
+  const socket: Socket = await connectRaw(handle.path, { projectId: project.id, env });
   closers.push(() => socket.destroy());
-  await new Promise<void>((resolve) => socket.once('connect', () => resolve()));
   const waiting = new Map<number | null, (r: IpcResponse) => void>();
   const framer = new LineFramer(
     (line) => {
@@ -98,8 +98,7 @@ async function connect(opts: { tools?: readonly McpTool[]; ownership?: ProjectOw
   return { send, request };
 }
 
-// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – this opens the project MCP socket
-describe.skipIf(onWindows)('the MCP service answers what the bridge never sends (#333)', () => {
+describe('the MCP service answers what the bridge never sends (#333)', () => {
   it('refuses a frame that is JSON but not a request, with bad-frame', async () => {
     const c = await connect();
     const answer = await c.send(encodeFrame({ hello: 'there' }), null);
@@ -189,15 +188,13 @@ describe('startMcpService, for a project the registry does not know (#333)', () 
  * #450 — `session/open` answers whether xezar can push to this session's client, carries what the
  * bridge registered onto the transport, and every tool call runs with ITS connection's session key.
  */
-// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – this opens the project MCP socket
-describe.skipIf(onWindows)('session/open push capability and the session key in the tool context (#450)', () => {
+describe('session/open push capability and the session key in the tool context (#450)', () => {
   async function twoConnections(opts: { sessions?: Parameters<typeof listenMcpSocket>[0]['sessions']; tools?: readonly McpTool[] }) {
     const handle = await listenMcpSocket({ project, version: '1.2.3', tools: opts.tools ?? [write, read], env, ...(opts.sessions ? { sessions: opts.sessions } : {}) });
     closers.push(() => handle.close());
     const open = async () => {
-      const socket: Socket = createConnection(handle.path);
+      const socket: Socket = await connectRaw(handle.path, { projectId: project.id, env });
       closers.push(() => socket.destroy());
-      await new Promise<void>((resolve) => socket.once('connect', () => resolve()));
       const waiting = new Map<number, (r: IpcResponse) => void>();
       const framer = new LineFramer((line) => {
         const response = JSON.parse(line) as IpcResponse;

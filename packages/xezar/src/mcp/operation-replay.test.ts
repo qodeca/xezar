@@ -22,7 +22,7 @@ import { LineFramer, encodeFrame, type McpToolResult } from './ipc.ts';
 import { OperationReceiptStore, RECEIPT_JOURNAL_FILE } from './operation-receipts.ts';
 import type { ServiceDispatch } from './service-adapter.ts';
 import { tools } from './tools/index.ts';
-import { onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
+import { shortTmpRoot, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 
 /**
  * #264 — A REPLAY RETURNS THE FIRST ANSWER AND REPEATS NO EFFECT, for every mutating tool.
@@ -58,7 +58,7 @@ const saved = { home: process.env.XEZ_HOME, dryRun: process.env.XEZ_DRY_RUN };
 // A short home under /tmp, never the per-worker sandbox: the sandbox sits under the task's TMPDIR,
 // which is already past the 104-byte socket limit on macOS (D-01 E5).
 const tmp = (prefix: string): string => {
-  const dir = realpathSync(mkdtempSync(`/tmp/${prefix}`));
+  const dir = realpathSync(mkdtempSync(join(shortTmpRoot(), prefix)));
   tempDirs.push(dir);
   return dir;
 };
@@ -220,8 +220,7 @@ async function queuedTask(client: Client, operationId: string, prompt = 'a brief
 const versionOf = async (client: Client, taskId: string): Promise<string> =>
   body(await client.call('task_read', { view: 'task', taskId })).version as string;
 
-// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – every test here starts the project MCP service on its socket
-describe.skipIf(onWindows)('#264 — a replay under the same operationId returns the first answer and repeats no effect', () => {
+describe('#264 — a replay under the same operationId returns the first answer and repeats no effect', () => {
   it('execution_control: a resent message is queued ONCE, and the resend answers with the first call’s receipt', async () => {
     const c = await cockpit();
     const rec = recording(c.app);
@@ -355,8 +354,7 @@ describe.skipIf(onWindows)('#264 — a replay under the same operationId returns
 
 // #536: known refusals must remain rejected across retries and service reopen.
 // The companion controls pin non-repetition independently of receipt classification.
-// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – every test here starts the project MCP service on its socket
-describe.skipIf(onWindows)('#532 structured stale refusal through the composed MCP door', () => {
+describe('#532 structured stale refusal through the composed MCP door', () => {
   for (const action of ['cancel', 'send_message'] as const) {
     async function scenario() {
       const c = await cockpit();
@@ -407,8 +405,7 @@ describe.skipIf(onWindows)('#532 structured stale refusal through the composed M
  * it pins the behaviour the fix must NOT change, that a call which really runs the effect still
  * writes its one row.
  */
-// win32-skip(#963): the xezar MCP bridge is not supported on Windows yet (ipc.ts) – every test here starts the project MCP service on its socket
-describe.skipIf(onWindows)('#743 — a replayed operation writes no second audit row', () => {
+describe('#743 — a replayed operation writes no second audit row', () => {
   const auditRecords = (dataDir: string): AuditActionRecord[] => {
     const path = join(dataDir, AUDIT_TRAIL_FILE);
     if (!existsSync(path)) return [];

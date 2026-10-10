@@ -214,7 +214,7 @@ describe('the socket is kept away from other local accounts', () => {
    * first version, which a QA measured as world-reachable on Linux (`/tmp`, mode 1777, socket 0755).
    * Every assertion below fails against that.
    */
-  // win32-skip(#963): pi's leader socket is a Unix socket path, which Node cannot listen on under Windows (listen EACCES), so no descriptor is written
+  // win32-skip(#963): pi's leader socket is a Unix socket path (listen EACCES under Windows), so no descriptor is written; attaching a pi leader on Windows is deferred to a follow-up
   it.skipIf(onWindows)('puts the socket inside a 0700 directory, not straight into the temporary directory', async () => {
     const harness = await boot();
     const socketPath = descriptorOf(harness).endpoint.socket;
@@ -230,7 +230,7 @@ describe('the socket is kept away from other local accounts', () => {
     expect(lstatSync(socketPath).isSocket()).toBe(true);
   });
 
-  // win32-skip(#963): pi's leader socket is a Unix socket path, which Node cannot listen on under Windows (listen EACCES), so no descriptor is written
+  // win32-skip(#963): pi's leader socket is a Unix socket path (listen EACCES under Windows), so no descriptor is written; attaching a pi leader on Windows is deferred to a follow-up
   it.skipIf(onWindows)('still does so when TMPDIR is a world-writable directory, which is Linux\'s default', async () => {
     // The exact condition that hid the defect: a sticky, world-writable parent.
     const shared = tmp('xzext-shared-');
@@ -249,7 +249,7 @@ describe('the socket is kept away from other local accounts', () => {
     expect(realpathSync(join(socketPath, '..', '..'))).toBe(realpathSync(shared));
   });
 
-  // win32-skip(#963): makePrivateSocketDir answers undefined on Windows – its `(mode & 0o077) !== 0` check sees 0o666 (the pi leader over Windows pipes is deferred)
+  // win32-skip(#963): makePrivateSocketDir answers undefined on Windows – its `(mode & 0o077) !== 0` check sees 0o666; attaching a pi leader on Windows is deferred to a follow-up
   it.skipIf(onWindows)('refuses to adopt a symlink planted at its directory path, and opens nothing', () => {
     const tmpRoot = tmp('xzext-tmp-');
     pinTmpDir(tmpRoot);
@@ -284,7 +284,7 @@ describe('the socket is kept away from other local accounts', () => {
     }
   });
 
-  // win32-skip(#963): pi's leader socket is a Unix socket path, which Node cannot listen on under Windows (listen EACCES), so no descriptor is written
+  // win32-skip(#963): pi's leader socket is a Unix socket path (listen EACCES under Windows), so no descriptor is written; attaching a pi leader on Windows is deferred to a follow-up
   it.skipIf(onWindows)('removes the whole private directory on shutdown, leaving nothing behind', async () => {
     const harness = await boot();
     const socketPath = descriptorOf(harness).endpoint.socket;
@@ -303,7 +303,7 @@ describe('the socket is kept away from other local accounts', () => {
 });
 
 describe('announcing itself to xezar', () => {
-  // win32-skip(#963): pi's leader socket is a Unix socket path, which Node cannot listen on under Windows (listen EACCES), so no descriptor is written
+  // win32-skip(#963): pi's leader socket is a Unix socket path (listen EACCES under Windows), so no descriptor is written; attaching a pi leader on Windows is deferred to a follow-up
   it.skipIf(onWindows)('writes a descriptor naming the live socket, at mode 0600', async () => {
     const harness = await boot();
     const path = join(harness.dataDir, 'pi-leader.json');
@@ -359,7 +359,7 @@ describe('announcing itself to xezar', () => {
     expect(__internals.safeSessionId(throws)).toBe(`pid-${process.pid}`);
   });
 
-  // win32-skip(#963): pi's leader socket is a Unix socket path, which Node cannot listen on under Windows (listen EACCES), so no descriptor is written
+  // win32-skip(#963): pi's leader socket is a Unix socket path (listen EACCES under Windows), so no descriptor is written; attaching a pi leader on Windows is deferred to a follow-up
   it.skipIf(onWindows)('survives a session teardown and rebuild, which pi does on /new and /reload', async () => {
     const harness = await boot();
     const first = descriptorOf(harness).endpoint.socket;
@@ -375,7 +375,7 @@ describe('announcing itself to xezar', () => {
   });
 });
 
-// win32-skip(#963): pi's leader socket is a Unix socket path, which Node cannot listen on under Windows (listen EACCES), so no descriptor is written
+// win32-skip(#963): pi's leader socket is a Unix socket path (listen EACCES under Windows), so no descriptor is written; attaching a pi leader on Windows is deferred to a follow-up
 describe.skipIf(onWindows)('the commands xezar sends', () => {
   it('answers get_state with pi\'s real idle and queue state', async () => {
     let idle = true;
@@ -511,7 +511,7 @@ describe.skipIf(onWindows)('the commands xezar sends', () => {
   });
 });
 
-// win32-skip(#963): pi's leader socket is a Unix socket path, which Node cannot listen on under Windows (listen EACCES), so no descriptor is written
+// win32-skip(#963): pi's leader socket is a Unix socket path (listen EACCES under Windows), so no descriptor is written; attaching a pi leader on Windows is deferred to a follow-up
 describe.skipIf(onWindows)('the events it forwards', () => {
   it('forwards exactly the four the adapter needs, with the message when there is one', async () => {
     const harness = await boot();
@@ -619,7 +619,7 @@ describe('when it cannot open its socket at all', () => {
     expect(__internals.fitsSocketAddress(`${path(limit - 1)}é`)).toBe(false);
   });
 
-  // win32-skip(#963): pi's leader socket is a Unix socket path, which Node cannot listen on under Windows (listen EACCES), so no descriptor is written
+  // win32-skip(#963): pi's leader socket is a Unix socket path (listen EACCES under Windows), so no descriptor is written; attaching a pi leader on Windows is deferred to a follow-up
   it.skipIf(onWindows)('drops a peer that sends an endless line instead of growing its buffer for ever', async () => {
     const harness = await boot();
     const c = client(descriptorOf(harness).endpoint.socket);

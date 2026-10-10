@@ -3,19 +3,17 @@ import { execFile as execFileCallback, spawn, type ChildProcess } from 'node:chi
 import { once } from 'node:events';
 import { realpathSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 import test from 'node:test';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { npmCommand, onWindows, TEST_DIR_RM_OPTIONS } from '../helpers/platform.ts';
+import { npmCommand, shortTmpRoot, TEST_DIR_RM_OPTIONS } from '../helpers/platform.ts';
 
 const execFile = promisify(execFileCallback);
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-/** Every case here goes through the xezar MCP Unix socket. `/tmp` stays the POSIX socket root. */
-const NO_MCP_SOCKET = onWindows
-  ? 'win32-skip(#963): xezar MCP bridge is not supported on Windows yet – the cockpit logs event=mcp.unavailable (mcp/ipc.ts)'
-  : false;
+/** Every case here goes through the xezar MCP service: a Unix socket on POSIX, whose root stays
+ *  `/tmp` (`shortTmpRoot`), and a named pipe on Windows (#963). */
 /** npm through the #963 platform helper: POSIX runs `npm` exactly as before; Windows runs npm's own
  *  CLI through node, because `npm.cmd` cannot be spawned without a shell (EINVAL). */
 function execNpm(args: string[], options: { cwd: string; maxBuffer: number }) {
@@ -145,10 +143,10 @@ async function askMcp(
   return answer;
 }
 
-test('two projects run at once on one machine, each on its own port and its own MCP', { timeout: 600_000, skip: NO_MCP_SOCKET }, async () => {
+test('two projects run at once on one machine, each on its own port and its own MCP', { timeout: 600_000 }, async () => {
   // `/tmp` explicitly: a task worktree's own TMPDIR sits inside the repository, and a fixture
   // under `.local/xezar/worktrees/` is refused registration, so it could never get a row.
-  const root = await mkdtemp(join(realpathSync('/tmp'), 'xez-coexist-'));
+  const root = await mkdtemp(join(realpathSync(shortTmpRoot()), 'xez-coexist-'));
   const cockpits: Cockpit[] = [];
   try {
     const packDir = join(root, 'pack');
@@ -211,8 +209,9 @@ test('two projects run at once on one machine, each on its own port and its own 
     };
     const rows = new Map(config.projects.map((p) => [p.id, p]));
     assert.equal(rows.size, 2, `both projects must survive in the registry: ${JSON.stringify(config.projects)}`);
-    const alphaRow = config.projects.find((p) => p.root.endsWith('/alpha'));
-    const betaRow = config.projects.find((p) => p.root.endsWith('/beta'));
+    // The registry stores each root in the host spelling: `/` on POSIX, a backslash on Windows (#963).
+    const alphaRow = config.projects.find((p) => p.root.endsWith(`${sep}alpha`));
+    const betaRow = config.projects.find((p) => p.root.endsWith(`${sep}beta`));
     assert.equal(alphaRow?.lastListen?.port, first.port);
     assert.equal(betaRow?.lastListen?.port, second.port);
 
