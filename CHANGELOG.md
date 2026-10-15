@@ -1,3 +1,27 @@
+# 0.20.2 (2026-10-15)
+
+## Highlights
+
+A fix release. On Windows, a workflow check step can check a pull request out with `gh` again, so
+review steps start on Windows. A pi step whose model goes silent for 10 minutes now stops with a
+named error instead of running for ever.
+
+## 🐛 Fixes
+
+- 🐛 **A pi step no longer waits for ever on a silent model.** When a pi turn waits on its model
+  and gets no output at all for 10 minutes – no tool running, no dialog open – xezar stops it
+  with a named error ("pi went silent: …") instead of leaving the run "running". Before, the
+  last step of a workflow had no limit at all and needed a person to cancel it, and earlier
+  steps sat out their whole 30-minute wall clock. A long tool, such as a test run that prints
+  nothing, is not cut short. (#1000)
+- 🐛 **On Windows, a check step can run `gh pr checkout` again.** xezar starts a check step's Git
+  Bash with `MSYS=noglob`, and every program the step started inherited it, so Git's own shell
+  stopped reading quotes and split gh's credential helper at the space in `C:\Program Files`; the
+  step failed with `could not read Username for 'https://github.com'`. The step's first command now
+  puts `MSYS` back the way you had it, so its programs run as they do in a normal Git Bash. (#1023)
+
+---
+
 # 0.20.1 (2026-10-15)
 
 ## Highlights
