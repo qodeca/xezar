@@ -26,7 +26,7 @@ $ xez
   tools     git 2.47.0 · gh 2.63.0
 
 [stderr]
-  10:04:01  info   mcp       ready — run xez mcp in this project folder
+  10:04:01  info   mcp       ready — run xezar mcp in this project folder
   ─ active tasks ──────────────────────────────────────────────────────────────
   No active tasks — start one at http://localhost:4321/p/alpha/new
 
@@ -57,7 +57,7 @@ $ cd ~/Projects/beta && xez
   10:06:12  info   xezar     cleaned 1 orphaned worktree: 7f3a09c1
   10:06:12  info   xezar     13 tasks from the previous session
                              were settled at start-up
-  10:06:13  info   mcp       ready — run xez mcp in this project folder
+  10:06:13  info   mcp       ready — run xezar mcp in this project folder
   10:06:13  info   update    xezar 0.16.1 is available — restart with
                              npx @qodeca/xezar@latest
   ─ active tasks ──────────────────────────────────────────────────────────────
