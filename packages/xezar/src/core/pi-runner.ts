@@ -15,6 +15,7 @@ import { foreignSignalExitMessage, isSignalTerminationExit, isXezarStopExit, tra
 import { launch } from '../platform/process-launch.js';
 import { stopChildTree } from '../platform/process-tree.js';
 import { buildChildEnv } from './agent-env.js';
+import { parseMcpToolName, piMcpToolName } from './pi-mcp-tools.js';
 import { piMcpIsolation, runMcpIsolationNote, writeMcpOverlay } from './run-mcp-isolation.js';
 import { writeSystemPromptFile } from './system-prompt-file.js';
 import { readNdjson } from './ndjson.js';
@@ -316,7 +317,7 @@ export class PiRunner implements AgentRunner {
 
       let mcpOverlay: ReturnType<typeof writeMcpOverlay> = null;
       if (answer === 'yes') {
-        const isolation = piMcpIsolation(spec.cwd, { ...process.env, ...spec.env });
+        const isolation = piMcpIsolation(spec.cwd, { ...process.env, ...spec.env }, undefined, spec.allowedTools ?? []);
         const isolationNote = runMcpIsolationNote('pi', isolation);
         if (isolationNote) onEvent?.({ type: 'note', message: isolationNote });
         mcpOverlay = writeMcpOverlay('mcp.json', isolation.overlay);
@@ -970,7 +971,12 @@ function piTools(tools: string[], bashAllowlist?: string[]): string[] {
         // closed as Claude Code does (`buildAllowedTools` emits no Bash rule for it): bash is
         // removed, and the guard is still told `[]`, which refuses every shell command.
         .filter((tool) => tool !== 'Bash' || bashAllowlist === undefined || bashAllowlistEntries(bashAllowlist).length > 0)
-        .map((tool) => map[tool] ?? tool.toLowerCase()),
+        // An MCP tool keeps the name the adapter registers it under as a direct tool (#1015);
+        // lower-casing `mcp__<server>__<tool>` named a tool no adapter registers.
+        .map((tool) => {
+          const mcp = parseMcpToolName(tool);
+          return mcp ? piMcpToolName(mcp.server, mcp.tool) : (map[tool] ?? tool.toLowerCase());
+        }),
     ),
   ];
 }
