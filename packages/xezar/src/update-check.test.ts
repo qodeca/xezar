@@ -1,7 +1,7 @@
 import { chmodSync, mkdtempSync, readdirSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { checkForUpdate, isNewerVersion } from './update-check.ts';
 import { TEST_DIR_RM_OPTIONS } from '../test/helpers/platform.ts';
 
@@ -44,8 +44,32 @@ function registryResponse(body: unknown, init: { ok?: boolean; status?: number }
   };
 }
 
+// The test preload turns the check off for every other suite (`XEZ_UPDATE_CHECK=0`); this suite
+// tests the check itself, so it runs with the switch unset unless a case sets it.
+beforeEach(() => {
+  vi.stubEnv('XEZ_UPDATE_CHECK', undefined);
+});
+
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
+});
+
+// Break: a suite whose output depends on what npm published an hour ago (a release made every
+// terminal width test fail until its version bump merged).
+describe('XEZ_UPDATE_CHECK=0', () => {
+  it('asks the registry nothing and reports no update', async () => {
+    const calls = stubFetch(async () => registryResponse({ version: '0.14.0' }));
+    expect(await checkForUpdate('@qodeca/xezar', '0.13.0', { XEZ_UPDATE_CHECK: '0' })).toBeNull();
+    expect(calls).toHaveLength(0);
+  });
+
+  it('is the only value that turns it off: unset or any other value still checks', async () => {
+    const calls = stubFetch(async () => registryResponse({ version: '0.14.0' }));
+    expect(await checkForUpdate('@qodeca/xezar', '0.13.0', {})).toBe('0.14.0');
+    expect(await checkForUpdate('@qodeca/xezar', '0.13.0', { XEZ_UPDATE_CHECK: '1' })).toBe('0.14.0');
+    expect(calls).toHaveLength(2);
+  });
 });
 
 describe('checkForUpdate — the answer', () => {

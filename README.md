@@ -216,6 +216,7 @@ agent accounts in later, without overwriting one this project already has. See
 | `XEZ_AUTONAME=0` | Disable all LLM task naming, keeping heuristic titles. Naming is off in dry runs unless forced with `1`. |
 | `XEZ_REVIEW_GATE=1` | Enable review for successful non-autonomous runs with changes (default off, exact `1`). Settings → Agents overrides it. |
 | `XEZ_NO_BANNER=1` | Hide the team-skills banner at `xezar serve` startup. |
+| `XEZ_UPDATE_CHECK=0` | Skip the check for a newer xezar on npm at `xezar serve` startup (default on). |
 | `XEZ_PORT=4321` | The port `xezar serve` starts from, then the next free one. `-p/--port` beats it, and so does a port pinned for the project (`xezar projects port <id> <port>`), so one export in a shell profile cannot pull every project to the same start port. A value that is not a whole number from 0 to 65535 refuses the start. |
 | `XEZ_OUTPUT=auto` | How `xezar serve` shows what is happening: `auto` (default — a live table on a wide terminal, one line per event elsewhere), `lines` (never a table; the screen-reader and log-file answer), `rich`. A saved `cli.output` overrides it; `--output` overrides both. |
 | `XEZ_COLOR=auto` | Colour: `auto` (default), `always`, `never`. Colour only ever reinforces a word that is already there, so turning it off loses nothing. In `serve`, pipes, CI and `TERM=dumb` suppress colour even with `always`. |

@@ -8,8 +8,13 @@
 
 const REGISTRY_TIMEOUT_MS = 3_000;
 
-/** Newest published version when it's newer than `current`, else null. */
-export async function checkForUpdate(pkgName: string, current: string): Promise<string | null> {
+/**
+ * Newest published version when it's newer than `current`, else null. `XEZ_UPDATE_CHECK=0` skips
+ * the request: a test suite's answer must not depend on what npm published an hour ago (a release
+ * made every width test fail until its version bump merged).
+ */
+export async function checkForUpdate(pkgName: string, current: string, env: NodeJS.ProcessEnv = process.env): Promise<string | null> {
+  if (env.XEZ_UPDATE_CHECK === '0') return null;
   try {
     const res = await fetch(`https://registry.npmjs.org/${encodeURIComponent(pkgName)}/latest`, {
       signal: AbortSignal.timeout(REGISTRY_TIMEOUT_MS),
