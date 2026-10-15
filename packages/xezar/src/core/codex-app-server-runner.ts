@@ -797,6 +797,16 @@ class CodexSession implements AgentSession {
         }
         break;
       }
+      case 'mcpServer/startupStatus/updated': {
+        // #1026: a server that fails to start leaves the model without its tools and nothing else
+        // says so — the isolation note above only names what the thread was configured with.
+        if (params.status !== 'failed' || this.isForeignThreadTurn(params)) break;
+        const name = stringField(params, 'name') ?? 'unknown';
+        const detail = (stringField(params, 'error') ?? stringField(params, 'failureReason'))?.trim().replace(/\.+$/, '');
+        const why = detail ? `: ${detail.length > 300 ? `${detail.slice(0, 300)}…` : detail}` : '';
+        this.emit({ type: 'note', message: `codex: the MCP server ${name} did not start${why}. This run has none of its tools (#1026).` });
+        break;
+      }
       case 'thread/tokenUsage/updated': {
         const total = tokenTotal(params);
         if (total > 0) {

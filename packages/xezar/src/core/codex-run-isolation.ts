@@ -323,7 +323,7 @@ export function codexIsolationNote(isolation: CodexRunIsolation): string | null 
   if (isolation.projectOnlyServers.length > 0) {
     const names = isolation.projectOnlyServers.join(', ');
     parts.push(
-      `codex: ${names} ${isolation.projectOnlyServers.length === 1 ? 'runs' : 'run'} with the project's own settings only; ` +
+      `codex: ${names} ${isolation.projectOnlyServers.length === 1 ? 'is' : 'are'} set up with the project's own settings only; ` +
         `your own Codex config's settings for ${isolation.projectOnlyServers.length === 1 ? 'it' : 'them'} are not used (#1007).`,
     );
   }
