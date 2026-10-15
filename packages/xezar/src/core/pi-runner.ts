@@ -28,6 +28,17 @@ const DEFAULT_TIMEOUT_MS = 30 * 60_000;
  *  escalation test can advance fake timers by the real value instead of a copy. */
 export const KILL_GRACE_MS = 10_000;
 const AUTO_END_DELAY_MS = 250;
+/**
+ * How long a pi turn may wait on its model with no RPC output at all before xezar stops it (#1000).
+ *
+ * A live model streams: every reasoning or text delta is an RPC line, so ten minutes with none,
+ * while no tool runs and no dialog is open, is a turn that will never settle – the #828 stalls sat
+ * with frozen tokens and 0 % CPU until a person cancelled them. Without this, a step with no wall
+ * clock (the last, interactive step, `timeout: none`, a Continue) waited for ever, and an earlier
+ * step waited out its whole deadline. It deliberately does not run while a tool executes: a long
+ * check prints nothing on the RPC channel until it ends, and that silence is work, not a hang.
+ */
+export const PI_SILENCE_LIMIT_MS = 10 * 60_000;
 /** Hard bound on one `--help` capability probe: past it the answer is UNKNOWN and the child is
  *  SIGKILLed, because a pi that traps SIGTERM would otherwise hold the probe open (#548). */
 export const MCP_CONFIG_PROBE_TIMEOUT_MS = 10_000;
@@ -62,6 +73,8 @@ export interface PiRunnerOptions {
   timeoutMs?: number;
   /** Seam for the `--mcp-config` capability probe (`piSupportsMcpConfig`); tests inject here. */
   supportsMcpConfig?: PiMcpConfigProbe;
+  /** Model-silence bound (ms, `PI_SILENCE_LIMIT_MS` by default; 0 turns it off). Tests inject here. */
+  silenceLimitMs?: number;
 }
 
 /**
@@ -190,12 +203,14 @@ export class PiRunner implements AgentRunner {
   private readonly bin: string;
   private readonly timeoutMs: number;
   private readonly supportsMcpConfig: PiMcpConfigProbe;
+  private readonly silenceLimitMs: number;
   private lastSession: AgentSession | null = null;
 
   constructor(opts: PiRunnerOptions = {}) {
     this.bin = opts.bin ?? process.env.XEZ_PI_BIN ?? (process.env.XEZ_DRY_RUN === '1' ? mockPiPath() : 'pi');
     this.timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.supportsMcpConfig = opts.supportsMcpConfig ?? piSupportsMcpConfig;
+    this.silenceLimitMs = opts.silenceLimitMs ?? PI_SILENCE_LIMIT_MS;
   }
 
   /** What a spec with no `timeoutMs` falls through to here (#460) — the same field the session
@@ -423,6 +438,11 @@ export class PiRunner implements AgentRunner {
     let open = true;
     let settled = true;
     let timedOut = false;
+    // Set when the model-silence watchdog (not the wall clock) is what stopped the turn (#1000).
+    let silentFor: number | undefined;
+    let silenceTimer: NodeJS.Timeout | undefined;
+    // Tools pi has started and not yet ended: their silence is work, so the watchdog waits.
+    const toolsRunning = new Set<string>();
     let terminatedByXezar = false;
     let autoEndTimer: NodeJS.Timeout | undefined;
     let killTimer: NodeJS.Timeout | undefined;
@@ -573,6 +593,8 @@ export class PiRunner implements AgentRunner {
           };
         })
       ) {
+        // The turn the dialog held resumes now; it waits on the model again.
+        rearmSilence();
         return true;
       }
       if (
@@ -591,6 +613,7 @@ export class PiRunner implements AgentRunner {
       turnTextMark = textChunks.length;
       turnToolMark = toolCalls.length;
       settled = false;
+      rearmSilence();
       return true;
     };
     // The same bit the claude and codex runners keep (#703): set the moment WE
@@ -630,6 +653,33 @@ export class PiRunner implements AgentRunner {
       open = false;
       if (!hasExited()) signalChild('SIGTERM');
     };
+    /** The stop both bounds share: interrupt, unblock the read loop, SIGKILL after the grace. */
+    const stopForLimit = (): void => {
+      timedOut = true;
+      if (silenceTimer) clearTimeout(silenceTimer);
+      interrupt();
+      child.stdout.destroy();
+      timeoutKillTimer = setTimeout(() => {
+        if (!hasExited()) void stopChildTree(child, 'SIGKILL');
+      }, KILL_GRACE_MS);
+      timeoutKillTimer.unref?.();
+    };
+    /**
+     * Restart the model-silence watchdog (#1000). Called on every RPC line and every prompt; it
+     * arms only while a turn waits on the model – in flight, no tool running, no dialog pending –
+     * so a settled session waiting for its user, a long tool and a question to a person are never
+     * cut short by it.
+     */
+    const rearmSilence = (): void => {
+      if (silenceTimer) clearTimeout(silenceTimer);
+      silenceTimer = undefined;
+      if (this.silenceLimitMs <= 0 || timedOut || settled || pendingDialog || toolsRunning.size > 0) return;
+      silenceTimer = setTimeout(() => {
+        silentFor = this.silenceLimitMs;
+        stopForLimit();
+      }, this.silenceLimitMs);
+      silenceTimer.unref?.();
+    };
 
     write({ id: 'xezar-state', type: 'get_state' });
     sendMessage([
@@ -648,18 +698,7 @@ export class PiRunner implements AgentRunner {
     // AGENT_PROTOCOL requires parity at this seam, so this mirrors `claude-cli-runner`
     // line for line: interrupt, destroy stdout so the read loop cannot block forever, then
     // SIGKILL after `KILL_GRACE_MS` if the process is still alive.
-    const deadline =
-      limitMs > 0
-        ? setTimeout(() => {
-            timedOut = true;
-            interrupt();
-            child.stdout.destroy();
-            timeoutKillTimer = setTimeout(() => {
-              if (!hasExited()) void stopChildTree(child, 'SIGKILL');
-            }, KILL_GRACE_MS);
-            timeoutKillTimer.unref?.();
-          }, limitMs)
-        : undefined;
+    const deadline = limitMs > 0 ? setTimeout(stopForLimit, limitMs) : undefined;
     deadline?.unref?.();
 
     const result = (async (): Promise<AgentRunResult> => {
@@ -684,6 +723,11 @@ export class PiRunner implements AgentRunner {
           emitUi(value);
           handleDialogFrame(value);
           if (!isRecord(value)) continue;
+
+          const frameToolId = string(value.toolCallId);
+          if (value.type === 'tool_execution_start' && frameToolId) toolsRunning.add(frameToolId);
+          else if (value.type === 'tool_execution_end' && frameToolId) toolsRunning.delete(frameToolId);
+          else if (value.type === 'agent_settled') toolsRunning.clear();
 
           if (value.type === 'response' && value.command === 'get_state' && value.success === true && isRecord(value.data)) {
             const discovered = string(value.data.sessionId);
@@ -754,6 +798,7 @@ export class PiRunner implements AgentRunner {
           } else if (value.type === 'extension_error') {
             onEvent?.({ type: 'note', message: string(value.error) ?? 'pi extension error' });
           }
+          rearmSilence();
         }
       } catch (err) {
         // A timeout destroys stdout, which surfaces here as a premature-close error —
@@ -761,6 +806,7 @@ export class PiRunner implements AgentRunner {
         if (!timedOut) throw err;
       } finally {
         if (deadline) clearTimeout(deadline);
+        if (silenceTimer) clearTimeout(silenceTimer);
         if (autoEndTimer) clearTimeout(autoEndTimer);
         if (killTimer) clearTimeout(killTimer);
         open = false;
@@ -802,7 +848,10 @@ export class PiRunner implements AgentRunner {
       // settled turn leaves nothing for this flush to find.
       textCoalescer.flush();
       if (timedOut) {
-        const message = `pi CLI timed out after ${Math.round((limitMs / 60_000) * 10) / 10}m and was killed`;
+        const message =
+          silentFor !== undefined
+            ? `pi went silent: no output from the model for ${Math.round((silentFor / 60_000) * 10) / 10}m while no tool was running, so xezar stopped it (#1000)`
+            : `pi CLI timed out after ${Math.round((limitMs / 60_000) * 10) / 10}m and was killed`;
         onEvent?.({ type: 'error', message });
         onEvent?.({ type: 'done' });
         return { text: textChunks.join('\n').trim(), toolCalls, tokensUsed, sessionId, timedOut: true };
