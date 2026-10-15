@@ -47,6 +47,12 @@ process.env.TEMP = realScratch;
 export const TASK_BOUND_ENV = ['XEZ_HANDOFF_FILE', 'XEZ_TODOS_FILE', 'XEZ_TASK_ID', 'XEZ_ENV_PASSTHROUGH'];
 for (const name of TASK_BOUND_ENV) delete process.env[name];
 
+// `xezar serve` asks the npm registry for a newer xezar and prints a long "is available" line when
+// it finds one. Between a publish and the merge of its version bump, every test that boots serve
+// and reads its output (the terminal width tests) failed for a reason in npm, not in the code.
+// Off here, once, for every vitest config and both node:test gates; the check has its own tests.
+process.env.XEZ_UPDATE_CHECK = '0';
+
 // A non-repository fixture must not discover the real checkout above .local and operate on
 // its Git index. Repositories explicitly initialized inside a fixture still resolve normally.
 const ceilings = (process.env.GIT_CEILING_DIRECTORIES ?? '').split(delimiter).filter(Boolean);
