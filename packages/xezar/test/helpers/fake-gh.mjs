@@ -101,6 +101,9 @@ if (group === 'pr' && verb === 'ready') {
 if (group === 'api' && verb === `repos/${state.repo}`) {
   out({ allow_merge_commit: true, allow_squash_merge: true, allow_rebase_merge: true, squash_merge_commit_title: 'PR_TITLE' });
 }
-if (group === 'api' && /\/protection\/required_status_checks$/.test(verb ?? '')) out(JSON.stringify(state.requiredChecks ?? ['test']));
+if (group === 'api' && /\/branches\/[^/]+\/protection$/.test(verb ?? '')) {
+  out({ required_status_checks: { strict: true, contexts: state.requiredChecks ?? ['test'], checks: [] } });
+}
+if (group === 'api' && /\/rules\/branches\/[^/]+$/.test(verb ?? '')) out([]);
 
 fail(`fake gh: unsupported call: gh ${args.join(' ')}`);

@@ -41,6 +41,8 @@ import {
   ghTimelineEventSchema,
   mergeThread,
   mergePreflightAllowed,
+  mergeRequirementsFrom,
+  readMergeRequirements,
   normalizeComments,
   normalizeEvents,
   normalizeReviews,
@@ -215,6 +217,143 @@ describe('normalizeMergeState', () => {
     expect(mergePreflightAllowed(state)).toBe(false);
     expect(mergePreflightAllowed(state, true)).toBe(true);
     expect(mergePreflightAllowed({ ...state, canOverride: false }, true)).toBe(false);
+  });
+
+  // #1017: GitHub sends `reviewDecision: null` when the base branch asks for no review.
+  describe('a null review decision (#1017)', () => {
+    const policy = { allow_merge_commit: true, allow_squash_merge: true, allow_rebase_merge: true };
+    const noDecision = { ...ready, reviewDecision: null };
+
+    it('is ready when the rules were read and ask for no review', () => {
+      const state = normalizeMergeState(noDecision, policy, {
+        readable: true,
+        requiredChecks: [],
+        reviewsRequired: false,
+      });
+      expect(state.eligibility).toBe('ready');
+      expect(state.canMerge).toBe(true);
+      expect(state.blockers).toEqual([]);
+    });
+
+    it('stays rules-unknown when the rules ask for a review, were not read, or say nothing about reviews', () => {
+      for (const requirements of [
+        { readable: true, requiredChecks: [], reviewsRequired: true },
+        { readable: false, requiredChecks: [], reviewsRequired: false },
+        { readable: true, requiredChecks: [] },
+      ]) {
+        const state = normalizeMergeState(noDecision, policy, requirements);
+        expect(state.eligibility).toBe('unknown');
+        expect(state.blockers[0]?.code).toBe('rules-unknown');
+        expect(state.canMerge).toBe(false);
+      }
+      expect(normalizeMergeState(noDecision, policy).blockers[0]?.code).toBe('rules-unknown');
+    });
+
+    it('still waits for GitHub to call the pull request clean', () => {
+      const state = normalizeMergeState({ ...noDecision, mergeStateStatus: 'BLOCKED' }, policy, {
+        readable: true,
+        requiredChecks: [],
+        reviewsRequired: false,
+      });
+      expect(state.canMerge).toBe(false);
+    });
+  });
+});
+
+describe('mergeRequirementsFrom (#1017)', () => {
+  it('reads a protection with empty required checks and no review block as "no review required"', () => {
+    expect(
+      mergeRequirementsFrom(
+        { required_status_checks: { strict: true, contexts: [], checks: [] }, enforce_admins: { enabled: false } },
+        [],
+      ),
+    ).toEqual({ readable: true, requiredChecks: [], reviewsRequired: false });
+  });
+
+  it('reads an unprotected branch with no rulesets as no requirements', () => {
+    expect(mergeRequirementsFrom(null, [])).toEqual({ readable: true, requiredChecks: [], reviewsRequired: false });
+  });
+
+  it('collects required checks from protection and rulesets', () => {
+    expect(
+      mergeRequirementsFrom(
+        { required_status_checks: { contexts: ['test'], checks: [{ context: 'lint' }, { context: 'test' }] } },
+        [{ type: 'required_status_checks', parameters: { required_status_checks: [{ context: 'build' }] } }],
+      ).requiredChecks,
+    ).toEqual(['build', 'lint', 'test']);
+  });
+
+  it('asks for a review when protection or a ruleset needs an approval or a code-owner review', () => {
+    const needs = (protection: unknown, rules: unknown[]) => mergeRequirementsFrom(protection, rules).reviewsRequired;
+    expect(needs({ required_pull_request_reviews: { required_approving_review_count: 1 } }, [])).toBe(true);
+    expect(needs({ required_pull_request_reviews: { required_approving_review_count: 0, require_code_owner_reviews: true } }, [])).toBe(true);
+    expect(needs(null, [{ type: 'pull_request', parameters: { required_approving_review_count: 2 } }])).toBe(true);
+    expect(needs(null, [{ type: 'pull_request', parameters: { required_approving_review_count: 0, require_code_owner_review: true } }])).toBe(true);
+    expect(needs({ required_pull_request_reviews: { required_approving_review_count: 0 } }, [])).toBe(false);
+    expect(needs(null, [{ type: 'pull_request', parameters: { required_approving_review_count: 0 } }, { type: 'deletion' }])).toBe(false);
+  });
+});
+
+describe('readMergeRequirements (#1017)', () => {
+  const ref = { owner: 'acme', repo: 'demo' };
+  const answer = (handlers: { protection: () => unknown; rules: () => unknown }) =>
+    execFileMock.mockImplementation((...args: unknown[]) => {
+      const argv = args[1] as string[];
+      const cb = args[args.length - 1] as (e: unknown, r: unknown) => void;
+      try {
+        const body = argv[1]?.endsWith('/protection') ? handlers.protection() : handlers.rules();
+        cb(null, { stdout: JSON.stringify(body), stderr: '' });
+      } catch (error) {
+        cb(error, undefined);
+      }
+    });
+
+  afterEach(() => execFileMock.mockReset());
+
+  it('treats GitHub\'s "Branch not protected" answer as no protection', async () => {
+    answer({
+      protection: () => {
+        throw new Error('Command failed: gh api repos/acme/demo/branches/main/protection\ngh: Branch not protected (HTTP 404)\n');
+      },
+      rules: () => [],
+    });
+    await expect(readMergeRequirements('/repo', ref, 'main')).resolves.toEqual({
+      readable: true,
+      requiredChecks: [],
+      reviewsRequired: false,
+    });
+  });
+
+  it('fails closed on any other protection error, such as a caller without admin access', async () => {
+    for (const message of ['gh: Not Found (HTTP 404)', 'gh: Resource not accessible by integration (HTTP 403)']) {
+      answer({
+        protection: () => {
+          throw new Error(`Command failed: gh api repos/acme/demo/branches/main/protection\n${message}\n`);
+        },
+        rules: () => [],
+      });
+      await expect(readMergeRequirements('/repo', ref, 'main')).resolves.toEqual({ readable: false, requiredChecks: [] });
+    }
+  });
+
+  it('fails closed when the rulesets cannot be read', async () => {
+    answer({
+      protection: () => ({ required_status_checks: { contexts: [], checks: [] } }),
+      rules: () => {
+        throw new Error('gh: Bad credentials (HTTP 401)');
+      },
+    });
+    await expect(readMergeRequirements('/repo', ref, 'main')).resolves.toEqual({ readable: false, requiredChecks: [] });
+  });
+
+  it('reads both sources for the branch it is given', async () => {
+    answer({ protection: () => ({}), rules: () => [] });
+    await readMergeRequirements('/repo', ref, 'release/1.0');
+    const paths = execFileMock.mock.calls.map((call) => (call[1] as string[])[1]);
+    expect(paths).toEqual([
+      'repos/acme/demo/branches/release%2F1.0/protection',
+      'repos/acme/demo/rules/branches/release%2F1.0',
+    ]);
   });
 });
 
