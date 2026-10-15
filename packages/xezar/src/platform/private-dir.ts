@@ -58,6 +58,8 @@ const ADMINISTRATORS = 'S-1-5-32-544';
 /** SDDL's own short names for the two well-known SIDs. */
 const ALIASES: Readonly<Record<string, string>> = { SY: SYSTEM, BA: ADMINISTRATORS };
 const ACL_TIMEOUT_MS = 15_000;
+/** Tests only: the second read on a loaded CI runner (`ELEVATED_AS_STANDARD_FOR_TESTS`). */
+const ACL_TEST_RETRY_TIMEOUT_MS = 60_000;
 const ACL_MAX_BUFFER = 1024 * 1024;
 
 const MESSAGES: Readonly<Record<PrivateDirReason, string>> = {
@@ -199,17 +201,29 @@ async function windowsCheck(paths: readonly string[], ensure: boolean, deps: Pri
   const powershell = powershellPath(deps.env ?? process.env);
   if (powershell === null) return refuse('not-private', folder);
   const env = { ...(deps.env ?? process.env), [ACL_INPUT_ENV]: aclInput(paths, ensure, options.startTimeOf) };
-  const readAcl = (): Promise<string | null> =>
+  let failure: unknown = null;
+  const readAcl = (timeoutMs: number): Promise<string | null> =>
     (deps.run ?? defaultTableRunner)(powershell, powershellArgs(ACL_SCRIPT), {
       maxBuffer: ACL_MAX_BUFFER,
-      timeoutMs: ACL_TIMEOUT_MS,
+      timeoutMs,
       hide: true,
       env,
-    }).catch(() => null);
-  let text = await readAcl();
-  // A fully loaded CI runner can keep PowerShell past the limit: tests read once more (#963).
-  if (text === null && deps.run === undefined && elevatedCountsAsStandard()) text = await readAcl();
-  if (text === null) return refuse('not-private', folder);
+    }).catch((error: unknown) => {
+      failure = error;
+      return null;
+    });
+  let text = await readAcl(ACL_TIMEOUT_MS);
+  const testRun = deps.run === undefined && elevatedCountsAsStandard();
+  // A fully loaded CI runner can keep PowerShell past the limit: tests read once more (#963), with
+  // more time – the Windows Node 22 leg kept missing 15 s twice in a row under a full suite.
+  if (text === null && testRun) text = await readAcl(ACL_TEST_RETRY_TIMEOUT_MS);
+  if (text === null) {
+    const refused = refuse('not-private', folder);
+    // On a CI runner, say why: "not private" for a PowerShell that never answered hid the cause.
+    if (!elevatedCountsAsStandard() || refused.ok) return refused;
+    const why = failure instanceof Error ? failure.message : String(failure);
+    return { ...refused, message: `${refused.message} [test: PowerShell gave no access list: ${why.slice(0, 300)}]` };
+  }
   const report = parseAclReport(text);
   if (deps.run === undefined && report.elevated === true && report.sid !== undefined && elevatedCountsAsStandard()) {
     asStandardAccount(report, report.sid);
