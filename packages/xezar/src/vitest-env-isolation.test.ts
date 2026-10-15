@@ -67,3 +67,11 @@ describe('the server suite finds no command shim by bare name on Windows', () =>
     expect(readSetup()).toMatch(/^if \(process\.platform === 'win32'\) process\.env\.PATHEXT = '\.COM;\.EXE'$/m);
   });
 });
+
+// Break: a test that boots `xezar serve` printing "xezar 0.20.2 is available" because npm published
+// it before main's version bump merged – the terminal width tests failed on that line alone.
+describe('the npm update check is off in every test worker (XEZ_UPDATE_CHECK)', () => {
+  it('is set to 0 by the shared preload, scripts/test-local-state.mjs', () => {
+    expect(process.env.XEZ_UPDATE_CHECK).toBe('0');
+  });
+});
