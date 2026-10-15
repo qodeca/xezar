@@ -167,6 +167,14 @@ around them:
   (#943), and never otherwise. The run manager reads it to stop what the agent left running
   after the timeout; a runner that omits it leaves those programs behind.
 
+A **model-silence bound** may stop a turn on the same path, with a named error instead of the
+timeout text. pi has one (#1000, `PI_SILENCE_LIMIT_MS`, 10 minutes): it arms only while a
+turn waits on the model – in flight, no tool running, no extension dialog pending – restarts
+on every RPC line, and so also bounds a step with no wall clock (the last, interactive step,
+`timeout: none`, a Continue) without touching the protected absent-`timeout` default. A
+silent tool is work, not a hang, and is left to the wall clock. OpenCode's post-denial bound
+below is the other one.
+
 `SessionOptions`:
 
 - `autonomous?` — nobody is watching: a backend’s native blocking question

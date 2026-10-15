@@ -17,6 +17,7 @@ import { createRunner } from './runner-factory.js';
 import {
   buildPiArgs,
   KILL_GRACE_MS,
+  PI_SILENCE_LIMIT_MS,
   PiRunner,
   type PiMcpConfigAnswer,
   type PiMcpConfigProbe,
@@ -1028,7 +1029,9 @@ describe('pi wall-clock timeout escalates SIGTERM -> SIGKILL (D)', () => {
 
   it('arms no wall clock at all when the step disabled it (timeoutMs: 0)', async () => {
     await withFakeChild(async (fake) => {
-      const session = new PiRunner({ bin: 'pi', timeoutMs: 0, supportsMcpConfig: NO_MCP_CONFIG }).startSession({
+      // The model-silence watchdog (#1000) is a separate bound with its own tests below; it is
+      // off here so this pins the wall clock alone.
+      const session = new PiRunner({ bin: 'pi', timeoutMs: 0, silenceLimitMs: 0, supportsMcpConfig: NO_MCP_CONFIG }).startSession({
         userPrompt: 'do it',
         cwd: process.cwd(),
       });
@@ -1037,6 +1040,119 @@ describe('pi wall-clock timeout escalates SIGTERM -> SIGKILL (D)', () => {
 
       vi.advanceTimersByTime(60 * 60_000);
       expect(fake.signals).toEqual([]);
+    });
+  });
+
+  describe('model-silence watchdog (#1000)', () => {
+    const SILENCE = 1_000;
+    const frame = (fake: { child: ChildProcessWithoutNullStreams }, value: Record<string, unknown>): void => {
+      (fake.child.stdout as PassThrough).write(`${JSON.stringify(value)}\n`);
+    };
+    const flush = async (): Promise<void> => {
+      for (let i = 0; i < 5; i++) await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(0);
+    };
+    const start = (timeoutMs: number, events: AgentEvent[] = []) =>
+      new PiRunner({ bin: 'pi', timeoutMs, silenceLimitMs: SILENCE, supportsMcpConfig: NO_MCP_CONFIG }).startSession(
+        { userPrompt: 'do it', cwd: process.cwd() },
+        (event) => events.push(event),
+      );
+
+    it('stops a turn with no wall clock whose model stays silent, with a named error', async () => {
+      const events: AgentEvent[] = [];
+      let result: Promise<unknown> | undefined;
+      await withFakeChild(async (fake) => {
+        const session = start(0, events);
+        result = session.result.catch(() => null);
+        await fake.spawned;
+
+        vi.advanceTimersByTime(SILENCE - 1);
+        expect(fake.signals).toEqual([]);
+        vi.advanceTimersByTime(1);
+        expect(fake.signals).toEqual(['SIGTERM']);
+        vi.advanceTimersByTime(KILL_GRACE_MS);
+        expect(fake.signals).toEqual(['SIGTERM', 'SIGKILL']);
+        fake.exit(137);
+      });
+      await expect(result).resolves.toMatchObject({ timedOut: true });
+      const error = events.find((event) => event.type === 'error');
+      expect(error).toMatchObject({ type: 'error' });
+      expect((error as { message: string }).message).toMatch(/^pi went silent: no output from the model for .*\(#1000\)$/);
+    });
+
+    it('also bounds a step that has a longer wall clock', async () => {
+      await withFakeChild(async (fake) => {
+        void start(30 * 60_000).result.catch(() => undefined);
+        await fake.spawned;
+        await vi.advanceTimersByTimeAsync(SILENCE);
+        expect(fake.signals).toEqual(['SIGTERM']);
+      });
+    });
+
+    it('restarts on every RPC line, so a model that streams is never stopped', async () => {
+      await withFakeChild(async (fake) => {
+        void start(0).result.catch(() => undefined);
+        await fake.spawned;
+        for (let i = 0; i < 10; i++) {
+          await vi.advanceTimersByTimeAsync(SILENCE - 100);
+          frame(fake, { type: 'message_update', assistantMessageEvent: { type: 'thinking_delta', delta: '.' } });
+          await flush();
+        }
+        expect(fake.signals).toEqual([]);
+      });
+    });
+
+    it('waits while a tool runs, and arms again when the tool ends', async () => {
+      await withFakeChild(async (fake) => {
+        void start(0).result.catch(() => undefined);
+        await fake.spawned;
+        frame(fake, { type: 'tool_execution_start', toolCallId: 't1', toolName: 'bash', args: { command: 'npm test' } });
+        await flush();
+        await vi.advanceTimersByTimeAsync(SILENCE * 20);
+        expect(fake.signals).toEqual([]);
+
+        frame(fake, { type: 'tool_execution_end', toolCallId: 't1', result: { content: [] } });
+        await flush();
+        await vi.advanceTimersByTimeAsync(SILENCE);
+        expect(fake.signals).toEqual(['SIGTERM']);
+      });
+    });
+
+    it('never fires on a settled session waiting for its user', async () => {
+      await withFakeChild(async (fake) => {
+        void start(0).result.catch(() => undefined);
+        await fake.spawned;
+        frame(fake, { type: 'agent_settled' });
+        await flush();
+        await vi.advanceTimersByTimeAsync(SILENCE * 20);
+        expect(fake.signals).toEqual([]);
+      });
+    });
+
+    it('never fires while an extension dialog waits for a person', async () => {
+      await withFakeChild(async (fake) => {
+        void start(0).result.catch(() => undefined);
+        await fake.spawned;
+        frame(fake, { type: 'extension_ui_request', id: 'd-1', method: 'confirm', title: 'Allow?', message: 'Allow the tool?' });
+        await flush();
+        await vi.advanceTimersByTimeAsync(SILENCE * 20);
+        expect(fake.signals).toEqual([]);
+      });
+    });
+
+    it('is off when silenceLimitMs is 0', async () => {
+      await withFakeChild(async (fake) => {
+        void new PiRunner({ bin: 'pi', timeoutMs: 0, silenceLimitMs: 0, supportsMcpConfig: NO_MCP_CONFIG })
+          .startSession({ userPrompt: 'do it', cwd: process.cwd() })
+          .result.catch(() => undefined);
+        await fake.spawned;
+        await vi.advanceTimersByTimeAsync(PI_SILENCE_LIMIT_MS * 3);
+        expect(fake.signals).toEqual([]);
+      });
+    });
+
+    it('defaults to ten minutes', () => {
+      expect(PI_SILENCE_LIMIT_MS).toBe(10 * 60_000);
     });
   });
 });
