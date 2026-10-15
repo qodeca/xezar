@@ -321,6 +321,6 @@ describe('codexIsolationNote', () => {
 
   it('says which servers run with the project settings only (#1007)', () => {
     const note = codexIsolationNote({ config: {}, disabledServers: [], projectOnlyServers: ['chrome-devtools'], keptOff: [] });
-    expect(note).toContain("chrome-devtools runs with the project's own settings only");
+    expect(note).toContain("chrome-devtools is set up with the project's own settings only");
   });
 });

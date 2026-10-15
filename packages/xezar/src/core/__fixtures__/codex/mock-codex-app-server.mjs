@@ -29,6 +29,9 @@
 // #849: `MOCK_CODEX_EXPECT_SANDBOX=<mode>` makes thread/start|resume refuse any
 // other `sandbox`, and `MOCK_CODEX_THREAD_LOG=<file>` appends each of those two
 // requests (method + params) to that file so a test can pin them whole.
+//
+// #1026: `MOCK_CODEX_MCP_STARTUP_FAILED=1` follows thread/start with MCP startup
+// statuses: `browser` fails, `docs` gets ready, and a child thread's `other` fails.
 import { appendFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { createInterface } from 'node:readline';
@@ -213,6 +216,14 @@ rl.on('line', (line) => {
     if (msg.method === 'thread/start') {
       emit({ method: 'thread/started', params: { thread: { id: 'th_mock_1' } } });
       emit({ id: msg.id, result: { thread: { id: 'th_mock_1' } } });
+      if (process.env.MOCK_CODEX_MCP_STARTUP_FAILED === '1') {
+        const status = (threadId, name, state, error = null) =>
+          emit({ method: 'mcpServer/startupStatus/updated', params: { threadId, name, status: state, error, failureReason: null } });
+        status('th_mock_1', 'browser', 'starting');
+        status('th_mock_1', 'browser', 'failed', 'MCP client for `browser` timed out after 30 seconds.');
+        status('th_mock_1', 'docs', 'ready');
+        status('th_child_2', 'other', 'failed', 'a sub-agent thread of its own');
+      }
     } else if (process.env.MOCK_CODEX_REJECT_RESUME === '1') {
       emit({ id: msg.id, error: { code: -32603, message: `no rollout found for thread id ${msg.params?.threadId ?? ''}` } });
       rl.close();
