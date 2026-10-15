@@ -125,6 +125,20 @@ describe.skipIf(!onWindows)('ensurePrivateDir on Windows (#963)', () => {
     expect(await checkPrivateDir(dir, [join(dir, 'a.key')])).toEqual({ ok: true });
   }, 60_000);
 
+  // Break: CI's Windows Node 22 leg failed with a bare "is not private to the current user" for a
+  // PowerShell that never answered, so nobody could tell a timeout from a real access entry.
+  it('says on a test run why a folder with no access list was refused', async () => {
+    const dir = join(base, 'ipc');
+    mkdirSync(dir);
+    const result = await ensurePrivateDir(dir, {
+      run: async () => {
+        throw new Error('timed out after 15000 ms');
+      },
+    });
+    expect(result).toMatchObject({ ok: false, reason: 'not-private' });
+    expect(!result.ok && result.message).toContain('[test: PowerShell gave no access list: timed out after 15000 ms]');
+  });
+
   it('notices a grant added to the folder later', async () => {
     const dir = join(base, 'ipc');
     expect(await ensurePrivateDir(dir)).toEqual({ ok: true });
