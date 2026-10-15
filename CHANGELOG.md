@@ -1,3 +1,43 @@
+# 0.20.1 (2026-10-15)
+
+## Highlights
+
+A fix release. On Windows, a step with a long system prompt starts again and a Codex read-only
+step can run commands again. A Codex run keeps a project MCP server that your own Codex config also
+names, a workflow check step gets the task's pull request number, and the merge no longer refuses
+every pull request on a repository that requires no review.
+
+## 🐛 Fixes
+
+- 🐛 **A workflow check step now knows the task's pull request.** It gets `XEZ_PR_NUMBER` when the
+  run knows its PR, so a workflow can check the PR out before a read-only review agent starts – a
+  Codex read-only step's sandbox cannot write git, so it could not check the PR out itself. (#1006)
+- 🐛 **A Codex run keeps a project MCP server when your own Codex config names it too.** A server
+  the project's trusted `.codex/config.toml` declares used to be switched off for every Codex run as
+  soon as `~/.codex/config.toml` also declared it (often `chrome-devtools`). The run now gets the
+  project's own definition of it, and none of your home settings for it; a home setting a run cannot
+  leave out, such as an `env` entry or a `url`, still keeps the server off and the run's note names
+  it. (#1007)
+- 🐛 **On Windows, a step with a long system prompt starts again.** Claude Code and pi got the
+  system prompt on the command line, and Windows refuses a command line longer than 32,767
+  characters, so the step failed with `spawn ENAMETOOLONG`. xezar now writes the prompt to a
+  private temporary file and passes its path (`--append-system-prompt-file` for Claude Code); the
+  file is deleted when the agent exits. If the file cannot be written, the prompt goes on the
+  command line as before. (#1008)
+- 🐛 **On Windows, a Codex read-only step can run commands again.** Codex refused every shell
+  command of a read-only step with "blocked by policy", because its Windows sandbox needs an
+  explicit mode. xezar now asks for Codex's unelevated Windows sandbox for those steps; writes
+  outside the working folder are still refused. Linux and macOS are unchanged. (#1009)
+- 🐛 **The merge no longer refuses a pull request because no review is required.** GitHub reports
+  no review decision when the base branch asks for no review, and xezar read that as "could not
+  confirm the rules" (`rules-unknown`), so the leader's merge and the cockpit merge box refused
+  every pull request on such a repository. xezar now reads the branch protection and the branch
+  rulesets: when neither asks for an approval or a code-owner review, the missing decision means
+  "not required". A branch with no protection counts as no requirements; a protection read that
+  fails still refuses. (#1017)
+
+---
+
 # 0.20.0 (2026-10-14)
 
 ## Highlights
