@@ -325,6 +325,18 @@ describe('pi RPC argv', () => {
     ).toEqual(['--mode', 'rpc', '--tools', 'read,grep,find,bash']);
   });
 
+  // Break: `mcp__chrome-devtools__navigate_page` lower-cased into a name the adapter never
+  // registers, so pi dropped every browser tool from the step (#1015).
+  it('names a listed MCP tool the way pi-mcp-adapter registers it as a direct tool (#1015)', () => {
+    expect(
+      buildPiArgs({
+        cwd: '/repo',
+        userPrompt: 'task',
+        allowedTools: ['Read', 'mcp__chrome-devtools__navigate_page', 'mcp__chrome-devtools__take_screenshot'],
+      }),
+    ).toEqual(['--mode', 'rpc', '--tools', 'read,mcp__chrome-devtools_navigate_page,mcp__chrome-devtools_take_screenshot']);
+  });
+
   it('keeps bash and hands a bashAllowlist to the guard extension, with no worktree (#856)', () => {
     const args = buildPiArgs({
       cwd: '/repo',
