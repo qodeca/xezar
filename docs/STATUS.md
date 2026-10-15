@@ -5,7 +5,7 @@ Maintainer-facing notes on known gaps and unfinished migrations. The standing ru
 
 ## Stopping children's programs when `serve` exits on Linux and macOS
 
-Tracked in [#881](https://github.com/qodeca/xezar/issues/881).
+A documented limit, not planned work: the owner kept it as is on 2026-10-15, because the next start already stops the leftovers. [#881](https://github.com/qodeca/xezar/issues/881) is closed.
 
 On Windows, `xezar serve` stops the programs its tracked children started before it exits (see
 `packages/xezar/src/AGENTS.md` § Platform layer, Processes). On Linux and macOS the exit is still
