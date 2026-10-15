@@ -55,6 +55,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { agentHomePaths } from '../paths.ts';
 import { isXezarBridge } from './codex-run-isolation.ts';
+import { piDirectTools } from './pi-mcp-tools.ts';
 
 /** The server name the cockpit's setup card registers xezar's bridge under (see `isXezarBridge`). */
 const RESERVED_BRIDGE_NAME = 'xezar';
@@ -136,11 +137,17 @@ export interface PiMcpIsolation extends McpScan {
  * so it CARRIES that file forward rather than replacing it: dropping the person's global servers
  * is not what #342 asks for. On top of it go `disabled: true` markers, which survive the project
  * files merged above because the adapter merges a server entry field by field.
+ *
+ * A server whose tools the step names (`mcp__<server>__<tool>` in `allowedTools`) also gets
+ * `toolPrefix: "mcp"` and `directTools: [<those tools>]`, the same field-by-field way, so the
+ * adapter registers exactly those tools under the names `--tools` lists (#1015, `pi-mcp-tools.ts`).
+ * A switched-off server gets nothing: `disabled: true` wins.
  */
 export function piMcpIsolation(
   cwd: string,
   env: NodeJS.ProcessEnv = process.env,
   readFile: ReadConfigFile = readConfigFile,
+  allowedTools: readonly string[] = [],
 ): PiMcpIsolation {
   const scan = scanMcpFiles(cwd, PI_PROJECT_FILES, readFile);
   const agentDir = agentHomePaths(env).pi;
@@ -155,6 +162,10 @@ export function piMcpIsolation(
     // the literal `true` disables, so the value is spelled out rather than computed.
     ...off.map((name) => [name, { ...asRecord(inheritedServers[name]), disabled: true }] as const),
   ]);
+  for (const [name, tools] of piDirectTools(allowedTools)) {
+    if (off.includes(name)) continue;
+    servers[name] = { ...asRecord(servers[name]), toolPrefix: 'mcp', directTools: tools };
+  }
 
   return {
     ...scan,

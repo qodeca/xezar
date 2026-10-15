@@ -120,6 +120,25 @@ describe('the seam keeps the project xezar bridge out of a task-spawned client',
     overlay.cleanup();
   });
 
+  // Break: a pi step listing chrome-devtools tools got none, because the adapter showed them only
+  // behind its `mcp` proxy tool, which `--tools` never names (#1015).
+  it('pi: a server whose tools the step lists gets exactly those as direct tools, a disabled one nothing (#1015)', () => {
+    write('.pi/mcp.json', { mcpServers: { xezar: BRIDGE, docs: PROJECT_SERVER } });
+    const isolation = piMcpIsolation(root, { PI_CODING_AGENT_DIR: join(root, 'pi-home') }, undefined, [
+      'Read',
+      'mcp__chrome-devtools__navigate_page',
+      'mcp__chrome-devtools__take_screenshot',
+      'mcp__xezar__health',
+    ]);
+    const servers = isolation.overlay.mcpServers as Record<string, Record<string, unknown>>;
+    // A partial entry: the server's own definition comes from the project file merged above it.
+    expect(servers['chrome-devtools']).toEqual({ toolPrefix: 'mcp', directTools: ['navigate_page', 'take_screenshot'] });
+    expect(servers.xezar).toEqual({ disabled: true });
+    // A server the step does not name is left exactly as it was.
+    expect(servers.docs).toBeUndefined();
+    expect(piMcpIsolation(root, { PI_CODING_AGENT_DIR: join(root, 'pi-home') }).overlay.mcpServers).not.toHaveProperty('chrome-devtools');
+  });
+
   it('opencode: the child env carries the one config layer that outranks the project file', () => {
     write('opencode.json', { mcp: { xezar: { type: 'local', command: ['npx', '-y', '@qodeca/xezar', 'mcp'] } } });
 
