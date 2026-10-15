@@ -1,10 +1,10 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { onWindows, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
-import { CheckShellMissingError, launchCheckStep } from './check-step-shell.ts';
+import { CheckShellMissingError, launchCheckStep, restoreMsys } from './check-step-shell.ts';
 import * as processLaunch from './process-launch.ts';
 
 afterEach(() => {
@@ -37,6 +37,20 @@ describe('launchCheckStep without Git Bash (#963)', () => {
     expect(run).toThrow(/Git for Windows \(it includes Git Bash\)/);
     expect(launch).not.toHaveBeenCalled();
     expect(msys).not.toHaveBeenCalled();
+  });
+});
+
+// Break: the step's own programs inheriting `MSYS=noglob`, so Git's sh splits a quoted helper path
+// such as gh's credential helper under `C:\Program Files` at its space (#1023).
+describe('restoreMsys (#1023)', () => {
+  it('unsets MSYS when the caller had none', () => {
+    expect(restoreMsys({ PATH: 'C:\\Windows' })).toBe('unset MSYS; ');
+  });
+
+  it("puts the caller's MSYS back exactly, whatever its spelling and quotes", () => {
+    expect(restoreMsys({ MSYS: 'winsymlinks:nativestrict' })).toBe("export MSYS='winsymlinks:nativestrict'; ");
+    expect(restoreMsys({ Msys: '' })).toBe("export MSYS=''; ");
+    expect(restoreMsys({ MSYS: "a'b" })).toBe("export MSYS='a'\\''b'; ");
   });
 });
 
@@ -91,6 +105,19 @@ describe.skipIf(!onWindows)('launchCheckStep in Git Bash on Windows (#963)', () 
     expect(found).toBe('found');
     // Not a login shell: TMP is still the Windows temp folder, not Git's own `/tmp`.
     expect(temp?.toLowerCase()).toBe(realpathSync.native(process.env.TMP ?? tmpdir()).toLowerCase());
+  });
+
+  it("gives the step's programs the caller's MSYS, so a quoted helper path with a space runs (#1023)", async () => {
+    dir = realpathSync.native(mkdtempSync(join(tmpdir(), 'xez-check-shell-')));
+    const helperDir = join(dir, 'dir with space');
+    mkdirSync(helperDir);
+    writeFileSync(join(helperDir, 't.sh'), '#!/bin/sh\necho helper-ran\n');
+    // The way gh hands git its credential helper: a double-quoted Windows path after `!`.
+    const alias = `alias.t=!"${join(helperDir, 't.sh')}"`;
+    const { code, out } = await runStep(`echo "MSYS=\${MSYS-unset}"; git -c '${alias}' t`, dir);
+    expect(out).toContain(`MSYS=${process.env.MSYS ?? 'unset'}`);
+    expect(out).toContain('helper-ran');
+    expect(code).toBe(0);
   });
 
   it('is Git\'s own bash, not WSL\'s', async () => {
