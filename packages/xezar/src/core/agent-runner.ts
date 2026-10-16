@@ -60,6 +60,10 @@ export interface AgentRunSpec {
   bashAllowlist?: string[];
   /** Extra directories the agent may read/write besides `cwd`. */
   additionalDirectories?: string[];
+  /** Claude Code only (#1001): the absolute path of a settings file the engine pinned from the
+   *  step's `claudeSettings` (hooks only, read from the run's base commit). The Claude runner
+   *  passes it as `--settings`; the engine never sets it for another backend. */
+  claudeSettingsFile?: string;
   /** Extra env vars for the agent process (merged over `process.env`) —
    *  e.g. XEZ_HANDOFF_FILE / XEZ_TODOS_FILE / XEZ_TASK_ID (spec 007). */
   env?: Record<string, string>;

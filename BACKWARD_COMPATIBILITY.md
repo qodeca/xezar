@@ -40,7 +40,10 @@ CONFORMS WITH FOLLOW-UPS and CONTRADICTS to `architecture-review` beside APPROVE
 Renaming or removing a role or a word is a break. A packet is recorded only under the role the
 step that settles it declares; a Continue reports as the step it completes — the step whose session
 it resumes, or, in a fresh session, the workflow step it finishes — never as a later reviewer step
-(#864). The most steps a chain may hold when it is saved
+(#864). An agent step's optional `claudeSettings`
+(#1001: `files` and `scripts`, repository-relative) is additive; absent, a step starts
+exactly as before. Its accepted settings keys (`hooks` only) may widen only by an owner decision,
+and narrowing them would refuse files that load today. The most steps a chain may hold when it is saved
 or run inline (`WORKFLOW_MAX_STEPS`, the same number for the HTTP API, MCP and the cockpit) rose
 from 8 to 12 in 0.20.0; raising it is additive, lowering it would refuse files that save today.
 
@@ -52,6 +55,9 @@ anyone can still have it on disk; a migration is tolerant and never requires the
 file by hand. A run started with `evidenceFromRunId` (#933) also owns `runs/<runId>-evidence/`, a
 read-only copy of the named task's evidence that the engine replaces at each agent step and deletes
 with the run, the way it deletes the run's screenshots.
+A new top-level name under `.local/xezar/` is listed in `STATE_NAME_ENTRIES`
+(`packages/xezar/src/local-xezar-top-level-names.ts`) in the same change; #1001 adds the
+`claude-settings/` directory (pinned step hooks), and a new directory is additive.
 
 ## 6. Environment variables
 

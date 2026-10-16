@@ -43,7 +43,7 @@ Those skill names are examples: create or choose matching [skills](06-skills.md)
 
 ## To choose agent versus check steps
 
-An **agent step** has `prompt`, `skill`, or both. It can also set `runner` (`claude`, `codex`, `opencode` or `pi`), `model`, `allowedTools` and `bashAllowlist`. Tool restrictions differ between [backends](04-agent-backends.md#to-control-tool-access-per-backend).
+An **agent step** has `prompt`, `skill`, or both. It can also set `runner` (`claude`, `codex`, `opencode` or `pi`), `model`, `allowedTools`, `bashAllowlist` and, on Claude Code, [`claudeSettings`](#to-load-repository-hooks-on-a-claude-code-step). Tool restrictions differ between [backends](04-agent-backends.md#to-control-tool-access-per-backend).
 
 A **check step** has `command`. Exit code zero passes; a non-zero exit fails or enters its configured repair loop. Do not combine `command` with `prompt` or `skill` in the same step. Checks execute shell commands, so use commands suitable for the project and machine running xezar. They run in Bash: `bash -lc` on Linux and macOS, and Git for Windows' Git Bash (`bash -c`) on Windows.
 
@@ -58,6 +58,25 @@ A retry target must exist and precede the check. Without a retry rule, or after 
 Set `timeout` on an agent step to a positive whole-number duration such as `45s`, `90m` or `2h`. Use `none` for no wall-clock cap. Zero durations and values beyond the supported timer range (about 24 days) are rejected.
 
 If omitted, earlier agent steps inherit a 30-minute timeout. An agent step at the very end of the workflow stays open for follow-ups without that wall-clock cap; idle-session limits still apply. An explicit `timeout` overrides this default. An agent followed by a check is an earlier step even if it is the only agent in the workflow. `timeout` is rejected on check steps; put any command-specific deadline in the check command itself.
+
+## To load repository hooks on a Claude Code step
+
+A step that allows neither `Edit` nor `Write` is read-only, and on Claude Code it loads your user settings only, never the project's own Claude settings. To give such a step a narrow guard – for example a `PreToolUse` hook that approves one exact command shape – keep the hook in the repository and name it with `claudeSettings`:
+
+```yaml
+  - id: review
+    skill: review
+    allowedTools: [Read, Grep, Glob, Bash]
+    claudeSettings:
+      files: [hooks/review-settings.json]
+      scripts: [hooks/review-guard.sh]
+```
+
+- `files` are Claude Code settings files. Each may contain the `hooks` key and nothing else, and every hook must be `type: "command"`. Any other key – `permissions`, `sandbox`, `env`, `mcpServers` and the like – fails the step with a message that names the key.
+- `scripts` lists every repository file a hook command runs. A hook command that names a repository file not listed here fails the step, and so does shell expansion other than a leading `$CLAUDE_PROJECT_DIR/`.
+- Paths are relative to the repository root. Every file is read from the task's base commit (the branch or commit the isolated working copy started from), not from the working copy, so a change under review cannot change the hook that guards its own review. Commit a hook to the base branch before a step can use it.
+- xezar copies the files into the project's local state and points each hook command at that copy. A hook script that reads another repository file reads the working copy's version, so keep hook scripts self-contained.
+- Only Claude Code supports `claudeSettings`. On another backend the step runs without the hooks and the run records a note saying so.
 
 ## To finish earlier steps with XEZ:DONE
 
@@ -75,7 +94,7 @@ Name the workflow and review the YAML preview before choosing **Save**. Saving a
 
 ## To import or export a workflow
 
-Use **Import** to paste YAML into the builder. Parsing happens on the server; fix any reported validation errors before saving. **Export** downloads a YAML file and **Copy** puts YAML on the clipboard. A plain skill stack uses the compact `skills` form; checks, prompt-only steps, custom prompts other than `{{task}}`, per-step runners or models, tools, retries, timeouts, or a step name that differs from its skill require full `steps` form.
+Use **Import** to paste YAML into the builder. Parsing happens on the server; fix any reported validation errors before saving. **Export** downloads a YAML file and **Copy** puts YAML on the clipboard. A plain skill stack uses the compact `skills` form; checks, prompt-only steps, custom prompts other than `{{task}}`, per-step runners or models, tools, Claude hook settings, retries, timeouts, or a step name that differs from its skill require full `steps` form.
 
 ## Related settings / env / config
 

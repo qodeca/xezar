@@ -86,6 +86,11 @@ import {
   type WorkflowDef,
   type WorkflowStepDef,
 } from './types.ts';
+import {
+  ClaudeStepSettingsError,
+  claudeSettingsUnsupportedNote,
+  pinClaudeStepSettings,
+} from './claude-step-settings.ts';
 
 const CHECK_OUTPUT_CAP = 20_000;
 /**
@@ -1405,6 +1410,32 @@ export class RunManager {
    * `AgentAccountUnavailableError` for a committed account this machine lacks (#600 FR-6.3); both
    * callers turn either into the step's named error before anything spawns.
    */
+  /**
+   * A step's `claudeSettings` (#1001), resolved for the backend about to run it. Claude Code gets
+   * the pinned, hooks-only settings file (read from the run's base commit, never the working copy);
+   * another backend gets a note saying the field is unsupported there, so nothing is ignored
+   * silently. Both agent construction sites call this — the first spawn and every continuation —
+   * so a resumed session keeps its hooks. Throws `ClaudeStepSettingsError`, which each caller
+   * turns into the step's named failure before anything spawns.
+   */
+  private async resolveStepClaudeSettings(
+    runId: string,
+    step: WorkflowStepDef | undefined,
+    backend: RunnerId,
+    cwd: string,
+  ): Promise<{ file?: string; note?: string }> {
+    if (!step?.claudeSettings) return {};
+    if (backend !== 'claude') return { note: claudeSettingsUnsupportedNote(backend) };
+    const file = await pinClaudeStepSettings({
+      field: step.claudeSettings,
+      repoRoot: this.repoRoot,
+      baseRef: this.store.getRun(runId)?.baseBranch,
+      cwd,
+      dataDir: this.dataDir,
+    });
+    return { file };
+  }
+
   private async agentEnvForStep(
     runId: string,
     backend: RunnerId,
@@ -3510,6 +3541,19 @@ export class RunManager {
       return;
     }
     this.store.updateStep(runId, stepId, { profileId: continueProfile.profileId });
+    // The owning step's pinned Claude hooks (#1001) come back with its tools: a continuation
+    // that dropped them would run a read-only step without its guard.
+    let continueClaudeSettings: { file?: string; note?: string };
+    try {
+      continueClaudeSettings = await this.resolveStepClaudeSettings(runId, toolsStep, continueBackend, state.cwd);
+    } catch (err) {
+      if (!(err instanceof ClaudeStepSettingsError)) throw err;
+      failBeforeSpawn(err.message);
+      return;
+    }
+    if (continueClaudeSettings.note) {
+      this.store.appendEvent(runId, { type: 'note', stepId, message: continueClaudeSettings.note });
+    }
 
     // A shutdown that is stopping this process's programs starts nothing new (#963).
     if (this.exiting) await this.parkedForExit();
@@ -3547,6 +3591,7 @@ export class RunManager {
         ...worktreeGuardRoots(state.cwd, this.repoRoot),
         allowedTools: toolsStep?.allowedTools ?? DEFAULT_ALLOWED_TOOLS,
         bashAllowlist: toolsStep?.bashAllowlist,
+        ...(continueClaudeSettings.file ? { claudeSettingsFile: continueClaudeSettings.file } : {}),
         additionalDirectories: agentDirectories(this.repoRoot, this.dataDir, continueProfile.env),
         env: continueProfile.env,
         model: continueModel,
@@ -4557,6 +4602,16 @@ export class RunManager {
         message: 'repair turn — resuming this step\'s own session with the failing output only; the brief is not repeated',
       });
     }
+    // The step's repository-owned Claude hooks (#1001): pinned from the base commit, or a note on
+    // a backend that cannot load them. A refused settings file fails the step, naming the reason.
+    let stepClaudeSettings: { file?: string; note?: string };
+    try {
+      stepClaudeSettings = await this.resolveStepClaudeSettings(runId, step, stepBackend, state.cwd);
+    } catch (err) {
+      if (err instanceof ClaudeStepSettingsError) return err.message;
+      throw err;
+    }
+    if (stepClaudeSettings.note) emit({ type: 'note', stepId: step.id, message: stepClaudeSettings.note });
     // A shutdown that is stopping this process's programs starts nothing new (#963).
     if (this.exiting) await this.parkedForExit();
     const runner = createRunner(stepBackend);
@@ -4624,6 +4679,7 @@ export class RunManager {
             ...worktreeGuardRoots(state.cwd, this.repoRoot),
             allowedTools: step.allowedTools ?? DEFAULT_ALLOWED_TOOLS,
             bashAllowlist: step.bashAllowlist,
+            ...(stepClaudeSettings.file ? { claudeSettingsFile: stepClaudeSettings.file } : {}),
             // The handoff file and this run's evidence directory live outside the worktree — grant access.
             additionalDirectories: agentDirectories(this.repoRoot, this.dataDir, stepProfile.env),
             env: stepProfile.env,

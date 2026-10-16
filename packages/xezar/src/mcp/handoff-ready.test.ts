@@ -200,7 +200,8 @@ describe('handoff_git ready — a leader moves its own draft pull request forwar
     expect(forge().prs).toMatchObject([{ number: 1, isDraft: true }]);
 
     const before = await mcp.act({ action: 'merge_state', number: 1 });
-    expect(before.mergeState).toMatchObject({ isDraft: true, eligibility: 'blocked', canMerge: false });
+    // The whole answer on failure: a refusal carries no `mergeState`, only its reason (#1056).
+    expect(before.mergeState, JSON.stringify(before)).toMatchObject({ isDraft: true, eligibility: 'blocked', canMerge: false });
     expect(before.mergeState.blockers).toContainEqual({ code: 'draft', message: 'Mark the pull request ready for review before merging.' });
 
     const readied = await mcp.act({ action: 'ready', number: 1, expectedHeadSha: before.mergeState.headSha });
@@ -210,7 +211,7 @@ describe('handoff_git ready — a leader moves its own draft pull request forwar
     expect(forge().prs).toMatchObject([{ number: 1, isDraft: false }]);
     expect(forge().calls).toContain('pr ready 1');
     const after = await mcp.act({ action: 'merge_state', number: 1 });
-    expect(after.mergeState).toMatchObject({ isDraft: false, eligibility: 'ready', canMerge: true });
+    expect(after.mergeState, JSON.stringify(after)).toMatchObject({ isDraft: false, eligibility: 'ready', canMerge: true });
 
     // Refused in the service's own words once it is ready, and nothing more reaches the forge.
     const again = await mcp.act({ action: 'ready', number: 1, expectedHeadSha: before.mergeState.headSha });

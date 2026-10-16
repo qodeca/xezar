@@ -15,13 +15,17 @@ if (!statePath) {
   process.exit(2);
 }
 const lockPath = `${statePath}.lock`;
+// On Windows a lock folder another call has just removed can still be pending deletion, and
+// `mkdir` then fails with EPERM (or EACCES) instead of EEXIST (#1056). That is the lock being
+// busy, not a permission problem, so it waits like EEXIST does.
+const busy = new Set(process.platform === 'win32' ? ['EEXIST', 'EPERM', 'EACCES'] : ['EEXIST']);
 const deadline = Date.now() + 10_000;
 for (;;) {
   try {
     mkdirSync(lockPath);
     break;
   } catch (error) {
-    if (error.code !== 'EEXIST' || Date.now() > deadline) {
+    if (!busy.has(error.code) || Date.now() > deadline) {
       process.stderr.write(`fake gh: cannot lock ${lockPath}: ${error.message}\n`);
       process.exit(2);
     }
