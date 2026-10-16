@@ -1270,6 +1270,7 @@ describe('a read-only step runs Codex confined to its worktree and its own roots
   });
 
   // The proof that matters: the Windows line, run the way Codex runs it, really starts the hook.
+  // win32-skip(#976): Codex starts hooks through PowerShell on Windows only; the POSIX line is pinned above
   it.runIf(onWindows)('starts the hook through pwsh -NoProfile -Command on Windows', () => {
     const dir = mkdtempSync(join(tmpdir(), "xez-1076 o'k "));
     try {
