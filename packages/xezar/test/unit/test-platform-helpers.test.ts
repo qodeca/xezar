@@ -3,13 +3,14 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { FILE_SYMLINKS, linkDir, npmCommand, onWindows, shortTmpRoot, TEST_DIR_RM_OPTIONS, withPlatform } from '../helpers/platform.ts';
+import { FILE_SYMLINKS, linkDir, localSocketPath, npmCommand, onWindows, shortTmpRoot, TEST_DIR_RM_OPTIONS, withPlatform } from '../helpers/platform.ts';
 
 // POSIX identity: these pass both before and after #963 by design – they pin that adopting the
 // helpers changes nothing on Linux or macOS.
 test('POSIX: every helper returns the pre-#963 literal', { skip: onWindows ? 'win32-skip(#976): POSIX-only identity pin – the Windows branch is pinned by the next test' : false }, () => {
   assert.equal(onWindows, false);
   assert.equal(shortTmpRoot(), '/tmp');
+  assert.equal(localSocketPath('/tmp/x', 'inbox.sock'), '/tmp/x/inbox.sock');
   assert.equal(FILE_SYMLINKS, true);
   const c = npmCommand(['x']);
   assert.deepEqual(c, { file: 'npm', args: ['x'] });

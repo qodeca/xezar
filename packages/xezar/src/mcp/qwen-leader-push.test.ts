@@ -23,7 +23,7 @@ import { LineFramer, encodeFrame, type McpToolResult } from './ipc.ts';
 import { QWEN_MESSAGING_SOCKET_ENV, QWEN_MESSAGING_TOKEN_ENV } from './qwen-messaging.ts';
 import { tools } from './tools/index.ts';
 import { withOperationId } from './tools/operation-id.testkit.ts';
-import { shortTmpRoot, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
+import { shortTmpRoot, TEST_DIR_RM_OPTIONS, localSocketPath } from '../../test/helpers/platform.ts';
 
 /**
  * #1045 — a Qwen Code leader, against the REAL composed service and the real `runBridge` a Qwen Code
@@ -78,7 +78,7 @@ interface InboxMessage {
  */
 async function fakeQwenInbox() {
   const dir = tmp('xqi-');
-  const path = join(dir, 'inbox.sock');
+  const path = localSocketPath(dir, 'inbox.sock');
   const messages: InboxMessage[] = [];
   const unauthenticated: number[] = [];
   const control: { receipt: string } = { receipt: 'delivered' };

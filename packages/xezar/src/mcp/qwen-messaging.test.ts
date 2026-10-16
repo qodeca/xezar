@@ -6,7 +6,7 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { createConnection, createServer, type Server } from 'node:net';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { shortTmpRoot, TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
+import { shortTmpRoot, TEST_DIR_RM_OPTIONS, localSocketPath } from '../../test/helpers/platform.ts';
 import { QwenMessenger, isQwenClientName, qwenInboxFrom, receiptAddress } from './qwen-messaging.ts';
 
 const cleanups: Array<() => unknown> = [];
@@ -17,7 +17,7 @@ afterEach(async () => {
 /** `answer` decides each receipt; `null` sends none. */
 async function inbox(answer: (index: number) => string | null) {
   const dir = realpathSync(mkdtempSync(join(shortTmpRoot(), 'xqm-')));
-  const path = join(dir, 'inbox.sock');
+  const path = localSocketPath(dir, 'inbox.sock');
   const frames: Array<Record<string, unknown>> = [];
   let index = 0;
   const server: Server = createServer((socket) => {
