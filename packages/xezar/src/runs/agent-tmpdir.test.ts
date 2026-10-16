@@ -38,13 +38,16 @@ describe('agentTmpEnv — per-run temp directory (#785)', () => {
   });
 
   afterEach(() => {
+    sweepAgentTmpDirs(dataDir, []); // also the short links a Linux host makes (#1065)
     rmSync(dataDir, TEST_DIR_RM_OPTIONS);
   });
 
   it('gives the run its own directory and creates it before the backend spawns', () => {
     const env = agentTmpEnv(dataDir, 'run-a', {});
-    expect(env.TMPDIR).toBe(agentTmpDir(dataDir, 'run-a'));
-    expect(env.TMPDIR).toBe(join(dataDir, 'tmp', 'run-a'));
+    // On Linux a folder this deep is reached through a short link (#1065); either way it is
+    // this run's own folder.
+    expect(realpathSync(env.TMPDIR as string)).toBe(realpathSync(agentTmpDir(dataDir, 'run-a')));
+    expect(agentTmpDir(dataDir, 'run-a')).toBe(join(dataDir, 'tmp', 'run-a'));
     expect(existsSync(env.TMPDIR as string)).toBe(true);
   });
 
@@ -147,6 +150,7 @@ describe('reaping the per-run temp directories (#785)', () => {
   });
 
   afterEach(() => {
+    sweepAgentTmpDirs(dataDir, []); // also the short links a Linux host makes (#1065)
     rmSync(dataDir, TEST_DIR_RM_OPTIONS);
   });
 
