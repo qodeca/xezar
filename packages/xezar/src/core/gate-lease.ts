@@ -95,6 +95,21 @@ export const GATE_LEASE_STALE_MS = 6 * GATE_LEASE_HEARTBEAT_MS;
  *  waited for takes minutes, and a tight sweep on a loaded machine is itself load. */
 export const GATE_LEASE_SWEEP_MS = 2_000;
 
+/**
+ * How long EVERY slot must keep answering `error` before the lease calls the directory unusable
+ * (#1038). One all-error sweep is not proof: on Windows a slot file the holder has just deleted can
+ * stay "delete pending" for a moment, and `open(…, 'wx')` on it answers EPERM rather than EEXIST.
+ * With one slot – the default – that single transient error used to be "every slot", so a waiter
+ * that swept at the moment of release gave up the lease and ran its gates unleased, beside the next
+ * holder. A read-only or missing directory stays unusable for the whole bound and is still reported
+ * within about a second; a wait of `waitMs` or less reports at its deadline as before.
+ */
+export const GATE_LEASE_UNUSABLE_AFTER_MS = 1_000;
+
+/** How soon a waiter sweeps again while every slot is answering `error`: short, because the usual
+ *  cause is a file Windows is still deleting, and a full sweep interval would waste the slot it frees. */
+export const GATE_LEASE_ERROR_RESWEEP_MS = 50;
+
 /** How often the waiter says out loud that it is still waiting. */
 export const GATE_LEASE_NOTICE_MS = 30_000;
 
@@ -124,6 +139,9 @@ export interface GateLeaseOptions {
   sweepMs?: number;
   noticeMs?: number;
   now?: () => number;
+  /** The per-slot lock attempt. Defaults to `acquireFileLock`; a test replaces it to produce an
+   *  error that the file system only gives on one OS, at one moment. */
+  tryLock?: typeof acquireFileLock;
   /**
    * The lease's own signals. Every observable moment is emitted here — acquisition, each wait
    * notice, the timeout, an unwritable directory, each heartbeat, the release — so a test can
@@ -211,6 +229,7 @@ export async function acquireGateLease(options: GateLeaseOptions = {}): Promise<
   const staleMs = options.staleMs ?? GATE_LEASE_STALE_MS;
   const sweepMs = options.sweepMs ?? GATE_LEASE_SWEEP_MS;
   const noticeMs = options.noticeMs ?? GATE_LEASE_NOTICE_MS;
+  const tryLock = options.tryLock ?? acquireFileLock;
   const started = now();
   const deadline = started + (options.waitMs ?? GATE_LEASE_WAIT_MS);
 
@@ -223,6 +242,8 @@ export async function acquireGateLease(options: GateLeaseOptions = {}): Promise<
   }
 
   let lastNotice = started;
+  // When the current run of all-error sweeps began, or null while some slot answers otherwise.
+  let erroringSince: number | null = null;
   for (;;) {
     // Swept in order, so a machine with capacity to spare concentrates its runs on the low slots
     // and a `pgrep`-free look at the directory says how many are busy.
@@ -232,7 +253,7 @@ export async function acquireGateLease(options: GateLeaseOptions = {}): Promise<
       const lockPath = slotLockPath(lockDir, slot);
       // `waitMs: 0` is one attempt plus one takeover chance, not a wait: waiting per FILE would
       // spend the whole bound on slot 1 while slot 2 sat free. The wait belongs to the SWEEP.
-      const attempt = await acquireFileLock(lockPath, { waitMs: 0, staleMs, now });
+      const attempt = await tryLock(lockPath, { waitMs: 0, staleMs, now });
       if (attempt.acquired) {
         const waitedMs = now() - started;
         const heartbeat = startHeartbeat(lockPath, heartbeatMs, now, emit, slot);
@@ -262,14 +283,17 @@ export async function acquireGateLease(options: GateLeaseOptions = {}): Promise<
     }
 
     // EVERY slot answered `error` — a read-only or missing directory, not contention. Waiting out
-    // twenty minutes for a permission problem to change its mind helps nobody.
+    // twenty minutes for a permission problem to change its mind helps nobody. But it must hold
+    // for `GATE_LEASE_UNUSABLE_AFTER_MS`, not for one sweep: see that constant (#1038).
     //
     // Every slot, not any: one slot failing while another is merely busy is a transient (the
     // directory removed under us between two sweeps, say), and giving up the whole lease for it
     // would drop the queueing this feature exists for on a machine that is otherwise fine. The
     // condition that is really being tested here is "this directory is unusable", and that one is
     // true of all N or of none.
-    if (errors === slots && firstError !== null) {
+    const allErrored = errors === slots && firstError !== null;
+    erroringSince = allErrored ? (erroringSince ?? now()) : null;
+    if (allErrored && (now() - (erroringSince ?? 0) >= GATE_LEASE_UNUSABLE_AFTER_MS || now() >= deadline)) {
       const reason = firstError instanceof Error ? firstError.message : String(firstError);
       const waitedMs = now() - started;
       emit({ type: 'unavailable', slots, waitedMs, reason });
@@ -285,7 +309,7 @@ export async function acquireGateLease(options: GateLeaseOptions = {}): Promise<
       lastNotice = now();
       emit({ type: 'waiting', slots, waitedMs: now() - started });
     }
-    await sleep(sweepMs);
+    await sleep(allErrored ? Math.min(sweepMs, GATE_LEASE_ERROR_RESWEEP_MS) : sweepMs);
   }
 }
 
