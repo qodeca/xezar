@@ -139,7 +139,11 @@ export async function runProvidersCommand(
     // Best-effort, like the route: the exact command below is the fallback.
   }
   if (!opened) {
-    io.error(`providers connect: no terminal window could be opened. Run this command yourself: ${command}`);
+    // A headless session (a script, CI, a remote agent) has no desktop to open a window on, and the
+    // sign-in asks questions only a person at a terminal can answer (#1010).
+    io.error(
+      `providers connect: no terminal window could be opened. Signing in needs a terminal you can type in, so it cannot finish from a script or a headless session. Open a terminal and run this command yourself: ${command}`,
+    );
     return 1;
   }
   io.log(`A login terminal opened for ${provider}. Finish signing in there: ${command}`);

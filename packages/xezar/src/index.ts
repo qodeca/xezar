@@ -1090,7 +1090,7 @@ async function serveCommand(
             activityEntry({
               level: 'info',
               subject: 'mcp',
-              message: `ready ${glyphs.dash} run xez mcp in ${ctx.root}`,
+              message: `ready ${glyphs.dash} run xezar mcp in ${ctx.root}`,
               event: 'mcp.ready',
               projectId: ctx.id,
             }),
@@ -1205,7 +1205,7 @@ async function serveCommand(
           activityEntry({
             level: 'info',
             subject: 'mcp',
-            message: `ready ${glyphs.dash} run xez mcp in this project folder`,
+            message: `ready ${glyphs.dash} run xezar mcp in this project folder`,
             event: 'mcp.ready',
           }),
         );
