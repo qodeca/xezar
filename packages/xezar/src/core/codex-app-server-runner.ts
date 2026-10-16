@@ -1,7 +1,7 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { chmod, lstat, mkdir, readFile, realpath, unlink } from 'node:fs/promises';
+import { chmod, lstat, mkdir, readdir, readFile, realpath, stat, unlink } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { writeFileAtomic } from '../platform/atomic-write.ts';
@@ -38,7 +38,7 @@ import {
 import { acquireFileLock, queueByLockPath } from './file-lock.ts';
 import { isReadOnlyStep, normalizeBashAllowlist } from './read-only-lock.ts';
 import { parseAskRequest, type AskQuestion } from './ask.ts';
-import { readNdjson } from './ndjson.ts';
+import { formatSize, MAX_NDJSON_LINE_CHARS, NdjsonLineTooLongError, readNdjson } from './ndjson.ts';
 import { V1TextCoalescer } from './v1-text-coalescer.ts';
 import { codexTurnLimit, isCodexModelBucket, mergeCodexSnapshot } from './codex-usage-limit.ts';
 import {
@@ -66,6 +66,9 @@ export interface CodexRunnerOptions {
   bin?: string;
   /** Wall-clock timeout for a run (ms); per-spec `timeoutMs` still wins. */
   timeoutMs?: number;
+  /** Largest single app-server message the session reads; defaults to the runtime's string
+   *  ceiling (`MAX_NDJSON_LINE_CHARS`). Tests lower it to exercise the refusal (#942). */
+  maxMessageChars?: number;
 }
 
 /**
@@ -187,11 +190,13 @@ export class CodexAppServerRunner implements AgentRunner {
 
   private readonly bin: string;
   private readonly timeoutMs: number;
+  private readonly maxMessageChars: number;
   private lastSession: CodexSession | null = null;
 
   constructor(opts: CodexRunnerOptions = {}) {
     this.bin = resolveCodexExecutable(opts.bin);
     this.timeoutMs = opts.timeoutMs ?? DEFAULT_RUN_TIMEOUT_MS;
+    this.maxMessageChars = opts.maxMessageChars ?? MAX_NDJSON_LINE_CHARS;
   }
 
   /** What a spec with no `timeoutMs` falls through to here (#460) — the same field the session
@@ -213,7 +218,7 @@ export class CodexAppServerRunner implements AgentRunner {
     onEvent?: (event: AgentEvent) => void,
     opts: SessionOptions = {},
   ): AgentSession {
-    const session = new CodexSession(this.bin, this.timeoutMs, spec, onEvent, opts);
+    const session = new CodexSession(this.bin, this.timeoutMs, spec, onEvent, opts, this.maxMessageChars);
     this.lastSession = session;
     return session;
   }
@@ -258,6 +263,8 @@ class CodexSession implements AgentSession {
   private readonly hook: CodexReadOnlyHook | undefined;
   private readonly requestedCodexHome: string | undefined;
   private hookLockPath: string | undefined;
+  /** The profile `initialize` reported, kept for naming a thread's history file (#942). */
+  private codexHome: string | undefined;
   /** Set the moment WE signal the child (EOF watchdog, cancel, kill switch).
    *  codex handles the signal and exits 143, so without this the runner reads
    *  its own teardown as a codex failure (#703). */
@@ -277,6 +284,7 @@ class CodexSession implements AgentSession {
     private readonly spec: AgentRunSpec,
     private readonly onEvent: ((event: AgentEvent) => void) | undefined,
     private readonly opts: SessionOptions,
+    private readonly maxMessageChars: number = MAX_NDJSON_LINE_CHARS,
   ) {
     const hook = codexReadOnlyHook(spec);
     this.hook = hook;
@@ -333,7 +341,7 @@ class CodexSession implements AgentSession {
       let sessionError: unknown;
       try {
         const readLoop = async () => {
-          for await (const line of readNdjson(this.child.stdout)) {
+          for await (const line of readNdjson(this.child.stdout, this.maxMessageChars)) {
             if (this.timedOut) break;
             let msg: CodexAppServerMessage;
             try {
@@ -357,7 +365,7 @@ class CodexSession implements AgentSession {
         await Promise.all([this.ready, readLoop()]);
       } catch (err) {
         if (!this.timedOut) {
-          sessionError = err;
+          sessionError = err instanceof NdjsonLineTooLongError ? await this.oversizedMessageError(err) : err;
           // Bootstrap failed before a usable turn exists. Closing stdin lets
           // app-server exit normally; end() also owns the TERM/KILL watchdog
           // if a broken child ignores EOF.
@@ -500,6 +508,7 @@ class CodexSession implements AgentSession {
     const initialized = await this.rpc.initialize();
     const requestedCodexHome = this.requestedCodexHome;
     const reportedCodexHome = stringField(initialized, 'codexHome');
+    this.codexHome = reportedCodexHome ?? requestedCodexHome;
     if (requestedCodexHome && reportedCodexHome
       && await canonicalPath(requestedCodexHome) !== await canonicalPath(reportedCodexHome)) {
       throw new Error(
@@ -548,7 +557,16 @@ class CodexSession implements AgentSession {
       config,
     };
     if (this.spec.resume && this.spec.sessionId) {
-      await this.rpc.request('thread/resume', { threadId: this.spec.sessionId, ...clean(overrides) });
+      // `excludeTurns`: xezar reads nothing from this response, and by default Codex puts the
+      // thread's WHOLE history in it as one JSON-RPC line — a long session's line can pass the
+      // runtime's string ceiling, which failed Continue with `Invalid string length` (#942). A
+      // Codex that predates the field ignores it (unknown params are tolerated); its oversized
+      // reply then fails readably through `oversizedMessageError`.
+      await this.rpc.request('thread/resume', {
+        threadId: this.spec.sessionId,
+        excludeTurns: true,
+        ...clean(overrides),
+      });
       this.threadId = this.spec.sessionId;
     } else {
       const res = await this.rpc.request('thread/start', clean(overrides));
@@ -571,6 +589,23 @@ class CodexSession implements AgentSession {
     // of the opening message.
     const first = prependSystemPrompt(this.spec.systemPrompt, this.spec.userPrompt);
     await this.startOrSteerTurn(first);
+  }
+
+  /**
+   * A message too large to read, said plainly (#942): what was too large, which thread, and — when
+   * the thread's stored history file can be found — that file and its size, so the person knows
+   * this session cannot be reopened and why. Only ever runs on that failure path.
+   */
+  private async oversizedMessageError(err: NdjsonLineTooLongError): Promise<Error> {
+    const threadId = this.spec.resume ? this.spec.sessionId : this.threadId;
+    const resuming = this.spec.resume && this.spec.sessionId !== undefined;
+    const history = threadId && this.codexHome ? await findCodexRolloutFile(this.codexHome, threadId) : undefined;
+    const subject = resuming ? `while resuming Codex thread ${threadId}` : threadId ? `in Codex thread ${threadId}` : 'from codex app-server';
+    const file = history ? ` The thread's stored history is ${history.path} (${formatSize(history.size, 'bytes')}).` : '';
+    const next = resuming
+      ? ' This session is too large to continue; start a fresh task in the same worktree instead.'
+      : '';
+    return new Error(`codex app-server sent ${err.message} ${subject}.${file}${next}`);
   }
 
   private async createReadOnlyLock(hook: CodexReadOnlyHook, sessionId: string): Promise<void> {
@@ -1204,6 +1239,43 @@ function clean<T extends Record<string, unknown>>(obj: T): Partial<T> {
     if (v !== undefined && v !== null) out[k as keyof T] = v as T[keyof T];
   }
   return out;
+}
+
+/**
+ * Where Codex keeps a thread's history: `<codexHome>/sessions/<yyyy>/<mm>/<dd>/rollout-…-<id>.jsonl`.
+ * Best effort and only used to name the file in an error (#942): any read failure, or a layout
+ * this does not recognise, answers `undefined`, and the error still names the thread and size.
+ */
+async function findCodexRolloutFile(
+  codexHome: string,
+  threadId: string,
+): Promise<{ path: string; size: number } | undefined> {
+  const suffix = `-${threadId}.jsonl`;
+  const walk = async (dir: string, depth: number): Promise<string | undefined> => {
+    let entries;
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch {
+      return undefined;
+    }
+    for (const entry of entries) {
+      if (entry.isFile() && entry.name.startsWith('rollout-') && entry.name.endsWith(suffix)) return join(dir, entry.name);
+    }
+    if (depth === 0) return undefined;
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const found = await walk(join(dir, entry.name), depth - 1);
+      if (found) return found;
+    }
+    return undefined;
+  };
+  const path = await walk(join(codexHome, 'sessions'), 3);
+  if (!path) return undefined;
+  try {
+    return { path, size: (await stat(path)).size };
+  } catch {
+    return undefined;
+  }
 }
 
 function stringField(obj: Record<string, unknown>, key: string): string | undefined {
