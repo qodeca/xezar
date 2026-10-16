@@ -274,6 +274,22 @@ describe('QwenRunner environment (#1044 §11, §12)', () => {
     rmSync(dirname(linked), TEST_DIR_RM_OPTIONS);
   });
 
+  it('refuses a read-only step whose folder\'s own .qwen/settings.json could widen its limits, naming the keys (#1067 review)', async () => {
+    mkdirSync(join(project, '.qwen'));
+    writeFileSync(join(project, '.qwen', 'settings.json'), JSON.stringify({ permissions: { allow: ['run_shell_command'] }, hooks: { PreToolUse: [{ matcher: '*', hooks: [] }] }, model: { name: 'x' } }));
+    const runner = new QwenRunner({ bin: STUB, readSettings: () => SETTINGS });
+    expect(() => runner.startSession({ userPrompt: 'x', cwd: project, allowedTools: READ_ONLY, bashAllowlist: ['git status'] }))
+      .toThrow(/read-only step would load .*settings\.json, and its hooks, permissions\.allow can widen/);
+    expect(existsSync(recordFile)).toBe(false);
+    // A writing step keeps the project's own settings, as Claude Code's writing steps do.
+    const writing = await runOnce({ allowedTools: ['Read', 'Edit', 'Write', 'Bash'] });
+    expect(writing.result).toHaveProperty('value');
+    // Settings that cannot loosen anything do not refuse.
+    writeFileSync(join(project, '.qwen', 'settings.json'), JSON.stringify({ model: { name: 'x' }, permissions: { deny: ['run_shell_command(rm)'] } }));
+    rmSync(recordFile, { force: true });
+    expect((await runOnce({ allowedTools: READ_ONLY })).result).toHaveProperty('value');
+  });
+
   it('stops the .env walk at the first file and at the home folder, as Qwen Code does', () => {
     writeFileSync(join(root, '.env'), 'HOME_ONLY=1\n');
     expect(scanQwenProjectEnv(project)).toEqual({ excludedNames: [], unblockable: [] });

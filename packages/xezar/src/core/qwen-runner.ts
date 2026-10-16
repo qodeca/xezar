@@ -60,6 +60,8 @@ import {
   qwenHookCommand,
   qwenSystemSettings,
   qwenUnblockableEnvMessage,
+  qwenWorkspaceLooseningMessage,
+  qwenWorkspaceLoosenings,
   scanQwenProjectEnv,
   writeQwenSystemSettings,
 } from './qwen-run-config.ts';
@@ -164,6 +166,10 @@ export class QwenRunner implements AgentRunner {
 
     const envScan = dryRun ? { excludedNames: [], unblockable: [] } : scanQwenProjectEnv(spec.cwd, env);
     if (envScan.unblockable.length > 0) throw new Error(qwenUnblockableEnvMessage(envScan.unblockable));
+    if (!dryRun && isReadOnlyStep(spec.allowedTools)) {
+      const loosening = qwenWorkspaceLoosenings(spec.cwd);
+      if (loosening) throw new Error(qwenWorkspaceLooseningMessage(loosening));
+    }
 
     const isolation = qwenMcpIsolation(spec.cwd);
     const isolationNote = runMcpIsolationNote('qwen', isolation);

@@ -75,6 +75,38 @@ export function scanQwenProjectEnv(
   }
 }
 
+/**
+ * The keys of the folder's own Qwen Code settings (`<cwd>/.qwen/settings.json`, Qwen Code's
+ * "workspace" scope) that can loosen a read-only step. Qwen Code 0.25.2 merges that file into every
+ * run in a trusted folder and has no flag to leave it out (Claude Code's `--setting-sources user`
+ * has no counterpart): `permissions.allow`/`ask` and `tools.allowed` are a union with xezar's
+ * rules, and its `hooks` run beside xezar's (and can rewrite a tool call's input). On a read-only
+ * step the folder is often the very change under review, so such a file is refused, as a project
+ * `.qwen/.env` is. Only names are returned; values are never kept.
+ */
+export function qwenWorkspaceLoosenings(cwd: string, readFile: (path: string) => string | undefined = readIfPresent): { file: string; keys: string[] } | undefined {
+  const file = join(realDir(cwd), '.qwen', 'settings.json');
+  const text = readFile(file);
+  if (text === undefined) return undefined;
+  const settings = parseJsonc(text);
+  // A file Qwen Code cannot read either is not a loosening; one xezar cannot read is refused.
+  if (settings === undefined) return { file, keys: ['(unreadable)'] };
+  const keys: string[] = [];
+  const nonEmpty = (value: unknown): boolean =>
+    Array.isArray(value) ? value.length > 0 : value !== null && typeof value === 'object' ? Object.keys(value).length > 0 : value !== undefined;
+  if (nonEmpty(settings.hooks)) keys.push('hooks');
+  const permissions = asRecord(settings.permissions);
+  if (nonEmpty(permissions?.allow)) keys.push('permissions.allow');
+  if (nonEmpty(permissions?.ask)) keys.push('permissions.ask');
+  if (nonEmpty(asRecord(settings.tools)?.allowed)) keys.push('tools.allowed');
+  return keys.length > 0 ? { file, keys } : undefined;
+}
+
+/** The refusal for a read-only step whose folder's own Qwen Code settings could loosen it. */
+export function qwenWorkspaceLooseningMessage(found: { file: string; keys: readonly string[] }): string {
+  return `qwen: this read-only step would load ${found.file}, and its ${found.keys.join(', ')} can widen or bypass the step's tool limits: Qwen Code adds a project's own settings to every run and cannot leave them out. Remove those keys from the file, or move them to your own ~/.qwen/settings.json, then start the task again.`;
+}
+
 /** The refusal for a run whose folders hold a project `.qwen/.env`. */
 export function qwenUnblockableEnvMessage(files: readonly string[]): string {
   return `Qwen Code would load ${files.join(', ')} into this run, and xezar cannot stop it: Qwen Code applies a project's .qwen/.env even to names xezar excludes, and xezar never loads a project .env file into an agent. Move what the file holds to your own Qwen home (~/.qwen/.env) or remove it, then start the task again.`;
