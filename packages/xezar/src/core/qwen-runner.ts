@@ -854,8 +854,12 @@ function mockQwenPath(): string {
   return resolvePath(here, '..', '..', 'scripts', 'mock-qwen.mjs');
 }
 
-function waitForExit(child: ChildProcessWithoutNullStreams): Promise<number | null> {
-  if (child.exitCode != null) return Promise.resolve(child.exitCode);
+/** @internal Exported for tests. */
+export function waitForExit(child: ChildProcessWithoutNullStreams): Promise<number | null> {
+  // A child a signal ended has no exit code but a `signalCode`; when it died before this wait
+  // listened, its `exit` and `close` have already fired, and only the safety timer would end the
+  // wait (#1070, the same line in the Claude and Codex runners).
+  if (child.exitCode != null || child.signalCode != null) return Promise.resolve(child.exitCode);
   return new Promise((resolve) => {
     let done = false;
     const fin = (code: number | null) => {

@@ -4,7 +4,7 @@
  * read-only lock through the bundled hook program, the `.env` block, the version gate, and the
  * missing-binary path. The wire mapping is pinned by `qwen-ui-mapper.test.ts`.
  */
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { pidExists } from '../platform/process-proof.ts';
 import { signalPid } from '../platform/process-table.ts';
 import type { AgentEvent, AgentRunSpec } from './agent-runner.ts';
-import { QwenRunner, buildQwenArgs, qwenHookScriptPath, qwenVersionVerdict, QWEN_MIN_VERSION } from './qwen-runner.ts';
+import { QwenRunner, buildQwenArgs, qwenHookScriptPath, qwenVersionVerdict, QWEN_MIN_VERSION, waitForExit } from './qwen-runner.ts';
 import { QWEN_TOOL_POLICY_ENV, decideQwenPreToolUse, qwenToolPolicy } from './qwen-tool-policy.ts';
 import { scanQwenProjectEnv } from './qwen-run-config.ts';
 import { settingsFromObject, type QwenSettings } from './qwen-settings.ts';
@@ -174,6 +174,19 @@ describe('QwenRunner stop (#1042)', () => {
       for (const pid of pids) signalPid(pid, 'SIGKILL');
     }
   }, 30_000);
+});
+
+describe('waitForExit (#1070)', () => {
+  it('returns at once for a child a signal ended before the wait listened', async () => {
+    const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'pipe' }) as ChildProcessWithoutNullStreams;
+    const closed = new Promise((resolve) => child.once('close', resolve));
+    child.kill('SIGTERM');
+    await closed;
+    expect(child.exitCode).toBeNull();
+    const started = Date.now();
+    expect(await waitForExit(child)).toBeNull();
+    expect(Date.now() - started).toBeLessThan(1_000);
+  });
 });
 
 describe('QwenRunner between turns (#1042, the #793 trap)', () => {
