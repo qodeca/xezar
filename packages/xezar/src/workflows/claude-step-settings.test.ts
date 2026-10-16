@@ -224,7 +224,7 @@ describe('pinClaudeStepSettings reads the base commit (#936)', () => {
     ).rejects.toThrow('is not a file at the run\'s base commit');
   });
 
-  // Creating a symlink needs extra rights on Windows; the refusal itself is platform-free.
+  // win32-skip(#973): creating a file symlink needs Developer Mode or elevation (EPERM)
   it.skipIf(process.platform === 'win32')('refuses a symlinked script', async () => {
     symlinkSync('guard.sh', join(repoRoot, '.xezar/hooks/link.sh'));
     await commit('link');

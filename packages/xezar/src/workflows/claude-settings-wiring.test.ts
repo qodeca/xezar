@@ -1,11 +1,12 @@
 import { execFile } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgentEvent, AgentRunSpec } from '../core/agent-runner.ts';
 import { RunStore } from '../runs/store.ts';
+import { closeStoreAndRemove } from '../runs/store.testkit.ts';
 import { RunManager } from './run.ts';
 import type { WorkflowDef } from './types.ts';
 
@@ -74,19 +75,10 @@ describe('claudeSettings wiring', () => {
     manager = new RunManager(store, repoRoot);
   });
 
-  afterEach(async () => {
+  afterEach(() => {
     manager?.dispose();
     manager = undefined;
-    store.flush();
-    for (let attempt = 0; ; attempt++) {
-      try {
-        rmSync(repoRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-        break;
-      } catch (err) {
-        if (attempt >= 5) throw err;
-        await new Promise((resolve) => setTimeout(resolve, 1_000));
-      }
-    }
+    closeStoreAndRemove(store, repoRoot);
   });
 
   async function finish(def: WorkflowDef): Promise<string> {

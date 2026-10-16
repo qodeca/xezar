@@ -46,7 +46,9 @@ from 8 to 12 in 0.20.0; raising it is additive, lowering it would refuse files t
 `.xezar/config.json`, the per-user `~/.xezar/` files, and the runtime state under
 `.local/xezar/` (plain JSON, NDJSON and Markdown). The old shape keeps being read for as long as
 anyone can still have it on disk; a migration is tolerant and never requires the user to repair a
-file by hand.
+file by hand. A new top-level name under `.local/xezar/` is listed in `STATE_NAME_ENTRIES`
+(`packages/xezar/src/local-xezar-top-level-names.ts`) in the same change; #1001 adds the
+`claude-settings/` directory (pinned step hooks), and a new directory is additive.
 
 ## 6. Environment variables
 
