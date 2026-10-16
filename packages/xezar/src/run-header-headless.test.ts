@@ -43,6 +43,9 @@ describe('the headless run header names the step’s runner (#910)', () => {
       'name: live-codex\nsteps:\n  - id: work\n    runner: codex\n    prompt: "{{task}}"\n',
       'utf8',
     );
+    // No team skills: the default source starts a background clone into the project's cache, and
+    // a clone still writing there when the test removes its folder failed the removal (ENOTEMPTY).
+    writeFileSync(join(project, '.xezar', 'config.json'), JSON.stringify({ skillsRepos: [] }), 'utf8');
 
     const env: NodeJS.ProcessEnv = {
       ...process.env,
