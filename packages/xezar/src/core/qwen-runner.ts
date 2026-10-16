@@ -640,9 +640,11 @@ class QwenSession {
     if (this.pendingFailure) return this.pendingFailure;
     if (this.timedOut) return undefined;
     const { exitCode, stderr } = outcome;
-    if (this.terminatedByXezar && isXezarStopExit(exitCode)) {
+    // `null` is a death by signal: the `qwen` launcher re-raises the signal its program died of,
+    // so a stop xezar sent arrives with no exit code at all.
+    if (this.terminatedByXezar && (exitCode === null || isXezarStopExit(exitCode))) {
       if (!this.stopRequested) {
-        this.init.onEvent?.({ type: 'note', message: `Qwen Code did not exit on its own after close; terminated by xezar (code ${exitCode})` });
+        this.init.onEvent?.({ type: 'note', message: `Qwen Code did not exit on its own after close; terminated by xezar (${exitCode === null ? 'by signal' : `code ${exitCode}`})` });
       }
       return undefined;
     }

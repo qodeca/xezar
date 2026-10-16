@@ -157,6 +157,17 @@ describe('QwenRunner stop (#1042)', () => {
       for (const pid of pids) signalPid(pid, 'SIGKILL');
     }
   });
+
+  it('a stop xezar sends is not a failure, though the launcher dies by signal with no exit code', async () => {
+    const { session, settled, pids } = await hungTurn();
+    try {
+      session.end();
+      const outcome = await Promise.race([settled, new Promise((resolve) => setTimeout(() => resolve('still running'), 15_000))]);
+      expect(outcome).toBe('resolved');
+    } finally {
+      for (const pid of pids) signalPid(pid, 'SIGKILL');
+    }
+  }, 30_000);
 });
 
 describe('QwenRunner between turns (#1042, the #793 trap)', () => {
