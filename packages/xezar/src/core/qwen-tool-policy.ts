@@ -138,7 +138,18 @@ export function qwenAllowedTools(allowedTools: readonly string[], bashAllowlist?
   const readOnly = isReadOnlyStep(allowedTools);
   const out = new Set<string>();
   for (const tool of allowedTools) {
-    if (tool === 'Bash' && bashAllowlist !== undefined && normalizeBashAllowlist(bashAllowlist).length === 0) continue;
+    if (tool === 'Bash' && bashAllowlist !== undefined) {
+      // The second lock (#1067 review): one `run_shell_command(<entry>)` rule per entry, never the
+      // bare name. Qwen Code lets a call through when the PreToolUse hook cannot run, and a bare
+      // name allows every command; with only these rules, Qwen Code's own permission check refuses
+      // a command no entry starts (each part of a compound command is checked). An entry holding
+      // `(`, `)` or `*` is left out: it would not parse as a rule or would widen into a glob, and
+      // the shared lock refuses every command such an entry could match anyway.
+      for (const entry of normalizeBashAllowlist(bashAllowlist)) {
+        if (!/[()*]/.test(entry)) out.add(`run_shell_command(${entry})`);
+      }
+      continue;
+    }
     const name = QWEN_TOOL_NAMES[tool] ?? tool;
     if (readOnly && (QWEN_FILE_WRITERS as readonly string[]).includes(name)) continue;
     out.add(name);

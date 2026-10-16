@@ -49,8 +49,17 @@ describe('qwenAllowedTools', () => {
   });
 
   it('never offers a file writer on a read-only step, and no shell for an empty allowlist', () => {
-    expect(qwenAllowedTools(READ_ONLY, ['git status'])).toEqual(['read_file', 'grep_search', 'glob', 'run_shell_command']);
-    expect(qwenAllowedTools(READ_ONLY, [])).not.toContain('run_shell_command');
+    expect(qwenAllowedTools(READ_ONLY, ['git status'])).toEqual(['read_file', 'grep_search', 'glob', 'run_shell_command(git status)']);
+    expect(qwenAllowedTools(READ_ONLY, []).some((tool) => tool.startsWith('run_shell_command'))).toBe(false);
+  });
+
+  it('gives an allowlisted shell one Qwen Code rule per entry and never the bare name, so a dead hook unlocks nothing', () => {
+    // Qwen Code 0.25.2 lets a call through when its hook cannot run; a bare `run_shell_command`
+    // would then allow every command. Per-entry rules are Qwen Code's own second lock.
+    const tools = qwenAllowedTools(['Read', 'Edit', 'Write', 'Bash'], [' git status ', 'npm test', 'f(x)', 'ls *', '']);
+    expect(tools).toEqual(['read_file', 'edit', 'write_file', 'run_shell_command(git status)', 'run_shell_command(npm test)']);
+    expect(tools).not.toContain('run_shell_command');
+    expect(qwenAllowedTools(['Read', 'Bash'])).toContain('run_shell_command');
   });
 });
 

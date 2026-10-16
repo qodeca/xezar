@@ -278,7 +278,7 @@ describe('QwenRunner read-only lock (#1044 acceptance 3)', () => {
   it('lists no file writer, removes them, and installs the hook with the step policy', async () => {
     await runOnce({ allowedTools: READ_ONLY, bashAllowlist: ['git status'] });
     const [record] = records();
-    expect(record!.argv.filter((a) => a.startsWith('--allowed-tools='))).toEqual(['--allowed-tools=read_file', '--allowed-tools=grep_search', '--allowed-tools=glob', '--allowed-tools=run_shell_command']);
+    expect(record!.argv.filter((a) => a.startsWith('--allowed-tools='))).toEqual(['--allowed-tools=read_file', '--allowed-tools=grep_search', '--allowed-tools=glob', '--allowed-tools=run_shell_command(git status)']);
     expect(record!.argv).toEqual(expect.arrayContaining(['--exclude-tools=edit', '--exclude-tools=write_file', '--exclude-tools=notebook_edit', '--exclude-tools=exec']));
     expect(record!.settings).toMatchObject({ disableAllHooks: false, hooks: { PreToolUse: [{ matcher: '*', hooks: [{ type: 'command' }] }] } });
     expect(JSON.parse(record!.env[QWEN_TOOL_POLICY_ENV]!)).toMatchObject({ readOnly: true, bash: { mode: 'allowlist', entries: ['git status'] } });
