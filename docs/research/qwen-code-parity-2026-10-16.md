@@ -50,7 +50,7 @@ per item and model is in `qwen-code-parity-2026-10-16/checklist-<model>.json`. C
 | images | the colour of an attached image | PASS ("Green") | model limit ("White"; the model has no vision) |
 | dry run | `XEZ_DRY_RUN=1` uses the bundled mock, no model | PASS | PASS |
 | model selection | the chosen id starts; an id not in the settings is refused before start | PASS | PASS |
-| accounts | a run with its own Qwen home uses that home's models and stores its session there | PASS | PASS |
+| accounts | a run with its own Qwen home uses that home's models and stores its session there | PARTLY – the home's model list and session folder are used; no model call was made (see below) | PARTLY – same |
 | leader push | a running Qwen Code leader receives xezar's events and acknowledges them | PASS – sessions 6 and 8 (below) | PASS – sessions 7 and 9 (below); also the #1045 live proof (task.done to the session in 30 ms) |
 
 Notes per item:
@@ -140,7 +140,7 @@ all on the local model, so the cost is 0.
 | Leader session 7 | Last event acknowledged after the window closed | model behavior (still working) | delivered 9, acknowledged 8, blocker `qwen-push-unacknowledged` |
 | Dogfood, earlier batch | Headless run exited early, run left `running` (6 runs) | **xezar Qwen fault**, fixed in `0deca486`; count restarted | — |
 | Dogfood, earlier batch | A finished turn held open by Qwen's auto-memory pass until the step limit (1 run) | Qwen Code behavior; switched off for task runs in `cd40a9e1` | Qwen's session record shows `managed-auto-memory-extractor` after the answer |
-| Dogfood, counted batch | 2 runs: no `XEZ:DONE`, then the step limit | model error | `dogfood-runs.json` |
+| Dogfood, counted batch | 2 runs: no `XEZ:DONE`, then the step limit | model error | `dogfood-runs.json`; the last turn of each is a complete answer with no `XEZ:DONE` line (`d8d9f933`: "The project has just two commits on the `main` branch …"; `c39968e0`: "`titleCase` throws in two independent ways …"), after which the interactive last step waited until the limit. `c39968e0` also had 3 commands refused by the read-only lock (`syntax.expansion`, `prefix.entry`, `syntax.redirection`), each refused at once and answered by the model, so the lock did not cause the wait. |
 
 ## Faults found in xezar's Qwen code, and their fixes
 
