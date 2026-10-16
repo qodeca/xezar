@@ -58,6 +58,7 @@ import {
   QWEN_SYSTEM_SETTINGS_ENV,
   qwenDefaultSystemSettingsPath,
   qwenHookCommand,
+  type QwenHookCommand,
   qwenSystemSettings,
   qwenUnblockableEnvMessage,
   qwenWorkspaceLooseningMessage,
@@ -176,7 +177,7 @@ export class QwenRunner implements AgentRunner {
     if (isolationNote) onEvent?.({ type: 'note', message: isolationNote });
 
     const policy = qwenToolPolicy(spec.allowedTools, spec.bashAllowlist);
-    let hookCommand: string | undefined;
+    let hookCommand: QwenHookCommand | undefined;
     if (policy) {
       hookCommand = qwenHookCommand(process.execPath, this.hookScriptPath);
       if (hookCommand === undefined) {

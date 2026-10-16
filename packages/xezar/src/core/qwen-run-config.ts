@@ -127,7 +127,7 @@ export interface QwenSystemSettingsInput {
   readonly basePath: string;
   readonly excludedEnvNames: readonly string[];
   /** The hook command, when the step's policy needs one. */
-  readonly hookCommand?: string;
+  readonly hookCommand?: QwenHookCommand;
   /** The person opted in to Qwen Code's usage statistics (`XEZ_QWEN_USAGE_STATISTICS`). */
   readonly usageStatistics?: boolean;
 }
@@ -177,20 +177,51 @@ export function qwenSystemSettings(
     const pre = Array.isArray(hooks.PreToolUse) ? hooks.PreToolUse : [];
     settings.hooks = {
       ...hooks,
-      PreToolUse: [...pre, { matcher: '*', hooks: [{ type: 'command', command: input.hookCommand }] }],
+      PreToolUse: [...pre, {
+        matcher: '*',
+        hooks: [{
+          type: 'command',
+          command: input.hookCommand.command,
+          ...(input.hookCommand.shell !== undefined ? { shell: input.hookCommand.shell } : {}),
+        }],
+      }],
     };
     settings.disableAllHooks = false;
   }
   return note ? { settings, note } : { settings };
 }
 
+/** The hook entry for the run's settings: the command line, and the shell Qwen Code runs it in. */
+export interface QwenHookCommand {
+  readonly command: string;
+  /** Qwen Code's own per-hook shell choice; absent means its default shell for the platform. */
+  readonly shell?: 'powershell';
+}
+
 /**
- * The shell command Qwen Code runs for the hook: Node itself on the bundled program, both quoted.
- * `undefined` when a path holds a double quote, which no quoting here could carry safely.
+ * The command Qwen Code runs for the hook: Node itself on the bundled program. `undefined` when a
+ * path holds a double quote, which no quoting here could carry safely.
+ *
+ * Linux and macOS: Qwen Code 0.25.2 runs it with `bash -c`, so both paths are double-quoted.
+ *
+ * Windows (#1076, the Codex twin of this gap): Qwen Code's default there is `cmd.exe /d /s /c`,
+ * and it hands the line over through Node's own argument quoting, which turns every `"` into `\"`.
+ * cmd.exe does not read `\` as an escape, so a double-quoted line names a program that does not
+ * exist, the hook never starts, and Qwen Code lets the call through. The entry therefore asks for
+ * Qwen Code's `powershell` hook shell, and the line is a PowerShell call (`&`) on single-quoted
+ * paths – no `"` for Node to escape, and `$` or a backtick inside the quotes stay literal.
  */
-export function qwenHookCommand(nodePath: string, hookPath: string): string | undefined {
+export function qwenHookCommand(
+  nodePath: string,
+  hookPath: string,
+  platform: NodeJS.Platform = process.platform,
+): QwenHookCommand | undefined {
   if (nodePath.includes('"') || hookPath.includes('"')) return undefined;
-  return `"${nodePath}" "${hookPath}"`;
+  if (platform === 'win32') {
+    const literal = (path: string): string => `'${path.replaceAll("'", "''")}'`;
+    return { command: `& ${literal(nodePath)} ${literal(hookPath)}`, shell: 'powershell' };
+  }
+  return { command: `"${nodePath}" "${hookPath}"` };
 }
 
 /** The env the policy and the settings file reach Qwen Code through. */

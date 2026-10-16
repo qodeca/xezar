@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
-// src/core/qwen-pre-tool-hook-entry.ts
+// packages/xezar/src/core/qwen-pre-tool-hook-entry.ts
 import { readFileSync } from "node:fs";
 
-// src/core/read-only-lock.ts
+// packages/xezar/src/core/read-only-lock.ts
 var ALLOWLIST_RULE = "prefix.entry";
 var FIND_ACTIONS = [
   "-exec",
@@ -361,7 +361,7 @@ function splitAllowlistedScriptPipe(command, entries) {
   return { left, right };
 }
 
-// src/core/qwen-tool-policy.ts
+// packages/xezar/src/core/qwen-tool-policy.ts
 var QWEN_TOOL_POLICY_ENV = "__XEZAR_QWEN_TOOL_POLICY";
 var QWEN_HOOK_REFUSAL_PREFIX = "xezar refused this tool call:";
 var QWEN_FILE_WRITERS = ["edit", "write_file", "notebook_edit"];
@@ -458,7 +458,7 @@ function isStringArray(value) {
   return Array.isArray(value) && value.every((entry) => typeof entry === "string");
 }
 
-// src/core/qwen-pre-tool-hook-entry.ts
+// packages/xezar/src/core/qwen-pre-tool-hook-entry.ts
 function main() {
   let payload;
   try {
@@ -468,17 +468,23 @@ function main() {
   }
   const policy = parseQwenToolPolicy(process.env[QWEN_TOOL_POLICY_ENV]);
   const output = qwenHookOutput(decideQwenPreToolUse(payload, policy));
-  if (output) process.stdout.write(JSON.stringify(output));
+  if (output) refuse3(output);
+}
+function refuse3(output) {
+  const text = JSON.stringify(output);
+  process.stdout.write(text);
+  process.stderr.write(text);
+  process.exitCode = 2;
 }
 try {
   main();
 } catch (error) {
   const reason = error instanceof Error ? error.message : String(error);
-  process.stdout.write(JSON.stringify({
+  refuse3({
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
       permissionDecisionReason: `${QWEN_HOOK_REFUSAL_PREFIX} the tool policy hook failed (${reason}).`
     }
-  }));
+  });
 }
