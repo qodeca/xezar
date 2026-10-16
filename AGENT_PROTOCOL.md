@@ -268,6 +268,14 @@ Notable fields (full doc-comments in the source):
   not isolate MCP servers yet.
 - `sessionId?` / `resume?` — stable session id for interactive takeover and for
   `--resume` ("Continue" after a run ends).
+  A resume must not need the backend to send the whole history back in one
+  message (#942): Codex's `thread/resume` carries `excludeTurns: true`, since
+  xezar reads nothing from that reply and a long session's full history in one
+  JSON-RPC line can pass the runtime's string ceiling. The shared line reader
+  (`ndjson.ts`) refuses any single line past that ceiling with its size instead
+  of a bare `RangeError: Invalid string length`, and the Codex runner turns that
+  refusal into a failure naming the thread, the message size and, when found,
+  the thread's stored history file and its size.
 
 **System prompt channel** — a backend without a dedicated system-prompt input
 must deliver `spec.systemPrompt` as a leading block of the opening user message.
