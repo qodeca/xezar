@@ -169,6 +169,16 @@ describe('workflowYaml', () => {
     })
   })
 
+  it('keeps a step’s pinned claudeSettings when YAML is exported (#1001)', () => {
+    const claudeSettings = { files: ['.xezar/claude/hooks.json'], scripts: ['.xezar/hooks/guard.sh'] }
+    const review: WorkflowStepDef = { id: 'review', name: 'review', skill: 'xez-review', prompt: '{{task}}', claudeSettings }
+    expect(skillStack([review])).toBeNull()
+    expect(parse(workflowYaml('reviewer', '', [review]))).toEqual({
+      name: 'reviewer',
+      steps: [{ id: 'review', skill: 'xez-review', prompt: '{{task}}', claudeSettings }],
+    })
+  })
+
   it('quotes scalars YAML would mistype and keeps plain ones bare', () => {
     const text = workflowYaml('true', '', [stackStep('2fast', 'no')])
     // `true`, `no` and `2fast` would parse as boolean/number-ish — they must come back strings.
