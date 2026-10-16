@@ -46,7 +46,7 @@ Open global **Settings → Resources** to inspect the workspace parallel limit. 
 
 ## To use Autonomous
 
-Turn on **Autonomous** in the composer when the agent should keep working without pausing for your answers. xezar prompts it to continue when it would otherwise wait, up to 40 automatic continuation nudges per run. **Plan first** forces Autonomous off and disables its toggle. Autonomous runs skip the optional review gate. This does not make xezar merge the result; inspect the finished task and its checks before integrating it.
+Turn on **Autonomous** in the composer when the agent should keep working without pausing for your answers. xezar prompts it to continue when it would otherwise wait, up to 40 automatic continuation nudges per run. If a re-prompt changes nothing (no tool call) or the nudges run out, the task parks for you – except a read-only task (one whose tools cannot edit or write files), which finishes instead and leaves a note: its last message is the result, and anything it says it could not read or check is a gap in that result. **Plan first** forces Autonomous off and disables its toggle. Autonomous runs skip the optional review gate. This does not make xezar merge the result; inspect the finished task and its checks before integrating it.
 
 ## To use Plan first
 

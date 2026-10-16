@@ -33,12 +33,19 @@
 // #1026: `MOCK_CODEX_MCP_STARTUP_FAILED=1` follows thread/start with MCP startup
 // statuses: `browser` fails, `docs` gets ready, and a child thread's `other` fails.
 //
+// #895: a turn whose text contains `mock:exit-mid-turn` starts, streams one line of prose, and
+// then the server exits 0 without `turn/completed`, the shape of a Codex CLI that dies under a
+// live turn. `mock:exit-mid-turn-orphan` first starts a detached grandchild that inherits stdout
+// and keeps the pipe open after the server is gone, as a tool process Codex started would; it
+// writes its pid to `MOCK_CODEX_ORPHAN_PID_FILE` so the test can stop it, and ends itself after
+// 60 seconds in any case.
+//
 // #942: `MOCK_CODEX_RESUME_HISTORY_CHARS=<n>` answers thread/resume the way a real
 // Codex does for a long session: the whole history in the one response line,
 // padded to n characters — unless the request sets `excludeTurns: true`.
 // `MOCK_CODEX_IGNORE_EXCLUDE_TURNS=1` is a Codex too old to know that field.
-import { appendFileSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
+import { appendFileSync, writeFileSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
 import { createInterface } from 'node:readline';
 
 const emit = (obj) => process.stdout.write(`${JSON.stringify(obj)}\n`);
@@ -364,6 +371,20 @@ rl.on('line', (line) => {
       emit({ method: 'item/agentMessage/delta', params: { threadId: 'th_mock_1', turnId: 'turn_mock_1', itemId: 'item_p1', delta: 'Still working after the sub-agent.' } });
       emit({ method: 'item/completed', params: { threadId: 'th_mock_1', turnId: 'turn_mock_1', item: { type: 'agentMessage', id: 'item_p1', text: 'Still working after the sub-agent.' } } });
       emit({ method: 'turn/completed', params: { threadId: 'th_mock_1', turn: { id: 'turn_mock_1', status: 'completed' } } });
+      return;
+    }
+    if (turnText.includes('mock:exit-mid-turn')) {
+      emit({ method: 'item/started', params: { threadId: 'th_mock_1', turnId: 'turn_mock_1', item: { type: 'agentMessage', id: 'item_d1', text: '' } } });
+      emit({ method: 'item/agentMessage/delta', params: { threadId: 'th_mock_1', turnId: 'turn_mock_1', itemId: 'item_d1', delta: 'Starting the work.' } });
+      if (turnText.includes('mock:exit-mid-turn-orphan')) {
+        const orphan = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 60_000)'], {
+          stdio: ['ignore', 'inherit', 'ignore'],
+          detached: true,
+        });
+        if (process.env.MOCK_CODEX_ORPHAN_PID_FILE) writeFileSync(process.env.MOCK_CODEX_ORPHAN_PID_FILE, String(orphan.pid));
+        orphan.unref();
+      }
+      process.stdout.write('', () => process.exit(0));
       return;
     }
     if (process.env.MOCK_CODEX_ASK === '1' || turnText.includes('mock:native-codex-ask')) {
