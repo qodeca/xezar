@@ -1071,7 +1071,8 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
       if (eligibility) return eligibility;
     }
     const blocker = leader.adapter.status().blocker;
-    if (blocker) {
+    // "Waiting for an acknowledgement" must not hide a push that is failing now (#1067 review).
+    if (blocker && !(blocker.code === 'qwen-push-unacknowledged' && leader.failingSince !== null)) {
       // The adapter's own `fix` when it has one, otherwise the client's own check-and-reattach words.
       const words = CLIENT_WORDS[leader.client];
       const fix = blocker.fix ?? `To fix it, ${words.checkShort}, then ${words.reattach}.`;

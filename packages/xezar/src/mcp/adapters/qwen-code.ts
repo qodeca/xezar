@@ -37,7 +37,7 @@ export interface QwenCodeInboxAdapterOptions {
 }
 
 export interface QwenCodeInboxBlocker {
-  readonly code: 'qwen-push-unacknowledged';
+  readonly code: 'qwen-push-unacknowledged' | 'qwen-push-held';
   readonly message: string;
   readonly fix: string;
 }
@@ -47,12 +47,26 @@ export const QWEN_PUSH_UNACKNOWLEDGED_MESSAGE =
 export const QWEN_PUSH_UNACKNOWLEDGED_FIX =
   'If the leader is working, nothing is needed. Otherwise check that the Qwen Code session is still open and not waiting on a prompt of its own. Until then, read events with leader_events.';
 
+export const QWEN_PUSH_HELD_MESSAGE =
+  'The attached Qwen Code session does not take xezar\'s messages at once: it holds them for your approval, or refuses them. xezar stopped sending, so the session does not fill with copies. Nothing is lost: the events stay in the journal.';
+export const QWEN_PUSH_HELD_FIX =
+  'In Qwen Code, set agents.crossSessionInbound so messages from xezar are taken (or remove the setting), then attach the leader again. Until then, read events with leader_events.';
+
+/**
+ * A receipt that is an answer, not a hiccup: Qwen Code holds the message for the person's approval,
+ * or refuses it, because of its own `agents.crossSessionInbound` setting. Sending again would only
+ * queue more copies of the same event (#1067 review), so it stops pushes until the next attach.
+ * The words are those of `QwenMessaging`, whose error text crosses the bridge as plain text.
+ */
+const LASTING_REFUSAL = /Qwen Code did not take the message \((held|refused)\b/;
+
 export class QwenCodeInboxAdapter implements ReactionAdapter {
   readonly projectId: string;
   readonly #opts: QwenCodeInboxAdapterOptions;
   readonly #now: () => number;
   #outstanding: { seq: number; at: number }[] = [];
   #closed = false;
+  #refusedWith: 'held' | 'refused' | undefined;
 
   constructor(opts: QwenCodeInboxAdapterOptions) {
     this.#opts = opts;
@@ -67,7 +81,16 @@ export class QwenCodeInboxAdapter implements ReactionAdapter {
     }
     const rows = dispatch.events;
     if (rows.length === 0 && dispatch.recovery === undefined) return { handedThrough: null };
-    await this.#opts.push(renderChannelContent(dispatch, rows, this.#opts.roleInstruction), signal);
+    if (this.#refusedWith !== undefined) {
+      throw new Error(`the Qwen Code session ${this.#refusedWith} xezar's last message, so xezar sends nothing more until the leader attaches again`);
+    }
+    try {
+      await this.#opts.push(renderChannelContent(dispatch, rows, this.#opts.roleInstruction), signal);
+    } catch (err) {
+      const lasting = LASTING_REFUSAL.exec(err instanceof Error ? err.message : String(err));
+      if (lasting) this.#refusedWith = lasting[1] as 'held' | 'refused';
+      throw err;
+    }
     const lastSeq = rows.at(-1)?.journalSeq ?? null;
     if (lastSeq !== null) {
       this.#prune();
@@ -90,6 +113,7 @@ export class QwenCodeInboxAdapter implements ReactionAdapter {
 
   status(): { blocker?: QwenCodeInboxBlocker } {
     if (this.#closed) return {};
+    if (this.#refusedWith !== undefined) return { blocker: { code: 'qwen-push-held', message: QWEN_PUSH_HELD_MESSAGE, fix: QWEN_PUSH_HELD_FIX } };
     this.#prune();
     const oldest = this.#outstanding[0];
     if (oldest && this.#now() - oldest.at >= this.#opts.heartbeatMs) {

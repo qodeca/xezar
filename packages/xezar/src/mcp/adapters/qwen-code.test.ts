@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import type { McpJournalRow } from '@qodeca/xezar-contract';
 import { describe, expect, it } from 'vitest';
 import type { EventDispatch } from '../event-controller.ts';
-import { QWEN_PUSH_UNACKNOWLEDGED_MESSAGE, QwenCodeInboxAdapter } from './qwen-code.ts';
+import { QWEN_PUSH_HELD_MESSAGE, QWEN_PUSH_UNACKNOWLEDGED_MESSAGE, QwenCodeInboxAdapter } from './qwen-code.ts';
 
 const row = (journalSeq: number): McpJournalRow =>
   ({
@@ -49,6 +49,27 @@ describe('QwenCodeInboxAdapter', () => {
   it('rejects when Qwen Code did not take the message, so the controller retries', async () => {
     const { a } = adapter({ push: async () => { throw new Error('Qwen Code did not take the message (dropped)'); } });
     await expect(a.deliver(dispatch([row(1)]), signal)).rejects.toThrow(/dropped/);
+  });
+
+  it('stops sending after Qwen Code holds or refuses a message, and says why, so no copies pile up (#1067 review)', async () => {
+    for (const receipt of ['held: needs approval', 'refused']) {
+      let sends = 0;
+      const { a } = adapter({ push: async () => { sends += 1; throw new Error(`Qwen Code did not take the message (${receipt})`); } });
+      await expect(a.deliver(dispatch([row(1)]), signal)).rejects.toThrow(/did not take the message/);
+      await expect(a.deliver(dispatch([row(1)]), signal)).rejects.toThrow(/sends nothing more until the leader attaches again/);
+      await expect(a.deliver(dispatch([row(2)]), signal)).rejects.toThrow(/sends nothing more/);
+      expect(sends).toBe(1);
+      expect(a.status().blocker).toMatchObject({ code: 'qwen-push-held', message: QWEN_PUSH_HELD_MESSAGE, fix: expect.stringContaining('agents.crossSessionInbound') });
+    }
+  });
+
+  it('keeps retrying a passing failure (dropped, timeout): only held and refused are lasting', async () => {
+    let sends = 0;
+    const { a } = adapter({ push: async () => { sends += 1; throw new Error('Qwen Code did not take the message (dropped: sent too fast)'); } });
+    await expect(a.deliver(dispatch([row(1)]), signal)).rejects.toThrow(/dropped/);
+    await expect(a.deliver(dispatch([row(1)]), signal)).rejects.toThrow(/dropped/);
+    expect(sends).toBe(2);
+    expect(a.status().blocker).toBeUndefined();
   });
 
   it('refuses a dispatch for another project, and sends nothing for an empty one', async () => {
