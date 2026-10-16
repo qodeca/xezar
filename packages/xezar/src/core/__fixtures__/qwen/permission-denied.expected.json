@@ -252,21 +252,6 @@
     }
   },
   {
-    "type": "item.completed",
-    "item": {
-      "kind": "tool",
-      "id": "call_00_nc8cRepLq3xV26hUkZ1g3429",
-      "name": "run_shell_command",
-      "toolKind": "execute",
-      "title": "Ran touch hacked.txt",
-      "status": "declined",
-      "input": {
-        "command": "touch hacked.txt",
-        "description": "Create an empty file named hacked.txt"
-      }
-    }
-  },
-  {
     "type": "turn.completed",
     "turnId": "turn_1",
     "stopReason": "end_turn",

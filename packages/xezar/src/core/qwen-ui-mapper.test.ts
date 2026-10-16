@@ -102,6 +102,18 @@ describe('qwen mapper rules', () => {
     expect(isQwenRefusal('[tool_call bridge refused] params must have required property \'name\'')).toBe(false);
   });
 
+  it('keeps the refusal reason: a call the hook declined is not reported again, reason-less, from permission_denials', () => {
+    const lines = [
+      { type: 'system', subtype: 'init', session_id: 's', model: 'm', tools: [], qwen_code_version: '0.25.2' },
+      { type: 'assistant', session_id: 's', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'call_1', name: 'run_shell_command', input: { command: 'touch x' } }] } },
+      { type: 'user', session_id: 's', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'call_1', is_error: true, content: 'xezar refused this tool call: no.' }] } },
+      { type: 'result', subtype: 'success', session_id: 's', is_error: false, result: 'ok', usage: { input_tokens: 1, output_tokens: 1 }, permission_denials: [{ tool_name: 'run_shell_command', tool_use_id: 'call_1', tool_input: { command: 'touch x' } }] },
+    ];
+    const declined = replayQwen(lines.map((l) => JSON.stringify(l)).join('\n')).filter((e) => e.type === 'item.completed' && e.item.kind === 'tool');
+    expect(declined).toHaveLength(1);
+    expect(declined[0]).toMatchObject({ item: { id: 'call_1', status: 'declined', error: 'xezar refused this tool call: no.' } });
+  });
+
   it('keeps Claude Code usage semantics: input without the cache read, Qwen total kept', () => {
     expect(qwenTokenUsage({ input_tokens: 26374, output_tokens: 102, cache_read_input_tokens: 25216, total_tokens: 26476 }))
       .toEqual({ input: 1158, output: 102, cacheRead: 25216, total: 26476 });

@@ -137,21 +137,6 @@
     }
   },
   {
-    "type": "item.completed",
-    "item": {
-      "kind": "tool",
-      "id": "call_01_wk5HcFZ5yoZfuRqqZVxX0654",
-      "name": "run_shell_command",
-      "toolKind": "execute",
-      "title": "Ran ls",
-      "status": "declined",
-      "input": {
-        "command": "ls",
-        "description": "List files in the current directory"
-      }
-    }
-  },
-  {
     "type": "turn.completed",
     "turnId": "turn_1",
     "stopReason": "end_turn",

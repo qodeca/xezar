@@ -56,6 +56,12 @@ export interface QwenUiMapperState {
   /** True once this turn's assistant text began with {@link QWEN_API_ERROR_PREFIX}. */
   readonly turnApiError: boolean;
   readonly openTools: ReadonlyMap<string, UiToolItem>;
+  /**
+   * Calls a tool result already closed as `declined`, with the refusal's own text. Qwen Code lists
+   * the same call again in the turn's `permission_denials`; that second report carries no reason,
+   * and emitting it would replace the item and lose the reason, so it is skipped.
+   */
+  readonly declinedIds: ReadonlySet<string>;
   /** USD for a turn's raw usage — xezar computes it (Qwen Code reports none). */
   readonly priceTurn?: (usage: TokenUsage) => number | undefined;
 }
@@ -78,6 +84,7 @@ export function createQwenUiState(
     sawAssistantText: false,
     turnApiError: false,
     openTools: new Map(),
+    declinedIds: new Set(),
     ...(opts.priceTurn ? { priceTurn: opts.priceTurn } : {}),
   };
 }
@@ -240,6 +247,7 @@ function mapToolResults(msg: Record<string, unknown>, state: QwenUiMapperState):
   const parentItemId = str(msg.parent_tool_use_id);
   const events: UiEvent[] = [];
   let openTools: Map<string, UiToolItem> | null = null;
+  let declinedIds: Set<string> | null = null;
 
   for (const raw of content) {
     if (!isRecord(raw) || raw.type !== 'tool_result' || typeof raw.tool_use_id !== 'string') continue;
@@ -252,6 +260,7 @@ function mapToolResults(msg: Record<string, unknown>, state: QwenUiMapperState):
     if (raw.is_error === true) {
       item.status = isQwenRefusal(text) ? 'declined' : 'failed';
       item.error = text;
+      if (item.status === 'declined') (declinedIds ??= new Set(state.declinedIds)).add(raw.tool_use_id);
     } else {
       item.status = 'completed';
       item.output = text;
@@ -265,7 +274,7 @@ function mapToolResults(msg: Record<string, unknown>, state: QwenUiMapperState):
   }
 
   if (events.length === 0) return { events, state };
-  return { events, state: { ...state, openTools: openTools ?? state.openTools } };
+  return { events, state: { ...state, openTools: openTools ?? state.openTools, declinedIds: declinedIds ?? state.declinedIds } };
 }
 
 function mapResult(msg: Record<string, unknown>, state: QwenUiMapperState): QwenUiMapping {
@@ -278,6 +287,7 @@ function mapResult(msg: Record<string, unknown>, state: QwenUiMapperState): Qwen
     for (const raw of msg.permission_denials) {
       if (!isRecord(raw) || typeof raw.tool_name !== 'string') continue;
       const id = typeof raw.tool_use_id === 'string' ? raw.tool_use_id : `item_${++itemSeq}`;
+      if (state.declinedIds.has(id)) continue;
       const open = (openTools ?? state.openTools).get(id);
       let item: UiToolItem;
       if (open) {
