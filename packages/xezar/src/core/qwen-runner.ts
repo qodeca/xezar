@@ -374,9 +374,18 @@ class QwenSession {
         return messages.flat();
       }
       if (!this.open) return null;
-      await new Promise<void>((resolve) => {
-        this.wake = resolve;
-      });
+      // REF'D on purpose (#1042, the #793 trap): Qwen Code runs one process per turn, so while an
+      // open session waits for its next message nothing else may hold the event loop. A headless
+      // `xezar run` whose session parked at `waiting` then exited 0 with the run left `running`;
+      // the engine's idle timer is unref'd because a live agent process normally holds the loop.
+      const hold = setInterval(() => undefined, 60_000);
+      try {
+        await new Promise<void>((resolve) => {
+          this.wake = resolve;
+        });
+      } finally {
+        clearInterval(hold);
+      }
       this.wake = null;
     }
   }

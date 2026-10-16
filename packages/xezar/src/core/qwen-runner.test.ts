@@ -8,7 +8,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { pidExists } from '../platform/process-proof.ts';
 import { signalPid } from '../platform/process-table.ts';
@@ -156,6 +156,29 @@ describe('QwenRunner stop (#1042)', () => {
     } finally {
       for (const pid of pids) signalPid(pid, 'SIGKILL');
     }
+  });
+});
+
+describe('QwenRunner between turns (#1042, the #793 trap)', () => {
+  it('an open session waiting for its next message keeps a headless process alive until it ends', () => {
+    // A headless `xezar run` holds no other handle, and the engine's idle timer is unref'd because a
+    // live agent process normally holds the loop. Qwen Code runs one process per turn, so the session
+    // itself must. The unref'd timer here plays the idle timer: it is the only way the session ends.
+    const runnerUrl = pathToFileURL(join(HERE, 'qwen-runner.ts')).href;
+    const settingsUrl = pathToFileURL(join(HERE, 'qwen-settings.ts')).href;
+    const script = `
+      const { QwenRunner } = await import(${JSON.stringify(runnerUrl)});
+      const { settingsFromObject } = await import(${JSON.stringify(settingsUrl)});
+      const settings = { status: 'ok', path: 'settings.json', ...settingsFromObject({}) };
+      const session = new QwenRunner({ bin: process.argv[1], readSettings: () => settings })
+        .startSession({ userPrompt: 'do it', cwd: process.argv[2], sessionId: '11111111-1111-4111-8111-111111111111' }, (e) => {
+          if (e.type === 'turn-end') { console.log('PARKED'); setTimeout(() => session.end(), 1500).unref(); }
+        });
+      session.result.then(() => console.log('ENDED'), (e) => console.log('ERROR ' + e.message));
+    `;
+    const run = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', script, STUB, project], { encoding: 'utf8', timeout: 60_000, env: process.env });
+    expect(run.stdout).toContain('PARKED');
+    expect(run.stdout).toContain('ENDED');
   });
 });
 
