@@ -18,6 +18,8 @@ import { projectDataDir } from '../project-data-paths.ts';
 import type { ProjectOwnership } from '../workspace/project-owner.ts';
 import { ClaudeCodeChannelAdapter, type ClaudeCodeReplayedRange } from './adapters/claude-code.ts';
 import { OpenCodeDeliveryBlocked, OpenCodeReactionAdapter } from './adapters/opencode.ts';
+import { QwenCodeInboxAdapter } from './adapters/qwen-code.ts';
+import { isQwenClientName } from './qwen-messaging.ts';
 import { CodexAttachError, codexControlHome, connectCodexLeader, type CodexLeaderAnnouncement, type ConnectedCodexLeader } from './adapters/codex-link.ts';
 import { codexBlocker, type CodexReactionAdapter, type CodexReactionTarget, codexReactionTarget, type CodexUnreachableReason } from './adapters/codex.ts';
 import { connectPiLeaderLink, type PiLeaderDescriptor, type PiLeaderLink, readPiLeaderDescriptor } from './adapters/pi-link.ts';
@@ -248,8 +250,8 @@ async function checkOpenCodeAttach(adapter: OpenCodeReactionAdapter, timeoutMs: 
 const NO_LEADER: McpLeaderBlocker = {
   code: 'no-leader-session',
   message:
-    'No leader session is attached to this project, so events are kept in the journal, not pushed. Attached is how a leader normally receives them; reading with leader_events is the fallback. MCP notifications start no turn on their own. A pi without xezar’s leader extension reads its events with the leader_events tool, and so does any leader until it is attached. A Claude Code session started with --dangerously-load-development-channels server:xezar, a Codex session running on Codex’s shared local app-server, an OpenCode session you run with `opencode serve`, or a pi running xezar’s leader extension can be attached, so events start a turn in it.',
-  fix: 'Attach your leader from the leader itself: call leader_events with action attach and a new operationId; xezar takes the client from the session, so you never name it. Until it is attached, keep using leader_events from it. For Claude Code: start it in this project with --dangerously-load-development-channels server:xezar, let it call a xezar tool once, then attach it. For Codex: run it on Codex’s shared local app-server (`codex app-server --listen unix://`, in the Codex home xezar uses), let the session call a xezar tool once (for example leader_events) so xezar can find it, then attach it; if that is refused, fix what the refusal names and retry. For OpenCode, a person attaches the session you run with `opencode serve` in Settings → MCP connection. For pi, attach it while it runs xezar’s leader extension.',
+    'No leader session is attached to this project, so events are kept in the journal, not pushed. Attached is how a leader normally receives them; reading with leader_events is the fallback. MCP notifications start no turn on their own. A pi without xezar’s leader extension reads its events with the leader_events tool, and so does any leader until it is attached. A Claude Code session started with --dangerously-load-development-channels server:xezar, a Qwen Code session (0.25.2 or newer), a Codex session running on Codex’s shared local app-server, an OpenCode session you run with `opencode serve`, or a pi running xezar’s leader extension can be attached, so events start a turn in it.',
+  fix: 'Attach your leader from the leader itself: call leader_events with action attach and a new operationId; xezar takes the client from the session, so you never name it. Until it is attached, keep using leader_events from it. For Claude Code: start it in this project with --dangerously-load-development-channels server:xezar, let it call a xezar tool once, then attach it. For Qwen Code: start it in this project, let it call a xezar tool once, then attach it. For Codex: run it on Codex’s shared local app-server (`codex app-server --listen unix://`, in the Codex home xezar uses), let the session call a xezar tool once (for example leader_events) so xezar can find it, then attach it; if that is refused, fix what the refusal names and retry. For OpenCode, a person attaches the session you run with `opencode serve` in Settings → MCP connection. For pi, attach it while it runs xezar’s leader extension.',
 };
 
 /**
@@ -288,6 +290,34 @@ const CLAUDE_CODE_CHANNEL_NOT_ADVERTISED: McpLeaderBlocker = {
 };
 
 /**
+ * #1045: attach refused because the MCP session that owns this project is not a Qwen Code session.
+ */
+const QWEN_NOT_OWNER: McpLeaderBlocker = {
+  code: 'qwen-not-owner',
+  message: 'The MCP session that owns this project is not a Qwen Code session, so there is no Qwen Code leader to push events to. Events are kept in the journal.',
+  fix: 'Start Qwen Code in this project, let it call a xezar tool once, then attach it again.',
+};
+
+/** #1045: the owner is a Qwen Code session whose bridge predates `leader/push`. */
+const QWEN_BRIDGE_TOO_OLD: McpLeaderBlocker = {
+  code: 'qwen-bridge-too-old',
+  message: 'This Qwen Code session is connected through an older xezar MCP bridge that cannot push events. Events are kept in the journal.',
+  fix: 'Restart the xezar MCP server in Qwen Code (/mcp) or start a new Qwen Code session, so it starts the current xezar bridge, then attach it again.',
+};
+
+/**
+ * #1045: Qwen Code gave its xezar bridge no inbox (`QWEN_CODE_MESSAGING_SOCKET`). Three causes, which
+ * xezar cannot tell apart from the bridge: a Qwen Code older than 0.25.2 (messaging off by default),
+ * messaging switched off in the person's Qwen settings, or the bridge started before the session
+ * opened its inbox (the start-order race in the #1043 note). The fix names all three.
+ */
+const QWEN_INBOX_UNAVAILABLE: McpLeaderBlocker = {
+  code: 'qwen-inbox-unavailable',
+  message: 'This Qwen Code session gave its xezar MCP server no inbox to push events to, so a pushed event could not reach it. Events are kept in the journal.',
+  fix: 'Use Qwen Code 0.25.2 or newer, and keep cross-session messaging on in its settings (agents.crossSessionMessaging, and agents.crossSessionInbound not set to hold or refuse). Then restart the xezar MCP server in Qwen Code (/mcp) or start a new session, and attach it again. Until then, read events with leader_events.',
+};
+
+/**
  * #450 — which leader client an MCP session is, from what the SESSION showed, never from an argument.
  * Exact matches only (#374: never a looser match). A Codex announcement wins: it is how a Codex session
  * identifies itself on its tool calls. The names are the ones each client's evidence record measured:
@@ -296,6 +326,9 @@ const CLAUDE_CODE_CHANNEL_NOT_ADVERTISED: McpLeaderBlocker = {
  */
 export function leaderClientOf(evidence: { readonly clientName?: string | undefined; readonly codexAnnounced: boolean }): McpLeaderClient | null {
   if (evidence.codexAnnounced) return 'codex';
+  // #1045: Qwen Code names its MCP client `qwen-cli-mcp-client-<server name>` (0.25.2), so the one
+  // prefix match here; the server name is the person's own choice.
+  if (isQwenClientName(evidence.clientName)) return 'qwen';
   switch (evidence.clientName) {
     case 'claude-code':
       return 'claude-code';
@@ -326,7 +359,7 @@ const DOOR_REFUSALS: Record<Exclude<McpLeaderDoorRefusalCode, 'attach-refused' |
   },
   'client-unknown': {
     message: 'xezar cannot tell which leader client this session is, so there is nothing it could push to.',
-    fix: 'Attach from a Claude Code, Codex or pi leader. Until then, read events with leader_events.',
+    fix: 'Attach from a Claude Code, Qwen Code, Codex or pi leader. Until then, read events with leader_events.',
   },
   'client-needs-address': {
     message: 'An OpenCode leader is reached at the address of the opencode serve session, which xezar does not take from an MCP session.',
@@ -342,6 +375,7 @@ const PUSH_UNAVAILABLE: Record<McpPushUnavailableCode, string> = {
   'client-needs-address': 'An OpenCode leader is attached by a person, with its opencode serve address.',
   'bridge-too-old': CLAUDE_CODE_BRIDGE_TOO_OLD.message,
   'channel-not-advertised': CLAUDE_CODE_CHANNEL_NOT_ADVERTISED.message,
+  'inbox-unavailable': QWEN_INBOX_UNAVAILABLE.message,
 };
 
 const cannotPush = (code: McpPushUnavailableCode): McpPushCapability => ({ canPush: false, pushUnavailable: { code, message: PUSH_UNAVAILABLE[code] } });
@@ -394,6 +428,14 @@ const CLIENT_WORDS: Record<
     lazyMcp: '',
     check: 'check that Claude Code is still running, and was started with `--dangerously-load-development-channels server:xezar`',
     checkShort: 'check that Claude Code is still running with the xezar channel loaded',
+    reattach: 'attach it again',
+  },
+  qwen: {
+    // Reached through the owner session's own bridge and that session's inbox, like Claude Code.
+    name: 'Qwen Code',
+    lazyMcp: '',
+    check: 'check that the Qwen Code session is still running and that its xezar MCP server is connected (/mcp)',
+    checkShort: 'check that the Qwen Code session is still running',
     reattach: 'attach it again',
   },
 };
@@ -590,8 +632,8 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
     this.#ownerTransport = transport;
     this.#ownerSessionKey = sessionKey;
     this.#forgetOwnerActivity();
-    if (this.#leader?.client === 'claude-code' && transport) {
-      const blocker = this.#channelEligibility(transport);
+    if ((this.#leader?.client === 'claude-code' || this.#leader?.client === 'qwen') && transport) {
+      const blocker = this.#eligibility(this.#leader.client, transport);
       if (blocker) this.#opts.warn(`[xez] ${blocker.code}: ${blocker.message} fix: ${blocker.fix}`);
     }
     const started = EventController.start({
@@ -759,6 +801,8 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
     if (client === 'opencode') return cannotPush('client-needs-address');
     if (client === 'claude-code' && transport?.leaderPush !== true) return cannotPush('bridge-too-old');
     if (client === 'claude-code' && transport?.channelAdvertised === false) return cannotPush('channel-not-advertised');
+    if (client === 'qwen' && transport?.leaderPush !== true) return cannotPush('bridge-too-old');
+    if (client === 'qwen' && transport?.inboxAvailable !== true) return cannotPush('inbox-unavailable');
     return { canPush: true };
   }
 
@@ -801,7 +845,7 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
     // Claude Code's adapter already follows the live owner's transport: re-attaching would only reset
     // the push-unconfirmed age and hide a real blocker. Codex and pi re-run the attach, which replaces
     // the link and, for Codex, reconciles an unresolved hand-off.
-    if (leader?.client === 'claude-code') return { ok: true, action: 'attach', outcome: 'already-attached', status: this.sessionStatus(sessionKey) };
+    if (leader?.client === 'claude-code' || leader?.client === 'qwen') return { ok: true, action: 'attach', outcome: 'already-attached', status: this.sessionStatus(sessionKey) };
     const acted = await this.#act({ action: 'attach', client } as McpLeaderActionInput);
     if (!acted.ok) {
       const blocker = acted.blocker ?? { code: 'attach-refused', message: acted.error, fix: 'Read events with leader_events until the refusal is resolved.' };
@@ -959,7 +1003,7 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
         adapter: new ClaudeCodeChannelAdapter({
           projectId: this.projectId,
           roleInstruction: LEADER_ROLE_INSTRUCTION,
-          push: (content, meta, signal) => this.#pushChannel(content, meta, signal),
+          push: (content, meta, signal) => this.#pushOwner('claude-code', content, meta, signal),
           alive: () => this.#ownerTransport !== undefined,
           // reactedSeq stays 0 for Claude Code (no observable reaction), so the only cursor the
           // push-unconfirmed blocker compares against is the leader's own acknowledgement.
@@ -968,6 +1012,33 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
           // #886: the owner session keeps calling other tools yet never reads or acknowledges → the plain blocker.
           ownerActivity: () => ({ replayed: this.#ownerReplayed, otherCallsAt: this.#ownerOtherCallsAt }),
           ...(this.#opts.pushNotSeenMs === undefined ? {} : { notSeenMs: this.#opts.pushNotSeenMs }),
+        }),
+        failingSince: null,
+        settledThrough: 0,
+      };
+      this.#liveController()?.wake();
+      return { ok: true, status: this.status() };
+    }
+    if (input.client === 'qwen') {
+      // #1045: as Claude Code's — the target is the owner MCP session's own bridge, which sends into
+      // that Qwen Code session's inbox. The owner is validated now; a refused attach keeps the
+      // previous leader; with no owner yet, attach and let `noOwnerSession` report it.
+      const transport = this.#ownerTransport;
+      if (transport !== undefined) {
+        const blocker = this.#eligibility('qwen', transport);
+        if (blocker) return { ok: false, error: `${blocker.message} fix: ${blocker.fix}`, blocker };
+      }
+      this.#detach();
+      this.#refusal = undefined;
+      this.#leader = {
+        client: 'qwen',
+        adapter: new QwenCodeInboxAdapter({
+          projectId: this.projectId,
+          roleInstruction: LEADER_ROLE_INSTRUCTION,
+          push: (content, signal) => this.#pushOwner('qwen', content, undefined, signal),
+          alive: () => this.#ownerTransport !== undefined,
+          acknowledged: () => this.#opts.leaderRecord?.acknowledged() ?? 0,
+          heartbeatMs: this.#opts.heartbeatMs ?? EVENT_CONTROLLER_HEARTBEAT_MS,
         }),
         failingSince: null,
         settledThrough: 0,
@@ -1107,14 +1178,27 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
    * nothing to push to: the reject is a delivery failure the controller retries, and `noOwnerSession`
    * / the blocker rules explain it.
    */
-  #pushChannel(content: string, meta: Record<string, string>, signal: AbortSignal): Promise<void> {
+  #pushOwner(client: 'claude-code' | 'qwen', content: string, meta: Record<string, string> | undefined, signal: AbortSignal): Promise<void> {
     const transport = this.#ownerTransport;
     if (transport === undefined) {
-      return Promise.reject(new Error('no Claude Code MCP session owns this project, so there is nothing to push a channel event to'));
+      return Promise.reject(new Error(`no ${CLIENT_WORDS[client].name} MCP session owns this project, so there is nothing to push an event to`));
     }
-    const blocker = this.#channelEligibility(transport);
+    const blocker = this.#eligibility(client, transport);
     if (blocker) return Promise.reject(new Error(`${blocker.message} fix: ${blocker.fix}`));
     return abortable(transport.push(content, meta), signal);
+  }
+
+  /** Can the owner session's bridge carry a push for this client? The blocker that says why not. */
+  #eligibility(client: 'claude-code' | 'qwen', transport: McpSessionTransport): McpLeaderBlocker | null {
+    return client === 'claude-code' ? this.#channelEligibility(transport) : this.#qwenEligibility(transport);
+  }
+
+  #qwenEligibility(transport: McpSessionTransport): McpLeaderBlocker | null {
+    if (transport.clientName === undefined) return QWEN_BRIDGE_TOO_OLD;
+    if (!isQwenClientName(transport.clientName)) return QWEN_NOT_OWNER;
+    if (transport.leaderPush !== true) return QWEN_BRIDGE_TOO_OLD;
+    if (transport.inboxAvailable !== true) return QWEN_INBOX_UNAVAILABLE;
+    return null;
   }
 
   #channelEligibility(transport: McpSessionTransport): McpLeaderBlocker | null {
@@ -1159,6 +1243,7 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
     if (key === undefined) return null;
     if (this.#codexAnnouncements.has(key)) return { client: 'codex' };
     if (this.#ownerSessionKey === key && this.#ownerTransport?.clientName === 'claude-code') return { client: 'claude-code' };
+    if (this.#ownerSessionKey === key && isQwenClientName(this.#ownerTransport?.clientName)) return { client: 'qwen' };
     return { client: null };
   }
 
@@ -1195,8 +1280,8 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
     // Attached, but nobody owns the project: no controller, so nothing is delivered (#331).
     const controller = this.#liveController();
     if (controller === undefined) return noOwnerSession(leader.client);
-    if (leader.client === 'claude-code' && this.#ownerTransport) {
-      const eligibility = this.#channelEligibility(this.#ownerTransport);
+    if ((leader.client === 'claude-code' || leader.client === 'qwen') && this.#ownerTransport) {
+      const eligibility = this.#eligibility(leader.client, this.#ownerTransport);
       if (eligibility) return eligibility;
     }
     const blocker = leader.adapter.status().blocker;

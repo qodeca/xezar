@@ -140,6 +140,39 @@ const CLIENTS: readonly ClientSetup[] = [
     ),
   },
   {
+    name: 'Qwen Code',
+    automatic:
+      'Writing the connection configuration inside this project\u2019s `.local/xezar/`; regenerating it if deleted; keeping it out of Git.',
+    userAction: (
+      <>
+        Add the <span className="font-mono break-all">xezar</span> server to the project <span className="font-mono break-all">.qwen/settings.json</span>, or run this once from the project root:
+        <pre className="mt-2 rounded-md border border-border bg-muted p-3 font-mono text-[11px] leading-relaxed break-all whitespace-pre-wrap">
+          qwen mcp add --scope project xezar npx -y @qodeca/xezar mcp
+        </pre>
+      </>
+    ),
+    notAutomatic:
+      'Qwen Code does not discover `.local/xezar/mcp-connection.json`. The settings entry above is what tells Qwen Code that a xezar MCP server exists.',
+    caveat:
+      'Use Qwen Code 0.25.2 or newer. A task xezar runs on Qwen Code never starts this server: only the leader session you run yourself does.',
+    // #1045: the attach path. Qwen Code's own cross-session messaging carries each event; it is on by
+    // default from 0.25.2 and needs no flag.
+    wake: (
+      <>
+        <span className="block">
+          {withCode(
+            'To let xezar push events into this leader, start `qwen` in this project, let it call a xezar tool once (for example `leader_events`), and choose Attach leader under Connection status below, or let the session attach itself. Qwen Code shows each event as a message from the xezar process it started, not from you, and runs it after the current turn when the session is busy.',
+          )}
+        </span>
+        <span className="mt-2 block">
+          {withCode(
+            'Push needs Qwen Code’s cross-session messaging, which is on by default. If `agents.crossSessionMessaging` is false, or `agents.crossSessionInbound` is hold or refuse, Connection status says push is unavailable and the leader reads its events with `leader_events`.',
+          )}
+        </span>
+      </>
+    ),
+  },
+  {
     name: 'Codex',
     automatic:
       'Writing the connection configuration inside this project\u2019s `.local/xezar/`; regenerating it if deleted; keeping it out of Git.',

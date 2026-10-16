@@ -74,10 +74,18 @@ const LEADER_CLIENTS: Record<LeaderClient, LeaderClientCopy> = {
     note: 'Works when this Claude Code was started with `--dangerously-load-development-channels server:xezar` and has called a xezar tool once. Without the flag, Claude Code reads its events with `leader_events`.',
     connected: 'Claude Code connected. Project events can start a turn in your current session.',
   },
+  qwen: {
+    name: RUNNER_LABEL.qwen,
+    attach: 'direct',
+    // #1045: the owner session itself is the target; its xezar bridge sends into the session's own
+    // inbox, which Qwen Code 0.25.2 and newer opens by default.
+    note: 'Works when this Qwen Code (0.25.2 or newer) has called a xezar tool once. Qwen Code delivers each event into your session, after the current turn when it is busy. If Qwen Code’s cross-session messaging is switched off, it reads its events with `leader_events`.',
+    connected: 'Qwen Code connected. Project events can start a turn in your current session.',
+  },
 }
 
 /** The order the picker offers them in. */
-const CHOICES: readonly LeaderClient[] = ['codex', 'opencode', 'pi', 'claude-code']
+const CHOICES: readonly LeaderClient[] = ['codex', 'opencode', 'pi', 'claude-code', 'qwen']
 
 /** Names the server's copy mentions without backticks, rendered as code all the same (NB-3). */
 const CODE_WORDS = ['leader_events', 'app-server'] as const
@@ -328,13 +336,16 @@ function summary(status: Extract<McpLeaderStatus, { available: true }>): string 
     return status.blocker ? `${words.name} is attached, but events are waiting.` : words.connected
   }
   if (status.owner === null) {
-    return 'No leader client is connected to this project. Start your leader client here: it can read its events with `leader_events`, and a Claude Code, Codex, OpenCode or pi session can be attached below.'
+    return 'No leader client is connected to this project. Start your leader client here: it can read its events with `leader_events`, and a Claude Code, Qwen Code, Codex, OpenCode or pi session can be attached below.'
   }
   if (status.owner.client === 'codex') {
     return 'Your Codex session owns this project. Nothing is attached yet, so events are kept for `leader_events` and start no turn.'
   }
   if (status.owner.client === 'claude-code') {
     return 'Your Claude Code session owns this project. Nothing is attached yet, so events are kept for `leader_events` and start no turn.'
+  }
+  if (status.owner.client === 'qwen') {
+    return 'Your Qwen Code session owns this project. Nothing is attached yet, so events are kept for `leader_events` and start no turn.'
   }
   return 'A client owns this project, but xezar has not identified which one. Nothing is attached, so events start no turn in it; a leader can read them with `leader_events`.'
 }

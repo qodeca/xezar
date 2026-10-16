@@ -230,6 +230,12 @@ export const sessionOpenParamsSchema = z.object({
    * not register it can never be woken over the channel, and the service names that.
    */
   channelAdvertised: z.boolean().optional(),
+  /**
+   * #1045: a Qwen Code bridge says whether its session named an inbox to it
+   * (`QWEN_CODE_MESSAGING_SOCKET` and `QWEN_CODE_MESSAGING_TOKEN`). Without one, nothing can be
+   * pushed to that session, and the service names why.
+   */
+  inboxAvailable: z.boolean().optional(),
 });
 
 /**

@@ -55,6 +55,10 @@ const mcpLeaderAttachInputSchema = z.discriminatedUnion('client', [
   // action answers a recoverable reason rather than a schema error. Adding a required field here is
   // breaking.
   z.strictObject({ action: z.literal('attach'), client: z.literal('claude-code') }),
+  // Qwen Code (#1045). No address either: the target is the owner MCP session itself — the
+  // `xezar mcp` bridge the person's Qwen Code started — and the bridge sends each event into that
+  // session's own inbox, which Qwen Code names in the bridge's environment.
+  z.strictObject({ action: z.literal('attach'), client: z.literal('qwen') }),
 ]);
 
 export const mcpLeaderActionInputSchema = z.union([
@@ -64,7 +68,7 @@ export const mcpLeaderActionInputSchema = z.union([
 export type McpLeaderActionInput = z.infer<typeof mcpLeaderActionInputSchema>;
 
 /** Which leader client: one enum for the attached session below and for the MCP door (#450). */
-export const mcpLeaderClientSchema = z.enum(['opencode', 'pi', 'codex', 'claude-code']);
+export const mcpLeaderClientSchema = z.enum(['opencode', 'pi', 'codex', 'claude-code', 'qwen']);
 export type McpLeaderClient = z.infer<typeof mcpLeaderClientSchema>;
 
 /** The leader session attached to the project, if any. */
@@ -109,11 +113,12 @@ export type McpLeaderBlocker = z.infer<typeof mcpLeaderBlockerSchema>;
  * calls, so it reads `codex` once it has called a xezar tool; that announcement is also what a Codex
  * attach needs. A Claude Code session identifies itself through the client name its channel-capable
  * bridge announces at `session/open` (exactly `claude-code`), so it reads `claude-code` as soon as
- * it owns the project. The cockpit's Attach leader action is derived from this. A client identified
+ * it owns the project. A Qwen Code session identifies itself the same way, by the
+ * `qwen-cli-mcp-client-<server name>` client name its bridge announces (#1045). The cockpit's Attach leader action is derived from this. A client identified
  * another way is a new enum member, which is additive.
  */
 export const mcpLeaderOwnerSchema = z.object({
-  client: z.enum(['codex', 'claude-code']).nullable(),
+  client: z.enum(['codex', 'claude-code', 'qwen']).nullable(),
 });
 export type McpLeaderOwner = z.infer<typeof mcpLeaderOwnerSchema>;
 
@@ -151,6 +156,8 @@ export const mcpPushUnavailableCodeSchema = z.enum([
   'bridge-too-old',
   /** A Claude Code bridge whose `initialize` handshake did not register `claude/channel`. */
   'channel-not-advertised',
+  /** #1045: a Qwen Code session that gave its xezar bridge no inbox (`QWEN_CODE_MESSAGING_SOCKET`). */
+  'inbox-unavailable',
 ]);
 export type McpPushUnavailableCode = z.infer<typeof mcpPushUnavailableCodeSchema>;
 

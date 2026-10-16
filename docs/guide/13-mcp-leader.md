@@ -37,7 +37,7 @@ Configure the chosen client from the project root and start its session there. T
 
 xezar writes `.local/xezar/mcp-connection.json` automatically, but **none of these clients discovers that file**. Each client still needs its own registration below. Use one owning client per project.
 
-The first-contact order for every client is `health` → `discover_project` → attach → `leader_events` `status`. For Claude Code, Codex and pi, attach is this MCP call with a new client-generated `operationId`; xezar derives the client from the calling session:
+The first-contact order for every client is `health` → `discover_project` → attach → `leader_events` `status`. For Claude Code, Qwen Code, Codex and pi, attach is this MCP call with a new client-generated `operationId`; xezar derives the client from the calling session:
 
 ```json
 { "action": "attach", "operationId": "leader-attach-example-0001" }
@@ -113,6 +113,26 @@ This was checked in isolated sessions of Claude Code 2.1.278 and 2.1.280 (a synt
 **Restart and compaction recovery.** After a cockpit restart, call a real tool, check `status`, attach with a new operation ID, then call `read` with no cursor. After a client restart or context compaction, also begin with `read` and no cursor. Page with `nextCursor` while `hasMore` is true, deduplicate by `eventId`, reconcile current task state, and acknowledge only the processed cursor. Historical counters do not prove current delivery.
 
 **Tips and tricks.** Start the cockpit before the new Claude Code session so the bridge can advertise the channel. A `claude-code-bridge-too-old` blocker means the client must restart the current bridge. A `claude-code-push-unconfirmed` blocker does not mean the row was lost: inspect the session and journal, then acknowledge only after the event has been handled. A `claude-code-push-not-seen` blocker is stronger: xezar pushed events more than five minutes ago and the session has kept calling other xezar tools since without reading or acknowledging them, so the pushes are most likely not reaching the conversation. A session that reads its events with `leader_events` `read` is never reported this way for the events that read returned; read every page while `hasMore` is true, because a read that answers a gap or stops before a pushed event does not count as having seen it. Read the events with `leader_events` `read`, then use the debug-file check above to see why.
+
+### Qwen Code
+
+**Prerequisites.** Run Qwen Code 0.25.2 or newer and the cockpit on the same machine, with a model provider already set up in Qwen Code. Pushed events use Qwen Code's own cross-session messaging, which is on by default from 0.25.2: xezar needs no flag and changes none of your Qwen Code settings.
+
+**Register `xezar mcp`.** From the project root, add the server to the project's `.qwen/settings.json`:
+
+```sh
+qwen mcp add --scope project xezar npx -y @qodeca/xezar mcp
+```
+
+**Launch.** Start `qwen` in the project root. Qwen Code starts the xezar MCP server itself and gives it the address of the session's own inbox.
+
+**First contact.** Call `health`, then `discover_project`, then `leader_events` `attach` with a fresh operation ID, then `status`. `status` shows `self.client: "qwen"` and `canPush: true`.
+
+**What a push looks like.** Each event batch arrives as a message from the xezar process the session started (`name="xezar"`), and Qwen Code adds its own notice that such a message carries none of your authority. An idle session takes it at once; a busy one takes it after the current turn. The text names xezar as the source, asks the leader to read current state before acting, and names the cursor for `leader_events` `ack`. xezar counts an event as delivered only when Qwen Code answers that it took the message; a held or dropped message is sent again.
+
+**Restart and compaction recovery.** As for Claude Code: after a cockpit restart the idle leader receives one notice through its inbox; call a real tool, check `status`, attach with a new operation ID, then call `read` with no cursor.
+
+**Tips and tricks.** A `qwen-inbox-unavailable` reason means Qwen Code gave the xezar server no inbox. Check the version (0.25.2 or newer), and that `agents.crossSessionMessaging` is not false and `agents.crossSessionInbound` is not `hold` or `refuse`. Then restart the xezar server with `/mcp` in Qwen Code, or start a new session. Until then, read events with `leader_events`. A task that xezar runs on Qwen Code never starts this server and is never the leader.
 
 ### Codex
 
@@ -257,7 +277,7 @@ The **Server address** is therefore `http://127.0.0.1:4096` and the **Session id
 
 ## To stop an attachment
 
-Claude Code, Codex and pi can detach their own session through MCP:
+Claude Code, Qwen Code, Codex and pi can detach their own session through MCP:
 
 ```json
 { "action": "stop", "operationId": "leader-stop-example-0001" }
@@ -319,7 +339,7 @@ The cockpit's address comes from the MCP only: `discover_project` carries `cockp
 
 ## To recover with `leader_events`
 
-Attached leaders receive pushed events: channel messages for Claude Code, started turns for Codex, OpenCode and pi. If no leader is attached, or delivery is blocked, pull the journal:
+Attached leaders receive pushed events: channel messages for Claude Code, messages from the xezar process for Qwen Code, started turns for Codex, OpenCode and pi. If no leader is attached, or delivery is blocked, pull the journal:
 
 ```json
 { "action": "read" }

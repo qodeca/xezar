@@ -105,6 +105,11 @@ async function manifest(): Promise<Producer[]> {
     { producer: 'leader role', location: 'packages/xezar/src/mcp/leader-delivery.ts#LEADER_ROLE_INSTRUCTION', text: LEADER_ROLE_INSTRUCTION },
     source('leader blockers', 'packages/xezar/src/mcp/leader-delivery.ts'),
     source('pi leader blocker', 'packages/xezar/src/mcp/adapters/pi.ts'),
+    source('Qwen Code leader blocker', 'packages/xezar/src/mcp/adapters/qwen-code.ts'),
+    source('Qwen Code inbox refusals', 'packages/xezar/src/mcp/qwen-messaging.ts'),
+    source('Qwen Code task runner messages', 'packages/xezar/src/core/qwen-runner.ts'),
+    source('Qwen Code run settings messages', 'packages/xezar/src/core/qwen-run-config.ts'),
+    source('Qwen Code tool-policy refusals', 'packages/xezar/src/core/qwen-tool-policy.ts'),
     ...tools.map((tool) => ({ producer: `MCP tool ${tool.name} listing`, location: `mcp-tool:${tool.name}`, text: JSON.stringify(toolListing(tool)) })),
     ...MCP_TOOL_SOURCES.map((path) => source('MCP tool refusals and guidance', path)),
     // ---- what a person reads ----

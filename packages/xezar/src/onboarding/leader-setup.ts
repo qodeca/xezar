@@ -11,7 +11,7 @@ import type { McpLeaderSelfStatus } from '@qodeca/xezar-contract';
 export const LEADER_SETUP_STATES = ['files-prepared', 'connected', 'attached', 'delivery-verified'] as const;
 export type LeaderSetupState = (typeof LEADER_SETUP_STATES)[number];
 
-export type LeaderSetupClient = 'claude-code' | 'codex' | 'pi';
+export type LeaderSetupClient = 'claude-code' | 'codex' | 'qwen' | 'pi';
 
 export interface LeaderSetupGuide {
   client: LeaderSetupClient;
@@ -44,6 +44,20 @@ const GUIDES: Readonly<Record<LeaderSetupClient, LeaderSetupGuide>> = {
     prerequisites: [
       'Trust the project and sign in yourself; Codex ignores project configuration until the project is trusted.',
       'For pushed events, run the shared local app-server under the same Codex home that xezar uses. A different home, an unloaded thread or a non-shared server is reported as unavailable.',
+    ],
+  },
+  qwen: {
+    client: 'qwen',
+    label: 'Qwen Code',
+    destination: '.qwen/settings.json',
+    snippet: JSON.stringify(
+      { mcpServers: { xezar: { command: 'npx', args: ['-y', '@qodeca/xezar', 'mcp'] } } },
+      null,
+      2,
+    ),
+    prerequisites: [
+      'Use Qwen Code 0.25.2 or newer, review the project MCP entry, and set up a model provider yourself.',
+      'Pushed events use Qwen Code cross-session messaging, which is on by default. If agents.crossSessionMessaging is false, or agents.crossSessionInbound is hold or refuse, push is unavailable and the leader reads its events instead.',
     ],
   },
   pi: {
@@ -144,5 +158,5 @@ export function leaderSetupVerificationLine(
 }
 
 function clientLabel(client: LeaderSetupClient | 'opencode'): string {
-  return client === 'claude-code' ? 'Claude Code' : client === 'codex' ? 'Codex' : client === 'opencode' ? 'OpenCode' : 'pi';
+  return client === 'claude-code' ? 'Claude Code' : client === 'codex' ? 'Codex' : client === 'qwen' ? 'Qwen Code' : client === 'opencode' ? 'OpenCode' : 'pi';
 }

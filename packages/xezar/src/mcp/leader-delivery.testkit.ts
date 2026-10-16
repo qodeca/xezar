@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import { createServer as createSocketServer, type AddressInfo, type Socket } from 'node:net';
+import { createConnection, createServer as createSocketServer, type AddressInfo, type Socket } from 'node:net';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { CODEX_CONTROL_SOCKET } from './adapters/codex-link.ts';
 import { piLeaderPath } from './adapters/pi-link.ts';
@@ -22,12 +22,12 @@ import { tools } from './tools/index.ts';
 import { onWindows, shortTmpRoot } from '../../test/helpers/platform.ts';
 import { targetFor } from '../../test/helpers/mcp-raw.ts';
 
-export const DELIVERY_CLIENTS = ['claude-code', 'codex', 'opencode', 'pi'] as const;
+export const DELIVERY_CLIENTS = ['claude-code', 'codex', 'opencode', 'pi', 'qwen'] as const;
 export type DeliveryClient = typeof DELIVERY_CLIENTS[number];
-/** True where this client's peer cannot be built: the Codex and pi peers listen on a Unix socket path, which
- *  Node cannot do on Windows; attaching either there is a follow-up (#963). Claude Code crosses the real
- *  service, a named pipe on Windows. Always false on POSIX. */
-export const deliveryPeerUnavailable = (client: DeliveryClient): boolean => onWindows && (client === 'codex' || client === 'pi');
+/** True where this client's peer cannot be built: the Codex, pi and Qwen Code peers listen on a Unix socket
+ *  path, which Node cannot do on Windows; attaching those there is a follow-up (#963). Claude Code crosses the
+ *  real service, a named pipe on Windows. Always false on POSIX. */
+export const deliveryPeerUnavailable = (client: DeliveryClient): boolean => onWindows && (client === 'codex' || client === 'pi' || client === 'qwen');
 const SESSION = 'ses_matrix0000000000000001';
 interface Submission { parts: Array<{ text: string; metadata?: { xezar?: { rows: string[] } } }> }
 
@@ -62,7 +62,10 @@ export async function deliveryHarness(client: DeliveryClient) {
   try {
     if (client === 'codex') await fakeCodex(root, codexHome, received, requests, closers);
     if (client === 'pi') await fakePi(root, store.dataDir, received, requests, closers);
-    if (client === 'claude-code') {
+    if (client === 'claude-code' || client === 'qwen') {
+      // Qwen Code (#1045) crosses the same service and bridge; its pushes land in the session inbox the
+      // bridge finds in its environment, not on stdout.
+      const inboxEnv = client === 'qwen' ? await fakeQwenInbox(root, received, closers) : {};
       const socket = await listenMcpSocket({ project: { id: 'matrix', name: 'Matrix', root }, version: '0.0.0-test', tools,
         env: { ...process.env, XEZ_HOME: root }, dataDir: store.dataDir, ownership,
         context: { leaderControl: delivery },
@@ -78,14 +81,14 @@ export async function deliveryHarness(client: DeliveryClient) {
         if (msg.id !== undefined) { pending.get(msg.id)?.(msg.result); pending.delete(msg.id); }
       }, () => {});
       output.on('data', (chunk: Buffer) => framer.push(chunk));
-      const done = runBridge({ input, output, version: '0.0.0-test', tools,
+      const done = runBridge({ input, output, version: '0.0.0-test', tools, env: inboxEnv,
         resolveTarget: async () => targetFor(socket, { id: 'matrix', name: 'Matrix' }, { ...process.env, XEZ_HOME: root }) });
       closers.push(async () => { input.end(); await done; });
       let next = 1;
       const rpc = (method: string, params: Record<string, unknown>) => new Promise(resolve => {
         const id = next++; pending.set(id, resolve); input.write(encodeFrame({ jsonrpc: '2.0', id, method, params }));
       });
-      await rpc('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'claude-code', version: '1' } });
+      await rpc('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: client === 'qwen' ? 'qwen-cli-mcp-client-xezar' : 'claude-code', version: '1' } });
       await rpc('tools/call', { name: 'leader_events', arguments: { action: 'status' } });
     } else {
       await ownership.acquire('matrix-owner');
@@ -110,6 +113,41 @@ export async function deliveryHarness(client: DeliveryClient) {
       },
     };
   } catch (error) { await close(); throw error; }
+}
+
+/**
+ * A Qwen Code session's inbox (#1045): the `auth` line, then `user` frames, each answered with a
+ * `delivered` receipt on the frame's `from` socket, as Qwen Code 0.25.2 does. Returns the environment
+ * the session gives its MCP servers.
+ */
+async function fakeQwenInbox(root: string, received: string[], closers: Array<() => unknown>): Promise<NodeJS.ProcessEnv> {
+  const path = join(root, 'qwen-inbox.sock');
+  const token = 'matrix-child-token';
+  const server = createSocketServer((socket) => {
+    let buffer = '';
+    let authed = false;
+    socket.setEncoding('utf8');
+    socket.on('data', (chunk: string) => {
+      buffer += chunk;
+      let at: number;
+      while ((at = buffer.indexOf('\n')) >= 0) {
+        const frame = JSON.parse(buffer.slice(0, at)) as { type?: string; token?: string; msgId?: string; from?: string; message?: { content?: string } };
+        buffer = buffer.slice(at + 1);
+        if (!authed) { authed = frame.type === 'auth' && frame.token === token; if (!authed) socket.destroy(); continue; }
+        if (frame.type !== 'user') continue;
+        received.push(frame.message?.content ?? '');
+        if (frame.from) {
+          const back = createConnection({ path: frame.from });
+          back.on('error', () => undefined);
+          back.end(`${JSON.stringify({ msgV: 1, type: 'control', status: 'delivered', origMsgId: frame.msgId })}\n`);
+        }
+      }
+    });
+    socket.on('error', () => undefined);
+  });
+  await new Promise<void>((resolve) => server.listen(path, resolve));
+  closers.push(() => new Promise<void>((resolve) => server.close(() => resolve())));
+  return { QWEN_CODE_MESSAGING_SOCKET: path, QWEN_CODE_MESSAGING_TOKEN: token };
 }
 
 /** One fake `opencode serve` session, for a test that needs an address a real adapter can check. */

@@ -208,7 +208,7 @@ describe('MCP connection section hard boundaries (F-15, U-M02, U-M01)', () => {
     expect(text).not.toContain('automatically detects')
     // …and it must state the negation plainly for each client.
     expect(text).toContain('does not discover')
-    expect(container.querySelectorAll('[data-slot="mcp-client-not-automatic"]')).toHaveLength(4)
+    expect(container.querySelectorAll('[data-slot="mcp-client-not-automatic"]')).toHaveLength(5)
     for (const line of container.querySelectorAll('[data-slot="mcp-client-not-automatic"]')) {
       expect(line.textContent).toMatch(/^Not automatic: .+ does not discover \.local\/xezar\/mcp-connection\.json/)
     }
@@ -453,7 +453,7 @@ describe('MCP connection section — the leader control (#374, round 4 on #403)'
     // NB-3: leader_events and app-server render as code, even where the server's copy is plain text.
     expect(codes(blocker)).toEqual(expect.arrayContaining(['leader_events', 'app-server', 'codex app-server --listen unix://']))
     const radios = [...control.querySelectorAll('[role="radiogroup"] [role="radio"]')].map((radio) => radio.textContent)
-    expect(radios).toEqual(['Codex', 'OpenCode', 'pi', 'Claude Code'])
+    expect(radios).toEqual(['Codex', 'OpenCode', 'pi', 'Claude Code', 'Qwen Code'])
     expect(attachButton(control)?.textContent).toBe('Attach leader')
   })
 

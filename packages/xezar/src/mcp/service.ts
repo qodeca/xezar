@@ -158,6 +158,8 @@ export interface McpSessionTransport {
   leaderPush?: boolean;
   /** #450: whether this bridge's handshake registered `claude/channel`; absent on its first open. */
   channelAdvertised?: boolean;
+  /** #1045: whether a Qwen Code session named its inbox to this bridge; absent for other clients. */
+  inboxAvailable?: boolean;
 }
 
 /**
@@ -487,6 +489,7 @@ async function answer(
           if (announced.data.clientName !== undefined) transport.clientName = announced.data.clientName;
           if (announced.data.leaderPush !== undefined) transport.leaderPush = announced.data.leaderPush;
           if (announced.data.channelAdvertised !== undefined) transport.channelAdvertised = announced.data.channelAdvertised;
+          if (announced.data.inboxAvailable !== undefined) transport.inboxAvailable = announced.data.inboxAvailable;
         }
         observe(opts, 'opened', sessionKey, transport);
         // #450: tell the bridge whether xezar can push to this client, so it registers the Claude Code
