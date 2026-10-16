@@ -273,7 +273,14 @@ Notable fields (full doc-comments in the source):
   Codex merges an override key by key and cannot unset one, so a home key the
   project table does not replace keeps the server off, named in the run's note.
   An app-server that cannot answer fails the run closed. The other runners do
-  not isolate MCP servers yet.
+  not isolate MCP servers yet. For this run's own thread only (sub-agent
+  threads are ignored), `mcpServer/startupStatus/updated` becomes a v1 `note`:
+  `failed` names the server and Codex's reason (#1026); `ready` gives one note
+  per server, `codex: the MCP server <name> is ready with <n> tools.` (#1057).
+  The status carries no tools, so the count comes from one `mcpServerStatus/list`
+  (`threadId`, `detail: 'toolsAndAuthOnly'`, at most 5 pages, 5 s); an error, no
+  answer, a missing entry or a `toolsError` drops only the count
+  (`… is ready.`), never the note and never the run.
 - `sessionId?` / `resume?` — stable session id for interactive takeover and for
   `--resume` ("Continue" after a run ends).
   A resume must not need the backend to send the whole history back in one

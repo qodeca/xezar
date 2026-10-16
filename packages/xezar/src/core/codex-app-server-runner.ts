@@ -252,6 +252,8 @@ class CodexSession implements AgentSession {
     this.emit({ type: 'text', text });
   });
   private tokensUsed = 0;
+  /** MCP servers this run's thread already has a ready note for — one note per server (#1057). */
+  private readonly mcpReadyNoted = new Set<string>();
   /** This session's ordinary-bucket rate-limit snapshot, merged from sparse updates — the reset a
    *  failed plan-limit turn falls back to when Codex's message names none, and the
    *  `rateLimitReachedType` that decides whether `rateLimitExceeded` is a plan limit (#565). */
@@ -836,6 +838,19 @@ class CodexSession implements AgentSession {
     return this.isForeignThreadTurn((msg.params ?? {}) as Record<string, unknown>);
   }
 
+  /** One note per ready MCP server, with its tool count when Codex's own status listing gives one
+   *  (#1057). The startup notification carries no tools, so the count comes from one bounded
+   *  `mcpServerStatus/list`; a failed, slow or unhelpful answer drops the count, never the note,
+   *  and never touches the run. */
+  private noteMcpServerReady(name: string, threadId: string | undefined): void {
+    if (this.mcpReadyNoted.has(name)) return;
+    this.mcpReadyNoted.add(name);
+    void codexMcpToolCount(this.rpc, name, threadId).then((count) => {
+      const tools = count === undefined ? '' : ` with ${count} ${count === 1 ? 'tool' : 'tools'}`;
+      this.emit({ type: 'note', message: `codex: the MCP server ${name} is ready${tools}.` });
+    }).catch(() => undefined);
+  }
+
   private handleNotification(method: string, params: Record<string, unknown>): void {
     switch (method) {
       case 'account/rateLimits/updated': {
@@ -899,6 +914,12 @@ class CodexSession implements AgentSession {
       case 'mcpServer/startupStatus/updated': {
         // #1026: a server that fails to start leaves the model without its tools and nothing else
         // says so — the isolation note above only names what the thread was configured with.
+        // #1057: a server that starts gets a note too, so a run with no such note means the server
+        // never reported ready — not that the model never looked its tools up.
+        if (params.status === 'ready' && !this.isForeignThreadTurn(params)) {
+          this.noteMcpServerReady(stringField(params, 'name') ?? 'unknown', stringField(params, 'threadId') ?? this.threadId);
+          break;
+        }
         if (params.status !== 'failed' || this.isForeignThreadTurn(params)) break;
         const name = stringField(params, 'name') ?? 'unknown';
         const detail = (stringField(params, 'error') ?? stringField(params, 'failureReason'))?.trim().replace(/\.+$/, '');
@@ -1266,6 +1287,52 @@ function userInputAnswers(questions: AskQuestion[], text: string): Record<string
 }
 
 /** ThreadItem `type`s that are conversation text, not tool activity. */
+/** How long a ready note waits for Codex's MCP status listing before it goes out without a count. */
+const MCP_TOOL_COUNT_WAIT_MS = 5_000;
+/** Pages of `mcpServerStatus/list` read while looking for one server. */
+const MCP_STATUS_LIST_MAX_PAGES = 5;
+
+/**
+ * The number of tools Codex lists for one MCP server on one thread, or `undefined` when it cannot
+ * say: a request error, no answer within `MCP_TOOL_COUNT_WAIT_MS`, the server missing from the
+ * listing, or a `toolsError` (#1057). Never rejects.
+ */
+async function codexMcpToolCount(
+  rpc: CodexAppServerRpc,
+  name: string,
+  threadId: string | undefined,
+): Promise<number | undefined> {
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<undefined>((resolve) => {
+    timer = setTimeout(() => resolve(undefined), MCP_TOOL_COUNT_WAIT_MS);
+    timer.unref?.();
+  });
+  const lookup = async (): Promise<number | undefined> => {
+    let cursor: string | undefined;
+    for (let page = 0; page < MCP_STATUS_LIST_MAX_PAGES; page++) {
+      const res = await rpc.request('mcpServerStatus/list', clean({ threadId, detail: 'toolsAndAuthOnly', cursor }));
+      const data = Array.isArray(res.data) ? (res.data as unknown[]) : [];
+      for (const entry of data) {
+        if (!entry || typeof entry !== 'object') continue;
+        const status = entry as Record<string, unknown>;
+        if (status.name !== name) continue;
+        if (typeof status.toolsError === 'string') return undefined;
+        const tools = status.tools;
+        return tools && typeof tools === 'object' && !Array.isArray(tools) ? Object.keys(tools).length : undefined;
+      }
+      cursor = stringField(res, 'nextCursor');
+      if (!cursor) return undefined;
+    }
+    return undefined;
+  };
+  try {
+    // The lookup keeps its own catch: losing the race must not leave a rejection unheard.
+    return await Promise.race([lookup().catch(() => undefined), timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 const NON_TOOL_ITEMS = new Set(['agentMessage', 'userMessage', 'reasoning', 'plan']);
 
 /** Turn-lifecycle notification methods — the only frames whose child-thread copies must be
