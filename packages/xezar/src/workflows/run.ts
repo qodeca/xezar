@@ -75,6 +75,7 @@ import { DEFAULT_IDLE_TIMEOUT_MINUTES } from '../workspace/config.ts';
 import { WorkspaceSemaphore, type AccountHolds } from '../workspace/semaphore.ts';
 import { UiEventSink } from '../runs/ui-event-sink.ts';
 import type { UiEvent } from '../core/ui-events.ts';
+import { isReadOnlyStep } from '../core/read-only-lock.ts';
 import { authorEvidenceBrief, snapshotAuthorEvidence } from '../runs/author-evidence.ts';
 import {
   chainStepNote,
@@ -3291,6 +3292,8 @@ export class RunManager {
     // by a fresh-session continuation is recorded under is that step's, not the last agent step's.
     const completedStepId = resumeIndex >= 0 ? workflow?.steps[resumeIndex]?.id : undefined;
     let completedTurn = false;
+    /** The session's resolved tools, assigned with `toolsStep` below (#933 reads them at turn end). */
+    let continueTools: readonly string[] = DEFAULT_ALLOWED_TOOLS;
     let stepCost = 0;
     let turnText = '';
     let sessionError: string | undefined;
@@ -3355,6 +3358,7 @@ export class RunManager {
         }
         let autoContinued = false;
         let gatedStop = false;
+        let finishedReadOnly = false;
         if (sessionOpen) {
           // Autonomous (#autonomous): never hand the ball back to the user. Nudge the agent to
           // keep going (bounded by `autoContinueCap` and the idle rule) instead of parking at
@@ -3364,9 +3368,15 @@ export class RunManager {
           // wait out the idle close and then fail with the same error (run `04af6692` sat 15
           // minutes), so close now and let the settle below fail with the reason.
           gatedStop = !autoContinued && resumeIndex >= 0 && state.autoContinueStop !== undefined;
+          // #933: an autonomous READ-ONLY continuation whose re-prompting hit a bound finishes
+          // instead of parking — the same helper as `execute`'s handler. `continueTools` is set
+          // below, from the same `toolsStep` the spawn uses, before any turn can end.
+          finishedReadOnly =
+            !autoContinued && !gatedStop && !monitoring &&
+            this.finishStoppedReadOnlyTurn(runId, state, stepId, continueTools);
           if (gatedStop) {
             state.session?.end();
-          } else if (!autoContinued) {
+          } else if (!autoContinued && !finishedReadOnly) {
             // `XEZ:ASK` → park `waiting` (attention) AND surface the structured
             // question as an ask card (#473). `XEZ:MONITORING` → non-attention
             // `running`/`activity:'monitoring'` (#490). Both share the waiting
@@ -3405,7 +3415,7 @@ export class RunManager {
           runId,
           // A nudged turn did NOT park — the agent is working again, so the heartbeat must not
           // read `waiting` (#141; before the fix this branch was unreachable).
-          `turn complete — status=${autoContinued || gatedStop ? 'running' : monitoring ? 'monitoring' : sessionOpen ? 'waiting' : 'running'}`,
+          `turn complete — status=${autoContinued || gatedStop || finishedReadOnly ? 'running' : monitoring ? 'monitoring' : sessionOpen ? 'waiting' : 'running'}`,
         );
       }
     };
@@ -3480,6 +3490,7 @@ export class RunManager {
         ? undefined
         : defSteps.find((s) => s.id === owningStep?.id)
           ?? [...defSteps].reverse().find((s) => stepKind(s) === 'agent');
+    continueTools = toolsStep?.allowedTools ?? DEFAULT_ALLOWED_TOOLS;
     // The temp-directory preflight (#785) rides along with the account resolution: a resumed
     // turn hits the same broken `/tmp` a fresh one would, and an agent whose shell silently
     // returns nothing is worse than a turn that refuses to start and says why.
@@ -3705,6 +3716,42 @@ export class RunManager {
       type: 'note',
       message: `autonomous — continuing without pausing (${state.autoContinues}/${cap})`,
     });
+    return true;
+  }
+
+  /**
+   * #933: an autonomous READ-ONLY step never parks at `waiting`. Called right after
+   * `autoContinueTurn` declined to nudge, from BOTH turn-end handlers (#141's rule: one helper,
+   * both sites). When that refusal came from a nudge bound — an idle re-prompt with no tool call,
+   * or the spent budget, both recorded in `autoContinueStop` — a read-only step closes its session
+   * and finishes, and a note names what is missing: it ended without the done marker, so its last
+   * message is the result and anything it says it could not read or check is a gap in it. Run
+   * `79e11f69` posted its verdict, answered the nudge with prose, and sat in `waiting` until a
+   * person cancelled it.
+   *
+   * Narrow on purpose. A writing step keeps today's park (its last turn may be a real question
+   * about work it is changing), a memory-limit pause clears `autonomous` and keeps holding, a
+   * cancelled run is not touched, `XEZ:MONITORING` keeps its own bounded wake timer, and a
+   * question on the FIRST turn is still answered by the first nudge before this can apply.
+   * Returns true when it closed the session.
+   */
+  private finishStoppedReadOnlyTurn(
+    runId: string,
+    state: ActiveRun,
+    stepId: string,
+    allowedTools: readonly string[],
+  ): boolean {
+    if (!state.autonomous || state.cancelled || state.autoContinueStop === undefined) return false;
+    if (!isReadOnlyStep(allowedTools) || !state.session?.open) return false;
+    this.store.appendEvent(runId, {
+      type: 'note',
+      stepId,
+      message:
+        `autonomous read-only step finished instead of waiting for input — ${state.autoContinueStop}. ` +
+        'It ended without the done marker: its last message is the result, and anything it says it ' +
+        'could not read or check is a gap in that result.',
+    });
+    state.session.end();
     return true;
   }
 
@@ -4403,7 +4450,12 @@ export class RunManager {
         // read here. `interactive` still gates it: a mid-workflow step ends its own session and
         // the next step follows, so there is no ball to hand back and nothing to nudge.
         const autoContinued = waiting && !monitoring ? this.autoContinueTurn(runId, state, activity) : false;
-        if (waiting && !autoContinued) {
+        // #933: an autonomous READ-ONLY step whose re-prompting hit a bound finishes here instead
+        // of parking — the same rule, the same helper, as `runContinuation`'s handler.
+        const finishedReadOnly =
+          waiting && !monitoring && !autoContinued &&
+          this.finishStoppedReadOnlyTurn(runId, state, step.id, step.allowedTools ?? DEFAULT_ALLOWED_TOOLS);
+        if (waiting && !autoContinued && !finishedReadOnly) {
           // Turn over, session open. Either the ball is in the user's court
           // (`waiting`) — optionally with a structured `XEZ:ASK` question the
           // cockpit renders as an ask card (#473) — or the agent declared it is
@@ -4437,7 +4489,7 @@ export class RunManager {
         appendHandoffHeartbeat(
           this.dataDir,
           runId,
-          `turn complete — status=${autoContinued ? 'running' : monitoring ? 'monitoring' : waiting ? 'waiting' : 'running'}`,
+          `turn complete — status=${autoContinued || finishedReadOnly ? 'running' : monitoring ? 'monitoring' : waiting ? 'waiting' : 'running'}`,
         );
       }
     };
