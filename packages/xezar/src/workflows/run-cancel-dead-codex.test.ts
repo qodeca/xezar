@@ -63,7 +63,7 @@ describe('cancel after the Codex app-server died during a continue step (#895)',
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
     }
-    store.flush();
+    await store.close();
     rmSync(root, TEST_DIR_RM_OPTIONS);
   });
 
