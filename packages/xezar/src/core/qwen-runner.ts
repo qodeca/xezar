@@ -1,5 +1,5 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -98,7 +98,17 @@ export interface QwenRunnerOptions {
   timeoutMs?: number;
   /** Test seam for reading the person's Qwen settings. */
   readSettings?: (home: string) => QwenSettings;
+  /** Test seam for the bundled tool-policy hook program. */
+  hookScriptPath?: string;
 }
+
+/**
+ * Qwen Code switches every hook off when either of these is set (`getDisableAllHooks`: safe
+ * mode, bare mode), whatever the system settings say. The tool-policy hook IS the step's
+ * command lock, so a run always sets both to empty: a person's troubleshooting export must not
+ * silently unlock a read-only step.
+ */
+export const QWEN_HOOK_DISABLING_ENV = ['QWEN_CODE_SAFE_MODE', 'QWEN_CODE_SIMPLE'] as const;
 
 /** The qwen binary a spawn should use — shared with model discovery so both agree. */
 export function resolveQwenExecutable(override?: string): string {
@@ -124,12 +134,14 @@ export class QwenRunner implements AgentRunner {
   private readonly bin: string;
   private readonly timeoutMs: number;
   private readonly readSettings: (home: string) => QwenSettings;
+  private readonly hookScriptPath: string;
   private lastSession: AgentSession | null = null;
 
   constructor(opts: QwenRunnerOptions = {}) {
     this.bin = resolveQwenExecutable(opts.bin);
     this.timeoutMs = opts.timeoutMs ?? DEFAULT_RUN_TIMEOUT_MS;
     this.readSettings = opts.readSettings ?? ((home) => readQwenSettings(home));
+    this.hookScriptPath = opts.hookScriptPath ?? qwenHookScriptPath();
   }
 
   get defaultTimeoutMs(): number {
@@ -160,7 +172,7 @@ export class QwenRunner implements AgentRunner {
     const policy = qwenToolPolicy(spec.allowedTools, spec.bashAllowlist);
     let hookCommand: string | undefined;
     if (policy) {
-      hookCommand = qwenHookCommand(process.execPath, qwenHookScriptPath());
+      hookCommand = qwenHookCommand(process.execPath, this.hookScriptPath);
       if (hookCommand === undefined) {
         throw new Error('qwen: the tool-policy hook cannot be installed because a path holds a double quote, so this step could not keep its tool limits; it was not started');
       }
@@ -189,6 +201,7 @@ export class QwenRunner implements AgentRunner {
       ...spec.env,
       [QWEN_SYSTEM_SETTINGS_ENV]: settingsFile.path,
       ...(policy ? { [QWEN_TOOL_POLICY_ENV]: JSON.stringify(policy) } : {}),
+      ...Object.fromEntries(QWEN_HOOK_DISABLING_ENV.map((name) => [name, ''])),
     };
     if (!isTruthy(process.env[QWEN_USAGE_STATISTICS_OPT_IN])) runEnv.QWEN_USAGE_STATISTICS_ENABLED = '0';
     const childEnv = buildChildEnv({ backend: this.backend, extraEnv: runEnv, allowNames: qwenModelEnvKeys(settings) });
@@ -204,6 +217,7 @@ export class QwenRunner implements AgentRunner {
       limitMs: spec.timeoutMs ?? this.timeoutMs,
       settings,
       ...(mcpFile ? { mcpConfigPath: mcpFile.path } : {}),
+      ...(hookCommand !== undefined ? { hookFiles: [process.execPath, this.hookScriptPath] } : {}),
       cleanup: () => {
         settingsFile.cleanup();
         mcpFile?.cleanup();
@@ -239,6 +253,8 @@ interface QwenSessionInit {
   isolation: QwenMcpIsolation;
   /** The `--mcp-config` file with the project's own server definitions, when there are any. */
   mcpConfigPath?: string;
+  /** The program and script the tool-policy hook runs, checked before every turn. */
+  hookFiles?: readonly string[];
   limitMs: number;
   settings: QwenSettings;
   cleanup: () => void;
@@ -467,6 +483,14 @@ class QwenSession {
       imageDir: this.imageDir ?? undefined,
       systemPromptOnArgv: !promptGoesToStdin(spec.systemPrompt),
     });
+
+    // Qwen Code lets a tool call through when its hook cannot run (a hook transport failure is
+    // not a refusal), so a missing node or hook script would silently unlock the step. Checked per
+    // turn: a Node upgrade between turns removes the program the settings file names.
+    const missingHookFile = this.init.hookFiles?.find((file) => !existsSync(file));
+    if (missingHookFile !== undefined) {
+      throw new Error(`qwen: the program that keeps this step's tool limits is missing (${missingHookFile}), so the turn was not started; restart xezar after a Node update`);
+    }
 
     let child: ChildProcessWithoutNullStreams;
     try {

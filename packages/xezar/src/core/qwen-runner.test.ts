@@ -46,7 +46,7 @@ let root: string;
 let project: string;
 let recordFile: string;
 const saved: Record<string, string | undefined> = {};
-const ENV_KEYS = ['QWEN_STUB_RECORD', 'QWEN_STUB_VERSION', 'QWEN_STUB_EXIT', 'QWEN_STUB_INIT_MODEL', 'QWEN_STUB_HANG', 'QWEN_USAGE_STATISTICS_ENABLED', 'XEZ_QWEN_USAGE_STATISTICS', 'XEZ_DRY_RUN', 'LOCAL_LLM_KEY', 'QWEN_CODE_SYSTEM_SETTINGS_PATH', 'HOME'];
+const ENV_KEYS = ['QWEN_STUB_RECORD', 'QWEN_STUB_VERSION', 'QWEN_STUB_EXIT', 'QWEN_STUB_INIT_MODEL', 'QWEN_STUB_HANG', 'QWEN_USAGE_STATISTICS_ENABLED', 'XEZ_QWEN_USAGE_STATISTICS', 'XEZ_DRY_RUN', 'LOCAL_LLM_KEY', 'QWEN_CODE_SYSTEM_SETTINGS_PATH', 'HOME', 'QWEN_CODE_SAFE_MODE', 'QWEN_CODE_SIMPLE'];
 
 beforeEach(() => {
   for (const key of ENV_KEYS) saved[key] = process.env[key];
@@ -278,6 +278,24 @@ describe('QwenRunner read-only lock (#1044 acceptance 3)', () => {
     expect(ask({ tool_name: 'tool_call', tool_input: { name: 'write_file', arguments: { file_path: 'a' } } })).toContain('"permissionDecision":"deny"');
     expect(ask({ tool_name: 'run_shell_command', tool_input: { command: 'git status --short' } })).toBe('');
     expect(ask({ tool_name: 'read_file', tool_input: { file_path: 'a' } })).toBe('');
+  });
+
+  it('blanks the host settings that switch every Qwen Code hook off (safe mode, bare mode)', async () => {
+    process.env.QWEN_CODE_SAFE_MODE = '1';
+    process.env.QWEN_CODE_SIMPLE = 'true';
+    await runOnce({ allowedTools: READ_ONLY, bashAllowlist: ['git status'] });
+    const [record] = records();
+    expect(record!.env.QWEN_CODE_SAFE_MODE).toBe('');
+    expect(record!.env.QWEN_CODE_SIMPLE).toBe('');
+  });
+
+  it('starts no turn when the hook program is missing, because Qwen Code would let every call through', async () => {
+    const runner = new QwenRunner({ bin: STUB, readSettings: () => SETTINGS, hookScriptPath: join(root, 'gone', 'qwen-pre-tool-hook.mjs') });
+    const outcome = await runner
+      .startSession({ userPrompt: 'x', cwd: project, allowedTools: READ_ONLY, bashAllowlist: ['git status'] }, undefined, { autoEndAfterFirstTurn: true })
+      .result.then(() => 'resolved', (error: Error) => error.message);
+    expect(outcome).toMatch(/program that keeps this step's tool limits is missing .*gone/);
+    expect(existsSync(recordFile)).toBe(false);
   });
 
   it('fails closed without a policy, and needs no hook on a writing step with a free shell', () => {
