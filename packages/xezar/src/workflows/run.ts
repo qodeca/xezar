@@ -1731,11 +1731,12 @@ export class RunManager {
       ? [...run.steps].reverse().find((step) => step.id !== queuedContinuation.id && step.sessionId)
       : undefined;
     if (queuedContinuation && sessionStep?.sessionId) {
-      const backend = run.runner ?? 'claude';
-      const sessionBackend = sessionStep.backend ?? backend;
+      // Only automatic continuations are queued, and an automatic continuation stays on the
+      // agent that ran the session step and resumes it (#984) — the same rule `continueRun` applies.
+      const backend = sessionStep.backend ?? run.runner ?? 'claude';
       this.pendingContinuations.set(run.id, {
         stepId: queuedContinuation.id,
-        sessionId: sessionBackend === backend ? sessionStep.sessionId : undefined,
+        sessionId: sessionStep.sessionId,
         backend,
         prompt: RESTART_CONTINUATION_PROMPT,
         images: [],
@@ -2956,6 +2957,11 @@ export class RunManager {
       /** Agent account for the reopened session (spec 2026-07-29-agent-profiles). Omitted = the
        *  account the run is already on. */
       agentProfile?: string;
+      /** Without an explicit `runner`, the continuation runs on the agent that ran the session
+       *  step it resumes (#984) — restart recovery and the usage-limit auto-resume rely on that.
+       *  `true` keeps the run's recorded agent instead: the cockpit/MCP follow-up whose agent pill
+       *  was left untouched shows `run.runner` and gates its provider on it, so it keeps that. */
+      keepRunAgent?: boolean;
     } = {},
     /** Restart recovery may discover several interrupted tasks at once. Those
      *  continuations are queued; an explicit user Continue remains immediate. */
@@ -2980,11 +2986,15 @@ export class RunManager {
     }
     const sessionStep = [...run.steps].reverse().find((s) => s.sessionId);
     if (!sessionStep?.sessionId) return { ok: false, error: 'no agent session to resume' };
-    const targetRunner = opts.runner ?? run.runner ?? 'claude';
     // Session ids are provider-owned opaque values. New records carry explicit
     // affinity; for legacy records, the run's current runner is the conservative
     // owner until a continuation emits a new, attributed session id (#562).
     const sessionBackend = sessionStep.backend ?? run.runner ?? 'claude';
+    // The agent this continuation runs on (#984). An explicit choice wins. Otherwise it is the
+    // agent that ran the session step, so a step's own `runner:` survives a restart recovery or
+    // an auto-resume and its session is resumed — the task's runner used to take over here and
+    // start the other agent fresh, without the step's history.
+    const targetRunner = opts.runner ?? (opts.keepRunAgent ? run.runner ?? 'claude' : sessionBackend);
     // A session id only resolves inside the config dir that created it (spec
     // 2026-07-29-agent-profiles), so switching ACCOUNT ends the session exactly like switching
     // backend does: `claude --resume <id>` under another login finds nothing and would silently
@@ -3278,6 +3288,9 @@ export class RunManager {
     // The workflow tail runs only after this turn's DONE (#520), so an autonomous nudge loop here
     // stands in for a step the workflow path never nudges (#317) — give it the small budget (#613).
     if (resumeIndex >= 0) state.autoContinueCap = MAX_GATED_CONTINUE_NUDGES;
+    // The workflow step this continuation completes (#864 item 1): the role a verdict packet left
+    // by a fresh-session continuation is recorded under is that step's, not the last agent step's.
+    const completedStepId = resumeIndex >= 0 ? workflow?.steps[resumeIndex]?.id : undefined;
     let completedTurn = false;
     /** The session's resolved tools, assigned with `toolsStep` below (#933 reads them at turn end). */
     let continueTools: readonly string[] = DEFAULT_ALLOWED_TOOLS;
@@ -3442,7 +3455,7 @@ export class RunManager {
     try {
       const normalized = normalizeModelForBackend(
         continueBackend,
-        agentModelsLocked(this.repoRoot) ? undefined : record?.model,
+        agentModelsLocked(this.repoRoot) ? undefined : continuationModel(record, sessionId, continueBackend),
         { configuredProvider: await configuredModelProvider(continueBackend, state.cwd) },
       );
       continueModel = normalized?.backendModel;
@@ -3604,7 +3617,7 @@ export class RunManager {
         this.store.updateStep(runId, stepId, { status: 'done', finishedAt: finishedAt() });
         // Same collection point the workflow path uses (#460) — a Continue is how a reviewer step
         // is re-run, and a report left by one must reach the record exactly as the first run's did.
-        this.takeStepVerdict(runId, stepId);
+        this.takeStepVerdict(runId, stepId, completedStepId);
         this.store.appendEvent(runId, { type: 'step-end', stepId, status: 'done' });
         if (workflow && resumeIndex >= 0 && record) {
           this.waiting.delete(runId);
@@ -3646,7 +3659,7 @@ export class RunManager {
       sink.sessionEnded('error', message);
       await endTurn();
       this.store.updateStep(runId, stepId, { status: 'failed', error: message, finishedAt: finishedAt() });
-      this.takeStepVerdict(runId, stepId);
+      this.takeStepVerdict(runId, stepId, completedStepId);
       appendHandoffHeartbeat(this.dataDir, runId, `step "${stepId}" complete — status=failed`);
       this.store.updateRun(runId, {
         status: 'failed',
@@ -3838,7 +3851,7 @@ export class RunManager {
       systemPrompt: extraSystemPrompt,
       modelIdentity,
     });
-    emit({ type: 'lifecycle', message: `run started — workflow "${workflow.name}" (runner: ${taskBackend})` });
+    emit({ type: 'lifecycle', message: `run started — workflow "${workflow.name}" (${stepRunnersLabel(workflow, taskBackend)})` });
 
     // Worktree per task (spec 006): the agent works on its own branch in
     // `.local/xezar/worktrees/<id>`, never in the user's working tree. A Git task
@@ -5367,7 +5380,13 @@ export class RunManager {
    * the backward-compatibility promise calls out: a recorded failure must not be erasable by a later
    * unrelated problem.
    */
-  private takeStepVerdict(runId: string, stepId: string): void {
+  private takeStepVerdict(
+    runId: string,
+    stepId: string,
+    /** A Continue's own workflow step — the one at `resumeIndex` that it completes (#864 item 1).
+     *  Omitted when the continuation completes no workflow step (`resumeIndex < 0`). */
+    completedStepId?: string,
+  ): void {
     const run = this.store.getRun(runId);
     const step = run?.steps.find((candidate) => candidate.id === stepId);
     if (step?.kind !== 'agent') return;
@@ -5378,9 +5397,13 @@ export class RunManager {
     // definition names, so its role is the OWNING step's — the definition step whose record step
     // carries the same session id, exactly as the Continue's tools and account resolve
     // (`runContinuation`). A continuation no definition step owns (a fresh session after a
-    // backend switch) extends the run's tail, so it answers with the definition's last agent
-    // step. A missing definition (a legacy record) or a step that declares nothing yields
-    // `undefined`, and ingestion refuses its packet: failing closed is the point.
+    // backend or account switch) answers with the workflow step it completes — the one at
+    // `resumeIndex` (#864 item 1): before that it took the definition's last agent step, so a
+    // continued AUTHOR turn of `implement → review` was recorded under the reviewer's role. Only a
+    // continuation that completes no workflow step (`resumeIndex < 0`) extends the run's tail and
+    // answers with the definition's last agent step. A missing definition (a legacy record) or a
+    // step that declares nothing yields `undefined`, and ingestion refuses its packet: failing
+    // closed is the point.
     const defSteps = run?.workflowDef?.steps;
     let declaringStep = defSteps?.find((candidate) => candidate.id === stepId);
     if (defSteps !== undefined && declaringStep === undefined) {
@@ -5388,10 +5411,48 @@ export class RunManager {
         ? undefined
         : run?.steps.find((candidate) => candidate.sessionId === step.sessionId);
       declaringStep = defSteps.find((candidate) => candidate.id === owner?.id)
-        ?? [...defSteps].reverse().find((candidate) => stepKind(candidate) === 'agent');
+        ?? (completedStepId !== undefined
+          ? defSteps.find((candidate) => candidate.id === completedStepId)
+          : [...defSteps].reverse().find((candidate) => stepKind(candidate) === 'agent'));
     }
     ingestTaskVerdict(this.store, this.dataDir, runId, stepId, declaringStep?.verdictRole);
   }
+}
+
+/**
+ * What the run-start header says about runners (#910): the runner each agent step really uses —
+ * `step.runner ?? taskBackend`, as `runAgentStep` resolves it — not the task's default. One runner
+ * reads `runner: codex`; steps on more than one read `runners: codex, claude`, in step order. A
+ * workflow with no agent step names the task's runner, as it always did.
+ */
+export function stepRunnersLabel(workflow: WorkflowDef, taskBackend: RunnerId): string {
+  const runners = [...new Set(workflow.steps
+    .filter((step) => stepKind(step) === 'agent')
+    .map((step) => step.runner ?? taskBackend))];
+  return runners.length > 1 ? `runners: ${runners.join(', ')}` : `runner: ${runners[0] ?? taskBackend}`;
+}
+
+/**
+ * The model a continuation spawns with. On the run's own agent it is the run's model, as it always
+ * was (an explicit follow-up choice is persisted there before scheduling, #401). A continuation
+ * that follows a step's own `runner:` instead (#984) is on an agent the run's model was never meant
+ * for, so it takes the model that step spawned with — `step.model ?? input.model`, as
+ * `runAgentStep` resolves it: the definition step that owns the resumed session, or else the last
+ * agent step declared on that agent.
+ */
+function continuationModel(
+  record: RunRecord | undefined,
+  sessionId: string | undefined,
+  backend: RunnerId,
+): string | undefined {
+  if (!record || backend === (record.runner ?? 'claude')) return record?.model;
+  const defSteps = record.workflowDef?.steps ?? [];
+  const owner = sessionId === undefined
+    ? undefined
+    : record.steps.find((candidate) => candidate.sessionId === sessionId);
+  const stepDef = defSteps.find((candidate) => candidate.id === owner?.id && stepKind(candidate) === 'agent')
+    ?? [...defSteps].reverse().find((candidate) => stepKind(candidate) === 'agent' && candidate.runner === backend);
+  return stepDef?.model ?? record.model;
 }
 
 function findLastAgentStepIndex(workflow: WorkflowDef): number {

@@ -86,7 +86,7 @@ Use **Draft PR** in the review panel after inspecting the changes. The operation
 
 ## To continue, cancel, archive or open in a terminal
 
-- **Continue**: reopen a stopped task with a recorded agent session. Add a follow-up prompt, or submit without text to reopen it. Resolve any provider-availability message first.
+- **Continue**: reopen a stopped task with a recorded agent session. Add a follow-up prompt, or submit without text to reopen it. Resolve any provider-availability message first. An automatic resume – after xezar restarts or after a usage limit – continues on the agent that ran the interrupted step, even when that step chose its own agent, and reopens that agent's session.
 - **Cancel**: stop a running, waiting or queued task. Cancelling – like a pause for the memory limit or a step reaching its time limit – also stops background programs the task started, such as a dev server, and names them in the task. This is a best-effort cleanup, not a sandbox: on macOS, a program that detaches from the task and loses its parent within about two seconds can be missed.
 - **Finish**: close a waiting session, or accept a task at review.
 - **Archive**: put an inactive task aside; **Unarchive** brings it back. Archiving is separate from deleting the task.
