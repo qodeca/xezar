@@ -227,6 +227,9 @@ Unknown arguments are rejected.
 | `steps[].bashAllowlist` | array of string | no |  |  |
 | `steps[].timeout` | string | no |  |  |
 | `steps[].verdictRole` | `code-review` \| `design-review` \| `qa` \| `architecture-review` \| `security-review` \| `acceptance-verification` | no |  |  |
+| `steps[].claudeSettings` | object | no |  |  |
+| `steps[].claudeSettings.files` | array of string | yes |  |  |
+| `steps[].claudeSettings.scripts` | array of string | no |  |  |
 | `steps[].command` | string | no |  |  |
 | `steps[].resultScope` | `routine` \| `stage` | no |  |  |
 | `steps[].onFail` | object | no |  |  |
@@ -392,6 +395,9 @@ Unknown arguments are rejected.
 | `workflow.steps[].bashAllowlist` | array of string | no |  |  |
 | `workflow.steps[].timeout` | string | no |  |  |
 | `workflow.steps[].verdictRole` | `code-review` \| `design-review` \| `qa` \| `architecture-review` \| `security-review` \| `acceptance-verification` | no |  |  |
+| `workflow.steps[].claudeSettings` | object | no |  |  |
+| `workflow.steps[].claudeSettings.files` | array of string | yes |  |  |
+| `workflow.steps[].claudeSettings.scripts` | array of string | no |  |  |
 | `name` | string | no | min length 1, max length 200 | delete_workflow / get_skill: the workflow or skill name. |
 | `wait` | boolean | no |  | Skill reads: wait for a cold team-skill cache to load first. |
 | `refresh` | boolean | no |  | get_capabilities / check_account_status: probe now instead of serving the cached answer. On check_account_status it re-probes THAT account only, and every other account keeps the answer it already had. |
