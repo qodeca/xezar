@@ -340,6 +340,12 @@ describe('QwenRunner version gate and missing binary (#1044 acceptance 6, 7)', (
     expect((result as { error: string }).error).toContain('npm i -g @qwen-code/qwen-code');
   });
 
+  it('refuses a Qwen Code that reports no readable version, as too old to check', async () => {
+    process.env.QWEN_STUB_VERSION = '';
+    const { result } = await runOnce();
+    expect(result).toMatchObject({ error: expect.stringContaining(`did not report a version xezar can read, so xezar cannot check that it is at least ${QWEN_MIN_VERSION}`) });
+  });
+
   it('runs a newer Qwen Code with a quiet "not yet tested" note', async () => {
     process.env.QWEN_STUB_VERSION = '0.26.0';
     const { events, result } = await runOnce();

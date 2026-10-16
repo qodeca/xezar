@@ -529,6 +529,11 @@ class QwenSession {
         }
         const mapped = normalizeIntentionalTeardownResult(msg, this.terminatedByXezar);
         if (mapped.type === 'system' && mapped.subtype === 'init') this.onInit(mapped, child);
+        else if (!this.versionChecked && (mapped.type === 'assistant' || mapped.type === 'user' || mapped.type === 'result')) {
+          // The model is working and no init frame named a version: the gate must not be skipped.
+          this.versionChecked = true;
+          this.failTurn(child, qwenVersionVerdict(undefined).message);
+        }
         this.emitUi((state) => mapQwenMessage(mapped, state));
         try {
           this.handleFrame(mapped, outcome);
@@ -751,8 +756,13 @@ export type QwenVersionVerdict =
 
 /** The version gate: refuse below the minimum, note above the tested version (#1041 decision 7). */
 export function qwenVersionVerdict(version: string | undefined): QwenVersionVerdict {
+  // A missing version is refused, not waved through: it is how a release older than the floor
+  // looks (#1067 review), and the floor is what keeps the tool limits and the .env block true.
   if (version === undefined || parseVersion(version) === undefined) {
-    return { kind: 'untested', message: `qwen: Qwen Code did not report a version xezar can read; it was tested with ${QWEN_TESTED_VERSION}` };
+    return {
+      kind: 'too-old',
+      message: `qwen: Qwen Code did not report a version xezar can read, so xezar cannot check that it is at least ${QWEN_MIN_VERSION}. Update it${installParenthetical('qwen')}, then start the task again.`,
+    };
   }
   if (compareVersions(version, QWEN_MIN_VERSION) < 0) {
     return {
