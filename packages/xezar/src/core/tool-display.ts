@@ -95,9 +95,12 @@ function titled(verb: string, label: string | undefined): string {
 export function toolDisplay(name: string, input?: unknown): ToolDisplay {
   const key = typeof name === 'string' ? name.toLowerCase() : '';
 
+  // Qwen Code's built-in tools are snake_case (`run_shell_command`, `write_file`, …) and share the
+  // rows of their Claude Code twins.
   switch (key) {
     case 'bash':
     case 'commandexecution':
+    case 'run_shell_command':
       return {
         toolKind: 'execute',
         title: titled('Ran', commandText(input)),
@@ -108,8 +111,10 @@ export function toolDisplay(name: string, input?: unknown): ToolDisplay {
     case 'multiedit':
       return { toolKind: 'edit', title: titled('Edit', field(input, 'file_path', 'filePath', 'path')) };
     case 'write':
+    case 'write_file':
       return { toolKind: 'edit', title: titled('Write', field(input, 'file_path', 'filePath', 'path')) };
     case 'notebookedit':
+    case 'notebook_edit':
       return {
         toolKind: 'edit',
         title: titled('Edit', field(input, 'notebook_path', 'notebookPath', 'file_path', 'filePath', 'path')),
@@ -121,11 +126,16 @@ export function toolDisplay(name: string, input?: unknown): ToolDisplay {
     }
 
     case 'read':
+    case 'read_file':
       return { toolKind: 'read', title: titled('Read', field(input, 'file_path', 'filePath', 'path')) };
+    case 'list_directory':
+      return { toolKind: 'read', title: titled('List', field(input, 'path', 'dir_path')) };
     case 'imageview':
+    case 'zoom_image':
       return { toolKind: 'read', title: titled('View image', field(input, 'path')) };
     case 'glob':
     case 'grep':
+    case 'grep_search':
       return {
         toolKind: 'search',
         title: titled('Search', field(input, 'pattern', 'query')),
@@ -133,8 +143,10 @@ export function toolDisplay(name: string, input?: unknown): ToolDisplay {
       };
 
     case 'webfetch':
+    case 'web_fetch':
       return { toolKind: 'fetch', title: titled('Fetch', field(input, 'url')) };
     case 'websearch':
+    case 'web_search':
       return { toolKind: 'fetch', title: titled('Web search', field(input, 'query')) };
 
     // Sub-agent spawns. claude dispatches these through `Agent` today and
@@ -166,6 +178,7 @@ export function toolDisplay(name: string, input?: unknown): ToolDisplay {
     }
 
     case 'todowrite':
+    case 'todo_write':
     case 'todolist':
     case 'plan':
     case 'taskcreate':

@@ -1,0 +1,63 @@
+[
+  {
+    "type": "session.started",
+    "sessionId": "fc92d2ff-6866-4c87-bf86-d23b1ab79c35",
+    "backend": "qwen",
+    "model": "deepseek-flash",
+    "cwd": "/work/proj",
+    "tools": [
+      "read_file",
+      "edit",
+      "write_file",
+      "glob",
+      "grep_search",
+      "run_shell_command",
+      "todo_write",
+      "agent",
+      "tool_call",
+      "tool_search"
+    ]
+  },
+  {
+    "type": "turn.started",
+    "turnId": "turn_1"
+  },
+  {
+    "type": "item.started",
+    "item": {
+      "kind": "message",
+      "id": "item_1",
+      "role": "assistant",
+      "text": "hello"
+    }
+  },
+  {
+    "type": "item.completed",
+    "item": {
+      "kind": "message",
+      "id": "item_1",
+      "role": "assistant",
+      "text": "hello"
+    }
+  },
+  {
+    "type": "turn.completed",
+    "turnId": "turn_1",
+    "stopReason": "end_turn",
+    "usage": {
+      "input": 27202,
+      "output": 295,
+      "total": 27497,
+      "cacheRead": 0
+    }
+  },
+  {
+    "type": "usage.updated",
+    "usage": {
+      "input": 27202,
+      "output": 295,
+      "total": 27497,
+      "cacheRead": 0
+    }
+  }
+]

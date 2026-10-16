@@ -84,7 +84,7 @@ interface Workspace {
   app: ReturnType<typeof createApp>;
   roots: { a: string; b: string };
   home: string;
-  agentHomes: { claude: string; codex: string; opencode: string; pi: string };
+  agentHomes: { claude: string; codex: string; opencode: string; pi: string; qwen: string };
   skillsUpdateCalls: string[];
 }
 
@@ -116,6 +116,7 @@ const ENV_KEYS = [
   'CODEX_HOME',
   'OPENCODE_CONFIG_DIR',
   'PI_CODING_AGENT_DIR',
+  'QWEN_HOME',
   'XEZ_REMOTE',
   'XEZ_AUTOMATIONS',
   'XEZ_SINGLE_PROJECT',
@@ -135,7 +136,9 @@ function seedAgentHomes(home: string) {
   // run would delete a real `~/.pi/agent/settings.json`. It is also what makes the leak
   // assertions mean anything: the marker has to be in a file this fixture wrote.
   const pi = join(home, '.pi', 'agent');
-  for (const dir of [claude, codex, opencode, pi]) mkdirSync(dir, { recursive: true });
+  // Qwen Code's home, pinned for the same reason as pi's.
+  const qwen = join(home, '.qwen');
+  for (const dir of [claude, codex, opencode, pi, qwen]) mkdirSync(dir, { recursive: true });
   const oauth = {
     oauthAccount: {
       emailAddress: EMAIL_CLAUDE,
@@ -171,7 +174,8 @@ function seedAgentHomes(home: string) {
   writeFileSync(join(pi, 'AGENTS.md'), `${USER_MARKER}\n`, 'utf8');
   writeFileSync(join(pi, 'auth.json'), JSON.stringify({ anthropic: { apiKey: MCP_SECRET } }), 'utf8');
   writeFileSync(join(pi, 'models.json'), JSON.stringify({ providers: { local: { apiKey: MCP_SECRET } } }), 'utf8');
-  return { claude, codex, opencode, pi };
+  writeFileSync(join(qwen, 'settings.json'), JSON.stringify({ ui: { theme: USER_MARKER } }), 'utf8');
+  return { claude, codex, opencode, pi, qwen };
 }
 
 async function setup(): Promise<Workspace> {
@@ -184,6 +188,7 @@ async function setup(): Promise<Workspace> {
   process.env.CODEX_HOME = agentHomes.codex;
   process.env.OPENCODE_CONFIG_DIR = agentHomes.opencode;
   process.env.PI_CODING_AGENT_DIR = agentHomes.pi;
+  process.env.QWEN_HOME = agentHomes.qwen;
   process.env.XEZ_DRY_RUN = '1';
   delete process.env.XEZ_REMOTE;
   delete process.env.XEZ_AUTOMATIONS;
@@ -2069,7 +2074,7 @@ describe('project_config: refusals', () => {
 describe('project_config: agent config', () => {
   it.each(USER_SCOPE_IDS)('%s (scope user) is refused for read and write, identically whether or not it exists', async (fileId) => {
     const def = CONFIG_FILES.find((f) => f.id === fileId)!;
-    const path = def.resolve(ws.roots.a, { claude: ws.agentHomes.claude, codex: ws.agentHomes.codex, opencodeConfig: ws.agentHomes.opencode, pi: ws.agentHomes.pi });
+    const path = def.resolve(ws.roots.a, { claude: ws.agentHomes.claude, codex: ws.agentHomes.codex, opencodeConfig: ws.agentHomes.opencode, pi: ws.agentHomes.pi, qwen: ws.agentHomes.qwen });
     const before = readFileSync(path, 'utf8');
     const spy = spyService();
     const readPresent = await invoke({ action: 'read_agent_config', fileId }, { service: spy });

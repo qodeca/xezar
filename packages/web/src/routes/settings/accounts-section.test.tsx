@@ -830,7 +830,7 @@ describe('the agent accounts section', () => {
       [...document.querySelectorAll('[data-slot="accounts-provider"]')].map((el) =>
         el.getAttribute('data-provider'),
       ),
-    ).toEqual(['claude', 'codex', 'opencode', 'pi'])
+    ).toEqual(['claude', 'codex', 'qwen', 'opencode', 'pi'])
   })
 
   it('offers no Add on an agent that cannot carry a second account, and says why', async () => {

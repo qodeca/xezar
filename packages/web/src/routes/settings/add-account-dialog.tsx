@@ -32,6 +32,7 @@ import { useReturnFocus } from './remove-project'
 const FOLDER_PLACEHOLDER: Record<ProviderId, string> = {
   claude: '~/.claude-second',
   codex: '~/.codex-second',
+  qwen: '~/.qwen-second',
   opencode: '~/.config/opencode-second',
   pi: '~/.pi/agent-second',
 }

@@ -91,6 +91,10 @@ export const BACKEND_MODEL_MAP: Readonly<Record<AgentBackend, BackendModelMap>> 
   // explicit prefix is accepted only when the caller proves it matches that
   // effective setting; the provider is then stripped from the wire model id.
   codex: { defaultProvider: 'openai' },
+  // Qwen Code takes the person's own `modelProviders` id verbatim on `--model`, and such an id may
+  // itself hold a slash (a router's `vendor/model`). The provider is xezar's label only: a bare id
+  // is Qwen Code's own, an explicit prefix passes through whole, so the wire id is never altered.
+  qwen: { defaultProvider: 'qwen-code', allowExplicitProvider: true, wireProviderQualified: true },
   // opencode selects across providers, so a bare model is ambiguous: reject it
   // loudly rather than let the server pick a default the user never asked for.
   opencode: {},

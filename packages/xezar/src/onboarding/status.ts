@@ -53,7 +53,7 @@ const AGENT_BACKENDS: ReadonlySet<BackendCheck['name']> = new Set([
 
 /** The disabled reason, in the words `states.html` 2b specifies. */
 export const NO_BACKEND_REASON =
-  'Setup unavailable — no agent backend was found. Install Claude Code, Codex, OpenCode or pi, sign in, then open this page again.';
+  'Setup unavailable — no agent backend was found. Install Claude Code, Codex, Qwen Code, OpenCode or pi, sign in, then open this page again.';
 
 export function hasAgentBackend(checks: readonly BackendCheck[]): boolean {
   return checks.some((check) => AGENT_BACKENDS.has(check.name) && check.available);

@@ -30,7 +30,7 @@ describe('PROFILE_ENV_VAR', () => {
   it('leaves OpenCode unsupported — its credentials do not follow its config dir', () => {
     expect(PROFILE_ENV_VAR.opencode).toBeNull();
     expect(supportsProfiles('opencode')).toBe(false);
-    expect(PROFILE_CAPABLE_PROVIDERS).toEqual(['claude', 'codex', 'pi']);
+    expect(PROFILE_CAPABLE_PROVIDERS).toEqual(['claude', 'codex', 'qwen', 'pi']);
   });
 
   it('covers every provider, so adding one forces a decision here', () => {

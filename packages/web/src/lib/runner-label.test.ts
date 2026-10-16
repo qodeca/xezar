@@ -9,6 +9,7 @@ describe('RUNNER_LABEL', () => {
     expect(RUNNER_LABEL).toEqual({
       claude: 'Claude Code',
       codex: 'Codex',
+      qwen: 'Qwen Code',
       opencode: 'OpenCode',
       pi: 'pi',
     })

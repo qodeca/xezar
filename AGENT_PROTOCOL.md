@@ -33,7 +33,7 @@ id — that is the whole point of the seam.
 ### Identity
 
 ```ts
-const RUNNER_IDS = ['claude', 'codex', 'opencode', 'pi'] as const;  // the source of truth
+const RUNNER_IDS = ['claude', 'codex', 'qwen', 'opencode', 'pi'] as const;  // the source of truth
 type RunnerId     = (typeof RUNNER_IDS)[number];                   // user-selectable
 type AgentBackend = RunnerId | 'claude-cli';                       // + legacy id, still parses
 ```
@@ -44,7 +44,7 @@ server-install "at least one agent CLI" gate, and the CLI-handoff registry.
 Some lists still repeat the literals: `runnerSchema` in `packages/contract/src/health.ts`,
 `UiBackend` in `ui-events.ts` and its api-client mirror, and `BackendCheck.name`
 in `backend-detect.ts`, among others. Find the remaining copies with
-`rg "'claude', 'codex', 'opencode', 'pi'" packages` and update them for a new runner;
+`rg "'claude', 'codex', 'qwen', 'opencode', 'pi'" packages` and update them for a new runner;
 the contract cannot import the server.
 Inside `packages/xezar`, use `RUNNER_IDS` / `isRunnerId()` where possible — re-listing
 ids is how a runner silently goes missing from one seam (pre-rename PR 387 review).
@@ -207,6 +207,11 @@ Notable fields (full doc-comments in the source):
   Treat the default `auto` permission mode as full shell access, not a
   sandbox: a writing Codex step uses `danger-full-access` with
   `approvalPolicy: never`.
+  Qwen Code always runs with `--approval-mode=default` set by xezar, never the person's own
+  default (Qwen's is `auto`, where a model classifier decides). Headless, that mode runs the
+  tools `--allowed-tools` names and denies every other call that would need an approval, as
+  Claude Code's `dontAsk` does; a denial is reported as `declined` and the step is told not to
+  retry it (#941).
   **OpenCode does NOT auto-approve every permission (#578 corrects the prior
   claim here).** It defaults `external_directory` (a tool touching a path
   outside the session directory — `$XEZ_HANDOFF_FILE`, pasted attachments,
@@ -314,7 +319,7 @@ applies:
   `thread/resume`, that total already includes the pre-resume executions, so the
   resumed step total is Codex's reported figure itself (and must not add
   `startTokens` again).
-- **Claude, pi, and OpenCode** each begin accumulating tokens at zero in their
+- **Claude, Qwen Code, pi, and OpenCode** each begin accumulating tokens at zero in their
   session object. Their reported figure is therefore this execution's accumulated
   spend, and the step total is `startTokens + reported`.
 
@@ -502,7 +507,32 @@ load-bearing rows:
 The table covers the first three backends. `pi` (`--mode rpc` JSONL) is mapped the
 same way, and its authority is `packages/xezar/src/core/pi-ui-mapper.ts` with the
 golden fixtures under `packages/xezar/src/core/__fixtures__/pi/`; `ui-parity.test.ts`
-runs all four.
+runs all five.
+
+`qwen` (Qwen Code, `--output-format=stream-json`) follows the claude column, with these
+differences (authority: `packages/xezar/src/core/qwen-ui-mapper.ts` and the fixtures under
+`packages/xezar/src/core/__fixtures__/qwen/`):
+
+- **One process per turn.** Every turn is its own `qwen` process: the prompt on stdin,
+  `--session-id` on the first turn and `--resume` after it. Each process sends its own
+  `system/init`; only the first one becomes `session.started`. The stdin stream-json mode is not
+  used (upstream marks it under construction).
+- **Tool names** are Qwen's own (`read_file`, `edit`, `write_file`, `run_shell_command`,
+  `grep_search`, `glob`, `todo_write`, `agent`). A tool call that arrives through Qwen's
+  `tool_call` wrapper is shown under the tool it names.
+- **Errors.** An error `result` carries `error.message` and no `result` text. A "success"
+  result whose text starts with `[API Error` is a failed turn (`stopReason: error`). Exit codes
+  41–55 and 130 are named in the step's error.
+- **Usage.** There is no `total_cost_usd`. xezar prices a turn itself: 0 for a model on a local
+  endpoint, the `modelPricing` rates from the person's Qwen settings for a metered one, and no
+  cost at all when neither is known. `usage.input` excludes the cache read, as for Claude.
+- **Images** cannot ride stdin, so each image is written to a private temp folder and the
+  prompt names it as an `@path` reference (the folder is added with `--include-directories`).
+- **Questions.** Headless, Qwen's own `ask_user_question` cannot collect an answer, so xezar
+  removes it (`--exclude-tools`); a question ends the turn on the shared `XEZ:ASK` marker, as on
+  every backend.
+- **Version.** The init frame's `qwen_code_version` is checked: older than the tested minimum
+  fails the step with the update command, newer runs with a "not yet tested" note.
 
 | v2 event / field | claude (stream-json) | codex (app-server JSON-RPC) | opencode (serve HTTP+SSE) |
 |---|---|---|---|
@@ -524,6 +554,7 @@ emits is not uniformly scoped:
 |---|---|---|
 | claude | Accumulated from zero by the session object; this execution's spend. | `startTokens + reported` |
 | codex | The thread's cumulative `thread/tokenUsage/updated` → `tokenUsage.total.totalTokens`; after `thread/resume`, it includes pre-resume executions. | Codex's reported figure itself; do not add `startTokens`. |
+| qwen | Accumulated from zero by the session object; this execution's spend. | `startTokens + reported` |
 | opencode | Accumulated from zero by the session object; this execution's spend. | `startTokens + reported` |
 | pi | Accumulated from zero by the session object; this execution's spend. | `startTokens + reported` |
 
@@ -590,11 +621,12 @@ That shared module is the only signal: no step key, no `XEZ_*` variable.
 | Claude Code | **ENFORCED** (was MODE-DENIED before #849) | `--disallowedTools Edit,Write,NotebookEdit` removes the file tools, and `--setting-sources user` prevents project/local settings, hooks and skills from re-widening Bash (#863). `Bash(<entry>:*)` rules are built from the shared normalized entries: `ClaudeCliRunner.startSession` calls `out.push(...claudeBashRules(bashAllowlist));`. Claude Code's OWN matcher decides at run time and strips a few vendor-known-safe wrappers/assignments before matching. The shared matcher instead refuses a wrapper unless that wrapper itself is named (`WRAPPER_COMMANDS` in `read-only-lock.ts`); its simple-command parser and `COMMAND_RUNNING_ARGUMENTS` table do not protect Claude until a hook can call them | `claude-cli-runner.test.ts` |
 | Codex | **CONFINED + command-locked** (was NOT APPLIED before #849) | `thread/start` and `thread/resume` carry `sandbox: 'workspace-write'` plus `config.sandbox_workspace_write = { network_access: true, writable_roots: spec.additionalDirectories }` (`codexPermissions`). Codex's file edits and shell may write only inside the worktree and the run's own evidence, handoff and tmp directories; the network stays on unless `XEZ_CODEX_NETWORK=0` turns it off. On a read-only step with `bashAllowlist` present, both paths also register the shipped `PreToolUse` `Bash|apply_patch` handler, discover Codex's normalized handler hash, and grant that exact key/hash through `config/batchWrite` before turn 1; discovery, grant or verification failure stops the step. The hook is a thin payload adapter over `read-only-lock.ts`, so Bash applies the same parser, checked arguments and reason codes as pi, while `apply_patch` reaches that policy's `payload.tool-name` refusal. Blocked `PreToolUse` feedback becomes a bounded persisted v1 `note`, so the refusal reason is visible in the run event stream for either tool without reaching provider-auth detection. Codex 0.155.1 does not discover request-body hooks alone, so xezar idempotently registers a content-addressed, mode-`0444` copy from `xezCacheDir()` in the active profile's user `hooks.json`; trust is stored under its exact handler key/current hash in that profile's `config.toml`. A bounded cache record keyed by the hook payload's session id keeps a matching run fail-closed if Codex strips the marker or allowlist environment; normal completion removes it and expiry makes crash leftovers inert. Not fully ENFORCED: the worktree and branch stay writable to other non-shell Codex tools, other non-shell names are ignored, and MCP tools stay under #324 scoping, not the sandbox | `codex-app-server-runner.test.ts`, `codex-read-only-hook.test.ts` |
 | pi | partly: edit/write absent | `--tools` removes edit/write. With a `bashAllowlist`, `scripts/pi-worktree-guard.ts` is a thin adapter over `read-only-lock.ts`: one simple command must match an entry; expansion, compounds, redirects, grouping/functions, leading assignments, trailing backslashes and unnamed wrappers are refused. The sole compound exception is the exact two-part verdict-packet pipe. `COMMAND_RUNNING_ARGUMENTS` generically dispatches checked Git, find, rg and npm rows, marks reviewed argument-safe programs, and never permits `sed` or `awk`. The adapter alone owns pi flag parsing, the `tool_call` denial shape and the separate worktree guard. `[]` removes bash and refuses every command; absent/null retain #856's distinction | `read-only-lock.test.ts`, `pi-worktree-guard.test.ts`, `pi-runner.test.ts` |
+| Qwen Code | **ENFORCED + command-locked** | `--exclude-tools` removes `edit`, `write_file` and `exec` (the file writers and the raw executor), and only the tools the step allows ride `--allowed-tools`. Every step with limits also gets a `PreToolUse` hook (`scripts/qwen-pre-tool-hook.mjs`, bundled from `qwen-pre-tool-hook-entry.ts`) in a run-private system settings file (`QWEN_CODE_SYSTEM_SETTINGS_PATH`, which outranks the person's and the project's settings): it refuses a file writer by name and sends `run_shell_command` through the shared `read-only-lock.ts` decision, so the parser, argument table and reason codes are those of pi and Codex. `[]` or no list leaves no shell. A refusal reaches the model with "Do not retry" and is persisted as `declined` | `qwen-runner.test.ts`, `qwen-tool-policy.test.ts` |
 | OpenCode | **NOT APPLIED** | nothing derived from `allowedTools` reaches the server; the agent can edit, write and run any command | — |
 
-Plain `Bash` in a read-only list is still a shell on Claude Code, pi and Codex; a
-`bashAllowlist` narrows all three by the same prefix rule, while pi and Codex apply the shared
-parser and argument table. A new runner states its row here, and a runner that
+Plain `Bash` in a read-only list is still a shell on Claude Code, Qwen Code, pi and Codex; a
+`bashAllowlist` narrows all four by the same prefix rule, while Qwen Code, pi and Codex apply the
+shared parser and argument table. A new runner states its row here, and a runner that
 cannot enforce a read-only step says NOT APPLIED rather than implying it.
 
 Concrete compound example for a `git diff` entry: `git diff; rm -rf x` is refused on Claude Code
@@ -743,6 +775,9 @@ current behaviour, and any new runner should follow them:
 - **Codex** — the real plan channel is the turn-level notification
   `turn/plan/updated`, not a `todoList` item (which the app-server never emits);
   map it to `plan.updated` as a full replacement.
+- **Qwen Code** — `todo_write` is off by default in a headless run; the run-private settings
+  file switches it on (`tools.todoWrite.enabled`), and its `todos` input maps to `plan.updated`
+  as a full replacement, like Claude's `TodoWrite`.
 - **OpenCode** — `status` is free-form upstream; `cancelled` is a documented
   value. Don't whitelist a few statuses and silently drop the rest — an
   unrecognized status degrades to `pending` so a todo the agent wrote stays on

@@ -87,15 +87,16 @@ describe('agent profiles API', () => {
       const body = await list();
       expect(body.editable).toBe(true);
       expect(body.profiles.every((p) => p.isDefault)).toBe(true);
-      expect(body.profiles.map((p) => p.provider)).toEqual(['claude', 'codex', 'opencode', 'pi']);
+      expect(body.profiles.map((p) => p.provider)).toEqual(['claude', 'codex', 'qwen', 'opencode', 'pi']);
       expect(body.profiles.every((p) => p.id === 'default')).toBe(true);
     });
 
+    // Qwen Code joined it with #1044: `QWEN_HOME` moves its settings, keys and OAuth credentials.
     // pi joined the list on 2026-09-12 (#329): `PI_CODING_AGENT_DIR` moves its credentials as
     // well as its config, which is the bar OpenCode still fails — OpenCode's live in a SQLite DB
     // behind a separate `OPENCODE_DB`, so a config-dir profile would bill the other account.
     it('names the providers that can carry an account at all — OpenCode cannot', async () => {
-      expect((await list()).profileCapableProviders).toEqual(['claude', 'codex', 'pi']);
+      expect((await list()).profileCapableProviders).toEqual(['claude', 'codex', 'qwen', 'pi']);
     });
 
     // The route-level half of the same fix. `defaultAgentProfile` used to fall through to
@@ -156,7 +157,7 @@ describe('agent profiles API', () => {
       ]);
       // The listing is still the listing: a dangling reference never removes a row or fails the
       // request, so the discovered defaults are all still there.
-      expect(body.profiles.filter((p) => p.isDefault)).toHaveLength(4);
+      expect(body.profiles.filter((p) => p.isDefault)).toHaveLength(5);
     });
 
     it('reports nothing for a clean store, and still carries the key', async () => {

@@ -126,7 +126,7 @@ Usage:
                             as they are, into a file the project may commit
   xezar providers connect <provider> [--account <id>]
                             open a terminal that signs an agent tool (claude,
-                            codex, opencode or pi) in — the built-in login, or
+                            codex, qwen, opencode or pi) in — the built-in login, or
                             the named account. Only on the machine that runs
                             xezar: hosted mode refuses it
   xezar mcp                 MCP bridge for a coding agent — the agent starts it
@@ -218,7 +218,7 @@ Options:
   -v, --version               print the version and exit
 
 Zero config: uses the agent CLI you are already logged in to (Claude Code, Codex,
-OpenCode or pi), and \`gh\` only for GitHub features in a GitHub project.
+Qwen Code, OpenCode or pi), and \`gh\` only for GitHub features in a GitHub project.
 Skills live in .ai/skills/, .xezar/skills/ and your team skills repo
 (default qodeca/xezar-skills; override via .xezar/config.json);
 workflows in .xezar/workflows/.`;

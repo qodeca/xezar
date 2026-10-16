@@ -104,6 +104,7 @@ describe('agent profile resolution', () => {
       codex: '/h/.codex',
       opencodeConfig: '/h/.config/opencode',
       pi: '/h/.pi/agent',
+      qwen: '/h/.qwen',
     };
 
     it('repoints every provider’s own slot, pi included', () => {

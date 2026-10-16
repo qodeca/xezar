@@ -248,7 +248,7 @@ async function composerState(api: Api) {
 
 // ---- the composer's rules, mirrored (see the module comment) -------------------------------------
 
-const RUNNER_ORDER: readonly Runner[] = ['claude', 'codex', 'opencode', 'pi'];
+const RUNNER_ORDER: readonly Runner[] = ['claude', 'codex', 'qwen', 'opencode', 'pi'];
 
 /** `usableRunners` (web `lib/provider-status.ts`): enabled AND connected, in catalog order. */
 function usableRunners(rows: readonly { provider: string; status: string; enabled?: boolean }[]): Runner[] {

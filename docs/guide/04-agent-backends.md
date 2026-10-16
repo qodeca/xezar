@@ -2,12 +2,13 @@
 
 Use this page to choose the coding agent that runs your tasks, select its account and model, and understand which tools and environment it receives. A backend is the connection between xezar and an installed agent CLI; each backend feeds the same task thread in the cockpit.
 
-## To choose one of the four backends
+## To choose one of the five backends
 
 | Backend | How xezar drives it |
 | --- | --- |
 | Claude Code (`claude`, the default) | A persistent CLI process exchanges streamed JSON through standard input and output. |
 | Codex (`codex`) | `codex app-server` exchanges JSON-RPC messages through standard input and output. |
+| Qwen Code (`qwen`) | One `qwen` process per turn streams JSON events; the next turn resumes the same session. Models come from the `modelProviders` in your Qwen Code settings, so local and hosted models both work. |
 | OpenCode (`opencode`, experimental) | A local `opencode serve` process receives HTTP requests and streams events over SSE. |
 | pi (`pi`) | `pi --mode rpc` exchanges JSON messages through standard input and output. |
 
@@ -17,7 +18,7 @@ Choose an agent in the new-task composer. A workflow can also choose a different
 
 xezar probes agent binaries with `--version` for its health check. The composer offers enabled backends whose account probes report that they are signed in; installing a CLI alone is not enough. Dry-run mode supplies a mock backend without a login. Open the chosen CLI once to log in or configure its provider before starting a task.
 
-If the executable is outside the server's `PATH`, export the matching variable before starting xezar: `XEZ_CLAUDE_BIN`, `XEZ_CODEX_BIN`, `XEZ_OPENCODE_BIN` or `XEZ_PI_BIN`. Use the executable's path as the value. A missing optional backend does not prevent the cockpit from starting.
+If the executable is outside the server's `PATH`, export the matching variable before starting xezar: `XEZ_CLAUDE_BIN`, `XEZ_CODEX_BIN`, `XEZ_QWEN_BIN`, `XEZ_OPENCODE_BIN` or `XEZ_PI_BIN`. Use the executable's path as the value. A missing optional backend does not prevent the cockpit from starting.
 
 On Windows, the path may name an `.exe`, an npm command (`.cmd`, which xezar runs without the Windows command processor) or a `.js`/`.mjs` script (run with Node). Any other `.cmd` or `.bat` file starts only when every argument is plain text; otherwise xezar refuses it with a message naming the file and the argument's position. PATH entries that depend on the current folder, such as `.` or `node_modules\.bin`, are skipped, so list the full folder instead.
 
@@ -31,10 +32,10 @@ To lock models to native agent settings, set `XEZ_AGENT_MODELS_LOCKED=1` or `"mo
 
 ## To use another agent account
 
-Global **Settings → Agent accounts** shows all four agents at once, one group per agent rather than one tab at a time, so "is Codex installed, and which login does it use" is answerable without clicking. Each group opens with a one-line fact — installed or not, the version when there is one, and how many logins it holds — followed by that agent's logins.
+Global **Settings → Agent accounts** shows all five agents at once, one group per agent rather than one tab at a time, so "is Codex installed, and which login does it use" is answerable without clicking. Each group opens with a one-line fact — installed or not, the version when there is one, and how many logins it holds — followed by that agent's logins.
 
 1. Open global **Settings → Agent accounts** and find the agent's group.
-2. Use **Add account** for Claude Code, Codex or pi. Give the account a separate configuration directory and use **Connect** to sign in. The directory may be one that does not exist yet: **Connect** runs the agent's own login, and the agent creates it.
+2. Use **Add account** for Claude Code, Codex, Qwen Code or pi. Give the account a separate configuration directory and use **Connect** to sign in. The directory may be one that does not exist yet: **Connect** runs the agent's own login, and the agent creates it.
 3. Pick the account as a machine default under **Defaults for new projects**, in project **Settings → Agents**, or for a single task. A project choice takes precedence over the machine default.
 
 What each row tells you:
@@ -99,13 +100,32 @@ Workflow agent steps accept `allowedTools` and `bashAllowlist`. Without override
 | --- | --- |
 | Claude Code | Passes `allowedTools` to the CLI. A non-empty `bashAllowlist` replaces unrestricted Bash with allowed command prefixes. `ClaudeCliRunner.startSession` builds those rules with `out.push(...claudeBashRules(bashAllowlist));`. Claude's own matcher strips a few known-safe wrappers and assignments before matching; the shared matcher instead refuses an unnamed wrapper (`WRAPPER_COMMANDS` in `read-only-lock.ts`). Tools requiring approval are denied by default; `XEZ_APPROVAL_GATE=1` selects Claude's `acceptEdits` approval mode. |
 | Codex | Honours one signal from the tool list: a step that allows neither `Edit` nor `Write` runs confined – it may change files only in its own working copy and the run's own evidence, handoff and temporary folders, and the network stays on so it can still fetch and post. With `bashAllowlist`, a trusted `PreToolUse` hook applies the shared command policy to Bash and refuses `apply_patch` through that policy's tool-name check. Its bounded reason is recorded as a `note` in the run event stream without reaching provider-auth detection. The working copy remains writable to other non-shell tools. Every other step uses full access with approvals disabled. `XEZ_CODEX_NETWORK=0` turns the network off for both. |
+| Qwen Code | Passes the allowed tools to Qwen Code in its own tool names and always sets the approval mode itself (`default`), so a call that is not allowed is denied, never left to Qwen Code's own default. A step that allows neither `Edit` nor `Write` has the file-writing tools removed. Every step with limits also gets a check that runs before each tool call: it refuses a file writer on a read-only step and sends each shell command through the same command policy as Codex and pi, so the same commands are refused for the same reasons. A refused call tells the model not to try again. |
 | OpenCode | Ignores the per-tool allowlist. Permission requests are answered automatically and fail closed. A request to reach a directory is allowed once when the directory is inside the run's own directories (its worktree, its run and temporary files). Every other request is denied – a directory outside them, a web fetch, a shell command, a repeated-call warning – and the denial is shown in the transcript. If the agent keeps asking for the same denied thing three times in a row, or collects 20 denials in one session, the run stops with a named error. |
 | pi | Maps supported tool names to its `--tools` list. Since #856 a non-empty `bashAllowlist` keeps a restricted Bash; it does not drop the shell. One simple command must start with an allowed prefix, using the same prefix rule as Claude Code, and compounds (`a; b`, `a && b`, ordinary pipes) are refused before matching. The sole compound exception is the exact two-part verdict-packet pipe. Redirecting with `>`, `>>` or `<` is refused. So is `find` with an option that runs another command, deletes or writes a file, such as `-exec` or `-delete`, and a `find` word the shell would still change before `find` sees it (a `$`, a backtick, `{`, `}`, `~`, or an unquoted `*`, `?` or `[`): write `find . -name '*.ts'`, not `find . -name *.ts`. A command that defines a shell function or groups commands with an unquoted `(`, `)`, `{` or `}` is refused, because it could make an allowed name run something else. A command that ends a line with a backslash is refused, because the shell would drop the backslash and run a different command. An empty `bashAllowlist` removes Bash. Never allow a program that can run a command or write a file from its arguments without a closed checker; `sed` and `awk` are always refused. |
 
 For a concrete `git diff` allowlist entry, `git diff; rm -rf x` is refused by Claude Code because
-the unmatched `rm` part fails its own permission matcher. Pi and Codex refuse the whole string as
-`syntax.compound` in the shared policy. OpenCode does not apply the allowlist, so xezar does not
+the unmatched `rm` part fails its own permission matcher. Qwen Code, pi and Codex refuse the whole
+string as `syntax.compound` in the shared policy. OpenCode does not apply the allowlist, so xezar does not
 stop that compound there.
+
+## To set up Qwen Code
+
+Qwen Code runs the model you configure in its own settings, a local one or a hosted one. xezar reads those settings and never writes them.
+
+1. Install Qwen Code (`npm i -g @qwen-code/qwen-code`), version 0.25.2 or newer. An older version is refused with the update command. A newer version runs, with a note that xezar has not tested it yet.
+2. Run `qwen` once and set up a provider. Each model you list under `modelProviders` in `~/.qwen/settings.json` becomes a model choice in the composer. A model the settings do not list is refused before the run starts.
+3. Put each provider key in the variable its model entry names (`envKey`). xezar passes exactly those variables to Qwen Code.
+
+What xezar changes for each run, without touching your files:
+
+- **Usage statistics are off.** xezar sets `QWEN_USAGE_STATISTICS_ENABLED=0`. Set `XEZ_QWEN_USAGE_STATISTICS=1` to keep Qwen Code's own choice.
+- **A project `.env` stays out.** Qwen Code reads the first `.env` it finds above its working folder. xezar tells it to ignore every variable that file names, so its values never reach the run. A `.qwen/.env` file in the project cannot be ignored that way, so a task there is refused with the file's path; move its variables into your shell or into `~/.qwen/.env`.
+- **Only the project's MCP servers start.** A run gets the servers the project's `.mcp.json` and `.qwen/settings.json` declare, on the project's own definitions. Your personal servers, extensions and xezar's own bridge stay off.
+- **Questions use the cockpit.** When the agent needs your decision, the turn ends on a question card, as on the other backends.
+- **Cost.** A model on a local address costs 0. For a hosted model, xezar computes the cost from the `modelPricing` rates in your Qwen Code settings, and shows tokens only when no rate is set.
+
+A second Qwen Code account is a second folder in `QWEN_HOME`. Add it in **Settings → Agent accounts**.
 
 ## To make a project MCP server available to Codex
 

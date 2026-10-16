@@ -92,6 +92,9 @@ export interface AgentHomePaths {
    * NOT catalog entries — see the file header.
    */
   pi: string;
+  /** `$QWEN_HOME` or `~/.qwen` — Qwen Code's whole per-user directory (`settings.json`, `.env`,
+   *  sessions). A Qwen account is a different `QWEN_HOME` (`PROFILE_ENV_VAR.qwen`). */
+  qwen: string;
 }
 
 export interface ConfigFileDef {
@@ -135,6 +138,7 @@ const CODEX_CONFIG_DOCS = 'https://developers.openai.com/codex/config-reference'
 const CODEX_AGENTS_DOCS = 'https://developers.openai.com/codex/guides/agents-md';
 const OPENCODE_CONFIG_DOCS = 'https://opencode.ai/docs/config/';
 const OPENCODE_RULES_DOCS = 'https://opencode.ai/docs/rules/';
+const QWEN_SETTINGS_DOCS = 'https://qwenlm.github.io/qwen-code-docs/en/users/configuration/settings/';
 /**
  * pi ships its docs INSIDE the npm package (`docs/` in `@earendil-works/pi-coding-agent`) AND
  * serves them at `pi.dev`. An earlier note here said it served no docs site, on the strength of
@@ -462,6 +466,43 @@ export const CONFIG_FILES: ConfigFileDef[] = [
     precedence:
       'Global instructions, loaded first and not replaced by a project file. pi’s docs give the sources as a list, so they are quoted as one — “Pi loads AGENTS.md or CLAUDE.md at startup from:” (1) “~/.pi/agent/AGENTS.md for global instructions”, (2) “parent directories, walking up from the current working directory”, (3) “the current directory”. Two qualifiers from the same page: a per-directory override — “If a directory contains AGENTS.override.md, Pi loads it instead of AGENTS.md or CLAUDE.md from that directory. Context files from other directories still layer normally.”, which is why a project’s override does not displace THIS file (an AGENTS.override.md in pi’s own home would) — and an off switch, “Disable loading with --no-context-files or -nc”, which skips every source including this one. xezar catalogs no AGENTS.override.md at any scope. pi therefore also reads this repo’s AGENTS.md and CLAUDE.md; those entries stay listed under the vendors whose precedence rules they carry.',
     docsUrl: PI_USAGE_DOCS,
+  },
+
+  // ---- Qwen Code (#1044). Precedence quoted from QWEN_SETTINGS_DOCS (read 2026-10-16). The file is
+  // JSONC; the model a new session uses is `model.name`. xezar reads these and never writes the
+  // person's copy on its own (a run's additions go to a private system-settings file instead).
+  {
+    id: 'qwen.user.settings',
+    runners: ['qwen'],
+    kind: 'settings',
+    scope: 'user',
+    home: 'qwen',
+    resolve: (_repo, home) => join(home.qwen, 'settings.json'),
+    label: '~/.qwen/settings.json',
+    format: 'jsonc',
+    tracked: 'outside-repo',
+    holdsMcp: true,
+    modelKey: 'model.name',
+    modelPriority: 1,
+    precedence:
+      'Configuration is applied in the following order of precedence (lower numbers are overridden by higher numbers): default values, system defaults file, user settings file, project settings file, system settings file, environment variables, and command-line arguments. This file “Applies to all Qwen Code sessions for the current user.”',
+    docsUrl: QWEN_SETTINGS_DOCS,
+  },
+  {
+    id: 'qwen.project.settings',
+    runners: ['qwen'],
+    kind: 'settings',
+    scope: 'project',
+    resolve: (repo) => join(repo, '.qwen', 'settings.json'),
+    label: '.qwen/settings.json',
+    format: 'jsonc',
+    tracked: 'tracked',
+    holdsMcp: true,
+    modelKey: 'model.name',
+    modelPriority: 2,
+    precedence:
+      '“Applies only when running Qwen Code from that specific project. Project settings override user settings.” System settings override it in turn: “System settings override user and project settings.” Runs read the committed copy.',
+    docsUrl: QWEN_SETTINGS_DOCS,
   },
 
   // ---- Shared: <repo>/AGENTS.md is read by BOTH Codex and OpenCode ----

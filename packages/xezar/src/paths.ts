@@ -234,6 +234,7 @@ export function agentHomePaths(env: NodeJS.ProcessEnv = process.env): AgentHomeP
     codex: env.CODEX_HOME?.trim() || join(home, '.codex'),
     opencodeConfig: env.OPENCODE_CONFIG_DIR?.trim() || join(xdgConfig, 'opencode'),
     pi: env.PI_CODING_AGENT_DIR?.trim() || join(home, '.pi', 'agent'),
+    qwen: env.QWEN_HOME?.trim() || join(home, '.qwen'),
   };
 }
 

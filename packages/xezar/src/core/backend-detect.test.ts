@@ -84,6 +84,7 @@ function reply(bin: string, r: FakeReply): void {
 function everythingInstalled(): void {
   reply('claude', { kind: 'ok', stdout: `${CLAUDE_BANNER}\n` });
   reply('codex', { kind: 'ok', stdout: 'codex-cli 0.21.0\n' });
+  reply('qwen', { kind: 'ok', stdout: '0.25.2\n' });
   reply('opencode', { kind: 'ok', stdout: '0.4.2\n' });
   reply('pi', { kind: 'ok', stdout: 'pi 1.2.3\n' });
   reply('gh', { kind: 'ok', stdout: 'gho_exampletoken\n' });
@@ -104,6 +105,7 @@ beforeEach(() => {
   vi.stubEnv('XEZ_DRY_RUN', undefined);
   vi.stubEnv('XEZ_CLAUDE_BIN', undefined);
   vi.stubEnv('XEZ_CODEX_BIN', undefined);
+  vi.stubEnv('XEZ_QWEN_BIN', undefined);
   vi.stubEnv('XEZ_OPENCODE_BIN', undefined);
   vi.stubEnv('XEZ_PI_BIN', undefined);
   vi.stubEnv('GITHUB_TOKEN', undefined);
@@ -119,7 +121,7 @@ describe('a host where every tool is installed', () => {
     everythingInstalled();
     const checks = await detectEnvironment();
 
-    expect(checks.map((c) => c.name)).toEqual(['claude', 'codex', 'opencode', 'pi', 'gh', 'git']);
+    expect(checks.map((c) => c.name)).toEqual(['claude', 'codex', 'qwen', 'opencode', 'pi', 'gh', 'git']);
     expect(checks.find((c) => c.name === 'claude')).toMatchObject({
       available: true,
       version: CLAUDE_BANNER,
@@ -128,10 +130,23 @@ describe('a host where every tool is installed', () => {
       available: true,
       version: 'codex-cli 0.21.0',
     });
+    expect(checks.find((c) => c.name === 'qwen')).toMatchObject({
+      available: true,
+      version: '0.25.2',
+    });
     expect(checks.find((c) => c.name === 'opencode')).toMatchObject({
       available: true,
       version: '0.4.2',
     });
+  });
+
+  it('rejects a `qwen` on PATH that does not print a version number', async () => {
+    everythingInstalled();
+    reply('qwen', { kind: 'ok', stdout: 'usage: qwen [options]\n' });
+
+    const result = await check('qwen');
+    expect(result.available).toBe(false);
+    expect(result.hint).toContain("doesn't look like Qwen Code");
   });
 
   it('reports gh authenticated and git with its version', async () => {
@@ -145,7 +160,7 @@ describe('a host where every tool is installed', () => {
     everythingInstalled();
     await detectEnvironment();
 
-    for (const bin of ['claude', 'codex', 'opencode', 'pi', 'git']) {
+    for (const bin of ['claude', 'codex', 'qwen', 'opencode', 'pi', 'git']) {
       const call = execHook.calls.find((c) => c.file === bin);
       expect(call, `${bin} was never probed`).toBeDefined();
       expect(call!.args).toEqual(['--version']);
@@ -180,6 +195,7 @@ describe('a missing binary degrades to unavailable with a reason', () => {
   it.each([
     ['claude', 'Claude Code'],
     ['codex', 'Codex'],
+    ['qwen', 'Qwen Code'],
     ['opencode', 'OpenCode'],
     ['gh', 'GitHub CLI'],
     ['git', 'install git'],
@@ -195,7 +211,7 @@ describe('a missing binary degrades to unavailable with a reason', () => {
 });
 
 describe('a binary that exists but does not answer cleanly', () => {
-  it.each(['claude', 'codex', 'opencode', 'gh', 'git'])(
+  it.each(['claude', 'codex', 'qwen', 'opencode', 'gh', 'git'])(
     'degrades %s to unavailable when it exits non-zero',
     async (name) => {
       everythingInstalled();
@@ -209,7 +225,7 @@ describe('a binary that exists but does not answer cleanly', () => {
 
   it('degrades every probe to unavailable when the binary hangs past the probe timeout', async () => {
     vi.useFakeTimers();
-    for (const bin of ['claude', 'codex', 'opencode', 'pi', 'gh', 'git']) {
+    for (const bin of ['claude', 'codex', 'qwen', 'opencode', 'pi', 'gh', 'git']) {
       reply(bin, { kind: 'hang' });
     }
 
@@ -218,7 +234,7 @@ describe('a binary that exists but does not answer cleanly', () => {
     await vi.advanceTimersByTimeAsync(60_000);
     const checks = await pending;
 
-    expect(checks).toHaveLength(6);
+    expect(checks).toHaveLength(7);
     for (const c of checks) {
       expect(c.available, `${c.name} should be unavailable after a hang`).toBe(false);
       expect(c.hint, `${c.name} should explain itself`).toBeTruthy();
@@ -264,8 +280,8 @@ describe('a host with nothing installed at all', () => {
     // No replies registered: every single probe fails.
     const checks = await detectEnvironment();
 
-    expect(checks).toHaveLength(6);
-    expect(checks.map((c) => c.name)).toEqual(['claude', 'codex', 'opencode', 'pi', 'gh', 'git']);
+    expect(checks).toHaveLength(7);
+    expect(checks.map((c) => c.name)).toEqual(['claude', 'codex', 'qwen', 'opencode', 'pi', 'gh', 'git']);
     for (const c of checks) {
       expect(c.available, `${c.name} should be unavailable`).toBe(false);
       expect(c.hint, `${c.name} should carry a hint`).toBeTruthy();

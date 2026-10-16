@@ -45,7 +45,7 @@ import type { TerminalEvent } from './event-names.ts';
 /**
  * Backend id → product name.
  *
- * The cockpit's `packages/web/src/lib/runner-label.ts` holds the same four pairs and cannot be
+ * The cockpit's `packages/web/src/lib/runner-label.ts` holds the same pairs and cannot be
  * imported here: `packages/web` is a browser bundle and the service must not depend on it. The
  * type is `Record<RunnerId, string>` for exactly the reason that file gives — a fifth backend is
  * then a compile error here rather than a terminal that quietly prints nothing.
@@ -53,6 +53,7 @@ import type { TerminalEvent } from './event-names.ts';
 export const RUNNER_PRODUCT_NAME: Record<RunnerId, string> = {
   claude: 'Claude Code',
   codex: 'Codex',
+  qwen: 'Qwen Code',
   opencode: 'OpenCode',
   pi: 'pi',
 };

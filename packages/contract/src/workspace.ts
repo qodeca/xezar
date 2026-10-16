@@ -106,6 +106,7 @@ export const workspaceConfigResponseSchema = z.object({
     models: z.object({
       claude: z.string().optional(),
       codex: z.string().optional(),
+      qwen: z.string().optional(),
       opencode: z.string().optional(),
       pi: z.string().optional(),
     }).optional(),
@@ -224,6 +225,7 @@ export const setWorkspaceConfigInputSchema = z.strictObject({
         .strictObject({
           claude: z.string().trim().min(1).max(200).nullable().optional(),
           codex: z.string().trim().min(1).max(200).nullable().optional(),
+          qwen: z.string().trim().min(1).max(200).nullable().optional(),
           opencode: z.string().trim().min(1).max(200).nullable().optional(),
           pi: z.string().trim().min(1).max(200).nullable().optional(),
         })
@@ -376,6 +378,7 @@ export const workspaceUiStateSchema = z.looseObject({
     .object({
       claude: z.string().optional(),
       codex: z.string().optional(),
+      qwen: z.string().optional(),
       opencode: z.string().optional(),
       pi: z.string().optional(),
     })
@@ -425,6 +428,7 @@ export const setWorkspaceUiStateInputSchema = z
       .strictObject({
         claude: z.string().min(1).max(128).optional(),
         codex: z.string().min(1).max(128).optional(),
+        qwen: z.string().min(1).max(128).optional(),
         opencode: z.string().min(1).max(128).optional(),
         pi: z.string().min(1).max(128).optional(),
       })
@@ -463,6 +467,7 @@ export type SetWorkspaceUiStateInput = z.infer<typeof setWorkspaceUiStateInputSc
 export const runnerModelsSchema = z.object({
   claude: z.string().optional(),
   codex: z.string().optional(),
+  qwen: z.string().optional(),
   opencode: z.string().optional(),
   pi: z.string().optional(),
 });
@@ -533,6 +538,7 @@ export const setConfigInputSchema = z.object({
     .object({
       claude: z.string().trim().max(200).nullable().optional(),
       codex: z.string().trim().max(200).nullable().optional(),
+      qwen: z.string().trim().max(200).nullable().optional(),
       opencode: z.string().trim().max(200).nullable().optional(),
       pi: z.string().trim().max(200).nullable().optional(),
     })
@@ -757,7 +763,7 @@ export type ProviderConnectResponse = z.infer<typeof providerConnectResponseSche
  * coincidence: a picker entry with no discovery falls back to hard-coded vendor ids, which is
  * how pi came to offer three models its host could not run (#152).
  */
-export const modelDiscoveryRunnerSchema = z.enum(['claude', 'codex', 'opencode', 'pi']);
+export const modelDiscoveryRunnerSchema = z.enum(['claude', 'codex', 'qwen', 'opencode', 'pi']);
 export type ModelDiscoveryRunner = z.infer<typeof modelDiscoveryRunnerSchema>;
 export const MODEL_DISCOVERY_RUNNERS: readonly ModelDiscoveryRunner[] =
   modelDiscoveryRunnerSchema.options;

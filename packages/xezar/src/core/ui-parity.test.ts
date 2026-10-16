@@ -19,7 +19,7 @@ import { describe, expect, it } from 'vitest';
 import type { UiEvent, UiItem } from './ui-events.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const BACKENDS = ['claude', 'codex', 'opencode', 'pi'] as const;
+const BACKENDS = ['claude', 'codex', 'qwen', 'opencode', 'pi'] as const;
 
 /** Every event across every golden fixture of one backend. */
 function fixtureEvents(backend: (typeof BACKENDS)[number]): UiEvent[] {

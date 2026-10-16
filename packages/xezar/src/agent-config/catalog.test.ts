@@ -7,6 +7,7 @@ const HOME: AgentHomePaths = {
   codex: '/home/u/.codex',
   opencodeConfig: '/home/u/.config/opencode',
   pi: '/home/u/.pi/agent',
+  qwen: '/home/u/.qwen',
 };
 
 describe('agent-config catalog', () => {
@@ -132,6 +133,8 @@ describe('agent-config catalog', () => {
       'opencode.user.config',
       'pi.project.mcp',
       'pi.user.mcp',
+      'qwen.project.settings',
+      'qwen.user.settings',
     ]);
   });
 

@@ -327,9 +327,10 @@ export function useRunnerModelCatalogs(
 ): Record<Runner, ReturnType<typeof useRunnerModels>> {
   const claude = useRunnerModels('claude', enabled)
   const codex = useRunnerModels('codex', enabled)
+  const qwen = useRunnerModels('qwen', enabled)
   const opencode = useRunnerModels('opencode', enabled)
   const pi = useRunnerModels('pi', enabled)
-  return { claude, codex, opencode, pi }
+  return { claude, codex, qwen, opencode, pi }
 }
 
 export function useProviderStatus() {

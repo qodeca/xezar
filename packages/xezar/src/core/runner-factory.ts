@@ -3,6 +3,7 @@ import { ClaudeCliRunner } from './claude-cli-runner.ts';
 import { CodexAppServerRunner } from './codex-app-server-runner.ts';
 import { OpencodeServerRunner } from './opencode-server-runner.ts';
 import { PiRunner } from './pi-runner.ts';
+import { QwenRunner } from './qwen-runner.ts';
 
 /**
  * The single place that maps a backend id onto a concrete runner. Everything
@@ -14,6 +15,8 @@ export function createRunner(backend: AgentBackend | RunnerId | undefined): Agen
   switch (backend) {
     case 'codex':
       return new CodexAppServerRunner();
+    case 'qwen':
+      return new QwenRunner();
     case 'opencode':
       return new OpencodeServerRunner();
     case 'pi':

@@ -24,6 +24,8 @@ export function resumeCommand(runner: Runner | undefined, sessionId: string): st
       return `claude --resume ${sessionId}`;
     case 'codex':
       return `codex resume ${sessionId}`;
+    case 'qwen':
+      return `qwen --resume ${sessionId}`;
     case 'opencode':
       return `opencode --session ${sessionId}`;
     case 'pi':

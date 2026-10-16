@@ -15,6 +15,7 @@ import { resumeCommand as sharedResumeCommand, type Runner } from '@qodeca/xezar
 export const RUNNER_LABEL: Record<Runner, string> = {
   claude: 'Claude Code',
   codex: 'Codex',
+  qwen: 'Qwen Code',
   opencode: 'OpenCode',
   pi: 'pi',
 }

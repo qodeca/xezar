@@ -2,7 +2,7 @@ import { launchFileAsync } from '../platform/process-launch.ts';
 import { installParenthetical } from './provider-install.ts';
 
 export interface BackendCheck {
-  name: 'claude' | 'codex' | 'opencode' | 'pi' | 'gh' | 'git';
+  name: 'claude' | 'codex' | 'qwen' | 'opencode' | 'pi' | 'gh' | 'git';
   available: boolean;
   version?: string;
   hint?: string;
@@ -19,6 +19,7 @@ export async function detectEnvironment(): Promise<BackendCheck[]> {
   return Promise.all([
     probeClaude(),
     probeCodex(),
+    probeQwen(),
     probeOpencode(),
     probePi(),
     probeGh(),
@@ -84,6 +85,33 @@ async function probeCodex(): Promise<BackendCheck> {
       name: 'codex',
       available: false,
       hint: `optional: install the Codex CLI${installParenthetical('codex')} and log in to use the Codex runner`,
+    };
+  }
+}
+
+async function probeQwen(): Promise<BackendCheck> {
+  // Dry-run stands the runner up on the bundled mock, so report it present (as for codex and pi).
+  if (process.env.XEZ_DRY_RUN === '1') {
+    return { name: 'qwen', available: true, version: 'mock (XEZ_DRY_RUN=1)' };
+  }
+  const bin = process.env.XEZ_QWEN_BIN ?? 'qwen';
+  try {
+    const { stdout } = await launchFileAsync(bin, ['--version'], { timeout: 10_000 });
+    const version = stdout.trim();
+    if (!/^\d+\.\d+\.\d+/.test(version)) {
+      return { name: 'qwen', available: false, hint: `\`${bin}\` resolves but doesn't look like Qwen Code (got: ${version.slice(0, 80)})` };
+    }
+    return {
+      name: 'qwen',
+      available: true,
+      version,
+      hint: 'if no model is set up, run `qwen` once and choose a provider',
+    };
+  } catch {
+    return {
+      name: 'qwen',
+      available: false,
+      hint: `optional: install Qwen Code${installParenthetical('qwen')} and set up a model to use the Qwen Code runner`,
     };
   }
 }

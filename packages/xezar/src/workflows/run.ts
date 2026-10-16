@@ -113,6 +113,8 @@ const REPAIR_TURN_PREFIX =
 const BACKENDS_WITHOUT_RESUME: Record<RunnerId, boolean> = {
   claude: false,
   codex: false,
+  // One process per turn, joined by `--resume <sessionId>`: a Continue reopens the conversation.
+  qwen: false,
   opencode: true,
   pi: false,
 };
@@ -132,6 +134,8 @@ const BACKENDS_WITHOUT_RESUME: Record<RunnerId, boolean> = {
 const BACKENDS_WITH_CUMULATIVE_TOKENS: Record<RunnerId, boolean> = {
   claude: false,
   codex: true,
+  // The Qwen session object sums each turn process's `result.usage` from zero (`qwen-runner.ts`).
+  qwen: false,
   opencode: false,
   pi: false,
 };

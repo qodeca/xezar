@@ -120,6 +120,7 @@ export const REQUIRED_ARCHIVE_ENTRIES = [
   'package/web/dist/index.html',
   'package/scripts/mock-claude.mjs',
   'package/scripts/codex-read-only-hook.mjs',
+  'package/scripts/qwen-pre-tool-hook.mjs',
   'package/scripts/pi-worktree-guard.ts',
 ];
 

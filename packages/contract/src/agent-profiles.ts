@@ -145,6 +145,7 @@ export function unavailableAgentAccountRefusal(label: string, configDir: string)
 export const agentAccountSelectionSchema = z.object({
   claude: z.string().optional(),
   codex: z.string().optional(),
+  qwen: z.string().optional(),
   opencode: z.string().optional(),
   pi: z.string().optional(),
 });

@@ -109,6 +109,7 @@ import { useReturnFocus } from './remove-project'
 const PROVIDER_INSTALL: Record<ProviderId, string> = {
   claude: 'npm i -g @anthropic-ai/claude-code',
   codex: 'npm i -g @openai/codex',
+  qwen: 'npm i -g @qwen-code/qwen-code',
   opencode: 'https://opencode.ai',
   pi: 'https://github.com/badlogic/pi-mono',
 }
@@ -148,7 +149,7 @@ export function AccountsSection() {
 /** Every agent gets a group, including one that cannot carry a second login: the group is where
  *  its install state and config folder live, and hiding OpenCode would just move the question
  *  "is OpenCode set up?" somewhere else. */
-const PROVIDERS: readonly ProviderId[] = ['claude', 'codex', 'opencode', 'pi']
+const PROVIDERS: readonly ProviderId[] = ['claude', 'codex', 'qwen', 'opencode', 'pi']
 
 /** The id of an agent group's heading — the target of the problem summary's jump links. */
 const groupHeadingId = (provider: ProviderId) => `accounts-agent-${provider}`

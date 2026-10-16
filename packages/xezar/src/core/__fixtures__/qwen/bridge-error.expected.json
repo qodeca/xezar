@@ -1,0 +1,109 @@
+[
+  {
+    "type": "session.started",
+    "sessionId": "e833a1d8-df98-4c70-93b0-86be5558b1ef",
+    "backend": "qwen",
+    "model": "deepseek-flash",
+    "cwd": "/work/proj",
+    "tools": [
+      "read_file",
+      "glob",
+      "grep_search",
+      "run_shell_command",
+      "tool_call",
+      "tool_search"
+    ]
+  },
+  {
+    "type": "turn.started",
+    "turnId": "turn_1"
+  },
+  {
+    "type": "item.started",
+    "item": {
+      "kind": "tool",
+      "id": "call_00_P2rSfjlN0A6SEWcuKZFH2427",
+      "name": "tool_call",
+      "toolKind": "other",
+      "title": "tool_call",
+      "status": "running",
+      "input": {}
+    }
+  },
+  {
+    "type": "item.started",
+    "item": {
+      "kind": "tool",
+      "id": "call_01_zoHWLgnKGgDrJAVXiGi90471",
+      "name": "tool_call",
+      "toolKind": "other",
+      "title": "tool_call",
+      "status": "running",
+      "input": {}
+    }
+  },
+  {
+    "type": "item.completed",
+    "item": {
+      "kind": "tool",
+      "id": "call_00_P2rSfjlN0A6SEWcuKZFH2427",
+      "name": "tool_call",
+      "toolKind": "other",
+      "title": "tool_call",
+      "status": "failed",
+      "input": {},
+      "error": "[tool_call bridge refused] params must have required property 'name'"
+    }
+  },
+  {
+    "type": "item.completed",
+    "item": {
+      "kind": "tool",
+      "id": "call_01_zoHWLgnKGgDrJAVXiGi90471",
+      "name": "tool_call",
+      "toolKind": "other",
+      "title": "tool_call",
+      "status": "failed",
+      "input": {},
+      "error": "[tool_call bridge refused] params must have required property 'name'"
+    }
+  },
+  {
+    "type": "item.started",
+    "item": {
+      "kind": "message",
+      "id": "item_1",
+      "role": "assistant",
+      "text": "The bridge refused both calls."
+    }
+  },
+  {
+    "type": "item.completed",
+    "item": {
+      "kind": "message",
+      "id": "item_1",
+      "role": "assistant",
+      "text": "The bridge refused both calls."
+    }
+  },
+  {
+    "type": "turn.completed",
+    "turnId": "turn_1",
+    "stopReason": "end_turn",
+    "usage": {
+      "input": 718,
+      "output": 40,
+      "total": 21238,
+      "cacheRead": 20480
+    }
+  },
+  {
+    "type": "usage.updated",
+    "usage": {
+      "input": 718,
+      "output": 40,
+      "total": 21238,
+      "cacheRead": 20480
+    }
+  }
+]

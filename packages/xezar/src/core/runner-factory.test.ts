@@ -9,6 +9,7 @@ import { ClaudeCliRunner } from './claude-cli-runner.ts';
 import { CodexAppServerRunner } from './codex-app-server-runner.ts';
 import { OpencodeServerRunner } from './opencode-server-runner.ts';
 import { PiRunner } from './pi-runner.ts';
+import { QwenRunner } from './qwen-runner.ts';
 import { createRunner } from './runner-factory.ts';
 import { RunStore } from '../runs/store.ts';
 import { closeStoreAndRemove } from '../runs/store.testkit.ts';
@@ -41,6 +42,7 @@ import { closeStoreAndRemove } from '../runs/store.testkit.ts';
 const EXPECTED_RUNNER: Record<RunnerId, new () => AgentRunner> = {
   claude: ClaudeCliRunner,
   codex: CodexAppServerRunner,
+  qwen: QwenRunner,
   opencode: OpencodeServerRunner,
   pi: PiRunner,
 };

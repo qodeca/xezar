@@ -31,6 +31,9 @@ export const KNOWN_PRESETS_BY_RUNNER: Record<RunnerId, readonly string[]> = {
   // vendor release goes stale the same way the picker did, and this list mirrors the picker.
   claude: ['opus', 'sonnet', 'haiku'],
   codex: ['gpt-5.1-codex', 'gpt-5.1-codex-mini', 'gpt-5-codex'],
+  // Qwen Code's models are the person's own `modelProviders` entries, discovered from its settings
+  // (`qwen-model-catalog.ts`); any hard-coded id would be one a given person does not have.
+  qwen: [],
   opencode: [],
   // pi lists nothing for the same reason OpenCode does (#794), plus one of its own: it picks a
   // model with the canonical `provider/model` convention and has no default provider, so the

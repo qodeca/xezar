@@ -88,6 +88,10 @@ export const MODELS_BY_RUNNER: Record<Runner, readonly ModelPreset[]> = {
   codex: [
     { id: '', label: 'auto', desc: 'Use your Codex default model' },
   ],
+  // Qwen Code's models are the person's own `modelProviders` entries, discovered from its settings.
+  qwen: [
+    { id: '', label: 'auto', desc: 'Use your Qwen Code default model' },
+  ],
   opencode: [
     { id: '', label: 'auto', desc: 'Use your OpenCode default model' },
   ],
@@ -133,7 +137,7 @@ const NATIVE_MODEL_ID_PREFIX: Partial<Record<Runner, RegExp>> = {
  *  native id space (`claude-…`, `gpt-…`), which a `provider/model` runner cannot claim either
  *  way, so a bare vendor id stays a cross-runner mismatch on pi and OpenCode as much as it is
  *  on the other backends. */
-const PROVIDER_SPANNING_RUNNERS: readonly Runner[] = ['opencode', 'pi']
+const PROVIDER_SPANNING_RUNNERS: readonly Runner[] = ['qwen', 'opencode', 'pi']
 
 /** Keep recognized presets from another backend out of a runner's custom-model escape hatch
  * (#480).
@@ -192,6 +196,7 @@ function autoPreset(presets: readonly ModelPreset[]): ModelPreset {
 const DISCOVERY_RUNNER_LABEL: Record<ModelDiscoveryRunner, string> = {
   claude: 'Claude',
   codex: 'Codex',
+  qwen: 'Qwen Code',
   opencode: 'OpenCode',
   pi: 'pi',
 }

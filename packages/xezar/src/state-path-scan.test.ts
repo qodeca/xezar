@@ -237,6 +237,13 @@ const ALLOWED: readonly Allowance[] = [
     reason: 'Per-user application discovery on macOS. Not xezar state; the editor a user installed is the host\'s.',
   },
   {
+    file: 'core/qwen-run-config.ts',
+    code: 'const home = resolve(env.HOME || env.USERPROFILE || homedir());',
+    reason:
+      "scanQwenProjectEnv — mirrors Qwen Code's own `.env` walk, which STOPS at the person's home folder. " +
+      'It must name the real home to find where Qwen stops reading; it derives no xezar state from it.',
+  },
+  {
     file: 'workspace/projects.ts',
     code: 'const home = await normalizeRoot(homedir());',
     reason:

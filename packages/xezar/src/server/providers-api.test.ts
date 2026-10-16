@@ -19,6 +19,7 @@ import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 const CONNECTED_OUTPUT: Record<ProviderId, string> = {
   claude: '{"loggedIn":true}',
   codex: 'Logged in using ChatGPT',
+  qwen: '0.25.2',
   opencode: [
     '┌  Credentials ~/.local/share/opencode/auth.json',
     '●  Anthropic oauth',
@@ -30,6 +31,8 @@ const CONNECTED_OUTPUT: Record<ProviderId, string> = {
 const DISCONNECTED_OUTPUT: Record<ProviderId, string> = {
   claude: '{"loggedIn":false}',
   codex: 'Not logged in',
+  // Qwen Code has no status command: installed, and its settings name no model.
+  qwen: '0.25.2',
   opencode: [
     '┌  Credentials ~/.local/share/opencode/auth.json',
     '└  0 credentials',
@@ -38,7 +41,7 @@ const DISCONNECTED_OUTPUT: Record<ProviderId, string> = {
 };
 
 const providerForExecutable = (executable: string): ProviderId => {
-  if (executable === 'claude' || executable === 'codex' || executable === 'opencode' || executable === 'pi') return executable;
+  if (executable === 'claude' || executable === 'codex' || executable === 'qwen' || executable === 'opencode' || executable === 'pi') return executable;
   throw new Error(`unexpected executable: ${executable}`);
 };
 
@@ -89,6 +92,7 @@ describe('workspace provider API', () => {
   ) => new ProviderAuthService({
     platform: 'linux',
     createAuthFailureId,
+    configured: () => (states.qwen === 'disconnected' ? 'disconnected' : 'connected'),
     runCommand: onRun ?? (async (executable) => {
       const provider = providerForExecutable(executable);
       const state = states[provider] ?? 'connected';
@@ -101,7 +105,7 @@ describe('workspace provider API', () => {
       return {
         stdout: state === 'connected' ? CONNECTED_OUTPUT[provider] : DISCONNECTED_OUTPUT[provider],
         stderr: '',
-        exitCode: state === 'connected' || provider === 'opencode' ? 0 : 1,
+        exitCode: state === 'connected' || provider === 'opencode' || provider === 'qwen' ? 0 : 1,
       };
     }),
   });
@@ -158,6 +162,7 @@ describe('workspace provider API', () => {
       providers: [
         { provider: 'claude', status: 'connected', enabled: true },
         { provider: 'codex', status: 'disconnected', enabled: false },
+        { provider: 'qwen', status: 'connected', enabled: true },
         {
           provider: 'opencode',
           status: 'not-installed',
@@ -172,7 +177,7 @@ describe('workspace provider API', () => {
   it('GET /api/v1/providers/status skips probes and provider preferences under the explicit model lock', async () => {
     process.env.XEZ_AGENT_MODELS_LOCKED = '1';
     const runCommand = vi.fn<RunProviderCommand>();
-    const workspaceConfig = memoryWorkspaceConfig(['claude', 'codex', 'opencode', 'pi']);
+    const workspaceConfig = memoryWorkspaceConfig(['claude', 'codex', 'qwen', 'opencode', 'pi']);
     const response = await apiRequest(app({
       providerAuth: service({}, runCommand),
       workspaceConfig,
@@ -183,6 +188,7 @@ describe('workspace provider API', () => {
       providers: [
         { provider: 'claude', status: 'connected', enabled: true },
         { provider: 'codex', status: 'connected', enabled: true },
+        { provider: 'qwen', status: 'connected', enabled: true },
         { provider: 'opencode', status: 'connected', enabled: true },
         { provider: 'pi', status: 'connected', enabled: true },
       ],
@@ -287,7 +293,7 @@ describe('workspace provider API', () => {
     await apiRequest(server, '/api/v1/providers/status');
     await apiRequest(server, '/api/v1/providers/status?refresh=1');
 
-    expect(runCommand).toHaveBeenCalledTimes(8);
+    expect(runCommand).toHaveBeenCalledTimes(10);
   });
 
   it('GET without refresh reuses the completed provider cache', async () => {
@@ -301,7 +307,7 @@ describe('workspace provider API', () => {
     await apiRequest(server, '/api/v1/providers/status');
     await apiRequest(server, '/api/v1/providers/status');
 
-    expect(runCommand).toHaveBeenCalledTimes(4);
+    expect(runCommand).toHaveBeenCalledTimes(5);
   });
 
   it('POST /api/v1/providers/:provider/retry clears only the current incident without enabling a disabled provider', async () => {
@@ -506,7 +512,7 @@ describe('workspace provider API', () => {
     const openTerminal = vi.fn(async () => true);
     const pending = connect(app({ providerAuth, openTerminal }), 'claude');
 
-    await vi.waitFor(() => expect(runCommand).toHaveBeenCalledTimes(4));
+    await vi.waitFor(() => expect(runCommand).toHaveBeenCalledTimes(5));
     providerAuth.reportRuntimeAuthFailure('claude');
     release();
 

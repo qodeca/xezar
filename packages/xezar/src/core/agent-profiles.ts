@@ -51,6 +51,9 @@ import type { ProviderId } from './provider-auth.ts';
 export const PROFILE_ENV_VAR: Record<ProviderId, string | null> = {
   claude: 'CLAUDE_CONFIG_DIR',
   codex: 'CODEX_HOME',
+  // Qwen Code moves its whole home with `QWEN_HOME`: settings (and so `modelProviders`), sessions,
+  // and the user-level `.env` that holds model keys — the account boundary for a Qwen login.
+  qwen: 'QWEN_HOME',
   opencode: null,
   pi: 'PI_CODING_AGENT_DIR',
 };
@@ -102,6 +105,9 @@ const PROFILE_DIR_MARKERS: Record<ProviderId, readonly string[]> = {
   // is exactly the case being probed here.
   claude: ['.claude.json', 'settings.json', 'projects', 'sessions'],
   codex: ['auth.json', 'config.toml'],
+  // A Qwen Code home on this machine (0.25.2) holds `settings.json`, `installation_id`, `projects/`
+  // and `sessions/`; a first run writes `installation_id` before anything else.
+  qwen: ['settings.json', 'installation_id', 'projects', 'sessions'],
   opencode: [],
   // Observed against pi 0.85.1 on 2026-09-12: a single `PI_CODING_AGENT_DIR=<empty dir> pi` run
   // drops `auth.json`, `models-store.json` and `sessions/`; a long-lived home also carries

@@ -1,3 +1,4 @@
+import { readQwenSettings } from '../core/qwen-settings.ts';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ProviderId } from '../core/provider-auth.ts';
@@ -152,6 +153,23 @@ async function readCodexIdentity(configDir: string): Promise<AccountIdentity> {
  * A fresh pi writes `auth.json` as `{}` before any login (observed, #329), so an empty map is the
  * ordinary not-signed-in case and not a parse failure.
  */
+/**
+ * A Qwen Code account is its `QWEN_HOME`: no login file, only the providers its settings name.
+ * Shown are the selected auth type and the model ids — never an endpoint key (`envKey` is a
+ * variable NAME, and even that is left out).
+ */
+async function readQwenIdentity(configDir: string): Promise<AccountIdentity> {
+  const settings = readQwenSettings(configDir);
+  if (settings.status === 'absent') return { available: false, reason: NOT_SIGNED_IN, fields: [] };
+  if (settings.status === 'unreadable') return { available: false, reason: UNREADABLE, fields: [] };
+  const fields: AccountIdentityField[] = [];
+  if (settings.selectedAuthType) fields.push({ label: 'Auth type', value: settings.selectedAuthType });
+  if (settings.defaultModel) fields.push({ label: 'Default model', value: settings.defaultModel });
+  if (settings.models.length > 0) fields.push({ label: 'Models', value: settings.models.map((model) => model.id).join(', ') });
+  if (fields.length === 0) return { available: false, reason: NOT_SIGNED_IN, fields: [] };
+  return { available: true, fields };
+}
+
 async function readPiIdentity(configDir: string): Promise<AccountIdentity> {
   const auth = await readJsonCapped(join(configDir, 'auth.json'));
   if (auth === null) return { available: false, reason: NOT_SIGNED_IN, fields: [] };
@@ -198,6 +216,7 @@ function decodeJwtClaims(token: string): Record<string, unknown> | null {
 const READ_IDENTITY: Record<ProviderId, (configDir: string) => Promise<AccountIdentity>> = {
   claude: readClaudeIdentity,
   codex: readCodexIdentity,
+  qwen: readQwenIdentity,
   pi: readPiIdentity,
   opencode: async () => ({
     available: false,

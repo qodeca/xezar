@@ -27,6 +27,7 @@
  * | claude   | `--strict-mcp-config` + `--mcp-config <json>` | Without `--strict-…` claude merges `.mcp.json` and `~/.claude.json` on top and the bridge returns. |
  * | pi       | `--mcp-config <file>` carrying `disabled: true` | The flag substitutes for ONE slot of the adapter's six-file chain (the pi agent dir), so an exclusive overlay is impossible — but the chain merges server entries FIELD BY FIELD, so a `disabled` flag set in a lower slot survives the project files layered over it. |
  * | opencode | `OPENCODE_CONFIG_CONTENT` carrying `enabled: false` | `OPENCODE_CONFIG` is loaded BELOW the project `opencode.json`, so the project's own entry wins over it. `OPENCODE_CONFIG_CONTENT` is loaded above. |
+ * | qwen     | `--allowed-mcp-server-names <names>`         | Qwen Code merges the person's and the project's `mcpServers`; the name allowlist is the lever that leaves the person's own servers, extensions and the bridge out. An empty list means "no filter", so the empty case names one server that does not exist. |
  *
  * ## The reserved name is a floor, not a guess
  *
@@ -56,6 +57,7 @@ import { join } from 'node:path';
 import { agentHomePaths } from '../paths.ts';
 import { isXezarBridge } from './codex-run-isolation.ts';
 import { piDirectTools } from './pi-mcp-tools.ts';
+import { parseJsonc } from './qwen-settings.ts';
 
 /** The server name the cockpit's setup card registers xezar's bridge under (see `isXezarBridge`). */
 const RESERVED_BRIDGE_NAME = 'xezar';
@@ -205,6 +207,64 @@ export function opencodeMcpIsolation(
     disabled: off,
     overlay: { mcp: Object.fromEntries(off.map((name) => [name, { enabled: false } as const])) },
   };
+}
+
+// ---- Qwen Code ------------------------------------------------------------
+
+/**
+ * The project-scoped files Qwen Code reads MCP servers from, in its own order (later wins):
+ * `.mcp.json` and the project `.qwen/settings.json` (JSONC). The person's `~/.qwen/settings.json`
+ * and Qwen Code extensions are the person's own and stay out of a run.
+ */
+const QWEN_FILES: readonly McpConfigFile[] = [
+  { segments: ['.mcp.json'], key: 'mcpServers' },
+  { segments: ['.qwen', 'settings.json'], key: 'mcpServers' },
+];
+
+/**
+ * A name no server carries, for a run with no project server: `--allowed-mcp-server-names` with
+ * no name at all means "no filter" to Qwen Code, so the empty case needs one name that matches
+ * nothing (measured on 0.25.2: the run then lists no MCP server).
+ */
+export const QWEN_NO_MCP_SERVER = '__xezar_none__';
+
+/** The servers a Qwen Code run may start, and the names it was told to keep. */
+export interface QwenMcpIsolation extends McpScan {
+  /** What `--allowed-mcp-server-names` carries: the project's servers minus the bridge. */
+  readonly allowed: readonly string[];
+  /**
+   * What `--mcp-config` carries: the project's own definition of each allowed server, or
+   * undefined when there is none. Qwen Code ranks these above its settings files, so a server the
+   * person's home settings also name runs on the project's definition, never the home one.
+   */
+  readonly mcpConfig?: { readonly mcpServers: Record<string, unknown> };
+}
+
+/**
+ * Qwen Code's lever is `--allowed-mcp-server-names`, an exclusive allowlist by name: every
+ * server it does not name — the person's own, an extension's, xezar's bridge — is not started.
+ * The project's own servers are named, as for Claude Code, and their definitions also ride in
+ * `--mcp-config`, so the name always starts the project's server.
+ */
+export function qwenMcpIsolation(cwd: string, readFile: ReadConfigFile = readJsoncConfigFile): QwenMcpIsolation {
+  const scan = scanMcpFiles(cwd, QWEN_FILES, readFile);
+  const kept = Object.keys(scan.servers).filter((name) => !scan.bridges.includes(name)).sort();
+  if (kept.length === 0) return { ...scan, allowed: [QWEN_NO_MCP_SERVER] };
+  const mcpServers = Object.fromEntries(kept.map((name) => [name, scan.servers[name]]));
+  return { ...scan, allowed: kept, mcpConfig: { mcpServers } };
+}
+
+/** {@link readConfigFile} for a JSONC file (comments and trailing commas allowed). */
+export function readJsoncConfigFile(path: string): ConfigFileRead {
+  let text: string;
+  try {
+    text = readFileSync(path, 'utf8');
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException | undefined)?.code;
+    return code === 'ENOENT' || code === 'ENOTDIR' ? { status: 'absent' } : { status: 'unreadable' };
+  }
+  const value = parseJsonc(text);
+  return value ? { status: 'ok', value } : { status: 'unreadable' };
 }
 
 // ---- shared ---------------------------------------------------------------

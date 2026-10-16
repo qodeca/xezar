@@ -145,7 +145,7 @@ describe('model option resolution', () => {
     // #794 gave OpenCode a catalog, #784 gave Claude one and #152 gave pi one, so the picker no
     // longer has a preset-only runner. The contract's list is the single source both the route
     // and the picker compile against — this asserts they still agree on who discovers.
-    expect(MODEL_DISCOVERY_RUNNERS).toEqual(['claude', 'codex', 'opencode', 'pi'])
+    expect(MODEL_DISCOVERY_RUNNERS).toEqual(['claude', 'codex', 'qwen', 'opencode', 'pi'])
     expect(MODEL_DISCOVERY_RUNNERS.every((runner) => runnerDiscoversModels(runner))).toBe(true)
     // The invariant, not the list: a runner in the picker with no catalog falls back to
     // hard-coded vendor ids, which is exactly the #152 defect.

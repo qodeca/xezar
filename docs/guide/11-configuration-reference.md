@@ -121,7 +121,8 @@ Export variables before starting xezar, for example `XEZ_REVIEW_GATE=1 xezar`. T
 | `XEZ_LOG_LEVEL=info` | Diagnostic threshold: `debug`, `info` (the default), `warn` or `error`. A saved `cli.logLevel` overrides this variable; `--log-level` overrides both. |
 | `XEZ_INSTANCE=workspace` | Which projects one xezar process serves: `workspace` (the default — this cockpit opens every project you have registered) or `project` (this cockpit serves the project it started in, and your other projects appear as links to their own cockpit; they stay listed, and you can still add and remove them). A saved `cli.instance` overrides this variable; `--instance` overrides both. `XEZ_SINGLE_PROJECT=1`, and a folder that owns its xezar state, already serve one project and win over it. |
 | `XEZ_QUIET=1` | Warnings and errors only; only the exact value `1` enables it, and `--quiet` is the flag. It raises the threshold but never lowers one you set higher. What the terminal shows in each mode is in the [CLI reference](12-cli-reference.md#live-activity-in-the-terminal). |
-| `XEZ_CLAUDE_BIN`, `XEZ_CODEX_BIN`, `XEZ_OPENCODE_BIN`, `XEZ_PI_BIN` | Override backend executable discovery on `PATH`. |
+| `XEZ_CLAUDE_BIN`, `XEZ_CODEX_BIN`, `XEZ_QWEN_BIN`, `XEZ_OPENCODE_BIN`, `XEZ_PI_BIN` | Override backend executable discovery on `PATH`. |
+| `XEZ_QWEN_USAGE_STATISTICS` | `1` or `true` lets Qwen Code send its usage statistics; by default xezar switches them off on every Qwen Code run. |
 | `XEZ_CODEX_REASONING` | `auto` (default), `concise`, `detailed` or `none`; unknown values use `auto`. |
 | `XEZ_APPROVAL_GATE=1` | Claude `acceptEdits` approval mode instead of the default denial of tools needing approval. |
 | `XEZ_CODEX_NETWORK=0` | Codex workspace-write, network-blocked sandbox instead of full access; a read-only step keeps its own writable folders and loses only the network. |

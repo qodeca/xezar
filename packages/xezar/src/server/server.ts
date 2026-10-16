@@ -85,6 +85,7 @@ import { discoverClaudeModels } from '../core/claude-model-catalog.ts';
 import { discoverCodexModels } from '../core/codex-model-catalog.ts';
 import { discoverOpencodeModels } from '../core/opencode-model-catalog.ts';
 import { discoverPiModels } from '../core/pi-model-catalog.ts';
+import { discoverQwenModels } from '../core/qwen-model-catalog.ts';
 import {
   PROVIDER_IDS,
   ProviderAuthService,
@@ -1132,6 +1133,7 @@ export function createApp(deps: ServerDeps) {
       // No `cwd`: pi's catalog is its per-user config, not a project-local answer, so this one
       // adapter is correct for every project the workspace holds (#152).
       pi: { discover: () => discoverPiModels() },
+      qwen: { discover: () => discoverQwenModels() },
     },
   });
   const providerAuth = deps.providerAuth ?? new ProviderAuthService();

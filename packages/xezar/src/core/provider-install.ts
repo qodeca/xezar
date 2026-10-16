@@ -16,6 +16,7 @@ export type ProviderInstall = { readonly kind: 'command' | 'url'; readonly value
 export const PROVIDER_INSTALL: Readonly<Record<Runner, ProviderInstall>> = {
   claude: { kind: 'command', value: 'npm i -g @anthropic-ai/claude-code' },
   codex: { kind: 'command', value: 'npm i -g @openai/codex' },
+  qwen: { kind: 'command', value: 'npm i -g @qwen-code/qwen-code' },
   opencode: { kind: 'url', value: 'https://opencode.ai' },
   pi: null,
 };

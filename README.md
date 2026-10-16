@@ -194,7 +194,9 @@ agent accounts in later, without overwriting one this project already has. See
 | `XEZ_CODEX_REASONING=concise` | Codex reasoning summary: `auto` (default), `concise`, `detailed` or `none`; unknown values use `auto`. |
 | `XEZ_OPENCODE_BIN=/path/to/opencode` | Override which `opencode` binary is used. |
 | `XEZ_PI_BIN=/path/to/pi` | Override which `pi` binary is used. |
-| `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `PI_CODING_AGENT_DIR` | Move the agent’s default account, including credentials (`CODEX_HOME` for Codex, `PI_CODING_AGENT_DIR` for pi). Add second logins in Settings → Agent accounts. |
+| `XEZ_QWEN_BIN=/path/to/qwen` | Override which `qwen` (Qwen Code) binary is used. |
+| `XEZ_QWEN_USAGE_STATISTICS=1` | Let Qwen Code send its usage statistics. By default xezar sets `QWEN_USAGE_STATISTICS_ENABLED=0` on every Qwen Code run. |
+| `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `PI_CODING_AGENT_DIR`, `QWEN_HOME` | Move the agent’s default account, including credentials (`CODEX_HOME` for Codex, `PI_CODING_AGENT_DIR` for pi, `QWEN_HOME` for Qwen Code). Add second logins in Settings → Agent accounts. |
 | `OPENCODE_CONFIG_DIR` | Move OpenCode configuration; credentials remain in `~/.local/share/opencode`. Defaults to `$XDG_CONFIG_HOME/opencode` or `~/.config/opencode`. |
 | `XEZ_BROWSE_ROOT=~/` | Default root for **Add project → Open local folder…**. The picker cannot navigate above it; a saved workspace value overrides the environment default and must name an existing folder. |
 | `XEZ_PROJECTS_DIR=~/xezar/projects` | Default destination for **Clone from GitHub**. Saved workspace settings override it, and missing directories are created recursively. |

@@ -10,6 +10,7 @@ const ORDER: readonly ProviderId[] = PROVIDER_IDS;
 const LABEL: Record<ProviderId, string> = {
   claude: 'Claude Code',
   codex: 'Codex',
+  qwen: 'Qwen Code',
   opencode: 'OpenCode',
   pi: 'pi',
 };

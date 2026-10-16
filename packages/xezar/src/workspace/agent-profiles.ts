@@ -64,6 +64,7 @@ export interface ResolvedAgentProfile {
 export const HOME_SLOT: Record<ProviderId, keyof AgentHomePaths> = {
   claude: 'claude',
   codex: 'codex',
+  qwen: 'qwen',
   opencode: 'opencodeConfig',
   pi: 'pi',
 };

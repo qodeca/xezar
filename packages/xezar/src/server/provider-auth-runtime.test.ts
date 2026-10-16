@@ -18,6 +18,7 @@ import { TEST_DIR_RM_OPTIONS } from '../../test/helpers/platform.ts';
 const CONNECTED_OUTPUT: Record<ProviderId, string> = {
   claude: '{"loggedIn":true}',
   codex: 'Logged in using ChatGPT',
+  qwen: '0.25.2',
   opencode: [
     '┌  Credentials ~/.local/share/opencode/auth.json',
     '●  Anthropic oauth',
@@ -27,7 +28,7 @@ const CONNECTED_OUTPUT: Record<ProviderId, string> = {
 };
 
 const providerForExecutable = (executable: string): ProviderId => {
-  if (executable === 'claude' || executable === 'codex' || executable === 'opencode' || executable === 'pi') return executable;
+  if (executable === 'claude' || executable === 'codex' || executable === 'qwen' || executable === 'opencode' || executable === 'pi') return executable;
   throw new Error(`unexpected executable: ${executable}`);
 };
 
@@ -51,6 +52,7 @@ describe('watchProviderRuntimeAuthFailures', () => {
       platform: 'linux',
       runCommand,
       createAuthFailureId: () => 'auth-incident-1',
+      configured: () => 'connected',
     });
   });
 

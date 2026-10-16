@@ -107,6 +107,7 @@ export class RunnerModelCatalog {
 const RUNNER_DISPLAY_NAME: Record<RunnerId, string> = {
   claude: 'Claude',
   codex: 'Codex',
+  qwen: 'Qwen Code',
   opencode: 'OpenCode',
   pi: 'pi',
 };
