@@ -136,7 +136,7 @@ export function followupsEnabled(env: NodeJS.ProcessEnv = process.env): boolean 
  * inherited value from a parent xezar cannot shine through
  * (`RunManager.agentEnv`).
  */
-export const HANDOFF_ONLY_INSTRUCTIONS = `## Handoff (xezar)
+const CONTRACT_HEAD = `## Handoff (xezar)
 
 XEZ_HANDOFF_FILE (env) is the absolute path to this task's rolling handoff file. Treat it like a HANDOFF.md:
 1. At the start of work, read it — "Resume notes" left by a previous session is your starting context.
@@ -145,14 +145,42 @@ XEZ_HANDOFF_FILE (env) is the absolute path to this task's rolling handoff file.
 
 Task completion marker: when the task's goal is fully achieved and you have no question for the user, end your final message with a line containing exactly XEZ:DONE — xez then closes the session and marks the task finished. If you are waiting on the user (a question, a decision, missing input), just end your message normally; the session stays open for their reply. Never emit XEZ:DONE while anything is unfinished or unverified.
 
-Still-working marker: if you end a turn while still working on your OWN downstream work — a sub-agent you dispatched, or a long-running command you're monitoring — and are NOT waiting on the user for anything, end your final message with a line containing exactly XEZ:MONITORING. xez then shows the task as "monitoring" (still working) instead of asking for your attention. Use XEZ:MONITORING only for that in-progress case; use XEZ:DONE when the goal is done; end plainly (no marker) only when you are genuinely waiting on the user. Never combine XEZ:MONITORING with XEZ:DONE.
+`;
 
-Structured question marker: when you are blocked on a decision that is genuinely the user's to make — one you cannot resolve from the request, the project's files, or sensible defaults — and it comes down to a few concrete choices, end your turn with a single line XEZ:ASK <json> instead of asking in prose. xez renders it as clickable option chips in the cockpit so the user can answer in one tap. The <json> is ONE object on ONE line, the last thing in your message: {"questions":[{"header":"≤12-char label","question":"a clear question ending in ?","multiSelect":false,"options":[{"label":"short choice","description":"what it means / the trade-off"}]}]} — use only those keys (plus an optional non-empty "id" up to 64 characters), with 1–4 questions, 2–4 options per question, unique question text and option labels, header 1–12 characters, question 1–400, option label 1–60, and description at most 280. The JSON must be syntactically valid — every brace and bracket closed, no trailing commas; re-read the line before you send it, because a payload xez cannot parse is shown to the user as raw JSON instead of chips. The user can always type a free-form reply, so never add an "Other" option. Prefer sensible defaults over asking; use XEZ:ASK only when the choice is truly the user's. Never combine XEZ:ASK with XEZ:DONE or XEZ:MONITORING.
+/** The still-working paragraph — only for a session that can park and be woken (#940). */
+const MONITORING_PARAGRAPH = `Still-working marker: if you end a turn while still working on your OWN downstream work — a sub-agent you dispatched, or a long-running command you're monitoring — and are NOT waiting on the user for anything, end your final message with a line containing exactly XEZ:MONITORING. xez then shows the task as "monitoring" (still working) instead of asking for your attention. Use XEZ:MONITORING only for that in-progress case; use XEZ:DONE when the goal is done; end plainly (no marker) only when you are genuinely waiting on the user. Never combine XEZ:MONITORING with XEZ:DONE.`;
+
+/**
+ * Its replacement for an agent step that runs one turn and cannot wait (#940): a workflow step
+ * that is not the last one. Such a step fails on `XEZ:MONITORING` (`unfinishedStepReason` in
+ * `workflows/run.ts`), so telling it to use the marker set it up to fail.
+ */
+const FINISH_IN_TURN_PARAGRAPH = `Finish inside the turn: this step runs a single turn and cannot wait — not for the user, and not for your own background work. Before you end your turn, wait for every sub-agent you dispatched and every long-running command you started (a build, a test run, a research job) to finish, and use their results. Never end the turn while your own work is still running: the step would fail and the workflow would stop.`;
+
+const CONTRACT_ASK = `Structured question marker: when you are blocked on a decision that is genuinely the user's to make — one you cannot resolve from the request, the project's files, or sensible defaults — and it comes down to a few concrete choices, end your turn with a single line XEZ:ASK <json> instead of asking in prose. xez renders it as clickable option chips in the cockpit so the user can answer in one tap. The <json> is ONE object on ONE line, the last thing in your message: {"questions":[{"header":"≤12-char label","question":"a clear question ending in ?","multiSelect":false,"options":[{"label":"short choice","description":"what it means / the trade-off"}]}]} — use only those keys (plus an optional non-empty "id" up to 64 characters), with 1–4 questions, 2–4 options per question, unique question text and option labels, header 1–12 characters, question 1–400, option label 1–60, and description at most 280. The JSON must be syntactically valid — every brace and bracket closed, no trailing commas; re-read the line before you send it, because a payload xez cannot parse is shown to the user as raw JSON instead of chips. The user can always type a free-form reply, so never add an "Other" option. Prefer sensible defaults over asking; use XEZ:ASK only when the choice is truly the user's. `;
+
+const CONTRACT_TAIL = `
 
 Task reference markers: when this task is about a GitHub pull request or issue, then as soon as you know which one it is ABOUT (it was named in the task, or you just opened it), declare it by emitting, on its own line in your message text: XEZ:PR=<number> and/or XEZ:ISSUE=<number>. Re-emit with the new number if the subject changes (e.g. you open a PR later in the task). Declare only the task's own subject — never a PR/issue you merely mention, list, or compare against. You may also emit XEZ:TITLE=<terse gerund phrase, max 40 chars, e.g. "drafting campaign brief"> once the work has a clearer shape than its current title; xez uses these instead of guessing from the transcript. Put markers in plain message text, never inside a code fence.
 
 ## Pasted attachments
 User-attached screenshots and files (PDF, TXT, MD) are saved as real files; their absolute paths are listed in the message that carries them. Read a file from its path when you need its contents, and use the path when a task needs the file itself (saving it, uploading it, or attaching it where the task says). An image also rides along inline, but that copy is for viewing only; a non-image attachment exists ONLY as the file at that path.`;
+
+/**
+ * The handoff contract. `canMonitor` is true for a session that can park at turn end — a quick
+ * task, the last step of a workflow, a Continue — and false for a workflow step that runs one
+ * turn (the same steps `unfinishedStepReason` judges, #940).
+ */
+function handoffContract(canMonitor: boolean): string {
+  return canMonitor
+    ? `${CONTRACT_HEAD}${MONITORING_PARAGRAPH}\n\n${CONTRACT_ASK}Never combine XEZ:ASK with XEZ:DONE or XEZ:MONITORING.${CONTRACT_TAIL}`
+    : `${CONTRACT_HEAD}${FINISH_IN_TURN_PARAGRAPH}\n\n${CONTRACT_ASK}Never combine XEZ:ASK with XEZ:DONE.${CONTRACT_TAIL}`;
+}
+
+export const HANDOFF_ONLY_INSTRUCTIONS = handoffContract(true);
+
+/** The contract for a workflow step that runs one turn and cannot park (#940). */
+export const HANDOFF_ONLY_STEP_INSTRUCTIONS = handoffContract(false);
 
 export const FOLLOWUP_INSTRUCTIONS = `## Follow-ups (xezar)
 
@@ -163,3 +191,13 @@ Never modify or remove existing entries — append only.`;
 
 /** Default-on combined contract retained for old callers and runs. */
 export const HANDOFF_INSTRUCTIONS = `${HANDOFF_ONLY_INSTRUCTIONS}\n\n${FOLLOWUP_INSTRUCTIONS}`;
+
+/**
+ * The contract an agent session is given: follow-ups on or off, and whether the session can
+ * park while its own background work runs (`XEZ:MONITORING`) or must finish inside its single
+ * turn (#940). Every construction site in `workflows/run.ts` goes through this.
+ */
+export function agentContract(opts: { followups: boolean; canMonitor: boolean }): string {
+  const handoff = opts.canMonitor ? HANDOFF_ONLY_INSTRUCTIONS : HANDOFF_ONLY_STEP_INSTRUCTIONS;
+  return opts.followups ? `${handoff}\n\n${FOLLOWUP_INSTRUCTIONS}` : handoff;
+}

@@ -80,7 +80,7 @@ A step that allows neither `Edit` nor `Write` is read-only, and on Claude Code i
 
 ## To finish earlier steps with XEZ:DONE
 
-Every agent step that is not the workflow's final step must finish its last turn with `XEZ:DONE`. Include that instruction in its prompt or skill. Exiting successfully without the marker is not enough: xezar fails the step instead of advancing while the agent may be waiting for an answer. `XEZ:MONITORING` is not a substitute for completion.
+Every agent step that is not the workflow's final step must finish its last turn with `XEZ:DONE`. Include that instruction in its prompt or skill. Exiting successfully without the marker is not enough: xezar fails the step instead of advancing while the agent may be waiting for an answer. `XEZ:MONITORING` is not a substitute for completion. xezar tells such a step to wait for its own sub-agents and long-running commands inside the turn, and does not offer it the still-working marker; a quick task and the final step keep it.
 
 An agent at the very end can remain open for conversation; `XEZ:DONE` signals that its goal is complete. In a multi-agent-step chain, each step must do its own assigned work. A predecessor's completion report does not complete a later step.
 
