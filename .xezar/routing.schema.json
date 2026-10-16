@@ -131,11 +131,11 @@
       "minLength": 1,
       "maxLength": 300
     },
-    "runnerId": { "description": "The engine's runner ID.", "enum": ["claude", "codex", "opencode", "pi"] },
+    "runnerId": { "description": "The engine's runner ID.", "enum": ["claude", "codex", "qwen"] },
     "laneId": {
       "description": "`<runner>/<model>`; the model is the runner's own name for it and may itself contain a slash.",
       "type": "string",
-      "pattern": "^(claude|codex|opencode|pi)/[A-Za-z0-9._/-]+$"
+      "pattern": "^(claude|codex|qwen)/[A-Za-z0-9._/-]+$"
     },
     "tier": {
       "description": "very-strong: the most capable models, normally reserved (see reservedLanes). strong: trusted with judgement and verdicts. mid: everyday work with strong reasoning. cheap: bounded, procedural work.",

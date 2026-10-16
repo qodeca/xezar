@@ -52,15 +52,15 @@ import { fileURLToPath } from "node:url";
 
 const WINDOWS = process.platform === "win32" ? await import("./lib/windows-programs.mjs") : null;
 
-export const RUNNERS = ["claude", "codex", "opencode", "pi"];
-const PROGRAM = { claude: "claude", codex: "codex", opencode: "opencode", pi: "pi" };
+export const RUNNERS = ["claude", "codex", "qwen"];
+const PROGRAM = { claude: "claude", codex: "codex", qwen: "qwen" };
 const TIERS = ["very-strong", "strong", "mid", "cheap"];
 const CLASSES = ["mechanical", "writing", "design", "visuals", "implementation", "testing", "review", "security-and-release"];
 const TAGS = ["vision", "imageGeneration", "local", "enforcesToolLimits", "advisoryOnly"];
 const MATCH_KEYS = ["lane", "tool", "vendor", "tier", ...TAGS];
 const SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const LOGIN = /^[a-z0-9][a-z0-9-]{0,63}$/;
-const LANE_ID = /^(claude|codex|opencode|pi)\/[A-Za-z0-9._/-]+$/;
+const LANE_ID = /^(claude|codex|qwen)\/[A-Za-z0-9._/-]+$/;
 const BRANCH = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,254}$/;
 const MAX_TEXT = 300;
 const CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
@@ -68,10 +68,11 @@ const CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 // must still state them, so the leader reads the same rule this script applies.
 const FILE_BANS = ["local-never-writes", "tool-limits"];
 // The runners that hold a reading step read-only on the engine floor (0.19.0): Claude removes the
-// file tools and applies the allowlist, and Codex denies any other command or patch through a
-// per-thread PreToolUse hook (qodeca/xezar#863). pi is not listed until its lock is proven live, so
-// a pi lane that claims `enforcesToolLimits` is refused: the tag is a fact about the runner, not a wish.
-const ENFORCING_RUNNERS = new Set(["claude", "codex"]);
+// file tools and applies the allowlist, Codex denies any other command or patch through a
+// per-thread PreToolUse hook (qodeca/xezar#863), and Qwen Code removes the writers and applies the
+// same lock through its run's PreToolUse hook (qodeca/xezar#1044). A runner not listed here may not
+// claim `enforcesToolLimits`: the tag is a fact about the runner, not a wish.
+const ENFORCING_RUNNERS = new Set(["claude", "codex", "qwen"]);
 // The one relaxation of tool limits (owner, #89): a lane marked `fullShellReviews` may judge – in a
 // review row or a security row that only reads – although its runner does not hold it read-only.
 // It is never a cheap, local or advisory-only lane, and it still never takes any other reading row
