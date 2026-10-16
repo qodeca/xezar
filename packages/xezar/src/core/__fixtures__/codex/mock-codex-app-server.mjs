@@ -39,6 +39,11 @@
 // and keeps the pipe open after the server is gone, as a tool process Codex started would; it
 // writes its pid to `MOCK_CODEX_ORPHAN_PID_FILE` so the test can stop it, and ends itself after
 // 60 seconds in any case.
+//
+// #942: `MOCK_CODEX_RESUME_HISTORY_CHARS=<n>` answers thread/resume the way a real
+// Codex does for a long session: the whole history in the one response line,
+// padded to n characters — unless the request sets `excludeTurns: true`.
+// `MOCK_CODEX_IGNORE_EXCLUDE_TURNS=1` is a Codex too old to know that field.
 import { appendFileSync, writeFileSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
 import { createInterface } from 'node:readline';
@@ -235,7 +240,11 @@ rl.on('line', (line) => {
       emit({ id: msg.id, error: { code: -32603, message: `no rollout found for thread id ${msg.params?.threadId ?? ''}` } });
       rl.close();
     } else {
-      emit({ id: msg.id, result: { thread: { id: msg.params?.threadId } } });
+      const historyChars = Number(process.env.MOCK_CODEX_RESUME_HISTORY_CHARS ?? 0);
+      const withTurns = historyChars > 0
+        && (msg.params?.excludeTurns !== true || process.env.MOCK_CODEX_IGNORE_EXCLUDE_TURNS === '1');
+      const turns = [{ id: 'turn_old_1', status: 'completed', items: [{ type: 'agentMessage', id: 'msg_old_1', text: 'x'.repeat(historyChars) }] }];
+      emit({ id: msg.id, result: { thread: { id: msg.params?.threadId, ...(withTurns ? { turns } : {}) } } });
     }
   } else if (msg.method === 'turn/start') {
     emit({ id: msg.id, result: { turn: { id: 'turn_mock_1' } } });

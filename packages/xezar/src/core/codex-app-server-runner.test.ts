@@ -566,6 +566,75 @@ describe("a Codex run does not reach the person's own MCP servers (#324)", () =>
     await expect(session.result).resolves.toMatchObject({ sessionId: 'th_mock_1' });
   }, 15_000);
 
+  /**
+   * #942: Continue after a long Codex step died with `Invalid string length`. By default
+   * `thread/resume` answers with the thread's whole history in ONE JSON-RPC line, and a long
+   * session's line passes the runtime's string ceiling. The mock pads that line to 1 MB and the
+   * runner's read limit is lowered to 64 KB, so the real-size failure is reproduced in miniature.
+   */
+  describe('resuming a thread whose history is larger than the read limit (#942)', () => {
+    const LIMIT = 64 * 1024;
+    let dir: string;
+    beforeEach(() => {
+      dir = mkdtempSync(join(tmpdir(), 'xez-942-'));
+    });
+    afterEach(() => {
+      rmSync(dir, TEST_DIR_RM_OPTIONS);
+    });
+
+    function resume(env: Record<string, string>) {
+      const runner = new CodexAppServerRunner({ bin: mockBin, timeoutMs: 0, maxMessageChars: LIMIT });
+      return runner.startSession(
+        { userPrompt: 'continue', cwd: dir, resume: true, sessionId: 'th_mock_1', env },
+        undefined,
+        { autoEndAfterFirstTurn: true },
+      ).result;
+    }
+
+    it('resumes: the request asks Codex to leave the history out of its reply', async () => {
+      const log = join(dir, 'thread.ndjson');
+      await expect(resume({ MOCK_CODEX_RESUME_HISTORY_CHARS: String(1024 * 1024), MOCK_CODEX_THREAD_LOG: log }))
+        .resolves.toMatchObject({ sessionId: 'th_mock_1' });
+      const [request] = readFileSync(log, 'utf8').trim().split('\n').map((line) => JSON.parse(line) as {
+        method: string;
+        params: Record<string, unknown>;
+      });
+      expect(request).toMatchObject({ method: 'thread/resume', params: { threadId: 'th_mock_1', excludeTurns: true } });
+    }, 15_000);
+
+    it('fails with a readable reason naming the history file and its size when Codex sends the history anyway', async () => {
+      const day = join(dir, 'codex-home', 'sessions', '2026', '09', '25');
+      mkdirSync(day, { recursive: true });
+      const rollout = join(day, 'rollout-2026-09-25T10-00-00-th_mock_1.jsonl');
+      writeFileSync(rollout, 'y'.repeat(3 * 1024 * 1024));
+      const error = await resume({
+        MOCK_CODEX_RESUME_HISTORY_CHARS: String(1024 * 1024),
+        MOCK_CODEX_IGNORE_EXCLUDE_TURNS: '1',
+        MOCK_CODEX_HOME: join(dir, 'codex-home'),
+      }).catch((err: unknown) => err);
+      expect(error).toBeInstanceOf(Error);
+      const message = (error as Error).message;
+      expect(message).not.toMatch(/Invalid string length/);
+      expect(message).toMatch(/^codex app-server sent one message larger than xezar can read \(at least \d+ KB; the limit is 64 KB\) while resuming Codex thread th_mock_1\./);
+      expect(message).toContain(`The thread's stored history is ${rollout} (3 MB).`);
+      expect(message).toContain('start a fresh task in the same worktree');
+    }, 15_000);
+
+    it('still names the thread and size when the history file cannot be found', async () => {
+      const error = await resume({
+        MOCK_CODEX_RESUME_HISTORY_CHARS: String(1024 * 1024),
+        MOCK_CODEX_IGNORE_EXCLUDE_TURNS: '1',
+        MOCK_CODEX_HOME: join(dir, 'no-such-home'),
+      }).catch((err: unknown) => err);
+      expect((error as Error).message).toMatch(/at least \d+ KB; the limit is 64 KB\) while resuming Codex thread th_mock_1\. This session/);
+    }, 15_000);
+
+    it('resumes a short history exactly as before, even on a Codex that ignores excludeTurns', async () => {
+      await expect(resume({ MOCK_CODEX_RESUME_HISTORY_CHARS: '1000', MOCK_CODEX_IGNORE_EXCLUDE_TURNS: '1' }))
+        .resolves.toMatchObject({ sessionId: 'th_mock_1' });
+    }, 15_000);
+  });
+
   it('names an MCP server that failed to start, and only for its own thread (#1026)', async () => {
     const runner = new CodexAppServerRunner({ bin: mockBin, timeoutMs: 0 });
     const events: AgentEvent[] = [];
@@ -670,7 +739,7 @@ describe('a read-only step runs Codex confined to its worktree and its own roots
     expect(await threadRequest({ allowedTools: REVIEW, expect: 'workspace-write', resume: true })).toEqual([
       {
         method: 'thread/resume',
-        params: { threadId: 'th_mock_1', cwd: '<cwd>', sandbox: 'workspace-write', approvalPolicy: 'never', config: confined },
+        params: { threadId: 'th_mock_1', excludeTurns: true, cwd: '<cwd>', sandbox: 'workspace-write', approvalPolicy: 'never', config: confined },
       },
     ]);
   }, 15_000);
@@ -690,7 +759,7 @@ describe('a read-only step runs Codex confined to its worktree and its own roots
     expect(requests).toEqual([{
       method: resume ? 'thread/resume' : 'thread/start',
       params: {
-        ...(resume ? { threadId: 'th_mock_1' } : {}),
+        ...(resume ? { threadId: 'th_mock_1', excludeTurns: true } : {}),
         cwd: '<cwd>',
         sandbox: 'workspace-write',
         approvalPolicy: 'never',
@@ -1099,7 +1168,7 @@ describe('a read-only step runs Codex confined to its worktree and its own roots
     expect(await threadRequest({ allowedTools: DEFAULT, expect: 'danger-full-access', resume: true })).toEqual([
       {
         method: 'thread/resume',
-        params: { threadId: 'th_mock_1', cwd: '<cwd>', sandbox: 'danger-full-access', approvalPolicy: 'never', config: noServers },
+        params: { threadId: 'th_mock_1', excludeTurns: true, cwd: '<cwd>', sandbox: 'danger-full-access', approvalPolicy: 'never', config: noServers },
       },
     ]);
   }, 30_000);
