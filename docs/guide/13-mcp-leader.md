@@ -132,7 +132,7 @@ qwen mcp add --scope project xezar npx -y @qodeca/xezar mcp
 
 **Restart and compaction recovery.** As for Claude Code: after a cockpit restart the idle leader receives one notice through its inbox; call a real tool, check `status`, attach with a new operation ID, then call `read` with no cursor.
 
-**Tips and tricks.** A `qwen-inbox-unavailable` reason means Qwen Code gave the xezar server no inbox. Check the version (0.25.2 or newer), and that `agents.crossSessionMessaging` is not false and `agents.crossSessionInbound` is not `hold` or `refuse`. Then restart the xezar server with `/mcp` in Qwen Code, or start a new session. Until then, read events with `leader_events`. A task that xezar runs on Qwen Code never starts this server and is never the leader.
+**Tips and tricks.** A `qwen-inbox-unavailable` reason means Qwen Code gave the xezar server no inbox. Check the version (0.25.2 or newer), and that `agents.crossSessionMessaging` is not false and `agents.crossSessionInbound` is not `hold` or `refuse`. Then restart the xezar server with `/mcp` in Qwen Code, or start a new session. Until then, read events with `leader_events`. If the leader's own model calls fail (an expired key, a provider outage), Qwen Code sends a message it took to the model again after each error, so one xezar event can turn into many requests to your provider: fix the model access or stop the session. A task that xezar runs on Qwen Code never starts this server and is never the leader.
 
 ### Codex
 

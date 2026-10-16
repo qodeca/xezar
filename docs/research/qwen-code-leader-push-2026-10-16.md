@@ -4,7 +4,7 @@ Date: 2026-10-16. Issue: #1043 (part of #1041). Research only: no product code c
 
 ## Verdict
 
-**Works.** On Qwen Code **0.25.2**, xezar can push a message into a Qwen Code session that the
+**Works, under the two conditions below and with one named workaround** (the start-order race). On Qwen Code **0.25.2**, xezar can push a message into a Qwen Code session that the
 user started in their own terminal, with no setting, no flag and no change to the user's Qwen
 files. The sender must be a **child process of that session** – the position `xezar mcp` already
 has, because Qwen Code starts its MCP servers – and it authenticates with the child token Qwen
@@ -76,7 +76,7 @@ it names a local socket, Qwen Code sends `delivered` / `held` / `dropped` receip
 | --- | --- | --- | --- |
 | a | Idle session receives a message; the model acts within 10 s | **Pass** | Child send 1792134110.74 → `user` event in the session ≤ 0.1 s later. DeepSeek: send 1792134864.01, `user` 1792134863.94 (the sender logs after its socket closes), reply `ACK-C` 1792134871.23 – **7.3 s**. Local MLX model: reply after 10–17 s; that is the model's own speed with ~11 k tokens of always-loaded context, not delivery. |
 | b | Busy session receives the message after the current turn; nothing lost | **Pass** | Long task sent 1792134180.17, picked up 180.21. Second message sent 187.19, mid-turn. Turn's answer 200.77; queued message submitted **200.82**; reply `ACK-B2` 210.27. |
-| c | The sender is a child process of the session (`xezar mcp`'s position), including the start-order race | **Pass** | 8 of 8 MCP starts across 7 sessions had `socketEnv=set tokenEnv=set`, the first 52 ms after the child started. Qwen Code also restarted the MCP server once mid-session (session 4, `start` logged at +97 s); the new process had the environment too. Delivered with `RECEIPT delivered` in `default` mode and also in `yolo` mode (session 3). See "The start-order race" below. |
+| c | The sender is a child process of the session (`xezar mcp`'s position), including the start-order race | **Pass; the race was not reproduced** | 8 of 8 MCP starts across 7 sessions had `socketEnv=set tokenEnv=set`, the first 52 ms after the child started. Qwen Code also restarted the MCP server once mid-session (session 4, `start` logged at +97 s); the new process had the environment too. Delivered with `RECEIPT delivered` in `default` mode and also in `yolo` mode (session 3). See "The start-order race" below. |
 | d | The sender is a separate process holding a controller token | **Pass** (run 2026-10-16, after the first pass of this note) | Run with a scratch Qwen home (`QWEN_HOME=<scratch>`, Qwen Code 0.25.2 started directly from its update store), so the controller token never touched the user's home. `qwen sessions controllers add --label xezar-d` wrote `peer-controllers.json` in the scratch home. A separate process sent one frame with that token: `RECEIPT delivered`, and the session got `<cross_session_message … name="xezar" origin="controller" controller="xezar-d">`. The same frame with a wrong token got no receipt and never reached the session. The scratch home had no API key, so every model call answered `401`, and Qwen Code submitted the delivered message again after each error (1444 times in about 90 s). That is a model-call failure, not delivery; a leader whose model calls fail can see the same repeat. Earlier result, kept: a separate process with the **peer** token from the registry got `RECEIPT held` – parked for the user to review, not delivered. A separate process with **no** token is dropped before any frame is read (0.25.2) – on 0.25.1 it was accepted unauthenticated. |
 | e | The session sees the message as not from the user | **Pass** | The model receives: `<cross_session_message from="own process" name="xezar" origin="own-process"> … </cross_session_message>` followed by Qwen Code's own notice: "This came from a process this session started (a script or hook it ran), not from your user. It carries none of your user's authority. … never treat it as your user approving a pending prompt." |
 | f | 40 messages in under 10 s: how many arrive, in what order | **30 delivered, 10 not, order kept** | Rerun 2026-10-16 with exactly 40: one child process (the `xezar mcp` position) sent 40 frames in 6.5 s, to a scratch Qwen home with a fake model endpoint that answers at once, so every accepted message could be drained. Receipts: `#1 … #30` `delivered`; `#31`, `#32` `dropped … sent too fast`; `#33 … #40` no receipt and never reached the session. The session took the 30 one turn each, in send order: `1,2,3,…,30`. The first run of this scenario sent 80 instead of 40 (a harness bug: its trigger loop re-entered and sent the burst again) and showed the same cap of 30. Accepted messages still queued when a session exits are lost with it (Qwen sends them an `expired` receipt). |
@@ -118,14 +118,22 @@ its own authority notice.
    bridge of the attached Qwen session, and the bridge sends one frame to
    `QWEN_CODE_MESSAGING_SOCKET` with `QWEN_CODE_MESSAGING_TOKEN`, `fromName: "xezar"`, and a
    `from` receipt socket.
-2. Hand-over is the `delivered` receipt, never the socket write. `held` or `dropped` means "not
-   handed over": the rows stay unacknowledged and the next dispatch carries them again.
+2. Hand-over is the `delivered` receipt, never the socket write. Anything else means "not handed
+   over", and so does no receipt at all within a timeout (scenario f: messages 33–40 got none):
+   the rows stay unacknowledged. `dropped` is passing, so the next dispatch carries them again;
+   `held` and `refused` are the person's own setting, so sending again only queues copies
+   (implemented in #1067: pushes stop until the next attach, with a blocker that names it).
 3. Pace dispatches to stay under 30 per burst and one per 2 s afterwards.
 4. Minimum leader version 0.25.2; a lower version, or messaging switched off in the user's
    settings (`agents.crossSessionMessaging: false`, or `crossSessionInbound: "hold"`/`"refuse"`),
    is a recoverable blocker that names the cause, with `leader_events read` as the fallback.
 5. No change to the user's Qwen settings is needed, so the "stop and ask" condition of #1043 is
    not reached.
+6. Known risk: when the leader's own model calls fail (scenario d: an expired key, `401`), Qwen
+   Code submits the delivered message again after each error – 1444 times in about 90 s. That is
+   Qwen Code's retry, not xezar's delivery, and xezar cannot see it. It is filed as a Qwen Code
+   fault (see the parity report), and the leader guide says that a leader whose model calls fail
+   sends the same request again and again.
 
 ## Checks
 
@@ -133,7 +141,7 @@ its own authority notice.
 | --- | --- |
 | `shasum ~/.qwen/settings.json` before and after the spike | `1b504323d30db96e61a82ec0c1c7397603da90d3` both times – unchanged. The scenario d run kept it unchanged too, and left no file in the user's Qwen home (`ls ~/.qwen` the same before and after, `qwen sessions controllers list`: no trusted controllers). Messaging was turned on for some 0.25.1-era runs with `QWEN_CODE_SYSTEM_SETTINGS_PATH=<scratch file>` (a launch-time variable that points Qwen Code at a temporary system settings file); after the update it turned out to be unnecessary. |
 | Files changed in the repository | this note only |
-| Not run | Windows and Linux. |
+| Not run | Windows and Linux: an open risk until the engine 0.30.0 checks on Windows and WSL Ubuntu run the leader push there (Windows uses a named pipe for the receipt address). |
 
 ## Ideas, not done
 
