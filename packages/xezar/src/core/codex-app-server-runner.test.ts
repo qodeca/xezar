@@ -566,6 +566,75 @@ describe("a Codex run does not reach the person's own MCP servers (#324)", () =>
     await expect(session.result).resolves.toMatchObject({ sessionId: 'th_mock_1' });
   }, 15_000);
 
+  /**
+   * #942: Continue after a long Codex step died with `Invalid string length`. By default
+   * `thread/resume` answers with the thread's whole history in ONE JSON-RPC line, and a long
+   * session's line passes the runtime's string ceiling. The mock pads that line to 1 MB and the
+   * runner's read limit is lowered to 64 KB, so the real-size failure is reproduced in miniature.
+   */
+  describe('resuming a thread whose history is larger than the read limit (#942)', () => {
+    const LIMIT = 64 * 1024;
+    let dir: string;
+    beforeEach(() => {
+      dir = mkdtempSync(join(tmpdir(), 'xez-942-'));
+    });
+    afterEach(() => {
+      rmSync(dir, TEST_DIR_RM_OPTIONS);
+    });
+
+    function resume(env: Record<string, string>) {
+      const runner = new CodexAppServerRunner({ bin: mockBin, timeoutMs: 0, maxMessageChars: LIMIT });
+      return runner.startSession(
+        { userPrompt: 'continue', cwd: dir, resume: true, sessionId: 'th_mock_1', env },
+        undefined,
+        { autoEndAfterFirstTurn: true },
+      ).result;
+    }
+
+    it('resumes: the request asks Codex to leave the history out of its reply', async () => {
+      const log = join(dir, 'thread.ndjson');
+      await expect(resume({ MOCK_CODEX_RESUME_HISTORY_CHARS: String(1024 * 1024), MOCK_CODEX_THREAD_LOG: log }))
+        .resolves.toMatchObject({ sessionId: 'th_mock_1' });
+      const [request] = readFileSync(log, 'utf8').trim().split('\n').map((line) => JSON.parse(line) as {
+        method: string;
+        params: Record<string, unknown>;
+      });
+      expect(request).toMatchObject({ method: 'thread/resume', params: { threadId: 'th_mock_1', excludeTurns: true } });
+    }, 15_000);
+
+    it('fails with a readable reason naming the history file and its size when Codex sends the history anyway', async () => {
+      const day = join(dir, 'codex-home', 'sessions', '2026', '09', '25');
+      mkdirSync(day, { recursive: true });
+      const rollout = join(day, 'rollout-2026-09-25T10-00-00-th_mock_1.jsonl');
+      writeFileSync(rollout, 'y'.repeat(3 * 1024 * 1024));
+      const error = await resume({
+        MOCK_CODEX_RESUME_HISTORY_CHARS: String(1024 * 1024),
+        MOCK_CODEX_IGNORE_EXCLUDE_TURNS: '1',
+        MOCK_CODEX_HOME: join(dir, 'codex-home'),
+      }).catch((err: unknown) => err);
+      expect(error).toBeInstanceOf(Error);
+      const message = (error as Error).message;
+      expect(message).not.toMatch(/Invalid string length/);
+      expect(message).toMatch(/^codex app-server sent one message larger than xezar can read \(at least \d+ KB; the limit is 64 KB\) while resuming Codex thread th_mock_1\./);
+      expect(message).toContain(`The thread's stored history is ${rollout} (3 MB).`);
+      expect(message).toContain('start a fresh task in the same worktree');
+    }, 15_000);
+
+    it('still names the thread and size when the history file cannot be found', async () => {
+      const error = await resume({
+        MOCK_CODEX_RESUME_HISTORY_CHARS: String(1024 * 1024),
+        MOCK_CODEX_IGNORE_EXCLUDE_TURNS: '1',
+        MOCK_CODEX_HOME: join(dir, 'no-such-home'),
+      }).catch((err: unknown) => err);
+      expect((error as Error).message).toMatch(/at least \d+ KB; the limit is 64 KB\) while resuming Codex thread th_mock_1\. This session/);
+    }, 15_000);
+
+    it('resumes a short history exactly as before, even on a Codex that ignores excludeTurns', async () => {
+      await expect(resume({ MOCK_CODEX_RESUME_HISTORY_CHARS: '1000', MOCK_CODEX_IGNORE_EXCLUDE_TURNS: '1' }))
+        .resolves.toMatchObject({ sessionId: 'th_mock_1' });
+    }, 15_000);
+  });
+
   it('names an MCP server that failed to start, and only for its own thread (#1026)', async () => {
     const runner = new CodexAppServerRunner({ bin: mockBin, timeoutMs: 0 });
     const events: AgentEvent[] = [];
@@ -580,9 +649,57 @@ describe("a Codex run does not reach the person's own MCP servers (#324)", () =>
     expect(notes).toContain(
       'codex: the MCP server browser did not start: MCP client for `browser` timed out after 30 seconds. This run has none of its tools (#1026).',
     );
-    expect(notes.join('\n')).not.toContain('docs');
+    // `docs` started: since #1057 it has a ready note of its own, never a failure note.
+    expect(notes.join('\n')).not.toContain('docs did not start');
     expect(notes.join('\n')).not.toContain('MCP server other');
   }, 15_000);
+
+  describe('names an MCP server that reports ready, with its tool count (#1057)', () => {
+    let dir: string;
+    beforeEach(() => {
+      dir = mkdtempSync(join(tmpdir(), 'xez-1057-'));
+    });
+    afterEach(() => {
+      rmSync(dir, TEST_DIR_RM_OPTIONS);
+    });
+
+    const run = async (env: Record<string, string>) => {
+      const runner = new CodexAppServerRunner({ bin: mockBin, timeoutMs: 0 });
+      const events: AgentEvent[] = [];
+      const log = join(dir, 'rpc.ndjson');
+      const session = runner.startSession(
+        { userPrompt: 'check the working tree', cwd: process.cwd(), env: { MOCK_CODEX_MCP_STARTUP_FAILED: '1', MOCK_CODEX_RPC_LOG: log, ...env } },
+        (event) => events.push(event),
+        { autoEndAfterFirstTurn: true },
+      );
+      await expect(session.result).resolves.toMatchObject({ sessionId: 'th_mock_1' });
+      const notes = events.flatMap((event) => (event.type === 'note' ? [event.message] : []));
+      const listRequests = readFileSync(log, 'utf8').trim().split('\n')
+        .map((line) => JSON.parse(line) as { method: string; params: Record<string, unknown> })
+        .filter((entry) => entry.method === 'mcpServerStatus/list');
+      return { notes, listRequests };
+    };
+
+    it('notes each ready server once, for its own thread only, with the count Codex lists', async () => {
+      const { notes, listRequests } = await run({});
+      expect(notes.filter((note) => note.includes('MCP server docs'))).toEqual(['codex: the MCP server docs is ready with 3 tools.']);
+      // A sub-agent thread's ready server adds nothing, and is never looked up.
+      expect(notes.join('\n')).not.toContain('helper');
+      expect(listRequests.map((entry) => entry.params)).toEqual([
+        { threadId: 'th_mock_1', detail: 'toolsAndAuthOnly' },
+        { threadId: 'th_mock_1', detail: 'toolsAndAuthOnly', cursor: 'page-2' },
+      ]);
+      // The #1026 failed-start note is unchanged.
+      expect(notes).toContain(
+        'codex: the MCP server browser did not start: MCP client for `browser` timed out after 30 seconds. This run has none of its tools (#1026).',
+      );
+    }, 15_000);
+
+    it('still names the server, without a count, when the status listing fails', async () => {
+      const { notes } = await run({ MOCK_CODEX_MCP_STATUS_LIST: 'error' });
+      expect(notes.filter((note) => note.includes('MCP server docs'))).toEqual(['codex: the MCP server docs is ready.']);
+    }, 15_000);
+  });
 
   it('fails closed when the app-server cannot say which servers it would load', async () => {
     const runner = new CodexAppServerRunner({ bin: mockBin, timeoutMs: 0 });
@@ -670,7 +787,7 @@ describe('a read-only step runs Codex confined to its worktree and its own roots
     expect(await threadRequest({ allowedTools: REVIEW, expect: 'workspace-write', resume: true })).toEqual([
       {
         method: 'thread/resume',
-        params: { threadId: 'th_mock_1', cwd: '<cwd>', sandbox: 'workspace-write', approvalPolicy: 'never', config: confined },
+        params: { threadId: 'th_mock_1', excludeTurns: true, cwd: '<cwd>', sandbox: 'workspace-write', approvalPolicy: 'never', config: confined },
       },
     ]);
   }, 15_000);
@@ -690,7 +807,7 @@ describe('a read-only step runs Codex confined to its worktree and its own roots
     expect(requests).toEqual([{
       method: resume ? 'thread/resume' : 'thread/start',
       params: {
-        ...(resume ? { threadId: 'th_mock_1' } : {}),
+        ...(resume ? { threadId: 'th_mock_1', excludeTurns: true } : {}),
         cwd: '<cwd>',
         sandbox: 'workspace-write',
         approvalPolicy: 'never',
@@ -1099,7 +1216,7 @@ describe('a read-only step runs Codex confined to its worktree and its own roots
     expect(await threadRequest({ allowedTools: DEFAULT, expect: 'danger-full-access', resume: true })).toEqual([
       {
         method: 'thread/resume',
-        params: { threadId: 'th_mock_1', cwd: '<cwd>', sandbox: 'danger-full-access', approvalPolicy: 'never', config: noServers },
+        params: { threadId: 'th_mock_1', excludeTurns: true, cwd: '<cwd>', sandbox: 'danger-full-access', approvalPolicy: 'never', config: noServers },
       },
     ]);
   }, 30_000);
@@ -1132,5 +1249,118 @@ describe('a read-only step runs Codex confined to its worktree and its own roots
     expect(codexWindowsSandboxConfig('danger-full-access', 'win32')).toEqual({});
     expect(codexWindowsSandboxConfig('workspace-write', 'linux')).toEqual({});
     expect(codexWindowsSandboxConfig('workspace-write', 'darwin')).toEqual({});
+  });
+});
+
+/**
+ * #895: a Codex app-server that dies under a live turn. The session used to wait for stdout to
+ * end, so a tool process Codex had started, still holding the pipe, kept the turn "running" for as
+ * long as it lived – and a cancel delivered nothing, because `interrupt()` only signals a child
+ * that has not exited. An app-server that exited 0 mid-turn read as a finished turn.
+ */
+describe('an app-server that dies under a live turn (#895)', () => {
+  const mockBin = fileURLToPath(
+    new URL('./__fixtures__/codex/mock-codex-app-server.mjs', import.meta.url),
+  );
+  let dir: string;
+  let pidFile: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'xez-895-runner-'));
+    pidFile = join(dir, 'orphan.pid');
+  });
+
+  afterEach(() => {
+    // Stop only the grandchild the mock started for this test, by its own pid.
+    try {
+      const pid = Number(readFileSync(pidFile, 'utf8'));
+      if (pid > 0) process.kill(pid, 'SIGKILL');
+    } catch {
+      // never started, or already gone
+    }
+    rmSync(dir, TEST_DIR_RM_OPTIONS);
+  });
+
+  const startDying = (prompt: string, events: AgentEvent[]) =>
+    new CodexAppServerRunner({ bin: mockBin, timeoutMs: 0 }).startSession(
+      { userPrompt: prompt, cwd: dir, env: { MOCK_CODEX_ORPHAN_PID_FILE: pidFile } },
+      (event) => events.push(event),
+    );
+
+  const exited = (pid: number | undefined) => {
+    try {
+      process.kill(pid!, 0);
+      return false;
+    } catch {
+      return true;
+    }
+  };
+
+  it('fails the turn instead of finishing it when the app-server exits 0 mid-turn', async () => {
+    const events: AgentEvent[] = [];
+    const session = startDying('mock:exit-mid-turn', events);
+
+    await expect(session.result).rejects.toThrow(/codex app-server exited before the turn finished/);
+    expect(events.some((e) => e.type === 'error' && e.message.includes('before the turn finished'))).toBe(true);
+    expect(events.some((e) => e.type === 'done')).toBe(false);
+  }, 15_000);
+
+  it('settles at once when cancelled after the app-server died with its pipe still held open', async () => {
+    const events: AgentEvent[] = [];
+    const session = startDying('mock:exit-mid-turn-orphan', events);
+    const settled = session.result.then(() => 'resolved', (err: Error) => err.message);
+    await expect.poll(() => exited(session.pid), { timeout: 10_000 }).toBe(true);
+    // The orphan really holds the pipe: the read loop is still open.
+    const early = await Promise.race([settled, new Promise((resolve) => setTimeout(() => resolve('open'), 300))]);
+    expect(early).toBe('open');
+
+    const cancelledAt = Date.now();
+    session.interrupt();
+
+    // A cancel is xezar's own stop: the session settles, and promptly – well inside the grace a
+    // dead app-server's pipe gets on its own.
+    expect(await settled).toBe('resolved');
+    expect(Date.now() - cancelledAt).toBeLessThan(KILL_GRACE_MS);
+  }, 20_000);
+});
+
+describe('a dead app-server whose stdout never ends (#895)', () => {
+  it('stops reading KILL_GRACE_MS after the exit and fails the unfinished session', async () => {
+    const emitter = new EventEmitter();
+    const child = Object.assign(emitter, {
+      stdin: new PassThrough(),
+      stdout: new PassThrough(),
+      stderr: new PassThrough(),
+      exitCode: null as number | null,
+      signalCode: null as NodeJS.Signals | null,
+      killed: false,
+      pid: 4895,
+      kill: () => true,
+    }) as unknown as ChildProcessWithoutNullStreams;
+    spawnHook.override = () => child;
+    vi.useFakeTimers();
+    try {
+      const session = new CodexAppServerRunner({ bin: 'codex', timeoutMs: 0 }).startSession({
+        userPrompt: 'do it',
+        cwd: process.cwd(),
+      });
+      let state: string | undefined;
+      const settled = session.result.then(() => 'resolved', (err: Error) => err.message);
+      void settled.then((s) => {
+        state = s;
+      });
+      // Exits before answering `initialize`; stdout stays open, as a grandchild would keep it.
+      Object.assign(child, { exitCode: 0 });
+      emitter.emit('exit', 0, null);
+
+      await vi.advanceTimersByTimeAsync(KILL_GRACE_MS - 1);
+      expect(state).toBeUndefined();
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(await settled).toMatch(/codex app-server exited before it answered/);
+    } finally {
+      vi.useRealTimers();
+      spawnHook.override = null;
+    }
   });
 });

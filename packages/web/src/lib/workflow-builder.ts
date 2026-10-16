@@ -30,6 +30,7 @@ export function skillStack(steps: readonly WorkflowStepDef[]): string[] | null {
     if (s.model || s.runner || s.allowedTools || s.bashAllowlist || s.onFail || s.resultScope) return null
     if (s.timeout !== undefined) return null // the compact form cannot carry a per-step timeout
     if (s.verdictRole !== undefined) return null // nor a declared reviewer role (#851)
+    if (s.claudeSettings !== undefined) return null // nor a step's pinned Claude hooks (#1001)
     skills.push(s.skill)
   }
   return skills.length ? skills : null
@@ -126,6 +127,11 @@ export function workflowYaml(
       // #851: the same loss, with a sharper edge — a reviewer step saved without its declared role
       // has every verdict it reports refused.
       if (s.verdictRole) lines.push(`    verdictRole: ${s.verdictRole}`)
+      // #1001: dropping a step's pinned hooks on save would silently unguard it.
+      if (s.claudeSettings) {
+        lines.push('    claudeSettings:', `      files: [${s.claudeSettings.files.map(yamlScalar).join(', ')}]`)
+        if (s.claudeSettings.scripts) lines.push(`      scripts: [${s.claudeSettings.scripts.map(yamlScalar).join(', ')}]`)
+      }
       if (s.command) lines.push(...yamlBlock('command', s.command, 4))
       if (s.resultScope) lines.push(`    resultScope: ${s.resultScope}`)
       if (s.onFail) {

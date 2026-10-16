@@ -1,7 +1,7 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { chmod, lstat, mkdir, readFile, realpath, unlink } from 'node:fs/promises';
+import { chmod, lstat, mkdir, readdir, readFile, realpath, stat, unlink } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { writeFileAtomic } from '../platform/atomic-write.ts';
@@ -38,7 +38,7 @@ import {
 import { acquireFileLock, queueByLockPath } from './file-lock.ts';
 import { isReadOnlyStep, normalizeBashAllowlist } from './read-only-lock.ts';
 import { parseAskRequest, type AskQuestion } from './ask.ts';
-import { readNdjson } from './ndjson.ts';
+import { formatSize, MAX_NDJSON_LINE_CHARS, NdjsonLineTooLongError, readNdjson } from './ndjson.ts';
 import { V1TextCoalescer } from './v1-text-coalescer.ts';
 import { codexTurnLimit, isCodexModelBucket, mergeCodexSnapshot } from './codex-usage-limit.ts';
 import {
@@ -66,6 +66,9 @@ export interface CodexRunnerOptions {
   bin?: string;
   /** Wall-clock timeout for a run (ms); per-spec `timeoutMs` still wins. */
   timeoutMs?: number;
+  /** Largest single app-server message the session reads; defaults to the runtime's string
+   *  ceiling (`MAX_NDJSON_LINE_CHARS`). Tests lower it to exercise the refusal (#942). */
+  maxMessageChars?: number;
 }
 
 /**
@@ -159,6 +162,8 @@ export interface CodexReadOnlyHook {
 const CODEX_READ_ONLY_HOOK_MATCHER = 'Bash|apply_patch' as const;
 const LEGACY_CODEX_READ_ONLY_HOOK_MATCHER = 'Bash';
 const BLOCKED_HOOK_NOTE_PREFIX = 'codex: PreToolUse blocked: ';
+/** What a request still waiting when the app-server's output ends is rejected with (#895). */
+const OUTPUT_CLOSED = 'codex app-server exited before it answered';
 const BLOCKED_HOOK_REASON_LIMIT = 2_000;
 const BLOCKED_HOOK_TRUNCATION_MARKER = '… [truncated]';
 
@@ -187,11 +192,13 @@ export class CodexAppServerRunner implements AgentRunner {
 
   private readonly bin: string;
   private readonly timeoutMs: number;
+  private readonly maxMessageChars: number;
   private lastSession: CodexSession | null = null;
 
   constructor(opts: CodexRunnerOptions = {}) {
     this.bin = resolveCodexExecutable(opts.bin);
     this.timeoutMs = opts.timeoutMs ?? DEFAULT_RUN_TIMEOUT_MS;
+    this.maxMessageChars = opts.maxMessageChars ?? MAX_NDJSON_LINE_CHARS;
   }
 
   /** What a spec with no `timeoutMs` falls through to here (#460) — the same field the session
@@ -213,7 +220,7 @@ export class CodexAppServerRunner implements AgentRunner {
     onEvent?: (event: AgentEvent) => void,
     opts: SessionOptions = {},
   ): AgentSession {
-    const session = new CodexSession(this.bin, this.timeoutMs, spec, onEvent, opts);
+    const session = new CodexSession(this.bin, this.timeoutMs, spec, onEvent, opts, this.maxMessageChars);
     this.lastSession = session;
     return session;
   }
@@ -245,6 +252,8 @@ class CodexSession implements AgentSession {
     this.emit({ type: 'text', text });
   });
   private tokensUsed = 0;
+  /** MCP servers this run's thread already has a ready note for — one note per server (#1057). */
+  private readonly mcpReadyNoted = new Set<string>();
   /** This session's ordinary-bucket rate-limit snapshot, merged from sparse updates — the reset a
    *  failed plan-limit turn falls back to when Codex's message names none, and the
    *  `rateLimitReachedType` that decides whether `rateLimitExceeded` is a plan limit (#565). */
@@ -258,6 +267,8 @@ class CodexSession implements AgentSession {
   private readonly hook: CodexReadOnlyHook | undefined;
   private readonly requestedCodexHome: string | undefined;
   private hookLockPath: string | undefined;
+  /** The profile `initialize` reported, kept for naming a thread's history file (#942). */
+  private codexHome: string | undefined;
   /** Set the moment WE signal the child (EOF watchdog, cancel, kill switch).
    *  codex handles the signal and exits 143, so without this the runner reads
    *  its own teardown as a codex failure (#703). */
@@ -266,6 +277,15 @@ class CodexSession implements AgentSession {
    *  does not answer: it flips on signal delivery, so the SIGTERM this runner
    *  sends would otherwise veto its own SIGKILL escalation (#844). */
   private readonly hasExited: () => boolean;
+  /** Set when xezar asks the session to stop – `end()` (stdin EOF) or `interrupt()` (cancel). An
+   *  app-server that then exits with a turn unfinished did what it was asked; one that exits
+   *  mid-turn on its own died under the turn (#895). */
+  private stopRequested = false;
+  /** Set when xezar stops reading stdout of an app-server that already exited (#895): a process
+   *  the app-server started can inherit the pipe and hold it open long after the server is gone,
+   *  and the session must not wait on it. */
+  private outputReleased = false;
+  private outputReleaseTimer: NodeJS.Timeout | undefined;
   /** Protocol v2 emission — additive alongside v1 (`onEvent` keeps flowing
    *  byte-identical); the channel is `opts.onUiEvent` (RunManager wiring
    *  lands in R2 step 2.1). */
@@ -277,6 +297,7 @@ class CodexSession implements AgentSession {
     private readonly spec: AgentRunSpec,
     private readonly onEvent: ((event: AgentEvent) => void) | undefined,
     private readonly opts: SessionOptions,
+    private readonly maxMessageChars: number = MAX_NDJSON_LINE_CHARS,
   ) {
     const hook = codexReadOnlyHook(spec);
     this.hook = hook;
@@ -300,6 +321,15 @@ class CodexSession implements AgentSession {
     this.hasExited = trackChildExit(this.child);
     this.child.on('error', (err: NodeJS.ErrnoException) => {
       this.spawnFailed = codexSpawnError(err, bin);
+    });
+    // #895: once the app-server has exited, its own last lines are already in the pipe and arrive
+    // within moments; anything still holding stdout open after that is a process it started, never
+    // the server. Stop reading after the same grace a stopping child gets (`KILL_GRACE_MS`), so a
+    // dead server settles the session instead of leaving the turn running for as long as that
+    // process lives. A cancel does not wait for the grace (`interrupt()`).
+    this.child.once('exit', () => {
+      this.outputReleaseTimer = setTimeout(() => this.releaseOutput(), KILL_GRACE_MS);
+      this.outputReleaseTimer.unref?.();
     });
     const stderrChunks: string[] = [];
     this.child.stderr.setEncoding('utf8');
@@ -333,22 +363,31 @@ class CodexSession implements AgentSession {
       let sessionError: unknown;
       try {
         const readLoop = async () => {
-          for await (const line of readNdjson(this.child.stdout)) {
-            if (this.timedOut) break;
-            let msg: CodexAppServerMessage;
-            try {
-              msg = JSON.parse(line) as CodexAppServerMessage;
-            } catch {
-              continue; // not JSON-RPC — skip
+          try {
+            for await (const line of readNdjson(this.child.stdout, this.maxMessageChars)) {
+              if (this.timedOut || this.outputReleased) break;
+              let msg: CodexAppServerMessage;
+              try {
+                msg = JSON.parse(line) as CodexAppServerMessage;
+              } catch {
+                continue; // not JSON-RPC — skip
+              }
+              // A sub-agent child thread's turn lifecycle must reach neither channel (#600):
+              // v1 would emit a bogus `turn-end`, and the v2 mapper — which carries no thread
+              // identity — would record the child turn as the parent's, clearing its turn-scoped
+              // plan/reasoning state and resetting the current turn id. Child ITEM events still
+              // flow, so nested sub-agent activity keeps rendering.
+              if (this.isForeignTurnLifecycle(msg)) continue;
+              this.emitUi((state) => mapCodexNotification(msg, state));
+              this.dispatch(msg);
             }
-            // A sub-agent child thread's turn lifecycle must reach neither channel (#600):
-            // v1 would emit a bogus `turn-end`, and the v2 mapper — which carries no thread
-            // identity — would record the child turn as the parent's, clearing its turn-scoped
-            // plan/reasoning state and resetting the current turn id. Child ITEM events still
-            // flow, so nested sub-agent activity keeps rendering.
-            if (this.isForeignTurnLifecycle(msg)) continue;
-            this.emitUi((state) => mapCodexNotification(msg, state));
-            this.dispatch(msg);
+          } catch (err) {
+            // Destroying a stream under `for await` ends it with a premature-close error.
+            if (!this.outputReleased) throw err;
+          } finally {
+            // #895: with the output gone nothing can answer a request still waiting – an
+            // app-server that died during the handshake left `ready` pending for good.
+            this.rpc.rejectPending(OUTPUT_CLOSED);
           }
         };
         // Start consuming stdout before awaiting bootstrap: JSON-RPC responses
@@ -356,8 +395,10 @@ class CodexSession implements AgentSession {
         // promises makes every bootstrap rejection part of session.result.
         await Promise.all([this.ready, readLoop()]);
       } catch (err) {
-        if (!this.timedOut) {
-          sessionError = err;
+        // A handshake request cut short by a stop xezar asked for is that stop, not a failure.
+        const stoppedByXezar = this.stopRequested && err instanceof Error && err.message === OUTPUT_CLOSED;
+        if (!this.timedOut && !stoppedByXezar) {
+          sessionError = err instanceof NdjsonLineTooLongError ? await this.oversizedMessageError(err) : err;
           // Bootstrap failed before a usable turn exists. Closing stdin lets
           // app-server exit normally; end() also owns the TERM/KILL watchdog
           // if a broken child ignores EOF.
@@ -376,9 +417,20 @@ class CodexSession implements AgentSession {
       if (killTimer) clearTimeout(killTimer);
       if (this.eofTermTimer) clearTimeout(this.eofTermTimer);
       if (this.eofKillTimer) clearTimeout(this.eofKillTimer);
+      if (this.outputReleaseTimer) clearTimeout(this.outputReleaseTimer);
       this.rpc.rejectPending();
+      const stderrDetail = () => {
+        const stderr = stderrChunks.join('').trim();
+        return stderr ? ` — ${stderr.split('\n').slice(-3).join(' | ')}` : '';
+      };
 
       if (this.spawnFailed) throw this.spawnFailed;
+      if (sessionError instanceof Error && sessionError.message === OUTPUT_CLOSED) {
+        // #895: name the exit and what the app-server said, not just the cut-off request.
+        const message = `${OUTPUT_CLOSED} (code ${exitCode})${stderrDetail()}`;
+        this.emit({ type: 'error', message });
+        throw new Error(message);
+      }
       if (sessionError) throw sessionError;
 
       // Timeout/interrupt can end the read loop mid-item — recover buffered prose.
@@ -411,13 +463,20 @@ class CodexSession implements AgentSession {
       }
 
       if (exitCode !== 0 && exitCode !== null) {
-        const stderr = stderrChunks.join('').trim();
-        const detail = stderr ? ` — ${stderr.split('\n').slice(-3).join(' | ')}` : '';
+        const detail = stderrDetail();
         // Same split as the claude runner (#156): a 128+signal code that got
         // past the flag above was signalled by something other than xezar.
         const message = isSignalTerminationExit(exitCode)
           ? `${foreignSignalExitMessage('codex app-server', exitCode)}${detail}`
           : `codex app-server exited with code ${exitCode}${detail}`;
+        this.emit({ type: 'error', message });
+        throw new Error(message);
+      }
+
+      // #895: a clean exit with a turn still open, and nobody at xezar asked it to stop, is an
+      // app-server that died under the turn – never a finished turn the run may settle as done.
+      if (this.activeTurnId !== undefined && !this.stopRequested) {
+        const message = `codex app-server exited before the turn finished (code ${exitCode})${stderrDetail()}`;
         this.emit({ type: 'error', message });
         throw new Error(message);
       }
@@ -460,6 +519,7 @@ class CodexSession implements AgentSession {
   }
 
   end(): void {
+    this.stopRequested = true;
     if (!this.stdinOpen) return;
     this.rejectPendingUserInput('session ended');
     this.stdinOpen = false;
@@ -480,6 +540,7 @@ class CodexSession implements AgentSession {
   }
 
   interrupt(): void {
+    this.stopRequested = true;
     this.stdinOpen = false;
     this.rejectPendingUserInput('turn interrupted');
     // Best-effort graceful cancel of the in-flight turn, then hard stop.
@@ -491,7 +552,20 @@ class CodexSession implements AgentSession {
     if (!this.hasExited()) {
       this.terminatedByXezar = true;
       void stopChildTree(this.child, 'SIGTERM');
+    } else {
+      // #895: the app-server is already gone, so there is nothing to signal – but a process it
+      // started may still hold stdout open, and the cancel must not wait on that.
+      this.releaseOutput();
     }
+  }
+
+  /** Stop reading the output of an app-server that has exited (#895). Its own last lines are
+   *  dropped only if they have not arrived by now, which is the trade every caller has chosen:
+   *  a cancel, or a server dead for `KILL_GRACE_MS`. */
+  private releaseOutput(): void {
+    if (this.outputReleased) return;
+    this.outputReleased = true;
+    this.child.stdout.destroy();
   }
 
   // ---- protocol -----------------------------------------------------------
@@ -500,6 +574,7 @@ class CodexSession implements AgentSession {
     const initialized = await this.rpc.initialize();
     const requestedCodexHome = this.requestedCodexHome;
     const reportedCodexHome = stringField(initialized, 'codexHome');
+    this.codexHome = reportedCodexHome ?? requestedCodexHome;
     if (requestedCodexHome && reportedCodexHome
       && await canonicalPath(requestedCodexHome) !== await canonicalPath(reportedCodexHome)) {
       throw new Error(
@@ -548,7 +623,16 @@ class CodexSession implements AgentSession {
       config,
     };
     if (this.spec.resume && this.spec.sessionId) {
-      await this.rpc.request('thread/resume', { threadId: this.spec.sessionId, ...clean(overrides) });
+      // `excludeTurns`: xezar reads nothing from this response, and by default Codex puts the
+      // thread's WHOLE history in it as one JSON-RPC line — a long session's line can pass the
+      // runtime's string ceiling, which failed Continue with `Invalid string length` (#942). A
+      // Codex that predates the field ignores it (unknown params are tolerated); its oversized
+      // reply then fails readably through `oversizedMessageError`.
+      await this.rpc.request('thread/resume', {
+        threadId: this.spec.sessionId,
+        excludeTurns: true,
+        ...clean(overrides),
+      });
       this.threadId = this.spec.sessionId;
     } else {
       const res = await this.rpc.request('thread/start', clean(overrides));
@@ -571,6 +655,23 @@ class CodexSession implements AgentSession {
     // of the opening message.
     const first = prependSystemPrompt(this.spec.systemPrompt, this.spec.userPrompt);
     await this.startOrSteerTurn(first);
+  }
+
+  /**
+   * A message too large to read, said plainly (#942): what was too large, which thread, and — when
+   * the thread's stored history file can be found — that file and its size, so the person knows
+   * this session cannot be reopened and why. Only ever runs on that failure path.
+   */
+  private async oversizedMessageError(err: NdjsonLineTooLongError): Promise<Error> {
+    const threadId = this.spec.resume ? this.spec.sessionId : this.threadId;
+    const resuming = this.spec.resume && this.spec.sessionId !== undefined;
+    const history = threadId && this.codexHome ? await findCodexRolloutFile(this.codexHome, threadId) : undefined;
+    const subject = resuming ? `while resuming Codex thread ${threadId}` : threadId ? `in Codex thread ${threadId}` : 'from codex app-server';
+    const file = history ? ` The thread's stored history is ${history.path} (${formatSize(history.size, 'bytes')}).` : '';
+    const next = resuming
+      ? ' This session is too large to continue; start a fresh task in the same worktree instead.'
+      : '';
+    return new Error(`codex app-server sent ${err.message} ${subject}.${file}${next}`);
   }
 
   private async createReadOnlyLock(hook: CodexReadOnlyHook, sessionId: string): Promise<void> {
@@ -737,6 +838,19 @@ class CodexSession implements AgentSession {
     return this.isForeignThreadTurn((msg.params ?? {}) as Record<string, unknown>);
   }
 
+  /** One note per ready MCP server, with its tool count when Codex's own status listing gives one
+   *  (#1057). The startup notification carries no tools, so the count comes from one bounded
+   *  `mcpServerStatus/list`; a failed, slow or unhelpful answer drops the count, never the note,
+   *  and never touches the run. */
+  private noteMcpServerReady(name: string, threadId: string | undefined): void {
+    if (this.mcpReadyNoted.has(name)) return;
+    this.mcpReadyNoted.add(name);
+    void codexMcpToolCount(this.rpc, name, threadId).then((count) => {
+      const tools = count === undefined ? '' : ` with ${count} ${count === 1 ? 'tool' : 'tools'}`;
+      this.emit({ type: 'note', message: `codex: the MCP server ${name} is ready${tools}.` });
+    }).catch(() => undefined);
+  }
+
   private handleNotification(method: string, params: Record<string, unknown>): void {
     switch (method) {
       case 'account/rateLimits/updated': {
@@ -800,6 +914,12 @@ class CodexSession implements AgentSession {
       case 'mcpServer/startupStatus/updated': {
         // #1026: a server that fails to start leaves the model without its tools and nothing else
         // says so — the isolation note above only names what the thread was configured with.
+        // #1057: a server that starts gets a note too, so a run with no such note means the server
+        // never reported ready — not that the model never looked its tools up.
+        if (params.status === 'ready' && !this.isForeignThreadTurn(params)) {
+          this.noteMcpServerReady(stringField(params, 'name') ?? 'unknown', stringField(params, 'threadId') ?? this.threadId);
+          break;
+        }
         if (params.status !== 'failed' || this.isForeignThreadTurn(params)) break;
         const name = stringField(params, 'name') ?? 'unknown';
         const detail = (stringField(params, 'error') ?? stringField(params, 'failureReason'))?.trim().replace(/\.+$/, '');
@@ -1167,6 +1287,52 @@ function userInputAnswers(questions: AskQuestion[], text: string): Record<string
 }
 
 /** ThreadItem `type`s that are conversation text, not tool activity. */
+/** How long a ready note waits for Codex's MCP status listing before it goes out without a count. */
+const MCP_TOOL_COUNT_WAIT_MS = 5_000;
+/** Pages of `mcpServerStatus/list` read while looking for one server. */
+const MCP_STATUS_LIST_MAX_PAGES = 5;
+
+/**
+ * The number of tools Codex lists for one MCP server on one thread, or `undefined` when it cannot
+ * say: a request error, no answer within `MCP_TOOL_COUNT_WAIT_MS`, the server missing from the
+ * listing, or a `toolsError` (#1057). Never rejects.
+ */
+async function codexMcpToolCount(
+  rpc: CodexAppServerRpc,
+  name: string,
+  threadId: string | undefined,
+): Promise<number | undefined> {
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<undefined>((resolve) => {
+    timer = setTimeout(() => resolve(undefined), MCP_TOOL_COUNT_WAIT_MS);
+    timer.unref?.();
+  });
+  const lookup = async (): Promise<number | undefined> => {
+    let cursor: string | undefined;
+    for (let page = 0; page < MCP_STATUS_LIST_MAX_PAGES; page++) {
+      const res = await rpc.request('mcpServerStatus/list', clean({ threadId, detail: 'toolsAndAuthOnly', cursor }));
+      const data = Array.isArray(res.data) ? (res.data as unknown[]) : [];
+      for (const entry of data) {
+        if (!entry || typeof entry !== 'object') continue;
+        const status = entry as Record<string, unknown>;
+        if (status.name !== name) continue;
+        if (typeof status.toolsError === 'string') return undefined;
+        const tools = status.tools;
+        return tools && typeof tools === 'object' && !Array.isArray(tools) ? Object.keys(tools).length : undefined;
+      }
+      cursor = stringField(res, 'nextCursor');
+      if (!cursor) return undefined;
+    }
+    return undefined;
+  };
+  try {
+    // The lookup keeps its own catch: losing the race must not leave a rejection unheard.
+    return await Promise.race([lookup().catch(() => undefined), timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 const NON_TOOL_ITEMS = new Set(['agentMessage', 'userMessage', 'reasoning', 'plan']);
 
 /** Turn-lifecycle notification methods — the only frames whose child-thread copies must be
@@ -1204,6 +1370,43 @@ function clean<T extends Record<string, unknown>>(obj: T): Partial<T> {
     if (v !== undefined && v !== null) out[k as keyof T] = v as T[keyof T];
   }
   return out;
+}
+
+/**
+ * Where Codex keeps a thread's history: `<codexHome>/sessions/<yyyy>/<mm>/<dd>/rollout-…-<id>.jsonl`.
+ * Best effort and only used to name the file in an error (#942): any read failure, or a layout
+ * this does not recognise, answers `undefined`, and the error still names the thread and size.
+ */
+async function findCodexRolloutFile(
+  codexHome: string,
+  threadId: string,
+): Promise<{ path: string; size: number } | undefined> {
+  const suffix = `-${threadId}.jsonl`;
+  const walk = async (dir: string, depth: number): Promise<string | undefined> => {
+    let entries;
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch {
+      return undefined;
+    }
+    for (const entry of entries) {
+      if (entry.isFile() && entry.name.startsWith('rollout-') && entry.name.endsWith(suffix)) return join(dir, entry.name);
+    }
+    if (depth === 0) return undefined;
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const found = await walk(join(dir, entry.name), depth - 1);
+      if (found) return found;
+    }
+    return undefined;
+  };
+  const path = await walk(join(codexHome, 'sessions'), 3);
+  if (!path) return undefined;
+  try {
+    return { path, size: (await stat(path)).size };
+  } catch {
+    return undefined;
+  }
 }
 
 function stringField(obj: Record<string, unknown>, key: string): string | undefined {

@@ -7,6 +7,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   HANDOFF_INSTRUCTIONS,
   HANDOFF_ONLY_INSTRUCTIONS,
+  HANDOFF_ONLY_STEP_INSTRUCTIONS,
+  agentContract,
   FOLLOWUP_INSTRUCTIONS,
   appendHandoffHeartbeat,
   deleteHandoff,
@@ -371,5 +373,38 @@ describe('followupsEnabled', () => {
       if (previous === undefined) delete process.env.XEZ_FOLLOWUPS;
       else process.env.XEZ_FOLLOWUPS = previous;
     }
+  });
+});
+
+/**
+ * #940: a workflow step that is not the last one runs one turn and fails on `XEZ:MONITORING`, so
+ * its contract leaves the still-working paragraph out and says to finish inside the turn. Every
+ * session that can park (a quick task, the last step, a Continue) keeps today's text byte for byte.
+ */
+describe('agentContract (#940)', () => {
+  it('keeps the parking contract byte-identical to the existing constants', () => {
+    expect(agentContract({ followups: true, canMonitor: true })).toBe(HANDOFF_INSTRUCTIONS);
+    expect(agentContract({ followups: false, canMonitor: true })).toBe(HANDOFF_ONLY_INSTRUCTIONS);
+  });
+
+  it('gives a one-turn step the finish-inside-the-turn rule instead of the monitoring marker', () => {
+    for (const text of [
+      agentContract({ followups: false, canMonitor: false }),
+      agentContract({ followups: true, canMonitor: false }),
+    ]) {
+      expect(text).not.toContain('XEZ:MONITORING');
+      expect(text).toContain('Finish inside the turn');
+      expect(text).toContain('XEZ:DONE');
+      expect(text).toContain('XEZ:ASK <json>');
+    }
+    expect(agentContract({ followups: false, canMonitor: false })).toBe(HANDOFF_ONLY_STEP_INSTRUCTIONS);
+    expect(agentContract({ followups: true, canMonitor: false })).toBe(
+      `${HANDOFF_ONLY_STEP_INSTRUCTIONS}\n\n${FOLLOWUP_INSTRUCTIONS}`,
+    );
+  });
+
+  it('is inert like the parking contract — declares no reference and asks no question', () => {
+    expect(parseTaskMarkers(HANDOFF_ONLY_STEP_INSTRUCTIONS)).toEqual({});
+    expect(parseAskMarker(HANDOFF_ONLY_STEP_INSTRUCTIONS)).toBeNull();
   });
 });

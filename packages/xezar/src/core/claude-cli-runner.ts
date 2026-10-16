@@ -77,7 +77,8 @@ export function resolveClaudeExecutable(override?: string): string {
  * is unrestricted shell access (#430). A read-only step (`isReadOnlyStep`) also
  * gets `--disallowedTools Edit,Write,NotebookEdit`, so those tools are removed,
  * not merely unapproved, under any permission mode (#849), and
- * `--setting-sources user`, so project settings cannot widen Bash (#863). Claude's own matcher
+ * `--setting-sources user`, so project settings cannot widen Bash (#863); a step's pinned,
+ * hooks-only `claudeSettings` file rides beside it as `--settings` (#1001). Claude's own matcher
  * still decides at run time; the shared parser and argument table are not applied here yet.
  *
  * Session mechanics (multi-turn stdin, EOF watchdog, reopen window) follow
@@ -441,6 +442,12 @@ export function buildClaudeArgs(
     // #863: project/local Claude settings, hooks and skills can widen Bash after xezar builds the
     // step rules. User settings remain available; the accepted compatibility cost is documented.
     args.push('--setting-sources', 'user');
+  }
+  // #1001: the step's repository-owned hooks, pinned from the base commit and validated to hold
+  // only `hooks` (`workflows/claude-step-settings.ts`). `--settings` loads beside
+  // `--setting-sources user`, so project/local settings stay out of a read-only step.
+  if (spec.claudeSettingsFile) {
+    args.push('--settings', spec.claudeSettingsFile);
   }
   if (spec.model) {
     args.push('--model', spec.model);

@@ -167,6 +167,21 @@ around them:
   (#943), and never otherwise. The run manager reads it to stop what the agent left running
   after the timeout; a runner that omits it leaves those programs behind.
 
+A **backend that dies on its own mid-turn** is a fourth ending, and the session MUST still settle
+(#895). Three rules, implemented in `codex-app-server-runner.ts`:
+
+- **Do not wait on stdout of a process that has exited.** A program the CLI started can inherit
+  the pipe and hold it open long after the CLI is gone, so the read loop never ends. Stop reading
+  (destroy stdout, swallow the premature close) `KILL_GRACE_MS` after the exit, and at once when
+  `interrupt()` finds the child already exited – there is nothing left to signal, and a cancel
+  must not wait on a stranger's pipe.
+- **When the output ends, reject every request still waiting for an answer**, or a CLI that died
+  during the handshake leaves `result` pending for good. A request cut short by a stop xezar asked
+  for is that stop, not a failure.
+- **A clean exit (`0`, or no code) with a turn still open, when xezar asked for no stop, is an
+  error**, never a finished turn: otherwise the run settles a dead backend as `done`. After a
+  cancel (`interrupt()`) the same exit settles on the normal path, so the run ends `cancelled`.
+
 A **model-silence bound** may stop a turn on the same path, with a named error instead of the
 timeout text. pi has one (#1000, `PI_SILENCE_LIMIT_MS`, 10 minutes): it arms only while a
 turn waits on the model – in flight, no tool running, no extension dialog pending – restarts
@@ -197,6 +212,13 @@ Notable fields (full doc-comments in the source):
   blocks — pasted screenshots), `cwd` (the run dir and the only writable root),
   `model?`, `timeoutMs?`, `env?` (merged over `process.env` — carries
   `XEZ_HANDOFF_FILE` / `XEZ_TODOS_FILE` / `XEZ_TASK_ID`).
+- `claudeSettingsFile?` — Claude Code only (#1001): the absolute path of the settings file the
+  engine pinned from a step's `claudeSettings`. It holds only `hooks` (the allowed-keys list is
+  `CLAUDE_SETTINGS_ALLOWED_KEYS` in `workflows/claude-step-settings.ts`), every file and hook
+  script was read from the run's base commit, and each hook command points at a pinned copy. The
+  Claude runner passes it as `--settings`, beside `--setting-sources user` on a read-only step.
+  The engine never sets it for another backend; such a step records a `note` that the field is
+  unsupported there.
 - `allowedTools?` / `bashAllowlist?` / `additionalDirectories?` — tool access.
   **Caveat (pre-rename issue 430):** the zero-config default (`DEFAULT_ALLOWED_TOOLS`) includes
   unrestricted `Bash`, and OpenCode does not honor `allowedTools` at all. Codex
@@ -258,9 +280,24 @@ Notable fields (full doc-comments in the source):
   Codex merges an override key by key and cannot unset one, so a home key the
   project table does not replace keeps the server off, named in the run's note.
   An app-server that cannot answer fails the run closed. The other runners do
-  not isolate MCP servers yet.
+  not isolate MCP servers yet. For this run's own thread only (sub-agent
+  threads are ignored), `mcpServer/startupStatus/updated` becomes a v1 `note`:
+  `failed` names the server and Codex's reason (#1026); `ready` gives one note
+  per server, `codex: the MCP server <name> is ready with <n> tools.` (#1057).
+  The status carries no tools, so the count comes from one `mcpServerStatus/list`
+  (`threadId`, `detail: 'toolsAndAuthOnly'`, at most 5 pages, 5 s); an error, no
+  answer, a missing entry or a `toolsError` drops only the count
+  (`… is ready.`), never the note and never the run.
 - `sessionId?` / `resume?` — stable session id for interactive takeover and for
   `--resume` ("Continue" after a run ends).
+  A resume must not need the backend to send the whole history back in one
+  message (#942): Codex's `thread/resume` carries `excludeTurns: true`, since
+  xezar reads nothing from that reply and a long session's full history in one
+  JSON-RPC line can pass the runtime's string ceiling. The shared line reader
+  (`ndjson.ts`) refuses any single line past that ceiling with its size instead
+  of a bare `RangeError: Invalid string length`, and the Codex runner turns that
+  refusal into a failure naming the thread, the message size and, when found,
+  the thread's stored history file and its size.
 
 **System prompt channel** — a backend without a dedicated system-prompt input
 must deliver `spec.systemPrompt` as a leading block of the opening user message.
@@ -587,7 +624,7 @@ That shared module is the only signal: no step key, no `XEZ_*` variable.
 
 | Backend | Read-only step | Mechanism | Pinned by |
 | --- | --- | --- | --- |
-| Claude Code | **ENFORCED** (was MODE-DENIED before #849) | `--disallowedTools Edit,Write,NotebookEdit` removes the file tools, and `--setting-sources user` prevents project/local settings, hooks and skills from re-widening Bash (#863). `Bash(<entry>:*)` rules are built from the shared normalized entries: `ClaudeCliRunner.startSession` calls `out.push(...claudeBashRules(bashAllowlist));`. Claude Code's OWN matcher decides at run time and strips a few vendor-known-safe wrappers/assignments before matching. The shared matcher instead refuses a wrapper unless that wrapper itself is named (`WRAPPER_COMMANDS` in `read-only-lock.ts`); its simple-command parser and `COMMAND_RUNNING_ARGUMENTS` table do not protect Claude until a hook can call them | `claude-cli-runner.test.ts` |
+| Claude Code | **ENFORCED** (was MODE-DENIED before #849) | `--disallowedTools Edit,Write,NotebookEdit` removes the file tools, and `--setting-sources user` prevents project/local settings, hooks and skills from re-widening Bash (#863). A step's `claudeSettings` adds one `--settings` file beside it (#1001): hooks only, every file read from the run's base commit, every hook script pinned, so a change under review cannot alter its own guard. A pinned `PreToolUse` hook can approve a command the `Bash(<entry>:*)` rules would deny; that is the intended trust – a hook merged on the base branch – and the reason no other settings key is accepted. `Bash(<entry>:*)` rules are built from the shared normalized entries: `ClaudeCliRunner.startSession` calls `out.push(...claudeBashRules(bashAllowlist));`. Claude Code's OWN matcher decides at run time and strips a few vendor-known-safe wrappers/assignments before matching. The shared matcher instead refuses a wrapper unless that wrapper itself is named (`WRAPPER_COMMANDS` in `read-only-lock.ts`); its simple-command parser and `COMMAND_RUNNING_ARGUMENTS` table do not protect Claude until a hook can call them | `claude-cli-runner.test.ts` |
 | Codex | **CONFINED + command-locked** (was NOT APPLIED before #849) | `thread/start` and `thread/resume` carry `sandbox: 'workspace-write'` plus `config.sandbox_workspace_write = { network_access: true, writable_roots: spec.additionalDirectories }` (`codexPermissions`). Codex's file edits and shell may write only inside the worktree and the run's own evidence, handoff and tmp directories; the network stays on unless `XEZ_CODEX_NETWORK=0` turns it off. On a read-only step with `bashAllowlist` present, both paths also register the shipped `PreToolUse` `Bash|apply_patch` handler, discover Codex's normalized handler hash, and grant that exact key/hash through `config/batchWrite` before turn 1; discovery, grant or verification failure stops the step. The hook is a thin payload adapter over `read-only-lock.ts`, so Bash applies the same parser, checked arguments and reason codes as pi, while `apply_patch` reaches that policy's `payload.tool-name` refusal. Blocked `PreToolUse` feedback becomes a bounded persisted v1 `note`, so the refusal reason is visible in the run event stream for either tool without reaching provider-auth detection. Codex 0.155.1 does not discover request-body hooks alone, so xezar idempotently registers a content-addressed, mode-`0444` copy from `xezCacheDir()` in the active profile's user `hooks.json`; trust is stored under its exact handler key/current hash in that profile's `config.toml`. A bounded cache record keyed by the hook payload's session id keeps a matching run fail-closed if Codex strips the marker or allowlist environment; normal completion removes it and expiry makes crash leftovers inert. Not fully ENFORCED: the worktree and branch stay writable to other non-shell Codex tools, other non-shell names are ignored, and MCP tools stay under #324 scoping, not the sandbox | `codex-app-server-runner.test.ts`, `codex-read-only-hook.test.ts` |
 | pi | partly: edit/write absent | `--tools` removes edit/write. With a `bashAllowlist`, `scripts/pi-worktree-guard.ts` is a thin adapter over `read-only-lock.ts`: one simple command must match an entry; expansion, compounds, redirects, grouping/functions, leading assignments, trailing backslashes and unnamed wrappers are refused. The sole compound exception is the exact two-part verdict-packet pipe. `COMMAND_RUNNING_ARGUMENTS` generically dispatches checked Git, find, rg and npm rows, marks reviewed argument-safe programs, and never permits `sed` or `awk`. The adapter alone owns pi flag parsing, the `tool_call` denial shape and the separate worktree guard. `[]` removes bash and refuses every command; absent/null retain #856's distinction | `read-only-lock.test.ts`, `pi-worktree-guard.test.ts`, `pi-runner.test.ts` |
 | OpenCode | **NOT APPLIED** | nothing derived from `allowedTools` reaches the server; the agent can edit, write and run any command | — |

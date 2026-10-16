@@ -58,7 +58,9 @@ from the WORKFLOW, never from the packet: an agent step declares `verdictRole: <
 and at settlement the engine reads it from the definition the run persisted (`workflowDef`). A first run
 and a gate-return re-entry settle under the definition step's own id; a Continue settles under a synthetic
 `continue-N` step, so its role is the OWNING step's — the definition step whose record step holds the same
-session — or, for a continuation no definition step owns, the definition's last agent step. A
+session — or, for a continuation no definition step owns (a fresh session after a backend or account
+switch), the workflow step it completes (#864 item 1); only a continuation that completes no workflow
+step falls back to the definition's last agent step. A
 packet whose `role` differs, and every packet from a step that declares none, is refused. Without this an
 unrelated `quick-task` could write a `code-review` packet and have it recorded over the real reviewer's — a
 verdict on the record that no reviewer made. The key was chosen over inferring the role from the step's

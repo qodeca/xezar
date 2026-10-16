@@ -23,8 +23,7 @@ import {
   normalizeModelForBackend,
 } from '../core/model-identity.ts';
 import {
-  HANDOFF_ONLY_INSTRUCTIONS,
-  HANDOFF_INSTRUCTIONS,
+  agentContract,
   appendHandoffHeartbeat,
   handoffPath,
   seedHandoffFile,
@@ -63,6 +62,7 @@ import { reclaimWorktrees, rematerializeReclaimedWorktree } from '../runs/retent
 import {
   AgentTempDirError,
   agentTmpEnv,
+  agentTmpRoots,
   removeAgentTmpDir,
   sweepAgentTmpDirs,
 } from '../runs/agent-tmpdir.ts';
@@ -76,6 +76,8 @@ import { DEFAULT_IDLE_TIMEOUT_MINUTES } from '../workspace/config.ts';
 import { WorkspaceSemaphore, type AccountHolds } from '../workspace/semaphore.ts';
 import { UiEventSink } from '../runs/ui-event-sink.ts';
 import type { UiEvent } from '../core/ui-events.ts';
+import { isReadOnlyStep } from '../core/read-only-lock.ts';
+import { authorEvidenceBrief, snapshotAuthorEvidence } from '../runs/author-evidence.ts';
 import {
   chainStepNote,
   DEFAULT_ALLOWED_TOOLS,
@@ -84,6 +86,11 @@ import {
   type WorkflowDef,
   type WorkflowStepDef,
 } from './types.ts';
+import {
+  ClaudeStepSettingsError,
+  claudeSettingsUnsupportedNote,
+  pinClaudeStepSettings,
+} from './claude-step-settings.ts';
 
 const CHECK_OUTPUT_CAP = 20_000;
 /**
@@ -207,10 +214,12 @@ const MONITORING_MARKER_RE = /XEZ:MONITORING\s*$/;
  *
  * The decision now belongs to the agent contract every step is given (`HANDOFF_INSTRUCTIONS`):
  * `XEZ:DONE` means "my goal is achieved", and a turn that ends without it is "waiting on the
- * user". A turn that ends on anything else — a question, the monitoring marker, or plain prose —
- * stops the workflow here instead of carrying on without an answer. Deliberately fail-closed on
- * plain prose: that is the case no agent-side marker can report, and the one the BLOCKED file
- * could not catch either. `turnText` is null when the session ended without finishing a turn.
+ * user". Such a step is never taught `XEZ:MONITORING` (#940: `agentContract` with
+ * `canMonitor: false` tells it to finish its background work inside the turn); the marker check
+ * below stays as the safety net. A turn that ends on anything else — a question, the monitoring
+ * marker, or plain prose — stops the workflow here instead of carrying on without an answer.
+ * Deliberately fail-closed on plain prose: that is the case no agent-side marker can report, and
+ * the one the BLOCKED file could not catch either. `turnText` is null when the session ended without finishing a turn.
  */
 export function unfinishedStepReason(turnText: string | null): string | null {
   const text = turnText?.trimEnd() ?? '';
@@ -588,6 +597,10 @@ export interface StartRunInput {
    *  user — turn-ends auto-continue until the agent signals done or the safety
    *  cap is hit. No "needs you" is ever raised. */
   autonomous?: boolean;
+  /** The task whose evidence this task checks (#933, `POST /runs` `evidenceFromRunId`). Persisted
+   *  on the record at creation; the agent-step and continuation spawns read it from the RECORD, so
+   *  no rebuilt input (recovery, Continue, variants) can drop it. */
+  evidenceFromRunId?: string;
   /** Follow-up inbox generation (spec 007, #444). Omitted means enabled for
    *  compatibility; the handoff journal runs either way. */
   generateFollowups?: boolean;
@@ -685,7 +698,7 @@ export function agentDirectories(
   return [
     join(dataDir, 'runs'),
     ...runEvidenceRoots(repoRoot, env.XEZ_TASK_ID),
-    ...(env.TMPDIR ? [env.TMPDIR] : []),
+    ...(env.TMPDIR ? agentTmpRoots(dataDir, env.XEZ_TASK_ID, env.TMPDIR) : []),
   ];
 }
 
@@ -1397,6 +1410,32 @@ export class RunManager {
    * `AgentAccountUnavailableError` for a committed account this machine lacks (#600 FR-6.3); both
    * callers turn either into the step's named error before anything spawns.
    */
+  /**
+   * A step's `claudeSettings` (#1001), resolved for the backend about to run it. Claude Code gets
+   * the pinned, hooks-only settings file (read from the run's base commit, never the working copy);
+   * another backend gets a note saying the field is unsupported there, so nothing is ignored
+   * silently. Both agent construction sites call this — the first spawn and every continuation —
+   * so a resumed session keeps its hooks. Throws `ClaudeStepSettingsError`, which each caller
+   * turns into the step's named failure before anything spawns.
+   */
+  private async resolveStepClaudeSettings(
+    runId: string,
+    step: WorkflowStepDef | undefined,
+    backend: RunnerId,
+    cwd: string,
+  ): Promise<{ file?: string; note?: string }> {
+    if (!step?.claudeSettings) return {};
+    if (backend !== 'claude') return { note: claudeSettingsUnsupportedNote(backend) };
+    const file = await pinClaudeStepSettings({
+      field: step.claudeSettings,
+      repoRoot: this.repoRoot,
+      baseRef: this.store.getRun(runId)?.baseBranch,
+      cwd,
+      dataDir: this.dataDir,
+    });
+    return { file };
+  }
+
   private async agentEnvForStep(
     runId: string,
     backend: RunnerId,
@@ -1442,6 +1481,7 @@ export class RunManager {
       // auto-nudge reads `input.autonomous` (`execute`), but the record is the
       // only source those after-the-fact consumers have.
       autonomous: input.autonomous === true,
+      evidenceFromRunId: input.evidenceFromRunId,
       // Persist the explicit opt-out so queued-run restart recovery and the
       // session Git routes can distinguish it from a removed isolated worktree.
       worktree: !group && input.worktree === false ? false : undefined,
@@ -1723,11 +1763,12 @@ export class RunManager {
       ? [...run.steps].reverse().find((step) => step.id !== queuedContinuation.id && step.sessionId)
       : undefined;
     if (queuedContinuation && sessionStep?.sessionId) {
-      const backend = run.runner ?? 'claude';
-      const sessionBackend = sessionStep.backend ?? backend;
+      // Only automatic continuations are queued, and an automatic continuation stays on the
+      // agent that ran the session step and resumes it (#984) — the same rule `continueRun` applies.
+      const backend = sessionStep.backend ?? run.runner ?? 'claude';
       this.pendingContinuations.set(run.id, {
         stepId: queuedContinuation.id,
-        sessionId: sessionBackend === backend ? sessionStep.sessionId : undefined,
+        sessionId: sessionStep.sessionId,
         backend,
         prompt: RESTART_CONTINUATION_PROMPT,
         images: [],
@@ -2948,6 +2989,11 @@ export class RunManager {
       /** Agent account for the reopened session (spec 2026-07-29-agent-profiles). Omitted = the
        *  account the run is already on. */
       agentProfile?: string;
+      /** Without an explicit `runner`, the continuation runs on the agent that ran the session
+       *  step it resumes (#984) — restart recovery and the usage-limit auto-resume rely on that.
+       *  `true` keeps the run's recorded agent instead: the cockpit/MCP follow-up whose agent pill
+       *  was left untouched shows `run.runner` and gates its provider on it, so it keeps that. */
+      keepRunAgent?: boolean;
     } = {},
     /** Restart recovery may discover several interrupted tasks at once. Those
      *  continuations are queued; an explicit user Continue remains immediate. */
@@ -2972,11 +3018,15 @@ export class RunManager {
     }
     const sessionStep = [...run.steps].reverse().find((s) => s.sessionId);
     if (!sessionStep?.sessionId) return { ok: false, error: 'no agent session to resume' };
-    const targetRunner = opts.runner ?? run.runner ?? 'claude';
     // Session ids are provider-owned opaque values. New records carry explicit
     // affinity; for legacy records, the run's current runner is the conservative
     // owner until a continuation emits a new, attributed session id (#562).
     const sessionBackend = sessionStep.backend ?? run.runner ?? 'claude';
+    // The agent this continuation runs on (#984). An explicit choice wins. Otherwise it is the
+    // agent that ran the session step, so a step's own `runner:` survives a restart recovery or
+    // an auto-resume and its session is resumed — the task's runner used to take over here and
+    // start the other agent fresh, without the step's history.
+    const targetRunner = opts.runner ?? (opts.keepRunAgent ? run.runner ?? 'claude' : sessionBackend);
     // A session id only resolves inside the config dir that created it (spec
     // 2026-07-29-agent-profiles), so switching ACCOUNT ends the session exactly like switching
     // backend does: `claude --resume <id>` under another login finds nothing and would silently
@@ -3270,7 +3320,12 @@ export class RunManager {
     // The workflow tail runs only after this turn's DONE (#520), so an autonomous nudge loop here
     // stands in for a step the workflow path never nudges (#317) — give it the small budget (#613).
     if (resumeIndex >= 0) state.autoContinueCap = MAX_GATED_CONTINUE_NUDGES;
+    // The workflow step this continuation completes (#864 item 1): the role a verdict packet left
+    // by a fresh-session continuation is recorded under is that step's, not the last agent step's.
+    const completedStepId = resumeIndex >= 0 ? workflow?.steps[resumeIndex]?.id : undefined;
     let completedTurn = false;
+    /** The session's resolved tools, assigned with `toolsStep` below (#933 reads them at turn end). */
+    let continueTools: readonly string[] = DEFAULT_ALLOWED_TOOLS;
     let stepCost = 0;
     let turnText = '';
     let sessionError: string | undefined;
@@ -3335,6 +3390,7 @@ export class RunManager {
         }
         let autoContinued = false;
         let gatedStop = false;
+        let finishedReadOnly = false;
         if (sessionOpen) {
           // Autonomous (#autonomous): never hand the ball back to the user. Nudge the agent to
           // keep going (bounded by `autoContinueCap` and the idle rule) instead of parking at
@@ -3344,9 +3400,15 @@ export class RunManager {
           // wait out the idle close and then fail with the same error (run `04af6692` sat 15
           // minutes), so close now and let the settle below fail with the reason.
           gatedStop = !autoContinued && resumeIndex >= 0 && state.autoContinueStop !== undefined;
+          // #933: an autonomous READ-ONLY continuation whose re-prompting hit a bound finishes
+          // instead of parking — the same helper as `execute`'s handler. `continueTools` is set
+          // below, from the same `toolsStep` the spawn uses, before any turn can end.
+          finishedReadOnly =
+            !autoContinued && !gatedStop && !monitoring &&
+            this.finishStoppedReadOnlyTurn(runId, state, stepId, continueTools);
           if (gatedStop) {
             state.session?.end();
-          } else if (!autoContinued) {
+          } else if (!autoContinued && !finishedReadOnly) {
             // `XEZ:ASK` → park `waiting` (attention) AND surface the structured
             // question as an ask card (#473). `XEZ:MONITORING` → non-attention
             // `running`/`activity:'monitoring'` (#490). Both share the waiting
@@ -3385,7 +3447,7 @@ export class RunManager {
           runId,
           // A nudged turn did NOT park — the agent is working again, so the heartbeat must not
           // read `waiting` (#141; before the fix this branch was unreachable).
-          `turn complete — status=${autoContinued || gatedStop ? 'running' : monitoring ? 'monitoring' : sessionOpen ? 'waiting' : 'running'}`,
+          `turn complete — status=${autoContinued || gatedStop || finishedReadOnly ? 'running' : monitoring ? 'monitoring' : sessionOpen ? 'waiting' : 'running'}`,
         );
       }
     };
@@ -3425,7 +3487,7 @@ export class RunManager {
     try {
       const normalized = normalizeModelForBackend(
         continueBackend,
-        agentModelsLocked(this.repoRoot) ? undefined : record?.model,
+        agentModelsLocked(this.repoRoot) ? undefined : continuationModel(record, sessionId, continueBackend),
         { configuredProvider: await configuredModelProvider(continueBackend, state.cwd) },
       );
       continueModel = normalized?.backendModel;
@@ -3460,6 +3522,7 @@ export class RunManager {
         ? undefined
         : defSteps.find((s) => s.id === owningStep?.id)
           ?? [...defSteps].reverse().find((s) => stepKind(s) === 'agent');
+    continueTools = toolsStep?.allowedTools ?? DEFAULT_ALLOWED_TOOLS;
     // The temp-directory preflight (#785) rides along with the account resolution: a resumed
     // turn hits the same broken `/tmp` a fresh one would, and an agent whose shell silently
     // returns nothing is worse than a turn that refuses to start and says why.
@@ -3478,6 +3541,19 @@ export class RunManager {
       return;
     }
     this.store.updateStep(runId, stepId, { profileId: continueProfile.profileId });
+    // The owning step's pinned Claude hooks (#1001) come back with its tools: a continuation
+    // that dropped them would run a read-only step without its guard.
+    let continueClaudeSettings: { file?: string; note?: string };
+    try {
+      continueClaudeSettings = await this.resolveStepClaudeSettings(runId, toolsStep, continueBackend, state.cwd);
+    } catch (err) {
+      if (!(err instanceof ClaudeStepSettingsError)) throw err;
+      failBeforeSpawn(err.message);
+      return;
+    }
+    if (continueClaudeSettings.note) {
+      this.store.appendEvent(runId, { type: 'note', stepId, message: continueClaudeSettings.note });
+    }
 
     // A shutdown that is stopping this process's programs starts nothing new (#963).
     if (this.exiting) await this.parkedForExit();
@@ -3488,7 +3564,14 @@ export class RunManager {
     // through `deliverMessage`, so it needs the SAME delivery-only `/skill` rewrite the
     // live path applies (#811). Delivery-only: the `user-message` event above already
     // persisted the user's original text, and the transcript must keep showing that.
-    const openingPrompt = expandRegistrySlashSkillText(prompt, state.skills ?? []);
+    let openingPrompt = expandRegistrySlashSkillText(prompt, state.skills ?? []);
+    // A continuation that opens a FRESH session (a backend switch, or no recorded session) has not
+    // seen the evidence the run's steps were given (#933) — give it the same set. A resumed session
+    // already holds it in its history.
+    if (sessionId === undefined) {
+      const evidenceBlock = this.authorEvidenceBlock(runId, stepId);
+      if (evidenceBlock) openingPrompt += `\n\n${evidenceBlock}`;
+    }
     const session = runner.startSession(
       {
         // The Continue step is a fresh agent session on the same run — the
@@ -3497,7 +3580,8 @@ export class RunManager {
         systemPrompt: composeSystemPrompt(
           record?.systemPrompt,
           quickTaskWorktreeInstructions(record?.workflow, state.cwd, this.repoRoot),
-          generateFollowups ? HANDOFF_INSTRUCTIONS : HANDOFF_ONLY_INSTRUCTIONS,
+          // A Continue is interactive: it parks at turn end, so it keeps the monitoring paragraph.
+          agentContract({ followups: generateFollowups, canMonitor: true }),
         ),
         userPrompt: attachments.length
           ? `${openingPrompt}\n\n${pastedAttachmentsText(attachments)}`
@@ -3507,6 +3591,7 @@ export class RunManager {
         ...worktreeGuardRoots(state.cwd, this.repoRoot),
         allowedTools: toolsStep?.allowedTools ?? DEFAULT_ALLOWED_TOOLS,
         bashAllowlist: toolsStep?.bashAllowlist,
+        ...(continueClaudeSettings.file ? { claudeSettingsFile: continueClaudeSettings.file } : {}),
         additionalDirectories: agentDirectories(this.repoRoot, this.dataDir, continueProfile.env),
         env: continueProfile.env,
         model: continueModel,
@@ -3578,7 +3663,7 @@ export class RunManager {
         this.store.updateStep(runId, stepId, { status: 'done', finishedAt: finishedAt() });
         // Same collection point the workflow path uses (#460) — a Continue is how a reviewer step
         // is re-run, and a report left by one must reach the record exactly as the first run's did.
-        this.takeStepVerdict(runId, stepId);
+        this.takeStepVerdict(runId, stepId, completedStepId);
         this.store.appendEvent(runId, { type: 'step-end', stepId, status: 'done' });
         if (workflow && resumeIndex >= 0 && record) {
           this.waiting.delete(runId);
@@ -3620,7 +3705,7 @@ export class RunManager {
       sink.sessionEnded('error', message);
       await endTurn();
       this.store.updateStep(runId, stepId, { status: 'failed', error: message, finishedAt: finishedAt() });
-      this.takeStepVerdict(runId, stepId);
+      this.takeStepVerdict(runId, stepId, completedStepId);
       appendHandoffHeartbeat(this.dataDir, runId, `step "${stepId}" complete — status=failed`);
       this.store.updateRun(runId, {
         status: 'failed',
@@ -3678,6 +3763,63 @@ export class RunManager {
       message: `autonomous — continuing without pausing (${state.autoContinues}/${cap})`,
     });
     return true;
+  }
+
+  /**
+   * #933: an autonomous READ-ONLY step never parks at `waiting`. Called right after
+   * `autoContinueTurn` declined to nudge, from BOTH turn-end handlers (#141's rule: one helper,
+   * both sites). When that refusal came from a nudge bound — an idle re-prompt with no tool call,
+   * or the spent budget, both recorded in `autoContinueStop` — a read-only step closes its session
+   * and finishes, and a note names what is missing: it ended without the done marker, so its last
+   * message is the result and anything it says it could not read or check is a gap in it. Run
+   * `79e11f69` posted its verdict, answered the nudge with prose, and sat in `waiting` until a
+   * person cancelled it.
+   *
+   * Narrow on purpose. A writing step keeps today's park (its last turn may be a real question
+   * about work it is changing), a memory-limit pause clears `autonomous` and keeps holding, a
+   * cancelled run is not touched, `XEZ:MONITORING` keeps its own bounded wake timer, and a
+   * question on the FIRST turn is still answered by the first nudge before this can apply.
+   * Returns true when it closed the session.
+   */
+  private finishStoppedReadOnlyTurn(
+    runId: string,
+    state: ActiveRun,
+    stepId: string,
+    allowedTools: readonly string[],
+  ): boolean {
+    if (!state.autonomous || state.cancelled || state.autoContinueStop === undefined) return false;
+    if (!isReadOnlyStep(allowedTools) || !state.session?.open) return false;
+    this.store.appendEvent(runId, {
+      type: 'note',
+      stepId,
+      message:
+        `autonomous read-only step finished instead of waiting for input — ${state.autoContinueStop}. ` +
+        'It ended without the done marker: its last message is the result, and anything it says it ' +
+        'could not read or check is a gap in that result.',
+    });
+    state.session.end();
+    return true;
+  }
+
+  /**
+   * The opening-message block for a task started with `evidenceFromRunId` (#933), or null for
+   * every other task. Snapshots the named task's evidence into this run's own folder (replacing
+   * the previous copy) and records a note naming what was copied. Never widens what the step may
+   * reach: the source folders are read here, by the engine, and are never handed to the session.
+   */
+  private authorEvidenceBlock(runId: string, stepId: string): string | null {
+    const authorRunId = this.store.getRun(runId)?.evidenceFromRunId;
+    if (!authorRunId) return null;
+    const snapshot = snapshotAuthorEvidence({ projectRoot: this.repoRoot, dataDir: this.dataDir, runId, authorRunId });
+    this.store.appendEvent(runId, {
+      type: 'note',
+      stepId,
+      message: snapshot.error
+        ? `evidence from task ${authorRunId} could not be copied — ${snapshot.error}`
+        : `evidence from task ${authorRunId}: ${snapshot.files.length} file(s) copied read-only to ${snapshot.dir}` +
+          (snapshot.skipped.length ? `, ${snapshot.skipped.length} skipped over the size limits` : ''),
+    });
+    return authorEvidenceBrief(snapshot);
   }
 
   // ---- execution -----------------------------------------------------------
@@ -3755,7 +3897,7 @@ export class RunManager {
       systemPrompt: extraSystemPrompt,
       modelIdentity,
     });
-    emit({ type: 'lifecycle', message: `run started — workflow "${workflow.name}" (runner: ${taskBackend})` });
+    emit({ type: 'lifecycle', message: `run started — workflow "${workflow.name}" (${stepRunnersLabel(workflow, taskBackend)})` });
 
     // Worktree per task (spec 006): the agent works on its own branch in
     // `.local/xezar/worktrees/<id>`, never in the user's working tree. A Git task
@@ -4216,6 +4358,10 @@ export class RunManager {
     // existing is what would leave an agent holding a task about a `.pdf` it was never told the
     // location of.
     if (attachments.length) userPrompt += `\n\n${pastedAttachmentsText(attachments)}`;
+    // Another task's evidence, when this task names one (#933): a fresh read-only snapshot in this
+    // run's own folder, quoted size-limited here so every backend judges the same set.
+    const evidenceBlock = this.authorEvidenceBlock(runId, step.id);
+    if (evidenceBlock) userPrompt += `\n\n${evidenceBlock}`;
 
     // The cheap return's whole prompt (#676): the same capped failing output the fresh return
     // appends, and nothing else — no `{{task}}`, no chain note, no attachments. The session
@@ -4350,7 +4496,12 @@ export class RunManager {
         // read here. `interactive` still gates it: a mid-workflow step ends its own session and
         // the next step follows, so there is no ball to hand back and nothing to nudge.
         const autoContinued = waiting && !monitoring ? this.autoContinueTurn(runId, state, activity) : false;
-        if (waiting && !autoContinued) {
+        // #933: an autonomous READ-ONLY step whose re-prompting hit a bound finishes here instead
+        // of parking — the same rule, the same helper, as `runContinuation`'s handler.
+        const finishedReadOnly =
+          waiting && !monitoring && !autoContinued &&
+          this.finishStoppedReadOnlyTurn(runId, state, step.id, step.allowedTools ?? DEFAULT_ALLOWED_TOOLS);
+        if (waiting && !autoContinued && !finishedReadOnly) {
           // Turn over, session open. Either the ball is in the user's court
           // (`waiting`) — optionally with a structured `XEZ:ASK` question the
           // cockpit renders as an ask card (#473) — or the agent declared it is
@@ -4384,7 +4535,7 @@ export class RunManager {
         appendHandoffHeartbeat(
           this.dataDir,
           runId,
-          `turn complete — status=${autoContinued ? 'running' : monitoring ? 'monitoring' : waiting ? 'waiting' : 'running'}`,
+          `turn complete — status=${autoContinued || finishedReadOnly ? 'running' : monitoring ? 'monitoring' : waiting ? 'waiting' : 'running'}`,
         );
       }
     };
@@ -4451,6 +4602,16 @@ export class RunManager {
         message: 'repair turn — resuming this step\'s own session with the failing output only; the brief is not repeated',
       });
     }
+    // The step's repository-owned Claude hooks (#1001): pinned from the base commit, or a note on
+    // a backend that cannot load them. A refused settings file fails the step, naming the reason.
+    let stepClaudeSettings: { file?: string; note?: string };
+    try {
+      stepClaudeSettings = await this.resolveStepClaudeSettings(runId, step, stepBackend, state.cwd);
+    } catch (err) {
+      if (err instanceof ClaudeStepSettingsError) return err.message;
+      throw err;
+    }
+    if (stepClaudeSettings.note) emit({ type: 'note', stepId: step.id, message: stepClaudeSettings.note });
     // A shutdown that is stopping this process's programs starts nothing new (#963).
     if (this.exiting) await this.parkedForExit();
     const runner = createRunner(stepBackend);
@@ -4504,9 +4665,12 @@ export class RunManager {
               systemPrompt,
               extraSystemPrompt,
               quickTaskWorktreeInstructions(this.store.getRun(runId)?.workflow, state.cwd, this.repoRoot),
-              this.semaphore.followupsEnabled() && input.generateFollowups !== false
-                ? HANDOFF_INSTRUCTIONS
-                : HANDOFF_ONLY_INSTRUCTIONS,
+              // A non-interactive step runs one turn and fails on `XEZ:MONITORING`
+              // (`unfinishedStepReason`), so it is told to finish inside the turn instead (#940).
+              agentContract({
+                followups: this.semaphore.followupsEnabled() && input.generateFollowups !== false,
+                canMonitor: interactive,
+              }),
             ),
             userPrompt: resumedSessionId !== undefined && repairPrompt !== null ? repairPrompt : userPrompt,
             // A resumed session already saw them; re-sending would re-bill the same blocks.
@@ -4515,6 +4679,7 @@ export class RunManager {
             ...worktreeGuardRoots(state.cwd, this.repoRoot),
             allowedTools: step.allowedTools ?? DEFAULT_ALLOWED_TOOLS,
             bashAllowlist: step.bashAllowlist,
+            ...(stepClaudeSettings.file ? { claudeSettingsFile: stepClaudeSettings.file } : {}),
             // The handoff file and this run's evidence directory live outside the worktree — grant access.
             additionalDirectories: agentDirectories(this.repoRoot, this.dataDir, stepProfile.env),
             env: stepProfile.env,
@@ -5272,7 +5437,13 @@ export class RunManager {
    * the backward-compatibility promise calls out: a recorded failure must not be erasable by a later
    * unrelated problem.
    */
-  private takeStepVerdict(runId: string, stepId: string): void {
+  private takeStepVerdict(
+    runId: string,
+    stepId: string,
+    /** A Continue's own workflow step — the one at `resumeIndex` that it completes (#864 item 1).
+     *  Omitted when the continuation completes no workflow step (`resumeIndex < 0`). */
+    completedStepId?: string,
+  ): void {
     const run = this.store.getRun(runId);
     const step = run?.steps.find((candidate) => candidate.id === stepId);
     if (step?.kind !== 'agent') return;
@@ -5283,9 +5454,13 @@ export class RunManager {
     // definition names, so its role is the OWNING step's — the definition step whose record step
     // carries the same session id, exactly as the Continue's tools and account resolve
     // (`runContinuation`). A continuation no definition step owns (a fresh session after a
-    // backend switch) extends the run's tail, so it answers with the definition's last agent
-    // step. A missing definition (a legacy record) or a step that declares nothing yields
-    // `undefined`, and ingestion refuses its packet: failing closed is the point.
+    // backend or account switch) answers with the workflow step it completes — the one at
+    // `resumeIndex` (#864 item 1): before that it took the definition's last agent step, so a
+    // continued AUTHOR turn of `implement → review` was recorded under the reviewer's role. Only a
+    // continuation that completes no workflow step (`resumeIndex < 0`) extends the run's tail and
+    // answers with the definition's last agent step. A missing definition (a legacy record) or a
+    // step that declares nothing yields `undefined`, and ingestion refuses its packet: failing
+    // closed is the point.
     const defSteps = run?.workflowDef?.steps;
     let declaringStep = defSteps?.find((candidate) => candidate.id === stepId);
     if (defSteps !== undefined && declaringStep === undefined) {
@@ -5293,10 +5468,48 @@ export class RunManager {
         ? undefined
         : run?.steps.find((candidate) => candidate.sessionId === step.sessionId);
       declaringStep = defSteps.find((candidate) => candidate.id === owner?.id)
-        ?? [...defSteps].reverse().find((candidate) => stepKind(candidate) === 'agent');
+        ?? (completedStepId !== undefined
+          ? defSteps.find((candidate) => candidate.id === completedStepId)
+          : [...defSteps].reverse().find((candidate) => stepKind(candidate) === 'agent'));
     }
     ingestTaskVerdict(this.store, this.dataDir, runId, stepId, declaringStep?.verdictRole);
   }
+}
+
+/**
+ * What the run-start header says about runners (#910): the runner each agent step really uses —
+ * `step.runner ?? taskBackend`, as `runAgentStep` resolves it — not the task's default. One runner
+ * reads `runner: codex`; steps on more than one read `runners: codex, claude`, in step order. A
+ * workflow with no agent step names the task's runner, as it always did.
+ */
+export function stepRunnersLabel(workflow: WorkflowDef, taskBackend: RunnerId): string {
+  const runners = [...new Set(workflow.steps
+    .filter((step) => stepKind(step) === 'agent')
+    .map((step) => step.runner ?? taskBackend))];
+  return runners.length > 1 ? `runners: ${runners.join(', ')}` : `runner: ${runners[0] ?? taskBackend}`;
+}
+
+/**
+ * The model a continuation spawns with. On the run's own agent it is the run's model, as it always
+ * was (an explicit follow-up choice is persisted there before scheduling, #401). A continuation
+ * that follows a step's own `runner:` instead (#984) is on an agent the run's model was never meant
+ * for, so it takes the model that step spawned with — `step.model ?? input.model`, as
+ * `runAgentStep` resolves it: the definition step that owns the resumed session, or else the last
+ * agent step declared on that agent.
+ */
+function continuationModel(
+  record: RunRecord | undefined,
+  sessionId: string | undefined,
+  backend: RunnerId,
+): string | undefined {
+  if (!record || backend === (record.runner ?? 'claude')) return record?.model;
+  const defSteps = record.workflowDef?.steps ?? [];
+  const owner = sessionId === undefined
+    ? undefined
+    : record.steps.find((candidate) => candidate.sessionId === sessionId);
+  const stepDef = defSteps.find((candidate) => candidate.id === owner?.id && stepKind(candidate) === 'agent')
+    ?? [...defSteps].reverse().find((candidate) => stepKind(candidate) === 'agent' && candidate.runner === backend);
+  return stepDef?.model ?? record.model;
 }
 
 function findLastAgentStepIndex(workflow: WorkflowDef): number {

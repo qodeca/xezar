@@ -4,10 +4,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { HANDOFF_INSTRUCTIONS, HANDOFF_ONLY_INSTRUCTIONS } from '../handoff.ts';
+import { HANDOFF_INSTRUCTIONS, HANDOFF_ONLY_INSTRUCTIONS, agentContract } from '../handoff.ts';
 import { RunStore } from '../runs/store.ts';
 import { WorkspaceSemaphore } from '../workspace/semaphore.ts';
-import type { WorkflowDef } from './types.ts';
+import { QUICK_TASK_WORKFLOW, type WorkflowDef } from './types.ts';
 import {
   RunManager,
   composeSystemPrompt,
@@ -251,8 +251,34 @@ describe('systemPrompt end-to-end (dry run)', () => {
     expect(record?.status).toMatch(/^(done|review)$/);
     expect(record?.systemPrompt).toBe(CONFIG_PROMPT);
     const prompt = capturedSystemPrompt();
-    // Composition: extra prompt first (no skill on this step), contract last.
-    expect(prompt).toBe(composeSystemPrompt(CONFIG_PROMPT, HANDOFF_INSTRUCTIONS));
+    // Composition: extra prompt first (no skill on this step), contract last. The step is not the
+    // last one, so it gets the finish-inside-the-turn contract (#940).
+    expect(prompt).toBe(
+      composeSystemPrompt(CONFIG_PROMPT, agentContract({ followups: true, canMonitor: false })),
+    );
+  }, TEST_MS);
+
+  /**
+   * #940: a step before the last one runs one turn and fails on `XEZ:MONITORING`
+   * (`unfinishedStepReason`), so the contract it receives must never teach that marker and must
+   * tell it to finish its own background work inside the turn. Pinned on the prompt the CLI
+   * actually receives, not on a constant.
+   */
+  it('a non-final workflow step is told to finish inside the turn and never taught XEZ:MONITORING (#940)', async () => {
+    await runToEnd({ task: 'mock:done do the thing' });
+    const prompt = capturedSystemPrompt();
+    expect(prompt).not.toContain('XEZ:MONITORING');
+    expect(prompt).not.toContain('Still-working marker');
+    expect(prompt).toContain(
+      'Finish inside the turn: this step runs a single turn and cannot wait — not for the user, and not for your own background work.',
+    );
+    expect(prompt).toContain('Never end the turn while your own work is still running');
+    // The rest of the contract is unchanged: completion, questions, references, handoff.
+    expect(prompt).toContain('XEZ:DONE');
+    expect(prompt).toContain('XEZ:ASK <json>');
+    expect(prompt).toContain('Never combine XEZ:ASK with XEZ:DONE.');
+    expect(prompt).toContain('XEZ:PR=<number>');
+    expect(prompt).toContain('XEZ_HANDOFF_FILE');
   }, TEST_MS);
 
 
@@ -386,7 +412,9 @@ describe('systemPrompt end-to-end (dry run)', () => {
     const record = store.getRun(id);
     expect(record?.systemPrompt).toBe(OVERRIDE_PROMPT);
     const prompt = capturedSystemPrompt();
-    expect(prompt).toBe(composeSystemPrompt(OVERRIDE_PROMPT, HANDOFF_INSTRUCTIONS));
+    expect(prompt).toBe(
+      composeSystemPrompt(OVERRIDE_PROMPT, agentContract({ followups: true, canMonitor: false })),
+    );
     expect(prompt).not.toContain(CONFIG_PROMPT);
   }, TEST_MS);
 
@@ -419,7 +447,7 @@ describe('systemPrompt end-to-end (dry run)', () => {
       source: 'ai',
     });
     expect(capturedSystemPrompt()).toBe(
-      composeSystemPrompt(skillPrompt, CONFIG_PROMPT, HANDOFF_INSTRUCTIONS),
+      composeSystemPrompt(skillPrompt, CONFIG_PROMPT, agentContract({ followups: true, canMonitor: false })),
     );
 
     // The mock writes the actual first user message it received into the run
@@ -450,7 +478,9 @@ describe('systemPrompt end-to-end (dry run)', () => {
     const id = await runToEnd({ task: 'do the thing quietly', generateFollowups: false });
     const record = store.getRun(id);
     expect(record?.generateFollowups).toBe(false);
-    expect(capturedSystemPrompt()).toBe(composeSystemPrompt(CONFIG_PROMPT, HANDOFF_ONLY_INSTRUCTIONS));
+    expect(capturedSystemPrompt()).toBe(
+      composeSystemPrompt(CONFIG_PROMPT, agentContract({ followups: false, canMonitor: false })),
+    );
     expect(capturedSystemPrompt()).not.toContain('XEZ_TODOS_FILE');
     expect(existsSync(todosFile)).toBe(false);
     // The opt-out must survive an inherited XEZ_TODOS_FILE (nested xezar):
@@ -468,6 +498,7 @@ describe('systemPrompt end-to-end (dry run)', () => {
       if (Date.now() > deadline) throw new Error('continuation did not start in time');
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
+    // A Continue is interactive and parks at turn end, so it keeps the monitoring paragraph (#940).
     expect(capturedSystemPrompt(1)).toBe(
       composeSystemPrompt(CONFIG_PROMPT, HANDOFF_ONLY_INSTRUCTIONS),
     );
@@ -595,6 +626,29 @@ describe('the global follow-up gate (dry run)', () => {
     expect(readFileSync(join(repoRoot, '.local/xezar/runs', `${id}.handoff.md`), 'utf8')).toContain(
       'mock: implemented the change',
     );
+  }, TEST_MS);
+
+  /**
+   * #940's other half: a quick (single-step) task parks at turn end and can be woken, so it keeps
+   * the still-working paragraph exactly as before — the contract change is for non-final workflow
+   * steps only.
+   */
+  it('a quick task still gets the XEZ:MONITORING paragraph unchanged (#940)', async () => {
+    writeFileSync(argsFile, '', 'utf8');
+    const record = manager.startRun(QUICK_TASK_WORKFLOW, { task: 'do the quick thing mock:done' });
+    const terminal = new Set(['done', 'review', 'failed', 'cancelled']);
+    const deadline = Date.now() + RUN_DEADLINE_MS;
+    while (!terminal.has(store.getRun(record.id)?.status ?? '')) {
+      if (Date.now() > deadline) throw new Error('run did not finish in time');
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    const prompt = capturedSystemPrompt();
+    expect(prompt.endsWith(HANDOFF_ONLY_INSTRUCTIONS)).toBe(true);
+    expect(prompt).toContain(
+      'Still-working marker: if you end a turn while still working on your OWN downstream work — a sub-agent you dispatched, or a long-running command you\'re monitoring — and are NOT waiting on the user for anything, end your final message with a line containing exactly XEZ:MONITORING.',
+    );
+    expect(prompt).toContain('Never combine XEZ:ASK with XEZ:DONE or XEZ:MONITORING.');
+    expect(prompt).not.toContain('Finish inside the turn');
   }, TEST_MS);
 
   it('a client asking for follow-ups cannot override the gate', async () => {
