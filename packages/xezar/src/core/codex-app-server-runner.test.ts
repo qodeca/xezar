@@ -550,7 +550,7 @@ describe("a Codex run does not reach the person's own MCP servers (#324)", () =>
     // #1007: the project server the home config also names runs on the project's definition
     // (the mock refuses the thread otherwise), and `mixed`, whose home `env` no override can
     // leave out, stays off with the key path named.
-    expect(notes.join('\n')).toContain("clash runs with the project's own settings only");
+    expect(notes.join('\n')).toContain("clash is set up with the project's own settings only");
     expect(notes.join('\n')).toContain('the project server mixed stays off because your own Codex config also sets env.TOOL_HOME');
     expect(notes.join('\n')).not.toContain('/home/u/tool');
   }, 15_000);
@@ -564,6 +564,24 @@ describe("a Codex run does not reach the person's own MCP servers (#324)", () =>
     );
 
     await expect(session.result).resolves.toMatchObject({ sessionId: 'th_mock_1' });
+  }, 15_000);
+
+  it('names an MCP server that failed to start, and only for its own thread (#1026)', async () => {
+    const runner = new CodexAppServerRunner({ bin: mockBin, timeoutMs: 0 });
+    const events: AgentEvent[] = [];
+    const session = runner.startSession(
+      { userPrompt: 'check the working tree', cwd: process.cwd(), env: { MOCK_CODEX_MCP_STARTUP_FAILED: '1' } },
+      (event) => events.push(event),
+      { autoEndAfterFirstTurn: true },
+    );
+
+    await expect(session.result).resolves.toMatchObject({ sessionId: 'th_mock_1' });
+    const notes = events.flatMap((event) => (event.type === 'note' ? [event.message] : []));
+    expect(notes).toContain(
+      'codex: the MCP server browser did not start: MCP client for `browser` timed out after 30 seconds. This run has none of its tools (#1026).',
+    );
+    expect(notes.join('\n')).not.toContain('docs');
+    expect(notes.join('\n')).not.toContain('MCP server other');
   }, 15_000);
 
   it('fails closed when the app-server cannot say which servers it would load', async () => {
