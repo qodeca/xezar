@@ -45,7 +45,7 @@ async function inbox(answer: (index: number) => string | null) {
   return { path, frames };
 }
 
-function messenger(path: string, opts: { receiptTimeoutMs?: number; burst?: number; now?: () => number; sleep?: (ms: number) => Promise<void> } = {}) {
+function messenger(path: string, opts: { receiptTimeoutMs?: number; burst?: number; now?: () => number } = {}) {
   const m = new QwenMessenger({ inbox: { socketPath: path, token: 'tok' }, ...opts });
   cleanups.push(() => m.close());
   return m;
@@ -74,24 +74,17 @@ describe('QwenMessenger', () => {
     await expect(messenger(join(shortTmpRoot(), 'no-such-inbox.sock')).send('x')).rejects.toThrow(/could not reach the Qwen Code session's inbox/);
   });
 
-  it('waits for the next refill once the burst is spent, instead of failing the attempt (#1067 review)', async () => {
+  it('refuses at once once the burst is spent, and sends again after the refill', async () => {
     const box = await inbox(() => 'delivered');
     let now = 1_000;
-    const waits: number[] = [];
-    const m = messenger(box.path, { burst: 2, now: () => now, sleep: async (ms) => { waits.push(ms); now += ms; } });
+    const m = messenger(box.path, { burst: 2, now: () => now });
     await m.send('a');
     await m.send('b');
-    now += 500;
+    await expect(m.send('c')).rejects.toThrow(/faster than it accepts messages/);
+    expect(box.frames.filter((f) => f.type === 'user')).toHaveLength(2);
+    now += 2_000;
     await m.send('c');
-    expect(waits).toEqual([1_500]);
     expect(box.frames.filter((f) => f.type === 'user').map((f) => (f.message as { content: string }).content)).toEqual(['a', 'b', 'c']);
-  });
-
-  it('still refuses when the clock did not move during the wait (a bounded wait, never a loop)', async () => {
-    const box = await inbox(() => 'delivered');
-    const m = messenger(box.path, { burst: 1, now: () => 1_000, sleep: async () => undefined });
-    await m.send('a');
-    await expect(m.send('b')).rejects.toThrow(/faster than it accepts messages/);
   });
 });
 

@@ -80,7 +80,6 @@ export interface QwenMessengerOptions {
   readonly burst?: number;
   /** Test seams. */
   readonly now?: () => number;
-  readonly sleep?: (ms: number) => Promise<void>;
 }
 
 /**
@@ -130,7 +129,7 @@ export class QwenMessenger {
 
   async #sendNow(content: string): Promise<void> {
     if (this.#closed) throw new Error('the xezar bridge is closing, so nothing was sent to Qwen Code');
-    await this.#takeToken();
+    this.#takeToken();
     const from = await this.#receiptListener();
     const msgId = `xz-${randomUUID()}`;
     const receipt = new Promise<{ receipt: QwenReceipt; reason?: string }>((resolve) => {
@@ -158,34 +157,24 @@ export class QwenMessenger {
   }
 
   /**
-   * Spend one send from the bucket. When it is empty, wait for the next refill (at most one gap,
-   * 2 s) instead of refusing (#1067 review): a refusal used up the controller's quick attempts in
-   * about a second, and the next try came only with the 30 s heartbeat. The wait is bounded far
-   * below the push's own 30 s backstop, so a send never outlives the attempt that asked for it and
-   * never arrives twice. Sends are serialised by `send`, so waits do not stack.
+   * Spend one send from the bucket, or refuse at once when it is empty. Never waits: a send that
+   * waited could outlive the delivery attempt that asked for it, reach the session after the attempt
+   * was counted as failed, and arrive twice. A refusal is an ordinary failed attempt, which the
+   * delivery controller retries.
    */
-  async #takeToken(): Promise<void> {
+  #takeToken(): void {
     const gapMs = this.#opts.minGapMs ?? QWEN_MIN_SEND_GAP_MS;
     const burst = this.#opts.burst ?? QWEN_SEND_BURST;
-    this.#refill(gapMs, burst);
-    if (this.#tokens <= 0) {
-      const waitMs = Math.max(0, this.#refilledAt + gapMs - this.#now());
-      await (this.#opts.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))))(waitMs);
-      this.#refill(gapMs, burst);
-      if (this.#tokens <= 0) {
-        throw new Error('xezar is sending to this Qwen Code session faster than it accepts messages, so this one waits for the next attempt');
-      }
-    }
-    this.#tokens -= 1;
-  }
-
-  #refill(gapMs: number, burst: number): void {
     const now = this.#now();
     const refill = Math.floor((now - this.#refilledAt) / gapMs);
     if (refill > 0) {
       this.#tokens = Math.min(burst, this.#tokens + refill);
       this.#refilledAt = this.#tokens === burst ? now : this.#refilledAt + refill * gapMs;
     }
+    if (this.#tokens <= 0) {
+      throw new Error('xezar is sending to this Qwen Code session faster than it accepts messages, so this one waits for the next attempt');
+    }
+    this.#tokens -= 1;
   }
 
   async #receiptListener(): Promise<string> {
