@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync as realpath, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -295,14 +296,14 @@ describe('createProjectStateFiles (AC-2, AC-4)', () => {
     rmSync(project, TEST_DIR_RM_OPTIONS);
   });
 
-  it('creates exactly the four files, and nothing else, under <project>/.xezar', () => {
+  it('creates exactly the three state files, and nothing else, under <project>/.xezar', () => {
     const layout = resolveStateLayout(project, ['--single-project'], {});
 
     createProjectStateFiles(layout);
 
+    // No `config.json` (#1074): it is the project's own committed settings file.
     expect(readdirSync(layout.root).sort()).toEqual([
       'agent-accounts.json',
-      'config.json',
       'workspace-ui.json',
       'workspace.json',
     ]);
@@ -316,9 +317,34 @@ describe('createProjectStateFiles (AC-2, AC-4)', () => {
 
     createProjectStateFiles(layout);
 
-    for (const path of projectStateFiles(layout)) {
+    for (const path of projectStateFiles(layout).filter((p) => p !== layout.configPath)) {
       expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({});
     }
+  });
+
+  it('leaves .xezar/config.json to the project, so a pull that brings it is not blocked (#1074)', () => {
+    const git = (cwd: string, ...args: string[]): string =>
+      execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.invalid', ...args], {
+        cwd,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+    const upstream = join(project, 'upstream');
+    const clone = join(project, 'clone');
+    mkdirSync(join(upstream, '.xezar'), { recursive: true });
+    git(upstream, 'init', '-q', '-b', 'main');
+    writeFileSync(join(upstream, '.xezar', 'workspace.json'), '{}\n', 'utf8');
+    git(upstream, 'add', '-A');
+    git(upstream, 'commit', '-q', '-m', 'one');
+    git(project, 'clone', '-q', upstream, clone);
+    writeFileSync(join(upstream, '.xezar', 'config.json'), '{"defaultRunner":"qwen"}\n', 'utf8');
+    git(upstream, 'add', '-A');
+    git(upstream, 'commit', '-q', '-m', 'two');
+
+    createProjectStateFiles(resolveStateLayout(clone, ['--single-project'], {}));
+
+    expect(() => git(clone, 'pull', '-q', '--ff-only')).not.toThrow();
+    expect(JSON.parse(readFileSync(join(clone, '.xezar', 'config.json'), 'utf8'))).toEqual({ defaultRunner: 'qwen' });
   });
 
   it('never overwrites a file a clone brought with it (AC-4)', () => {
