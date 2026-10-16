@@ -96,6 +96,8 @@ export interface QwenSystemSettingsInput {
   readonly excludedEnvNames: readonly string[];
   /** The hook command, when the step's policy needs one. */
   readonly hookCommand?: string;
+  /** The person opted in to Qwen Code's usage statistics (`XEZ_QWEN_USAGE_STATISTICS`). */
+  readonly usageStatistics?: boolean;
 }
 
 /**
@@ -122,6 +124,13 @@ export function qwenSystemSettings(
   // of each turn and a memory folder per task in the person's Qwen home. Their own sessions keep it.
   const memory = asRecord(settings.memory) ?? {};
   settings.memory = { ...memory, enableManagedAutoMemory: false, enableManagedAutoDream: false };
+
+  // Usage statistics off unless the person opted in (#1041 decision 8). Qwen Code 0.25.2 reads
+  // `QWEN_USAGE_STATISTICS_ENABLED` first, which the runner sets; the setting is the same answer
+  // for any reader that consults the settings alone.
+  if (input.usageStatistics !== true) {
+    settings.privacy = { ...asRecord(settings.privacy), usageStatisticsEnabled: false };
+  }
 
   const advanced = asRecord(settings.advanced) ?? {};
   const excluded = new Set<string>([

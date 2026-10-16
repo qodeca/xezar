@@ -181,6 +181,7 @@ export class QwenRunner implements AgentRunner {
       basePath: process.env[QWEN_SYSTEM_SETTINGS_ENV]?.trim() || qwenDefaultSystemSettingsPath(),
       excludedEnvNames: envScan.excludedNames,
       ...(hookCommand !== undefined ? { hookCommand } : {}),
+      usageStatistics: isTruthy(process.env[QWEN_USAGE_STATISTICS_OPT_IN]),
     });
     if (system.note) onEvent?.({ type: 'note', message: system.note });
     const settingsFile = writeQwenSystemSettings(system.settings);

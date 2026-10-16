@@ -222,10 +222,12 @@ describe('QwenRunner environment (#1044 §11, §12)', () => {
   it('switches usage statistics off unless XEZ_QWEN_USAGE_STATISTICS opts in', async () => {
     await runOnce();
     expect(records()[0]!.env.QWEN_USAGE_STATISTICS_ENABLED).toBe('0');
+    expect(records()[0]!.settings).toMatchObject({ privacy: { usageStatisticsEnabled: false } });
     process.env.XEZ_QWEN_USAGE_STATISTICS = '1';
     rmSync(recordFile);
     await runOnce();
     expect(records()[0]!.env.QWEN_USAGE_STATISTICS_ENABLED).toBeUndefined();
+    expect((records()[0]!.settings as { privacy?: unknown }).privacy).toBeUndefined();
   });
 
   it('forwards a provider key its settings name (envKey), and points Qwen at a private settings file', async () => {
