@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { FOLLOWUP_INSTRUCTIONS, HANDOFF_ONLY_INSTRUCTIONS } from '../handoff.ts';
+import { FOLLOWUP_INSTRUCTIONS, HANDOFF_ONLY_INSTRUCTIONS, HANDOFF_ONLY_STEP_INSTRUCTIONS } from '../handoff.ts';
 import { fixAndVerifyWorkflow, PROJECT_CONVENTIONS_SKILL } from '../init-kit.ts';
 import { HEALTH_TOOL } from '../mcp/bridge.ts';
 import { LEADER_ROLE_INSTRUCTION } from '../mcp/leader-delivery.ts';
@@ -83,6 +83,7 @@ async function manifest(): Promise<Producer[]> {
     { producer: 'built-in workflow', location: 'packages/xezar/src/workflows/types.ts#QUICK_TASK_WORKFLOW', text: JSON.stringify(QUICK_TASK_WORKFLOW) },
     { producer: 'built-in workflow', location: 'packages/xezar/src/workflows/types.ts#PROJECT_SETUP_WORKFLOW', text: JSON.stringify(PROJECT_SETUP_WORKFLOW) },
     { producer: 'handoff contract', location: 'packages/xezar/src/handoff.ts#HANDOFF_ONLY_INSTRUCTIONS', text: HANDOFF_ONLY_INSTRUCTIONS },
+    { producer: 'handoff contract (non-final workflow step)', location: 'packages/xezar/src/handoff.ts#HANDOFF_ONLY_STEP_INSTRUCTIONS', text: HANDOFF_ONLY_STEP_INSTRUCTIONS },
     { producer: 'follow-up contract', location: 'packages/xezar/src/handoff.ts#FOLLOWUP_INSTRUCTIONS', text: FOLLOWUP_INSTRUCTIONS },
     source('handoff module', 'packages/xezar/src/handoff.ts'),
     { producer: 'planner role', location: 'packages/xezar/src/planner.ts#PLANNER_SYSTEM_PROMPT', text: PLANNER_SYSTEM_PROMPT },
