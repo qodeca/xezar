@@ -37,7 +37,10 @@ A step's `verdictRole` names one of `TASK_VERDICT_ROLES` in `packages/contract/s
 and each role keeps every verdict word it has ever accepted. Adding a role or a word is additive:
 0.20.0 adds `security-review` and `acceptance-verification`, and adds the 3.0.3 kit's CONFORMS,
 CONFORMS WITH FOLLOW-UPS and CONTRADICTS to `architecture-review` beside APPROVE and REQUEST CHANGES.
-Renaming or removing a role or a word is a break. An agent step's optional `claudeSettings`
+Renaming or removing a role or a word is a break. A packet is recorded only under the role the
+step that settles it declares; a Continue reports as the step it completes — the step whose session
+it resumes, or, in a fresh session, the workflow step it finishes — never as a later reviewer step
+(#864). An agent step's optional `claudeSettings`
 (#1001: `files` and `scripts`, repository-relative) is additive; absent, a step starts
 exactly as before. Its accepted settings keys (`hooks` only) may widen only by an owner decision,
 and narrowing them would refuse files that load today. The most steps a chain may hold when it is saved
